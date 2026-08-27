@@ -86,6 +86,39 @@ python scripts/split_data.py
 
 Run everything from the repo root — paths are relative to it.
 
+## Dates, times, and versions
+
+How runs and data are stamped, so you can always answer "what data is this
+and when was it made":
+
+- **Schedules are UTC.** The weekly run fires Sundays 06:00 UTC; the
+  snapshot date is the runner's UTC date on that day.
+- **Every weekly artifact says when its data was pulled.** The demographics
+  parts and `dashboard-summary.json` carry `extracted_at` (the moment the
+  CT.gov pull ran). Derived files carry both stamps —
+  `industry_sponsors.json` has `generated_at` (when it was built) *and*
+  `source_extracted_at` (which pull it was built from) — so a derived file
+  can never silently outrun its source.
+- **Versions of published data are the dated snapshot folders** in the site
+  repo (`snapshots/YYYY-MM-DD/`), listed in `history.json`, which is what
+  the dashboard's "View snapshot" dropdown reads. Retention: the 4 most
+  recent bi-weekly snapshots in full, then one summary per month.
+- **LLM extraction runs are versioned by their commits.** Output files keep
+  stable names (so the site always reads the latest); each run's commit
+  records who triggered it, the pipeline and mode, and links the Actions
+  run. Full logs and per-call token costs are archived to Google Drive
+  under date-stamped names (cost logs use America/New_York wall-clock).
+- **The geography tab is pinned, not rolling.** `data/geo/active_run.json`
+  in the site repo names the exact run the tab displays; it only advances
+  when a human runs `scripts/geo/advance_run.py` and merges the PR.
+
+Known gaps, queued as follow-ups: the main extractor's `extracted_at` is a
+naive timestamp (no timezone marker — it happens to be UTC on CI);
+LLM extraction output files don't embed a run timestamp internally (you
+need the commit for that); a same-day manual re-run overwrites that day's
+snapshot folder; and no artifact records the git commit of the code that
+produced it.
+
 ## Ground rules
 
 Adopted when this repo was created, to keep it from re-growing the clutter
