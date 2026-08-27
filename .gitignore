@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+env/
+venv/
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+extraction.log
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+
+# Transient extraction output — the raw weekly dump is uploaded to Google
+# Drive and split into parts; it is never committed.
+data/demographics.json
+data/demographics.json.gz
+data/demographics.part*.json.gz
+data/dashboard-summary.json
+data/industry_sponsors.json
+
+# Full document corpora live outside git (1,400+ FDA PDFs, full manuscript
+# archives). Only the pilot subsets are tracked so GitHub Actions can run
+# the pilot extractions.
+data/fda_pdfs/
+data/AIML Manuscripts/
+data/FDA Summary Statements/
+data/Clinical Trials Manuscripts/*
+!data/Clinical Trials Manuscripts/.gitkeep
+
+# Never commit credentials
+vertex_key.json
+*.pem
+
+# Site checkout created by the publish steps in CI (and by local testing)
+site/

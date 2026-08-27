@@ -1,0 +1,44 @@
+{
+  "run_mode": "pilot-test",
+  "pilot_size": 8,
+  "successful_docs_count": 8,
+  "total_pages_processed": 108,
+  "attempted_docs": 8,
+  "interrupted_by": null,
+  "total_studies": 53841,
+  "per_model": {
+    "haiku_4_5": {
+      "model_id": "claude-haiku-4-5-20251001",
+      "label": "Haiku 4.5",
+      "input_cost_per_m": 1.0,
+      "output_cost_per_m": 5.0,
+      "avg_input_per_doc": 23307.75,
+      "avg_output_per_doc": 1675.125,
+      "total_input_tokens": 186462,
+      "total_output_tokens": 13401,
+      "docs_processed": 8
+    },
+    "sonnet_4_6": {
+      "model_id": "claude-sonnet-4-6",
+      "label": "Sonnet 4.6",
+      "input_cost_per_m": 3.0,
+      "output_cost_per_m": 15.0,
+      "avg_input_per_doc": 23308.75,
+      "avg_output_per_doc": 1719.75,
+      "total_input_tokens": 186470,
+      "total_output_tokens": 13758,
+      "docs_processed": 8
+    },
+    "opus_4_7": {
+      "model_id": "claude-opus-4-7",
+      "label": "Opus 4.7",
+      "input_cost_per_m": 15.0,
+      "output_cost_per_m": 75.0,
+      "avg_input_per_doc": 31625.75,
+      "avg_output_per_doc": 2209.375,
+      "total_input_tokens": 253006,
+      "total_output_tokens": 17675,
+      "docs_processed": 8
+    }
+  }
+}

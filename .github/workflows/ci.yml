@@ -1,0 +1,29 @@
+name: CI
+
+# Fast checks on every push and PR: everything compiles, and the offline
+# extractor validation harness (mock CT.gov studies asserting alias mapping,
+# row-level routing, and quarantine behavior) passes.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile all Python sources
+        run: python -m compileall -q src scripts
+
+      - name: Run extractor validation harness
+        run: python scripts/validate_fixes.py

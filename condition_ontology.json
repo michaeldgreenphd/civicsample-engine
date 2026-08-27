@@ -1,0 +1,715 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "description": "Hierarchical condition ontology for clinical trial categorization. Maps raw condition strings to Primary Category > Secondary Category using keyword/synonym matching.",
+    "last_updated": "2026-02-11"
+  },
+  "categories": {
+    "Cardiovascular": {
+      "Heart Failure": [
+        "heart failure", "congestive heart failure", "chf", "cardiac failure",
+        "systolic heart failure", "diastolic heart failure", "hfref", "hfpef",
+        "left ventricular failure", "right heart failure", "cardiogenic shock"
+      ],
+      "Coronary Artery Disease": [
+        "coronary artery disease", "coronary heart disease", "cad", "myocardial infarction",
+        "heart attack", "angina", "angina pectoris", "acute coronary syndrome",
+        "coronary stenosis", "ischemic heart disease", "coronary occlusion"
+      ],
+      "Arrhythmia": [
+        "arrhythmia", "atrial fibrillation", "atrial flutter", "afib", "a-fib",
+        "ventricular tachycardia", "supraventricular tachycardia", "svt",
+        "bradycardia", "tachycardia", "long qt syndrome", "wolff-parkinson-white",
+        "heart block", "sick sinus syndrome", "cardiac arrest", "ventricular fibrillation"
+      ],
+      "Hypertension": [
+        "hypertension", "high blood pressure", "elevated blood pressure",
+        "resistant hypertension", "essential hypertension", "primary hypertension",
+        "secondary hypertension", "malignant hypertension", "hypertensive"
+      ],
+      "Congenital Heart Disease": [
+        "congenital heart disease", "congenital heart defect", "tetralogy of fallot",
+        "atrial septal defect", "ventricular septal defect", "asd", "vsd",
+        "patent ductus arteriosus", "pda", "coarctation of the aorta",
+        "transposition of great arteries", "hypoplastic left heart",
+        "congenital cardiac", "bicuspid aortic valve"
+      ],
+      "Valvular Heart Disease": [
+        "valvular heart disease", "aortic stenosis", "aortic regurgitation",
+        "mitral stenosis", "mitral regurgitation", "mitral valve prolapse",
+        "tricuspid regurgitation", "heart valve", "valve replacement",
+        "valve repair", "endocarditis", "valvulopathy"
+      ],
+      "Cardiomyopathy": [
+        "cardiomyopathy", "dilated cardiomyopathy", "hypertrophic cardiomyopathy",
+        "restrictive cardiomyopathy", "takotsubo", "myocarditis",
+        "arrhythmogenic right ventricular", "peripartum cardiomyopathy"
+      ],
+      "Peripheral Vascular Disease": [
+        "peripheral artery disease", "peripheral vascular disease", "pad", "pvd",
+        "claudication", "critical limb ischemia", "aortic aneurysm",
+        "deep vein thrombosis", "dvt", "pulmonary embolism",
+        "venous thromboembolism", "vte", "varicose veins", "atherosclerosis"
+      ],
+      "Other Cardiovascular": [
+        "cardiac", "cardiovascular", "heart", "pericarditis",
+        "pericardial effusion", "cardiac tamponade", "aortic dissection",
+        "myocardial", "ventricular", "cardio"
+      ]
+    },
+    "Oncology": {
+      "Breast Cancer": [
+        "breast cancer", "breast neoplasm", "breast carcinoma", "breast tumor",
+        "ductal carcinoma", "lobular carcinoma", "triple negative breast cancer",
+        "tnbc", "her2 positive breast", "er positive breast", "breast malignancy"
+      ],
+      "Lung Cancer": [
+        "lung cancer", "non-small cell lung cancer", "nsclc", "small cell lung cancer",
+        "sclc", "lung adenocarcinoma", "lung carcinoma", "bronchogenic carcinoma",
+        "pulmonary neoplasm", "mesothelioma", "lung neoplasm"
+      ],
+      "Colorectal Cancer": [
+        "colorectal cancer", "colon cancer", "rectal cancer", "colorectal carcinoma",
+        "colorectal neoplasm", "colon adenocarcinoma", "rectal adenocarcinoma",
+        "bowel cancer", "colorectal adenoma"
+      ],
+      "Prostate Cancer": [
+        "prostate cancer", "prostate neoplasm", "prostate carcinoma",
+        "prostatic neoplasm", "castration resistant prostate", "crpc",
+        "prostate adenocarcinoma", "prostatic adenocarcinoma"
+      ],
+      "Hematologic Malignancy": [
+        "leukemia", "lymphoma", "myeloma", "multiple myeloma",
+        "acute myeloid leukemia", "aml", "acute lymphoblastic leukemia", "all",
+        "chronic lymphocytic leukemia", "cll", "chronic myeloid leukemia", "cml",
+        "hodgkin lymphoma", "non-hodgkin lymphoma", "nhl",
+        "diffuse large b-cell lymphoma", "dlbcl", "follicular lymphoma",
+        "mantle cell lymphoma", "myelodysplastic syndrome", "mds",
+        "myeloproliferative", "polycythemia vera", "essential thrombocythemia",
+        "myelofibrosis", "waldenstrom"
+      ],
+      "Brain and CNS Tumors": [
+        "glioblastoma", "glioma", "brain tumor", "brain cancer",
+        "astrocytoma", "meningioma", "medulloblastoma", "brain neoplasm",
+        "cns tumor", "central nervous system tumor", "neuroblastoma",
+        "craniopharyngioma", "brain metastasis", "brain metastases"
+      ],
+      "Pancreatic Cancer": [
+        "pancreatic cancer", "pancreatic adenocarcinoma", "pancreatic neoplasm",
+        "pancreatic carcinoma", "pancreas cancer", "pancreatic ductal adenocarcinoma"
+      ],
+      "Liver Cancer": [
+        "hepatocellular carcinoma", "hcc", "liver cancer", "hepatic cancer",
+        "liver neoplasm", "cholangiocarcinoma", "bile duct cancer",
+        "hepatoblastoma", "hepatic neoplasm"
+      ],
+      "Skin Cancer": [
+        "melanoma", "basal cell carcinoma", "squamous cell carcinoma of skin",
+        "cutaneous melanoma", "merkel cell carcinoma", "skin cancer",
+        "cutaneous carcinoma", "skin neoplasm"
+      ],
+      "Head and Neck Cancer": [
+        "head and neck cancer", "oral cancer", "throat cancer",
+        "oropharyngeal cancer", "nasopharyngeal cancer", "laryngeal cancer",
+        "squamous cell carcinoma of head", "tongue cancer", "pharyngeal cancer",
+        "salivary gland cancer", "thyroid cancer", "thyroid carcinoma"
+      ],
+      "Gynecologic Cancer": [
+        "ovarian cancer", "cervical cancer", "endometrial cancer", "uterine cancer",
+        "vulvar cancer", "fallopian tube cancer", "ovarian carcinoma",
+        "cervical carcinoma", "endometrial carcinoma", "gynecologic cancer"
+      ],
+      "Kidney Cancer": [
+        "renal cell carcinoma", "rcc", "kidney cancer", "renal cancer",
+        "wilms tumor", "nephroblastoma", "renal neoplasm"
+      ],
+      "Bladder Cancer": [
+        "bladder cancer", "urothelial carcinoma", "transitional cell carcinoma",
+        "bladder neoplasm", "bladder carcinoma"
+      ],
+      "Gastric and Esophageal Cancer": [
+        "gastric cancer", "stomach cancer", "esophageal cancer",
+        "gastroesophageal junction", "gastric adenocarcinoma",
+        "esophageal adenocarcinoma", "esophageal squamous cell carcinoma"
+      ],
+      "Sarcoma": [
+        "sarcoma", "osteosarcoma", "ewing sarcoma", "rhabdomyosarcoma",
+        "leiomyosarcoma", "liposarcoma", "synovial sarcoma", "soft tissue sarcoma",
+        "gastrointestinal stromal tumor", "gist", "chondrosarcoma",
+        "kaposi sarcoma", "angiosarcoma"
+      ],
+      "Other Oncology": [
+        "cancer", "carcinoma", "tumor", "tumour", "neoplasm", "malignant",
+        "oncology", "metastatic", "metastasis", "adenocarcinoma", "blastoma",
+        "chemotherapy", "oncologic", "solid tumor"
+      ]
+    },
+    "Neurology": {
+      "Alzheimer's Disease and Dementia": [
+        "alzheimer", "alzheimers", "alzheimer's", "dementia", "cognitive decline",
+        "memory impairment", "mild cognitive impairment", "mci",
+        "senile dementia", "cognitive dysfunction", "amnestic",
+        "frontotemporal dementia", "lewy body dementia", "vascular dementia",
+        "neurocognitive disorder"
+      ],
+      "Parkinson's Disease": [
+        "parkinson", "parkinsons", "parkinson's", "parkinsonian",
+        "parkinson disease", "parkinsonism"
+      ],
+      "Epilepsy and Seizure Disorders": [
+        "epilepsy", "seizure", "seizure disorder", "convulsion",
+        "absence seizure", "tonic-clonic", "focal seizure",
+        "lennox-gastaut", "dravet syndrome", "status epilepticus",
+        "refractory epilepsy", "temporal lobe epilepsy"
+      ],
+      "Multiple Sclerosis": [
+        "multiple sclerosis", "ms", "relapsing remitting", "rrms",
+        "progressive multiple sclerosis", "clinically isolated syndrome",
+        "demyelinating disease", "demyelination"
+      ],
+      "Stroke and Cerebrovascular": [
+        "stroke", "cerebrovascular", "cerebral infarction", "brain ischemia",
+        "intracranial hemorrhage", "transient ischemic attack", "tia",
+        "subarachnoid hemorrhage", "cerebral thrombosis", "ischemic stroke",
+        "hemorrhagic stroke", "cerebral hemorrhage", "brain hemorrhage",
+        "carotid stenosis"
+      ],
+      "Headache and Migraine": [
+        "migraine", "headache", "cluster headache", "tension headache",
+        "chronic migraine", "episodic migraine", "medication overuse headache"
+      ],
+      "Neurodegenerative Diseases": [
+        "als", "amyotrophic lateral sclerosis", "motor neuron disease",
+        "huntington", "huntingtons", "huntington's",
+        "progressive supranuclear palsy", "corticobasal degeneration",
+        "spinal muscular atrophy", "sma", "friedreich ataxia",
+        "spinocerebellar ataxia", "neurodegeneration"
+      ],
+      "Neuropathy": [
+        "neuropathy", "peripheral neuropathy", "diabetic neuropathy",
+        "polyneuropathy", "neuralgia", "trigeminal neuralgia",
+        "carpal tunnel syndrome", "guillain-barre", "guillain barre",
+        "chronic inflammatory demyelinating", "cidp",
+        "charcot-marie-tooth", "nerve injury"
+      ],
+      "Neuromuscular Disorders": [
+        "myasthenia gravis", "myasthenia", "muscular dystrophy",
+        "duchenne", "myotonic dystrophy", "myopathy",
+        "inclusion body myositis", "lambert-eaton"
+      ],
+      "Other Neurological": [
+        "neurological", "dystonia", "tremor", "ataxia", "spinal cord injury",
+        "traumatic brain injury", "tbi", "concussion", "hydrocephalus",
+        "brain injury", "cerebral palsy", "nerve", "neuro"
+      ]
+    },
+    "Respiratory": {
+      "COPD": [
+        "copd", "chronic obstructive pulmonary", "chronic obstructive lung",
+        "emphysema", "chronic bronchitis"
+      ],
+      "Asthma": [
+        "asthma", "bronchial asthma", "severe asthma", "allergic asthma",
+        "exercise-induced asthma", "asthmatic", "bronchospasm",
+        "eosinophilic asthma"
+      ],
+      "Pulmonary Fibrosis": [
+        "pulmonary fibrosis", "idiopathic pulmonary fibrosis", "ipf",
+        "interstitial lung disease", "ild", "lung fibrosis",
+        "interstitial pneumonia", "sarcoidosis"
+      ],
+      "Pneumonia": [
+        "pneumonia", "pneumococcal", "community acquired pneumonia",
+        "hospital acquired pneumonia", "ventilator associated pneumonia",
+        "aspiration pneumonia", "pneumonitis"
+      ],
+      "Pulmonary Hypertension": [
+        "pulmonary hypertension", "pulmonary arterial hypertension", "pah",
+        "right heart failure due to pulmonary"
+      ],
+      "Sleep Apnea": [
+        "sleep apnea", "obstructive sleep apnea", "osa",
+        "central sleep apnea", "sleep disordered breathing"
+      ],
+      "Other Respiratory": [
+        "respiratory", "bronchiectasis", "respiratory failure",
+        "acute respiratory distress", "ards", "pleural effusion",
+        "cystic fibrosis", "lung disease", "lung", "pulmonary",
+        "respiratory syncytial", "rsv"
+      ]
+    },
+    "Mental Health": {
+      "Depression": [
+        "depression", "major depressive disorder", "mdd",
+        "depressive disorder", "major depression", "treatment resistant depression",
+        "dysthymia", "persistent depressive", "postpartum depression",
+        "perinatal depression"
+      ],
+      "Anxiety Disorders": [
+        "anxiety", "generalized anxiety disorder", "gad", "panic disorder",
+        "social anxiety", "social phobia", "agoraphobia", "phobia",
+        "separation anxiety", "anxiety disorder"
+      ],
+      "Bipolar Disorder": [
+        "bipolar", "bipolar disorder", "bipolar depression", "mania",
+        "manic depression", "bipolar i", "bipolar ii", "cyclothymia"
+      ],
+      "Schizophrenia and Psychotic Disorders": [
+        "schizophrenia", "psychosis", "psychotic", "schizoaffective",
+        "first episode psychosis", "delusional disorder",
+        "schizophreniform", "brief psychotic disorder"
+      ],
+      "PTSD and Trauma": [
+        "ptsd", "post-traumatic stress", "posttraumatic stress",
+        "trauma related", "complex ptsd", "acute stress disorder"
+      ],
+      "OCD and Related Disorders": [
+        "obsessive compulsive", "ocd", "obsessive-compulsive",
+        "body dysmorphic", "hoarding disorder", "trichotillomania",
+        "excoriation disorder"
+      ],
+      "Eating Disorders": [
+        "anorexia", "anorexia nervosa", "bulimia", "bulimia nervosa",
+        "binge eating", "eating disorder", "avoidant restrictive food intake"
+      ],
+      "ADHD": [
+        "adhd", "attention deficit", "attention-deficit",
+        "hyperactivity disorder", "add"
+      ],
+      "Autism Spectrum": [
+        "autism", "autism spectrum", "asd", "autistic",
+        "asperger", "pervasive developmental disorder"
+      ],
+      "Other Mental Health": [
+        "psychiatric", "mental health", "mental disorder", "mood disorder",
+        "personality disorder", "borderline personality",
+        "dissociative", "adjustment disorder", "insomnia",
+        "sleep disorder"
+      ]
+    },
+    "Endocrine and Metabolic": {
+      "Type 1 Diabetes": [
+        "type 1 diabetes", "type i diabetes", "t1d", "t1dm",
+        "insulin dependent diabetes", "iddm", "juvenile diabetes",
+        "autoimmune diabetes", "latent autoimmune diabetes"
+      ],
+      "Type 2 Diabetes": [
+        "type 2 diabetes", "type ii diabetes", "t2d", "t2dm",
+        "non-insulin dependent diabetes", "niddm",
+        "adult onset diabetes"
+      ],
+      "Diabetes (General)": [
+        "diabetes", "diabetic", "hyperglycemia", "hypoglycemia",
+        "insulin resistance", "glucose intolerance", "prediabetes",
+        "hba1c", "glycemic", "diabetic ketoacidosis", "dka",
+        "diabetic retinopathy", "diabetic nephropathy", "diabetic foot"
+      ],
+      "Obesity": [
+        "obesity", "obese", "morbid obesity", "overweight",
+        "weight management", "weight loss", "bariatric",
+        "body mass index", "bmi"
+      ],
+      "Thyroid Disorders": [
+        "hypothyroidism", "hyperthyroidism", "thyroid", "graves disease",
+        "hashimoto", "thyroiditis", "goiter", "thyroid nodule"
+      ],
+      "Lipid Disorders": [
+        "hyperlipidemia", "dyslipidemia", "hypercholesterolemia",
+        "hypertriglyceridemia", "high cholesterol", "ldl",
+        "familial hypercholesterolemia"
+      ],
+      "Other Metabolic": [
+        "metabolic syndrome", "metabolic", "endocrine",
+        "adrenal insufficiency", "cushing", "addison",
+        "pheochromocytoma", "hyperparathyroidism", "hypoparathyroidism",
+        "acromegaly", "growth hormone deficiency",
+        "phenylketonuria", "pku", "gaucher", "fabry",
+        "lysosomal storage", "glycogen storage"
+      ]
+    },
+    "Infectious Disease": {
+      "HIV/AIDS": [
+        "hiv", "human immunodeficiency virus", "aids",
+        "acquired immunodeficiency", "antiretroviral",
+        "hiv-1", "hiv-2", "hiv infection"
+      ],
+      "Hepatitis": [
+        "hepatitis", "hepatitis b", "hepatitis c", "hbv", "hcv",
+        "chronic hepatitis", "hepatitis a", "viral hepatitis"
+      ],
+      "COVID-19": [
+        "covid", "covid-19", "sars-cov-2", "coronavirus",
+        "long covid", "post-covid", "sars-cov"
+      ],
+      "Tuberculosis": [
+        "tuberculosis", "tb", "mycobacterium tuberculosis",
+        "latent tuberculosis", "drug resistant tuberculosis", "xdr-tb", "mdr-tb"
+      ],
+      "Influenza": [
+        "influenza", "flu", "h1n1", "h5n1", "avian influenza",
+        "seasonal influenza", "influenza a", "influenza b"
+      ],
+      "Bacterial Infections": [
+        "bacterial infection", "sepsis", "septicemia",
+        "staphylococcus", "streptococcus", "mrsa",
+        "clostridium difficile", "c. difficile", "c diff",
+        "urinary tract infection", "uti", "cellulitis",
+        "osteomyelitis", "abscess", "endocarditis bacterial"
+      ],
+      "Fungal Infections": [
+        "fungal infection", "candidiasis", "aspergillosis",
+        "cryptococcosis", "invasive fungal", "antifungal"
+      ],
+      "Parasitic Diseases": [
+        "malaria", "plasmodium", "leishmaniasis",
+        "schistosomiasis", "trypanosomiasis", "chagas",
+        "helminth", "parasitic"
+      ],
+      "Sexually Transmitted Infections": [
+        "sexually transmitted", "sti", "std", "chlamydia",
+        "gonorrhea", "syphilis", "herpes simplex", "hsv",
+        "human papillomavirus", "hpv", "genital warts"
+      ],
+      "Other Infectious": [
+        "infection", "infectious", "viral infection",
+        "meningitis", "encephalitis", "ebola", "zika",
+        "dengue", "yellow fever", "rabies", "measles",
+        "mumps", "rubella", "varicella", "polio",
+        "west nile", "antimicrobial resistance"
+      ]
+    },
+    "Autoimmune and Inflammatory": {
+      "Rheumatoid Arthritis": [
+        "rheumatoid arthritis", "rheumatoid", "ra",
+        "juvenile rheumatoid", "juvenile idiopathic arthritis"
+      ],
+      "Systemic Lupus Erythematosus": [
+        "lupus", "systemic lupus erythematosus", "sle",
+        "lupus nephritis", "cutaneous lupus", "discoid lupus"
+      ],
+      "Inflammatory Bowel Disease": [
+        "crohn", "crohns", "crohn's", "crohn disease",
+        "ulcerative colitis", "inflammatory bowel disease", "ibd"
+      ],
+      "Psoriasis and Psoriatic Arthritis": [
+        "psoriasis", "psoriatic arthritis", "plaque psoriasis",
+        "pustular psoriasis", "guttate psoriasis", "psoriatic"
+      ],
+      "Ankylosing Spondylitis": [
+        "ankylosing spondylitis", "axial spondyloarthritis",
+        "spondyloarthritis", "spondyloarthropathy"
+      ],
+      "Vasculitis": [
+        "vasculitis", "giant cell arteritis", "takayasu",
+        "granulomatosis with polyangiitis", "wegener",
+        "polyarteritis nodosa", "anca-associated"
+      ],
+      "Other Autoimmune": [
+        "autoimmune", "sjogren", "scleroderma", "systemic sclerosis",
+        "dermatomyositis", "polymyositis", "polymyalgia rheumatica",
+        "antiphospholipid", "celiac", "coeliac",
+        "autoimmune hepatitis", "primary biliary cholangitis",
+        "myositis", "immune-mediated"
+      ]
+    },
+    "Gastrointestinal": {
+      "GERD and Esophageal": [
+        "gastroesophageal reflux", "gerd", "acid reflux",
+        "barrett esophagus", "barretts", "esophagitis",
+        "dysphagia", "achalasia", "eosinophilic esophagitis"
+      ],
+      "Peptic Ulcer and Gastritis": [
+        "peptic ulcer", "gastric ulcer", "duodenal ulcer",
+        "gastritis", "helicobacter pylori", "h. pylori",
+        "gastrointestinal bleeding", "gi bleed"
+      ],
+      "Liver Disease": [
+        "liver disease", "hepatic", "cirrhosis", "fatty liver",
+        "nafld", "nash", "nonalcoholic steatohepatitis",
+        "nonalcoholic fatty liver", "liver fibrosis",
+        "alcoholic liver disease", "portal hypertension",
+        "hepatic encephalopathy", "liver failure"
+      ],
+      "Pancreatic Disorders": [
+        "pancreatitis", "chronic pancreatitis", "acute pancreatitis",
+        "pancreatic insufficiency", "exocrine pancreatic"
+      ],
+      "Irritable Bowel Syndrome": [
+        "irritable bowel syndrome", "ibs", "irritable bowel",
+        "ibs-d", "ibs-c", "ibs-m"
+      ],
+      "Other Gastrointestinal": [
+        "gastrointestinal", "gastric", "intestinal", "colon",
+        "gallbladder", "cholecystitis", "gallstone",
+        "diverticulitis", "diverticulosis", "gastroparesis",
+        "short bowel syndrome", "intestinal obstruction",
+        "gi", "digestive", "bowel"
+      ]
+    },
+    "Kidney and Urological": {
+      "Chronic Kidney Disease": [
+        "chronic kidney disease", "ckd", "chronic renal failure",
+        "chronic renal insufficiency", "renal impairment",
+        "kidney failure", "renal failure"
+      ],
+      "End-Stage Renal Disease": [
+        "end-stage renal disease", "esrd", "end stage renal",
+        "end-stage kidney disease", "eskd", "dialysis",
+        "hemodialysis", "peritoneal dialysis"
+      ],
+      "Glomerular Diseases": [
+        "glomerulonephritis", "glomerular", "iga nephropathy",
+        "nephrotic syndrome", "membranous nephropathy",
+        "focal segmental glomerulosclerosis", "fsgs",
+        "minimal change disease"
+      ],
+      "Kidney Transplant": [
+        "kidney transplant", "renal transplant", "kidney transplantation",
+        "renal transplantation", "kidney graft"
+      ],
+      "Urological Disorders": [
+        "urinary incontinence", "overactive bladder", "oab",
+        "benign prostatic hyperplasia", "bph", "prostatitis",
+        "urinary retention", "urolithiasis", "kidney stone",
+        "nephrolithiasis", "renal calculus"
+      ],
+      "Other Kidney": [
+        "kidney", "renal", "nephropathy", "nephritis",
+        "polycystic kidney", "pkd", "nephrotic", "renal tubular"
+      ]
+    },
+    "Musculoskeletal": {
+      "Osteoarthritis": [
+        "osteoarthritis", "degenerative joint disease", "oa",
+        "knee osteoarthritis", "hip osteoarthritis",
+        "hand osteoarthritis", "joint degeneration"
+      ],
+      "Osteoporosis": [
+        "osteoporosis", "osteopenia", "bone density",
+        "bone loss", "fragility fracture", "osteoporotic fracture",
+        "postmenopausal osteoporosis"
+      ],
+      "Back and Spine": [
+        "back pain", "low back pain", "chronic back pain",
+        "lumbar", "spinal stenosis", "disc herniation",
+        "spondylosis", "spondylolisthesis", "sciatica",
+        "radiculopathy", "degenerative disc disease"
+      ],
+      "Fibromyalgia": [
+        "fibromyalgia", "fibromyalgia syndrome", "fms",
+        "chronic widespread pain"
+      ],
+      "Gout": [
+        "gout", "gouty arthritis", "hyperuricemia",
+        "uric acid", "tophaceous gout"
+      ],
+      "Fractures and Trauma": [
+        "fracture", "hip fracture", "vertebral fracture",
+        "bone fracture", "stress fracture", "orthopedic trauma"
+      ],
+      "Other Musculoskeletal": [
+        "musculoskeletal", "arthritis", "joint", "bone",
+        "tendinitis", "bursitis", "orthopedic",
+        "rotator cuff", "carpal tunnel", "plantar fasciitis",
+        "tennis elbow", "frozen shoulder"
+      ]
+    },
+    "Dermatology": {
+      "Eczema and Dermatitis": [
+        "atopic dermatitis", "eczema", "contact dermatitis",
+        "seborrheic dermatitis", "dermatitis",
+        "nummular dermatitis", "neurodermatitis"
+      ],
+      "Psoriasis": [
+        "psoriasis", "plaque psoriasis", "nail psoriasis",
+        "scalp psoriasis", "inverse psoriasis"
+      ],
+      "Acne and Rosacea": [
+        "acne", "acne vulgaris", "rosacea", "acne conglobata",
+        "cystic acne"
+      ],
+      "Wound and Ulcer": [
+        "wound healing", "wound", "chronic wound",
+        "diabetic foot ulcer", "pressure ulcer", "venous ulcer",
+        "burn", "surgical wound", "decubitus"
+      ],
+      "Hair and Nail Disorders": [
+        "alopecia", "alopecia areata", "androgenetic alopecia",
+        "hair loss", "onychomycosis", "nail fungus"
+      ],
+      "Other Dermatology": [
+        "skin", "dermatologic", "cutaneous", "vitiligo",
+        "urticaria", "pruritus", "pemphigus", "pemphigoid",
+        "lichen planus", "hidradenitis suppurativa"
+      ]
+    },
+    "Substance Use Disorders": {
+      "Alcohol Use Disorder": [
+        "alcohol use disorder", "alcoholism", "alcohol dependence",
+        "alcohol abuse", "alcohol withdrawal", "alcohol addiction"
+      ],
+      "Opioid Use Disorder": [
+        "opioid use disorder", "opioid dependence", "opioid addiction",
+        "opioid abuse", "opioid withdrawal", "heroin",
+        "opioid", "opioid overdose", "naloxone", "buprenorphine",
+        "methadone maintenance"
+      ],
+      "Tobacco and Nicotine": [
+        "tobacco", "smoking", "nicotine", "smoking cessation",
+        "tobacco use", "tobacco dependence", "vaping",
+        "e-cigarette"
+      ],
+      "Other Substance Use": [
+        "substance abuse", "substance use disorder", "addiction",
+        "drug abuse", "drug dependence", "cocaine", "cannabis",
+        "marijuana", "methamphetamine", "stimulant use",
+        "withdrawal", "drug addiction", "polysubstance"
+      ]
+    },
+    "Hematology": {
+      "Anemia": [
+        "anemia", "iron deficiency anemia", "sickle cell",
+        "sickle cell disease", "sickle cell anemia",
+        "thalassemia", "aplastic anemia", "hemolytic anemia",
+        "pernicious anemia", "anemia of chronic disease"
+      ],
+      "Coagulation Disorders": [
+        "hemophilia", "von willebrand", "coagulopathy",
+        "thrombocytopenia", "immune thrombocytopenia", "itp",
+        "disseminated intravascular coagulation", "dic",
+        "thrombotic thrombocytopenic purpura", "ttp",
+        "antiphospholipid syndrome", "factor deficiency"
+      ],
+      "Thrombosis": [
+        "thrombosis", "deep vein thrombosis", "dvt",
+        "pulmonary embolism", "pe", "venous thromboembolism",
+        "vte", "anticoagulation", "blood clot"
+      ],
+      "Other Hematology": [
+        "hematology", "hematologic", "blood disorder",
+        "neutropenia", "pancytopenia", "bone marrow failure",
+        "hemochromatosis", "blood"
+      ]
+    },
+    "Ophthalmology": {
+      "Macular Degeneration": [
+        "macular degeneration", "amd", "age-related macular",
+        "wet macular degeneration", "dry macular degeneration",
+        "geographic atrophy"
+      ],
+      "Glaucoma": [
+        "glaucoma", "open angle glaucoma", "angle closure glaucoma",
+        "intraocular pressure", "ocular hypertension"
+      ],
+      "Diabetic Eye Disease": [
+        "diabetic retinopathy", "diabetic macular edema",
+        "dme", "proliferative diabetic retinopathy"
+      ],
+      "Other Ophthalmology": [
+        "cataract", "uveitis", "retinal", "retinitis pigmentosa",
+        "keratoconus", "dry eye", "corneal", "optic neuritis",
+        "eye", "ocular", "ophthalmic", "vision loss",
+        "blindness", "retinal detachment"
+      ]
+    },
+    "Reproductive and Sexual Health": {
+      "Infertility": [
+        "infertility", "in vitro fertilization", "ivf",
+        "assisted reproduction", "polycystic ovary syndrome", "pcos",
+        "male infertility", "female infertility", "subfertility"
+      ],
+      "Pregnancy Complications": [
+        "preeclampsia", "eclampsia", "gestational diabetes",
+        "preterm birth", "premature birth", "miscarriage",
+        "ectopic pregnancy", "placenta previa",
+        "postpartum hemorrhage", "hyperemesis gravidarum",
+        "pregnancy complication"
+      ],
+      "Menopause and Hormonal": [
+        "menopause", "menopausal", "hot flashes", "hormone replacement",
+        "postmenopausal", "endometriosis", "uterine fibroids",
+        "leiomyoma", "adenomyosis"
+      ],
+      "Erectile Dysfunction": [
+        "erectile dysfunction", "ed", "impotence",
+        "sexual dysfunction", "premature ejaculation"
+      ],
+      "Other Reproductive": [
+        "contraception", "contraceptive", "fertility",
+        "reproductive", "gynecologic", "obstetric",
+        "pregnancy", "prenatal", "perinatal"
+      ]
+    },
+    "Transplant and Immunology": {
+      "Solid Organ Transplant": [
+        "organ transplant", "transplantation", "graft rejection",
+        "liver transplant", "heart transplant", "lung transplant",
+        "kidney transplant", "pancreas transplant",
+        "transplant rejection", "immunosuppression"
+      ],
+      "Bone Marrow Transplant": [
+        "bone marrow transplant", "stem cell transplant",
+        "hematopoietic stem cell", "hsct", "graft versus host",
+        "gvhd", "allogeneic transplant", "autologous transplant"
+      ],
+      "Immunodeficiency": [
+        "immunodeficiency", "primary immunodeficiency",
+        "common variable immunodeficiency", "cvid",
+        "agammaglobulinemia", "severe combined immunodeficiency"
+      ],
+      "Allergy": [
+        "allergy", "allergic", "anaphylaxis", "food allergy",
+        "peanut allergy", "drug allergy", "allergic rhinitis",
+        "hay fever", "angioedema", "urticaria allergic"
+      ],
+      "Other Immunology": [
+        "immune", "immunology", "immunotherapy",
+        "immune checkpoint", "car-t", "chimeric antigen receptor"
+      ]
+    },
+    "Rare Diseases": {
+      "Cystic Fibrosis": [
+        "cystic fibrosis", "cf", "cftr"
+      ],
+      "Huntington's Disease": [
+        "huntington", "huntingtons", "huntington's disease"
+      ],
+      "Amyloidosis": [
+        "amyloidosis", "amyloid", "transthyretin amyloidosis",
+        "attr", "al amyloidosis"
+      ],
+      "Lysosomal Storage Disorders": [
+        "gaucher disease", "fabry disease", "pompe disease",
+        "mucopolysaccharidosis", "mps", "niemann-pick",
+        "lysosomal storage"
+      ],
+      "Other Rare Diseases": [
+        "rare disease", "orphan disease", "rare genetic",
+        "hereditary angioedema", "tuberous sclerosis",
+        "neurofibromatosis", "marfan syndrome",
+        "ehlers-danlos", "prader-willi", "turner syndrome",
+        "down syndrome", "fragile x", "williams syndrome",
+        "porphyria", "hemochromatosis"
+      ]
+    },
+    "Pain": {
+      "Chronic Pain": [
+        "chronic pain", "pain management", "neuropathic pain",
+        "nociceptive pain", "central sensitization",
+        "complex regional pain syndrome", "crps",
+        "phantom limb pain", "intractable pain"
+      ],
+      "Acute Pain": [
+        "acute pain", "postoperative pain", "post-surgical pain",
+        "procedural pain", "post-operative analgesia"
+      ],
+      "Cancer Pain": [
+        "cancer pain", "oncologic pain", "bone pain cancer",
+        "breakthrough pain"
+      ],
+      "Other Pain": [
+        "pain", "analgesic", "analgesia", "palliative"
+      ]
+    }
+  }
+}
