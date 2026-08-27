@@ -1,0 +1,5 @@
+anthropic>=0.40.0
+google-cloud-aiplatform>=1.70.0
+pdfplumber>=0.11.0
+requests>=2.31.0
+tenacity>=8.2.0

@@ -1,0 +1,115 @@
+name: Extract Demographics Data
+
+# Weekly demographics extraction. Runs the pipeline in this repo, then
+# publishes the dashboard artifacts into michaeldgreenphd/clinical-trial-populations
+# (the GitHub Pages site) via the PIPELINE_DEPLOY_TOKEN fine-grained PAT.
+
+on:
+  schedule:
+    - cron: '0 6 * * 0'  # Weekly on Sunday at 6 AM UTC
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set current date
+        run: echo "CURRENT_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run extraction
+        run: python -m src.extract_all --output data/demographics.json --results-after 2009-01-01
+
+      - name: Compress CT.gov Data for Drive
+        # -k keeps the original so the split step can still read it.
+        run: gzip -k data/demographics.json
+
+      - name: Upload CT.gov Data to Google Drive via OAuth
+        env:
+          CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CHILD_FOLDER: CT_gov_API_Data
+          FILE_PATH: ${{ github.workspace }}/data/demographics.json.gz
+          FILE_NAME: ${{ env.CURRENT_DATE }}_CTgov_demographics.json.gz
+        run: python scripts/gdrive_upload.py
+
+      - name: Split and generate dashboard artifacts
+        run: |
+          # Split into 8 parts (desktop) + generate mobile dashboard summary
+          python3 scripts/split_data.py
+          python3 scripts/generate_mobile_data.py
+          # Gated industry sponsor view dataset (/#industry)
+          python3 scripts/generate_industry_sponsors.py
+
+          for f in data/demographics.part*.json.gz; do
+            echo "$(basename $f): $(du -h "$f" | cut -f1)"
+          done
+          echo "dashboard-summary.json: $(du -h data/dashboard-summary.json | cut -f1)"
+
+      - name: Check out the site repository
+        uses: actions/checkout@v4
+        with:
+          repository: michaeldgreenphd/clinical-trial-populations
+          ref: main
+          token: ${{ secrets.PIPELINE_DEPLOY_TOKEN }}
+          path: site
+
+      - name: Publish artifacts, archive snapshot, and push to the site
+        run: |
+          DATE=$(date +'%Y-%m-%d')
+
+          # Copy this week's artifacts into the site checkout
+          cp data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json site/data/
+          # condition_ontology.json is canonical here; the site fetches it at runtime
+          cp condition_ontology.json site/condition_ontology.json
+
+          cd site
+
+          # Archive snapshot for historical access via GitHub Pages.
+          # Snapshot folders are keyed by date, so a same-day re-run
+          # replaces that day's snapshot — deliberately, but loudly.
+          REPLACED=""
+          if [ -d "snapshots/$DATE" ]; then
+            echo "::warning::snapshots/$DATE already exists — this re-run replaces the earlier same-day snapshot."
+            REPLACED=" (replaces earlier $DATE snapshot)"
+          fi
+          mkdir -p "snapshots/$DATE"
+          cp data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json "snapshots/$DATE/"
+          echo "Archived snapshot to snapshots/$DATE/"
+
+          # Update history manifest
+          if [ ! -f history.json ]; then
+            echo '{"dates":[]}' > history.json
+          fi
+          jq --arg d "$DATE" '.dates += [$d] | .dates |= unique' history.json > history.json.tmp
+          mv history.json.tmp history.json
+
+          # Prune snapshots to the retention policy (4 bi-weekly, then one
+          # per month) so the published Pages site stays well under the
+          # size range where deploy syncs start timing out. Rewrites
+          # history.json to exactly the retained dates.
+          python3 ../scripts/prune_snapshots.py
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json
+          git add condition_ontology.json
+          git add -A snapshots/ history.json
+          git commit -m "Update demographics data $DATE$REPLACED" || exit 0
+          git push

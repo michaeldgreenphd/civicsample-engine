@@ -1,0 +1,304 @@
+name: Run Extraction Pipelines
+
+# Manual LLM extraction runner (FDA summaries, AI/ML literature, clinical
+# trial manuscripts). Results are committed to this repo (the canonical
+# extraction record) and the site-consumed subset is published to
+# michaeldgreenphd/clinical-trial-populations via PIPELINE_DEPLOY_TOKEN.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pipeline:
+        description: "Which extraction stream(s) to run"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - fda-only
+          - aiml-lit-only
+          - trials-lit-only
+      run_mode:
+        description: "Pilot test (caps: 8 FDA, 8 AIML, 20 Trials) or full extraction"
+        required: true
+        type: choice
+        default: pilot-test
+        options:
+          - pilot-test
+          - full-extraction
+      ai_provider:
+        description: 'Which AI provider to use *'
+        required: true
+        type: choice
+        default: anthropic
+        options:
+          - anthropic
+          - vertex_gemini
+      gemini_version:
+        description: 'Which Gemini model family to use (only applies when ai_provider=vertex_gemini)'
+        required: true
+        type: choice
+        default: gemini-3.5
+        options:
+          - gemini-2.5
+          - gemini-3.0
+          - gemini-3.5
+          - N/A - using Claude
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Validate provider / Gemini-version pairing
+        run: |
+          if [ "${{ inputs.ai_provider }}" = "vertex_gemini" ] && [ "${{ inputs.gemini_version }}" = "N/A - using Claude" ]; then
+            echo "::error::Input mismatch: ai_provider='vertex_gemini' requires a real Gemini model family, but gemini_version is set to 'N/A - using Claude'."
+            echo "::error::Pick gemini-2.5, gemini-3.0, or gemini-3.5 for Vertex runs, or switch ai_provider to 'anthropic'."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set current date
+        run: echo "CURRENT_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r scripts/extraction/requirements.txt
+
+      - name: Authenticate Vertex AI
+        if: ${{ github.event.inputs.ai_provider == 'vertex_gemini' }}
+        # The key is written OUTSIDE the checkout (RUNNER_TEMP) so it can
+        # never be picked up by a git add or artifact glob, and removed in
+        # the always() cleanup step below.
+        run: |
+          printf '%s' "$VERTEX_CREDENTIALS_JSON" > "$RUNNER_TEMP/vertex_key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/vertex_key.json" >> $GITHUB_ENV
+          echo "GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}" >> $GITHUB_ENV
+        env:
+          VERTEX_CREDENTIALS_JSON: ${{ secrets.VERTEX_CREDENTIALS_JSON }}
+
+      - name: Run FDA Demographics Extraction
+        if: inputs.pipeline == 'all' || inputs.pipeline == 'fda-only'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_PROVIDER: ${{ inputs.ai_provider }}
+          GEMINI_VERSION: ${{ inputs.gemini_version }}
+          RUN_MODE: ${{ inputs.run_mode }}
+        run: python scripts/extraction/extract_fda_demographics.py | tee fda_extraction_log.txt
+
+      - name: Upload FDA Logs to Google Drive via OAuth
+        if: always()
+        env:
+          CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CHILD_FOLDER: FDA_Summary_Extractions
+          FILE_PATH: ${{ github.workspace }}/fda_extraction_log.txt
+          FILE_NAME: ${{ env.CURRENT_DATE }}_FDA_extraction_log.txt
+        run: python scripts/gdrive_upload.py
+
+      # FDA artifacts come in two flavours that we want in Drive:
+      #   * static names from scripts/extraction/extract_fda_demographics.py —
+      #     `data/fda_demographics_extracted.json`,
+      #     `data/fda_token_metrics.json`
+      #   * the broad `data/*.json` and `data/*.csv` catch-alls so any
+      #     new payload the scripts start writing flows through without
+      #     a workflow edit.
+      # The `seen` set / `nullglob` / `[ -f ]` triple keeps the loop safely
+      # idempotent when a stream produced no files at all and de-dups when
+      # the broader and narrower patterns match the same file.
+      - name: Upload FDA Extraction Data to Google Drive via OAuth
+        if: always()
+        env:
+          CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CHILD_FOLDER: FDA_Summary_Extractions
+        run: |
+          shopt -s nullglob
+          declare -A seen
+          matched=0
+          for f in \
+              data/fda_demographics_extracted*.json \
+              data/fda_token_metrics*.json \
+              data/*.json \
+              data/*.csv; do
+            [ -f "$f" ] || continue
+            [ -n "${seen[$f]:-}" ] && continue
+            seen[$f]=1
+            matched=$((matched + 1))
+            FILE_PATH="${GITHUB_WORKSPACE}/$f" \
+            FILE_NAME="$(basename "$f")" \
+            python scripts/gdrive_upload.py
+          done
+          echo "Uploaded ${matched} FDA extraction artifact(s)."
+
+      - name: Run AI/ML Literature Extraction
+        if: inputs.pipeline == 'all' || inputs.pipeline == 'aiml-lit-only'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_PROVIDER: ${{ inputs.ai_provider }}
+          GEMINI_VERSION: ${{ inputs.gemini_version }}
+          RUN_MODE: ${{ inputs.run_mode }}
+        run: python scripts/extraction/extract_paper_ses.py | tee aiml_extraction_log.txt
+
+      - name: Upload AI/ML Logs to Google Drive via OAuth
+        if: always()
+        env:
+          CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CHILD_FOLDER: AIML_Literature_Extractions
+          FILE_PATH: ${{ github.workspace }}/aiml_extraction_log.txt
+          FILE_NAME: ${{ env.CURRENT_DATE }}_AIML_extraction_log.txt
+        run: python scripts/gdrive_upload.py
+
+      - name: Run Clinical Trials Literature Extraction
+        if: inputs.pipeline == 'all' || inputs.pipeline == 'trials-lit-only'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_PROVIDER: ${{ inputs.ai_provider }}
+          GEMINI_VERSION: ${{ inputs.gemini_version }}
+          RUN_MODE: ${{ inputs.run_mode }}
+        run: python scripts/extraction/extract_trial_papers.py | tee trials_extraction_log.txt
+
+      - name: Upload Trials Logs to Google Drive via OAuth
+        if: always()
+        env:
+          CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CHILD_FOLDER: Trials_Literature_Extractions
+          FILE_PATH: ${{ github.workspace }}/trials_extraction_log.txt
+          FILE_NAME: ${{ env.CURRENT_DATE }}_Trials_extraction_log.txt
+        run: python scripts/gdrive_upload.py
+
+      # Literature artifacts: the static names that
+      # scripts/extraction/extract_paper_ses.py +
+      # scripts/extraction/extract_trial_papers.py write, plus the broad
+      # catch-alls (same idempotent loop as the FDA upload above).
+      - name: Upload Literature Extraction Data to Google Drive via OAuth
+        if: always()
+        env:
+          CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CHILD_FOLDER: Literature_Extractions
+        run: |
+          shopt -s nullglob
+          declare -A seen
+          matched=0
+          for f in \
+              data/lit_ses_extracted*.json \
+              data/lit_token_metrics*.json \
+              data/trials_lit_extracted*.json \
+              data/trials_lit_token_metrics*.json \
+              data/*.json \
+              data/*.csv; do
+            [ -f "$f" ] || continue
+            [ -n "${seen[$f]:-}" ] && continue
+            seen[$f]=1
+            matched=$((matched + 1))
+            FILE_PATH="${GITHUB_WORKSPACE}/$f" \
+            FILE_NAME="$(basename "$f")" \
+            python scripts/gdrive_upload.py
+          done
+          echo "Uploaded ${matched} literature extraction artifact(s)."
+
+      - name: Upload Token Cost Tracker to Google Drive via OAuth
+        if: always() && hashFiles('data/token_costs.csv') != ''
+        env:
+          CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CHILD_FOLDER: Token_Cost_Tracking
+          FILE_PATH: ${{ github.workspace }}/data/token_costs.csv
+        run: |
+          # FILE_NAME is computed inline so the upload includes the
+          # America/New_York wall-clock time (24h, with the live EST/EDT
+          # abbreviation). Two runs on the same day no longer overwrite
+          # each other's snapshot in Drive.
+          export FILE_NAME="$(TZ='America/New_York' date +'%Y-%m-%d_%H%M_%Z')_token_costs.csv"
+          python scripts/gdrive_upload.py
+
+      - name: Commit extraction results to this repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Each `git add` is wrapped in `|| true` so a stream that
+          # produced no output doesn't abort the staging of the streams
+          # that did.
+          git add data/fda_demographics_extracted*.json || true
+          git add data/fda_token_metrics*.json || true
+          git add data/lit_ses_extracted*.json || true
+          git add data/lit_token_metrics*.json || true
+          git add data/trials_lit_extracted*.json || true
+          git add data/trials_lit_token_metrics*.json || true
+          git add data/*_latest.csv || true
+          git add data/*_latest.json || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update extraction data from CI pipeline run
+
+            Triggered by: ${{ github.actor }}
+            Pipeline: ${{ inputs.pipeline }}
+            Run mode: ${{ inputs.run_mode }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            git push
+          fi
+
+      - name: Check out the site repository
+        uses: actions/checkout@v4
+        with:
+          repository: michaeldgreenphd/clinical-trial-populations
+          ref: main
+          token: ${{ secrets.PIPELINE_DEPLOY_TOKEN }}
+          path: site
+
+      - name: Publish site-consumed artifacts to the site repository
+        run: |
+          # Only the files the dashboard actually fetches (Paper Data
+          # Extraction tab + beta Approval Queue). lit_token_metrics.json
+          # is extraction bookkeeping the site never loads — it stays here.
+          for f in \
+              data/fda_demographics_extracted.json \
+              data/fda_token_metrics.json \
+              data/lit_ses_extracted.json \
+              data/trials_lit_extracted.json \
+              data/trials_lit_token_metrics.json \
+              data/fda_extracted_latest.csv \
+              data/lit_extracted_latest.csv; do
+            if [ -f "$f" ]; then cp "$f" "site/$f"; fi
+          done
+          cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No site-facing changes to publish"
+          else
+            git commit -m "Update extraction data from pipeline run
+
+            Source: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            git push
+          fi
+
+      - name: Clean up Vertex credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/vertex_key.json"

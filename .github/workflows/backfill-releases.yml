@@ -1,0 +1,115 @@
+name: Backfill Snapshots
+
+# One-shot maintenance: creates snapshots/{date}/ directories in the SITE
+# repository (michaeldgreenphd/clinical-trial-populations) for historical
+# date tags so they can be served directly from GitHub Pages. Operates on
+# the site repo's tags via PIPELINE_DEPLOY_TOKEN; the merge/split scripts
+# run from this repo's checkout.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Check out the site repository (full history for tags)
+        uses: actions/checkout@v4
+        with:
+          repository: michaeldgreenphd/clinical-trial-populations
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.PIPELINE_DEPLOY_TOKEN }}
+          path: site
+
+      - name: Set current date
+        run: echo "CURRENT_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create snapshot directories for each date tag
+        working-directory: site
+        run: |
+          set -e
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          TAGS=$(git tag -l '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]' | sort)
+          echo "Found date tags: $TAGS"
+
+          for TAG in $TAGS; do
+            echo ""
+            echo "=== Processing tag: $TAG ==="
+
+            # Skip if snapshot directory already exists with 8-part files
+            if [ -f "snapshots/$TAG/demographics.part8.json.gz" ]; then
+              echo "snapshots/$TAG/ already has 8-part files. Skipping."
+              continue
+            fi
+
+            # Check out the data files from this tag
+            echo "Checking out data files from tag $TAG..."
+            git checkout "$TAG" -- data/demographics.part1.json.gz data/demographics.part2.json.gz 2>/dev/null || {
+              echo "Could not find data files at tag $TAG. Skipping."
+              continue
+            }
+
+            # Check if these are 2-part (legacy) or 8-part files
+            if git show "$TAG:data/demographics.part8.json.gz" >/dev/null 2>&1; then
+              echo "Tag has 8-part files, copying directly..."
+              git checkout "$TAG" -- data/demographics.part3.json.gz data/demographics.part4.json.gz \
+                data/demographics.part5.json.gz data/demographics.part6.json.gz \
+                data/demographics.part7.json.gz data/demographics.part8.json.gz
+              mkdir -p "snapshots/$TAG"
+              cp data/demographics.part*.json.gz "snapshots/$TAG/"
+            else
+              echo "Tag has 2-part files, merging and re-splitting..."
+              python3 ../scripts/merge_parts.py
+              python3 ../scripts/split_data.py
+              rm -f data/demographics.json
+              mkdir -p "snapshots/$TAG"
+              cp data/demographics.part*.json.gz "snapshots/$TAG/"
+            fi
+
+            # Restore main's data files
+            git checkout main -- data/
+
+            echo "Created snapshots/$TAG/"
+          done
+
+          # Commit all snapshot directories at once
+          if [ -d snapshots ]; then
+            git add snapshots/
+            git commit -m "Backfill historical snapshot directories for GitHub Pages" || echo "Nothing to commit."
+            git push
+          fi
+
+          echo ""
+          echo "=== Backfill complete ==="
+
+      - name: Zip Snapshots Directory
+        run: zip -r snapshots_backup_${{ env.CURRENT_DATE }}.zip site/snapshots/
+
+      - name: Upload Snapshots to Google Drive via OAuth
+        env:
+          CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CHILD_FOLDER: Backfill_Snapshots
+          FILE_PATH: ${{ github.workspace }}/snapshots_backup_${{ env.CURRENT_DATE }}.zip
+          FILE_NAME: snapshots_backup_${{ env.CURRENT_DATE }}.zip
+        run: |
+          pip install requests
+          python scripts/gdrive_upload.py

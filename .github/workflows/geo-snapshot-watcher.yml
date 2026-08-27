@@ -1,0 +1,97 @@
+name: Geography snapshot watcher
+
+# Once a month, check whether AACT has published a static copy newer than the
+# snapshot the geography tab is pinned to (data/geo/active_run.json in the
+# SITE repository). If so, open (or refresh) an issue IN THIS REPO. That is
+# ALL it does — it never downloads data, never runs the pipeline, never
+# touches the pin. Advancing runs stays a deliberate act: a human runs
+# refresh.R on the new snapshot, then scripts/geo/advance_run.py (from this
+# repo, inside a clone of the site repo), then opens a site PR gated by its
+# geo-contract-tests.
+#
+# AACT publishes pipe-delimited static copies as YYYYMMDD_export_ctgov.zip
+# (see the fork's app/models/util/table_exporter.rb); the listing page is
+# best-effort HTML, so this job tolerates an unreachable or reshaped page by
+# succeeding with a log notice rather than failing the run.
+
+on:
+  schedule:
+    - cron: "17 9 3 * *" # 3rd of each month, 09:17 UTC (AACT publishes monthly)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the pinned run from the site repository
+        run: |
+          curl -sSL --max-time 60 --fail \
+            "https://raw.githubusercontent.com/michaeldgreenphd/clinical-trial-populations/main/data/geo/active_run.json" \
+            -o active_run.json
+
+      - name: Compare newest AACT snapshot to the pinned run
+        id: compare
+        run: |
+          set -u
+          PINNED=$(python3 -c "import json; print(json.load(open('active_run.json'))['snapshot_date'].replace('-',''))")
+          echo "pinned snapshot: $PINNED"
+
+          PAGE=$(curl -sSL --max-time 60 "https://aact.ctti-clinicaltrials.org/pipe_files" || true)
+          if [ -z "$PAGE" ]; then
+            echo "::notice::AACT pipe_files page unreachable this month; nothing to compare. Will try again next month."
+            echo "newer=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Snapshot zips are named YYYYMMDD_export_<schema>.zip; take the newest date.
+          NEWEST=$(printf '%s' "$PAGE" | grep -oE '20[0-9]{6}_export' | grep -oE '^20[0-9]{6}' | sort -u | tail -1 || true)
+          if [ -z "$NEWEST" ]; then
+            echo "::notice::No YYYYMMDD_export names found on the page — AACT may have reshaped it. Check https://aact.ctti-clinicaltrials.org/pipe_files by hand."
+            echo "newer=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "newest published snapshot: $NEWEST"
+
+          if [ "$NEWEST" -gt "$PINNED" ]; then
+            echo "newer=$NEWEST" >> "$GITHUB_OUTPUT"
+          else
+            echo "Pinned run is current."
+            echo "newer=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or refresh the advance-run issue
+        if: steps.compare.outputs.newer != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEWER: ${{ steps.compare.outputs.newer }}
+        run: |
+          set -eu
+          PINNED=$(python3 -c "import json; print(json.load(open('active_run.json'))['snapshot_date'])")
+          RUN_ID=$(python3 -c "import json; print(json.load(open('active_run.json'))['run_id'])")
+          NEWER_DASHED="${NEWER:0:4}-${NEWER:4:2}-${NEWER:6:2}"
+          TITLE="Geography: newer AACT snapshot available ($NEWER_DASHED)"
+
+          BODY=$(cat <<EOF
+          AACT has published a static copy dated **$NEWER_DASHED**; the geography tab is pinned to **$RUN_ID** (snapshot $PINNED).
+
+          Advancing is deliberate — nothing happens automatically. The loop (documented in the site repo's \`data/geo/README.md\`):
+
+          1. Download \`${NEWER}_export_ctgov.zip\` from https://aact.ctti-clinicaltrials.org/pipe_files
+          2. Run the pipeline against it: \`Rscript refresh.R /path/to/snapshot --final\` (the pipeline ships inside every run directory)
+          3. From a clone of clinical-trial-populations, point the app at the finished run: \`python3 /path/to/civicsample-engine/scripts/geo/advance_run.py /path/to/geo_rep_${NEWER_DASHED}_runNNN\`
+          4. Review the printed expectations diff, update any caveat prose the tests flag, run \`npm test\` in the site clone
+          5. Open a PR in clinical-trial-populations — its geo-contract-tests gate the merge
+          EOF
+          )
+
+          EXISTING=$(gh issue list --repo "${{ github.repository }}" --state open --search "\"Geography: newer AACT snapshot available\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"
+            echo "refreshed issue #$EXISTING"
+          else
+            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"
+          fi
