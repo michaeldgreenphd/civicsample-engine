@@ -36,6 +36,7 @@ def main():
         end = min(start + chunk_size, total)
         part_data = {
             'extracted_at': full_data['extracted_at'],
+            'pipeline_commit': full_data.get('pipeline_commit'),
             'part': i + 1,
             'total_parts': NUM_PARTS,
             'data': studies[start:end]

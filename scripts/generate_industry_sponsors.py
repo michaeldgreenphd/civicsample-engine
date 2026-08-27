@@ -57,7 +57,7 @@ import os
 import re
 import sys
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 import numpy as np
 
@@ -215,14 +215,15 @@ def load_parts(data_dir):
     parts = sorted(glob.glob(os.path.join(data_dir, "demographics.part*.json.gz")))
     if not parts:
         raise SystemExit(f"No demographics.part*.json.gz under {data_dir}")
-    extracted_at, records = None, []
+    extracted_at, source_commit, records = None, None, []
     for p in parts:
         with gzip.open(p, "rt") as f:
             container = json.load(f)
         extracted_at = extracted_at or container.get("extracted_at")
+        source_commit = source_commit or container.get("pipeline_commit")
         records.extend(container["data"])
         print(f"  read {os.path.basename(p)}: {len(container['data']):,} records")
-    return extracted_at, records
+    return extracted_at, source_commit, records
 
 
 def build_cohort(records):
@@ -351,7 +352,7 @@ def pooled_fit(rows, top10):
 def main():
     data_dir = sys.argv[1] if len(sys.argv) > 1 else "data"
     print(f"Loading parts from {data_dir}/ ...")
-    extracted_at, records = load_parts(data_dir)
+    extracted_at, source_commit, records = load_parts(data_dir)
     print(f"Loaded {len(records):,} studies")
 
     rows = build_cohort(records)
@@ -451,8 +452,9 @@ def main():
               for r in rows]
 
     out = {
-        "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source_extracted_at": extracted_at,
+        "source_pipeline_commit": source_commit,
         "cohort_n": len(rows),
         "min_cell": MIN_CELL,
         "companies": companies,

@@ -81,7 +81,14 @@ jobs:
 
           cd site
 
-          # Archive snapshot for historical access via GitHub Pages
+          # Archive snapshot for historical access via GitHub Pages.
+          # Snapshot folders are keyed by date, so a same-day re-run
+          # replaces that day's snapshot — deliberately, but loudly.
+          REPLACED=""
+          if [ -d "snapshots/$DATE" ]; then
+            echo "::warning::snapshots/$DATE already exists — this re-run replaces the earlier same-day snapshot."
+            REPLACED=" (replaces earlier $DATE snapshot)"
+          fi
           mkdir -p "snapshots/$DATE"
           cp data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json "snapshots/$DATE/"
           echo "Archived snapshot to snapshots/$DATE/"
@@ -104,5 +111,5 @@ jobs:
           git add data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json
           git add condition_ontology.json
           git add -A snapshots/ history.json
-          git commit -m "Update demographics data $DATE" || exit 0
+          git commit -m "Update demographics data $DATE$REPLACED" || exit 0
           git push

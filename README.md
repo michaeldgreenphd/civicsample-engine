@@ -43,6 +43,12 @@ clinical-trial manuscripts. Results are committed here as the permanent
 record; the files the dashboard's "Paper Data Extraction" and "Approval
 Queue" tabs display are copied to the site repo.
 
+The instructions the models receive live in
+[`scripts/extraction/prompts/`](scripts/extraction/prompts/) as plain-text
+files — editing a prompt is a text change and a PR, no Python required.
+See the README in that folder for the workflow (including how to test a
+prompt change cheaply with a pilot run).
+
 ## Where things live
 
 | Path | One-line job |
@@ -50,6 +56,7 @@ Queue" tabs display are copied to the site repo.
 | `src/` | Talk to ClinicalTrials.gov and standardize demographics. One extractor per dimension (race, ethnicity, sex, gender), each a pure function that's easy to test |
 | `scripts/` | Turn extracted data into the files the site serves (split, mobile summary, industry analysis, snapshot pruning) |
 | `scripts/extraction/` | The LLM-over-PDFs streams |
+| `scripts/extraction/prompts/` | The model instructions, as editable plain text — one file per stream |
 | `scripts/utils/` | LLM cost logging and JSON repair, shared by the extraction streams |
 | `scripts/geo/advance_run.py` | Deliberately-manual tool to advance the geography tab's pinned data run |
 | `condition_ontology.json` | The condition category tree. Canonical copy — edit it here; the weekly run publishes it to the site |
@@ -103,21 +110,24 @@ and when was it made":
   repo (`snapshots/YYYY-MM-DD/`), listed in `history.json`, which is what
   the dashboard's "View snapshot" dropdown reads. Retention: the 4 most
   recent bi-weekly snapshots in full, then one summary per month.
-- **LLM extraction runs are versioned by their commits.** Output files keep
-  stable names (so the site always reads the latest); each run's commit
-  records who triggered it, the pipeline and mode, and links the Actions
-  run. Full logs and per-call token costs are archived to Google Drive
-  under date-stamped names (cost logs use America/New_York wall-clock).
+- **LLM extraction runs are versioned by their commits and their metrics.**
+  Output files keep stable names (so the site always reads the latest);
+  each run's commit records who triggered it, the pipeline and mode, and
+  links the Actions run, and each stream's token-metrics file carries a
+  `run_info` block (UTC timestamp, code commit, workflow run id). Full
+  logs and per-call token costs are archived to Google Drive under
+  date-stamped names (cost logs use America/New_York wall-clock).
 - **The geography tab is pinned, not rolling.** `data/geo/active_run.json`
   in the site repo names the exact run the tab displays; it only advances
   when a human runs `scripts/geo/advance_run.py` and merges the PR.
 
-Known gaps, queued as follow-ups: the main extractor's `extracted_at` is a
-naive timestamp (no timezone marker — it happens to be UTC on CI);
-LLM extraction output files don't embed a run timestamp internally (you
-need the commit for that); a same-day manual re-run overwrites that day's
-snapshot folder; and no artifact records the git commit of the code that
-produced it.
+Two more conventions: all artifact timestamps are timezone-aware UTC, and
+every artifact records the git commit of the code that produced it —
+weekly files carry `pipeline_commit` (derived files carry their source's
+commit, e.g. `source_pipeline_commit`), and LLM metrics carry it inside
+`run_info`. A same-day manual re-run replaces that day's snapshot folder
+by design; the workflow warns and says so in the commit message when it
+happens.
 
 ## Ground rules
 

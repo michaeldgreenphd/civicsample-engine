@@ -21,6 +21,7 @@ def main():
     # ── Load all studies ──
     all_studies = []
     extracted_at = None
+    pipeline_commit = None
 
     for i in range(1, 9):
         path = f"data/demographics.part{i}.json.gz"
@@ -31,6 +32,8 @@ def main():
             container = json.load(f)
         if extracted_at is None:
             extracted_at = container.get("extracted_at")
+        if pipeline_commit is None:
+            pipeline_commit = container.get("pipeline_commit")
         all_studies.extend(container["data"])
 
     total = len(all_studies)
@@ -325,6 +328,7 @@ def main():
     # ── Build summary JSON ──
     summary = {
         "extracted_at": extracted_at,
+        "pipeline_commit": pipeline_commit,
         "totalStudies": total,
         "cards": {
             "raceCount": race_count,

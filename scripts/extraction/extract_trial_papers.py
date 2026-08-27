@@ -45,6 +45,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timezone
 
 import anthropic
 import pdfplumber
@@ -197,26 +198,13 @@ def _make_client():
 
 client = _make_client()
 
-EXTRACTION_PROMPT = """\
-You are a clinical data extractor specializing in published clinical trial manuscripts. Record demographic, socioeconomic, clinical-context, and functional-status data of the trial cohort via the `record_extracted_data` tool.
-
-The manuscript text is delimited by `--- PAGE N ---` markers. Every evidence quote you record MUST come from the page that immediately precedes the text you're quoting, and you must record that page number on the field.
-
-Before calling the extraction tool, use a <thinking> block to locate the sections containing the demographic and clinical context data. Specifically, scan "Methods", "Study Design", "Patients and Methods", and "Background" sections for clinical context, and the cohort / participants tables for demographics.
-
-CRITICAL: The "Explicit Unknown" category is a specific reported value, completely distinct from "Not Reported" (missing) data. If researchers explicitly state a value is unknown, unrecorded, or declined, record the count under "unknown". If they fail to mention the category entirely, record "Not Reported".
-
-CRITICAL: A breakdown row that pairs a cis/trans gender-identity qualifier with a biological-sex word (e.g. "Transgender Female", "Cisgender Male") is ambiguous and must NOT be counted toward `sex.male`/`sex.female` — record it under `sex.unknown` instead. The same row should also NOT be folded into `gender.transgender` unless it instead uses gender-role phrasing without a sex word (e.g. "Transgender Woman", "Cisgender Man" — those ARE clean gender-identity categories and belong in their normal bucket). When in doubt, prefer `unknown` over guessing.
-
-LINKAGE CRITICAL: We must link this manuscript to ClinicalTrials.gov if possible. Scan the text for any NCT identifier (format: NCT followed by 8 digits) and place them under `associated_nct_ids`.
-
-EVIDENCE-FIRST RULE: Every integer field has a corresponding `<field>_evidence` sibling string (e.g. `total_participants_evidence` next to `total_participants`). You MUST emit the `_evidence` string — a verbatim quote from the source text that establishes the count — BEFORE you commit to the integer itself. If the document is silent about that number, leave `_evidence` as an empty string and record "Not Reported" on the integer field. Do not invent a number for which you cannot first quote a supporting passage.
-
-For every field, populate:
-- `value`: the extracted value (or the literal string "Not Reported" for scalars / empty list for list-typed fields when the document is silent).
-- `exact_quote`: a verbatim excerpt from the document that proves the value (empty string when "Not Reported").
-- `page_number`: the integer page number (1-indexed) where the quote appears (0 when "Not Reported").
-"""
+# The extraction prompt lives in prompts/trial_papers.txt so it can be edited
+# and reviewed without touching code (see prompts/README.md). Loaded once
+# at import time; the document text is appended to it at call time.
+_PROMPT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "prompts", "trial_papers.txt")
+with open(_PROMPT_FILE, encoding="utf-8") as _f:
+    EXTRACTION_PROMPT = _f.read()
 
 
 def _ev(description: str, value_schema: dict) -> dict:
@@ -798,6 +786,11 @@ def main():
 
         metrics = {
             "run_mode": run_mode,
+            "run_info": {
+                "run_timestamp": datetime.now(timezone.utc).isoformat(),
+                "pipeline_commit": os.environ.get("GITHUB_SHA"),
+                "workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
+            },
             "pilot_size": successful_docs_count,
             "successful_docs_count": successful_docs_count,
             "total_pages_processed": total_pages_processed,

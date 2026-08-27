@@ -1,8 +1,10 @@
 """Shared utilities"""
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 # Translation table that strips invisible Unicode characters commonly
@@ -653,12 +655,31 @@ def extract_demographic_breakdown(measures: list, category_type: str, overall_gr
     return breakdown if breakdown else None
 
 
+def pipeline_commit() -> Optional[str]:
+    """Git commit of the code producing an artifact.
+
+    CI sets GITHUB_SHA; local runs fall back to git. None when neither is
+    available, so artifacts are still writable outside a checkout.
+    """
+    sha = os.environ.get("GITHUB_SHA")
+    if sha:
+        return sha
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except Exception:
+        return None
+
+
 def save_json(data: any, path: Path):
-    """Save data as JSON with timestamp."""
+    """Save data as JSON with a UTC timestamp and code-version stamp."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump({
-            "extracted_at": datetime.now().isoformat(),
+            "extracted_at": datetime.now(timezone.utc).isoformat(),
+            "pipeline_commit": pipeline_commit(),
             "data": data
         }, f, indent=2)
 
