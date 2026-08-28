@@ -83,13 +83,19 @@ Optional — everything works without them:
 |---|---|
 | `GDRIVE_CLIENT_ID`, `GDRIVE_CLIENT_SECRET`, `GDRIVE_REFRESH_TOKEN`, `GDRIVE_FOLDER_ID` | Google Drive backups of raw data, logs, and cost tracking. When unset, backup steps are skipped; when set but failing, the run warns and continues — **a Drive problem can never block publishing** |
 | `VERTEX_CREDENTIALS_JSON`, `GCP_PROJECT_ID` | Dormant Gemini path — only touched when a manual run selects `ai_provider: vertex_gemini` |
+| `OPENROUTER_API_KEY` | Stored, but **not wired up yet** — see below |
 
 No secret value ever appears in code, config, or committed data — CI
 injects them as environment variables at run time.
 
-Adding another model provider later (e.g. OpenRouter for open-weight
-models) slots into the existing `AI_PROVIDER` seam in the extraction
-scripts — one new env var and a provider branch, no restructuring.
+**OpenRouter status:** the API key is stored as a secret, but the
+pipeline cannot use it yet. Testing extraction with open-weight models
+requires a code change first: an `openrouter` branch at the `AI_PROVIDER`
+seam in the three extraction scripts, a chosen list of model IDs to run
+(OpenRouter serves many; the pipeline must name which ones), matching
+pricing rows in `scripts/utils/cost_tracker.py` so token costs stay
+tracked, and an `openrouter` option in the workflow's `ai_provider`
+dropdown. Until that lands, `anthropic` is the only live provider.
 
 ## Running it locally
 
