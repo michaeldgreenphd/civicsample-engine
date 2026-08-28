@@ -39,6 +39,11 @@ jobs:
         run: gzip -k data/demographics.json
 
       - name: Upload CT.gov Data to Google Drive via OAuth
+        # Backups are best-effort: skipped when Drive secrets aren't
+        # configured, and a failure warns loudly but never blocks the
+        # weekly publish (Drive failures went unnoticed for months when
+        # they could take the whole run down with them).
+        if: ${{ secrets.GDRIVE_CLIENT_ID != '' }}
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -47,7 +52,7 @@ jobs:
           CHILD_FOLDER: CT_gov_API_Data
           FILE_PATH: ${{ github.workspace }}/data/demographics.json.gz
           FILE_NAME: ${{ env.CURRENT_DATE }}_CTgov_demographics.json.gz
-        run: python scripts/gdrive_upload.py
+        run: python scripts/gdrive_upload.py || echo "::warning::Google Drive upload failed — see this step's log. Publishing is unaffected."
 
       - name: Split and generate dashboard artifacts
         run: |
