@@ -22,13 +22,20 @@ The weekly run (`extract.yml`, Sundays 06:00 UTC) does five things, in order:
    against `condition_ontology.json`, and quarantines labels that don't
    belong (a real example from the test suite: a trial that listed
    "Condom" and "IUD" in its race table).
-3. **Back up** — uploads the raw extraction to Google Drive.
+3. **Back up** — attaches the raw extraction and its run log to a dated
+   GitHub Release in this repo (the 26 most recent weeks are kept; older
+   ones are pruned automatically), plus Google Drive when configured.
 4. **Package** — splits the data into 8 compressed parts the dashboard can
    download (each under GitHub's CDN size limit), builds a small summary
    file for mobile, and rebuilds the industry-sponsor analysis.
 5. **Publish** — copies the finished files into the site repo, saves a
    dated snapshot for the dashboard's "View snapshot" feature, and prunes
    old snapshots so the site stays deployable.
+
+Every run ends with a summary table on its Actions page — trial count,
+change vs the previous week, artifact sizes, code commit — and emits a
+warning if the dataset shrank, so a bad pull announces itself instead of
+waiting to be noticed.
 
 If the numbers on the dashboard are wrong, the bug is in step 1 or 2
 (`src/`). If a file the dashboard needs is missing or stale, it's in step 4
@@ -70,15 +77,32 @@ read its header; destructive ones (like `prune_snapshots.py`) have a
 
 ## Secrets (Settings → Secrets and variables → Actions)
 
+Only two are required:
+
 | Secret | Why |
 |---|---|
 | `PIPELINE_DEPLOY_TOKEN` | Fine-grained PAT, Contents read/write on `clinical-trial-populations` only. How finished files reach the site |
 | `ANTHROPIC_API_KEY` | LLM extraction (Claude) |
-| `VERTEX_CREDENTIALS_JSON`, `GCP_PROJECT_ID` | LLM extraction (Gemini path, optional) |
-| `GDRIVE_CLIENT_ID`, `GDRIVE_CLIENT_SECRET`, `GDRIVE_REFRESH_TOKEN`, `GDRIVE_FOLDER_ID` | Google Drive backups of raw data, logs, and cost tracking |
+
+Optional — everything works without them:
+
+| Secret | Why |
+|---|---|
+| `GDRIVE_CLIENT_ID`, `GDRIVE_CLIENT_SECRET`, `GDRIVE_REFRESH_TOKEN`, `GDRIVE_FOLDER_ID` | Google Drive backups of raw data, logs, and cost tracking. When unset, backup steps are skipped; when set but failing, the run warns and continues — **a Drive problem can never block publishing** |
+| `VERTEX_CREDENTIALS_JSON`, `GCP_PROJECT_ID` | Dormant Gemini path — only touched when a manual run selects `ai_provider: vertex_gemini` |
+| `OPENROUTER_API_KEY` | Stored, but **not wired up yet** — see below |
 
 No secret value ever appears in code, config, or committed data — CI
 injects them as environment variables at run time.
+
+**OpenRouter status:** the API key is stored as a secret, but the
+pipeline cannot use it yet. Testing extraction with open-weight models
+requires a code change first: an `openrouter` branch at the `AI_PROVIDER`
+seam in the three extraction scripts, a chosen list of model IDs to run
+(OpenRouter serves many; the pipeline must name which ones), matching
+pricing rows in `scripts/utils/cost_tracker.py` so token costs stay
+tracked, and an `openrouter` option in the workflow's `ai_provider`
+dropdown. Until that lands, `anthropic` is the only live provider.
 
 ## Running it locally
 
