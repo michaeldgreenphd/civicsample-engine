@@ -102,6 +102,7 @@ jobs:
         run: zip -r snapshots_backup_${{ env.CURRENT_DATE }}.zip site/snapshots/
 
       - name: Upload Snapshots to Google Drive via OAuth
+        if: ${{ secrets.GDRIVE_CLIENT_ID != '' }}
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -112,4 +113,4 @@ jobs:
           FILE_NAME: snapshots_backup_${{ env.CURRENT_DATE }}.zip
         run: |
           pip install requests
-          python scripts/gdrive_upload.py
+          python scripts/gdrive_upload.py || echo "::warning::Google Drive upload failed — see this step's log. Publishing is unaffected."

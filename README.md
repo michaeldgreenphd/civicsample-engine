@@ -70,15 +70,26 @@ read its header; destructive ones (like `prune_snapshots.py`) have a
 
 ## Secrets (Settings → Secrets and variables → Actions)
 
+Only two are required:
+
 | Secret | Why |
 |---|---|
 | `PIPELINE_DEPLOY_TOKEN` | Fine-grained PAT, Contents read/write on `clinical-trial-populations` only. How finished files reach the site |
 | `ANTHROPIC_API_KEY` | LLM extraction (Claude) |
-| `VERTEX_CREDENTIALS_JSON`, `GCP_PROJECT_ID` | LLM extraction (Gemini path, optional) |
-| `GDRIVE_CLIENT_ID`, `GDRIVE_CLIENT_SECRET`, `GDRIVE_REFRESH_TOKEN`, `GDRIVE_FOLDER_ID` | Google Drive backups of raw data, logs, and cost tracking |
+
+Optional — everything works without them:
+
+| Secret | Why |
+|---|---|
+| `GDRIVE_CLIENT_ID`, `GDRIVE_CLIENT_SECRET`, `GDRIVE_REFRESH_TOKEN`, `GDRIVE_FOLDER_ID` | Google Drive backups of raw data, logs, and cost tracking. When unset, backup steps are skipped; when set but failing, the run warns and continues — **a Drive problem can never block publishing** |
+| `VERTEX_CREDENTIALS_JSON`, `GCP_PROJECT_ID` | Dormant Gemini path — only touched when a manual run selects `ai_provider: vertex_gemini` |
 
 No secret value ever appears in code, config, or committed data — CI
 injects them as environment variables at run time.
+
+Adding another model provider later (e.g. OpenRouter for open-weight
+models) slots into the existing `AI_PROVIDER` seam in the extraction
+scripts — one new env var and a provider branch, no restructuring.
 
 ## Running it locally
 
