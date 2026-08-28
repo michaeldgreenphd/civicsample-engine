@@ -13,7 +13,7 @@ jobs:
   extract:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write  # for the weekly GitHub Release backup in THIS repo
 
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +32,10 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run extraction
-        run: python -m src.extract_all --output data/demographics.json --results-after 2009-01-01
+        # pipefail so a tee'd log can never mask an extraction failure
+        run: |
+          set -o pipefail
+          python -m src.extract_all --output data/demographics.json --results-after 2009-01-01 2>&1 | tee extraction_log.txt
 
       - name: Compress CT.gov Data for Drive
         # -k keeps the original so the split step can still read it.
@@ -79,6 +82,9 @@ jobs:
         run: |
           DATE=$(date +'%Y-%m-%d')
 
+          # Keep last week's summary for the run-summary delta below
+          cp site/data/dashboard-summary.json "$RUNNER_TEMP/prev_summary.json" 2>/dev/null || true
+
           # Copy this week's artifacts into the site checkout
           cp data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json site/data/
           # condition_ontology.json is canonical here; the site fetches it at runtime
@@ -118,3 +124,67 @@ jobs:
           git add -A snapshots/ history.json
           git commit -m "Update demographics data $DATE$REPLACED" || exit 0
           git push
+
+      - name: Back up raw dump to a GitHub Release
+        # Best-effort, like all backups: a failure warns but never fails
+        # the run (this step runs AFTER the site publish, so it cannot
+        # block it either). Keeps the 26 most recent weekly dumps; the
+        # split parts in the site repo's git history are the permanent
+        # record, and merge_parts.py reconstructs the dump from them.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="data-$CURRENT_DATE"
+          gzip -c extraction_log.txt > extraction_log.txt.gz || true
+          ok=1
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Same-day re-run: replace the assets on the existing release
+            gh release upload "$TAG" data/demographics.json.gz extraction_log.txt.gz \
+              --clobber --repo "$GITHUB_REPOSITORY" || ok=0
+          else
+            gh release create "$TAG" data/demographics.json.gz extraction_log.txt.gz \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Weekly data $CURRENT_DATE" \
+              --notes "Raw ClinicalTrials.gov extraction from the $CURRENT_DATE weekly run (code commit $GITHUB_SHA). The split parts published to the site repo contain the same data." \
+              || ok=0
+          fi
+          if [ "$ok" = "0" ]; then
+            echo "::warning::GitHub Release backup failed — see this step's log. Publishing was unaffected."
+            exit 0
+          fi
+          # Prune weekly data releases beyond the newest 26
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName -q '.[].tagName' \
+            | grep '^data-' | sort -r | tail -n +27 \
+            | while read -r t; do
+                gh release delete "$t" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" \
+                  || echo "::warning::Failed to prune old data release $t"
+              done
+          echo "Backed up to release $TAG"
+
+      - name: Write run summary
+        if: always()
+        run: |
+          NEW=$(jq -r '.totalStudies // "n/a"' data/dashboard-summary.json 2>/dev/null || echo "n/a")
+          PREV=$(jq -r '.totalStudies // "n/a"' "$RUNNER_TEMP/prev_summary.json" 2>/dev/null || echo "n/a")
+          DELTA="n/a"
+          case "${NEW}${PREV}" in
+            *n/a*) ;;
+            *) DELTA=$((NEW - PREV)) ;;
+          esac
+          PARTS_MB=$(du -mc data/demographics.part*.json.gz 2>/dev/null | tail -1 | cut -f1 || echo "n/a")
+          {
+            echo "## Weekly extraction — $CURRENT_DATE"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|---|---|"
+            echo "| Trials in dataset | $NEW |"
+            echo "| Previous week | $PREV |"
+            echo "| Change vs previous | $DELTA |"
+            echo "| Split parts total | ${PARTS_MB} MB |"
+            echo "| Code commit | \`${GITHUB_SHA}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          # A shrinking dataset is possible but rare (CT.gov removals) —
+          # flag it so a bad pull announces itself.
+          if [ "$DELTA" != "n/a" ] && [ "$DELTA" -lt 0 ]; then
+            echo "::warning::Trial count decreased by ${DELTA#-} vs last week — check the extraction before trusting this publish."
+          fi
