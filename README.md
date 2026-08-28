@@ -22,13 +22,20 @@ The weekly run (`extract.yml`, Sundays 06:00 UTC) does five things, in order:
    against `condition_ontology.json`, and quarantines labels that don't
    belong (a real example from the test suite: a trial that listed
    "Condom" and "IUD" in its race table).
-3. **Back up** — uploads the raw extraction to Google Drive.
+3. **Back up** — attaches the raw extraction and its run log to a dated
+   GitHub Release in this repo (the 26 most recent weeks are kept; older
+   ones are pruned automatically), plus Google Drive when configured.
 4. **Package** — splits the data into 8 compressed parts the dashboard can
    download (each under GitHub's CDN size limit), builds a small summary
    file for mobile, and rebuilds the industry-sponsor analysis.
 5. **Publish** — copies the finished files into the site repo, saves a
    dated snapshot for the dashboard's "View snapshot" feature, and prunes
    old snapshots so the site stays deployable.
+
+Every run ends with a summary table on its Actions page — trial count,
+change vs the previous week, artifact sizes, code commit — and emits a
+warning if the dataset shrank, so a bad pull announces itself instead of
+waiting to be noticed.
 
 If the numbers on the dashboard are wrong, the bug is in step 1 or 2
 (`src/`). If a file the dashboard needs is missing or stale, it's in step 4
