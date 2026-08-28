@@ -48,6 +48,8 @@ on:
 jobs:
   extract:
     runs-on: ubuntu-latest
+    env:
+      GDRIVE_ENABLED: ${{ secrets.GDRIVE_CLIENT_ID != '' }}
     permissions:
       contents: write
 
@@ -96,7 +98,7 @@ jobs:
         run: python scripts/extraction/extract_fda_demographics.py | tee fda_extraction_log.txt
 
       - name: Upload FDA Logs to Google Drive via OAuth
-        if: ${{ always() && secrets.GDRIVE_CLIENT_ID != '' }}
+        if: ${{ always() && env.GDRIVE_ENABLED == 'true' }}
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -118,7 +120,7 @@ jobs:
       # idempotent when a stream produced no files at all and de-dups when
       # the broader and narrower patterns match the same file.
       - name: Upload FDA Extraction Data to Google Drive via OAuth
-        if: ${{ always() && secrets.GDRIVE_CLIENT_ID != '' }}
+        if: ${{ always() && env.GDRIVE_ENABLED == 'true' }}
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -155,7 +157,7 @@ jobs:
         run: python scripts/extraction/extract_paper_ses.py | tee aiml_extraction_log.txt
 
       - name: Upload AI/ML Logs to Google Drive via OAuth
-        if: ${{ always() && secrets.GDRIVE_CLIENT_ID != '' }}
+        if: ${{ always() && env.GDRIVE_ENABLED == 'true' }}
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -176,7 +178,7 @@ jobs:
         run: python scripts/extraction/extract_trial_papers.py | tee trials_extraction_log.txt
 
       - name: Upload Trials Logs to Google Drive via OAuth
-        if: ${{ always() && secrets.GDRIVE_CLIENT_ID != '' }}
+        if: ${{ always() && env.GDRIVE_ENABLED == 'true' }}
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -192,7 +194,7 @@ jobs:
       # scripts/extraction/extract_trial_papers.py write, plus the broad
       # catch-alls (same idempotent loop as the FDA upload above).
       - name: Upload Literature Extraction Data to Google Drive via OAuth
-        if: ${{ always() && secrets.GDRIVE_CLIENT_ID != '' }}
+        if: ${{ always() && env.GDRIVE_ENABLED == 'true' }}
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -222,7 +224,7 @@ jobs:
           echo "Uploaded ${matched} literature extraction artifact(s)."
 
       - name: Upload Token Cost Tracker to Google Drive via OAuth
-        if: ${{ always() && secrets.GDRIVE_CLIENT_ID != '' && hashFiles('data/token_costs.csv') != '' }}
+        if: ${{ always() && env.GDRIVE_ENABLED == 'true' && hashFiles('data/token_costs.csv') != '' }}
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -302,5 +304,5 @@ jobs:
           fi
 
       - name: Clean up Vertex credentials
-        if: ${{ always() && secrets.GDRIVE_CLIENT_ID != '' }}
+        if: ${{ always() && env.GDRIVE_ENABLED == 'true' }}
         run: rm -f "$RUNNER_TEMP/vertex_key.json"

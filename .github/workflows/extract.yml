@@ -12,6 +12,8 @@ on:
 jobs:
   extract:
     runs-on: ubuntu-latest
+    env:
+      GDRIVE_ENABLED: ${{ secrets.GDRIVE_CLIENT_ID != '' }}
     permissions:
       contents: write  # for the weekly GitHub Release backup in THIS repo
 
@@ -46,7 +48,7 @@ jobs:
         # configured, and a failure warns loudly but never blocks the
         # weekly publish (Drive failures went unnoticed for months when
         # they could take the whole run down with them).
-        if: ${{ secrets.GDRIVE_CLIENT_ID != '' }}
+        if: env.GDRIVE_ENABLED == 'true'
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}

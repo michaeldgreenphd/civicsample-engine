@@ -12,6 +12,8 @@ on:
 jobs:
   backfill:
     runs-on: ubuntu-latest
+    env:
+      GDRIVE_ENABLED: ${{ secrets.GDRIVE_CLIENT_ID != '' }}
     permissions:
       contents: read
 
@@ -102,7 +104,7 @@ jobs:
         run: zip -r snapshots_backup_${{ env.CURRENT_DATE }}.zip site/snapshots/
 
       - name: Upload Snapshots to Google Drive via OAuth
-        if: ${{ secrets.GDRIVE_CLIENT_ID != '' }}
+        if: env.GDRIVE_ENABLED == 'true'
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
