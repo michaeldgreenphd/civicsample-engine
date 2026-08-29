@@ -189,6 +189,12 @@ def validate_study(study, nct_id):
     ethnicity = extract_ethnicity_data(study)
     sex = extract_sex_data(study)
 
+    # Determinism guard: flags must serialize in sorted order so identical
+    # extractions produce identical bytes across runs.
+    for name, result in (("race", race), ("ethnicity", ethnicity), ("sex", sex)):
+        assert result["flags"] == sorted(result["flags"]), \
+            f"{nct_id} {name} flags not sorted: {result['flags']}"
+
     # Race
     print(f"\n  RACE:")
     print(f"    reported: {race['reported']}")
