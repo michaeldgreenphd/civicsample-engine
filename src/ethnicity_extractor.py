@@ -320,6 +320,9 @@ def extract_ethnicity_data(study: dict) -> Dict:
         result["subcategory_totals"] = {}
         result["flags"] = ["all_zero_rejection"]
 
-    result["flags"] = list(set(result["flags"]))
+    # sorted() so identical extractions serialize identically across runs
+    # (set iteration order varies per process and made week-over-week
+    # data diffs noisy for no reason)
+    result["flags"] = sorted(set(result["flags"]))
 
     return result
