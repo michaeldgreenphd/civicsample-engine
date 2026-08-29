@@ -56,6 +56,16 @@ files — editing a prompt is a text change and a PR, no Python required.
 See the README in that folder for the workflow (including how to test a
 prompt change cheaply with a pilot run).
 
+## Maintenance workflows
+
+Two more workflows exist for rare occasions, both harmless to ignore:
+`backfill-releases.yml` (manual one-shot that rebuilds historical
+`snapshots/` folders in the site repo from its date tags — kept in case
+another backfill is ever needed) and `geo-snapshot-watcher.yml` (monthly
+check that opens an advisory issue here when AACT publishes a newer
+geography snapshot than the one the site is pinned to — it never
+downloads data or touches anything).
+
 ## Where things live
 
 | Path | One-line job |
