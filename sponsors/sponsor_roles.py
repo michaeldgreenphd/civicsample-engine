@@ -92,6 +92,8 @@ REQUIRED_COLS = ["nct_id", "agency_class", "lead_or_collaborator", "name"]
 VALID_ROLES = {"any", "lead", "collaborator"}
 VALID_RULE_TYPES = {"exact_literal", "exact_normalized", "subsidiary_of"}
 VALID_STATUS = {"attribute", "exclude"}
+VALID_SHARED = {"yes", "no"}
+FRAME_ROLES = {"lead", "collaborator"}   # C2: the closed role vocabulary of a sponsor row
 VALID_VIEWS = {"current_owner", "as_registered"}
 
 
@@ -123,6 +125,9 @@ def load_rules(path: str) -> pd.DataFrame:
     bad = set(rules.status) - VALID_STATUS
     if bad:
         raise ValueError(f"unknown status values: {bad}")
+    bad = set(rules.shared) - VALID_SHARED
+    if bad:
+        raise ValueError(f"unknown shared values: {bad} (must be yes or no)")
     no_note = rules.note.isna() | (rules.note.str.strip() == "")
     if no_note.any():
         raise ValueError(
@@ -219,25 +224,28 @@ def parsed_entity(name: str) -> str:
 # 3. Building the trial-company-role index                                    #
 # --------------------------------------------------------------------------- #
 
-def build_index(sponsors: pd.DataFrame, rules: pd.DataFrame) -> pd.DataFrame:
-    """Attribute sponsor rows to canonical companies.
-
-    Returns one row per (nct_id, canonical, role) with columns:
-        nct_id, canonical, entity, role, literal_name, agency_class,
-        match_rule, shared
-    `canonical` is the current-owner label from the rule; `entity` is the
-    as-registered identity parsed from the literal name (normalized).
-    Only status=attribute rules produce rows; exclusions and coverage review
-    are audit()'s job. Match precedence per literal name: exact_literal >
-    exact_normalized > subsidiary_of. Within one literal, several canonicals
-    are allowed only if every claiming rule is shared=yes; otherwise the
-    conflict raises.
-    """
-    sp = sponsors.copy()
-    uniq = pd.DataFrame({"name": sp["name"].dropna().unique()})
+def literal_universe(sponsors: pd.DataFrame) -> pd.DataFrame:
+    """Distinct literal names with the two derived forms rules match on."""
+    uniq = pd.DataFrame({"name": sponsors["name"].dropna().unique()})
     uniq["norm"] = uniq["name"].map(normalize)
     uniq["parent_norm"] = uniq["name"].map(parsed_parent)
+    return uniq
 
+
+def match_literals(uniq: pd.DataFrame, rules: pd.DataFrame) -> pd.DataFrame:
+    """Decide every literal's attribution: the one place the rules are applied.
+
+    `uniq` is a literal universe (name, norm, parent_norm). Returns one row
+    per (name, canonical): name, canonical, match_rule, shared.
+    Precedence per literal: exact_literal > exact_normalized > subsidiary_of.
+    Raises (invariant 6) when
+      * two attribute rules claim one literal for different canonicals and
+        not EVERY claiming rule is shared=yes, or
+      * an attribute rule and an exclude rule both reach the same literal —
+        a literal is attributed or reviewed-excluded, never both.
+    build_index, audit_states.partition and audit all go through here, so a
+    literal can never be attributed in the bridge and unreviewed in the audit.
+    """
     active = rules[rules.status == "attribute"]
 
     # literal -> list of (canonical, rule_type, shared)
@@ -258,21 +266,50 @@ def build_index(sponsors: pd.DataFrame, rules: pd.DataFrame) -> pd.DataFrame:
 
     for rt in ["exact_literal", "exact_normalized", "subsidiary_of"]:
         for _, r in active[active.rule_type == rt].iterrows():
-            if rt == "exact_literal":
-                hits = uniq.loc[uniq["name"] == r.pattern, "name"]
-            elif rt == "exact_normalized":
-                hits = uniq.loc[uniq["norm"] == r.pattern, "name"]
-            else:  # subsidiary_of
-                hits = uniq.loc[uniq["parent_norm"] == r.pattern, "name"]
-            for lit in hits:
+            for lit in _rule_hits(uniq, r):
                 _assign(lit, r.canonical, rt, r.shared)
 
-    matched = pd.DataFrame(
+    for _, r in rules[rules.status == "exclude"].iterrows():
+        for lit in _rule_hits(uniq, r):
+            if lit in lit_map:
+                claimed = sorted({c for c, _, _ in lit_map[lit]})
+                raise ValueError(
+                    f"conflicting rules for literal {lit!r}: attributed to {claimed} "
+                    f"but also excluded by rule ({r.canonical!r}, {r.rule_type}, "
+                    f"{r.pattern!r}). A literal is attributed or reviewed-excluded, "
+                    "never both; remove one of the rules."
+                )
+
+    return pd.DataFrame(
         [(lit, canon, rule, shared)
          for lit, claims in lit_map.items()
          for canon, rule, shared in claims],
         columns=["name", "canonical", "match_rule", "shared"],
     )
+
+
+def build_index(sponsors: pd.DataFrame, rules: pd.DataFrame) -> pd.DataFrame:
+    """Attribute sponsor rows to canonical companies.
+
+    Returns one row per (nct_id, canonical, entity, role) with columns:
+        nct_id, canonical, entity, role, literal_name, agency_class,
+        match_rule, shared
+    `canonical` is the current-owner label from the rule; `entity` is the
+    as-registered identity parsed from the literal name (normalized).
+    Only status=attribute rules produce rows; the literal-level decision
+    (and every conflict raise) lives in match_literals(). When two literals
+    on one trial collapse to the same (canonical, entity, role) — "Pfizer"
+    and "Pfizer Inc." both as collaborators — the bridge keeps one row, so
+    never derive a literal's review state from the bridge: use
+    match_literals / audit_states.partition.
+    """
+    sp = sponsors.copy()
+    bad_roles = set(sp["lead_or_collaborator"].dropna().unique()) - FRAME_ROLES
+    if bad_roles:
+        raise ValueError(
+            f"lead_or_collaborator must be one of {sorted(FRAME_ROLES)}; "
+            f"found {sorted(bad_roles)}")
+    matched = match_literals(literal_universe(sp), rules)
     if matched.empty:
         return pd.DataFrame(columns=[
             "nct_id", "canonical", "entity", "role", "literal_name",
@@ -298,11 +335,19 @@ def attach_acquisition_dates(index: pd.DataFrame,
     pre- and post-acquisition eras."""
     # Amendment A6: no pre/post-acquisition view until dates carry a primary
     # source. Refuse outright while every effective_date is blank.
+    src = acquisitions.attrs.get("source_path", "acquisitions.csv")
     if acquisitions["effective_date"].isna().all():
-        src = acquisitions.attrs.get("source_path", "acquisitions.csv")
         raise ValueError(
             f"every effective_date in {src} is blank; add dates with a primary "
             "source before attaching acquisition dates"
+        )
+    dated = acquisitions[acquisitions["effective_date"].notna()]
+    no_src = dated["source"].isna() | (dated["source"].astype(str).str.strip() == "")
+    if no_src.any():
+        raise ValueError(
+            f"{int(no_src.sum())} dated row(s) in {src} have no source; every "
+            "effective_date needs a primary source (first offender: entity "
+            f"{dated.loc[no_src, 'entity'].iloc[0]!r})"
         )
     acq = acquisitions.copy()
     acq["entity"] = acq["entity"].map(normalize)
@@ -364,7 +409,10 @@ def entities(index: pd.DataFrame, company: str) -> pd.DataFrame:
         pd.concat([n_any, n_lead, n_collab], axis=1)
         .fillna(0).astype(int)
         .reset_index()
-        .sort_values("n_trials", ascending=False)
+        # ties broken by entity name so this order matches company_filter.js
+        # entitiesFor() exactly (tests/sponsors/fixtures/entities_parity.json)
+        .sort_values(["n_trials", "entity"], ascending=[False, True])
+        .reset_index(drop=True)
     )
     return g
 
@@ -407,24 +455,28 @@ def _rule_hits(uniq: pd.DataFrame, r: pd.Series) -> pd.Series:
 
 def audit(sponsors: pd.DataFrame, rules: pd.DataFrame, company: str,
           stem: str) -> dict:
-    """Coverage review for one company: the three review states.
+    """Coverage review for one company: the three review states, per literal.
 
-    Returns {'attributed': DataFrame, 'reviewed_excluded': DataFrame,
-             'unreviewed_candidates': DataFrame}.
+    Returns {'attributed': DataFrame, 'attributed_elsewhere': DataFrame,
+             'reviewed_excluded': DataFrame, 'unreviewed_candidates': DataFrame}.
     `attributed`: literal names mapped to `company`, with trial counts.
+    `attributed_elsewhere`: literals containing `stem` that a rule maps to
+        ANOTHER company (column `canonicals` says which) — state attributed,
+        shown so a drill-down never hides a look-alike.
     `reviewed_excluded`: literals matched by a status=exclude rule (any
         company) that contain `stem`; a human looked and said no.
     `unreviewed_candidates`: literals containing `stem` in NO rule's reach.
         These need a decision: attribute, exclude with a note, or leave for
         the weekly queue. Never treat these as excluded.
+    `stem` is a plain case-insensitive substring (not a regular expression).
+    The four frames are pairwise disjoint; states come from match_literals,
+    so they agree with the bridge and with audit_states.partition.
     """
-    index = build_index(sponsors, rules)
-    uniq = pd.DataFrame({"name": sponsors["name"].dropna().unique()})
-    uniq["norm"] = uniq["name"].map(normalize)
-    uniq["parent_norm"] = uniq["name"].map(parsed_parent)
+    uniq = literal_universe(sponsors)
+    matched = match_literals(uniq, rules)   # raises on any rule conflict
 
-    attributed_lits = set(index.loc[index.canonical == company, "literal_name"])
-    all_attributed = set(index["literal_name"])
+    attributed_lits = set(matched.loc[matched.canonical == company, "name"])
+    all_attributed = set(matched["name"])
     excluded_lits: set[str] = set()
     for _, r in rules[rules.status == "exclude"].iterrows():
         excluded_lits.update(_rule_hits(uniq, r))
@@ -439,15 +491,22 @@ def audit(sponsors: pd.DataFrame, rules: pd.DataFrame, company: str,
                  roles=("lead_or_collaborator", lambda r: ",".join(sorted(set(r)))),
                  agency_class=("agency_class", "first"))
             .reset_index()
-            .sort_values("n_trials", ascending=False)
+            .sort_values(["n_trials", "name"], ascending=[False, True])
+            .reset_index(drop=True)
         )
 
-    stem_mask = uniq.name.str.contains(stem, case=False, na=False)
+    stem_mask = uniq.name.str.contains(stem, case=False, regex=False, na=False)
     stem_names = set(uniq.loc[stem_mask, "name"])
+    elsewhere = (stem_names & all_attributed) - attributed_lits
     unreviewed = stem_names - all_attributed - excluded_lits
+
+    elsewhere_df = _summarize(elsewhere)
+    canon_of = matched.groupby("name").canonical.agg(lambda c: "|".join(sorted(set(c))))
+    elsewhere_df["canonicals"] = elsewhere_df["name"].map(canon_of) if len(elsewhere_df) else []
 
     return {
         "attributed": _summarize(attributed_lits),
+        "attributed_elsewhere": elsewhere_df,
         "reviewed_excluded": _summarize(stem_names & excluded_lits),
         "unreviewed_candidates": _summarize(unreviewed),
     }

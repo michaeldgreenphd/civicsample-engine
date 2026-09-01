@@ -20,18 +20,21 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt   # includes requirements.txt
 
       - name: Compile all Python sources
-        run: python -m compileall -q src scripts
+        run: python -m compileall -q src scripts sponsors tests
 
       - name: Run extractor validation harness
         run: python scripts/validate_fixes.py
 
-      - name: Run sponsor filter tests (rules, index, adapter, fixture regression)
-        run: |
-          pip install pytest
-          python -m pytest tests/sponsors -q
+      - name: Run the Python test suite (sponsor rules, index, adapter, fixture regression, audit loop, snapshot pruning)
+        run: python -m pytest tests -q
+
+      - name: Set up Node (pinned so the ESM tests do not depend on the runner default)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Run browser filter module tests
         run: node --test tests/sponsors/*.test.mjs

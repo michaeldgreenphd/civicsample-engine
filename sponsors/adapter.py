@@ -3,8 +3,11 @@
 This adapter reproduces AACT's `sponsors` table derivation one-for-one.
 It is the first instance of the parity pattern: a pure record->rows
 function, a docstring naming the AACT source it reproduces, and a parity
-test against an AACT fixture (tests/sponsors/test_adapter.py,
-scripts/sponsor_concordance.py).
+test against a real AACT fixture: test_adapter.py runs 300 stored records
+through this adapter and asserts the rows equal AACT's own rows for those
+trials (tests/sponsors/fixtures/records_sample_20260830.json.gz against
+sponsors_fixture_20260619_industry.csv.gz). scripts/sponsor_concordance.py
+does the same comparison across the whole weekly pull, per trial.
 
 Source of truth
 ---------------

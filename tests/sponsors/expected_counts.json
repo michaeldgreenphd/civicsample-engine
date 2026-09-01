@@ -1,0 +1,1199 @@
+{
+  "baselines": {
+    "3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c": {
+      "companies": {
+        "AbbVie": {
+          "any": 1206,
+          "collaborator": 267,
+          "lead": 939
+        },
+        "AbbVie (prior sponsor, Abbott)": {
+          "any": 228,
+          "collaborator": 5,
+          "lead": 223
+        },
+        "Abbott": {
+          "any": 779,
+          "collaborator": 418,
+          "lead": 361
+        },
+        "Abbott Medical Devices": {
+          "any": 684,
+          "collaborator": 148,
+          "lead": 536
+        },
+        "Abbott Nutrition": {
+          "any": 176,
+          "collaborator": 21,
+          "lead": 155
+        },
+        "Actelion": {
+          "any": 188,
+          "collaborator": 45,
+          "lead": 143
+        },
+        "Akeso": {
+          "any": 158,
+          "collaborator": 8,
+          "lead": 150
+        },
+        "Alcon Research": {
+          "any": 773,
+          "collaborator": 151,
+          "lead": 622
+        },
+        "Alexion Pharmaceuticals, Inc.": {
+          "any": 288,
+          "collaborator": 38,
+          "lead": 252
+        },
+        "Allergan": {
+          "any": 728,
+          "collaborator": 234,
+          "lead": 505
+        },
+        "Amgen": {
+          "any": 1570,
+          "collaborator": 538,
+          "lead": 1032
+        },
+        "Astellas Pharma Global Development, Inc.": {
+          "any": 217,
+          "collaborator": 18,
+          "lead": 199
+        },
+        "Astellas Pharma Inc": {
+          "any": 721,
+          "collaborator": 198,
+          "lead": 523
+        },
+        "AstraZeneca": {
+          "any": 4746,
+          "collaborator": 1302,
+          "lead": 3444
+        },
+        "Bausch & Lomb Incorporated": {
+          "any": 276,
+          "collaborator": 53,
+          "lead": 223
+        },
+        "Bausch Health Americas, Inc.": {
+          "any": 276,
+          "collaborator": 64,
+          "lead": 212
+        },
+        "Bayer": {
+          "any": 2356,
+          "collaborator": 690,
+          "lead": 1666
+        },
+        "BeiGene": {
+          "any": 189,
+          "collaborator": 59,
+          "lead": 130
+        },
+        "Bial - Portela C S.A.": {
+          "any": 136,
+          "collaborator": 0,
+          "lead": 136
+        },
+        "Biogen": {
+          "any": 669,
+          "collaborator": 162,
+          "lead": 507
+        },
+        "Boehringer Ingelheim": {
+          "any": 2645,
+          "collaborator": 368,
+          "lead": 2277
+        },
+        "Boryung Pharmaceutical Co., Ltd": {
+          "any": 171,
+          "collaborator": 29,
+          "lead": 142
+        },
+        "Boston Scientific Corporation": {
+          "any": 814,
+          "collaborator": 282,
+          "lead": 532
+        },
+        "Bristol-Myers Squibb": {
+          "any": 2848,
+          "collaborator": 1308,
+          "lead": 1540
+        },
+        "CSL Behring": {
+          "any": 217,
+          "collaborator": 72,
+          "lead": 145
+        },
+        "CSPC ZhongQi Pharmaceutical Technology Co., Ltd.": {
+          "any": 169,
+          "collaborator": 11,
+          "lead": 158
+        },
+        "Celgene": {
+          "any": 1099,
+          "collaborator": 621,
+          "lead": 490
+        },
+        "Chia Tai Tianqing Pharmaceutical Group Co., Ltd.": {
+          "any": 382,
+          "collaborator": 71,
+          "lead": 311
+        },
+        "Chiesi Farmaceutici S.p.A.": {
+          "any": 218,
+          "collaborator": 42,
+          "lead": 176
+        },
+        "Chong Kun Dang Pharmaceutical": {
+          "any": 323,
+          "collaborator": 25,
+          "lead": 298
+        },
+        "Coloplast A/S": {
+          "any": 164,
+          "collaborator": 15,
+          "lead": 149
+        },
+        "CooperVision, Inc.": {
+          "any": 160,
+          "collaborator": 6,
+          "lead": 154
+        },
+        "Daewoong Pharmaceutical Co. LTD.": {
+          "any": 230,
+          "collaborator": 33,
+          "lead": 197
+        },
+        "Daiichi Sankyo": {
+          "any": 581,
+          "collaborator": 211,
+          "lead": 386
+        },
+        "Dong-A ST Co., Ltd.": {
+          "any": 146,
+          "collaborator": 25,
+          "lead": 121
+        },
+        "Dr. Reddy's Laboratories Limited": {
+          "any": 238,
+          "collaborator": 14,
+          "lead": 224
+        },
+        "Edwards Lifesciences": {
+          "any": 202,
+          "collaborator": 75,
+          "lead": 127
+        },
+        "Eisai Inc.": {
+          "any": 767,
+          "collaborator": 216,
+          "lead": 564
+        },
+        "Eli Lilly and Company": {
+          "any": 2868,
+          "collaborator": 789,
+          "lead": 2081
+        },
+        "Ferring Pharmaceuticals": {
+          "any": 329,
+          "collaborator": 80,
+          "lead": 249
+        },
+        "Forest Laboratories": {
+          "any": 338,
+          "collaborator": 170,
+          "lead": 168
+        },
+        "GE Healthcare": {
+          "any": 330,
+          "collaborator": 163,
+          "lead": 167
+        },
+        "Galderma R&D": {
+          "any": 316,
+          "collaborator": 37,
+          "lead": 279
+        },
+        "Genentech, Inc.": {
+          "any": 1620,
+          "collaborator": 1109,
+          "lead": 511
+        },
+        "Genzyme, a Sanofi Company": {
+          "any": 524,
+          "collaborator": 216,
+          "lead": 308
+        },
+        "Gilead Sciences": {
+          "any": 1189,
+          "collaborator": 507,
+          "lead": 682
+        },
+        "GlaxoSmithKline": {
+          "any": 4901,
+          "collaborator": 1296,
+          "lead": 3605
+        },
+        "H. Lundbeck A/S": {
+          "any": 337,
+          "collaborator": 115,
+          "lead": 222
+        },
+        "Hamad Medical Corporation": {
+          "any": 165,
+          "collaborator": 32,
+          "lead": 133
+        },
+        "Hanmi Pharmaceutical Company Limited": {
+          "any": 211,
+          "collaborator": 24,
+          "lead": 187
+        },
+        "Hoffmann-La Roche": {
+          "any": 2548,
+          "collaborator": 473,
+          "lead": 2075
+        },
+        "Incyte Corporation": {
+          "any": 457,
+          "collaborator": 175,
+          "lead": 282
+        },
+        "Innovent Biologics (Suzhou) Co. Ltd.": {
+          "any": 229,
+          "collaborator": 41,
+          "lead": 188
+        },
+        "Ipsen": {
+          "any": 378,
+          "collaborator": 91,
+          "lead": 287
+        },
+        "Janssen Pharmaceutical K.K.": {
+          "any": 129,
+          "collaborator": 2,
+          "lead": 127
+        },
+        "Janssen Research & Development, LLC": {
+          "any": 1068,
+          "collaborator": 145,
+          "lead": 923
+        },
+        "Jazz Pharmaceuticals": {
+          "any": 288,
+          "collaborator": 87,
+          "lead": 201
+        },
+        "Jiangsu Hansoh Pharmaceutical Co., Ltd.": {
+          "any": 137,
+          "collaborator": 16,
+          "lead": 121
+        },
+        "Jiangsu HengRui Medicine Co., Ltd.": {
+          "any": 734,
+          "collaborator": 170,
+          "lead": 564
+        },
+        "Johnson & Johnson Pharmaceutical Research & Development, L.L.C.": {
+          "any": 516,
+          "collaborator": 51,
+          "lead": 465
+        },
+        "Johnson & Johnson Vision Care, Inc.": {
+          "any": 230,
+          "collaborator": 11,
+          "lead": 219
+        },
+        "Kyowa Kirin Co., Ltd.": {
+          "any": 223,
+          "collaborator": 39,
+          "lead": 195
+        },
+        "LEO Pharma": {
+          "any": 281,
+          "collaborator": 59,
+          "lead": 222
+        },
+        "MedImmune LLC": {
+          "any": 348,
+          "collaborator": 81,
+          "lead": 271
+        },
+        "Medtronic - MITG": {
+          "any": 269,
+          "collaborator": 91,
+          "lead": 178
+        },
+        "Medtronic Cardiac Rhythm and Heart Failure": {
+          "any": 279,
+          "collaborator": 16,
+          "lead": 263
+        },
+        "Merck & Co": {
+          "any": 4445,
+          "collaborator": 2130,
+          "lead": 2323
+        },
+        "Merck KGaA": {
+          "any": 648,
+          "collaborator": 249,
+          "lead": 420
+        },
+        "Millennium Pharmaceuticals, Inc.": {
+          "any": 373,
+          "collaborator": 195,
+          "lead": 178
+        },
+        "Mylan Pharmaceuticals Inc": {
+          "any": 165,
+          "collaborator": 5,
+          "lead": 160
+        },
+        "Novartis": {
+          "any": 1661,
+          "collaborator": 946,
+          "lead": 715
+        },
+        "Novartis Pharmaceuticals": {
+          "any": 3135,
+          "collaborator": 476,
+          "lead": 2659
+        },
+        "Novartis Vaccines": {
+          "any": 234,
+          "collaborator": 69,
+          "lead": 165
+        },
+        "Novo Nordisk A/S": {
+          "any": 1657,
+          "collaborator": 290,
+          "lead": 1368
+        },
+        "Organon and Co": {
+          "any": 539,
+          "collaborator": 34,
+          "lead": 505
+        },
+        "Otsuka Pharmaceutical Co., Ltd.": {
+          "any": 216,
+          "collaborator": 73,
+          "lead": 143
+        },
+        "Otsuka Pharmaceutical Development & Commercialization, Inc.": {
+          "any": 311,
+          "collaborator": 29,
+          "lead": 282
+        },
+        "Pfizer": {
+          "any": 5605,
+          "collaborator": 1802,
+          "lead": 3847
+        },
+        "Pfizer's Upjohn has merged with Mylan to form Viatris Inc.": {
+          "any": 434,
+          "collaborator": 0,
+          "lead": 434
+        },
+        "Qilu Pharmaceutical Co., Ltd.": {
+          "any": 212,
+          "collaborator": 25,
+          "lead": 187
+        },
+        "Regeneron Pharmaceuticals": {
+          "any": 774,
+          "collaborator": 383,
+          "lead": 391
+        },
+        "Sandoz": {
+          "any": 147,
+          "collaborator": 11,
+          "lead": 139
+        },
+        "Sanofi": {
+          "any": 2317,
+          "collaborator": 788,
+          "lead": 1529
+        },
+        "Sanofi Pasteur, a Sanofi Company": {
+          "any": 431,
+          "collaborator": 57,
+          "lead": 374
+        },
+        "Shanghai Henlius Biotech": {
+          "any": 131,
+          "collaborator": 3,
+          "lead": 128
+        },
+        "Shire": {
+          "any": 445,
+          "collaborator": 94,
+          "lead": 351
+        },
+        "Smith & Nephew, Inc.": {
+          "any": 177,
+          "collaborator": 46,
+          "lead": 131
+        },
+        "Soci\u00e9t\u00e9 des Produits Nestl\u00e9 (SPN)": {
+          "any": 367,
+          "collaborator": 44,
+          "lead": 323
+        },
+        "Sumitomo Pharma America, Inc.": {
+          "any": 233,
+          "collaborator": 52,
+          "lead": 181
+        },
+        "Takeda": {
+          "any": 1293,
+          "collaborator": 274,
+          "lead": 1019
+        },
+        "Tanabe Pharma Corporation": {
+          "any": 168,
+          "collaborator": 17,
+          "lead": 151
+        },
+        "Teva Branded Pharmaceutical Products R&D, Inc.": {
+          "any": 270,
+          "collaborator": 43,
+          "lead": 227
+        },
+        "Teva Pharmaceuticals USA": {
+          "any": 233,
+          "collaborator": 57,
+          "lead": 176
+        },
+        "UCB Biopharma SRL": {
+          "any": 131,
+          "collaborator": 5,
+          "lead": 126
+        },
+        "UCB Pharma": {
+          "any": 384,
+          "collaborator": 109,
+          "lead": 275
+        },
+        "Vertex Pharmaceuticals Incorporated": {
+          "any": 285,
+          "collaborator": 41,
+          "lead": 244
+        },
+        "ViiV Healthcare": {
+          "any": 394,
+          "collaborator": 132,
+          "lead": 262
+        },
+        "Zimmer Biomet": {
+          "any": 370,
+          "collaborator": 95,
+          "lead": 275
+        }
+      },
+      "entities": {
+        "abbott": {
+          "any": 779,
+          "collaborator": 418,
+          "lead": 361
+        },
+        "abbott medical devices": {
+          "any": 684,
+          "collaborator": 148,
+          "lead": 536
+        },
+        "abbott nutrition": {
+          "any": 176,
+          "collaborator": 21,
+          "lead": 155
+        },
+        "abbvie": {
+          "any": 1206,
+          "collaborator": 267,
+          "lead": 939
+        },
+        "abbvie prior sponsor abbott": {
+          "any": 228,
+          "collaborator": 5,
+          "lead": 223
+        },
+        "actelion": {
+          "any": 188,
+          "collaborator": 45,
+          "lead": 143
+        },
+        "afferent pharmaceuticals": {
+          "any": 15,
+          "collaborator": 0,
+          "lead": 15
+        },
+        "akeso": {
+          "any": 158,
+          "collaborator": 8,
+          "lead": 150
+        },
+        "alcon research": {
+          "any": 773,
+          "collaborator": 151,
+          "lead": 622
+        },
+        "alexion pharmaceuticals": {
+          "any": 288,
+          "collaborator": 36,
+          "lead": 252
+        },
+        "allergan": {
+          "any": 728,
+          "collaborator": 223,
+          "lead": 505
+        },
+        "alpharma pharmaceuticals": {
+          "any": 1,
+          "collaborator": 1,
+          "lead": 0
+        },
+        "amgen": {
+          "any": 1570,
+          "collaborator": 538,
+          "lead": 1032
+        },
+        "arena": {
+          "any": 11,
+          "collaborator": 11,
+          "lead": 0
+        },
+        "arqule": {
+          "any": 37,
+          "collaborator": 5,
+          "lead": 32
+        },
+        "array biopharma": {
+          "any": 25,
+          "collaborator": 0,
+          "lead": 25
+        },
+        "astellas pharma": {
+          "any": 721,
+          "collaborator": 198,
+          "lead": 523
+        },
+        "astellas pharma global development": {
+          "any": 217,
+          "collaborator": 18,
+          "lead": 199
+        },
+        "astrazeneca": {
+          "any": 4746,
+          "collaborator": 1302,
+          "lead": 3444
+        },
+        "bausch and lomb": {
+          "any": 276,
+          "collaborator": 53,
+          "lead": 223
+        },
+        "bausch health americas": {
+          "any": 276,
+          "collaborator": 64,
+          "lead": 212
+        },
+        "bayer": {
+          "any": 2356,
+          "collaborator": 690,
+          "lead": 1666
+        },
+        "beigene": {
+          "any": 189,
+          "collaborator": 59,
+          "lead": 130
+        },
+        "bial - portela c s a": {
+          "any": 136,
+          "collaborator": 0,
+          "lead": 136
+        },
+        "biogen": {
+          "any": 668,
+          "collaborator": 162,
+          "lead": 506
+        },
+        "boehringer ingelheim": {
+          "any": 2645,
+          "collaborator": 368,
+          "lead": 2277
+        },
+        "boryung pharmaceutical": {
+          "any": 171,
+          "collaborator": 29,
+          "lead": 142
+        },
+        "boston scientific": {
+          "any": 814,
+          "collaborator": 282,
+          "lead": 532
+        },
+        "bristol-meyers squibb and pfizer": {
+          "any": 1,
+          "collaborator": 1,
+          "lead": 0
+        },
+        "bristol-myers squibb": {
+          "any": 2847,
+          "collaborator": 1307,
+          "lead": 1540
+        },
+        "celgene": {
+          "any": 1087,
+          "collaborator": 614,
+          "lead": 478
+        },
+        "chia tai tianqing pharmaceutical group": {
+          "any": 382,
+          "collaborator": 71,
+          "lead": 311
+        },
+        "chiesi farmaceutici s p a": {
+          "any": 218,
+          "collaborator": 42,
+          "lead": 176
+        },
+        "chong kun dang pharmaceutical": {
+          "any": 323,
+          "collaborator": 25,
+          "lead": 298
+        },
+        "cidara therapeutics": {
+          "any": 14,
+          "collaborator": 1,
+          "lead": 13
+        },
+        "coloplast a/s": {
+          "any": 164,
+          "collaborator": 15,
+          "lead": 149
+        },
+        "coopervision": {
+          "any": 160,
+          "collaborator": 6,
+          "lead": 154
+        },
+        "csl behring": {
+          "any": 217,
+          "collaborator": 72,
+          "lead": 145
+        },
+        "cspc zhongqi pharmaceutical technology": {
+          "any": 169,
+          "collaborator": 11,
+          "lead": 158
+        },
+        "cubist pharmaceuticals": {
+          "any": 89,
+          "collaborator": 24,
+          "lead": 65
+        },
+        "daewoong pharmaceutical": {
+          "any": 230,
+          "collaborator": 33,
+          "lead": 197
+        },
+        "daiichi sankyo": {
+          "any": 581,
+          "collaborator": 211,
+          "lead": 386
+        },
+        "dice therapeutics": {
+          "any": 10,
+          "collaborator": 0,
+          "lead": 10
+        },
+        "dong-a st": {
+          "any": 146,
+          "collaborator": 25,
+          "lead": 121
+        },
+        "dr reddy s laboratories": {
+          "any": 238,
+          "collaborator": 14,
+          "lead": 224
+        },
+        "edwards lifesciences": {
+          "any": 202,
+          "collaborator": 75,
+          "lead": 127
+        },
+        "eisai": {
+          "any": 767,
+          "collaborator": 216,
+          "lead": 564
+        },
+        "eli lilly": {
+          "any": 2850,
+          "collaborator": 788,
+          "lead": 2062
+        },
+        "emd serono": {
+          "any": 146,
+          "collaborator": 55,
+          "lead": 91
+        },
+        "ferring pharmaceuticals": {
+          "any": 329,
+          "collaborator": 80,
+          "lead": 249
+        },
+        "forest laboratories": {
+          "any": 338,
+          "collaborator": 170,
+          "lead": 168
+        },
+        "galderma r and d": {
+          "any": 316,
+          "collaborator": 37,
+          "lead": 279
+        },
+        "ge healthcare": {
+          "any": 330,
+          "collaborator": 163,
+          "lead": 167
+        },
+        "genentech": {
+          "any": 1620,
+          "collaborator": 1109,
+          "lead": 511
+        },
+        "genzyme a sanofi": {
+          "any": 524,
+          "collaborator": 216,
+          "lead": 308
+        },
+        "gilead sciences": {
+          "any": 1189,
+          "collaborator": 507,
+          "lead": 682
+        },
+        "glaxosmithkline": {
+          "any": 4901,
+          "collaborator": 1296,
+          "lead": 3605
+        },
+        "h lundbeck a/s": {
+          "any": 337,
+          "collaborator": 115,
+          "lead": 222
+        },
+        "hamad medical": {
+          "any": 165,
+          "collaborator": 32,
+          "lead": 133
+        },
+        "hanmi pharmaceutical": {
+          "any": 211,
+          "collaborator": 24,
+          "lead": 187
+        },
+        "harpoon therapeutics": {
+          "any": 4,
+          "collaborator": 0,
+          "lead": 4
+        },
+        "hoffmann-la roche": {
+          "any": 2548,
+          "collaborator": 473,
+          "lead": 2075
+        },
+        "hospira": {
+          "any": 75,
+          "collaborator": 47,
+          "lead": 28
+        },
+        "imago biosciences": {
+          "any": 10,
+          "collaborator": 5,
+          "lead": 5
+        },
+        "immune design": {
+          "any": 10,
+          "collaborator": 3,
+          "lead": 7
+        },
+        "impact biomedicines": {
+          "any": 7,
+          "collaborator": 7,
+          "lead": 0
+        },
+        "incyte": {
+          "any": 457,
+          "collaborator": 175,
+          "lead": 282
+        },
+        "innovent biologics suzhou": {
+          "any": 229,
+          "collaborator": 41,
+          "lead": 188
+        },
+        "ipsen": {
+          "any": 378,
+          "collaborator": 91,
+          "lead": 287
+        },
+        "janssen pharmaceutical k k": {
+          "any": 129,
+          "collaborator": 2,
+          "lead": 127
+        },
+        "janssen research and development": {
+          "any": 1068,
+          "collaborator": 145,
+          "lead": 923
+        },
+        "jazz pharmaceuticals": {
+          "any": 288,
+          "collaborator": 87,
+          "lead": 201
+        },
+        "jiangsu hansoh pharmaceutical": {
+          "any": 137,
+          "collaborator": 16,
+          "lead": 121
+        },
+        "jiangsu hengrui medicine": {
+          "any": 734,
+          "collaborator": 170,
+          "lead": 564
+        },
+        "johnson and johnson pharmaceutical research and development l l c": {
+          "any": 516,
+          "collaborator": 51,
+          "lead": 465
+        },
+        "johnson and johnson vision care": {
+          "any": 230,
+          "collaborator": 11,
+          "lead": 219
+        },
+        "juno therapeutics": {
+          "any": 12,
+          "collaborator": 0,
+          "lead": 12
+        },
+        "king pharmaceuticals": {
+          "any": 7,
+          "collaborator": 7,
+          "lead": 0
+        },
+        "kyowa kirin": {
+          "any": 223,
+          "collaborator": 39,
+          "lead": 195
+        },
+        "leo pharma": {
+          "any": 281,
+          "collaborator": 59,
+          "lead": 222
+        },
+        "map pharmaceuticals": {
+          "any": 11,
+          "collaborator": 11,
+          "lead": 0
+        },
+        "medimmune": {
+          "any": 348,
+          "collaborator": 81,
+          "lead": 271
+        },
+        "medivation": {
+          "any": 24,
+          "collaborator": 24,
+          "lead": 0
+        },
+        "medtronic - mitg": {
+          "any": 269,
+          "collaborator": 91,
+          "lead": 178
+        },
+        "medtronic cardiac rhythm and heart failure": {
+          "any": 279,
+          "collaborator": 16,
+          "lead": 263
+        },
+        "merck healthcare kgaa darmstadt germany an affiliate of merck kgaa darmstadt germany": {
+          "any": 67,
+          "collaborator": 13,
+          "lead": 54
+        },
+        "merck kgaa darmstadt germany": {
+          "any": 457,
+          "collaborator": 182,
+          "lead": 275
+        },
+        "merck sharp and dohme": {
+          "any": 4214,
+          "collaborator": 2089,
+          "lead": 2125
+        },
+        "metsera": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "millennium pharmaceuticals": {
+          "any": 373,
+          "collaborator": 195,
+          "lead": 178
+        },
+        "morphic therapeutic inc a": {
+          "any": 5,
+          "collaborator": 0,
+          "lead": 5
+        },
+        "mylan pharmaceuticals": {
+          "any": 165,
+          "collaborator": 5,
+          "lead": 160
+        },
+        "novacardia": {
+          "any": 6,
+          "collaborator": 0,
+          "lead": 6
+        },
+        "novartis": {
+          "any": 1661,
+          "collaborator": 946,
+          "lead": 715
+        },
+        "novartis pharmaceuticals": {
+          "any": 3135,
+          "collaborator": 476,
+          "lead": 2659
+        },
+        "novartis vaccines": {
+          "any": 234,
+          "collaborator": 69,
+          "lead": 165
+        },
+        "novo nordisk a/s": {
+          "any": 1657,
+          "collaborator": 289,
+          "lead": 1368
+        },
+        "oncoethix": {
+          "any": 5,
+          "collaborator": 0,
+          "lead": 5
+        },
+        "oncoimmune": {
+          "any": 7,
+          "collaborator": 1,
+          "lead": 6
+        },
+        "optimer pharmaceuticals": {
+          "any": 8,
+          "collaborator": 2,
+          "lead": 6
+        },
+        "organon": {
+          "any": 539,
+          "collaborator": 34,
+          "lead": 505
+        },
+        "otsuka pharmaceutical": {
+          "any": 216,
+          "collaborator": 73,
+          "lead": 143
+        },
+        "otsuka pharmaceutical development and commercialization": {
+          "any": 311,
+          "collaborator": 29,
+          "lead": 282
+        },
+        "peloton therapeutics": {
+          "any": 8,
+          "collaborator": 1,
+          "lead": 7
+        },
+        "pfizer": {
+          "any": 4849,
+          "collaborator": 1570,
+          "lead": 3279
+        },
+        "pfizer s upjohn has merged with mylan to form viatris": {
+          "any": 434,
+          "collaborator": 0,
+          "lead": 434
+        },
+        "point biopharma": {
+          "any": 2,
+          "collaborator": 0,
+          "lead": 2
+        },
+        "portola pharmaceuticals llc a": {
+          "any": 2,
+          "collaborator": 2,
+          "lead": 0
+        },
+        "prometheus biosciences": {
+          "any": 6,
+          "collaborator": 0,
+          "lead": 6
+        },
+        "qilu pharmaceutical": {
+          "any": 212,
+          "collaborator": 25,
+          "lead": 187
+        },
+        "reata": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "regeneron pharmaceuticals": {
+          "any": 774,
+          "collaborator": 383,
+          "lead": 391
+        },
+        "sandoz": {
+          "any": 147,
+          "collaborator": 11,
+          "lead": 139
+        },
+        "sanofi": {
+          "any": 2317,
+          "collaborator": 788,
+          "lead": 1529
+        },
+        "sanofi pasteur a sanofi": {
+          "any": 431,
+          "collaborator": 57,
+          "lead": 374
+        },
+        "scorpion therapeutics": {
+          "any": 3,
+          "collaborator": 1,
+          "lead": 2
+        },
+        "seagen": {
+          "any": 31,
+          "collaborator": 1,
+          "lead": 30
+        },
+        "seattle genetics now": {
+          "any": 2,
+          "collaborator": 2,
+          "lead": 0
+        },
+        "shanghai henlius biotech": {
+          "any": 131,
+          "collaborator": 3,
+          "lead": 128
+        },
+        "shire": {
+          "any": 445,
+          "collaborator": 94,
+          "lead": 351
+        },
+        "smith and nephew": {
+          "any": 177,
+          "collaborator": 46,
+          "lead": 131
+        },
+        "soci\u00e9t\u00e9 des produits nestl\u00e9 spn": {
+          "any": 367,
+          "collaborator": 44,
+          "lead": 323
+        },
+        "sponsor corvidia therapeutics": {
+          "any": 1,
+          "collaborator": 1,
+          "lead": 0
+        },
+        "sumitomo pharma america": {
+          "any": 233,
+          "collaborator": 52,
+          "lead": 181
+        },
+        "takeda": {
+          "any": 1293,
+          "collaborator": 274,
+          "lead": 1019
+        },
+        "tanabe pharma": {
+          "any": 168,
+          "collaborator": 17,
+          "lead": 151
+        },
+        "teva branded pharmaceutical products r and d": {
+          "any": 270,
+          "collaborator": 43,
+          "lead": 227
+        },
+        "teva pharmaceuticals usa": {
+          "any": 233,
+          "collaborator": 57,
+          "lead": 176
+        },
+        "trius therapeutics": {
+          "any": 19,
+          "collaborator": 0,
+          "lead": 19
+        },
+        "ucb biopharma srl": {
+          "any": 131,
+          "collaborator": 5,
+          "lead": 126
+        },
+        "ucb pharma": {
+          "any": 384,
+          "collaborator": 109,
+          "lead": 275
+        },
+        "velosbio": {
+          "any": 2,
+          "collaborator": 0,
+          "lead": 2
+        },
+        "vertex pharmaceuticals": {
+          "any": 285,
+          "collaborator": 41,
+          "lead": 244
+        },
+        "viiv healthcare": {
+          "any": 394,
+          "collaborator": 132,
+          "lead": 262
+        },
+        "wyeth": {
+          "any": 626,
+          "collaborator": 142,
+          "lead": 484
+        },
+        "zimmer biomet": {
+          "any": 370,
+          "collaborator": 95,
+          "lead": 275
+        }
+      },
+      "generated_at": "2026-09-01T19:06:52+00:00",
+      "generated_by": "tests/sponsors/test_fixture_regression.py (auto re-baseline on rules change)",
+      "index": {
+        "canonicals": 98,
+        "rows": 77319,
+        "trials": 73345
+      },
+      "not_covered_by_fixture": [
+        {
+          "canonical": "Merck & Co",
+          "pattern": "merck sharp and dohme",
+          "rule_type": "subsidiary_of"
+        }
+      ]
+    }
+  },
+  "fixture": {
+    "file": "tests/sponsors/fixtures/sponsors_fixture_20260619_industry.csv.gz",
+    "sha256": "a7a1e7afe42e99d7e55d14806c6f9fff561b0ae4b5150937a324608e431dcfde",
+    "snapshot_date": "2026-06-19"
+  }
+}
