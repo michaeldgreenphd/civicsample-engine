@@ -98,7 +98,8 @@ def main():
         if not os.path.isdir(sdir):
             continue
         parts = [f for f in os.listdir(sdir) if f.startswith("demographics.part")]
-        if not parts:
+        sponsors_dir = os.path.join(sdir, "sponsors")   # the company-filter bridge rides with the parts
+        if not parts and not os.path.isdir(sponsors_dir):
             continue  # already summary-only
         if not os.path.exists(os.path.join(sdir, "dashboard-summary.json")):
             print(f"  WARNING: {d} has no dashboard-summary.json; keeping its part files")
@@ -107,6 +108,8 @@ def main():
         if not dry:
             for f in parts:
                 os.remove(os.path.join(sdir, f))
+            if os.path.isdir(sponsors_dir):
+                shutil.rmtree(sponsors_dir)
 
     kept_dates = sorted(d for d in all_dates if d in keep)
     if not dry:

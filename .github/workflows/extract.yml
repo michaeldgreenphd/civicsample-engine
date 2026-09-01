@@ -163,6 +163,40 @@ jobs:
               done
           echo "Backed up to release $TAG"
 
+      # ── Company-level sponsor filter (sponsors/README.md) ─────────────
+      # These run AFTER the demographics publish on purpose: a rules conflict
+      # raises inside build_index() (invariant 6) and turns the run red, but
+      # the site already has this week's data.
+      - name: Build sponsor bridge
+        run: python3 scripts/build_sponsor_bridge.py --demographics data/demographics.json
+
+      - name: Sponsor curation audit
+        # Prior bridge = the site's copy as checked out BEFORE this week's
+        # overwrite; prior unmatched list = last week's committed audit here.
+        run: |
+          python3 scripts/sponsor_audit.py \
+            --demographics data/demographics.json \
+            --prior-bridge site/data/sponsors/bridge.csv.gz \
+            --prior-unmatched data/sponsor_audit/unmatched_all.csv
+
+      - name: Publish sponsor bridge to the site
+        run: |
+          mkdir -p site/data/sponsors "site/snapshots/$CURRENT_DATE/sponsors"
+          cp data/sponsors/bridge.csv.gz data/sponsors/bridge_meta.json site/data/sponsors/
+          cp data/sponsors/bridge.csv.gz data/sponsors/bridge_meta.json "site/snapshots/$CURRENT_DATE/sponsors/"
+          cd site
+          git add data/sponsors "snapshots/$CURRENT_DATE/sponsors"
+          git commit -m "Update sponsor bridge $CURRENT_DATE" || exit 0
+          git push
+
+      - name: Commit sponsor audit to this repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/sponsor_audit/
+          git commit -m "Sponsor audit $CURRENT_DATE" || exit 0
+          git push
+
       - name: Write run summary
         if: always()
         run: |
@@ -184,7 +218,20 @@ jobs:
             echo "| Change vs previous | $DELTA |"
             echo "| Split parts total | ${PARTS_MB} MB |"
             echo "| Code commit | \`${GITHUB_SHA}\` |"
+            if [ -f data/sponsors/bridge_meta.json ]; then
+              echo "| Sponsor bridge | $(jq -r '"\(.n_rows) rows, \(.n_companies) companies, \(.n_trials) trials"' data/sponsors/bridge_meta.json) |"
+            fi
+            if [ -f data/sponsor_audit/audit_summary.json ]; then
+              echo "| Sponsor curation inbox | $(jq -r '"\(.inbox_size) new unmatched literal(s); top: \(.inbox_top.name // "—")"' data/sponsor_audit/audit_summary.json) |"
+              echo "| Sponsor match changes | $(jq -r '.n_match_changes' data/sponsor_audit/audit_summary.json) |"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f data/sponsor_audit/audit_summary.json ]; then
+            CH=$(jq -r '.n_match_changes' data/sponsor_audit/audit_summary.json)
+            if [ "$CH" -gt 0 ]; then
+              echo "::warning::$CH sponsor literal(s) changed attribution vs last week — review data/sponsor_audit/match_changes.csv"
+            fi
+          fi
           # A shrinking dataset is possible but rare (CT.gov removals) —
           # flag it so a bad pull announces itself.
           if [ "$DELTA" != "n/a" ] && [ "$DELTA" -lt 0 ]; then

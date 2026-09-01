@@ -1,0 +1,3 @@
+entity,canonical,effective_date,source,note
+wyeth,Pfizer,,,entity parsed from registry literal; add close date + primary source before using pre/post splits
+hospira,Pfizer,,,entity parsed from registry literal; add close date + primary source before using pre/post splits

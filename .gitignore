@@ -30,6 +30,8 @@ data/demographics.json.gz
 data/demographics.part*.json.gz
 data/dashboard-summary.json
 data/industry_sponsors.json
+# Sponsor bridge is published to the site; the audit under data/sponsor_audit/ IS committed
+data/sponsors/
 
 # Full document corpora live outside git (1,400+ FDA PDFs, full manuscript
 # archives). Only the pilot subsets are tracked so GitHub Actions can run
