@@ -27,3 +27,11 @@ jobs:
 
       - name: Run extractor validation harness
         run: python scripts/validate_fixes.py
+
+      - name: Run sponsor filter tests (rules, index, adapter, fixture regression)
+        run: |
+          pip install pytest
+          python -m pytest tests/sponsors -q
+
+      - name: Run browser filter module tests
+        run: node --test tests/sponsors/*.test.mjs

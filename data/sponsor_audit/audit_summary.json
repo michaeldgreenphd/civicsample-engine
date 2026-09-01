@@ -1,0 +1,19 @@
+{
+  "audited_at": "2026-09-01T18:46:53.521412+00:00",
+  "source_extracted_at": "2026-08-30T11:50:37.583869+00:00",
+  "rules_sha256": "3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c",
+  "n_literals": 15650,
+  "n_attributed": 139,
+  "n_reviewed_excluded": 1,
+  "n_unreviewed": 15510,
+  "inbox_size": 15510,
+  "inbox_top": {
+    "name": "National Cancer Institute (NCI)",
+    "n_trials": 4468,
+    "roles": "collaborator,lead",
+    "agency_class": "NIH"
+  },
+  "n_match_changes": 0,
+  "had_prior_bridge": false,
+  "had_prior_unmatched": false
+}

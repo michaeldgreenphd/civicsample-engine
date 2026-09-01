@@ -1,0 +1,113 @@
+canonical,rule_type,pattern,status,shared,note
+Pfizer,exact_normalized,pfizer,attribute,no,base name; covers 'Pfizer' / 'Pfizer Inc.'
+Pfizer,subsidiary_of,pfizer,attribute,no,"registry self-describes: 'X, a wholly owned subsidiary of Pfizer'"
+Merck & Co,exact_normalized,merck sharp and dohme,attribute,no,MSD = Merck & Co registrant name
+Merck & Co,subsidiary_of,merck sharp and dohme,attribute,no,subsidiaries naming MSD as parent
+Merck & Co,subsidiary_of,merck,attribute,no,"parents written 'Merck & Co., Inc.' normalize to 'merck'; KGaA parents keep 'kgaa' so no collision"
+Merck KGaA,exact_normalized,merck kgaa darmstadt germany,attribute,no,German Merck; kgaa suffix deliberately kept by normalize()
+Merck KGaA,exact_normalized,emd serono,attribute,no,EMD Serono = Merck KGaA US biopharma arm
+Merck KGaA,exact_literal,"Merck Healthcare KGaA, Darmstadt, Germany, an affiliate of Merck KGaA, Darmstadt, Germany",attribute,no,added from audit 2026-08-31; 'affiliate' wording not parsed by subsidiary regex
+GlaxoSmithKline,exact_normalized,glaxosmithkline,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+AstraZeneca,exact_normalized,astrazeneca,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Novartis Pharmaceuticals,exact_normalized,novartis pharmaceuticals,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Boehringer Ingelheim,exact_normalized,boehringer ingelheim,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Hoffmann-La Roche,exact_normalized,hoffmann-la roche,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Eli Lilly and Company,exact_normalized,eli lilly,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Bayer,exact_normalized,bayer,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Bristol-Myers Squibb,exact_normalized,bristol-myers squibb,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Sanofi,exact_normalized,sanofi,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Novo Nordisk A/S,exact_normalized,novo nordisk a/s,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Amgen,exact_normalized,amgen,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Takeda,exact_normalized,takeda,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+AbbVie,exact_normalized,abbvie,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Janssen Research & Development, LLC",exact_normalized,janssen research and development,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Novartis,exact_normalized,novartis,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Gilead Sciences,exact_normalized,gilead sciences,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Alcon Research,exact_normalized,alcon research,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Jiangsu HengRui Medicine Co., Ltd.",exact_normalized,jiangsu hengrui medicine,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Abbott Medical Devices,exact_normalized,abbott medical devices,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Boston Scientific Corporation,exact_normalized,boston scientific,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Astellas Pharma Inc,exact_normalized,astellas pharma,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Genentech, Inc.",exact_normalized,genentech,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Biogen,exact_normalized,biogen,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Allergan,exact_normalized,allergan,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Organon and Co,exact_normalized,organon,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Johnson & Johnson Pharmaceutical Research & Development, L.L.C.",exact_normalized,johnson and johnson pharmaceutical research and development l l c,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Pfizer's Upjohn has merged with Mylan to form Viatris Inc.,exact_normalized,pfizer s upjohn has merged with mylan to form viatris,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Celgene,exact_normalized,celgene,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Regeneron Pharmaceuticals,exact_normalized,regeneron pharmaceuticals,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Sanofi Pasteur, a Sanofi Company",exact_normalized,sanofi pasteur a sanofi,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Eisai Inc.,exact_normalized,eisai,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Abbott,exact_normalized,abbott,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Shire,exact_normalized,shire,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Société des Produits Nestlé (SPN),exact_normalized,société des produits nestlé spn,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Daiichi Sankyo,exact_normalized,daiichi sankyo,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Chia Tai Tianqing Pharmaceutical Group Co., Ltd.",exact_normalized,chia tai tianqing pharmaceutical group,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Genzyme, a Sanofi Company",exact_normalized,genzyme a sanofi,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Chong Kun Dang Pharmaceutical,exact_normalized,chong kun dang pharmaceutical,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Ipsen,exact_normalized,ipsen,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Incyte Corporation,exact_normalized,incyte,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Otsuka Pharmaceutical Development & Commercialization, Inc.",exact_normalized,otsuka pharmaceutical development and commercialization,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Galderma R&D,exact_normalized,galderma r and d,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Zimmer Biomet,exact_normalized,zimmer biomet,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+MedImmune LLC,exact_normalized,medimmune,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Medtronic Cardiac Rhythm and Heart Failure,exact_normalized,medtronic cardiac rhythm and heart failure,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+ViiV Healthcare,exact_normalized,viiv healthcare,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Alexion Pharmaceuticals, Inc.",exact_normalized,alexion pharmaceuticals,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Ferring Pharmaceuticals,exact_normalized,ferring pharmaceuticals,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Vertex Pharmaceuticals Incorporated,exact_normalized,vertex pharmaceuticals,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+UCB Pharma,exact_normalized,ucb pharma,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"AbbVie (prior sponsor, Abbott)",exact_normalized,abbvie prior sponsor abbott,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Dr. Reddy's Laboratories Limited,exact_normalized,dr reddy s laboratories,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+H. Lundbeck A/S,exact_normalized,h lundbeck a/s,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+LEO Pharma,exact_normalized,leo pharma,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Bausch & Lomb Incorporated,exact_normalized,bausch and lomb,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Johnson & Johnson Vision Care, Inc.",exact_normalized,johnson and johnson vision care,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Bausch Health Americas, Inc.",exact_normalized,bausch health americas,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Teva Branded Pharmaceutical Products R&D, Inc.",exact_normalized,teva branded pharmaceutical products r and d,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Jazz Pharmaceuticals,exact_normalized,jazz pharmaceuticals,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Astellas Pharma Global Development, Inc.",exact_normalized,astellas pharma global development,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Daewoong Pharmaceutical Co. LTD.,exact_normalized,daewoong pharmaceutical,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Innovent Biologics (Suzhou) Co. Ltd.,exact_normalized,innovent biologics suzhou,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Qilu Pharmaceutical Co., Ltd.",exact_normalized,qilu pharmaceutical,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Hanmi Pharmaceutical Company Limited,exact_normalized,hanmi pharmaceutical,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Sumitomo Pharma America, Inc.",exact_normalized,sumitomo pharma america,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Millennium Pharmaceuticals, Inc.",exact_normalized,millennium pharmaceuticals,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Medtronic - MITG,exact_normalized,medtronic - mitg,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Chiesi Farmaceutici S.p.A.,exact_normalized,chiesi farmaceutici s p a,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Teva Pharmaceuticals USA,exact_normalized,teva pharmaceuticals usa,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Forest Laboratories,exact_normalized,forest laboratories,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+GE Healthcare,exact_normalized,ge healthcare,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Novartis Vaccines,exact_normalized,novartis vaccines,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Mylan Pharmaceuticals Inc,exact_normalized,mylan pharmaceuticals,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Kyowa Kirin Co., Ltd.",exact_normalized,kyowa kirin,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"CSPC ZhongQi Pharmaceutical Technology Co., Ltd.",exact_normalized,cspc zhongqi pharmaceutical technology,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Abbott Nutrition,exact_normalized,abbott nutrition,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"CooperVision, Inc.",exact_normalized,coopervision,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Akeso,exact_normalized,akeso,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Tanabe Pharma Corporation,exact_normalized,tanabe pharma,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Coloplast A/S,exact_normalized,coloplast a/s,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+CSL Behring,exact_normalized,csl behring,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Actelion,exact_normalized,actelion,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Otsuka Pharmaceutical Co., Ltd.",exact_normalized,otsuka pharmaceutical,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Boryung Pharmaceutical Co., Ltd",exact_normalized,boryung pharmaceutical,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Sandoz,exact_normalized,sandoz,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Bial - Portela C S.A.,exact_normalized,bial - portela c s a,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Hamad Medical Corporation,exact_normalized,hamad medical,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Smith & Nephew, Inc.",exact_normalized,smith and nephew,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+BeiGene,exact_normalized,beigene,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Shanghai Henlius Biotech,exact_normalized,shanghai henlius biotech,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Janssen Pharmaceutical K.K.,exact_normalized,janssen pharmaceutical k k,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Edwards Lifesciences,exact_normalized,edwards lifesciences,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+UCB Biopharma SRL,exact_normalized,ucb biopharma srl,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Jiangsu Hansoh Pharmaceutical Co., Ltd.",exact_normalized,jiangsu hansoh pharmaceutical,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+"Dong-A ST Co., Ltd.",exact_normalized,dong-a st,attribute,no,auto-seeded 2026-08-31 from top-100 industry lead sponsors by trial count; label and scope pending review
+Eli Lilly and Company,subsidiary_of,eli lilly,attribute,no,auto-seeded 2026-08-31: 4 registry name(s) self-describe as subsidiary of this parent
+Novo Nordisk A/S,subsidiary_of,novo nordisk a/s,attribute,no,auto-seeded 2026-08-31: 1 registry name(s) self-describe as subsidiary of this parent
+Biogen,subsidiary_of,biogen,attribute,no,auto-seeded 2026-08-31: 1 registry name(s) self-describe as subsidiary of this parent
+Allergan,subsidiary_of,allergan,attribute,no,auto-seeded 2026-08-31: 1 registry name(s) self-describe as subsidiary of this parent
+Celgene,subsidiary_of,celgene,attribute,no,auto-seeded 2026-08-31: 2 registry name(s) self-describe as subsidiary of this parent
+"Alexion Pharmaceuticals, Inc.",subsidiary_of,alexion pharmaceuticals,attribute,no,auto-seeded 2026-08-31: 1 registry name(s) self-describe as subsidiary of this parent
+Pfizer,exact_literal,Bristol-Meyers Squibb & Pfizer,attribute,yes,"partnership literal names two companies; attributed to both, dedupe on nct_id when aggregating"
+Bristol-Myers Squibb,exact_literal,Bristol-Meyers Squibb & Pfizer,attribute,yes,partnership literal names two companies; 'Meyers' misspelling is in the registry itself
+Forest Laboratories,exact_normalized,wake forest university health sciences,exclude,no,"reviewed 2026-08-31: academic medical center, not Forest Laboratories; recorded so it leaves the unreviewed queue"
