@@ -5,9 +5,11 @@ name: Geography snapshot watcher
 # SITE repository). If so, open (or refresh) an issue IN THIS REPO. That is
 # ALL it does — it never downloads data, never runs the pipeline, never
 # touches the pin. Advancing runs stays a deliberate act: a human runs
-# refresh.R on the new snapshot, then scripts/geo/advance_run.py (from this
-# repo, inside a clone of the site repo), then opens a site PR gated by its
-# geo-contract-tests.
+# refresh.R on the new snapshot, then the SITE repo's own
+# scripts/geo/advance_run.py from a clone of that repo, then opens a site PR
+# gated by its geo-contract-tests. The advance script lives there, not here,
+# because every path it writes (the staged run directory, the pin, the test
+# expectations) is a site path — see that repo's data/geo/README.md.
 #
 # AACT publishes pipe-delimited static copies as YYYYMMDD_export_ctgov.zip
 # (see the fork's app/models/util/table_exporter.rb); the listing page is
@@ -82,7 +84,7 @@ jobs:
 
           1. Download \`${NEWER}_export_ctgov.zip\` from https://aact.ctti-clinicaltrials.org/pipe_files
           2. Run the pipeline against it: \`Rscript refresh.R /path/to/snapshot --final\` (the pipeline ships inside every run directory)
-          3. From a clone of clinical-trial-populations, point the app at the finished run: \`python3 /path/to/civicsample-engine/scripts/geo/advance_run.py /path/to/geo_rep_${NEWER_DASHED}_runNNN\`
+          3. From a clone of clinical-trial-populations, point the app at the finished run: \`python3 scripts/geo/advance_run.py /path/to/geo_rep_${NEWER_DASHED}_runNNN\`
           4. Review the printed expectations diff, update any caveat prose the tests flag, run \`npm test\` in the site clone
           5. Open a PR in clinical-trial-populations — its geo-contract-tests gate the merge
           EOF
