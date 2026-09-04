@@ -54,8 +54,11 @@ deterministic pipeline draws random numbers; there is no RNG to seed, and a
 review finding asking for one is noise. Reproducibility here rests on three
 things instead, and a change that weakens any of them is the defect:
 
-* **Pinned inputs.** The sponsor rules file is pinned by sha256 against
-  `FIXTURE_RULES_SHA256`, and the geography layer publishes one frozen,
+* **Pinned inputs.** Every version of the sponsor rules file is keyed by its
+  own sha256, with one baseline block per sha in
+  `tests/sponsors/expected_counts.json`; the fixture the baselines are
+  computed on is pinned separately by `FIXTURE_SHA256` in
+  `tests/sponsors/conftest.py`. The geography layer publishes one frozen,
   audited run at a time.
 * **Provenance stamps.** Artifacts carry `extracted_at`, `pipeline_commit`
   (or `source_pipeline_commit`), and for sponsor files `rules_sha256`.
@@ -101,7 +104,8 @@ approval queue reviews.
 ## 4. Pull Request Requirements
 
 * **Type hints on every function you add or change.** Coverage across the
-  existing tree is partial, so this is a ratchet, not a sweep: new and
+  existing tree is partial — about half of all functions carry any
+  annotation — so this is a ratchet, not a sweep: new and
   modified functions are fully annotated, untouched ones are left alone, and
   a reviewer does not flag pre-existing gaps in code the pull request did not
   touch.

@@ -59,16 +59,27 @@ nothing else holds a copy of. Treat retention and publish steps as data-loss
 surfaces.
 
 **The sponsor rules file is schema, not data.** `sponsors/company_aliases.csv`
-changes only by deliberate commit, and the 2026-06-19 fixture is valid only
-for one exact version of it. `tests/sponsors/test_rules_loading.py` pins both
-the rule count and the file's sha256 against `FIXTURE_RULES_SHA256` in
-`tests/sponsors/conftest.py`, so any edit to the rules turns CI red until
-someone re-baselines the fixture and updates that constant in the same pull
-request. `tests/sponsors/test_fixture_regression.py` then holds the resulting
-per-company counts as literals, so moved numbers show up in the diff and get
-reviewed rather than absorbed. A pull request that changes the rules and
-loosens either guard instead of re-baselining is the defect the mechanism
-exists to surface.
+changes only by deliberate commit, and every version of it is keyed by its own
+sha256. `tests/sponsors/expected_counts.json` holds one baseline block per
+rules sha — index size, per-company any/lead/collaborator, per-entity counts
+on the 2026-06-19 industry fixture — and
+`test_fixture_regression.py::test_regression_or_explicit_rebaseline` looks up
+the block for the rules as they stand.
+
+When a rules change has no block, the test **generates one, writes it, and
+fails**, asking for it to be committed alongside the rules change so the moved
+counts are reviewed in the same diff. The failure names the drift against the
+previous baseline and lists the rules the fixture cannot exercise — those work
+in production but are not regression-tested, and are reported rather than
+failed. `sponsors/baseline.py` computes all of it.
+
+The fixture file itself is pinned separately, by `FIXTURE_SHA256` in
+`tests/sponsors/conftest.py`, so the data under the baseline cannot move
+without saying so either.
+
+A pull request that changes the rules and loosens either guard instead of
+committing the generated block is the defect the mechanism exists to
+surface.
 
 Related invariants worth checking in review: no substring matching in
 production attribution paths; the three review states (attributed,
@@ -93,12 +104,11 @@ as environment variables at run time.
 ## Running the checks
 
 ```bash
-pip install -r requirements.txt        # runtime deps
-pip install pytest                     # test runner, not a runtime dep
-python -m compileall -q src scripts    # everything compiles
-python scripts/validate_fixes.py       # offline extractor harness
-python -m pytest tests/sponsors -q     # the Python suite
-node --test tests/sponsors/*.test.mjs  # the browser filter module
+pip install -r requirements-dev.txt                 # includes requirements.txt
+python -m compileall -q src scripts sponsors tests  # everything compiles
+python scripts/validate_fixes.py                    # offline extractor harness
+python -m pytest tests -q                           # the whole Python suite
+node --test tests/sponsors/*.test.mjs               # the browser filter module
 ```
 
 The LLM extraction stack has its own `scripts/extraction/requirements.txt` and
