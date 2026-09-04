@@ -70,10 +70,6 @@ reviewed rather than absorbed. A pull request that changes the rules and
 loosens either guard instead of re-baselining is the defect the mechanism
 exists to surface.
 
-The open `sponsor-loop` pull request replaces this with a generated
-`tests/sponsors/expected_counts.json` block keyed by the same sha256; whoever
-merges it should update this section in that pull request.
-
 Related invariants worth checking in review: no substring matching in
 production attribution paths; the three review states (attributed,
 reviewed-excluded, unreviewed) are never collapsed; conflicting rules raise
