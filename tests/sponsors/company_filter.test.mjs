@@ -52,3 +52,11 @@ test('invalid role or view throws', () => {
   assert.throws(() => validate('sponsor', 'current_owner'), /role must be one of/);
   assert.throws(() => companyTrialSet(rows, { company: 'Pfizer', view: 'owner' }), /view must be one of/);
 });
+
+test('entitiesFor order and counts match sponsor_roles.entities() on the shared parity fixture', async () => {
+  const { readFileSync } = await import('node:fs');
+  const url = new URL('./fixtures/entities_parity.json', import.meta.url);
+  const fx = JSON.parse(readFileSync(url, 'utf8'));
+  const parityRows = fx.rows.map(r => Object.fromEntries(fx.columns.map((c, i) => [c, r[i]])));
+  assert.deepEqual(entitiesFor(parityRows, fx.canonical), fx.expected);
+});

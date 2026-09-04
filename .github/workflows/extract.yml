@@ -82,7 +82,9 @@ jobs:
 
       - name: Publish artifacts, archive snapshot, and push to the site
         run: |
-          DATE=$(date +'%Y-%m-%d')
+          # One date for the whole run: the snapshot folder, the release tag
+          # and the bridge snapshot all key on CURRENT_DATE (set at job start).
+          DATE="$CURRENT_DATE"
 
           # Keep last week's summary for the run-summary delta below
           cp site/data/dashboard-summary.json "$RUNNER_TEMP/prev_summary.json" 2>/dev/null || true
@@ -168,22 +170,34 @@ jobs:
       # raises inside build_index() (invariant 6) and turns the run red, but
       # the site already has this week's data.
       - name: Build sponsor bridge
+        id: bridge
         run: python3 scripts/build_sponsor_bridge.py --demographics data/demographics.json
 
       - name: Sponsor curation audit
+        id: audit
         # Prior bridge = the site's copy as checked out BEFORE this week's
         # overwrite; prior unmatched list = last week's committed audit here.
         run: |
           python3 scripts/sponsor_audit.py \
             --demographics data/demographics.json \
+            --snapshot-date "$CURRENT_DATE" \
             --prior-bridge site/data/sponsors/bridge.csv.gz \
-            --prior-unmatched data/sponsor_audit/unmatched_all.csv
+            --prior-meta site/data/sponsors/bridge_meta.json \
+            --prior-literals data/sponsor_audit/literals_all.csv.gz \
+            --prior-open data/sponsor_audit/inbox_open.csv.gz \
+            --prior-trials data/sponsor_audit/trial_sponsors.csv.gz
 
       - name: Publish sponsor bridge to the site
         run: |
-          mkdir -p site/data/sponsors "site/snapshots/$CURRENT_DATE/sponsors"
+          mkdir -p site/data/sponsors/audit "site/snapshots/$CURRENT_DATE/sponsors"
           cp data/sponsors/bridge.csv.gz data/sponsors/bridge_meta.json site/data/sponsors/
           cp data/sponsors/bridge.csv.gz data/sponsors/bridge_meta.json "site/snapshots/$CURRENT_DATE/sponsors/"
+          # The audit files the (password-curtained) audit tab reads live on
+          # the site too, so the tab keeps working if this repo goes private.
+          cp data/sponsor_audit/inbox_new_unmatched.csv data/sponsor_audit/inbox_open.csv.gz \
+             data/sponsor_audit/match_changes.csv data/sponsor_audit/label_changes.csv \
+             data/sponsor_audit/literals_all.csv.gz data/sponsor_audit/audit_summary.json \
+             site/data/sponsors/audit/
           cd site
           git add data/sponsors "snapshots/$CURRENT_DATE/sponsors"
           git commit -m "Update sponsor bridge $CURRENT_DATE" || exit 0
@@ -195,6 +209,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/sponsor_audit/
           git commit -m "Sponsor audit $CURRENT_DATE" || exit 0
+          # main may have moved during the ~1h run; replay our one commit on top
+          git pull --rebase origin main
           git push
 
       - name: Write run summary
@@ -218,15 +234,23 @@ jobs:
             echo "| Change vs previous | $DELTA |"
             echo "| Split parts total | ${PARTS_MB} MB |"
             echo "| Code commit | \`${GITHUB_SHA}\` |"
-            if [ -f data/sponsors/bridge_meta.json ]; then
+            # The audit files are committed in this repo, so last week's are
+            # always on disk: report them only when THIS run's steps produced
+            # them, never as a stale stand-in.
+            if [ "${{ steps.bridge.outcome }}" = "success" ]; then
               echo "| Sponsor bridge | $(jq -r '"\(.n_rows) rows, \(.n_companies) companies, \(.n_trials) trials"' data/sponsors/bridge_meta.json) |"
+            else
+              echo "| Sponsor bridge | step ${{ steps.bridge.outcome }} — no bridge published this week; the site keeps last week's |"
             fi
-            if [ -f data/sponsor_audit/audit_summary.json ]; then
+            if [ "${{ steps.audit.outcome }}" = "success" ]; then
               echo "| Sponsor curation inbox | $(jq -r '"\(.inbox_size) new unmatched literal(s); top: \(.inbox_top.name // "—")"' data/sponsor_audit/audit_summary.json) |"
-              echo "| Sponsor match changes | $(jq -r '.n_match_changes' data/sponsor_audit/audit_summary.json) |"
+              echo "| Sponsor match changes | $(jq -r '"\(.n_match_changes) literal / \(.n_label_changes) trial-label (causes: \(.label_change_causes | tojson))"' data/sponsor_audit/audit_summary.json) |"
+              echo "| Sponsor inbox open | $(jq -r '"\(.inbox_open_count) open (\(.inbox_open_industry_count) INDUSTRY); oldest INDUSTRY: \(.inbox_open_oldest_industry.name // "—") (\(.inbox_open_oldest_industry.weeks_open // 0) wk, \(.inbox_open_oldest_industry.n_trials // 0) trials)"' data/sponsor_audit/audit_summary.json) |"
+            else
+              echo "| Sponsor audit | step ${{ steps.audit.outcome }} — no audit this week (files in data/sponsor_audit/ are last week's) |"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ -f data/sponsor_audit/audit_summary.json ]; then
+          if [ "${{ steps.audit.outcome }}" = "success" ]; then
             CH=$(jq -r '.n_match_changes' data/sponsor_audit/audit_summary.json)
             if [ "$CH" -gt 0 ]; then
               echo "::warning::$CH sponsor literal(s) changed attribution vs last week — review data/sponsor_audit/match_changes.csv"

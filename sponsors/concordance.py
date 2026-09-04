@@ -1,8 +1,8 @@
 """Generic parity harness: our adapter's index vs an AACT-derived index.
 
 Given two indexes built by sponsor_roles.build_index() from (a) our adapter
-frame and (b) an AACT fixture frame, restricted to the nct_ids both sides
-hold, compare the (nct_id, canonical, role) sets and report a three-way
+frame and (b) an AACT fixture frame, restricted to the nct_ids both source
+frames hold (pass pull_trials / fixture_trials), compare the (nct_id, canonical, role) sets and report a three-way
 split: agree / fixture_only / pull_only, with the literals driving each
 disagreement side and a cause hint per pair so registry edits can be told
 apart from adapter defects.
@@ -43,8 +43,19 @@ def _cause(row, other: pd.DataFrame) -> str:
 
 
 def concordance(pull_index: pd.DataFrame, fixture_index: pd.DataFrame,
-                top_n: int = 10) -> dict:
-    shared = set(pull_index.nct_id) & set(fixture_index.nct_id)
+                top_n: int = 10, pull_trials: set | None = None,
+                fixture_trials: set | None = None) -> dict:
+    """Compare two indexes on the trials both sides HOLD.
+
+    Pass `pull_trials` / `fixture_trials` (the nct_ids of the two source
+    frames) so the comparison is scoped by what each side saw, not by what
+    each side attributed: a trial the adapter lost entirely then shows up as
+    fixture_only instead of vanishing from the report. Without them the
+    index nct_ids are used (the older, weaker scoping).
+    """
+    p_trials = set(pull_trials) if pull_trials is not None else set(pull_index.nct_id)
+    f_trials = set(fixture_trials) if fixture_trials is not None else set(fixture_index.nct_id)
+    shared = p_trials & f_trials
     p = pull_index[pull_index.nct_id.isin(shared)].drop_duplicates(KEY + ["literal_name"])
     f = fixture_index[fixture_index.nct_id.isin(shared)].drop_duplicates(KEY + ["literal_name"])
     pp, fp = _pairs(p), _pairs(f)
@@ -54,7 +65,8 @@ def concordance(pull_index: pd.DataFrame, fixture_index: pd.DataFrame,
 
     def side(index_rows: pd.DataFrame, only: set, other: pd.DataFrame) -> dict:
         rows = index_rows[[tuple(x) in only for x in index_rows[KEY].itertuples(index=False, name=None)]]
-        causes = Counter(_cause(r, other) for r in rows.itertuples())
+        # one cause per (nct_id, canonical, role) pair, not per literal row
+        causes = Counter(_cause(r, other) for r in rows.drop_duplicates(KEY).itertuples())
         top = (rows.groupby("literal_name").nct_id.nunique()
                .sort_values(ascending=False).head(top_n))
         return {"n_pairs": len(only), "causes": dict(causes),

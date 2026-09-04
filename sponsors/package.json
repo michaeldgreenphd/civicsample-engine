@@ -1,0 +1,5 @@
+{
+  "type": "module",
+  "private": true,
+  "description": "company_filter.js is an ES module; this file says so explicitly instead of relying on Node's module auto-detection."
+}

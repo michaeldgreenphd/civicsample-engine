@@ -1,0 +1,5 @@
+# Test-only dependencies. CI installs this file instead of a bare `pip install
+# pytest` line in the workflow (ground rule 3: dependencies live in
+# requirements files). The runtime pipeline needs none of these.
+-r requirements.txt
+pytest>=8.0.0
