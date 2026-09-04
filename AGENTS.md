@@ -73,8 +73,9 @@ exists to surface.
 Related invariants worth checking in review: no substring matching in
 production attribution paths; the three review states (attributed,
 reviewed-excluded, unreviewed) are never collapsed; conflicting rules raise
-rather than resolve silently; and every rule carries a non-empty note saying
-who decided and why.
+rather than resolve silently; and every rule carries a non-empty note recording
+why it exists, which `load_rules` enforces. That note is free text holding
+rationale, not a named decider — do not flag a rule for omitting one.
 
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM
