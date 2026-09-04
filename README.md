@@ -71,7 +71,9 @@ Two more workflows exist for rare occasions, both harmless to ignore:
 another backfill is ever needed) and `geo-snapshot-watcher.yml` (monthly
 check that opens an advisory issue here when AACT publishes a newer
 geography snapshot than the one the site is pinned to — it never
-downloads data or touches anything).
+downloads data or touches anything). Acting on that issue happens in the
+site repo: it owns `scripts/geo/advance_run.py`, because every path that
+script writes is a site path.
 
 ## Where things live
 
@@ -84,7 +86,6 @@ downloads data or touches anything).
 | `scripts/utils/` | LLM cost logging and JSON repair, shared by the extraction streams |
 | `sponsors/` | The company-level sponsor filter: curated rules (schema — PR-gated), matching module, adapter, browser filter. See `sponsors/README.md` |
 | `data/sponsor_audit/` | The weekly curation inbox, the open backlog with ages, and the two change logs (literal-level and trial-level) with causes |
-| `scripts/geo/advance_run.py` | Deliberately-manual tool to advance the geography tab's pinned data run |
 | `condition_ontology.json` | The condition category tree. Canonical copy — edit it here; the weekly run publishes it to the site |
 | `data/` | Inputs: pilot PDF sets and review CSVs, tracked so CI can run pilots. Also the committed record of LLM extraction outputs. Weekly artifacts are *never* committed here (`.gitignore` enforces this) |
 | `.github/workflows/` | The schedules. `ci.yml` gates every push: everything must compile, the extractor harness must pass, and `pytest tests` must pass (sponsor rules, index, adapter parity against AACT, the 2026-06-19 fixture regression, the three-week audit loop, snapshot pruning) |
@@ -166,7 +167,8 @@ and when was it made":
   date-stamped names (cost logs use America/New_York wall-clock).
 - **The geography tab is pinned, not rolling.** `data/geo/active_run.json`
   in the site repo names the exact run the tab displays; it only advances
-  when a human runs `scripts/geo/advance_run.py` and merges the PR.
+  when a human runs that repo's `scripts/geo/advance_run.py` and merges the
+  PR.
 
 Two more conventions: all artifact timestamps are timezone-aware UTC, and
 every artifact records the git commit of the code that produced it —
