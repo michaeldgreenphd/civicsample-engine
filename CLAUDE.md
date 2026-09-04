@@ -14,10 +14,15 @@ which serves static files over GitHub Pages. A change to how the dashboard
 looks or behaves belongs there; a change to what the numbers *are* belongs
 here.
 
-* **Core stack:** Python 3.11 for the extraction pipelines, the sponsor
-  attribution layer, and the publishing scripts. Runtime dependencies are
+* **Core stack:** Python. The weekly pipeline, the sponsor attribution layer
+  and the publishing scripts target **3.11** — the version `ci.yml`,
+  `extract.yml` and `backfill-releases.yml` all pin, and therefore the
+  compatibility target for anything CI must run. Runtime dependencies are
   `requests`, `rapidfuzz`, `tqdm`, `numpy` and `pandas` (`requirements.txt`).
-  The LLM extraction stack has its own `scripts/extraction/requirements.txt`.
+* **The LLM extraction stack runs on 3.12**, pinned by
+  `run_extractions.yml`, with its own `scripts/extraction/requirements.txt`.
+  It is triggered by hand rather than on the weekly schedule. Code shared
+  between the two must hold on both versions.
 * **A small amount of JavaScript** ships from here as the browser-side sponsor
   filter module, tested with `node --test`. It is the only browser code in
   this repository and exists to keep one filtering rule identical on both
@@ -78,8 +83,10 @@ recorded as absence with a reason, never coerced to zero; the three sponsor
 review states (attributed, reviewed-excluded, unreviewed) are never
 collapsed; conflicting rules raise rather than resolve silently; no substring
 matching in production attribution paths; every rule carries a non-empty note
-saying who decided and why. A pull request that makes a failure quieter
-rather than rarer is the defect the mechanism exists to surface.
+recording why it exists, which `load_rules` enforces — that note is free text
+holding rationale, not a named decider, so do not flag a rule for omitting
+one. A pull request that makes a failure quieter rather than rarer is the
+defect the mechanism exists to surface.
 
 **Publishing and retention are data-loss surfaces.** A change to what the
 scheduled job writes into the site repo, or to `scripts/prune_snapshots.py`,
