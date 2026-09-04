@@ -59,12 +59,20 @@ nothing else holds a copy of. Treat retention and publish steps as data-loss
 surfaces.
 
 **The sponsor rules file is schema, not data.** `sponsors/company_aliases.csv`
-changes only by deliberate commit. A rules change re-baselines
-`tests/sponsors/expected_counts.json`, which is keyed by the rules' sha256:
-CI fails once, writes the new block, and expects it committed alongside the
-rules change so the moved counts are reviewed in the same diff. A pull request
-that changes the rules without that block, or that silences the failure, is
-the defect the mechanism exists to surface.
+changes only by deliberate commit, and the 2026-06-19 fixture is valid only
+for one exact version of it. `tests/sponsors/test_rules_loading.py` pins both
+the rule count and the file's sha256 against `FIXTURE_RULES_SHA256` in
+`tests/sponsors/conftest.py`, so any edit to the rules turns CI red until
+someone re-baselines the fixture and updates that constant in the same pull
+request. `tests/sponsors/test_fixture_regression.py` then holds the resulting
+per-company counts as literals, so moved numbers show up in the diff and get
+reviewed rather than absorbed. A pull request that changes the rules and
+loosens either guard instead of re-baselining is the defect the mechanism
+exists to surface.
+
+The open `sponsor-loop` pull request replaces this with a generated
+`tests/sponsors/expected_counts.json` block keyed by the same sha256; whoever
+merges it should update this section in that pull request.
 
 Related invariants worth checking in review: no substring matching in
 production attribution paths; the three review states (attributed,
@@ -88,10 +96,16 @@ as environment variables at run time.
 ## Running the checks
 
 ```bash
-pip install -r requirements-dev.txt   # includes requirements.txt
-python scripts/validate_fixes.py      # offline extractor harness
-python -m pytest tests -q             # the Python suite
-node --test tests/sponsors/*.test.mjs # the browser filter module
+pip install -r requirements.txt        # runtime deps
+pip install pytest                     # test runner, not a runtime dep
+python -m compileall -q src scripts    # everything compiles
+python scripts/validate_fixes.py       # offline extractor harness
+python -m pytest tests/sponsors -q     # the Python suite
+node --test tests/sponsors/*.test.mjs  # the browser filter module
 ```
 
-`ci.yml` gates every push on these.
+The LLM extraction stack has its own `scripts/extraction/requirements.txt` and
+is not needed for these checks.
+
+`.github/workflows/ci.yml` runs exactly these, in this order, on every push and
+pull request.
