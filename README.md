@@ -33,8 +33,11 @@ The weekly run (`extract.yml`, Sundays 06:00 UTC) does five things, in order:
    old snapshots so the site stays deployable.
 6. **Sponsor bridge** — attributes every trial's sponsors to canonical
    companies via the curated rules (`sponsors/`), publishes the bridge table
-   to the site in a second commit, and writes the curation inbox here. Runs
-   after step 5 so a rules problem can never delay the site's data.
+   and the audit files to the site in a second commit, and writes the
+   curation inbox here. Runs after step 5 so a rules problem can never delay
+   the site's data. The audit says *why* every label moved since last week
+   (a registry edit or a rules change) and how long each uncurated name has
+   been waiting.
 
 Every run ends with a summary table on its Actions page — trial count,
 change vs the previous week, artifact sizes, code commit — and emits a
@@ -82,10 +85,10 @@ script writes is a site path.
 | `scripts/extraction/prompts/` | The model instructions, as editable plain text — one file per stream |
 | `scripts/utils/` | LLM cost logging and JSON repair, shared by the extraction streams |
 | `sponsors/` | The company-level sponsor filter: curated rules (schema — PR-gated), matching module, adapter, browser filter. See `sponsors/README.md` |
-| `data/sponsor_audit/` | The weekly curation inbox for sponsor names no rule covers yet |
+| `data/sponsor_audit/` | The weekly curation inbox, the open backlog with ages, and the two change logs (literal-level and trial-level) with causes |
 | `condition_ontology.json` | The condition category tree. Canonical copy — edit it here; the weekly run publishes it to the site |
 | `data/` | Inputs: pilot PDF sets and review CSVs, tracked so CI can run pilots. Also the committed record of LLM extraction outputs. Weekly artifacts are *never* committed here (`.gitignore` enforces this) |
-| `.github/workflows/` | The schedules. `ci.yml` gates every push: everything must compile, the extractor harness must pass, and the sponsor tests (rules, index, adapter, 2026-06-19 fixture regression) must pass |
+| `.github/workflows/` | The schedules. `ci.yml` gates every push: everything must compile, the extractor harness must pass, and `pytest tests` must pass (sponsor rules, index, adapter parity against AACT, the 2026-06-19 fixture regression, the three-week audit loop, snapshot pruning) |
 
 Every script states at the top of its file what it reads, what it writes,
 and what invokes it. If you're unsure whether something is safe to run,
@@ -127,8 +130,11 @@ dropdown. Until that lands, `anthropic` is the only live provider.
 pip install -r requirements.txt                       # weekly pipeline
 pip install -r scripts/extraction/requirements.txt    # + LLM streams
 
+pip install -r requirements-dev.txt  # + pytest, for the test suite
+
 python scripts/validate_fixes.py    # the extractor test harness (no network)
-python -m pytest tests/sponsors -q   # sponsor filter tests (needs pip install pytest)
+python -m pytest tests -q           # the Python test suite
+node --test tests/sponsors/*.test.mjs   # the browser filter module
 python -m src.extract_all --output data/demographics.json --results-after 2009-01-01
 python scripts/split_data.py
 ```

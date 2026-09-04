@@ -10,21 +10,26 @@ const universeSize = Number(process.argv[3] || 80000);
 
 const t0 = performance.now();
 const text = gunzipSync(readFileSync(path)).toString('utf8');
-const lines = text.split('\n').filter(Boolean);
-const header = lines[0].split(',');
-// Minimal CSV parse sufficient for the bridge (quoted fields may contain commas).
-function parseLine(line) {
-  const out = []; let cur = ''; let q = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
-    else if (ch === '"') q = true;
-    else if (ch === ',') { out.push(cur); cur = ''; }
-    else cur += ch;
+// Full CSV parse over the WHOLE text: a quoted field may contain commas and
+// newlines alike, so rows cannot be found by splitting on '\n' first.
+function parseCsv(src) {
+  const rows = []; let row = []; let cur = ''; let q = false;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (q) {
+      if (ch === '"') { if (src[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cur); cur = ''; }
+    else if (ch === '\n') { row.push(cur); cur = ''; rows.push(row); row = []; }
+    else if (ch !== '\r') cur += ch;
   }
-  out.push(cur); return out;
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.length > 1 || r[0] !== '');
 }
-const rows = lines.slice(1).map(l => Object.fromEntries(parseLine(l).map((v, i) => [header[i], v])));
+const parsed = parseCsv(text);
+const header = parsed[0];
+const rows = parsed.slice(1).map(r => Object.fromEntries(r.map((v, i) => [header[i], v])));
 const t1 = performance.now();
 
 // Simulated dashboard universe: every loaded record's nct_id.

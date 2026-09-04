@@ -4,10 +4,11 @@
     reviewed_excluded  a status=exclude rule matched it: a human said "not ours"
     unreviewed         no rule of either kind touches it
 
-The three sets partition the universe of literals present in a pull. This
-module computes the partition once so the weekly audit, the tests, and any
-future consumer agree on it; sponsor_roles.audit() is the per-company /
-per-stem view of the same states.
+The three sets partition the universe of literals present in a pull. Every
+state here is decided by sponsor_roles.match_literals — the same call that
+builds the bridge — never read back off the bridge, whose per-trial dedupe
+can drop a literal that shares a (canonical, entity, role) with another.
+sponsor_roles.audit() is the per-company / per-stem view of the same states.
 """
 from __future__ import annotations
 
@@ -15,32 +16,41 @@ import pandas as pd
 
 from . import sponsor_roles as sr
 
-
-def literal_universe(frame: pd.DataFrame) -> pd.DataFrame:
-    """Distinct literal names with the normalized forms rules match on."""
-    uniq = pd.DataFrame({"name": frame["name"].dropna().unique()})
-    uniq["norm"] = uniq["name"].map(sr.normalize)
-    uniq["parent_norm"] = uniq["name"].map(sr.parsed_parent)
-    return uniq
+literal_universe = sr.literal_universe
 
 
-def partition(frame: pd.DataFrame, rules: pd.DataFrame, index: pd.DataFrame | None = None) -> dict:
+def rule_matches(frame: pd.DataFrame, rules: pd.DataFrame) -> pd.DataFrame:
+    """The literal-level attribution decision for this frame: one row per
+    (name, canonical) with match_rule and shared. Raises on rule conflicts."""
+    return sr.match_literals(literal_universe(frame), rules)
+
+
+def canonicals_by_literal(matches: pd.DataFrame, name_col: str = "name") -> pd.DataFrame:
+    """Collapse (name, canonical, shared) rows to one row per literal:
+    canonicals ('|'-joined, sorted) and shared (yes if any claim is shared).
+    Works on match_literals output (name) and on a bridge (literal_name)."""
+    if matches is None or matches.empty:
+        return pd.DataFrame(columns=[name_col, "canonicals", "shared"]).set_index(name_col)
+    return matches.groupby(name_col).agg(
+        canonicals=("canonical", lambda c: "|".join(sorted(set(c)))),
+        shared=("shared", lambda s: "yes" if (s == "yes").any() else "no"))
+
+
+def partition(frame: pd.DataFrame, rules: pd.DataFrame) -> dict:
     """Return {'attributed', 'reviewed_excluded', 'unreviewed'}: disjoint sets
     of literal names whose union is every literal in `frame`.
 
-    `index` may be passed to avoid rebuilding it; otherwise build_index runs
-    (and raises on rule conflicts, as it must).
+    match_literals raises on an attribute/exclude overlap, so the disjointness
+    check below is a second line of defence, not the first.
     """
-    if index is None:
-        index = sr.build_index(frame, rules)
     uniq = literal_universe(frame)
     universe = set(uniq["name"])
-    attributed = set(index["literal_name"]) & universe
+    matched = sr.match_literals(uniq, rules)
+    attributed = set(matched["name"]) & universe
     excluded: set = set()
     for _, r in rules[rules.status == "exclude"].iterrows():
         excluded.update(sr._rule_hits(uniq, r))
     excluded &= universe
-    # A literal both attributed and excluded would be a rules bug: surface it.
     both = attributed & excluded
     if both:
         raise ValueError(

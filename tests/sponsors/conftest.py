@@ -11,10 +11,14 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from sponsors import sponsor_roles as sr  # noqa: E402
 
 RULES_PATH = os.path.join(ROOT, "sponsors", "company_aliases.csv")
-FIXTURE_PATH = os.path.join(ROOT, "tests", "sponsors", "fixtures", "sponsors_fixture_20260619.csv.gz")
+FIXTURE_PATH = os.path.join(ROOT, "tests", "sponsors", "fixtures", "sponsors_fixture_20260619_industry.csv.gz")
+# Integrity of the fixture file itself (233,272 rows: every 2026-06-19 sponsor row with
+# agency_class in INDUSTRY/UNKNOWN/AMBIG/null, plus every row attributed under the rules)
+FIXTURE_SHA256 = "a7a1e7afe42e99d7e55d14806c6f9fff561b0ae4b5150937a324608e431dcfde"
 ACQ_PATH = os.path.join(ROOT, "sponsors", "acquisitions.csv")
-# The fixture is valid only for this exact rules file (README caveat a).
-FIXTURE_RULES_SHA256 = "3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c"
+# Stored records (our extractor's shape) for 300 trials whose AACT fixture rows were
+# unchanged at the 2026-08-30 pull: the adapter parity sample (test_adapter.py).
+RECORDS_SAMPLE_PATH = os.path.join(ROOT, "tests", "sponsors", "fixtures", "records_sample_20260830.json.gz")
 
 
 def frame(rows):
@@ -33,4 +37,4 @@ def shipped_rules():
 
 @pytest.fixture(scope="session")
 def fixture_frame():
-    return pd.read_csv(FIXTURE_PATH, sep="|", dtype=str)
+    return pd.read_csv(FIXTURE_PATH, sep="|", dtype=str, keep_default_na=False)

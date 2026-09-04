@@ -2,7 +2,7 @@
 """Per-trial concordance of our adapter vs the AACT 2026-06-19 fixture (A1).
 
 READS   the weekly pull (or parts), sponsors/company_aliases.csv,
-        tests/sponsors/fixtures/sponsors_fixture_20260619.csv.gz
+        tests/sponsors/fixtures/sponsors_fixture_20260619_industry.csv.gz
 WRITES  a report to stdout and --out JSON; disagreement rows to --out-dir
 Run from the repo root. Not part of the weekly job; run for reviews.
 """
@@ -22,7 +22,7 @@ from sponsors import sponsor_roles as sr  # noqa: E402
 from sponsors.adapter import records_to_frame  # noqa: E402
 from sponsors.concordance import cohort_count_table, concordance  # noqa: E402
 
-FIXTURE = "tests/sponsors/fixtures/sponsors_fixture_20260619.csv.gz"
+FIXTURE = "tests/sponsors/fixtures/sponsors_fixture_20260619_industry.csv.gz"
 COMPANIES = ["Pfizer", "Merck & Co", "Merck KGaA", "Bristol-Myers Squibb"]
 
 
@@ -40,11 +40,14 @@ def main() -> int:
     rules = sr.load_rules(a.rules)
     pull_index = sr.build_index(pull_frame, rules)
 
-    fixture = pd.read_csv(a.fixture, sep="|", dtype=str)
+    fixture = pd.read_csv(a.fixture, sep="|", dtype=str, keep_default_na=False)
     fixture_index = sr.build_index(fixture, rules)
 
-    c = concordance(pull_index, fixture_index)
-    shared = set(pull_index.nct_id) & set(fixture_index.nct_id)
+    # Scope by the trials each SOURCE holds, so a trial the adapter dropped
+    # entirely is reported (fixture_only) rather than silently skipped.
+    pull_trials, fixture_trials = set(pull_frame.nct_id), set(fixture.nct_id)
+    c = concordance(pull_index, fixture_index, pull_trials=pull_trials, fixture_trials=fixture_trials)
+    shared = pull_trials & fixture_trials
     table_pull = cohort_count_table(pull_index[pull_index.nct_id.isin(shared)], COMPANIES)
     table_fix = cohort_count_table(fixture_index[fixture_index.nct_id.isin(shared)], COMPANIES)
     table_full = cohort_count_table(pull_index, COMPANIES)

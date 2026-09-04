@@ -1,6 +1,6 @@
 import pandas as pd
 
-from conftest import frame
+from conftest import FIXTURE_PATH, RECORDS_SAMPLE_PATH, frame
 from sponsors import sponsor_roles as sr
 from sponsors.adapter import (AACT_LOADER_COMMIT, UNKNOWN_LEAD_LITERAL,
                               record_rows, records_to_frame)
@@ -45,7 +45,13 @@ def test_records_to_frame_policy_counts_each_defect_separately():
     assert (f.name == "").sum() == 1
     assert (f.agency_class == "WEIRD_CLASS").sum() == 1
     assert list(f.columns) == ["nct_id", "agency_class", "lead_or_collaborator", "name"]
-    assert len(log.lines()) == 5
+    # A5: each defect class on its own line, with its own count
+    lines = log.lines()
+    assert len(lines) == 5
+    assert any('"Unknown"' in ln and ln.endswith(": 1") for ln in lines)
+    assert any(ln.startswith("lead names empty") and ln.endswith(": 1") for ln in lines)
+    assert any(ln.startswith("collaborator rows dropped") and ln.endswith(": 1") for ln in lines)
+    assert any("outside AACT vocabulary" in ln and "Unknown=1" in ln and "WEIRD_CLASS=1" in ln for ln in lines)
 
 
 def test_parity_with_hand_built_aact_frame():
@@ -55,6 +61,44 @@ def test_parity_with_hand_built_aact_frame():
     expected = frame(aact_rows("NCT1", "Pfizer Inc.", "INDUSTRY", [("Wyeth", "INDUSTRY")])
                      + aact_rows("NCT2", "Merck KGaA", "INDUSTRY", []))
     pd.testing.assert_frame_equal(f.reset_index(drop=True), expected)
+
+
+def test_parity_with_aact_loader_output_on_the_fixture():
+    """C1: the adapter reproduces app/models/sponsor.rb. The sample holds
+    stored records (our extractor's shape) for trials whose rows in the AACT
+    2026-06-19 fixture were unchanged at the 2026-08-30 pull; the adapter
+    must emit exactly the fixture's rows for them."""
+    import gzip
+    import json
+
+    with gzip.open(RECORDS_SAMPLE_PATH, "rt") as fh:
+        sample = json.load(fh)
+    fixture = pd.read_csv(FIXTURE_PATH, sep="|", dtype=str, keep_default_na=False)
+    ncts = {r["nct_id"] for r in sample["records"]}
+    assert len(ncts) == sample["n"] >= 250
+    ours, log = records_to_frame(sample["records"])
+    theirs = fixture[fixture.nct_id.isin(ncts)]
+    cols = ["nct_id", "agency_class", "lead_or_collaborator", "name"]
+    a = ours[cols].sort_values(cols).reset_index(drop=True)
+    b = theirs[cols].sort_values(cols).reset_index(drop=True)
+    pd.testing.assert_frame_equal(a, b)
+    assert log.n_rows_emitted == len(theirs)
+    # the sample exercises collaborators, not just lead rows
+    assert (b.lead_or_collaborator == "collaborator").sum() >= 100
+
+
+def test_concordance_scopes_by_source_trials_so_a_lost_trial_is_reported():
+    rules = pd.DataFrame([("Pfizer", "exact_literal", "Pfizer", "attribute", "no", NOTE)],
+                         columns=["canonical", "rule_type", "pattern", "status", "shared", "note"]).astype(str)
+    pull = frame([("NCT1", "INDUSTRY", "lead", "Pfizer")])
+    fix = frame([("NCT1", "INDUSTRY", "lead", "Pfizer"),
+                 ("NCT2", "INDUSTRY", "lead", "Pfizer")])          # NCT2 lost by the adapter entirely
+    pi, fi = sr.build_index(pull, rules), sr.build_index(fix, rules)
+    weak = concordance(pi, fi)                                     # index-scoped: NCT2 invisible
+    assert weak["n_shared_trials"] == 1 and weak["fixture_only"]["n_pairs"] == 0
+    strong = concordance(pi, fi, pull_trials={"NCT1", "NCT2"}, fixture_trials=set(fix.nct_id))
+    assert strong["n_shared_trials"] == 2 and strong["fixture_only"]["n_pairs"] == 1
+    assert strong["fixture_only"]["causes"] == {"literal_absent": 1}
 
 
 def test_concordance_three_way_split_and_cause_hints():

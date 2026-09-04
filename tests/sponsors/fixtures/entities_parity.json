@@ -1,0 +1,21 @@
+{
+  "note": "Cross-language parity for entities(): sponsor_roles.entities() (Python) and company_filter.js entitiesFor() must return this exact list, in this order, for these bridge rows. Ties on n_trials break by entity name ascending.",
+  "columns": ["nct_id", "canonical", "entity", "role", "literal_name", "agency_class", "match_rule", "shared"],
+  "rows": [
+    ["NCT1", "Pfizer", "pfizer", "lead", "Pfizer", "INDUSTRY", "exact_normalized", "no"],
+    ["NCT1", "Pfizer", "wyeth", "collaborator", "Wyeth is now a wholly owned subsidiary of Pfizer", "INDUSTRY", "subsidiary_of", "no"],
+    ["NCT2", "Pfizer", "wyeth", "lead", "Wyeth", "INDUSTRY", "exact_literal", "no"],
+    ["NCT3", "Pfizer", "aaa co", "lead", "AAA Co", "INDUSTRY", "exact_literal", "no"],
+    ["NCT4", "Pfizer", "zzz co", "lead", "ZZZ Co", "INDUSTRY", "exact_literal", "no"],
+    ["NCT5", "Pfizer", "aaa co", "collaborator", "AAA Co", "INDUSTRY", "exact_literal", "no"],
+    ["NCT5", "Pfizer", "zzz co", "collaborator", "ZZZ Co", "INDUSTRY", "exact_literal", "no"],
+    ["NCT6", "Merck KGaA", "merck kgaa", "collaborator", "Merck KGaA", "INDUSTRY", "exact_literal", "no"]
+  ],
+  "canonical": "Pfizer",
+  "expected": [
+    {"entity": "aaa co", "n_trials": 2, "n_lead": 1, "n_collab": 1},
+    {"entity": "wyeth", "n_trials": 2, "n_lead": 1, "n_collab": 1},
+    {"entity": "zzz co", "n_trials": 2, "n_lead": 1, "n_collab": 1},
+    {"entity": "pfizer", "n_trials": 1, "n_lead": 1, "n_collab": 0}
+  ]
+}
