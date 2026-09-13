@@ -1,31 +1,31 @@
 {
-  "audited_at": "2026-09-06T10:54:34.785480+00:00",
-  "snapshot_date": "2026-09-06",
-  "pipeline_commit": "5872104de08f8317ff430b2dd45f897dab96bcb5",
-  "source_extracted_at": "2026-09-06T10:50:30.897075+00:00",
+  "audited_at": "2026-09-13T11:45:07.582660+00:00",
+  "snapshot_date": "2026-09-13",
+  "pipeline_commit": "5eedc7ae815d1ed351b63438e837baddb9efb347",
+  "source_extracted_at": "2026-09-13T11:40:32.449348+00:00",
   "rules_sha256": "3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c",
   "rules_changed_vs_prior": false,
-  "n_literals": 15666,
+  "n_literals": 15672,
   "n_attributed": 139,
   "n_reviewed_excluded": 1,
-  "n_unreviewed": 15526,
+  "n_unreviewed": 15532,
   "n_blank_literal_trials": 0,
-  "inbox_size": 19,
+  "inbox_size": 7,
   "inbox_top": {
-    "name": "University of Western Sydney",
-    "n_trials": 2,
-    "roles": "lead",
-    "agency_class": "OTHER"
+    "name": "Ovid Therapeutics Inc.",
+    "n_trials": 4,
+    "roles": "collaborator,lead",
+    "agency_class": "UNKNOWN"
   },
-  "inbox_open_count": 15526,
-  "inbox_open_industry_count": 5166,
+  "inbox_open_count": 15532,
+  "inbox_open_industry_count": 5170,
   "inbox_open_oldest": {
     "name": "National Cancer Institute (NCI)",
-    "n_trials": 4479,
+    "n_trials": 4483,
     "roles": "collaborator,lead",
     "agency_class": "NIH",
     "first_seen": "2026-08-30",
-    "weeks_open": 1
+    "weeks_open": 2
   },
   "inbox_open_oldest_industry": {
     "name": "Medtronic",
@@ -33,15 +33,17 @@
     "roles": "collaborator,lead",
     "agency_class": "INDUSTRY",
     "first_seen": "2026-08-30",
-    "weeks_open": 1
+    "weeks_open": 2
   },
   "n_match_changes": 0,
   "match_change_causes": {},
-  "n_label_changes": 0,
-  "label_change_causes": {},
+  "n_label_changes": 9,
+  "label_change_causes": {
+    "registry_edit": 9
+  },
   "had_prior": {
-    "bridge": false,
-    "meta": false,
+    "bridge": true,
+    "meta": true,
     "literals": true,
     "open": true,
     "trials": true
