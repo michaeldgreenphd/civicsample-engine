@@ -39,7 +39,28 @@ from src import sex_gender_parser as sgp  # noqa: E402
 from src import sex_gender_table as sgt  # noqa: E402
 from src.utils import pipeline_commit  # noqa: E402
 
-INVENTORY_COLUMNS = ["level", "label", "bucket", "reason", "n_occurrences", "n_trials", "example_nct"]
+INVENTORY_COLUMNS = ["level", "label", "bucket", "reason", "consequential", "n_occurrences", "n_trials", "example_nct"]
+INBOX_COLUMNS = INVENTORY_COLUMNS + ["first_seen", "weeks_open", "resolved"]
+
+
+def count_positions(measure: dict) -> set:
+    """The (level, label) pairs the parser READS FOR COUNTS in one measure, taken
+    from the layout the parser itself chose for it (sex_gender_parser.parse_measure):
+    customized layout -> the class titles; standard layout -> the category titles
+    of the first class. Every other title is a container the parser never
+    counts from. No regex is re-implemented here."""
+    pm = sgp.parse_measure(measure)
+    out = set()
+    classes = [cl for cl in (measure.get("classes") or []) if isinstance(cl, dict)]
+    if pm.layout == "customized":
+        for cl in classes:
+            if cl.get("title") is not None:
+                out.add(("class", str(cl["title"])))
+    elif classes:
+        for cat in (classes[0].get("categories") or []):
+            if isinstance(cat, dict) and cat.get("title") is not None:
+                out.add(("category", str(cat["title"])))
+    return out
 
 
 def read_csv_if(path: str | None) -> pd.DataFrame | None:
@@ -61,6 +82,7 @@ def inventory_from_raw(path: str) -> pd.DataFrame:
     occ: dict = defaultdict(int)
     trials: dict = defaultdict(set)
     example: dict = {}
+    consequential: set = set()
     with gzip.open(path, "rt") as fh:
         for line in fh:
             line = line.strip()
@@ -72,6 +94,7 @@ def inventory_from_raw(path: str) -> pd.DataFrame:
                 continue
             nct = raw.get("nct_id")
             for m in raw.get("measures") or []:
+                consequential |= count_positions(m)
                 for cl in (m.get("classes") or []):
                     if not isinstance(cl, dict):
                         continue
@@ -83,6 +106,7 @@ def inventory_from_raw(path: str) -> pd.DataFrame:
                             k = ("category", str(cat["title"]))
                             occ[k] += 1; trials[k].add(nct); example.setdefault(k, nct)
     rows = [{"level": lv, "label": lb, "bucket": sgp.canon_bucket(lb), "reason": sgp.canon_unmapped_reason(lb),
+             "consequential": (lv, lb) in consequential,
              "n_occurrences": occ[(lv, lb)], "n_trials": len(trials[(lv, lb)]), "example_nct": example[(lv, lb)]}
             for (lv, lb) in occ]
     return pd.DataFrame(rows, columns=INVENTORY_COLUMNS)
@@ -104,7 +128,10 @@ def inventory_from_table(df: pd.DataFrame) -> pd.DataFrame:
                 if lb:
                     k = ("table", lb)
                     occ[k] += 1; trials[k].add(nct); example.setdefault(k, nct)
+    # Without the raw measures the layout is unknown, so consequential is left
+    # blank rather than guessed.
     rows = [{"level": lv, "label": lb, "bucket": sgp.canon_bucket(lb), "reason": sgp.canon_unmapped_reason(lb),
+             "consequential": None,
              "n_occurrences": occ[(lv, lb)], "n_trials": len(trials[(lv, lb)]), "example_nct": example[(lv, lb)]}
             for (lv, lb) in occ]
     return pd.DataFrame(rows, columns=INVENTORY_COLUMNS)
@@ -156,14 +183,29 @@ def main() -> int:
         inv_source = a.table + " (label trails; no raw measures retained)"
     inv = inv.sort_values(["n_trials", "label"], ascending=[False, True]).reset_index(drop=True)
 
-    # ── Inbox: unrecognized labels, cumulative first_seen ──
+    # ── Inbox: unrecognized labels, cumulative first_seen, curator's resolved ──
+    # first_seen persists week to week. `resolved` is filled by hand in the
+    # committed inbox_unrecognized.csv (any non-empty text: what was decided);
+    # a resolved label leaves the inbox on the next run and is logged in
+    # inbox_exits.csv with the curator's note. It stays in label_buckets.csv.
     first_seen: dict = {}
+    prior_resolved: dict = {}
     if prior_inbox is not None and {"level", "label", "first_seen"} <= set(prior_inbox.columns):
         first_seen = {(lv, lb): fs for lv, lb, fs in zip(prior_inbox["level"], prior_inbox["label"], prior_inbox["first_seen"])}
-    inbox = inv[inv["reason"] == "unrecognized"].copy()
-    inbox["first_seen"] = [first_seen.get((lv, lb), snapshot_date) for lv, lb in zip(inbox["level"], inbox["label"])]
-    inbox["weeks_open"] = inbox["first_seen"].map(lambda d: (snap - date.fromisoformat(d)).days // 7)
-    inbox = inbox.sort_values(["n_trials", "label"], ascending=[False, True]).reset_index(drop=True)
+        if "resolved" in prior_inbox.columns:
+            prior_resolved = {(lv, lb): note for lv, lb, note in
+                              zip(prior_inbox["level"], prior_inbox["label"], prior_inbox["resolved"]) if str(note).strip()}
+    unrec = inv[inv["reason"] == "unrecognized"].copy()
+    unrec["first_seen"] = [first_seen.get((lv, lb), snapshot_date) for lv, lb in zip(unrec["level"], unrec["label"])]
+    unrec["weeks_open"] = unrec["first_seen"].map(lambda d: (snap - date.fromisoformat(d)).days // 7)
+    unrec["resolved"] = ""
+    is_resolved = [((lv, lb) in prior_resolved) for lv, lb in zip(unrec["level"], unrec["label"])]
+    resolved_now = unrec[is_resolved]
+    inbox = unrec[[not x for x in is_resolved]]
+    # Review order: labels the parser actually reads for counts first, then by
+    # how many trials carry them.
+    inbox = inbox.sort_values(["consequential", "n_trials", "label"], ascending=[False, False, True]).reset_index(drop=True)
+    inbox = inbox[INBOX_COLUMNS]
 
     # ── Exits: every prior inbox label that is not in this week's inbox, with cause ──
     exits = []
@@ -174,15 +216,19 @@ def main() -> int:
             k = (r["level"], r["label"])
             if k in now_inbox:
                 continue
-            if k in now_inv:
+            if k in prior_resolved:
+                cause, after = "resolved_by_curator", now_inv.get(k)
+            elif k in now_inv:
                 cause = ("mapped_by_rules_change" if rules_changed else
                          ("mapped_unknown_cause" if now_inv[k] else "reason_changed"))
                 after = now_inv[k]
             else:
                 cause, after = "no_longer_in_registry", None
             exits.append({"level": r["level"], "label": r["label"], "prior_n_trials": r.get("n_trials"),
-                          "bucket_after": after, "cause": cause, "first_seen": r.get("first_seen")})
-    exits_df = pd.DataFrame(exits, columns=["level", "label", "prior_n_trials", "bucket_after", "cause", "first_seen"])
+                          "bucket_after": after, "cause": cause, "first_seen": r.get("first_seen"),
+                          "resolved": prior_resolved.get(k, "")})
+    exits_df = pd.DataFrame(exits, columns=["level", "label", "prior_n_trials", "bucket_after", "cause", "first_seen", "resolved"])
+    n_consequential = int(inbox["consequential"].fillna(False).astype(bool).sum()) if len(inbox) else 0
 
     # ── Bucket changes vs last week, with cause ──
     changes = []
@@ -235,7 +281,9 @@ def main() -> int:
         "n_labels": int(len(inv)),
         "n_labels_by_reason": inv["reason"].value_counts().to_dict(),
         "inbox_size": int(len(inbox)),
+        "inbox_consequential": n_consequential,
         "inbox_new_this_week": int((inbox["first_seen"] == snapshot_date).sum()) if len(inbox) else 0,
+        "resolved_this_week": int(len(resolved_now)),
         "inbox_top": (inbox.iloc[0].to_dict() if len(inbox) else None),
         "inbox_oldest": (inbox.sort_values(["weeks_open", "n_trials"], ascending=[False, False]).iloc[0].to_dict()
                          if len(inbox) else None),

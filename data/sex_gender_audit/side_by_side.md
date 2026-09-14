@@ -1,6 +1,6 @@
 # Sex/gender side-by-side on one pull
 
-Pull extracted 2026-09-14T18:52:57.193120+00:00; snapshot 2026-09-14; 80,056 trials with results; parser rules `parsers.R@2026-08-17 / outcomes@2026-09-10` (module 1.0.0); pipeline commit `04f58424fd98253cded2f205e96265ca5d13cd74`.
+Pull extracted 2026-09-14T18:52:57.193120+00:00; snapshot 2026-09-14; 80,056 trials with results; parser rules `parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14` (module 1.1.0); pipeline commit `3fc24425e1a371aed141223a9160d1deac8028bc`.
 
 ## A. Reported gender
 
@@ -50,12 +50,12 @@ Old sex.reported by new status:
 
 | Line | Old engine (sex.reported trials) | New parser (reported_sex AND is_participant_count) |
 |---|---|---|
-| Trials in the total | 77,906 | 79,133 |
-| Female | 55,582,100 | 51,777,537 |
-| Male | 48,540,358 | 45,071,262 |
-| Explicit Unknown (categories mapped to unknown) | 460,666 | 259,439 |
+| Trials in the total | 77,906 | 79,107 |
+| Female | 55,582,100 | 51,775,993 |
+| Male | 48,540,358 | 45,070,116 |
+| Explicit Unknown (categories mapped to unknown) | 460,666 | 259,436 |
 | Inferred remainder (old: added to Unknown by balancing) | 3,285,606 | 0 (none; see next line) |
-| Unknown as displayed by the old tile | 3,746,272 | 259,439 |
+| Unknown as displayed by the old tile | 3,746,272 | 259,436 |
 | enrollment_minus_parsed, summed over reported rows (stored, shown nowhere as unknown) | | 22,719,864 (positive gaps only: 26,068,818) |
 | Gender diverse | | 20,220 |
 | Cis/trans-qualified | | 2,722 |
@@ -64,15 +64,15 @@ Share of the old Unknown tile that was the inferred remainder: **87.7%** (the ti
 
 ## D. Rows removed from composition by is_participant_count
 
-Reported-sex rows the vendored parser flags is_participant_count = False: **86** trials, 802,622 female / 665,128 male units.
+Reported-sex rows the vendored parser flags is_participant_count = False: **112** trials, 804,167 female / 666,274 male units.
 
 All reported-sex rows by the units class of the count-driving measure (diagnostic; the flagged column is what the vendored parser version excludes):
 
 | Units class | Trials | Female units | Male units | Flagged by parser |
 |---|---|---|---|---|
 | count_of_units | 86 | 802,622 | 665,128 | 86 |
-| mean_or_median | 7 | 379 | 269 | 0 |
-| percent_like | 19 | 1,165 | 876 | 0 |
+| mean_or_median | 7 | 379 | 269 | 7 |
+| percent_like | 19 | 1,165 | 876 | 19 |
 | participant_count_like | 79,107 | 51,775,993 | 45,070,116 | 0 |
 
 Industry tab Sex-tier cohort (old rule: interventional, not terminated, PCD >= 2009, attributed industry company, both legacy counts > 0): **27,524** trials.
@@ -80,8 +80,8 @@ Industry tab Sex-tier cohort (old rule: interventional, not terminated, PCD >= 2
 | Units class | Cohort trials | Female (old totals) | Male (old totals) | Flagged by parser |
 |---|---|---|---|---|
 | count_of_units | 17 | 1,121 | 1,123 | 17 |
-| mean_or_median | 2 | 182,144 | 114,873 | 0 |
-| percent_like | 4 | 451 | 311 | 0 |
+| mean_or_median | 2 | 182,144 | 114,873 | 2 |
+| percent_like | 4 | 451 | 311 | 4 |
 | participant_count_like | 27,501 | 7,151,042 | 7,242,302 | 0 |
 
 ## E. Percent female by results-posted year
@@ -89,20 +89,20 @@ Industry tab Sex-tier cohort (old rule: interventional, not terminated, PCD >= 2
 | Year | Old (mean f/(f+m+u), unknown incl. inferred) | n | New (a) mean of within-trial f/(f+m) | New (b) participant-weighted | n |
 |---|---|---|---|---|---|
 | 2009 | 48.4 | 1,067 | 48.7 | 55.7 | 1,096 |
-| 2010 | 50.7 | 1,556 | 50.9 | 51.6 | 1,615 |
+| 2010 | 50.7 | 1,556 | 50.9 | 51.6 | 1,612 |
 | 2011 | 50.0 | 2,144 | 50.2 | 54.0 | 2,194 |
-| 2012 | 50.7 | 2,713 | 50.8 | 46.5 | 2,789 |
-| 2013 | 51.1 | 2,975 | 51.0 | 78.4 | 3,076 |
-| 2014 | 48.3 | 4,645 | 48.4 | 55.9 | 4,786 |
+| 2012 | 50.7 | 2,713 | 50.8 | 46.5 | 2,787 |
+| 2013 | 51.1 | 2,975 | 51.0 | 78.4 | 3,075 |
+| 2014 | 48.3 | 4,645 | 48.4 | 55.9 | 4,785 |
 | 2015 | 47.8 | 3,663 | 48.0 | 44.8 | 3,773 |
-| 2016 | 48.5 | 3,828 | 48.7 | 49.0 | 4,146 |
-| 2017 | 49.7 | 5,363 | 49.7 | 51.5 | 5,758 |
-| 2018 | 50.3 | 4,609 | 50.5 | 45.0 | 4,601 |
-| 2019 | 49.1 | 6,434 | 49.3 | 49.3 | 6,419 |
-| 2020 | 50.7 | 5,960 | 50.9 | 56.7 | 5,953 |
-| 2021 | 49.2 | 5,740 | 49.4 | 51.9 | 5,728 |
+| 2016 | 48.5 | 3,828 | 48.6 | 49.0 | 4,144 |
+| 2017 | 49.7 | 5,363 | 49.7 | 51.5 | 5,754 |
+| 2018 | 50.3 | 4,609 | 50.5 | 45.0 | 4,600 |
+| 2019 | 49.1 | 6,434 | 49.3 | 49.3 | 6,417 |
+| 2020 | 50.7 | 5,960 | 50.9 | 56.7 | 5,951 |
+| 2021 | 49.2 | 5,740 | 49.4 | 51.9 | 5,726 |
 | 2022 | 51.0 | 3,978 | 51.1 | 55.1 | 3,979 |
 | 2023 | 52.3 | 5,006 | 52.5 | 55.4 | 4,996 |
 | 2024 | 50.8 | 6,730 | 51.0 | 52.0 | 6,715 |
-| 2025 | 51.6 | 7,208 | 52.0 | 54.2 | 7,214 |
-| 2026 | 51.8 | 4,287 | 52.3 | 54.9 | 4,295 |
+| 2025 | 51.6 | 7,208 | 52.0 | 54.2 | 7,211 |
+| 2026 | 51.8 | 4,287 | 52.3 | 54.9 | 4,292 |

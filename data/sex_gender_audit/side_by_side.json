@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-09-14T18:56:03.660879+00:00",
-  "pipeline_commit": "04f58424fd98253cded2f205e96265ca5d13cd74",
+  "generated_at": "2026-09-14T19:53:12.709063+00:00",
+  "pipeline_commit": "3fc24425e1a371aed141223a9160d1deac8028bc",
   "source_extracted_at": "2026-09-14T18:52:57.193120+00:00",
   "snapshot_date": "2026-09-14",
-  "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10",
-  "parser_module_version": "1.0.0",
+  "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14",
+  "parser_module_version": "1.1.0",
   "n_trials": 80056,
   "reported_gender": {
     "old": 1676,
@@ -61,11 +61,11 @@
       "unknown_inferred": 3285606.0,
       "unknown_total_as_displayed": 3746272.0
     },
-    "new_denominator_trials": 79133,
+    "new_denominator_trials": 79107,
     "new": {
-      "female": 51777537.26,
-      "male": 45071262.21,
-      "explicit_unknown": 259438.53,
+      "female": 51775992.7,
+      "male": 45070116.3,
+      "explicit_unknown": 259436.0,
       "gender_diverse": 20220.0,
       "ambiguous": 2722.0
     },
@@ -74,9 +74,9 @@
   },
   "sex_unknown_inferred_share_pct": 87.70334882250941,
   "removed_by_is_participant_count": {
-    "trials": 86,
-    "female": 802622.0,
-    "male": 665128.0,
+    "trials": 112,
+    "female": 804166.56,
+    "male": 666273.91,
     "by_unit_class_all_reported_sex": {
       "participant_count_like": {
         "trials": 79107,
@@ -88,7 +88,7 @@
         "trials": 19,
         "female": 1165.3,
         "male": 876.4999999999999,
-        "flagged_by_parser": 0
+        "flagged_by_parser": 19
       },
       "count_of_units": {
         "trials": 86,
@@ -100,7 +100,7 @@
         "trials": 7,
         "female": 379.26,
         "male": 269.40999999999997,
-        "flagged_by_parser": 0
+        "flagged_by_parser": 7
       }
     }
   },
@@ -123,13 +123,13 @@
         "trials": 4,
         "female_old": 451.0,
         "male_old": 311.0,
-        "flagged_by_parser": 0
+        "flagged_by_parser": 4
       },
       "mean_or_median": {
         "trials": 2,
         "female_old": 182144.0,
         "male_old": 114873.0,
-        "flagged_by_parser": 0
+        "flagged_by_parser": 2
       }
     }
   },
@@ -144,9 +144,9 @@
     "2010": {
       "old_mean_incl_unknown": 50.74835887996515,
       "old_n": 1556,
-      "new_a_mean": 50.92987047535279,
-      "new_b_weighted": 51.60771552955269,
-      "new_n": 1615
+      "new_a_mean": 50.936395864812184,
+      "new_b_weighted": 51.60884673458439,
+      "new_n": 1612
     },
     "2011": {
       "old_mean_incl_unknown": 50.01459920498965,
@@ -158,23 +158,23 @@
     "2012": {
       "old_mean_incl_unknown": 50.67489471853634,
       "old_n": 2713,
-      "new_a_mean": 50.79969179878063,
-      "new_b_weighted": 46.45074588447811,
-      "new_n": 2789
+      "new_a_mean": 50.80195207276611,
+      "new_b_weighted": 46.450605223355694,
+      "new_n": 2787
     },
     "2013": {
       "old_mean_incl_unknown": 51.09475404713576,
       "old_n": 2975,
-      "new_a_mean": 50.98380262794877,
-      "new_b_weighted": 78.41564865409477,
-      "new_n": 3076
+      "new_a_mean": 50.981651019047284,
+      "new_b_weighted": 78.41652436538678,
+      "new_n": 3075
     },
     "2014": {
       "old_mean_incl_unknown": 48.26181492404877,
       "old_n": 4645,
-      "new_a_mean": 48.40657897143273,
-      "new_b_weighted": 55.87640053539286,
-      "new_n": 4786
+      "new_a_mean": 48.41669528887713,
+      "new_b_weighted": 55.87836072906103,
+      "new_n": 4785
     },
     "2015": {
       "old_mean_incl_unknown": 47.796293616246025,
@@ -186,44 +186,44 @@
     "2016": {
       "old_mean_incl_unknown": 48.50883006905219,
       "old_n": 3828,
-      "new_a_mean": 48.6556450105038,
-      "new_b_weighted": 48.998437028243835,
-      "new_n": 4146
+      "new_a_mean": 48.630864916396895,
+      "new_b_weighted": 48.98761242686796,
+      "new_n": 4144
     },
     "2017": {
       "old_mean_incl_unknown": 49.673912014929215,
       "old_n": 5363,
-      "new_a_mean": 49.71019609936277,
-      "new_b_weighted": 51.52977051773067,
-      "new_n": 5758
+      "new_a_mean": 49.71346526592473,
+      "new_b_weighted": 51.52990869781577,
+      "new_n": 5754
     },
     "2018": {
       "old_mean_incl_unknown": 50.28729552559861,
       "old_n": 4609,
-      "new_a_mean": 50.48183203984274,
-      "new_b_weighted": 44.989428073518816,
-      "new_n": 4601
+      "new_a_mean": 50.47106722072097,
+      "new_b_weighted": 44.987850076617796,
+      "new_n": 4600
     },
     "2019": {
       "old_mean_incl_unknown": 49.13833276247573,
       "old_n": 6434,
-      "new_a_mean": 49.26145370401953,
-      "new_b_weighted": 49.26527827027027,
-      "new_n": 6419
+      "new_a_mean": 49.26451166060485,
+      "new_b_weighted": 49.26561783759006,
+      "new_n": 6417
     },
     "2020": {
       "old_mean_incl_unknown": 50.69017399435195,
       "old_n": 5960,
-      "new_a_mean": 50.87378261928648,
-      "new_b_weighted": 56.70613483968648,
-      "new_n": 5953
+      "new_a_mean": 50.870513851892525,
+      "new_b_weighted": 56.70589667267202,
+      "new_n": 5951
     },
     "2021": {
       "old_mean_incl_unknown": 49.19149316988257,
       "old_n": 5740,
-      "new_a_mean": 49.363834288147956,
-      "new_b_weighted": 51.89275815458554,
-      "new_n": 5728
+      "new_a_mean": 49.36441543879,
+      "new_b_weighted": 51.8928774205881,
+      "new_n": 5726
     },
     "2022": {
       "old_mean_incl_unknown": 50.95348250254573,
@@ -249,16 +249,16 @@
     "2025": {
       "old_mean_incl_unknown": 51.64682107060224,
       "old_n": 7208,
-      "new_a_mean": 52.049037955009226,
-      "new_b_weighted": 54.17208470277401,
-      "new_n": 7214
+      "new_a_mean": 52.045287417929245,
+      "new_b_weighted": 54.17202848723985,
+      "new_n": 7211
     },
     "2026": {
       "old_mean_incl_unknown": 51.78362160653245,
       "old_n": 4287,
-      "new_a_mean": 52.29658003546934,
-      "new_b_weighted": 54.939871319355085,
-      "new_n": 4295
+      "new_a_mean": 52.291288735400926,
+      "new_b_weighted": 54.939423761147026,
+      "new_n": 4292
     }
   }
 }

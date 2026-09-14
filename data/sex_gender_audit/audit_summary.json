@@ -1,12 +1,12 @@
 {
-  "audited_at": "2026-09-14T18:56:18.843734+00:00",
+  "audited_at": "2026-09-14T19:54:03.129018+00:00",
   "snapshot_date": "2026-09-14",
-  "pipeline_commit": "04f58424fd98253cded2f205e96265ca5d13cd74",
-  "source_extracted_at": "2026-09-14T18:52:57.193120+00:00",
-  "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10",
-  "parser_module_version": "1.0.0",
-  "prior_parser_rules_version": null,
-  "rules_changed_vs_prior": null,
+  "pipeline_commit": "3fc24425e1a371aed141223a9160d1deac8028bc",
+  "source_extracted_at": null,
+  "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14",
+  "parser_module_version": "1.1.0",
+  "prior_parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10",
+  "rules_changed_vs_prior": true,
   "inventory_source": "data/sex_gender_raw_measures.jsonl.gz",
   "n_rows": 80056,
   "n_labels": 2756,
@@ -17,28 +17,34 @@
     "sexual_orientation": 91
   },
   "inbox_size": 1053,
+  "inbox_consequential": 133,
   "inbox_new_this_week": 1053,
+  "resolved_this_week": 0,
   "inbox_top": {
-    "level": "class",
-    "label": "Sex/Gender",
+    "level": "category",
+    "label": "No",
     "bucket": "",
     "reason": "unrecognized",
-    "n_occurrences": 35,
-    "n_trials": 35,
-    "example_nct": "NCT05965726",
+    "consequential": true,
+    "n_occurrences": 23,
+    "n_trials": 18,
+    "example_nct": "NCT01559389",
     "first_seen": "2026-09-14",
-    "weeks_open": 0
+    "weeks_open": 0,
+    "resolved": ""
   },
   "inbox_oldest": {
     "level": "class",
     "label": "Sex/Gender",
     "bucket": "",
     "reason": "unrecognized",
+    "consequential": false,
     "n_occurrences": 35,
     "n_trials": 35,
     "example_nct": "NCT05965726",
     "first_seen": "2026-09-14",
-    "weeks_open": 0
+    "weeks_open": 0,
+    "resolved": ""
   },
   "n_inbox_exits": 0,
   "inbox_exit_causes": {},
@@ -54,8 +60,8 @@
   "structural_checks_all_pass": true,
   "baseline_drift_lines": 9,
   "had_prior": {
-    "label_buckets": false,
-    "inbox": false,
-    "status_counts": false
+    "label_buckets": true,
+    "inbox": true,
+    "status_counts": true
   }
 }

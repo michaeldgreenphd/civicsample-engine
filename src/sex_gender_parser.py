@@ -57,8 +57,8 @@ import re
 from dataclasses import dataclass, field, asdict
 from typing import Any, Iterable, Optional
 
-__version__ = "1.0.0"
-PARSER_RULES_VERSION = "parsers.R@2026-08-17 / outcomes@2026-09-10"
+__version__ = "1.1.0"
+PARSER_RULES_VERSION = "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14"
 
 # ---------------------------------------------------------------------------
 # 1. Upstream measure selection
@@ -104,6 +104,9 @@ def measure_type(title: Optional[str]) -> Optional[str]:
 
 
 SG_TYPES = ("sex", "sex_gender_customized", "gender")
+
+# Units that mark a row as a percentage rather than a headcount (v1.1.0).
+PERCENT_UNIT_RX = re.compile(r"percent|%|proportion", re.IGNORECASE)
 
 # ---------------------------------------------------------------------------
 # 2. Label vocabulary (verbatim from parsers.R, R regex -> Python regex)
@@ -432,7 +435,8 @@ class ParsedTrial:
     layout: Optional[str] = None
     param_type: Optional[str] = None
     unit_of_measure: Optional[str] = None
-    is_participant_count: Optional[bool] = None   # False only for COUNT_OF_UNITS
+    is_participant_count: Optional[bool] = None   # False for COUNT_OF_UNITS, MEAN, MEDIAN, or percent-like units
+    flag_percentage_units: bool = False           # unitOfMeasure looks like a percentage (dashboard addition, v1.1.0)
     # counts
     n_female: Optional[float] = None
     n_male: Optional[float] = None
@@ -522,7 +526,14 @@ def parse_trial(measures: Optional[list], enrollment: Optional[float] = None,
     out.layout = prim.layout
     out.param_type = prim.param_type
     out.unit_of_measure = prim.unit_of_measure
-    out.is_participant_count = (prim.param_type is None) or (prim.param_type.upper() != "COUNT_OF_UNITS")
+    # v1.1.0 (dashboard divergence from the paper, README D6): the paper treated only
+    # COUNT_OF_UNITS as non-participant because its Objective 2 used the ratio
+    # F/(F+M), which survives a percent row. A dashboard that SUMS participants
+    # cannot. MEAN/MEDIAN rows and percent-like units are therefore not
+    # participant counts either. Reporting status is unaffected.
+    out.flag_percentage_units = bool(prim.unit_of_measure) and bool(PERCENT_UNIT_RX.search(prim.unit_of_measure))
+    pt_up = (prim.param_type or "").upper()
+    out.is_participant_count = not (pt_up in ("COUNT_OF_UNITS", "MEAN", "MEDIAN") or out.flag_percentage_units)
     out.n_female = prim.female
     out.n_male = prim.male
     out.n_unknown = _max_or_none(r.unknown for r in ms_cnt)

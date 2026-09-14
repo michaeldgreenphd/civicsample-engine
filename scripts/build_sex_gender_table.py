@@ -99,6 +99,9 @@ def main() -> int:
     ap.add_argument("--out", default="data/sex_gender_parsed.csv.gz")
     ap.add_argument("--meta", default="data/sex_gender_parsed_meta.json")
     ap.add_argument("--baseline", default=BASELINE_PATH)
+    ap.add_argument("--write-back", default=None,
+                    help="demographics.json to update in place: every study's sex_gender key becomes the "
+                         "lean subset of the row built here (the re-parse path; run before split_data.py)")
     ap.add_argument("--strict", action="store_true")
     a = ap.parse_args()
 
@@ -121,7 +124,23 @@ def main() -> int:
         drift = sgt.baseline_drift(rows, json.load(open(a.baseline)))
 
     write_table(rows, a.out)
+    written_back = None
+    if a.write_back:
+        by_nct = {r["nct_id"]: sgt.lean_row(r) for r in rows if r.get("nct_id")}
+        with open(a.write_back) as f:
+            container = json.load(f)
+        hit = 0
+        for s in container["data"]:
+            lean = by_nct.get(s.get("nct_id"))
+            if lean is not None:
+                s["sex_gender"] = lean
+                hit += 1
+        with open(a.write_back, "w") as f:
+            json.dump(container, f, indent=2)
+        written_back = {"path": a.write_back, "records": len(container["data"]), "updated": hit}
+        print(f"wrote back lean sex_gender rows into {a.write_back}: {hit} of {len(container['data'])} records")
     meta = {
+        "written_back": written_back,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "pipeline_commit": pipeline_commit() or commit,
         "source_extracted_at": extracted_at,

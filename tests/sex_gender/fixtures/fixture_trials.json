@@ -1,5 +1,5 @@
 {
- "source": "clinical_trials_sex_data_0609_BY.csv (2026-06-09 extract); expected = this module v1.0.0, verified equal to parsers.R det_parse_measure",
+ "source": "clinical_trials_sex_data_0609_BY.csv (2026-06-09 extract); expected = this module v1.1.0, verified equal to parsers.R det_parse_measure",
  "cases": [
   {
    "nct_id": "NCT00205868",

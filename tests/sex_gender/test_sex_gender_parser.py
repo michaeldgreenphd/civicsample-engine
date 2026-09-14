@@ -226,6 +226,23 @@ def test_count_of_units_is_flagged_not_dropped():
     assert sgp.classify_reporting(p) == "reported"       # reporting is unaffected; percent-female consumers filter
 
 
+def test_percent_and_mean_rows_are_not_participant_counts():
+    # v1.1.0 dashboard rule (README D6): percent-like units and MEAN/MEDIAN rows
+    # stay in reporting but leave every participant sum.
+    m = _std("Sex: Female, Male", [("Female", 48), ("Male", 52)])
+    m["paramType"] = "NUMBER"; m["unitOfMeasure"] = "percentage of participants"
+    p = sgp.parse_trial([m])
+    assert p.flag_percentage_units and p.is_participant_count is False
+    assert sgp.classify_reporting(p) == "reported"
+    m2 = _std("Sex: Female, Male", [("Female", 0.48), ("Male", 0.52)])
+    m2["paramType"] = "MEAN"; m2["unitOfMeasure"] = "participants"
+    assert sgp.parse_trial([m2]).is_participant_count is False
+    # NUMBER with a participant unit is still a participant count (paper rule kept).
+    m3 = _std("Sex: Female, Male", [("Female", 48), ("Male", 52)])
+    m3["paramType"] = "NUMBER"; m3["unitOfMeasure"] = "participants"
+    assert sgp.parse_trial([m3]).is_participant_count is True
+
+
 def test_parse_study_record_shape():
     study = {"protocolSection": {"identificationModule": {"nctId": "NCT00000000"},
                                  "designModule": {"enrollmentInfo": {"count": 9}}},

@@ -26,25 +26,34 @@ from src import sex_gender_table as sgt  # noqa: E402
 LABEL_LIST_LIMIT = 200
 
 
-def sex_gender_summary(all_studies):
-    """The sg=v2 block of dashboard-summary.json, built ONLY from study["sex_gender"].
+def sex_gender_summary(all_studies, table_rows=None):
+    """The sg=v2 block of dashboard-summary.json, built ONLY from the parser's rows.
 
-    Every number here is a count or sum over rows the parser produced. The five
-    states come from sex_report_status and nothing else; the participant totals
-    and both percent-female series (README D5) are restricted to rows with
-    reported_sex AND is_participant_count; enrollmentMinusParsed is the summed
-    enrollment gap of reported rows and is shipped so it can be audited, never
-    to be displayed as unknown. Mobile renders the Sex and Gender tabs from
-    this block; desktop computes the same numbers from the per-study rows.
+    table_rows is the full record (sex_gender_parsed.csv.gz via
+    sex_gender_table.read_table); without it the lean rows in the study records
+    are used and the label drill-downs are empty. Every number here is a count
+    or sum over rows the parser produced. The five states come from
+    sex_report_status and nothing else; the participant totals and both
+    percent-female series (README D5) are restricted to rows with reported_sex
+    AND is_participant_count; enrollmentMinusParsed is the summed enrollment gap
+    of reported rows and is shipped so it can be audited, never to be displayed
+    as unknown. Mobile renders the Sex and Gender tabs from this block; desktop
+    computes the same numbers from the per-study rows and the CSV.
     """
-    rows = [s.get("sex_gender") for s in all_studies if s.get("sex_gender")]
+    by_nct = {r.get("nct_id"): r for r in (table_rows or [])}
+    rows = []
+    for s in all_studies:
+        r = by_nct.get(s.get("nct_id")) or s.get("sex_gender")
+        if not r:
+            continue
+        r = dict(r)
+        r["year"] = (s.get("results_date") or "")[:4] or None
+        r["_enrollment_registered"] = s.get("enrollment") or 0
+        if r.get("percent_female") is None and "percent_female" not in r:
+            r["percent_female"] = sgt.percent_female(r)
+        rows.append(r)
     if not rows:
         return None
-    for s in all_studies:
-        r = s.get("sex_gender")
-        if r:
-            r["year"] = (s.get("results_date") or "")[:4] or None
-            r["_enrollment_registered"] = s.get("enrollment") or 0
 
     sc = sgt.status_counts(rows)
     denom = [r for r in rows if r.get("reported_sex") and r.get("is_participant_count")]
@@ -107,11 +116,6 @@ def sex_gender_summary(all_studies):
         d["sg_pf_sum"] = pf["pf_sum"]; d["sg_pf_count"] = pf["pf_count"]
         d["sg_f_sum"] = pf["f_sum"]; d["sg_fm_sum"] = pf["fm_sum"]
 
-    for s in all_studies:
-        r = s.get("sex_gender")
-        if r:
-            r.pop("year", None); r.pop("_enrollment_registered", None)
-
     return {
         "parser_rules_version": sgt.sgp.PARSER_RULES_VERSION,
         "parser_module_version": sgt.sgp.__version__,
@@ -159,6 +163,12 @@ def main():
 
     total = len(all_studies)
     print(f"Loaded {total} studies")
+
+    # The full sex/gender record (labels, percent_female) lives in the parsed
+    # table, not in the lean per-study rows; read it when it is there.
+    table_path = "data/sex_gender_parsed.csv.gz"
+    table_rows = sgt.read_table(table_path) if os.path.exists(table_path) else None
+    print(f"Sex/gender table: {len(table_rows) if table_rows else 'absent (lean rows only)'}")
 
     # ── Summary cards ──
     race_count = sum(1 for s in all_studies if (s.get("race") or {}).get("reported"))
@@ -482,7 +492,7 @@ def main():
         "recentStudies": recent_studies,
         # sg=v2: the manuscript parser's table, summarised. None on pulls that
         # predate the sex_gender row (archived snapshot summaries stay valid).
-        "sexGender": sex_gender_summary(all_studies),
+        "sexGender": sex_gender_summary(all_studies, table_rows),
     }
 
     path = "data/dashboard-summary.json"

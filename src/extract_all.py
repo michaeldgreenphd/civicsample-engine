@@ -112,7 +112,9 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
             "ethnicity": ethnicity_data,
             "sex": sex_data,
             "gender": gender_data,
-            "sex_gender": sex_gender_row,
+            # Only the lean subset rides in the parts; the full row is rebuilt
+            # from the retained raw measures into sex_gender_parsed.csv.gz.
+            "sex_gender": sgt.lean_row(sex_gender_row),
             # Add breakdowns for interactive dashboard
             "raceBreakdown": race_breakdown,
             "ethnicityBreakdown": ethnicity_breakdown,

@@ -41,6 +41,18 @@ jobs:
           # with the same date the snapshot folder and release tag use.
           python -m src.extract_all --output data/demographics.json --results-after 2009-01-01 --snapshot-date "$CURRENT_DATE" 2>&1 | tee extraction_log.txt
 
+      - name: Build the sex/gender table (full record) and write the lean rows back
+        # The full per-trial row is rebuilt from the retained raw measures into
+        # sex_gender_parsed.csv.gz (the record every consumer reads); the study
+        # records keep only the lean subset (--write-back), so the split parts
+        # stay under the CDN ceiling. A failed structural check is a ::warning::
+        # from the script, never a failed run.
+        run: |
+          python3 scripts/build_sex_gender_table.py \
+            --from-raw data/sex_gender_raw_measures.jsonl.gz \
+            --snapshot-date "$CURRENT_DATE" \
+            --write-back data/demographics.json
+
       - name: Compress CT.gov Data for Drive
         # -k keeps the original so the split step can still read it.
         run: gzip -k data/demographics.json
@@ -83,10 +95,7 @@ jobs:
           python3 scripts/generate_mobile_data.py
           # Gated industry sponsor view dataset (/#industry)
           python3 scripts/generate_industry_sponsors.py
-          # Sex/gender table (sg=v2): one row per trial + provenance/meta, and the
-          # backend-served methods text. A failed structural check is a ::warning::
-          # from the script, never a failed run.
-          python3 scripts/build_sex_gender_table.py
+          # Backend-served methods text for the sex/gender table (built above)
           python3 scripts/write_sex_gender_methods.py
 
           for f in data/demographics.part*.json.gz; do

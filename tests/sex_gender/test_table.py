@@ -266,7 +266,14 @@ def test_mobile_summary_block_is_built_from_the_rows_only():
                         "sex_gender": sgt.build_row(s, SNAP)})
     studies.append({"nct_id": "D", "results_date": "2021-01-01", "enrollment": 50,
                     "sex_gender": sgt.build_row(_study("D", [{"title": "Age"}], 50), SNAP)})
-    blk = sex_gender_summary(studies)
+    # The parts carry only the lean row; the block reads the full rows (the CSV).
+    full_rows = [dict(s["sex_gender"]) for s in studies]
+    for s in studies:
+        s["sex_gender"] = sgt.lean_row(s["sex_gender"])
+    blk = sex_gender_summary(studies, full_rows)
+    lean_only = sex_gender_summary(studies)                # fallback: same counts, no label lists
+    assert lean_only["statusCounts"] == blk["statusCounts"] and lean_only["totals"] == blk["totals"]
+    assert lean_only["byYear"]["2020"]["sg_pf_sum"] == blk["byYear"]["2020"]["sg_pf_sum"]
     assert blk["statusCounts"] == {"reported": 2, "explicit_unknown_only": 1, "uninformative": 0, "not_reported": 1, "parse_error": 0}
     assert blk["totals"] == {"female": 50, "male": 50, "explicit_unknown": 0, "gender_diverse": 0, "ambiguous": 0}
     assert blk["enrollmentMinusParsed"] == 10           # A's gap; shipped separately, never in explicit_unknown
@@ -277,3 +284,23 @@ def test_mobile_summary_block_is_built_from_the_rows_only():
     assert y21["sg_enrollment_not_reported"] == 50
     assert blk["parser_rules_version"] == sgp.PARSER_RULES_VERSION
     assert "year" not in studies[0]["sex_gender"]        # the helper leaves the rows as it found them
+
+
+# --------------------------------------------------------------------- 9. lean row and the CSV round trip
+def test_lean_row_is_the_ui_subset_and_the_csv_is_the_full_record(tmp_path):
+    from build_sex_gender_table import write_table
+    row = sgt.build_row(_study("L", [_measure("Gender", [("Woman", 10), ("Man", 30), ("Non-binary", 2)])], 50), SNAP)
+    lean = sgt.lean_row(row)
+    assert list(lean.keys()) == sgt.LEAN_COLUMNS
+    assert lean["sex_report_status"] == "reported" and lean["n_gender_diverse"] == 2
+    assert lean["enrollment_minus_parsed"] == 8 and lean["parser_rules_version"] == sgp.PARSER_RULES_VERSION
+    for heavy in ("gender_diverse_labels", "measure_title", "layout", "percent_female", "flag_customized_layout"):
+        assert heavy not in lean
+    path = str(tmp_path / "t.csv.gz")
+    write_table([sgt.ordered(row), sgt.ordered(sgt.parse_error_row("PE", None, SNAP))], path)
+    back = sgt.read_table(path)
+    assert len(back) == 2 and list(back[0].keys()) == sgt.COLUMNS
+    assert back[0]["n_female"] == 10.0 and back[0]["reported_gender"] is True and back[0]["is_participant_count"] is True
+    assert back[0]["gender_diverse_labels"] == "Non-binary" and back[0]["n_unknown"] is None
+    assert back[1]["sex_report_status"] == "parse_error" and back[1]["reported_sex"] is None
+    assert sgt.lean_row(back[0]) == lean

@@ -65,6 +65,55 @@ EXTRA_COLUMNS: list = [
 ]
 COLUMNS: list = ["nct_id"] + PARSER_COLUMNS + EXTRA_COLUMNS
 
+# The row stored inside each study record in the published parts: only what
+# the UI needs per trial. Labels, flags, measure title, layout, percent_female
+# and the rest live only in sex_gender_parsed.csv.gz, the full record. The
+# parts sit close to the 20 MiB CDN ceiling; this keeps them there.
+LEAN_COLUMNS: list = [
+    "sex_report_status", "reported_sex", "reported_gender", "reported_both",
+    "n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender",
+    "is_participant_count", "uninformative_reason", "declared_not_collected",
+    "enrollment_minus_parsed", "parser_rules_version",
+]
+
+_BOOL_COLUMNS = {"raw_present", "parse_ok", "has_sex_table", "has_gender_table", "is_participant_count",
+                 "reported_sex", "reported_gender", "reported_both", "reported_any", "gender_labeled_binary_only",
+                 "declared_not_collected", "has_denoms", "raw_has_unknown", "refetched",
+                 "flag_total_by_position", "flag_no_total_sumcheck", "flag_multiclass_timepoint",
+                 "flag_customized_layout", "flag_empty_category", "flag_unmapped_layout",
+                 "flag_exceeds_enrollment", "flag_nonparticipant_units"}
+_FLOAT_COLUMNS = {"n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender", "n_total_parsed",
+                  "enrollment", "enrollment_minus_parsed", "percent_female"}
+_INT_COLUMNS = {"n_measures", "n_classes"}
+
+
+def lean_row(row: dict) -> dict:
+    """The per-study subset of a full row for the published parts."""
+    return {c: row.get(c) for c in LEAN_COLUMNS}
+
+
+def _from_csv(col: str, v: str):
+    if v == "" or v is None:
+        return None
+    if col in _BOOL_COLUMNS:
+        return v.lower() == "true"
+    if col in _FLOAT_COLUMNS:
+        return float(v)
+    if col in _INT_COLUMNS:
+        return int(float(v))
+    return v
+
+
+def read_table(path: str) -> list:
+    """Read sex_gender_parsed.csv.gz back into typed rows (None for empty cells,
+    bools and numbers restored). The CSV is the full record; the parts carry
+    only lean_row()."""
+    import csv
+    import gzip
+    opener = gzip.open if path.endswith(".gz") else open
+    with opener(path, "rt", newline="", encoding="utf-8") as fh:
+        return [{k: _from_csv(k, v) for k, v in r.items()} for r in csv.DictReader(fh)]
+
 
 def today_utc() -> str:
     return datetime.now(timezone.utc).date().isoformat()

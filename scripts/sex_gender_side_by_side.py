@@ -79,15 +79,23 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--demographics", default="data/demographics.json")
     ap.add_argument("--parts", default="data/demographics.part*.json.gz")
+    ap.add_argument("--table", default="data/sex_gender_parsed.csv.gz",
+                    help="the full sex/gender record; the study records carry only the lean row")
     ap.add_argument("--out-dir", default="data/sex_gender_audit")
     a = ap.parse_args()
 
     records, extracted_at, commit = load_records(a.demographics, a.parts)
+    table = {r["nct_id"]: r for r in sgt.read_table(a.table)} if os.path.exists(a.table) else {}
+    for r in records:
+        full = table.get(r.get("nct_id"))
+        if full is not None:
+            r["sex_gender"] = full
     recs = [r for r in records if r.get("sex_gender")]
     n = len(recs)
     legacy_present = any(r.get("sex") is not None for r in recs)
     if not legacy_present:
         raise SystemExit("this pull has no legacy sex/gender keys; run the extraction with the legacy extractors on")
+    print(f"new rows from: {a.table if table else 'lean study rows (no table found)'}")
 
     def sg(r):
         return r["sex_gender"]

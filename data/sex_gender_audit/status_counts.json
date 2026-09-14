@@ -1,7 +1,7 @@
 {
   "snapshot_date": "2026-09-14",
-  "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10",
-  "parser_module_version": "1.0.0",
+  "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14",
+  "parser_module_version": "1.1.0",
   "counts": {
     "n_rows": 80056,
     "status": {
@@ -19,9 +19,9 @@
       "gender_labeled_binary_only": 2955
     },
     "count_of_units_primary": 105,
-    "is_participant_count_false": 105,
+    "is_participant_count_false": 133,
     "declared_not_collected": 518,
-    "refetched": 437,
+    "refetched": 0,
     "uninformative_reason": {
       "all_values_na": 103,
       "all_values_zero": 140,
@@ -33,113 +33,113 @@
   "vs_prior": {
     "n_rows": {
       "now": 80056,
-      "prior": null,
-      "delta": null
+      "prior": 80056,
+      "delta": 0
     },
     "status": {
       "reported": {
         "now": 79270,
-        "prior": null,
-        "delta": null
+        "prior": 79270,
+        "delta": 0
       },
       "explicit_unknown_only": {
         "now": 66,
-        "prior": null,
-        "delta": null
+        "prior": 66,
+        "delta": 0
       },
       "uninformative": {
         "now": 720,
-        "prior": null,
-        "delta": null
+        "prior": 720,
+        "delta": 0
       },
       "not_reported": {
         "now": 0,
-        "prior": null,
-        "delta": null
+        "prior": 0,
+        "delta": 0
       },
       "parse_error": {
         "now": 0,
-        "prior": null,
-        "delta": null
+        "prior": 0,
+        "delta": 0
       }
     },
     "outcomes": {
       "reported_sex": {
         "now": 79219,
-        "prior": null,
-        "delta": null
+        "prior": 79219,
+        "delta": 0
       },
       "reported_gender": {
         "now": 665,
-        "prior": null,
-        "delta": null
+        "prior": 665,
+        "delta": 0
       },
       "reported_both": {
         "now": 614,
-        "prior": null,
-        "delta": null
+        "prior": 614,
+        "delta": 0
       },
       "reported_any": {
         "now": 79270,
-        "prior": null,
-        "delta": null
+        "prior": 79270,
+        "delta": 0
       },
       "gender_labeled_binary_only": {
         "now": 2955,
-        "prior": null,
-        "delta": null
+        "prior": 2955,
+        "delta": 0
       }
     },
     "count_of_units_primary": {
       "now": 105,
-      "prior": null,
-      "delta": null
+      "prior": 105,
+      "delta": 0
     },
     "is_participant_count_false": {
-      "now": 105,
-      "prior": null,
-      "delta": null
+      "now": 133,
+      "prior": 105,
+      "delta": 28
     },
     "declared_not_collected": {
       "now": 518,
-      "prior": null,
-      "delta": null
+      "prior": 518,
+      "delta": 0
     },
     "refetched": {
-      "now": 437,
-      "prior": null,
-      "delta": null
+      "now": 0,
+      "prior": 437,
+      "delta": -437
     },
     "uninformative_reason": {
       "all_values_na": {
         "now": 103,
-        "prior": null,
-        "delta": null
+        "prior": 103,
+        "delta": 0
       },
       "all_values_zero": {
         "now": 140,
-        "prior": null,
-        "delta": null
+        "prior": 140,
+        "delta": 0
       },
       "no_measurements": {
         "now": 437,
-        "prior": null,
-        "delta": null
+        "prior": 437,
+        "delta": 0
       },
       "other": {
         "now": 4,
-        "prior": null,
-        "delta": null
+        "prior": 4,
+        "delta": 0
       },
       "no_mapped_labels": {
         "now": 36,
-        "prior": null,
-        "delta": null
+        "prior": 36,
+        "delta": 0
       }
     }
   },
-  "prior_snapshot_date": null,
-  "prior_parser_rules_version": null,
+  "prior_snapshot_date": "2026-09-14",
+  "prior_parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10",
   "structural_checks": {
     "reported_any_ge_reported_sex": {
       "pass": true,
@@ -187,7 +187,7 @@
     },
     "single_parser_rules_version": {
       "pass": true,
-      "detail": "versions seen: ['parsers.R@2026-08-17 / outcomes@2026-09-10']"
+      "detail": "versions seen: ['parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14']"
     }
   },
   "structural_checks_all_pass": true,

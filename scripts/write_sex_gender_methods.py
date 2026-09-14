@@ -55,6 +55,11 @@ def sections(meta: dict, sbs: dict | None) -> list:
                   "no sex- or gender-titled baseline table at all. Parse error: the record could not be read; these "
                   "trials are counted on the audit page and nowhere else. These states are never merged, and "
                   "\"Not Reported (Missing)\" is never computed from enrollment arithmetic.")},
+        {"id": "not_reported_measured", "heading": "How many trials have no sex or gender table",
+         "text": (f"On the {meta.get('snapshot_date') or 'current'} pull, "
+                  f"{counts.get('not_reported', 'n/a') if counts else 'n/a'} "
+                  "studies with posted results carried no sex- or gender-titled baseline measure. This is a measured "
+                  "property of that pull, re-measured every week, not a rule of the registry.")},
         {"id": "gender_rule", "heading": "What counts as reporting gender",
          "text": ("A trial reports gender only if it posted a gender-diverse category (for example Non-binary, "
                   "Genderqueer, Transgender, Two-Spirit, Intersex) or a cis/trans-qualified category (for example "

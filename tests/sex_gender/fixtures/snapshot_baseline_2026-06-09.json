@@ -16,5 +16,7 @@
   "reported_sex_pct": 99.943,
   "reported_gender_pct": 99.985,
   "fm_counts_exact_pct_among_both_reported": 99.52
- }
+ },
+ "non_participant_primary_measure": 119,
+ "flag_percentage_units_true": 26
 }
