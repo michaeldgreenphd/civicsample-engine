@@ -1,0 +1,264 @@
+{
+  "generated_at": "2026-09-14T19:53:12.709063+00:00",
+  "pipeline_commit": "3fc24425e1a371aed141223a9160d1deac8028bc",
+  "source_extracted_at": "2026-09-14T18:52:57.193120+00:00",
+  "snapshot_date": "2026-09-14",
+  "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14",
+  "parser_module_version": "1.1.0",
+  "n_trials": 80056,
+  "reported_gender": {
+    "old": 1676,
+    "new": 665,
+    "old_to_sex_only": 1405,
+    "old_to_other_status": 0,
+    "newly_reported_gender": 394,
+    "gender_labeled_binary_only": 2955,
+    "old_category_totals": {
+      "woman": 39164.0,
+      "man": 23308.0,
+      "nonbinary": 3498.0,
+      "transgender": 1371.0,
+      "other": 589.0,
+      "unknown": 1239450.0
+    },
+    "old_unknown_inferred": 128825,
+    "new_bucket_totals": {
+      "gender_diverse": 20220.0,
+      "ambiguous": 2722.0
+    }
+  },
+  "reported_sex": {
+    "old": 77906,
+    "new": 79219,
+    "new_reported_sex_from_gender_titled_binary_tables": 1354,
+    "status": {
+      "reported": 79270,
+      "explicit_unknown_only": 66,
+      "uninformative": 720,
+      "not_reported": 0,
+      "parse_error": 0
+    },
+    "outcomes": {
+      "reported_sex": 79219,
+      "reported_gender": 665,
+      "reported_both": 614,
+      "reported_any": 79270,
+      "gender_labeled_binary_only": 2955
+    },
+    "cross": {
+      "old_not_reported|reported": 1447,
+      "old_not_reported|uninformative": 703,
+      "old_reported|explicit_unknown_only": 66,
+      "old_reported|reported": 77823,
+      "old_reported|uninformative": 17
+    }
+  },
+  "sex_totals": {
+    "old": {
+      "female": 55582100.0,
+      "male": 48540358.0,
+      "unknown_explicit": 460666.0,
+      "unknown_inferred": 3285606.0,
+      "unknown_total_as_displayed": 3746272.0
+    },
+    "new_denominator_trials": 79107,
+    "new": {
+      "female": 51775992.7,
+      "male": 45070116.3,
+      "explicit_unknown": 259436.0,
+      "gender_diverse": 20220.0,
+      "ambiguous": 2722.0
+    },
+    "enrollment_minus_parsed_sum_reported_rows": 22719864.0,
+    "enrollment_minus_parsed_positive_sum": 26068818.3
+  },
+  "sex_unknown_inferred_share_pct": 87.70334882250941,
+  "removed_by_is_participant_count": {
+    "trials": 112,
+    "female": 804166.56,
+    "male": 666273.91,
+    "by_unit_class_all_reported_sex": {
+      "participant_count_like": {
+        "trials": 79107,
+        "female": 51775992.7,
+        "male": 45070116.3,
+        "flagged_by_parser": 0
+      },
+      "percent_like": {
+        "trials": 19,
+        "female": 1165.3,
+        "male": 876.4999999999999,
+        "flagged_by_parser": 19
+      },
+      "count_of_units": {
+        "trials": 86,
+        "female": 802622.0,
+        "male": 665128.0,
+        "flagged_by_parser": 86
+      },
+      "mean_or_median": {
+        "trials": 7,
+        "female": 379.26,
+        "male": 269.40999999999997,
+        "flagged_by_parser": 7
+      }
+    }
+  },
+  "industry_cohort": {
+    "trials": 27524,
+    "by_unit_class": {
+      "participant_count_like": {
+        "trials": 27501,
+        "female_old": 7151042.0,
+        "male_old": 7242302.0,
+        "flagged_by_parser": 0
+      },
+      "count_of_units": {
+        "trials": 17,
+        "female_old": 1121.0,
+        "male_old": 1123.0,
+        "flagged_by_parser": 17
+      },
+      "percent_like": {
+        "trials": 4,
+        "female_old": 451.0,
+        "male_old": 311.0,
+        "flagged_by_parser": 4
+      },
+      "mean_or_median": {
+        "trials": 2,
+        "female_old": 182144.0,
+        "male_old": 114873.0,
+        "flagged_by_parser": 2
+      }
+    }
+  },
+  "percent_female_by_year": {
+    "2009": {
+      "old_mean_incl_unknown": 48.42482999744158,
+      "old_n": 1067,
+      "new_a_mean": 48.66739531484488,
+      "new_b_weighted": 55.73107472208186,
+      "new_n": 1096
+    },
+    "2010": {
+      "old_mean_incl_unknown": 50.74835887996515,
+      "old_n": 1556,
+      "new_a_mean": 50.936395864812184,
+      "new_b_weighted": 51.60884673458439,
+      "new_n": 1612
+    },
+    "2011": {
+      "old_mean_incl_unknown": 50.01459920498965,
+      "old_n": 2144,
+      "new_a_mean": 50.18015144433688,
+      "new_b_weighted": 54.04750520774518,
+      "new_n": 2194
+    },
+    "2012": {
+      "old_mean_incl_unknown": 50.67489471853634,
+      "old_n": 2713,
+      "new_a_mean": 50.80195207276611,
+      "new_b_weighted": 46.450605223355694,
+      "new_n": 2787
+    },
+    "2013": {
+      "old_mean_incl_unknown": 51.09475404713576,
+      "old_n": 2975,
+      "new_a_mean": 50.981651019047284,
+      "new_b_weighted": 78.41652436538678,
+      "new_n": 3075
+    },
+    "2014": {
+      "old_mean_incl_unknown": 48.26181492404877,
+      "old_n": 4645,
+      "new_a_mean": 48.41669528887713,
+      "new_b_weighted": 55.87836072906103,
+      "new_n": 4785
+    },
+    "2015": {
+      "old_mean_incl_unknown": 47.796293616246025,
+      "old_n": 3663,
+      "new_a_mean": 48.033854824274655,
+      "new_b_weighted": 44.80096864664353,
+      "new_n": 3773
+    },
+    "2016": {
+      "old_mean_incl_unknown": 48.50883006905219,
+      "old_n": 3828,
+      "new_a_mean": 48.630864916396895,
+      "new_b_weighted": 48.98761242686796,
+      "new_n": 4144
+    },
+    "2017": {
+      "old_mean_incl_unknown": 49.673912014929215,
+      "old_n": 5363,
+      "new_a_mean": 49.71346526592473,
+      "new_b_weighted": 51.52990869781577,
+      "new_n": 5754
+    },
+    "2018": {
+      "old_mean_incl_unknown": 50.28729552559861,
+      "old_n": 4609,
+      "new_a_mean": 50.47106722072097,
+      "new_b_weighted": 44.987850076617796,
+      "new_n": 4600
+    },
+    "2019": {
+      "old_mean_incl_unknown": 49.13833276247573,
+      "old_n": 6434,
+      "new_a_mean": 49.26451166060485,
+      "new_b_weighted": 49.26561783759006,
+      "new_n": 6417
+    },
+    "2020": {
+      "old_mean_incl_unknown": 50.69017399435195,
+      "old_n": 5960,
+      "new_a_mean": 50.870513851892525,
+      "new_b_weighted": 56.70589667267202,
+      "new_n": 5951
+    },
+    "2021": {
+      "old_mean_incl_unknown": 49.19149316988257,
+      "old_n": 5740,
+      "new_a_mean": 49.36441543879,
+      "new_b_weighted": 51.8928774205881,
+      "new_n": 5726
+    },
+    "2022": {
+      "old_mean_incl_unknown": 50.95348250254573,
+      "old_n": 3978,
+      "new_a_mean": 51.09080109065903,
+      "new_b_weighted": 55.146057697733205,
+      "new_n": 3979
+    },
+    "2023": {
+      "old_mean_incl_unknown": 52.30023275757999,
+      "old_n": 5006,
+      "new_a_mean": 52.51324108698329,
+      "new_b_weighted": 55.36148422561454,
+      "new_n": 4996
+    },
+    "2024": {
+      "old_mean_incl_unknown": 50.78028163755213,
+      "old_n": 6730,
+      "new_a_mean": 51.03114219446594,
+      "new_b_weighted": 52.018715716802724,
+      "new_n": 6715
+    },
+    "2025": {
+      "old_mean_incl_unknown": 51.64682107060224,
+      "old_n": 7208,
+      "new_a_mean": 52.045287417929245,
+      "new_b_weighted": 54.17202848723985,
+      "new_n": 7211
+    },
+    "2026": {
+      "old_mean_incl_unknown": 51.78362160653245,
+      "old_n": 4287,
+      "new_a_mean": 52.291288735400926,
+      "new_b_weighted": 54.939423761147026,
+      "new_n": 4292
+    }
+  }
+}

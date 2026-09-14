@@ -19,6 +19,9 @@ def make_snapshot(root, date, with_parts=True, with_sponsors=True):
     if with_parts:
         for i in (1, 2):
             open(os.path.join(d, f"demographics.part{i}.json.gz"), "wb").write(b"x")
+        # the per-trial sex/gender table rides with the parts
+        open(os.path.join(d, "sex_gender_parsed.csv.gz"), "wb").write(b"x")
+        open(os.path.join(d, "sex_gender_parsed_meta.json"), "w").write("{}")
     if with_sponsors:
         os.makedirs(os.path.join(d, "sponsors"), exist_ok=True)
         open(os.path.join(d, "sponsors", "bridge.csv.gz"), "wb").write(b"x")
@@ -54,11 +57,14 @@ def test_monthly_snapshot_loses_parts_and_the_sponsors_bridge(tmp_path, monkeypa
     for d in biweekly:                                    # full snapshots keep everything
         assert os.path.exists(os.path.join(root, "snapshots", d, "demographics.part1.json.gz"))
         assert os.path.exists(os.path.join(root, "snapshots", d, "sponsors", "bridge.csv.gz"))
+        assert os.path.exists(os.path.join(root, "snapshots", d, "sex_gender_parsed.csv.gz"))
     for d in monthly:                                     # aggregate-only: summary survives, bulk does not
         sdir = os.path.join(root, "snapshots", d)
         assert os.path.exists(os.path.join(sdir, "dashboard-summary.json"))
         assert not os.path.exists(os.path.join(sdir, "demographics.part1.json.gz"))
         assert not os.path.isdir(os.path.join(sdir, "sponsors"))
+        assert not os.path.exists(os.path.join(sdir, "sex_gender_parsed.csv.gz"))
+        assert not os.path.exists(os.path.join(sdir, "sex_gender_parsed_meta.json"))
     assert json.load(open(os.path.join(root, "history.json")))["dates"] == sorted(biweekly | monthly)
 
 
