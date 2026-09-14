@@ -69,9 +69,12 @@ def sex_gender_summary(all_studies, table_rows=None):
     excluded = [r for r in reported if not r.get("is_participant_count")]
 
     def labels(key):
+        # Label trails are lists on the full rows (JSON arrays in the CSV);
+        # never split a string on "; ", which real labels contain.
         c = defaultdict(int)
         for r in rows:
-            for l in (r.get(key) or "").split("; "):
+            v = r.get(key) or []
+            for l in (v if isinstance(v, list) else [v]):
                 if l:
                     c[l] += 1
         top = sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))[:LABEL_LIST_LIMIT]

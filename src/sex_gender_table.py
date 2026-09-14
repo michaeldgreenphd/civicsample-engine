@@ -85,6 +85,10 @@ _BOOL_COLUMNS = {"raw_present", "parse_ok", "has_sex_table", "has_gender_table",
 _FLOAT_COLUMNS = {"n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender", "n_total_parsed",
                   "enrollment", "enrollment_minus_parsed", "percent_female"}
 _INT_COLUMNS = {"n_measures", "n_classes"}
+# The parser's label trails are lists; the module's own to_dict() joins them
+# with "; ", which real labels contain ("Other (Transwoman; Transman; ...)").
+# The engine keeps them as lists and serializes them as JSON arrays in the CSV.
+LABEL_COLUMNS: tuple = ("unknown_labels", "gender_diverse_labels", "ambiguous_labels", "unmapped_labels")
 
 
 def lean_row(row: dict) -> dict:
@@ -93,6 +97,9 @@ def lean_row(row: dict) -> dict:
 
 
 def _from_csv(col: str, v: str):
+    if col in LABEL_COLUMNS:
+        import json
+        return json.loads(v) if v else []
     if v == "" or v is None:
         return None
     if col in _BOOL_COLUMNS:
@@ -210,29 +217,40 @@ def finish_row(row: dict, enrollment: Any, snapshot_date: str, refetched: bool =
     return row
 
 
+def _row_from_parsed(p: "sgp.ParsedTrial", nct_id: Optional[str]) -> dict:
+    """The flat row from a ParsedTrial: the same composition as the parser's
+    parse_measures_row() (to_dict + classify_reporting + derive_outcomes +
+    rules version), except that the label trails stay lists instead of the
+    module's "; "-joined strings, which real labels can contain."""
+    status = sgp.classify_reporting(p)
+    row = {"nct_id": nct_id, **p.to_dict(), "sex_report_status": status,
+           **sgp.derive_outcomes(p, status), "parser_rules_version": sgp.PARSER_RULES_VERSION}
+    for k in LABEL_COLUMNS:
+        row[k] = list(getattr(p, k) or [])
+    return row
+
+
 def build_row(study: dict, snapshot_date: str, refetched: bool = False) -> dict:
     """Row for one raw API v2 study record."""
-    row = sgp.parse_study_record(study)
-    return finish_row(row, _enrollment_of(study), snapshot_date, refetched)
+    measures = ((study.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}).get("measures")
+    p = sgp.parse_trial(measures, _enrollment_of(study))
+    return finish_row(_row_from_parsed(p, _nct_of(study)), _enrollment_of(study), snapshot_date, refetched)
 
 
 def build_row_from_raw(raw: dict, snapshot_date: str, refetched: bool = False) -> dict:
     """Row for one retained raw-measure record (select_raw_measures output).
     This is the re-parse path: identical output to build_row on the same trial."""
-    row = sgp.parse_measures_row(raw.get("measures") or [], raw.get("enrollment"),
-                                 nct_id=raw.get("nct_id"), preselected=True)
+    p = sgp.parse_trial(raw.get("measures") or [], raw.get("enrollment"), preselected=True)
     # The refetch flag is recorded on the raw record by the extraction so a
     # rebuild from raw measures keeps it.
-    return finish_row(row, raw.get("enrollment"), snapshot_date, refetched or bool(raw.get("refetched")))
+    return finish_row(_row_from_parsed(p, raw.get("nct_id")), raw.get("enrollment"), snapshot_date,
+                      refetched or bool(raw.get("refetched")))
 
 
 def parse_error_row(nct_id: Optional[str], enrollment: Any, snapshot_date: str) -> dict:
     """A row for input that could not be read at all: status parse_error, outcomes None."""
     p = sgp.ParsedTrial(raw_present=True, parse_ok=False)
-    status = sgp.classify_reporting(p)
-    row = {"nct_id": nct_id, **p.to_dict(), "sex_report_status": status,
-           **sgp.derive_outcomes(p, status), "parser_rules_version": sgp.PARSER_RULES_VERSION}
-    return finish_row(row, enrollment, snapshot_date)
+    return finish_row(_row_from_parsed(p, nct_id), enrollment, snapshot_date)
 
 
 def ordered(row: dict) -> dict:

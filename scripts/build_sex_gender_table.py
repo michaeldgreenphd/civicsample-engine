@@ -97,9 +97,18 @@ def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, dict]:
                 rows.append(sgt.ordered(sgt.parse_error_row(None, None, snapshot_date or sgt.today_utc())))
                 stamps["n_parse_errors"] += 1
                 continue
-            for k in ("snapshot_date", "extracted_at"):
-                stamps[k] = stamps[k] or raw.get(k)
-            stamps["source_pipeline_commit"] = stamps["source_pipeline_commit"] or raw.get("pipeline_commit")
+            # Every stamped record must agree: a file that concatenates two
+            # extractions would otherwise be tabulated under one provenance.
+            for k, src in (("snapshot_date", "snapshot_date"), ("extracted_at", "extracted_at"),
+                           ("source_pipeline_commit", "pipeline_commit")):
+                v = raw.get(src)
+                if v is None:
+                    continue
+                if stamps[k] is None:
+                    stamps[k] = v
+                elif stamps[k] != v:
+                    raise SystemExit(f"{path}: mixed provenance — {src} {stamps[k]!r} and {v!r} "
+                                     f"(record {raw.get('nct_id')}); refusing to tabulate records from more than one extraction")
             snap = snapshot_date or raw.get("snapshot_date") or sgt.today_utc()
             try:
                 rows.append(sgt.ordered(sgt.build_row_from_raw(raw, snap)))
@@ -112,7 +121,11 @@ def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, dict]:
 
 
 def write_table(rows: list, out_csv: str) -> None:
+    """The label trails are lists; they are written as JSON arrays (never joined,
+    since real labels contain "; ") and read back by sex_gender_table.read_table."""
     df = pd.DataFrame(rows, columns=sgt.COLUMNS)
+    for c in sgt.LABEL_COLUMNS:
+        df[c] = df[c].map(lambda v: json.dumps(v if isinstance(v, list) else ([] if v is None else [v])))
     os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
     df.to_csv(out_csv, index=False, compression="gzip" if out_csv.endswith(".gz") else None)
 
@@ -154,8 +167,14 @@ def main() -> int:
             print(f"::warning::{a.from_raw} carries no extracted_at stamp (pre-stamp raw file); "
                   "source_extracted_at will be taken from --write-back's container if given")
     else:
+        # An explicitly named source that does not exist is an error, never a
+        # fall-through to whatever other pull happens to be on disk.
+        if a.demographics is not None and not os.path.exists(a.demographics):
+            raise SystemExit(f"--demographics {a.demographics}: no such file")
+        if a.parts is not None and not glob.glob(a.parts):
+            raise SystemExit(f"--parts {a.parts}: no files match")
         records, extracted_at, commit = load_records(a.demographics or "data/demographics.json",
-                                                     a.parts or "data/demographics.part*.json.gz")
+                                                     None if a.demographics else (a.parts or "data/demographics.part*.json.gz"))
         source_commit = commit
         rows, missing = rows_from_records(records)
         source = "study['sex_gender'] rows of the pull"
@@ -182,16 +201,32 @@ def main() -> int:
             print(f"::warning::raw records were extracted at {extracted_at} but {a.write_back} says {c_at}; "
                   "the table is stamped with the raw records' value")
         source_commit = source_commit or container.get("pipeline_commit")
-        hit = 0
-        for s in container["data"]:
-            lean = by_nct.get(s.get("nct_id"))
-            if lean is not None:
-                s["sex_gender"] = lean
+        # Coverage must be one-to-one: every table id unique and present, every
+        # study record matched. Anything else means the CSV and the parts
+        # would describe different trial sets, and nothing is written back.
+        table_ids = [r.get("nct_id") for r in rows]
+        no_id = sum(1 for i in table_ids if not i)
+        from collections import Counter
+        dupes = sorted(i for i, n in Counter(i for i in table_ids if i).items() if n > 1)
+        record_ids = [s.get("nct_id") for s in container["data"]]
+        unmatched = sorted(set(i for i in record_ids if i) - set(by_nct))
+        extra = sorted(set(by_nct) - set(i for i in record_ids if i))
+        coverage_ok = not (no_id or dupes or unmatched or extra)
+        written_back = {"path": a.write_back, "records": len(container["data"]), "updated": 0,
+                        "coverage_ok": coverage_ok, "rows_without_id": no_id, "duplicate_ids": dupes[:20],
+                        "records_without_row": unmatched[:20], "rows_without_record": extra[:20]}
+        if coverage_ok:
+            hit = 0
+            for s in container["data"]:
+                s["sex_gender"] = by_nct[s["nct_id"]]
                 hit += 1
-        with open(a.write_back, "w") as f:
-            json.dump(container, f, indent=2)
-        written_back = {"path": a.write_back, "records": len(container["data"]), "updated": hit}
-        print(f"wrote back lean sex_gender rows into {a.write_back}: {hit} of {len(container['data'])} records")
+            with open(a.write_back, "w") as f:
+                json.dump(container, f, indent=2)
+            written_back["updated"] = hit
+            print(f"wrote back lean sex_gender rows into {a.write_back}: {hit} of {len(container['data'])} records")
+        else:
+            print(f"::error::write-back coverage is not one-to-one: {no_id} rows without id, {len(dupes)} duplicate ids, "
+                  f"{len(unmatched)} records without a row, {len(extra)} rows without a record; nothing written back")
     meta = {
         "written_back": written_back,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -234,6 +269,8 @@ def main() -> int:
     failed = not sgt.all_pass(checks)
     if failed:
         print("::warning::sex/gender structural check(s) failed; see sex_gender_parsed_meta.json")
+    if written_back and not written_back["coverage_ok"]:
+        return 1
     if meta["baseline"]["is_baseline_data"] and drift:
         print("::error::sex/gender table parsed from the 2026-06-09 baseline does not reproduce the baseline counts")
         return 1

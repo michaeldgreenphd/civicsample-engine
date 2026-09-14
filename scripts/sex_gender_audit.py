@@ -121,15 +121,20 @@ def inventory_from_table(df: pd.DataFrame) -> pd.DataFrame:
     occ: dict = defaultdict(int)
     trials: dict = defaultdict(set)
     example: dict = {}
-    for col in ("unknown_labels", "gender_diverse_labels", "ambiguous_labels", "unmapped_labels"):
+    for col in sgt.LABEL_COLUMNS:
         if col not in df.columns:
             continue
         for nct, cell in zip(df["nct_id"], df[col]):
             if not isinstance(cell, str) or not cell:
                 continue
-            for lb in cell.split("; "):
+            # The CSV carries each trail as a JSON array (labels can contain "; ").
+            try:
+                labels = json.loads(cell)
+            except json.JSONDecodeError:
+                labels = [cell]
+            for lb in (labels if isinstance(labels, list) else [labels]):
                 if lb:
-                    k = ("table", lb)
+                    k = ("table", str(lb))
                     occ[k] += 1; trials[k].add(nct); example.setdefault(k, nct)
     # Without the raw measures the layout is unknown, so consequential is left
     # blank rather than guessed.

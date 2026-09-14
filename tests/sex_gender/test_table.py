@@ -361,6 +361,82 @@ def test_explicit_demographics_source_is_not_replaced_by_the_default_raw_file(tm
     meta = json.load(open(d / "m.json"))
     assert meta["n_rows"] == 1 and "other-pull.json" not in meta["source"] and meta["source"].startswith("study[")
     assert meta["source_extracted_at"] == "2026-01-01T00:00:00+00:00" and meta["source_pipeline_commit"] == "src111"
+    # a mistyped explicit path is an error, not a fall-through to the parts glob
+    res = subprocess.run([_sys.executable, os.path.join(ROOT, "scripts", "build_sex_gender_table.py"),
+                          "--demographics", str(d / "nope.json"), "--out", str(d / "t2.csv.gz"), "--meta", str(d / "m2.json")],
+                         cwd=str(d), capture_output=True, text=True)
+    assert res.returncode != 0 and "no such file" in (res.stdout + res.stderr)
+    assert not (d / "t2.csv.gz").exists()
+
+
+def test_labels_with_semicolons_survive_the_csv_round_trip(tmp_path):
+    """The parser's own to_dict() joins label trails with "; "; a real registry
+    label contains that sequence. The engine keeps the trails as lists and
+    writes JSON arrays, so one label stays one label."""
+    from build_sex_gender_table import write_table
+    ugly = "Other (Transwoman; Transman; Gender-variant/non-binary; Other Identity; Prefer not to answer)"
+    row = sgt.build_row(_study("SC", [_measure("Gender", [("Woman", 5), ("Man", 4), (ugly, 1)])]), SNAP)
+    assert row["unknown_labels"] == [ugly]                       # one label, not five
+    path = str(tmp_path / "t.csv.gz")
+    write_table([sgt.ordered(row)], path)
+    back = sgt.read_table(path)[0]
+    assert back["unknown_labels"] == [ugly]
+    from generate_mobile_data import sex_gender_summary
+    blk = sex_gender_summary([{"nct_id": "SC", "results_date": "2020-01-01", "enrollment": 10, "sex_gender": sgt.lean_row(row)}], [back])
+    assert blk["labels"]["unknown"] == {"distinct": 1, "top": [[ugly, 1]]}
+
+
+def test_raw_rebuild_refuses_mixed_provenance(tmp_path):
+    import gzip
+    import json
+    from build_sex_gender_table import rows_from_raw
+    a = {**sgt.select_raw_measures(_study("A", [_measure("Sex: Female, Male", [("Female", 1), ("Male", 1)])])),
+         "snapshot_date": SNAP, "extracted_at": "2026-09-14T06:00:00+00:00", "pipeline_commit": "aaa"}
+    b = {**a, "nct_id": "B", "extracted_at": "2026-09-21T06:00:00+00:00"}
+    p = str(tmp_path / "raw.jsonl.gz")
+    with gzip.open(p, "wt") as fh:
+        fh.write(json.dumps(a) + "\n" + json.dumps(b) + "\n")
+    with pytest.raises(SystemExit, match="mixed provenance"):
+        rows_from_raw(p, None)
+    # records without a stamp (a pre-stamp file) are still accepted alongside stamped ones
+    c = {k: v for k, v in a.items() if k not in ("extracted_at", "pipeline_commit")}
+    c["nct_id"] = "C"
+    with gzip.open(p, "wt") as fh:
+        fh.write(json.dumps(a) + "\n" + json.dumps(c) + "\n")
+    rows, stamps = rows_from_raw(p, None)
+    assert len(rows) == 2 and stamps["extracted_at"] == "2026-09-14T06:00:00+00:00"
+
+
+def test_write_back_requires_one_to_one_coverage(tmp_path):
+    import gzip
+    import json
+    import subprocess
+    import sys as _sys
+    d = tmp_path
+    raw = {**sgt.select_raw_measures(_study("A", [_measure("Sex: Female, Male", [("Female", 1), ("Male", 1)])])),
+           "snapshot_date": SNAP, "extracted_at": "2026-09-14T06:00:00+00:00", "pipeline_commit": "aaa"}
+    p = str(d / "raw.jsonl.gz")
+    with gzip.open(p, "wt") as fh:
+        fh.write(json.dumps(raw) + "\n")
+    container = {"extracted_at": "2026-09-14T06:00:00+00:00", "pipeline_commit": "aaa",
+                 "data": [{"nct_id": "A", "sex_gender": None}, {"nct_id": "B", "sex_gender": None}]}   # B has no raw record
+    json.dump(container, open(d / "demo.json", "w"))
+    res = subprocess.run([_sys.executable, os.path.join(ROOT, "scripts", "build_sex_gender_table.py"),
+                          "--from-raw", p, "--write-back", str(d / "demo.json"), "--out", str(d / "t.csv.gz"),
+                          "--meta", str(d / "m.json"), "--strict"], cwd=str(d), capture_output=True, text=True)
+    assert res.returncode == 1 and "coverage is not one-to-one" in res.stdout
+    assert json.load(open(d / "demo.json"))["data"][0]["sex_gender"] is None       # nothing written back
+    meta = json.load(open(d / "m.json"))
+    assert meta["written_back"]["coverage_ok"] is False and meta["written_back"]["records_without_row"] == ["B"]
+
+
+def test_legacy_refetch_predicate_ignores_gender_tables():
+    """A populated gender-titled table must not vouch for stripped race/ethnicity/sex tables."""
+    from src.extract_all import _measurements_present_in_search
+    stripped_sex = {"title": "Sex: Female, Male", "classes": [{"categories": [{"title": "Female"}, {"title": "Male"}]}]}
+    full_gender = _measure("Gender Identity", [("Woman", 3), ("Man", 4)])
+    assert _measurements_present_in_search({"resultsSection": {"baselineCharacteristicsModule": {"measures": [stripped_sex, full_gender]}}}) is False
+    assert _measurements_present_in_search({"resultsSection": {"baselineCharacteristicsModule": {"measures": [_measure("Sex: Female, Male", [("Female", 1), ("Male", 1)])]}}}) is True
 
 
 # --------------------------------------------------------------------- 8. mobile block
@@ -410,6 +486,7 @@ def test_lean_row_is_the_ui_subset_and_the_csv_is_the_full_record(tmp_path):
     back = sgt.read_table(path)
     assert len(back) == 2 and list(back[0].keys()) == sgt.COLUMNS
     assert back[0]["n_female"] == 10.0 and back[0]["reported_gender"] is True and back[0]["is_participant_count"] is True
-    assert back[0]["gender_diverse_labels"] == "Non-binary" and back[0]["n_unknown"] is None
+    assert back[0]["gender_diverse_labels"] == ["Non-binary"] and back[0]["n_unknown"] is None
+    assert back[1]["gender_diverse_labels"] == []
     assert back[1]["sex_report_status"] == "parse_error" and back[1]["reported_sex"] is None
     assert sgt.lean_row(back[0]) == lean

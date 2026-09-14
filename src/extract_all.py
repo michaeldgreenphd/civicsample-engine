@@ -142,13 +142,17 @@ def _measurements_present_in_search(study: dict) -> bool:
     for studies whose baseline data hasn't been entered yet — these are genuine
     data gaps, not truncation.  When measurements ARE present (even with 'NA' or
     '0' values) the data is complete; a re-fetch would return the same result.
-    Gender-titled tables are included so a stripped gender table is refetched too.
+
+    Scoped to the dimensions the LEGACY trigger judges (race, ethnicity, sex):
+    a populated gender-titled table must not vouch for stripped legacy tables.
+    Stripped sex/gender tables are the sg_v2 trigger's job (sex_gender_table
+    .needs_refetch reads exactly the selected sex/gender measures).
     """
     baseline = (study.get("resultsSection", {})
                 .get("baselineCharacteristicsModule", {}))
     for m in baseline.get("measures", []):
         title = m.get("title", "").lower()
-        if not any(kw in title for kw in ("race", "ethnicity", "sex", "gender")):
+        if not any(kw in title for kw in ("race", "ethnicity", "sex")):
             continue
         for cls in m.get("classes", []):
             for cat in cls.get("categories", []):

@@ -208,6 +208,31 @@ jobs:
               done
           echo "Backed up to release $TAG"
 
+      - name: Archive the retained sex/gender raw measures permanently
+        # The dated data-* releases are pruned after 26 weeks and Drive is
+        # best-effort, but the selected raw measures are what makes a snapshot
+        # re-parseable after a parser rule change, so they also go to ONE
+        # permanent release (tag sex-gender-raw-measures, never matched by the
+        # data-* prune loop above), one asset per snapshot date. This step runs
+        # after the site publish, so a failure here cannot delay the site's
+        # data, but it does fail the run: an unarchived week must be noticed.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="sex-gender-raw-measures"
+          ASSET="$RUNNER_TEMP/${CURRENT_DATE}_sex_gender_raw_measures.jsonl.gz"
+          cp data/sex_gender_raw_measures.jsonl.gz "$ASSET"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Sex/gender raw measures (permanent archive)" \
+              --notes "One asset per weekly snapshot: the SELECTED sex/gender baseline measures per trial, verbatim, with snapshot_date, extracted_at and pipeline_commit on every record. Re-parse with scripts/build_sex_gender_table.py --from-raw. Not pruned."
+          fi
+          if ! gh release upload "$TAG" "$ASSET" --clobber --repo "$GITHUB_REPOSITORY"; then
+            echo "::error::permanent archive of the sex/gender raw measures for $CURRENT_DATE failed; re-run this step or upload $ASSET to release $TAG by hand"
+            exit 1
+          fi
+          echo "Archived $(basename "$ASSET") to release $TAG"
+
       # ── Sex/gender curation inbox (scripts/sex_gender_audit.py) ──────────
       # Runs after the site publish (an audit problem can never delay the
       # site's data) and BEFORE the sponsor steps, which are an independent

@@ -106,7 +106,14 @@ category-based, never title-based; cis/trans-qualified labels are never summed
 into Female or Male; `COUNT_OF_UNITS` tables stay in the reporting counts and
 out of composition; every row carries `parser_rules_version`. The vendored
 suite under `tests/sex_gender/` must keep passing as shipped, and the weekly
-inbox `data/sex_gender_audit/` may not silently drop a label.
+inbox `data/sex_gender_audit/` may not silently drop a label. The retained raw
+measures (`sex_gender_raw_measures.jsonl.gz`, one record per trial with its
+`snapshot_date`, `extracted_at` and `pipeline_commit`) are what make a
+snapshot re-parseable after a rule change; besides the pruned weekly `data-*`
+release and the best-effort Drive copy they go to the permanent
+`sex-gender-raw-measures` release, which the prune loop never touches. A
+change that drops that upload, or lets the prune loop match that tag, is a
+data-loss defect.
 
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM
