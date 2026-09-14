@@ -293,8 +293,8 @@ def test_refetch_flag_and_extraction_stamp_survive_the_rebuild_from_raw():
         p = os.path.join(d, "raw.jsonl.gz")
         with gzip.open(p, "wt") as fh:
             fh.write(json.dumps({**raw, "snapshot_date": SNAP}) + "\n")
-        rows, snap, extracted_at = rows_from_raw(p, None)
-        assert snap == SNAP and extracted_at == "2026-09-14T06:00:00+00:00"
+        rows, stamps = rows_from_raw(p, None)
+        assert stamps["snapshot_date"] == SNAP and stamps["extracted_at"] == "2026-09-14T06:00:00+00:00"
         assert rows[0]["refetched"] is True
     # and lean rows are refused as input to the full table
     with pytest.raises(SystemExit, match="lean row"):
