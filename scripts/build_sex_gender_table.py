@@ -34,6 +34,7 @@ from src import sex_gender_table as sgt  # noqa: E402
 from src.utils import pipeline_commit  # noqa: E402
 
 BASELINE_PATH = os.path.join("tests", "sex_gender", "fixtures", "snapshot_baseline_2026-06-09.json")
+DEFAULT_RAW_PATH = os.path.join("data", "sex_gender_raw_measures.jsonl.gz")
 
 
 def load_records(demographics: str | None, parts_glob: str | None):
@@ -55,19 +56,31 @@ def load_records(demographics: str | None, parts_glob: str | None):
 
 
 def rows_from_records(records) -> tuple[list, list]:
-    """(rows, missing_nct_ids): the sex_gender row of every record that has one."""
+    """(rows, missing_nct_ids): the FULL sex_gender row of every record that has one.
+
+    Study records normally carry only the lean row (sex_gender_table.LEAN_COLUMNS),
+    which cannot stand in for the full record: it has no raw_present, labels,
+    flags or percent_female, and the structural checks would skip it. Such
+    input is refused rather than tabulated with nulls; rebuild from the raw
+    measures instead (--from-raw)."""
     rows, missing = [], []
     for s in records:
         r = s.get("sex_gender")
         if r:
+            if "raw_present" not in r:
+                raise SystemExit(
+                    f"{s.get('nct_id')}: study['sex_gender'] is a lean row (no raw_present); the full table "
+                    "must be rebuilt from the retained raw measures: --from-raw data/sex_gender_raw_measures.jsonl.gz")
             rows.append(sgt.ordered(r))
         else:
             missing.append(s.get("nct_id"))
     return rows, missing
 
 
-def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, str | None]:
-    rows, first_date = [], None
+def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, str | None, str | None]:
+    """(rows, snapshot_date, extracted_at) re-parsed from the retained raw
+    records; the stamps come from the records themselves."""
+    rows, first_date, extracted_at = [], None, None
     with gzip.open(path, "rt") as fh:
         for line in fh:
             line = line.strip()
@@ -79,9 +92,10 @@ def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, str | Non
                 rows.append(sgt.ordered(sgt.parse_error_row(None, None, snapshot_date or sgt.today_utc())))
                 continue
             first_date = first_date or raw.get("snapshot_date")
+            extracted_at = extracted_at or raw.get("extracted_at")
             rows.append(sgt.ordered(sgt.build_row_from_raw(
                 raw, snapshot_date or raw.get("snapshot_date") or sgt.today_utc())))
-    return rows, first_date
+    return rows, first_date, extracted_at
 
 
 def write_table(rows: list, out_csv: str) -> None:
@@ -107,10 +121,17 @@ def main() -> int:
 
     extracted_at = commit = None
     missing: list = []
+    # The retained raw measures are the normal input: when they are there and
+    # no source was named, rebuild from them rather than from the lean rows.
+    if not a.from_raw and os.path.exists(DEFAULT_RAW_PATH):
+        a.from_raw = DEFAULT_RAW_PATH
     if a.from_raw:
-        rows, snapshot_date = rows_from_raw(a.from_raw, a.snapshot_date)
+        rows, snapshot_date, extracted_at = rows_from_raw(a.from_raw, a.snapshot_date)
         source = f"re-parsed from {a.from_raw}"
         snapshot_date = a.snapshot_date or snapshot_date
+        if extracted_at is None:
+            print(f"::warning::{a.from_raw} carries no extracted_at stamp (pre-stamp raw file); "
+                  "source_extracted_at will be taken from --write-back's container if given")
     else:
         records, extracted_at, commit = load_records(a.demographics, a.parts)
         rows, missing = rows_from_records(records)
@@ -129,6 +150,15 @@ def main() -> int:
         by_nct = {r["nct_id"]: sgt.lean_row(r) for r in rows if r.get("nct_id")}
         with open(a.write_back) as f:
             container = json.load(f)
+        # The container's stamps are the pull's; use them when the raw records
+        # carry none, and flag a mismatch when both exist and disagree.
+        c_at = container.get("extracted_at")
+        if extracted_at is None:
+            extracted_at = c_at
+        elif c_at and c_at != extracted_at:
+            print(f"::warning::raw records were extracted at {extracted_at} but {a.write_back} says {c_at}; "
+                  "the table is stamped with the raw records' value")
+        commit = commit or container.get("pipeline_commit")
         hit = 0
         for s in container["data"]:
             lean = by_nct.get(s.get("nct_id"))

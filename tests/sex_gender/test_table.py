@@ -254,6 +254,53 @@ def test_orchestrator_stores_the_row_with_legacy_on_and_off():
     assert _needs_refetch(res, empty, sgt.select_raw_measures(empty)) == "sg_v2"
 
 
+def test_parser_failure_becomes_a_parse_error_row_not_a_dropped_trial(monkeypatch):
+    """A parser exception on one record is that record's parse_error state; the
+    trial stays in the output with None outcomes (never False, never absent)."""
+    from validate_fixes import _make_study, _make_measure, _make_class, _make_category
+    from src import extract_all
+
+    def boom(study, snapshot_date, refetched=False):
+        raise ValueError("synthetic parser failure")
+
+    monkeypatch.setattr(extract_all.sgt, "build_row", boom)
+    study = _make_study("NCT_BOOM", "boom", [
+        _make_measure("Sex: Female, Male", [_make_class("", [_make_category("Female", 1), _make_category("Male", 2)])])
+    ], total_participants=3)
+    res = extract_all.extract_demographics_from_study(study, snapshot_date=SNAP)
+    assert res is not None and res["nct_id"] == "NCT_BOOM"
+    row = res["sex_gender"]
+    assert row["sex_report_status"] == "parse_error"
+    assert row["reported_sex"] is None and row["reported_gender"] is None
+    assert row["parser_rules_version"] == sgp.PARSER_RULES_VERSION
+    assert res["sex"]["reported"] is True                    # the legacy path is unaffected
+
+
+def test_refetch_flag_and_extraction_stamp_survive_the_rebuild_from_raw():
+    study = _study("RF", [_measure("Sex: Female, Male", [("Female", 4), ("Male", 5)])])
+    raw = sgt.select_raw_measures(study)
+    raw["refetched"] = True
+    raw["extracted_at"] = "2026-09-14T06:00:00+00:00"
+    row = sgt.build_row_from_raw(raw, SNAP)
+    assert row["refetched"] is True
+    assert sgt.build_row_from_raw(sgt.select_raw_measures(study), SNAP)["refetched"] is False
+    # the builder's raw reader hands the stamp on to the meta
+    import gzip
+    import json
+    import tempfile
+    from build_sex_gender_table import rows_from_raw, rows_from_records
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "raw.jsonl.gz")
+        with gzip.open(p, "wt") as fh:
+            fh.write(json.dumps({**raw, "snapshot_date": SNAP}) + "\n")
+        rows, snap, extracted_at = rows_from_raw(p, None)
+        assert snap == SNAP and extracted_at == "2026-09-14T06:00:00+00:00"
+        assert rows[0]["refetched"] is True
+    # and lean rows are refused as input to the full table
+    with pytest.raises(SystemExit, match="lean row"):
+        rows_from_records([{"nct_id": "L", "sex_gender": sgt.lean_row(row)}])
+
+
 # --------------------------------------------------------------------- 8. mobile block
 def test_mobile_summary_block_is_built_from_the_rows_only():
     from generate_mobile_data import sex_gender_summary

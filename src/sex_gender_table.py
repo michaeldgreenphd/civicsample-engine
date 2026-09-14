@@ -119,6 +119,10 @@ def today_utc() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
 
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _num(v: Any) -> Optional[float]:
     if v is None:
         return None
@@ -217,7 +221,9 @@ def build_row_from_raw(raw: dict, snapshot_date: str, refetched: bool = False) -
     This is the re-parse path: identical output to build_row on the same trial."""
     row = sgp.parse_measures_row(raw.get("measures") or [], raw.get("enrollment"),
                                  nct_id=raw.get("nct_id"), preselected=True)
-    return finish_row(row, raw.get("enrollment"), snapshot_date, refetched)
+    # The refetch flag is recorded on the raw record by the extraction so a
+    # rebuild from raw measures keeps it.
+    return finish_row(row, raw.get("enrollment"), snapshot_date, refetched or bool(raw.get("refetched")))
 
 
 def parse_error_row(nct_id: Optional[str], enrollment: Any, snapshot_date: str) -> dict:

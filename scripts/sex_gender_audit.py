@@ -14,6 +14,9 @@ WRITES  under --out-dir (default data/sex_gender_audit/), every CSV row stamped
                                  "unrecognized": n_trials desc, example NCT, first_seen,
                                  weeks_open (first_seen persists week to week)
         inbox_exits.csv          labels that left the inbox since last week, with cause
+        resolved_labels.csv      the durable ledger of curator resolutions (level, label,
+                                 note, resolved_on, first_seen); a label in it stays out of
+                                 the inbox for as long as it stays unrecognized
         bucket_changes.csv       labels whose bucket differs from last week, with cause
         status_counts.json       the five-state table, outcomes, structural checks and
                                  baseline drift, each with last week's value and the delta
@@ -188,20 +191,42 @@ def main() -> int:
     # committed inbox_unrecognized.csv (any non-empty text: what was decided);
     # a resolved label leaves the inbox on the next run and is logged in
     # inbox_exits.csv with the curator's note. It stays in label_buckets.csv.
+    # Resolutions are durable: resolved_labels.csv is the ledger. It is read
+    # from the prior audit, extended with any note a curator wrote into the
+    # prior inbox's `resolved` column, and written back every week, so a
+    # resolved label stays out of the inbox for as long as it stays
+    # unrecognized, and keeps its original first_seen.
     first_seen: dict = {}
-    prior_resolved: dict = {}
+    prior_resolved: dict = {}          # (level, label) -> note, from the prior inbox (new this week)
+    prior_ledger = read_csv_if(os.path.join(a.prior_dir, "resolved_labels.csv"))
+    ledger: dict = {}                  # (level, label) -> {resolved, resolved_on, first_seen}
+    if prior_ledger is not None and {"level", "label", "resolved"} <= set(prior_ledger.columns):
+        for _, r in prior_ledger.iterrows():
+            if str(r["resolved"]).strip():
+                ledger[(r["level"], r["label"])] = {"resolved": r["resolved"], "resolved_on": r.get("resolved_on", ""),
+                                                    "first_seen": r.get("first_seen", "")}
     if prior_inbox is not None and {"level", "label", "first_seen"} <= set(prior_inbox.columns):
         first_seen = {(lv, lb): fs for lv, lb, fs in zip(prior_inbox["level"], prior_inbox["label"], prior_inbox["first_seen"])}
         if "resolved" in prior_inbox.columns:
             prior_resolved = {(lv, lb): note for lv, lb, note in
                               zip(prior_inbox["level"], prior_inbox["label"], prior_inbox["resolved"]) if str(note).strip()}
+            for k, note in prior_resolved.items():
+                ledger.setdefault(k, {"resolved": note, "resolved_on": snapshot_date, "first_seen": first_seen.get(k, "")})
+    for k, v in ledger.items():
+        if v.get("first_seen"):
+            first_seen.setdefault(k, v["first_seen"])
     unrec = inv[inv["reason"] == "unrecognized"].copy()
     unrec["first_seen"] = [first_seen.get((lv, lb), snapshot_date) for lv, lb in zip(unrec["level"], unrec["label"])]
     unrec["weeks_open"] = unrec["first_seen"].map(lambda d: (snap - date.fromisoformat(d)).days // 7)
     unrec["resolved"] = ""
-    is_resolved = [((lv, lb) in prior_resolved) for lv, lb in zip(unrec["level"], unrec["label"])]
+    is_resolved = [((lv, lb) in ledger) for lv, lb in zip(unrec["level"], unrec["label"])]
     resolved_now = unrec[is_resolved]
     inbox = unrec[[not x for x in is_resolved]]
+    ledger_df = pd.DataFrame(
+        [{"level": lv, "label": lb, "resolved": v["resolved"], "resolved_on": v["resolved_on"],
+          "first_seen": v["first_seen"], "still_unrecognized": (lv, lb) in set(zip(unrec["level"], unrec["label"]))}
+         for (lv, lb), v in sorted(ledger.items())],
+        columns=["level", "label", "resolved", "resolved_on", "first_seen", "still_unrecognized"])
     # Review order: labels the parser actually reads for counts first, then by
     # how many trials carry them.
     inbox = inbox.sort_values(["consequential", "n_trials", "label"], ascending=[False, False, True]).reset_index(drop=True)
@@ -261,7 +286,8 @@ def main() -> int:
     # ── Write ──
     os.makedirs(a.out_dir, exist_ok=True)
     for name, frame in [("label_buckets.csv", inv), ("inbox_unrecognized.csv", inbox),
-                        ("inbox_exits.csv", exits_df), ("bucket_changes.csv", changes_df)]:
+                        ("inbox_exits.csv", exits_df), ("bucket_changes.csv", changes_df),
+                        ("resolved_labels.csv", ledger_df)]:
         frame = frame.copy(); frame["parser_rules_version"] = rules
         frame.to_csv(os.path.join(a.out_dir, name), index=False)
     with open(os.path.join(a.out_dir, "status_counts.json"), "w") as fh:
@@ -283,7 +309,9 @@ def main() -> int:
         "inbox_size": int(len(inbox)),
         "inbox_consequential": n_consequential,
         "inbox_new_this_week": int((inbox["first_seen"] == snapshot_date).sum()) if len(inbox) else 0,
-        "resolved_this_week": int(len(resolved_now)),
+        "resolved_this_week": int(len(prior_resolved)),
+        "resolved_ledger_size": int(len(ledger_df)),
+        "resolved_still_unrecognized": int(len(resolved_now)),
         "inbox_top": (inbox.iloc[0].to_dict() if len(inbox) else None),
         "inbox_oldest": (inbox.sort_values(["weeks_open", "n_trials"], ascending=[False, False]).iloc[0].to_dict()
                          if len(inbox) else None),

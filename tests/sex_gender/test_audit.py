@@ -106,6 +106,21 @@ def test_resolved_label_leaves_the_inbox_with_the_note_and_stays_in_label_bucket
     assert "Sex/Gender" in set(buckets["label"])
     assert summary["resolved_this_week"] == 1 and summary["n_inbox_exits"] == 1
     assert summary["n_bucket_changes"] == 0 and summary["rules_changed_vs_prior"] is False
+    # The resolution is durable: it is in the ledger, and a THIRD run whose prior
+    # is week2 (where the label is no longer in the inbox) still keeps it out,
+    # with its original first_seen, and does not log a second exit.
+    ledger = pd.read_csv(os.path.join(week2, "resolved_labels.csv"), dtype=str, keep_default_na=False)
+    assert list(ledger["label"]) == ["Sex/Gender"] and ledger.iloc[0]["resolved_on"] == "2026-09-21"
+    assert ledger.iloc[0]["first_seen"] == SNAP and ledger.iloc[0]["still_unrecognized"] == "True"
+    week3 = os.path.join(d, "week3")
+    summary3 = _run(d, raw_path, table, meta, prior_dir=week2, out_dir=week3, snapshot="2026-09-28")
+    inbox3 = pd.read_csv(os.path.join(week3, "inbox_unrecognized.csv"), dtype=str, keep_default_na=False)
+    assert "Sex/Gender" not in set(inbox3["label"]) and set(inbox3["weeks_open"]) == {"2"}
+    exits3 = pd.read_csv(os.path.join(week3, "inbox_exits.csv"), dtype=str, keep_default_na=False)
+    assert len(exits3) == 0
+    ledger3 = pd.read_csv(os.path.join(week3, "resolved_labels.csv"), dtype=str, keep_default_na=False)
+    assert list(ledger3["label"]) == ["Sex/Gender"] and ledger3.iloc[0]["first_seen"] == SNAP
+    assert summary3["resolved_ledger_size"] == 1 and summary3["resolved_this_week"] == 0
 
 
 def test_bucket_change_is_attributed_to_a_rules_version_change(tmp_path):

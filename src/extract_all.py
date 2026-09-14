@@ -79,7 +79,17 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
         gender_data = extract_gender_data(study) if legacy_sex_gender else None
 
         # ── Manuscript parser (sg=v2): one flat row, no balancing ──
-        sex_gender_row = sgt.build_row(study, snapshot_date or sgt.today_utc(), refetched=refetched)
+        # A parser failure on one record is that record's parse_error state
+        # (outcomes None), never a dropped trial: the study and its raw
+        # measures are retained and the audit counts it.
+        snap = snapshot_date or sgt.today_utc()
+        try:
+            sex_gender_row = sgt.build_row(study, snap, refetched=refetched)
+        except Exception as e:  # noqa: BLE001 - the state exists for exactly this
+            nct = ((study.get("protocolSection") or {}).get("identificationModule") or {}).get("nctId")
+            enr = (((study.get("protocolSection") or {}).get("designModule") or {}).get("enrollmentInfo") or {}).get("count")
+            logger.error(f"[{nct}] sex/gender parser failed ({type(e).__name__}: {e}); row filed as parse_error")
+            sex_gender_row = sgt.parse_error_row(nct, enr, snap)
 
         # Extract demographic breakdowns for interactive display
         baseline_measures = get_baseline_measures(study)
@@ -297,10 +307,15 @@ def main():
     refetch_count = 0
     refetch_reasons = {"legacy": 0, "sg_v2": 0}
     still_empty_after_refetch = 0
+    # One timestamp for the whole pull: stamped on the output container and on
+    # every retained raw-measure record, so a table rebuilt from the raw
+    # records carries the extraction it came from.
+    extracted_at = sgt.now_utc_iso()
     for study in tqdm(studies, desc="Extracting demographics"):
         result = extract_demographics_from_study(study, pubmed_fetcher=pubmed_fetcher,
                                                  snapshot_date=snapshot_date, legacy_sex_gender=legacy)
         raw = sgt.select_raw_measures(study)
+        raw["refetched"] = False
 
         # The search endpoint occasionally omits measurement values for large
         # studies while keeping category titles intact.  Detect this and
@@ -317,6 +332,7 @@ def main():
                                                          snapshot_date=snapshot_date, legacy_sex_gender=legacy,
                                                          refetched=True)
                 raw = sgt.select_raw_measures(full_study)
+                raw["refetched"] = True          # survives the rebuild from raw measures
                 refetch_count += 1
                 refetch_reasons[why] += 1
                 if _needs_refetch(result, full_study, raw):
@@ -335,6 +351,7 @@ def main():
         if result:
             results.append(result)
             raw["snapshot_date"] = snapshot_date
+            raw["extracted_at"] = extracted_at
             raw_records.append(raw)
         else:
             errors += 1
@@ -345,7 +362,7 @@ def main():
         output_path = output_path / "demographics.json"
 
     logger.info(f"Saving {len(results)} studies to {output_path}")
-    save_json(results, output_path)
+    save_json(results, output_path, extracted_at=extracted_at)
 
     raw_path = output_path.parent / RAW_MEASURES_FILENAME
     logger.info(f"Saving {len(raw_records)} raw sex/gender measure records to {raw_path}")

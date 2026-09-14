@@ -1,8 +1,8 @@
 {
-  "audited_at": "2026-09-14T19:54:03.129018+00:00",
+  "audited_at": "2026-09-14T22:02:28.528342+00:00",
   "snapshot_date": "2026-09-14",
-  "pipeline_commit": "3fc24425e1a371aed141223a9160d1deac8028bc",
-  "source_extracted_at": null,
+  "pipeline_commit": "dca420e1cc905e9de9e73b0559ca5bc8149780e3",
+  "source_extracted_at": "2026-09-14T18:52:57.193120+00:00",
   "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14",
   "parser_module_version": "1.1.0",
   "prior_parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10",
@@ -20,6 +20,8 @@
   "inbox_consequential": 133,
   "inbox_new_this_week": 1053,
   "resolved_this_week": 0,
+  "resolved_ledger_size": 0,
+  "resolved_still_unrecognized": 0,
   "inbox_top": {
     "level": "category",
     "label": "No",

@@ -45,13 +45,16 @@ jobs:
         # The full per-trial row is rebuilt from the retained raw measures into
         # sex_gender_parsed.csv.gz (the record every consumer reads); the study
         # records keep only the lean subset (--write-back), so the split parts
-        # stay under the CDN ceiling. A failed structural check is a ::warning::
-        # from the script, never a failed run.
+        # stay under the CDN ceiling. --strict: a failed structural check (the
+        # five-state, participant-unit or version invariants) fails the run
+        # here, before anything is published, so an invalid table can never
+        # become production data; the site keeps last week's files.
         run: |
           python3 scripts/build_sex_gender_table.py \
             --from-raw data/sex_gender_raw_measures.jsonl.gz \
             --snapshot-date "$CURRENT_DATE" \
-            --write-back data/demographics.json
+            --write-back data/demographics.json \
+            --strict
 
       - name: Compress CT.gov Data for Drive
         # -k keeps the original so the split step can still read it.
@@ -205,6 +208,36 @@ jobs:
               done
           echo "Backed up to release $TAG"
 
+      # ── Sex/gender curation inbox (scripts/sex_gender_audit.py) ──────────
+      # Runs after the site publish (an audit problem can never delay the
+      # site's data) and BEFORE the sponsor steps, which are an independent
+      # pipeline whose deliberate failures (a rules conflict) must not skip
+      # this. Priors are last week's committed data/sex_gender_audit/; every
+      # prior is read before anything is written.
+      - name: Sex/gender curation audit
+        id: sg_audit
+        run: |
+          python3 scripts/sex_gender_audit.py \
+            --table data/sex_gender_parsed.csv.gz \
+            --meta data/sex_gender_parsed_meta.json \
+            --raw-measures data/sex_gender_raw_measures.jsonl.gz \
+            --prior-dir data/sex_gender_audit \
+            --snapshot-date "$CURRENT_DATE" \
+            --out-dir data/sex_gender_audit
+
+      - name: Publish sex/gender audit to the site
+        run: |
+          mkdir -p site/data/sex_gender/audit
+          cp data/sex_gender_audit/label_buckets.csv data/sex_gender_audit/inbox_unrecognized.csv \
+             data/sex_gender_audit/inbox_exits.csv data/sex_gender_audit/bucket_changes.csv \
+             data/sex_gender_audit/resolved_labels.csv \
+             data/sex_gender_audit/status_counts.json data/sex_gender_audit/audit_summary.json \
+             site/data/sex_gender/audit/
+          cd site
+          git add data/sex_gender/audit
+          git commit -m "Update sex/gender audit $CURRENT_DATE" || exit 0
+          git push
+
       # ── Company-level sponsor filter (sponsors/README.md) ─────────────
       # These run AFTER the demographics publish on purpose: a rules conflict
       # raises inside build_index() (invariant 6) and turns the run red, but
@@ -243,34 +276,10 @@ jobs:
           git commit -m "Update sponsor bridge $CURRENT_DATE" || exit 0
           git push
 
-      # ── Sex/gender curation inbox (scripts/sex_gender_audit.py) ──────────
-      # Runs after the publish like the sponsor audit: an audit problem can
-      # never delay the site's data. Priors are last week's committed
-      # data/sex_gender_audit/; every prior is read before anything is written.
-      - name: Sex/gender curation audit
-        id: sg_audit
-        run: |
-          python3 scripts/sex_gender_audit.py \
-            --table data/sex_gender_parsed.csv.gz \
-            --meta data/sex_gender_parsed_meta.json \
-            --raw-measures data/sex_gender_raw_measures.jsonl.gz \
-            --prior-dir data/sex_gender_audit \
-            --snapshot-date "$CURRENT_DATE" \
-            --out-dir data/sex_gender_audit
-
-      - name: Publish sex/gender audit to the site
-        run: |
-          mkdir -p site/data/sex_gender/audit
-          cp data/sex_gender_audit/label_buckets.csv data/sex_gender_audit/inbox_unrecognized.csv \
-             data/sex_gender_audit/inbox_exits.csv data/sex_gender_audit/bucket_changes.csv \
-             data/sex_gender_audit/status_counts.json data/sex_gender_audit/audit_summary.json \
-             site/data/sex_gender/audit/
-          cd site
-          git add data/sex_gender/audit
-          git commit -m "Update sex/gender audit $CURRENT_DATE" || exit 0
-          git push
-
       - name: Commit sponsor and sex/gender audits to this repo
+        # Runs when either audit produced files this week, even if the other
+        # pipeline failed (the two are independent).
+        if: ${{ !cancelled() && (steps.audit.outcome == 'success' || steps.sg_audit.outcome == 'success') }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

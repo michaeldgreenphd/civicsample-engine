@@ -673,12 +673,16 @@ def pipeline_commit() -> Optional[str]:
         return None
 
 
-def save_json(data: any, path: Path):
-    """Save data as JSON with a UTC timestamp and code-version stamp."""
+def save_json(data: any, path: Path, extracted_at: Optional[str] = None):
+    """Save data as JSON with a UTC timestamp and code-version stamp.
+
+    extracted_at lets the caller stamp the container with the same timestamp
+    it wrote on sibling artifacts (the retained raw measures), so a derived
+    file can be matched to its pull exactly; default: now."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump({
-            "extracted_at": datetime.now(timezone.utc).isoformat(),
+            "extracted_at": extracted_at or datetime.now(timezone.utc).isoformat(),
             "pipeline_commit": pipeline_commit(),
             "data": data
         }, f, indent=2)
