@@ -1,0 +1,20 @@
+{
+ "snapshot": "2026-06-09 extract, 66,210 trials with a sex/gender-titled baseline measure",
+ "status_counts": {
+  "reported": 65849,
+  "uninformative": 315,
+  "explicit_unknown_only": 45,
+  "not_reported": 1
+ },
+ "reported_sex_true": 65802,
+ "reported_gender_true": 582,
+ "reported_both_true": 535,
+ "gender_labeled_binary_only_true": 2479,
+ "agreement_with_manual_truth": {
+  "status_exact": 66177,
+  "status_total": 66210,
+  "reported_sex_pct": 99.943,
+  "reported_gender_pct": 99.985,
+  "fm_counts_exact_pct_among_both_reported": 99.52
+ }
+}

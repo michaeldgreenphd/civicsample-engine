@@ -1,0 +1,4698 @@
+{
+ "source": "clinical_trials_sex_data_0609_BY.csv (2026-06-09 extract); expected = this module v1.0.0, verified equal to parsers.R det_parse_measure",
+ "cases": [
+  {
+   "nct_id": "NCT00205868",
+   "tags": [
+    "uninformative"
+   ],
+   "enrollment": 304.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female"
+        },
+        {
+         "title": "Male"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": false,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": false,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": "no_measurements",
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null
+   }
+  },
+  {
+   "nct_id": "NCT00347360",
+   "tags": [
+    "gender_labeled_binary_only"
+   ],
+   "enrollment": 654.0,
+   "measures": [
+    {
+     "title": "Gender",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "17"
+          },
+          {
+           "groupId": "BG001",
+           "value": "17"
+          },
+          {
+           "groupId": "BG002",
+           "value": "15"
+          },
+          {
+           "groupId": "BG003",
+           "value": "20"
+          },
+          {
+           "groupId": "BG004",
+           "value": "12"
+          },
+          {
+           "groupId": "BG005",
+           "value": "19"
+          },
+          {
+           "groupId": "BG006",
+           "value": "13"
+          },
+          {
+           "groupId": "BG007",
+           "value": "18"
+          },
+          {
+           "groupId": "BG008",
+           "value": "14"
+          },
+          {
+           "groupId": "BG009",
+           "value": "13"
+          },
+          {
+           "groupId": "BG010",
+           "value": "13"
+          },
+          {
+           "groupId": "BG011",
+           "value": "18"
+          },
+          {
+           "groupId": "BG012",
+           "value": "15"
+          },
+          {
+           "groupId": "BG013",
+           "value": "14"
+          },
+          {
+           "groupId": "BG014",
+           "value": "14"
+          },
+          {
+           "groupId": "BG015",
+           "value": "232"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "27"
+          },
+          {
+           "groupId": "BG001",
+           "value": "26"
+          },
+          {
+           "groupId": "BG002",
+           "value": "28"
+          },
+          {
+           "groupId": "BG003",
+           "value": "23"
+          },
+          {
+           "groupId": "BG004",
+           "value": "32"
+          },
+          {
+           "groupId": "BG005",
+           "value": "25"
+          },
+          {
+           "groupId": "BG006",
+           "value": "31"
+          },
+          {
+           "groupId": "BG007",
+           "value": "25"
+          },
+          {
+           "groupId": "BG008",
+           "value": "30"
+          },
+          {
+           "groupId": "BG009",
+           "value": "31"
+          },
+          {
+           "groupId": "BG010",
+           "value": "31"
+          },
+          {
+           "groupId": "BG011",
+           "value": "25"
+          },
+          {
+           "groupId": "BG012",
+           "value": "29"
+          },
+          {
+           "groupId": "BG013",
+           "value": "30"
+          },
+          {
+           "groupId": "BG014",
+           "value": "29"
+          },
+          {
+           "groupId": "BG015",
+           "value": "422"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 232.0,
+    "n_male": 422.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Gender",
+    "measure_type": "gender",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": true,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 232.0,
+    "n_male": 422.0
+   }
+  },
+  {
+   "nct_id": "NCT00366028",
+   "tags": [
+    "uninformative"
+   ],
+   "enrollment": 1624.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "NA",
+           "comment": "Gender was not collected as it was not pertinent to the outcome of the study."
+          },
+          {
+           "groupId": "BG001",
+           "value": "NA",
+           "comment": "Gender was not collected as it was not pertinent to the outcome of the study."
+          },
+          {
+           "groupId": "BG002",
+           "value": "NA",
+           "comment": "Total not calculated because data are not available (NA) in one or more arms."
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "NA",
+           "comment": "Gender was not collected as it was not pertinent to the outcome of the study."
+          },
+          {
+           "groupId": "BG001",
+           "value": "NA",
+           "comment": "Gender was not collected as it was not pertinent to the outcome of the study."
+          },
+          {
+           "groupId": "BG002",
+           "value": "NA",
+           "comment": "Total not calculated because data are not available (NA) in one or more arms."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": false,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": false,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": "all_values_na",
+    "declared_not_collected": true
+   },
+   "manual_truth": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null
+   }
+  },
+  {
+   "nct_id": "NCT00579982",
+   "tags": [
+    "gender_labeled_binary_only"
+   ],
+   "enrollment": 97.0,
+   "measures": [
+    {
+     "title": "Gender",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "83"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "14"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 83.0,
+    "n_male": 14.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Gender",
+    "measure_type": "gender",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": true,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 83.0,
+    "n_male": 14.0
+   }
+  },
+  {
+   "nct_id": "NCT00629343",
+   "tags": [
+    "explicit_unknown_only"
+   ],
+   "enrollment": 27.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Female",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "0"
+          },
+          {
+           "groupId": "BG003",
+           "value": "0"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Male",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "0"
+          },
+          {
+           "groupId": "BG003",
+           "value": "0"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Unknown",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "3"
+          },
+          {
+           "groupId": "BG001",
+           "value": "3"
+          },
+          {
+           "groupId": "BG002",
+           "value": "17"
+          },
+          {
+           "groupId": "BG003",
+           "value": "23"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "explicit_unknown_only",
+    "n_female": 0.0,
+    "n_male": 0.0,
+    "n_unknown": 23.0,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "customized",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": false,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": false,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "explicit_unknown_only",
+    "n_female": 0.0,
+    "n_male": 0.0
+   }
+  },
+  {
+   "nct_id": "NCT00732199",
+   "tags": [
+    "two_measures_sex_and_gender"
+   ],
+   "enrollment": 92.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "populationDescription": "Participants with data available were included in the analysis",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Apneic Threshold & CO2 Reserve Analysis Population",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "15"
+          },
+          {
+           "groupId": "BG001",
+           "value": "10"
+          },
+          {
+           "groupId": "BG002",
+           "value": "25"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "8"
+          },
+          {
+           "groupId": "BG001",
+           "value": "6"
+          },
+          {
+           "groupId": "BG002",
+           "value": "14"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "7"
+          },
+          {
+           "groupId": "BG001",
+           "value": "4"
+          },
+          {
+           "groupId": "BG002",
+           "value": "11"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "LTF and Minute Ventilation Analysis Population",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "15"
+          },
+          {
+           "groupId": "BG001",
+           "value": "14"
+          },
+          {
+           "groupId": "BG002",
+           "value": "29"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "NA",
+           "comment": "Long-term Facilitation (LTF) of Ventilation, Minute Ventilation Was Measured in Older Adults Only"
+          },
+          {
+           "groupId": "BG001",
+           "value": "8"
+          },
+          {
+           "groupId": "BG002",
+           "value": "NA",
+           "comment": "Total not calculated because data are not available (NA) in one or more arms."
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "NA",
+           "comment": "Long-term Facilitation (LTF) of Ventilation, Minute Ventilation Was Measured in Older Adults Only"
+          },
+          {
+           "groupId": "BG001",
+           "value": "6"
+          },
+          {
+           "groupId": "BG002",
+           "value": "NA",
+           "comment": "Total not calculated because data are not available (NA) in one or more arms."
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Hypoxic Ventilatory Response Analysis Population",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "10"
+          },
+          {
+           "groupId": "BG001",
+           "value": "13"
+          },
+          {
+           "groupId": "BG002",
+           "value": "23"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "6"
+          },
+          {
+           "groupId": "BG001",
+           "value": "7"
+          },
+          {
+           "groupId": "BG002",
+           "value": "13"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "4"
+          },
+          {
+           "groupId": "BG001",
+           "value": "6"
+          },
+          {
+           "groupId": "BG002",
+           "value": "10"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Brief Hyperoxia Response Analysis Population",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "9"
+          },
+          {
+           "groupId": "BG001",
+           "value": "10"
+          },
+          {
+           "groupId": "BG002",
+           "value": "19"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "3"
+          },
+          {
+           "groupId": "BG001",
+           "value": "6"
+          },
+          {
+           "groupId": "BG002",
+           "value": "9"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "6"
+          },
+          {
+           "groupId": "BG001",
+           "value": "4"
+          },
+          {
+           "groupId": "BG002",
+           "value": "10"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "calculatePct": false,
+     "classes": [
+      {
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "15"
+          },
+          {
+           "groupId": "BG001",
+           "value": "19"
+          },
+          {
+           "groupId": "BG002",
+           "value": "34"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "8"
+          },
+          {
+           "groupId": "BG001",
+           "value": "12"
+          },
+          {
+           "groupId": "BG002",
+           "value": "20"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "7"
+          },
+          {
+           "groupId": "BG001",
+           "value": "7"
+          },
+          {
+           "groupId": "BG002",
+           "value": "14"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 20.0,
+    "n_male": 14.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 2,
+    "has_sex_table": true,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": true,
+    "uninformative_reason": null,
+    "declared_not_collected": true
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 44.0,
+    "n_male": 37.0
+   }
+  },
+  {
+   "nct_id": "NCT01027559",
+   "tags": [
+    "customized_layout",
+    "total_by_position"
+   ],
+   "enrollment": 97.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "NUMBER",
+     "unitOfMeasure": "participants",
+     "classes": [
+      {
+       "title": "Female",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "19"
+          },
+          {
+           "groupId": "BG001",
+           "value": "26"
+          },
+          {
+           "groupId": "BG002",
+           "value": "28"
+          },
+          {
+           "groupId": "BG003",
+           "value": "77"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Male",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "7"
+          },
+          {
+           "groupId": "BG001",
+           "value": "5"
+          },
+          {
+           "groupId": "BG002",
+           "value": "5"
+          },
+          {
+           "groupId": "BG003",
+           "value": "19"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 77.0,
+    "n_male": 19.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "customized",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": true,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": true,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 77.0,
+    "n_male": 19.0
+   }
+  },
+  {
+   "nct_id": "NCT01070550",
+   "tags": [
+    "customized_layout",
+    "gender_labeled_binary_only"
+   ],
+   "enrollment": 4680.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "NUMBER",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Female",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "1610"
+          },
+          {
+           "groupId": "BG001",
+           "value": "155"
+          },
+          {
+           "groupId": "BG002",
+           "value": "243"
+          },
+          {
+           "groupId": "BG003",
+           "value": "54"
+          },
+          {
+           "groupId": "BG004",
+           "value": "4"
+          },
+          {
+           "groupId": "BG005",
+           "value": "16"
+          },
+          {
+           "groupId": "BG006",
+           "value": "2082"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Male",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "1746"
+          },
+          {
+           "groupId": "BG001",
+           "value": "161"
+          },
+          {
+           "groupId": "BG002",
+           "value": "501"
+          },
+          {
+           "groupId": "BG003",
+           "value": "147"
+          },
+          {
+           "groupId": "BG004",
+           "value": "17"
+          },
+          {
+           "groupId": "BG005",
+           "value": "25"
+          },
+          {
+           "groupId": "BG006",
+           "value": "2597"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Unknown",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "0"
+          },
+          {
+           "groupId": "BG003",
+           "value": "0"
+          },
+          {
+           "groupId": "BG004",
+           "value": "0"
+          },
+          {
+           "groupId": "BG005",
+           "value": "1"
+          },
+          {
+           "groupId": "BG006",
+           "value": "1"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 2082.0,
+    "n_male": 2597.0,
+    "n_unknown": 1.0,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "customized",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": true,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 2082.0,
+    "n_male": 2597.0
+   }
+  },
+  {
+   "nct_id": "NCT01718535",
+   "tags": [
+    "explicit_unknown_only"
+   ],
+   "enrollment": 327.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "NUMBER",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Gender Not Collected",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "130"
+          },
+          {
+           "groupId": "BG001",
+           "value": "95"
+          },
+          {
+           "groupId": "BG002",
+           "value": "19"
+          },
+          {
+           "groupId": "BG003",
+           "value": "7"
+          },
+          {
+           "groupId": "BG004",
+           "value": "1"
+          },
+          {
+           "groupId": "BG005",
+           "value": "40"
+          },
+          {
+           "groupId": "BG006",
+           "value": "11"
+          },
+          {
+           "groupId": "BG007",
+           "value": "6"
+          },
+          {
+           "groupId": "BG008",
+           "value": "15"
+          },
+          {
+           "groupId": "BG009",
+           "value": "1"
+          },
+          {
+           "groupId": "BG010",
+           "value": "325"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "explicit_unknown_only",
+    "n_female": null,
+    "n_male": null,
+    "n_unknown": 325.0,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "customized",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": false,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": false,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "explicit_unknown_only",
+    "n_female": null,
+    "n_male": null
+   }
+  },
+  {
+   "nct_id": "NCT02133573",
+   "tags": [
+    "named_in_parsers_R"
+   ],
+   "enrollment": 102.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "52"
+          },
+          {
+           "groupId": "BG001",
+           "value": "50"
+          },
+          {
+           "groupId": "BG002",
+           "value": "102"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "0"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Child Gender",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "34"
+          },
+          {
+           "groupId": "BG001",
+           "value": "31"
+          },
+          {
+           "groupId": "BG002",
+           "value": "65"
+          }
+         ]
+        },
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "16"
+          },
+          {
+           "groupId": "BG001",
+           "value": "18"
+          },
+          {
+           "groupId": "BG002",
+           "value": "34"
+          }
+         ]
+        },
+        {
+         "title": "Missing",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "2"
+          },
+          {
+           "groupId": "BG001",
+           "value": "1"
+          },
+          {
+           "groupId": "BG002",
+           "value": "3"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 102.0,
+    "n_male": 0.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 2,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 102.0,
+    "n_male": 0.0
+   }
+  },
+  {
+   "nct_id": "NCT02258412",
+   "tags": [
+    "uninformative"
+   ],
+   "enrollment": 51.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "NA",
+           "comment": "Subject gender was not recorded as it is not relevant to the study outcome"
+          },
+          {
+           "groupId": "BG001",
+           "value": "NA",
+           "comment": "Subject gender was not recorded as it is not relevant to the study outcome"
+          },
+          {
+           "groupId": "BG002",
+           "value": "NA",
+           "comment": "Subject gender was not recorded as it is not relevant to the study outcome"
+          },
+          {
+           "groupId": "BG003",
+           "value": "NA",
+           "comment": "Total not calculated because data are not available (NA) in one or more arms."
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "NA",
+           "comment": "Subject gender was not recorded as it is not relevant to the study outcome"
+          },
+          {
+           "groupId": "BG001",
+           "value": "NA",
+           "comment": "Subject gender was not recorded as it is not relevant to the study outcome"
+          },
+          {
+           "groupId": "BG002",
+           "value": "NA",
+           "comment": "Subject gender was not recorded as it is not relevant to the study outcome"
+          },
+          {
+           "groupId": "BG003",
+           "value": "NA",
+           "comment": "Total not calculated because data are not available (NA) in one or more arms."
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": false,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": false,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": "all_values_na",
+    "declared_not_collected": true
+   },
+   "manual_truth": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null
+   }
+  },
+  {
+   "nct_id": "NCT02405962",
+   "tags": [
+    "named_in_parsers_R"
+   ],
+   "enrollment": 168.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "72"
+          },
+          {
+           "groupId": "BG001",
+           "value": "76"
+          },
+          {
+           "groupId": "BG002",
+           "value": "148"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "12"
+          },
+          {
+           "groupId": "BG001",
+           "value": "8"
+          },
+          {
+           "groupId": "BG002",
+           "value": "20"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Child's gender",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "52"
+          },
+          {
+           "groupId": "BG001",
+           "value": "51"
+          },
+          {
+           "groupId": "BG002",
+           "value": "103"
+          }
+         ]
+        },
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "32"
+          },
+          {
+           "groupId": "BG001",
+           "value": "33"
+          },
+          {
+           "groupId": "BG002",
+           "value": "65"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 148.0,
+    "n_male": 20.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 2,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 148.0,
+    "n_male": 20.0
+   }
+  },
+  {
+   "nct_id": "NCT02635035",
+   "tags": [
+    "binary_standard"
+   ],
+   "enrollment": 38.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "11"
+          },
+          {
+           "groupId": "BG001",
+           "value": "14"
+          },
+          {
+           "groupId": "BG002",
+           "value": "25"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "6"
+          },
+          {
+           "groupId": "BG001",
+           "value": "7"
+          },
+          {
+           "groupId": "BG002",
+           "value": "13"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 25.0,
+    "n_male": 13.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 25.0,
+    "n_male": 13.0
+   }
+  },
+  {
+   "nct_id": "NCT02720094",
+   "tags": [
+    "ambiguous_cistrans"
+   ],
+   "enrollment": 4570.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Men who have sex with men",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "2014"
+          },
+          {
+           "groupId": "BG001",
+           "value": "1982"
+          },
+          {
+           "groupId": "BG002",
+           "value": "3996"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Transgender women",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "266"
+          },
+          {
+           "groupId": "BG001",
+           "value": "304"
+          },
+          {
+           "groupId": "BG002",
+           "value": "570"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Prefer not to answer",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "3"
+          },
+          {
+           "groupId": "BG001",
+           "value": "1"
+          },
+          {
+           "groupId": "BG002",
+           "value": "4"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": null,
+    "n_male": 3996.0,
+    "n_unknown": 4.0,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": 570.0,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "customized",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": true,
+    "reported_both": true,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": null,
+    "n_male": 3996.0
+   }
+  },
+  {
+   "nct_id": "NCT03040154",
+   "tags": [
+    "named_in_parsers_R"
+   ],
+   "enrollment": 217.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "110"
+          },
+          {
+           "groupId": "BG001",
+           "value": "105"
+          },
+          {
+           "groupId": "BG002",
+           "value": "215"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "78"
+          },
+          {
+           "groupId": "BG001",
+           "value": "86"
+          },
+          {
+           "groupId": "BG002",
+           "value": "164"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "32"
+          },
+          {
+           "groupId": "BG001",
+           "value": "19"
+          },
+          {
+           "groupId": "BG002",
+           "value": "51"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Child's Gender",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Male",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "110"
+          },
+          {
+           "groupId": "BG001",
+           "value": "105"
+          },
+          {
+           "groupId": "BG002",
+           "value": "215"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "51"
+          },
+          {
+           "groupId": "BG001",
+           "value": "50"
+          },
+          {
+           "groupId": "BG002",
+           "value": "101"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Female",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "110"
+          },
+          {
+           "groupId": "BG001",
+           "value": "105"
+          },
+          {
+           "groupId": "BG002",
+           "value": "215"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "59"
+          },
+          {
+           "groupId": "BG001",
+           "value": "55"
+          },
+          {
+           "groupId": "BG002",
+           "value": "114"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Perceived Susceptibility to risky sexual activity",
+     "description": "\"Participating in Risky Sexual Activity\"\n\nThis measure asks parents to rate their child's chances of experiencing these problems on a scale of 0 to 100. Zero means you are certain your child will not experience this problem and 100 means that you are certain that he/she will experience the problem when he/she is a teenager.",
+     "populationDescription": "Missing Values\n\nTotal Median is \"0\" because most participants answered \"0\"",
+     "paramType": "MEAN",
+     "dispersionType": "FULL_RANGE",
+     "unitOfMeasure": "Units on a scale",
+     "classes": [
+      {
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "109"
+          },
+          {
+           "groupId": "BG001",
+           "value": "101"
+          },
+          {
+           "groupId": "BG002",
+           "value": "210"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "6.68",
+           "lowerLimit": "0",
+           "upperLimit": "80"
+          },
+          {
+           "groupId": "BG001",
+           "value": "7.17",
+           "lowerLimit": "0",
+           "upperLimit": "70"
+          },
+          {
+           "groupId": "BG002",
+           "value": "6.91",
+           "lowerLimit": "0",
+           "upperLimit": "80"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 164.0,
+    "n_male": 51.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 3,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 164.0,
+    "n_male": 51.0
+   }
+  },
+  {
+   "nct_id": "NCT03063385",
+   "tags": [
+    "named_in_parsers_R"
+   ],
+   "enrollment": 660.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Female",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "296"
+          },
+          {
+           "groupId": "BG001",
+           "value": "295"
+          },
+          {
+           "groupId": "BG002",
+           "value": "591"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Male",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "32"
+          },
+          {
+           "groupId": "BG001",
+           "value": "35"
+          },
+          {
+           "groupId": "BG002",
+           "value": "67"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Missing",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "2"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "2"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Child's Sex",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Female",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "174"
+          },
+          {
+           "groupId": "BG001",
+           "value": "168"
+          },
+          {
+           "groupId": "BG002",
+           "value": "342"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Male",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "154"
+          },
+          {
+           "groupId": "BG001",
+           "value": "162"
+          },
+          {
+           "groupId": "BG002",
+           "value": "316"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Missing",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "2"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "2"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sexual Risk Communication between parent and adolescent",
+     "description": "All items are based on parental self-report and measured with 5-point Likert scales (range 1-5), where a higher score indicates more communication when talking about sexual risk. This measure was derived as the mean of the individual items, and was calculated for each participant when 75% or more of the items were completed. When less than 75% of the items were completed, the derived measure was considered incomplete and not included in the measurement.",
+     "paramType": "MEAN",
+     "dispersionType": "STANDARD_DEVIATION",
+     "unitOfMeasure": "Units on a scale",
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "3.12",
+           "spread": "1.12"
+          },
+          {
+           "groupId": "BG001",
+           "value": "3.31",
+           "spread": "1.16"
+          },
+          {
+           "groupId": "BG002",
+           "value": "3.22",
+           "spread": "1.14"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sexual Prevention Communication between parent and adolescent",
+     "description": "All items are based on parental self-report and measured with 5-point Likert scales (range 1-5), where a higher score indicates more communication when talking about sexual prevention. This measure was derived as the mean of the individual items, and was calculated for each participant when 75% or more of the items were completed. When less than 75% of the items were completed, the derived measure was considered incomplete and not included in the measurement.",
+     "paramType": "MEAN",
+     "dispersionType": "STANDARD_DEVIATION",
+     "unitOfMeasure": "Units on a scale",
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "3.07",
+           "spread": "1.31"
+          },
+          {
+           "groupId": "BG001",
+           "value": "3.25",
+           "spread": "1.35"
+          },
+          {
+           "groupId": "BG002",
+           "value": "3.16",
+           "spread": "1.33"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sexual Protection Communication between parents and adolescents",
+     "description": "All items are based on parental self-report and measured with 5-point Likert scales (range 1-5), where a higher score indicates more communication when talking about sexual protection. This measure was derived as the mean of the individual items, and was calculated for each participant when 75% or more of the items were completed. When less than 75% of the items were completed, the derived measure was considered incomplete and not included in the measurement.",
+     "paramType": "MEAN",
+     "dispersionType": "STANDARD_DEVIATION",
+     "unitOfMeasure": "Units on a scale",
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "2.74",
+           "spread": "1.36"
+          },
+          {
+           "groupId": "BG001",
+           "value": "2.93",
+           "spread": "1.36"
+          },
+          {
+           "groupId": "BG002",
+           "value": "2.83",
+           "spread": "1.36"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sexual Peer Pressure between parent and adolescent",
+     "description": "All items are based on parental self-report and measured with 5-point Likert scales (range 1-5), where a higher score indicates more communication when talking about sexual peer pressure. This measure was derived as the mean of the individual items, and was calculated for each participant when 75% or more of the items were completed. When less than 75% of the items were completed, the derived measure was considered incomplete and not included in the measurement.",
+     "paramType": "MEAN",
+     "dispersionType": "STANDARD_DEVIATION",
+     "unitOfMeasure": "Units on a scale",
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "3.52",
+           "spread": "1.21"
+          },
+          {
+           "groupId": "BG001",
+           "value": "3.71",
+           "spread": "1.29"
+          },
+          {
+           "groupId": "BG002",
+           "value": "3.62",
+           "spread": "1.25"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sexual Communication Attitudes by adolescents",
+     "description": "All items are based on adolescent self-report and measured with 5-point Likert scales (range 1-5), where a higher score indicates more communication when talking about sexual communication attitudes. This measure was derived as the mean of the individual items, and was calculated for each participant when 75% or more of the items were completed. When less than 75% of the items were completed, the derived measure was considered incomplete and not included in the measurement.",
+     "paramType": "MEAN",
+     "dispersionType": "STANDARD_DEVIATION",
+     "unitOfMeasure": "Units on a scale",
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "3.71",
+           "spread": "0.51"
+          },
+          {
+           "groupId": "BG001",
+           "value": "3.77",
+           "spread": "0.46"
+          },
+          {
+           "groupId": "BG002",
+           "value": "3.74",
+           "spread": "0.49"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sexual Communication Intentions by adolescents",
+     "description": "All items are based on adolescent self-report and measured with 5-point Likert scales (range 1-5), where a higher score indicates more communication when talking about sexual communication intentions. This measure was derived as the mean of the individual items, and was calculated for each participant when 75% or more of the items were completed. When less than 75% of the items were completed, the derived measure was considered incomplete and not included in the measurement.",
+     "paramType": "MEAN",
+     "dispersionType": "STANDARD_DEVIATION",
+     "unitOfMeasure": "Units on a scale",
+     "classes": [
+      {
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "4.02",
+           "spread": "0.94"
+          },
+          {
+           "groupId": "BG001",
+           "value": "4.00",
+           "spread": "0.96"
+          },
+          {
+           "groupId": "BG002",
+           "value": "4.01",
+           "spread": "0.95"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 591.0,
+    "n_male": 67.0,
+    "n_unknown": 2.0,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "customized",
+    "n_measures": 8,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": true,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 591.0,
+    "n_male": 67.0
+   }
+  },
+  {
+   "nct_id": "NCT03526874",
+   "tags": [
+    "two_measures_sex_and_gender"
+   ],
+   "enrollment": 63.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "description": "Participants' self-representation of gender identity",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Gender",
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "21"
+          },
+          {
+           "groupId": "BG001",
+           "value": "23"
+          },
+          {
+           "groupId": "BG002",
+           "value": "44"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "8"
+          },
+          {
+           "groupId": "BG001",
+           "value": "3"
+          },
+          {
+           "groupId": "BG002",
+           "value": "11"
+          }
+         ]
+        },
+        {
+         "title": "Non-binary",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          },
+          {
+           "groupId": "BG001",
+           "value": "2"
+          },
+          {
+           "groupId": "BG002",
+           "value": "2"
+          }
+         ]
+        },
+        {
+         "title": "Other",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          },
+          {
+           "groupId": "BG001",
+           "value": "1"
+          },
+          {
+           "groupId": "BG002",
+           "value": "1"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sex: Female, Male",
+     "description": "Participants' classification as male or female based on biological distinctions",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "21"
+          },
+          {
+           "groupId": "BG001",
+           "value": "26"
+          },
+          {
+           "groupId": "BG002",
+           "value": "47"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "8"
+          },
+          {
+           "groupId": "BG001",
+           "value": "3"
+          },
+          {
+           "groupId": "BG002",
+           "value": "11"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 47.0,
+    "n_male": 11.0,
+    "n_unknown": null,
+    "n_gender_diverse": 3.0,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 2,
+    "has_sex_table": true,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": true,
+    "reported_both": true,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 47.0,
+    "n_male": 11.0
+   }
+  },
+  {
+   "nct_id": "NCT03628885",
+   "tags": [
+    "named_in_parsers_R"
+   ],
+   "enrollment": 908.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Female",
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "306"
+          },
+          {
+           "groupId": "BG001",
+           "value": "299"
+          },
+          {
+           "groupId": "BG002",
+           "value": "303"
+          },
+          {
+           "groupId": "BG003",
+           "value": "908"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "0"
+          },
+          {
+           "groupId": "BG003",
+           "value": "0"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Child's Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Females",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "153"
+          },
+          {
+           "groupId": "BG001",
+           "value": "152"
+          },
+          {
+           "groupId": "BG002",
+           "value": "155"
+          },
+          {
+           "groupId": "BG003",
+           "value": "460"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Males",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "153"
+          },
+          {
+           "groupId": "BG001",
+           "value": "147"
+          },
+          {
+           "groupId": "BG002",
+           "value": "148"
+          },
+          {
+           "groupId": "BG003",
+           "value": "448"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 908.0,
+    "n_male": null,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "customized",
+    "n_measures": 2,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 908.0,
+    "n_male": 0.0
+   }
+  },
+  {
+   "nct_id": "NCT04078126",
+   "tags": [
+    "total_by_position"
+   ],
+   "enrollment": 35.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "description": "ITT Population; Gender distribution",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Distribution of Male/Female Participants",
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "19"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "16"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 16.0,
+    "n_male": null,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "customized",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": true,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 19.0,
+    "n_male": 16.0
+   }
+  },
+  {
+   "nct_id": "NCT04097431",
+   "tags": [
+    "uninformative"
+   ],
+   "enrollment": 30.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female"
+        },
+        {
+         "title": "Male"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": false,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": false,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": "no_measurements",
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null
+   }
+  },
+  {
+   "nct_id": "NCT04216589",
+   "tags": [
+    "ambiguous_cistrans",
+    "two_measures_sex_and_gender"
+   ],
+   "enrollment": 51.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Cisgender Male",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "51"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "30"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Cisgender Female",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "51"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "18"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Transgender Female",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "51"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "3"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "51"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "18"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "33"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 18.0,
+    "n_male": 33.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": 51.0,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 2,
+    "has_sex_table": true,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": true,
+    "reported_both": true,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": null,
+    "n_male": null
+   }
+  },
+  {
+   "nct_id": "NCT04544956",
+   "tags": [
+    "explicit_unknown_only"
+   ],
+   "enrollment": 12.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "description": "Gender categories (with 0\\<n\\<11) are combined into one 'De-identified' category to maintain participant confidentiality and privacy, as they could lead to participant re-identification.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "De-identified",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "12"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "explicit_unknown_only",
+    "n_female": null,
+    "n_male": null,
+    "n_unknown": 12.0,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "customized",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": false,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": false,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "explicit_unknown_only",
+    "n_female": null,
+    "n_male": null
+   }
+  },
+  {
+   "nct_id": "NCT04802187",
+   "tags": [
+    "gender_diverse",
+    "count_of_units",
+    "named_in_parsers_R"
+   ],
+   "enrollment": 6.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "COUNT_OF_UNITS",
+     "unitOfMeasure": "Number of tests",
+     "denomUnitsSelected": "Number of tests",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "107486"
+          },
+          {
+           "groupId": "BG001",
+           "value": "61507"
+          },
+          {
+           "groupId": "BG002",
+           "value": "168993"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "78546"
+          },
+          {
+           "groupId": "BG001",
+           "value": "48322"
+          },
+          {
+           "groupId": "BG002",
+           "value": "126868"
+          }
+         ]
+        },
+        {
+         "title": "Other",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "47"
+          },
+          {
+           "groupId": "BG001",
+           "value": "40"
+          },
+          {
+           "groupId": "BG002",
+           "value": "87"
+          }
+         ]
+        },
+        {
+         "title": "Unknown",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "92"
+          },
+          {
+           "groupId": "BG001",
+           "value": "42"
+          },
+          {
+           "groupId": "BG002",
+           "value": "134"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 168993.0,
+    "n_male": 126868.0,
+    "n_unknown": 134.0,
+    "n_gender_diverse": 87.0,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": false,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": true,
+    "reported_sex": true,
+    "reported_gender": true,
+    "reported_both": true,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 168993.0,
+    "n_male": 126868.0
+   }
+  },
+  {
+   "nct_id": "NCT04922216",
+   "tags": [
+    "named_in_parsers_R"
+   ],
+   "enrollment": 759.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Female",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "13"
+          },
+          {
+           "groupId": "BG001",
+           "value": "14"
+          },
+          {
+           "groupId": "BG002",
+           "value": "11"
+          },
+          {
+           "groupId": "BG003",
+           "value": "12"
+          },
+          {
+           "groupId": "BG004",
+           "value": "10"
+          },
+          {
+           "groupId": "BG005",
+           "value": "9"
+          },
+          {
+           "groupId": "BG006",
+           "value": "14"
+          },
+          {
+           "groupId": "BG007",
+           "value": "14"
+          },
+          {
+           "groupId": "BG008",
+           "value": "14"
+          },
+          {
+           "groupId": "BG009",
+           "value": "16"
+          },
+          {
+           "groupId": "BG010",
+           "value": "16"
+          },
+          {
+           "groupId": "BG011",
+           "value": "11"
+          },
+          {
+           "groupId": "BG012",
+           "value": "12"
+          },
+          {
+           "groupId": "BG013",
+           "value": "9"
+          },
+          {
+           "groupId": "BG014",
+           "value": "13"
+          },
+          {
+           "groupId": "BG015",
+           "value": "11"
+          },
+          {
+           "groupId": "BG016",
+           "value": "14"
+          },
+          {
+           "groupId": "BG017",
+           "value": "15"
+          },
+          {
+           "groupId": "BG018",
+           "value": "14"
+          },
+          {
+           "groupId": "BG019",
+           "value": "16"
+          },
+          {
+           "groupId": "BG020",
+           "value": "14"
+          },
+          {
+           "groupId": "BG021",
+           "value": "14"
+          },
+          {
+           "groupId": "BG022",
+           "value": "10"
+          },
+          {
+           "groupId": "BG023",
+           "value": "14"
+          },
+          {
+           "groupId": "BG024",
+           "value": "14"
+          },
+          {
+           "groupId": "BG025",
+           "value": "14"
+          },
+          {
+           "groupId": "BG026",
+           "value": "16"
+          },
+          {
+           "groupId": "BG027",
+           "value": "13"
+          },
+          {
+           "groupId": "BG028",
+           "value": "12"
+          },
+          {
+           "groupId": "BG029",
+           "value": "12"
+          },
+          {
+           "groupId": "BG030",
+           "value": "13"
+          },
+          {
+           "groupId": "BG031",
+           "value": "14"
+          },
+          {
+           "groupId": "BG032",
+           "value": "418"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Male",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "4"
+          },
+          {
+           "groupId": "BG001",
+           "value": "7"
+          },
+          {
+           "groupId": "BG002",
+           "value": "9"
+          },
+          {
+           "groupId": "BG003",
+           "value": "6"
+          },
+          {
+           "groupId": "BG004",
+           "value": "9"
+          },
+          {
+           "groupId": "BG005",
+           "value": "8"
+          },
+          {
+           "groupId": "BG006",
+           "value": "5"
+          },
+          {
+           "groupId": "BG007",
+           "value": "6"
+          },
+          {
+           "groupId": "BG008",
+           "value": "6"
+          },
+          {
+           "groupId": "BG009",
+           "value": "4"
+          },
+          {
+           "groupId": "BG010",
+           "value": "4"
+          },
+          {
+           "groupId": "BG011",
+           "value": "8"
+          },
+          {
+           "groupId": "BG012",
+           "value": "6"
+          },
+          {
+           "groupId": "BG013",
+           "value": "10"
+          },
+          {
+           "groupId": "BG014",
+           "value": "7"
+          },
+          {
+           "groupId": "BG015",
+           "value": "8"
+          },
+          {
+           "groupId": "BG016",
+           "value": "6"
+          },
+          {
+           "groupId": "BG017",
+           "value": "5"
+          },
+          {
+           "groupId": "BG018",
+           "value": "6"
+          },
+          {
+           "groupId": "BG019",
+           "value": "3"
+          },
+          {
+           "groupId": "BG020",
+           "value": "6"
+          },
+          {
+           "groupId": "BG021",
+           "value": "5"
+          },
+          {
+           "groupId": "BG022",
+           "value": "10"
+          },
+          {
+           "groupId": "BG023",
+           "value": "5"
+          },
+          {
+           "groupId": "BG024",
+           "value": "5"
+          },
+          {
+           "groupId": "BG025",
+           "value": "6"
+          },
+          {
+           "groupId": "BG026",
+           "value": "4"
+          },
+          {
+           "groupId": "BG027",
+           "value": "7"
+          },
+          {
+           "groupId": "BG028",
+           "value": "8"
+          },
+          {
+           "groupId": "BG029",
+           "value": "8"
+          },
+          {
+           "groupId": "BG030",
+           "value": "7"
+          },
+          {
+           "groupId": "BG031",
+           "value": "5"
+          },
+          {
+           "groupId": "BG032",
+           "value": "203"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Don't know",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "0"
+          },
+          {
+           "groupId": "BG003",
+           "value": "0"
+          },
+          {
+           "groupId": "BG004",
+           "value": "0"
+          },
+          {
+           "groupId": "BG005",
+           "value": "1"
+          },
+          {
+           "groupId": "BG006",
+           "value": "0"
+          },
+          {
+           "groupId": "BG007",
+           "value": "0"
+          },
+          {
+           "groupId": "BG008",
+           "value": "0"
+          },
+          {
+           "groupId": "BG009",
+           "value": "0"
+          },
+          {
+           "groupId": "BG010",
+           "value": "0"
+          },
+          {
+           "groupId": "BG011",
+           "value": "0"
+          },
+          {
+           "groupId": "BG012",
+           "value": "0"
+          },
+          {
+           "groupId": "BG013",
+           "value": "0"
+          },
+          {
+           "groupId": "BG014",
+           "value": "0"
+          },
+          {
+           "groupId": "BG015",
+           "value": "0"
+          },
+          {
+           "groupId": "BG016",
+           "value": "0"
+          },
+          {
+           "groupId": "BG017",
+           "value": "0"
+          },
+          {
+           "groupId": "BG018",
+           "value": "0"
+          },
+          {
+           "groupId": "BG019",
+           "value": "0"
+          },
+          {
+           "groupId": "BG020",
+           "value": "0"
+          },
+          {
+           "groupId": "BG021",
+           "value": "0"
+          },
+          {
+           "groupId": "BG022",
+           "value": "0"
+          },
+          {
+           "groupId": "BG023",
+           "value": "0"
+          },
+          {
+           "groupId": "BG024",
+           "value": "0"
+          },
+          {
+           "groupId": "BG025",
+           "value": "0"
+          },
+          {
+           "groupId": "BG026",
+           "value": "0"
+          },
+          {
+           "groupId": "BG027",
+           "value": "0"
+          },
+          {
+           "groupId": "BG028",
+           "value": "0"
+          },
+          {
+           "groupId": "BG029",
+           "value": "0"
+          },
+          {
+           "groupId": "BG030",
+           "value": "0"
+          },
+          {
+           "groupId": "BG031",
+           "value": "0"
+          },
+          {
+           "groupId": "BG032",
+           "value": "1"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Prefer not to answer",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "1"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "0"
+          },
+          {
+           "groupId": "BG003",
+           "value": "0"
+          },
+          {
+           "groupId": "BG004",
+           "value": "1"
+          },
+          {
+           "groupId": "BG005",
+           "value": "0"
+          },
+          {
+           "groupId": "BG006",
+           "value": "0"
+          },
+          {
+           "groupId": "BG007",
+           "value": "0"
+          },
+          {
+           "groupId": "BG008",
+           "value": "0"
+          },
+          {
+           "groupId": "BG009",
+           "value": "0"
+          },
+          {
+           "groupId": "BG010",
+           "value": "0"
+          },
+          {
+           "groupId": "BG011",
+           "value": "0"
+          },
+          {
+           "groupId": "BG012",
+           "value": "0"
+          },
+          {
+           "groupId": "BG013",
+           "value": "0"
+          },
+          {
+           "groupId": "BG014",
+           "value": "0"
+          },
+          {
+           "groupId": "BG015",
+           "value": "0"
+          },
+          {
+           "groupId": "BG016",
+           "value": "0"
+          },
+          {
+           "groupId": "BG017",
+           "value": "0"
+          },
+          {
+           "groupId": "BG018",
+           "value": "0"
+          },
+          {
+           "groupId": "BG019",
+           "value": "0"
+          },
+          {
+           "groupId": "BG020",
+           "value": "0"
+          },
+          {
+           "groupId": "BG021",
+           "value": "0"
+          },
+          {
+           "groupId": "BG022",
+           "value": "0"
+          },
+          {
+           "groupId": "BG023",
+           "value": "0"
+          },
+          {
+           "groupId": "BG024",
+           "value": "0"
+          },
+          {
+           "groupId": "BG025",
+           "value": "0"
+          },
+          {
+           "groupId": "BG026",
+           "value": "0"
+          },
+          {
+           "groupId": "BG027",
+           "value": "0"
+          },
+          {
+           "groupId": "BG028",
+           "value": "0"
+          },
+          {
+           "groupId": "BG029",
+           "value": "0"
+          },
+          {
+           "groupId": "BG030",
+           "value": "0"
+          },
+          {
+           "groupId": "BG031",
+           "value": "0"
+          },
+          {
+           "groupId": "BG032",
+           "value": "2"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 418.0,
+    "n_male": 203.0,
+    "n_unknown": 2.0,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "customized",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": true,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 418.0,
+    "n_male": 203.0
+   }
+  },
+  {
+   "nct_id": "NCT04950816",
+   "tags": [
+    "ambiguous_cistrans"
+   ],
+   "enrollment": 90.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "10"
+          },
+          {
+           "groupId": "BG001",
+           "value": "17"
+          },
+          {
+           "groupId": "BG002",
+           "value": "27"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "29"
+          },
+          {
+           "groupId": "BG001",
+           "value": "27"
+          },
+          {
+           "groupId": "BG002",
+           "value": "56"
+          }
+         ]
+        },
+        {
+         "title": "Transgender Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "2"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "2"
+          }
+         ]
+        },
+        {
+         "title": "Transgender Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "2"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "2"
+          }
+         ]
+        },
+        {
+         "title": "Non-binary/ non-conforming",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "1"
+          },
+          {
+           "groupId": "BG001",
+           "value": "1"
+          },
+          {
+           "groupId": "BG002",
+           "value": "2"
+          }
+         ]
+        },
+        {
+         "title": "Other (unspecified)",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "1"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "1"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 27.0,
+    "n_male": 56.0,
+    "n_unknown": 1.0,
+    "n_gender_diverse": 2.0,
+    "n_ambiguous_gender": 4.0,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": true,
+    "reported_both": true,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 27.0,
+    "n_male": 56.0
+   }
+  },
+  {
+   "nct_id": "NCT05215613",
+   "tags": [
+    "count_of_units"
+   ],
+   "enrollment": 57.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_UNITS",
+     "unitOfMeasure": "Fractures",
+     "denomUnitsSelected": "Fractures",
+     "denoms": [
+      {
+       "units": "Participants",
+       "counts": [
+        {
+         "groupId": "BG000",
+         "value": "30"
+        },
+        {
+         "groupId": "BG001",
+         "value": "26"
+        },
+        {
+         "groupId": "BG002",
+         "value": "56"
+        }
+       ]
+      },
+      {
+       "units": "Fractures",
+       "counts": [
+        {
+         "groupId": "BG000",
+         "value": "31"
+        },
+        {
+         "groupId": "BG001",
+         "value": "26"
+        },
+        {
+         "groupId": "BG002",
+         "value": "57"
+        }
+       ]
+      }
+     ],
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "9"
+          },
+          {
+           "groupId": "BG001",
+           "value": "10"
+          },
+          {
+           "groupId": "BG002",
+           "value": "19"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "22"
+          },
+          {
+           "groupId": "BG001",
+           "value": "16"
+          },
+          {
+           "groupId": "BG002",
+           "value": "38"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 19.0,
+    "n_male": 38.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": false,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": true,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 19.0,
+    "n_male": 38.0
+   }
+  },
+  {
+   "nct_id": "NCT05380635",
+   "tags": [
+    "binary_standard"
+   ],
+   "enrollment": 9.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "4"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "5"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 4.0,
+    "n_male": 5.0,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 4.0,
+    "n_male": 5.0
+   }
+  },
+  {
+   "nct_id": "NCT05510908",
+   "tags": [
+    "gender_diverse"
+   ],
+   "enrollment": 460.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Female",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "37"
+          },
+          {
+           "groupId": "BG001",
+           "value": "3"
+          },
+          {
+           "groupId": "BG002",
+           "value": "31"
+          },
+          {
+           "groupId": "BG003",
+           "value": "71"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Male",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "221"
+          },
+          {
+           "groupId": "BG001",
+           "value": "30"
+          },
+          {
+           "groupId": "BG002",
+           "value": "125"
+          },
+          {
+           "groupId": "BG003",
+           "value": "376"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Transgender",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "4"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "2"
+          },
+          {
+           "groupId": "BG003",
+           "value": "6"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Not reported/Unknown",
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "6"
+          },
+          {
+           "groupId": "BG001",
+           "value": "0"
+          },
+          {
+           "groupId": "BG002",
+           "value": "1"
+          },
+          {
+           "groupId": "BG003",
+           "value": "7"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 71.0,
+    "n_male": 376.0,
+    "n_unknown": 7.0,
+    "n_gender_diverse": 6.0,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "customized",
+    "n_measures": 1,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": true,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": true,
+    "reported_both": true,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 71.0,
+    "n_male": 376.0
+   }
+  },
+  {
+   "nct_id": "NCT05591014",
+   "tags": [
+    "named_in_parsers_R"
+   ],
+   "enrollment": 26.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "populationDescription": "Sex data not collected. Participant demographics including age, race, and sex was not collected for this study as it was not pertinent to the study.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female"
+        },
+        {
+         "title": "Male"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": false,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": false,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": "no_measurements",
+    "declared_not_collected": true
+   },
+   "manual_truth": {
+    "sex_report_status": "not_reported",
+    "n_female": null,
+    "n_male": null
+   }
+  },
+  {
+   "nct_id": "NCT06487390",
+   "tags": [
+    "gender_diverse"
+   ],
+   "enrollment": 46.0,
+   "measures": [
+    {
+     "title": "Sex/Gender, Customized",
+     "description": "Sex/gender as reported by participants",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Sex/gender",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "46"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "19"
+          }
+         ]
+        },
+        {
+         "title": "Male",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "26"
+          }
+         ]
+        },
+        {
+         "title": "Gender nonconforming",
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "1"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sexual History Taking Practices",
+     "description": "Measured by baseline survey. Sexual history taking knowledge, attitudes, and beliefs. 23 questions split into four subscales on 3-point Likert scale; each subscale score is the mean of the scores from the questions in the scale.\n\nSubscales: Attitudes (4 items), Skills (14), Barriers (2), Training (3). Strongly agree/Somewhat agree = 3, Neither agree nor disagree = 2, Strongly disagree/Somewhat disagree = 1 Higher score on 1-3 range indicates more positive attitude towards sexual history assessment, higher skill, more barriers, and better training.",
+     "populationDescription": "N=32 out of 46 pilot test participants chose to take the exit questionnaire. Baseline and Exit questionnaires were scored looking only at participants who completed both.",
+     "paramType": "MEDIAN",
+     "dispersionType": "INTER_QUARTILE_RANGE",
+     "unitOfMeasure": "Scores of a scale",
+     "classes": [
+      {
+       "title": "Attitudes",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "32"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "2.5",
+           "lowerLimit": "2.5",
+           "upperLimit": "2.8"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Skills",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "32"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "2.9",
+           "lowerLimit": "2.8",
+           "upperLimit": "3.0"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Barriers",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "32"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "3.0",
+           "lowerLimit": "2.0",
+           "upperLimit": "3.0"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "title": "Training",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "32"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [
+          {
+           "groupId": "BG000",
+           "value": "2.7",
+           "lowerLimit": "2.3",
+           "upperLimit": "2.8"
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "reported",
+    "n_female": 19.0,
+    "n_male": 26.0,
+    "n_unknown": null,
+    "n_gender_diverse": 1.0,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex/Gender, Customized",
+    "measure_type": "sex_gender_customized",
+    "layout": "standard",
+    "n_measures": 2,
+    "has_sex_table": false,
+    "has_gender_table": true,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": true,
+    "reported_gender": true,
+    "reported_both": true,
+    "reported_any": true,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": null,
+    "declared_not_collected": false
+   },
+   "manual_truth": {
+    "sex_report_status": "reported",
+    "n_female": 19.0,
+    "n_male": 26.0
+   }
+  },
+  {
+   "nct_id": "NCT06668909",
+   "tags": [
+    "named_in_parsers_R"
+   ],
+   "enrollment": 300.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "populationDescription": "This was an ambispective study, sex data was not collected.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female"
+        },
+        {
+         "title": "Male"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": false,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": false,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": "no_measurements",
+    "declared_not_collected": true
+   },
+   "manual_truth": {
+    "sex_report_status": "not_reported",
+    "n_female": null,
+    "n_male": null
+   }
+  },
+  {
+   "nct_id": "NCT07280208",
+   "tags": [
+    "named_in_parsers_R"
+   ],
+   "enrollment": 57.0,
+   "measures": [
+    {
+     "title": "Sex: Female, Male",
+     "description": "Sex/gender was not collected. Both males and females were eligible per inclusion criteria.",
+     "populationDescription": "Sex/gender data were not collected; therefore, the number analyzed for this measure is 0",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [
+          {
+           "groupId": "BG000",
+           "value": "0"
+          }
+         ]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Female"
+        },
+        {
+         "title": "Male"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "expected": {
+    "sex_report_status": "uninformative",
+    "n_female": null,
+    "n_male": null,
+    "n_unknown": null,
+    "n_gender_diverse": null,
+    "n_ambiguous_gender": null,
+    "measure_title": "Sex: Female, Male",
+    "measure_type": "sex",
+    "layout": "standard",
+    "n_measures": 1,
+    "has_sex_table": true,
+    "has_gender_table": false,
+    "is_participant_count": true,
+    "flag_total_by_position": false,
+    "flag_customized_layout": false,
+    "flag_nonparticipant_units": false,
+    "reported_sex": false,
+    "reported_gender": false,
+    "reported_both": false,
+    "reported_any": false,
+    "gender_labeled_binary_only": false,
+    "uninformative_reason": "no_measurements",
+    "declared_not_collected": true
+   },
+   "manual_truth": {
+    "sex_report_status": "not_reported",
+    "n_female": null,
+    "n_male": null
+   }
+  }
+ ]
+}

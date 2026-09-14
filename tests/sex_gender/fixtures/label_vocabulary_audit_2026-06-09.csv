@@ -1,0 +1,2416 @@
+level,label,n_occurrences,n_trials,bucket,reason,example_nct
+category,Female,65265,64486,female,mapped,NCT00000125
+category,Male,65255,64477,male,mapped,NCT00000125
+class,Female,1197,1183,female,mapped,NCT00001213
+class,Male,1137,1124,male,mapped,NCT00001213
+class,Unknown,140,134,unknown,mapped,NCT00041938
+class,Other,132,125,gender_diverse,mapped,NCT00136812
+category,Other,94,89,gender_diverse,mapped,NCT02043015
+class,Missing,77,76,unknown,mapped,NCT00003641
+category,Unknown,89,68,unknown,mapped,NCT00026559
+class,Non-binary,47,47,gender_diverse,mapped,NCT03386773
+class,Transgender,40,40,gender_diverse,mapped,NCT00949234
+class,Man,39,39,male,mapped,NCT01687218
+class,Woman,39,39,female,mapped,NCT01687218
+category,Missing,52,38,unknown,mapped,NCT00700258
+class,female,29,29,female,mapped,NCT00365456
+category,Non-binary,30,29,gender_diverse,mapped,NCT01735708
+class,male,27,27,male,mapped,NCT00100230
+class,Women,24,24,female,mapped,NCT00622440
+class,Females,23,23,female,mapped,NCT00194610
+class,Non-Binary,21,21,gender_diverse,mapped,NCT03739762
+category,Man,21,21,male,mapped,NCT02870101
+class,Prefer not to answer,21,20,unknown,mapped,NCT02382003
+category,Woman,20,20,female,mapped,NCT02870101
+category,Prefer not to answer,22,20,unknown,mapped,NCT02332239
+category,Transgender,20,20,gender_diverse,mapped,NCT01962714
+category,FEMALE,19,19,female,mapped,NCT01115855
+category,MALE,19,19,male,mapped,NCT01115855
+class,Males,17,17,male,mapped,NCT00194610
+class,Unspecified,16,16,unknown,mapped,NCT00147537
+class,Not Reported,17,16,unknown,mapped,NCT00661271
+class,Nonbinary,16,16,gender_diverse,mapped,NCT03489434
+category,Unknown or Not Reported,15,14,unknown,mapped,NCT02921841
+category,female,14,14,female,mapped,NCT01022268
+class,Men,13,13,male,mapped,NCT00622440
+category,male,13,13,male,mapped,NCT01022268
+class,Unknown or Not Reported,13,13,unknown,mapped,NCT01081041
+category,Women,14,13,female,mapped,NCT00743951
+category,Men,14,13,male,mapped,NCT00743951
+class,Prefer not to say,12,12,unknown,mapped,NCT03826173
+class,Transgender Female,11,11,ambiguous,mapped,NCT02459769
+class,Intersex,11,11,gender_diverse,mapped,NCT03735667
+class,Not reported,11,11,unknown,mapped,NCT01071278
+class,unknown,11,11,unknown,mapped,NCT00129649
+category,Not reported,10,10,unknown,mapped,NCT03070223
+category,Undifferentiated,15,9,unknown,mapped,NCT04505722
+category,Intersex,10,9,gender_diverse,mapped,NCT03657043
+class,Transgender Male,9,9,ambiguous,mapped,NCT02459769
+category,Unknown or not reported,11,9,unknown,mapped,NCT01161446
+class,Missing data,9,9,unknown,mapped,NCT00223080
+class,Missing Data,8,8,unknown,mapped,NCT00761527
+class,Genderqueer,8,8,gender_diverse,mapped,NCT02759939
+class,Not collected,8,8,unknown,mapped,NCT00122187
+category,Prefer Not to Answer,8,8,unknown,mapped,NCT03610698
+category,Non-Binary,8,8,gender_diverse,mapped,NCT03291587
+class,Unknown/Missing,6,6,unknown,mapped,NCT03325985
+category,Transgender Female,6,6,ambiguous,mapped,NCT03498651
+class,Unknown/Not reported,6,6,unknown,mapped,NCT01095731
+class,Unknown or not reported,7,6,unknown,mapped,NCT03325608
+category,Prefer not to say,6,6,unknown,mapped,NCT03559205
+class,Unknown/Not Reported,6,6,unknown,mapped,NCT03284112
+class,Transgender Man,6,6,ambiguous,mapped,NCT02929069
+class,Cisgender Male,5,5,ambiguous,mapped,NCT03396367
+category,Nonbinary,6,5,gender_diverse,mapped,NCT04479943
+category,Not Reported,11,5,unknown,mapped,NCT01380990
+category,Transgender Male,5,5,ambiguous,mapped,NCT03498651
+class,missing,5,5,unknown,mapped,NCT00651183
+category,Cisgender,5,5,gender_diverse,mapped,NCT03070223
+category,Genderqueer,5,5,gender_diverse,mapped,NCT02870101
+category,Not sure,5,5,unknown,mapped,NCT03954535
+class,other,5,5,gender_diverse,mapped,NCT03877744
+category,Missing data,5,5,unknown,mapped,NCT02847858
+class,Undifferentiated,5,5,unknown,mapped,NCT00909779
+category,Unspecified,4,4,unknown,mapped,NCT00538629
+class,MALE,4,4,male,mapped,NCT01178528
+class,Transgender woman,4,4,ambiguous,mapped,NCT01327651
+class,Other Gender,4,4,gender_diverse,mapped,NCT03671239
+class,Transgender Woman,4,4,ambiguous,mapped,NCT03620708
+category,Transgender female,4,4,ambiguous,mapped,NCT03606213
+class,Prefer Not to Answer,4,4,unknown,mapped,NCT03325608
+category,Not disclosed,4,4,unknown,mapped,NCT04895982
+class,Questioning,4,4,gender_diverse,mapped,NCT03487796
+category,Females,4,4,female,mapped,NCT01892865
+class,Prefer not to disclose,4,4,unknown,mapped,NCT03316911
+class,Trans Man,4,4,ambiguous,mapped,NCT02759939
+class,Others,4,4,gender_diverse,mapped,NCT00589563
+category,Agender,4,4,gender_diverse,mapped,NCT03516513
+class,Not Specified,4,4,unknown,mapped,NCT00727298
+class,Male Participants,4,4,male,mapped,NCT02611154
+category,unknown,4,4,unknown,mapped,NCT01056276
+class,Not Listed,3,3,unknown,mapped,NCT03653390
+category,Prefer not to disclose,4,3,unknown,mapped,NCT04096274
+class,males,3,3,male,mapped,NCT01280617
+class,De-identified,3,3,unknown,mapped,NCT04544956
+class,Transgender women,3,3,ambiguous,mapped,NCT02720094
+class,FEMALE,3,3,female,mapped,NCT01178528
+class,Trans male,3,3,ambiguous,mapped,NCT03838510
+class,Refuse to answer,4,3,unknown,mapped,NCT01687218
+class,Non-binary/third gender,3,3,gender_diverse,mapped,NCT03352713
+class,Gender not reported,3,3,unknown,mapped,NCT01078571
+class,Something Else,3,3,gender_diverse,mapped,NCT03316911
+category,Missing/declined to answer,8,3,unknown,mapped,NCT04154631
+class,Prefer Not to Say,3,3,unknown,mapped,NCT04854694
+class,Declined to answer,3,3,unknown,mapped,NCT03320512
+category,Transgender spectrum,3,3,gender_diverse,mapped,NCT03070223
+class,Undisclosed,3,3,unknown,mapped,NCT03450980
+class,Number of Enrolled Males,3,3,male,mapped,NCT04166591
+class,Number of Enrolled Females,3,3,female,mapped,NCT04166591
+category,Unknown/Not reported,3,3,unknown,mapped,NCT03251495
+class,Parent Male,3,3,male,mapped,NCT03592186
+class,Parent Female,3,3,female,mapped,NCT03592186
+category,Males,3,3,male,mapped,NCT01892865
+class,Cisgender female,3,3,ambiguous,mapped,NCT05389657
+class,Cisgender male,3,3,ambiguous,mapped,NCT01495598
+class,Trans Woman,3,3,ambiguous,mapped,NCT02759939
+class,Cisgender,3,3,gender_diverse,mapped,NCT02344290
+class,"Sex: Female, Male",3,3,female,mapped,NCT04072159
+category,Not Disclosed,4,3,unknown,mapped,NCT02159066
+category,Prefer Not to Answer the Question,9,3,unknown,mapped,NCT04885530
+category,Decline to Answer,3,3,unknown,mapped,NCT03910218
+class,"Sex, Female",3,3,female,mapped,NCT03323723
+category,Other Gender,3,3,gender_diverse,mapped,NCT04757649
+class,Non-binary or gender fluid,3,3,gender_diverse,mapped,NCT04597190
+class,Unavailable,3,3,unknown,mapped,NCT00704808
+class,Did not answer,3,3,unknown,mapped,NCT00223080
+class,Gender : Male,3,3,male,mapped,NCT01552408
+class,Gender : Female,3,3,female,mapped,NCT01552408
+class,Decline to Answer,3,3,unknown,mapped,NCT03498287
+class,Not Collected,3,3,unknown,mapped,NCT00686205
+class,Not Available,3,3,unknown,mapped,NCT00630331
+class,Female only,2,2,female,mapped,NCT02449915
+class,Not available,2,2,unknown,mapped,NCT00770289
+class,females,2,2,female,mapped,NCT01280617
+class,Cisgender Female,2,2,ambiguous,mapped,NCT04216589
+class,Men who have sex with men,2,2,male,mapped,NCT00924898
+class,Female sex,2,2,female,mapped,NCT01154296
+class,Gender Nonconforming,2,2,gender_diverse,mapped,NCT03873337
+class,Gender unknown,2,2,unknown,mapped,NCT03225170
+category,Questioning,2,2,gender_diverse,mapped,NCT01537419
+class,Non Binary,2,2,gender_diverse,mapped,NCT04088097
+class,Different identity,2,2,gender_diverse,mapped,NCT03194256
+category,Girl,2,2,female,mapped,NCT03231358
+category,Boy,2,2,male,mapped,NCT03231358
+class,Gender Queer,2,2,gender_diverse,mapped,NCT03751020
+category,not reported,2,2,unknown,mapped,NCT03898063
+category,Unknown/Not Reported,2,2,unknown,mapped,NCT04676152
+class,Transgender Women,2,2,ambiguous,mapped,NCT02842086
+class,Male to Female Transgender,2,2,ambiguous,mapped,NCT03003403
+category,Refused to answer,2,2,unknown,mapped,NCT02183909
+category,Decline to answer,2,2,unknown,mapped,NCT02870101
+category,"Female Donor, Female Recipient",2,2,female,mapped,NCT01106833
+category,"Female Donor, Male Recipient",2,2,female,mapped,NCT01106833
+category,"Male Donor, Female Recipient",2,2,female,mapped,NCT01106833
+category,"Male Donor, Male Recipient",2,2,male,mapped,NCT01106833
+class,Prefer not to Answer,2,2,unknown,mapped,NCT03653390
+class,Female to Male Transgender,2,2,ambiguous,mapped,NCT04646369
+class,Male and Female,2,2,female,mapped,NCT00657618
+class,No data,2,2,unknown,mapped,NCT02624947
+category,Something else,2,2,gender_diverse,mapped,NCT04589559
+class,Male/Female,2,2,female,mapped,NCT00916305
+class,Number Prefer not to Answer,2,2,unknown,mapped,NCT04166591
+class,Child Male,2,2,male,mapped,NCT02678455
+class,Child Female,2,2,female,mapped,NCT02678455
+class,Ambiguous,2,2,gender_diverse,mapped,NCT00074412
+category,Transgender Women,4,2,ambiguous,mapped,NCT04977583
+class,unreported,2,2,unknown,mapped,NCT00684320
+category,Trans Man,2,2,ambiguous,mapped,NCT04757649
+category,Trans Woman,2,2,ambiguous,mapped,NCT04757649
+category,Gender Non-Conforming,2,2,gender_diverse,mapped,NCT04757649
+category,Gender Fluid,2,2,gender_diverse,mapped,NCT04757649
+category,Other Sexual Orientation,2,2,gender_diverse,mapped,NCT04757649
+category,Cisgender male,2,2,ambiguous,mapped,NCT04036396
+class,Other or unknown,2,2,unknown,mapped,NCT04939519
+class,Male gender,2,2,male,mapped,NCT01053741
+class,Boys,2,2,male,mapped,NCT00968149
+class,Girls,2,2,female,mapped,NCT00968149
+class,Male or Female,2,2,female,mapped,NCT02946229
+class,Transgender Spectrum,2,2,gender_diverse,mapped,NCT02859558
+class,Different Identity,2,2,gender_diverse,mapped,NCT03715426
+class,Sex : Male,2,2,male,mapped,NCT02488551
+class,Sex : Female,2,2,female,mapped,NCT02488551
+category,Transgender male,2,2,ambiguous,mapped,NCT04974580
+class,Non-binary/ Queer,2,2,gender_diverse,mapped,NCT04000399
+class,Missing value,2,2,unknown,mapped,NCT00069784
+category,Males who have sex with Men,2,2,male,mapped,NCT05161689
+class,Declined to respond,2,2,unknown,mapped,NCT04108429
+class,Male Gender,2,2,male,mapped,NCT01579214
+category,No response,2,2,unknown,mapped,NCT03808883
+class,"Sex, Male",2,2,male,mapped,NCT04103749
+category,Missing/Unknown,2,2,unknown,mapped,NCT03373110
+class,Transgender/non-binary,2,2,gender_diverse,mapped,NCT03522324
+class,Non binary,2,2,gender_diverse,mapped,NCT04233372
+class,Adolescent Male,2,2,male,mapped,NCT02678455
+class,Adolescent Female,2,2,female,mapped,NCT02678455
+class,Cisgender Man,2,2,ambiguous,mapped,NCT05374525
+class,Trans,2,2,gender_diverse,mapped,NCT05521906
+class,Refused,2,2,unknown,mapped,NCT03683173
+class,Significant other,2,2,gender_diverse,mapped,NCT06226649
+class,cisgender man,2,2,ambiguous,mapped,NCT03584282
+class,transgender woman,2,2,ambiguous,mapped,NCT03652688
+class,Cisgender man or boy,2,2,ambiguous,mapped,NCT03628287
+class,Cisgender woman or girl,2,2,ambiguous,mapped,NCT03628287
+category,Other/Unknown,2,2,unknown,mapped,NCT03628287
+category,Did not answer,2,2,unknown,mapped,NCT05130281
+class,Female gender,2,2,female,mapped,NCT05339659
+class,"Sex, male",2,2,male,mapped,NCT02572323
+class,"Sex, female",2,2,female,mapped,NCT02572323
+category,Transgender (Female to Male),2,2,ambiguous,mapped,NCT02460692
+class,Gender Identity : Other,2,2,gender_diverse,mapped,NCT04559698
+class,Gender Nonconforming/Gender Variant,2,2,gender_diverse,mapped,NCT03670355
+category,Transwoman,2,2,gender_diverse,mapped,NCT02870101
+category,Not collected,2,2,unknown,mapped,NCT01272999
+class,Genderqueer/Gender Nonconforming,2,2,gender_diverse,mapped,NCT03316911
+class,Trans Female/Trans Woman,2,2,ambiguous,mapped,NCT03316911
+class,Trans Male/Trans Man,2,2,ambiguous,mapped,NCT03316911
+category,Cisgender Man,2,2,ambiguous,mapped,NCT03464422
+category,Transgender Woman,2,2,ambiguous,mapped,NCT04811664
+class,Another identity,2,2,gender_diverse,mapped,NCT04597190
+class,Gender Unknown,2,2,unknown,mapped,NCT02051790
+class,Genderfluid,2,2,gender_diverse,mapped,NCT04317274
+category,other,2,2,gender_diverse,mapped,NCT04464720
+category,Gender Nonconforming/Gender Variant,2,2,gender_diverse,mapped,NCT04047420
+category,Male only,2,2,male,mapped,NCT04363320
+class,Two-spirit,2,2,gender_diverse,mapped,NCT02929069
+class,women,2,2,female,mapped,NCT01722097
+category,Transgender Man,2,2,ambiguous,mapped,NCT03464422
+category,Transgender women,2,2,ambiguous,mapped,NCT02597790
+category,Non-binary or other,2,2,gender_diverse,mapped,NCT04251273
+category,Transgender Men,4,2,ambiguous,mapped,NCT04620668
+category,Gender nonconforming,1,1,gender_diverse,mapped,NCT06487390
+class,Not reported/Unknown,1,1,unknown,mapped,NCT05510908
+class,Gender (male),1,1,male,mapped,NCT01277783
+class,other/nonbinary,1,1,gender_diverse,mapped,NCT04259749
+class,Nonbinary/Another gender,1,1,gender_diverse,mapped,NCT05714982
+class,Other or Unknown,1,1,unknown,mapped,NCT04852848
+class,Distribution of Male/Female Participants,1,1,female,mapped,NCT04078126
+class,Missing/unknown,1,1,unknown,mapped,NCT01777932
+category,Woman/Girl,2,1,female,mapped,NCT05900115
+category,Man/Boy,2,1,male,mapped,NCT05900115
+class,Transgender/Non-binary,1,1,gender_diverse,mapped,NCT06583096
+category,Male donor / Male Recipient,1,1,male,mapped,NCT02208037
+category,Male donor / Female Recipient,1,1,female,mapped,NCT02208037
+category,Female donor / Male Recipient,1,1,female,mapped,NCT02208037
+category,Female donor / Female Recipient,1,1,female,mapped,NCT02208037
+class,Female Female,1,1,female,mapped,NCT04110314
+category,Not identifies,1,1,unknown,mapped,NCT05443659
+class,Transgender or non-binary,1,1,gender_diverse,mapped,NCT03163303
+category,Non-binary/ non-conforming,1,1,gender_diverse,mapped,NCT04950816
+category,Other (unspecified),1,1,unknown,mapped,NCT04950816
+class,Gender Not Collected,1,1,unknown,mapped,NCT01718535
+category,Additional Identification,1,1,gender_diverse,mapped,NCT05720897
+category,Prefer not to state,1,1,unknown,mapped,NCT04357821
+class,Sex (male),1,1,male,mapped,NCT05194514
+class,Sex (female),1,1,female,mapped,NCT05194514
+class,Preferred not to answer,1,1,unknown,mapped,NCT04484649
+category,Unknown - Did Not Report,1,1,unknown,mapped,NCT04975789
+class,Induction Phase - Female,1,1,female,mapped,NCT00377637
+class,Induction Phase - Male,1,1,male,mapped,NCT00377637
+class,Maintenance Phase - Female,1,1,female,mapped,NCT00377637
+class,Maintenance Phase - Male,1,1,male,mapped,NCT00377637
+class,Male sex,1,1,male,mapped,NCT01154296
+class,Gender information missing,1,1,unknown,mapped,NCT00724373
+category,Undecided/Questioning,1,1,gender_diverse,mapped,NCT02921841
+category,Non-female,1,1,female,mapped,NCT04624932
+category,Boy/Man,1,1,male,mapped,NCT06425458
+category,Girl/Woman,1,1,female,mapped,NCT06425458
+category,Queer/gay/lesbian/bisexual/pansexual/questioning,1,1,gender_diverse,mapped,NCT06425458
+class,Female to male transgender (FTM),1,1,ambiguous,mapped,NCT04498143
+class,Trans masculine,1,1,gender_diverse,mapped,NCT04498143
+class,Trans feminine,1,1,gender_diverse,mapped,NCT04498143
+class,Gender expansive,1,1,gender_diverse,mapped,NCT04498143
+class,Androgynous,1,1,gender_diverse,mapped,NCT04498143
+class,Two-spirited,1,1,gender_diverse,mapped,NCT04498143
+class,Third gender,1,1,gender_diverse,mapped,NCT04498143
+class,Agender,1,1,gender_diverse,mapped,NCT04498143
+class,Not sure,1,1,unknown,mapped,NCT04498143
+class,Other/Not listed,1,1,unknown,mapped,NCT04498143
+class,All female,1,1,female,mapped,NCT02038023
+category,Others,1,1,gender_diverse,mapped,NCT04908683
+category,Other/Choose not to respond,1,1,unknown,mapped,NCT06552871
+category,Not Available,1,1,unknown,mapped,NCT02861118
+class,Transgender/Transwoman,1,1,ambiguous,mapped,NCT01687218
+category,Gender queer or gender non-conforming,1,1,gender_diverse,mapped,NCT03242954
+category,Trans woman,1,1,ambiguous,mapped,NCT03242954
+category,Trans man,1,1,ambiguous,mapped,NCT03242954
+class,Unknown/not reported,1,1,unknown,mapped,NCT00128713
+class,Transmale/trans man,1,1,ambiguous,mapped,NCT05906784
+class,Transfemale/trans woman,1,1,ambiguous,mapped,NCT05906784
+class,Genderqueer/Gender non-conforming,1,1,gender_diverse,mapped,NCT05906784
+class,Gender information not captured,1,1,unknown,mapped,NCT00727311
+category,Trans,1,1,gender_diverse,mapped,NCT03231358
+class,Missing information,1,1,unknown,mapped,NCT00621582
+class,Missing Response,1,1,unknown,mapped,NCT06112249
+class,"Gender Nonbinary, Nonconforming, Genderqueer",1,1,gender_diverse,mapped,NCT05855655
+class,"Female, Part 1",1,1,female,mapped,NCT02743780
+class,"Male, Part 1",1,1,male,mapped,NCT02743780
+class,"Female, Part 2",1,1,female,mapped,NCT02743780
+class,"Male, Part 2",1,1,male,mapped,NCT02743780
+class,"Female, Part 3",1,1,female,mapped,NCT02743780
+class,"Male, Part 3",1,1,male,mapped,NCT02743780
+class,Cisgender heterosexual woman,1,1,ambiguous,mapped,NCT04089137
+class,Cisgender heterosexual man,1,1,ambiguous,mapped,NCT04089137
+class,Sexual or gender minority,1,1,gender_diverse,mapped,NCT04089137
+class,Man/Boy,1,1,male,mapped,NCT05129501
+class,Woman/Girl,1,1,female,mapped,NCT05129501
+class,"Other (e.g., Two Spirit)",1,1,gender_diverse,mapped,NCT05129501
+category,Prefers not to identify,1,1,unknown,mapped,NCT04428112
+class,Identify as Female,1,1,female,mapped,NCT03801174
+class,Identify as Male,1,1,male,mapped,NCT03801174
+class,Multi-gender,1,1,gender_diverse,mapped,NCT03801174
+class,Birth sex - Female,1,1,female,mapped,NCT03801174
+class,Transgender Male to Female,1,1,ambiguous,mapped,NCT02701049
+class,Transgender Female to Male,1,1,ambiguous,mapped,NCT02701049
+class,Queer/Genderqueer,1,1,gender_diverse,mapped,NCT02701049
+class,Questioning/Unsure,1,1,unknown,mapped,NCT02701049
+class,Declined to State,1,1,unknown,mapped,NCT02701049
+class,Unavailable/Not Asked,1,1,unknown,mapped,NCT02701049
+class,Assigned male sex at birth,1,1,male,mapped,NCT04413708
+category,Male-Female,1,1,female,mapped,NCT00448357
+category,Female-Male,1,1,female,mapped,NCT00448357
+category,Male-Male,1,1,male,mapped,NCT00448357
+category,Female-Female,1,1,female,mapped,NCT00448357
+class,Female (Cohort 1),1,1,female,mapped,NCT00695955
+class,Male (Cohort 1),1,1,male,mapped,NCT00695955
+class,Female (Cohort 2),1,1,female,mapped,NCT00695955
+class,Male (Cohort 2),1,1,male,mapped,NCT00695955
+category,Unknown Donor Gender,1,1,unknown,mapped,NCT01106833
+class,M or F (not recorded),1,1,unknown,mapped,NCT03488849
+class,Self-identify or No answer,1,1,unknown,mapped,NCT03488927
+class,Any female dyspareunia reported,1,1,female,mapped,NCT01262573
+class,Any male dyspareunia reported,1,1,male,mapped,NCT01262573
+class,Transexual or Non-Conforming Transgender or nonconforming,1,1,gender_diverse,mapped,NCT03166709
+class,Not Recorded,1,1,unknown,mapped,NCT04553484
+category,Non-binary or non-gender conforming,1,1,gender_diverse,mapped,NCT05127837
+category,Transgender FTM,1,1,gender_diverse,mapped,NCT05127837
+category,Transgender MTF,1,1,gender_diverse,mapped,NCT05127837
+category,Choose not to report,1,1,unknown,mapped,NCT05120713
+class,Non Binary/Queer,1,1,gender_diverse,mapped,NCT04646369
+class,Not Provided,1,1,unknown,mapped,NCT01804036
+class,Sex/Gender Unknown,1,1,unknown,mapped,NCT03031431
+class,"Do not identify as female, male, or transgender",1,1,ambiguous,mapped,NCT05319600
+class,Sexual Activity and/or ED Status is Unknown,1,1,unknown,mapped,NCT00384930
+class,Stratification: Women Age 65 and Older,1,1,female,mapped,NCT02991534
+class,Stratification: Women Less Than Age 65,1,1,female,mapped,NCT02991534
+class,Self-described,1,1,gender_diverse,mapped,NCT04716010
+category,Don't know / Not sure,1,1,unknown,mapped,NCT04589559
+class,Sex/Gender Not Collected,1,1,unknown,mapped,NCT00901199
+class,Sex not reported,1,1,unknown,mapped,NCT03407417
+category,Cis-gender male,1,1,ambiguous,mapped,NCT02330419
+category,Transgender male (female to male),1,1,ambiguous,mapped,NCT02330419
+class,Queer/Non Binary/Other,1,1,gender_diverse,mapped,NCT04937504
+class,Female and Non-binary,1,1,gender_diverse,mapped,NCT03995225
+class,Female (11 to 18 years),1,1,female,mapped,NCT00450437
+class,Male (11 to 18 years),1,1,male,mapped,NCT00450437
+class,Female (19 to 55 years),1,1,female,mapped,NCT00450437
+class,Male (19 to 55 years),1,1,male,mapped,NCT00450437
+class,"Female, Woman, Feminine, Trans Woman",1,1,ambiguous,mapped,NCT04927845
+class,"Gender-non-binary, -queer, -non-conforming, -fluid",1,1,gender_diverse,mapped,NCT04927845
+class,"Male, Man, Masculine, Trans Man",1,1,ambiguous,mapped,NCT04927845
+class,Not specified,1,1,unknown,mapped,NCT00659295
+class,Non Male,1,1,male,mapped,NCT04446975
+class,unspecified,1,1,unknown,mapped,NCT00892008
+class,"Unknown, Refused, or Missing",1,1,unknown,mapped,NCT05500274
+class,Male/Male,1,1,male,mapped,NCT01743131
+class,Female/Male,1,1,female,mapped,NCT01743131
+class,Female/Female,1,1,female,mapped,NCT01743131
+class,Sex not recorded,1,1,unknown,mapped,NCT02255214
+category,Transgender/Other,1,1,gender_diverse,mapped,NCT03840525
+class,Female (Open-label Period),1,1,female,mapped,NCT00596817
+class,Male (Open-label Period),1,1,male,mapped,NCT00596817
+class,Female (Double-blind Period),1,1,female,mapped,NCT00596817
+class,Male (Double-blind Period),1,1,male,mapped,NCT00596817
+category,Undisclosed,1,1,unknown,mapped,NCT02379078
+class,Questioning or unsure,1,1,unknown,mapped,NCT04108988
+class,Chose not to answer,1,1,unknown,mapped,NCT06096506
+class,Parent Non-binary,1,1,gender_diverse,mapped,NCT06408818
+class,Child Non-binary,1,1,gender_diverse,mapped,NCT06408818
+class,Pregnant Women,1,1,female,mapped,NCT01400880
+class,Genderqueer/gender fluid/nonbinary,1,1,gender_diverse,mapped,NCT04973696
+class,Category title missing,1,1,unknown,mapped,NCT01100073
+class,Gender (female),1,1,female,mapped,NCT02610192
+category,Unknown or Other,1,1,unknown,mapped,NCT03923699
+class,Declined to answer or Unknown,1,1,unknown,mapped,NCT05988398
+class,No selected answer,2,1,unknown,mapped,NCT03844321
+class,Transgender male/Trans man/Female-to-male,1,1,ambiguous,mapped,NCT03844321
+class,Something else,2,1,gender_diverse,mapped,NCT03844321
+class,Multiple gender categories,1,1,gender_diverse,mapped,NCT03844321
+class,Transgender female/Trans woman/Male-to-female,1,1,ambiguous,mapped,NCT03844321
+class,Female Caregivers,1,1,female,mapped,NCT02021565
+class,Male Veterans,1,1,male,mapped,NCT02021565
+class,No Answer,1,1,unknown,mapped,NCT03426124
+category,Gender unknown,1,1,unknown,mapped,NCT01905423
+class,Femal,1,1,female,mapped,NCT00266279
+class,cisgender Man,1,1,ambiguous,mapped,NCT05819086
+class,cisgender Woman,1,1,ambiguous,mapped,NCT05819086
+class,Refused/Missing,1,1,unknown,mapped,NCT05819086
+class,transgender Man,1,1,ambiguous,mapped,NCT05819086
+class,transgender Woman,1,1,ambiguous,mapped,NCT05819086
+category,"Other, not specified",1,1,unknown,mapped,NCT03234881
+category,Prefer not to answer the question,1,1,unknown,mapped,NCT06042855
+category,"Other (e.g., queer, pansexual)",1,1,gender_diverse,mapped,NCT02994108
+category,Chose not to declare,1,1,unknown,mapped,NCT05801991
+class,No response,1,1,unknown,mapped,NCT00705679
+class,Gender non-binary or fluid,1,1,gender_diverse,mapped,NCT05389657
+category,Transgender (Male-to-Female),1,1,ambiguous,mapped,NCT05280756
+category,Transgender (Female-to-Male),1,1,ambiguous,mapped,NCT05280756
+category,Not sure (non-binary),1,1,unknown,mapped,NCT05280756
+class,Unknown or non-binary,1,1,unknown,mapped,NCT04601480
+category,Cisgender woman,1,1,ambiguous,mapped,NCT04408469
+category,Cisgender man,1,1,ambiguous,mapped,NCT04408469
+category,Transgender woman,1,1,ambiguous,mapped,NCT04408469
+category,Transgender man,1,1,ambiguous,mapped,NCT04408469
+category,"Nonbinary (e.g., genderqueer, agender, gender fluid)",1,1,gender_diverse,mapped,NCT04408469
+class,other or unknown,1,1,unknown,mapped,NCT04206397
+category,Other Gender Identity,1,1,gender_diverse,mapped,NCT05087966
+class,PEP (n=89) - Female,1,1,female,mapped,NCT00782067
+class,PEP (n=89) - Male,1,1,male,mapped,NCT00782067
+class,Female (Double Blind Phase),1,1,female,mapped,NCT00591578
+class,Male (Double Blind Phase),1,1,male,mapped,NCT00591578
+class,Female (Open Label Phase),1,1,female,mapped,NCT00591578
+class,Male (Open Label Phase),1,1,male,mapped,NCT00591578
+class,boy,1,1,male,mapped,NCT04470518
+class,girl,1,1,female,mapped,NCT04470518
+class,prefer not to say,1,1,unknown,mapped,NCT04470518
+category,Trans female,1,1,ambiguous,mapped,NCT04036396
+category,Gender non-binary or non-conforming,1,1,gender_diverse,mapped,NCT04036396
+class,Participants who reported past-12-month use of alcohol or other drugs at baseline,1,1,gender_diverse,mapped,NCT02233946
+class,Participants who reported no past-12-month use of alcohol or other drugs at baseline,1,1,gender_diverse,mapped,NCT02233946
+class,Intention to Treat (ITT): Female,1,1,female,mapped,NCT02618772
+class,Intention to Treat (ITT): Male,1,1,male,mapped,NCT02618772
+class,Per-Protocol (PP): Female,1,1,female,mapped,NCT02618772
+class,Per-Protocol (PP): Male,1,1,male,mapped,NCT02618772
+category,Non-binary / Gender non-conforming,1,1,gender_diverse,mapped,NCT05079477
+class,"Trans female, trans woman, or transfeminine",1,1,ambiguous,mapped,NCT03320512
+class,"Genderqueer, gender non-conforming, or non-binary",1,1,gender_diverse,mapped,NCT03320512
+class,Multiple genders reported,1,1,gender_diverse,mapped,NCT03320512
+class,Unavailable (missing data),1,1,unknown,mapped,NCT00723892
+category,Prefer to self-describe,2,1,gender_diverse,mapped,NCT04347291
+class,Phase I- Female,1,1,female,mapped,NCT00426556
+class,Phase II - Female,1,1,female,mapped,NCT00426556
+class,Cis Male,1,1,ambiguous,mapped,NCT03707158
+class,Cis Female,1,1,ambiguous,mapped,NCT03707158
+class,Trans or NonBinary,1,1,gender_diverse,mapped,NCT03707158
+class,Declined to Report,1,1,unknown,mapped,NCT05757453
+category,Non-binary/other,1,1,gender_diverse,mapped,NCT04873401
+category,Transmasculine Nonbinary,1,1,gender_diverse,mapped,NCT02615171
+class,Other/Queer,1,1,gender_diverse,mapped,NCT04289116
+class,"Transgender, gender nonconforming, or assigned male at birth",1,1,ambiguous,mapped,NCT04289116
+class,Average % Female,1,1,female,mapped,NCT00975923
+category,cisgender men,1,1,ambiguous,mapped,NCT04517604
+category,cisgender women,1,1,ambiguous,mapped,NCT04517604
+category,transgender men,1,1,ambiguous,mapped,NCT04517604
+category,transgender women,1,1,ambiguous,mapped,NCT04517604
+category,Transgender male to female,1,1,ambiguous,mapped,NCT05180500
+category,Genderqueer or non-binary,1,1,gender_diverse,mapped,NCT04870099
+category,"Transgender, Other, Prefer not to answer",1,1,unknown,mapped,NCT02332239
+class,Nonbinary or Missing,1,1,unknown,mapped,NCT05492942
+class,Teen Female,1,1,female,mapped,NCT03592186
+class,Teen Male,1,1,male,mapped,NCT03592186
+class,Teen Other / Prefer not to answer,1,1,unknown,mapped,NCT03592186
+class,Parent Other / Prefer not to answer,1,1,unknown,mapped,NCT03592186
+class,"Sex: Female, Male (Overall)",1,1,female,mapped,NCT03763656
+class,"Sex: Female, Male (Age group 6 months - 1.99 years)",1,1,female,mapped,NCT03763656
+class,"Sex: Female, Male (Age group 2 - 5.99 years)",1,1,female,mapped,NCT03763656
+class,"Sex: Female, Male (Age group 6 - 17.99 years)",1,1,female,mapped,NCT03763656
+class,Sex/gender unknown,1,1,unknown,mapped,NCT03374982
+class,Unknown gender,1,1,unknown,mapped,NCT00426166
+class,Non-binary and Prefer to Self Describe,1,1,gender_diverse,mapped,NCT04974489
+class,Gender- Female,1,1,female,mapped,NCT00369564
+class,Gender- Male,1,1,male,mapped,NCT00369564
+class,Gender Not Reported,1,1,unknown,mapped,NCT00369564
+class,Undifferentiated Sex,1,1,unknown,mapped,NCT03201965
+class,male participants - total,1,1,male,mapped,NCT00385671
+class,female participants - total,1,1,female,mapped,NCT00385671
+class,male participants - arousal,1,1,male,mapped,NCT00385671
+class,female participants - arousal,1,1,female,mapped,NCT00385671
+class,male participants - desire/frequency,1,1,male,mapped,NCT00385671
+class,female participants - desire/frequency,1,1,female,mapped,NCT00385671
+class,male participants - desire/interest,1,1,male,mapped,NCT00385671
+class,female participants - desire/interest,1,1,female,mapped,NCT00385671
+class,male participants - orgasm,1,1,male,mapped,NCT00385671
+class,female participants - orgasm,1,1,female,mapped,NCT00385671
+class,male participants - pleasure,1,1,male,mapped,NCT00385671
+class,female participants - pleasure,1,1,female,mapped,NCT00385671
+category,"Unknown, Not Reported",2,1,unknown,mapped,NCT05965323
+class,Sex/Gender : Male sex at birth,1,1,male,mapped,NCT05965427
+class,Sex/Gender : Male gender identity,1,1,male,mapped,NCT05965427
+class,Sex/Gender : Female gender identity,1,1,female,mapped,NCT05965427
+class,Sex/Gender : Non-binary,1,1,gender_diverse,mapped,NCT05965427
+category,Unknown/Not Stated,1,1,unknown,mapped,NCT01467466
+class,Did not collect,1,1,unknown,mapped,NCT03712891
+class,Percent of female nursing home residents,1,1,female,mapped,NCT01720277
+class,Decline to answer,1,1,unknown,mapped,NCT04839978
+class,Prefer Not to Report,1,1,unknown,mapped,NCT02997085
+class,Transwomen/Trans femmes,1,1,ambiguous,mapped,NCT04934189
+category,X (third gender),1,1,gender_diverse,mapped,NCT05899218
+class,Other/Prefer not to answer,1,1,unknown,mapped,NCT03923582
+category,Trans Woman/Trans Feminine/Female,1,1,ambiguous,mapped,NCT06615401
+category,Trans Man/Trans Masculine/Male,1,1,ambiguous,mapped,NCT06615401
+category,Non-Binary and/or Gender Diverse,1,1,gender_diverse,mapped,NCT06615401
+category,More than one Gender Identity,1,1,gender_diverse,mapped,NCT06615401
+class,"Sex; Female, Male",1,1,female,mapped,NCT03252249
+category,Not available,1,1,unknown,mapped,NCT03252249
+category,other endorsed,1,1,gender_diverse,mapped,NCT05973981
+category,Unknown/missing,1,1,unknown,mapped,NCT06199934
+class,gender not known,1,1,unknown,mapped,NCT03812185
+class,"missing, declined, unknown, unspecified",1,1,unknown,mapped,NCT03115359
+class,"Female, Acute Phase",1,1,female,mapped,NCT02088073
+class,"Male, Acute Phase",1,1,male,mapped,NCT02088073
+class,"Female, Maintenance Phase",1,1,female,mapped,NCT02088073
+class,"Male, Maintenance Phase",1,1,male,mapped,NCT02088073
+class,Heterosexual or Other,1,1,gender_diverse,mapped,NCT03535337
+class,Gender-Fluid or Non-Binary,1,1,gender_diverse,mapped,NCT04139642
+class,Gender OL Females,1,1,female,mapped,NCT00292370
+class,Gender OL Males,1,1,male,mapped,NCT00292370
+class,Females Double Blind,1,1,female,mapped,NCT00292370
+class,Males Double Blind,1,1,male,mapped,NCT00292370
+class,percent of female participants,1,1,female,mapped,NCT02165722
+class,Trans Male/Trans Boy,1,1,ambiguous,mapped,NCT05900700
+class,Trans Female/Trans Girl,1,1,ambiguous,mapped,NCT05900700
+class,Gender Queer/Gender Nonconforming,1,1,gender_diverse,mapped,NCT05900700
+class,Other/Not Listed Above,1,1,unknown,mapped,NCT05900700
+class,Data Missing,1,1,unknown,mapped,NCT05900700
+class,Genderqueer/Gender non-confirming,1,1,gender_diverse,mapped,NCT04153864
+category,missing,1,1,unknown,mapped,NCT03238417
+category,Both men and women,1,1,female,mapped,NCT01161446
+class,Phase 1 - Amlodipine+olmesartan - Female,1,1,female,mapped,NCT00523744
+class,Phase 1 - Amlodipine+olmesartan - Male,1,1,male,mapped,NCT00523744
+class,Phase 2 - Amlodipine+valsartan - Female,1,1,female,mapped,NCT00523744
+class,Phase 2 - Amlodipine+valsartan - Male,1,1,male,mapped,NCT00523744
+class,Phase 3 - Amlodipine+valsartan+HCTZ - Female,1,1,female,mapped,NCT00523744
+class,Phase 3 - Amlodipine+valsartan+HCTZ - Male,1,1,male,mapped,NCT00523744
+category,Another description,1,1,gender_diverse,mapped,NCT06290180
+category,Do not wish to say,1,1,unknown,mapped,NCT06638840
+category,Trandgender,1,1,gender_diverse,mapped,NCT04147897
+class,Gender self-described as man,1,1,gender_diverse,mapped,NCT03506438
+class,Gender self-described as woman,1,1,gender_diverse,mapped,NCT03506438
+class,Data unavailable,1,1,unknown,mapped,NCT04852666
+category,No data,1,1,unknown,mapped,NCT00398866
+class,Cis-male,1,1,ambiguous,mapped,NCT05020353
+class,Cis-female,1,1,ambiguous,mapped,NCT05020353
+class,Prefer not to anwer,1,1,unknown,mapped,NCT05020353
+category,Non-binary/ third gender,1,1,gender_diverse,mapped,NCT04084028
+class,"Female, Overall Study",1,1,female,mapped,NCT01390909
+class,"Male, Overall Study",1,1,male,mapped,NCT01390909
+class,"Female, Subgroup",1,1,female,mapped,NCT01390909
+class,"Male, Subgroup",1,1,male,mapped,NCT01390909
+class,gender/sex was not recorded,1,1,unknown,mapped,NCT00806221
+class,Female participants,1,1,female,mapped,NCT03801252
+category,Data missing,1,1,unknown,mapped,NCT03011840
+category,Self-describe,1,1,gender_diverse,mapped,NCT04948268
+class,Other/Unspecified,1,1,unknown,mapped,NCT03687762
+class,Gender nonconforming,1,1,gender_diverse,mapped,NCT05772702
+class,Gender Unknown (not collected),1,1,unknown,mapped,NCT02445287
+class,Female/Girl/Woman,1,1,female,mapped,NCT05934396
+class,Male/Boy/Man,1,1,male,mapped,NCT05934396
+class,Female/Identifies in Some Other Way,1,1,gender_diverse,mapped,NCT05934396
+class,Female/Boy/Man,1,1,female,mapped,NCT05934396
+class,Female/Transgender,1,1,ambiguous,mapped,NCT05934396
+category,Refuse to state,1,1,unknown,mapped,NCT04975191
+category,Diverse,2,1,gender_diverse,mapped,NCT03550131
+class,Trans/Other gender identity,1,1,gender_diverse,mapped,NCT03654690
+class,Prefers not to identify,1,1,unknown,mapped,NCT03636490
+category,Other identity,1,1,gender_diverse,mapped,NCT04974580
+category,Other / Missing,1,1,unknown,mapped,NCT05916664
+class,Female (SAP),1,1,female,mapped,NCT01191255
+class,Male (SAP),1,1,male,mapped,NCT01191255
+class,Female (EAP),1,1,female,mapped,NCT01191255
+class,Male (EAP),1,1,male,mapped,NCT01191255
+class,Genderqueer / Gender neutral,1,1,gender_diverse,mapped,NCT03367858
+class,Non-binary (female),1,1,gender_diverse,mapped,NCT04646291
+class,Transgender (female),1,1,ambiguous,mapped,NCT04646291
+class,Transgender (male),1,1,ambiguous,mapped,NCT04646291
+category,Did not respond,1,1,unknown,mapped,NCT04180020
+class,Gender unspecified,1,1,unknown,mapped,NCT05535777
+class,Sex not measured,1,1,unknown,mapped,NCT03722264
+class,Males entered at Baseline,1,1,male,mapped,NCT00774202
+class,Females entered at baseline,1,1,female,mapped,NCT00774202
+category,Genderqueer or gender nonconforming,1,1,gender_diverse,mapped,NCT04041414
+category,Non-binary or another gender,1,1,gender_diverse,mapped,NCT06175026
+class,Not reported as male or female,1,1,unknown,mapped,NCT06348251
+class,"none of these describe me (includes those identifying as non-binary, transgender, and bi-gender)",1,1,gender_diverse,mapped,NCT04757298
+class,Gender Missing/Unknown,1,1,unknown,mapped,NCT04757298
+class,Missing Information for sex,1,1,unknown,mapped,NCT00704769
+class,Trans Feminine,1,1,gender_diverse,mapped,NCT03803683
+class,Sex/Gender unspecified,1,1,unknown,mapped,NCT00973856
+class,Female : No retinopathy,1,1,female,mapped,NCT02823600
+class,Female : Retinopathy without referral,1,1,female,mapped,NCT02823600
+class,Female : Retinopathy with referral,1,1,female,mapped,NCT02823600
+class,Male : No retinopathy,1,1,male,mapped,NCT02823600
+class,Male : Retinopathy without referral,1,1,male,mapped,NCT02823600
+class,Male : Retinopathy with referral,1,1,male,mapped,NCT02823600
+class,"Female, Tool/No Tool",1,1,female,mapped,NCT01108796
+class,"Male, Tool/No Tool",1,1,male,mapped,NCT01108796
+class,"Female, Micardis�/MicardisPlus�",1,1,female,mapped,NCT01108796
+class,"Male, Micardis�/MicardisPlus�",1,1,male,mapped,NCT01108796
+category,Undifferentiated or Unknown,1,1,unknown,mapped,NCT03546413
+category,Prefer Not to Say,1,1,unknown,mapped,NCT05105789
+class,Non-Binary/Other,1,1,gender_diverse,mapped,NCT04567888
+class,Phase 2 Baseline Females,1,1,female,mapped,NCT00113295
+class,Phase 2 Baseline Males,1,1,male,mapped,NCT00113295
+category,Transgender/Not Reported,1,1,unknown,mapped,NCT03898557
+class,Trans male/trans man,1,1,ambiguous,mapped,NCT03487796
+class,Genderqueer/non-comforming,1,1,gender_diverse,mapped,NCT03487796
+category,Prefer not to say / unknown,1,1,unknown,mapped,NCT05006703
+category,non-binary,1,1,gender_diverse,mapped,NCT05326776
+class,Trans female,1,1,ambiguous,mapped,NCT03838510
+class,Female 40 months,1,1,female,mapped,NCT00601731
+class,Male 40 months,1,1,male,mapped,NCT00601731
+class,Female 60 months,1,1,female,mapped,NCT00601731
+class,Male 60 months,1,1,male,mapped,NCT00601731
+class,Female Gender,1,1,female,mapped,NCT01579214
+class,Unknown or Not Collected,1,1,unknown,mapped,NCT00265317
+class,Adolescent girls and young women,1,1,female,mapped,NCT02735642
+class,Prefer to self-describe/non-binary,1,1,gender_diverse,mapped,NCT05316597
+category,Does not Identify as Male or Female,1,1,female,mapped,NCT03337113
+class,Children (males),1,1,male,mapped,NCT04399161
+class,Children (females),1,1,female,mapped,NCT04399161
+class,Elderly (males),1,1,male,mapped,NCT04399161
+class,Elderly (females),1,1,female,mapped,NCT04399161
+class,Patients: Genderqueer/Other,1,1,gender_diverse,mapped,NCT03954184
+class,Patients: Man,1,1,male,mapped,NCT03954184
+class,Patients: Refused/Unknown,1,1,unknown,mapped,NCT03954184
+class,Patients: Transgender Man,1,1,ambiguous,mapped,NCT03954184
+class,Patients: Transgender Woman,1,1,ambiguous,mapped,NCT03954184
+class,Patients: Woman,1,1,female,mapped,NCT03954184
+class,Counselors: Genderqueer/Other,1,1,gender_diverse,mapped,NCT03954184
+class,Counselors: Man,1,1,male,mapped,NCT03954184
+class,Counselors: Refused/Unknown,1,1,unknown,mapped,NCT03954184
+class,Counselors: Transgender Man,1,1,ambiguous,mapped,NCT03954184
+class,Counselors: Transgender Woman,1,1,ambiguous,mapped,NCT03954184
+class,Counselors: Woman,1,1,female,mapped,NCT03954184
+category,Cisgender female,1,1,ambiguous,mapped,NCT04797221
+category,Genderqueer/Gender Non-conforming,1,1,gender_diverse,mapped,NCT04974645
+category,Other (please specify),1,1,gender_diverse,mapped,NCT06509100
+class,Transwoman/female,1,1,gender_diverse,mapped,NCT03808883
+class,Transmen/male,1,1,gender_diverse,mapped,NCT03808883
+class,Non-binary/unlabeled,1,1,gender_diverse,mapped,NCT03808883
+category,Another gender,1,1,gender_diverse,mapped,NCT04643964
+category,Did not give,1,1,unknown,mapped,NCT04643964
+class,Titration period - Female,1,1,female,mapped,NCT00538863
+class,Titration period - Male,1,1,male,mapped,NCT00538863
+class,Maintenance period - Female,1,1,female,mapped,NCT00538863
+class,Maintenance period - Male,1,1,male,mapped,NCT00538863
+class,"Sex, other",1,1,gender_diverse,mapped,NCT04103749
+category,"Non-Binary, Self-Describe, Not disclosed",2,1,unknown,mapped,NCT03576495
+category,Other or unknown,2,1,unknown,mapped,NCT03740113
+category,Male to Female Transgender,1,1,ambiguous,mapped,NCT03985813
+category,Female to Male Transgender,1,1,ambiguous,mapped,NCT03985813
+class,Female (Part A),1,1,female,mapped,NCT01325428
+class,Female (Part B),1,1,female,mapped,NCT01325428
+class,Male (Part A),1,1,male,mapped,NCT01325428
+class,Male (Part B),1,1,male,mapped,NCT01325428
+class,Transgender or gender diverse,1,1,gender_diverse,mapped,NCT05393869
+class,No Data - Did not complete Baseline Data collection,1,1,unknown,mapped,NCT03593772
+category,Transgender individuals,1,1,gender_diverse,mapped,NCT02796963
+category,Disclosed to others,1,1,gender_diverse,mapped,NCT02796963
+category,Not disclosed to others,1,1,unknown,mapped,NCT02796963
+category,Questioning/I don't know,1,1,gender_diverse,mapped,NCT04757649
+class,Male(18 to 64 or �65 years),1,1,male,mapped,NCT00973349
+class,Female(18 to 64 or �65 yrs),1,1,female,mapped,NCT00973349
+class,"Cohort 1, Female",1,1,female,mapped,NCT01849692
+class,"Cohort 1, Male",1,1,male,mapped,NCT01849692
+class,"Cohort 2, Female",1,1,female,mapped,NCT01849692
+class,"Cohort 2, Male",1,1,male,mapped,NCT01849692
+class,"Cohort 3, Female",1,1,female,mapped,NCT01849692
+class,"Cohort 3, Male",1,1,male,mapped,NCT01849692
+class,"Cohort 4, Female",1,1,female,mapped,NCT01849692
+class,"Cohort 4, Male",1,1,male,mapped,NCT01849692
+class,missing data,1,1,unknown,mapped,NCT02651922
+class,Unknown or Not reported,1,1,unknown,mapped,NCT04901624
+class,Gender different from sex assigned at birth,1,1,gender_diverse,mapped,NCT02800785
+class,Adolescent Non-Binary,1,1,gender_diverse,mapped,NCT05714943
+class,Part A - Female,1,1,female,mapped,NCT01029340
+class,Part A - Male,1,1,male,mapped,NCT01029340
+class,Part B - Female,1,1,female,mapped,NCT01029340
+class,Part B - Male,1,1,male,mapped,NCT01029340
+class,Part C - Female,1,1,female,mapped,NCT01029340
+class,Part C - Male,1,1,male,mapped,NCT01029340
+category,Missing or Other,1,1,unknown,mapped,NCT03859713
+class,Sex:Female,1,1,female,mapped,NCT03202134
+class,Multiple gender identities,1,1,gender_diverse,mapped,NCT05061966
+class,Female (Cohort I),1,1,female,mapped,NCT00100048
+class,Male (Cohort I),1,1,male,mapped,NCT00100048
+class,Female (Cohort II),1,1,female,mapped,NCT00100048
+class,Male (Cohort II),1,1,male,mapped,NCT00100048
+class,Transgender Male or Transgender Female,1,1,ambiguous,mapped,NCT05990335
+class,Male (n),1,1,male,mapped,NCT02020369
+class,Transgender (Male to Female),1,1,ambiguous,mapped,NCT01354314
+category,Non-binary/gender fluid,1,1,gender_diverse,mapped,NCT05146206
+class,"Nonbinary, genderfluid, or genderqueer",1,1,gender_diverse,mapped,NCT05029362
+class,Trans woman,1,1,ambiguous,mapped,NCT05187442
+class,Boy/Man,1,1,male,mapped,NCT05521906
+class,Girl/Woman,1,1,female,mapped,NCT05521906
+class,Unsure/questioning,1,1,unknown,mapped,NCT05521906
+class,Trans girl/woman,1,1,ambiguous,mapped,NCT05521906
+class,Trans boy/man,1,1,ambiguous,mapped,NCT05521906
+category,Other than male or female,1,1,gender_diverse,mapped,NCT05604508
+class,Unknown Gender,1,1,unknown,mapped,NCT05950672
+class,Missing Data (Unspecified),1,1,unknown,mapped,NCT00488488
+class,"Sex, Unknown",1,1,unknown,mapped,NCT04660331
+category,"Other, Unspecified",1,1,unknown,mapped,NCT04019873
+category,No Data,1,1,unknown,mapped,NCT01623752
+class,Men: testosterone substitution,1,1,male,mapped,NCT01546922
+class,Premenopausal women: estrogen substitution,1,1,female,mapped,NCT01546922
+class,cisgender boys,1,1,ambiguous,mapped,NCT03501264
+class,cisgender girls,1,1,ambiguous,mapped,NCT03501264
+class,gender minority,1,1,gender_diverse,mapped,NCT03501264
+class,rMenB( part I; female),1,1,female,mapped,NCT01478347
+class,rMenB( part I; male),1,1,male,mapped,NCT01478347
+class,rMenB( part II; female),1,1,female,mapped,NCT01478347
+class,rMenB( part II; male),1,1,male,mapped,NCT01478347
+class,cisgender woman,1,1,ambiguous,mapped,NCT05471349
+class,transgender man,1,1,ambiguous,mapped,NCT05471349
+class,refuse to answer,1,1,unknown,mapped,NCT05471349
+category,Unknown/not collected,1,1,unknown,mapped,NCT06000683
+class,"Transgender; Other, not specified",1,1,unknown,mapped,NCT03599141
+class,Prefer not to answer or missing,1,1,unknown,mapped,NCT02289105
+class,Neither male nor female,1,1,female,mapped,NCT04504357
+class,"Identified as transgender, gender nonconforming, non-binary, or not sure/questioning (TGNCNB)",1,1,unknown,mapped,NCT03628287
+class,Non-binary/gender nonconforming,1,1,gender_diverse,mapped,NCT04414306
+class,Not disclosed,1,1,unknown,mapped,NCT06045325
+class,Transfemale or Transwoman,1,1,gender_diverse,mapped,NCT03313310
+class,Transmale or Transman,1,1,gender_diverse,mapped,NCT03313310
+class,Genderqueer or Gender Nonconforming,1,1,gender_diverse,mapped,NCT03313310
+class,Other Gender Identity,1,1,gender_diverse,mapped,NCT03313310
+class,CAI with Male Partner of Unknown HIV Status,1,1,unknown,mapped,NCT03313310
+class,Anal Intercourse with 3 or More Male Partners,1,1,male,mapped,NCT03313310
+class,Sex with Male Partner with STI,1,1,male,mapped,NCT03313310
+class,CAI with HIV+ Male Partner,1,1,male,mapped,NCT03313310
+class,Male (short term study),1,1,male,mapped,NCT00577096
+class,Female (short term study),1,1,female,mapped,NCT00577096
+class,Male (long term study),1,1,male,mapped,NCT00577096
+class,Female (long term study),1,1,female,mapped,NCT00577096
+class,"Female, Part A",1,1,female,mapped,NCT00306891
+class,"Male, Part A",1,1,male,mapped,NCT00306891
+class,"Female, Part B",1,1,female,mapped,NCT00306891
+class,"Male, Part B",1,1,male,mapped,NCT00306891
+class,Other/Unknown/Missing,1,1,unknown,mapped,NCT06554431
+class,Other/Unknown,1,1,unknown,mapped,NCT06554431
+category,Gender minority,1,1,gender_diverse,mapped,NCT04625465
+class,Transgender/nonbinary,1,1,gender_diverse,mapped,NCT05564299
+category,Declined,1,1,unknown,mapped,NCT04159480
+category,No response / prefer not to answer,1,1,unknown,mapped,NCT01944462
+category,Man/male gender,1,1,male,mapped,NCT05139927
+category,Female/woman or gender minority,1,1,gender_diverse,mapped,NCT05139927
+class,female - child,1,1,female,mapped,NCT04506294
+class,female - parent / guardian,1,1,female,mapped,NCT04506294
+class,male - child,1,1,male,mapped,NCT04506294
+class,male - parent / guardian,1,1,male,mapped,NCT04506294
+class,other - child,1,1,gender_diverse,mapped,NCT04506294
+class,other - parent / guardian,1,1,gender_diverse,mapped,NCT04506294
+class,not reported - child,1,1,unknown,mapped,NCT04506294
+class,not reported - parent / guardian,1,1,unknown,mapped,NCT04506294
+class,Primary Care - Female,1,1,female,mapped,NCT03850431
+class,Primary Care - Male,1,1,male,mapped,NCT03850431
+class,Mental Health - Female,1,1,female,mapped,NCT03850431
+class,Mental Health - Male,1,1,male,mapped,NCT03850431
+class,Female - SPARC,1,1,female,mapped,NCT02675777
+class,Female - Usual,1,1,female,mapped,NCT02675777
+class,Male - SPARC,1,1,male,mapped,NCT02675777
+class,Male - Usual Care,1,1,male,mapped,NCT02675777
+class,Unknown - SPARC,1,1,unknown,mapped,NCT02675777
+class,Unknown - Usual Care,1,1,unknown,mapped,NCT02675777
+category,Prefer not to describe,1,1,unknown,mapped,NCT03768336
+class,only female in study,1,1,female,mapped,NCT01199952
+class,MTF (transgender),1,1,gender_diverse,mapped,NCT00622440
+class,Trans Male,1,1,ambiguous,mapped,NCT06352840
+class,Trans Female,1,1,ambiguous,mapped,NCT06352840
+category,Identified as another gender,1,1,gender_diverse,mapped,NCT04286867
+class,Student gender (number that are male) by cluster.,1,1,male,mapped,NCT03694418
+category,Self-Described,1,1,gender_diverse,mapped,NCT03713034
+category,Not Indicated,1,1,unknown,mapped,NCT04949243
+class,Female Subjects,1,1,female,mapped,NCT03214640
+class,"Female donor, male recipient",1,1,female,mapped,NCT00745420
+class,"Male donor, female recipient",1,1,female,mapped,NCT00745420
+class,Transgender/Other,1,1,gender_diverse,mapped,NCT05467982
+class,Trans female / trans w,1,1,ambiguous,mapped,NCT04768114
+category,Number of Male Participants Per Arm,1,1,male,mapped,NCT02122458
+category,Number of Female Participants Per Arm,1,1,female,mapped,NCT02122458
+class,Prefer not to tell,1,1,unknown,mapped,NCT05556148
+category,Transgender woman or gender-diverse,1,1,ambiguous,mapped,NCT03980223
+category,Men only,1,1,male,mapped,NCT03980223
+category,Multiple genders,1,1,gender_diverse,mapped,NCT03980223
+class,Transgender Male (FTM),1,1,ambiguous,mapped,NCT04625686
+class,Transgender Female (MTF),1,1,ambiguous,mapped,NCT04625686
+class,Choose not to disclose,1,1,unknown,mapped,NCT04625686
+class,Gender : Non-binary,1,1,gender_diverse,mapped,NCT06119854
+class,Female (All Participants),1,1,female,mapped,NCT00705614
+class,Male (All Participants),1,1,male,mapped,NCT00705614
+class,Female (Switched to Remicade),1,1,female,mapped,NCT00705614
+class,Male (Switched to Remicade),1,1,male,mapped,NCT00705614
+class,Gender not available,1,1,unknown,mapped,NCT00709059
+class,Data not reported,1,1,unknown,mapped,NCT01379703
+class,Female:Female,1,1,female,mapped,NCT00572897
+class,Male:Male,1,1,male,mapped,NCT00572897
+class,Male:Female,1,1,female,mapped,NCT00572897
+class,Female:Male,1,1,female,mapped,NCT00572897
+class,Gender Identity : Cisgender Man,1,1,ambiguous,mapped,NCT04559698
+class,Gender Identity : Cisgender Woman,1,1,ambiguous,mapped,NCT04559698
+class,Gender Identity : Transgender Man,1,1,ambiguous,mapped,NCT04559698
+class,Gender Identity : Transgender Woman,1,1,ambiguous,mapped,NCT04559698
+class,Gender Identity : Gender Non-Binary,1,1,gender_diverse,mapped,NCT04559698
+class,Gender Identity : Gender Non-Conforming,1,1,gender_diverse,mapped,NCT04559698
+class,Gender Identity : Genderqueer,1,1,gender_diverse,mapped,NCT04559698
+class,Gender information not available,1,1,unknown,mapped,NCT01273038
+class,Unknown or Decline to Answer,1,1,unknown,mapped,NCT03712410
+class,Nonbinary/other,1,1,gender_diverse,mapped,NCT04632030
+class,IL-1: Female,1,1,female,mapped,NCT04330638
+class,IL-1: Male,1,1,male,mapped,NCT04330638
+class,IL-6: Female,1,1,female,mapped,NCT04330638
+class,IL-6: Male,1,1,male,mapped,NCT04330638
+class,Cisgender woman,1,1,ambiguous,mapped,NCT05897827
+class,Cisgender man,1,1,ambiguous,mapped,NCT05897827
+category,Other/Refused/Missing,1,1,unknown,mapped,NCT04246593
+category,"Nonbinary, gender non-conforming, genderqueer, genderfluid",1,1,gender_diverse,mapped,NCT05540652
+class,Transgender and Nonbinary (TGNB),1,1,gender_diverse,mapped,NCT04342494
+class,Non-binary or prefered not to disclose,1,1,gender_diverse,mapped,NCT03655951
+category,Transgender or other gender identity,1,1,gender_diverse,mapped,NCT04381481
+category,boy,1,1,male,mapped,NCT03682900
+category,girl,1,1,female,mapped,NCT03682900
+category,neither boy nor girl,1,1,female,mapped,NCT03682900
+category,not reported (missing),1,1,unknown,mapped,NCT03682900
+class,Sex/Gender data were not collected.,1,1,unknown,mapped,NCT02360098
+category,Did not identify,1,1,unknown,mapped,NCT02747849
+category,Prefer not answer,1,1,unknown,mapped,NCT06049043
+category,Trans male,1,1,ambiguous,mapped,NCT04896593
+category,Nonbinary/Genderfluid,1,1,gender_diverse,mapped,NCT04896593
+class,"Sex: Female, Male, Other",1,1,gender_diverse,mapped,NCT04707846
+class,% Female Sex,1,1,female,mapped,NCT01868334
+class,Part A Cohort 1 (n=5): Female,1,1,female,mapped,NCT01897233
+class,Part A Cohort 1 (n=5): Male,1,1,male,mapped,NCT01897233
+class,Part A Cohort 2 (n=5): Female,1,1,female,mapped,NCT01897233
+class,Part A Cohort 2 (n=5): Male,1,1,male,mapped,NCT01897233
+class,Part B (n=58): Female,1,1,female,mapped,NCT01897233
+class,Part B (n=58): Male,1,1,male,mapped,NCT01897233
+category,"Unknown, Refused, or Missing",1,1,unknown,mapped,NCT04743908
+class,Unknown/Other/Not Reported,1,1,unknown,mapped,NCT00244374
+class,Prefer not to answer/unknown,1,1,unknown,mapped,NCT04248725
+class,Non-Binary or another gender,1,1,gender_diverse,mapped,NCT06442800
+category,Gender fluid,1,1,gender_diverse,mapped,NCT03954535
+category,None of these describe me,1,1,gender_diverse,mapped,NCT05775991
+class,Non-binary/ third gender,1,1,gender_diverse,mapped,NCT05207956
+class,Premenopausal females,1,1,female,mapped,NCT04267562
+class,Transgender male to female,1,1,ambiguous,mapped,NCT03194256
+class,Transgender female to male,1,1,ambiguous,mapped,NCT03194256
+class,Genderqueer/gender non-conforming,1,1,gender_diverse,mapped,NCT03194256
+class,2007 Female,1,1,female,mapped,NCT00396409
+class,2007 Male,1,1,male,mapped,NCT00396409
+class,2008 Female,1,1,female,mapped,NCT00396409
+class,2008 Male,1,1,male,mapped,NCT00396409
+class,Nonbinary/Other,1,1,gender_diverse,mapped,NCT04571320
+class,Both Male and Female,1,1,female,mapped,NCT03670355
+class,Exclusively Female Partners,1,1,female,mapped,NCT03670355
+class,Exclusively Male Partners,1,1,male,mapped,NCT03670355
+class,Only male subjects,1,1,male,mapped,NCT04408989
+class,Female (<=11 and <12 years),1,1,female,mapped,NCT06138756
+class,Female (<=10 Age <11 years),1,1,female,mapped,NCT06138756
+class,Female (<=9 and <10 years),1,1,female,mapped,NCT06138756
+class,Female (<=8 and <9 years),1,1,female,mapped,NCT06138756
+class,Female (<=7 and <8),1,1,female,mapped,NCT06138756
+class,Female (<=6 and <7 years),1,1,female,mapped,NCT06138756
+class,Male (<=11 and <12 years),1,1,male,mapped,NCT06138756
+class,Male (<=10 and <11 years),1,1,male,mapped,NCT06138756
+class,Male (<=9 and <10 years),1,1,male,mapped,NCT06138756
+class,Male (<=8 and <9 years),1,1,male,mapped,NCT06138756
+class,Male (<=7 and <8 years),1,1,male,mapped,NCT06138756
+class,Male (<=6 and <7 years),1,1,male,mapped,NCT06138756
+class,Transgender female,1,1,ambiguous,mapped,NCT05533190
+category,Male children,1,1,male,mapped,NCT02684903
+category,Female children,1,1,female,mapped,NCT02684903
+class,Transgender or Other,1,1,gender_diverse,mapped,NCT04745065
+category,Female premenopausal,1,1,female,mapped,NCT03147287
+category,Female postmenopausal,1,1,female,mapped,NCT03147287
+category,Not Collected,1,1,unknown,mapped,NCT02657577
+class,Unknown or Other,1,1,unknown,mapped,NCT03238001
+class,two-spirit,1,1,gender_diverse,mapped,NCT04376346
+class,Other/not sure,1,1,unknown,mapped,NCT04376346
+class,Disclosed gender (included 6 undisclosed in male intervention count),1,1,unknown,mapped,NCT03312218
+category,Males Who Have Sex With Males (MSM),1,1,male,mapped,NCT04635423
+category,Female to male (transgender),1,1,ambiguous,mapped,NCT04016558
+category,Male to female (transgender),1,1,ambiguous,mapped,NCT04016558
+class,"Female, %",1,1,female,mapped,NCT03818659
+class,"Male, %",1,1,male,mapped,NCT03818659
+class,Transgender male-to-female,1,1,ambiguous,mapped,NCT03343483
+class,Transgender female-to-male,1,1,ambiguous,mapped,NCT03343483
+class,Not provided,1,1,unknown,mapped,NCT00705263
+class,Fluid,1,1,gender_diverse,mapped,NCT05984966
+category,Unknown/Other,1,1,unknown,mapped,NCT04133831
+class,Trans person,1,1,gender_diverse,mapped,NCT03210701
+class,Not Sure,1,1,unknown,mapped,NCT01350544
+class,"Female (Base Study 310, NCT00477295)",1,1,female,mapped,NCT00848549
+class,"Male (Base Study 310, NCT00477295)",1,1,male,mapped,NCT00848549
+class,"Female (Extension Study 314, NCT00848549)",1,1,female,mapped,NCT00848549
+class,"Male (Extension Study 314, NCT00848549)",1,1,male,mapped,NCT00848549
+class,Not Reported or Other,1,1,unknown,mapped,NCT04491539
+class,Sex at birth=Female,1,1,female,mapped,NCT03299049
+class,Sex at birth=Male,1,1,male,mapped,NCT03299049
+category,Reported gender=Female,1,1,female,mapped,NCT03299049
+category,Reported gender=Male,1,1,male,mapped,NCT03299049
+class,Sex of Particpants : Male,1,1,male,mapped,NCT02967991
+class,Sex of Particpants : Female,1,1,female,mapped,NCT02967991
+class,MCI/SCD (Older adults with mild cognitive impairment/subjective cognitive decline),1,1,unknown,mapped,NCT04717479
+category,Cisgender Woman,1,1,ambiguous,mapped,NCT05135767
+class,"Transgender, Male to Female",1,1,ambiguous,mapped,NCT07204444
+category,Nonbinary or other,1,1,gender_diverse,mapped,NCT05413239
+class,Self-Identify,1,1,gender_diverse,mapped,NCT04692077
+class,Other or Prefer Not to Say,1,1,unknown,mapped,NCT06874361
+class,Sex/Prefer not to answer,1,1,unknown,mapped,NCT04000360
+category,Transfemale,1,1,male,mapped,NCT01781806
+category,Female - Child-bearing Potential,1,1,female,mapped,NCT02030938
+category,Female - Non Child-bearing Potential,1,1,female,mapped,NCT02030938
+class,nonbinary (assigned female at birth),1,1,gender_diverse,mapped,NCT04000724
+class,nonbinary (assigned male at birth),1,1,gender_diverse,mapped,NCT04000724
+class,trans feminine,1,1,gender_diverse,mapped,NCT04000724
+class,trans masculine,1,1,gender_diverse,mapped,NCT04000724
+class,Female Young Adults,1,1,female,mapped,NCT02145156
+class,Male Young Adults,1,1,male,mapped,NCT02145156
+class,Female Adolescents,1,1,female,mapped,NCT02145156
+class,Male Adolescents,1,1,male,mapped,NCT02145156
+class,Sex: Female,1,1,female,mapped,NCT02304757
+class,Female (3 to <9 years),1,1,female,mapped,NCT00973700
+class,Male (3 to < 9 years),1,1,male,mapped,NCT00973700
+class,Female (9 to 17 years),1,1,female,mapped,NCT00973700
+class,Male (9 to 17 years),1,1,male,mapped,NCT00973700
+class,Female (18 to 64 years),1,1,female,mapped,NCT00973700
+class,Male (18 to 64 years),1,1,male,mapped,NCT00973700
+class,Female participants number,1,1,female,mapped,NCT04096963
+class,Male participants number,1,1,male,mapped,NCT04096963
+class,All participants were female,1,1,female,mapped,NCT04697264
+class,Unknown/Refused/Prefer not to answer,1,1,unknown,mapped,NCT04274764
+class,Transgender girl,1,1,ambiguous,mapped,NCT05408858
+class,Cisgender girl,1,1,ambiguous,mapped,NCT05408858
+class,Transgender boy,1,1,ambiguous,mapped,NCT05408858
+class,Nonbinary/questioning,1,1,gender_diverse,mapped,NCT05408858
+class,Adult Female,1,1,female,mapped,NCT02678455
+class,Adult Male,1,1,male,mapped,NCT02678455
+class,Young Child Female,1,1,female,mapped,NCT02678455
+class,Young Child Male,1,1,male,mapped,NCT02678455
+class,Female (Patients),1,1,female,mapped,NCT04746794
+class,Male (Patients),1,1,male,mapped,NCT04746794
+class,Unknown (Patients),1,1,unknown,mapped,NCT04746794
+class,Female (Providers and Clinic Leaders),1,1,female,mapped,NCT04746794
+class,Male (Providers and Clinic Leaders),1,1,male,mapped,NCT04746794
+class,Unknown (Providers and Clinic Leaders),1,1,unknown,mapped,NCT04746794
+class,Percent Female,1,1,female,mapped,NCT04525755
+class,Percent Male,1,1,male,mapped,NCT04525755
+class,Transgender male,1,1,ambiguous,mapped,NCT01495598
+class,Students: Male,1,1,male,mapped,NCT00612690
+class,Students: Female,1,1,female,mapped,NCT00612690
+class,Teachers: Male,1,1,male,mapped,NCT00612690
+class,Teachers: Female,1,1,female,mapped,NCT00612690
+class,Service Provders: Male,1,1,male,mapped,NCT00612690
+class,Service Providers: Female,1,1,female,mapped,NCT00612690
+class,Parents: Male,1,1,male,mapped,NCT00612690
+class,Parents: Female,1,1,female,mapped,NCT00612690
+class,Decline/missing,1,1,unknown,mapped,NCT05057988
+class,Unknown/Unreported,1,1,unknown,mapped,NCT05305443
+category,intersex,1,1,gender_diverse,mapped,NCT04464720
+class,Sex of referred child - male,1,1,male,mapped,NCT06195579
+class,Sex of referred child - female,1,1,female,mapped,NCT06195579
+class,Another gender identity,1,1,gender_diverse,mapped,NCT04223687
+class,Prefer Not to Disclose,1,1,unknown,mapped,NCT03715426
+class,Missing values,1,1,unknown,mapped,NCT00708708
+class,"Sex assigned at birth, female",1,1,female,mapped,NCT06132425
+class,female pregnant patients,1,1,female,mapped,NCT02619799
+class,Male patient/Female donor,1,1,female,mapped,NCT00589563
+class,Not listed/prefer not to answer,1,1,unknown,mapped,NCT05386355
+category,Self-identify,1,1,gender_diverse,mapped,NCT04047420
+category,Multiple Genders,1,1,gender_diverse,mapped,NCT04047420
+category,Two Spirit,1,1,gender_diverse,mapped,NCT04047420
+category,Prefer not to Answer,1,1,unknown,mapped,NCT04047420
+class,Females <= 50 years,1,1,female,mapped,NCT02265744
+class,Females > 50 years,1,1,female,mapped,NCT02265744
+category,Other (Transwoman; Transman; Gender-variant/non-binary; Other Identity; Prefer not to answer),1,1,unknown,mapped,NCT04992390
+class,female participant,1,1,female,mapped,NCT06684951
+class,Male/Female/Unknown,1,1,unknown,mapped,NCT04505540
+category,Don't know/Not Sure,1,1,unknown,mapped,NCT03132753
+class,Other/ Not recorded,1,1,unknown,mapped,NCT01244737
+category,Other/Prefer not to answer,1,1,unknown,mapped,NCT04971967
+class,Did not report,1,1,unknown,mapped,NCT04344028
+class,Queer or another Identity,1,1,gender_diverse,mapped,NCT03396367
+category,Transgender (Male to Female),1,1,ambiguous,mapped,NCT02460692
+class,non-binary,1,1,gender_diverse,mapped,NCT03877744
+class,prefer not to answer,1,1,unknown,mapped,NCT03877744
+class,Rand to OLE (Female),1,1,female,mapped,NCT01163032
+class,Rand to OLE (Male),1,1,male,mapped,NCT01163032
+class,Trans Masculine/ Male to Female,1,1,ambiguous,mapped,NCT02401867
+category,Male and female,1,1,female,mapped,NCT04550221
+class,TGNCNB* individual,1,1,gender_diverse,mapped,NCT05140421
+class,Percentage of male and female patients,1,1,female,mapped,NCT04174313
+category,Non binary,1,1,gender_diverse,mapped,NCT05875467
+class,Female (<=60 yrs),1,1,female,mapped,NCT00841763
+class,Male (<=60 yrs),1,1,male,mapped,NCT00841763
+class,Female (>60 yrs),1,1,female,mapped,NCT00841763
+class,Male (>60 yrs),1,1,male,mapped,NCT00841763
+class,Current Gender Male,1,1,male,mapped,NCT06069713
+class,Current Gender Female,1,1,female,mapped,NCT06069713
+class,Current Gender Transgender,1,1,gender_diverse,mapped,NCT06069713
+class,None of the Above Genders,1,1,gender_diverse,mapped,NCT06069713
+class,Sex assigned at birth Male,1,1,male,mapped,NCT06069713
+class,Sex assigned at birth Female,1,1,female,mapped,NCT06069713
+class,Sex assigned at birth Did not answer,1,1,unknown,mapped,NCT06069713
+class,Gender Non-Conforming/Binary,1,1,gender_diverse,mapped,NCT03751020
+class,No gender/sex data was collected on the providers/clinicians,1,1,unknown,mapped,NCT03579680
+class,Transgender Female/Transwoman/Male-to-Female,1,1,ambiguous,mapped,NCT05609032
+category,Transgender Female/Transgender Woman,1,1,ambiguous,mapped,NCT04742491
+category,Gender nonbinary/Genderfluid/Gender Nonconforming,1,1,gender_diverse,mapped,NCT04742491
+category,Another gender identity,1,1,gender_diverse,mapped,NCT04742491
+category,Multiple gender identities selected,1,1,gender_diverse,mapped,NCT04742491
+class,Bigender,1,1,gender_diverse,mapped,NCT05534061
+class,None of the listed categories,1,1,gender_diverse,mapped,NCT05534061
+class,Stage1 2 g (curcumin): Female,1,1,female,mapped,NCT00365209
+class,Stage1 2 g (curcumin): Male,1,1,male,mapped,NCT00365209
+class,Stage2 4 g (curcumin): Female,1,1,female,mapped,NCT00365209
+class,Stage2 4 g (curcumin): Male,1,1,male,mapped,NCT00365209
+class,Male Sex at Birth. Identify Trans,1,1,ambiguous,mapped,NCT00458393
+class,Male Sex at Birth. Identify Female,1,1,female,mapped,NCT00458393
+class,Male Sex at Birth. Identify Male,1,1,male,mapped,NCT00458393
+class,Trans/FTM,1,1,gender_diverse,mapped,NCT02427399
+class,transgender female,1,1,ambiguous,mapped,NCT03584282
+class,Non-binary/genderqueer,1,1,gender_diverse,mapped,NCT03584282
+class,"Male, Ages 2-5",1,1,male,mapped,NCT00796315
+class,"Female, Ages 2-5",1,1,female,mapped,NCT00796315
+class,"Male, Ages 6-11",1,1,male,mapped,NCT00796315
+class,"Female, Ages 6-11",1,1,female,mapped,NCT00796315
+class,"Male, Ages 12-17",1,1,male,mapped,NCT00796315
+class,"Female, Ages 12-17",1,1,female,mapped,NCT00796315
+class,Male sex at birth,1,1,male,mapped,NCT05027516
+class,Missing designation,1,1,unknown,mapped,NCT00981474
+category,Transgender female (male-to-female),1,1,ambiguous,mapped,NCT04283656
+category,Transgender male (female-to-male),1,1,ambiguous,mapped,NCT04283656
+class,Both male or female,1,1,female,mapped,NCT01650584
+category,Transgender: Male to Female,1,1,ambiguous,mapped,NCT02797262
+class,Ages 50 to 64 years: Female,1,1,female,mapped,NCT02117570
+class,Ages 50 to 64 years: Male,1,1,male,mapped,NCT02117570
+class,Ages 65 to 85 years: Female,1,1,female,mapped,NCT02117570
+class,Ages 65 to 85 years: Male,1,1,male,mapped,NCT02117570
+class,Previously Treated : Female,1,1,female,mapped,NCT00633594
+class,Previously Treated : Male,1,1,male,mapped,NCT00633594
+class,Previously Untreated : Female,1,1,female,mapped,NCT00633594
+class,Previously Untreated : Male,1,1,male,mapped,NCT00633594
+class,Sex of child-Female,1,1,female,mapped,NCT04042467
+class,Sex of child-Male,1,1,male,mapped,NCT04042467
+class,Sex of parent-Female,1,1,female,mapped,NCT04042467
+class,Sex of parent-Male,1,1,male,mapped,NCT04042467
+class,Sex of parent-Other,1,1,gender_diverse,mapped,NCT04042467
+class,Gender non-conforming,1,1,gender_diverse,mapped,NCT03339206
+class,"Transgender, non-binary, or questioning",1,1,gender_diverse,mapped,NCT04136626
+class,Transgender (male to female),1,1,ambiguous,mapped,NCT04418076
+class,Transgender (female to male),1,1,ambiguous,mapped,NCT04418076
+category,Female to Male,1,1,female,mapped,NCT03378570
+category,Not specified,1,1,unknown,mapped,NCT05891275
+category,Transgender men,1,1,ambiguous,mapped,NCT04050371
+class,Another gender,1,1,gender_diverse,mapped,NCT03539900
+class,Male or man,1,1,male,mapped,NCT04951544
+class,Gender-minority,1,1,gender_diverse,mapped,NCT04951544
+category,Missing response,2,1,unknown,mapped,NCT04939714
+class,"Active Phase, Female",1,1,female,mapped,NCT00603733
+class,"Active Phase, Male",1,1,male,mapped,NCT00603733
+class,"Maintenance Phase, Female",1,1,female,mapped,NCT00603733
+class,"Maintenance Phase, Male",1,1,male,mapped,NCT00603733
+category,Female/Transfemale,1,1,female,mapped,NCT03213366
+category,Transmale,1,1,male,mapped,NCT03213366
+category,Gender Non-conforming/Gender Non-Binary,1,1,gender_diverse,mapped,NCT03213366
+class,Nonbinary youth,1,1,gender_diverse,mapped,NCT06017050
+class,Male/man,1,1,male,mapped,NCT04565951
+class,Female/woman,1,1,female,mapped,NCT04565951
+class,Genderqueer/non-binary,1,1,gender_diverse,mapped,NCT04565951
+class,Not recorded,1,1,unknown,mapped,NCT03895632
+class,"Man, Female-to-Man (FTM)",1,1,female,mapped,NCT05803720
+class,Females >14 yrs,1,1,female,mapped,NCT01146496
+class,Gender non-conforming/-binary,1,1,gender_diverse,mapped,NCT02929069
+category,Non-binary / third gender,1,1,gender_diverse,mapped,NCT06281548
+category,Transgender Spectrum,1,1,gender_diverse,mapped,NCT05630885
+class,Prefer Not To Answer,1,1,unknown,mapped,NCT04523779
+class,Did not identify,1,1,unknown,mapped,NCT04697173
+category,Unknown/ Non Response,1,1,unknown,mapped,NCT02909673
+category,ADDITIONAL IDENTITY,1,1,gender_diverse,mapped,NCT04804072
+category,TWO SPIRIT,1,1,gender_diverse,mapped,NCT04804072
+category,PREFER NOT TO ANSWER,1,1,unknown,mapped,NCT04804072
+class,female patients,1,1,female,mapped,NCT01356940
+class,male patients,1,1,male,mapped,NCT01356940
+category,not known,1,1,unknown,mapped,NCT01022268
+class,Additional sex or gender,1,1,gender_diverse,mapped,NCT04163341
+category,Nonbinary or another gender,1,1,gender_diverse,mapped,NCT05432271
+class,Mean percentage male participants per clinic,1,1,male,mapped,NCT00374452
+class,Cisgender Woman,1,1,ambiguous,mapped,NCT05512949
+class,Gender Non-binary,1,1,gender_diverse,mapped,NCT05512949
+class,Gender Non-conforming,1,1,gender_diverse,mapped,NCT05512949
+class,Transgender Man/Trans Man,1,1,ambiguous,mapped,NCT05512949
+class,Transgender Woman/Trans Woman,1,1,ambiguous,mapped,NCT05512949
+class,Decline to state,2,1,unknown,mapped,NCT05512949
+category,Do not wish to report,1,1,unknown,mapped,NCT04556591
+class,transgender male,1,1,ambiguous,mapped,NCT03652688
+class,refused/unidentified,1,1,unknown,mapped,NCT03652688
+class,Male participants,1,1,male,mapped,NCT01397071
+class,cis-gender female,1,1,ambiguous,mapped,NCT05257603
+class,Part A (n = 9): Female,1,1,female,mapped,NCT01705145
+class,Part A (n = 9): Male,1,1,male,mapped,NCT01705145
+class,Part B (n = 34): Female,1,1,female,mapped,NCT01705145
+class,Part B (n = 34): Male,1,1,male,mapped,NCT01705145
+category,Other/non-binary,1,1,gender_diverse,mapped,NCT04891978
+class,Not Disclosed,1,1,unknown,mapped,NCT02995434
+class,Female or Male,1,1,female,mapped,NCT00780572
+class,male gender,1,1,male,mapped,NCT00047619
+category,I prefer not to answer / No response,1,1,unknown,mapped,NCT03239665
+class,Self-describe,1,1,gender_diverse,mapped,NCT04798664
+category,Other (participant response = non-binary),1,1,gender_diverse,mapped,NCT04661878
+class,Trans/nonbinary,1,1,gender_diverse,mapped,NCT03867734
+class,Gender Identity : Girl/Woman,1,1,female,mapped,NCT05462652
+class,Gender Identity : Boy/Man,1,1,male,mapped,NCT05462652
+class,Gender Identity : Non-binary,1,1,gender_diverse,mapped,NCT05462652
+class,Gender Identity : Transgender,1,1,gender_diverse,mapped,NCT05462652
+class,Gender Identity : Intersex,1,1,gender_diverse,mapped,NCT05462652
+class,Gender Identity : I prefer not to say,1,1,unknown,mapped,NCT05462652
+class,Gender - Self Described,1,1,gender_diverse,mapped,NCT03254940
+category,Other (self described as genderqueer or nonbinary),1,1,gender_diverse,mapped,NCT03254940
+category,Unknown/not reported,1,1,unknown,mapped,NCT03581123
+category,Non-Binary/Third Gender,1,1,gender_diverse,mapped,NCT03834974
+category,Non-binary or Other,1,1,gender_diverse,mapped,NCT04919590
+category,"Another category (transgender, genderqueer, bigender, agender)",1,1,gender_diverse,mapped,NCT05150860
+category,Other/not reported,1,1,unknown,mapped,NCT03704142
+class,Gender nonconforming/Variant,1,1,gender_diverse,mapped,NCT03671239
+class,Multiple Genders,1,1,gender_diverse,mapped,NCT03671239
+class,Number of Female Participants,1,1,female,mapped,NCT01378325
+class,Main Surveillance Females,1,1,female,mapped,NCT01083173
+class,Main Surveillance Males,1,1,male,mapped,NCT01083173
+class,Long-Term Surveillance Females,1,1,female,mapped,NCT01083173
+class,Long-Term Surveillance Males,1,1,male,mapped,NCT01083173
+category,Famale,1,1,male,mapped,NCT02996305
+class,Other/Not Specified,1,1,unknown,mapped,NCT03277794
+class,Male patients,1,1,male,mapped,NCT02555228
+class,Female patients,1,1,female,mapped,NCT02555228
+class,Transgender man,1,1,ambiguous,mapped,NCT06229132
+class,"Nonbinary (e.g., genderqueer, agender, gender fluid)",1,1,gender_diverse,mapped,NCT06229132
+class,Non-binary or Transgender man or woman,1,1,ambiguous,mapped,NCT04698629
+category,Identify in another way,1,1,gender_diverse,mapped,NCT02633267
+class,non-binary/third gender,1,1,gender_diverse,mapped,NCT04268316
+category,Did not report,1,1,unknown,mapped,NCT05302440
+class,Not reported/Unknown/Declined to State,1,1,unknown,mapped,NCT03433469
+category,Refusal,1,1,unknown,mapped,NCT03500172
+class,Female (�6 to �17 Years),1,1,female,mapped,NCT01680016
+class,Male (�6 to �17 Years),1,1,male,mapped,NCT01680016
+class,Female (�51 Years),1,1,female,mapped,NCT01680016
+class,Male (�51 Years),1,1,male,mapped,NCT01680016
+class,Gender Female,1,1,female,mapped,NCT04722250
+class,Gender Male,1,1,male,mapped,NCT04722250
+class,Sex male,1,1,male,mapped,NCT00866879
+class,Sex female,1,1,female,mapped,NCT00866879
+category,Cisgender Women,3,1,ambiguous,mapped,NCT05626231
+category,Cisgender Men,3,1,ambiguous,mapped,NCT05626231
+category,Nonbinary/genderqueer,3,1,gender_diverse,mapped,NCT05626231
+category,Gender Diverse,1,1,gender_diverse,mapped,NCT04536935
+category,None of de above/unsure,1,1,unknown,mapped,NCT01848483
+class,Gender queer,1,1,gender_diverse,mapped,NCT01327651
+category,Bisexual/Other,1,1,gender_diverse,mapped,NCT03577301
+category,"Do not identify as female, male, or transgender",1,1,ambiguous,mapped,NCT04445792
+class,F-Transgender,1,1,gender_diverse,mapped,NCT03769675
+class,men,1,1,male,mapped,NCT05997901
+category,Unknow or not reported,2,1,unknown,mapped,NCT03445988
+class,Gender (Female),1,1,female,mapped,NCT02382003
+category,Cisgender Male,1,1,ambiguous,mapped,NCT04276935
+category,Cisgender Female,1,1,ambiguous,mapped,NCT04276935
+class,Gender nonbinary,1,1,gender_diverse,mapped,NCT04509076
+category,Different identity,1,1,gender_diverse,mapped,NCT05372913
+category,Man/boy,1,1,male,mapped,NCT05372913
+category,Woman/girl,1,1,female,mapped,NCT05372913
+category,Female (at birth),1,1,female,mapped,NCT03964415
+category,Male (at birth),1,1,male,mapped,NCT03964415
+category,Undifferentiated (at birth),1,1,unknown,mapped,NCT03964415
+class,Prefer not to identify,1,1,unknown,mapped,NCT05529173
+category,Trans Male,1,1,ambiguous,mapped,NCT04168645
+category,Trans Female,1,1,ambiguous,mapped,NCT04168645
+category,Genderqueer/Gender Non-Conforming,1,1,gender_diverse,mapped,NCT04168645
+category,Do Not Identify As Any of These Options,1,1,gender_diverse,mapped,NCT04168645
+class,"Sex (male or female), n (%)",1,1,female,mapped,NCT06423352
+category,Not stated,1,1,unknown,mapped,NCT05493072
+category,Transman,1,1,gender_diverse,mapped,NCT02870101
+category,Other/category not listed,1,1,unknown,mapped,NCT04154631
+category,Cisgender boys,1,1,ambiguous,mapped,NCT03409328
+category,Transgender boys,1,1,ambiguous,mapped,NCT03409328
+class,"Others (gay, lesbian or bisexual)",1,1,gender_diverse,mapped,NCT03685643
+class,Male entire study population,1,1,male,mapped,NCT01253135
+class,Female entire study population,1,1,female,mapped,NCT01253135
+class,Male amended protocol,1,1,male,mapped,NCT01253135
+class,Female amended protocol,1,1,female,mapped,NCT01253135
+class,Gender not recorded,1,1,unknown,mapped,NCT00664742
+category,Cancer Patients/Survivor Participants - Female,1,1,female,mapped,NCT05253573
+category,Caregiver Participants - Female,1,1,female,mapped,NCT05253573
+category,Cancer Patients/Survivor Participants - Male,1,1,male,mapped,NCT05253573
+category,Caregiver Participants - Male,1,1,male,mapped,NCT05253573
+class,Refused to answer,1,1,unknown,mapped,NCT03569449
+category,Female only,1,1,female,mapped,NCT04363320
+class,Missing Sex,1,1,unknown,mapped,NCT03871491
+class,Study A (men with a normal sperm concentration),1,1,male,mapped,NCT03553927
+class,Study B (men with a low sperm concentration),1,1,male,mapped,NCT03553927
+class,Transgender or other,1,1,gender_diverse,mapped,NCT03511937
+class,Non-binary/Gender Diverse,1,1,gender_diverse,mapped,NCT04783519
+class,Gender : Unknown or Not Reported,1,1,unknown,mapped,NCT02610725
+category,Missing Data,1,1,unknown,mapped,NCT03523962
+class,Sex/Gender Female (ACTIVE ONLY),1,1,female,mapped,NCT05870345
+class,Sex/Gender Male (ACTIVE ONLY),1,1,male,mapped,NCT05870345
+class,Other or prefer not to say,1,1,unknown,mapped,NCT05384171
+class,Female (NSCLC patients),1,1,female,mapped,NCT00527735
+class,Male (NSCLC patients),1,1,male,mapped,NCT00527735
+class,Female (SCLC patients),1,1,female,mapped,NCT00527735
+class,Male (SCLC patients),1,1,male,mapped,NCT00527735
+category,Transwomen who are Biologically Male,1,1,gender_diverse,mapped,NCT05161689
+category,Did not have anal sex with men in the past 6 months,1,1,male,mapped,NCT05161689
+class,Female/Male/Other,1,1,gender_diverse,mapped,NCT05899413
+class,UNKNOWN,1,1,unknown,mapped,NCT06132282
+category,No answer,1,1,unknown,mapped,NCT04881942
+class,Sex/Gender data were not collected,1,1,unknown,mapped,NCT07243548
+class,Cisgender women,1,1,ambiguous,mapped,NCT03721276
+class,"Gender diverse (transgender, gender queer, nonbinary, gender fluid)",1,1,gender_diverse,mapped,NCT03721276
+class,"Other (asexual, bisexual, pansexual, uncertain)",1,1,gender_diverse,mapped,NCT03721276
+category,men,1,1,male,mapped,NCT02022566
+category,Other Identity,6,1,gender_diverse,mapped,NCT05132322
+class,Age of Male Subjects,1,1,male,mapped,NCT02269709
+class,Age of Female Subjects,1,1,female,mapped,NCT02269709
+class,Part A: Female (n = 8),1,1,female,mapped,NCT01161537
+class,Part A: Male (n = 8),1,1,male,mapped,NCT01161537
+class,Part B: Female (n = 9),1,1,female,mapped,NCT01161537
+class,Part B: Male (n = 9),1,1,male,mapped,NCT01161537
+class,Female Parent,1,1,female,mapped,NCT02342535
+class,Female Child,1,1,female,mapped,NCT02342535
+class,Male Child,1,1,male,mapped,NCT02342535
+class,"Transgender, genderqueer, or other identity not listed",1,1,unknown,mapped,NCT03860077
+class,Female_Core Study,1,1,female,mapped,NCT00395629
+class,Male_Core Study,1,1,male,mapped,NCT00395629
+class,Female_Extension Study,1,1,female,mapped,NCT00395629
+class,Male_Extension Study,1,1,male,mapped,NCT00395629
+class,Fluid / Non-Binary,1,1,gender_diverse,mapped,NCT03360695
+class,Female (�60 years of age),1,1,female,mapped,NCT00620815
+class,Male (�60 years of age),1,1,male,mapped,NCT00620815
+class,Female (�61 years of age),1,1,female,mapped,NCT00620815
+class,Male (�61 years of age),1,1,male,mapped,NCT00620815
+class,Nonbinary or preferred to self-describe,1,1,gender_diverse,mapped,NCT05168800
+class,Unknown/unlisted,1,1,unknown,mapped,NCT03698591
+category,Trans-female,1,1,ambiguous,mapped,NCT04307394
+category,Trans-male,1,1,ambiguous,mapped,NCT04307394
+category,More than one gender,1,1,gender_diverse,mapped,NCT04307394
+category,Not Provided,1,1,unknown,mapped,NCT06213701
+category,Refused,1,1,unknown,mapped,NCT05108649
+class,Other (Unspecified),1,1,unknown,mapped,NCT03205982
+class,Female (residents),1,1,female,mapped,NCT04732819
+class,Male (residents),1,1,male,mapped,NCT04732819
+class,Missing (residents),1,1,unknown,mapped,NCT04732819
+class,Missing (staff),1,1,unknown,mapped,NCT04732819
+category,Trans or non-binary,1,1,gender_diverse,mapped,NCT02707692
+category,Fluid,1,1,gender_diverse,mapped,NCT05692960
+category,Other not listed,1,1,unknown,mapped,NCT05692960
+category,"Others (pansexual, queer, unsure)",1,1,unknown,mapped,NCT05645354
+category,Missing or Unknown,2,1,unknown,mapped,NCT04584294
+category,prefer not to answer,1,1,unknown,mapped,NCT04573972
+class,Male Participants 11-14 year old age group,1,1,male,mapped,NCT01823341
+class,Female Participants 11-14 year old age group,1,1,female,mapped,NCT01823341
+class,Male Participants 4-10 year old age group,1,1,male,mapped,NCT01823341
+class,Female Participants 4-10 year old age group,1,1,female,mapped,NCT01823341
+class,Non-binary/Transgender,1,1,gender_diverse,mapped,NCT03783533
+class,Baseline Women,1,1,female,mapped,NCT05328648
+class,Endline Women,1,1,female,mapped,NCT05328648
+class,Female (2 to <12 years),1,1,female,mapped,NCT01971476
+class,Male (2 to <12 years),1,1,male,mapped,NCT01971476
+class,Female (12 to <18 years),1,1,female,mapped,NCT01971476
+class,Male (12 to <18 years),1,1,male,mapped,NCT01971476
+class,Boy,1,1,male,mapped,NCT03489434
+class,Girl,1,1,female,mapped,NCT03489434
+category,Other combination,1,1,gender_diverse,mapped,NCT03419078
+category,Male / Female,1,1,female,mapped,NCT03419078
+category,Do not wish to disclose,1,1,unknown,mapped,NCT03543865
+class,Gender identity not listed,1,1,unknown,mapped,NCT05700383
+class,Feminine/femme or transfeminine,1,1,gender_diverse,mapped,NCT06001307
+class,"M_h_, or muxe, or two spirit",1,1,gender_diverse,mapped,NCT06001307
+class,Woman or Transgender Woman,1,1,ambiguous,mapped,NCT06001307
+class,None of these describe me,1,1,gender_diverse,mapped,NCT06001307
+category,"Genderqueer, neither exclusively male nor female",1,1,gender_diverse,mapped,NCT03910218
+class,Another Gender,1,1,gender_diverse,mapped,NCT05849051
+class,Other/missing,1,1,unknown,mapped,NCT04726371
+category,Other/Missing,1,1,unknown,mapped,NCT02788903
+class,Declined to Answer,1,1,unknown,mapped,NCT03974061
+class,Female Participants,1,1,female,mapped,NCT03719287
+class,number of man (%),1,1,male,mapped,NCT03020225
+class,Student - Female,1,1,female,mapped,NCT03901274
+class,Student - Male,1,1,male,mapped,NCT03901274
+class,Student - Nonbinary / Gender Non-Conforming,1,1,gender_diverse,mapped,NCT03901274
+class,Student - Missing or Prefer Not to Answer,1,1,unknown,mapped,NCT03901274
+class,Parent - Female,1,1,female,mapped,NCT03901274
+class,Parent - Male,1,1,male,mapped,NCT03901274
+class,Parent - Nonbinary / Gender Non-Conforming,1,1,gender_diverse,mapped,NCT03901274
+class,Parent - Missing or Prefer Not to Answer,1,1,unknown,mapped,NCT03901274
+category,Trans male/Trans man,1,1,ambiguous,mapped,NCT03794986
+class,Arm A- male,1,1,male,mapped,NCT04147234
+class,Arm A- female,1,1,female,mapped,NCT04147234
+class,Arm B- male,1,1,male,mapped,NCT04147234
+class,Arm B- female,1,1,female,mapped,NCT04147234
+category,Gender non-conforming or non-binary,1,1,gender_diverse,mapped,NCT04621760
+class,Demographic information not collected,1,1,unknown,mapped,NCT00827502
+category,Unknown: Missing Data,1,1,unknown,mapped,NCT05376371
+class,Females - Baseline,1,1,female,mapped,NCT00980980
+class,Males - Baseline,1,1,male,mapped,NCT00980980
+class,Females - Intervention,1,1,female,mapped,NCT00980980
+class,Males - Intervention,1,1,male,mapped,NCT00980980
+category,Other (prefer to self-describe),1,1,gender_diverse,mapped,NCT04935931
+category,"Unknown, not reported",1,1,unknown,mapped,NCT03987581
+category,Bisexual,49,49,,sexual_orientation,NCT01537419
+class,Bisexual,22,22,,sexual_orientation,NCT01350544
+category,Heterosexual,18,18,,sexual_orientation,NCT01537419
+category,Queer,18,17,,sexual_orientation,NCT03213366
+category,Gay,14,14,,sexual_orientation,NCT02183909
+category,Asexual,13,13,,sexual_orientation,NCT03308097
+category,Pansexual,12,12,,sexual_orientation,NCT03261700
+class,Gay,11,11,,sexual_orientation,NCT02929069
+class,Heterosexual,11,11,,sexual_orientation,NCT02469714
+class,Queer,10,10,,sexual_orientation,NCT02469714
+category,Lesbian,8,8,,sexual_orientation,NCT03373110
+category,Homosexual,7,7,,sexual_orientation,NCT01887210
+category,Straight,7,7,,sexual_orientation,NCT02183909
+category,Straight/Heterosexual,7,7,,sexual_orientation,NCT02946255
+category,Straight or heterosexual,4,4,,sexual_orientation,NCT03242954
+category,Heterosexual/straight,4,4,,sexual_orientation,NCT03624972
+class,Asexual,4,4,,sexual_orientation,NCT03751020
+class,Lesbian,4,4,,sexual_orientation,NCT03721276
+category,Gay/Lesbian,4,4,,sexual_orientation,NCT03132753
+class,Homosexual,4,4,,sexual_orientation,NCT02469714
+category,Straight/heterosexual,3,3,,sexual_orientation,NCT01848483
+class,Heterosexual or Straight,3,3,,sexual_orientation,NCT02459769
+category,Gay/homosexual,3,3,,sexual_orientation,NCT01848483
+class,Straight,3,3,,sexual_orientation,NCT01350544
+category,Lesbian/Gay,3,3,,sexual_orientation,NCT01537419
+category,Gay or Lesbian,3,3,,sexual_orientation,NCT03045341
+class,Pansexual,3,3,,sexual_orientation,NCT03751020
+class,Lesbian or Gay,2,2,,sexual_orientation,NCT02459769
+category,Straight or Heterosexual,2,2,,sexual_orientation,NCT03628287
+category,Gay/Homosexual,2,2,,sexual_orientation,NCT03213366
+category,Bisexual Males,2,2,,sexual_orientation,NCT05161689
+class,Lesbian or gay,2,2,,sexual_orientation,NCT05393869
+class,Straight or Heterosexual,2,2,,sexual_orientation,NCT03313310
+category,Heterosexual/Straight,2,2,,sexual_orientation,NCT03213366
+class,Gay or lesbian,2,2,,sexual_orientation,NCT04342494
+class,Gay or Lesbian,2,2,,sexual_orientation,NCT03316911
+class,Gay/Homosexual,1,1,,sexual_orientation,NCT01687218
+class,Straight/Heterosexual,1,1,,sexual_orientation,NCT01687218
+category,"Gay, queer, or same gender loving",1,1,,sexual_orientation,NCT03242954
+category,Not heterosexual,1,1,,sexual_orientation,NCT03897049
+category,gay,1,1,,sexual_orientation,NCT02494817
+category,bisexual,1,1,,sexual_orientation,NCT02494817
+category,"Gay, homosexual, same gender loving",1,1,,sexual_orientation,NCT04413708
+class,Straight or heterosexual,1,1,,sexual_orientation,NCT04108988
+class,Multiple sexual orientations,1,1,,sexual_orientation,NCT03844321
+category,Homosexual/lesbian,1,1,,sexual_orientation,NCT03624972
+category,"Lesbian, Gay, or Homosexual",1,1,,sexual_orientation,NCT04278586
+class,Gay/Lesbian,1,1,,sexual_orientation,NCT05020353
+category,Lesbian/Homosexual,1,1,,sexual_orientation,NCT04041414
+class,Ace/Asexual,1,1,,sexual_orientation,NCT05393869
+category,Heterosexual or straight,1,1,,sexual_orientation,NCT04762537
+category,Gay or lesbian,1,1,,sexual_orientation,NCT04762537
+class,Lesbian/gay woman/Women who have sex with women,1,1,,sexual_orientation,NCT05029362
+class,Gay man/Men who have sex with men,1,1,,sexual_orientation,NCT05029362
+class,Bisexual female,1,1,,sexual_orientation,NCT05029362
+class,Bisexual Male,1,1,,sexual_orientation,NCT05029362
+category,Gay/Lesbian/Queer,1,1,,sexual_orientation,NCT02751983
+class,Heterosexual (straight),1,1,,sexual_orientation,NCT05897827
+category,Homosexual/lesbian/gay,1,1,,sexual_orientation,NCT03930797
+category,Heterosexual Males (HM),1,1,,sexual_orientation,NCT04635423
+class,Gay man,1,1,,sexual_orientation,NCT01350544
+class,Gay woman,1,1,,sexual_orientation,NCT01350544
+category,Panromantic asexual,1,1,,sexual_orientation,NCT05408858
+category,Gay/Lesbian/Homosexual,1,1,,sexual_orientation,NCT04047420
+class,Gay / Lesbian,1,1,,sexual_orientation,NCT03552978
+class,Straight / Heterosexual,1,1,,sexual_orientation,NCT03552978
+class,Gay/Lesbian/Queer/Bisexual,1,1,,sexual_orientation,NCT03760731
+category,Homosexual/gay/lesbian,1,1,,sexual_orientation,NCT05609032
+category,Not sexual minority (heterosexual),1,1,,sexual_orientation,NCT04251273
+category,STRAIGHT/HETEROSEXUAL,1,1,,sexual_orientation,NCT04804072
+category,BISEXUAL,1,1,,sexual_orientation,NCT04804072
+category,GAY/LESBIAN/HOMOSEXUAL,1,1,,sexual_orientation,NCT04804072
+class,Heterosexual or straight,1,1,,sexual_orientation,NCT05512949
+category,Homosexual or gay,1,1,,sexual_orientation,NCT03842436
+class,Heterosexual Male,1,1,,sexual_orientation,NCT00924898
+category,Gay/Queer,1,1,,sexual_orientation,NCT03577301
+category,Lesbian or gay,1,1,,sexual_orientation,NCT05372913
+category,Pansexual; Asexual,1,1,,sexual_orientation,NCT05372913
+category,"Lesbian, gay, or homosexual",1,1,,sexual_orientation,NCT05386329
+category,Heterosexual or Straight,1,1,,sexual_orientation,NCT04881942
+category,"Straight, heterosexual",1,1,,sexual_orientation,NCT06281171
+category,"Bisexual, pansexual",1,1,,sexual_orientation,NCT06281171
+category,"Gay, lesbian, homosexual",1,1,,sexual_orientation,NCT06281171
+category,Straight (heterosexual),1,1,,sexual_orientation,NCT05692960
+category,Gay Male/Bisexual Male,1,1,,sexual_orientation,NCT05645354
+category,Lesbian/Gay Woman/ Bisexual Female,1,1,,sexual_orientation,NCT05645354
+category,Bisexual/Pansexual,1,1,,sexual_orientation,NCT04584294
+class,Gender,152,152,,structural_or_group,NCT00126750
+class,Sex,93,93,,structural_or_group,NCT01452191
+class,Patients,22,22,,structural_or_group,NCT00047853
+class,Children,14,14,,structural_or_group,NCT02876328
+class,Parent,12,12,,structural_or_group,NCT02160847
+class,Parents,10,10,,structural_or_group,NCT02873715
+class,sex,10,10,,structural_or_group,NCT01874535
+class,Cohort 2,8,8,,structural_or_group,NCT02773446
+class,Child,8,8,,structural_or_group,NCT02160847
+class,Total,8,8,,structural_or_group,NCT00440999
+class,Cohort 1,7,7,,structural_or_group,NCT02773446
+class,Overall,6,6,,structural_or_group,NCT02240667
+class,Patient,5,5,,structural_or_group,NCT02320175
+class,Mothers,5,5,,structural_or_group,NCT03464630
+class,Providers,5,5,,structural_or_group,NCT01825057
+class,gender,5,5,,structural_or_group,NCT01022268
+class,Mother,4,4,,structural_or_group,NCT02937194
+class,Global cohort,4,4,,structural_or_group,NCT02296125
+class,China Cohort,4,4,,structural_or_group,NCT01844986
+class,NA,4,4,,structural_or_group,NCT02127931
+class,China cohort,3,3,,structural_or_group,NCT02542293
+class,SEX,3,3,,structural_or_group,NCT00614822
+class,Infants,3,3,,structural_or_group,NCT03388294
+class,Global Cohort,3,3,,structural_or_group,NCT01844986
+class,patients,2,2,,structural_or_group,NCT01485627
+class,Clinicians,2,2,,structural_or_group,NCT02807506
+class,Father,2,2,,structural_or_group,NCT02937194
+class,Participants,2,2,,structural_or_group,NCT03292913
+category,Multiple,2,2,,structural_or_group,NCT03741725
+class,White,2,2,,structural_or_group,NCT01316887
+class,Primary Cohort,1,1,,structural_or_group,NCT03905330
+class,PFIC Cohort,1,1,,structural_or_group,NCT03905330
+class,Part 2: Open-label extension period (Week 16 and onwards),1,1,,structural_or_group,NCT02036970
+category,Neither,1,1,,structural_or_group,NCT03810053
+category,Child,4,1,,structural_or_group,NCT04859699
+category,Parent,4,1,,structural_or_group,NCT04859699
+class,Cohort 1 (FCM at 7.5 mg/kg to a maximum of 750mg),1,1,,structural_or_group,NCT02410213
+class,Cohort 2 (FCM at 15 mg/kg to a maximum of 750mg,1,1,,structural_or_group,NCT02410213
+class,Both genders,1,1,,structural_or_group,NCT01365091
+class,Phase 2 Extension,1,1,,structural_or_group,NCT02795988
+class,Skin Cohort,1,1,,structural_or_group,NCT05192200
+class,Muscle Cohort,1,1,,structural_or_group,NCT05192200
+class,Neither,1,1,,structural_or_group,NCT04148508
+class,Both,1,1,,structural_or_group,NCT04148508
+class,Two or more,1,1,,structural_or_group,NCT02759939
+class,Excluded from Analysis,1,1,,structural_or_group,NCT01065779
+class,Cohort 1 -12 to 17 years of age,1,1,,structural_or_group,NCT02340169
+class,Cohort 2 - 6 to 11 years of age,1,1,,structural_or_group,NCT02340169
+class,Cohort 3- 2 to 5 years of age,1,1,,structural_or_group,NCT02340169
+class,Phase I - Candesartan+HCTZ,2,1,,structural_or_group,NCT00867490
+class,Phase II - Aliskiren+HCTZ,2,1,,structural_or_group,NCT00867490
+class,Phase III - Aliskiren+HCTZ+amlodipine,2,1,,structural_or_group,NCT00867490
+class,Cohort A,1,1,,structural_or_group,NCT03257462
+class,Cohort B,1,1,,structural_or_group,NCT03257462
+class,Cohort C,1,1,,structural_or_group,NCT03257462
+class,Sex/Gender Baseline,1,1,,structural_or_group,NCT01154933
+class,Censored,1,1,,structural_or_group,NCT05055778
+class,Infant,1,1,,structural_or_group,NCT05762835
+class,Cohort 1 Group 15E,1,1,,structural_or_group,NCT04889209
+category,NA,1,1,,structural_or_group,NCT03442296
+class,Arm 1,1,1,,structural_or_group,NCT00074308
+class,Cohort 1 (NAL ER 27 mg): Group 1,1,1,,structural_or_group,NCT04020016
+class,Cohort 1 (NAL ER 27 mg): Group 2,1,1,,structural_or_group,NCT04020016
+class,Cohort 1 (NAL ER 27 mg): Group 3,1,1,,structural_or_group,NCT04020016
+class,Cohort 2 (NAL ER 54 mg): Group 1,1,1,,structural_or_group,NCT04020016
+class,Cohort 2 (NAL ER 54 mg): Group 2,1,1,,structural_or_group,NCT04020016
+class,Cohort 3 (NAL ER 108 mg): Group 1,1,1,,structural_or_group,NCT04020016
+class,Cohort 3 (NAL ER 108 mg): Group 2,1,1,,structural_or_group,NCT04020016
+class,Cohort 4 (NAL ER 162 mg): Group 1,1,1,,structural_or_group,NCT04020016
+class,Cohort 4 (NAL ER 162 mg): Group 2,1,1,,structural_or_group,NCT04020016
+class,Cohort 5 (NAL ER 162 mg): Group 4,1,1,,structural_or_group,NCT04020016
+class,Baricitinib 4mg Extension Study,1,1,,structural_or_group,NCT05188521
+class,gBRCAm cohort,1,1,,structural_or_group,NCT03286842
+class,sBRCAm cohort,1,1,,structural_or_group,NCT03286842
+class,All,1,1,,structural_or_group,NCT05216835
+class,Cohort 3,1,1,,structural_or_group,NCT02878785
+class,Cohort 4,1,1,,structural_or_group,NCT02878785
+class,Cohort 5,1,1,,structural_or_group,NCT02878785
+class,Cohort 6,1,1,,structural_or_group,NCT02878785
+class,Cohort 7,1,1,,structural_or_group,NCT02878785
+class,Cohort 8,1,1,,structural_or_group,NCT02878785
+class,Cohort 9,1,1,,structural_or_group,NCT02878785
+class,Cohort 10,1,1,,structural_or_group,NCT02878785
+class,Cohort 11,1,1,,structural_or_group,NCT02878785
+class,Cohort 12,1,1,,structural_or_group,NCT02878785
+class,Cohort 13,1,1,,structural_or_group,NCT02878785
+class,Cohort 14,1,1,,structural_or_group,NCT02878785
+class,Phase 3 - Exploratory,1,1,,structural_or_group,NCT04762680
+class,Single gender identity,1,1,,structural_or_group,NCT05061966
+class,Never Treated Cohort II,1,1,,structural_or_group,NCT00100048
+class,Patients for whom gender was recorded,1,1,,structural_or_group,NCT00207883
+class,Phase II - Baseline Sex,1,1,,structural_or_group,NCT02868034
+class,African American/African Heritage (HER),1,1,,structural_or_group,NCT01316887
+class,Japanese/East Asian HER/South East Asian HER,1,1,,structural_or_group,NCT01316887
+class,32-Week Optional Extension Part,1,1,,structural_or_group,NCT02587325
+class,any gender,1,1,,structural_or_group,NCT04460690
+class,"Cycle 2, Arm A",1,1,,structural_or_group,NCT01200485
+class,"Cycle 2, Arm B",1,1,,structural_or_group,NCT01200485
+class,children,1,1,,structural_or_group,NCT04261985
+class,Fathers,1,1,,structural_or_group,NCT03573830
+class,Participated in 2007 but not in 2008,1,1,,structural_or_group,NCT00396409
+class,Grandmother,1,1,,structural_or_group,NCT03797898
+class,Withdrew/Withdrawn,1,1,,structural_or_group,NCT01246895
+class,Prophylaxis Cohort,1,1,,structural_or_group,NCT03393975
+class,On Demand Cohort,1,1,,structural_or_group,NCT03393975
+class,More than one category,1,1,,structural_or_group,NCT05984966
+class,Cohort 1 (50 mg QHS),1,1,,structural_or_group,NCT03525886
+class,Cohort 2 (100 mg QHS),1,1,,structural_or_group,NCT03525886
+class,Cohort 3 (100 mg QPM),1,1,,structural_or_group,NCT03525886
+class,Cohort 4 (100 mg BID),1,1,,structural_or_group,NCT03525886
+class,parent,1,1,,structural_or_group,NCT03060291
+class,child,1,1,,structural_or_group,NCT03060291
+class,Sex in Primary Cohort,1,1,,structural_or_group,NCT03979313
+category,All,1,1,,structural_or_group,NCT03907969
+class,Pregnant,1,1,,structural_or_group,NCT05764408
+class,n/a,1,1,,structural_or_group,NCT03688542
+class,All genders,1,1,,structural_or_group,NCT04540835
+class,FBDC-SE (G1; Control Group) Arm/Group,1,1,,structural_or_group,NCT02698371
+class,FBDC-SE-EE (G2; Control Group) Arm/Group,1,1,,structural_or_group,NCT02698371
+class,FBU-ER (G3) Arm/Group,1,1,,structural_or_group,NCT02698371
+class,FBU-SE (G4) Arm/Group,1,1,,structural_or_group,NCT02698371
+class,ADU-ER (G5) Arm/Group,1,1,,structural_or_group,NCT02698371
+class,ADU-SE (G6) Arm/Group,1,1,,structural_or_group,NCT02698371
+class,Count,1,1,,structural_or_group,NCT02601976
+class,All Genders,1,1,,structural_or_group,NCT02968758
+class,All Cohorts except Part 2-Arm C-Cohort 5,1,1,,structural_or_group,NCT03184870
+class,Part 2-Arm C-Cohort 5 only,1,1,,structural_or_group,NCT03184870
+class,IDE Cohort,1,1,,structural_or_group,NCT03055858
+class,CAP Cohort,1,1,,structural_or_group,NCT03055858
+category,Both,1,1,,structural_or_group,NCT04363320
+class,Pharmacies,1,1,,structural_or_group,NCT02191111
+class,number of participants,1,1,,structural_or_group,NCT01196533
+class,Open Label Extension,1,1,,structural_or_group,NCT04629950
+class,Neonates,1,1,,structural_or_group,NCT04152603
+class,Core Participants not enrolled in the Extension,1,1,,structural_or_group,NCT00395629
+class,MDS Cohort,1,1,,structural_or_group,NCT02775903
+class,AML Cohort,1,1,,structural_or_group,NCT02775903
+class,Part C: Dose Extension,1,1,,structural_or_group,NCT02705755
+class,Switching arm: Humira and PF-06410293 (Adalimumab),1,1,,structural_or_group,NCT04230213
+class,Non-Switching arm: Humira (Adalimumab),1,1,,structural_or_group,NCT04230213
+class,Sex/Gender,30,30,,unrecognized,NCT02158520
+class,Caregivers,27,27,,unrecognized,NCT01084694
+class,Gender Identity,16,16,,unrecognized,NCT02266134
+category,No,17,16,,unrecognized,NCT01161446
+class,Part A,15,15,,unrecognized,NCT01669343
+class,No,22,15,,unrecognized,NCT00384930
+class,Yes,22,15,,unrecognized,NCT00384930
+category,Yes,15,14,,unrecognized,NCT01161446
+class,Part B,13,13,,unrecognized,NCT01669343
+class,Part 1,12,12,,unrecognized,NCT00891930
+class,Part 2,12,12,,unrecognized,NCT00891930
+class,Phase 2,9,9,,unrecognized,NCT01062555
+class,Adolescent,8,8,,unrecognized,NCT02877680
+class,Caregiver,8,8,,unrecognized,NCT02483520
+class,Gender identity,8,8,,unrecognized,NCT03980223
+class,All Participants,7,7,,unrecognized,NCT00799812
+class,Sex at Birth,6,6,,unrecognized,NCT02379078
+class,Adolescents,6,6,,unrecognized,NCT02544321
+class,Child Participants,6,6,,unrecognized,NCT02323204
+class,Adults,5,5,,unrecognized,NCT02544321
+class,Phase 1,5,5,,unrecognized,NCT01062555
+class,Main Study,5,5,,unrecognized,NCT01970410
+class,Sex/gender,4,4,,unrecognized,NCT03409328
+class,Stage 1,4,4,,unrecognized,NCT01196871
+class,caregivers,4,4,,unrecognized,NCT03046121
+class,Child Sex,4,4,,unrecognized,NCT03499600
+class,Child participants,4,4,,unrecognized,NCT02029976
+class,Veterans,4,4,,unrecognized,NCT02962687
+class,Parent Participants,4,4,,unrecognized,NCT02323204
+class,Caregiver Sex,4,4,,unrecognized,NCT02395120
+class,Period 1,4,4,,unrecognized,NCT00856167
+class,Baseline,3,3,,unrecognized,NCT01167595
+class,Stage 2,3,3,,unrecognized,NCT01196871
+category,Don't know,3,3,,unrecognized,NCT04925570
+class,Child sex,3,3,,unrecognized,NCT02973815
+class,Teachers,3,3,,unrecognized,NCT03132805
+class,mITT,3,3,,unrecognized,NCT02506868
+class,Maintenance Phase,3,3,,unrecognized,NCT01559935
+class,Part C,3,3,,unrecognized,NCT02565914
+class,Adult,3,3,,unrecognized,NCT02425046
+class,Youth,3,3,,unrecognized,NCT04800432
+class,Period 2,3,3,,unrecognized,NCT00856167
+class,Child Gender,3,3,,unrecognized,NCT00927264
+class,None,4,3,,unrecognized,NCT00276094
+class,Full analysis set,3,3,,unrecognized,NCT02472795
+class,Patient Participants,2,2,,unrecognized,NCT02328326
+class,Caregiver Participants,2,2,,unrecognized,NCT02531594
+class,Full Analysis Set,2,2,,unrecognized,NCT02603809
+class,Per Protocol Set,2,2,,unrecognized,NCT02603809
+class,"Sex, n",2,2,,unrecognized,NCT01380990
+class,Gender Identification,2,2,,unrecognized,NCT04276935
+class,adolescents,2,2,,unrecognized,NCT02693665
+class,Survivors,2,2,,unrecognized,NCT02222337
+class,Sex Data for Participants Enrolled in Study mRNA-1273-P301,2,2,,unrecognized,NCT04649151
+class,Parents/Caregivers,2,2,,unrecognized,NCT03388294
+class,Teens,2,2,,unrecognized,NCT04317664
+class,Identified Patient,2,2,,unrecognized,NCT03846505
+class,Partner,2,2,,unrecognized,NCT03846505
+class,United States,2,2,,unrecognized,NCT04924660
+class,Caregiver sex,2,2,,unrecognized,NCT04528732
+class,Phase I,2,2,,unrecognized,NCT02008877
+class,Phase 1b,2,2,,unrecognized,NCT02795988
+class,Main Study Phase,2,2,,unrecognized,NCT03436797
+class,All patients,2,2,,unrecognized,NCT02891837
+class,Physician,2,2,,unrecognized,NCT02320175
+class,Care Partners,2,2,,unrecognized,NCT02328326
+category,Never,2,2,,unrecognized,NCT05161689
+category,Sometimes,2,2,,unrecognized,NCT03741725
+class,Sex of Child,2,2,,unrecognized,NCT03575884
+class,Sex of Parent,2,2,,unrecognized,NCT03575884
+class,Sexual satisfaction,2,2,,unrecognized,NCT00512707
+class,Sexual desire,2,2,,unrecognized,NCT00351819
+class,Main,2,2,,unrecognized,NCT02333071
+class,OLE,2,2,,unrecognized,NCT02333071
+class,Preschoolers,2,2,,unrecognized,NCT04164277
+class,Participants with dementia,2,2,,unrecognized,NCT04238520
+class,Care partners,2,2,,unrecognized,NCT02729311
+class,Adolescent Sex,2,2,,unrecognized,NCT03818711
+class,Part I,2,2,,unrecognized,NCT02065882
+class,Part II,2,2,,unrecognized,NCT02065882
+class,Induction Phase,2,2,,unrecognized,NCT02394028
+class,Partners,2,2,,unrecognized,NCT02240485
+class,Healthcare Workers,2,2,,unrecognized,NCT04088656
+class,Parent participants,2,2,,unrecognized,NCT03766906
+class,Global,2,2,,unrecognized,NCT02763579
+class,China,2,2,,unrecognized,NCT02763579
+class,Caregiver Gender,2,2,,unrecognized,NCT00927264
+category,M-M,2,2,,unrecognized,NCT02793544
+category,M-F,2,2,,unrecognized,NCT02793544
+category,F-M,2,2,,unrecognized,NCT02793544
+category,F-F,2,2,,unrecognized,NCT02793544
+category,Undecided,2,2,,unrecognized,NCT01887210
+class,Substudy,2,2,,unrecognized,NCT04777201
+class,Sex at birth,2,2,,unrecognized,NCT04936724
+class,GA28948 & GA28949 Pooled Population,2,2,,unrecognized,NCT02163759
+class,Neonatal Sex,2,2,,unrecognized,NCT03631940
+class,0,2,2,,unrecognized,NCT00223080
+class,Mild,2,2,,unrecognized,NCT00276094
+class,Moderate,3,2,,unrecognized,NCT00276094
+class,Severe,3,2,,unrecognized,NCT00276094
+class,"Sex/Gender, Customized",2,2,,unrecognized,NCT02633267
+class,ITT Population,2,2,,unrecognized,NCT03622580
+class,Treatment-Naive Population,2,2,,unrecognized,NCT03622580
+class,Sex assigned at birth,2,2,,unrecognized,NCT03605368
+class,Parent gender,2,2,,unrecognized,NCT01332851
+class,PP,2,2,,unrecognized,NCT04796935
+class,Baseline (12 months),2,2,,unrecognized,NCT05423743
+class,Intervention (12 months),2,2,,unrecognized,NCT05423743
+class,Attitudes,1,1,,unrecognized,NCT06487390
+class,Skills,1,1,,unrecognized,NCT06487390
+class,Barriers,1,1,,unrecognized,NCT06487390
+class,Training,1,1,,unrecognized,NCT06487390
+class,Targeted Children,1,1,,unrecognized,NCT02873715
+class,Siblings,1,1,,unrecognized,NCT02873715
+class,All subjects,1,1,,unrecognized,NCT03905330
+class,Apneic Threshold & CO2 Reserve Analysis Population,1,1,,unrecognized,NCT00732199
+class,LTF and Minute Ventilation Analysis Population,1,1,,unrecognized,NCT00732199
+class,Hypoxic Ventilatory Response Analysis Population,1,1,,unrecognized,NCT00732199
+class,Brief Hyperoxia Response Analysis Population,1,1,,unrecognized,NCT00732199
+class,modified Per Protocol Set,1,1,,unrecognized,NCT02603809
+class,Dabigatran vs VKA(matched pop),1,1,,unrecognized,NCT02240667
+class,Caregivers (separate from patients),1,1,,unrecognized,NCT03540771
+class,Analyzed participants,1,1,,unrecognized,NCT01450943
+class,Participants with G12C Mutation,1,1,,unrecognized,NCT02642042
+class,Participants with Non-G12C Mutation,1,1,,unrecognized,NCT02642042
+class,"Part 1: 16-week double-blind, randomized, placebo-controlled treatment period (Day 1 to Week 16)",1,1,,unrecognized,NCT02036970
+class,Pre-Trial Sex,1,1,,unrecognized,NCT04263363
+class,Post-Trial Sex,1,1,,unrecognized,NCT04263363
+class,Treatment Period,1,1,,unrecognized,NCT02321098
+class,Caregivers of adolescents,1,1,,unrecognized,NCT03557151
+class,Main study phase,1,1,,unrecognized,NCT03224234
+category,Did not specify,1,1,,unrecognized,NCT06425458
+class,Person Living with Dementia,1,1,,unrecognized,NCT03896711
+class,Dementia Caregiver,1,1,,unrecognized,NCT03896711
+class,Volunteer Companion Guide,1,1,,unrecognized,NCT03896711
+class,Mother Sex,1,1,,unrecognized,NCT03548558
+class,Father sex (baseline),1,1,,unrecognized,NCT03548558
+class,XELJANZ (Safety analysis set) and Control (MTX adherent comparative safety analysis set),1,1,,unrecognized,NCT01932372
+class,XELJANZ (MTX adherent safety analysis set),1,1,,unrecognized,NCT01932372
+class,XELJANZ (MTX adherent comparative safety analysis set),1,1,,unrecognized,NCT01932372
+class,Adult Clinic Patients Eligible for CRC Screening Post-Implementation,1,1,,unrecognized,NCT03843957
+category,MST positive,1,1,,unrecognized,NCT02039856
+category,MST negative,1,1,,unrecognized,NCT02039856
+category,Had receptive sex without a condom in past 3 months,1,1,,unrecognized,NCT03897049
+category,Did not have receptive sex without a condom in past 3 months,1,1,,unrecognized,NCT03897049
+class,Parent/Legal Guardians,1,1,,unrecognized,NCT05675020
+class,Crisaborole 2% BID,1,1,,unrecognized,NCT04040192
+class,Vehicle QD,1,1,,unrecognized,NCT04040192
+class,Crisaborole 2% QD,1,1,,unrecognized,NCT04040192
+class,Sex Data for Participants Enrolled in Study mRNA-1273-P203,1,1,,unrecognized,NCT04649151
+category,Yes within last 3 months,1,1,,unrecognized,NCT02494817
+category,"No, not within last 3 months",1,1,,unrecognized,NCT02494817
+class,mRCC - Temsirolimus,1,1,,unrecognized,NCT00700258
+class,mRCC - Sunitinib,1,1,,unrecognized,NCT00700258
+class,mRCC - Axitinib,1,1,,unrecognized,NCT00700258
+class,MCL - Temsirolimus,1,1,,unrecognized,NCT00700258
+class,GIST - Sunitinib,1,1,,unrecognized,NCT00700258
+class,Aim 1: Key Informant Interviews,1,1,,unrecognized,NCT04188041
+class,Aim 2: RI LTBI ECHO Participants,1,1,,unrecognized,NCT04188041
+class,Aim 3: Retrospective Chart Review,1,1,,unrecognized,NCT04188041
+class,First line,1,1,,unrecognized,NCT03193866
+class,Second line,1,1,,unrecognized,NCT03193866
+class,Stepped wedge,1,1,,unrecognized,NCT01918072
+class,Quality assessment,1,1,,unrecognized,NCT01918072
+class,Ongoing problem,1,1,,unrecognized,NCT01262573
+class,Parent/Infant Dyads,1,1,,unrecognized,NCT03885232
+category,Never / rarely,1,1,,unrecognized,NCT02516202
+category,Occasionally,1,1,,unrecognized,NCT02516202
+category,Frequently / always,1,1,,unrecognized,NCT02516202
+class,Caregiver Data,1,1,,unrecognized,NCT03988621
+class,Patient Data,1,1,,unrecognized,NCT03988621
+class,Total Sample,1,1,,unrecognized,NCT05374798
+class,Known Gender,1,1,,unrecognized,NCT02206035
+class,Older Adults,1,1,,unrecognized,NCT05150990
+class,Adult Children,1,1,,unrecognized,NCT05150990
+class,Escalation Phase,1,1,,unrecognized,NCT01693562
+class,Exploration Phase,1,1,,unrecognized,NCT01693562
+class,Expansion Phase,1,1,,unrecognized,NCT01693562
+class,Sexually Active with ED,1,1,,unrecognized,NCT00384930
+class,Sexually Active without ED,1,1,,unrecognized,NCT00384930
+class,Not Sexually Active with ED,1,1,,unrecognized,NCT00384930
+class,Not Sexually Active without ED,1,1,,unrecognized,NCT00384930
+class,Healthy volunteers,1,1,,unrecognized,NCT00026559
+class,Sex of child enrolled,1,1,,unrecognized,NCT04576481
+class,Sex of caregiver enrolled,1,1,,unrecognized,NCT04576481
+class,MSM,1,1,,unrecognized,NCT05723263
+class,Non-MSM,1,1,,unrecognized,NCT05723263
+class,Gender Distribution,1,1,,unrecognized,NCT05294640
+class,"Gender, Self-Report",1,1,,unrecognized,NCT05104450
+class,WRAIR Field Station,1,1,,unrecognized,NCT00223990
+class,Abol Field Station,1,1,,unrecognized,NCT00223990
+class,Bar-Korwa Field Station,1,1,,unrecognized,NCT00223990
+class,Got-Aglu Field Station,1,1,,unrecognized,NCT00223990
+class,Kitare Field Station,1,1,,unrecognized,NCT00223990
+class,Kuoyo-Kowe Field Station,1,1,,unrecognized,NCT00223990
+class,Manyanda Field Station,1,1,,unrecognized,NCT00223990
+class,Mirieri Field Station,1,1,,unrecognized,NCT00223990
+class,Nduru Kadero Field Station,1,1,,unrecognized,NCT00223990
+class,Oruga Field Station,1,1,,unrecognized,NCT00223990
+class,Osewre Field Station,1,1,,unrecognized,NCT00223990
+class,Ranen Field Station,1,1,,unrecognized,NCT00223990
+class,Reru Field Station,1,1,,unrecognized,NCT00223990
+class,Dose Escalation,1,1,,unrecognized,NCT02763826
+class,Crossover,1,1,,unrecognized,NCT02763826
+category,Students,6,1,,unrecognized,NCT04752189
+category,Teachers,6,1,,unrecognized,NCT04752189
+class,All Countries,1,1,,unrecognized,NCT04924660
+class,Spain,1,1,,unrecognized,NCT04924660
+class,Brazil,1,1,,unrecognized,NCT04924660
+class,Germany,1,1,,unrecognized,NCT04924660
+class,Italy,1,1,,unrecognized,NCT04924660
+class,South Africa,1,1,,unrecognized,NCT04924660
+class,Lanadelumab Sub-protocol,1,1,,unrecognized,NCT04590586
+class,Apremilast Sub-protocol,1,1,,unrecognized,NCT04590586
+class,Zilucoplan Sub-protocol,1,1,,unrecognized,NCT04590586
+class,Phase II,1,1,,unrecognized,NCT02244463
+class,Persons with dementia,1,1,,unrecognized,NCT03622814
+class,Adult/parent participants,1,1,,unrecognized,NCT02029976
+class,SAD-HS,1,1,,unrecognized,NCT04510090
+class,MAD-HS,1,1,,unrecognized,NCT04510090
+class,FE-HS,1,1,,unrecognized,NCT04510090
+class,SD-CP,1,1,,unrecognized,NCT04510090
+class,SD-UP,1,1,,unrecognized,NCT04510090
+class,MD-CP,1,1,,unrecognized,NCT04510090
+class,MD-UP,1,1,,unrecognized,NCT04510090
+class,Adult Caregiver Participants,1,1,,unrecognized,NCT06012851
+class,Seed Study,1,1,,unrecognized,NCT01806688
+class,Pita Study,1,1,,unrecognized,NCT01806688
+category,Reported History of STI Diagnosis,1,1,,unrecognized,NCT02128217
+category,No History of STI Diagnosis,1,1,,unrecognized,NCT02128217
+class,SB204,1,1,,unrecognized,NCT02242760
+class,Vehicle,1,1,,unrecognized,NCT02242760
+class,Progressive improvement in walking performance,1,1,,unrecognized,NCT05103280
+class,Gender at Baseline (pre-MDA),1,1,,unrecognized,NCT01905423
+class,Family Members,1,1,,unrecognized,NCT05340478
+class,Persons with Dementia,1,1,,unrecognized,NCT02483520
+class,Stage 1 Randomization,1,1,,unrecognized,NCT02368002
+class,Stage 2 Re-Randomization,1,1,,unrecognized,NCT02368002
+class,Patient sex,1,1,,unrecognized,NCT03283553
+class,Care Partner sex,1,1,,unrecognized,NCT03283553
+class,Greater than or equal to 1 x month,1,1,,unrecognized,NCT01655498
+class,Less than 1 x per month,1,1,,unrecognized,NCT01655498
+class,Chronic Hepatitis C patients,1,1,,unrecognized,NCT01600105
+class,Extended Dosing Phase,1,1,,unrecognized,NCT03436797
+class,Interventionists,1,1,,unrecognized,NCT03916146
+class,Stakeholders,1,1,,unrecognized,NCT03916146
+class,Study completers,1,1,,unrecognized,NCT02349893
+class,Study dropouts,1,1,,unrecognized,NCT02349893
+class,Diagnostic Phase,1,1,,unrecognized,NCT01667562
+class,Erlotinib,1,1,,unrecognized,NCT01667562
+class,USA patients,1,1,,unrecognized,NCT02891837
+class,Metformin (2000mg) With Chemoradiation,1,1,,unrecognized,NCT02325401
+class,Metformin (2550mg) With Chemoradiation,1,1,,unrecognized,NCT02325401
+class,Metformin (3000mg) With Chemoradiation,1,1,,unrecognized,NCT02325401
+class,Patient participants,1,1,,unrecognized,NCT04347291
+class,Support persons,1,1,,unrecognized,NCT04347291
+class,Patient with heart failure,1,1,,unrecognized,NCT04737759
+class,Spouse/Partner,1,1,,unrecognized,NCT04737759
+class,Youth self-identified gender,1,1,,unrecognized,NCT04245501
+class,Flaxseed and Placebo Period,1,1,,unrecognized,NCT00956813
+class,Optional Flaxseed Continuation,1,1,,unrecognized,NCT00956813
+class,Child care center directors,1,1,,unrecognized,NCT03319927
+class,Child care providers,1,1,,unrecognized,NCT03319927
+class,Selection of Gender,1,1,,unrecognized,NCT02615171
+class,Biological Sex,1,1,,unrecognized,NCT04419168
+class,Primary Caregivers,1,1,,unrecognized,NCT04058886
+category,Rarely,1,1,,unrecognized,NCT05396014
+category,Often to Almost Always,1,1,,unrecognized,NCT05396014
+class,Initial Treatment,1,1,,unrecognized,NCT02360579
+class,Retreatment,1,1,,unrecognized,NCT02360579
+class,family surrogates,1,1,,unrecognized,NCT02693665
+class,Unkown,1,1,,unrecognized,NCT04601493
+class,Infant sex,1,1,,unrecognized,NCT03621943
+class,Intervention Group,1,1,,unrecognized,NCT02798354
+class,Control Group,1,1,,unrecognized,NCT02798354
+category,LGBQ,1,1,,unrecognized,NCT02332239
+class,Positive,1,1,,unrecognized,NCT00978068
+class,Negative,1,1,,unrecognized,NCT00978068
+class,Randomized treatment phase (RTP),1,1,,unrecognized,NCT03528681
+class,Open-label initial phase (OLP),1,1,,unrecognized,NCT03528681
+class,Year 2 Period,1,1,,unrecognized,NCT00955682
+class,Year 3 Period,1,1,,unrecognized,NCT00955682
+class,Year 4 Period,1,1,,unrecognized,NCT00955682
+class,Booster Period Month 49,1,1,,unrecognized,NCT00955682
+class,Year 5 Period,1,1,,unrecognized,NCT00955682
+class,Healthy Volunteers,1,1,,unrecognized,NCT00047853
+class,Vaginal lubrication,1,1,,unrecognized,NCT03624972
+class,Vaginal discomfort,1,1,,unrecognized,NCT03624972
+class,Sexual interest,1,1,,unrecognized,NCT03624972
+category,Sexually active,1,1,,unrecognized,NCT03624972
+category,Not sexually active,1,1,,unrecognized,NCT03624972
+class,Part 2 (OLE),1,1,,unrecognized,NCT03098797
+class,2. Child Gender:,1,1,,unrecognized,NCT03753542
+class,Student,1,1,,unrecognized,NCT05965323
+class,Not Applicable,1,1,,unrecognized,NCT01139762
+class,Multiple sexual partners,1,1,,unrecognized,NCT05965427
+class,Any recent or concurrent sexually transmitted infection,1,1,,unrecognized,NCT05965427
+class,ADHD,1,1,,unrecognized,NCT01943539
+class,Neuro-typical,1,1,,unrecognized,NCT01943539
+class,Acute Phase Randomization,1,1,,unrecognized,NCT03266016
+class,Sexual encounter attempts,1,1,,unrecognized,NCT00512707
+class,Vaginal penetrations,1,1,,unrecognized,NCT00512707
+class,Ejaculations,1,1,,unrecognized,NCT00512707
+class,Overall satisfied with sexual encounters,1,1,,unrecognized,NCT00512707
+class,Successful sexual Intercourse(Ejaculations),1,1,,unrecognized,NCT00512707
+class,Successful Sexual Intercourse (Satisfaction),1,1,,unrecognized,NCT00512707
+class,Erection,1,1,,unrecognized,NCT00512707
+class,Ejaculation,1,1,,unrecognized,NCT00512707
+class,Sexual activity,1,1,,unrecognized,NCT00512707
+class,Composite MSHQ,1,1,,unrecognized,NCT00512707
+class,Sex of newborn,1,1,,unrecognized,NCT02148952
+class,Teen Participants,1,1,,unrecognized,NCT03506880
+class,Level 1: Lifestyle Modification vs ESG,1,1,,unrecognized,NCT03406975
+class,Level 2: Crossover Lifestyle to ESG,1,1,,unrecognized,NCT03406975
+class,Sex assigned a birth,1,1,,unrecognized,NCT05899218
+class,Children Sex,1,1,,unrecognized,NCT02395120
+class,"Kazakhstan, Astana",1,1,,unrecognized,NCT02143128
+class,"Russia, Krasnodar",1,1,,unrecognized,NCT02143128
+class,Treatment (Anti-HIV Gene Transduced CD34+ Cells): 1:0 Ratio,1,1,,unrecognized,NCT02797470
+class,Treatment (Anti-HIV Gene Transduced CD34+ Cells): 1:1 Ratio,1,1,,unrecognized,NCT02797470
+class,Treatment (Anti-HIV Gene Transduced CD34+ Cells): 5:1 Ratio,1,1,,unrecognized,NCT02797470
+class,Demographics,1,1,,unrecognized,NCT03297645
+class,Single-blind period,1,1,,unrecognized,NCT04424927
+class,Double-blind period,1,1,,unrecognized,NCT04424927
+class,Gender categorical,1,1,,unrecognized,NCT04190693
+class,Sex not analyzed,1,1,,unrecognized,NCT05337306
+class,As-Treated Set 1,1,1,,unrecognized,NCT06042049
+class,As-Treated Set 2,1,1,,unrecognized,NCT06042049
+class,He/Him/His,1,1,,unrecognized,NCT03177148
+class,She/Her/Hers,1,1,,unrecognized,NCT03177148
+class,They/Them/Their,1,1,,unrecognized,NCT03177148
+class,Sub-Study,1,1,,unrecognized,NCT01970410
+class,Parent 1,1,1,,unrecognized,NCT05762835
+class,Parent 2,1,1,,unrecognized,NCT05762835
+class,Booster Phase: VLA15 with Alum higher dose,1,1,,unrecognized,NCT03970733
+class,Booster Phase: Placebo,1,1,,unrecognized,NCT03970733
+category,LGBTQ+,1,1,,unrecognized,NCT05838027
+class,Participants Analyzed,1,1,,unrecognized,NCT04948268
+class,Segment 1,1,1,,unrecognized,NCT01029704
+class,Segment 2,1,1,,unrecognized,NCT01029704
+class,Care recipient (CR),1,1,,unrecognized,NCT03550131
+class,Care partner (CP),1,1,,unrecognized,NCT03550131
+class,Gender of reference patient,1,1,,unrecognized,NCT04613739
+class,All Cohorts Except 15E,1,1,,unrecognized,NCT04889209
+class,Values listed are mITT population,1,1,,unrecognized,NCT02766608
+class,ITT/Safety Population,1,1,,unrecognized,NCT03861169
+class,Per Protocol Population,1,1,,unrecognized,NCT03861169
+category,0-1,1,1,,unrecognized,NCT03741725
+category,Non-use,1,1,,unrecognized,NCT03741725
+category,Often,1,1,,unrecognized,NCT03741725
+category,Always,1,1,,unrecognized,NCT03741725
+class,21 - 50 years,1,1,,unrecognized,NCT04911296
+class,51 - 65 years,1,1,,unrecognized,NCT04911296
+class,66 - 75 years,1,1,,unrecognized,NCT04911296
+class,COS cycle 2,1,1,,unrecognized,NCT01956123
+class,COS cycle 3,1,1,,unrecognized,NCT01956123
+class,Full analysis set (FAS),1,1,,unrecognized,NCT02391116
+class,Per protocol set (PPS),1,1,,unrecognized,NCT02391116
+class,Melanoma,1,1,,unrecognized,NCT04208958
+class,Gastric/GEJ,1,1,,unrecognized,NCT04208958
+class,CRC-MSS,1,1,,unrecognized,NCT04208958
+class,Car Phase,1,1,,unrecognized,NCT01559935
+class,BiRD Phase,1,1,,unrecognized,NCT01559935
+class,People with Multiple Sclerosis,1,1,,unrecognized,NCT05878873
+class,Healthy Controls,1,1,,unrecognized,NCT05878873
+class,AL Residents (Primary),1,1,,unrecognized,NCT03892200
+class,AL Staff at Baseline (Secondary),1,1,,unrecognized,NCT03892200
+class,AL Staff at 4-Months (Secondary),1,1,,unrecognized,NCT03892200
+class,AL Staff at 8-Months (Secondary),1,1,,unrecognized,NCT03892200
+class,Period: Dental Hygienists (Secondary),1,1,,unrecognized,NCT03892200
+class,Phase 2a,1,1,,unrecognized,NCT03816891
+class,Phase 2b,1,1,,unrecognized,NCT03816891
+class,Sex Assigned at Birth,1,1,,unrecognized,NCT06065176
+class,Sex/ Gender,1,1,,unrecognized,NCT03898557
+class,Alzheimer's Disease,1,1,,unrecognized,NCT04057807
+class,Cognitively Normal,1,1,,unrecognized,NCT04057807
+class,Baricitinib 2mg Initial Study,1,1,,unrecognized,NCT05188521
+class,Open-Label Period,1,1,,unrecognized,NCT02586623
+class,Double-Blind Period,1,1,,unrecognized,NCT02586623
+class,Exploring,1,1,,unrecognized,NCT03487796
+class,Undecided,1,1,,unrecognized,NCT03487796
+class,More than one endorsement,1,1,,unrecognized,NCT03487796
+class,Clinic A,1,1,,unrecognized,NCT04107116
+class,Clinic B,1,1,,unrecognized,NCT04107116
+class,Clinic C,1,1,,unrecognized,NCT04107116
+class,Clinic D,1,1,,unrecognized,NCT04107116
+class,Clinic E,1,1,,unrecognized,NCT04107116
+class,Clinic F,1,1,,unrecognized,NCT04107116
+class,Clinic G,1,1,,unrecognized,NCT04107116
+class,Clinic H,1,1,,unrecognized,NCT04107116
+class,Clinic I,1,1,,unrecognized,NCT04107116
+class,All in- and outpatients in 2015,1,1,,unrecognized,NCT04903496
+class,All in- and outpatients in 2017,1,1,,unrecognized,NCT04903496
+class,All in- and outpatients in 2019,1,1,,unrecognized,NCT04903496
+category,"Yes, I was the one receiving money, things, opportunities and so on",1,1,,unrecognized,NCT05797961
+category,"Yes, I was the one giving money, things, opportunities and so on",1,1,,unrecognized,NCT05797961
+category,"Yes, I have both given and received money, things, opportunities and so on",1,1,,unrecognized,NCT05797961
+class,Clinic Staff,1,1,,unrecognized,NCT05472142
+class,Student participants,1,1,,unrecognized,NCT03766906
+class,Randomized Participants,1,1,,unrecognized,NCT03689530
+class,Peer Supporters,1,1,,unrecognized,NCT03689530
+class,Stanford,1,1,,unrecognized,NCT03369067
+class,BDC-UColorado,1,1,,unrecognized,NCT03369067
+class,UVA,1,1,,unrecognized,NCT03369067
+class,Sleep,1,1,,unrecognized,NCT03284307
+class,Dexmedetomidine,1,1,,unrecognized,NCT03284307
+class,Ketamine,1,1,,unrecognized,NCT03284307
+class,Propofol,1,1,,unrecognized,NCT03284307
+class,Midazolam,1,1,,unrecognized,NCT03284307
+class,PVB,1,1,,unrecognized,NCT03086213
+class,INB,1,1,,unrecognized,NCT03086213
+category,Demisexual,1,1,,unrecognized,NCT03912753
+category,Uncertain / don't know for sure,1,1,,unrecognized,NCT03912753
+category,Strongly Disagree,1,1,,unrecognized,NCT03808883
+category,Disagree,1,1,,unrecognized,NCT03808883
+category,Neutral,1,1,,unrecognized,NCT03808883
+category,Agree,1,1,,unrecognized,NCT03808883
+category,Strongly Agree,1,1,,unrecognized,NCT03808883
+class,Self-reported gender identity,1,1,,unrecognized,NCT03951766
+class,Resident Sex/Gender,1,1,,unrecognized,NCT03576495
+class,Patient Sex/Gender,1,1,,unrecognized,NCT03576495
+class,Study A16 Autopsy Cases,1,1,,unrecognized,NCT03901092
+class,Study A05 Non-autopsy Cases,1,1,,unrecognized,NCT03901092
+class,Completed Data Collection for Aim 1,1,1,,unrecognized,NCT05586490
+class,Completed Data Collection for Aim 2,1,1,,unrecognized,NCT05586490
+class,Completed Data Collection for Aim 3,1,1,,unrecognized,NCT05586490
+class,Student Gender,1,1,,unrecognized,NCT03740113
+class,Phase 3,1,1,,unrecognized,NCT04762680
+class,Don't know,1,1,,unrecognized,NCT04922216
+class,Dabigatran vs VKA (matched pop),1,1,,unrecognized,NCT02785354
+class,Rivaroxaban vs VKA (matched pop),1,1,,unrecognized,NCT02785354
+class,In-hospital,1,1,,unrecognized,NCT02004366
+class,Discharge,1,1,,unrecognized,NCT02004366
+class,LGBTQ+,1,1,,unrecognized,NCT02951455
+class,All RCC participants,1,1,,unrecognized,NCT05363072
+class,Treated mRCC participants,1,1,,unrecognized,NCT05363072
+class,Not-treated mRCC participants,1,1,,unrecognized,NCT05363072
+class,Placebo,1,1,,unrecognized,NCT02348619
+class,JZP-110,1,1,,unrecognized,NCT02348619
+category,1 partner,1,1,,unrecognized,NCT02498067
+category,2 partners,1,1,,unrecognized,NCT02498067
+category,3 partners,1,1,,unrecognized,NCT02498067
+category,4 partners,1,1,,unrecognized,NCT02498067
+category,5+ partners,1,1,,unrecognized,NCT02498067
+class,All study participants,1,1,,unrecognized,NCT01833988
+class,Main Protocol,1,1,,unrecognized,NCT04091048
+class,FX Addendum,1,1,,unrecognized,NCT04091048
+class,Initial assignment,1,1,,unrecognized,NCT02132195
+class,Rescue therapy,1,1,,unrecognized,NCT02132195
+class,Baseline Period,1,1,,unrecognized,NCT03599557
+class,Communication Intervention,1,1,,unrecognized,NCT03599557
+class,Stroke Survivor Participant,1,1,,unrecognized,NCT05672628
+class,11-14 year olds,1,1,,unrecognized,NCT04587167
+class,15-17 year olds,1,1,,unrecognized,NCT04587167
+class,All Subjects,1,1,,unrecognized,NCT02844439
+class,Sub-population A,1,1,,unrecognized,NCT02844439
+class,Sub-population B,1,1,,unrecognized,NCT02844439
+class,Enteral feeding,1,1,,unrecognized,NCT03278847
+class,Parenteral nutrition,1,1,,unrecognized,NCT03278847
+class,Participants substituted,1,1,,unrecognized,NCT01546922
+class,Period 1: Open-Label Run-In,1,1,,unrecognized,NCT03253796
+class,Period 2: Withdrawal vs Continued Tx,1,1,,unrecognized,NCT03253796
+class,Period 2: Open-Label Retreatment,1,1,,unrecognized,NCT03253796
+class,Sex - Lead Safety Phase,1,1,,unrecognized,NCT01576016
+class,Sex - MRI Safety Phase,1,1,,unrecognized,NCT01576016
+class,"PISQ-IR Sexually Inactive, Condition Impact on Sexual Quality",1,1,,unrecognized,NCT03672461
+class,"PISQ-IR Sexually Inactive, Condition Specific Reason for Not Being Active",1,1,,unrecognized,NCT03672461
+class,"PISQ-IR Sexually Inactive, Global Quality",1,1,,unrecognized,NCT03672461
+class,"PISQ-IR Sexually Inactive, Partner-Related Reasons for Not Being Active",1,1,,unrecognized,NCT03672461
+class,"PISQ-IR Sexually Active, Assessment of Arousal, Orgasm",1,1,,unrecognized,NCT03672461
+class,"PISQ-IR Sexually Active, Condition-specific Impact on Sexual Quality",1,1,,unrecognized,NCT03672461
+class,"PISQ-IR Sexually Active, Condition-specifc Impacts on Activity",1,1,,unrecognized,NCT03672461
+class,"PISQ-IR Sexually Active, Assessment of Desire",1,1,,unrecognized,NCT03672461
+class,"PISQ-IR Sexually Active, Global Quality",1,1,,unrecognized,NCT03672461
+class,"PISQ-IR Sexually Active Interest, Assessment of Partner Related Impacts",1,1,,unrecognized,NCT03672461
+class,"PISQ-IR Sexually Active Interest, Summary Score",1,1,,unrecognized,NCT03672461
+class,Same Gender Loving,1,1,,unrecognized,NCT03313310
+class,Anal Intercourse with Condom Failure,1,1,,unrecognized,NCT03313310
+class,Transactional Sex Work Involvement,1,1,,unrecognized,NCT03313310
+class,0 Criteria,1,1,,unrecognized,NCT03313310
+class,1 Criterion,1,1,,unrecognized,NCT03313310
+class,2 Criteria,1,1,,unrecognized,NCT03313310
+class,3 Criteria,1,1,,unrecognized,NCT03313310
+class,4+ Criteria,1,1,,unrecognized,NCT03313310
+class,FAS72+,1,1,,unrecognized,NCT03923426
+class,FAS72-,1,1,,unrecognized,NCT03923426
+class,16-Week Dose-finding Safety Part,1,1,,unrecognized,NCT02587325
+class,"Gender, customized",1,1,,unrecognized,NCT01944462
+category,Yes had sex in past 3 months at Baseline,1,1,,unrecognized,NCT02847858
+category,No did not have sex in past 3 months at Baseline,1,1,,unrecognized,NCT02847858
+class,"Cycle 1, Rasburicase",1,1,,unrecognized,NCT01200485
+class,Gender identification,1,1,,unrecognized,NCT02043015
+class,Part I (SAD),1,1,,unrecognized,NCT04036227
+class,Part II (MAD),1,1,,unrecognized,NCT04036227
+class,Overall Sample,1,1,,unrecognized,NCT01875861
+class,Pre-Implementation,1,1,,unrecognized,NCT01875861
+class,Implementation,1,1,,unrecognized,NCT01875861
+class,Sustainability,1,1,,unrecognized,NCT01875861
+class,Identified Gender,1,1,,unrecognized,NCT04286867
+class,Gender matched transplants,1,1,,unrecognized,NCT00745420
+class,Child in caregiver-child pair,1,1,,unrecognized,NCT01519453
+class,Caregiver in caregiver-child pair,1,1,,unrecognized,NCT01519453
+class,Participants by Sex,1,1,,unrecognized,NCT02122458
+class,ClinOleic,1,1,,unrecognized,NCT01943409
+class,Intralipid,1,1,,unrecognized,NCT01943409
+class,Sub Study,1,1,,unrecognized,NCT04625725
+class,DB Treatment Period,1,1,,unrecognized,NCT04556734
+class,OLE Period,1,1,,unrecognized,NCT04556734
+class,Per protocol,1,1,,unrecognized,NCT02506868
+class,Phase II analysis,1,1,,unrecognized,NCT01013649
+class,Phase III analysis,1,1,,unrecognized,NCT01013649
+class,All Patients,1,1,,unrecognized,NCT03043872
+class,AYA living with HIV,1,1,,unrecognized,NCT03758066
+class,CM,1,1,,unrecognized,NCT03758066
+class,Run-in phase,1,1,,unrecognized,NCT02685709
+class,RCT phase,1,1,,unrecognized,NCT02685709
+class,Combination phase,1,1,,unrecognized,NCT02685709
+class,Cancer Survivors,1,1,,unrecognized,NCT05702723
+class,Adult participants reporting sex,1,1,,unrecognized,NCT05879198
+class,Adolescent participants,1,1,,unrecognized,NCT05879198
+class,Double Blind Phase,1,1,,unrecognized,NCT04712669
+class,Open Label Phase,1,1,,unrecognized,NCT04712669
+class,Elders,1,1,,unrecognized,NCT02807506
+class,Part A (15 Days),1,1,,unrecognized,NCT03691779
+class,Part B (24 Weeks),1,1,,unrecognized,NCT03691779
+class,Count by sex,1,1,,unrecognized,NCT04872569
+class,Multiple identities,1,1,,unrecognized,NCT04342494
+class,ABI severe risk,1,1,,unrecognized,NCT03161327
+class,ABI moderate risk,1,1,,unrecognized,NCT03161327
+class,ABI mild risk,1,1,,unrecognized,NCT03161327
+class,All patients at risk for PAD,1,1,,unrecognized,NCT03161327
+class,Mother participants,1,1,,unrecognized,NCT05374837
+class,Father participants,1,1,,unrecognized,NCT05374837
+class,Assigned Sex at Birth,1,1,,unrecognized,NCT04743908
+class,Participants.,1,1,,unrecognized,NCT05233098
+class,Parent/Guardian,1,1,,unrecognized,NCT03442114
+class,Demographics Across Arms,1,1,,unrecognized,NCT02981303
+category,Sexual activity (vaginal sex) � 3 times per one month,1,1,,unrecognized,NCT03894813
+category,Had no sexual activity in the last half of the year or vaginal sex less than 3 times per one month,1,1,,unrecognized,NCT03894813
+class,Patient Communication,1,1,,unrecognized,NCT02354482
+class,Home-Based Trust,1,1,,unrecognized,NCT02354482
+class,Hospital-Based Trust,1,1,,unrecognized,NCT02354482
+class,Patient/Family Caregiver Assessment,1,1,,unrecognized,NCT02354482
+class,Assessment and Teach Back,1,1,,unrecognized,NCT02354482
+class,Reference,1,1,,unrecognized,NCT02354482
+class,No Sex Partners,1,1,,unrecognized,NCT03670355
+class,Study 1-RYGB vs Caloric Restriction,1,1,,unrecognized,NCT02762708
+class,"Study 2-Exendin (9,39) Amide Study",1,1,,unrecognized,NCT02762708
+class,Participant with Dementia,1,1,,unrecognized,NCT05202223
+class,GA28948 Population,1,1,,unrecognized,NCT02163759
+class,Sex and menopausal status,1,1,,unrecognized,NCT03147287
+class,Part B + A/B,1,1,,unrecognized,NCT02725567
+class,Glycemic Control Study,1,1,,unrecognized,NCT00542178
+class,Blood Pressure and Lipid Studies,1,1,,unrecognized,NCT00542178
+class,PP population,1,1,,unrecognized,NCT02510235
+class,seed,1,1,,unrecognized,NCT04568486
+class,alter,1,1,,unrecognized,NCT04568486
+class,Adult Inpatients With Community Acquired Pneumonia,1,1,,unrecognized,NCT06027593
+class,Pediatric Inpatients With Community Acquired Pneumonia,1,1,,unrecognized,NCT06027593
+class,Adult Outpatients With Pharyngitis,1,1,,unrecognized,NCT06027593
+class,Pediatric Outpatients With Acute Otitis Media,1,1,,unrecognized,NCT06027593
+class,1,1,1,,unrecognized,NCT00223080
+class,> 1,1,1,,unrecognized,NCT00223080
+class,Gender of Child Participants,1,1,,unrecognized,NCT05209932
+class,Gender of Parent Participants,1,1,,unrecognized,NCT05209932
+class,Sex/Gender (customized),1,1,,unrecognized,NCT04133831
+class,Index TB participants,1,1,,unrecognized,NCT04520113
+class,Contact person participants,1,1,,unrecognized,NCT04520113
+class,Gender Now,1,1,,unrecognized,NCT04014959
+class,Family caregivers,1,1,,unrecognized,NCT04238520
+class,PLWD Sex,1,1,,unrecognized,NCT03786471
+class,Gender Categorical,1,1,,unrecognized,NCT00547248
+class,Healthy Participants,1,1,,unrecognized,NCT00055224
+class,Anxiety Patients,1,1,,unrecognized,NCT00055224
+class,ELL (English Language Learner),1,1,,unrecognized,NCT04717479
+class,Absent,1,1,,unrecognized,NCT03332303
+class,Present,1,1,,unrecognized,NCT03332303
+class,Mother biological sex,1,1,,unrecognized,NCT05096611
+class,Child biological sex,1,1,,unrecognized,NCT05096611
+class,Sex Data for Participants Enrolled in Study mRNA-1273-P204,1,1,,unrecognized,NCT04796896
+class,All Sites,1,1,,unrecognized,NCT04124471
+class,Initial Intervention,1,1,,unrecognized,NCT03316950
+class,Dual Intervention,1,1,,unrecognized,NCT03316950
+class,Completers,1,1,,unrecognized,NCT03621280
+class,Index children,1,1,,unrecognized,NCT04059185
+class,Comparative analysis set,1,1,,unrecognized,NCT05796245
+class,Stage A,1,1,,unrecognized,NCT04281472
+class,Stage B,1,1,,unrecognized,NCT04281472
+class,Main Study Participants,1,1,,unrecognized,NCT02906787
+class,Sub-Study Participants,1,1,,unrecognized,NCT02906787
+class,Part 1a,1,1,,unrecognized,NCT02303574
+class,Part 1b,1,1,,unrecognized,NCT02303574
+class,All Parts Excluding Part A.2 and Parts J,1,1,,unrecognized,NCT04927065
+class,Part A.2 and Parts J,1,1,,unrecognized,NCT04927065
+class,FQHC 1,1,1,,unrecognized,NCT04514341
+class,FQHC 2,1,1,,unrecognized,NCT04514341
+class,Sex of adolescent members of dyads,1,1,,unrecognized,NCT05058664
+class,Sex of caregiver members of dyads,1,1,,unrecognized,NCT05058664
+class,Treatment-Naive Participants,1,1,,unrecognized,NCT02699450
+class,Previously Treated Participants,1,1,,unrecognized,NCT02699450
+class,Sex in All Subjects,1,1,,unrecognized,NCT03979313
+class,Aggressive subtype,1,1,,unrecognized,NCT00464620
+class,GIST,1,1,,unrecognized,NCT00464620
+class,Indolent,1,1,,unrecognized,NCT00464620
+class,GA28949 Population,1,1,,unrecognized,NCT02171429
+class,"Sex,",1,1,,unrecognized,NCT03870997
+class,Frail,1,1,,unrecognized,NCT03354546
+class,Not Frail,1,1,,unrecognized,NCT03354546
+class,Child with rare disease,1,1,,unrecognized,NCT04855734
+class,Primary family caregiver,1,1,,unrecognized,NCT04855734
+class,Parent/caregiver participants,1,1,,unrecognized,NCT03294590
+class,Children participants,1,1,,unrecognized,NCT03294590
+class,Single Dose,1,1,,unrecognized,NCT03073213
+class,Multiple Dose,1,1,,unrecognized,NCT03073213
+category,Additional Category,1,1,,unrecognized,NCT04047420
+class,Inpatient,1,1,,unrecognized,NCT02455076
+class,Outpatient,1,1,,unrecognized,NCT02455076
+class,Index Clients,1,1,,unrecognized,NCT05343390
+class,Contact Clients,1,1,,unrecognized,NCT05343390
+class,RHB-104 from RHB-104,1,1,,unrecognized,NCT03009396
+class,RHB-104 from placebo,1,1,,unrecognized,NCT03009396
+class,CHOP Base ED,1,1,,unrecognized,NCT01657344
+class,CCHMC Base ED,1,1,,unrecognized,NCT01657344
+class,CCHMC Satellite ED,1,1,,unrecognized,NCT01657344
+class,CNMC Base ED,1,1,,unrecognized,NCT01657344
+class,CNMC Satellite ED,1,1,,unrecognized,NCT01657344
+class,The Children's Hospital Colorado Base ED,1,1,,unrecognized,NCT01657344
+class,The Children's Hospital Colorado Satellite ED,1,1,,unrecognized,NCT01657344
+class,Arbour Trails,1,1,,unrecognized,NCT04037436
+class,Kinnect to Wellness,1,1,,unrecognized,NCT04037436
+class,Village of Winston Park,1,1,,unrecognized,NCT04037436
+class,YMCA,1,1,,unrecognized,NCT04037436
+class,Q3W Regimen,1,1,,unrecognized,NCT02222922
+class,Q2W Regimen,1,1,,unrecognized,NCT02222922
+class,Participants with cognitive impairment,1,1,,unrecognized,NCT02729311
+class,Participants assigned to open-label TD1414 TID,1,1,,unrecognized,NCT00626795
+class,Participants randomized to blinded treatment,1,1,,unrecognized,NCT00626795
+category,Sexual Minority,1,1,,unrecognized,NCT05107401
+class,1200 mg/d HCQ,1,1,,unrecognized,NCT01550367
+class,600 mg/d HCQ,1,1,,unrecognized,NCT01550367
+class,149,1,1,,unrecognized,NCT06358820
+class,COVID-19,1,1,,unrecognized,NCT06141824
+class,Flu A,1,1,,unrecognized,NCT06141824
+class,Flu B,1,1,,unrecognized,NCT06141824
+class,Total score,1,1,,unrecognized,NCT00351819
+class,Erectile function,1,1,,unrecognized,NCT00351819
+class,Orgasmic function,1,1,,unrecognized,NCT00351819
+class,Intercourse satisfaction,1,1,,unrecognized,NCT00351819
+class,Overall satisfaction,1,1,,unrecognized,NCT00351819
+class,Alinity s HBsAg Gender,1,1,,unrecognized,NCT03285295
+class,Alinity s HTLV I/II Gender,1,1,,unrecognized,NCT03285295
+class,Alinity s Anti-HCV Gender,1,1,,unrecognized,NCT03285295
+class,Alinity s HIV Ag/Ab Combo Gender,1,1,,unrecognized,NCT03285295
+class,Alinity s Anti-HBc Gender,1,1,,unrecognized,NCT03285295
+class,Alinity s Chagas Gender,1,1,,unrecognized,NCT03285295
+class,HIV Intervention,1,1,,unrecognized,NCT01366495
+class,HIV Testing,1,1,,unrecognized,NCT01366495
+class,All randomized participants,1,1,,unrecognized,NCT02711553
+class,All randomized participants who received at least 1 dose of study drug,1,1,,unrecognized,NCT02711553
+class,Transexual,1,1,,unrecognized,NCT04233372
+class,Anal sex,1,1,,unrecognized,NCT04233372
+class,Vaginal sex,1,1,,unrecognized,NCT04233372
+class,Oral sex,1,1,,unrecognized,NCT04233372
+class,Use of condom,1,1,,unrecognized,NCT04233372
+class,Broken condom,1,1,,unrecognized,NCT04233372
+class,Blood contact/exchange,1,1,,unrecognized,NCT04233372
+class,Semen contact/exchange,1,1,,unrecognized,NCT04233372
+class,Patient gender,1,1,,unrecognized,NCT04869085
+class,Caregiver gender,1,1,,unrecognized,NCT04869085
+class,603A: 0-12 Week Study Period,1,1,,unrecognized,NCT03514641
+class,603B: 12-36 Week Study Period,1,1,,unrecognized,NCT03514641
+class,1-<6 years,1,1,,unrecognized,NCT03376516
+class,6-<12 years,1,1,,unrecognized,NCT03376516
+class,Gamblers,1,1,,unrecognized,NCT02240485
+class,Infant Sex,1,1,,unrecognized,NCT04002908
+class,Mothers sex,1,1,,unrecognized,NCT04002908
+class,"Sexual Violence Vict. ""SOTS""",1,1,,unrecognized,NCT03726437
+class,"Sexual Violence Vict. ""COSTS""",1,1,,unrecognized,NCT03726437
+class,0-24h,1,1,,unrecognized,NCT00551616
+class,25-48h,1,1,,unrecognized,NCT00551616
+class,49-72h,1,1,,unrecognized,NCT00551616
+class,73-96h,1,1,,unrecognized,NCT00551616
+class,97-120h,1,1,,unrecognized,NCT00551616
+class,>120h,1,1,,unrecognized,NCT00551616
+class,Safety Lead-In,1,1,,unrecognized,NCT03093870
+class,Authors who provided complete IPD,1,1,,unrecognized,NCT02569411
+class,Double Masked Period,1,1,,unrecognized,NCT04133311
+class,Adult participants,1,1,,unrecognized,NCT05358444
+class,Count of Participants,1,1,,unrecognized,NCT05735652
+class,All patients and clinicians,1,1,,unrecognized,NCT02340767
+class,Induction Period,1,1,,unrecognized,NCT02435992
+class,Maintenance Period,1,1,,unrecognized,NCT02435992
+class,All participants,1,1,,unrecognized,NCT02542293
+class,No recent sex,1,1,,unrecognized,NCT02248558
+class,Condomless anal sex,1,1,,unrecognized,NCT02248558
+class,Anal sex with a condom,1,1,,unrecognized,NCT02248558
+class,Loved ones,1,1,,unrecognized,NCT04241094
+class,AIN457 in Treatment Period 1 - JIA Category: ERA,1,1,,unrecognized,NCT03031782
+class,AIN457 in Treatment Period 1 -JIA Category: JPsA,1,1,,unrecognized,NCT03031782
+class,AIN457 in Treatment Period 2 - JIA Category: ERA,1,1,,unrecognized,NCT03031782
+class,AIN457 in Treatment Period 2 -JIA Category: JPsA,1,1,,unrecognized,NCT03031782
+class,Placebo in TP2 - JIA Category: ERA,1,1,,unrecognized,NCT03031782
+class,Placebo in TP2 - JIA Category: JPsA,1,1,,unrecognized,NCT03031782
+class,Part A (<14 kg Weight),1,1,,unrecognized,NCT02797132
+class,Part A (>=14 kg Weight),1,1,,unrecognized,NCT02797132
+class,Part B (<14 kg Weight),1,1,,unrecognized,NCT02797132
+class,Part B (>=14 kg Weight),1,1,,unrecognized,NCT02797132
+class,Without Active Cancer,1,1,,unrecognized,NCT05022563
+class,With Active Cancer,1,1,,unrecognized,NCT05022563
+class,SCED 1 Adults with ASD,1,1,,unrecognized,NCT04518358
+class,SCED 2 Adults with ASD,1,1,,unrecognized,NCT04518358
+class,SCED 1 + 2 Instructors,1,1,,unrecognized,NCT04518358
+class,Parent Gender,1,1,,unrecognized,NCT03521115
+class,Teen Gender,1,1,,unrecognized,NCT03521115
+class,Per-protocol analysis set,1,1,,unrecognized,NCT03384966
+class,Wave 1,1,1,,unrecognized,NCT02390557
+class,Wave 2,1,1,,unrecognized,NCT02390557
+class,Uncertain,1,1,,unrecognized,NCT02929069
+class,Urethral Chlamydia,1,1,,unrecognized,NCT01836445
+class,Urethral Gonorrhea,1,1,,unrecognized,NCT01836445
+class,Rectal Chlamydia,1,1,,unrecognized,NCT01836445
+class,Rectal Gonorrhea,1,1,,unrecognized,NCT01836445
+class,Any STI,1,1,,unrecognized,NCT01836445
+class,Pharmacodynamic analysis set,1,1,,unrecognized,NCT02472795
+class,Modified pharmacodynamic analysis set,1,1,,unrecognized,NCT02472795
+class,Care recipients,1,1,,unrecognized,NCT04418232
+class,Primary care providers,1,1,,unrecognized,NCT04418232
+category,Sexual minority,1,1,,unrecognized,NCT04251273
+class,Initial Study Phase,1,1,,unrecognized,NCT03738566
+class,Cross-over for Treatment Failure,1,1,,unrecognized,NCT03738566
+class,Cambodia,1,1,,unrecognized,NCT00440999
+class,India,1,1,,unrecognized,NCT00440999
+class,Indonesia/Maumere,1,1,,unrecognized,NCT00440999
+class,Thailand/Mae Sot,1,1,,unrecognized,NCT00440999
+class,Thailand/Mae Ramat,1,1,,unrecognized,NCT00440999
+class,Child gender,1,1,,unrecognized,NCT01816074
+class,Sex/Gender not analyzed,1,1,,unrecognized,NCT00792922
+class,Sex of Infants,1,1,,unrecognized,NCT01667549
+class,Sex of Mothers,1,1,,unrecognized,NCT01667549
+class,Study 1,1,1,,unrecognized,NCT04169373
+class,Study 2,1,1,,unrecognized,NCT04169373
+class,mCSPC,1,1,,unrecognized,NCT05701007
+class,mCRPC,1,1,,unrecognized,NCT05701007
+class,Placebo and AS012 Regimens,1,1,,unrecognized,NCT04487860
+class,Placebo to AS012 Regimens,1,1,,unrecognized,NCT04487860
+class,Once a month or less,1,1,,unrecognized,NCT00635570
+class,2 or 3 times a month,1,1,,unrecognized,NCT00635570
+class,Approximately once a week,1,1,,unrecognized,NCT00635570
+class,2 or 3 times a week,1,1,,unrecognized,NCT00635570
+class,More than 3 times a week,1,1,,unrecognized,NCT00635570
+class,Dabigatran vs Rivaroxaban (matched pop),1,1,,unrecognized,NCT03026556
+class,Dabigatran vs Apixaban (matched pop),1,1,,unrecognized,NCT03026556
+class,Reported gender,1,1,,unrecognized,NCT03704142
+class,Bi-Sexual,1,1,,unrecognized,NCT03277794
+class,Demisexual,1,1,,unrecognized,NCT06229132
+class,"Sex, Period 1",1,1,,unrecognized,NCT01120028
+class,"Sex, Period 2",1,1,,unrecognized,NCT01120028
+class,ITT,1,1,,unrecognized,NCT04796935
+class,Students,1,1,,unrecognized,NCT03132805
+class,Uninjured controls,1,1,,unrecognized,NCT04083794
+class,Spinal cord injury individuals,1,1,,unrecognized,NCT04083794
+category,None,1,1,,unrecognized,NCT03500172
+category,Self-employed (formal or informal),1,1,,unrecognized,NCT03500172
+category,Private or public employed,1,1,,unrecognized,NCT03500172
+class,Nephrologists,1,1,,unrecognized,NCT04392440
+class,Enrolled Population,1,1,,unrecognized,NCT02221869
+class,Efficacy Population,1,1,,unrecognized,NCT02221869
+class,Youth Patients,1,1,,unrecognized,NCT05626231
+class,Parents of Youth Patients,1,1,,unrecognized,NCT05626231
+category,F to M,1,1,,unrecognized,NCT02641236
+class,Post-Randomization,1,1,,unrecognized,NCT03896789
+class,Sex : Sex,1,1,,unrecognized,NCT02674659
+class,Phase I subjects without xerostomia,1,1,,unrecognized,NCT05058430
+class,Phase I subjects with xerostomia,1,1,,unrecognized,NCT05058430
+class,Phase II subjects without xerostomia,1,1,,unrecognized,NCT05058430
+class,Phase II subjects with xerostomia,1,1,,unrecognized,NCT05058430
+class,EMPOWER Study (randomized),1,1,,unrecognized,NCT03445988
+class,VALUE Study (non-randomized),1,1,,unrecognized,NCT03445988
+class,Canada,1,1,,unrecognized,NCT06456671
+class,United Kingdom,1,1,,unrecognized,NCT06456671
+class,Any sex/gender,1,1,,unrecognized,NCT06561217
+class,Step 1,1,1,,unrecognized,NCT03635788
+class,Step 2,1,1,,unrecognized,NCT03635788
+class,Infants (perinates),1,1,,unrecognized,NCT04818112
+class,"Gender, participant reported",1,1,,unrecognized,NCT03291587
+class,Sex of participant,1,1,,unrecognized,NCT03758638
+class,Sex of provider,1,1,,unrecognized,NCT03758638
+class,According to Group,1,1,,unrecognized,NCT05253573
+class,PLWD,1,1,,unrecognized,NCT04555616
+class,Self-Identified Sexual/Gender Identity,1,1,,unrecognized,NCT05161689
+category,Less than half the time,1,1,,unrecognized,NCT05161689
+category,About half the time,1,1,,unrecognized,NCT05161689
+category,More than half the time,1,1,,unrecognized,NCT05161689
+category,Every time,1,1,,unrecognized,NCT05161689
+category,"Yes, I was the one receiving money, things, or opportunities",1,1,,unrecognized,NCT05161689
+category,"Yes, I was the one giving money, things, or opportunities",1,1,,unrecognized,NCT05161689
+category,"Yes, I have both given and received money, things, or opportunities",1,1,,unrecognized,NCT05161689
+class,Resident participants,1,1,,unrecognized,NCT05255068
+class,Staff participants,1,1,,unrecognized,NCT05255068
+class,Sex: Mothers,1,1,,unrecognized,NCT02724774
+class,Sex: Infants,1,1,,unrecognized,NCT02724774
+class,Sex (NIH/OMB),1,1,,unrecognized,NCT05625061
+class,Baseline Period Sex,1,1,,unrecognized,NCT01070095
+class,Intervention Period Sex,1,1,,unrecognized,NCT01070095
+class,Sex (4 arms/strata),1,1,,unrecognized,NCT02432846
+class,Sex (2 total/combined groups),1,1,,unrecognized,NCT02432846
+class,TNBC,1,1,,unrecognized,NCT03004183
+class,NSCLC,1,1,,unrecognized,NCT03004183
+class,"Gender, n",1,1,,unrecognized,NCT02653664
+class,Double-Blind Controlled Trial,1,1,,unrecognized,NCT04629950
+class,Part 1 (Fasted),1,1,,unrecognized,NCT05930782
+class,Part 2 (Fed),1,1,,unrecognized,NCT05930782
+class,Parents/LARs,1,1,,unrecognized,NCT04152603
+class,DIVI Team,1,1,,unrecognized,NCT04152603
+class,"Bronchiolitis patients (Baseline Phase, for primary outcome)",1,1,,unrecognized,NCT05132322
+class,"Bronchiolitis patients (Exploratory Phase, for exploratory outcomes)",1,1,,unrecognized,NCT05132322
+class,Parents/guardians (for exploratory outcomes),1,1,,unrecognized,NCT05132322
+class,Staff/coaches (for exploratory outcomes),1,1,,unrecognized,NCT05132322
+class,"Bronchiolitis patients (Active Deimplementation Phase, for primary outcome)",1,1,,unrecognized,NCT05132322
+class,"Bronchiolitis patients (Sustainment Phase, for primary outcome)",1,1,,unrecognized,NCT05132322
+class,Offspring,1,1,,unrecognized,NCT04050202
+class,Physicians,1,1,,unrecognized,NCT05387564
+class,Caregivers who completed surveys,1,1,,unrecognized,NCT05387564
+class,Patient age,1,1,,unrecognized,NCT04010227
+class,Caregiver age,1,1,,unrecognized,NCT04010227
+class,Nurse,1,1,,unrecognized,NCT02320175
+class,Single dose,1,1,,unrecognized,NCT03570918
+class,Parents/caregivers,1,1,,unrecognized,NCT03385629
+category,"F/F, M/M, M/F",1,1,,unrecognized,NCT00245037
+category,F/M,1,1,,unrecognized,NCT00245037
+class,Gender at Birth,1,1,,unrecognized,NCT03636022
+class,Vaccine Substudy,1,1,,unrecognized,NCT04006457
+class,AYA,1,1,,unrecognized,NCT06191679
+category,Does not apply (providers),1,1,,unrecognized,NCT04584294
+class,Human Thrombin,1,1,,unrecognized,NCT02014402
+class,Bovine Thrombin,1,1,,unrecognized,NCT02014402
+class,Group 1,1,1,,unrecognized,NCT05292534
+class,Group 2,1,1,,unrecognized,NCT05292534
+class,Baseline Providers,1,1,,unrecognized,NCT05328648
+class,Endline Providers,1,1,,unrecognized,NCT05328648
+class,Parent sex,1,1,,unrecognized,NCT02973815
+class,smITT Analysis Set,1,1,,unrecognized,NCT04346628
+class,mITT Analysis Set,1,1,,unrecognized,NCT04346628
+class,Participant Reported Gender,1,1,,unrecognized,NCT04524598
+class,Part A: Part A: Dose Escalation (Within Group),1,1,,unrecognized,NCT02705755
+class,Part B: Randomized - Placebo,1,1,,unrecognized,NCT02705755
+class,Part B: Randomized - TD-9855,1,1,,unrecognized,NCT02705755
+class,14 or Less (Years),1,1,,unrecognized,NCT01192282
+class,15 - 19 (Years),1,1,,unrecognized,NCT01192282
+class,20 and Above (Years),1,1,,unrecognized,NCT01192282
+class,Virgo Intacta (Years),1,1,,unrecognized,NCT01192282
+class,Patient Characteristics - Sex,1,1,,unrecognized,NCT05563714
+class,Clinician Characteristics - Sex,1,1,,unrecognized,NCT05563714
+class,Phase 1: Natural History Period,1,1,,unrecognized,NCT02362425
+class,Phase 2: Randomized Period,1,1,,unrecognized,NCT02362425
+class,Past year,1,1,,unrecognized,NCT06001307
+class,Past two months,1,1,,unrecognized,NCT06001307
+class,PCMHI Participants,1,1,,unrecognized,NCT04350866
+class,Primary Care Participants,1,1,,unrecognized,NCT04350866
+class,Staff,1,1,,unrecognized,NCT04350866
+class,Double blind phase,1,1,,unrecognized,NCT05445557
+class,Open Label phase,1,1,,unrecognized,NCT05445557
+class,Maternal sex,1,1,,unrecognized,NCT04174521
+class,Pre-Intervention,1,1,,unrecognized,NCT02402881
+class,Post-Intervention,1,1,,unrecognized,NCT02402881
+class,Lead-In TP1: Humira (Adalimumab),1,1,,unrecognized,NCT04230213
+class,0-1 partners,1,1,,unrecognized,NCT01617096
+class,>2,1,1,,unrecognized,NCT01617096
+class,Stage 2 WOT,1,1,,unrecognized,NCT01960257
+class,Stage 2 DOT,1,1,,unrecognized,NCT01960257
+class,Substudy A: Sex/Gender,1,1,,unrecognized,NCT04885530
+class,Substudy B: Sex/Gender,1,1,,unrecognized,NCT04885530
+class,Substudy C: Sex/Gender,1,1,,unrecognized,NCT04885530
+class,Substudy D: Sex/Gender,1,1,,unrecognized,NCT04885530
+class,Substudy E: Sex/Gender,1,1,,unrecognized,NCT04885530
+class,Substudy F: Sex/Gender,1,1,,unrecognized,NCT04885530
+class,Substudy G: Sex/Gender,1,1,,unrecognized,NCT04885530
+class,Periods 2 and 3,1,1,,unrecognized,NCT04581629
+class,Part 1A,1,1,,unrecognized,NCT05261191
+class,Part 1B,1,1,,unrecognized,NCT05261191
+class,BMI group 1,1,1,,unrecognized,NCT01378299
+class,BMI group 2,1,1,,unrecognized,NCT01378299
+class,BMI group 3,1,1,,unrecognized,NCT01378299
