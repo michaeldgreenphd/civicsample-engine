@@ -215,7 +215,12 @@ jobs:
         # permanent release (tag sex-gender-raw-measures, never matched by the
         # data-* prune loop above), one asset per snapshot date. This step runs
         # after the site publish, so a failure here cannot delay the site's
-        # data, but it does fail the run: an unarchived week must be noticed.
+        # data. continue-on-error keeps the independent steps below (the
+        # sex/gender audit, the sponsor pipeline) running; the last step of
+        # the job then fails the run if this outcome is 'failure', so an
+        # unarchived week is still noticed.
+        id: sg_archive
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -376,6 +381,7 @@ jobs:
             else
               echo "| Sex/gender audit | step ${{ steps.sg_audit.outcome }} — no audit this week (files in data/sex_gender_audit/ are last week's) |"
             fi
+            echo "| Sex/gender raw-measure archive | step ${{ steps.sg_archive.outcome }} (release sex-gender-raw-measures) |"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.sg_audit.outcome }}" = "success" ]; then
             BC=$(jq -r '.n_bucket_changes' data/sex_gender_audit/audit_summary.json)
@@ -397,3 +403,13 @@ jobs:
           if [ "$DELTA" != "n/a" ] && [ "$DELTA" -lt 0 ]; then
             echo "::warning::Trial count decreased by ${DELTA#-} vs last week — check the extraction before trusting this publish."
           fi
+
+      - name: Fail the run if the permanent raw-measure archive failed
+        # Last, so every independent step above (audits, sponsor pipeline,
+        # summary) has already run; the site already has its data. A red run
+        # here means one week's raw measures are not in the permanent release
+        # and must be uploaded by hand from the data-* release or Drive.
+        if: ${{ !cancelled() && steps.sg_archive.outcome == 'failure' }}
+        run: |
+          echo "::error::the permanent archive of this week's sex/gender raw measures failed (see the 'Archive the retained sex/gender raw measures permanently' step)"
+          exit 1

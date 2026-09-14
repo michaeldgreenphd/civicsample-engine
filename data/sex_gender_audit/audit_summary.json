@@ -1,7 +1,7 @@
 {
-  "audited_at": "2026-09-14T23:14:30.025935+00:00",
+  "audited_at": "2026-09-14T23:33:24.986616+00:00",
   "snapshot_date": "2026-09-14",
-  "pipeline_commit": "a21f7b680d06194851d814af01186866b26ea907",
+  "pipeline_commit": "78a49cc71af3839fd037542add3ef421b47d1948",
   "source_pipeline_commit": "04f58424fd98253cded2f205e96265ca5d13cd74",
   "source_extracted_at": "2026-09-14T18:52:57.193120+00:00",
   "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14",

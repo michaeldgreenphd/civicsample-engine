@@ -430,6 +430,41 @@ def test_write_back_requires_one_to_one_coverage(tmp_path):
     assert meta["written_back"]["coverage_ok"] is False and meta["written_back"]["records_without_row"] == ["B"]
 
 
+def test_write_back_refuses_a_container_from_another_extraction(tmp_path):
+    """An older raw file may not be written into a newer pull's records: when both
+    sides carry an extraction stamp they must agree, and on a mismatch nothing
+    at all is written (no table, no meta, container untouched)."""
+    import gzip
+    import json
+    import subprocess
+    import sys as _sys
+    d = tmp_path
+    raw = {**sgt.select_raw_measures(_study("A", [_measure("Sex: Female, Male", [("Female", 1), ("Male", 1)])])),
+           "snapshot_date": SNAP, "extracted_at": "2026-09-07T06:00:00+00:00", "pipeline_commit": "aaa"}
+    p = str(d / "raw.jsonl.gz")
+    with gzip.open(p, "wt") as fh:
+        fh.write(json.dumps(raw) + "\n")
+    container = {"extracted_at": "2026-09-14T06:00:00+00:00", "pipeline_commit": "bbb",
+                 "data": [{"nct_id": "A", "sex_gender": None}]}
+    json.dump(container, open(d / "demo.json", "w"))
+    res = subprocess.run([_sys.executable, os.path.join(ROOT, "scripts", "build_sex_gender_table.py"),
+                          "--from-raw", p, "--write-back", str(d / "demo.json"), "--out", str(d / "t.csv.gz"),
+                          "--meta", str(d / "m.json"), "--strict"], cwd=str(d), capture_output=True, text=True)
+    assert res.returncode != 0 and "write-back refused" in (res.stdout + res.stderr)
+    assert not (d / "t.csv.gz").exists() and not (d / "m.json").exists()
+    assert json.load(open(d / "demo.json")) == container
+    # an unstamped raw file (pre-stamp) still takes the container's stamps and writes back
+    with gzip.open(p, "wt") as fh:
+        fh.write(json.dumps({k: v for k, v in raw.items() if k not in ("extracted_at", "pipeline_commit")}) + "\n")
+    res = subprocess.run([_sys.executable, os.path.join(ROOT, "scripts", "build_sex_gender_table.py"),
+                          "--from-raw", p, "--write-back", str(d / "demo.json"), "--out", str(d / "t.csv.gz"),
+                          "--meta", str(d / "m.json"), "--strict"], cwd=str(d), capture_output=True, text=True)
+    assert res.returncode == 0, res.stdout + res.stderr
+    meta = json.load(open(d / "m.json"))
+    assert meta["source_extracted_at"] == "2026-09-14T06:00:00+00:00" and meta["source_pipeline_commit"] == "bbb"
+    assert json.load(open(d / "demo.json"))["data"][0]["sex_gender"]["sex_report_status"] == "reported"
+
+
 def test_legacy_refetch_predicate_ignores_gender_tables():
     """A populated gender-titled table must not vouch for stripped race/ethnicity/sex tables."""
     from src.extract_all import _measurements_present_in_search
@@ -451,6 +486,13 @@ def test_mobile_summary_block_is_built_from_the_rows_only():
                         "sex_gender": sgt.build_row(s, SNAP)})
     studies.append({"nct_id": "D", "results_date": "2021-01-01", "enrollment": 50,
                     "sex_gender": sgt.build_row(_study("D", [{"title": "Age"}], 50), SNAP)})
+    # E is "reported" only through a gender-diverse count, in a unit-count table:
+    # reported_gender True, reported_sex False, is_participant_count False. It
+    # never entered the sex composition, so it must not count as excluded from it.
+    studies.append({"nct_id": "E", "results_date": "2021-03-01", "enrollment": 5,
+                    "sex_gender": sgt.build_row(_study("E", [_measure("Gender", [("Non-binary", 5)],
+                                                                      param_type="COUNT_OF_UNITS", unit="tests")], 5), SNAP)})
+    assert studies[-1]["sex_gender"]["reported_gender"] is True and studies[-1]["sex_gender"]["reported_sex"] is False
     # The parts carry only the lean row; the block reads the full rows (the CSV).
     full_rows = [dict(s["sex_gender"]) for s in studies]
     for s in studies:
@@ -459,8 +501,10 @@ def test_mobile_summary_block_is_built_from_the_rows_only():
     lean_only = sex_gender_summary(studies)                # fallback: same counts, no label lists
     assert lean_only["statusCounts"] == blk["statusCounts"] and lean_only["totals"] == blk["totals"]
     assert lean_only["byYear"]["2020"]["sg_pf_sum"] == blk["byYear"]["2020"]["sg_pf_sum"]
-    assert blk["statusCounts"] == {"reported": 2, "explicit_unknown_only": 1, "uninformative": 0, "not_reported": 1, "parse_error": 0}
+    assert blk["statusCounts"] == {"reported": 3, "explicit_unknown_only": 1, "uninformative": 0, "not_reported": 1, "parse_error": 0}
     assert blk["totals"] == {"female": 50, "male": 50, "explicit_unknown": 0, "gender_diverse": 0, "ambiguous": 0}
+    assert blk["excludedFromComposition"] == {"trials": 0, "female": 0, "male": 0}   # E is not "excluded": it was never in
+    assert blk["outcomes"]["reported_gender"] == 1 and blk["outcomes"]["reported_sex"] == 2
     assert blk["enrollmentMinusParsed"] == 10           # A's gap; shipped separately, never in explicit_unknown
     y20, y21 = blk["byYear"]["2020"], blk["byYear"]["2021"]
     assert y20["status_reported"] == 1 and y20["status_explicit_unknown_only"] == 1

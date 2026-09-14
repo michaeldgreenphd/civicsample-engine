@@ -186,20 +186,26 @@ def main() -> int:
     if os.path.exists(a.baseline):
         drift = sgt.baseline_drift(rows, json.load(open(a.baseline)))
 
-    write_table(rows, a.out)
+    # The write-back container is validated BEFORE anything is written, so a
+    # refused write-back leaves no table, meta or container behind.
     written_back = None
+    container = None
     if a.write_back:
         by_nct = {r["nct_id"]: sgt.lean_row(r) for r in rows if r.get("nct_id")}
         with open(a.write_back) as f:
             container = json.load(f)
         # The container's stamps are the pull's; use them when the raw records
-        # carry none, and flag a mismatch when both exist and disagree.
+        # carry none. When both sides are stamped they must be the SAME pull:
+        # writing an older raw file's rows into a newer container would leave
+        # parts whose provenance says one extraction and whose sex/gender
+        # values come from another. That is refused, not warned about.
         c_at = container.get("extracted_at")
         if extracted_at is None:
             extracted_at = c_at
         elif c_at and c_at != extracted_at:
-            print(f"::warning::raw records were extracted at {extracted_at} but {a.write_back} says {c_at}; "
-                  "the table is stamped with the raw records' value")
+            raise SystemExit(f"--write-back refused: the raw records were extracted at {extracted_at} but "
+                             f"{a.write_back} was extracted at {c_at}; a table rebuilt from one pull may not be "
+                             "written into another pull's records (nothing written)")
         source_commit = source_commit or container.get("pipeline_commit")
         # Coverage must be one-to-one: every table id unique and present, every
         # study record matched. Anything else means the CSV and the parts
@@ -215,6 +221,9 @@ def main() -> int:
         written_back = {"path": a.write_back, "records": len(container["data"]), "updated": 0,
                         "coverage_ok": coverage_ok, "rows_without_id": no_id, "duplicate_ids": dupes[:20],
                         "records_without_row": unmatched[:20], "rows_without_record": extra[:20]}
+
+    write_table(rows, a.out)
+    if a.write_back:
         if coverage_ok:
             hit = 0
             for s in container["data"]:

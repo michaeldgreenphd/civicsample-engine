@@ -66,7 +66,12 @@ def sex_gender_summary(all_studies, table_rows=None):
               "gender_diverse": tot(denom, "n_gender_diverse"),
               "ambiguous": tot(denom, "n_ambiguous_gender")}
     reported = [r for r in rows if r.get("sex_report_status") == "reported"]
-    excluded = [r for r in reported if not r.get("is_participant_count")]
+    # Excluded from the SEX composition: rows that report sex but whose
+    # count-driving measure is not a participant count. A trial that is
+    # "reported" only through gender-diverse or ambiguous counts never entered
+    # the sex composition, so it is not "excluded" from it either (the same set
+    # the side-by-side reports).
+    excluded = [r for r in rows if r.get("reported_sex") and not r.get("is_participant_count")]
 
     def labels(key):
         # Label trails are lists on the full rows (JSON arrays in the CSV);
