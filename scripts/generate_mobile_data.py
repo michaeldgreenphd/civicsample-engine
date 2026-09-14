@@ -14,7 +14,128 @@ prompt.  Filters are disabled (all data is pre-aggregated).
 import json
 import gzip
 import os
+import sys
 from collections import defaultdict
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src import sex_gender_table as sgt  # noqa: E402
+
+# Drill-down label lists carry at most this many distinct labels each; every
+# label is still in the parsed table and the audit's label_buckets.csv.
+LABEL_LIST_LIMIT = 200
+
+
+def sex_gender_summary(all_studies):
+    """The sg=v2 block of dashboard-summary.json, built ONLY from study["sex_gender"].
+
+    Every number here is a count or sum over rows the parser produced. The five
+    states come from sex_report_status and nothing else; the participant totals
+    and both percent-female series (README D5) are restricted to rows with
+    reported_sex AND is_participant_count; enrollmentMinusParsed is the summed
+    enrollment gap of reported rows and is shipped so it can be audited, never
+    to be displayed as unknown. Mobile renders the Sex and Gender tabs from
+    this block; desktop computes the same numbers from the per-study rows.
+    """
+    rows = [s.get("sex_gender") for s in all_studies if s.get("sex_gender")]
+    if not rows:
+        return None
+    for s in all_studies:
+        r = s.get("sex_gender")
+        if r:
+            r["year"] = (s.get("results_date") or "")[:4] or None
+            r["_enrollment_registered"] = s.get("enrollment") or 0
+
+    sc = sgt.status_counts(rows)
+    denom = [r for r in rows if r.get("reported_sex") and r.get("is_participant_count")]
+
+    def tot(rs, k):
+        return sum((r.get(k) or 0) for r in rs)
+
+    totals = {"female": tot(denom, "n_female"), "male": tot(denom, "n_male"),
+              "explicit_unknown": tot(denom, "n_unknown"),
+              "gender_diverse": tot(denom, "n_gender_diverse"),
+              "ambiguous": tot(denom, "n_ambiguous_gender")}
+    reported = [r for r in rows if r.get("sex_report_status") == "reported"]
+    excluded = [r for r in reported if not r.get("is_participant_count")]
+
+    def labels(key):
+        c = defaultdict(int)
+        for r in rows:
+            for l in (r.get(key) or "").split("; "):
+                if l:
+                    c[l] += 1
+        top = sorted(c.items(), key=lambda kv: (-kv[1], kv[0]))[:LABEL_LIST_LIMIT]
+        return {"distinct": len(c), "top": [[l, n] for l, n in top]}
+
+    by_year = {}
+    for r in rows:
+        y = r.get("year")
+        if not y:
+            continue
+        d = by_year.setdefault(y, {
+            "total": 0,
+            **{f"status_{s}": 0 for s in sgt.STATES},
+            **{o: 0 for o in sgt.OUTCOMES},
+            "sg_f": 0.0, "sg_m": 0.0, "sg_u": 0.0, "sg_gd": 0.0, "sg_amb": 0.0,
+            "sg_denominator_trials": 0,
+            "sg_pf_sum": 0.0, "sg_pf_count": 0, "sg_f_sum": 0.0, "sg_fm_sum": 0.0,
+            "sg_enrollment_minus_parsed": 0.0,
+            "sg_enrollment_reported": 0, "sg_enrollment_not_reported": 0,
+            "sg_enrollment_uninformative": 0, "sg_enrollment_explicit_unknown_only": 0,
+            "sg_enrollment_parse_error": 0,
+        })
+        d["total"] += 1
+        st = r.get("sex_report_status")
+        if st in sgt.STATES:
+            d[f"status_{st}"] += 1
+            d[f"sg_enrollment_{st}"] += r.get("_enrollment_registered") or 0
+        for o in sgt.OUTCOMES:
+            if r.get(o) is True:
+                d[o] += 1
+        if st == "reported" and r.get("enrollment_minus_parsed") is not None:
+            d["sg_enrollment_minus_parsed"] += r["enrollment_minus_parsed"]
+        if r.get("reported_sex") and r.get("is_participant_count"):
+            d["sg_denominator_trials"] += 1
+            d["sg_f"] += r.get("n_female") or 0
+            d["sg_m"] += r.get("n_male") or 0
+            d["sg_u"] += r.get("n_unknown") or 0
+            d["sg_gd"] += r.get("n_gender_diverse") or 0
+            d["sg_amb"] += r.get("n_ambiguous_gender") or 0
+    for y, pf in sgt.percent_female_series(rows).items():
+        d = by_year.setdefault(y, {})
+        d["sg_pf_sum"] = pf["pf_sum"]; d["sg_pf_count"] = pf["pf_count"]
+        d["sg_f_sum"] = pf["f_sum"]; d["sg_fm_sum"] = pf["fm_sum"]
+
+    for s in all_studies:
+        r = s.get("sex_gender")
+        if r:
+            r.pop("year", None); r.pop("_enrollment_registered", None)
+
+    return {
+        "parser_rules_version": sgt.sgp.PARSER_RULES_VERSION,
+        "parser_module_version": sgt.sgp.__version__,
+        "states": list(sgt.STATES),
+        "statusCounts": sc["status"],
+        "outcomes": sc["outcomes"],
+        "uninformativeReasons": sc["uninformative_reason"],
+        "declaredNotCollected": sc["declared_not_collected"],
+        "refetched": sc["refetched"],
+        "denominatorTrials": len(denom),
+        "totals": totals,
+        "excludedFromComposition": {"trials": len(excluded),
+                                    "female": tot(excluded, "n_female"), "male": tot(excluded, "n_male")},
+        "enrollmentMinusParsed": tot(reported, "enrollment_minus_parsed"),
+        "labels": {"gender_diverse": labels("gender_diverse_labels"),
+                   "ambiguous": labels("ambiguous_labels"),
+                   "unknown": labels("unknown_labels")},
+        "percentFemaleSeries": {
+            "a": "mean of within-trial n_female / (n_female + n_male) across trials in the year (sg_pf_sum / sg_pf_count)",
+            "b": "participant-weighted sum(n_female) / sum(n_female + n_male) across the same trials (sg_f_sum / sg_fm_sum)",
+            "denominator": "trials with reported_sex AND is_participant_count AND n_female + n_male > 0; gender_diverse and ambiguous excluded",
+        },
+        "byYear": {y: v for y, v in sorted(by_year.items())},
+    }
 
 
 def main():
@@ -291,6 +412,16 @@ def main():
             return {"reported": False}
         return {"reported": True, totals_key: obj.get(totals_key) or {}}
 
+    _COMPACT_SG = ("sex_report_status", "reported_sex", "reported_gender", "reported_both",
+                   "gender_labeled_binary_only", "is_participant_count", "n_female", "n_male",
+                   "n_unknown", "n_gender_diverse", "n_ambiguous_gender", "uninformative_reason",
+                   "declared_not_collected", "percent_female", "parser_rules_version")
+
+    def _compact_sex_gender(row):
+        if not row:
+            return None
+        return {k: row.get(k) for k in _COMPACT_SG}
+
     def _compact(s):
         return {
             "nct_id": s.get("nct_id"),
@@ -315,6 +446,9 @@ def main():
             "ethnicity": _demo(s.get("ethnicity"), "omb_totals"),
             "sex": _demo(s.get("sex"), "totals"),
             "gender": _demo(s.get("gender"), "totals"),
+            # sg=v2 row, trimmed to what a table cell needs; the label trails
+            # stay on the desktop rows and in the parsed table.
+            "sex_gender": _compact_sex_gender(s.get("sex_gender")),
             # Geography details aren't shipped to mobile (study_sites is heavy
             # and desktop-only). Leaving countries empty makes the cell show ✗
             # rather than a ✓ that opens an empty modal.
@@ -346,6 +480,9 @@ def main():
         "byYear": {yr: dict(vals) for yr, vals in sorted(years.items())},
         "fda": fda,
         "recentStudies": recent_studies,
+        # sg=v2: the manuscript parser's table, summarised. None on pulls that
+        # predate the sex_gender row (archived snapshot summaries stay valid).
+        "sexGender": sex_gender_summary(all_studies),
     }
 
     path = "data/dashboard-summary.json"

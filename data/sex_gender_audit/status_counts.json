@@ -1,0 +1,210 @@
+{
+  "snapshot_date": "2026-09-14",
+  "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10",
+  "parser_module_version": "1.0.0",
+  "counts": {
+    "n_rows": 80056,
+    "status": {
+      "reported": 79270,
+      "explicit_unknown_only": 66,
+      "uninformative": 720,
+      "not_reported": 0,
+      "parse_error": 0
+    },
+    "outcomes": {
+      "reported_sex": 79219,
+      "reported_gender": 665,
+      "reported_both": 614,
+      "reported_any": 79270,
+      "gender_labeled_binary_only": 2955
+    },
+    "count_of_units_primary": 105,
+    "is_participant_count_false": 105,
+    "declared_not_collected": 518,
+    "refetched": 437,
+    "uninformative_reason": {
+      "all_values_na": 103,
+      "all_values_zero": 140,
+      "no_measurements": 437,
+      "other": 4,
+      "no_mapped_labels": 36
+    }
+  },
+  "vs_prior": {
+    "n_rows": {
+      "now": 80056,
+      "prior": null,
+      "delta": null
+    },
+    "status": {
+      "reported": {
+        "now": 79270,
+        "prior": null,
+        "delta": null
+      },
+      "explicit_unknown_only": {
+        "now": 66,
+        "prior": null,
+        "delta": null
+      },
+      "uninformative": {
+        "now": 720,
+        "prior": null,
+        "delta": null
+      },
+      "not_reported": {
+        "now": 0,
+        "prior": null,
+        "delta": null
+      },
+      "parse_error": {
+        "now": 0,
+        "prior": null,
+        "delta": null
+      }
+    },
+    "outcomes": {
+      "reported_sex": {
+        "now": 79219,
+        "prior": null,
+        "delta": null
+      },
+      "reported_gender": {
+        "now": 665,
+        "prior": null,
+        "delta": null
+      },
+      "reported_both": {
+        "now": 614,
+        "prior": null,
+        "delta": null
+      },
+      "reported_any": {
+        "now": 79270,
+        "prior": null,
+        "delta": null
+      },
+      "gender_labeled_binary_only": {
+        "now": 2955,
+        "prior": null,
+        "delta": null
+      }
+    },
+    "count_of_units_primary": {
+      "now": 105,
+      "prior": null,
+      "delta": null
+    },
+    "is_participant_count_false": {
+      "now": 105,
+      "prior": null,
+      "delta": null
+    },
+    "declared_not_collected": {
+      "now": 518,
+      "prior": null,
+      "delta": null
+    },
+    "refetched": {
+      "now": 437,
+      "prior": null,
+      "delta": null
+    },
+    "uninformative_reason": {
+      "all_values_na": {
+        "now": 103,
+        "prior": null,
+        "delta": null
+      },
+      "all_values_zero": {
+        "now": 140,
+        "prior": null,
+        "delta": null
+      },
+      "no_measurements": {
+        "now": 437,
+        "prior": null,
+        "delta": null
+      },
+      "other": {
+        "now": 4,
+        "prior": null,
+        "delta": null
+      },
+      "no_mapped_labels": {
+        "now": 36,
+        "prior": null,
+        "delta": null
+      }
+    }
+  },
+  "prior_snapshot_date": null,
+  "prior_parser_rules_version": null,
+  "structural_checks": {
+    "reported_any_ge_reported_sex": {
+      "pass": true,
+      "detail": "79270 >= 79219"
+    },
+    "reported_any_ge_reported_gender": {
+      "pass": true,
+      "detail": "79270 >= 665"
+    },
+    "reported_both_le_min": {
+      "pass": true,
+      "detail": "614 <= min(79219, 665)"
+    },
+    "status_counts_sum_to_rows": {
+      "pass": true,
+      "detail": "80056 == 80056"
+    },
+    "every_row_has_one_status": {
+      "pass": true,
+      "detail": "0 rows with a status outside ('reported', 'explicit_unknown_only', 'uninformative', 'not_reported', 'parse_error')"
+    },
+    "is_participant_count_matches_parser_rule": {
+      "pass": true,
+      "detail": "0 rows disagree with the parser's own rule (first: [])"
+    },
+    "count_of_units_never_participant_count": {
+      "pass": true,
+      "detail": "0 COUNT_OF_UNITS rows with is_participant_count True"
+    },
+    "parse_error_rows_have_none_outcomes": {
+      "pass": true,
+      "detail": "0 parse_error rows with a non-None outcome"
+    },
+    "explicit_unknown_only_rows_are_unknown_only": {
+      "pass": true,
+      "detail": "0 rows"
+    },
+    "not_reported_rows_have_no_measure": {
+      "pass": true,
+      "detail": "0 not_reported rows with a selected measure"
+    },
+    "percent_female_only_in_denominator_set": {
+      "pass": true,
+      "detail": "0 rows"
+    },
+    "single_parser_rules_version": {
+      "pass": true,
+      "detail": "versions seen: ['parsers.R@2026-08-17 / outcomes@2026-09-10']"
+    }
+  },
+  "structural_checks_all_pass": true,
+  "baseline": {
+    "path": "tests/sex_gender/fixtures/snapshot_baseline_2026-06-09.json",
+    "is_baseline_data": false,
+    "drift": [
+      "trials_with_measure: got 80056, baseline 66210 (+13846)",
+      "status.reported: got 79270, baseline 65849 (+13421)",
+      "status.uninformative: got 720, baseline 315 (+405)",
+      "status.explicit_unknown_only: got 66, baseline 45 (+21)",
+      "status.not_reported: got 0, baseline 1 (-1)",
+      "reported_sex_true: got 79219, baseline 65802 (+13417)",
+      "reported_gender_true: got 665, baseline 582 (+83)",
+      "reported_both_true: got 614, baseline 535 (+79)",
+      "gender_labeled_binary_only_true: got 2955, baseline 2479 (+476)"
+    ],
+    "exact_match": false
+  }
+}

@@ -1,0 +1,1054 @@
+level,label,bucket,reason,n_occurrences,n_trials,example_nct,first_seen,weeks_open,parser_rules_version
+class,Sex/Gender,,unrecognized,35,35,NCT05965726,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregivers,,unrecognized,33,33,NCT04308512,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,No,,unrecognized,23,18,NCT01559389,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender Identity,,unrecognized,17,17,NCT04757649,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part A,,unrecognized,17,17,NCT03537651,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,No,,unrecognized,23,16,NCT04233372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Yes,,unrecognized,21,16,NCT01559389,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Yes,,unrecognized,23,16,NCT04233372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 1,,unrecognized,15,15,NCT03290248,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part B,,unrecognized,15,15,NCT03537651,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 2,,unrecognized,14,14,NCT03290248,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase 2,,unrecognized,12,12,NCT02384954,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adolescent,,unrecognized,9,9,NCT04516252,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregiver,,unrecognized,9,9,NCT02483520,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender identity,,unrecognized,8,8,NCT04870099,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase 1,,unrecognized,8,8,NCT02384954,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stage 1,,unrecognized,8,8,NCT01960257,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stage 2,,unrecognized,8,8,NCT03281369,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adolescents,,unrecognized,7,7,NCT03986190,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All Participants,,unrecognized,7,7,NCT02699450,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child Participants,,unrecognized,7,7,NCT02374138,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex at Birth,,unrecognized,6,6,NCT06050083,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adults,,unrecognized,5,5,NCT02544321,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Main Study,,unrecognized,5,5,NCT05375929,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent Participants,,unrecognized,5,5,NCT02374138,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Baseline,,unrecognized,4,4,NCT04129450,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregiver Sex,,unrecognized,4,4,NCT03786471,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child Sex,,unrecognized,4,4,NCT04528732,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child participants,,unrecognized,4,4,NCT05358444,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part C,,unrecognized,4,4,NCT02855164,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Period 1,,unrecognized,4,4,NCT05032196,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex/gender,,unrecognized,4,4,NCT04279483,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Veterans,,unrecognized,4,4,NCT04241094,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,caregivers,,unrecognized,4,4,NCT04912245,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adult,,unrecognized,3,3,NCT03580369,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child Gender,,unrecognized,3,3,NCT02713659,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child sex,,unrecognized,3,3,NCT02973815,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Don't know,,unrecognized,3,3,NCT04925570,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Full analysis set,,unrecognized,3,3,NCT03384966,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Maintenance Phase,,unrecognized,3,3,NCT01559935,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,None,,unrecognized,4,3,NCT00276094,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Partner,,unrecognized,3,3,NCT05958615,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Period 2,,unrecognized,3,3,NCT05032196,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase I,,unrecognized,3,3,NCT01897714,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase II,,unrecognized,3,3,NCT01897714,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex assigned at birth,,unrecognized,3,3,NCT04636840,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex at birth,,unrecognized,3,3,NCT06129487,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Sex/Gender, Customized",,unrecognized,3,3,NCT02633267,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Teachers,,unrecognized,3,3,NCT05048433,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Youth,,unrecognized,3,3,NCT05117099,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,mITT,,unrecognized,3,3,NCT03861169,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,0,,unrecognized,2,2,NCT00223080,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,1,,unrecognized,2,2,NCT00865566,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,2,,unrecognized,2,2,NCT00865566,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adolescent Sex,,unrecognized,2,2,NCT03818711,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All participants,,unrecognized,2,2,NCT02542293,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All patients,,unrecognized,2,2,NCT04561778,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Any STI,,unrecognized,2,2,NCT01836445,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Baseline (12 months),,unrecognized,2,2,NCT05423756,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Care Partners,,unrecognized,2,2,NCT02328326,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Care partners,,unrecognized,2,2,NCT04621448,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregiver Gender,,unrecognized,2,2,NCT03740113,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregiver Participants,,unrecognized,2,2,NCT03773757,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregiver Sex Demographics,,unrecognized,2,2,NCT04506437,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregiver sex,,unrecognized,2,2,NCT04528732,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,China,,unrecognized,2,2,NCT03434379,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Enrolled,,unrecognized,2,2,NCT02768727,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Expansion Phase,,unrecognized,2,2,NCT01693562,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,F-F,,unrecognized,2,2,NCT02793544,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,F-M,,unrecognized,2,2,NCT02793544,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Full Analysis Set,,unrecognized,2,2,NCT03487445,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,GA28948 & GA28949 Pooled Population,,unrecognized,2,2,NCT02171429,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender Identification,,unrecognized,2,2,NCT04276935,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Global,,unrecognized,2,2,NCT03434379,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Healthcare Workers,,unrecognized,2,2,NCT04088656,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,ITT Population,,unrecognized,2,2,NCT03622593,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Identified Patient,,unrecognized,2,2,NCT03846505,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Induction Phase,,unrecognized,2,2,NCT02394028,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Infant sex,,unrecognized,2,2,NCT02901665,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Initial Treatment,,unrecognized,2,2,NCT03108495,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Intervention (12 months),,unrecognized,2,2,NCT05423756,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Kappa FLC Subtype,,unrecognized,2,2,NCT04504825,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Lambda FLC Subtype,,unrecognized,2,2,NCT04504825,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,M-F,,unrecognized,2,2,NCT02793544,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,M-M,,unrecognized,2,2,NCT02793544,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Main,,unrecognized,2,2,NCT02333071,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Main Study Phase,,unrecognized,2,2,NCT03970733,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Mild,,unrecognized,2,2,NCT00276094,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Moderate,,unrecognized,3,2,NCT00276094,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Neonatal Sex,,unrecognized,2,2,NCT03631940,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Never,,unrecognized,2,2,NCT05396014,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,None,,unrecognized,2,2,NCT03500172,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,OLE,,unrecognized,2,2,NCT02333071,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Overall (All Randomized Participants),,unrecognized,2,2,NCT04504825,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Overall Study,,unrecognized,2,2,NCT04104022,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,PP,,unrecognized,2,2,NCT06403605,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent gender,,unrecognized,2,2,NCT01816074,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent participants,,unrecognized,2,2,NCT03766906,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parents/Caregivers,,unrecognized,2,2,NCT03388294,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part I,,unrecognized,2,2,NCT02159066,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part II,,unrecognized,2,2,NCT02159066,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants with dementia,,unrecognized,2,2,NCT04621448,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Partners,,unrecognized,2,2,NCT02240485,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient Participants,,unrecognized,2,2,NCT02328326,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Per Protocol Set,,unrecognized,2,2,NCT03487445,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase 1b,,unrecognized,2,2,NCT02795988,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Physician,,unrecognized,2,2,NCT03658642,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Preschoolers,,unrecognized,2,2,NCT04164277,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Reported Gender,,unrecognized,2,2,NCT03565497,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Retreatment,,unrecognized,2,2,NCT03108495,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Severe,,unrecognized,3,2,NCT00276094,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex Data for Participants Enrolled in Study mRNA-1273-P301,,unrecognized,2,2,NCT04796896,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of Child,,unrecognized,2,2,NCT03575884,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of Parent,,unrecognized,2,2,NCT03575884,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Sex, n",,unrecognized,2,2,NCT01380990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sexual desire,,unrecognized,2,2,NCT00351819,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sexual satisfaction,,unrecognized,2,2,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Sometimes,,unrecognized,2,2,NCT05396014,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Substudy,,unrecognized,2,2,NCT05375929,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Survivors,,unrecognized,2,2,NCT06517394,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Teens,,unrecognized,2,2,NCT04317664,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Treatment-Naive Population,,unrecognized,2,2,NCT03622593,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Undecided,,unrecognized,2,2,NCT03308097,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,United States,,unrecognized,2,2,NCT04924660,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Youth Sex Demographics,,unrecognized,2,2,NCT04506437,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,adolescents,,unrecognized,2,2,NCT02693665,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,0,,unrecognized,1,1,NCT00865566,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,0 Criteria,,unrecognized,1,1,NCT03313310,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,0-1,,unrecognized,1,1,NCT03741725,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,0-1 partners,,unrecognized,1,1,NCT01617096,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,0-24h,,unrecognized,1,1,NCT00551616,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,1,,unrecognized,1,1,NCT00223080,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,1 Criterion,,unrecognized,1,1,NCT03313310,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,1 partner,,unrecognized,1,1,NCT02498067,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,1-<6 years,,unrecognized,1,1,NCT03376516,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,11-14 year olds,,unrecognized,1,1,NCT04587167,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,12 month Survey Participants,,unrecognized,1,1,NCT05416372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,1200 mg/d HCQ,,unrecognized,1,1,NCT01550367,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,14 or Less (Years),,unrecognized,1,1,NCT01192282,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,149,,unrecognized,1,1,NCT06358820,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,15 - 19 (Years),,unrecognized,1,1,NCT01192282,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,15-17 year olds,,unrecognized,1,1,NCT04587167,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,16-Week Dose-finding Safety Part,,unrecognized,1,1,NCT02587325,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,2 Criteria,,unrecognized,1,1,NCT03313310,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,2 or 3 times a month,,unrecognized,1,1,NCT00635570,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,2 or 3 times a week,,unrecognized,1,1,NCT00635570,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,2 partners,,unrecognized,1,1,NCT02498067,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,2. Child Gender:,,unrecognized,1,1,NCT03753542,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,20 and Above (Years),,unrecognized,1,1,NCT01192282,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,21 - 50 years,,unrecognized,1,1,NCT04911296,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,25-48h,,unrecognized,1,1,NCT00551616,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,3,,unrecognized,1,1,NCT01234103,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,3 Criteria,,unrecognized,1,1,NCT03313310,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,3 partners,,unrecognized,1,1,NCT02498067,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,3-4,,unrecognized,1,1,NCT00865566,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,4 partners,,unrecognized,1,1,NCT02498067,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,4+ Criteria,,unrecognized,1,1,NCT03313310,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,49-72h,,unrecognized,1,1,NCT00551616,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,5 or more,,unrecognized,1,1,NCT00865566,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,5+ partners,,unrecognized,1,1,NCT02498067,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,51 - 65 years,,unrecognized,1,1,NCT04911296,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,6-<12 years,,unrecognized,1,1,NCT03376516,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,600 mg/d HCQ,,unrecognized,1,1,NCT01550367,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,603A: 0-12 Week Study Period,,unrecognized,1,1,NCT03514641,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,603B: 12-36 Week Study Period,,unrecognized,1,1,NCT03514641,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,66 - 75 years,,unrecognized,1,1,NCT04911296,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,73-96h,,unrecognized,1,1,NCT00551616,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,97-120h,,unrecognized,1,1,NCT00551616,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,> 1,,unrecognized,1,1,NCT00223080,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,>120h,,unrecognized,1,1,NCT00551616,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,>2,,unrecognized,1,1,NCT01617096,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,>= 65 years,,unrecognized,1,1,NCT00985010,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,ABI mild risk,,unrecognized,1,1,NCT03161327,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,ABI moderate risk,,unrecognized,1,1,NCT03161327,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,ABI severe risk,,unrecognized,1,1,NCT03161327,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,ADHD,,unrecognized,1,1,NCT01943539,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,AIN457 in Treatment Period 1 - JIA Category: ERA,,unrecognized,1,1,NCT03031782,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,AIN457 in Treatment Period 1 -JIA Category: JPsA,,unrecognized,1,1,NCT03031782,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,AIN457 in Treatment Period 2 - JIA Category: ERA,,unrecognized,1,1,NCT03031782,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,AIN457 in Treatment Period 2 -JIA Category: JPsA,,unrecognized,1,1,NCT03031782,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,AL Residents (Primary),,unrecognized,1,1,NCT03892200,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,AL Staff at 4-Months (Secondary),,unrecognized,1,1,NCT03892200,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,AL Staff at 8-Months (Secondary),,unrecognized,1,1,NCT03892200,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,AL Staff at Baseline (Secondary),,unrecognized,1,1,NCT03892200,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,AYA,,unrecognized,1,1,NCT06191679,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,AYA living with HIV,,unrecognized,1,1,NCT03758066,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Abol Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,About half the time,,unrecognized,1,1,NCT05161689,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Absent,,unrecognized,1,1,NCT03332303,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,According to Group,,unrecognized,1,1,NCT05253573,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Acute,,unrecognized,1,1,NCT02522429,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Acute Phase Randomization,,unrecognized,1,1,NCT03266016,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Add-on Phase,,unrecognized,1,1,NCT04676529,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Additional Category,,unrecognized,1,1,NCT04047420,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adhesive Capsulitis Population,,unrecognized,1,1,NCT04160091,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adolescent participants,,unrecognized,1,1,NCT05879198,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adult Caregiver Participants,,unrecognized,1,1,NCT06012851,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adult Children,,unrecognized,1,1,NCT05150990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adult Clinic Patients Eligible for CRC Screening Post-Implementation,,unrecognized,1,1,NCT03843957,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adult Inpatients With Community Acquired Pneumonia,,unrecognized,1,1,NCT06027593,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adult Outpatients With Pharyngitis,,unrecognized,1,1,NCT06027593,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adult participants,,unrecognized,1,1,NCT05358444,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adult participants reporting sex,,unrecognized,1,1,NCT05879198,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Adult/parent participants,,unrecognized,1,1,NCT02029976,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Age at first intercourse <16 years,,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Aggressive subtype,,unrecognized,1,1,NCT00464620,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Agree,,unrecognized,1,1,NCT03808883,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Aim 1: Key Informant Interviews,,unrecognized,1,1,NCT04188041,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Aim 2: RI LTBI ECHO Participants,,unrecognized,1,1,NCT04188041,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Aim 3: Retrospective Chart Review,,unrecognized,1,1,NCT04188041,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Alinity s Anti-HBc Gender,,unrecognized,1,1,NCT03285295,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Alinity s Anti-HCV Gender,,unrecognized,1,1,NCT03285295,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Alinity s Chagas Gender,,unrecognized,1,1,NCT03285295,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Alinity s HBsAg Gender,,unrecognized,1,1,NCT03285295,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Alinity s HIV Ag/Ab Combo Gender,,unrecognized,1,1,NCT03285295,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Alinity s HTLV I/II Gender,,unrecognized,1,1,NCT03285295,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Alkyl nitrites (Rush, poppers)",,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All Cohorts Except 15E,,unrecognized,1,1,NCT04889209,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All Countries,,unrecognized,1,1,NCT04924660,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All Participants at Randomization,,unrecognized,1,1,NCT00038727,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All Parts Excluding Part A.2 and Parts J,,unrecognized,1,1,NCT04927065,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All Patients,,unrecognized,1,1,NCT03043872,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All RCC participants,,unrecognized,1,1,NCT05363072,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All Sites,,unrecognized,1,1,NCT04124471,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All Subjects,,unrecognized,1,1,NCT02844439,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All in- and outpatients in 2015,,unrecognized,1,1,NCT04903496,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All in- and outpatients in 2017,,unrecognized,1,1,NCT04903496,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All in- and outpatients in 2019,,unrecognized,1,1,NCT04903496,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All patients and clinicians,,unrecognized,1,1,NCT02340767,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All patients at risk for PAD,,unrecognized,1,1,NCT03161327,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All patients with ICI primary and secondary resistance,,unrecognized,1,1,NCT02654587,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All randomized participants,,unrecognized,1,1,NCT02711553,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All randomized participants who received at least 1 dose of study drug,,unrecognized,1,1,NCT02711553,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All study participants,,unrecognized,1,1,NCT01833988,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,All subjects,,unrecognized,1,1,NCT03905330,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Always,,unrecognized,1,1,NCT03741725,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Always discuss HIV with partners :,,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Alzheimer's Disease,,unrecognized,1,1,NCT04057807,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Anal Intercourse with Condom Failure,,unrecognized,1,1,NCT03313310,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Anal sex,,unrecognized,1,1,NCT04233372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Anal sex with a condom,,unrecognized,1,1,NCT02248558,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Analyzed participants,,unrecognized,1,1,NCT01450943,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Anxiety Patients,,unrecognized,1,1,NCT00055224,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Any recent or concurrent sexually transmitted infection,,unrecognized,1,1,NCT05965427,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Any sex/gender,,unrecognized,1,1,NCT06561217,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Apneic Threshold & CO2 Reserve Analysis Population,,unrecognized,1,1,NCT00732199,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Approximately once a week,,unrecognized,1,1,NCT00635570,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Apremilast Sub-protocol,,unrecognized,1,1,NCT04590586,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Arbour Trails,,unrecognized,1,1,NCT04037436,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,As-Treated Set 1,,unrecognized,1,1,NCT06042049,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,As-Treated Set 2,,unrecognized,1,1,NCT06042049,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Assessment and Teach Back,,unrecognized,1,1,NCT02354482,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Assigned Sex at Birth,,unrecognized,1,1,NCT04743908,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Attitudes,,unrecognized,1,1,NCT06487390,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Authors who provided complete IPD,,unrecognized,1,1,NCT02569411,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,BDC-UColorado,,unrecognized,1,1,NCT03369067,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,BMI group 1,,unrecognized,1,1,NCT01378299,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,BMI group 2,,unrecognized,1,1,NCT01378299,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,BMI group 3,,unrecognized,1,1,NCT01378299,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Bar-Korwa Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Baricitinib 2mg Initial Study,,unrecognized,1,1,NCT05188521,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Barriers,,unrecognized,1,1,NCT06487390,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Baseline (Phase 1),,unrecognized,1,1,NCT03737383,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Baseline (Phase 2),,unrecognized,1,1,NCT03737383,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Baseline Period,,unrecognized,1,1,NCT03599557,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Baseline Period Sex,,unrecognized,1,1,NCT01070095,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Baseline Providers,,unrecognized,1,1,NCT05328648,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Baseline Survey Participants,,unrecognized,1,1,NCT05416372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Between 18 and 65 years,,unrecognized,1,1,NCT00985010,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Bi-Sexual,,unrecognized,1,1,NCT03277794,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,BiRD Phase,,unrecognized,1,1,NCT01559935,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Biological Sex,,unrecognized,1,1,NCT04419168,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Blood Pressure and Lipid Studies,,unrecognized,1,1,NCT00542178,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Blood contact/exchange,,unrecognized,1,1,NCT04233372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Booster Period Month 49,,unrecognized,1,1,NCT00955682,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Booster Phase: Placebo,,unrecognized,1,1,NCT03970733,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Booster Phase: VLA15 with Alum higher dose,,unrecognized,1,1,NCT03970733,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Bovine Thrombin,,unrecognized,1,1,NCT02014402,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Brazil,,unrecognized,1,1,NCT04924660,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Brief Hyperoxia Response Analysis Population,,unrecognized,1,1,NCT00732199,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Broken condom,,unrecognized,1,1,NCT04233372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Bronchiolitis patients (Active Deimplementation Phase, for primary outcome)",,unrecognized,1,1,NCT05132322,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Bronchiolitis patients (Baseline Phase, for primary outcome)",,unrecognized,1,1,NCT05132322,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Bronchiolitis patients (Exploratory Phase, for exploratory outcomes)",,unrecognized,1,1,NCT05132322,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Bronchiolitis patients (Sustainment Phase, for primary outcome)",,unrecognized,1,1,NCT05132322,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,CCHMC Base ED,,unrecognized,1,1,NCT01657344,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,CCHMC Satellite ED,,unrecognized,1,1,NCT01657344,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,CHOP Base ED,,unrecognized,1,1,NCT01657344,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,CLAI in past 3 months,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,CM,,unrecognized,1,1,NCT03758066,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,CNMC Base ED,,unrecognized,1,1,NCT01657344,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,CNMC Satellite ED,,unrecognized,1,1,NCT01657344,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,COS cycle 2,,unrecognized,1,1,NCT01956123,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,COS cycle 3,,unrecognized,1,1,NCT01956123,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,COVID-19,,unrecognized,1,1,NCT06141824,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,CRC-MSS,,unrecognized,1,1,NCT04208958,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Cambodia,,unrecognized,1,1,NCT00440999,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Canada,,unrecognized,1,1,NCT06456671,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Cancer Survivors,,unrecognized,1,1,NCT05702723,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Cannot Be Reported Due to Participant Privacy,,unrecognized,1,1,NCT04586244,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Car Phase,,unrecognized,1,1,NCT01559935,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Cardiac disorder,,unrecognized,1,1,NCT06790420,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Care Partner sex,,unrecognized,1,1,NCT03283553,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Care Recipient,,unrecognized,1,1,NCT05527405,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Care Recipients (Korean Older Adults),,unrecognized,1,1,NCT03909347,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Care partner (CP),,unrecognized,1,1,NCT03550131,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Care recipient (CR),,unrecognized,1,1,NCT03550131,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Care recipients,,unrecognized,1,1,NCT04418232,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregiver Data,,unrecognized,1,1,NCT03988621,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregiver age,,unrecognized,1,1,NCT04010227,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregiver gender,,unrecognized,1,1,NCT04869085,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregiver in caregiver-child pair,,unrecognized,1,1,NCT01519453,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregivers (separate from patients),,unrecognized,1,1,NCT03540771,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregivers of adolescents,,unrecognized,1,1,NCT03557151,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Caregivers who completed surveys,,unrecognized,1,1,NCT05387564,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Chemsex care programs affiliated with NGO,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Chemsex recovery therapy groups or counseling,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child biological sex,,unrecognized,1,1,NCT05096611,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child care center directors,,unrecognized,1,1,NCT03319927,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child care providers,,unrecognized,1,1,NCT03319927,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child gender,,unrecognized,1,1,NCT01816074,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child in caregiver-child pair,,unrecognized,1,1,NCT01519453,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Child with rare disease,,unrecognized,1,1,NCT04855734,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Children Sex,,unrecognized,1,1,NCT02395120,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Children participants,,unrecognized,1,1,NCT03294590,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Chlamydia,,unrecognized,1,1,NCT03881007,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Chronic,,unrecognized,1,1,NCT02522429,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Chronic Hepatitis C patients,,unrecognized,1,1,NCT01600105,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,ClinOleic,,unrecognized,1,1,NCT01943409,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinic A,,unrecognized,1,1,NCT04107116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinic B,,unrecognized,1,1,NCT04107116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinic C,,unrecognized,1,1,NCT04107116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinic D,,unrecognized,1,1,NCT04107116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinic E,,unrecognized,1,1,NCT04107116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinic F,,unrecognized,1,1,NCT04107116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinic G,,unrecognized,1,1,NCT04107116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinic H,,unrecognized,1,1,NCT04107116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinic I,,unrecognized,1,1,NCT04107116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinic Staff,,unrecognized,1,1,NCT05472142,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Clinician Characteristics - Sex,,unrecognized,1,1,NCT05563714,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Cognitively Normal,,unrecognized,1,1,NCT04057807,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Combination phase,,unrecognized,1,1,NCT02685709,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Communication Intervention,,unrecognized,1,1,NCT03599557,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Comparative analysis set,,unrecognized,1,1,NCT05796245,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Completed Data Collection for Aim 1,,unrecognized,1,1,NCT05586490,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Completed Data Collection for Aim 2,,unrecognized,1,1,NCT05586490,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Completed Data Collection for Aim 3,,unrecognized,1,1,NCT05586490,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Completed Trial (ITT),,unrecognized,1,1,NCT03081117,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Completed Trial (Per Protocol),,unrecognized,1,1,NCT03081117,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Completers,,unrecognized,1,1,NCT03621280,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Completing study,,unrecognized,1,1,NCT02768727,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Composite MSHQ,,unrecognized,1,1,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Condomless anal sex,,unrecognized,1,1,NCT02248558,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Contact Clients,,unrecognized,1,1,NCT05343390,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Contact person participants,,unrecognized,1,1,NCT04520113,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Control Group,,unrecognized,1,1,NCT02798354,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Core trial period,,unrecognized,1,1,NCT05870540,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Count by sex,,unrecognized,1,1,NCT04872569,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Count of Participants,,unrecognized,1,1,NCT05735652,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Crisaborole 2% BID,,unrecognized,1,1,NCT04040192,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Crisaborole 2% QD,,unrecognized,1,1,NCT04040192,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Crohn's disease,,unrecognized,1,1,NCT03834051,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Cross-over for Treatment Failure,,unrecognized,1,1,NCT03738566,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Crossover,,unrecognized,1,1,NCT02763826,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Cycle 1, Rasburicase",,unrecognized,1,1,NCT01200485,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Cytopenias,,unrecognized,1,1,NCT06790420,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,DB Treatment Period,,unrecognized,1,1,NCT04556734,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,DBT Phase,,unrecognized,1,1,NCT03941834,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,DIVI Team,,unrecognized,1,1,NCT04152603,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,DPPOS Participants,,unrecognized,1,1,NCT00038727,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Dabigatran vs Apixaban (matched pop),,unrecognized,1,1,NCT03026556,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Dabigatran vs Rivaroxaban (matched pop),,unrecognized,1,1,NCT03026556,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Dabigatran vs VKA (matched pop),,unrecognized,1,1,NCT02785354,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Dabigatran vs VKA(matched pop),,unrecognized,1,1,NCT02240667,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Dementia Caregiver,,unrecognized,1,1,NCT03896711,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Demisexual,,unrecognized,1,1,NCT03912753,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Demisexual,,unrecognized,1,1,NCT06229132,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Demographics,,unrecognized,1,1,NCT03297645,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Demographics Across Arms,,unrecognized,1,1,NCT02981303,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Development of malignant tumor,,unrecognized,1,1,NCT06790420,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Dexmedetomidine,,unrecognized,1,1,NCT03284307,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Diagnostic Phase,,unrecognized,1,1,NCT01667562,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Did not have receptive sex without a condom in past 3 months,,unrecognized,1,1,NCT03897049,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Did not specify,,unrecognized,1,1,NCT06425458,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Disagree,,unrecognized,1,1,NCT03808883,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Discharge,,unrecognized,1,1,NCT02004366,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Does not apply (providers),,unrecognized,1,1,NCT04584294,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Don't know,,unrecognized,1,1,NCT04922216,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Dose Escalation,,unrecognized,1,1,NCT02763826,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Dose Optimization Phase,,unrecognized,1,1,NCT05631626,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Double Blind Phase,,unrecognized,1,1,NCT04712669,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Double Masked Period,,unrecognized,1,1,NCT04133311,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Double blind phase,,unrecognized,1,1,NCT05445557,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Double-Blind Controlled Trial,,unrecognized,1,1,NCT04629950,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Double-Blind Period,,unrecognized,1,1,NCT02586623,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Double-Blind Phase,,unrecognized,1,1,NCT05631626,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Double-Blind Relapse Prevention,,unrecognized,1,1,NCT05014919,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Double-Blind Sex,,unrecognized,1,1,NCT03323749,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Double-Blind Withdrawal Period,,unrecognized,1,1,NCT05668754,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Double-blind period,,unrecognized,1,1,NCT04424927,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Dual Intervention,,unrecognized,1,1,NCT03316950,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Due to privacy concerns of single participant, data will not be shown for this outcome",,unrecognized,1,1,NCT04986072,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,ELL (English Language Learner),,unrecognized,1,1,NCT04717479,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,EMPOWER Study (randomized),,unrecognized,1,1,NCT03445988,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Efficacy Population,,unrecognized,1,1,NCT02221869,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Either Sex,,unrecognized,1,1,NCT00491374,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Ejaculation,,unrecognized,1,1,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Ejaculations,,unrecognized,1,1,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Elders,,unrecognized,1,1,NCT02807506,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Endline Providers,,unrecognized,1,1,NCT05328648,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Enrolled Population,,unrecognized,1,1,NCT02221869,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Enrolled under Amendment 1~3,,unrecognized,1,1,NCT03298022,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Enrolled under Amendment 4,,unrecognized,1,1,NCT03298022,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Enteral feeding,,unrecognized,1,1,NCT03278847,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Erectile function,,unrecognized,1,1,NCT00351819,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Erection,,unrecognized,1,1,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Erlotinib,,unrecognized,1,1,NCT01667562,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Escalation 100mg,,unrecognized,1,1,NCT04676529,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Escalation 150mg,,unrecognized,1,1,NCT04676529,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Escalation 200mg,,unrecognized,1,1,NCT04676529,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Escalation Phase,,unrecognized,1,1,NCT01693562,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Every time,,unrecognized,1,1,NCT05161689,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Exploration Phase,,unrecognized,1,1,NCT01693562,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Exploring,,unrecognized,1,1,NCT03487796,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Extended Dosing Phase,,unrecognized,1,1,NCT03436797,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,F to M,,unrecognized,1,1,NCT02641236,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,"F/F, M/M, M/F",,unrecognized,1,1,NCT00245037,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,F/M,,unrecognized,1,1,NCT00245037,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,FAS72+,,unrecognized,1,1,NCT03923426,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,FAS72-,,unrecognized,1,1,NCT03923426,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,FE-HS,,unrecognized,1,1,NCT04510090,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,FQHC 1,,unrecognized,1,1,NCT04514341,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,FQHC 2,,unrecognized,1,1,NCT04514341,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,FX Addendum,,unrecognized,1,1,NCT04091048,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Family Members,,unrecognized,1,1,NCT05340478,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Family caregivers,,unrecognized,1,1,NCT04238520,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Father participants,,unrecognized,1,1,NCT05374837,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Father sex (baseline),,unrecognized,1,1,NCT03548558,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Fathers' sex,,unrecognized,1,1,NCT02901665,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Fellow eyes,,unrecognized,1,1,NCT04200651,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,First line,,unrecognized,1,1,NCT03193866,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Flaxseed and Placebo Period,,unrecognized,1,1,NCT00956813,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Flu A,,unrecognized,1,1,NCT06141824,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Flu B,,unrecognized,1,1,NCT06141824,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Frail,,unrecognized,1,1,NCT03354546,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Frequent sexual activity (3+ times/week),,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Frequently / always,,unrecognized,1,1,NCT02516202,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Full analysis set (FAS),,unrecognized,1,1,NCT02391116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,GA28948 Population,,unrecognized,1,1,NCT02163759,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,GA28949 Population,,unrecognized,1,1,NCT02171429,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,GHB/GBL,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,GI perforation/obstruction,,unrecognized,1,1,NCT06790420,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,GIST,,unrecognized,1,1,NCT00464620,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,GIST - Sunitinib,,unrecognized,1,1,NCT00700258,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gamblers,,unrecognized,1,1,NCT02240485,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gastric/GEJ,,unrecognized,1,1,NCT04208958,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender Categorical,,unrecognized,1,1,NCT00547248,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender Distribution,,unrecognized,1,1,NCT05294640,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender Now,,unrecognized,1,1,NCT04014959,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender at Baseline (pre-MDA),,unrecognized,1,1,NCT01905423,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender at Birth,,unrecognized,1,1,NCT03636022,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender categorical,,unrecognized,1,1,NCT04190693,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender identification,,unrecognized,1,1,NCT02043015,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender matched transplants,,unrecognized,1,1,NCT00745420,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender of Child,,unrecognized,1,1,NCT05107726,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender of Child Participants,,unrecognized,1,1,NCT05209932,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender of Parent,,unrecognized,1,1,NCT05107726,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender of Parent Participants,,unrecognized,1,1,NCT05209932,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender of reference patient,,unrecognized,1,1,NCT04613739,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gender of study participants,,unrecognized,1,1,NCT03168672,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Gender, Self-Report",,unrecognized,1,1,NCT05104450,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Gender, customized",,unrecognized,1,1,NCT01944462,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Gender, n",,unrecognized,1,1,NCT02653664,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Gender, participant reported",,unrecognized,1,1,NCT03291587,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Germany,,unrecognized,1,1,NCT04924660,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Glycemic Control Study,,unrecognized,1,1,NCT00542178,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Gonorrhea,,unrecognized,1,1,NCT03881007,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Got-Aglu Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Greater than or equal to 1 x month,,unrecognized,1,1,NCT01655498,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Group 1,,unrecognized,1,1,NCT05292534,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Group 2,,unrecognized,1,1,NCT05292534,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"HFD, Jaundice",,unrecognized,1,1,NCT06790420,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,HIV Intervention,,unrecognized,1,1,NCT01366495,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,HIV Testing,,unrecognized,1,1,NCT01366495,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,HIV-positive sexual partner :,,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Had no sexual activity in the last half of the year or vaginal sex less than 3 times per one month,,unrecognized,1,1,NCT03894813,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Had receptive sex without a condom in past 3 months,,unrecognized,1,1,NCT03897049,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Having a sexual partner living with HIV in past 3 months,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,He/Him/His,,unrecognized,1,1,NCT03177148,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Healthy Controls,,unrecognized,1,1,NCT05878873,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Healthy Participants,,unrecognized,1,1,NCT00055224,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Healthy Volunteers,,unrecognized,1,1,NCT00047853,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Healthy volunteers,,unrecognized,1,1,NCT00026559,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,History of STI :,,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Home-Based Trust,,unrecognized,1,1,NCT02354482,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Hormonal Score,,unrecognized,1,1,NCT03716739,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Hospital-Based Trust,,unrecognized,1,1,NCT02354482,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Human Thrombin,,unrecognized,1,1,NCT02014402,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Hypotension,,unrecognized,1,1,NCT06790420,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Hypoxic Ventilatory Response Analysis Population,,unrecognized,1,1,NCT00732199,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,IH and Narcolepsy cohorts,,unrecognized,1,1,NCT05875974,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,INB,,unrecognized,1,1,NCT03086213,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,ITT,,unrecognized,1,1,NCT04796935,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,ITT/Safety Population,,unrecognized,1,1,NCT03861169,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Identified Gender,,unrecognized,1,1,NCT04286867,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Implementation,,unrecognized,1,1,NCT01875861,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,In-hospital,,unrecognized,1,1,NCT02004366,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Index Clients,,unrecognized,1,1,NCT05343390,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Index TB participants,,unrecognized,1,1,NCT04520113,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Index children,,unrecognized,1,1,NCT04059185,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,India,,unrecognized,1,1,NCT00440999,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Indolent,,unrecognized,1,1,NCT00464620,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Indonesia/Maumere,,unrecognized,1,1,NCT00440999,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Induction Period,,unrecognized,1,1,NCT02435992,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Induction phase,,unrecognized,1,1,NCT03341962,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Infant Sex,,unrecognized,1,1,NCT04002908,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Infants (perinates),,unrecognized,1,1,NCT04818112,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Infection,,unrecognized,1,1,NCT06790420,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Infusion reactions,,unrecognized,1,1,NCT06790420,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Initial Intervention,,unrecognized,1,1,NCT03316950,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Initial Study Phase,,unrecognized,1,1,NCT03738566,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Initial assignment,,unrecognized,1,1,NCT02132195,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Inpatient,,unrecognized,1,1,NCT02455076,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Intercourse satisfaction,,unrecognized,1,1,NCT00351819,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Intervention Group,,unrecognized,1,1,NCT02798354,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Intervention Period,,unrecognized,1,1,NCT06127524,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Intervention Period Sex,,unrecognized,1,1,NCT01070095,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Interventionists,,unrecognized,1,1,NCT03916146,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Intralipid,,unrecognized,1,1,NCT01943409,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Irritable bowel syndrome,,unrecognized,1,1,NCT03834051,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Italy,,unrecognized,1,1,NCT04924660,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,JZP-110,,unrecognized,1,1,NCT02348619,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Kazakhstan, Astana",,unrecognized,1,1,NCT02143128,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Ketamine,,unrecognized,1,1,NCT03284307,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Kids,,unrecognized,1,1,NCT06548074,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Kinnect to Wellness,,unrecognized,1,1,NCT04037436,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Kitare Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Known Gender,,unrecognized,1,1,NCT02206035,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Kuoyo-Kowe Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,LGBQ,,unrecognized,1,1,NCT02332239,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,LGBTQ+,,unrecognized,1,1,NCT02951455,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,LGBTQ+,,unrecognized,1,1,NCT05838027,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,LTF and Minute Ventilation Analysis Population,,unrecognized,1,1,NCT00732199,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Lanadelumab Sub-protocol,,unrecognized,1,1,NCT04590586,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Lead-In TP1: Humira (Adalimumab),,unrecognized,1,1,NCT04230213,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Less than 1 x per month,,unrecognized,1,1,NCT01655498,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Less than half the time,,unrecognized,1,1,NCT05161689,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Level 1: Lifestyle Modification vs ESG,,unrecognized,1,1,NCT03406975,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Level 2: Crossover Lifestyle to ESG,,unrecognized,1,1,NCT03406975,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Lookback Period,,unrecognized,1,1,NCT06127524,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Loved ones,,unrecognized,1,1,NCT04241094,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,MAD-HS,,unrecognized,1,1,NCT04510090,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,MCL - Temsirolimus,,unrecognized,1,1,NCT00700258,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,MD-CP,,unrecognized,1,1,NCT04510090,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,MD-UP,,unrecognized,1,1,NCT04510090,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,MDMA,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,MSM,,unrecognized,1,1,NCT05723263,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,MST negative,,unrecognized,1,1,NCT02039856,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,MST positive,,unrecognized,1,1,NCT02039856,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Main FIREFLI trial,,unrecognized,1,1,NCT04717258,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Main Protocol,,unrecognized,1,1,NCT04091048,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Main Study Participants,,unrecognized,1,1,NCT02906787,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Main study,,unrecognized,1,1,NCT04717934,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Main study phase,,unrecognized,1,1,NCT03224234,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Maintenance Period,,unrecognized,1,1,NCT02435992,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Maintenance phase,,unrecognized,1,1,NCT03341962,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Manyanda Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Maternal sex,,unrecognized,1,1,NCT04174521,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Melanoma,,unrecognized,1,1,NCT04208958,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Mental health clinic/hospital or rehab center,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Metformin (2000mg) With Chemoradiation,,unrecognized,1,1,NCT02325401,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Metformin (2550mg) With Chemoradiation,,unrecognized,1,1,NCT02325401,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Metformin (3000mg) With Chemoradiation,,unrecognized,1,1,NCT02325401,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Methamphetamine,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Microscopic colitis,,unrecognized,1,1,NCT03834051,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Midazolam,,unrecognized,1,1,NCT03284307,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Mirieri Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Modified pharmacodynamic analysis set,,unrecognized,1,1,NCT02472795,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,More than 3 times a week,,unrecognized,1,1,NCT00635570,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,More than half the time,,unrecognized,1,1,NCT05161689,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,More than one endorsement,,unrecognized,1,1,NCT03487796,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Mother Sex,,unrecognized,1,1,NCT03548558,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Mother biological sex,,unrecognized,1,1,NCT05096611,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Mother participants,,unrecognized,1,1,NCT05374837,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Mothers sex,,unrecognized,1,1,NCT04002908,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Mothers' sex,,unrecognized,1,1,NCT02901665,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Multiple Dose,,unrecognized,1,1,NCT03073213,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Multiple identities,,unrecognized,1,1,NCT04342494,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Multiple recent partners (3+ in 6 months) :,,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Multiple sexual partners,,unrecognized,1,1,NCT05965427,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Multiple sexual partners (11+ lifetime) :,,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,NSCLC,,unrecognized,1,1,NCT03004183,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Nduru Kadero Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Needle Syringe Program,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Negative,,unrecognized,1,1,NCT00978068,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Nephrologists,,unrecognized,1,1,NCT04392440,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Neuro-typical,,unrecognized,1,1,NCT01943539,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Neutral,,unrecognized,1,1,NCT03808883,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Never / rarely,,unrecognized,1,1,NCT02516202,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Never discuss HIV with partners :,,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,No History of STI Diagnosis,,unrecognized,1,1,NCT02128217,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,No Sex Partners,,unrecognized,1,1,NCT03670355,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,No did not have sex in past 3 months at Baseline,,unrecognized,1,1,NCT02847858,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,No recent sex,,unrecognized,1,1,NCT02248558,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,No same sex partner,,unrecognized,3,1,NCT04680611,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,"No, not within last 3 months",,unrecognized,1,1,NCT02494817,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Non-MSM,,unrecognized,1,1,NCT05723263,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Non-specific,,unrecognized,1,1,NCT00859495,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Non-specific gender count,,unrecognized,1,1,NCT00556166,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Non-use,,unrecognized,1,1,NCT03741725,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Not Applicable,,unrecognized,1,1,NCT01139762,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Not Frail,,unrecognized,1,1,NCT03354546,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Not Sexually Active with ED,,unrecognized,1,1,NCT00384930,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Not Sexually Active without ED,,unrecognized,1,1,NCT00384930,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Not applicable,,unrecognized,1,1,NCT05376358,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Not sexually active,,unrecognized,1,1,NCT03624972,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Not-treated mRCC participants,,unrecognized,1,1,NCT05363072,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Nurse,,unrecognized,1,1,NCT02320175,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,OA Population,,unrecognized,1,1,NCT04160091,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,OLE Period,,unrecognized,1,1,NCT04556734,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,OLE Phase,,unrecognized,1,1,NCT03941834,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,OLE trial period,,unrecognized,1,1,NCT05870540,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Occasionally,,unrecognized,1,1,NCT02516202,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Offspring,,unrecognized,1,1,NCT04050202,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Often,,unrecognized,1,1,NCT03741725,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Often to Almost Always,,unrecognized,1,1,NCT05396014,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Older Adults,,unrecognized,1,1,NCT05150990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Once a month or less,,unrecognized,1,1,NCT00635570,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Ongoing problem,,unrecognized,1,1,NCT01262573,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Open Label Phase,,unrecognized,1,1,NCT04712669,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Open Label phase,,unrecognized,1,1,NCT05445557,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Open-Enrollment Sex,,unrecognized,1,1,NCT03323749,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Open-Label Period,,unrecognized,1,1,NCT02586623,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Open-Label Phase,,unrecognized,1,1,NCT00958633,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Open-Label Titration Period,,unrecognized,1,1,NCT05668754,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Open-Label Treatment,,unrecognized,1,1,NCT05014919,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Open-label initial phase (OLP),,unrecognized,1,1,NCT03528681,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Open-label phase,,unrecognized,1,1,NCT03341962,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Optional Flaxseed Continuation,,unrecognized,1,1,NCT00956813,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Oral sex,,unrecognized,1,1,NCT04233372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Orgasmic function,,unrecognized,1,1,NCT00351819,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Oruga Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Osewre Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Outpatient,,unrecognized,1,1,NCT02455076,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Overall Sample,,unrecognized,1,1,NCT01875861,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Overall population,,unrecognized,1,1,NCT01121588,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Overall satisfaction,,unrecognized,1,1,NCT00351819,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Overall satisfied with sexual encounters,,unrecognized,1,1,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,PCMHI Participants,,unrecognized,1,1,NCT04350866,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,PCV13 Population,,unrecognized,1,1,NCT03276754,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Active Interest, Assessment of Partner Related Impacts",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Active Interest, Summary Score",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Active, Assessment of Arousal, Orgasm",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Active, Assessment of Desire",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Active, Condition-specifc Impacts on Activity",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Active, Condition-specific Impact on Sexual Quality",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Active, Global Quality",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Inactive, Condition Impact on Sexual Quality",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Inactive, Condition Specific Reason for Not Being Active",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Inactive, Global Quality",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"PISQ-IR Sexually Inactive, Partner-Related Reasons for Not Being Active",,unrecognized,1,1,NCT03672461,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,PLWD,,unrecognized,1,1,NCT04555616,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,PLWD Sex,,unrecognized,1,1,NCT03786471,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,PP population,,unrecognized,1,1,NCT02510235,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,PVB,,unrecognized,1,1,NCT03086213,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent 1,,unrecognized,1,1,NCT05762835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent 2,,unrecognized,1,1,NCT05762835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent Gender,,unrecognized,1,1,NCT03521115,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent sex,,unrecognized,1,1,NCT02973815,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent/Guardian,,unrecognized,1,1,NCT03442114,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent/Infant Dyads,,unrecognized,1,1,NCT03885232,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent/Legal Guardians,,unrecognized,1,1,NCT05675020,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parent/caregiver participants,,unrecognized,1,1,NCT03294590,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parenteral nutrition,,unrecognized,1,1,NCT03278847,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parents of Youth Patients,,unrecognized,1,1,NCT05626231,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parents or Caregivers,,unrecognized,1,1,NCT05835362,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parents/LARs,,unrecognized,1,1,NCT04152603,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parents/caregivers,,unrecognized,1,1,NCT03385629,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parents/guardians (for exploratory outcomes),,unrecognized,1,1,NCT05132322,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 1 (Fasted),,unrecognized,1,1,NCT05930782,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 1 and Part 2,,unrecognized,1,1,NCT04905407,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Part 1: 16-week double-blind, randomized, placebo-controlled treatment period (Day 1 to Week 16)",,unrecognized,1,1,NCT02036970,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 1A,,unrecognized,1,1,NCT05261191,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 1B,,unrecognized,1,1,NCT05261191,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 1a,,unrecognized,1,1,NCT02303574,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 1b,,unrecognized,1,1,NCT02303574,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 2 (Fed),,unrecognized,1,1,NCT05930782,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 2 (OLE),,unrecognized,1,1,NCT03098797,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part 3,,unrecognized,1,1,NCT04905407,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part A (15 Days),,unrecognized,1,1,NCT03691779,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part A (<14 kg Weight),,unrecognized,1,1,NCT02797132,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part A (>=14 kg Weight),,unrecognized,1,1,NCT02797132,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part A.2 and Parts J,,unrecognized,1,1,NCT04927065,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part A: Part A: Dose Escalation (Within Group),,unrecognized,1,1,NCT02705755,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part B (24 Weeks),,unrecognized,1,1,NCT03691779,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part B (<14 kg Weight),,unrecognized,1,1,NCT02797132,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part B (>=14 kg Weight),,unrecognized,1,1,NCT02797132,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part B + A/B,,unrecognized,1,1,NCT02725567,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part B: Randomized - Placebo,,unrecognized,1,1,NCT02705755,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part B: Randomized - TD-9855,,unrecognized,1,1,NCT02705755,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part I (SAD),,unrecognized,1,1,NCT04036227,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Part II (MAD),,unrecognized,1,1,NCT04036227,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participant Reported Gender,,unrecognized,1,1,NCT04524598,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participant with Dementia,,unrecognized,1,1,NCT05202223,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participant-described Gender Identity,,unrecognized,1,1,NCT04066959,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants Analyzed,,unrecognized,1,1,NCT04948268,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants With Psychosis,,unrecognized,1,1,NCT06080477,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants assigned to open-label TD1414 TID,,unrecognized,1,1,NCT00626795,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants by Sex,,unrecognized,1,1,NCT02122458,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants randomized to blinded treatment,,unrecognized,1,1,NCT00626795,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants substituted,,unrecognized,1,1,NCT01546922,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants with G12C Mutation,,unrecognized,1,1,NCT02642042,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants with Non-G12C Mutation,,unrecognized,1,1,NCT02642042,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants with cognitive impairment,,unrecognized,1,1,NCT02729311,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Participants.,,unrecognized,1,1,NCT05233098,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Partners of Phase 2 patients,,unrecognized,1,1,NCT04680611,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Partners of patients with severe eosinophilic asthma Phase 2,,unrecognized,1,1,NCT04680611,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parts 2 and 3,,unrecognized,1,1,NCT03464019,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Parts A + B,,unrecognized,1,1,NCT02855164,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Past two months,,unrecognized,1,1,NCT06001307,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Past year,,unrecognized,1,1,NCT06001307,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient Characteristics - Sex,,unrecognized,1,1,NCT05563714,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient Communication,,unrecognized,1,1,NCT02354482,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient Data,,unrecognized,1,1,NCT03988621,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient Sex/Gender,,unrecognized,1,1,NCT03576495,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient age,,unrecognized,1,1,NCT04010227,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient gender,,unrecognized,1,1,NCT04869085,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient participants,,unrecognized,1,1,NCT04347291,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient sex,,unrecognized,1,1,NCT03283553,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient with heart failure,,unrecognized,1,1,NCT04737759,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patient/Family Caregiver Assessment,,unrecognized,1,1,NCT02354482,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patients with severe eosinophilic asthma Phase 1,,unrecognized,1,1,NCT04680611,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Patients with severe eosinophilic asthma Phase 2,,unrecognized,1,1,NCT04680611,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Pediatric Inpatients With Community Acquired Pneumonia,,unrecognized,1,1,NCT06027593,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Pediatric Outpatients With Acute Otitis Media,,unrecognized,1,1,NCT06027593,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Pediatric Population,,unrecognized,1,1,NCT01121588,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Peer Supporters,,unrecognized,1,1,NCT03689530,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,People with Multiple Sclerosis,,unrecognized,1,1,NCT05878873,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Per Protocol Population,,unrecognized,1,1,NCT03861169,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Per protocol,,unrecognized,1,1,NCT02506868,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Per protocol set (PPS),,unrecognized,1,1,NCT02391116,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Per-protocol analysis set,,unrecognized,1,1,NCT03384966,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Period 1: Open-Label Run-In,,unrecognized,1,1,NCT03253796,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Period 2: Open-Label Retreatment,,unrecognized,1,1,NCT03253796,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Period 2: Withdrawal vs Continued Tx,,unrecognized,1,1,NCT03253796,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Period: Dental Hygienists (Secondary),,unrecognized,1,1,NCT03892200,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Periods 2 and 3,,unrecognized,1,1,NCT04581629,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Person Living with Dementia,,unrecognized,1,1,NCT03896711,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Persons living with dementia,,unrecognized,1,1,NCT06928467,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Persons with Dementia,,unrecognized,1,1,NCT02483520,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Persons with dementia,,unrecognized,1,1,NCT03622814,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Pharmacodynamic analysis set,,unrecognized,1,1,NCT02472795,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase 1 Patients with severe eosinophilic asthma,,unrecognized,1,1,NCT04680611,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase 1: Natural History Period,,unrecognized,1,1,NCT02362425,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase 2 patients with severe eosinophilic asthma,,unrecognized,1,1,NCT04680611,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase 2: Randomized Period,,unrecognized,1,1,NCT02362425,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase 2a,,unrecognized,1,1,NCT03816891,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase 2b,,unrecognized,1,1,NCT03816891,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase 3,,unrecognized,1,1,NCT04762680,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase I subjects with xerostomia,,unrecognized,1,1,NCT05058430,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase I subjects without xerostomia,,unrecognized,1,1,NCT05058430,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase II analysis,,unrecognized,1,1,NCT01013649,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase II subjects with xerostomia,,unrecognized,1,1,NCT05058430,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase II subjects without xerostomia,,unrecognized,1,1,NCT05058430,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase III,,unrecognized,1,1,NCT05124691,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Phase III analysis,,unrecognized,1,1,NCT01013649,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Physicians,,unrecognized,1,1,NCT05387564,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Pita Study,,unrecognized,1,1,NCT01806688,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Placebo,,unrecognized,1,1,NCT02348619,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Placebo Comparator: Placebo (Folic acid),,unrecognized,1,1,NCT01436266,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Placebo and AS012 Regimens,,unrecognized,1,1,NCT04487860,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Placebo in TP2 - JIA Category: ERA,,unrecognized,1,1,NCT03031782,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Placebo in TP2 - JIA Category: JPsA,,unrecognized,1,1,NCT03031782,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Placebo to AS012 Regimens,,unrecognized,1,1,NCT04487860,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Positive,,unrecognized,1,1,NCT00978068,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Post-Intervention,,unrecognized,1,1,NCT02402881,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Post-Randomization,,unrecognized,1,1,NCT03896789,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Post-Trial Sex,,unrecognized,1,1,NCT04263363,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Pre-Implementation,,unrecognized,1,1,NCT01875861,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Pre-Intervention,,unrecognized,1,1,NCT02402881,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Pre-Trial Sex,,unrecognized,1,1,NCT04263363,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Present,,unrecognized,1,1,NCT03332303,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Previously Treated Participants,,unrecognized,1,1,NCT02699450,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Primary Care Participants,,unrecognized,1,1,NCT04350866,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Primary Caregivers,,unrecognized,1,1,NCT04058886,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Primary care providers,,unrecognized,1,1,NCT04418232,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Primary family caregiver,,unrecognized,1,1,NCT04855734,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Private or public employed,,unrecognized,1,1,NCT03500172,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Progressive improvement in walking performance,,unrecognized,1,1,NCT05103280,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Propofol,,unrecognized,1,1,NCT03284307,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Q2W Regimen,,unrecognized,1,1,NCT02222922,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Q3W Regimen,,unrecognized,1,1,NCT02222922,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Quality assessment,,unrecognized,1,1,NCT01918072,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,RCT phase,,unrecognized,1,1,NCT02685709,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,RHB-104 from RHB-104,,unrecognized,1,1,NCT03009396,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,RHB-104 from placebo,,unrecognized,1,1,NCT03009396,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Randomized Participants,,unrecognized,1,1,NCT03689530,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Randomized treatment phase (RTP),,unrecognized,1,1,NCT03528681,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Ranen Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Rarely,,unrecognized,1,1,NCT05396014,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Recent HIV test (within 6 months) :,,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Recipient gender,,unrecognized,1,1,NCT05462041,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Rectal Chlamydia,,unrecognized,1,1,NCT01836445,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Rectal Gonorrhea,,unrecognized,1,1,NCT01836445,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Reference,,unrecognized,1,1,NCT02354482,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Reported History of STI Diagnosis,,unrecognized,1,1,NCT02128217,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Reported gender,,unrecognized,1,1,NCT03704142,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Reru Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Rescue therapy,,unrecognized,1,1,NCT02132195,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Resident Sex/Gender,,unrecognized,1,1,NCT03576495,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Resident participants,,unrecognized,1,1,NCT05255068,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Resident-Participants,,unrecognized,1,1,NCT04855357,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Result Totals,,unrecognized,1,1,NCT00863343,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Rivaroxaban vs VKA (matched pop),,unrecognized,1,1,NCT02785354,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Run-in phase,,unrecognized,1,1,NCT02685709,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Russia, Krasnodar",,unrecognized,1,1,NCT02143128,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SAD-HS,,unrecognized,1,1,NCT04510090,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SB204,,unrecognized,1,1,NCT02242760,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SCED 1 + 2 Instructors,,unrecognized,1,1,NCT04518358,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SCED 1 Adults with ASD,,unrecognized,1,1,NCT04518358,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SCED 2 Adults with ASD,,unrecognized,1,1,NCT04518358,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SD-CP,,unrecognized,1,1,NCT04510090,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SD-UP,,unrecognized,1,1,NCT04510090,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SS1,,unrecognized,1,1,NCT04173273,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SS3,,unrecognized,1,1,NCT04173273,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SS4,,unrecognized,1,1,NCT04173273,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SSA,,unrecognized,1,1,NCT04173273,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,SWAT trial,,unrecognized,1,1,NCT04717258,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Safety Lead-In,,unrecognized,1,1,NCT03093870,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Same Gender Loving,,unrecognized,1,1,NCT03313310,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Second line,,unrecognized,1,1,NCT03193866,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sedative,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Seed Study,,unrecognized,1,1,NCT01806688,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Segment 1,,unrecognized,1,1,NCT01029704,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Segment 2,,unrecognized,1,1,NCT01029704,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Selection of Gender,,unrecognized,1,1,NCT02615171,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Self-Identified Sexual/Gender Identity,,unrecognized,1,1,NCT05161689,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Self-Reported Gender,,unrecognized,1,1,NCT00288353,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Self-employed (formal or informal),,unrecognized,1,1,NCT03500172,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Self-reported STI in the lifetime (any kind),,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Self-reported gender identity,,unrecognized,1,1,NCT03951766,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Semen contact/exchange,,unrecognized,1,1,NCT04233372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex (2 total/combined groups),,unrecognized,1,1,NCT02432846,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex (4 arms/strata),,unrecognized,1,1,NCT02432846,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex (NIH/OMB),,unrecognized,1,1,NCT05625061,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex (Part 1),,unrecognized,1,1,NCT01200862,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex (Part 2),,unrecognized,1,1,NCT01200862,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex - Lead Safety Phase,,unrecognized,1,1,NCT01576016,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex - MRI Safety Phase,,unrecognized,1,1,NCT01576016,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex : Sex,,unrecognized,1,1,NCT02674659,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex Assigned at Birth,,unrecognized,1,1,NCT06065176,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex Data for Participants Enrolled in Study mRNA-1273-P203,,unrecognized,1,1,NCT04649151,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex Data for Participants Enrolled in Study mRNA-1273-P204,,unrecognized,1,1,NCT04796896,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex and menopausal status,,unrecognized,1,1,NCT03147287,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex assigned a birth,,unrecognized,1,1,NCT05899218,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex at Birth and Use of Gender-Affirming Hormones,,unrecognized,1,1,NCT04840199,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex in All Subjects,,unrecognized,1,1,NCT03979313,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex not analyzed,,unrecognized,1,1,NCT05337306,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of Infants,,unrecognized,1,1,NCT01667549,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of Mothers,,unrecognized,1,1,NCT01667549,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of adolescent members of dyads,,unrecognized,1,1,NCT05058664,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of caregiver enrolled,,unrecognized,1,1,NCT04576481,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of caregiver members of dyads,,unrecognized,1,1,NCT05058664,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of child enrolled,,unrecognized,1,1,NCT04576481,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of newborn,,unrecognized,1,1,NCT02148952,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of participant,,unrecognized,1,1,NCT03758638,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex of provider,,unrecognized,1,1,NCT03758638,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Sex,",,unrecognized,1,1,NCT03870997,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Sex, Period 1",,unrecognized,1,1,NCT01120028,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Sex, Period 2",,unrecognized,1,1,NCT01120028,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex/ Gender,,unrecognized,1,1,NCT03898557,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex/Gender (Count),,unrecognized,1,1,NCT06457802,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex/Gender (customized),,unrecognized,1,1,NCT04133831,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex/Gender not analyzed,,unrecognized,1,1,NCT00792922,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex: Infants,,unrecognized,1,1,NCT02724774,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sex: Mothers,,unrecognized,1,1,NCT02724774,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sexual Function Score,,unrecognized,1,1,NCT03716739,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Sexual Minority,,unrecognized,1,1,NCT05107401,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Sexual Violence Vict. ""COSTS""",,unrecognized,1,1,NCT03726437,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Sexual Violence Vict. ""SOTS""",,unrecognized,1,1,NCT03726437,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sexual activity,,unrecognized,1,1,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Sexual activity (vaginal sex) ≥ 3 times per one month,,unrecognized,1,1,NCT03894813,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sexual encounter attempts,,unrecognized,1,1,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sexual interest,,unrecognized,1,1,NCT03624972,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Sexual minority,,unrecognized,1,1,NCT04251273,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sexually Active with ED,,unrecognized,1,1,NCT00384930,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sexually Active without ED,,unrecognized,1,1,NCT00384930,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Sexually active,,unrecognized,1,1,NCT03624972,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,She/Her/Hers,,unrecognized,1,1,NCT03177148,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Siblings,,unrecognized,1,1,NCT02873715,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Single Dose,,unrecognized,1,1,NCT03073213,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Single dose,,unrecognized,1,1,NCT03570918,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Single eyes,,unrecognized,1,1,NCT04200651,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Single-blind period,,unrecognized,1,1,NCT04424927,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Skills,,unrecognized,1,1,NCT06487390,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sleep,,unrecognized,1,1,NCT03284307,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,South Africa,,unrecognized,1,1,NCT04924660,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Spain,,unrecognized,1,1,NCT04924660,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Spinal cord injury individuals,,unrecognized,1,1,NCT04083794,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Spouse/Partner,,unrecognized,1,1,NCT04737759,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Staff,,unrecognized,1,1,NCT04350866,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Staff participants,,unrecognized,1,1,NCT05255068,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Staff-Participants,,unrecognized,1,1,NCT04855357,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Staff/coaches (for exploratory outcomes),,unrecognized,1,1,NCT05132322,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stage 1 Randomization,,unrecognized,1,1,NCT02368002,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stage 2 DOT,,unrecognized,1,1,NCT01960257,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stage 2 Re-Randomization,,unrecognized,1,1,NCT02368002,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stage 2 Sanofi,,unrecognized,1,1,NCT05000216,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stage 2 WOT,,unrecognized,1,1,NCT01960257,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stage 3,,unrecognized,1,1,NCT05306873,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stage A,,unrecognized,1,1,NCT04281472,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stage B,,unrecognized,1,1,NCT04281472,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stakeholders,,unrecognized,1,1,NCT03916146,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stanford,,unrecognized,1,1,NCT03369067,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Step 1,,unrecognized,1,1,NCT03635788,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Step 2,,unrecognized,1,1,NCT03635788,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stepped wedge,,unrecognized,1,1,NCT01918072,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Stroke Survivor Participant,,unrecognized,1,1,NCT05672628,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Strongly Agree,,unrecognized,1,1,NCT03808883,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Strongly Disagree,,unrecognized,1,1,NCT03808883,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Student,,unrecognized,1,1,NCT05965323,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Student Gender,,unrecognized,1,1,NCT03740113,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Student participants,,unrecognized,1,1,NCT03766906,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Students,,unrecognized,6,1,NCT04752189,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Students,,unrecognized,1,1,NCT03132805,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Study 1,,unrecognized,1,1,NCT04169373,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Study 1-RYGB vs Caloric Restriction,,unrecognized,1,1,NCT02762708,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Study 2,,unrecognized,1,1,NCT04169373,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Study 2-Exendin (9,39) Amide Study",,unrecognized,1,1,NCT02762708,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Study A05 Non-autopsy Cases,,unrecognized,1,1,NCT03901092,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Study A16 Autopsy Cases,,unrecognized,1,1,NCT03901092,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Study completers,,unrecognized,1,1,NCT02349893,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Study dropouts,,unrecognized,1,1,NCT02349893,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sub Study,,unrecognized,1,1,NCT04625725,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sub-Study,,unrecognized,1,1,NCT01970410,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sub-Study Participants,,unrecognized,1,1,NCT02906787,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sub-population A,,unrecognized,1,1,NCT02844439,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sub-population B,,unrecognized,1,1,NCT02844439,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sub-study,,unrecognized,1,1,NCT04717934,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Subject 01-001,,unrecognized,1,1,NCT02718625,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Subject 01-002,,unrecognized,1,1,NCT02718625,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Subject 01-008,,unrecognized,1,1,NCT02718625,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Substudy A: Sex/Gender,,unrecognized,1,1,NCT04885530,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Substudy B: Sex/Gender,,unrecognized,1,1,NCT04885530,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Substudy C: Sex/Gender,,unrecognized,1,1,NCT04885530,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Substudy D: Sex/Gender,,unrecognized,1,1,NCT04885530,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Substudy E: Sex/Gender,,unrecognized,1,1,NCT04885530,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Substudy F: Sex/Gender,,unrecognized,1,1,NCT04885530,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Substudy G: Sex/Gender,,unrecognized,1,1,NCT04885530,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Successful Sexual Intercourse (Satisfaction),,unrecognized,1,1,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Successful sexual Intercourse(Ejaculations),,unrecognized,1,1,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Support persons,,unrecognized,1,1,NCT04347291,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Sustainability,,unrecognized,1,1,NCT01875861,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Syphilis,,unrecognized,1,1,NCT03881007,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,TNBC,,unrecognized,1,1,NCT03004183,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Targeted Children,,unrecognized,1,1,NCT02873715,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Teachers,,unrecognized,6,1,NCT04752189,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Teen Gender,,unrecognized,1,1,NCT03521115,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Teen Participants,,unrecognized,1,1,NCT03506880,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Thailand/Mae Ramat,,unrecognized,1,1,NCT00440999,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Thailand/Mae Sot,,unrecognized,1,1,NCT00440999,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,The Children's Hospital Colorado Base ED,,unrecognized,1,1,NCT01657344,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,The Children's Hospital Colorado Satellite ED,,unrecognized,1,1,NCT01657344,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,They/Them/Their,,unrecognized,1,1,NCT03177148,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Total Participants,,unrecognized,1,1,NCT03078868,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Total Sample,,unrecognized,1,1,NCT05374798,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Total score,,unrecognized,1,1,NCT00351819,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Training,,unrecognized,1,1,NCT06487390,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Transactional Sex Work Involvement,,unrecognized,1,1,NCT03313310,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Transexual,,unrecognized,1,1,NCT04233372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Transformista,,unrecognized,1,1,NCT06316102,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Travesti,,unrecognized,1,1,NCT06316102,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Treated mRCC participants,,unrecognized,1,1,NCT05363072,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Treatment,,unrecognized,1,1,NCT01266291,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Treatment (Anti-HIV Gene Transduced CD34+ Cells): 1:0 Ratio,,unrecognized,1,1,NCT02797470,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Treatment (Anti-HIV Gene Transduced CD34+ Cells): 1:1 Ratio,,unrecognized,1,1,NCT02797470,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Treatment (Anti-HIV Gene Transduced CD34+ Cells): 5:1 Ratio,,unrecognized,1,1,NCT02797470,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Treatment Period,,unrecognized,1,1,NCT02321098,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Treatment-Naive Participants,,unrecognized,1,1,NCT02699450,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,USA patients,,unrecognized,1,1,NCT02891837,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,UVA,,unrecognized,1,1,NCT03369067,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Ulcerative colitis,,unrecognized,1,1,NCT03834051,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Ultrasonic Propulsion,,unrecognized,1,1,NCT02028559,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Uncertain,,unrecognized,1,1,NCT02929069,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Uncertain / don't know for sure,,unrecognized,1,1,NCT03912753,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Undecided,,unrecognized,1,1,NCT03487796,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Uninjured controls,,unrecognized,1,1,NCT04083794,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,United Kingdom,,unrecognized,1,1,NCT06456671,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Unkown,,unrecognized,1,1,NCT04601493,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Urethral Chlamydia,,unrecognized,1,1,NCT01836445,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Urethral Gonorrhea,,unrecognized,1,1,NCT01836445,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Use birth control,,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Use of condom,,unrecognized,1,1,NCT04233372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,VA Medical Centers,,unrecognized,1,1,NCT05319561,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,VALUE Study (non-randomized),,unrecognized,1,1,NCT03445988,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Vaccine Substudy,,unrecognized,1,1,NCT04006457,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Vaginal discomfort,,unrecognized,1,1,NCT03624972,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Vaginal lubrication,,unrecognized,1,1,NCT03624972,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Vaginal penetrations,,unrecognized,1,1,NCT00512707,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Vaginal sex,,unrecognized,1,1,NCT04233372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Values listed are mITT population,,unrecognized,1,1,NCT02766608,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Vehicle,,unrecognized,1,1,NCT02242760,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Vehicle QD,,unrecognized,1,1,NCT04040192,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Viagra,,unrecognized,1,1,NCT06187415,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Village of Winston Park,,unrecognized,1,1,NCT04037436,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Virgo Intacta (Years),,unrecognized,1,1,NCT01192282,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Volunteer Companion Guide,,unrecognized,1,1,NCT03896711,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,WRAIR Field Station,,unrecognized,1,1,NCT00223990,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Wave 1,,unrecognized,1,1,NCT02390557,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Wave 2,,unrecognized,1,1,NCT02390557,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Were heterosexul,,unrecognized,1,1,NCT02015637,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,With Active Cancer,,unrecognized,1,1,NCT05022563,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,With pneumococcal vaccination,,unrecognized,1,1,NCT03276754,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Without Active Cancer,,unrecognized,1,1,NCT05022563,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Without pneumococcal vaccination,,unrecognized,1,1,NCT03276754,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Worry about getting HIV ""all the time"" :",,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,"Worry about getting HIV ""often"" :",,unrecognized,1,1,NCT03058835,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,XELJANZ (MTX adherent comparative safety analysis set),,unrecognized,1,1,NCT01932372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,XELJANZ (MTX adherent safety analysis set),,unrecognized,1,1,NCT01932372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,XELJANZ (Safety analysis set) and Control (MTX adherent comparative safety analysis set),,unrecognized,1,1,NCT01932372,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,YMCA,,unrecognized,1,1,NCT04037436,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Year 2 Period,,unrecognized,1,1,NCT00955682,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Year 3 Period,,unrecognized,1,1,NCT00955682,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Year 4 Period,,unrecognized,1,1,NCT00955682,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Year 5 Period,,unrecognized,1,1,NCT00955682,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Yes had sex in past 3 months at Baseline,,unrecognized,1,1,NCT02847858,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Yes same sex partner,,unrecognized,3,1,NCT04680611,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,Yes within last 3 months,,unrecognized,1,1,NCT02494817,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,"Yes, I have both given and received money, things, opportunities and so on",,unrecognized,1,1,NCT05797961,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,"Yes, I have both given and received money, things, or opportunities",,unrecognized,1,1,NCT05161689,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,"Yes, I was the one giving money, things, opportunities and so on",,unrecognized,1,1,NCT05797961,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,"Yes, I was the one giving money, things, or opportunities",,unrecognized,1,1,NCT05161689,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,"Yes, I was the one receiving money, things, opportunities and so on",,unrecognized,1,1,NCT05797961,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,"Yes, I was the one receiving money, things, or opportunities",,unrecognized,1,1,NCT05161689,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Youth Patients,,unrecognized,1,1,NCT05626231,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Youth gender,,unrecognized,1,1,NCT04734015,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Youth self-identified gender,,unrecognized,1,1,NCT04245501,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Youths,,unrecognized,1,1,NCT05835362,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,Zilucoplan Sub-protocol,,unrecognized,1,1,NCT04590586,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,adolescent,,unrecognized,1,1,NCT05160948,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,alter,,unrecognized,1,1,NCT04568486,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,caregiver,,unrecognized,1,1,NCT05160948,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,family surrogates,,unrecognized,1,1,NCT02693665,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,mCRPC,,unrecognized,1,1,NCT05701007,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,mCSPC,,unrecognized,1,1,NCT05701007,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,mITT Analysis Set,,unrecognized,1,1,NCT04346628,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,mRCC - Axitinib,,unrecognized,1,1,NCT00700258,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,mRCC - Sunitinib,,unrecognized,1,1,NCT00700258,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,mRCC - Temsirolimus,,unrecognized,1,1,NCT00700258,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,modified Per Protocol Set,,unrecognized,1,1,NCT02603809,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+category,non disclosed,,unrecognized,1,1,NCT05933525,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,seed,,unrecognized,1,1,NCT04568486,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
+class,smITT Analysis Set,,unrecognized,1,1,NCT04346628,2026-09-14,0,parsers.R@2026-08-17 / outcomes@2026-09-10
