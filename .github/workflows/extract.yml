@@ -37,7 +37,24 @@ jobs:
         # pipefail so a tee'd log can never mask an extraction failure
         run: |
           set -o pipefail
-          python -m src.extract_all --output data/demographics.json --results-after 2009-01-01 2>&1 | tee extraction_log.txt
+          # --snapshot-date stamps every sex_gender row and raw-measure record
+          # with the same date the snapshot folder and release tag use.
+          python -m src.extract_all --output data/demographics.json --results-after 2009-01-01 --snapshot-date "$CURRENT_DATE" 2>&1 | tee extraction_log.txt
+
+      - name: Build the sex/gender table (full record) and write the lean rows back
+        # The full per-trial row is rebuilt from the retained raw measures into
+        # sex_gender_parsed.csv.gz (the record every consumer reads); the study
+        # records keep only the lean subset (--write-back), so the split parts
+        # stay under the CDN ceiling. --strict: a failed structural check (the
+        # five-state, participant-unit or version invariants) fails the run
+        # here, before anything is published, so an invalid table can never
+        # become production data; the site keeps last week's files.
+        run: |
+          python3 scripts/build_sex_gender_table.py \
+            --from-raw data/sex_gender_raw_measures.jsonl.gz \
+            --snapshot-date "$CURRENT_DATE" \
+            --write-back data/demographics.json \
+            --strict
 
       - name: Compress CT.gov Data for Drive
         # -k keeps the original so the split step can still read it.
@@ -59,6 +76,21 @@ jobs:
           FILE_NAME: ${{ env.CURRENT_DATE }}_CTgov_demographics.json.gz
         run: python scripts/gdrive_upload.py || echo "::warning::Google Drive upload failed — see this step's log. Publishing is unaffected."
 
+      - name: Upload retained sex/gender raw measures to Google Drive
+        # The SELECTED sex/gender baseline measures per trial, verbatim, so any
+        # later parser rule change can re-parse this snapshot without a
+        # registry pull (scripts/build_sex_gender_table.py --from-raw).
+        if: env.GDRIVE_ENABLED == 'true'
+        env:
+          CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CHILD_FOLDER: CT_gov_API_Data
+          FILE_PATH: ${{ github.workspace }}/data/sex_gender_raw_measures.jsonl.gz
+          FILE_NAME: ${{ env.CURRENT_DATE }}_sex_gender_raw_measures.jsonl.gz
+        run: python scripts/gdrive_upload.py || echo "::warning::Google Drive upload of the raw sex/gender measures failed — see this step's log. Publishing is unaffected."
+
       - name: Split and generate dashboard artifacts
         run: |
           # Split into 8 parts (desktop) + generate mobile dashboard summary
@@ -66,6 +98,8 @@ jobs:
           python3 scripts/generate_mobile_data.py
           # Gated industry sponsor view dataset (/#industry)
           python3 scripts/generate_industry_sponsors.py
+          # Backend-served methods text for the sex/gender table (built above)
+          python3 scripts/write_sex_gender_methods.py
 
           for f in data/demographics.part*.json.gz; do
             echo "$(basename $f): $(du -h "$f" | cut -f1)"
@@ -91,6 +125,10 @@ jobs:
 
           # Copy this week's artifacts into the site checkout
           cp data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json site/data/
+          # Sex/gender table + meta ride with the parts; the methods text is its own folder
+          cp data/sex_gender_parsed.csv.gz data/sex_gender_parsed_meta.json site/data/
+          mkdir -p site/data/sex_gender
+          cp data/sex_gender/methods.json data/sex_gender/methods.md site/data/sex_gender/
           # condition_ontology.json is canonical here; the site fetches it at runtime
           cp condition_ontology.json site/condition_ontology.json
 
@@ -106,6 +144,7 @@ jobs:
           fi
           mkdir -p "snapshots/$DATE"
           cp data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json "snapshots/$DATE/"
+          cp data/sex_gender_parsed.csv.gz data/sex_gender_parsed_meta.json "snapshots/$DATE/"
           echo "Archived snapshot to snapshots/$DATE/"
 
           # Update history manifest
@@ -124,6 +163,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json
+          git add data/sex_gender_parsed.csv.gz data/sex_gender_parsed_meta.json data/sex_gender/
           git add condition_ontology.json
           git add -A snapshots/ history.json
           git commit -m "Update demographics data $DATE$REPLACED" || exit 0
@@ -141,15 +181,18 @@ jobs:
           TAG="data-$CURRENT_DATE"
           gzip -c extraction_log.txt > extraction_log.txt.gz || true
           ok=1
+          # sex_gender_raw_measures.jsonl.gz: the SELECTED sex/gender baseline
+          # measures per trial, verbatim. Nothing else retains them, and they are
+          # what makes this snapshot re-parseable after a parser rule change.
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             # Same-day re-run: replace the assets on the existing release
-            gh release upload "$TAG" data/demographics.json.gz extraction_log.txt.gz \
+            gh release upload "$TAG" data/demographics.json.gz data/sex_gender_raw_measures.jsonl.gz extraction_log.txt.gz \
               --clobber --repo "$GITHUB_REPOSITORY" || ok=0
           else
-            gh release create "$TAG" data/demographics.json.gz extraction_log.txt.gz \
+            gh release create "$TAG" data/demographics.json.gz data/sex_gender_raw_measures.jsonl.gz extraction_log.txt.gz \
               --repo "$GITHUB_REPOSITORY" \
               --title "Weekly data $CURRENT_DATE" \
-              --notes "Raw ClinicalTrials.gov extraction from the $CURRENT_DATE weekly run (code commit $GITHUB_SHA). The split parts published to the site repo contain the same data." \
+              --notes "Raw ClinicalTrials.gov extraction from the $CURRENT_DATE weekly run (code commit $GITHUB_SHA). The split parts published to the site repo contain the same data. sex_gender_raw_measures.jsonl.gz holds the selected sex/gender baseline measures per trial for re-parsing." \
               || ok=0
           fi
           if [ "$ok" = "0" ]; then
@@ -164,6 +207,66 @@ jobs:
                   || echo "::warning::Failed to prune old data release $t"
               done
           echo "Backed up to release $TAG"
+
+      - name: Archive the retained sex/gender raw measures permanently
+        # The dated data-* releases are pruned after 26 weeks and Drive is
+        # best-effort, but the selected raw measures are what makes a snapshot
+        # re-parseable after a parser rule change, so they also go to ONE
+        # permanent release (tag sex-gender-raw-measures, never matched by the
+        # data-* prune loop above), one asset per snapshot date. This step runs
+        # after the site publish, so a failure here cannot delay the site's
+        # data. continue-on-error keeps the independent steps below (the
+        # sex/gender audit, the sponsor pipeline) running; the last step of
+        # the job then fails the run if this outcome is 'failure', so an
+        # unarchived week is still noticed.
+        id: sg_archive
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="sex-gender-raw-measures"
+          ASSET="$RUNNER_TEMP/${CURRENT_DATE}_sex_gender_raw_measures.jsonl.gz"
+          cp data/sex_gender_raw_measures.jsonl.gz "$ASSET"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Sex/gender raw measures (permanent archive)" \
+              --notes "One asset per weekly snapshot: the SELECTED sex/gender baseline measures per trial, verbatim, with snapshot_date, extracted_at and pipeline_commit on every record. Re-parse with scripts/build_sex_gender_table.py --from-raw. Not pruned."
+          fi
+          if ! gh release upload "$TAG" "$ASSET" --clobber --repo "$GITHUB_REPOSITORY"; then
+            echo "::error::permanent archive of the sex/gender raw measures for $CURRENT_DATE failed; re-run this step or upload $ASSET to release $TAG by hand"
+            exit 1
+          fi
+          echo "Archived $(basename "$ASSET") to release $TAG"
+
+      # ── Sex/gender curation inbox (scripts/sex_gender_audit.py) ──────────
+      # Runs after the site publish (an audit problem can never delay the
+      # site's data) and BEFORE the sponsor steps, which are an independent
+      # pipeline whose deliberate failures (a rules conflict) must not skip
+      # this. Priors are last week's committed data/sex_gender_audit/; every
+      # prior is read before anything is written.
+      - name: Sex/gender curation audit
+        id: sg_audit
+        run: |
+          python3 scripts/sex_gender_audit.py \
+            --table data/sex_gender_parsed.csv.gz \
+            --meta data/sex_gender_parsed_meta.json \
+            --raw-measures data/sex_gender_raw_measures.jsonl.gz \
+            --prior-dir data/sex_gender_audit \
+            --snapshot-date "$CURRENT_DATE" \
+            --out-dir data/sex_gender_audit
+
+      - name: Publish sex/gender audit to the site
+        run: |
+          mkdir -p site/data/sex_gender/audit
+          cp data/sex_gender_audit/label_buckets.csv data/sex_gender_audit/inbox_unrecognized.csv \
+             data/sex_gender_audit/inbox_exits.csv data/sex_gender_audit/bucket_changes.csv \
+             data/sex_gender_audit/resolved_labels.csv \
+             data/sex_gender_audit/status_counts.json data/sex_gender_audit/audit_summary.json \
+             site/data/sex_gender/audit/
+          cd site
+          git add data/sex_gender/audit
+          git commit -m "Update sex/gender audit $CURRENT_DATE" || exit 0
+          git push
 
       # ── Company-level sponsor filter (sponsors/README.md) ─────────────
       # These run AFTER the demographics publish on purpose: a rules conflict
@@ -203,12 +306,27 @@ jobs:
           git commit -m "Update sponsor bridge $CURRENT_DATE" || exit 0
           git push
 
-      - name: Commit sponsor audit to this repo
+      - name: Commit sponsor and sex/gender audits to this repo
+        # Runs when either audit produced files this week, even if the other
+        # pipeline failed (the two are independent).
+        if: ${{ !cancelled() && (steps.audit.outcome == 'success' || steps.sg_audit.outcome == 'success') }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/sponsor_audit/
-          git commit -m "Sponsor audit $CURRENT_DATE" || exit 0
+          # Stage only the audit whose step succeeded: a failed audit may have
+          # written some of its files, and those must not replace the
+          # committed priors (the next run reads them).
+          if [ "${{ steps.audit.outcome }}" = "success" ]; then
+            git add data/sponsor_audit/
+          else
+            git checkout -- data/sponsor_audit/ 2>/dev/null || true
+          fi
+          if [ "${{ steps.sg_audit.outcome }}" = "success" ]; then
+            git add data/sex_gender_audit/
+          else
+            git checkout -- data/sex_gender_audit/ 2>/dev/null || true
+          fi
+          git commit -m "Sponsor and sex/gender audits $CURRENT_DATE" || exit 0
           # main may have moved during the ~1h run; replay our one commit on top
           git pull --rebase origin main
           git push
@@ -249,7 +367,31 @@ jobs:
             else
               echo "| Sponsor audit | step ${{ steps.audit.outcome }} — no audit this week (files in data/sponsor_audit/ are last week's) |"
             fi
+            # Sex/gender table (sg=v2): status counts, the curation inbox, and
+            # the parser rules version every row carries.
+            if [ -f data/sex_gender_parsed_meta.json ]; then
+              echo "| Sex/gender table | $(jq -r '"\(.n_rows) rows; status \(.status_counts.status | tojson); structural checks \(if .structural_checks_all_pass then "pass" else "FAIL" end); baseline drift lines \(.baseline.drift | length)"' data/sex_gender_parsed_meta.json) |"
+              echo "| Sex/gender parser rules | \`$(jq -r '.parser_rules_version' data/sex_gender_parsed_meta.json)\` (module $(jq -r '.parser_module_version' data/sex_gender_parsed_meta.json)) |"
+            else
+              echo "| Sex/gender table | not built this week |"
+            fi
+            if [ "${{ steps.sg_audit.outcome }}" = "success" ]; then
+              echo "| Sex/gender curation inbox | $(jq -r '"\(.inbox_size) unrecognized label(s) (\(.inbox_new_this_week) new); top: \(.inbox_top.label // "—") (\(.inbox_top.n_trials // 0) trials); exits \(.n_inbox_exits)"' data/sex_gender_audit/audit_summary.json) |"
+              echo "| Sex/gender bucket changes | $(jq -r '"\(.n_bucket_changes) (causes: \(.bucket_change_causes | tojson)); rules changed vs prior: \(.rules_changed_vs_prior)"' data/sex_gender_audit/audit_summary.json) |"
+            else
+              echo "| Sex/gender audit | step ${{ steps.sg_audit.outcome }} — no audit this week (files in data/sex_gender_audit/ are last week's) |"
+            fi
+            echo "| Sex/gender raw-measure archive | step ${{ steps.sg_archive.outcome }} (release sex-gender-raw-measures) |"
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.sg_audit.outcome }}" = "success" ]; then
+            BC=$(jq -r '.n_bucket_changes' data/sex_gender_audit/audit_summary.json)
+            if [ "$BC" -gt 0 ]; then
+              echo "::warning::$BC sex/gender label(s) changed bucket vs last week — review data/sex_gender_audit/bucket_changes.csv"
+            fi
+            if [ "$(jq -r '.structural_checks_all_pass' data/sex_gender_audit/audit_summary.json)" != "true" ]; then
+              echo "::warning::a sex/gender structural check failed — see data/sex_gender_audit/status_counts.json"
+            fi
+          fi
           if [ "${{ steps.audit.outcome }}" = "success" ]; then
             CH=$(jq -r '.n_match_changes' data/sponsor_audit/audit_summary.json)
             if [ "$CH" -gt 0 ]; then
@@ -261,3 +403,13 @@ jobs:
           if [ "$DELTA" != "n/a" ] && [ "$DELTA" -lt 0 ]; then
             echo "::warning::Trial count decreased by ${DELTA#-} vs last week — check the extraction before trusting this publish."
           fi
+
+      - name: Fail the run if the permanent raw-measure archive failed
+        # Last, so every independent step above (audits, sponsor pipeline,
+        # summary) has already run; the site already has its data. A red run
+        # here means one week's raw measures are not in the permanent release
+        # and must be uploaded by hand from the data-* release or Drive.
+        if: ${{ !cancelled() && steps.sg_archive.outcome == 'failure' }}
+        run: |
+          echo "::error::the permanent archive of this week's sex/gender raw measures failed (see the 'Archive the retained sex/gender raw measures permanently' step)"
+          exit 1

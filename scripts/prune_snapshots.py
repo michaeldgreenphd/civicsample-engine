@@ -97,7 +97,11 @@ def main():
         sdir = os.path.join(SNAPSHOT_DIR, d)
         if not os.path.isdir(sdir):
             continue
-        parts = [f for f in os.listdir(sdir) if f.startswith("demographics.part")]
+        # The per-trial sex/gender table (sex_gender_parsed.csv.gz + its meta)
+        # rides with the parts: the aggregate tier keeps its summary block in
+        # dashboard-summary.json and loses the per-trial rows.
+        parts = [f for f in os.listdir(sdir)
+                 if f.startswith("demographics.part") or f.startswith("sex_gender_parsed")]
         sponsors_dir = os.path.join(sdir, "sponsors")   # the company-filter bridge rides with the parts
         if not parts and not os.path.isdir(sponsors_dir):
             continue  # already summary-only

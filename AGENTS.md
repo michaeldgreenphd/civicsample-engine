@@ -88,6 +88,33 @@ rather than resolve silently; and every rule carries a non-empty note recording
 why it exists, which `load_rules` enforces. That note is free text holding
 rationale, not a named decider — do not flag a rule for omitting one.
 
+**The sex/gender parser is vendored, not owned.** `src/sex_gender_parser.py`
+is the deterministic parser from the sex and gender manuscript, copied into
+this repository unchanged; its regex vocabulary, evaluation order,
+`choose_total` and `is_participant_count` rule are the paper's, and a change
+to any of them goes into the manuscript bundle first (with a test and a
+regenerated vocabulary audit) and is then re-vendored. `src/sex_gender_table.py`
+wraps it into the per-trial row stored under `sex_gender` and adds only
+provenance and derived columns. Invariants a review checks there: the five
+reporting states (`reported`, `explicit_unknown_only`, `uninformative`,
+`not_reported`, `parse_error`) are never collapsed; `n_unknown` is only what
+the vocabulary mapped to Unknown, and the enrollment gap is stored as
+`enrollment_minus_parsed`, shown nowhere as unknown and never a status input
+(the legacy extractors' denominator balancing has no code path into the
+table — `tests/sex_gender/test_table.py` pins that); `reported_gender` is
+category-based, never title-based; cis/trans-qualified labels are never summed
+into Female or Male; `COUNT_OF_UNITS` tables stay in the reporting counts and
+out of composition; every row carries `parser_rules_version`. The vendored
+suite under `tests/sex_gender/` must keep passing as shipped, and the weekly
+inbox `data/sex_gender_audit/` may not silently drop a label. The retained raw
+measures (`sex_gender_raw_measures.jsonl.gz`, one record per trial with its
+`snapshot_date`, `extracted_at` and `pipeline_commit`) are what make a
+snapshot re-parseable after a rule change; besides the pruned weekly `data-*`
+release and the best-effort Drive copy they go to the permanent
+`sex-gender-raw-measures` release, which the prune loop never touches. A
+change that drops that upload, or lets the prune loop match that tag, is a
+data-loss defect.
+
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM
 extraction results, which cost money to produce and are the record the

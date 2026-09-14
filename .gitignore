@@ -48,3 +48,11 @@ vertex_key.json
 
 # Site checkout created by the publish steps in CI (and by local testing)
 site/
+
+# Sex/gender table artifacts (weekly outputs; the parsed table and methods
+# text are published to the site, the raw selected measures go to the
+# Release/Drive backup). The audit under data/sex_gender_audit/ IS committed.
+data/sex_gender_parsed.csv.gz
+data/sex_gender_parsed_meta.json
+data/sex_gender_raw_measures.jsonl.gz
+data/sex_gender/

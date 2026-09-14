@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""Tabulate the sex/gender rows into the published table, or re-parse them.
+
+READS   data/demographics.json (the weekly pull; or --parts for the split
+        data/demographics.part*.json.gz) and takes study["sex_gender"] as-is,
+        OR --from-raw data/sex_gender_raw_measures.jsonl.gz to RE-PARSE every
+        trial with the parser vendored in src/ (the path a rule bump takes; no
+        registry pull needed).
+WRITES  data/sex_gender_parsed.csv.gz        one row per trial, columns in
+                                             src/sex_gender_table.py COLUMNS order
+        data/sex_gender_parsed_meta.json     provenance, status counts, the
+                                             structural checks, drift vs the
+                                             2026-06-09 baseline (reported, never
+                                             fatal on a fresh pull)
+INVOKED by .github/workflows/extract.yml after split_data.py. Run from the repo
+        root. --strict exits 1 when a structural check fails (CI does not use it:
+        the table publishes and the failure is a ::warning:: plus an audit row).
+"""
+from __future__ import annotations
+
+import argparse
+import glob
+import gzip
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+import pandas as pd
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src import sex_gender_table as sgt  # noqa: E402
+from src.utils import pipeline_commit  # noqa: E402
+
+BASELINE_PATH = os.path.join("tests", "sex_gender", "fixtures", "snapshot_baseline_2026-06-09.json")
+DEFAULT_RAW_PATH = os.path.join("data", "sex_gender_raw_measures.jsonl.gz")
+
+
+def load_records(demographics: str | None, parts_glob: str | None):
+    if demographics and os.path.exists(demographics):
+        with open(demographics) as f:
+            c = json.load(f)
+        return c["data"], c.get("extracted_at"), c.get("pipeline_commit")
+    paths = sorted(glob.glob(parts_glob or "data/demographics.part*.json.gz"))
+    if not paths:
+        raise SystemExit("no demographics.json and no demographics.part*.json.gz found")
+    records, extracted_at, commit = [], None, None
+    for p in paths:
+        with gzip.open(p, "rt") as f:
+            c = json.load(f)
+        records.extend(c["data"])
+        extracted_at = extracted_at or c.get("extracted_at")
+        commit = commit or c.get("pipeline_commit")
+    return records, extracted_at, commit
+
+
+def rows_from_records(records) -> tuple[list, list]:
+    """(rows, missing_nct_ids): the FULL sex_gender row of every record that has one.
+
+    Study records normally carry only the lean row (sex_gender_table.LEAN_COLUMNS),
+    which cannot stand in for the full record: it has no raw_present, labels,
+    flags or percent_female, and the structural checks would skip it. Such
+    input is refused rather than tabulated with nulls; rebuild from the raw
+    measures instead (--from-raw)."""
+    rows, missing = [], []
+    for s in records:
+        r = s.get("sex_gender")
+        if r:
+            if "raw_present" not in r:
+                raise SystemExit(
+                    f"{s.get('nct_id')}: study['sex_gender'] is a lean row (no raw_present); the full table "
+                    "must be rebuilt from the retained raw measures: --from-raw data/sex_gender_raw_measures.jsonl.gz")
+            rows.append(sgt.ordered(r))
+        else:
+            missing.append(s.get("nct_id"))
+    return rows, missing
+
+
+def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, dict]:
+    """(rows, stamps) re-parsed from the retained raw records. stamps carries
+    snapshot_date, extracted_at and source_pipeline_commit read from the
+    records themselves, plus n_parse_errors.
+
+    A record the parser cannot read (undecodable line, or a parser exception)
+    becomes a parse_error row carrying the record's NCT id and enrollment; it
+    never aborts the build and never disappears (the state exists for it)."""
+    rows, stamps = [], {"snapshot_date": None, "extracted_at": None, "source_pipeline_commit": None, "n_parse_errors": 0}
+    with gzip.open(path, "rt") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                rows.append(sgt.ordered(sgt.parse_error_row(None, None, snapshot_date or sgt.today_utc())))
+                stamps["n_parse_errors"] += 1
+                continue
+            # Every stamped record must agree: a file that concatenates two
+            # extractions would otherwise be tabulated under one provenance.
+            for k, src in (("snapshot_date", "snapshot_date"), ("extracted_at", "extracted_at"),
+                           ("source_pipeline_commit", "pipeline_commit")):
+                v = raw.get(src)
+                if v is None:
+                    continue
+                if stamps[k] is None:
+                    stamps[k] = v
+                elif stamps[k] != v:
+                    raise SystemExit(f"{path}: mixed provenance — {src} {stamps[k]!r} and {v!r} "
+                                     f"(record {raw.get('nct_id')}); refusing to tabulate records from more than one extraction")
+            snap = snapshot_date or raw.get("snapshot_date") or sgt.today_utc()
+            try:
+                rows.append(sgt.ordered(sgt.build_row_from_raw(raw, snap)))
+            except Exception as e:  # noqa: BLE001 - parse_error is the state for exactly this
+                print(f"::warning::{raw.get('nct_id')}: parser failed on the retained record "
+                      f"({type(e).__name__}: {e}); filed as parse_error")
+                rows.append(sgt.ordered(sgt.parse_error_row(raw.get("nct_id"), raw.get("enrollment"), snap)))
+                stamps["n_parse_errors"] += 1
+    return rows, stamps
+
+
+def write_table(rows: list, out_csv: str) -> None:
+    """The label trails are lists; they are written as JSON arrays (never joined,
+    since real labels contain "; ") and read back by sex_gender_table.read_table."""
+    df = pd.DataFrame(rows, columns=sgt.COLUMNS)
+    for c in sgt.LABEL_COLUMNS:
+        df[c] = df[c].map(lambda v: json.dumps(v if isinstance(v, list) else ([] if v is None else [v])))
+    os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
+    df.to_csv(out_csv, index=False, compression="gzip" if out_csv.endswith(".gz") else None)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    # Sources. Exactly one is used: an explicit --from-raw, else an explicit
+    # --demographics / --parts, else the default raw file when it exists, else
+    # the default demographics.json / parts. An explicitly named source is
+    # never replaced by the default raw file.
+    ap.add_argument("--demographics", default=None, help="a pull's demographics.json (default data/demographics.json)")
+    ap.add_argument("--parts", default=None, help="or its split parts glob (default data/demographics.part*.json.gz)")
+    ap.add_argument("--from-raw", default=None, help="re-parse this raw-measures jsonl.gz instead")
+    ap.add_argument("--snapshot-date", default=None, help="override the stamped snapshot date (re-parse only)")
+    ap.add_argument("--out", default="data/sex_gender_parsed.csv.gz")
+    ap.add_argument("--meta", default="data/sex_gender_parsed_meta.json")
+    ap.add_argument("--baseline", default=BASELINE_PATH)
+    ap.add_argument("--write-back", default=None,
+                    help="demographics.json to update in place: every study's sex_gender key becomes the "
+                         "lean subset of the row built here (the re-parse path; run before split_data.py)")
+    ap.add_argument("--strict", action="store_true")
+    a = ap.parse_args()
+
+    extracted_at = commit = source_commit = None
+    n_parse_errors = 0
+    missing: list = []
+    explicit_records = a.demographics is not None or a.parts is not None
+    # The retained raw measures are the normal input: when nothing was named
+    # and they are there, rebuild from them rather than from the lean rows.
+    if not a.from_raw and not explicit_records and os.path.exists(DEFAULT_RAW_PATH):
+        a.from_raw = DEFAULT_RAW_PATH
+    if a.from_raw:
+        rows, stamps = rows_from_raw(a.from_raw, a.snapshot_date)
+        source = f"re-parsed from {a.from_raw}"
+        snapshot_date = a.snapshot_date or stamps["snapshot_date"]
+        extracted_at, source_commit = stamps["extracted_at"], stamps["source_pipeline_commit"]
+        n_parse_errors = stamps["n_parse_errors"]
+        if extracted_at is None:
+            print(f"::warning::{a.from_raw} carries no extracted_at stamp (pre-stamp raw file); "
+                  "source_extracted_at will be taken from --write-back's container if given")
+    else:
+        # An explicitly named source that does not exist is an error, never a
+        # fall-through to whatever other pull happens to be on disk.
+        if a.demographics is not None and not os.path.exists(a.demographics):
+            raise SystemExit(f"--demographics {a.demographics}: no such file")
+        if a.parts is not None and not glob.glob(a.parts):
+            raise SystemExit(f"--parts {a.parts}: no files match")
+        records, extracted_at, commit = load_records(a.demographics or "data/demographics.json",
+                                                     None if a.demographics else (a.parts or "data/demographics.part*.json.gz"))
+        source_commit = commit
+        rows, missing = rows_from_records(records)
+        source = "study['sex_gender'] rows of the pull"
+        snapshot_date = rows[0]["snapshot_date"] if rows else None
+
+    checks = sgt.structural_checks(rows)
+    counts = sgt.status_counts(rows)
+    drift = []
+    if os.path.exists(a.baseline):
+        drift = sgt.baseline_drift(rows, json.load(open(a.baseline)))
+
+    # The write-back container is validated BEFORE anything is written, so a
+    # refused write-back leaves no table, meta or container behind.
+    written_back = None
+    container = None
+    if a.write_back:
+        by_nct = {r["nct_id"]: sgt.lean_row(r) for r in rows if r.get("nct_id")}
+        with open(a.write_back) as f:
+            container = json.load(f)
+        # The container's stamps are the pull's; use them when the raw records
+        # carry none. When both sides are stamped they must be the SAME pull:
+        # writing an older raw file's rows into a newer container would leave
+        # parts whose provenance says one extraction and whose sex/gender
+        # values come from another. That is refused, not warned about.
+        c_at = container.get("extracted_at")
+        if extracted_at is None:
+            extracted_at = c_at
+        elif c_at and c_at != extracted_at:
+            raise SystemExit(f"--write-back refused: the raw records were extracted at {extracted_at} but "
+                             f"{a.write_back} was extracted at {c_at}; a table rebuilt from one pull may not be "
+                             "written into another pull's records (nothing written)")
+        source_commit = source_commit or container.get("pipeline_commit")
+        # Coverage must be one-to-one: every table id unique and present, every
+        # study record matched. Anything else means the CSV and the parts
+        # would describe different trial sets, and nothing is written back.
+        table_ids = [r.get("nct_id") for r in rows]
+        no_id = sum(1 for i in table_ids if not i)
+        from collections import Counter
+        dupes = sorted(i for i, n in Counter(i for i in table_ids if i).items() if n > 1)
+        record_ids = [s.get("nct_id") for s in container["data"]]
+        unmatched = sorted(set(i for i in record_ids if i) - set(by_nct))
+        extra = sorted(set(by_nct) - set(i for i in record_ids if i))
+        coverage_ok = not (no_id or dupes or unmatched or extra)
+        written_back = {"path": a.write_back, "records": len(container["data"]), "updated": 0,
+                        "coverage_ok": coverage_ok, "rows_without_id": no_id, "duplicate_ids": dupes[:20],
+                        "records_without_row": unmatched[:20], "rows_without_record": extra[:20]}
+
+    write_table(rows, a.out)
+    if a.write_back:
+        if coverage_ok:
+            hit = 0
+            for s in container["data"]:
+                s["sex_gender"] = by_nct[s["nct_id"]]
+                hit += 1
+            with open(a.write_back, "w") as f:
+                json.dump(container, f, indent=2)
+            written_back["updated"] = hit
+            print(f"wrote back lean sex_gender rows into {a.write_back}: {hit} of {len(container['data'])} records")
+        else:
+            print(f"::error::write-back coverage is not one-to-one: {no_id} rows without id, {len(dupes)} duplicate ids, "
+                  f"{len(unmatched)} records without a row, {len(extra)} rows without a record; nothing written back")
+    meta = {
+        "written_back": written_back,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        # pipeline_commit: the code that built THIS table. source_pipeline_commit:
+        # the code that produced the raw input (stamped on the raw records /
+        # the pull's container), so a re-parse of a backed-up file can never
+        # pass itself off as its source.
+        "pipeline_commit": pipeline_commit(),
+        "source_pipeline_commit": source_commit,
+        "source_extracted_at": extracted_at,
+        "snapshot_date": snapshot_date,
+        "source": source,
+        "n_parse_errors": n_parse_errors,
+        "parser_rules_version": sgt.sgp.PARSER_RULES_VERSION,
+        "parser_module_version": sgt.sgp.__version__,
+        "n_rows": len(rows),
+        "n_records_without_row": len(missing),
+        "records_without_row": missing[:50],
+        "columns": sgt.COLUMNS,
+        "status_counts": counts,
+        "structural_checks": checks,
+        "structural_checks_all_pass": sgt.all_pass(checks),
+        "baseline": {"path": a.baseline,
+                     "is_baseline_data": sgt.is_baseline_data({"snapshot_date": snapshot_date, "extracted_at": extracted_at}),
+                     "drift": drift, "exact_match": not drift},
+    }
+    os.makedirs(os.path.dirname(a.meta) or ".", exist_ok=True)
+    with open(a.meta, "w") as f:
+        json.dump(meta, f, indent=2, default=str)
+
+    print(f"wrote {a.out}: {len(rows)} rows ({source}); rules {meta['parser_rules_version']}")
+    print("status:", counts["status"])
+    print("outcomes:", counts["outcomes"])
+    for name, c in checks.items():
+        print(f"  [{'ok' if c['pass'] else 'FAIL'}] {name} {c['detail']}")
+    if drift:
+        print(f"drift vs {sgt.BASELINE_SNAPSHOT_DATE} baseline ({'BASELINE DATA: this is a failure' if meta['baseline']['is_baseline_data'] else 'fresh pull: reported only'}):")
+        for line in drift:
+            print("   ", line)
+    failed = not sgt.all_pass(checks)
+    if failed:
+        print("::warning::sex/gender structural check(s) failed; see sex_gender_parsed_meta.json")
+    if written_back and not written_back["coverage_ok"]:
+        return 1
+    if meta["baseline"]["is_baseline_data"] and drift:
+        print("::error::sex/gender table parsed from the 2026-06-09 baseline does not reproduce the baseline counts")
+        return 1
+    return 1 if (failed and a.strict) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

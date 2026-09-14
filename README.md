@@ -79,13 +79,19 @@ script writes is a site path.
 
 | Path | One-line job |
 |---|---|
-| `src/` | Talk to ClinicalTrials.gov and standardize demographics. One extractor per dimension (race, ethnicity, sex, gender), each a pure function that's easy to test |
-| `scripts/` | Turn extracted data into the files the site serves (split, mobile summary, industry analysis, snapshot pruning) |
+| `src/` | Talk to ClinicalTrials.gov and standardize demographics. One extractor per dimension (race, ethnicity, and the legacy sex and gender extractors kept for the dashboard's sg=v1 path until cutover), each a pure function that is easy to test |
+| `scripts/` | Turn extracted data into the files the site serves (split, mobile summary, industry analysis, snapshot pruning, the sex/gender table, methods text, audit and side-by-side) |
 | `scripts/extraction/` | The LLM-over-PDFs streams |
 | `scripts/extraction/prompts/` | The model instructions, as editable plain text — one file per stream |
 | `scripts/utils/` | LLM cost logging and JSON repair, shared by the extraction streams |
 | `sponsors/` | The company-level sponsor filter: curated rules (schema — PR-gated), matching module, adapter, browser filter. See `sponsors/README.md` |
 | `data/sponsor_audit/` | The weekly curation inbox, the open backlog with ages, and the two change logs (literal-level and trial-level) with causes |
+| `src/sex_gender_parser.py` | The sex and gender manuscript's deterministic parser, vendored unchanged. Its rules are the paper's; changes go into the bundle first, then get re-vendored |
+| `src/sex_gender_table.py` | The per-trial `sex_gender` row built from that parser: five-state status, outcomes, provenance, `enrollment_minus_parsed`. No denominator balancing |
+| `data/sex_gender_audit/` | The weekly sex/gender curation inbox: unrecognized labels with ages, labels that left the inbox, bucket changes with causes, and the status-count drift, all stamped with the parser rules version |
+| `src/sex_gender_parser.py` | The sex and gender manuscript's deterministic parser, vendored unchanged. Its rules are the paper's; changes go into the bundle first, then get re-vendored |
+| `src/sex_gender_table.py` | The per-trial `sex_gender` row built from that parser: five-state status, outcomes, provenance, `enrollment_minus_parsed`. No denominator balancing |
+| `data/sex_gender_audit/` | The weekly sex/gender curation inbox: unrecognized labels with ages, labels that left the inbox, bucket changes with causes, and the status-count drift, all stamped with the parser rules version |
 | `condition_ontology.json` | The condition category tree. Canonical copy — edit it here; the weekly run publishes it to the site |
 | `data/` | Inputs: pilot PDF sets and review CSVs, tracked so CI can run pilots. Also the committed record of LLM extraction outputs. Weekly artifacts are *never* committed here (`.gitignore` enforces this) |
 | `.github/workflows/` | The schedules. `ci.yml` gates every push: everything must compile, the extractor harness must pass, and `pytest tests` must pass (sponsor rules, index, adapter parity against AACT, the 2026-06-19 fixture regression, the three-week audit loop, snapshot pruning) |
