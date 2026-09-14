@@ -283,7 +283,19 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/sponsor_audit/ data/sex_gender_audit/
+          # Stage only the audit whose step succeeded: a failed audit may have
+          # written some of its files, and those must not replace the
+          # committed priors (the next run reads them).
+          if [ "${{ steps.audit.outcome }}" = "success" ]; then
+            git add data/sponsor_audit/
+          else
+            git checkout -- data/sponsor_audit/ 2>/dev/null || true
+          fi
+          if [ "${{ steps.sg_audit.outcome }}" = "success" ]; then
+            git add data/sex_gender_audit/
+          else
+            git checkout -- data/sex_gender_audit/ 2>/dev/null || true
+          fi
           git commit -m "Sponsor and sex/gender audits $CURRENT_DATE" || exit 0
           # main may have moved during the ~1h run; replay our one commit on top
           git pull --rebase origin main

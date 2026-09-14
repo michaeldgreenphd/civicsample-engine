@@ -301,6 +301,68 @@ def test_refetch_flag_and_extraction_stamp_survive_the_rebuild_from_raw():
         rows_from_records([{"nct_id": "L", "sex_gender": sgt.lean_row(row)}])
 
 
+def test_published_columns_cover_every_parser_field():
+    """Every field the vendored parser emits is a published column, so a parser
+    version that adds a flag (v1.1.0: flag_percentage_units) cannot be silently
+    dropped by the CSV writer."""
+    from dataclasses import fields
+    parser_fields = [f.name for f in fields(sgp.ParsedTrial)]
+    assert [f for f in parser_fields if f not in sgt.PARSER_COLUMNS] == []
+    assert "flag_percentage_units" in sgt.COLUMNS
+    row = sgt.build_row(_study("PU", [_measure("Sex: Female, Male", [("Female", 60), ("Male", 40)], unit="Percentage of participants")]), SNAP)
+    assert row["flag_percentage_units"] is True and row["is_participant_count"] is False
+
+
+def test_raw_rebuild_files_a_parser_failure_as_parse_error_and_keeps_the_stamps(monkeypatch, tmp_path):
+    import gzip
+    import json
+    import build_sex_gender_table as bst
+    good = {**sgt.select_raw_measures(_study("G", [_measure("Sex: Female, Male", [("Female", 4), ("Male", 5)])])),
+            "snapshot_date": SNAP, "extracted_at": "2026-09-14T06:00:00+00:00", "pipeline_commit": "abc123"}
+    bad = {**sgt.select_raw_measures(_study("B", [_measure("Sex: Female, Male", [("Female", 1), ("Male", 1)])], 7)),
+           "snapshot_date": SNAP, "extracted_at": "2026-09-14T06:00:00+00:00", "pipeline_commit": "abc123"}
+    p = str(tmp_path / "raw.jsonl.gz")
+    with gzip.open(p, "wt") as fh:
+        fh.write(json.dumps(good) + "\n" + json.dumps(bad) + "\n" + "{not json\n")
+    real = sgt.build_row_from_raw
+
+    def flaky(raw, snapshot_date, refetched=False):
+        if raw.get("nct_id") == "B":
+            raise RuntimeError("synthetic parser failure")
+        return real(raw, snapshot_date, refetched)
+
+    monkeypatch.setattr(bst.sgt, "build_row_from_raw", flaky)
+    rows, stamps = bst.rows_from_raw(p, None)
+    assert [r["sex_report_status"] for r in rows] == ["reported", "parse_error", "parse_error"]
+    assert rows[1]["nct_id"] == "B" and rows[1]["enrollment"] == 7 and rows[1]["reported_sex"] is None
+    assert stamps == {"snapshot_date": SNAP, "extracted_at": "2026-09-14T06:00:00+00:00",
+                      "source_pipeline_commit": "abc123", "n_parse_errors": 2}
+    assert sgt.all_pass(sgt.structural_checks(rows))
+
+
+def test_explicit_demographics_source_is_not_replaced_by_the_default_raw_file(tmp_path, monkeypatch):
+    """--demographics names the source; the default raw file, even when present,
+    must not silently take its place."""
+    import json
+    import subprocess
+    import sys as _sys
+    d = tmp_path
+    (d / "data").mkdir()
+    (d / "tests" / "sex_gender" / "fixtures").mkdir(parents=True)
+    with __import__("gzip").open(str(d / "data" / "sex_gender_raw_measures.jsonl.gz"), "wt") as fh:
+        fh.write("")                                   # a default raw file exists, but is empty
+    full = sgt.ordered(sgt.build_row(_study("X", [_measure("Sex: Female, Male", [("Female", 4), ("Male", 5)])]), SNAP))
+    other = d / "other-pull.json"
+    json.dump({"extracted_at": "2026-01-01T00:00:00+00:00", "pipeline_commit": "src111", "data": [{"nct_id": "X", "sex_gender": full}]}, open(other, "w"))
+    res = subprocess.run([_sys.executable, os.path.join(ROOT, "scripts", "build_sex_gender_table.py"),
+                          "--demographics", str(other), "--out", str(d / "t.csv.gz"), "--meta", str(d / "m.json")],
+                         cwd=str(d), capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
+    meta = json.load(open(d / "m.json"))
+    assert meta["n_rows"] == 1 and "other-pull.json" not in meta["source"] and meta["source"].startswith("study[")
+    assert meta["source_extracted_at"] == "2026-01-01T00:00:00+00:00" and meta["source_pipeline_commit"] == "src111"
+
+
 # --------------------------------------------------------------------- 8. mobile block
 def test_mobile_summary_block_is_built_from_the_rows_only():
     from generate_mobile_data import sex_gender_summary

@@ -297,6 +297,7 @@ def main() -> int:
         "audited_at": datetime.now(timezone.utc).isoformat(),
         "snapshot_date": snapshot_date,
         "pipeline_commit": pipeline_commit(),
+        "source_pipeline_commit": meta.get("source_pipeline_commit"),
         "source_extracted_at": meta.get("source_extracted_at"),
         "parser_rules_version": rules,
         "parser_module_version": sgp.__version__,

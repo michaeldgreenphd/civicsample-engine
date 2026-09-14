@@ -427,7 +427,12 @@ def main():
                    "n_unknown", "n_gender_diverse", "n_ambiguous_gender", "uninformative_reason",
                    "declared_not_collected", "percent_female", "parser_rules_version")
 
-    def _compact_sex_gender(row):
+    # The study records carry only the lean row; the compact record's
+    # gender_labeled_binary_only and percent_female come from the full table.
+    full_by_nct = {r.get("nct_id"): r for r in (table_rows or [])}
+
+    def _compact_sex_gender(s):
+        row = full_by_nct.get(s.get("nct_id")) or s.get("sex_gender")
         if not row:
             return None
         return {k: row.get(k) for k in _COMPACT_SG}
@@ -458,7 +463,7 @@ def main():
             "gender": _demo(s.get("gender"), "totals"),
             # sg=v2 row, trimmed to what a table cell needs; the label trails
             # stay on the desktop rows and in the parsed table.
-            "sex_gender": _compact_sex_gender(s.get("sex_gender")),
+            "sex_gender": _compact_sex_gender(s),
             # Geography details aren't shipped to mobile (study_sites is heavy
             # and desktop-only). Leaving countries empty makes the cell show ✗
             # rather than a ✓ that opens an empty modal.

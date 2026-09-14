@@ -56,7 +56,7 @@ PARSER_COLUMNS: list = [
     "n_classes", "has_denoms", "raw_has_unknown",
     "flag_total_by_position", "flag_no_total_sumcheck", "flag_multiclass_timepoint",
     "flag_customized_layout", "flag_empty_category", "flag_unmapped_layout",
-    "flag_exceeds_enrollment", "flag_nonparticipant_units",
+    "flag_exceeds_enrollment", "flag_nonparticipant_units", "flag_percentage_units",
     "unknown_labels", "gender_diverse_labels", "ambiguous_labels", "unmapped_labels",
 ]
 EXTRA_COLUMNS: list = [
@@ -81,7 +81,7 @@ _BOOL_COLUMNS = {"raw_present", "parse_ok", "has_sex_table", "has_gender_table",
                  "declared_not_collected", "has_denoms", "raw_has_unknown", "refetched",
                  "flag_total_by_position", "flag_no_total_sumcheck", "flag_multiclass_timepoint",
                  "flag_customized_layout", "flag_empty_category", "flag_unmapped_layout",
-                 "flag_exceeds_enrollment", "flag_nonparticipant_units"}
+                 "flag_exceeds_enrollment", "flag_nonparticipant_units", "flag_percentage_units"}
 _FLOAT_COLUMNS = {"n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender", "n_total_parsed",
                   "enrollment", "enrollment_minus_parsed", "percent_female"}
 _INT_COLUMNS = {"n_measures", "n_classes"}

@@ -30,7 +30,8 @@ from typing import Optional
 from tqdm import tqdm
 
 from src.api_client import CTGovAPIClient
-from src.utils import get_study_metadata, save_json, get_baseline_measures, get_overall_group_id, extract_demographic_breakdown
+from src.utils import (get_study_metadata, save_json, get_baseline_measures, get_overall_group_id,
+                       extract_demographic_breakdown, pipeline_commit)
 from src.race_extractor import extract_race_data
 from src.ethnicity_extractor import extract_ethnicity_data
 from src.sex_extractor import extract_sex_data
@@ -311,6 +312,9 @@ def main():
     # every retained raw-measure record, so a table rebuilt from the raw
     # records carries the extraction it came from.
     extracted_at = sgt.now_utc_iso()
+    # The code commit that produced the raw records, so a later re-parse of a
+    # backed-up file can name its source (meta.source_pipeline_commit).
+    source_commit = pipeline_commit()
     for study in tqdm(studies, desc="Extracting demographics"):
         result = extract_demographics_from_study(study, pubmed_fetcher=pubmed_fetcher,
                                                  snapshot_date=snapshot_date, legacy_sex_gender=legacy)
@@ -352,6 +356,7 @@ def main():
             results.append(result)
             raw["snapshot_date"] = snapshot_date
             raw["extracted_at"] = extracted_at
+            raw["pipeline_commit"] = source_commit
             raw_records.append(raw)
         else:
             errors += 1

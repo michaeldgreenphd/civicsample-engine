@@ -77,10 +77,15 @@ def rows_from_records(records) -> tuple[list, list]:
     return rows, missing
 
 
-def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, str | None, str | None]:
-    """(rows, snapshot_date, extracted_at) re-parsed from the retained raw
-    records; the stamps come from the records themselves."""
-    rows, first_date, extracted_at = [], None, None
+def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, dict]:
+    """(rows, stamps) re-parsed from the retained raw records. stamps carries
+    snapshot_date, extracted_at and source_pipeline_commit read from the
+    records themselves, plus n_parse_errors.
+
+    A record the parser cannot read (undecodable line, or a parser exception)
+    becomes a parse_error row carrying the record's NCT id and enrollment; it
+    never aborts the build and never disappears (the state exists for it)."""
+    rows, stamps = [], {"snapshot_date": None, "extracted_at": None, "source_pipeline_commit": None, "n_parse_errors": 0}
     with gzip.open(path, "rt") as fh:
         for line in fh:
             line = line.strip()
@@ -90,12 +95,20 @@ def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, str | Non
                 raw = json.loads(line)
             except json.JSONDecodeError:
                 rows.append(sgt.ordered(sgt.parse_error_row(None, None, snapshot_date or sgt.today_utc())))
+                stamps["n_parse_errors"] += 1
                 continue
-            first_date = first_date or raw.get("snapshot_date")
-            extracted_at = extracted_at or raw.get("extracted_at")
-            rows.append(sgt.ordered(sgt.build_row_from_raw(
-                raw, snapshot_date or raw.get("snapshot_date") or sgt.today_utc())))
-    return rows, first_date, extracted_at
+            for k in ("snapshot_date", "extracted_at"):
+                stamps[k] = stamps[k] or raw.get(k)
+            stamps["source_pipeline_commit"] = stamps["source_pipeline_commit"] or raw.get("pipeline_commit")
+            snap = snapshot_date or raw.get("snapshot_date") or sgt.today_utc()
+            try:
+                rows.append(sgt.ordered(sgt.build_row_from_raw(raw, snap)))
+            except Exception as e:  # noqa: BLE001 - parse_error is the state for exactly this
+                print(f"::warning::{raw.get('nct_id')}: parser failed on the retained record "
+                      f"({type(e).__name__}: {e}); filed as parse_error")
+                rows.append(sgt.ordered(sgt.parse_error_row(raw.get("nct_id"), raw.get("enrollment"), snap)))
+                stamps["n_parse_errors"] += 1
+    return rows, stamps
 
 
 def write_table(rows: list, out_csv: str) -> None:
@@ -106,8 +119,12 @@ def write_table(rows: list, out_csv: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--demographics", default="data/demographics.json")
-    ap.add_argument("--parts", default="data/demographics.part*.json.gz")
+    # Sources. Exactly one is used: an explicit --from-raw, else an explicit
+    # --demographics / --parts, else the default raw file when it exists, else
+    # the default demographics.json / parts. An explicitly named source is
+    # never replaced by the default raw file.
+    ap.add_argument("--demographics", default=None, help="a pull's demographics.json (default data/demographics.json)")
+    ap.add_argument("--parts", default=None, help="or its split parts glob (default data/demographics.part*.json.gz)")
     ap.add_argument("--from-raw", default=None, help="re-parse this raw-measures jsonl.gz instead")
     ap.add_argument("--snapshot-date", default=None, help="override the stamped snapshot date (re-parse only)")
     ap.add_argument("--out", default="data/sex_gender_parsed.csv.gz")
@@ -119,21 +136,27 @@ def main() -> int:
     ap.add_argument("--strict", action="store_true")
     a = ap.parse_args()
 
-    extracted_at = commit = None
+    extracted_at = commit = source_commit = None
+    n_parse_errors = 0
     missing: list = []
-    # The retained raw measures are the normal input: when they are there and
-    # no source was named, rebuild from them rather than from the lean rows.
-    if not a.from_raw and os.path.exists(DEFAULT_RAW_PATH):
+    explicit_records = a.demographics is not None or a.parts is not None
+    # The retained raw measures are the normal input: when nothing was named
+    # and they are there, rebuild from them rather than from the lean rows.
+    if not a.from_raw and not explicit_records and os.path.exists(DEFAULT_RAW_PATH):
         a.from_raw = DEFAULT_RAW_PATH
     if a.from_raw:
-        rows, snapshot_date, extracted_at = rows_from_raw(a.from_raw, a.snapshot_date)
+        rows, stamps = rows_from_raw(a.from_raw, a.snapshot_date)
         source = f"re-parsed from {a.from_raw}"
-        snapshot_date = a.snapshot_date or snapshot_date
+        snapshot_date = a.snapshot_date or stamps["snapshot_date"]
+        extracted_at, source_commit = stamps["extracted_at"], stamps["source_pipeline_commit"]
+        n_parse_errors = stamps["n_parse_errors"]
         if extracted_at is None:
             print(f"::warning::{a.from_raw} carries no extracted_at stamp (pre-stamp raw file); "
                   "source_extracted_at will be taken from --write-back's container if given")
     else:
-        records, extracted_at, commit = load_records(a.demographics, a.parts)
+        records, extracted_at, commit = load_records(a.demographics or "data/demographics.json",
+                                                     a.parts or "data/demographics.part*.json.gz")
+        source_commit = commit
         rows, missing = rows_from_records(records)
         source = "study['sex_gender'] rows of the pull"
         snapshot_date = rows[0]["snapshot_date"] if rows else None
@@ -158,7 +181,7 @@ def main() -> int:
         elif c_at and c_at != extracted_at:
             print(f"::warning::raw records were extracted at {extracted_at} but {a.write_back} says {c_at}; "
                   "the table is stamped with the raw records' value")
-        commit = commit or container.get("pipeline_commit")
+        source_commit = source_commit or container.get("pipeline_commit")
         hit = 0
         for s in container["data"]:
             lean = by_nct.get(s.get("nct_id"))
@@ -172,10 +195,16 @@ def main() -> int:
     meta = {
         "written_back": written_back,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "pipeline_commit": pipeline_commit() or commit,
+        # pipeline_commit: the code that built THIS table. source_pipeline_commit:
+        # the code that produced the raw input (stamped on the raw records /
+        # the pull's container), so a re-parse of a backed-up file can never
+        # pass itself off as its source.
+        "pipeline_commit": pipeline_commit(),
+        "source_pipeline_commit": source_commit,
         "source_extracted_at": extracted_at,
         "snapshot_date": snapshot_date,
         "source": source,
+        "n_parse_errors": n_parse_errors,
         "parser_rules_version": sgt.sgp.PARSER_RULES_VERSION,
         "parser_module_version": sgt.sgp.__version__,
         "n_rows": len(rows),
@@ -185,7 +214,8 @@ def main() -> int:
         "status_counts": counts,
         "structural_checks": checks,
         "structural_checks_all_pass": sgt.all_pass(checks),
-        "baseline": {"path": a.baseline, "is_baseline_data": sgt.is_baseline_data({"snapshot_date": snapshot_date}),
+        "baseline": {"path": a.baseline,
+                     "is_baseline_data": sgt.is_baseline_data({"snapshot_date": snapshot_date, "extracted_at": extracted_at}),
                      "drift": drift, "exact_match": not drift},
     }
     os.makedirs(os.path.dirname(a.meta) or ".", exist_ok=True)
