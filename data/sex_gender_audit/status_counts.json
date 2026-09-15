@@ -1,5 +1,5 @@
 {
-  "snapshot_date": "2026-09-14",
+  "snapshot_date": "2026-09-15",
   "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14",
   "parser_module_version": "1.1.0",
   "counts": {
@@ -21,7 +21,7 @@
     "count_of_units_primary": 105,
     "is_participant_count_false": 133,
     "declared_not_collected": 518,
-    "refetched": 0,
+    "refetched": 437,
     "uninformative_reason": {
       "all_values_na": 103,
       "all_values_zero": 140,
@@ -97,8 +97,8 @@
     },
     "is_participant_count_false": {
       "now": 133,
-      "prior": 105,
-      "delta": 28
+      "prior": 133,
+      "delta": 0
     },
     "declared_not_collected": {
       "now": 518,
@@ -106,9 +106,9 @@
       "delta": 0
     },
     "refetched": {
-      "now": 0,
-      "prior": 437,
-      "delta": -437
+      "now": 437,
+      "prior": 0,
+      "delta": 437
     },
     "uninformative_reason": {
       "all_values_na": {
@@ -139,7 +139,7 @@
     }
   },
   "prior_snapshot_date": "2026-09-14",
-  "prior_parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10",
+  "prior_parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14",
   "structural_checks": {
     "reported_any_ge_reported_sex": {
       "pass": true,
