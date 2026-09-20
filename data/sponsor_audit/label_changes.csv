@@ -1,2 +1,11 @@
 nct_id,canonical,role,change,literal_before,literal_after,cause,rules_sha256
-NCT04998656,"Smith & Nephew, Inc.",collaborator,added,,"Smith & Nephew, Inc.",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03206086,Novartis Pharmaceuticals,collaborator,added,,Novartis Pharmaceuticals,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03745287,Vertex Pharmaceuticals Incorporated,lead,added,,Vertex Pharmaceuticals Incorporated,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05059236,Bayer,lead,added,,Bayer,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05128383,Regeneron Pharmaceuticals,collaborator,added,,Regeneron Pharmaceuticals,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05320042,Bausch & Lomb Incorporated,lead,added,,Bausch & Lomb Incorporated,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05908786,Hoffmann-La Roche,lead,added,,Hoffmann-La Roche,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT06045221,Eli Lilly and Company,lead,added,,Eli Lilly and Company,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT06317285,GlaxoSmithKline,lead,added,,GlaxoSmithKline,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT06491914,Regeneron Pharmaceuticals,lead,added,,Regeneron Pharmaceuticals,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT06967129,"Johnson & Johnson Vision Care, Inc.",lead,added,,"Johnson & Johnson Vision Care, Inc.",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c

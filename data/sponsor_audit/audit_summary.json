@@ -1,31 +1,31 @@
 {
-  "audited_at": "2026-09-15T00:26:50.038355+00:00",
-  "snapshot_date": "2026-09-15",
-  "pipeline_commit": "9d21ef4107ab08dd8e6fea387671f86472dc627c",
-  "source_extracted_at": "2026-09-15T00:09:44.973378+00:00",
+  "audited_at": "2026-09-20T11:22:10.142810+00:00",
+  "snapshot_date": "2026-09-20",
+  "pipeline_commit": "bb11d3af70744148fb6f67da7ba70de592a45f34",
+  "source_extracted_at": "2026-09-20T11:05:33.506018+00:00",
   "rules_sha256": "3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c",
   "rules_changed_vs_prior": false,
-  "n_literals": 15678,
+  "n_literals": 15681,
   "n_attributed": 139,
   "n_reviewed_excluded": 1,
-  "n_unreviewed": 15538,
+  "n_unreviewed": 15541,
   "n_blank_literal_trials": 0,
-  "inbox_size": 8,
+  "inbox_size": 10,
   "inbox_top": {
-    "name": "Central and Eastern European Oncology Group",
-    "n_trials": 1,
-    "roles": "collaborator",
+    "name": "Universitas Indonesia",
+    "n_trials": 13,
+    "roles": "collaborator,lead",
     "agency_class": "OTHER"
   },
-  "inbox_open_count": 15538,
-  "inbox_open_industry_count": 5172,
+  "inbox_open_count": 15541,
+  "inbox_open_industry_count": 5175,
   "inbox_open_oldest": {
     "name": "National Cancer Institute (NCI)",
-    "n_trials": 4483,
+    "n_trials": 4485,
     "roles": "collaborator,lead",
     "agency_class": "NIH",
     "first_seen": "2026-08-30",
-    "weeks_open": 2
+    "weeks_open": 3
   },
   "inbox_open_oldest_industry": {
     "name": "Medtronic",
@@ -33,13 +33,13 @@
     "roles": "collaborator,lead",
     "agency_class": "INDUSTRY",
     "first_seen": "2026-08-30",
-    "weeks_open": 2
+    "weeks_open": 3
   },
   "n_match_changes": 0,
   "match_change_causes": {},
-  "n_label_changes": 1,
+  "n_label_changes": 10,
   "label_change_causes": {
-    "registry_edit": 1
+    "registry_edit": 10
   },
   "had_prior": {
     "bridge": true,
