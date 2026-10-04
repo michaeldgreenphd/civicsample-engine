@@ -1,31 +1,31 @@
 {
-  "audited_at": "2026-09-27T12:07:10.781720+00:00",
-  "snapshot_date": "2026-09-27",
-  "pipeline_commit": "12b9b652ad5fdf3b05653b30ecf47297ae87a479",
-  "source_extracted_at": "2026-09-27T11:49:53.609081+00:00",
+  "audited_at": "2026-10-04T12:25:52.421754+00:00",
+  "snapshot_date": "2026-10-04",
+  "pipeline_commit": "d853532eb8b1297e6333653e81bce5bea9caed4e",
+  "source_extracted_at": "2026-10-04T12:09:21.454200+00:00",
   "rules_sha256": "3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c",
   "rules_changed_vs_prior": false,
-  "n_literals": 15696,
+  "n_literals": 15720,
   "n_attributed": 139,
   "n_reviewed_excluded": 1,
-  "n_unreviewed": 15556,
+  "n_unreviewed": 15580,
   "n_blank_literal_trials": 0,
-  "inbox_size": 20,
+  "inbox_size": 27,
   "inbox_top": {
-    "name": "RAPT Therapeutics, Inc., a member of the GSK plc group of companies",
-    "n_trials": 4,
-    "roles": "lead",
-    "agency_class": "INDUSTRY"
+    "name": "Copenhagen University Hospital, Rigshospitalet",
+    "n_trials": 22,
+    "roles": "collaborator,lead",
+    "agency_class": "OTHER"
   },
-  "inbox_open_count": 15556,
-  "inbox_open_industry_count": 5184,
+  "inbox_open_count": 15580,
+  "inbox_open_industry_count": 5195,
   "inbox_open_oldest": {
     "name": "National Cancer Institute (NCI)",
-    "n_trials": 4490,
+    "n_trials": 4496,
     "roles": "collaborator,lead",
     "agency_class": "NIH",
     "first_seen": "2026-08-30",
-    "weeks_open": 4
+    "weeks_open": 5
   },
   "inbox_open_oldest_industry": {
     "name": "Medtronic",
@@ -33,7 +33,7 @@
     "roles": "collaborator,lead",
     "agency_class": "INDUSTRY",
     "first_seen": "2026-08-30",
-    "weeks_open": 4
+    "weeks_open": 5
   },
   "n_match_changes": 0,
   "match_change_causes": {},
