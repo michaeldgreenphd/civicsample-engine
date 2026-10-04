@@ -2,49 +2,33 @@
 """
 Generate a pilot target list of the 50 largest clinical trials by enrollment.
 
-Reads every `data/demographics.part*.json.gz` shard, sorts trials by
-participant count descending, and writes the top 50 to
+Reads the week's full records (`data/demographics.json`, src.full_records;
+pass --demographics for another week's file), sorts trials by participant
+count descending, and writes the top 50 to
 `data/pilot_clinical_trials_targets.csv` for use as input to an external
 literature-search pilot (Google Colab).
 
-Schema notes (discovered from `data/details.part1.json.gz` and the
-`demographics` shards):
-  - `details.part*.json.gz` records contain only narrative fields
-    (study_sites, outcome descriptions, intervention_model_description) —
-    they do NOT carry enrollment or condition.
-  - `demographics.part*.json.gz` records carry the trial-level metadata:
-    `nct_id`, `enrollment` (int), `primary_condition`, `conditions`,
-    `intervention_model_description`, `intervention_model`.
+The records carry the trial-level fields used here: `nct_id`, `enrollment`
+(int), `primary_condition`, `conditions`, `intervention_model_description`,
+`intervention_model`. The site's `demographics.part*.json.gz` are not read:
+they are about to drop `intervention_model_description`, which would silently
+turn every Intervention cell into the model name.
 
 Output columns (exact headers, in order):
   NCT Number, Condition, Intervention, Total Participants
 """
 
+import argparse
 import csv
-import glob
-import gzip
-import json
 import os
 import sys
 
-DEMOGRAPHICS_GLOB = "data/demographics.part*.json.gz"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src import full_records  # noqa: E402
+
 OUTPUT_CSV = "data/pilot_clinical_trials_targets.csv"
 TOP_N = 50
-
-
-def load_trials(pattern: str) -> list[dict]:
-    paths = sorted(glob.glob(pattern))
-    if not paths:
-        print(f"Error: no shards matched {pattern}", file=sys.stderr)
-        sys.exit(1)
-    trials: list[dict] = []
-    for path in paths:
-        with gzip.open(path, "rt", encoding="utf-8") as f:
-            obj = json.load(f)
-        records = obj.get("data", [])
-        print(f"  {os.path.basename(path)}: {len(records):,} records")
-        trials.extend(records)
-    return trials
 
 
 def pick_condition(rec: dict) -> str:
@@ -66,9 +50,13 @@ def pick_intervention(rec: dict) -> str:
     return model
 
 
-def main():
-    print(f"Loading shards from {DEMOGRAPHICS_GLOB}")
-    trials = load_trials(DEMOGRAPHICS_GLOB)
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(description="Write the pilot target list.")
+    ap.add_argument("--demographics", default=full_records.DEFAULT_PATH,
+                    help="the week's full records (default: %(default)s)")
+    a = ap.parse_args(argv)
+    print(f"Loading the full records from {a.demographics}")
+    trials, _, _ = full_records.load(a.demographics)
     print(f"Loaded {len(trials):,} total trial records\n")
 
     eligible = [t for t in trials if isinstance(t.get("enrollment"), int) and t.get("nct_id")]

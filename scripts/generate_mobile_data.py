@@ -10,15 +10,20 @@ single ~30 KB JSON file.
 Mobile loads ONLY this file: instant dashboard with all charts, no per-study
 data needed.  The Studies table and Geography tab show a "view on desktop"
 prompt.  Filters are disabled (all data is pre-aggregated).
+
+READS the week's full records (data/demographics.json, src.full_records),
+not the site's parts: recentStudies carries status, why_stopped, ages and a
+reference count, which the parts will stop carrying.
 """
+import argparse
 import json
-import gzip
 import os
 import sys
 from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src import full_records  # noqa: E402
 from src import sex_gender_table as sgt  # noqa: E402
 
 # Drill-down label lists carry at most this many distinct labels each; every
@@ -150,31 +155,26 @@ def sex_gender_summary(all_studies, table_rows=None):
     }
 
 
-def main():
-    # ── Load all studies ──
-    all_studies = []
-    extracted_at = None
-    pipeline_commit = None
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--demographics", default=full_records.DEFAULT_PATH,
+                    help="the week's full records (default: %(default)s)")
+    ap.add_argument("--table", default="data/sex_gender_parsed.csv.gz",
+                    help="the full sex/gender table (default: %(default)s)")
+    ap.add_argument("--out", default="data/dashboard-summary.json",
+                    help="where to write the summary (default: %(default)s)")
+    a = ap.parse_args(argv)
 
-    for i in range(1, 9):
-        path = f"data/demographics.part{i}.json.gz"
-        if not os.path.exists(path):
-            continue
-        print(f"Reading {path}...")
-        with gzip.open(path, "rt") as f:
-            container = json.load(f)
-        if extracted_at is None:
-            extracted_at = container.get("extracted_at")
-        if pipeline_commit is None:
-            pipeline_commit = container.get("pipeline_commit")
-        all_studies.extend(container["data"])
+    # ── Load all studies ──
+    print(f"Reading {a.demographics}...")
+    all_studies, extracted_at, pipeline_commit = full_records.load(a.demographics)
 
     total = len(all_studies)
     print(f"Loaded {total} studies")
 
     # The full sex/gender record (labels, percent_female) lives in the parsed
     # table, not in the lean per-study rows; read it when it is there.
-    table_path = "data/sex_gender_parsed.csv.gz"
+    table_path = a.table
     table_rows = sgt.read_table(table_path) if os.path.exists(table_path) else None
     print(f"Sex/gender table: {len(table_rows) if table_rows else 'absent (lean rows only)'}")
 
@@ -508,7 +508,7 @@ def main():
         "sexGender": sex_gender_summary(all_studies, table_rows),
     }
 
-    path = "data/dashboard-summary.json"
+    path = a.out
     with open(path, "w") as f:
         json.dump(summary, f, separators=(",", ":"))
 
