@@ -189,6 +189,8 @@ jobs:
 
           # Copy this week's artifacts into the site checkout
           cp data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json site/data/
+          # The run's stamps: the site keys its data cache by extracted_at
+          cp data/run.json site/data/run.json
           # Sex/gender table + meta ride with the parts; the methods text is its own folder
           cp data/sex_gender_parsed.csv.gz data/sex_gender_parsed_meta.json site/data/
           mkdir -p site/data/sex_gender
@@ -226,7 +228,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json
+          git add data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json data/run.json
           git add data/sex_gender_parsed.csv.gz data/sex_gender_parsed_meta.json data/sex_gender/
           git add condition_ontology.json
           git add -A snapshots/ history.json
