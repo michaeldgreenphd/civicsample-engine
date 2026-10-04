@@ -5,7 +5,7 @@ The top-N unmatched INDUSTRY lead literals ranked within OUR posted-results
 cohort, with trial counts, roles, and the precomputed normalized pattern —
 a ready-to-curate list that comes back as a rules PR.
 
-READS   the weekly pull (or parts), the rules
+READS   the week's full records (data/demographics.json), the rules
 WRITES  --out (default data/sponsor_audit/curation_batches/<date>_industry_leads_top<N>.csv)
 Run from the repo root.
 """
@@ -29,14 +29,13 @@ from sponsors.audit_states import partition  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--demographics", default="data/demographics.json")
-    ap.add_argument("--parts", default="data/demographics.part*.json.gz")
     ap.add_argument("--rules", default="sponsors/company_aliases.csv")
     ap.add_argument("--top", type=int, default=100)
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
     rules_sha = hashlib.sha256(open(a.rules, "rb").read()).hexdigest()
-    records, extracted_at = load_records(a.demographics, a.parts)
+    records, extracted_at = load_records(a.demographics)
     frame, _ = records_to_frame(records)
     rules = sr.load_rules(a.rules)
     states = partition(frame, rules)

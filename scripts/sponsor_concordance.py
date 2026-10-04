@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Per-trial concordance of our adapter vs the AACT 2026-06-19 fixture (A1).
 
-READS   the weekly pull (or parts), sponsors/company_aliases.csv,
+READS   the week's full records (data/demographics.json), sponsors/company_aliases.csv,
         tests/sponsors/fixtures/sponsors_fixture_20260619_industry.csv.gz
 WRITES  a report to stdout and --out JSON; disagreement rows to --out-dir
 Run from the repo root. Not part of the weekly job; run for reviews.
@@ -29,13 +29,12 @@ COMPANIES = ["Pfizer", "Merck & Co", "Merck KGaA", "Bristol-Myers Squibb"]
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--demographics", default="data/demographics.json")
-    ap.add_argument("--parts", default="data/demographics.part*.json.gz")
     ap.add_argument("--rules", default="sponsors/company_aliases.csv")
     ap.add_argument("--fixture", default=FIXTURE)
     ap.add_argument("--out-dir", default=None)
     a = ap.parse_args()
 
-    records, extracted_at = load_records(a.demographics, a.parts)
+    records, extracted_at = load_records(a.demographics)
     pull_frame, log = records_to_frame(records)
     rules = sr.load_rules(a.rules)
     pull_index = sr.build_index(pull_frame, rules)

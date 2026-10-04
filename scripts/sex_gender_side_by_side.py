@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from src import sex_gender_table as sgt  # noqa: E402
 from src.utils import pipeline_commit  # noqa: E402
-from build_sex_gender_table import load_records  # noqa: E402
+from src import full_records  # noqa: E402
 import generate_industry_sponsors as gis  # noqa: E402
 
 MEAN_LIKE = {"MEAN", "MEDIAN", "GEOMETRIC_MEAN", "LEAST_SQUARES_MEAN", "GEOMETRIC_LEAST_SQUARES_MEAN", "LOG_MEAN"}
@@ -77,14 +77,14 @@ def industry_cohort_member(rec: dict) -> bool:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--demographics", default="data/demographics.json")
-    ap.add_argument("--parts", default="data/demographics.part*.json.gz")
+    ap.add_argument("--demographics", default=full_records.DEFAULT_PATH,
+                    help="the week's full records; the industry cohort needs status and the sponsor fields")
     ap.add_argument("--table", default="data/sex_gender_parsed.csv.gz",
                     help="the full sex/gender record; the study records carry only the lean row")
     ap.add_argument("--out-dir", default="data/sex_gender_audit")
     a = ap.parse_args()
 
-    records, extracted_at, commit = load_records(a.demographics, a.parts)
+    records, extracted_at, commit = full_records.load(a.demographics)
     table = {r["nct_id"]: r for r in sgt.read_table(a.table)} if os.path.exists(a.table) else {}
     for r in records:
         full = table.get(r.get("nct_id"))

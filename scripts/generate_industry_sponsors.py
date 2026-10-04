@@ -47,10 +47,12 @@ the industry-sponsor female-enrollment analyses from the standalone R pipeline
       reference fit's n and R-squared.
 
 Run from the repository root: python3 scripts/generate_industry_sponsors.py
-Optionally pass a directory containing demographics.part*.json.gz.
+[data_dir] [--demographics PATH]. It reads the week's full records
+(src.full_records; by default <data_dir>/demographics.json), not the site's
+parts, which are about to drop the sponsor and status fields the cohort
+needs, and writes <data_dir>/industry_sponsors.json.
 """
-import glob
-import gzip
+import argparse
 import json
 import math
 import os
@@ -60,6 +62,10 @@ from collections import defaultdict
 from datetime import date, datetime, timezone
 
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src import full_records  # noqa: E402
 
 MIN_CELL = 10          # heatmap cells below this many trials are uncolored (Rmd ppr_min_cell)
 TOP_N_SPONSORS = 10
@@ -211,18 +217,10 @@ def assign_industry_company(rec):
     return None, None
 
 
-def load_parts(data_dir):
-    parts = sorted(glob.glob(os.path.join(data_dir, "demographics.part*.json.gz")))
-    if not parts:
-        raise SystemExit(f"No demographics.part*.json.gz under {data_dir}")
-    extracted_at, source_commit, records = None, None, []
-    for p in parts:
-        with gzip.open(p, "rt") as f:
-            container = json.load(f)
-        extracted_at = extracted_at or container.get("extracted_at")
-        source_commit = source_commit or container.get("pipeline_commit")
-        records.extend(container["data"])
-        print(f"  read {os.path.basename(p)}: {len(container['data']):,} records")
+def load_records(path: str) -> tuple[str | None, str | None, list[dict]]:
+    """(extracted_at, pipeline_commit, records) from the week's full records."""
+    records, extracted_at, source_commit = full_records.load(path)
+    print(f"  read {path}: {len(records):,} records")
     return extracted_at, source_commit, records
 
 
@@ -349,10 +347,17 @@ def pooled_fit(rows, top10):
     return {"n": len(sub), "r2": round(r2, 4), "adj_r2": round(adj, 4)}
 
 
-def main():
-    data_dir = sys.argv[1] if len(sys.argv) > 1 else "data"
-    print(f"Loading parts from {data_dir}/ ...")
-    extracted_at, source_commit, records = load_parts(data_dir)
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(description="Write <data_dir>/industry_sponsors.json.")
+    ap.add_argument("data_dir", nargs="?", default="data",
+                    help="where industry_sponsors.json is written (default: %(default)s)")
+    ap.add_argument("--demographics", default=None,
+                    help="the week's full records (default: <data_dir>/demographics.json)")
+    a = ap.parse_args(argv)
+    data_dir = a.data_dir
+    demographics = a.demographics or os.path.join(data_dir, "demographics.json")
+    print(f"Loading the full records from {demographics} ...")
+    extracted_at, source_commit, records = load_records(demographics)
     print(f"Loaded {len(records):,} studies")
 
     rows = build_cohort(records)

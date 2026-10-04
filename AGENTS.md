@@ -109,11 +109,24 @@ suite under `tests/sex_gender/` must keep passing as shipped, and the weekly
 inbox `data/sex_gender_audit/` may not silently drop a label. The retained raw
 measures (`sex_gender_raw_measures.jsonl.gz`, one record per trial with its
 `snapshot_date`, `extracted_at` and `pipeline_commit`) are what make a
-snapshot re-parseable after a rule change; besides the pruned weekly `data-*`
+snapshot re-parseable after a rule change; besides the weekly `data-*`
 release and the best-effort Drive copy they go to the permanent
-`sex-gender-raw-measures` release, which the prune loop never touches. A
-change that drops that upload, or lets the prune loop match that tag, is a
+`sex-gender-raw-measures` release. A change that drops that upload is a
 data-loss defect.
+
+**The weekly `data-*` releases are the permanent full record.** Each holds
+that week's `demographics.json.gz`, every field of every study record. They
+are never pruned. The release runs before the site checkout, so a site-side
+failure cannot skip it; if it fails, the files are kept as a 90-day workflow
+artifact and the run turns red. Releases start at `data-2026-08-28`: for
+earlier weeks the full records exist only as the parts committed to the site
+repository, whose history is never rewritten. The
+site's `demographics.part*.json.gz` are a projection for the dashboard, not a
+copy: a script that needs a field the dashboard does not show reads the full
+records through `src/full_records.py`, which never falls back to the parts. A
+change that deletes `data-*` releases, or reads study fields from the parts
+that the site's record contract (tests/record_contract.json in the site repo)
+does not list, is a data-loss or correctness defect.
 
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM

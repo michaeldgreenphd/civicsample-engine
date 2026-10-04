@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build the sponsor bridge table for the dashboard's company filter.
 
-READS   data/demographics.json (the weekly pull; or --parts to read the
-        split data/demographics.part*.json.gz instead), sponsors/company_aliases.csv
+READS   data/demographics.json (the week's full records, src.full_records; never
+        the site's parts, which drop the sponsor fields), sponsors/company_aliases.csv
 WRITES  data/sponsors/bridge.csv.gz   one row per (nct_id, canonical, entity, role)
         data/sponsors/bridge_meta.json provenance + adapter mismatch log
 INVOKED by .github/workflows/extract.yml after the demographics publish
@@ -12,8 +12,6 @@ INVOKED by .github/workflows/extract.yml after the demographics publish
 from __future__ import annotations
 
 import argparse
-import glob
-import gzip
 import hashlib
 import json
 import os
@@ -23,6 +21,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src import full_records  # noqa: E402
 from sponsors import sponsor_roles as sr  # noqa: E402
 from sponsors.adapter import (AACT_LOADER_COMMIT, AACT_SOURCE_FILES,  # noqa: E402
                               records_to_frame)
@@ -48,33 +47,24 @@ def pipeline_commit() -> str | None:
         return None
 
 
-def load_records(demographics: str | None, parts_glob: str | None):
-    """Yield (records, extracted_at). Full JSON if present, else the parts."""
-    if demographics and os.path.exists(demographics):
-        with open(demographics) as f:
-            c = json.load(f)
-        return c["data"], c.get("extracted_at")
-    paths = sorted(glob.glob(parts_glob or "data/demographics.part*.json.gz"))
-    if not paths:
-        raise SystemExit("no demographics.json and no demographics.part*.json.gz found")
-    records, extracted_at = [], None
-    for p in paths:
-        with gzip.open(p, "rt") as f:
-            c = json.load(f)
-        extracted_at = extracted_at or c.get("extracted_at")
-        records.extend(c["data"])
+def load_records(demographics: str | None) -> tuple[list[dict], str | None]:
+    """(records, extracted_at) from the week's full records.
+
+    A missing file exits rather than falling back to the site's parts: the
+    parts are about to drop lead_sponsor_name and collaborators, and an empty
+    sponsor index would read as every company leaving the registry."""
+    records, extracted_at, _ = full_records.load(demographics)
     return records, extracted_at
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--demographics", default="data/demographics.json")
-    ap.add_argument("--parts", default="data/demographics.part*.json.gz")
+    ap.add_argument("--demographics", default=full_records.DEFAULT_PATH)
     ap.add_argument("--rules", default="sponsors/company_aliases.csv")
     ap.add_argument("--out-dir", default="data/sponsors")
     a = ap.parse_args()
 
-    records, extracted_at = load_records(a.demographics, a.parts)
+    records, extracted_at = load_records(a.demographics)
     frame, log = records_to_frame(records)
     rules = sr.load_rules(a.rules)
     index = sr.build_index(frame, rules)          # raises on rule conflicts (invariant 6)

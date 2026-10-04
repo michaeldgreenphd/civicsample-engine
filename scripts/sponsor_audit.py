@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Weekly sponsor curation audit — the inbox nothing may silently drop from.
 
-READS   the weekly pull (data/demographics.json or the parts), the rules,
+READS   the week's full records (data/demographics.json), the rules,
         data/sponsors/bridge.csv.gz (this week's bridge) and, when present,
         last week's artifacts: --prior-bridge / --prior-meta (the site's copy
         before overwrite), --prior-literals, --prior-open, --prior-trials
@@ -72,7 +72,6 @@ def cause_for_literal(present_prior, present_now, rules_changed):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--demographics", default="data/demographics.json")
-    ap.add_argument("--parts", default="data/demographics.part*.json.gz")
     ap.add_argument("--rules", default="sponsors/company_aliases.csv")
     ap.add_argument("--bridge", default="data/sponsors/bridge.csv.gz")
     ap.add_argument("--prior-bridge", default=None)
@@ -85,7 +84,7 @@ def main() -> int:
     a = ap.parse_args()
 
     rules_sha = hashlib.sha256(open(a.rules, "rb").read()).hexdigest()
-    records, extracted_at = load_records(a.demographics, a.parts)
+    records, extracted_at = load_records(a.demographics)
     snapshot_date = a.snapshot_date or (extracted_at or datetime.now(timezone.utc).isoformat())[:10]
     snap = date.fromisoformat(snapshot_date)
     frame, _ = records_to_frame(records)
