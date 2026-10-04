@@ -5,6 +5,9 @@ Split large demographics.json into N compressed parts.
 Each part must stay under 20 MB (gzipped) so that jsDelivr can serve
 historical snapshots via its GitHub CDN mirror.  With ~140 MB of gzipped
 data, 8 parts keeps each comfortably under the limit.
+
+Also writes data/run.json, the run's stamps (extracted_at, pipeline_commit,
+total_parts, studies), which the site uses as its data cache key.
 """
 import json
 import gzip
@@ -15,7 +18,7 @@ NUM_PARTS = 8
 MAX_PART_MB = 20  # jsDelivr per-file limit
 
 
-def main():
+def main() -> None:
     print("Loading full dataset...")
     with open('data/demographics.json', 'r') as f:
         full_data = json.load(f)
@@ -51,7 +54,20 @@ def main():
         if size_mb > MAX_PART_MB:
             print(f"    ⚠ WARNING: part exceeds {MAX_PART_MB} MB limit!")
 
-    print(f"✓ Split {total} studies into {NUM_PARTS} parts")
+    # The run's stamps, published as data/run.json next to the parts. The
+    # site keys every data URL by extracted_at, so a browser keeps a run's
+    # files across visits and fetches new ones when a new run lands, a
+    # same-day re-run included.
+    run = {
+        'extracted_at': full_data['extracted_at'],
+        'pipeline_commit': full_data.get('pipeline_commit'),
+        'total_parts': NUM_PARTS,
+        'studies': total,
+    }
+    with open('data/run.json', 'w') as f:
+        json.dump(run, f, indent=2)
+
+    print(f"✓ Split {total} studies into {NUM_PARTS} parts; wrote data/run.json")
 
 
 if __name__ == '__main__':

@@ -28,6 +28,7 @@ extraction.log
 data/demographics.json
 data/demographics.json.gz
 data/demographics.part*.json.gz
+data/run.json
 data/dashboard-summary.json
 data/industry_sponsors.json
 # Sponsor bridge is published to the site; the audit under data/sponsor_audit/ IS committed
