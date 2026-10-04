@@ -126,7 +126,16 @@ copy: a script that needs a field the dashboard does not show reads the full
 records through `src/full_records.py`, which never falls back to the parts. A
 change that deletes `data-*` releases, or reads study fields from the parts
 that the site's record contract (tests/record_contract.json in the site repo)
-does not list, is a data-loss or correctness defect.
+does not list, is a data-loss or correctness defect. The publish step runs
+`scripts/check_site_contract.py` on the staged site checkout before it
+commits: a part missing a contract field, malformed, from another run or over
+GitHub's 100 MiB per-file push limit, or a site over GitHub Pages' 1 GB limit
+stops the push and leaves the site on last week's data. The steps that
+publish to the site after it (the sex/gender audit, the sponsor bridge) are
+skipped too; the week's full-record and raw-measure releases run before the
+site checkout and are not. Growth past the site's size budget
+(tests/data_budget.json there) only warns. A change that makes that check
+advisory, or runs it after the push, is the defect it exists to catch.
 
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM
