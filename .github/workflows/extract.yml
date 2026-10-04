@@ -34,6 +34,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run extraction
+        id: extract
         # pipefail so a tee'd log can never mask an extraction failure
         run: |
           set -o pipefail
@@ -170,6 +171,45 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+      - name: Archive the retained sex/gender raw measures permanently
+        # The selected raw measures are what makes a snapshot re-parseable
+        # after a parser rule change. Besides the week's data-* release they
+        # also go to ONE permanent release (tag sex-gender-raw-measures), one
+        # asset per snapshot date, so they can be fetched together. It runs
+        # before the site checkout and needs only the engine's own file, so
+        # a site-side failure (the publish step's contract check refusing a
+        # week, a rejected push) cannot skip it, nor can a failed sex/gender
+        # table build, when the raw measures are what a re-parse needs. It
+        # runs only when the extraction itself succeeded: a failed or killed
+        # extraction can leave a partial file, and the upload below replaces
+        # a same-day asset. scripts/check_raw_measures.py checks the file is
+        # whole and this run's before the upload. continue-on-error keeps it
+        # from holding up the site's data. The last step of the job fails the
+        # run if this outcome is 'failure', so an unarchived week is noticed.
+        if: ${{ !cancelled() && steps.extract.outcome == 'success' }}
+        id: sg_archive
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="sex-gender-raw-measures"
+          ASSET="$RUNNER_TEMP/${CURRENT_DATE}_sex_gender_raw_measures.jsonl.gz"
+          if ! python3 scripts/check_raw_measures.py data/sex_gender_raw_measures.jsonl.gz --snapshot-date "$CURRENT_DATE"; then
+            echo "::error::the raw sex/gender measures for $CURRENT_DATE are not whole; nothing was uploaded, and any earlier $CURRENT_DATE asset on release $TAG is kept"
+            exit 1
+          fi
+          cp data/sex_gender_raw_measures.jsonl.gz "$ASSET"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Sex/gender raw measures (permanent archive)" \
+              --notes "One asset per weekly snapshot: the SELECTED sex/gender baseline measures per trial, verbatim, with snapshot_date, extracted_at and pipeline_commit on every record. Re-parse with scripts/build_sex_gender_table.py --from-raw. Not pruned."
+          fi
+          if ! gh release upload "$TAG" "$ASSET" --clobber --repo "$GITHUB_REPOSITORY"; then
+            echo "::error::permanent archive of the sex/gender raw measures for $CURRENT_DATE failed; re-run this step or upload $ASSET to release $TAG by hand"
+            exit 1
+          fi
+          echo "Archived $(basename "$ASSET") to release $TAG"
+
       - name: Check out the site repository
         uses: actions/checkout@v4
         with:
@@ -232,37 +272,15 @@ jobs:
           git add data/sex_gender_parsed.csv.gz data/sex_gender_parsed_meta.json data/sex_gender/
           git add condition_ontology.json
           git add -A snapshots/ history.json
+          # Check what is staged against the site's own record contract and
+          # data budget (scripts/check_site_contract.py) before anything is
+          # committed: a part missing a field the site reads, malformed, from
+          # another run, over GitHub's 100 MiB per-file push limit, or a site
+          # over GitHub Pages' 1 GB limit stops the publish here, and the site
+          # keeps last week's data. Over the size budget only warns.
+          python3 ../scripts/check_site_contract.py --site . --report "$RUNNER_TEMP/site_check.json"
           git commit -m "Update demographics data $DATE$REPLACED" || exit 0
           git push
-
-      - name: Archive the retained sex/gender raw measures permanently
-        # The selected raw measures are what makes a snapshot re-parseable
-        # after a parser rule change. Besides the week's data-* release they
-        # also go to ONE permanent release (tag sex-gender-raw-measures), one
-        # asset per snapshot date, so they can be fetched together. This step runs
-        # after the site publish, so a failure here cannot delay the site's
-        # data. continue-on-error keeps the independent steps below (the
-        # sex/gender audit, the sponsor pipeline) running; the last step of
-        # the job then fails the run if this outcome is 'failure', so an
-        # unarchived week is still noticed.
-        id: sg_archive
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="sex-gender-raw-measures"
-          ASSET="$RUNNER_TEMP/${CURRENT_DATE}_sex_gender_raw_measures.jsonl.gz"
-          cp data/sex_gender_raw_measures.jsonl.gz "$ASSET"
-          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "Sex/gender raw measures (permanent archive)" \
-              --notes "One asset per weekly snapshot: the SELECTED sex/gender baseline measures per trial, verbatim, with snapshot_date, extracted_at and pipeline_commit on every record. Re-parse with scripts/build_sex_gender_table.py --from-raw. Not pruned."
-          fi
-          if ! gh release upload "$TAG" "$ASSET" --clobber --repo "$GITHUB_REPOSITORY"; then
-            echo "::error::permanent archive of the sex/gender raw measures for $CURRENT_DATE failed; re-run this step or upload $ASSET to release $TAG by hand"
-            exit 1
-          fi
-          echo "Archived $(basename "$ASSET") to release $TAG"
 
       # ── Sex/gender curation inbox (scripts/sex_gender_audit.py) ──────────
       # Runs after the site publish (an audit problem can never delay the
@@ -408,6 +426,9 @@ jobs:
               echo "| Sex/gender audit | step ${{ steps.sg_audit.outcome }} — no audit this week (files in data/sex_gender_audit/ are last week's) |"
             fi
             echo "| Full-record release | step ${{ steps.data_release.outcome }} (release data-$CURRENT_DATE) |"
+            if [ -f "$RUNNER_TEMP/site_check.json" ]; then
+              echo "| Site contract check | $(jq -r '"\(if .ok then "passed" else "FAILED, nothing published" end): \(.records // 0) records; parts \((.parts_gzip_bytes // 0) / 1e6 | floor) MB of a \((.total_budget_bytes // 0) / 1e6 | floor) MB budget; site \((.tree_bytes // 0) / 1e6 | floor) MB; \(.errors | length) errors, \(.warnings | length) warnings"' "$RUNNER_TEMP/site_check.json") |"
+            fi
             echo "| Sex/gender raw-measure archive | step ${{ steps.sg_archive.outcome }} (release sex-gender-raw-measures) |"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.sg_audit.outcome }}" = "success" ]; then
@@ -445,9 +466,11 @@ jobs:
 
       - name: Fail the run if the permanent raw-measure archive failed
         # Last, so every independent step above (audits, sponsor pipeline,
-        # summary) has already run; the site already has its data. A red run
-        # here means one week's raw measures are not in the permanent release
-        # and must be uploaded by hand from the data-* release or Drive.
+        # summary) has already run. A red run here means one week's raw
+        # measures are not in the permanent release. If the archive step's
+        # check refused the file (its ::error:: lines say why), re-run the
+        # workflow; if the upload itself failed, upload the file by hand from
+        # the data-* release or Drive.
         if: ${{ !cancelled() && steps.sg_archive.outcome == 'failure' }}
         run: |
           echo "::error::the permanent archive of this week's sex/gender raw measures failed (see the 'Archive the retained sex/gender raw measures permanently' step)"

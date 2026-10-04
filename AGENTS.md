@@ -111,7 +111,10 @@ measures (`sex_gender_raw_measures.jsonl.gz`, one record per trial with its
 `snapshot_date`, `extracted_at` and `pipeline_commit`) are what make a
 snapshot re-parseable after a rule change; besides the weekly `data-*`
 release and the best-effort Drive copy they go to the permanent
-`sex-gender-raw-measures` release. A change that drops that upload is a
+`sex-gender-raw-measures` release. That upload replaces a same-day asset, so
+it runs only after a successful extraction and only once
+`scripts/check_raw_measures.py` finds the file whole and this run's. A
+change that drops that upload, or lets a partial file reach it, is a
 data-loss defect.
 
 **The weekly `data-*` releases are the permanent full record.** Each holds
@@ -126,7 +129,16 @@ copy: a script that needs a field the dashboard does not show reads the full
 records through `src/full_records.py`, which never falls back to the parts. A
 change that deletes `data-*` releases, or reads study fields from the parts
 that the site's record contract (tests/record_contract.json in the site repo)
-does not list, is a data-loss or correctness defect.
+does not list, is a data-loss or correctness defect. The publish step runs
+`scripts/check_site_contract.py` on the staged site checkout before it
+commits: a part missing a contract field, malformed, from another run or over
+GitHub's 100 MiB per-file push limit, or a site over GitHub Pages' 1 GB limit
+stops the push and leaves the site on last week's data. The steps that
+publish to the site after it (the sex/gender audit, the sponsor bridge) are
+skipped too; the week's full-record and raw-measure releases run before the
+site checkout and are not. Growth past the site's size budget
+(tests/data_budget.json there) only warns. A change that makes that check
+advisory, or runs it after the push, is the defect it exists to catch.
 
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM

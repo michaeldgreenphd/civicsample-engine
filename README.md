@@ -32,8 +32,12 @@ The weekly run (`extract.yml`, Sundays 06:00 UTC) does six things, in order:
    site's parts are not (releases start at 2026-08-28). Google Drive also
    gets a copy when configured.
 5. **Publish** — copies the finished files into the site repo, saves a
-   dated snapshot for the dashboard's "View snapshot" feature, and prunes
-   old snapshots so the site stays deployable.
+   dated snapshot for the dashboard's "View snapshot" feature, prunes old
+   snapshots so the site stays deployable, and checks what it staged against
+   the site's own field contract and size budget
+   (`scripts/check_site_contract.py`) before it pushes: a missing field, a
+   malformed part or a file over GitHub's limits stops the publish (and the
+   later steps that publish to the site), growth past the budget only warns.
 6. **Sponsor bridge** — attributes every trial's sponsors to canonical
    companies via the curated rules (`sponsors/`), publishes the bridge table
    and the audit files to the site in a second commit, and writes the
