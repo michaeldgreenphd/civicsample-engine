@@ -111,7 +111,10 @@ measures (`sex_gender_raw_measures.jsonl.gz`, one record per trial with its
 `snapshot_date`, `extracted_at` and `pipeline_commit`) are what make a
 snapshot re-parseable after a rule change; besides the weekly `data-*`
 release and the best-effort Drive copy they go to the permanent
-`sex-gender-raw-measures` release. A change that drops that upload is a
+`sex-gender-raw-measures` release. That upload replaces a same-day asset, so
+it runs only after a successful extraction and only once
+`scripts/check_raw_measures.py` finds the file whole and this run's. A
+change that drops that upload, or lets a partial file reach it, is a
 data-loss defect.
 
 **The weekly `data-*` releases are the permanent full record.** Each holds

@@ -34,6 +34,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run extraction
+        id: extract
         # pipefail so a tee'd log can never mask an extraction failure
         run: |
           set -o pipefail
@@ -177,10 +178,15 @@ jobs:
         # asset per snapshot date, so they can be fetched together. It runs
         # before the site checkout and needs only the engine's own file, so
         # a site-side failure (the publish step's contract check refusing a
-        # week, a rejected push) cannot skip it; continue-on-error keeps it
+        # week, a rejected push) cannot skip it, nor can a failed sex/gender
+        # table build, when the raw measures are what a re-parse needs. It
+        # runs only when the extraction itself succeeded: a failed or killed
+        # extraction can leave a partial file, and the upload below replaces
+        # a same-day asset. scripts/check_raw_measures.py checks the file is
+        # whole and this run's before the upload. continue-on-error keeps it
         # from holding up the site's data. The last step of the job fails the
         # run if this outcome is 'failure', so an unarchived week is noticed.
-        if: ${{ !cancelled() && hashFiles('data/sex_gender_raw_measures.jsonl.gz') != '' }}
+        if: ${{ !cancelled() && steps.extract.outcome == 'success' }}
         id: sg_archive
         continue-on-error: true
         env:
@@ -188,6 +194,10 @@ jobs:
         run: |
           TAG="sex-gender-raw-measures"
           ASSET="$RUNNER_TEMP/${CURRENT_DATE}_sex_gender_raw_measures.jsonl.gz"
+          if ! python3 scripts/check_raw_measures.py data/sex_gender_raw_measures.jsonl.gz --snapshot-date "$CURRENT_DATE"; then
+            echo "::error::the raw sex/gender measures for $CURRENT_DATE are not whole; nothing was uploaded, and any earlier $CURRENT_DATE asset on release $TAG is kept"
+            exit 1
+          fi
           cp data/sex_gender_raw_measures.jsonl.gz "$ASSET"
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
@@ -454,9 +464,11 @@ jobs:
 
       - name: Fail the run if the permanent raw-measure archive failed
         # Last, so every independent step above (audits, sponsor pipeline,
-        # summary) has already run; the site already has its data. A red run
-        # here means one week's raw measures are not in the permanent release
-        # and must be uploaded by hand from the data-* release or Drive.
+        # summary) has already run. A red run here means one week's raw
+        # measures are not in the permanent release. If the archive step's
+        # check refused the file (its ::error:: lines say why), re-run the
+        # workflow; if the upload itself failed, upload the file by hand from
+        # the data-* release or Drive.
         if: ${{ !cancelled() && steps.sg_archive.outcome == 'failure' }}
         run: |
           echo "::error::the permanent archive of this week's sex/gender raw measures failed (see the 'Archive the retained sex/gender raw measures permanently' step)"

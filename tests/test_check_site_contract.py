@@ -17,7 +17,8 @@ with nested and list paths, a 2-part budget, two parts) and pin the rules:
 - extract.yml runs the check after staging and before the commit and push
   (the publish step is run under bash -e with stub git and check), and the
   run summary's jq reads the keys the report carries;
-- the raw-measure archive does not depend on the site push.
+- the raw-measure archive does not depend on the site push (what it takes
+  is tests/test_raw_measures_archive.py).
 """
 from __future__ import annotations
 
@@ -355,5 +356,5 @@ def test_the_raw_measure_archive_does_not_depend_on_the_site_push() -> None:
     archive = order.index("Archive the retained sex/gender raw measures permanently")
     assert archive < order.index("Check out the site repository") < order.index("Publish artifacts, archive snapshot, and push to the site")
     step = _step("Archive the retained sex/gender raw measures permanently")
-    assert "!cancelled()" in step and "hashFiles('data/sex_gender_raw_measures.jsonl.gz')" in step
+    assert "!cancelled()" in step and "steps.extract.outcome == 'success'" in step
     assert "continue-on-error: true" in step
