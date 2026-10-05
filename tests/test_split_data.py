@@ -20,7 +20,8 @@ paths and its layout section's switch. These tests pin:
 - run.json: the stamps, total_parts and studies, plus the layout and the gzip
   bytes per class, and no list of files;
 - the full records are never written or deleted; a switch either way leaves
-  nothing of the other layout, and nothing else is removed;
+  nothing of the other layout, and nothing else is removed; the dataset
+  folder a local run writes is gitignored here;
 - the weekly job cuts the dataset after the site checkout, from the site's
   contract, whatever the full-record release did, and the run summary reports
   its size per class.
@@ -409,6 +410,19 @@ def test_a_switch_either_way_leaves_nothing_of_the_other_layout_and_nothing_else
     assert run(h.site_contract(enabled=True)) == split_files
     assert run(h.site_contract(enabled=False)) == sorted(PARTS + ["run.json"]), "the rollback left split files"
     assert run(h.site_contract(enabled=True)) == split_files
+
+
+def test_the_dataset_folder_a_local_run_writes_is_gitignored() -> None:
+    """Weekly artifacts are outputs, not source: a local run with the default
+    --out-dir, or one stopped part way, must leave nothing to commit here."""
+    inside = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=ROOT, capture_output=True, text=True)
+    if inside.returncode != 0 or inside.stdout.strip() != "true":
+        pytest.skip("not a git checkout")
+    names = [sl.core_part_name(1), sl.studies_tab_part_name(8), sl.detail_shard_name(255), sl.RUN_FILE]
+    folders = [split_data.DEFAULT_OUT_DIR, os.path.normpath(split_data.DEFAULT_OUT_DIR) + ".partial"]
+    for path in (os.path.join(folder, name) for folder in folders for name in names):
+        r = subprocess.run(["git", "check-ignore", "-q", "--no-index", path], cwd=ROOT)
+        assert r.returncode == 0, f"{path} is not gitignored, so a local split leaves it to be committed"
 
 
 # ── the weekly job ──────────────────────────────────────────────────────────
