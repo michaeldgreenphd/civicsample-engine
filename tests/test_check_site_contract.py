@@ -27,8 +27,9 @@ the publish step copies it, passes; each blocking rule has its own case: the
 handshake with the contract and a contract the layout cannot follow, the
 layout block, core records, the studies_tab parts and the detail shards
 (among them a file that is not gzipped JSON or not an object, and an entry
-that is not an object), run.json and the snapshot copy. Per-class budgets
-and re-fattened entries only warn.
+that is not an object), run.json, the snapshot copy and a --snapshot that is
+not a dated folder under snapshots/. Per-class budgets and re-fattened
+entries only warn.
 
 extract.yml: the check runs after staging and before the commit and push;
 the publish step's own run block is run under bash -e, with real git on a
@@ -590,6 +591,9 @@ SPLIT_BLOCKS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
     "run.json from another run": (
         lambda s: _both(s, _run_json(lambda r: r.update(extracted_at="2026-10-04T06:00:00+00:00"))),
         "data/run.json says extracted_at"),
+    "run.json from another commit": (
+        lambda s: _both(s, _run_json(lambda r: r.update(pipeline_commit="0000000"))),
+        "data/run.json says pipeline_commit"),
     "run.json with another record count": (
         lambda s: _both(s, _run_json(lambda r: r.update(studies=15))), "data/run.json says studies"),
     "run.json with another part count": (
@@ -624,6 +628,18 @@ def test_each_split_layout_rule_blocks_the_push(tmp_path: pathlib.Path, name: st
     assert r.returncode == 1, f"{name} did not block"
     assert any(message in e for e in report["errors"]), report["errors"]
     assert "::error::" in r.stdout and not report["ok"]
+
+
+def test_a_snapshot_that_is_not_a_dated_folder_under_snapshots_blocks(tmp_path: pathlib.Path) -> None:
+    """--snapshot names this week's folder under snapshots/. A value that
+    climbs out of it blocks even when the folder it reaches holds the dataset."""
+    site = _split_site(tmp_path)
+    shutil.copytree(site / "snapshots" / DATE, site / DATE)           # what snapshots/../DATE reaches
+    r, report = _check(site, "--snapshot", f"../{DATE}")
+    assert r.returncode == 1
+    assert report["errors"] == [f"snapshots/../{DATE}/ is not there to hold this week's dataset"], report["errors"]
+    r, report = _check(site, "--snapshot", DATE)
+    assert r.returncode == 0, report["errors"]
 
 
 def test_a_split_file_over_githubs_per_file_push_limit_blocks(tmp_path: pathlib.Path) -> None:
