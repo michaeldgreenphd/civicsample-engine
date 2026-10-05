@@ -27,8 +27,9 @@ dataset, then this week's files into data/.
   studies_tab, detail and run.json), its summary, sex/gender pair and methods
   text byte for byte, and never the March details, industry_sponsors.json or
   the sponsor bridge; it refuses a dataset with a file from another run, a
-  summary from another run, or a run of another day, and leaves an existing
-  folder alone.
+  summary from another run, or a run of another day (run.json's
+  snapshot_date exactly, else the pull's day or the next), and leaves an
+  existing folder alone.
 - Slimming writes the archive file from the folder's own records first (whole
   or split, equal to the record projected onto the contract), covering
   exactly its recentStudies, then keeps only it and the summary; a folder
@@ -305,6 +306,30 @@ def test_data_holding_another_days_run_is_not_archived_under_the_latest_date(tmp
     assert not (site / "snapshots").exists() or not (site / "snapshots" / "2026-10-11").exists()
 
 
+@pytest.mark.parametrize("extracted_at,snapshot_date,status", [
+    ("2026-10-12T00:04:00+00:00", "2026-10-11", "archived"),
+    ("2026-10-11T06:00:00+00:00", "2026-10-04", "refused"),
+    ("2026-10-12T00:10:00+00:00", None, "archived"),
+    ("2026-10-13T06:00:00+00:00", None, "refused"),
+], ids=["a-run-started-before-midnight-utc", "run-json-naming-another-date",
+        "before-run-json-had-a-snapshot-date-the-next-day", "before-run-json-had-a-snapshot-date-two-days-later"])
+def test_the_outgoing_week_is_the_run_its_run_json_names(tmp_path: pathlib.Path, extracted_at: str,
+                                                         snapshot_date: str | None, status: str) -> None:
+    """data/run.json's snapshot_date is the date the run was published as (the
+    weekly job's date): the week is archived under that date only, even when
+    the pull ran past midnight UTC and its extracted_at says the next day. A
+    run.json without one (written before 2026-10) falls back to extracted_at,
+    on the day or the day after."""
+    site = sh.make_site(tmp_path, "2026-10-11", history={"dates": ["2026-10-11"], "latest": "2026-10-11"})
+    _restamp_week(site / "data", extracted_at, snapshot_date)
+    out = publish(tmp_path, site, "2026-10-18")
+    assert out.archived["status"] == status, out.archived
+    if status == "archived":
+        assert kinds(site) == {"2026-10-11": ps.COMPLETE} and out.warnings == [], out.warnings
+    else:
+        assert "not 2026-10-11's" in out.archived["reason"] and not (site / "snapshots" / "2026-10-11").exists()
+
+
 def test_a_sex_gender_pair_from_another_run_stays_behind(tmp_path: pathlib.Path) -> None:
     site = sh.make_site(tmp_path, "2026-10-11", history={"dates": ["2026-10-11"], "latest": "2026-10-11"})
     meta = json.loads((site / "data" / "sex_gender_parsed_meta.json").read_text())
@@ -565,3 +590,22 @@ def _restamp(path: pathlib.Path, **stamps: str) -> None:
     body.update(stamps)
     with gzip.open(path, "wt") as fh:
         json.dump(body, fh)
+
+
+def _restamp_week(folder: pathlib.Path, extracted_at: str, snapshot_date: str | None) -> None:
+    """The whole-part week in folder, as if its pull had been stamped
+    extracted_at (every file of its run), with that snapshot_date in its
+    run.json (None: none, as run.json was written before 2026-10)."""
+    for part in folder.glob("demographics.part*.json.gz"):
+        _restamp(part, extracted_at=extracted_at)
+    run = json.loads((folder / "run.json").read_text())
+    run["extracted_at"] = extracted_at
+    run.pop("snapshot_date", None)
+    if snapshot_date is not None:
+        run["snapshot_date"] = snapshot_date
+    (folder / "run.json").write_text(json.dumps(run))
+    for rel, key in (("dashboard-summary.json", "extracted_at"), ("sex_gender_parsed_meta.json", "source_extracted_at"),
+                     ("sex_gender/methods.json", "source_extracted_at")):
+        body = json.loads((folder / rel).read_text())
+        body[key] = extracted_at
+        (folder / rel).write_text(json.dumps(body))

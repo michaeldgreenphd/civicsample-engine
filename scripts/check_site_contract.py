@@ -54,6 +54,10 @@ EXITS   1 when the push must not happen:
         menu offers is not there (check_history):
           - history.json cannot be read, or its "latest" is not --latest (the
             date data/ serves), is not listed, or is not its newest date;
+          - data/run.json does not date its run as the latest (its
+            snapshot_date, else the date of its extracted_at, as the site
+            reads it): the site would then ask snapshots/<latest>/, which is
+            not there;
           - a date it lists other than the latest has no snapshots/<date>/
             with a readable dashboard-summary.json;
           - an aggregate it names still holds dataset files, or the archive
@@ -590,6 +594,7 @@ def check_history(f: Findings, latest: str | None, part_count: int) -> None:
     if not _is_date(want):
         f.err(f"{HISTORY_FILE} names no latest date (data/'s)")
         return
+    check_data_run(f, want)
     if want not in dates:
         f.err(f"{HISTORY_FILE} does not list the latest date, {want}")
     if dates and max(dates) > want:
@@ -635,6 +640,23 @@ def check_history(f: Findings, latest: str | None, part_count: int) -> None:
                       if os.path.isdir(os.path.join(snapshots, n)) and n not in dates)
     if unlisted:
         warnings.append(f"snapshots/ holds folders {HISTORY_FILE} does not list, which no page offers: {_eg(unlisted)}")
+
+
+def check_data_run(f: Findings, want: str) -> None:
+    """data/run.json must be the run of the date data/ serves. The site reads
+    that date from data/ only when data/run.json gives it (runDate:
+    snapshot_date, else the date of extracted_at); otherwise it asks
+    snapshots/<date>/, which the latest date does not have, and the date
+    fails for every visitor that week."""
+    run = df.read_json(os.path.join(f.site, "data", sl.RUN_FILE))
+    if not isinstance(run, dict):
+        f.err(f"data/{sl.RUN_FILE} cannot be read as a JSON object, so the site would not serve {want} from data/ "
+              f"and would ask snapshots/{want}/ for it")
+        return
+    said = df.run_date(run)
+    if said != want:
+        f.err(f"data/{sl.RUN_FILE} dates its run {said!r}, not {want} (its snapshot_date, else the date of its "
+              f"extracted_at), so the site would not serve {want} from data/ and would ask snapshots/{want}/ for it")
 
 
 def check_aggregate(f: Findings, d: str, folder: str, summary: dict[str, Any], entry: Any,

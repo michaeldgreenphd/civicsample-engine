@@ -34,7 +34,9 @@ Per-class budgets and re-fattened entries only warn.
 
 history.json, on a site as scripts/prune_snapshots.py leaves it (real
 datasets, tests/snapshot_helpers.py): it passes; a latest that is not
---latest, not listed or not the newest, a date listed twice or with no
+--latest, not listed or not the newest, a data/run.json missing or dating its
+run otherwise than the site reads it (snapshot_date, else the date of
+extracted_at), a date listed twice or with no
 folder or no summary, an aggregate still holding its dataset, an archive file
 missing, unreadable, from another run or not covering exactly its summary's
 recentStudies, and a complete snapshot missing a file or carrying another
@@ -364,6 +366,8 @@ def test_split_files_beside_inline_parts_and_a_switch_left_on_only_warn(tmp_path
     (site / "data" / "detail").mkdir()
     (site / "data" / "detail" / "0.json.gz").write_bytes(b"x")
     _history(site, ["2026-10-11", "2026-10-18"], "2026-10-18")
+    (site / "data" / "run.json").write_text(json.dumps({**STAMPS, "snapshot_date": "2026-10-18", "total_parts": 2,
+                                                        "studies": 3}))
     r, report = _check(site, "--latest", "2026-10-18")
     assert r.returncode == 0, report["errors"]
     assert any("data/ holds split-layout files" in w and "detail/0.json.gz" in w for w in report["warnings"])
@@ -417,6 +421,7 @@ def _split_site(tmp_path: pathlib.Path, contract: dict | None = None, budget: di
     shutil.copytree(dataset, site / "snapshots" / DATE)
     (site / "snapshots" / DATE / "dashboard-summary.json").write_text(json.dumps({**STAMPS, "recentStudies": []}))
     _history(site, [DATE, LATEST], LATEST)
+    _run_json(lambda run: run.update(snapshot_date=LATEST))(site / "data")
     (site / "data" / "details.part1.json.gz").write_bytes(b"the frozen March details: not a dataset file")
     return site
 
@@ -802,6 +807,15 @@ HISTORY_BLOCKS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
         _history_change(lambda h: h.update(latest="2026-10-04")), "says latest '2026-10-04', but data/ serves 2026-10-11"),
     "a history.json without a latest (the old format)": (
         _history_change(lambda h: h.pop("latest")), "says latest None, but data/ serves 2026-10-11"),
+    "no data/run.json": (lambda s: (s / "data" / "run.json").unlink(), "data/run.json cannot be read"),
+    "a data/run.json of another date": (
+        _json_change("data/run.json", lambda b: b.update(snapshot_date="2026-10-04")),
+        "data/run.json dates its run '2026-10-04', not 2026-10-11"),
+    "a data/run.json whose extracted_at the site cannot read": (
+        _json_change("data/run.json", lambda b: b.update(extracted_at="last Sunday")), "data/run.json dates its run None"),
+    "a data/run.json without a snapshot_date, from a pull past midnight": (
+        _json_change("data/run.json", lambda b: (b.pop("snapshot_date"), b.update(extracted_at="2026-10-12T00:04:00+00:00"))),
+        "data/run.json dates its run '2026-10-12', not 2026-10-11"),
     "the latest not listed": (_history_change(lambda h: h["dates"].remove(RETAINED)), "does not list the latest date"),
     "a date newer than the latest": (
         _history_change(lambda h: h["dates"].append("2026-10-18")), "lists 2026-10-18, newer than the latest date"),
@@ -898,6 +912,23 @@ HISTORY_WARNS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
         lambda s: (s / "snapshots" / "2026-02-22" / "industry_sponsors.json").write_text("{}"),
         "snapshots/2026-02-22/ is an aggregate but also keeps industry_sponsors.json"),
 }
+
+
+@pytest.mark.parametrize("change", [
+    lambda b: b.update(extracted_at="2026-10-12T00:04:00+00:00"),
+    lambda b: b.pop("snapshot_date"),
+    lambda b: b.update(snapshot_date="2026-10"),
+    lambda b: b.update(snapshot_date=20261011),
+], ids=["a-pull-past-midnight-named-for-its-date", "no-snapshot-date-extracted-that-day",
+        "a-malformed-snapshot-date-falls-back", "a-snapshot-date-that-is-not-text-falls-back"])
+def test_data_run_json_is_dated_as_the_site_dates_it(tmp_path: pathlib.Path, change: Callable[[dict], object]) -> None:
+    """The site serves the latest date from data/ when data/run.json is that
+    date's run (runDate in its app.js): its snapshot_date when that is a
+    YYYY-MM-DD string, else the first ten characters of its extracted_at."""
+    site = _retained_site(tmp_path)
+    _json_change("data/run.json", change)(site)
+    r, report = _check(site, "--latest", RETAINED)
+    assert r.returncode == 0, report["errors"]
 
 
 @pytest.mark.parametrize("name", list(HISTORY_WARNS))

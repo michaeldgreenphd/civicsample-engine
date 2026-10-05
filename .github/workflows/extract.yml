@@ -238,8 +238,12 @@ jobs:
         # (scripts/split_data.py). A contract this engine cannot follow (a
         # layout version it does not know) stops the run here, and the site
         # keeps last week's data. This step only reads data/demographics.json;
-        # the week's data-* release above already holds it.
-        run: python3 scripts/split_data.py --contract site/tests/record_contract.json --demographics data/demographics.json --out-dir data/dataset
+        # the week's data-* release above already holds it. --snapshot-date
+        # writes this run's date into run.json: history.json names it as the
+        # latest, and the site serves that date from data/ only when
+        # data/run.json gives it (a pull that runs past midnight UTC stamps
+        # extracted_at with the next day).
+        run: python3 scripts/split_data.py --contract site/tests/record_contract.json --demographics data/demographics.json --out-dir data/dataset --snapshot-date "$CURRENT_DATE"
 
       - name: Publish artifacts, archive snapshot, and push to the site
         run: |
@@ -315,7 +319,8 @@ jobs:
           # data budget (scripts/check_site_contract.py) before anything is
           # committed: a file missing a field the site reads, malformed, from
           # another run, a split layout the site's contract does not turn on,
-          # a history.json whose latest is not $DATE or that lists a snapshot
+          # a history.json whose latest is not $DATE, a data/run.json that
+          # does not date its run $DATE, or a history.json that lists a snapshot
           # that would not open (a folder gone, a complete snapshot missing a
           # file or carrying another run's stamps, an aggregate's archive file
           # missing, another run's or not covering its recent studies), a

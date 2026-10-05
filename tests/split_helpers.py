@@ -111,13 +111,18 @@ def read_gz(path: str | os.PathLike[str]) -> Any:
 
 
 def split(tmp: pathlib.Path, records: list[dict[str, Any]], contract: dict[str, Any],
-          stamps: dict[str, Any] | None = None, out: str = "dataset") -> pathlib.Path:
-    """Run scripts/split_data.py on these records under this contract; return the dataset folder."""
+          stamps: dict[str, Any] | None = None, out: str = "dataset",
+          snapshot_date: str | None = None) -> pathlib.Path:
+    """Run scripts/split_data.py on these records under this contract (with
+    --snapshot-date when given, as the weekly job runs it); return the
+    dataset folder."""
     import split_data
     tmp.mkdir(parents=True, exist_ok=True)
     (tmp / "record_contract.json").write_text(json.dumps(contract))
     write_full(tmp / "demographics.json", records, stamps)
-    rc = split_data.main(["--contract", str(tmp / "record_contract.json"),
-                          "--demographics", str(tmp / "demographics.json"), "--out-dir", str(tmp / out)])
-    assert rc == 0
+    args = ["--contract", str(tmp / "record_contract.json"),
+            "--demographics", str(tmp / "demographics.json"), "--out-dir", str(tmp / out)]
+    if snapshot_date is not None:
+        args += ["--snapshot-date", snapshot_date]
+    assert split_data.main(args) == 0
     return tmp / out

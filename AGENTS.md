@@ -152,7 +152,10 @@ split layout the site's contract does not turn on, a history.json whose
 latest is not the week or that lists a snapshot that would not open (a folder
 gone, a complete snapshot missing a file or carrying another run's stamps, an
 aggregate's archive file missing, another run's or not covering its recent
-studies), a file over GitHub's 100 MiB per-file push limit, or a site over
+studies), a data/run.json that does not date its run as that week (the site
+serves the latest week from the data folder only when its run.json's
+`snapshot_date`, which `split_data.py` writes from the job's date, says so),
+a file over GitHub's 100 MiB per-file push limit, or a site over
 GitHub Pages' 1 GB limit stops the push and leaves the site on last week's
 data. The steps that publish to the site after it (the
 sex/gender audit, the sponsor bridge) are skipped too; the week's full-record

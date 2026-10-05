@@ -21,21 +21,30 @@ WRITES  --out-dir (default data/dataset): the files of one dataset, as a site
             them, and detail/0..N-1.json.gz (N = 256 unless the contract names
             another count). A field in no class is not published;
           - run.json: the run's stamps (the site keys its data cache by
-            extracted_at), total_parts, studies, the layout block when split,
-            and the gzip bytes per class ("inline" for whole-record parts).
-            No list of files: their names follow from the layout.
+            extracted_at), with --snapshot-date its snapshot_date, total_parts,
+            studies, the layout block when split, and the gzip bytes per class
+            ("inline" for whole-record parts). No list of files: their names
+            follow from the layout. snapshot_date is the date the site serves
+            the run as: the weekly job passes its own date, which
+            history.json names as the latest, and the site reads that date
+            from data/ only when data/run.json gives it (its snapshot_date,
+            else the date of its extracted_at, which is the next day for a
+            pull that runs past midnight UTC).
         The new files are written beside --out-dir and moved in only when all
         of them are; the previous ones (either layout's names, and only those)
         are removed then, so a switch either way leaves nothing stale.
-EXITS   non-zero, with --out-dir untouched, when the contract cannot be read
-        or names a layout version this engine does not know; when the records
+EXITS   non-zero, with --out-dir untouched, when --snapshot-date is not a
+        date, the contract cannot be read or names a layout version this
+        engine does not know; when the records
         cannot be read or carry no extracted_at; and, split on, when the
         contract's classes cannot be split (src/site_layout.py says why), an
         nct_id is not NCT + 8 digits or appears twice, or a record would not
         merge back whole. Size never stops it: scripts/check_site_contract.py
         decides at publish.
-INVOKED by .github/workflows/extract.yml right after the site checkout; the
-        publish step copies --out-dir into site/data and snapshots/<date>.
+INVOKED by .github/workflows/extract.yml right after the site checkout, with
+        --snapshot-date "$CURRENT_DATE"; the publish step copies --out-dir
+        into site/data only (scripts/prune_snapshots.py archives it into
+        snapshots/<date>/ when the next week's run replaces it).
 
 The 8 slices were first sized for a CDN's per-file limit. The site serves
 every file from GitHub Pages now, whose 100 MiB per-file push limit the
@@ -51,9 +60,11 @@ import gzip
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import time
+from datetime import date
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -64,6 +75,17 @@ from src import site_layout as sl  # noqa: E402
 NUM_PARTS = 8
 SEPARATORS = (",", ":")
 DEFAULT_OUT_DIR = os.path.join("data", "dataset")
+
+
+def is_date(value: str) -> bool:
+    """YYYY-MM-DD, and a real day (date.fromisoformat alone also takes 20261011)."""
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
 
 
 def load_contract(path: str) -> dict[str, Any]:
@@ -211,8 +233,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--demographics", default=full_records.DEFAULT_PATH,
                     help="the week's full records (default %(default)s; .json or .json.gz)")
     ap.add_argument("--out-dir", default=DEFAULT_OUT_DIR, help="the dataset folder to write (default %(default)s)")
+    ap.add_argument("--snapshot-date", default=None, metavar="DATE",
+                    help="the date the site serves this run as (the weekly job's date, history.json's latest), "
+                         "written into run.json as snapshot_date")
     a = ap.parse_args(argv)
     t0 = time.monotonic()
+    if a.snapshot_date is not None and not is_date(a.snapshot_date):
+        raise SystemExit(f"--snapshot-date {a.snapshot_date!r} is not a date (YYYY-MM-DD); nothing written")
 
     # Everything that can refuse the run is read before anything is written.
     contract = load_contract(a.contract)
@@ -264,8 +291,12 @@ def main(argv: list[str] | None = None) -> int:
         # The run's stamps, published as run.json next to the parts. The site
         # keys every data URL by extracted_at, so a browser keeps a run's
         # files across visits and fetches new ones when a new run lands, a
-        # same-day re-run included.
-        run: dict[str, Any] = {**stamps, "total_parts": NUM_PARTS, "studies": total}
+        # same-day re-run included; and it serves the latest date from data/
+        # only when snapshot_date (else extracted_at's date) is that date.
+        run: dict[str, Any] = {**stamps}
+        if a.snapshot_date is not None:
+            run["snapshot_date"] = a.snapshot_date
+        run.update({"total_parts": NUM_PARTS, "studies": total})
         if layout is not None:
             run["layout"] = layout
         run["gzip_bytes"] = sizes

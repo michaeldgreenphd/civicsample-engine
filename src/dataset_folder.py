@@ -33,7 +33,8 @@ one complete run when:
 
 sex_gender_problems and methods_problems say whether the sex/gender table,
 its meta and the methods text that ride with a dataset are that run's.
-records() returns studies' records as the site puts them together.
+records() returns studies' records as the site puts them together. run_date()
+reads the date of a run.json as the site reads data/run.json's.
 """
 from __future__ import annotations
 
@@ -41,10 +42,12 @@ import csv
 import gzip
 import json
 import os
+import re
 import zlib
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from src import site_layout as sl
@@ -58,6 +61,8 @@ SG_METHODS = "sex_gender/methods.json"
 # or whose data comes first, is parsed whole instead.
 HEAD_BYTES = 1 << 16
 _CHUNK = 1 << 20
+# A date as the site's runDate accepts one: YYYY-MM-DD text.
+DATE_TEXT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 class FolderError(ValueError):
@@ -151,6 +156,27 @@ def read_summary(folder: str) -> dict[str, Any] | None:
     be read, or is not a JSON object."""
     summary = read_json(os.path.join(folder, SUMMARY_FILE))
     return summary if isinstance(summary, dict) else None
+
+
+def run_date(run: Any) -> str | None:
+    """The date of the run a run.json describes, read as the site reads
+    data/run.json (resolveDataCacheVersion and runDate in its app.js): None
+    unless its extracted_at is a timestamp (the site ignores a run.json whose
+    stamp it cannot parse); then its snapshot_date when that is YYYY-MM-DD
+    text, else the first ten characters of its extracted_at. The site serves
+    the latest date from data/ only when this is that date, and asks
+    snapshots/<date>/ otherwise."""
+    at = run.get("extracted_at") if isinstance(run, dict) else None
+    if not isinstance(at, str):
+        return None
+    try:
+        datetime.fromisoformat(at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    said = run.get("snapshot_date")
+    if isinstance(said, str) and DATE_TEXT.fullmatch(said):
+        return said
+    return at[:10] if DATE_TEXT.fullmatch(at[:10]) else None
 
 
 def present_files(folder: str) -> list[str]:

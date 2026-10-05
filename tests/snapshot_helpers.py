@@ -38,12 +38,13 @@ def contract(enabled: bool = False) -> dict[str, Any]:
 
 
 def cut(tmp: pathlib.Path, day: str, split: bool = False, ids: list[str] | None = None) -> pathlib.Path:
-    """The dataset files of the week published on day, as split_data.py writes them."""
+    """The dataset files of the week published on day, as split_data.py writes
+    them in the weekly job (run.json's snapshot_date is day)."""
     ids = ids or IDS
     key = (day, split, ",".join(ids))
     if key not in _CUT or not _CUT[key].exists():
         _CUT[key] = h.split(tmp / f"cut-{day}-{'split' if split else 'whole'}-{len(ids)}",
-                            h.whole_records(ids), contract(split), stamps=stamps(day))
+                            h.whole_records(ids), contract(split), stamps=stamps(day), snapshot_date=day)
     return _CUT[key]
 
 

@@ -38,8 +38,10 @@ The policy (owner decisions 19b, 20a and 21a, 2026-10-05):
   layout names them (src/dataset_folder.py: the whole-record parts, or the
   core parts, studies_tab parts and detail shards, and run.json), its
   dashboard-summary.json, and the sex/gender table, meta and methods text when
-  they are that run's. Every file's stamps are checked first, and every copy
-  compared with its source after.
+  they are that run's. Every file's stamps are checked first, and so is the
+  run's date: run.json's snapshot_date (written from the job's date since
+  2026-10) must be the outgoing date exactly; without one, the pull's UTC day
+  must be that date or the next. Every copy is compared with its source after.
 
   Three complete snapshots, about two weeks apart. Time is cut into
   fortnights counted from EPOCH, a fixed Sunday. A fortnight's representative
@@ -354,11 +356,24 @@ def archive_outgoing(site: str, prev: str, latest: str, folders: dict[str, Folde
         rec.update(status="refused", reason=f"data/ does not hold one complete run: {'; '.join(ds.problems)}")
         out.warn(f"{prev} was not archived: {rec['reason']}")
         return
-    day = run_day(ds.stamps[0])
-    if day is None or day not in (date.fromisoformat(prev), date.fromisoformat(prev) + timedelta(days=1)):
-        rec.update(status="refused", reason=f"data/ holds the run of {ds.stamps[0]!r}, not {prev}'s")
-        out.warn(f"{prev} was not archived: {rec['reason']}")
-        return
+    said = (df.read_json(os.path.join(data_dir, sl.RUN_FILE)) or {}) if sl.RUN_FILE in ds.files else {}
+    named = said.get("snapshot_date") if isinstance(said, dict) else None
+    if isinstance(named, str) and df.DATE_TEXT.fullmatch(named):
+        # run.json names the date the run was published as (the weekly job's
+        # date, since 2026-10): exactly prev's, whatever day the pull's
+        # extracted_at fell on. inspect checked run.json is the parts' run.
+        if named != prev:
+            rec.update(status="refused", reason=f"data/run.json says it is the {named} run, not {prev}'s")
+            out.warn(f"{prev} was not archived: {rec['reason']}")
+            return
+    else:
+        # Published before run.json named its date: the pull's UTC day, or
+        # the next (a run that starts just before midnight UTC).
+        day = run_day(ds.stamps[0])
+        if day is None or day not in (date.fromisoformat(prev), date.fromisoformat(prev) + timedelta(days=1)):
+            rec.update(status="refused", reason=f"data/ holds the run of {ds.stamps[0]!r}, not {prev}'s")
+            out.warn(f"{prev} was not archived: {rec['reason']}")
+            return
     names = _copy_names(ds, data_dir, prev, out)
     rec["files"] = len(names)
     rec["bytes"] = sum(os.path.getsize(os.path.join(data_dir, n)) for n in names)
