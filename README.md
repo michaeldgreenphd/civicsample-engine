@@ -185,10 +185,15 @@ and when was it made":
   How far back they go: a visitor can open four complete datasets, the
   latest week and three archived weekly snapshots about two weeks apart
   (one per fortnight, counted from a fixed Sunday), reaching back five to six
-  weeks. Every older month keeps one summary snapshot: the dashboard draws
-  every chart from it, and its 500 most recent studies keep their own records
-  for their pop-ups (`archive_records.json.gz`, written from that week's own
-  files); filters and the full study table need a complete snapshot. The full
+  weeks. Only a fortnight's first week is archived, so a link to the latest
+  week (`?sgsnapshot=<date>`) keeps opening that week after the next run only
+  when it is a fortnight's first; a fortnight's second week drops out of
+  `history.json` when the next week is published, and its link then opens
+  the latest data, with no notice. Every older month keeps one summary
+  snapshot: the dashboard draws every chart from it, and its 500 most recent
+  studies keep their own records for their pop-ups
+  (`archive_records.json.gz`, written from that week's own files); filters
+  and the full study table need a complete snapshot. The full
   files of every week stay in the site repository's git history, which is
   never rewritten, whether or not the week was ever archived (a fortnight's
   second week never is: it lives in `data/` only); from 2026-08-28 on, each
