@@ -476,6 +476,28 @@ def test_a_slim_cut_short_is_finished_on_the_next_run(tmp_path: pathlib.Path, cu
     assert sh.read_history(site)["archives"]["2026-05-31"]["detail"] == "archive_records.json.gz"
 
 
+@pytest.mark.parametrize("lost", [5, 1], ids=["part5-lost", "part1-lost"])
+def test_an_archive_file_that_does_not_check_makes_no_damaged_snapshot_an_aggregate(tmp_path: pathlib.Path,
+                                                                                    lost: int) -> None:
+    """A damaged dataset beside an archive file of another run (or one that
+    does not cover its summary's studies) is not a slim cut short: nothing
+    stands in for what the strip would delete, so the folder is left as it
+    is, warned about and not listed."""
+    site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE, REAL_AGGREGATES)
+    folder = site / "snapshots" / "2026-05-31"
+    (folder / f"demographics.part{lost}.json.gz").unlink()
+    other = sh.stamps("2026-05-24")
+    with gzip.open(folder / sl.ARCHIVE_FILE, "wt") as fh:
+        json.dump({"source_extracted_at": other["extracted_at"], "source_pipeline_commit": other["pipeline_commit"],
+                   "class": "archive", "data": {nct: {"nct_id": nct} for nct in sh.IDS}}, fh)
+    damaged = tree_digest(folder)
+    out = publish(tmp_path, site, "2026-10-11")
+    assert kinds(site)["2026-05-31"] == ps.UNUSABLE
+    assert tree_digest(folder) == damaged, "a damaged snapshot was stripped on an archive file that does not check"
+    assert "2026-05-31" not in sh.read_history(site)["dates"] and "2026-05-31" not in out.stripped
+    assert any("snapshots/2026-05-31/ is left as it is" in w for w in out.warnings), out.warnings
+
+
 # ── history.json and the refusals ───────────────────────────────────────────
 
 def test_history_lists_what_is_there_and_drops_a_date_whose_folder_is_gone(tmp_path: pathlib.Path) -> None:
