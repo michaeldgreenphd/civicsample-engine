@@ -16,8 +16,11 @@ WRITES  data/sex_gender_parsed.csv.gz        one row per trial, columns in
                                              fatal on a fresh pull)
 INVOKED by .github/workflows/extract.yml (--from-raw, --write-back, --strict)
         before scripts/split_data.py cuts the site's files. Run from the repo
-        root. --strict exits 1 when a structural check fails, so the weekly job
-        stops before anything is published.
+        root. --strict exits 1 when a structural check fails. The weekly job
+        then publishes nothing to the site, and the week's data-* release is
+        skipped too, since the steps that compress and release the full
+        records come after this one; only the raw measures, which a re-parse
+        needs, are archived.
 """
 from __future__ import annotations
 

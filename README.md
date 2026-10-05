@@ -81,9 +81,11 @@ One more workflow exists for rare occasions, harmless to ignore:
 here when AACT publishes a newer geography snapshot than the one the site
 is pinned to — it never downloads data or touches anything). Acting on
 that issue happens in the site repo: it owns `scripts/geo/advance_run.py`,
-because every path that script writes is a site path. Every week's full
-records are on its `data-*` release, so no workflow rebuilds old snapshot
-folders from the site's history any more.
+because every path that script writes is a site path. No workflow rebuilds
+old snapshot folders from the site's history any more (the one that did
+could not rebuild a split snapshot). The full records of every week from
+2026-08-28 on are on its `data-*` release; earlier weeks' exist only in the
+site repository's git history, which is never rewritten.
 
 ## Where things live
 
