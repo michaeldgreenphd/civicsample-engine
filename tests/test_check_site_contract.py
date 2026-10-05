@@ -24,8 +24,10 @@ nested and list paths, a 2-part budget and two parts:
 A split dataset (layout version 1), cut by scripts/split_data.py itself from
 a contract with the split on and copied into data/ and snapshots/<date>/ as
 the publish step copies it, passes; each blocking rule has its own case: the
-handshake with the contract, the layout block, core records, the studies_tab
-parts, the detail shards, run.json and the snapshot copy. Per-class budgets
+handshake with the contract and a contract the layout cannot follow, the
+layout block, core records, the studies_tab parts and the detail shards
+(among them a file that is not gzipped JSON or not an object, and an entry
+that is not an object), run.json and the snapshot copy. Per-class budgets
 and re-fattened entries only warn.
 
 extract.yml: the check runs after staging and before the commit and push;
@@ -495,6 +497,11 @@ SPLIT_BLOCKS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
     "another shard key": (
         lambda s: _both(s, _set_layout({**_layout(s), "detail": {"shards": 4, "key": "nct_mod"}})),
         "the site's contract and part count give"),
+    "a site contract the split layout cannot follow": (
+        lambda s: (s / "tests" / "record_contract.json").write_text(json.dumps(
+            {**SPLIT_CONTRACT, "classes": {**SPLIT_CONTRACT["classes"],
+                                           "detail": SPLIT_CONTRACT["classes"]["detail"] + ["references[].type"]}})),
+        "the parts are split, and the site's record contract cannot be checked against the split layout"),
     "a core record without a core field": (
         lambda s: _both(s, _gz_change("demographics.part2.json.gz", lambda b: b["data"][0]["study_sites"][0].pop("country"))),
         "study_sites[].country: missing in 1 record"),
@@ -518,6 +525,15 @@ SPLIT_BLOCKS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
     "a studies_tab part whose data is a list": (
         lambda s: _both(s, _gz_change("studies_tab.part5.json.gz", lambda b: b.update(data=list(b["data"].values())))),
         "holds no object keyed by nct_id"),
+    "a studies_tab part that is not gzipped JSON": (
+        lambda s: _both(s, lambda f: (f / "studies_tab.part3.json.gz").write_bytes(b"not gzip")),
+        "studies_tab.part3.json.gz is not gzipped JSON"),
+    "a studies_tab part whose JSON is not an object": (
+        lambda s: _both(s, lambda f: _write(f / "studies_tab.part4.json.gz", list(_read(f / "studies_tab.part4.json.gz")))),
+        "studies_tab.part4.json.gz is not a studies_tab file: its JSON is a list"),
+    "a studies_tab entry that is not an object": (
+        lambda s: _both(s, _gz_change("studies_tab.part1.json.gz", lambda b: b["data"].update({next(iter(b["data"])): None}))),
+        "studies_tab entries that are not objects"),
     "a studies_tab part without one of its core part's records": (
         lambda s: _both(s, _gz_change("studies_tab.part2.json.gz", lambda b: b["data"].pop(next(iter(b["data"]))))),
         "does not hold exactly core part 2's records"),
@@ -543,6 +559,13 @@ SPLIT_BLOCKS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
         lambda s: _both(s, _gz_change("detail/1.json.gz", lambda b: b.update(shards=8))), "detail/1.json.gz says"),
     "a detail shard with another key": (
         lambda s: _both(s, _gz_change("detail/1.json.gz", lambda b: b.update(key="nct_mod"))), "detail/1.json.gz says"),
+    "a truncated detail shard": (
+        lambda s: _both(s, lambda f: (f / "detail" / "1.json.gz").write_bytes(
+            (f / "detail" / "1.json.gz").read_bytes()[:-12])),
+        "detail/1.json.gz is not gzipped JSON"),
+    "a detail shard whose JSON is not an object": (
+        lambda s: _both(s, lambda f: _write(f / "detail" / "1.json.gz", list(_read(f / "detail" / "1.json.gz")))),
+        "detail/1.json.gz is not a detail file: its JSON is a list"),
     "a record in another record's shard": (
         lambda s: _both(s, _move_entry(1, 2, keep=False)), "detail entries outside their shard"),
     "a record in two shards": (
@@ -557,6 +580,9 @@ SPLIT_BLOCKS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
     "a detail entry without a detail field": (
         lambda s: _both(s, _gz_change("detail/0.json.gz", lambda b: _first_entry(b).pop("status"))),
         "status: missing in 1 record"),
+    "a detail entry that is not an object": (
+        lambda s: _both(s, _gz_change("detail/0.json.gz", lambda b: b["data"].update({next(iter(b["data"])): None}))),
+        "detail entries that are not objects"),
     "a detail entry whose sites lost their country": (
         lambda s: _both(s, _gz_change("detail/0.json.gz", lambda b: _first_entry(b)["study_sites"][0].pop("country"))),
         "study_sites[].country: missing in 1 record"),
