@@ -243,12 +243,39 @@ jobs:
 
       - name: Publish artifacts, archive snapshot, and push to the site
         run: |
-          # One date for the whole run: the snapshot folder, the release tag
-          # and the bridge snapshot all key on CURRENT_DATE (set at job start).
+          # One date for the whole run: history.json's latest (the date data/
+          # serves), the release tag and the raw-measure asset all key on
+          # CURRENT_DATE (set at job start).
           DATE="$CURRENT_DATE"
+
+          # Nothing is archived, pruned or staged without this week's dataset.
+          test -n "$(find data/dataset -type f -print -quit)"
 
           # Keep last week's summary for the run-summary delta below
           cp site/data/dashboard-summary.json "$RUNNER_TEMP/prev_summary.json" 2>/dev/null || true
+
+          # A same-day re-run replaces the data/ that history.json already
+          # serves as $DATE: deliberately, but loudly.
+          REPLACED=""
+          if [ "$(jq -r '.latest // (.dates | max) // empty' site/history.json 2>/dev/null)" = "$DATE" ]; then
+            echo "::warning::history.json already serves $DATE from data/ — this re-run replaces the earlier same-day data."
+            REPLACED=" (replaces earlier $DATE data)"
+          fi
+
+          # Snapshot retention (scripts/prune_snapshots.py), BEFORE this
+          # week's files replace data/: last week's dataset is still there,
+          # and is copied into snapshots/<its date>/ when the policy keeps it
+          # (every file's stamps checked first, every copy compared after).
+          # The policy keeps three complete snapshots, one per fortnight
+          # counted from a fixed Sunday, so the set moves by at most one a
+          # week and no week is deleted before it can be kept; and one
+          # aggregate per older month: its summary and its own
+          # archive_records.json.gz, written from its own records before its
+          # other files go. It rewrites history.json: dates, latest (this
+          # run's date: data/ serves it, and it is not copied into snapshots/
+          # as well), archives. It stops the step, changing nothing, when
+          # history.json cannot be read or a snapshot is newer than $DATE.
+          python3 scripts/prune_snapshots.py --site site --latest "$DATE" --report "$RUNNER_TEMP/retention.json"
 
           # This week's dataset, as scripts/split_data.py wrote it to
           # data/dataset/: the demographics parts and run.json (the run's
@@ -271,37 +298,6 @@ jobs:
 
           cd site
 
-          # Archive snapshot for historical access via GitHub Pages.
-          # Snapshot folders are keyed by date, so a same-day re-run
-          # replaces that day's snapshot — deliberately, but loudly.
-          REPLACED=""
-          if [ -d "snapshots/$DATE" ]; then
-            echo "::warning::snapshots/$DATE already exists — this re-run replaces the earlier same-day snapshot."
-            REPLACED=" (replaces earlier $DATE snapshot)"
-          fi
-          mkdir -p "snapshots/$DATE"
-          # The same dataset files, replaced the same way: a same-day re-run
-          # that switched layout leaves none of the earlier run's.
-          rm -f "snapshots/$DATE"/demographics.part*.json.gz "snapshots/$DATE"/studies_tab.part*.json.gz "snapshots/$DATE/run.json"
-          rm -rf "snapshots/$DATE/detail"
-          cp -R ../data/dataset/. "snapshots/$DATE/"
-          cp data/dashboard-summary.json data/industry_sponsors.json "snapshots/$DATE/"
-          cp data/sex_gender_parsed.csv.gz data/sex_gender_parsed_meta.json "snapshots/$DATE/"
-          echo "Archived snapshot to snapshots/$DATE/"
-
-          # Update history manifest
-          if [ ! -f history.json ]; then
-            echo '{"dates":[]}' > history.json
-          fi
-          jq --arg d "$DATE" '.dates += [$d] | .dates |= unique' history.json > history.json.tmp
-          mv history.json.tmp history.json
-
-          # Prune snapshots to the retention policy (4 bi-weekly, then one
-          # per month) so the published Pages site stays well under the
-          # size range where deploy syncs start timing out. Rewrites
-          # history.json to exactly the retained dates.
-          python3 ../scripts/prune_snapshots.py
-
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # The dataset, staged exactly: every file this week's holds, and the
@@ -319,11 +315,14 @@ jobs:
           # data budget (scripts/check_site_contract.py) before anything is
           # committed: a file missing a field the site reads, malformed, from
           # another run, a split layout the site's contract does not turn on,
-          # a snapshot copy that is not this week's dataset, a file over
-          # GitHub's 100 MiB per-file push limit, or a site over GitHub Pages'
-          # 1 GB limit stops the publish here, and the site keeps last week's
-          # data. Over the size budgets only warns.
-          python3 ../scripts/check_site_contract.py --site . --snapshot "$DATE" --report "$RUNNER_TEMP/site_check.json"
+          # a history.json whose latest is not $DATE or that lists a snapshot
+          # that would not open (a folder gone, a complete snapshot missing a
+          # file or carrying another run's stamps, an aggregate's archive file
+          # missing, another run's or not covering its recent studies), a
+          # file over GitHub's 100 MiB per-file push limit, or a site over
+          # GitHub Pages' 1 GB limit stops the publish here, and the site
+          # keeps last week's data. Over the size budgets only warns.
+          python3 ../scripts/check_site_contract.py --site . --latest "$DATE" --report "$RUNNER_TEMP/site_check.json"
           git commit -m "Update demographics data $DATE$REPLACED" || exit 0
           git push
 
@@ -380,10 +379,14 @@ jobs:
             --prior-trials data/sponsor_audit/trial_sponsors.csv.gz
 
       - name: Publish sponsor bridge to the site
+        # The bridge goes to data/sponsors/ only. No page reads a snapshot's
+        # bridge (the company filter reads data/'s), and the week's date has
+        # no snapshot folder (data/ serves it); every week's bridge stays in
+        # the site's git history, and the week's full records on its data-*
+        # release can rebuild it under that week's rules.
         run: |
-          mkdir -p site/data/sponsors/audit "site/snapshots/$CURRENT_DATE/sponsors"
+          mkdir -p site/data/sponsors/audit
           cp data/sponsors/bridge.csv.gz data/sponsors/bridge_meta.json site/data/sponsors/
-          cp data/sponsors/bridge.csv.gz data/sponsors/bridge_meta.json "site/snapshots/$CURRENT_DATE/sponsors/"
           # The audit files the (password-curtained) audit tab reads live on
           # the site too, so the tab keeps working if this repo goes private.
           cp data/sponsor_audit/inbox_new_unmatched.csv data/sponsor_audit/inbox_open.csv.gz \
@@ -391,7 +394,7 @@ jobs:
              data/sponsor_audit/literals_all.csv.gz data/sponsor_audit/audit_summary.json \
              site/data/sponsors/audit/
           cd site
-          git add data/sponsors "snapshots/$CURRENT_DATE/sponsors"
+          git add data/sponsors
           git commit -m "Update sponsor bridge $CURRENT_DATE" || exit 0
           git push
 
@@ -477,6 +480,12 @@ jobs:
             echo "| Full-record release | step ${{ steps.data_release.outcome }} (release data-$CURRENT_DATE) |"
             if [ -f "$RUNNER_TEMP/site_check.json" ]; then
               echo "| Site contract check | $(jq -r '"\(if .ok then "passed" else "FAILED, nothing published" end): \(.records // 0) records; parts \((.parts_gzip_bytes // 0) / 1e6 | floor) MB of a \((.total_budget_bytes // 0) / 1e6 | floor) MB budget; site \((.tree_bytes // 0) / 1e6 | floor) MB; \(.errors | length) errors, \(.warnings | length) warnings"' "$RUNNER_TEMP/site_check.json") |"
+            fi
+            # What retention did this week (scripts/prune_snapshots.py): until
+            # 2026-10 removals went only to the log, and a pruning bug deleted
+            # every week's snapshot for three months unnoticed.
+            if [ -f "$RUNNER_TEMP/retention.json" ]; then
+              echo "| Snapshot retention | $(jq -r '"latest \(.latest) (data/); last week \(.archived.date // "none"): \(.archived.status // "nothing to archive"); complete: \(.complete | join(", ")); \(.aggregates | length) monthly aggregates (\(.archive_files | length) with their own records); slimmed: \(if (.slimmed | length) > 0 then (.slimmed | join(", ")) else "none" end); removed: \(if (.removed | length) > 0 then (.removed | join(", ")) else "none" end)\(if (.warnings | length) > 0 then "; \(.warnings | length) warnings" else "" end)"' "$RUNNER_TEMP/retention.json") |"
             fi
             echo "| Sex/gender raw-measure archive | step ${{ steps.sg_archive.outcome }} (release sex-gender-raw-measures) |"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -11,7 +11,11 @@ READS   <site>/tests/record_contract.json   every study-record field the site
                                             demographics.part*.json.gz and, for a
                                             split dataset, its studies_tab parts,
                                             detail shards and run.json
-        <site>/snapshots/<--snapshot>/      the same dataset, archived this week
+        <site>/history.json, <site>/snapshots/
+                                            what the "View snapshot" menu offers:
+                                            the latest date (data/), the complete
+                                            snapshots and the monthly aggregates
+                                            (scripts/prune_snapshots.py)
         the <site> working tree             its size, as GitHub Pages will publish it
 WRITES  --report (JSON: what was checked, the sizes, every error and warning),
         and ::error:: / ::warning:: lines for the Actions log
@@ -44,9 +48,21 @@ EXITS   1 when the push must not happen:
             lacks a detail path (study_sites is written whole there, so with
             its country too); or a core record has no detail entry;
           - data/run.json does not give this run's stamps, part count, record
-            count and layout;
-          - snapshots/<--snapshot>/ does not hold the same dataset files as
-            data/, byte for byte.
+            count and layout.
+        With --latest (the weekly job passes its date), or whenever the site
+        has a history.json, it also stops the push when what the snapshot
+        menu offers is not there (check_history):
+          - history.json cannot be read, or its "latest" is not --latest (the
+            date data/ serves), is not listed, or is not its newest date;
+          - a date it lists other than the latest has no snapshots/<date>/
+            with a readable dashboard-summary.json;
+          - an aggregate it names still holds dataset files, or the archive
+            file it names is missing, unreadable, from another run than its
+            summary, or not an entry for exactly its summary's recentStudies;
+          - a complete snapshot lacks a file of its dataset (whole parts, or
+            core, studies_tab and detail files and run.json), or a file, its
+            summary, its sex/gender pair or its methods text carries another
+            run's stamps or a wrong header (src/dataset_folder.py).
         Size over the site's budgets only warns: 20 MiB a part today, and the
         optional per-class budgets for the studies_tab and detail files. That
         is the owner's policy: block missing fields; for size, warn until a
@@ -66,7 +82,6 @@ The path rules are the site's (tests/study_record_contract.test.mjs there):
 from __future__ import annotations
 
 import argparse
-import filecmp
 import gzip
 import json
 import os
@@ -77,6 +92,8 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src import archive_records  # noqa: E402
+from src import dataset_folder as df  # noqa: E402
 from src import site_layout as sl  # noqa: E402
 
 # GitHub rejects a push with a file over 100 MiB. (The site serves its parts
@@ -89,6 +106,7 @@ TREE_WARN_BYTES = 900_000_000
 MAX_REPORTED = 20
 EXAMPLES_PER_PATH = 3
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+HISTORY_FILE = "history.json"
 _ABSENT = object()
 
 
@@ -132,22 +150,8 @@ def read_gz_json(path: str) -> Any:
         return json.load(f)
 
 
-def dataset_files(folder: str) -> list[str]:
-    """The dataset files in a site folder, under either layout, relative to it:
-    the core parts, the studies_tab parts, run.json, and every file under
-    detail/ (so a stray one there is seen)."""
-    if not os.path.isdir(folder):
-        return []
-    out = [n for n in os.listdir(folder)
-           if sl.CORE_PART_RE.fullmatch(n) or sl.STUDIES_TAB_PART_RE.fullmatch(n) or n == sl.RUN_FILE]
-    detail = os.path.join(folder, sl.DETAIL_DIR)
-    if os.path.isdir(detail) and not os.path.islink(detail):
-        for dirpath, _, filenames in os.walk(detail):
-            rel = os.path.relpath(dirpath, folder).replace(os.sep, "/")
-            out += [f"{rel}/{name}" for name in filenames]
-    elif os.path.lexists(detail):
-        out.append(sl.DETAIL_DIR)
-    return sorted(out)
+# The dataset files in a site folder, under either layout (src/dataset_folder.py).
+dataset_files = df.present_files
 
 
 def class_files(folder: str) -> list[str]:
@@ -193,7 +197,7 @@ class Findings:
         self.fat = Tally()             # fields a class's files carry but the class does not read: warn
         self.report: dict[str, Any] = {"site": site, "errors": self.errors, "warnings": self.warnings,
                                        "missing_by_path": self.missing_by_path, "layout_version": None,
-                                       "classes": {}, "snapshot": None}
+                                       "classes": {}, "history": None}
 
     def err(self, msg: str) -> None:
         if len(self.errors) < MAX_REPORTED:
@@ -223,7 +227,7 @@ class Findings:
 
 def check(site: str, part_hard_limit: int = PART_HARD_LIMIT_BYTES,
           tree_hard_limit: int = TREE_HARD_LIMIT_BYTES, tree_warn: int = TREE_WARN_BYTES,
-          snapshot: str | None = None) -> dict[str, Any]:
+          latest: str | None = None) -> dict[str, Any]:
     f = Findings(site)
     report, warnings = f.report, f.warnings
     try:
@@ -345,21 +349,20 @@ def check(site: str, part_hard_limit: int = PART_HARD_LIMIT_BYTES,
 
     if mode == "split" and plan is not None and first is not None:
         report["layout_version"] = sl.LAYOUT_VERSION
-        check_split(f, switch, plan, layout, first, part_count, part_ids, sizes, budget, part_hard_limit, snapshot)
+        check_split(f, switch, plan, layout, first, part_count, part_ids, sizes, budget, part_hard_limit)
     elif mode == "inline":
         report["classes"] = {"inline": {"files": len(sizes), "gzip_bytes": total, "records": records}}
         # The publish step removes a split week's files before it copies whole
         # parts in; any left over are files no page reads.
-        folders = [("data/", data_dir)]
-        if snapshot:
-            folders.append((f"snapshots/{snapshot}/", os.path.join(site, "snapshots", snapshot)))
-        for label, folder in folders:
-            stale = class_files(folder)
-            if stale:
-                warnings.append(f"{label} holds split-layout files beside whole-record parts, which no page reads: "
-                                f"{_eg(stale)}")
+        stale = class_files(data_dir)
+        if stale:
+            warnings.append(f"data/ holds split-layout files beside whole-record parts, which no page reads: "
+                            f"{_eg(stale)}")
         if switch is not None and switch.split:
             warnings.append("the site's contract turns the split layout on, but this week's parts carry whole records")
+
+    if latest is not None or os.path.exists(os.path.join(site, HISTORY_FILE)):
+        check_history(f, latest, part_count)
 
     tree = tree_size(site)
     report["tree_bytes"] = tree
@@ -372,9 +375,9 @@ def check(site: str, part_hard_limit: int = PART_HARD_LIMIT_BYTES,
 
 def check_split(f: Findings, switch: sl.Switch | None, plan: sl.Plan, layout: dict[str, Any], first: dict[str, Any],
                 part_count: int, part_ids: dict[int, list[Any]], core_sizes: dict[str, int], budget: dict[str, Any],
-                part_hard_limit: int, snapshot: str | None) -> None:
-    """A split dataset's other files: its studies_tab parts, its detail shards,
-    run.json, and this week's snapshot copy; and the per-class sizes."""
+                part_hard_limit: int) -> None:
+    """A split dataset's other files: its studies_tab parts, its detail shards
+    and run.json; and the per-class sizes."""
     site, report, warnings = f.site, f.report, f.warnings
     data_dir = os.path.join(site, "data")
     stamps = (first["extracted_at"], first["pipeline_commit"])
@@ -546,38 +549,136 @@ def check_split(f: Findings, switch: sl.Switch | None, plan: sl.Plan, layout: di
             warnings.append(f"data/{sl.RUN_FILE} gives gzip_bytes {run.get('gzip_bytes')!r}; "
                             f"the files are {on_disk_bytes!r}")
 
-    # This week's snapshot folder: the same dataset, byte for byte.
-    if snapshot is not None:
-        folder = os.path.join(site, "snapshots", snapshot)
-        report["snapshot"] = {"date": snapshot, "checked": True}
-        if not DATE_RE.fullmatch(snapshot) or not os.path.isdir(folder):
-            f.err(f"snapshots/{snapshot}/ is not there to hold this week's dataset")
-            return
-        mine, theirs = dataset_files(data_dir), dataset_files(folder)
-        lacking = sorted(set(mine) - set(theirs))
-        extra = sorted(set(theirs) - set(mine))
-        differ = [n for n in sorted(set(mine) & set(theirs))
-                  if not filecmp.cmp(os.path.join(data_dir, n), os.path.join(folder, n), shallow=False)]
-        if lacking:
-            f.err(f"snapshots/{snapshot}/ lacks {len(lacking):,} of this week's dataset files ({_eg(lacking)})")
-        if extra:
-            f.err(f"snapshots/{snapshot}/ holds dataset files data/ does not ({_eg(extra)})")
-        if differ:
-            f.err(f"snapshots/{snapshot}/ holds {len(differ):,} dataset files that differ from data/'s ({_eg(differ)})")
-        report["snapshot"]["files"] = len(theirs)
+
+def _is_date(value: Any) -> bool:
+    if not isinstance(value, str) or not DATE_RE.fullmatch(value):
+        return False
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
+
+
+def check_history(f: Findings, latest: str | None, part_count: int) -> None:
+    """history.json against the tree: every date the "View snapshot" menu
+    offers must open. latest is the date data/ serves (the weekly job's date;
+    None: history.json's own). A complete snapshot is checked from its files'
+    headers, every file decompressed to its end: its records were checked
+    against the contract when data/ published them, and it is their copy."""
+    site, warnings = f.site, f.warnings
+    if latest is not None and not _is_date(latest):
+        f.err(f"--latest {latest!r} is not a date (YYYY-MM-DD)")
+        return
+    path = os.path.join(site, HISTORY_FILE)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            history = json.load(fh)
+    except (OSError, ValueError) as e:
+        f.err(f"{HISTORY_FILE} cannot be read ({e}); the snapshot menu reads it")
+        return
+    dates = history.get("dates") if isinstance(history, dict) else None
+    if not isinstance(dates, list) or any(not _is_date(d) for d in dates):
+        f.err(f"{HISTORY_FILE} has no list of YYYY-MM-DD dates (dates: {_eg(dates if isinstance(dates, list) else [dates])})")
+        return
+    if len(set(dates)) != len(dates):
+        f.err(f"{HISTORY_FILE} lists a date twice")
+    named = history.get("latest")
+    want = latest if latest is not None else named
+    if named != want:
+        f.err(f"{HISTORY_FILE} says latest {named!r}, but data/ serves {latest}")
+    if not _is_date(want):
+        f.err(f"{HISTORY_FILE} names no latest date (data/'s)")
+        return
+    if want not in dates:
+        f.err(f"{HISTORY_FILE} does not list the latest date, {want}")
+    if dates and max(dates) > want:
+        f.err(f"{HISTORY_FILE} lists {max(dates)}, newer than the latest date, {want}")
+    archives = history.get("archives", {})
+    if not isinstance(archives, dict):
+        f.err(f"{HISTORY_FILE} archives is not an object")
+        archives = {}
+    snapshots = os.path.join(site, "snapshots")
+    record: dict[str, Any] = {"latest": want, "dates": len(dates), "complete": [], "aggregates": [], "archive_files": []}
+    f.report["history"] = record
+    for d in sorted(archives):
+        if d not in dates or d == want:
+            f.err(f"{HISTORY_FILE} archives names {d!r}, which is not a listed archived date")
+    for d in sorted(set(dates)):
+        if d == want:
+            continue
+        folder = os.path.join(snapshots, d)
+        summary = df.read_summary(folder)
+        if not os.path.isdir(folder):
+            f.err(f"{HISTORY_FILE} lists {d}, but snapshots/{d}/ is not there")
+            continue
+        if summary is None:
+            f.err(f"snapshots/{d}/ has no readable {df.SUMMARY_FILE}, which the menu needs for every date")
+            continue
+        entry = archives.get(d)
+        if entry is not None:
+            check_aggregate(f, d, folder, summary, entry, record)
+            continue
+        record["complete"].append(d)
+        ds = df.inspect(folder, part_count)
+        for problem in ds.problems:
+            f.err(f"snapshots/{d}/ is listed as a complete snapshot but {problem}")
+        if ds.stamps is not None:
+            for problem in df.sex_gender_problems(folder, ds.stamps, d) + df.methods_problems(folder, ds.stamps, d):
+                f.err(f"snapshots/{d}/: {problem}")
+        if ds.strays:
+            warnings.append(f"snapshots/{d}/ holds split-layout files beside whole-record parts, which no page reads: "
+                            f"{_eg(ds.strays)}")
+    if os.path.isdir(os.path.join(snapshots, want)):
+        warnings.append(f"snapshots/{want}/ is there, a copy of the latest date, which data/ serves")
+    unlisted = sorted(n for n in (os.listdir(snapshots) if os.path.isdir(snapshots) else [])
+                      if os.path.isdir(os.path.join(snapshots, n)) and n not in dates)
+    if unlisted:
+        warnings.append(f"snapshots/ holds folders {HISTORY_FILE} does not list, which no page offers: {_eg(unlisted)}")
+
+
+def check_aggregate(f: Findings, d: str, folder: str, summary: dict[str, Any], entry: Any,
+                    record: dict[str, Any]) -> None:
+    """A monthly aggregate history.json names: its summary, and the archive file
+    it names, which must be its summary's run's own records."""
+    record["aggregates"].append(d)
+    if not isinstance(entry, dict) or entry.get("kind") != "aggregate":
+        f.err(f"{HISTORY_FILE} archives entry for {d} is {entry!r}, not {{\"kind\": \"aggregate\", ...}}")
+        return
+    held = df.present_files(folder)
+    if held:
+        f.err(f"{HISTORY_FILE} names {d} an aggregate, but snapshots/{d}/ still holds dataset files ({_eg(held)})")
+    detail = entry.get("detail")
+    if detail is None:
+        if os.path.exists(os.path.join(folder, sl.ARCHIVE_FILE)):
+            f.warnings.append(f"snapshots/{d}/{sl.ARCHIVE_FILE} is there, but {HISTORY_FILE} does not name it")
+    elif detail != sl.ARCHIVE_FILE:
+        f.err(f"{HISTORY_FILE} names {detail!r} as the archive file of {d}; the layout's is {sl.ARCHIVE_FILE}")
+    elif not os.path.exists(os.path.join(folder, detail)):
+        f.err(f"{HISTORY_FILE} names snapshots/{d}/{detail}, which is not there")
+    else:
+        found = archive_records.problems(os.path.join(folder, detail), summary)
+        for problem in found:
+            f.err(f"snapshots/{d}/: {problem}")
+        if not found:
+            record["archive_files"].append(d)
+    others = sorted(set(os.listdir(folder)) - {df.SUMMARY_FILE, sl.ARCHIVE_FILE} - set(held))
+    if others:
+        f.warnings.append(f"snapshots/{d}/ is an aggregate but also keeps {_eg(others)}")
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Check this week's site files against the site's contract.")
     ap.add_argument("--site", required=True, help="the site checkout, with this week's files staged")
     ap.add_argument("--report", default=None, help="write the report here as JSON")
-    ap.add_argument("--snapshot", default=None, metavar="DATE",
-                    help="this week's snapshot folder, snapshots/DATE, which must hold the same split dataset")
+    ap.add_argument("--latest", default=None, metavar="DATE",
+                    help="the date data/ serves (the weekly job's date): history.json's latest must name it, "
+                         "and every date it lists must open")
     ap.add_argument("--part-hard-limit-bytes", type=int, default=PART_HARD_LIMIT_BYTES)
     ap.add_argument("--tree-hard-limit-bytes", type=int, default=TREE_HARD_LIMIT_BYTES)
     ap.add_argument("--tree-warn-bytes", type=int, default=TREE_WARN_BYTES)
     a = ap.parse_args(argv)
-    report = check(a.site, a.part_hard_limit_bytes, a.tree_hard_limit_bytes, a.tree_warn_bytes, a.snapshot)
+    report = check(a.site, a.part_hard_limit_bytes, a.tree_hard_limit_bytes, a.tree_warn_bytes, a.latest)
     if a.report:
         with open(a.report, "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=2)

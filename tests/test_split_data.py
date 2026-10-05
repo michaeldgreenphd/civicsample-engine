@@ -454,15 +454,16 @@ def test_the_weekly_job_cuts_the_dataset_after_the_site_checkout_from_the_sites_
     assert len(re.findall(r"python3? scripts/split_data\.py", WORKFLOW)) == 1, "the split runs more than once"
 
 
-def test_the_weekly_job_publishes_the_dataset_folder_to_data_and_to_the_snapshot() -> None:
+def test_the_weekly_job_publishes_the_dataset_folder_to_data_only() -> None:
+    """The week's dataset replaces data/'s, and only data/'s: the site serves
+    the latest date from data/, and scripts/prune_snapshots.py archives it into
+    snapshots/<date>/ when it leaves data/ (tests/test_prune_snapshots.py)."""
     lines = [line.strip() for line in _step(PUBLISH_STEP).splitlines()]
     rm_data = "rm -f site/data/demographics.part*.json.gz site/data/studies_tab.part*.json.gz site/data/run.json"
     assert lines.index(rm_data) < lines.index("rm -rf site/data/detail") < lines.index("cp -R data/dataset/. site/data/")
-    rm_snap = ('rm -f "snapshots/$DATE"/demographics.part*.json.gz "snapshots/$DATE"/studies_tab.part*.json.gz '
-               '"snapshots/$DATE/run.json"')
-    assert lines.index(rm_snap) < lines.index('rm -rf "snapshots/$DATE/detail"') \
-        < lines.index('cp -R ../data/dataset/. "snapshots/$DATE/"')
     step = _step(PUBLISH_STEP)
+    assert "data/dataset/. site/data/" in step and step.count("data/dataset/.") == 1, "the dataset is copied elsewhere too"
+    assert '"snapshots/$DATE' not in step and "snapshots/$DATE" not in step
     assert "details" not in " ".join(line for line in lines if line.startswith("rm ")), \
         "a removal could reach the frozen data/details.part*.json.gz"
     assert not re.search(r"git add (-A |--all )?(-- )?data/?$", step, re.M), "a blanket git add over data/"
