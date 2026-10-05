@@ -524,6 +524,19 @@ def test_a_folder_for_the_latest_date_goes(tmp_path: pathlib.Path) -> None:
     assert out.removed == ["2026-10-11"] and not (site / "snapshots" / "2026-10-11").exists()
 
 
+def test_a_leftover_folder_for_the_latest_date_takes_no_fortnights_place(tmp_path: pathlib.Path) -> None:
+    """The day this change is deployed, a manual re-run can follow the old
+    publish step's Sunday run, which left snapshots/<latest>/ beside data/.
+    That copy is not a fourth complete fortnight: the three archived ones stay
+    complete, nothing is slimmed, and only the copy goes."""
+    site = sh.make_site(tmp_path, "2026-10-11", ["2026-08-30", "2026-09-13", "2026-09-27", "2026-10-11"])
+    out = ps.run(str(site), "2026-10-11", None, dry=False)
+    assert out.complete == ["2026-08-30", "2026-09-13", "2026-09-27"], out.report()
+    assert out.slimmed == [] and out.removed == ["2026-10-11"] and out.warnings == []
+    assert sh.read_history(site) == {"dates": ["2026-08-30", "2026-09-13", "2026-09-27", "2026-10-11"],
+                                     "latest": "2026-10-11", "archives": {}}
+
+
 def test_an_unusable_folder_is_left_as_it_is_and_not_listed(tmp_path: pathlib.Path) -> None:
     """No summary; or a damaged dataset with no archive file: nothing that
     might be recovered is deleted, and the menu does not offer it."""
