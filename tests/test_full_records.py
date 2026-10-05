@@ -18,7 +18,12 @@ pin both halves:
 - extract.yml passes the full file to the generators, prunes no data-*
   release, retries a failed release, keeps the files as an artifact when it
   still fails, and turns the run red. The release step is run for real
-  against a stub `gh` that logs its calls.
+  against a stub `gh` that logs its calls;
+- the full records are compressed and released whenever the extraction
+  succeeded, a failed sex/gender table build included, while that failure
+  still skips the site publish (the step conditions are evaluated over the
+  workflow as written), and the table build's write-back leaves the file
+  whole when it fails.
 """
 from __future__ import annotations
 
@@ -42,18 +47,19 @@ from src import full_records  # noqa: E402
 STAMPS = {"extracted_at": "2026-09-27T11:49:53+00:00", "pipeline_commit": "12b9b65"}
 
 
+def _study(i: int) -> dict:
+    """A mock API study with sex and race baseline tables."""
+    from validate_fixes import _make_study, _make_measure, _make_class, _make_category
+    return _make_study(f"NCT0000000{i}", f"study {i}", [
+        _make_measure("Sex: Female, Male", [_make_class("", [_make_category("Female", 40 + i), _make_category("Male", 35)])]),
+        _make_measure("Race (NIH/OMB)", [_make_class("", [_make_category("White", 50 + i), _make_category("Black or African American", 25)])]),
+    ], total_participants=75 + i)
+
+
 def _records(n: int = 3) -> list[dict]:
     """Whole study records, built by the extractor from mock API studies."""
-    from validate_fixes import _make_study, _make_measure, _make_class, _make_category
     from src.extract_all import extract_demographics_from_study
-    out = []
-    for i in range(n):
-        study = _make_study(f"NCT0000000{i}", f"study {i}", [
-            _make_measure("Sex: Female, Male", [_make_class("", [_make_category("Female", 40 + i), _make_category("Male", 35)])]),
-            _make_measure("Race (NIH/OMB)", [_make_class("", [_make_category("White", 50 + i), _make_category("Black or African American", 25)])]),
-        ], total_participants=75 + i)
-        out.append(extract_demographics_from_study(study, snapshot_date="2026-09-27"))
-    return out
+    return [extract_demographics_from_study(_study(i), snapshot_date="2026-09-27") for i in range(n)]
 
 
 def _write_container(path: pathlib.Path, records: list[dict], gz: bool = False) -> None:
@@ -193,6 +199,77 @@ def test_the_sponsor_and_status_readers_refuse_the_site_parts(tmp_path: pathlib.
     assert "full study records not found" in (r.stdout + r.stderr), r.stderr[-400:]
 
 
+# ── the sex/gender write-back ───────────────────────────────────────────────
+# The weekly job's table build rewrites data/demographics.json in place
+# (--write-back) and then compresses and releases it even when the build
+# fails, so a failed build must leave the file whole.
+
+def _pull(data_dir: pathlib.Path, n: int = 3) -> pathlib.Path:
+    """A week's pull as the extraction leaves it: demographics.json with the
+    extractor's lean sex_gender rows, and the retained raw measures, stamped
+    alike."""
+    from src import sex_gender_table as sgt
+    from src.extract_all import extract_demographics_from_study
+    studies = [_study(i) for i in range(n)]
+    _write_container(data_dir / "demographics.json",
+                     [extract_demographics_from_study(s, snapshot_date="2026-09-27") for s in studies])
+    with gzip.open(data_dir / "sex_gender_raw_measures.jsonl.gz", "wt") as f:
+        for s in studies:
+            f.write(json.dumps({**sgt.select_raw_measures(s), "snapshot_date": "2026-09-27", **STAMPS}) + "\n")
+    return data_dir / "demographics.json"
+
+
+def _build_table(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> int:
+    """scripts/build_sex_gender_table.py with the weekly job's arguments, in-process."""
+    import build_sex_gender_table
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["build_sex_gender_table.py", "--from-raw", "data/sex_gender_raw_measures.jsonl.gz",
+                                      "--snapshot-date", "2026-09-27", "--write-back", "data/demographics.json", "--strict"])
+    return build_sex_gender_table.main()
+
+
+def test_a_strict_failure_leaves_the_full_records_whole_and_written_back(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--strict exits 1 only after the write-back, so what the job then
+    releases is the whole week: every record, every field, the rebuilt rows."""
+    import build_sex_gender_table
+    from src import sex_gender_table as sgt
+    (tmp_path / "data").mkdir()
+    path = _pull(tmp_path / "data")
+    before = json.loads(path.read_text())
+    monkeypatch.setattr(build_sex_gender_table.sgt, "structural_checks", lambda rows: {"forced": {"pass": False, "detail": "test"}})
+    assert _build_table(tmp_path, monkeypatch) == 1
+    after = json.loads(path.read_text())
+    assert {k: v for k, v in after.items() if k != "data"} == {k: v for k, v in before.items() if k != "data"}
+    assert [r["nct_id"] for r in after["data"]] == [r["nct_id"] for r in before["data"]]
+    for b, a in zip(before["data"], after["data"]):
+        assert {k: v for k, v in a.items() if k != "sex_gender"} == {k: v for k, v in b.items() if k != "sex_gender"}
+        assert list(a["sex_gender"]) == sgt.LEAN_COLUMNS
+        # the rebuild from the raw measures reproduces the extractor's row
+        assert a["sex_gender"] == b["sex_gender"]
+    meta = json.loads((tmp_path / "data" / "sex_gender_parsed_meta.json").read_text())
+    assert meta["structural_checks_all_pass"] is False and meta["written_back"]["updated"] == 3
+    assert not (tmp_path / "data" / "demographics.json.tmp").exists()
+
+
+def test_a_failed_write_back_leaves_the_pulls_own_file(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A full disk (or any error) mid-dump leaves data/demographics.json as the
+    extraction wrote it, never truncated, and no temporary file behind."""
+    import build_sex_gender_table
+    (tmp_path / "data").mkdir()
+    path = _pull(tmp_path / "data")
+    before = path.read_bytes()
+
+    def full_disk(obj: object, f: object, **kw: object) -> None:
+        f.write('{"extracted_at": "2026-')
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(build_sex_gender_table.json, "dump", full_disk)
+    with pytest.raises(OSError, match="No space left"):
+        _build_table(tmp_path, monkeypatch)
+    assert path.read_bytes() == before
+    assert not (tmp_path / "data" / "demographics.json.tmp").exists()
+
+
 # ── extract.yml ─────────────────────────────────────────────────────────────
 
 WORKFLOW = open(os.path.join(ROOT, ".github", "workflows", "extract.yml")).read()
@@ -202,6 +279,113 @@ def _step(name: str) -> str:
     m = re.search(rf"\n      - name: {re.escape(name)}\n(.*?)(?=\n      - name: |\Z)", WORKFLOW, re.S)
     assert m, f"extract.yml lost the step {name!r}"
     return m.group(1)
+
+
+def _steps() -> list[dict]:
+    """extract.yml's named steps in order: name, id, if, continue-on-error."""
+    out = []
+    for m in re.finditer(r"\n      - name: ([^\n]+)\n(.*?)(?=\n      - name: |\Z)", WORKFLOW, re.S):
+        body = m.group(2)
+        cond = re.search(r"^        if: (.+)$", body, re.M)
+        sid = re.search(r"^        id: (\S+)$", body, re.M)
+        out.append({"name": m.group(1), "id": sid.group(1) if sid else None, "if": cond.group(1) if cond else None,
+                    "continue_on_error": re.search(r"^        continue-on-error: true$", body, re.M) is not None})
+    return out
+
+
+def _runs(cond: str | None, outcomes: dict[str, str], job_failed: bool, env: dict[str, str]) -> bool:
+    """A step's if:, as GitHub evaluates it, for the expressions extract.yml
+    uses. Without a status function the condition is success() && (cond), so
+    a step with no if: is skipped once any earlier step has failed."""
+    expr = (cond or "success()").strip()
+    if expr.startswith("${{") and expr.endswith("}}"):
+        expr = expr[3:-2].strip()
+    if not re.search(r"\b(always|cancelled|success|failure)\(\)", expr):
+        expr = f"success() && ({expr})"
+    py = (expr.replace("&&", " and ").replace("||", " or ").replace("!cancelled()", "True")
+          .replace("always()", "True").replace("success()", str(not job_failed)).replace("failure()", str(job_failed)))
+    py = re.sub(r"steps\.(\w+)\.outcome", lambda m: repr(outcomes.get(m.group(1), "skipped")), py)
+    py = re.sub(r"env\.(\w+)", lambda m: repr(env.get(m.group(1), "")), py)
+    words = set(re.findall(r"[A-Za-z_]\w*", re.sub(r"'[^']*'", "", py)))
+    assert words <= {"and", "or", "not", "True", "False"}, f"an if: this evaluator does not cover: {cond}"
+    return bool(eval(py))  # noqa: S307 - only the literals and operators checked above
+
+
+def _simulate(failing: set[str], drive: bool = False) -> dict[str, str]:
+    """Each step's outcome by name ('success', 'failure', 'skipped') when the
+    steps named in failing fail and every other step that runs succeeds."""
+    outcomes: dict[str, str] = {}
+    result: dict[str, str] = {}
+    job_failed = False
+    for step in _steps():
+        ran = _runs(step["if"], outcomes, job_failed, {"GDRIVE_ENABLED": "true" if drive else "false"})
+        outcome = ("failure" if step["name"] in failing else "success") if ran else "skipped"
+        result[step["name"]] = outcome
+        if step["id"]:
+            outcomes[step["id"]] = outcome
+        job_failed = job_failed or (outcome == "failure" and not step["continue_on_error"])
+    return result
+
+
+EXTRACT = "Run extraction"
+BUILD = "Build the sex/gender table (full record) and write the lean rows back"
+COMPRESS = "Compress CT.gov Data for Drive"
+DRIVE = ("Upload CT.gov Data to Google Drive via OAuth", "Upload retained sex/gender raw measures to Google Drive")
+RELEASE = "Keep the week's full records on a permanent GitHub Release"
+ARTIFACT = "Keep the full records as a workflow artifact if the release failed"
+RAW_ARCHIVE = "Archive the retained sex/gender raw measures permanently"
+SUMMARY = "Write run summary"
+RELEASE_GATE = "Fail the run if the week's full-record release failed"
+SETUP = ("Set current date", "Set up Python", "Install dependencies")
+
+
+def _ran(outcomes: dict[str, str]) -> set[str]:
+    return {name for name, o in outcomes.items() if o != "skipped"}
+
+
+@pytest.mark.parametrize("drive", [False, True], ids=["no-drive", "drive"])
+def test_a_failed_sex_gender_build_keeps_the_full_records_and_publishes_nothing(drive: bool) -> None:
+    """The build's --strict failure stops the site publish and everything
+    after it, but the week's full records are still compressed and released
+    (a re-run pulls the registry again and cannot recover the week). Exactly
+    these steps run; any other step added later that runs after a failed
+    build has to be added here deliberately."""
+    out = _simulate({BUILD}, drive=drive)
+    keep = {COMPRESS, RELEASE, RAW_ARCHIVE, *(DRIVE if drive else ())}
+    assert _ran(out) == {*SETUP, EXTRACT, BUILD, *keep, SUMMARY}, sorted(_ran(out))
+    assert all(out[s] == "success" for s in keep)
+    assert out["Check out the site repository"] == "skipped"
+    assert out["Publish artifacts, archive snapshot, and push to the site"] == "skipped"
+    # ...and a release that then fails still leaves the artifact and a red run
+    out = _simulate({BUILD, RELEASE}, drive=drive)
+    assert out[ARTIFACT] == "success" and out[RELEASE_GATE] == "success"
+    assert out["Publish artifacts, archive snapshot, and push to the site"] == "skipped"
+
+
+def test_a_failed_extraction_releases_nothing() -> None:
+    """A failed or killed extraction can leave a partial file; nothing of it is
+    compressed, released or archived (unchanged by keying on the extraction)."""
+    out = _simulate({EXTRACT}, drive=True)
+    assert _ran(out) == {*SETUP, EXTRACT, SUMMARY}, sorted(_ran(out))
+
+
+def test_a_clean_run_runs_every_step_but_the_failure_paths() -> None:
+    out = _simulate(set(), drive=True)
+    assert {n for n, o in out.items() if o == "skipped"} == {ARTIFACT, RELEASE_GATE,
+                                                            "Fail the run if the permanent raw-measure archive failed"}
+
+
+def test_the_full_file_is_compressed_whenever_the_extraction_succeeded() -> None:
+    order = [s["name"] for s in _steps()]
+    assert order.index(EXTRACT) < order.index(BUILD) < order.index(COMPRESS) < order.index(RELEASE)
+    assert order.index(COMPRESS) < order.index(DRIVE[0]) and order.index(COMPRESS) < order.index(DRIVE[1])
+    compress = _step(COMPRESS)
+    assert "if: ${{ !cancelled() && steps.extract.outcome == 'success' }}" in compress, \
+        "a failed sex/gender table build would skip the full-record release again"
+    assert "run: gzip -k data/demographics.json" in compress
+    assert "id: extract" in _step(EXTRACT)
+    assert "steps.compress_full.outcome == 'success'" in _step(DRIVE[0])
+    assert "steps.extract.outcome == 'success'" in _step(DRIVE[1])
 
 
 def _release_block() -> str:

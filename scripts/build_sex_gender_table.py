@@ -16,11 +16,11 @@ WRITES  data/sex_gender_parsed.csv.gz        one row per trial, columns in
                                              fatal on a fresh pull)
 INVOKED by .github/workflows/extract.yml (--from-raw, --write-back, --strict)
         before scripts/split_data.py cuts the site's files. Run from the repo
-        root. --strict exits 1 when a structural check fails. The weekly job
-        then publishes nothing to the site, and the week's data-* release is
-        skipped too, since the steps that compress and release the full
-        records come after this one; only the raw measures, which a re-parse
-        needs, are archived.
+        root. --strict exits 1 when a structural check fails, after the table,
+        the meta and the write-back are written. The weekly job then publishes
+        nothing to the site, but still compresses the week's full records and
+        keeps them on its data-* release; the write-back replaces the file
+        whole (replace_json), so what is released is never a partial file.
 """
 from __future__ import annotations
 
@@ -146,6 +146,26 @@ def write_table(rows: list, out_csv: str) -> None:
     df.to_csv(out_csv, index=False, compression="gzip" if out_csv.endswith(".gz") else None)
 
 
+def replace_json(path: str, obj: dict) -> None:
+    """Write obj to path whole or not at all.
+
+    The --write-back target is the week's full record (data/demographics.json),
+    and the weekly job compresses and releases it even when this build fails.
+    Writing in place would leave a truncated file behind a crash or a full
+    disk mid-dump; this writes a sibling file and renames it over the target
+    (atomic on one filesystem), so the target is either the old file or the
+    new one."""
+    tmp = f"{path}.tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(obj, f, indent=2)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     # Sources. Exactly one is used: an explicit --from-raw, else an explicit
@@ -245,8 +265,7 @@ def main() -> int:
             for s in container["data"]:
                 s["sex_gender"] = by_nct[s["nct_id"]]
                 hit += 1
-            with open(a.write_back, "w") as f:
-                json.dump(container, f, indent=2)
+            replace_json(a.write_back, container)
             written_back["updated"] = hit
             print(f"wrote back lean sex_gender rows into {a.write_back}: {hit} of {len(container['data'])} records")
         else:

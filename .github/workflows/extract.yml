@@ -59,15 +59,25 @@ jobs:
 
       - name: Compress CT.gov Data for Drive
         id: compress_full
+        # Runs whenever the extraction succeeded, even when the sex/gender
+        # table build above failed: that failure still stops the site publish
+        # (every later step without its own if: is skipped), but the week's
+        # full records must reach their data-* release below, since a re-run
+        # pulls the registry again and cannot recover this week. The build's
+        # write-back replaces data/demographics.json whole or not at all, so
+        # the file here is the extraction's or the rebuilt one, never partial.
         # -k keeps the original so the split step can still read it.
+        if: ${{ !cancelled() && steps.extract.outcome == 'success' }}
         run: gzip -k data/demographics.json
 
       - name: Upload CT.gov Data to Google Drive via OAuth
         # Backups are best-effort: skipped when Drive secrets aren't
         # configured, and a failure warns loudly but never blocks the
         # weekly publish (Drive failures went unnoticed for months when
-        # they could take the whole run down with them).
-        if: env.GDRIVE_ENABLED == 'true'
+        # they could take the whole run down with them). Like the release,
+        # it runs whenever the full file was compressed, even after a failed
+        # sex/gender table build.
+        if: ${{ !cancelled() && steps.compress_full.outcome == 'success' && env.GDRIVE_ENABLED == 'true' }}
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
@@ -81,8 +91,9 @@ jobs:
       - name: Upload retained sex/gender raw measures to Google Drive
         # The SELECTED sex/gender baseline measures per trial, verbatim, so any
         # later parser rule change can re-parse this snapshot without a
-        # registry pull (scripts/build_sex_gender_table.py --from-raw).
-        if: env.GDRIVE_ENABLED == 'true'
+        # registry pull (scripts/build_sex_gender_table.py --from-raw). Runs
+        # whenever the extraction succeeded, a failed table build included.
+        if: ${{ !cancelled() && steps.extract.outcome == 'success' && env.GDRIVE_ENABLED == 'true' }}
         env:
           CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
