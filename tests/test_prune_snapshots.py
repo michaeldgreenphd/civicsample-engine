@@ -384,6 +384,24 @@ def test_a_slimmed_snapshot_keeps_its_own_records_for_exactly_its_recent_studies
     for record in h.whole_records(sh.IDS):
         assert doc["data"][record["nct_id"]] == sl.project_object(record, spec), record["nct_id"]
         assert list(doc["data"][record["nct_id"]]) == sorted(doc["data"][record["nct_id"]])
+    # And against the records themselves, not through record_spec: what the
+    # pop-ups read is there with the record's own values, the contract's
+    # optional paths included (official_title, references[].title); what no
+    # class or optional path lists is not (references[].type,
+    # secondary_outcomes[].description).
+    raw = {r["nct_id"]: r for r in h.whole_records(sh.IDS)}
+    assert doc["data"][sh.IDS[0]]["official_title"] == raw[sh.IDS[0]]["official_title"] == "An official title"
+    cited = [nct for nct, r in raw.items() if r.get("references")]
+    assert len(cited) == 6
+    for nct in cited:
+        assert doc["data"][nct]["references"] == [{"citation": ref["citation"], "pmid": ref["pmid"],
+                                                   "source": ref["source"], "title": ref["title"]}
+                                                  for ref in raw[nct]["references"]], nct
+    for nct, record in raw.items():
+        entry = doc["data"][nct]
+        assert entry["brief_title"] == record["brief_title"] and entry["status"] == record["status"]
+        assert entry["secondary_outcomes"] == [{"measure": o["measure"], "time_frame": o["time_frame"]}
+                                               for o in record["secondary_outcomes"]], nct
     assert archive_records.problems(str(folder / "archive_records.json.gz"),
                                     json.loads((folder / "dashboard-summary.json").read_text())) == []
     assert sh.read_history(site)["archives"]["2026-05-31"] == {"kind": "aggregate", "detail": "archive_records.json.gz"}
