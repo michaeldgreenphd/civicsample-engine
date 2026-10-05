@@ -1,0 +1,273 @@
+{
+  "about": [
+    "Every study-record field the site reads, as paths into one record of data/demographics.partN.json.gz.",
+    "A path is a key ('status'), a key inside an object ('race.reported'), or a key on every item of a list ('study_sites[].country'). The contract asks that the key be present; its value may be null or empty, which is how a record says 'none'.",
+    "Classes say what reads the field. core: the dashboard, its filters (including the population filter's age fallback) and share links, over every record at load. studies_tab: the Studies table, its tooltips and the publications and breakdown views. detail: the study and geography-breakdown pop-ups only (status and why_stopped included: the table does not show them). A field read in more than one place takes the earliest class.",
+    "Where the classes live is the layout section below. A dataset whose core part 1 carries no layout key is inline: every class is on the records of data/demographics.partN.json.gz, as in every file published before the split and every existing snapshot. A split dataset keeps core in the parts and studies_tab and detail in their own files, which app.js fetches when the Studies tab or a pop-up needs them.",
+    "optional lists paths the site reads when a record carries them but that the records need not carry: a fallback chain such as a publication's title before its citation, official_title when brief_title is empty, or a raw category's omb_category before its category. The parts need not have them; a projection that keeps the listed fields keeps these too when they appear.",
+    "item_names maps a list, by its full path, to the variable names app.js uses for its items (study.references.map(ref => ...), rawCategories.filter(rc => ...)). Every member read through one of those names must be listed, as a class path or optional, on every list that name serves: one variable read across race, ethnicity, sex and gender items needs each field it reads on all four.",
+    "The engine reads this file and data_budget.json: its weekly publish refuses to push files that drop a listed field, and its split may write the layout section's files only while layout.enabled is true. tests/study_record_contract.test.mjs keeps the contract honest against app.js and checks the published files against it, inline or split."
+  ],
+  "classes": {
+    "core": [
+      "nct_id",
+      "brief_title",
+      "study_type",
+      "phase",
+      "enrollment",
+      "enrollment_type",
+      "results_date",
+      "start_date",
+      "completion_date",
+      "primary_completion_date",
+      "completion_to_report_days",
+      "sponsor_class",
+      "countries[].country",
+      "study_sites[].country",
+      "conditions",
+      "condition_classifications[].primary",
+      "condition_classifications[].secondary",
+      "primary_condition",
+      "secondary_condition",
+      "intervention_model",
+      "masking",
+      "primary_purpose",
+      "healthy_volunteers",
+      "pediatric_status",
+      "std_ages",
+      "min_age",
+      "max_age",
+      "primary_endpoint",
+      "is_fda_regulated_drug",
+      "is_fda_regulated_device",
+      "is_unapproved_device",
+      "race.reported",
+      "race.omb_totals",
+      "race.subcategory_totals",
+      "ethnicity.reported",
+      "ethnicity.omb_totals",
+      "ethnicity.subcategory_totals",
+      "sex.reported",
+      "sex.totals",
+      "gender.reported",
+      "gender.totals",
+      "sex_gender.sex_report_status",
+      "sex_gender.reported_sex",
+      "sex_gender.reported_gender",
+      "sex_gender.reported_both",
+      "sex_gender.n_female",
+      "sex_gender.n_male",
+      "sex_gender.n_unknown",
+      "sex_gender.n_gender_diverse",
+      "sex_gender.n_ambiguous_gender",
+      "sex_gender.is_participant_count",
+      "sex_gender.uninformative_reason",
+      "sex_gender.declared_not_collected",
+      "sex_gender.parser_rules_version"
+    ],
+    "studies_tab": [
+      "references[].pmid",
+      "references[].citation",
+      "references[].source",
+      "race.raw_categories[].omb_category",
+      "race.raw_categories[].confidence",
+      "race.raw_categories[].original",
+      "race.raw_categories[].flags",
+      "ethnicity.raw_categories[].omb_category",
+      "ethnicity.raw_categories[].confidence",
+      "ethnicity.raw_categories[].original",
+      "ethnicity.raw_categories[].flags",
+      "sex.raw_categories[].category",
+      "sex.raw_categories[].confidence",
+      "sex.raw_categories[].original",
+      "sex.raw_categories[].flags",
+      "gender.raw_categories[].category",
+      "gender.raw_categories[].confidence",
+      "gender.raw_categories[].original",
+      "gender.raw_categories[].flags",
+      "race.quarantined_labels[].original",
+      "race.quarantined_labels[].count",
+      "race.quarantined_labels[].reason",
+      "sex.quarantined_labels[].original",
+      "sex.quarantined_labels[].count",
+      "sex.quarantined_labels[].reason",
+      "gender.quarantined_labels[].original",
+      "gender.quarantined_labels[].count",
+      "gender.quarantined_labels[].reason"
+    ],
+    "detail": [
+      "study_sites[].facility",
+      "study_sites[].city",
+      "study_sites[].state",
+      "study_sites[].zip",
+      "study_sites[].geo_identification_method",
+      "geo_identification_method",
+      "secondary_outcomes[].measure",
+      "secondary_outcomes[].time_frame",
+      "primary_outcome_description",
+      "primary_outcome_time_frame",
+      "intervention_model_description",
+      "allocation",
+      "observational_model",
+      "subject_masked",
+      "caregiver_masked",
+      "investigator_masked",
+      "outcomes_assessor_masked",
+      "lead_sponsor_name",
+      "collaborators[].name",
+      "collaborators[].class",
+      "last_update",
+      "status",
+      "why_stopped"
+    ]
+  },
+  "optional": [
+    "official_title",
+    "references[].title",
+    "references[].journal",
+    "race.raw_categories[].category",
+    "ethnicity.raw_categories[].category",
+    "sex.raw_categories[].omb_category",
+    "gender.raw_categories[].omb_category"
+  ],
+  "item_names": {
+    "references": [
+      "ref"
+    ],
+    "study_sites": [
+      "site"
+    ],
+    "race.raw_categories": [
+      "rc"
+    ],
+    "ethnicity.raw_categories": [
+      "rc"
+    ],
+    "sex.raw_categories": [
+      "rc"
+    ],
+    "gender.raw_categories": [
+      "rc"
+    ],
+    "race.quarantined_labels": [
+      "q"
+    ],
+    "sex.quarantined_labels": [
+      "q"
+    ],
+    "gender.quarantined_labels": [
+      "q"
+    ],
+    "condition_classifications": [
+      "cls"
+    ]
+  },
+  "not_record_fields": {
+    "_isAI": "computed in app.js (isAIStudy) and cached on the record",
+    "reference_count": "carried only by dashboard-summary.json recentStudies rows (mobile and archives); a fallback when references is absent"
+  },
+  "layout": {
+    "about": [
+      "How a dataset's study records are laid out in files: the one spec the engine's split (scripts/split_data.py), its publish gate (scripts/check_site_contract.py) and app.js's reader all follow. Version 1.",
+      "enabled is the owner's switch. The engine writes split files only while the live site contract has version 1 and enabled true; otherwise it publishes whole-record parts (inline). The reader reads both either way, so turning the split on, or off again, is a one-line site change.",
+      "A dataset is one folder: data/ for the latest run, snapshots/<date>/ for an archived week, each with its own files. Core part 1's header says how its records are laid out. No layout key: inline, every class on the records. A layout object, {\"version\": 1, \"studies_tab\": {\"files\": total_parts}, \"detail\": {\"shards\": N, \"key\": \"nct_number_mod\"}}, identical in every core part: split. app.js refuses a dataset whose parts disagree about it, whose studies_tab.files is not total_parts, or whose version or key it does not know (\"this page is older than the data; reload\").",
+      "files gives each class's file names. {K} is 1..total_parts. A studies_tab part K holds exactly core part K's studies. {n} is 0..shards-1, unpadded: a study's detail is in shard n = Number(nct_id.slice(3)) % shards (detail.key nct_number_mod; vectors lists the test vectors both repositories check), every core study exactly once.",
+      "headers lists the keys each file carries. data is the core records as a list, in order; in a studies_tab part or a detail shard it is an object keyed by nct_id. Every file of a dataset carries its run stamps, extracted_at and pipeline_commit, equal to core part 1's; the reader fetches a file with other stamps once more past the browser cache, and if it still differs uses nothing from it.",
+      "Each class file carries its class's paths plus the optional paths optional_class assigns to it (an optional path rides with the class whose path shares its container). Paths in no class and not optional are dropped. whole_lists are written whole in the detail shards, so the shard's list replaces the core's (study_sites in core carries country only).",
+      "archive is an aggregate (summary-only) archive's own file of study records: the full projection of every class and optional path for exactly its summary's recentStudies, keyed by nct_id, stamped with the run it was projected from (source_pipeline_commit may be null when that run's parts carried none). history.json names it, \"archives\": {\"<date>\": {\"kind\": \"aggregate\", \"detail\": \"archive_records.json.gz\"}}, with dates kept a list of strings for older pages. Until an archive has one, 2026-02-22 (extracted before 2026-03-05) reads the frozen data/details files, labelled as that extract, and every other aggregate says \"Not included in this archive\"."
+    ],
+    "version": 1,
+    "enabled": false,
+    "files": {
+      "core": "demographics.part{K}.json.gz",
+      "studies_tab": "studies_tab.part{K}.json.gz",
+      "detail": "detail/{n}.json.gz"
+    },
+    "headers": {
+      "core": [
+        "extracted_at",
+        "pipeline_commit",
+        "part",
+        "total_parts",
+        "layout",
+        "data"
+      ],
+      "studies_tab": [
+        "extracted_at",
+        "pipeline_commit",
+        "class",
+        "part",
+        "total_parts",
+        "data"
+      ],
+      "detail": [
+        "extracted_at",
+        "pipeline_commit",
+        "class",
+        "shard",
+        "shards",
+        "key",
+        "data"
+      ],
+      "archive": [
+        "source_extracted_at",
+        "source_pipeline_commit",
+        "class",
+        "data"
+      ]
+    },
+    "detail": {
+      "key": "nct_number_mod",
+      "vectors": [
+        {
+          "nct_id": "NCT01975376",
+          "shards": 256,
+          "shard": 80
+        },
+        {
+          "nct_id": "NCT01975376",
+          "shards": 128,
+          "shard": 80
+        },
+        {
+          "nct_id": "NCT00663858",
+          "shards": 256,
+          "shard": 50
+        },
+        {
+          "nct_id": "NCT00663858",
+          "shards": 128,
+          "shard": 50
+        },
+        {
+          "nct_id": "NCT01174160",
+          "shards": 256,
+          "shard": 144
+        },
+        {
+          "nct_id": "NCT01174160",
+          "shards": 128,
+          "shard": 16
+        }
+      ],
+      "whole_lists": [
+        "study_sites",
+        "collaborators"
+      ]
+    },
+    "optional_class": {
+      "official_title": "core",
+      "references[].title": "studies_tab",
+      "references[].journal": "studies_tab",
+      "race.raw_categories[].category": "studies_tab",
+      "ethnicity.raw_categories[].category": "studies_tab",
+      "sex.raw_categories[].omb_category": "studies_tab",
+      "gender.raw_categories[].omb_category": "studies_tab"
+    },
+    "archive": {
+      "file": "archive_records.json.gz",
+      "class": "archive",
+      "listed_in": "history.json archives.<date>.detail"
+    }
+  }
+}

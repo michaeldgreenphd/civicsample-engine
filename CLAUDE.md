@@ -15,8 +15,8 @@ looks or behaves belongs there; a change to what the numbers *are* belongs
 here.
 
 * **Core stack:** Python. The weekly pipeline, the sponsor attribution layer
-  and the publishing scripts target **3.11** — the version `ci.yml`,
-  `extract.yml` and `backfill-releases.yml` all pin, and therefore the
+  and the publishing scripts target **3.11** — the version `ci.yml` and
+  `extract.yml` both pin, and therefore the
   compatibility target for anything CI must run. Runtime dependencies are
   `requests`, `rapidfuzz`, `tqdm`, `numpy` and `pandas` (`requirements.txt`).
 * **The LLM extraction stack runs on 3.12**, pinned by

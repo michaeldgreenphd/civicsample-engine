@@ -1,26 +1,57 @@
 #!/usr/bin/env python3
 """Check this week's site files against the site's own contract before the push.
 
-READS   <site>/tests/record_contract.json   every study-record field the site reads
-        <site>/tests/data_budget.json       the part count and the size budget
-        <site>/data/demographics.part*.json.gz   this week's parts, as staged
-        the <site> working tree               its size, as GitHub Pages will publish it
+READS   <site>/tests/record_contract.json   every study-record field the site
+                                            reads, in classes, and its layout
+                                            section (src/site_layout.py)
+        <site>/tests/data_budget.json       the part count, the size budget and
+                                            the optional per-class budgets
+                                            ("classes")
+        <site>/data/                        this week's dataset, as staged: the
+                                            demographics.part*.json.gz and, for a
+                                            split dataset, its studies_tab parts,
+                                            detail shards and run.json
+        <site>/snapshots/<--snapshot>/      the same dataset, archived this week
+        the <site> working tree             its size, as GitHub Pages will publish it
 WRITES  --report (JSON: what was checked, the sizes, every error and warning),
         and ::error:: / ::warning:: lines for the Actions log
 EXITS   1 when the push must not happen:
-          - the contract or the budget cannot be read;
+          - the contract or the budget cannot be read, or the contract's
+            layout section names a layout version this check does not know;
           - a part is missing, is not gzipped JSON, has a wrong header, or comes
             from another run than part 1 (extracted_at, pipeline_commit);
           - an nct_id appears twice;
           - a record lacks a path the contract lists (a key may hold null or
             an empty list, which is how a record says "none"; it may not be
             absent);
-          - a part is over GitHub's 100 MiB per-file push limit, or the
+          - a file is over GitHub's 100 MiB per-file push limit, or the
             published tree is over GitHub Pages' 1 GB limit.
-        Being over the site's size budget (20 MiB a part today) only warns.
-        That is the owner's policy: block missing fields; for size, warn
-        until a hard limit, and the hard limits are the ones a push or a
-        Pages deploy would hit.
+        Parts with no `layout` block are inline: they carry every class, and
+        the rules above are the whole check. When core part 1 carries a layout
+        (the split), the parts carry the core class, and it also stops the
+        push when:
+          - the site's contract does not turn that layout on (the handshake),
+            the parts disagree about it, or it is not the layout the contract
+            and the part count give (studies_tab files, detail shards, key);
+          - a core record's nct_id is not NCT + 8 digits;
+          - studies_tab.part1..K are not exactly there, or one is not this
+            run's (stamps), has a wrong header (class, part, total_parts), does
+            not hold exactly core part K's records, or has an entry that lacks
+            a studies_tab path;
+          - detail/ does not hold exactly shards 0..N-1, or a shard is not this
+            run's, has a wrong header (class, shard, shards, key), holds a
+            record of another shard or of no core part, or has an entry that
+            lacks a detail path (study_sites is written whole there, so with
+            its country too); or a core record has no detail entry;
+          - data/run.json does not give this run's stamps, part count, record
+            count and layout;
+          - snapshots/<--snapshot>/ does not hold the same dataset files as
+            data/, byte for byte.
+        Size over the site's budgets only warns: 20 MiB a part today, and the
+        optional per-class budgets for the studies_tab and detail files. That
+        is the owner's policy: block missing fields; for size, warn until a
+        hard limit, and the hard limits are the ones a push or a Pages deploy
+        would hit.
 INVOKED by .github/workflows/extract.yml in the publish step, after the files
         are staged in the site checkout and before git commit / git push. A
         failure leaves the site on last week's data and skips the steps that
@@ -30,13 +61,12 @@ INVOKED by .github/workflows/extract.yml in the publish step, after the files
 
 The path rules are the site's (tests/study_record_contract.test.mjs there):
 'status' is a key, 'race.reported' a key inside an object, and
-'study_sites[].country' a key on every item of a list. The parts carry every
-class today; when the split moves studies_tab and detail fields into their
-own files, this check follows them there.
+'study_sites[].country' a key on every item of a list.
 """
 from __future__ import annotations
 
 import argparse
+import filecmp
 import gzip
 import json
 import os
@@ -44,6 +74,10 @@ import re
 import sys
 from datetime import datetime
 from typing import Any
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src import site_layout as sl  # noqa: E402
 
 # GitHub rejects a push with a file over 100 MiB. (The site serves its parts
 # from GitHub Pages; the 20 MiB per-part figure in its budget is a budget,
@@ -54,6 +88,8 @@ TREE_HARD_LIMIT_BYTES = 1_000_000_000
 TREE_WARN_BYTES = 900_000_000
 MAX_REPORTED = 20
 EXAMPLES_PER_PATH = 3
+DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_ABSENT = object()
 
 
 def segments(path: str) -> list[tuple[str, bool]]:
@@ -91,137 +127,471 @@ def tree_size(root: str) -> int:
     return total
 
 
+def read_gz_json(path: str) -> Any:
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def dataset_files(folder: str) -> list[str]:
+    """The dataset files in a site folder, under either layout, relative to it:
+    the core parts, the studies_tab parts, run.json, and every file under
+    detail/ (so a stray one there is seen)."""
+    if not os.path.isdir(folder):
+        return []
+    out = [n for n in os.listdir(folder)
+           if sl.CORE_PART_RE.fullmatch(n) or sl.STUDIES_TAB_PART_RE.fullmatch(n) or n == sl.RUN_FILE]
+    detail = os.path.join(folder, sl.DETAIL_DIR)
+    if os.path.isdir(detail) and not os.path.islink(detail):
+        for dirpath, _, filenames in os.walk(detail):
+            rel = os.path.relpath(dirpath, folder).replace(os.sep, "/")
+            out += [f"{rel}/{name}" for name in filenames]
+    elif os.path.lexists(detail):
+        out.append(sl.DETAIL_DIR)
+    return sorted(out)
+
+
+def class_files(folder: str) -> list[str]:
+    """The split layout's own files in a folder: studies_tab parts and detail/."""
+    return [f for f in dataset_files(folder) if not sl.CORE_PART_RE.fullmatch(f) and f != sl.RUN_FILE]
+
+
+def _said(layout: Any) -> str:
+    return "none" if layout is _ABSENT else repr(layout)
+
+
+def _eg(items: list[Any], n: int = 3) -> str:
+    return ", ".join(map(str, items[:n])) + (" …" if len(items) > n else "")
+
+
+class Tally:
+    """Counts of one kind of fault with a few examples, so one fault in many records is one line."""
+
+    def __init__(self) -> None:
+        self.kinds: dict[str, dict[str, Any]] = {}
+
+    def add(self, kind: str, example: str) -> None:
+        entry = self.kinds.setdefault(kind, {"count": 0, "examples": []})
+        entry["count"] += 1
+        if len(entry["examples"]) < EXAMPLES_PER_PATH:
+            entry["examples"].append(example)
+
+    def lines(self) -> list[str]:
+        return [f"{kind}: {e['count']:,}; e.g. {', '.join(e['examples'])}" for kind, e in self.kinds.items()]
+
+
+class Findings:
+    """One check's findings and report: errors block the push, warnings do not."""
+
+    def __init__(self, site: str) -> None:
+        self.site = site
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
+        # A missing path is counted per path, so one field gone from every
+        # record reads as that, and every failing path is named once.
+        self.missing_by_path: dict[str, dict[str, Any]] = {}
+        self.faults = Tally()          # record-level faults of a split dataset: they block
+        self.fat = Tally()             # fields a class's files carry but the class does not read: warn
+        self.report: dict[str, Any] = {"site": site, "errors": self.errors, "warnings": self.warnings,
+                                       "missing_by_path": self.missing_by_path, "layout_version": None,
+                                       "classes": {}, "snapshot": None}
+
+    def err(self, msg: str) -> None:
+        if len(self.errors) < MAX_REPORTED:
+            self.errors.append(msg)
+
+    def need(self, record: Any, paths: list[str], where: str, nct: Any) -> None:
+        for path in paths:
+            why = missing(record, path)
+            if why:
+                entry = self.missing_by_path.setdefault(path, {"count": 0, "why": why, "examples": []})
+                entry["count"] += 1
+                if len(entry["examples"]) < EXAMPLES_PER_PATH:
+                    entry["examples"].append(f"{nct or '(no nct_id)'} in {where}")
+
+    def finish(self) -> dict[str, Any]:
+        for path, entry in self.missing_by_path.items():
+            n = entry["count"]
+            self.errors.append(f"{path}: missing in {n:,} record{'' if n == 1 else 's'} ({entry['why']}); "
+                               f"e.g. {', '.join(entry['examples'])}")
+        self.errors.extend(self.faults.lines())
+        self.warnings.extend(f"{line} (a field the class does not read should not be published)"
+                             for line in self.fat.lines())
+        self.report["error_count"] = len(self.errors)
+        self.report["ok"] = not self.errors
+        return self.report
+
+
 def check(site: str, part_hard_limit: int = PART_HARD_LIMIT_BYTES,
-          tree_hard_limit: int = TREE_HARD_LIMIT_BYTES, tree_warn: int = TREE_WARN_BYTES) -> dict[str, Any]:
-    errors: list[str] = []
-    warnings: list[str] = []
-    # A missing path is counted per path, so one field gone from every record
-    # reads as that, and every failing path is named once.
-    missing_by_path: dict[str, dict[str, Any]] = {}
-    report: dict[str, Any] = {"site": site, "errors": errors, "warnings": warnings,
-                              "missing_by_path": missing_by_path}
-
-    def err(msg: str) -> None:
-        if len(errors) < MAX_REPORTED:
-            errors.append(msg)
-
+          tree_hard_limit: int = TREE_HARD_LIMIT_BYTES, tree_warn: int = TREE_WARN_BYTES,
+          snapshot: str | None = None) -> dict[str, Any]:
+    f = Findings(site)
+    report, warnings = f.report, f.warnings
     try:
-        with open(os.path.join(site, "tests", "record_contract.json"), encoding="utf-8") as f:
-            contract = json.load(f)
-        with open(os.path.join(site, "tests", "data_budget.json"), encoding="utf-8") as f:
-            budget = json.load(f)
+        with open(os.path.join(site, "tests", "record_contract.json"), encoding="utf-8") as fh:
+            contract = json.load(fh)
+        with open(os.path.join(site, "tests", "data_budget.json"), encoding="utf-8") as fh:
+            budget = json.load(fh)
         paths = [p for cls in contract["classes"].values() for p in cls]
         part_count = int(budget["part_count"])
         part_budget = int(budget["part_gzip_max_bytes"])
         total_budget = int(budget["total_gzip_max_bytes"])
-    except (OSError, ValueError, KeyError, TypeError) as e:
-        err(f"cannot read the site's record contract or data budget: {e}")
-        report["ok"] = False
-        return report
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        f.err(f"cannot read the site's record contract or data budget: {e}")
+        return f.finish()
     report.update({"contract_paths": len(paths), "part_count": part_count,
                    "part_budget_bytes": part_budget, "total_budget_bytes": total_budget})
+    switch: sl.Switch | None = None
+    try:
+        switch = sl.read_switch(contract)
+    except sl.LayoutError as e:
+        f.err(f"the site's record contract: {e}")
 
     data_dir = os.path.join(site, "data")
-    present = sorted((f for f in os.listdir(data_dir) if re.fullmatch(r"demographics\.part\d+\.json\.gz", f)),
-                     key=lambda f: int(re.search(r"part(\d+)", f).group(1)))
-    expected = [f"demographics.part{i}.json.gz" for i in range(1, part_count + 1)]
+    present = sorted((n for n in os.listdir(data_dir) if sl.CORE_PART_RE.fullmatch(n)),
+                     key=lambda n: int(sl.CORE_PART_RE.fullmatch(n).group(1)))
+    expected = [sl.core_part_name(i) for i in range(1, part_count + 1)]
     if present != expected:
-        err(f"data/ holds {present}, not the {part_count} parts the site fetches")
+        f.err(f"data/ holds {present}, not the {part_count} parts the site fetches")
 
-    sizes = {f: os.path.getsize(os.path.join(data_dir, f)) for f in present}
+    sizes = {n: os.path.getsize(os.path.join(data_dir, n)) for n in present}
     total = sum(sizes.values())
     report["parts_gzip_bytes"] = total
-    for f, size in sizes.items():
+    for n, size in sizes.items():
         if size > part_hard_limit:
-            err(f"{f} is {size:,} bytes, over GitHub's per-file push limit of {part_hard_limit:,}")
+            f.err(f"{n} is {size:,} bytes, over GitHub's per-file push limit of {part_hard_limit:,}")
         elif size > part_budget:
-            warnings.append(f"{f} is {size:,} bytes, over the site's per-part budget of {part_budget:,}")
+            warnings.append(f"{n} is {size:,} bytes, over the site's per-part budget of {part_budget:,}")
     if total > total_budget:
         warnings.append(f"the parts total {total:,} bytes, over the site's budget of {total_budget:,}")
 
+    # Core part 1's header says how the records are laid out: no layout block
+    # means inline, every class on the records (every file published before
+    # the split); layout version 1 means split.
+    mode: str | None = None              # "inline", "split", or "unknown" (already an error)
+    layout: Any = _ABSENT
+    plan: sl.Plan | None = None
+    check_paths = paths
     first: dict[str, Any] | None = None
-    seen: set[str] = set()
+    seen: set[Any] = set()
+    part_ids: dict[int, list[Any]] = {}
     records = 0
     for i, name in enumerate(expected, start=1):
         if name not in sizes:
             continue
         try:
-            with gzip.open(os.path.join(data_dir, name), "rt", encoding="utf-8") as f:
-                part = json.load(f)
+            part = read_gz_json(os.path.join(data_dir, name))
         except (OSError, ValueError, EOFError) as e:
-            err(f"{name} is not gzipped JSON: {e}")
+            f.err(f"{name} is not gzipped JSON: {e}")
             continue
         if not isinstance(part, dict):
-            err(f"{name} is not a part: its JSON is a {type(part).__name__}, not an object")
+            f.err(f"{name} is not a part: its JSON is a {type(part).__name__}, not an object")
+            continue
+        if mode is None:
+            layout = part.get("layout", _ABSENT)
+            if layout is _ABSENT:
+                mode = "inline"
+            elif isinstance(layout, dict) and type(layout.get("version")) is int \
+                    and layout["version"] == sl.LAYOUT_VERSION:
+                mode = "split"
+                try:
+                    plan = sl.Plan(contract)
+                    check_paths = plan.required["core"]
+                except sl.LayoutError as e:
+                    f.err(f"the parts are split, and the site's record contract cannot be checked against "
+                          f"the split layout: {e}")
+                    mode, check_paths = "unknown", []
+            else:
+                f.err(f"{name} carries layout {layout!r}; this check knows inline parts (no layout) "
+                      f"and layout version {sl.LAYOUT_VERSION} only")
+                mode, check_paths = "unknown", []
+        elif part.get("layout", _ABSENT) != layout:
+            f.err(f"{name} carries layout {_said(part.get('layout', _ABSENT))}, not {_said(layout)} as the first "
+                  "part does; the parts of one dataset share one layout")
+        if not isinstance(part.get("data"), list) or not part["data"]:
+            f.err(f"{name} has no records")
             continue
         head = {k: part.get(k) for k in ("extracted_at", "pipeline_commit", "part", "total_parts")}
-        if not isinstance(part.get("data"), list) or not part["data"]:
-            err(f"{name} has no records")
-            continue
         if head["part"] != i or head["total_parts"] != part_count:
-            err(f"{name} says it is part {head['part']} of {head['total_parts']}, not {i} of {part_count}")
+            f.err(f"{name} says it is part {head['part']} of {head['total_parts']}, not {i} of {part_count}")
         if first is None:
             try:
                 datetime.fromisoformat(str(head["extracted_at"]).replace("Z", "+00:00"))
             except ValueError:
-                err(f"{name}: extracted_at is not a timestamp ({head['extracted_at']!r})")
+                f.err(f"{name}: extracted_at is not a timestamp ({head['extracted_at']!r})")
             if not re.fullmatch(r"[0-9a-f]{7,40}", str(head["pipeline_commit"] or "")):
-                err(f"{name}: pipeline_commit is not a commit id ({head['pipeline_commit']!r})")
+                f.err(f"{name}: pipeline_commit is not a commit id ({head['pipeline_commit']!r})")
             first = head
         elif (head["extracted_at"], head["pipeline_commit"]) != (first["extracted_at"], first["pipeline_commit"]):
-            err(f"{name} comes from another run than part 1")
+            f.err(f"{name} comes from another run than part 1")
+        ids: list[Any] = []
         for record in part["data"]:
             records += 1
             nct = record.get("nct_id") if isinstance(record, dict) else None
             if nct in seen:
-                err(f"{nct} appears in more than one record ({name})")
+                f.err(f"{nct} appears in more than one record ({name})")
             seen.add(nct)
-            for path in paths:
-                why = missing(record, path)
-                if why:
-                    entry = missing_by_path.setdefault(path, {"count": 0, "why": why, "examples": []})
-                    entry["count"] += 1
-                    if len(entry["examples"]) < EXAMPLES_PER_PATH:
-                        entry["examples"].append(f"{nct or '(no nct_id)'} in {name}")
+            ids.append(nct)
+            if mode == "split" and plan is not None:
+                if not isinstance(nct, str) or not sl.NCT_RE.fullmatch(nct):
+                    f.faults.add("core records whose nct_id is not NCT + 8 digits, so no detail shard can hold them",
+                                 f"{nct!r} in {name}")
+                if isinstance(record, dict):
+                    for key in plan.stray_keys(record, "core"):
+                        f.fat.add(f"core records carry {key}, which core does not read", str(nct))
+            f.need(record, check_paths, name, nct)
+        part_ids[i] = ids
         del part
     report["records"] = records
-    for path, entry in missing_by_path.items():
-        n = entry["count"]
-        errors.append(f"{path}: missing in {n:,} record{'' if n == 1 else 's'} ({entry['why']}); "
-                      f"e.g. {', '.join(entry['examples'])}")
+
+    if mode == "split" and plan is not None and first is not None:
+        report["layout_version"] = sl.LAYOUT_VERSION
+        check_split(f, switch, plan, layout, first, part_count, part_ids, sizes, budget, part_hard_limit, snapshot)
+    elif mode == "inline":
+        report["classes"] = {"inline": {"files": len(sizes), "gzip_bytes": total, "records": records}}
+        # The publish step removes a split week's files before it copies whole
+        # parts in; any left over are files no page reads.
+        folders = [("data/", data_dir)]
+        if snapshot:
+            folders.append((f"snapshots/{snapshot}/", os.path.join(site, "snapshots", snapshot)))
+        for label, folder in folders:
+            stale = class_files(folder)
+            if stale:
+                warnings.append(f"{label} holds split-layout files beside whole-record parts, which no page reads: "
+                                f"{_eg(stale)}")
+        if switch is not None and switch.split:
+            warnings.append("the site's contract turns the split layout on, but this week's parts carry whole records")
 
     tree = tree_size(site)
     report["tree_bytes"] = tree
     if tree > tree_hard_limit:
-        err(f"the site would publish {tree:,} bytes, over GitHub Pages' limit of {tree_hard_limit:,}")
+        f.err(f"the site would publish {tree:,} bytes, over GitHub Pages' limit of {tree_hard_limit:,}")
     elif tree > tree_warn:
         warnings.append(f"the site would publish {tree:,} bytes, close to GitHub Pages' limit of {tree_hard_limit:,}")
+    return f.finish()
 
-    report["error_count"] = len(errors)
-    report["ok"] = not errors
-    return report
+
+def check_split(f: Findings, switch: sl.Switch | None, plan: sl.Plan, layout: dict[str, Any], first: dict[str, Any],
+                part_count: int, part_ids: dict[int, list[Any]], core_sizes: dict[str, int], budget: dict[str, Any],
+                part_hard_limit: int, snapshot: str | None) -> None:
+    """A split dataset's other files: its studies_tab parts, its detail shards,
+    run.json, and this week's snapshot copy; and the per-class sizes."""
+    site, report, warnings = f.site, f.report, f.warnings
+    data_dir = os.path.join(site, "data")
+    stamps = (first["extracted_at"], first["pipeline_commit"])
+
+    # The handshake: the engine publishes a layout only while the site's
+    # contract declares it and the owner has turned it on.
+    if switch is None or not switch.split:
+        f.err(f"the parts carry layout version {sl.LAYOUT_VERSION}, but the site's contract does not turn it on "
+              "(its layout section needs \"version\": 1 and \"enabled\": true), so the site's pages may not read it")
+    want = sl.header_layout(part_count, plan.shards)
+    if layout != want:
+        f.err(f"core part 1's layout is {layout!r}; the site's contract and part count give {want!r}")
+    detail_block = layout.get("detail") if isinstance(layout.get("detail"), dict) else {}
+    shards = detail_block.get("shards")
+    if type(shards) is not int or not 1 <= shards <= sl.MAX_DETAIL_SHARDS:
+        shards = None                     # reported above; the shards cannot be checked
+
+    classes: dict[str, dict[str, Any]] = {
+        "core": {"files": len(core_sizes), "gzip_bytes": sum(core_sizes.values()), "records": report["records"],
+                 "file_budget": report["part_budget_bytes"], "total_budget": report["total_budget_bytes"]}}
+    report["classes"] = classes
+    class_budgets = budget.get("classes")
+    if class_budgets is None:
+        warnings.append("the site's data_budget.json has no per-class budgets (\"classes\"); "
+                        "the studies_tab and detail sizes are reported only")
+    elif not isinstance(class_budgets, dict):
+        warnings.append("the site's data_budget.json \"classes\" is not an object; "
+                        "the studies_tab and detail sizes are reported only")
+        class_budgets = None
+
+    def sized(cls: str, files: dict[str, int], records: int) -> None:
+        """The class's sizes: over 100 MiB a file blocks; over its budget warns."""
+        file_budget = total_budget = None
+        entry = (class_budgets or {}).get(cls)
+        if class_budgets is not None and entry is None:
+            warnings.append(f"the site's data_budget.json names no budget for {cls}; its size is reported only")
+        elif entry is not None:
+            try:
+                file_budget, total_budget = int(entry["file_gzip_max_bytes"]), int(entry["total_gzip_max_bytes"])
+            except (KeyError, TypeError, ValueError) as e:
+                warnings.append(f"the site's data_budget.json budget for {cls} cannot be read ({e!r}); "
+                                "its size is reported only")
+        total = sum(files.values())
+        classes[cls] = {"files": len(files), "gzip_bytes": total, "records": records,
+                        "file_budget": file_budget, "total_budget": total_budget}
+        for name, size in files.items():
+            if size > part_hard_limit:
+                f.err(f"{name} is {size:,} bytes, over GitHub's per-file push limit of {part_hard_limit:,}")
+            elif file_budget is not None and size > file_budget:
+                warnings.append(f"{name} is {size:,} bytes, over the site's {cls} budget of {file_budget:,} a file")
+        if total_budget is not None and total > total_budget:
+            warnings.append(f"the {cls} files total {total:,} bytes, over the site's {cls} budget of {total_budget:,}")
+
+    def opened(name: str, header: dict[str, Any]) -> dict[str, Any] | None:
+        """The file's entries once its stamps and header are checked; None when it cannot be read."""
+        try:
+            doc = read_gz_json(os.path.join(data_dir, name))
+        except (OSError, ValueError, EOFError) as e:
+            f.err(f"{name} is not gzipped JSON: {e}")
+            return None
+        if not isinstance(doc, dict):
+            f.err(f"{name} is not a {header['class']} file: its JSON is a {type(doc).__name__}, not an object")
+            return None
+        if (doc.get("extracted_at"), doc.get("pipeline_commit")) != stamps:
+            f.err(f"{name} comes from another run than core part 1 "
+                  f"({doc.get('extracted_at')!r}, {doc.get('pipeline_commit')!r})")
+        got = {k: doc.get(k) for k in header}
+        if got != header:
+            f.err(f"{name} says {got}, not {header}")
+        if not isinstance(doc.get("data"), dict):
+            f.err(f"{name} holds no object keyed by nct_id")
+            return None
+        return doc["data"]
+
+    def entry_checks(cls: str, nct: str, entry: Any, name: str) -> None:
+        if not isinstance(entry, dict):
+            f.faults.add(f"{cls} entries that are not objects", f"{nct} in {name}")
+            return
+        for key in plan.stray_keys(entry, cls):
+            f.fat.add(f"{cls} entries carry {key}, which {cls} does not read", nct)
+        f.need(entry, plan.required[cls], name, nct)
+
+    # studies_tab part K: exactly core part K's records.
+    tab_names = [sl.studies_tab_part_name(k) for k in range(1, part_count + 1)]
+    tab_present = sorted((n for n in os.listdir(data_dir) if sl.STUDIES_TAB_PART_RE.fullmatch(n)),
+                         key=lambda n: int(sl.STUDIES_TAB_PART_RE.fullmatch(n).group(1)))
+    if tab_present != tab_names:
+        f.err(f"data/ holds studies_tab parts {tab_present}, not {tab_names}")
+    tab_sizes = {n: os.path.getsize(os.path.join(data_dir, n)) for n in tab_names if n in tab_present}
+    tab_records = 0
+    for k, name in enumerate(tab_names, start=1):
+        if name not in tab_sizes:
+            continue
+        entries = opened(name, {"class": "studies_tab", "part": k, "total_parts": part_count})
+        if entries is None:
+            continue
+        tab_records += len(entries)
+        if k in part_ids:
+            ids = part_ids[k]
+            id_set = set(ids)
+            absent = [nct for nct in ids if nct not in entries]
+            foreign = [nct for nct in entries if nct not in id_set]
+            if absent or foreign:
+                f.err(f"{name} does not hold exactly core part {k}'s records: {len(absent):,} of them have no "
+                      f"entry ({_eg(absent)}), {len(foreign):,} entries are not theirs ({_eg(foreign)})")
+        for nct, entry in entries.items():
+            entry_checks("studies_tab", nct, entry, name)
+        del entries
+    sized("studies_tab", tab_sizes, tab_records)
+
+    # detail: every record exactly once, in shard int(nct_id[3:]) % N.
+    on_disk = {n for n in dataset_files(data_dir) if n == sl.DETAIL_DIR or n.startswith(sl.DETAIL_DIR + "/")}
+    detail_sizes: dict[str, int] = {}
+    where: dict[str, int] = {}
+    if shards is not None:
+        shard_names = [sl.detail_shard_name(n) for n in range(shards)]
+        absent_shards = [n for n in shard_names if n not in on_disk]
+        strays = sorted(on_disk - set(shard_names))
+        if absent_shards:
+            f.err(f"data/ lacks {len(absent_shards):,} of the {shards} detail shards ({_eg(absent_shards)})")
+        if strays:
+            f.err(f"data/{sl.DETAIL_DIR}/ holds files the layout does not name: {_eg(strays, 5)}")
+        detail_sizes = {n: os.path.getsize(os.path.join(data_dir, n)) for n in shard_names if n in on_disk}
+        all_ids = {nct for ids in part_ids.values() for nct in ids}
+        read_all = not absent_shards and len(part_ids) == part_count
+        for n, name in enumerate(shard_names):
+            if name not in detail_sizes:
+                continue
+            entries = opened(name, {"class": "detail", "shard": n, "shards": shards, "key": sl.SHARD_KEY})
+            if entries is None:
+                read_all = False
+                continue
+            for nct, entry in entries.items():
+                try:
+                    home: int | None = sl.shard_of(nct, shards)
+                except sl.LayoutError:
+                    home = None
+                if home != n:
+                    f.faults.add(f"detail entries outside their shard (int(nct_id[3:]) % {shards})", f"{nct} in {name}")
+                if nct in where:
+                    f.faults.add("records with an entry in more than one detail shard", f"{nct} in {where[nct]} and {n}")
+                where[nct] = n
+                if nct not in all_ids:
+                    f.faults.add("detail entries for no core record", f"{nct} in {name}")
+                entry_checks("detail", nct, entry, name)
+            del entries
+        if read_all:
+            no_entry = sorted(str(nct) for nct in all_ids if nct not in where)
+            if no_entry:
+                f.err(f"{len(no_entry):,} core records have no detail entry ({_eg(no_entry)})")
+    sized("detail", detail_sizes, len(where))
+
+    # run.json: the site keys this run's files by its stamps.
+    try:
+        with open(os.path.join(data_dir, sl.RUN_FILE), encoding="utf-8") as fh:
+            run = json.load(fh)
+        if not isinstance(run, dict):
+            raise ValueError(f"its JSON is a {type(run).__name__}, not an object")
+    except (OSError, ValueError) as e:
+        f.err(f"data/{sl.RUN_FILE} cannot be read ({e}); the site keys this run's files by it")
+    else:
+        want_run = {"extracted_at": stamps[0], "pipeline_commit": stamps[1], "total_parts": part_count,
+                    "studies": report["records"], "layout": layout}
+        for key, value in want_run.items():
+            if run.get(key) != value:
+                f.err(f"data/{sl.RUN_FILE} says {key} {run.get(key)!r}; the dataset says {value!r}")
+        on_disk_bytes = {cls: classes[cls]["gzip_bytes"] for cls in sl.CLASSES}
+        if run.get("gzip_bytes") != on_disk_bytes:
+            warnings.append(f"data/{sl.RUN_FILE} gives gzip_bytes {run.get('gzip_bytes')!r}; "
+                            f"the files are {on_disk_bytes!r}")
+
+    # This week's snapshot folder: the same dataset, byte for byte.
+    if snapshot is not None:
+        folder = os.path.join(site, "snapshots", snapshot)
+        report["snapshot"] = {"date": snapshot, "checked": True}
+        if not DATE_RE.fullmatch(snapshot) or not os.path.isdir(folder):
+            f.err(f"snapshots/{snapshot}/ is not there to hold this week's dataset")
+            return
+        mine, theirs = dataset_files(data_dir), dataset_files(folder)
+        lacking = sorted(set(mine) - set(theirs))
+        extra = sorted(set(theirs) - set(mine))
+        differ = [n for n in sorted(set(mine) & set(theirs))
+                  if not filecmp.cmp(os.path.join(data_dir, n), os.path.join(folder, n), shallow=False)]
+        if lacking:
+            f.err(f"snapshots/{snapshot}/ lacks {len(lacking):,} of this week's dataset files ({_eg(lacking)})")
+        if extra:
+            f.err(f"snapshots/{snapshot}/ holds dataset files data/ does not ({_eg(extra)})")
+        if differ:
+            f.err(f"snapshots/{snapshot}/ holds {len(differ):,} dataset files that differ from data/'s ({_eg(differ)})")
+        report["snapshot"]["files"] = len(theirs)
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Check this week's site files against the site's contract.")
     ap.add_argument("--site", required=True, help="the site checkout, with this week's files staged")
     ap.add_argument("--report", default=None, help="write the report here as JSON")
+    ap.add_argument("--snapshot", default=None, metavar="DATE",
+                    help="this week's snapshot folder, snapshots/DATE, which must hold the same split dataset")
     ap.add_argument("--part-hard-limit-bytes", type=int, default=PART_HARD_LIMIT_BYTES)
     ap.add_argument("--tree-hard-limit-bytes", type=int, default=TREE_HARD_LIMIT_BYTES)
     ap.add_argument("--tree-warn-bytes", type=int, default=TREE_WARN_BYTES)
     a = ap.parse_args(argv)
-    report = check(a.site, a.part_hard_limit_bytes, a.tree_hard_limit_bytes, a.tree_warn_bytes)
+    report = check(a.site, a.part_hard_limit_bytes, a.tree_hard_limit_bytes, a.tree_warn_bytes, a.snapshot)
     if a.report:
-        with open(a.report, "w", encoding="utf-8") as f:
-            json.dump(report, f, indent=2)
+        with open(a.report, "w", encoding="utf-8") as fh:
+            json.dump(report, fh, indent=2)
     for w in report["warnings"]:
         print(f"::warning::{w}")
     for e in report["errors"]:
         print(f"::error::{e}")
     mb = lambda b: f"{(b or 0) / 1e6:.1f} MB"  # noqa: E731
+    classes = report.get("classes") or {}
+    split = "; ".join(f"{cls} {mb(c['gzip_bytes'])} in {c['files']} files"
+                      for cls, c in classes.items() if cls in sl.SIDECARS)
     print(f"site contract check: {'ok' if report['ok'] else 'FAILED'}; {report.get('records', 0):,} records, "
           f"parts {mb(report.get('parts_gzip_bytes'))} of {mb(report.get('total_budget_bytes'))} budget, "
-          f"tree {mb(report.get('tree_bytes'))}")
+          f"tree {mb(report.get('tree_bytes'))}" + (f"; split: {split}" if split else ""))
     return 0 if report["ok"] else 1
 
 

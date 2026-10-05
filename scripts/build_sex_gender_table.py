@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """Tabulate the sex/gender rows into the published table, or re-parse them.
 
-READS   data/demographics.json (the weekly pull; or --parts for the split
-        data/demographics.part*.json.gz) and takes study["sex_gender"] as-is,
-        OR --from-raw data/sex_gender_raw_measures.jsonl.gz to RE-PARSE every
-        trial with the parser vendored in src/ (the path a rule bump takes; no
-        registry pull needed).
+READS   data/demographics.json (the weekly pull; or --parts for whole-record
+        data/demographics.part*.json.gz; parts cut in the split layout, which
+        carry only the fields the site reads at startup, are refused) and takes
+        study["sex_gender"] as-is, OR --from-raw
+        data/sex_gender_raw_measures.jsonl.gz to RE-PARSE every trial with the
+        parser vendored in src/ (the path a rule bump takes; no registry pull
+        needed).
 WRITES  data/sex_gender_parsed.csv.gz        one row per trial, columns in
                                              src/sex_gender_table.py COLUMNS order
         data/sex_gender_parsed_meta.json     provenance, status counts, the
                                              structural checks, drift vs the
                                              2026-06-09 baseline (reported, never
                                              fatal on a fresh pull)
-INVOKED by .github/workflows/extract.yml after split_data.py. Run from the repo
-        root. --strict exits 1 when a structural check fails (CI does not use it:
-        the table publishes and the failure is a ::warning:: plus an audit row).
+INVOKED by .github/workflows/extract.yml (--from-raw, --write-back, --strict)
+        before scripts/split_data.py cuts the site's files. Run from the repo
+        root. --strict exits 1 when a structural check fails, so the weekly job
+        stops before anything is published.
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
+from typing import Any
 
 import pandas as pd
 
@@ -37,7 +41,7 @@ BASELINE_PATH = os.path.join("tests", "sex_gender", "fixtures", "snapshot_baseli
 DEFAULT_RAW_PATH = os.path.join("data", "sex_gender_raw_measures.jsonl.gz")
 
 
-def load_records(demographics: str | None, parts_glob: str | None):
+def load_records(demographics: str | None, parts_glob: str | None) -> tuple[list[dict[str, Any]], str | None, str | None]:
     if demographics and os.path.exists(demographics):
         with open(demographics) as f:
             c = json.load(f)
@@ -45,10 +49,19 @@ def load_records(demographics: str | None, parts_glob: str | None):
     paths = sorted(glob.glob(parts_glob or "data/demographics.part*.json.gz"))
     if not paths:
         raise SystemExit("no demographics.json and no demographics.part*.json.gz found")
-    records, extracted_at, commit = [], None, None
+    records: list[dict[str, Any]] = []
+    extracted_at = commit = None
     for p in paths:
         with gzip.open(p, "rt") as f:
             c = json.load(f)
+        # A part with a layout block is the split's core part: it carries the
+        # fields the site reads at startup, not every field of the record (the
+        # sex_gender row among them), so a table built from it would quietly
+        # lose fields. The week's full records are on its data-* release.
+        if isinstance(c, dict) and "layout" in c:
+            raise SystemExit(f"{p}: a part cut in the site's split layout (it has a layout block) carries only "
+                             "the fields the site reads at startup; build the table from the week's full records "
+                             "(--demographics) or the raw measures (--from-raw); nothing written")
         records.extend(c["data"])
         extracted_at = extracted_at or c.get("extracted_at")
         commit = commit or c.get("pipeline_commit")

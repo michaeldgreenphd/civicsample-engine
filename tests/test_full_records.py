@@ -1,18 +1,20 @@
 """The week's full records, and who reads them.
 
-The site's demographics.part*.json.gz are about to carry only the fields the
-dashboard reads. Every engine script that needs anything else (sponsors,
-status, ages, reference counts, intervention descriptions) reads the full
-records through src/full_records.py, which never falls back to the parts,
-and the weekly job keeps those records on a data-* release that is never
-pruned. These tests pin both halves:
+Once the site's contract turns the split layout on, the site's files carry
+only the fields the dashboard reads (scripts/split_data.py). Every engine
+script that needs anything else (sponsors, status, ages, reference counts,
+intervention descriptions) reads the full records through
+src/full_records.py, which never falls back to the parts, and the weekly job
+keeps those records on a data-* release that is never pruned. These tests
+pin both halves:
 
 - src.full_records.load reads the plain and gzipped file, keeps the
   provenance stamps, and exits (never falls back) when the file is missing
   or empty, even with parts lying next to it;
 - generate_mobile_data, generate_industry_sponsors, generate_pilot_targets,
   the sponsor bridge loader and the sex/gender side-by-side read the full
-  records and refuse to run without them;
+  records and refuse to run without them, and the sex/gender table refuses
+  parts cut in the split layout;
 - extract.yml passes the full file to the generators, prunes no data-*
   release, retries a failed release, keeps the files as an artifact when it
   still fails, and turns the run red. The release step is run for real
@@ -33,6 +35,7 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src import full_records  # noqa: E402
 
@@ -271,7 +274,22 @@ def test_the_release_runs_before_the_site_and_is_kept_when_it_fails() -> None:
 
 
 def test_the_weekly_job_builds_the_summaries_from_the_full_records() -> None:
-    step = _step("Split and generate dashboard artifacts")
+    step = _step("Generate dashboard artifacts")
     assert "generate_mobile_data.py --demographics data/demographics.json" in step
     assert "generate_industry_sponsors.py --demographics data/demographics.json" in step
-    assert step.index("split_data.py") < step.index("generate_mobile_data.py")
+    split = _step("Cut the week's records into the site's dataset files")
+    assert "--demographics data/demographics.json" in split, "the split reads something other than the full records"
+
+
+def test_the_sex_gender_table_refuses_parts_cut_in_the_split_layout(tmp_path: pathlib.Path) -> None:
+    """--parts on split core parts would tabulate rows missing the fields core does not carry."""
+    import split_helpers
+    contract = split_helpers.site_contract(enabled=True)
+    dataset = split_helpers.split(tmp_path / "cut", split_helpers.whole_records(split_helpers.ids(16)), contract)
+    (tmp_path / "data").mkdir()
+    for p in dataset.glob("demographics.part*.json.gz"):
+        (tmp_path / "data" / p.name).write_bytes(p.read_bytes())
+    r = _run("build_sex_gender_table.py", "--parts", "data/demographics.part*.json.gz", "--out", "t.csv.gz",
+             "--meta", "m.json", cwd=tmp_path)
+    assert r.returncode != 0 and "split layout" in (r.stdout + r.stderr), r.stdout + r.stderr
+    assert not (tmp_path / "t.csv.gz").exists() and not (tmp_path / "m.json").exists()
