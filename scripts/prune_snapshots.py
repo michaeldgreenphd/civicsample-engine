@@ -13,8 +13,9 @@ Retention policy:
   - Monthly tier: for months older than the bi-weekly window that are not
     already represented by a kept snapshot, keep that month's latest
     snapshot as an AGGREGATE archive - dashboard-summary.json (and
-    industry_sponsors.json when present) only, with the heavy
-    demographics part files stripped. The dashboard renders these dates
+    industry_sponsors.json when present) only, with everything that rides
+    with the parts stripped (see STRIP_* below), including a split week's
+    Studies-tab files, detail shards and run.json. The dashboard renders these dates
     from the summary (all charts; filters and the full study table need
     a full snapshot). Published GitHub Pages sites are capped at ~1 GB,
     which full monthly archives would exceed within months.
@@ -40,6 +41,15 @@ HISTORY_FILE = "history.json"
 BIWEEKLY_KEEP = 4
 BIWEEKLY_SPACING = timedelta(days=14)
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# What rides with the parts, and leaves a snapshot that becomes a monthly
+# aggregate: the whole-record or core parts; the per-trial sex/gender table
+# and its meta (the summary keeps the sex/gender block); a split week's
+# Studies-tab files, detail shards and run.json (scripts/split_data.py); and
+# the company-filter bridge (sponsors/).
+STRIP_PREFIXES = ("demographics.part", "sex_gender_parsed", "studies_tab.part")
+STRIP_FILES = frozenset({"run.json"})
+STRIP_DIRS = ("detail", "sponsors")
 
 
 def parse(d):
@@ -72,7 +82,7 @@ def compute_keep(dates):
     return set(keep), set(monthly.values())
 
 
-def main():
+def main() -> None:
     dry = "--dry-run" in sys.argv
 
     on_disk = sorted(d for d in os.listdir(SNAPSHOT_DIR)
@@ -97,13 +107,11 @@ def main():
         sdir = os.path.join(SNAPSHOT_DIR, d)
         if not os.path.isdir(sdir):
             continue
-        # The per-trial sex/gender table (sex_gender_parsed.csv.gz + its meta)
-        # rides with the parts: the aggregate tier keeps its summary block in
-        # dashboard-summary.json and loses the per-trial rows.
         parts = [f for f in os.listdir(sdir)
-                 if f.startswith("demographics.part") or f.startswith("sex_gender_parsed")]
-        sponsors_dir = os.path.join(sdir, "sponsors")   # the company-filter bridge rides with the parts
-        if not parts and not os.path.isdir(sponsors_dir):
+                 if os.path.isfile(os.path.join(sdir, f))
+                 and (f.startswith(STRIP_PREFIXES) or f in STRIP_FILES)]
+        dirs = [x for x in STRIP_DIRS if os.path.isdir(os.path.join(sdir, x))]
+        if not parts and not dirs:
             continue  # already summary-only
         if not os.path.exists(os.path.join(sdir, "dashboard-summary.json")):
             print(f"  WARNING: {d} has no dashboard-summary.json; keeping its part files")
@@ -112,8 +120,8 @@ def main():
         if not dry:
             for f in parts:
                 os.remove(os.path.join(sdir, f))
-            if os.path.isdir(sponsors_dir):
-                shutil.rmtree(sponsors_dir)
+            for x in dirs:
+                shutil.rmtree(os.path.join(sdir, x))
 
     kept_dates = sorted(d for d in all_dates if d in keep)
     if not dry:
