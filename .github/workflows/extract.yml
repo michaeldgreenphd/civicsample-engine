@@ -45,8 +45,8 @@ jobs:
       - name: Build the sex/gender table (full record) and write the lean rows back
         # The full per-trial row is rebuilt from the retained raw measures into
         # sex_gender_parsed.csv.gz (the record every consumer reads); the study
-        # records keep only the lean subset (--write-back), so the split parts
-        # stay under the CDN ceiling. --strict: a failed structural check (the
+        # records keep only the lean subset (--write-back), so the parts the
+        # site loads at startup stay small. --strict: a failed structural check (the
         # five-state, participant-unit or version invariants) fails the run
         # here, before anything is published, so an invalid table can never
         # become production data; the site keeps last week's files.
@@ -93,35 +93,35 @@ jobs:
           FILE_NAME: ${{ env.CURRENT_DATE }}_sex_gender_raw_measures.jsonl.gz
         run: python scripts/gdrive_upload.py || echo "::warning::Google Drive upload of the raw sex/gender measures failed — see this step's log. Publishing is unaffected."
 
-      - name: Split and generate dashboard artifacts
+      - name: Generate dashboard artifacts
+        # The site's dataset files (the parts, and the split layout's files)
+        # are cut after the site checkout, from the site's own contract: see
+        # "Cut the week's records into the site's dataset files".
         run: |
-          # Split into 8 parts (desktop) + generate mobile dashboard summary
-          python3 scripts/split_data.py
-          # Both read the full records, never the parts (src/full_records.py)
+          # The mobile dashboard summary. Both generators read the full
+          # records, never the parts (src/full_records.py)
           python3 scripts/generate_mobile_data.py --demographics data/demographics.json
           # Gated industry sponsor view dataset (/#industry)
           python3 scripts/generate_industry_sponsors.py --demographics data/demographics.json
           # Backend-served methods text for the sex/gender table (built above)
           python3 scripts/write_sex_gender_methods.py
 
-          for f in data/demographics.part*.json.gz; do
-            echo "$(basename $f): $(du -h "$f" | cut -f1)"
-          done
           echo "dashboard-summary.json: $(du -h data/dashboard-summary.json | cut -f1)"
 
       - name: Keep the week's full records on a permanent GitHub Release
         # data-YYYY-MM-DD holds demographics.json.gz, the week's full study
         # records (what src/full_records.py reads), plus the raw sex/gender
         # measures and the extraction log. These releases are the permanent
-        # record and are never pruned: Drive is not configured, and the site's
-        # parts are about to carry only the fields the dashboard reads, so
-        # they cannot rebuild the full records. It runs before the site
-        # checkout, so a site-side failure (an expired deploy token, a
-        # rejected push) cannot skip it, and with continue-on-error, so its
-        # failure cannot hold up the site's data. Each gh call gets three
-        # tries; if all fail, the next step keeps the files as a workflow
-        # artifact and the last step of the job turns the run red.
-        # Runs whenever the full file was produced, even if the split or a
+        # record and are never pruned: Drive is not configured, and once the
+        # site's contract turns the split layout on, the site's files carry
+        # only the fields the dashboard reads, so they cannot rebuild the full
+        # records. It runs before the site checkout (and so before the split),
+        # so a site-side failure (an expired deploy token, a rejected push, a
+        # site contract the split refuses) cannot skip it, and with
+        # continue-on-error, so its failure cannot hold up the site's data.
+        # Each gh call gets three tries; if all fail, the next step keeps the
+        # files as a workflow artifact and the last step of the job turns the
+        # run red. Runs whenever the full file was produced, even if a
         # generator above failed: the week's records are kept regardless.
         if: ${{ !cancelled() && steps.compress_full.outcome == 'success' }}
         id: data_release
@@ -218,6 +218,18 @@ jobs:
           token: ${{ secrets.PIPELINE_DEPLOY_TOKEN }}
           path: site
 
+      - name: Cut the week's records into the site's dataset files
+        # Here, after the site checkout, because the site's own contract
+        # decides it: site/tests/record_contract.json lists the fields the
+        # site reads, in classes, and its layout section carries the owner's
+        # switch. Off (or no layout section): the whole records in 8 parts,
+        # as before. On: core parts, Studies-tab parts and detail shards
+        # (scripts/split_data.py). A contract this engine cannot follow (a
+        # layout version it does not know) stops the run here, and the site
+        # keeps last week's data. This step only reads data/demographics.json;
+        # the week's data-* release above already holds it.
+        run: python3 scripts/split_data.py --contract site/tests/record_contract.json --demographics data/demographics.json --out-dir data/dataset
+
       - name: Publish artifacts, archive snapshot, and push to the site
         run: |
           # One date for the whole run: the snapshot folder, the release tag
@@ -227,10 +239,18 @@ jobs:
           # Keep last week's summary for the run-summary delta below
           cp site/data/dashboard-summary.json "$RUNNER_TEMP/prev_summary.json" 2>/dev/null || true
 
-          # Copy this week's artifacts into the site checkout
-          cp data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json site/data/
-          # The run's stamps: the site keys its data cache by extracted_at
-          cp data/run.json site/data/run.json
+          # This week's dataset, as scripts/split_data.py wrote it to
+          # data/dataset/: the demographics parts and run.json (the run's
+          # stamps; the site keys its data cache by extracted_at), plus the
+          # studies_tab parts and detail/ shards when the site's contract turns
+          # the split on. Last week's dataset files go first, so a switch of
+          # layout either way, the rollback included, leaves none of the other
+          # layout's files behind. Only these names are removed: the frozen
+          # data/details.part*.json.gz and the rest of data/ stay.
+          rm -f site/data/demographics.part*.json.gz site/data/studies_tab.part*.json.gz site/data/run.json
+          rm -rf site/data/detail
+          cp -R data/dataset/. site/data/
+          cp data/dashboard-summary.json data/industry_sponsors.json site/data/
           # Sex/gender table + meta ride with the parts; the methods text is its own folder
           cp data/sex_gender_parsed.csv.gz data/sex_gender_parsed_meta.json site/data/
           mkdir -p site/data/sex_gender
@@ -249,7 +269,12 @@ jobs:
             REPLACED=" (replaces earlier $DATE snapshot)"
           fi
           mkdir -p "snapshots/$DATE"
-          cp data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json "snapshots/$DATE/"
+          # The same dataset files, replaced the same way: a same-day re-run
+          # that switched layout leaves none of the earlier run's.
+          rm -f "snapshots/$DATE"/demographics.part*.json.gz "snapshots/$DATE"/studies_tab.part*.json.gz "snapshots/$DATE/run.json"
+          rm -rf "snapshots/$DATE/detail"
+          cp -R ../data/dataset/. "snapshots/$DATE/"
+          cp data/dashboard-summary.json data/industry_sponsors.json "snapshots/$DATE/"
           cp data/sex_gender_parsed.csv.gz data/sex_gender_parsed_meta.json "snapshots/$DATE/"
           echo "Archived snapshot to snapshots/$DATE/"
 
@@ -268,17 +293,26 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/demographics.part*.json.gz data/dashboard-summary.json data/industry_sponsors.json data/run.json
+          # The dataset, staged exactly: every file this week's holds, and the
+          # removal of every file last week's held that this week's does not.
+          # Nothing else under data/ is swept in.
+          DATASET=$( { (cd ../data/dataset && find . -type f | sed 's|^\./|data/|')
+                       git ls-files -- 'data/demographics.part*.json.gz' 'data/studies_tab.part*.json.gz' data/detail data/run.json; } | sort -u )
+          test -n "$DATASET"
+          git add -A -- $DATASET
+          git add data/dashboard-summary.json data/industry_sponsors.json
           git add data/sex_gender_parsed.csv.gz data/sex_gender_parsed_meta.json data/sex_gender/
           git add condition_ontology.json
           git add -A snapshots/ history.json
           # Check what is staged against the site's own record contract and
           # data budget (scripts/check_site_contract.py) before anything is
-          # committed: a part missing a field the site reads, malformed, from
-          # another run, over GitHub's 100 MiB per-file push limit, or a site
-          # over GitHub Pages' 1 GB limit stops the publish here, and the site
-          # keeps last week's data. Over the size budget only warns.
-          python3 ../scripts/check_site_contract.py --site . --report "$RUNNER_TEMP/site_check.json"
+          # committed: a file missing a field the site reads, malformed, from
+          # another run, a split layout the site's contract does not turn on,
+          # a snapshot copy that is not this week's dataset, a file over
+          # GitHub's 100 MiB per-file push limit, or a site over GitHub Pages'
+          # 1 GB limit stops the publish here, and the site keeps last week's
+          # data. Over the size budgets only warns.
+          python3 ../scripts/check_site_contract.py --site . --snapshot "$DATE" --report "$RUNNER_TEMP/site_check.json"
           git commit -m "Update demographics data $DATE$REPLACED" || exit 0
           git push
 
@@ -385,7 +419,6 @@ jobs:
             *n/a*) ;;
             *) DELTA=$((NEW - PREV)) ;;
           esac
-          PARTS_MB=$(du -mc data/demographics.part*.json.gz 2>/dev/null | tail -1 | cut -f1 || echo "n/a")
           {
             echo "## Weekly extraction — $CURRENT_DATE"
             echo ""
@@ -394,7 +427,12 @@ jobs:
             echo "| Trials in dataset | $NEW |"
             echo "| Previous week | $PREV |"
             echo "| Change vs previous | $DELTA |"
-            echo "| Split parts total | ${PARTS_MB} MB |"
+            # The site's dataset files, gzipped, per class (scripts/split_data.py's run.json)
+            if [ -f data/dataset/run.json ]; then
+              echo "| Site dataset files | $(jq -r '(if .layout then "split (layout \(.layout.version), \(.layout.detail.shards) detail shards)" else "whole records (no layout)" end) + ": " + ([(.gzip_bytes // {}) | to_entries[] | "\(.key) \((.value / 1e5 + 0.5 | floor) / 10) MB"] | join(", "))' data/dataset/run.json) |"
+            else
+              echo "| Site dataset files | not written this week |"
+            fi
             echo "| Code commit | \`${GITHUB_SHA}\` |"
             # The audit files are committed in this repo, so last week's are
             # always on disk: report them only when THIS run's steps produced

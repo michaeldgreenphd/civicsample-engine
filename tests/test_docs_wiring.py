@@ -147,6 +147,29 @@ def test_docs_do_not_point_at_work_that_has_not_landed():
     )
 
 
+FIRST_DATA_RELEASE = "2026-08-28"
+
+
+def test_no_doc_says_every_weeks_full_records_are_on_a_release() -> None:
+    """The weekly data-* releases start at data-2026-08-28; the full records of
+    earlier weeks exist only in the site repository's git history. A sentence
+    saying every week's full records are on a release, in a paragraph that does
+    not say where the releases start, tells a maintainer that history is
+    redundant, and rewriting it would lose those weeks."""
+    claim = re.compile(r"\b(every|each|all)\s+weeks?'?s?\b.*\b(full|complete)\s+records?\b.*\bdata-", re.I)
+    hits = []
+    for doc in ["README.md", *DOCS]:
+        for paragraph in re.split(r"\n\s*\n", (REPO / doc).read_text()):
+            flat = re.sub(r"\s+", " ", paragraph)
+            for sentence in re.split(r"(?<=[.;:])\s+", flat):
+                if claim.search(sentence) and FIRST_DATA_RELEASE not in flat:
+                    hits.append(f"{doc}: {sentence!r}")
+    assert not hits, (
+        "the docs say every week's full records are on a data-* release without saying they start at "
+        f"{FIRST_DATA_RELEASE}:\n  " + "\n  ".join(hits)
+    )
+
+
 def test_python_symbols_the_docs_attribute_to_a_file_are_defined_there():
     """`SYMBOL` named next to `path/to/file.py` must actually be defined there."""
     problems = []

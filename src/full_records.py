@@ -6,13 +6,13 @@ it permanently, gzipped, on that week's `data-YYYY-MM-DD` release (every week
 from 2026-08-28 on; earlier weeks' full records exist only as the parts in
 the site repository's git history).
 
-The site's `demographics.part*.json.gz` are cut from it by
-`scripts/split_data.py` for the dashboard. They are not a stand-in for it:
-they are about to carry only the fields the site reads, so a script that
-needs a field the dashboard does not show (sponsors, status, ages, reference
-counts, intervention descriptions) must read this file. `load` therefore
-never falls back to the parts; a missing file is an error that says where
-the full records are.
+The site's files are cut from it by `scripts/split_data.py` for the
+dashboard, as the site's own record contract says. They are not a stand-in
+for it: once the site turns its split layout on they carry only the fields
+the site reads, so a script that needs a field the dashboard does not show
+(sponsors, status, ages, reference counts, intervention descriptions) must
+read this file. `load` therefore never falls back to the parts; a missing
+file is an error that says where the full records are.
 """
 from __future__ import annotations
 

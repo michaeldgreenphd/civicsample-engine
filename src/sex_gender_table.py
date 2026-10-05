@@ -67,8 +67,10 @@ COLUMNS: list = ["nct_id"] + PARSER_COLUMNS + EXTRA_COLUMNS
 
 # The row stored inside each study record in the published parts: only what
 # the UI needs per trial. Labels, flags, measure title, layout, percent_female
-# and the rest live only in sex_gender_parsed.csv.gz, the full record. The
-# parts sit close to the 20 MiB CDN ceiling; this keeps them there.
+# and the rest live only in sex_gender_parsed.csv.gz, the full record. Keeping
+# the row lean keeps the parts the site loads at startup small (the site's
+# tests/data_budget.json); with its split layout on, only the fields its
+# contract lists reach the parts at all.
 LEAN_COLUMNS: list = [
     "sex_report_status", "reported_sex", "reported_gender", "reported_both",
     "n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender",

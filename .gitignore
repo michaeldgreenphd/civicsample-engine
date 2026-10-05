@@ -23,12 +23,17 @@ extraction.log
 .pytest_cache/
 .coverage
 
-# Transient extraction output — the raw weekly dump is uploaded to Google
-# Drive and split into parts; it is never committed.
+# Transient extraction output — the raw weekly dump goes to the week's
+# data-* release and is cut into the site's dataset files; none of it is
+# committed here. scripts/split_data.py writes the dataset to data/dataset/
+# (through data/dataset.partial/); the two lines after the dump are where
+# the parts and run.json were written before that folder existed.
 data/demographics.json
 data/demographics.json.gz
 data/demographics.part*.json.gz
 data/run.json
+data/dataset/
+data/dataset.partial/
 data/dashboard-summary.json
 data/industry_sponsors.json
 # Sponsor bridge is published to the site; the audit under data/sponsor_audit/ IS committed

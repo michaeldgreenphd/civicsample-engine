@@ -22,22 +22,26 @@ The weekly run (`extract.yml`, Sundays 06:00 UTC) does six things, in order:
    against `condition_ontology.json`, and quarantines labels that don't
    belong (a real example from the test suite: a trial that listed
    "Condom" and "IUD" in its race table).
-3. **Package** — splits the data into 8 compressed parts the dashboard can
-   download (each under GitHub's CDN size limit), builds a small summary
-   file for mobile, and rebuilds the industry-sponsor analysis.
+3. **Package** — builds a small summary file for mobile and rebuilds the
+   industry-sponsor analysis.
 4. **Back up** — attaches the week's full study records
    (`demographics.json.gz`), the raw sex/gender measures and the run log to a
    dated `data-YYYY-MM-DD` GitHub Release in this repo. Every week's release
    is kept permanently: it is the complete record of that pull, which the
    site's parts are not (releases start at 2026-08-28). Google Drive also
    gets a copy when configured.
-5. **Publish** — copies the finished files into the site repo, saves a
-   dated snapshot for the dashboard's "View snapshot" feature, prunes old
-   snapshots so the site stays deployable, and checks what it staged against
-   the site's own field contract and size budget
-   (`scripts/check_site_contract.py`) before it pushes: a missing field, a
-   malformed part or a file over GitHub's limits stops the publish (and the
-   later steps that publish to the site), growth past the budget only warns.
+5. **Publish** — cuts the week's records into the files the site's own
+   field contract asks for (`scripts/split_data.py`): every record whole in 8
+   compressed parts, or, once the site turns its split layout on, the fields
+   the dashboard reads at startup in 8 parts, the Studies tab's in 8 more and
+   the study pop-ups' in 256 small files, one fetched per pop-up. It copies
+   them and the other finished files into the site repo, saves a dated
+   snapshot for the dashboard's "View snapshot" feature, prunes old snapshots
+   so the site stays deployable, and checks what it staged against the site's
+   contract and size budget (`scripts/check_site_contract.py`) before it
+   pushes: a missing field, a malformed file or a file over GitHub's limits
+   stops the publish (and the later steps that publish to the site), growth
+   past the budget only warns.
 6. **Sponsor bridge** — attributes every trial's sponsors to canonical
    companies via the curated rules (`sponsors/`), publishes the bridge table
    and the audit files to the site in a second commit, and writes the
@@ -72,15 +76,16 @@ prompt change cheaply with a pilot run).
 
 ## Maintenance workflows
 
-Two more workflows exist for rare occasions, both harmless to ignore:
-`backfill-releases.yml` (manual one-shot that rebuilds historical
-`snapshots/` folders in the site repo from its date tags — kept in case
-another backfill is ever needed) and `geo-snapshot-watcher.yml` (monthly
-check that opens an advisory issue here when AACT publishes a newer
-geography snapshot than the one the site is pinned to — it never
-downloads data or touches anything). Acting on that issue happens in the
-site repo: it owns `scripts/geo/advance_run.py`, because every path that
-script writes is a site path.
+One more workflow exists for rare occasions, harmless to ignore:
+`geo-snapshot-watcher.yml` (monthly check that opens an advisory issue
+here when AACT publishes a newer geography snapshot than the one the site
+is pinned to — it never downloads data or touches anything). Acting on
+that issue happens in the site repo: it owns `scripts/geo/advance_run.py`,
+because every path that script writes is a site path. No workflow rebuilds
+old snapshot folders from the site's history any more (the one that did
+could not rebuild a split snapshot). The full records of every week from
+2026-08-28 on are on its `data-*` release; earlier weeks' exist only in the
+site repository's git history, which is never rewritten.
 
 ## Where things live
 
@@ -149,7 +154,8 @@ python scripts/validate_fixes.py    # the extractor test harness (no network)
 python -m pytest tests -q           # the Python test suite
 node --test tests/sponsors/*.test.mjs   # the browser filter module
 python -m src.extract_all --output data/demographics.json --results-after 2009-01-01
-python scripts/split_data.py
+# the site's dataset files, from the site's own contract (a site checkout's tests/)
+python scripts/split_data.py --contract ../clinical-trial-populations/tests/record_contract.json
 ```
 
 Run everything from the repo root — paths are relative to it.
