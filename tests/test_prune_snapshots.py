@@ -551,6 +551,19 @@ def test_a_dry_run_changes_nothing_and_says_what_a_run_would_do(tmp_path: pathli
     assert (real.complete, real.slimmed, real.removed) == (dry["complete"], dry["slimmed"], dry["removed"])
 
 
+def test_a_dry_run_that_would_remove_a_snapshot_removes_nothing(tmp_path: pathlib.Path) -> None:
+    """--dry-run is what a person runs by hand to preview a run: a plan that
+    deletes a folder (10-04 shares fortnight 19 with 09-27) must leave it, and
+    every other byte of the site, where it is."""
+    site = sh.make_site(tmp_path, "2026-10-11", ["2026-09-13", "2026-09-27", "2026-10-04"], REAL_AGGREGATES)
+    before = tree_digest(site)
+    dry = ps.run(str(site), "2026-10-18", None, dry=True)
+    assert dry.removed == ["2026-10-04"] and dry.archived["status"] == "would archive", dry.report()
+    assert tree_digest(site) == before, "the dry run deleted or changed something"
+    real = ps.run(str(site), "2026-10-18", None, dry=False)
+    assert real.removed == ["2026-10-04"] and not (site / "snapshots" / "2026-10-04").exists()
+
+
 def _recovery_commands() -> dict[str, list[str]]:
     """The commands prune_snapshots.py's docstring gives to get a week's files
     back, by the line that introduces them: each is a `c=$(git log ...)` line
