@@ -42,8 +42,10 @@ dataset, then this week's files into data/.
 """
 from __future__ import annotations
 
+import csv
 import gzip
 import hashlib
+import io
 import json
 import os
 import pathlib
@@ -61,6 +63,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+import check_site_contract as csc  # noqa: E402
 import prune_snapshots as ps  # noqa: E402
 import snapshot_helpers as sh  # noqa: E402
 import split_helpers as h  # noqa: E402
@@ -341,6 +344,84 @@ def test_a_sex_gender_pair_from_another_run_stays_behind(tmp_path: pathlib.Path)
     held = sh.files(site / "snapshots" / "2026-10-11")
     assert "sex_gender_parsed_meta.json" not in held and "sex_gender_parsed.csv.gz" not in held
     assert "sex_gender/methods.json" in held and any("sex/gender table of 2026-10-11" in w for w in out.warnings)
+
+
+def _edit_json(path: pathlib.Path, **changes: object) -> None:
+    path.write_text(json.dumps({**json.loads(path.read_text()), **changes}))
+
+
+def _date_rows(folder: pathlib.Path, day: str, first: int | None = None) -> None:
+    """Give the first rows of the folder's sex/gender table (all: None) another snapshot_date."""
+    path = folder / "sex_gender_parsed.csv.gz"
+    with gzip.open(path, "rt", newline="") as fh:
+        rows = list(csv.reader(fh))
+    col = rows[0].index("snapshot_date")
+    for row in rows[1:][:first]:
+        row[col] = day
+    buf = io.StringIO()
+    csv.writer(buf).writerows(rows)
+    path.write_bytes(gzip.compress(buf.getvalue().encode(), mtime=0))
+
+
+OTHER = sh.stamps("2026-10-04")
+PAIR = ("sex_gender_parsed.csv.gz", "sex_gender_parsed_meta.json")
+METHODS = ("sex_gender/methods.json",)
+# A sex/gender file beside a week that is not that week's run: (change to the
+# folder, the files it keeps from being archived or listed, a phrase the
+# warning says). Each is one check of src/dataset_folder.py, and the only
+# change that check sees.
+NOT_THIS_RUNS: dict[str, tuple[Callable[[pathlib.Path], object], tuple[str, ...], str]] = {
+    "a meta from another run": (
+        lambda d: _edit_json(d / "sex_gender_parsed_meta.json", source_extracted_at=OTHER["extracted_at"]), PAIR,
+        "sex_gender_parsed_meta.json comes from another run"),
+    "a meta from another commit": (
+        lambda d: _edit_json(d / "sex_gender_parsed_meta.json", source_pipeline_commit=OTHER["pipeline_commit"]), PAIR,
+        "sex_gender_parsed_meta.json comes from another commit"),
+    "a table and meta of another snapshot date": (
+        lambda d: (_edit_json(d / "sex_gender_parsed_meta.json", snapshot_date="2026-10-04"), _date_rows(d, "2026-10-04")),
+        PAIR, "sex_gender_parsed_meta.json is the '2026-10-04' snapshot's"),
+    "table rows of another snapshot date": (lambda d: _date_rows(d, "2026-10-04", first=3), PAIR,
+                                            "3 rows of sex_gender_parsed.csv.gz carry another snapshot_date"),
+    "a meta without its table": (lambda d: (d / "sex_gender_parsed.csv.gz").unlink(), PAIR,
+                                 "sex_gender_parsed_meta.json is there without sex_gender_parsed.csv.gz"),
+    "a methods text from another run": (
+        lambda d: _edit_json(d / "sex_gender" / "methods.json", source_extracted_at=OTHER["extracted_at"]), METHODS,
+        "methods.json comes from another run"),
+}
+
+
+@pytest.mark.parametrize("name", list(NOT_THIS_RUNS))
+def test_a_sex_gender_file_of_another_run_is_not_archived_with_the_week(tmp_path: pathlib.Path, name: str) -> None:
+    """The outgoing week is archived without it, warned about, and the folder
+    it leaves is one complete run, listed."""
+    damage, left_out, phrase = NOT_THIS_RUNS[name]
+    site = sh.make_site(tmp_path, "2026-10-11", history={"dates": ["2026-10-11"], "latest": "2026-10-11"})
+    damage(site / "data")
+    out = publish(tmp_path, site, "2026-10-18")
+    assert out.archived["status"] == "archived", out.archived
+    held = set(sh.files(site / "snapshots" / "2026-10-11"))
+    assert not held & set(left_out) and set(PAIR + METHODS) - set(left_out) <= held, sorted(held)
+    assert any(phrase in w for w in out.warnings), out.warnings
+    assert kinds(site) == {"2026-10-11": ps.COMPLETE} and "2026-10-11" in sh.read_history(site)["dates"]
+
+
+@pytest.mark.parametrize("name", ["a meta from another run", "a methods text from another run"])
+def test_a_snapshot_whose_sex_gender_file_is_another_runs_is_left_as_it_is(tmp_path: pathlib.Path, name: str) -> None:
+    """An archived snapshot whose sex/gender pair or methods text is another
+    run's is not one complete run: it is left as it is and not listed, so the
+    gate, which checks every listed complete snapshot's, still lets the week
+    through."""
+    damage, _, phrase = NOT_THIS_RUNS[name]
+    site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE, REAL_AGGREGATES)
+    damage(site / "snapshots" / "2026-08-02")
+    before = tree_digest(site / "snapshots" / "2026-08-02")
+    out = publish(tmp_path, site, "2026-10-11")
+    assert kinds(site)["2026-08-02"] == ps.UNUSABLE and tree_digest(site / "snapshots" / "2026-08-02") == before
+    assert "2026-08-02" not in sh.read_history(site)["dates"]
+    assert any("snapshots/2026-08-02/ is left as it is" in w and phrase in w for w in out.warnings), out.warnings
+    report = csc.check(str(site), latest="2026-10-11")
+    assert report["ok"], report["errors"]
+    assert any("does not list" in w and "2026-08-02" in w for w in report["warnings"]), report["warnings"]
 
 
 def test_the_week_between_two_fortnights_firsts_is_not_archived(tmp_path: pathlib.Path) -> None:
