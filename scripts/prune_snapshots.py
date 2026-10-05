@@ -68,12 +68,23 @@ The policy (owner decisions 19b, 20a and 21a, 2026-10-05):
   publish nothing (the registry down, or the gate blocking each week), the
   outgoing week can be the only week of such a month: it is archived out of
   data/ like a kept week, and slimmed into its month's aggregate in the same
-  run, so no month is left without a snapshot. The full files stay in the site
-  repository's git history, which is never rewritten. To recover a slimmed or
-  deleted snapshot, in a full clone of the site repository:
+  run, so no month is left without a snapshot.
+
+  The full files of every week stay in the site repository's git history,
+  which is never rewritten (and from 2026-08-28 on, each week's full records
+  are on its data-<date> release too). To get a week's files back, in a full
+  clone of the site repository (a shallow one lacks the older commits):
+    any week the site served, archived or not (a fortnight's second week never
+    is: it lived in data/ only), as its weekly run published it into data/,
+    into a folder <dir>:
+      c=$(git log -1 --format=%H --grep='^Update demographics data <date>')
+      mkdir -p <dir> && git archive "$c" data | tar -x -C <dir> --strip-components=1
+    a snapshot folder that was slimmed or deleted, back in place:
       c=$(git log -1 --format=%H --diff-filter=D -- snapshots/<date>/demographics.part1.json.gz)
       git restore --source="$c^" -- snapshots/<date>/
-  (a split snapshot's other files come back with it, from the same commit).
+  Either way a split week's studies_tab parts, detail shards and run.json
+  come back with it. (The second alone finds no commit for a week that never
+  had a folder.)
 
   Everything else is deleted, and history.json is rewritten from what is on
   disk afterwards: "dates", a list of date strings as before (the latest and

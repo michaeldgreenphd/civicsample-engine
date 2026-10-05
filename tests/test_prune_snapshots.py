@@ -551,6 +551,74 @@ def test_a_dry_run_changes_nothing_and_says_what_a_run_would_do(tmp_path: pathli
     assert (real.complete, real.slimmed, real.removed) == (dry["complete"], dry["slimmed"], dry["removed"])
 
 
+def _recovery_commands() -> dict[str, list[str]]:
+    """The commands prune_snapshots.py's docstring gives to get a week's files
+    back, by the line that introduces them: each is a `c=$(git log ...)` line
+    and the line after it."""
+    lines = (ps.__doc__ or "").splitlines()
+    return {lines[i - 1].strip(): [lines[i].strip(), lines[i + 1].strip()]
+            for i, line in enumerate(lines) if line.strip().startswith("c=$(git log")}
+
+
+@pytest.mark.parametrize("split", [False, True], ids=["whole-parts", "split"])
+def test_the_documented_recovery_commands_bring_back_any_week(tmp_path: pathlib.Path, split: bool) -> None:
+    """The commands the docstring and the README give, run as written in a git
+    history of weekly publishes (each committed as the publish step commits
+    it): a week served from data/ and never archived (10-18, fortnight 20's
+    second week) comes back from its publish commit, whole or split; so does
+    any other week; a snapshot slimmed (05-31) or deleted (10-04) comes back
+    in place. The in-place command alone cannot bring back a week that never
+    had a folder, which is why there are two."""
+    git = shutil.which("git")
+    assert git, "git is not installed"
+    commands = _recovery_commands()
+    assert len(commands) == 2, f"the docstring gives {len(commands)} recovery commands, not 2: {list(commands)}"
+    readme = (pathlib.Path(ROOT) / "README.md").read_text()
+    for pair in commands.values():
+        assert all(c in readme for c in pair), f"README.md does not give {pair}"
+    (anywhere, in_place) = commands.values()
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull, "HOME": str(tmp_path)}
+
+    def git_(*args: str) -> None:
+        subprocess.run([git, "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=site, env=env, check=True,
+                       capture_output=True)
+
+    def week_files(folder: pathlib.Path) -> dict[str, bytes]:
+        return {rel: (folder / rel).read_bytes() for rel in sh.files(folder)
+                if re.fullmatch(r"(demographics|studies_tab)\.part\d+\.json\.gz|detail/.*|run\.json|"
+                                r"dashboard-summary\.json|sex_gender_parsed.*|sex_gender/methods\.json", rel)}
+
+    site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE, REAL_AGGREGATES, split=split)
+    git_("init", "-q", "-b", "main")
+    git_("add", "-A")
+    git_("commit", "-qm", "Update demographics data 2026-10-04")
+    served = {"2026-10-04": week_files(site / "data")}
+    archived = {d: week_files(site / "snapshots" / d) for d in ("2026-05-31", "2026-10-04")}
+    for day in sundays("2026-10-11", 6):
+        publish(tmp_path, site, day, split=split)
+        git_("add", "-A")
+        git_("commit", "-qm", f"Update demographics data {day}")
+        served[day] = week_files(site / "data")
+    state = kinds(site)
+    assert "2026-10-18" not in state and "2026-10-04" not in state and state["2026-05-31"] == ps.AGGREGATE
+
+    def run(pair: list[str], day: str, into: str = "") -> subprocess.CompletedProcess[str]:
+        script = "\n".join(pair).replace("<date>", day).replace("<dir>", into)
+        return subprocess.run(["bash", "-e", "-c", script], cwd=site, env=env, capture_output=True, text=True)
+
+    for day in ("2026-10-18", "2026-10-04", "2026-10-11"):
+        out = tmp_path / f"back-{day}"
+        r = run(anywhere, day, str(out))
+        assert r.returncode == 0, r.stderr
+        assert week_files(out) == served[day], f"{day} did not come back as its run published it"
+    for day in ("2026-05-31", "2026-10-04"):
+        r = run(in_place, day)
+        assert r.returncode == 0, r.stderr
+        assert week_files(site / "snapshots" / day) == archived[day], f"snapshots/{day}/ did not come back"
+    r = run(in_place, "2026-10-18")
+    assert r.returncode != 0 and not (site / "snapshots" / "2026-10-18").exists()
+
+
 def test_with_nothing_to_retain_it_says_so(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert ps.main(["--site", str(tmp_path)]) == 0
     assert "nothing to retain" in capsys.readouterr().out

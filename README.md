@@ -189,10 +189,21 @@ and when was it made":
   every chart from it, and its 500 most recent studies keep their own records
   for their pop-ups (`archive_records.json.gz`, written from that week's own
   files); filters and the full study table need a complete snapshot. The full
-  files of a snapshot that was slimmed or deleted stay in the site
-  repository's git history, which is never rewritten (`prune_snapshots.py`
-  gives the command that restores one); from 2026-08-28 on, each week's full
-  records are also on its `data-*` release.
+  files of every week stay in the site repository's git history, which is
+  never rewritten, whether or not the week was ever archived (a fortnight's
+  second week never is: it lives in `data/` only); from 2026-08-28 on, each
+  week's full records are also on its `data-*` release. To get a week's files
+  back, in a full clone of the site repository (not a shallow one):
+
+  ```bash
+  # any week the site served, as its weekly run published it into data/,
+  # into a folder <dir>
+  c=$(git log -1 --format=%H --grep='^Update demographics data <date>')
+  mkdir -p <dir> && git archive "$c" data | tar -x -C <dir> --strip-components=1
+  # a snapshot folder that was slimmed or deleted, back in place
+  c=$(git log -1 --format=%H --diff-filter=D -- snapshots/<date>/demographics.part1.json.gz)
+  git restore --source="$c^" -- snapshots/<date>/
+  ```
 - **LLM extraction runs are versioned by their commits and their metrics.**
   Output files keep stable names (so the site always reads the latest);
   each run's commit records who triggered it, the pipeline and mode, and
