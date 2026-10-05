@@ -279,13 +279,15 @@ def test_last_weeks_dataset_is_archived_whole_and_byte_for_byte(tmp_path: pathli
     (lambda s: (s / "data" / "demographics.part8.json.gz").unlink(), "lacks 1 of its 8 dataset files"),
     (lambda s: (s / "data" / "demographics.part2.json.gz").write_bytes(
         (s / "data" / "demographics.part2.json.gz").read_bytes()[:-20]), "demographics.part2.json.gz is not gzipped JSON"),
+    (lambda s: sh.cut_short_past_its_header(s / "data" / "demographics.part4.json.gz"),
+     "demographics.part4.json.gz is not gzipped JSON"),
     (lambda s: (s / "data" / "dashboard-summary.json").write_text(json.dumps(sh.summary("2026-10-04"))),
      "dashboard-summary.json comes from another run"),
     (lambda s: (s / "data" / "run.json").write_text(json.dumps({**json.loads((s / "data" / "run.json").read_text()),
                                                                 **sh.stamps("2026-10-04")})),
      "run.json says extracted_at"),
 ], ids=["a-part-from-another-run", "a-part-from-another-commit", "a-part-missing", "a-truncated-part",
-        "a-summary-from-another-run", "run-json-from-another-run"])
+        "a-part-cut-short-past-its-header", "a-summary-from-another-run", "run-json-from-another-run"])
 def test_a_week_whose_files_are_not_one_run_is_not_archived(tmp_path: pathlib.Path,
                                                            damage: Callable[[pathlib.Path], object], why: str) -> None:
     site = sh.make_site(tmp_path, "2026-10-11", history={"dates": ["2026-10-11"], "latest": "2026-10-11"})
@@ -515,6 +517,21 @@ def test_an_unusable_folder_is_left_as_it_is_and_not_listed(tmp_path: pathlib.Pa
     assert "2026-09-13" not in listed and "2026-06-14" not in listed
     assert any("snapshots/2026-09-13/ is left as it is" in w for w in out.warnings)
     assert any("snapshots/2026-06-14/ is left as it is" in w and "lacks 1 of its 8" in w for w in out.warnings)
+
+
+def test_a_snapshot_part_cut_short_past_its_header_is_left_as_it_is(tmp_path: pathlib.Path) -> None:
+    """Every file is decompressed to its end: a part whose header reads but
+    whose stream was cut short is a damaged dataset, not a complete one, and
+    is left as it is and not listed."""
+    site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE, REAL_AGGREGATES)
+    sh.cut_short_past_its_header(site / "snapshots" / "2026-08-02" / "demographics.part6.json.gz")
+    damaged = tree_digest(site / "snapshots" / "2026-08-02")
+    out = publish(tmp_path, site, "2026-10-11")
+    assert kinds(site)["2026-08-02"] == ps.UNUSABLE
+    assert tree_digest(site / "snapshots" / "2026-08-02") == damaged, "a damaged dataset was touched"
+    assert "2026-08-02" not in sh.read_history(site)["dates"]
+    assert any("snapshots/2026-08-02/ is left as it is" in w and "demographics.part6.json.gz is not gzipped JSON" in w
+               for w in out.warnings), out.warnings
 
 
 @pytest.mark.parametrize("change,why", [

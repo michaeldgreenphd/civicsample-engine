@@ -116,6 +116,24 @@ def make_site(tmp: pathlib.Path, latest: str, complete: list[str] = (), aggregat
     return site
 
 
+def cut_short_past_its_header(path: pathlib.Path) -> None:
+    """A whole-record part as a real one cut short looks: one record padded
+    with incompressible text until the part decompresses to four times
+    dataset_folder.HEAD_BYTES, then the gzip stream cut at three quarters.
+    Its header still reads from the first HEAD_BYTES; only decompressing on to
+    the end of the stream finds the damage, as with a 20 MB part. (A fixture
+    part of 16 records fails on its first read, and cannot show that.)"""
+    import hashlib
+    from src import dataset_folder as df
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        body = json.load(fh)
+    body["data"][0]["padding"] = "".join(hashlib.sha256(str(i).encode()).hexdigest()
+                                         for i in range(4 * df.HEAD_BYTES // 64))
+    data = gzip.compress(json.dumps(body).encode(), mtime=0)
+    path.write_bytes(data[: len(data) * 3 // 4])
+    assert df.read_head(str(path), verify=False)["part"] == body["part"], "the header no longer reads"
+
+
 def read_history(site: pathlib.Path) -> dict[str, Any]:
     return json.loads((site / "history.json").read_text())
 

@@ -870,6 +870,9 @@ HISTORY_BLOCKS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
         lambda s: (s / "snapshots" / "2026-08-02" / "demographics.part6.json.gz").write_bytes(
             (s / "snapshots" / "2026-08-02" / "demographics.part6.json.gz").read_bytes()[:-30]),
         "demographics.part6.json.gz is not gzipped JSON"),
+    "a complete snapshot part cut short past its header": (
+        lambda s: sh.cut_short_past_its_header(s / "snapshots" / "2026-08-02" / "demographics.part3.json.gz"),
+        "demographics.part3.json.gz is not gzipped JSON"),
     "a complete snapshot whose run.json is another run's": (
         _json_change("snapshots/2026-08-02/run.json", lambda b: b.update(OTHER_RUN)), "run.json says extracted_at"),
     "a complete snapshot summary from another run": (
