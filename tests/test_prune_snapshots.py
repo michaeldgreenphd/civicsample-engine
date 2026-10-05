@@ -400,12 +400,37 @@ def test_an_aggregate_keeps_only_its_summary_and_archive_file(tmp_path: pathlib.
     site = sh.make_site(tmp_path, "2026-10-04", ["2026-06-14", "2026-08-02", "2026-10-04"], ["2026-04-26"])
     folder = site / "snapshots" / "2026-04-26"
     (folder / "industry_sponsors.json").write_text("{}")
-    (folder / "detail").mkdir()
-    (folder / "detail" / "0.json.gz").write_bytes(b"x")
+    (folder / "sponsors").mkdir()
+    (folder / "sponsors" / "bridge.csv.gz").write_bytes(b"x")
     (folder / "notes.txt").write_text("an unknown file")
     publish(tmp_path, site, "2026-10-11")
     assert sorted(os.listdir(folder)) == ["dashboard-summary.json"]
     assert sh.read_history(site)["archives"]["2026-04-26"] == {"kind": "aggregate"}
+
+
+@pytest.mark.parametrize("split", [False, True], ids=["whole-parts", "split"])
+def test_dataset_files_without_core_part_1_are_left_as_they_are(tmp_path: pathlib.Path, split: bool) -> None:
+    """Core part 1 gone and the rest of the dataset there (a partial restore or
+    a clean-up by hand), with no archive file that checks: not an aggregate
+    whose strip was cut short, so nothing in it is deleted. It is left as it
+    is, warned about and not listed, like any damaged dataset. So is a summary
+    folder holding a stray dataset file."""
+    site = sh.make_site(tmp_path, "2026-10-11", ["2026-06-14", "2026-09-13", "2026-09-27", "2026-10-04"],
+                        ["2026-02-22"], split=split)
+    damaged = site / "snapshots" / "2026-06-14"
+    (damaged / "demographics.part1.json.gz").unlink()
+    stray = site / "snapshots" / "2026-02-22"
+    (stray / "detail").mkdir()
+    (stray / "detail" / "0.json.gz").write_bytes(b"x")
+    before = {d: tree_digest(d) for d in (damaged, stray)}
+    out = ps.run(str(site), "2026-10-18", None, dry=False)
+    assert {d: tree_digest(d) for d in (damaged, stray)} == before, "a folder holding dataset files was touched"
+    assert kinds(site)["2026-06-14"] == kinds(site)["2026-02-22"] == ps.UNUSABLE
+    assert not {"2026-06-14", "2026-02-22"} & (set(out.stripped) | set(out.removed) | set(out.aggregates))
+    assert not {"2026-06-14", "2026-02-22"} & set(sh.read_history(site)["dates"])
+    for d in ("2026-06-14", "2026-02-22"):
+        assert any(f"snapshots/{d}/ is left as it is" in w and "without demographics.part1.json.gz" in w
+                   for w in out.warnings), out.warnings
 
 
 @pytest.mark.parametrize("cut_short", [(1, 2, 3), (6, 7, 8)], ids=["part1-gone", "part1-left"])

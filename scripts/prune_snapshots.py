@@ -181,11 +181,19 @@ class Folder:
 def classify(d: str, path: str) -> Folder:
     """A snapshot folder: complete (one whole run, with its summary, and its
     sex/gender files and methods text that run's when it has them); aggregate
-    (a summary, and no dataset: no core part 1, or an archive file that checks
-    beside what a slim cut short left); or unusable (anything else, such as a
-    damaged dataset: left as it is, so nothing that might be recovered is
-    deleted)."""
+    (a summary and no dataset files, or a summary and an archive file that
+    checks beside what a slim cut short left); or unusable (anything else,
+    such as a damaged dataset, or dataset files without core part 1: left as
+    it is, so nothing that might be recovered is deleted)."""
     summary = df.read_summary(path)
+    archive = os.path.join(path, sl.ARCHIVE_FILE)
+
+    def slim_cut_short() -> bool:
+        # The archive file is written (and checked) before anything is
+        # deleted, so with it in place the folder is an aggregate whose strip
+        # did not finish.
+        return summary is not None and os.path.exists(archive) and not archive_records.problems(archive, summary)
+
     if os.path.exists(os.path.join(path, sl.core_part_name(1))):
         ds = df.inspect(path)
         problems = list(ds.problems)
@@ -193,15 +201,19 @@ def classify(d: str, path: str) -> Folder:
             problems += df.sex_gender_problems(path, ds.stamps) + df.methods_problems(path, ds.stamps)
         if ds.complete and not problems:
             return Folder(d, COMPLETE, ds)
-        # A slim that stopped part way: the archive file is written (and
-        # checked) before anything is deleted, so with it in place the folder
-        # is an aggregate whose strip did not finish.
-        archive = os.path.join(path, sl.ARCHIVE_FILE)
-        if summary is not None and os.path.exists(archive) and not archive_records.problems(archive, summary):
+        if slim_cut_short():
             return Folder(d, AGGREGATE)
         return Folder(d, UNUSABLE, ds, "; ".join(problems))
     if summary is None:
         return Folder(d, UNUSABLE, None, f"no {sl.core_part_name(1)} and no readable {df.SUMMARY_FILE}")
+    held = df.present_files(path)
+    if held and not slim_cut_short():
+        # Part 1 gone and the rest there (a partial restore or a clean-up by
+        # hand) is a damaged dataset, not an aggregate: stripping it would
+        # delete files no archive file stands in for.
+        return Folder(d, UNUSABLE, None,
+                      f"it holds {len(held):,} dataset files ({', '.join(held[:3])}{' …' if len(held) > 3 else ''}) "
+                      f"without {sl.core_part_name(1)}, and no {sl.ARCHIVE_FILE} that checks")
     return Folder(d, AGGREGATE)
 
 
