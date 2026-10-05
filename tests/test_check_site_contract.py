@@ -36,8 +36,9 @@ the publish step's own run block is run under bash -e, with real git on a
 site repository and stubs for the check, prune and push, for a whole week, a
 split week, the rollback from split to whole parts and a same-day re-run that
 switches layout, and stages exactly the dataset's additions and removals;
-the run summary's jq reads the keys the report carries. The raw-measure
-archive does not depend on the site push (what it takes is
+with no dataset to stage it stops before staging anything; the run
+summary's jq reads the keys the report carries. The raw-measure archive does
+not depend on the site push (what it takes is
 tests/test_raw_measures_archive.py).
 """
 from __future__ import annotations
@@ -741,6 +742,7 @@ def _publish(tmp_path: pathlib.Path, last_week: dict[str, str], this_week: dict[
     real_git = shutil.which("git")
     assert real_git, "git is not installed"
     engine = tmp_path / "engine"
+    (engine / "data" / "dataset").mkdir(parents=True)          # there even when this week's is empty
     files = {f"data/dataset/{rel}": body for rel, body in this_week.items()}
     files.update({"data/dashboard-summary.json": "{}", "data/industry_sponsors.json": "{}",
                   "data/sex_gender_parsed.csv.gz": "table", "data/sex_gender_parsed_meta.json": "{}",
@@ -829,6 +831,21 @@ def test_a_same_day_rerun_that_switches_layout_leaves_nothing_of_the_earlier_run
     assert _dataset_changes(changes, f"snapshots/{DATE}") == _expect(last, now)
     assert sorted(str(p.relative_to(site / "snapshots" / DATE)) for p in (site / "snapshots" / DATE).rglob("*")
                   if p.is_file() and not p.name.startswith(("dashboard", "industry", "sex_gender"))) == sorted(now)
+
+
+def test_with_no_dataset_to_stage_the_publish_step_stops_before_staging_anything(tmp_path: pathlib.Path) -> None:
+    """An empty data/dataset/ and no dataset file tracked in the site leave the
+    list of dataset paths empty, and `git add -A --` with no path stages the
+    whole site checkout, stray files included. The step stops before that."""
+    r, calls, site = _publish(tmp_path, {}, {})
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "git add" not in calls and "git commit" not in calls and "git push" not in calls, calls
+    assert "check_site_contract.py" not in calls
+    staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=site, capture_output=True, text=True,
+                            check=True).stdout
+    assert staged == "", f"the step staged {staged!r}"
+    log = subprocess.run(["git", "log", "--format=%s"], cwd=site, capture_output=True, text=True).stdout.split("\n")
+    assert log[0] == "last week"
 
 
 @pytest.mark.parametrize("check_rc,pushed", [(1, False), (0, True)])
