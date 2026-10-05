@@ -62,7 +62,11 @@ The policy (owner decisions 19b, 20a and 21a, 2026-10-05):
   pop-ups (src/archive_records.py). The archive file is written from the
   folder's own records, and checked, before anything is deleted from it; a
   folder whose file cannot be written stays complete, and is warned about.
-  Then everything but those two files goes. The full files stay in the site
+  Then everything but those two files goes. After three or more Sundays that
+  publish nothing (the registry down, or the gate blocking each week), the
+  outgoing week can be the only week of such a month: it is archived out of
+  data/ like a kept week, and slimmed into its month's aggregate in the same
+  run, so no month is left without a snapshot. The full files stay in the site
   repository's git history, which is never rewritten. To recover a slimmed or
   deleted snapshot, in a full clone of the site repository:
       c=$(git log -1 --format=%H --diff-filter=D -- snapshots/<date>/demographics.part1.json.gz)
@@ -171,6 +175,7 @@ class Folder:
     kind: str                                  # complete, aggregate or unusable
     dataset: df.Dataset | None = None          # what it holds, when it holds dataset files
     why: str = ""                              # why it is unusable
+    pending: list[str] | None = None           # dry run: the files an archive would copy in
 
 
 def classify(d: str, path: str) -> Folder:
@@ -293,7 +298,8 @@ def _copy_names(ds: df.Dataset, data_dir: str, prev: str, out: Outcome) -> list[
 
 def archive_outgoing(site: str, prev: str, latest: str, folders: dict[str, Folder], out: Outcome) -> None:
     """Last week's dataset, still in data/, into snapshots/<prev>/, when the
-    policy keeps it. Records what happened in out.archived; adds the new folder
+    policy keeps it: complete, or as its month's aggregate (prune slims it in
+    the same run). Records what happened in out.archived; adds the new folder
     to folders."""
     rec: dict[str, Any] = {"date": prev, "status": "", "reason": "", "files": 0, "bytes": 0}
     out.archived = rec
@@ -317,7 +323,15 @@ def archive_outgoing(site: str, prev: str, latest: str, folders: dict[str, Folde
     complete = [d for d, f in folders.items() if f.kind == COMPLETE]
     summarised = [d for d, f in folders.items() if f.kind != UNUSABLE]
     plan = plan_retention(complete + [prev], summarised + [prev], latest)
-    if prev not in plan.complete:
+    if prev in plan.aggregates:
+        # Only after Sundays that published nothing (three or more in a row):
+        # the outgoing week is then the newest of a month no kept week and
+        # not the latest covers, so nothing else would keep that month. It is
+        # archived whole like any week, and prune slims it into the month's
+        # aggregate in this run, its own records first.
+        rec["reason"] = (f"kept as {prev[:7]}'s monthly aggregate: no week kept complete, and not the latest, "
+                         "is in that month")
+    elif prev not in plan.complete:
         rec["status"] = "not kept"
         firsts = [d for d in complete if fortnight(d) == fortnight(prev) and d < prev]
         rec["reason"] = (f"fortnight {fortnight(prev)} is represented by {min(firsts)}" if firsts
@@ -338,7 +352,7 @@ def archive_outgoing(site: str, prev: str, latest: str, folders: dict[str, Folde
     rec["bytes"] = sum(os.path.getsize(os.path.join(data_dir, n)) for n in names)
     if out.dry_run:
         rec["status"] = "would archive"
-        folders[prev] = Folder(prev, COMPLETE, ds)
+        folders[prev] = Folder(prev, COMPLETE, ds, pending=names)
         return
     # Copied beside the snapshots and moved in whole: a copy that stops part
     # way leaves no folder for the date.
@@ -362,8 +376,11 @@ def archive_outgoing(site: str, prev: str, latest: str, folders: dict[str, Folde
         out.warn(f"snapshots/{prev}/ was archived but does not read as complete: {folders[prev].why}")
 
 
-def strip(path: str, dry: bool) -> list[str]:
-    """Delete everything in an aggregate folder but AGGREGATE_KEEP. Returns the names."""
+def strip(path: str, dry: bool, pending: list[str] | None = None) -> list[str]:
+    """Delete everything in an aggregate folder but AGGREGATE_KEEP. Returns the
+    names. pending: in a dry run, the files a folder not yet archived would hold."""
+    if dry and pending is not None and not os.path.isdir(path):
+        return sorted({n.split("/")[0] for n in pending} - AGGREGATE_KEEP)
     names = sorted(n for n in os.listdir(path) if n not in AGGREGATE_KEEP)
     if not dry:
         for name in names:
@@ -387,7 +404,7 @@ def slim(path: str, folder: Folder, contract: Any, out: Outcome) -> bool:
     except archive_records.ArchiveError as e:
         out.warn(f"snapshots/{folder.date}/ stays complete: its archive file cannot be written ({e})")
         return False
-    out.stripped[folder.date] = strip(path, out.dry_run)
+    out.stripped[folder.date] = strip(path, out.dry_run, folder.pending)
     return True
 
 

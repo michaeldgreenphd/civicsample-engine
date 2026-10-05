@@ -20,6 +20,8 @@ dataset, then this week's files into data/.
   good, and history.json naming exactly what is there.
 - The real runs since 2026-07-03 (a missed week, a Friday and a Tuesday run):
   the 2026-09-27 regression, 09-27 archived and kept, July and September kept.
+- Four Sundays that publish nothing: the outgoing week, the only one of its
+  month, is archived and slimmed into the month's aggregate, not lost.
 - A same-day re-run archives nothing and changes nothing.
 - Archiving copies every file of the outgoing dataset (whole parts; core,
   studies_tab, detail and run.json), its summary, sex/gender pair and methods
@@ -203,6 +205,38 @@ def test_the_2026_09_27_regression_on_the_real_runs_since_july(tmp_path: pathlib
     assert sorted(d for d, k in state.items() if k == ps.COMPLETE) == ["2026-08-30", "2026-09-13", "2026-09-27"]
     assert sorted(d for d, k in state.items() if k == ps.AGGREGATE) == [
         "2026-02-22", "2026-03-29", "2026-04-26", "2026-05-31", "2026-06-28", "2026-07-19"]
+
+
+def test_after_sundays_that_publish_nothing_the_outgoing_week_keeps_its_month(tmp_path: pathlib.Path) -> None:
+    """11-08 to 11-29 publish nothing (the registry down, or the gate blocking
+    each week), so data/ still serves 11-01 at the 12-06 run. 11-01 is the
+    second week of fortnight 21, whose first, 10-25, is kept complete; but no
+    kept week and not the latest is in November, so 11-01 is its month's
+    aggregate: archived out of data/ and slimmed in the same run, its own
+    records written first. Not archiving it would leave November with no
+    snapshot at all."""
+    site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE, REAL_AGGREGATES)
+    for day in sundays("2026-10-11", 4):
+        publish(tmp_path, site, day)
+    before = tree_digest(site)
+    dry = ps.run(str(site), "2026-12-06", None, dry=True)
+    assert tree_digest(site) == before, "the dry run changed the site"
+    assert dry.archived["status"] == "would archive" and dry.slimmed == ["2026-11-01"], dry.report()
+    assert "demographics.part1.json.gz" in dry.stripped["2026-11-01"]
+    out = publish(tmp_path, site, "2026-12-06")
+    assert out.archived["status"] == "archived" and "aggregate" in out.archived["reason"], out.archived
+    assert out.slimmed == ["2026-11-01"] and out.warnings == [], out.report()
+    assert (out.complete, out.slimmed, out.removed) == (dry.complete, dry.slimmed, dry.removed)
+    folder = site / "snapshots" / "2026-11-01"
+    assert sorted(os.listdir(folder)) == ["archive_records.json.gz", "dashboard-summary.json"]
+    doc = h.read_gz(folder / "archive_records.json.gz")
+    assert (doc["source_extracted_at"], doc["source_pipeline_commit"]) == tuple(sh.stamps("2026-11-01").values())
+    history = sh.read_history(site)
+    assert "2026-11-01" in history["dates"]
+    assert history["archives"]["2026-11-01"] == {"kind": "aggregate", "detail": "archive_records.json.gz"}
+    months = {d[:7] for d in history["dates"]}
+    assert months == {"2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-08", "2026-10", "2026-11",
+                      "2026-12"}, sorted(months)
 
 
 def test_a_same_day_rerun_archives_nothing_and_changes_nothing(tmp_path: pathlib.Path) -> None:
