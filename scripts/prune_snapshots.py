@@ -22,7 +22,10 @@ INVOKED by .github/workflows/extract.yml in the publish step as
         to archive. By hand: --dry-run changes nothing and says what it would do.
 EXITS   1, having changed nothing, when history.json cannot be read, --latest
         is not a date, or a snapshot or a listed date is newer than the latest;
-        1 when a copy fails part way (the partial copy is removed). A week it
+        1, with an ::error:: line and history.json not rewritten, when a copy
+        fails part way or differs from its source (the partial copy is
+        removed, and nothing else has been changed yet) or a file cannot be
+        deleted. A week it
         cannot archive, or a snapshot it cannot slim (a file missing, another
         run's stamps, a study its summary lists missing from its records), is
         reported, warned and left as it is: nothing is deleted on a doubt.
@@ -588,6 +591,12 @@ def main(argv: list[str] | None = None) -> int:
         out = run(a.site, a.latest, a.contract, a.dry_run)
     except Refused as e:
         print(f"::error::snapshot retention: {e}")
+        return 1
+    except OSError as e:
+        # A copy that failed or differs from its source (its partial copy
+        # is removed), or a file that could not be deleted: the run stops
+        # there, before history.json is written, and so does the publish step.
+        print(f"::error::snapshot retention stopped: {e}")
         return 1
     if out is None:
         print("Snapshot retention: no --latest and no dated history.json, so there is nothing to retain")

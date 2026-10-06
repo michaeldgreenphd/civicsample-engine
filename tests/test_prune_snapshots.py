@@ -514,6 +514,106 @@ def test_a_snapshot_whose_summary_lists_a_study_its_records_lack_stays_complete(
     assert not (site / "snapshots" / "2026-05-31" / "archive_records.json.gz").exists()
 
 
+def _summary_change(change: Callable[[dict], object]) -> Callable[[pathlib.Path], object]:
+    def apply(folder: pathlib.Path) -> None:
+        summary = json.loads((folder / "dashboard-summary.json").read_text())
+        change(summary)
+        (folder / "dashboard-summary.json").write_text(json.dumps(summary))
+    return apply
+
+
+def _drop_detail_entry(folder: pathlib.Path) -> None:
+    """A split folder's detail shard without one of its studies' entries."""
+    nct = sh.IDS[5]
+    path = folder / sl.detail_shard_name(sl.shard_of(nct, 256))
+    body = h.read_gz(path)
+    del body["data"][nct]
+    path.write_bytes(gzip.compress(json.dumps(body).encode(), mtime=0))
+
+
+def _record_twice(folder: pathlib.Path) -> None:
+    """A whole-part folder whose part 3 also holds part 2's first record."""
+    part2, part3 = (h.read_gz(folder / f"demographics.part{k}.json.gz") for k in (2, 3))
+    part3["data"].append(part2["data"][0])
+    (folder / "demographics.part3.json.gz").write_bytes(gzip.compress(json.dumps(part3).encode(), mtime=0))
+
+
+# A complete snapshot whose archive file cannot be written from what it
+# holds: (split, change to the folder, a phrase the warning says).
+UNWRITABLE: dict[str, tuple[bool, Callable[[pathlib.Path], object], str]] = {
+    "a detail shard without a study's entry": (True, _drop_detail_entry, f"has no entry for {sh.IDS[5]}"),
+    "a study in two records": (False, _record_twice, "is in two records"),
+    "a summary listing a study twice": (False, _summary_change(lambda s: s["recentStudies"].append(s["recentStudies"][0])),
+                                        "lists a study twice in recentStudies"),
+    "a summary row without an nct_id": (False, _summary_change(lambda s: s["recentStudies"][3].pop("nct_id")),
+                                        "1 recentStudies rows of its dashboard-summary.json carry no nct_id"),
+    "a summary listing no studies": (False, _summary_change(lambda s: s.update(recentStudies=[])),
+                                     "lists no recentStudies"),
+}
+
+
+@pytest.mark.parametrize("name", list(UNWRITABLE))
+def test_a_snapshot_whose_archive_file_cannot_be_written_stays_complete(tmp_path: pathlib.Path, name: str) -> None:
+    """The run goes on (a crash here would stop every weekly publish until
+    someone mended the folder by hand); the folder keeps its files and is
+    warned about, and no archive file or half-written one is left in it."""
+    split, damage, phrase = UNWRITABLE[name]
+    site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE, split=split)
+    folder = site / "snapshots" / "2026-05-31"
+    damage(folder)
+    out = publish(tmp_path, site, "2026-10-11", split=split)
+    assert out.slimmed == [] and "2026-05-31" in out.complete, out.report()
+    assert (folder / "demographics.part1.json.gz").exists() and not list(folder.glob("archive_records*"))
+    assert any("snapshots/2026-05-31/ stays complete" in w and phrase in w for w in out.warnings), out.warnings
+
+
+def test_an_archive_file_that_does_not_check_once_written_is_not_moved_into_place(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """write() checks the file it wrote against the summary before it moves it
+    into place: a builder that left a study out (a stand-in fault) leaves the
+    snapshot complete, with no archive file and no half-written one."""
+    real = archive_records.build
+
+    def one_short(dataset: object, contract: object) -> dict:
+        doc = real(dataset, contract)  # type: ignore[arg-type]
+        doc["data"].pop(sh.IDS[0])
+        return doc
+
+    monkeypatch.setattr(archive_records, "build", one_short)
+    site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE)
+    out = publish(tmp_path, site, "2026-10-11")
+    folder = site / "snapshots" / "2026-05-31"
+    assert out.slimmed == [] and (folder / "demographics.part1.json.gz").exists()
+    assert not list(folder.glob("archive_records*")), sorted(os.listdir(folder))
+    assert any("stays complete" in w and "does not cover exactly" in w for w in out.warnings), out.warnings
+
+
+def test_a_copy_that_differs_from_data_stops_the_run_and_leaves_no_folder(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Every copy is compared with its source before the folder is moved into
+    place: a copy that differs (a stand-in fault flips a byte of one) stops
+    the run with an error, before anything is pruned or history.json is
+    written, and leaves neither the folder nor the partial copy."""
+    site = sh.make_site(tmp_path, "2026-10-11", history={"dates": ["2026-10-11"], "latest": "2026-10-11"})
+    real = shutil.copyfile
+
+    def flipping(src: str, dst: str, *args: object, **kwargs: object) -> str:
+        out = real(src, dst, *args, **kwargs)  # type: ignore[arg-type]
+        if dst.endswith("demographics.part3.json.gz"):
+            data = bytearray(pathlib.Path(dst).read_bytes())
+            data[len(data) // 2] ^= 0xFF
+            pathlib.Path(dst).write_bytes(bytes(data))
+        return out
+
+    before = tree_digest(site / "data"), (site / "history.json").read_bytes()
+    monkeypatch.setattr(ps.shutil, "copyfile", flipping)
+    assert ps.main(["--site", str(site), "--latest", "2026-10-18"]) == 1
+    out = capsys.readouterr().out
+    assert "::error::" in out and "demographics.part3.json.gz differ from data/'s" in out, out
+    assert (tree_digest(site / "data"), (site / "history.json").read_bytes()) == before, "the run changed the site"
+    assert not os.listdir(site / "snapshots"), "a folder or a partial copy was left in snapshots/"
+
+
 def test_without_the_sites_contract_nothing_is_slimmed(tmp_path: pathlib.Path) -> None:
     site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE)
     (site / "tests" / "record_contract.json").unlink()
