@@ -877,6 +877,16 @@ def test_the_documented_recovery_commands_bring_back_any_week(tmp_path: pathlib.
         subprocess.run([git, "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=site, env=env, check=True,
                        capture_output=True)
 
+    def commit(message: str) -> None:
+        """Commit exactly the tree on disk. The weeks are copied with their
+        source's mtime (shutil.copytree), so a part of the same size, written
+        in the same second as the previous add, can match git's stat cache and
+        not be staged (seen on the Linux runner); the index is rebuilt from the
+        tree first. The publish step's rm and cp give every file a new mtime."""
+        git_("read-tree", "--empty")
+        git_("add", "-A")
+        git_("commit", "-qm", message)
+
     def week_files(folder: pathlib.Path) -> dict[str, bytes]:
         return {rel: (folder / rel).read_bytes() for rel in sh.files(folder)
                 if re.fullmatch(r"(demographics|studies_tab)\.part\d+\.json\.gz|detail/.*|run\.json|"
@@ -884,14 +894,12 @@ def test_the_documented_recovery_commands_bring_back_any_week(tmp_path: pathlib.
 
     site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE, REAL_AGGREGATES, split=split)
     git_("init", "-q", "-b", "main")
-    git_("add", "-A")
-    git_("commit", "-qm", "Update demographics data 2026-10-04")
+    commit("Update demographics data 2026-10-04")
     served = {"2026-10-04": week_files(site / "data")}
     archived = {d: week_files(site / "snapshots" / d) for d in ("2026-05-31", "2026-10-04")}
     for day in sundays("2026-10-11", 6):
         publish(tmp_path, site, day, split=split)
-        git_("add", "-A")
-        git_("commit", "-qm", f"Update demographics data {day}")
+        commit(f"Update demographics data {day}")
         served[day] = week_files(site / "data")
     state = kinds(site)
     assert "2026-10-18" not in state and "2026-10-04" not in state and state["2026-05-31"] == ps.AGGREGATE
