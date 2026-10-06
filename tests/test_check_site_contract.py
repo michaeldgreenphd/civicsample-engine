@@ -799,6 +799,17 @@ def _first_key(d: dict) -> str:
     return next(iter(d))
 
 
+def _seven_parts(folder: pathlib.Path) -> None:
+    """A whole-part snapshot recut into 7 parts, every header and its run.json
+    saying so: one complete run of its own, but the site fetches 8 parts."""
+    parts = [_read(folder / f"demographics.part{k}.json.gz") for k in range(1, 9)]
+    parts[6]["data"] += parts[7]["data"]
+    (folder / "demographics.part8.json.gz").unlink()
+    for k, body in enumerate(parts[:7], start=1):
+        _write(folder / f"demographics.part{k}.json.gz", {**body, "total_parts": 7})
+    _json_change("run.json", lambda run: run.update(total_parts=7))(folder)
+
+
 OTHER_RUN = sh.stamps("2026-06-14")
 # Each blocking rule of history.json and the archived snapshots: (change, a phrase the error says).
 HISTORY_BLOCKS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
@@ -827,6 +838,14 @@ HISTORY_BLOCKS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
     "a listed folder without its summary": (
         lambda s: (s / "snapshots" / "2026-02-22" / "dashboard-summary.json").unlink(),
         "snapshots/2026-02-22/ has no readable dashboard-summary.json"),
+    "an archives entry for the latest date": (
+        _history_change(lambda h: h["archives"].update({RETAINED: {"kind": "aggregate"}})),
+        f"archives names '{RETAINED}', which is not a listed archived date"),
+    "archives that is not an object": (_history_change(lambda h: h.update(archives=[SLIMMED])),
+                                       "history.json archives is not an object"),
+    "an archive file under another name": (
+        _history_change(lambda h: h["archives"][SLIMMED].update(detail="records.json.gz")),
+        f"names 'records.json.gz' as the archive file of {SLIMMED}"),
     "an archives entry for a date not listed": (
         _history_change(lambda h: h["archives"].update({"2026-07-26": {"kind": "aggregate"}})),
         "archives names '2026-07-26', which is not a listed archived date"),
@@ -873,6 +892,9 @@ HISTORY_BLOCKS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
     "a complete snapshot part cut short past its header": (
         lambda s: sh.cut_short_past_its_header(s / "snapshots" / "2026-08-02" / "demographics.part3.json.gz"),
         "demographics.part3.json.gz is not gzipped JSON"),
+    "a complete snapshot cut in another number of parts": (
+        lambda s: _seven_parts(s / "snapshots" / "2026-08-02"),
+        "demographics.part1.json.gz says {'part': 1, 'total_parts': 7}, not {'part': 1, 'total_parts': 8}"),
     "a complete snapshot whose run.json is another run's": (
         _json_change("snapshots/2026-08-02/run.json", lambda b: b.update(OTHER_RUN)), "run.json says extracted_at"),
     "a complete snapshot summary from another run": (

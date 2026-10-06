@@ -486,6 +486,9 @@ def test_a_slimmed_snapshot_keeps_its_own_records_for_exactly_its_recent_studies
     assert archive_records.problems(str(folder / "archive_records.json.gz"),
                                     json.loads((folder / "dashboard-summary.json").read_text())) == []
     assert sh.read_history(site)["archives"]["2026-05-31"] == {"kind": "aggregate", "detail": "archive_records.json.gz"}
+    written = (folder / "archive_records.json.gz").read_bytes()
+    assert written[:2] == b"\x1f\x8b" and written[4:8] == bytes(4), \
+        "the gzip header carries a time, so the same records would not give the same bytes"
 
 
 def test_a_week_gives_the_same_archive_file_whole_or_split(tmp_path: pathlib.Path) -> None:
@@ -499,6 +502,33 @@ def test_a_week_gives_the_same_archive_file_whole_or_split(tmp_path: pathlib.Pat
         publish(tmp_path / str(split), site, "2026-10-11", split=split)
         made.append((site / "snapshots" / "2026-05-31" / "archive_records.json.gz").read_bytes())
     assert made[0] == made[1]
+
+
+def test_a_month_leaving_the_window_keeps_its_newest_week(tmp_path: pathlib.Path) -> None:
+    """Two complete weeks of August leave the window in the same run (the old
+    step's folders, or a restore): the newer becomes August's aggregate, the
+    older goes."""
+    site = sh.make_site(tmp_path, "2026-10-11", ["2026-08-16", "2026-08-30", "2026-09-13", "2026-09-27"])
+    out = publish(tmp_path, site, "2026-10-18")
+    assert out.complete == ["2026-09-13", "2026-09-27", "2026-10-11"], out.report()
+    assert out.slimmed == ["2026-08-30"] and out.removed == ["2026-08-16"] and out.aggregates == ["2026-08-30"]
+
+
+@pytest.mark.parametrize("archive", [{"file": "detail_records.json.gz", "class": "archive"},
+                                     {"file": "archive_records.json.gz", "class": "detail"}],
+                         ids=["another-file-name", "another-class"])
+def test_a_contract_that_names_another_archive_file_slims_nothing(tmp_path: pathlib.Path,
+                                                                   archive: dict[str, str]) -> None:
+    """The site reads an aggregate's records by the name and class its
+    contract's layout.archive gives: a file this engine would write under
+    another name or class would never be read, so nothing is slimmed."""
+    site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE)
+    contract = sh.contract()
+    contract["layout"]["archive"] = {**contract["layout"]["archive"], **archive}
+    (site / "tests" / "record_contract.json").write_text(json.dumps(contract))
+    out = publish(tmp_path, site, "2026-10-11")
+    assert out.slimmed == [] and (site / "snapshots" / "2026-05-31" / "demographics.part1.json.gz").exists()
+    assert any("snapshots/2026-05-31/ stays complete" in w and "layout.archive" in w for w in out.warnings), out.warnings
 
 
 def test_a_snapshot_whose_summary_lists_a_study_its_records_lack_stays_complete(tmp_path: pathlib.Path) -> None:
