@@ -1,0 +1,355 @@
+<!-- Copied unchanged from michaeldgreenphd/clinical-trial-populations@c4e297ab45d61f2872eff5140cc9b91ddd0605d6: index.html from its header through the Overview. Written by scripts/first_view_parity.mjs --excerpt. -->
+<header>
+        <div class="masthead-identity">
+            <h1>Civic Sample</h1>
+            <p class="subtitle">Striving for diversity and representation in clinical trials</p>
+        </div>
+        <div class="masthead-meta">
+            <p class="last-updated">Last updated: <span id="last-updated"></span></p>
+            <div class="history-selector">
+                <label for="history-date">View snapshot:</label>
+                <select id="history-date">
+                    <option value="latest">Latest</option>
+                    <!-- Historical dates populated by JavaScript -->
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <!-- Every tab is still a <button class="tab" data-tab="…">; the groups
+         only change where the buttons sit in the DOM, so tab switching,
+         hash routing and deep links are untouched. -->
+    <!-- The filter panel states its selection in words and stays closed
+         until asked for; the panel itself is unchanged behind it. -->
+    <nav class="tabs">
+        <button class="tab active" data-tab="overview">Overview</button>
+
+        <details class="nav-group" id="nav-demographics">
+            <summary>Demographics</summary>
+            <div class="nav-menu">
+                <button class="tab" data-tab="race">Race</button>
+                <button class="tab" data-tab="ethnicity">Ethnicity</button>
+                <button class="tab" data-tab="sex">Sex</button>
+                <button class="tab" data-tab="gender">Gender</button>
+                <button class="tab" data-tab="geography">Geography</button>
+            </div>
+        </details>
+
+        <details class="nav-group" id="nav-context">
+            <summary>Context</summary>
+            <div class="nav-menu">
+                <button class="tab" data-tab="studies">Studies</button>
+                <button class="tab" data-tab="fda-oversight">FDA Oversight</button>
+                <button class="tab" data-tab="ai-devices">AI Devices</button>
+            </div>
+        </details>
+
+        <details class="nav-group" id="nav-tools">
+            <summary>Tools <span class="nav-beta">Beta</span></summary>
+            <div class="nav-menu">
+                <button class="tab" data-tab="fda-extraction">AI Demographic Extraction</button>
+                <button class="tab" data-tab="lit-extraction">Paper Data Extraction</button>
+                <button class="tab" data-tab="approval-queue">Approval Queue</button>
+                <button class="tab" data-tab="industry">Industry Sponsors</button>
+            </div>
+        </details>
+
+        <span class="nav-secondary">
+            <button class="tab" data-tab="about">About</button>
+            <button class="tab" data-tab="faq">FAQ</button>
+        </span>
+    </nav>
+
+    <main>
+        <!-- The selection in words, on the page ground: no card, no border,
+             no accent rail. The panel below it stays closed until asked for,
+             so a tab opens on its data rather than on its controls. -->
+        <div id="filter-summary" class="filter-summary">
+            <span class="filter-summary-label">Showing</span>
+            <span class="filter-summary-text" id="filter-summary-text">the full dataset</span>
+            <button type="button" class="filter-summary-toggle" id="filter-summary-toggle"
+                    aria-expanded="false" aria-controls="filters">Filters</button>
+            <!-- app.js hides this button on the phone view, where the panel
+                 it controls is not part of that experience. -->
+        </div>
+
+        <section id="filters" hidden>
+            <!-- Primary filters — always visible -->
+            <div class="filter-row">
+                <div class="filter-group filter-group--range">
+                    <label for="year-range">Year Range <span class="filter-hint">(Results Posted Date)</span></label>
+                    <div class="dual-range-container">
+                        <div class="dual-range-track">
+                            <div class="dual-range-fill" id="year-range-fill"></div>
+                            <input type="range" id="year-start" min="2009" max="2026" value="2009" class="dual-range-input">
+                            <input type="range" id="year-end" min="2009" max="2026" value="2026" class="dual-range-input">
+                            <div class="range-tooltip" id="year-start-tooltip"><span id="year-start-label">2009</span></div>
+                            <div class="range-tooltip" id="year-end-tooltip"><span id="year-end-label">2026</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label for="study-type">Study Type:</label>
+                    <select id="study-type">
+                        <option value="INTERVENTIONAL" selected>Interventional</option>
+                        <option value="all">All</option>
+                        <option value="OBSERVATIONAL">Observational</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="sponsor-class">Sponsor:</label>
+                    <select id="sponsor-class">
+                        <option value="all">All Sponsors</option>
+                        <option value="NIH">NIH</option>
+                        <option value="INDUSTRY">Industry</option>
+                        <option value="FED">Federal (Non-NIH)</option>
+                        <option value="OTHER">Other</option>
+                        <option value="NETWORK">Network</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="primary-purpose">Purpose:</label>
+                    <select id="primary-purpose">
+                        <option value="all">All Purposes</option>
+                        <option value="TREATMENT">Treatment</option>
+                        <option value="PREVENTION">Prevention</option>
+                        <option value="DIAGNOSTIC">Diagnostic</option>
+                        <option value="SUPPORTIVE_CARE">Supportive Care</option>
+                        <option value="SCREENING">Screening</option>
+                        <option value="HEALTH_SERVICES_RESEARCH">Health Services Research</option>
+                        <option value="BASIC_SCIENCE">Basic Science</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="condition-primary">Condition (Primary):</label>
+                    <select id="condition-primary">
+                        <option value="all">All Categories</option>
+                        <!-- Populated by JavaScript from ontology -->
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="condition-secondary">Condition (Secondary):</label>
+                    <select id="condition-secondary">
+                        <option value="all">All Subcategories</option>
+                        <!-- Populated by JavaScript when a primary category is selected -->
+                    </select>
+                </div>
+            </div>
+
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="fda-status">FDA Regulatory Status:</label>
+                    <select id="fda-status">
+                        <option value="all">All Statuses</option>
+                        <option value="drug">FDA Regulated Drug</option>
+                        <option value="device">FDA Regulated Device</option>
+                        <option value="unapproved">Unapproved Device</option>
+                        <option value="non-regulated">Non-Regulated</option>
+                        <option value="unreported">Oversight Not Reported</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Expandable filters — hidden by default -->
+            <div id="expanded-filters" class="expanded-filters" style="display: none;">
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="phase">Phase:</label>
+                        <select id="phase">
+                            <option value="all">All Phases</option>
+                            <option value="EARLY_PHASE1">Early Phase 1</option>
+                            <option value="PHASE1">Phase 1</option>
+                            <option value="PHASE2">Phase 2</option>
+                            <option value="PHASE3">Phase 3</option>
+                            <option value="PHASE4">Phase 4</option>
+                            <option value="NA">N/A</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="intervention-model">Design:</label>
+                        <select id="intervention-model">
+                            <option value="all">All Designs</option>
+                            <option value="PARALLEL">Parallel</option>
+                            <option value="CROSSOVER">Crossover</option>
+                            <option value="SINGLE_GROUP">Single Group</option>
+                            <option value="SEQUENTIAL">Sequential</option>
+                            <option value="FACTORIAL">Factorial</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="masking">Masking:</label>
+                        <select id="masking">
+                            <option value="all">All</option>
+                            <option value="NONE">None (Open Label)</option>
+                            <option value="SINGLE">Single</option>
+                            <option value="DOUBLE">Double</option>
+                            <option value="TRIPLE">Triple</option>
+                            <option value="QUADRUPLE">Quadruple</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="enrollment-type">Enrollment Type:</label>
+                        <select id="enrollment-type">
+                            <option value="all">All</option>
+                            <option value="ACTUAL">Actual</option>
+                            <option value="ANTICIPATED">Anticipated/Estimated</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="healthy-volunteers">Healthy Volunteers:</label>
+                        <select id="healthy-volunteers">
+                            <option value="all">All</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="population-age">Population Age:</label>
+                        <select id="population-age">
+                            <option value="all">All</option>
+                            <option value="Pediatric Only">Pediatric Only (Children &lt; 18)</option>
+                            <option value="Pediatric Included">Pediatric Included (Children + Adults)</option>
+                            <option value="Adult Only">Adults Only (18+)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="min-participants">Min Participants:</label>
+                        <input type="number" id="min-participants" min="0" placeholder="0">
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="max-participants">Max Participants:</label>
+                        <input type="number" id="max-participants" min="0" placeholder="Any">
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="condition">Condition (Verbatim):</label>
+                        <select id="condition">
+                            <option value="all">All Conditions</option>
+                            <!-- Populated by JavaScript -->
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="country">Country:</label>
+                        <select id="country">
+                            <option value="all">All Countries</option>
+                            <!-- Populated by JavaScript -->
+                        </select>
+                    </div>
+
+                    <div class="filter-group ai-filter-group">
+                        <label class="ai-toggle-label" for="ai-study-filter">
+                            <input type="checkbox" id="ai-study-filter">
+                            <span class="ai-toggle-text">AI Studies Only</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- ?sg=v2 (parser v2) filters. Shown only while the beta is on;
+                     they compose with every filter above in getFilteredData(). -->
+                <div class="filter-row sg-v2-filter sg-hidden">
+                    <div class="filter-group">
+                        <label for="sg-status">Sex/gender status (parser v2):</label>
+                        <select id="sg-status">
+                            <option value="all">All states</option>
+                            <option value="reported">Reported</option>
+                            <option value="explicit_unknown_only">Explicit Unknown</option>
+                            <option value="uninformative">Uninformative</option>
+                            <option value="not_reported">Not Reported (Missing)</option>
+                            <option value="parse_error">Parse error</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="sg-reported-sex">Reported sex:</label>
+                        <select id="sg-reported-sex"><option value="all">Any</option><option value="true">Yes</option><option value="false">No</option></select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="sg-reported-gender">Reported gender:</label>
+                        <select id="sg-reported-gender"><option value="all">Any</option><option value="true">Yes</option><option value="false">No</option></select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="sg-reported-both">Reported both:</label>
+                        <select id="sg-reported-both"><option value="all">Any</option><option value="true">Yes</option><option value="false">No</option></select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="sg-glb">Gender-titled, Female/Male only:</label>
+                        <select id="sg-glb"><option value="all">Any</option><option value="true">Yes</option><option value="false">No</option></select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="sg-participant-count">Participant-count table:</label>
+                        <select id="sg-participant-count"><option value="all">Any</option><option value="true">Yes</option><option value="false">No</option></select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-row">
+                <div class="filter-group">
+                    <button id="toggle-more-filters" class="toggle-filters-btn">Show More Filters &#9660;</button>
+                </div>
+                <div class="filter-group">
+                    <button id="reset-filters" class="reset-btn">Reset All Filters</button>
+                </div>
+            </div>
+
+            <div class="active-filters" id="active-filters"></div>
+        </section>
+
+        <!-- Overview Tab -->
+        <section id="overview" class="tab-content active">
+            <!-- Tier 1: the tab's answer, stated before its controls. The
+                 text is generated in app.js from values already on this page
+                 (renderOverviewFinding) — it derives no new statistic. -->
+            <div class="panel-hero overview-finding" id="overview-finding" hidden>
+                <p class="finding-headline" id="finding-headline"></p>
+                <p class="finding-context" id="finding-context"></p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Studies</h3>
+                    <p class="stat-value" id="total-studies">-</p>
+                    <p class="stat-sub" id="stat-sub-total">&nbsp;</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Report Race</h3>
+                    <p class="stat-value" id="race-reporting">-</p>
+                    <p class="stat-sub" id="stat-sub-race">&nbsp;</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Report Ethnicity</h3>
+                    <p class="stat-value" id="ethnicity-reporting">-</p>
+                    <p class="stat-sub" id="stat-sub-ethnicity">&nbsp;</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Report Both</h3>
+                    <p class="stat-value" id="both-reporting">-</p>
+                    <p class="stat-sub" id="stat-sub-both">&nbsp;</p>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>Reporting Trends Over Time</h3>
+                <canvas id="reporting-trends-chart"></canvas>
+                <p class="chart-footnote">Dashed 2017 marker: the FDAAA Final Rule (42 CFR Part 11) took effect January 18, 2017, clarifying and enforcing sponsors’ obligation to report trial results — see the FAQ entry on FDAAA for the policy history.</p>
+            </div>
+        </section>

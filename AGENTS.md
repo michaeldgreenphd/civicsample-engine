@@ -148,6 +148,28 @@ past the site's size budgets (tests/data_budget.json there, with a budget per
 class for the split's files) only warns. A change that makes that check
 advisory, or runs it after the push, is the defect it exists to catch.
 
+**The summary's `firstView` is the Overview as it opens, counted by the
+site's own rules.** Every other key of dashboard-summary.json counts every
+study type. `firstView` (`src/first_view.py`, written last by
+`scripts/generate_mobile_data.py` from the full records) holds what the
+desktop Overview shows on its default filters (study type Interventional,
+results from 2009 with no upper bound, every other filter at All), so the site
+can paint it before the records arrive. Its rules are the site's, not
+Python's: JavaScript truthiness for `reported`, a results year only when the
+first four characters of `results_date` are ASCII digits, the study type
+compared strictly, the newest results year taken over every study type. What
+the view leaves out is counted in `not_counted`, never folded into a zero, and
+a record the site's code would throw on stops the generator.
+`scripts/first_view_parity.mjs` runs the site's own Overview code over the
+same records and checks every number of the block against what it counts and
+paints; `tests/test_first_view.py` runs it on a fixture against
+`tests/fixtures/site_overview/`, the pieces of the site's app.js and
+index.html that the Overview runs, copied unchanged by the script's
+`--excerpt` mode, whose first line names the site commit. A site change to
+that code is followed by rewriting the excerpt from the site and checking a
+real week's records with the script. A change that loosens the check, or edits
+the excerpt by hand, is the defect it exists to catch.
+
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM
 extraction results, which cost money to produce and are the record the
@@ -172,7 +194,8 @@ node --test tests/sponsors/*.test.mjs               # the browser filter module
 ```
 
 The LLM extraction stack has its own `scripts/extraction/requirements.txt` and
-is not needed for these checks.
+is not needed for these checks. The Python suite needs node on the path:
+`tests/test_first_view.py` runs the site's own code under it.
 
 `.github/workflows/ci.yml` runs exactly these, in this order, on every push and
 pull request.

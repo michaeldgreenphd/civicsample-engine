@@ -14,6 +14,15 @@ prompt.  Filters are disabled (all data is pre-aggregated).
 READS the week's full records (data/demographics.json, src.full_records),
 not the site's parts: recentStudies carries status, why_stopped, ages and a
 reference count, which the parts will stop carrying.
+
+firstView (src/first_view.py) is the Overview as it opens on desktop: study
+type Interventional, results from 2009 on, every other filter at All. Every
+other key counts all study types, so the Overview cannot be painted from them
+without a visible jump when the records arrive. The block is counted with the
+site's own rules so the site can paint the Overview from this file first, and
+phones can open on the same numbers; scripts/first_view_parity.mjs runs the
+site's own code over the same records and checks every number in it. It is
+written last, so every key above keeps its bytes.
 """
 import argparse
 import json
@@ -23,6 +32,7 @@ from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src import first_view as fv  # noqa: E402
 from src import full_records  # noqa: E402
 from src import sex_gender_table as sgt  # noqa: E402
 
@@ -171,6 +181,10 @@ def main(argv: list[str] | None = None) -> None:
 
     total = len(all_studies)
     print(f"Loaded {total} studies")
+
+    # The Overview as it opens, first: it names a record the site's own code
+    # would throw on (src/first_view.py) before anything else reads it.
+    first = fv.first_view(all_studies, extracted_at, pipeline_commit)
 
     # The full sex/gender record (labels, percent_female) lives in the parsed
     # table, not in the lean per-study rows; read it when it is there.
@@ -506,6 +520,11 @@ def main(argv: list[str] | None = None) -> None:
         # sg=v2: the manuscript parser's table, summarised. None on pulls that
         # predate the sex_gender row (archived snapshot summaries stay valid).
         "sexGender": sex_gender_summary(all_studies, table_rows),
+        # The Overview as it opens (Interventional, results from 2009 on),
+        # counted with the site's own rules; last, so the keys above keep
+        # their bytes. Archived summaries have none and the site treats that
+        # as "paint from the records".
+        "firstView": first,
     }
 
     path = a.out
@@ -515,6 +534,11 @@ def main(argv: list[str] | None = None) -> None:
     size_kb = os.path.getsize(path) / 1024
     print(f"\n✓ Generated {path}: {size_kb:.1f} KB")
     print(f"  ({total} studies pre-aggregated into {len(years)} year buckets)")
+    trials = first["trials"]
+    shares = ", ".join(f"{name.removeprefix('trials_reporting_')} {first[name] / trials * 100:.1f}%"
+                       for name in fv.NUMERATORS) if trials else "no trials"
+    print(f"  firstView: {trials} interventional trials with results from {fv.RESULTS_YEAR_FROM} "
+          f"(newest results year {first['newest_results_year']}): {shares}; not counted {first['not_counted']}")
 
 
 if __name__ == "__main__":

@@ -23,7 +23,11 @@ The weekly run (`extract.yml`, Sundays 06:00 UTC) does six things, in order:
    belong (a real example from the test suite: a trial that listed
    "Condom" and "IUD" in its race table).
 3. **Package** — builds a small summary file for mobile and rebuilds the
-   industry-sponsor analysis.
+   industry-sponsor analysis. The summary also carries the Overview as it
+   opens on desktop (`firstView`: interventional trials with results from
+   2009), counted by the site's own rules, so the site can show it before the
+   study records arrive; `scripts/first_view_parity.mjs` checks it against
+   the site's own code.
 4. **Back up** — attaches the week's full study records
    (`demographics.json.gz`), the raw sex/gender measures and the run log to a
    dated `data-YYYY-MM-DD` GitHub Release in this repo. Every week's release
@@ -151,7 +155,7 @@ pip install -r scripts/extraction/requirements.txt    # + LLM streams
 pip install -r requirements-dev.txt  # + pytest, for the test suite
 
 python scripts/validate_fixes.py    # the extractor test harness (no network)
-python -m pytest tests -q           # the Python test suite
+python -m pytest tests -q           # the Python test suite (needs node: the first-view parity)
 node --test tests/sponsors/*.test.mjs   # the browser filter module
 python -m src.extract_all --output data/demographics.json --results-after 2009-01-01
 # the site's dataset files, from the site's own contract (a site checkout's tests/)
