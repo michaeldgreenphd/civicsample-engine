@@ -28,13 +28,15 @@ jobs:
       - name: Run extractor validation harness
         run: python scripts/validate_fixes.py
 
-      - name: Run the Python test suite (sponsor rules, index, adapter, fixture regression, audit loop, snapshot pruning)
-        run: python -m pytest tests -q
-
-      - name: Set up Node (pinned so the ESM tests do not depend on the runner default)
+      # Before the Python suite: tests/test_first_view.py runs the site's own
+      # Overview code under node (scripts/first_view_parity.mjs).
+      - name: Set up Node (pinned so the ESM tests and the first-view parity do not depend on the runner default)
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Run the Python test suite (sponsor rules, index, adapter, fixture regression, audit loop, snapshot pruning, first-view parity)
+        run: python -m pytest tests -q
 
       - name: Run browser filter module tests
         run: node --test tests/sponsors/*.test.mjs
