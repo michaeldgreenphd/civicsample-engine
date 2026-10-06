@@ -42,6 +42,7 @@
  *        --source "<repo>@<commit>" [--out-dir tests/fixtures/site_overview]
  *     Rewrites the excerpt from the site's files: the pieces below, unchanged.
  */
+import { createHash } from 'node:crypto';
 import { createReadStream, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +53,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXCERPT_DIR = path.join(HERE, '..', 'tests', 'fixtures', 'site_overview');
 const EXCERPT_APP = 'app_overview.js';
 const EXCERPT_INDEX = 'index_overview.html';
+const EXCERPT_SOURCE = 'SOURCE.json';
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 // What the Overview runs as it opens, in app.js order. ['fn', signature] is
 // the site tests' fnSource: from the signature to the first "\n}\n" after it.
@@ -155,7 +158,19 @@ function writeExcerpt(appPath, indexPath, source, outDir) {
         if (p !== site.pieces[i]) throw new InputError(`the excerpt does not slice back to ${APP_PIECES[i][1]}`);
     });
     if (back.markup !== site.markup) throw new InputError('the excerpt does not slice back to the markup');
-    return { app: path.join(outDir, EXCERPT_APP), index: path.join(outDir, EXCERPT_INDEX), pieces: site.pieces.length };
+    // The pins: the site's own files at that commit, and the excerpt written
+    // from them. tests/test_first_view.py checks the excerpt against the second,
+    // and, fetching the site's files at the commit, against the first, so the
+    // excerpt cannot drift from the commit it names without failing CI.
+    const pins = {
+        about: 'Written by scripts/first_view_parity.mjs --excerpt with the excerpt beside it; never edited by hand.',
+        source,
+        site_files: { 'app.js': sha256(readFileSync(appPath)), 'index.html': sha256(readFileSync(indexPath)) },
+        excerpt: { [EXCERPT_APP]: sha256(Buffer.from(app)), [EXCERPT_INDEX]: sha256(Buffer.from(index)) },
+    };
+    writeFileSync(path.join(outDir, EXCERPT_SOURCE), JSON.stringify(pins, null, 2) + '\n');
+    return { app: path.join(outDir, EXCERPT_APP), index: path.join(outDir, EXCERPT_INDEX),
+             source: path.join(outDir, EXCERPT_SOURCE), pieces: site.pieces.length };
 }
 
 // ── the full records ───────────────────────────────────────────────────────

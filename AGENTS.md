@@ -165,9 +165,12 @@ same records and checks every number of the block against what it counts and
 paints; `tests/test_first_view.py` runs it on a fixture against
 `tests/fixtures/site_overview/`, the pieces of the site's app.js and
 index.html that the Overview runs, copied unchanged by the script's
-`--excerpt` mode, whose first line names the site commit. A site change to
-that code is followed by rewriting the excerpt from the site and checking a
-real week's records with the script. A change that loosens the check, or edits
+`--excerpt` mode, whose first line names the site commit. `--excerpt` also
+writes `tests/fixtures/site_overview/SOURCE.json`, the SHA-256 of the site's two files at that commit and of
+the excerpt; CI checks the excerpt against it and fetches the site's files at
+that commit (the site repository is public) to check that they still give the
+excerpt byte for byte. A site change to that code is followed by rewriting the
+excerpt from the site and checking a real week's records with the script. A change that loosens the check, or edits
 the excerpt by hand, is the defect it exists to catch.
 
 **Weekly artifacts are outputs, not source.** They are gitignored here and

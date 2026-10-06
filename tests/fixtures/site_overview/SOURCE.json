@@ -1,0 +1,12 @@
+{
+  "about": "Written by scripts/first_view_parity.mjs --excerpt with the excerpt beside it; never edited by hand.",
+  "source": "michaeldgreenphd/clinical-trial-populations@c4e297ab45d61f2872eff5140cc9b91ddd0605d6",
+  "site_files": {
+    "app.js": "ddd5db56f3d727f5f0377cdd0a1cae24774cbe08cc5b56f0b311677a5f7ac887",
+    "index.html": "0ca94a29262426f046477262ecb746370abefb6f3e98a77ae1829ab439816e9d"
+  },
+  "excerpt": {
+    "app_overview.js": "7cd645106c0bc52b512e1c840bcf1c6635849dee4706f5aaa2208cf09e5f49ea",
+    "index_overview.html": "c0a45ab03a955b55943745a7fb41e8fccdbe922e0c7a73b214800044733aa120"
+  }
+}

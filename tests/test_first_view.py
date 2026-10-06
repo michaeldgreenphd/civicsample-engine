@@ -29,12 +29,16 @@ from __future__ import annotations
 
 import copy
 import gzip
+import hashlib
 import json
+import os
 import pathlib
 import re
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from typing import Any
 
@@ -417,6 +421,57 @@ def test_the_vendored_excerpt_is_the_sites_code_unchanged(tmp_path: pathlib.Path
     assert r.returncode == 0, r.stderr
     for name in ("app_overview.js", "index_overview.html"):
         assert (tmp_path / name).read_bytes() == (EXCERPT / name).read_bytes(), name
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _pins() -> dict[str, Any]:
+    return json.loads((EXCERPT / "SOURCE.json").read_text(encoding="utf-8"))
+
+
+def test_the_vendored_excerpt_is_what_its_pins_say(tmp_path: pathlib.Path) -> None:
+    """SOURCE.json, written by --excerpt with the excerpt, pins the excerpt's bytes:
+    an edit to either file, however it keeps the pieces sliceable, fails here
+    unless SOURCE.json is changed too, in plain sight."""
+    pins = _pins()
+    header = re.search(r"^// Copied unchanged from (.+?):$", (EXCERPT / "app_overview.js").read_text(encoding="utf-8"), re.M)
+    assert header and header.group(1) == pins["source"], "the excerpt and SOURCE.json name different site commits"
+    for name, digest in pins["excerpt"].items():
+        assert _sha256((EXCERPT / name).read_bytes()) == digest, f"{name} is not the excerpt SOURCE.json pins"
+
+
+def _fetch(url: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=30) as resp:      # noqa: S310 (a fixed https host)
+        return resp.read()
+
+
+def test_the_vendored_excerpt_is_the_site_at_the_commit_it_names(tmp_path: pathlib.Path) -> None:
+    """The authoritative check: the site's own app.js and index.html at the pinned
+    commit (the site repository is public) have the pinned digests, and --excerpt
+    run on them writes the vendored excerpt byte for byte. CI must reach GitHub;
+    offline, outside CI, the test is skipped."""
+    pins = _pins()
+    repo, commit = pins["source"].split("@")
+    assert re.fullmatch(r"michaeldgreenphd/clinical-trial-populations", repo) and re.fullmatch(r"[0-9a-f]{40}", commit)
+    site = tmp_path / "site"
+    site.mkdir()
+    for name in ("app.js", "index.html"):
+        try:
+            data = _fetch(f"https://raw.githubusercontent.com/{repo}/{commit}/{name}")
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            if os.environ.get("CI"):
+                pytest.fail(f"cannot fetch the site's {name} at {commit} to check the excerpt: {e}")
+            pytest.skip(f"offline: cannot fetch the site's {name} at {commit} ({e})")
+        assert _sha256(data) == pins["site_files"][name], f"the site's {name} at {commit} is not the file SOURCE.json pins"
+        (site / name).write_bytes(data)
+    out = tmp_path / "excerpt"
+    r = subprocess.run([_node(), str(PARITY), "--excerpt", "--app", str(site / "app.js"), "--index", str(site / "index.html"),
+                        "--source", pins["source"], "--out-dir", str(out)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    for name in ("app_overview.js", "index_overview.html", "SOURCE.json"):
+        assert (out / name).read_bytes() == (EXCERPT / name).read_bytes(), f"{name} is not what the site's commit gives"
 
 
 def test_the_check_reads_a_weeks_file_item_by_item(tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
