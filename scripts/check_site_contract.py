@@ -119,23 +119,9 @@ def segments(path: str) -> list[tuple[str, bool]]:
     return [(s[:-2], True) if s.endswith("[]") else (s, False) for s in path.split(".")]
 
 
-def missing(record: Any, path: str) -> str | None:
-    """Why the record fails the path, or None when every reachable key is present."""
-    level = [record]
-    for key, each in segments(path):
-        nxt: list[Any] = []
-        for obj in level:
-            if not isinstance(obj, dict) or key not in obj:
-                return f"no {key}"
-            value = obj[key]
-            if each:
-                if not isinstance(value, list):
-                    return f"{key} is not a list"
-                nxt.extend(value)
-            else:
-                nxt.append(value)
-        level = nxt
-    return None
+# Why a record fails a contract path, or None (src/site_layout.py, shared with
+# the archive writer).
+missing = sl.missing
 
 
 def tree_size(root: str) -> int:
@@ -364,6 +350,7 @@ def check(site: str, part_hard_limit: int = PART_HARD_LIMIT_BYTES,
                             f"{_eg(stale)}")
         if switch is not None and switch.split:
             warnings.append("the site's contract turns the split layout on, but this week's parts carry whole records")
+        check_inline_run(f, data_dir, first, part_count, records)
 
     if latest is not None or os.path.exists(os.path.join(site, HISTORY_FILE)):
         check_history(f, latest, part_count)
@@ -552,6 +539,29 @@ def check_split(f: Findings, switch: sl.Switch | None, plan: sl.Plan, layout: di
         if run.get("gzip_bytes") != on_disk_bytes:
             warnings.append(f"data/{sl.RUN_FILE} gives gzip_bytes {run.get('gzip_bytes')!r}; "
                             f"the files are {on_disk_bytes!r}")
+
+
+def check_inline_run(f: Findings, data_dir: str, first: dict[str, Any] | None, part_count: int,
+                     records: int) -> None:
+    """A whole-record week's data/run.json must be this run's: the site keys the
+    run's files by its extracted_at, so a run.json left from another extraction
+    (with the right date) would let returning browsers reuse that run's cached
+    parts. Same stamps as part 1, its part count and record count, and no
+    layout. Whether it is there at all is check_data_run's to say."""
+    path = os.path.join(data_dir, sl.RUN_FILE)
+    if first is None or not os.path.exists(path):
+        return
+    run = df.read_json(path)
+    if not isinstance(run, dict):
+        f.err(f"data/{sl.RUN_FILE} cannot be read as a JSON object; the site keys this run's files by it")
+        return
+    want = {"extracted_at": first["extracted_at"], "pipeline_commit": first["pipeline_commit"],
+            "total_parts": part_count, "studies": records}
+    for key, value in want.items():
+        if run.get(key) != value:
+            f.err(f"data/{sl.RUN_FILE} says {key} {run.get(key)!r}; the parts say {value!r}")
+    if "layout" in run:
+        f.err(f"data/{sl.RUN_FILE} carries a layout ({run['layout']!r}), but this week's parts carry whole records")
 
 
 def _is_date(value: Any) -> bool:

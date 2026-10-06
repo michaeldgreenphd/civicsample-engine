@@ -940,11 +940,10 @@ HISTORY_WARNS: dict[str, tuple[Callable[[pathlib.Path], object], str]] = {
 
 
 @pytest.mark.parametrize("change", [
-    lambda b: b.update(extracted_at="2026-10-12T00:04:00+00:00"),
     lambda b: b.pop("snapshot_date"),
     lambda b: b.update(snapshot_date="2026-10"),
     lambda b: b.update(snapshot_date=20261011),
-], ids=["a-pull-past-midnight-named-for-its-date", "no-snapshot-date-extracted-that-day",
+], ids=["no-snapshot-date-extracted-that-day",
         "a-malformed-snapshot-date-falls-back", "a-snapshot-date-that-is-not-text-falls-back"])
 def test_data_run_json_is_dated_as_the_site_dates_it(tmp_path: pathlib.Path, change: Callable[[dict], object]) -> None:
     """The site serves the latest date from data/ when data/run.json is that
@@ -952,6 +951,23 @@ def test_data_run_json_is_dated_as_the_site_dates_it(tmp_path: pathlib.Path, cha
     YYYY-MM-DD string, else the first ten characters of its extracted_at."""
     site = _retained_site(tmp_path)
     _json_change("data/run.json", change)(site)
+    r, report = _check(site, "--latest", RETAINED)
+    assert r.returncode == 0, report["errors"]
+
+
+def test_a_pull_past_midnight_is_served_under_its_snapshot_date(tmp_path: pathlib.Path) -> None:
+    """A run started on the 11th whose extraction stamp reads the 12th: its
+    snapshot_date names the 11th, and its files and run.json carry the same
+    stamp (one pull), so the date is served from data/."""
+    site = _retained_site(tmp_path)
+    late = "2026-10-12T00:04:00+00:00"
+    for part in sorted((site / "data").glob("demographics.part*.json.gz")):
+        with gzip.open(part, "rt") as fh:
+            body = json.load(fh)
+        body["extracted_at"] = late
+        with gzip.open(part, "wt") as fh:
+            json.dump(body, fh)
+    _json_change("data/run.json", lambda b: b.update(extracted_at=late))(site)
     r, report = _check(site, "--latest", RETAINED)
     assert r.returncode == 0, report["errors"]
 
@@ -1271,3 +1287,36 @@ def test_the_raw_measure_archive_does_not_depend_on_the_site_push() -> None:
     step = _step("Archive the retained sex/gender raw measures permanently")
     assert "!cancelled()" in step and "steps.extract.outcome == 'success'" in step
     assert "continue-on-error: true" in step
+
+
+# ── a whole-record week's run.json is that week's ─────────────────────────────
+
+def _inline_week(tmp_path: pathlib.Path, **run_changes: object) -> pathlib.Path:
+    site = _site(tmp_path)
+    _history(site, ["2026-10-18"], "2026-10-18")
+    run = {**STAMPS, "snapshot_date": "2026-10-18", "total_parts": 2, "studies": 3, "gzip_bytes": {"inline": 1}}
+    run.update(run_changes)
+    (site / "data" / "run.json").write_text(json.dumps(run))
+    return site
+
+
+def test_a_whole_record_weeks_run_json_of_its_own_run_passes(tmp_path: pathlib.Path) -> None:
+    r, report = _check(_inline_week(tmp_path), "--latest", "2026-10-18")
+    assert r.returncode == 0, report["errors"]
+
+
+@pytest.mark.parametrize("change,needle", [
+    ({"extracted_at": "2026-10-11T06:00:00+00:00"}, "data/run.json says extracted_at"),
+    ({"pipeline_commit": "0000000"}, "data/run.json says pipeline_commit"),
+    ({"studies": 2}, "data/run.json says studies"),
+    ({"total_parts": 3}, "data/run.json says total_parts"),
+    ({"layout": {"version": 1}}, "data/run.json carries a layout"),
+], ids=["another-extraction", "another-commit", "another-record-count", "another-part-count", "a-layout"])
+def test_a_whole_record_weeks_run_json_from_another_run_blocks_though_its_date_is_right(
+        tmp_path: pathlib.Path, change: dict, needle: str) -> None:
+    """The site keys the run's files by run.json's extracted_at: one left from
+    another extraction, still dated this week, would let returning browsers
+    reuse that run's cached parts."""
+    r, report = _check(_inline_week(tmp_path, **change), "--latest", "2026-10-18")
+    assert r.returncode == 1
+    assert any(needle in e for e in report["errors"]), report["errors"]

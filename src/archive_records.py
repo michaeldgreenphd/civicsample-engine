@@ -78,12 +78,42 @@ def build(dataset: df.Dataset, contract: Any) -> dict[str, Any]:
         found = df.records(dataset, ids)
     except (df.FolderError, sl.LayoutError) as e:
         raise ArchiveError(str(e)) from e
-    missing = [nct for nct in ids if nct not in found]
-    if missing:
-        raise ArchiveError(f"{len(missing)} of the {len(ids)} recentStudies of {dataset.folder} are not in its "
-                           f"records ({_eg(missing)})")
+    absent = [nct for nct in ids if nct not in found]
+    if absent:
+        raise ArchiveError(f"{len(absent)} of the {len(ids)} recentStudies of {dataset.folder} are not in its "
+                           f"records ({_eg(absent)})")
+    data = {nct: _canonical(sl.project_object(found[nct], spec)) for nct in ids}
+    lost = projection_losses(found, data, required_paths(contract))
+    if lost:
+        raise ArchiveError(f"the projection of {dataset.folder}'s records drops contract fields they have: "
+                           + "; ".join(f"{p} in {len(ncts)} records ({_eg(ncts)})" for p, ncts in sorted(lost.items())))
     return {"source_extracted_at": dataset.stamps[0], "source_pipeline_commit": dataset.stamps[1],
-            "class": sl.ARCHIVE_CLASS, "data": {nct: _canonical(sl.project_object(found[nct], spec)) for nct in ids}}
+            "class": sl.ARCHIVE_CLASS, "data": data}
+
+
+def required_paths(contract: Any) -> list[str]:
+    """Every path the contract's classes list (its optional paths aside)."""
+    classes = contract.get("classes") if isinstance(contract, dict) else None
+    if not isinstance(classes, dict):
+        raise ArchiveError("the site's record contract lists no classes")
+    return [p for c in sl.CLASSES for p in classes.get(c, []) if isinstance(p, str)]
+
+
+def projection_losses(source: dict[str, dict[str, Any]], archived: dict[str, Any],
+                      paths: list[str]) -> dict[str, list[str]]:
+    """The contract paths an archived record lacks although its source record
+    has them, with the studies: the slim deletes the source, so a value the
+    projection dropped would be lost. A path the source record lacks too is
+    absence, kept as absence: a week published before a field existed (the
+    sex_gender block, from 2026-08) never had it, and refusing its archive
+    would keep the folder complete for good without restoring anything."""
+    lost: dict[str, list[str]] = {}
+    for nct, entry in archived.items():
+        record = source.get(nct)
+        for path in paths:
+            if sl.missing(entry, path) is not None and sl.missing(record, path) is None:
+                lost.setdefault(path, []).append(nct)
+    return lost
 
 
 def _canonical(value: Any) -> Any:

@@ -983,3 +983,41 @@ def _restamp_week(folder: pathlib.Path, extracted_at: str, snapshot_date: str | 
         body = json.loads((folder / rel).read_text())
         body[key] = extracted_at
         (folder / rel).write_text(json.dumps(body))
+
+
+# ── the archive file keeps every contract value its records have ─────────────
+
+def test_projection_losses_names_only_values_the_source_record_has() -> None:
+    """A path the archived entry lacks is a loss only when its source record has
+    it: a week published before a field existed keeps it absent (the real
+    2026-05-31, 06-14 and 08-02 weeks predate the sex_gender block)."""
+    source = {"NCT00000001": {"nct_id": "NCT00000001", "status": "COMPLETED", "race": {"reported": True},
+                              "references": [{"pmid": "1"}]}}
+    paths = ["status", "race.reported", "references[].pmid", "sex_gender.n_female"]
+    dropped = {"NCT00000001": {"nct_id": "NCT00000001", "race": {"reported": True}, "references": [{}]}}
+    assert archive_records.projection_losses(source, dropped, paths) == {
+        "status": ["NCT00000001"], "references[].pmid": ["NCT00000001"]}
+    whole = {"NCT00000001": json.loads(json.dumps(source["NCT00000001"]))}
+    assert archive_records.projection_losses(source, whole, paths) == {}, "absence the week had was called a loss"
+
+
+def test_a_projection_that_drops_a_field_its_records_have_slims_nothing(tmp_path: pathlib.Path,
+                                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The slim deletes the folder's records, so an archive file missing a value
+    they hold must never be written: the folder stays complete, with a warning."""
+    site = sh.make_site(tmp_path, "2026-10-04", REAL_COMPLETE)
+    real = sl.project_object
+
+    def lossy(obj: dict, spec: dict) -> dict:
+        out = real(obj, spec)
+        out.pop("status", None)
+        return out
+
+    monkeypatch.setattr(sl, "project_object", lossy)
+    folder = site / "snapshots" / "2026-05-31"
+    before = tree_digest(folder)
+    out = publish(tmp_path, site, "2026-10-11")
+    assert tree_digest(folder) == before, "the folder was slimmed with an archive file that lost a field"
+    assert kinds(site)["2026-05-31"] == ps.COMPLETE
+    assert any("snapshots/2026-05-31/ stays complete" in w and "drops contract fields they have: status" in w
+               for w in out.warnings), out.warnings

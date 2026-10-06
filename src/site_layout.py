@@ -188,6 +188,27 @@ def segments(path: str) -> list[tuple[str, bool]]:
     return [(s[:-2], True) if s.endswith("[]") else (s, False) for s in path.split(".")]
 
 
+def missing(record: Any, path: str) -> str | None:
+    """Why the record fails the contract path, or None when every reachable key
+    is present (the site's own rule, tests/study_record_contract.test.mjs: a
+    key may hold null or [], a list's items are each checked)."""
+    level = [record]
+    for key, each in segments(path):
+        nxt: list[Any] = []
+        for obj in level:
+            if not isinstance(obj, dict) or key not in obj:
+                return f"no {key}"
+            value = obj[key]
+            if each:
+                if not isinstance(value, list):
+                    return f"{key} is not a list"
+                nxt.extend(value)
+            else:
+                nxt.append(value)
+        level = nxt
+    return None
+
+
 def _add_path(spec: dict[str, Any], path: str) -> None:
     node = spec
     segs = segments(path)
