@@ -34,14 +34,18 @@ The weekly run (`extract.yml`, Sundays 06:00 UTC) does six things, in order:
    field contract asks for (`scripts/split_data.py`): every record whole in 8
    compressed parts, or, once the site turns its split layout on, the fields
    the dashboard reads at startup in 8 parts, the Studies tab's in 8 more and
-   the study pop-ups' in 256 small files, one fetched per pop-up. It copies
-   them and the other finished files into the site repo, saves a dated
-   snapshot for the dashboard's "View snapshot" feature, prunes old snapshots
-   so the site stays deployable, and checks what it staged against the site's
-   contract and size budget (`scripts/check_site_contract.py`) before it
-   pushes: a missing field, a malformed file or a file over GitHub's limits
-   stops the publish (and the later steps that publish to the site), growth
-   past the budget only warns.
+   the study pop-ups' in 256 small files, one fetched per pop-up. Before they
+   replace last week's in the site's `data/` folder, the retention script
+   (`scripts/prune_snapshots.py`) archives last week's dataset as a dated
+   snapshot for the dashboard's "View snapshot" feature when the retention
+   policy keeps it, and prunes old snapshots so the site stays deployable.
+   Then it copies this week's files and the other finished files into
+   `data/`, which serves the latest week, and checks what it staged against
+   the site's contract and size budget (`scripts/check_site_contract.py`)
+   before it pushes: a missing field, a malformed file, a snapshot the
+   dashboard offers that would not open, or a file over GitHub's limits stops
+   the publish (and the later steps that publish to the site), growth past
+   the budget only warns.
 6. **Sponsor bridge** — attributes every trial's sponsors to canonical
    companies via the curated rules (`sponsors/`), publishes the bridge table
    and the audit files to the site in a second commit, and writes the
@@ -173,10 +177,38 @@ and when was it made":
   `industry_sponsors.json` has `generated_at` (when it was built) *and*
   `source_extracted_at` (which pull it was built from) — so a derived file
   can never silently outrun its source.
-- **Versions of published data are the dated snapshot folders** in the site
-  repo (`snapshots/YYYY-MM-DD/`), listed in `history.json`, which is what
-  the dashboard's "View snapshot" dropdown reads. Retention: the 4 most
-  recent bi-weekly snapshots in full, then one summary per month.
+- **Versions of published data are the latest week and the dated snapshot
+  folders** in the site repo (`snapshots/YYYY-MM-DD/`), all listed in
+  `history.json`, which is what the dashboard's "View snapshot" dropdown
+  reads; its `latest` names the week the site serves from `data/` (that week
+  has no snapshot folder of its own until the next week's run archives it).
+  How far back they go: a visitor can open four complete datasets, the
+  latest week and three archived weekly snapshots about two weeks apart
+  (one per fortnight, counted from a fixed Sunday), reaching back five to six
+  weeks. Only a fortnight's first week is archived, so a link to the latest
+  week (`?sgsnapshot=<date>`) keeps opening that week after the next run only
+  when it is a fortnight's first; a fortnight's second week drops out of
+  `history.json` when the next week is published, and its link then opens
+  the latest data, with no notice. Every older month keeps one summary
+  snapshot: the dashboard draws every chart from it, and its 500 most recent
+  studies keep their own records for their pop-ups
+  (`archive_records.json.gz`, written from that week's own files); filters
+  and the full study table need a complete snapshot. The full
+  files of every week stay in the site repository's git history, which is
+  never rewritten, whether or not the week was ever archived (a fortnight's
+  second week never is: it lives in `data/` only); from 2026-08-28 on, each
+  week's full records are also on its `data-*` release. To get a week's files
+  back, in a full clone of the site repository (not a shallow one):
+
+  ```bash
+  # any week the site served, as its weekly run published it into data/,
+  # into a folder <dir>
+  c=$(git log -1 --format=%H --grep='^Update demographics data <date>')
+  test -n "$c" && mkdir -p <dir> && git archive "$c" data | tar -x -C <dir> --strip-components=1
+  # a snapshot folder that was slimmed or deleted, back in place
+  c=$(git log -1 --format=%H --diff-filter=D -- snapshots/<date>/demographics.part1.json.gz)
+  git restore --source="$c^" -- snapshots/<date>/
+  ```
 - **LLM extraction runs are versioned by their commits and their metrics.**
   Output files keep stable names (so the site always reads the latest);
   each run's commit records who triggered it, the pipeline and mode, and
@@ -193,7 +225,7 @@ Two more conventions: all artifact timestamps are timezone-aware UTC, and
 every artifact records the git commit of the code that produced it —
 weekly files carry `pipeline_commit` (derived files carry their source's
 commit, e.g. `source_pipeline_commit`), and LLM metrics carry it inside
-`run_info`. A same-day manual re-run replaces that day's snapshot folder
+`run_info`. A same-day manual re-run replaces that day's data in `data/`
 by design; the workflow warns and says so in the commit message when it
 happens.
 

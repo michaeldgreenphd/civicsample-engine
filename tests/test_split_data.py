@@ -18,7 +18,8 @@ paths and its layout section's switch. These tests pin:
   (tests/split_fixture.mjs there) gives, and every record's entries merging
   back to the record as the contract reads it;
 - run.json: the stamps, total_parts and studies, plus the layout and the gzip
-  bytes per class, and no list of files;
+  bytes per class, and no list of files; with --snapshot-date, the date the
+  site serves the run as (a --snapshot-date that is not a date refuses);
 - the full records are never written or deleted; a switch either way leaves
   nothing of the other layout, and nothing else is removed; the dataset
   folder a local run writes is gitignored here;
@@ -128,7 +129,34 @@ def test_without_the_switch_the_parts_carry_the_whole_records(tmp_path: pathlib.
                    "gzip_bytes": {"inline": sum((out / name).stat().st_size for name in PARTS)}}
 
 
+@pytest.mark.parametrize("enabled", [False, True], ids=["whole-parts", "split"])
+def test_run_json_names_the_date_the_site_serves_the_run_as(tmp_path: pathlib.Path, enabled: bool) -> None:
+    """--snapshot-date is the weekly job's date, which history.json names as
+    the latest. The site reads that date from data/ only when data/run.json is
+    that date's run, and takes run.json's snapshot_date before the date of its
+    extracted_at, which is the next day for a run that starts before midnight
+    UTC."""
+    late = {**h.STAMPS, "extracted_at": "2026-10-12T00:04:00.000000+00:00"}
+    out = h.split(tmp_path, h.whole_records(h.ids(16)), h.site_contract(enabled), stamps=late,
+                  snapshot_date="2026-10-11")
+    run = json.loads((out / "run.json").read_text())
+    assert list(run)[:3] == ["extracted_at", "pipeline_commit", "snapshot_date"]
+    assert run["snapshot_date"] == "2026-10-11" and run["extracted_at"] == late["extracted_at"]
+    assert run["total_parts"] == 8 and run["studies"] == 16
+
+
 # ── what refuses, and leaves the dataset folder as it was ───────────────────
+
+@pytest.mark.parametrize("bad", ["2026-10-32", "20261011", "latest", "2026-10-11T00:00:00"])
+def test_a_snapshot_date_that_is_not_a_date_refuses_and_writes_nothing(tmp_path: pathlib.Path, bad: str) -> None:
+    out = tmp_path / "dataset"
+    before = _last_week(out)
+    (tmp_path / "c.json").write_text(json.dumps(h.site_contract(enabled=False)))
+    h.write_full(tmp_path / "demographics.json", h.whole_records(h.ids(16)))
+    r = subprocess.run([sys.executable, SCRIPT, "--contract", str(tmp_path / "c.json"), "--demographics",
+                        str(tmp_path / "demographics.json"), "--out-dir", str(out), "--snapshot-date", bad],
+                       capture_output=True, text=True)
+    _refused(tmp_path, r, out, before, f"--snapshot-date {bad!r} is not a date")
 
 def _last_week(out: pathlib.Path) -> dict[str, str]:
     out.mkdir(parents=True, exist_ok=True)
@@ -445,7 +473,7 @@ def test_the_weekly_job_cuts_the_dataset_after_the_site_checkout_from_the_sites_
     assert split + 1 == order.index(PUBLISH_STEP)
     step = _step(SPLIT_STEP)
     assert ("python3 scripts/split_data.py --contract site/tests/record_contract.json "
-            "--demographics data/demographics.json --out-dir data/dataset") in step
+            "--demographics data/demographics.json --out-dir data/dataset --snapshot-date \"$CURRENT_DATE\"") in step
     # Owner decision 17a: the site publish does not wait on the full-record
     # release, as before the split; neither step has a condition.
     for name in (SPLIT_STEP, PUBLISH_STEP):
@@ -454,15 +482,16 @@ def test_the_weekly_job_cuts_the_dataset_after_the_site_checkout_from_the_sites_
     assert len(re.findall(r"python3? scripts/split_data\.py", WORKFLOW)) == 1, "the split runs more than once"
 
 
-def test_the_weekly_job_publishes_the_dataset_folder_to_data_and_to_the_snapshot() -> None:
+def test_the_weekly_job_publishes_the_dataset_folder_to_data_only() -> None:
+    """The week's dataset replaces data/'s, and only data/'s: the site serves
+    the latest date from data/, and scripts/prune_snapshots.py archives it into
+    snapshots/<date>/ when it leaves data/ (tests/test_prune_snapshots.py)."""
     lines = [line.strip() for line in _step(PUBLISH_STEP).splitlines()]
     rm_data = "rm -f site/data/demographics.part*.json.gz site/data/studies_tab.part*.json.gz site/data/run.json"
     assert lines.index(rm_data) < lines.index("rm -rf site/data/detail") < lines.index("cp -R data/dataset/. site/data/")
-    rm_snap = ('rm -f "snapshots/$DATE"/demographics.part*.json.gz "snapshots/$DATE"/studies_tab.part*.json.gz '
-               '"snapshots/$DATE/run.json"')
-    assert lines.index(rm_snap) < lines.index('rm -rf "snapshots/$DATE/detail"') \
-        < lines.index('cp -R ../data/dataset/. "snapshots/$DATE/"')
     step = _step(PUBLISH_STEP)
+    assert "data/dataset/. site/data/" in step and step.count("data/dataset/.") == 1, "the dataset is copied elsewhere too"
+    assert '"snapshots/$DATE' not in step and "snapshots/$DATE" not in step
     assert "details" not in " ".join(line for line in lines if line.startswith("rm ")), \
         "a removal could reach the frozen data/details.part*.json.gz"
     assert not re.search(r"git add (-A |--all )?(-- )?data/?$", step, re.M), "a blanket git add over data/"

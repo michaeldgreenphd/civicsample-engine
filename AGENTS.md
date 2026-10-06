@@ -56,7 +56,13 @@ above are meant to catch.
 using a deploy token, and prunes old snapshots there. A change to what it
 writes, or to `scripts/prune_snapshots.py`, can delete published data that
 nothing else holds a copy of. Treat retention and publish steps as data-loss
-surfaces.
+surfaces. Retention keeps a fortnight's earliest week, counted from `EPOCH`
+in `scripts/prune_snapshots.py`, for `COMPLETE_SNAPSHOTS` fortnights, and
+slims an older month's snapshot only after its own `archive_records.json.gz`
+is written and checked (`src/archive_records.py`); a change to either
+constant deletes snapshots the old values kept. Its tests chain weekly runs:
+the rule it replaced was tested on one call and deleted every week's snapshot
+for three months.
 
 **The sponsor rules file is schema, not data.** `sponsors/company_aliases.csv`
 changes only by deliberate commit, and every version of it is keyed by its own
@@ -134,14 +140,24 @@ script that needs a field the dashboard does not show reads the full records
 through `src/full_records.py`, which never falls back to the parts. A change
 that deletes `data-*` releases, or reads study fields from the site's files
 that the contract does not list, is a data-loss or correctness defect. The
-publish step replaces the dataset's files in the site's data folder and in
-the week's snapshot folder, removing the other layout's files and nothing
-else, and runs `scripts/check_site_contract.py` on the staged site checkout
-before it commits: a file missing a contract field, malformed or from another
-run, a split layout the site's contract does not turn on, a snapshot copy
-that is not the week's dataset, a file over GitHub's 100 MiB per-file push
-limit, or a site over GitHub Pages' 1 GB limit stops the push and leaves the
-site on last week's data. The steps that publish to the site after it (the
+publish step first runs `scripts/prune_snapshots.py` while the site's data
+folder still holds last week's dataset: it archives that week into its
+snapshot folder when the retention policy keeps it, prunes, and rewrites
+history.json (its `latest` is the week the data folder serves, which has no
+snapshot folder of its own). Then it replaces the dataset's files in the data
+folder, removing the other layout's files and nothing else, and runs
+`scripts/check_site_contract.py` on the staged site checkout before it
+commits: a file missing a contract field, malformed or from another run, a
+split layout the site's contract does not turn on, a history.json whose
+latest is not the week or that lists a snapshot that would not open (a folder
+gone, a complete snapshot missing a file or carrying another run's stamps, an
+aggregate's archive file missing, another run's or not covering its recent
+studies), a data/run.json that does not date its run as that week (the site
+serves the latest week from the data folder only when its run.json's
+`snapshot_date`, which `split_data.py` writes from the job's date, says so),
+a file over GitHub's 100 MiB per-file push limit, or a site over
+GitHub Pages' 1 GB limit stops the push and leaves the site on last week's
+data. The steps that publish to the site after it (the
 sex/gender audit, the sponsor bridge) are skipped too; the week's full-record
 and raw-measure releases run before the site checkout and are not. Growth
 past the site's size budgets (tests/data_budget.json there, with a budget per

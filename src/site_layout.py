@@ -37,6 +37,12 @@ A dataset whose core part 1 carries no `layout` block is inline: every class
 is on the records. That is every file published before the split, and what
 the engine writes while layout.enabled is false.
 
+A snapshot that has become a monthly aggregate keeps no dataset, only its
+dashboard-summary.json and archive_records.json.gz (the contract's
+layout.archive): its recent studies' records, projected onto every contract
+field (record_spec), stamped source_extracted_at and source_pipeline_commit.
+src/archive_records.py writes and checks that file.
+
 The site puts a record back together with mergeStudy (app.js): the four
 demographic objects (race, ethnicity, sex, gender) merge one level deep, and
 every other top-level key of a studies_tab or detail entry replaces the
@@ -75,17 +81,23 @@ PATH_RE = re.compile(r"[a-z_]+(\[\])?(\.[a-z_]+(\[\])?)*")
 NCT_RE = re.compile(r"NCT\d{8}")
 
 # The file names (the contract's layout.files) and the header keys of each
-# file (its layout.headers), as this layout version fixes them.
+# file (its layout.headers), as this layout version fixes them. "archive" is
+# a monthly aggregate's own file of study records (src/archive_records.py):
+# its stamps name the run it was projected from, so they are source_ stamps.
 FILES = {"core": "demographics.part{K}.json.gz",
          "studies_tab": "studies_tab.part{K}.json.gz",
          "detail": "detail/{n}.json.gz"}
 HEADERS = {"core": ("extracted_at", "pipeline_commit", "part", "total_parts", "layout", "data"),
            "studies_tab": ("extracted_at", "pipeline_commit", "class", "part", "total_parts", "data"),
-           "detail": ("extracted_at", "pipeline_commit", "class", "shard", "shards", "key", "data")}
+           "detail": ("extracted_at", "pipeline_commit", "class", "shard", "shards", "key", "data"),
+           "archive": ("source_extracted_at", "source_pipeline_commit", "class", "data")}
 CORE_PART_RE = re.compile(r"demographics\.part(\d+)\.json\.gz")
 STUDIES_TAB_PART_RE = re.compile(r"studies_tab\.part(\d+)\.json\.gz")
 DETAIL_DIR = "detail"
 RUN_FILE = "run.json"
+# The contract's layout.archive: the file name, and its class header.
+ARCHIVE_FILE = "archive_records.json.gz"
+ARCHIVE_CLASS = "archive"
 
 
 class LayoutError(ValueError):
@@ -176,6 +188,27 @@ def segments(path: str) -> list[tuple[str, bool]]:
     return [(s[:-2], True) if s.endswith("[]") else (s, False) for s in path.split(".")]
 
 
+def missing(record: Any, path: str) -> str | None:
+    """Why the record fails the contract path, or None when every reachable key
+    is present (the site's own rule, tests/study_record_contract.test.mjs: a
+    key may hold null or [], a list's items are each checked)."""
+    level = [record]
+    for key, each in segments(path):
+        nxt: list[Any] = []
+        for obj in level:
+            if not isinstance(obj, dict) or key not in obj:
+                return f"no {key}"
+            value = obj[key]
+            if each:
+                if not isinstance(value, list):
+                    return f"{key} is not a list"
+                nxt.extend(value)
+            else:
+                nxt.append(value)
+        level = nxt
+    return None
+
+
 def _add_path(spec: dict[str, Any], path: str) -> None:
     node = spec
     segs = segments(path)
@@ -211,6 +244,46 @@ def build_spec(paths: list[str]) -> dict[str, Any]:
     for p in paths:
         _add_path(spec, p)
     return spec
+
+
+def record_spec(contract: Any) -> dict[str, Any]:
+    """Every field the site reads of a study record: the contract's class paths
+    and optional paths, as one projection (Plan.union's, without the split's
+    own rules, which an aggregate's archive file does not depend on).
+
+    LayoutError when the contract has no classes, or a path is malformed or
+    listed twice."""
+    classes = contract.get("classes") if isinstance(contract, dict) else None
+    if not isinstance(classes, dict) or not classes:
+        raise LayoutError("the contract has no classes")
+    listed: list[tuple[str, Any]] = [(str(c), classes[c]) for c in classes]
+    listed.append(("optional", contract.get("optional", [])))
+    paths: list[str] = []
+    for name, entries in listed:
+        if not isinstance(entries, list):
+            raise LayoutError(f"the contract's {name} is not a list of paths")
+        for p in entries:
+            if not isinstance(p, str) or not PATH_RE.fullmatch(p):
+                raise LayoutError(f"malformed path in {name}: {p!r}")
+            if p in paths:
+                raise LayoutError(f"{p} is listed twice")
+            paths.append(p)
+    return build_spec(paths)
+
+
+def archive_file_name(contract: Any) -> str:
+    """The aggregate archive's file name the contract's layout.archive gives,
+    checked against this engine's (a contract without one names this engine's)."""
+    section = contract.get("layout") if isinstance(contract, dict) else None
+    archive = section.get("archive") if isinstance(section, dict) else None
+    if archive is None:
+        return ARCHIVE_FILE
+    if not isinstance(archive, dict):
+        raise LayoutError("the contract's layout.archive is not an object")
+    if archive.get("file", ARCHIVE_FILE) != ARCHIVE_FILE or archive.get("class", ARCHIVE_CLASS) != ARCHIVE_CLASS:
+        raise LayoutError(f"the contract's layout.archive is {archive!r}; this engine writes "
+                          f"{ARCHIVE_FILE} with class {ARCHIVE_CLASS!r}")
+    return ARCHIVE_FILE
 
 
 def project_value(value: Any, spec: Any) -> Any:
