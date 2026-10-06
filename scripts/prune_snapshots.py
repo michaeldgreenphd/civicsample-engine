@@ -81,7 +81,7 @@ The policy (owner decisions 19b, 20a and 21a, 2026-10-05):
     is: it lived in data/ only), as its weekly run published it into data/,
     into a folder <dir>:
       c=$(git log -1 --format=%H --grep='^Update demographics data <date>')
-      mkdir -p <dir> && git archive "$c" data | tar -x -C <dir> --strip-components=1
+      test -n "$c" && mkdir -p <dir> && git archive "$c" data | tar -x -C <dir> --strip-components=1
     a snapshot folder that was slimmed or deleted, back in place:
       c=$(git log -1 --format=%H --diff-filter=D -- snapshots/<date>/demographics.part1.json.gz)
       git restore --source="$c^" -- snapshots/<date>/

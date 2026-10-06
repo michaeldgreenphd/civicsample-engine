@@ -911,6 +911,10 @@ def test_the_documented_recovery_commands_bring_back_any_week(tmp_path: pathlib.
         assert week_files(site / "snapshots" / day) == archived[day], f"snapshots/{day}/ did not come back"
     r = run(in_place, "2026-10-18")
     assert r.returncode != 0 and not (site / "snapshots" / "2026-10-18").exists()
+    # A date no run published (a typo, or a Sunday the gate blocked) fails
+    # out loud, and makes no folder.
+    r = run(anywhere, "2026-10-19", str(tmp_path / "back-2026-10-19"))
+    assert r.returncode != 0 and not (tmp_path / "back-2026-10-19").exists()
 
 
 def test_with_nothing_to_retain_it_says_so(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]) -> None:
