@@ -27,6 +27,7 @@ and scripts/check_site_contract.py checks it with problems() before every push.
 from __future__ import annotations
 
 import gzip
+import io
 import json
 import os
 from typing import Any
@@ -127,15 +128,35 @@ def _canonical(value: Any) -> Any:
     return value
 
 
+def encode(doc: dict[str, Any]) -> bytes:
+    """The archive file's bytes: compact ASCII JSON, gzip level 9, no time and
+    the OS byte 0xff ("unknown") in the gzip header, so the same records give
+    the same bytes under any Python (gzip.compress writes the OS byte its
+    version chooses: 0x03 or 0x13 on 3.11 and 3.12, 0xff on 3.13; GzipFile
+    writes 0xff on all of them)."""
+    buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=9, mtime=0) as gz:
+        gz.write(json.dumps(doc, separators=(",", ":")).encode("ascii"))
+    return buf.getvalue()
+
+
+def same_records(a: bytes, b: bytes) -> bool:
+    """Whether two archive files hold the same JSON, whatever their gzip
+    headers say (a file another Python wrote differs only there)."""
+    try:
+        return gzip.decompress(a) == gzip.decompress(b)
+    except (OSError, EOFError, ValueError):
+        return False
+
+
 def write(doc: dict[str, Any], path: str, summary: Any) -> int:
     """Write the archive file beside path, check it against the summary, and
-    only then move it into place. Level 9 and no time in the gzip header, so
-    the same records give the same bytes. Returns its size.
+    only then move it into place (bytes from encode). Returns its size.
 
     ArchiveError, with nothing moved into place, when the written file does
     not check."""
     tmp = path + ".partial"
-    data = gzip.compress(json.dumps(doc, separators=(",", ":")).encode("ascii"), compresslevel=9, mtime=0)
+    data = encode(doc)
     try:
         with open(tmp, "wb") as fh:
             fh.write(data)

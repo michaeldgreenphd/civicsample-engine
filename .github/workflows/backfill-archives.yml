@@ -1,0 +1,145 @@
+name: Backfill archived snapshots (one-off)
+
+# Owner decisions 21a and 22a: rebuild, from the site repository's own git
+# history, the monthly archives the retention policy would have kept
+# (scripts/backfill_archives.py says what and from which commits). Run by
+# hand. dry_run (the default) builds everything, writes it into this job's
+# own site checkout, runs the publish gate on it and uploads what was built as
+# a workflow artifact; it pushes nothing. dry_run unchecked does the same and
+# then pushes one commit to the site. It never deletes a file, and a second
+# run finds nothing to do.
+#
+# It needs history.json in the form scripts/prune_snapshots.py writes (dates,
+# latest, archives) and a data/run.json for the week data/ serves: the first
+# weekly run with retention (#22) writes both, so run this after it.
+#
+# When to dispatch it: never while another site-publish run (extract.yml or
+# this one) is in progress or pending, and never from Saturday 18:00 to
+# Sunday 18:00 UTC. GitHub keeps one pending run per concurrency group and
+# cancels it when another is queued: a Sunday weekly run pending behind this
+# job would be cancelled by a second dispatch, and that week not published.
+# What the workflow guards:
+#   - the window job, which has no concurrency group, refuses a dispatch
+#     from Saturday 18:00 to Sunday 18:00 UTC, and the backfill job needs
+#     it, so a refused dispatch is never queued in site-publish and cancels
+#     nothing; the backfill is never running when the Sunday 06:00 cron
+#     fires (the build step checks the window again);
+#   - a dry run pushes nothing and never joins site-publish: it gets a group
+#     of its own.
+# What it cannot stop: a dispatch with dry_run unchecked, outside the
+# window, while a site-publish run is pending. Check the Actions tab first.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: build, check and upload the files; push nothing"
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Before anything joins site-publish: no group, no site, no secrets, no
+  # dependencies. Fails (and so the backfill job never starts) from Saturday
+  # 18:00 to Sunday 18:00 UTC.
+  window:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Refuse to start in the weekly run's window
+        run: python3 scripts/backfill_archives.py --check-window
+
+  backfill:
+    needs: window
+    runs-on: ubuntu-latest
+    # The weekly extract's group when this run may push: the backfill and the
+    # Sunday publish never run at the same time (one waits for the other), so
+    # neither pushes over a history.json the other is rewriting. A pending
+    # run in the group is cancelled when another is queued: see "When to
+    # dispatch it" above. A dry run pushes nothing, so it waits for no one
+    # and makes no one wait: a group of its own. (inputs.dry_run is a
+    # boolean; github.event.inputs.dry_run would be the string "false",
+    # which is true.)
+    concurrency:
+      group: ${{ inputs.dry_run && format('backfill-dry-{0}', github.run_id) || 'site-publish' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check out the site repository with its history
+        # Every commit (fetch-depth 0), so the script can check that each
+        # commit it reads is in main's history; file contents only on demand
+        # (blob:none), the old parts fetched when the script reads them.
+        # Credentials are kept only when this run may push.
+        uses: actions/checkout@v4
+        with:
+          repository: michaeldgreenphd/clinical-trial-populations
+          ref: main
+          token: ${{ secrets.PIPELINE_DEPLOY_TOKEN }}
+          path: site
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: ${{ !inputs.dry_run }}
+
+      - name: Build the archives, write them into the checkout and run the publish gate
+        # Refuses, writing nothing, when a commit is not in the site's history
+        # or does not hold its date's folder, its parts are not one run of
+        # that date, the projection would lose a field, or the retention
+        # policy would not keep a restored month. Then
+        # scripts/check_site_contract.py on the written checkout: a failure
+        # here stops the job before anything is committed. Refuses to start
+        # from Saturday 18:00 to Sunday 18:00 UTC (the weekly run's window),
+        # a second check after the window job's.
+        run: |
+          mkdir -p "$RUNNER_TEMP/backfill"
+          python3 scripts/backfill_archives.py --site site --write --outside-weekly-window \
+            --out "$RUNNER_TEMP/backfill" --report "$RUNNER_TEMP/backfill/report.json"
+
+      - name: Upload what was built
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-backfill
+          path: ${{ runner.temp }}/backfill
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Commit and push to the site
+        if: ${{ !inputs.dry_run }}
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Exactly the files the script wrote, and nothing else.
+          jq -r '.changed[]' "$RUNNER_TEMP/backfill/report.json" > "$RUNNER_TEMP/changed.txt"
+          if [ ! -s "$RUNNER_TEMP/changed.txt" ]; then
+            echo "Nothing to commit: every archive is already there."
+            exit 0
+          fi
+          git --literal-pathspecs add --pathspec-from-file="$RUNNER_TEMP/changed.txt"
+          if [ -n "$(git diff --cached --name-only --diff-filter=DR)" ]; then
+            echo "::error::the staged change deletes or renames a file; nothing is pushed"
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain --untracked-files=all | grep -Ev '^(A|M)  ')" ]; then
+            echo "::error::the checkout holds changes the script did not report; nothing is pushed"
+            git status --porcelain --untracked-files=all
+            exit 1
+          fi
+          git commit -m "Rebuild old monthly archives from the site history" \
+                     -m "Restores 2026-07-26 and 2026-09-27 as monthly aggregates and adds each old aggregate's own study records (archive_records.json.gz), built from each week's own files in this repository's history by the engine's backfill-archives workflow."
+          git push origin HEAD:main
