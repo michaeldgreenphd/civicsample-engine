@@ -299,6 +299,26 @@ def project_value(value: Any, spec: Any) -> Any:
     return value
 
 
+def keeps(spec: Any, path: str) -> bool:
+    """Whether a projection by spec keeps the field at path whenever a record
+    has it: the path itself is in spec, or a path that holds it whole is
+    ('ethnicity' keeps 'ethnicity.reported')."""
+    node = spec
+    for key, each in segments(path):
+        if node is LEAF:
+            return True
+        if not isinstance(node, dict) or key not in node:
+            return False
+        node = node[key]
+        if each:
+            if not isinstance(node, Each):
+                return False
+            node = node.item
+        elif isinstance(node, Each):
+            return False
+    return node is LEAF
+
+
 def project_object(obj: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
     """The keys of obj that spec names, in obj's own order, each projected."""
     return {k: project_value(v, spec[k]) for k, v in obj.items() if k in spec}

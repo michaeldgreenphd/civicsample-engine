@@ -21,7 +21,14 @@ records arrive. These tests pin:
   writes them and compactly;
 - the parity check fails when the block is wrong: a count moved between
   years, another filter, another run's stamps, or the block counted with
-  Python's truthiness or Python's idea of a digit.
+  Python's truthiness or Python's idea of a digit;
+- a site change that adds a call from the Overview to a function app.js
+  declares elsewhere runs it as an inert stub: a pass that names it when the
+  numbers agree, exit 2 (could not run faithfully), never a mismatch, when
+  they do not; every stub, the fixed ones included, also answers true in a
+  second run, and the stubs whose answer the Overview reads are flipped in
+  combination, so a rule that uses stubs' answers, alone or together, never
+  passes.
 
 The parity tests run node; the CI job sets node up before the Python suite.
 """
@@ -486,3 +493,608 @@ def test_the_check_reads_a_weeks_file_item_by_item(tmp_path: pathlib.Path, count
     assert report["records"]["count"] == len(records)
     assert (report["records"]["extracted_at"], report["records"]["pipeline_commit"]) == \
         (h.STAMPS["extracted_at"], h.STAMPS["pipeline_commit"])
+
+
+# ── the records cut to what the block reads (the publish gate's recount) ────
+
+def test_the_cut_records_count_as_the_whole_ones(counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """scripts/check_site_contract.py holds a week's records cut to fv.READS:
+    every edge the rules decide counts the same cut as whole."""
+    _, _, records = counted
+    cut = [fv.essentials(r) for r in records]
+    assert fv.first_view(cut, "a", "b") == fv.first_view(records, "a", "b")
+    assert all(set(c) <= {p.split(".")[0] for p in fv.READS} for c in cut)
+
+
+@pytest.mark.parametrize("record,cut", [
+    ({"nct_id": "NCT1", "results_date": None, "study_type": "X", "phase": "P1"},
+     {"nct_id": "NCT1", "results_date": None, "study_type": "X"}),
+    ({}, {}),
+    ({"race": {"reported": [], "omb_totals": {}}, "ethnicity": {"omb_totals": {}}},
+     {"race": {"reported": []}, "ethnicity": {}}),
+    ({"race": "reported", "ethnicity": [{"reported": True}]}, {"race": "reported", "ethnicity": [{"reported": True}]}),
+    ({"race": None}, {"race": None}),
+])
+def test_the_cut_keeps_absence_and_shape(record: dict[str, Any], cut: dict[str, Any]) -> None:
+    assert fv.essentials(record) == cut
+    assert fv.reports(fv.essentials(record), "race") is fv.reports(record, "race")
+    assert fv.reports(fv.essentials(record), "ethnicity") is fv.reports(record, "ethnicity")
+
+
+@pytest.mark.parametrize("record", [None, "NCT00000001", 7, []])
+def test_a_record_that_is_not_an_object_is_cut_to_itself_and_still_refused(record: Any) -> None:
+    assert fv.essentials(record) is record
+    with pytest.raises(fv.FirstViewError, match="record 1 is a"):
+        fv.first_view([fv.essentials(record)], None, None)
+
+
+# ── a site change the parity does not run: stubbed, and said so ─────────────
+
+# Where a routine site PR adds one more call: the summary path, the desktop
+# path, and initFilters. Each anchor is a line the excerpt has once.
+_NEW_CALLS = {
+    "summary_path": ("        sgAfterRender(stub);\n", "        sgAfterRender(stub);\n        {call}(stub);\n"),
+    "desktop_path": ("    renderReportingTrends(filtered);\n", "    renderReportingTrends(filtered);\n    {call}(filtered);\n"),
+    "init_filters": ("function initFilters() {\n", "function initFilters() {\n    {call}();\n"),
+}
+# The helper, declared elsewhere in app.js, in each form the scan recognises.
+_NEW_HELPERS = {
+    "function": "function {call}(rows) {{\n    return rows ? rows.length : 0;\n}}\n",
+    "async_function": "async function {call}(rows) {{\n    return rows;\n}}\n",
+    "arrow_const": "const {call} = (rows) => rows;\n",
+    "bare_arrow_let": "let {call} = rows => rows;\n",
+    "function_expression_const": "const {call} = function (rows) {{\n    return rows;\n}};\n",
+}
+_DESKTOP_RACE = "    const raceCount = filtered.filter(s => s.race?.reported).length;\n"
+
+
+def _excerpt_app() -> str:
+    return (EXCERPT / "app_overview.js").read_text(encoding="utf-8")
+
+
+def _write_app(tmp: pathlib.Path, app: str) -> pathlib.Path:
+    tmp.mkdir(parents=True, exist_ok=True)
+    out = tmp / "app.js"
+    out.write_text(app, encoding="utf-8")
+    return out
+
+
+def _with_call(app: str, where: str, call: str) -> str:
+    anchor, replacement = _NEW_CALLS[where]
+    assert app.count(anchor) == 1, f"the excerpt no longer has one {anchor!r}"
+    return app.replace(anchor, replacement.replace("{call}", call))
+
+
+def _site_with_a_new_call(tmp: pathlib.Path, where: str, helper: str | None,
+                          call: str = "renderTrialPhaseMix") -> pathlib.Path:
+    """The vendored excerpt with one more call in a function the parity slices,
+    and (unless helper is None) that function declared elsewhere in app.js."""
+    app = _with_call(_excerpt_app(), where, call)
+    if helper is not None:
+        app += "\n" + _NEW_HELPERS[helper].format(call=call)
+    return _write_app(tmp, app)
+
+
+def _run_parity(records_file: pathlib.Path, summary_file: pathlib.Path,
+                app: pathlib.Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([_node(), str(PARITY), "--records", str(records_file), "--summary", str(summary_file),
+                           "--app", str(app), "--index", str(EXCERPT / "index_overview.html")],
+                          capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("helper", sorted(_NEW_HELPERS))
+@pytest.mark.parametrize("where", sorted(_NEW_CALLS))
+def test_a_new_call_to_a_helper_defined_elsewhere_in_app_js_passes_and_is_named(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]],
+        where: str, helper: str) -> None:
+    """A site PR that adds a chart to the Overview adds one more call, from a
+    function the parity runs, to a function app.js declares elsewhere. Until
+    2026-10 that stopped the weekly push (exit 2, "is not defined") though the
+    numbers agreed. The helper now runs as an inert stub; the numbers still
+    agree, so the check passes and names what it stubbed."""
+    records_file, summary_file, _ = counted
+    r = _run_parity(records_file, summary_file, _site_with_a_new_call(tmp_path, where, helper))
+    assert r.returncode == 0, r.stderr[-3000:]
+    report = json.loads(r.stdout)
+    _assert_parity(0, report, json.loads(summary_file.read_text())["firstView"])
+    assert report["site_functions_stubbed"] == ["renderTrialPhaseMix"] and report["could_not_run"] is None
+    assert ("first_view_parity: note: the Overview now calls renderTrialPhaseMix, which the parity does not run; "
+            "it ran as an inert stub, and the numbers agree whether it returns nothing or true.") in r.stderr
+
+
+def test_the_sites_code_unchanged_stubs_nothing_and_says_nothing(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """The excerpt as vendored, and the excerpt with functions declared
+    elsewhere that the Overview does not call (as the site's whole app.js
+    has hundreds): nothing is stubbed that runs, and nothing is printed."""
+    records_file, summary_file, _ = counted
+    block = json.loads(summary_file.read_text())["firstView"]
+    unused = "".join(h.format(call=f"unused{i}") for i, h in enumerate(_NEW_HELPERS.values()))
+    for app in (EXCERPT / "app_overview.js", _write_app(tmp_path, _excerpt_app() + "\n" + unused)):
+        r = _run_parity(records_file, summary_file, app)
+        assert r.returncode == 0 and r.stderr == "", r.stderr[-3000:]
+        report = json.loads(r.stdout)
+        _assert_parity(0, report, block)
+        assert report["site_functions_stubbed"] == [] and report["could_not_run"] is None
+        # The fixed stubs the default view always calls ran, tracked, and
+        # their answers were flipped without changing the Overview.
+        assert {"sgApplyMode", "sgAfterRender", "updateActiveFilters", "populateConditionsDropdown",
+                "renderRaceDistribution"} <= set(report["predeclared_stubs_run"])
+        assert report["answer_matters_for"] == []
+        # Every call the excerpt makes to a stub throws the answer away, so
+        # no stub is flipped in combination: the weekly run costs two runs.
+        assert report["answer_read_from"] == []
+
+
+# A stub that changes a number: the helper decides what the Overview paints,
+# so with it inert the site's own two paths disagree.
+_NUMBER_CHANGES = {
+    # the race count's test moved into a helper of its own
+    "counts_the_race_tile": (
+        lambda app: app.replace(_DESKTOP_RACE, "    const raceCount = filtered.filter(s => reportsRace(s)).length;\n"),
+        "function reportsRace(study) {\n    return !!study.race?.reported;\n}\n",
+        "reportsRace"),
+    # #race-reporting rewritten from what a helper returns
+    "rewrites_race_reporting": (
+        lambda app: _with_call(app, "desktop_path", "renderTrialPhaseMix").replace(
+            "    renderTrialPhaseMix(filtered);\n",
+            "    document.getElementById('race-reporting').textContent = formatRaceTile(raceCount, filtered.length);\n"),
+        "const formatRaceTile = (n, total) => `${((n / total) * 100).toFixed(1)}%`;\n",
+        "formatRaceTile"),
+}
+
+
+@pytest.mark.parametrize("change", sorted(_NUMBER_CHANGES))
+def test_a_stub_that_changes_a_number_is_could_not_run_never_a_mismatch(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]], change: str) -> None:
+    """With the helper inert the numbers differ, but the block is right: the
+    difference is the stub's. That is exit 2, naming the helper, never exit 1,
+    which would say the engine's numbers are wrong. The push is blocked
+    either way."""
+    records_file, summary_file, _ = counted
+    edit, helper, name = _NUMBER_CHANGES[change]
+    app = edit(_excerpt_app())
+    assert app != _excerpt_app()
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app + "\n" + helper))
+    assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert not report["ok"] and report["mismatches"] and report["site_functions_stubbed"] == [name]
+    assert report["could_not_run"].startswith(f"the Overview now calls {name}, which the parity does not run: ")
+    assert f"first_view_parity: could not run faithfully: the Overview now calls {name}," in r.stderr
+    assert any(m["check"].startswith(("counts", "painted")) for m in report["mismatches"])
+
+
+def test_a_site_error_after_a_stub_ran_names_the_stub(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """The site code using what the stub returned (undefined) throws: exit 2,
+    and the message says which stub stood in."""
+    records_file, summary_file, _ = counted
+    app = _with_call(_excerpt_app(), "desktop_path", "renderTrialPhaseMix").replace(
+        "    renderTrialPhaseMix(filtered);\n", "    renderTrialPhaseMix(filtered).forEach(() => {});\n")
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app + "\n" + _NEW_HELPERS["function"].format(
+        call="renderTrialPhaseMix")))
+    assert r.returncode == 2 and r.stdout == ""
+    assert ("first_view_parity: could not run faithfully: the Overview now calls renderTrialPhaseMix, which the "
+            "parity does not run, and the site code then threw: ") in r.stderr
+
+
+# A new rule in the counting path, written through a helper declared
+# elsewhere in app.js. Stubbed to return nothing, the helper's answer is a
+# no-op (nothing is excluded, nothing suppressed), so the site's numbers would
+# match a block that never applied the rule. Each is [anchor, the rule inline,
+# the rule through the helper, the helper's name]. The inline rule leaves out
+# the trials whose NCT number ends in an even digit, so it changes the numbers.
+_YEAR_TEST = "        if (isNaN(year) || year < yearStart || year > yearEnd) return false;\n"
+_RULES = {
+    # a default-view exclusion in getFilteredData
+    "excluded_in_getFilteredData": (
+        _YEAR_TEST,
+        _YEAR_TEST + "        if (/[02468]$/.test(String(study.nct_id))) return false;\n",
+        _YEAR_TEST + "        if (isWithdrawnStudy(study)) return false;\n",
+        "isWithdrawnStudy"),
+    # a suppression in renderDashboard's desktop race count
+    "suppressed_in_the_race_count": (
+        _DESKTOP_RACE,
+        "    const raceCount = filtered.filter(s => s.race?.reported && !/[02468]$/.test(String(s.nct_id))).length;\n",
+        "    const raceCount = filtered.filter(s => s.race?.reported && !isSuppressed(s)).length;\n",
+        "isSuppressed"),
+}
+
+
+@pytest.mark.parametrize("rule", sorted(_RULES))
+def test_a_new_rule_through_a_helper_whose_inert_answer_is_a_no_op_never_passes(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]], rule: str) -> None:
+    """The defect the gate exists to catch, written through a helper: the
+    inline rule is a mismatch (exit 1); the same rule through a helper must
+    not pass on the stub's undefined. The parity reruns the site code with
+    the stubs answering true, the Overview changes, so it could not run
+    faithfully (exit 2, naming the helper). Until this the helper form exited
+    0 and the weekly push went ahead with numbers the page would not draw."""
+    records_file, summary_file, _ = counted
+    anchor, inline, via_helper, name = _RULES[rule]
+    app = _excerpt_app()
+    assert app.count(anchor) == 1, f"the excerpt no longer has one {anchor!r}"
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path / "inline", app.replace(anchor, inline)))
+    assert r.returncode == 1, r.stderr[-2000:]
+    helper = f"\nfunction {name}(study) {{\n    return /[02468]$/.test(String(study.nct_id));\n}}\n"
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path / "helper", app.replace(anchor, via_helper) + helper))
+    assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert not report["ok"] and report["site_functions_stubbed"] == [name]
+    assert report["mismatches"] == [] and report["answer_matters_for"] == [name], "named alone, not the fixed stubs"
+    assert report["could_not_run"].startswith(
+        f"the Overview now calls {name}, which the parity does not run: the numbers agree with it stubbed to "
+        "return nothing, but the Overview changes when it returns true instead (first difference: ")
+    assert f"first_view_parity: could not run faithfully: the Overview now calls {name}," in r.stderr
+
+
+def test_a_new_rule_that_keeps_on_a_true_answer_never_passes_either(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """The other polarity, `if (!helper(study)) return false;`: on the stub's
+    undefined every record is left out, so the numbers differ and it could
+    not run faithfully (exit 2), as before the rerun was added."""
+    records_file, summary_file, _ = counted
+    app = _excerpt_app().replace(_YEAR_TEST, _YEAR_TEST + "        if (!studyMatchesPhaseScope(study)) return false;\n")
+    app += "\nfunction studyMatchesPhaseScope(study) {\n    return true;\n}\n"
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app))
+    assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert report["site_functions_stubbed"] == ["studyMatchesPhaseScope"] and report["mismatches"]
+    assert report["could_not_run"].startswith("the Overview now calls studyMatchesPhaseScope, which the parity "
+                                              "does not run: with it stubbed inert, ")
+
+
+# The same rule written through a function the parity stubs by name
+# (ELSEWHERE), not one it finds in app.js: Codex's reproduction. The fixed
+# stubs answer nothing, as the site's own functions do where the Overview
+# calls them, but a site change can start using one's answer.
+_PREDECLARED_RULES = {
+    "excludes_on_a_true_answer": "        if (updateActiveFilters(study)) return false;\n",
+    "keeps_on_a_true_answer": "        if (!updateActiveFilters(study)) return false;\n",
+}
+
+
+@pytest.mark.parametrize("rule", sorted(_PREDECLARED_RULES))
+def test_a_rule_through_a_predeclared_stub_never_passes(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]], rule: str) -> None:
+    """`if (updateActiveFilters(study)) return false;` in getFilteredData,
+    with the site's real updateActiveFilters returning true: the fixed stub
+    stood in untracked and answered undefined, so the parity passed (exit 0,
+    nothing named) and the push would have published a block the page does
+    not draw. Every stub the parity supplies is now call-tracked and takes
+    part in the run with the answers flipped: exit 2, naming the one stub
+    whose answer changes the Overview, never exit 1 and never a pass."""
+    records_file, summary_file, _ = counted
+    app = _excerpt_app()
+    assert app.count(_YEAR_TEST) == 1
+    app = app.replace(_YEAR_TEST, _YEAR_TEST + _PREDECLARED_RULES[rule])
+    app += "\nfunction updateActiveFilters(study) {\n    return true;\n}\n"
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app))
+    assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert not report["ok"] and report["site_functions_stubbed"] == []
+    assert report["answer_matters_for"] == ["updateActiveFilters"]
+    assert "updateActiveFilters" in report["predeclared_stubs_run"]
+    assert report["could_not_run"].startswith(
+        "the Overview uses what updateActiveFilters returns, which the parity stubs to return nothing (ELSEWHERE): ")
+    assert "the Overview changes when it returns true instead (first difference: " in report["could_not_run"]
+    assert ("first_view_parity: could not run faithfully: the Overview uses what updateActiveFilters returns, "
+            "which the parity stubs") in r.stderr
+    # Named alone: the other fixed stubs ran too, and their answers do not matter.
+    assert "sgAfterRender" in report["predeclared_stubs_run"]
+    assert "sgAfterRender" not in report["could_not_run"]
+
+
+def test_a_predeclared_stub_called_as_a_statement_still_passes_quietly(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """A call to a fixed stub whose value is thrown away, here one more in
+    the filter loop, cannot change the Overview whatever it answers: the run
+    with the answers flipped sees the same, so it passes, with no note (the
+    fixed stubs always run), and the report lists the fixed stubs that ran."""
+    records_file, summary_file, _ = counted
+    app = _excerpt_app().replace(_YEAR_TEST, _YEAR_TEST + "        updateActiveFilters(study);\n")
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app))
+    assert r.returncode == 0 and r.stderr == "", r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    _assert_parity(0, report, json.loads(summary_file.read_text())["firstView"])
+    assert report["site_functions_stubbed"] == [] and report["answer_matters_for"] == []
+    assert "updateActiveFilters" in report["predeclared_stubs_run"]
+
+
+# A rule that combines stub answers of opposite polarity: with every stub
+# answering nothing, and again with every one answering true, it excludes
+# nothing (`undefined && ...`, `true && !true`), so the two runs match. The
+# real helpers answer differently from each other and the page drops records.
+# Each is [the rule, the helpers declared in app.js (None: fixed stubs), the
+# names the parity must blame].
+_COMBINED_RULES: dict[str, tuple[str, str | None, list[str]]] = {
+    # the verifier's reproduction: a mode switch gating a test
+    "gated_by_a_mode": (
+        "if (strictModeOn() && !passesStrict(study)) return false;",
+        "function strictModeOn() {\n    return true;\n}\nfunction passesStrict(s) {\n    return s.race?.reported;\n}\n",
+        ["strictModeOn"]),
+    # the same through two fixed stubs (Codex's premise: the site makes them answer)
+    "two_fixed_stubs": (
+        "if (updateActiveFilters(study) && !refreshStudiesTab(study)) return false;",
+        None,
+        ["updateActiveFilters"]),
+    # one of app.js's and one fixed
+    "one_of_each": (
+        "if (isWithdrawnStudy(study) && !refreshStudiesTab(study)) return false;",
+        "function isWithdrawnStudy(s) {\n    return true;\n}\n",
+        ["isWithdrawnStudy"]),
+    # the other way round, and as a conditional expression
+    "conditional": (
+        "if (hasPostedResults(study) ? false : isWithdrawnStudy(study)) return false;",
+        "function hasPostedResults(s) {\n    return false;\n}\nfunction isWithdrawnStudy(s) {\n    return true;\n}\n",
+        ["isWithdrawnStudy"]),
+    # two that must both answer true, against a third that must not
+    "two_against_one": (
+        "if (isA(study) && isB(study) && !isC(study)) return false;",
+        "".join(f"function is{x}(s) {{\n    return true;\n}}\n" for x in "ABC"),
+        ["isA", "isB"]),
+    # four against one: more than the parity tries every combination of
+    "four_against_one": (
+        "if (isA(study) && isB(study) && isC(study) && isD(study) && !isE(study)) return false;",
+        "".join(f"function is{x}(s) {{\n    return true;\n}}\n" for x in "ABCDE"),
+        ["isA", "isB", "isC", "isD"]),
+}
+
+
+@pytest.mark.parametrize("rule", sorted(_COMBINED_RULES))
+def test_a_rule_combining_stub_answers_never_passes(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]], rule: str) -> None:
+    """`if (strictModeOn() && !passesStrict(study)) return false;`: with every
+    stub answering nothing and again with every one answering true, nothing
+    is excluded, so both runs saw the same and the parity passed (exit 0,
+    nothing named) while the page drops every record that does not report
+    race. The stubs whose answers the Overview reads are now also flipped in
+    combination, so the rule is exit 2, naming the stubs whose answer
+    changes the Overview, never a pass."""
+    records_file, summary_file, _ = counted
+    text, helpers, blamed = _COMBINED_RULES[rule]
+    app = _excerpt_app()
+    assert app.count(_YEAR_TEST) == 1
+    app = app.replace(_YEAR_TEST, _YEAR_TEST + "        " + text + "\n") + ("\n" + helpers if helpers else "")
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app))
+    assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert not report["ok"] and report["mismatches"] == []
+    assert report["answer_matters_for"] == blamed
+    named = set(re.findall(r"\b(?:is[A-E]|strictModeOn|passesStrict|isWithdrawnStudy|hasPostedResults|"
+                           r"updateActiveFilters|refreshStudiesTab)\b", text))
+    assert report["answer_read_from"] == sorted(named)
+    rest = sorted(named - set(blamed))
+    one = len(blamed) == 1
+    assert (f"the Overview changes when {'it returns' if one else 'they return'} true instead and "
+            f"{', '.join(rest)} still return{'s' if len(rest) == 1 else ''} nothing (first difference: "
+            ) in report["could_not_run"]
+    assert "first_view_parity: could not run faithfully: " in r.stderr
+
+
+def _answer_read_from(names: list[str], code: str) -> list[str]:
+    script = ("globalThis.FIRST_VIEW_PARITY_NO_MAIN = true;"
+              f"const {{ answerReadFrom }} = await import({json.dumps(PARITY.as_uri())});"
+              f"console.log(JSON.stringify(answerReadFrom({json.dumps(names)}, {json.dumps(code)})));")
+    r = subprocess.run([_node(), "--input-type=module", "-e", script], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    result: list[str] = json.loads(r.stdout)
+    return result
+
+
+# Lines that throw the stub's answer away, each after a line that ends a
+# statement: a lone call, perhaps under if or else, perhaps awaited, with a
+# string argument holding a semicolon or a parenthesis, or guarded by typeof.
+_ANSWER_THROWN_AWAY = [
+    "    f(rows);",
+    "    f();  // repaint",
+    "    if (rows.length > 0) f(rows);",
+    "    if (typeof f === 'function') f();",
+    "    } else f(rows);",
+    "    else f('a;b)', \"c(\");",
+    "    } else if (rows.length) f(rows);",
+    "    await f(rows);",
+    "    if (typeof f !== 'undefined') console.log('ok');",
+    "    // f(rows) is called below",
+]
+# Lines that may use the answer, or read so that the scan cannot tell.
+_ANSWER_MAY_BE_READ = [
+    "    if (f(study)) return false;",
+    "    const n = f(rows);",
+    "    return f(rows);",
+    "    rows.filter(f);",
+    "    f(rows) && g();",
+    "    el.textContent = `${f(rows)}%`;",
+    "    f(g(rows));",
+    "    f(rows)",
+    "    x = cond ? f(rows) : 0;",
+    "    if (!f(study) || g(study)) return false;",
+    "    f(rows), g(rows);",
+    "    f?.(rows);",
+]
+
+
+@pytest.mark.parametrize("line", _ANSWER_THROWN_AWAY)
+def test_a_call_that_throws_the_answer_away_is_not_flipped_in_combination(line: str) -> None:
+    code = "function piece() {\n    const rows = [];\n" + line + "\n}\n"
+    assert _answer_read_from(["f", "g"], code) == []
+
+
+@pytest.mark.parametrize("line", _ANSWER_MAY_BE_READ)
+def test_any_other_mention_of_a_stub_is_flipped_in_combination(line: str) -> None:
+    code = "function piece() {\n    const rows = [];\n" + line + "\n}\n"
+    assert "f" in _answer_read_from(["f", "g"], code)
+
+
+@pytest.mark.parametrize("before", ["    const ok = cond &&", "    const n = rows.length +", "    x = cond ?",
+                                    "    run(a,", "    const n = await"])
+def test_a_call_that_continues_the_line_before_may_be_read(before: str) -> None:
+    code = "function piece() {\n" + before + "\n        f(rows);\n}\n"
+    assert _answer_read_from(["f"], code) == ["f"]
+
+
+def test_a_site_error_only_when_the_stub_answers_true_names_the_stub(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """Code that uses the helper's answer only when there is one: inert on
+    undefined, it throws on true. Its answer matters, so exit 2, naming it."""
+    records_file, summary_file, _ = counted
+    app = _with_call(_excerpt_app(), "desktop_path", "renderTrialPhaseMix").replace(
+        "    renderTrialPhaseMix(filtered);\n",
+        "    const phaseMix = renderTrialPhaseMix(filtered);\n    if (phaseMix) phaseMix.forEach(() => {});\n")
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app + "\n" + _NEW_HELPERS["function"].format(
+        call="renderTrialPhaseMix")))
+    assert r.returncode == 2 and r.stdout == "", r.stdout[-2000:]
+    assert ("first_view_parity: could not run faithfully: the Overview now calls renderTrialPhaseMix, which the "
+            "parity does not run, and with it stubbed to return true the site code threw: ") in r.stderr
+
+
+def test_a_wrong_block_with_no_stub_run_is_still_a_mismatch_and_a_stamp_one_always_is(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """Exit 1 stays what it was: a wrong block with nothing stubbed run, and a
+    check of the files alone (here, another run's stamps), which no stub can
+    change, even when a stub ran."""
+    records_file, summary_file, _ = counted
+    wrong = _mutated(tmp_path, summary_file, _move_one_race_trial)
+    code, report = _parity(records_file, wrong, "--app", str(EXCERPT / "app_overview.js"),
+                           "--index", str(EXCERPT / "index_overview.html"))
+    assert code == 1 and report["could_not_run"] is None and report["site_functions_stubbed"] == []
+    assert {m["check"] for m in report["mismatches"]} == {"counts in 2016", "counts in 2017",
+                                                         "painted: the trend chart's Race series"}
+    (tmp_path / "stamps").mkdir()
+    other_run = _mutated(tmp_path / "stamps", summary_file,
+                         lambda s: s["firstView"].update(extracted_at="2026-09-27T11:49:53+00:00"))
+    r = _run_parity(records_file, other_run, _site_with_a_new_call(tmp_path / "site", "desktop_path", "function"))
+    assert r.returncode == 1, r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert report["could_not_run"] is None and report["site_functions_stubbed"] == ["renderTrialPhaseMix"]
+    assert {m["check"] for m in report["mismatches"]} == {"stamps: the records, the block and the summary are one run"}
+
+
+def test_a_call_to_a_function_app_js_never_declares_still_cannot_run(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """A call the site's own page would throw on (app.js declares no such
+    function) is still a check that cannot run: the stubs come from app.js,
+    not from whatever the sliced code happens to call."""
+    records_file, summary_file, _ = counted
+    r = _run_parity(records_file, summary_file, _site_with_a_new_call(tmp_path, "desktop_path", None, call="renderNowhere"))
+    assert r.returncode == 2 and r.stdout == ""
+    assert "renderNowhere is not defined" in r.stderr
+
+
+def _auto_stubs(app: str) -> dict[str, bool]:
+    script = ("globalThis.FIRST_VIEW_PARITY_NO_MAIN = true;"
+              f"const {{ autoStubs }} = await import({json.dumps(PARITY.as_uri())});"
+              f"console.log(JSON.stringify(autoStubs({json.dumps(app)})));")
+    r = subprocess.run([_node(), "--input-type=module", "-e", script], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return {s["name"]: s["async"] for s in json.loads(r.stdout)}
+
+
+def test_what_is_stubbed_never_replaces_a_piece_a_guard_or_a_value() -> None:
+    """Stubbed: every top-level function app.js declares, in each form.
+    Never: the pieces the check runs (their declarations are the site's
+    code), the filters that must throw on the default view, the fixed list,
+    what the check itself provides, a value computed by an arrow called on
+    the spot, any other value, and anything nested."""
+    app = _excerpt_app() + "\n" + "".join([
+        "function isAIStudy() {\n    return false;\n}\n",            # a guard
+        "function sgActive() {\n    return true;\n}\n",              # provided by the check
+        "function sgAfterRender() {\n}\n",                           # the fixed list
+        "function renderTrialPhaseMix(rows) {\n    function nested() {}\n}\n",
+        "async function loadPhases() {\n}\n",
+        "function* phaseRows() {\n}\n",
+        "const capitalize = text => text.charAt(0).toUpperCase() + text.slice(1);\n",
+        "let pick = async (a, b) => a;\n",
+        "var legacy = function () {};\n",
+        "const isMobileDevice = (() => {\n    return false;\n})();\n",   # a value, not a function
+        "const PHASES = ['1', '2'];\n",
+        "class PhaseChart {\n}\n",
+    ])
+    assert _auto_stubs(app) == {"capitalize": False, "legacy": False, "loadPhases": True, "phaseRows": False,
+                                "pick": True, "renderTrialPhaseMix": False}
+
+
+def test_a_guard_declared_in_app_js_still_throws_on_the_default_view(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """isAIStudy is declared in the site's app.js; the default view calling it
+    is still a site change the check refuses (exit 2), not an inert stub."""
+    records_file, summary_file, _ = counted
+    app = _with_call(_excerpt_app(), "desktop_path", "isAIStudy") + "\nfunction isAIStudy(s) {\n    return false;\n}\n"
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app))
+    assert r.returncode == 2 and "isAIStudy ran in the Overview's default view" in r.stderr
+
+
+# ── the staged parts as the records (the weekly publish) ────────────────────
+
+def _write_parts(folder: pathlib.Path, records: list[dict[str, Any]], n: int,
+                 stamps: list[dict[str, Any]] | None = None) -> list[pathlib.Path]:
+    """The records as the site's parts: n gzipped containers, each with the
+    run's stamps and its own data array (scripts/split_data.py's shape)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    size = -(-len(records) // n)
+    paths = []
+    for k in range(n):
+        path = folder / f"demographics.part{k + 1}.json.gz"
+        body = {**((stamps or [])[k] if stamps else h.STAMPS), "part": k + 1, "total_parts": n,
+                "data": records[k * size:(k + 1) * size]}
+        with gzip.open(path, "wt", encoding="utf-8") as f:
+            json.dump(body, f, separators=(",", ":"))
+        paths.append(path)
+    return paths
+
+
+def test_the_parity_reads_the_staged_parts_as_one_set_of_records(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    records_file, summary_file, records = counted
+    parts = _write_parts(tmp_path, records, 4)
+    r = subprocess.run([_node(), str(PARITY), *[a for p in parts for a in ("--records", str(p))],
+                        "--summary", str(summary_file)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    report = json.loads(r.stdout)
+    block = json.loads(summary_file.read_text())["firstView"]
+    _assert_parity(r.returncode, report, block)
+    assert report["records"]["file"] == [str(p) for p in parts] and report["records"]["count"] == len(records)
+    # One file is still reported as one path, as before.
+    _, one = _parity(records_file, summary_file)
+    assert one["records"]["file"] == str(records_file)
+
+
+def test_the_parity_on_parts_still_finds_a_wrong_block(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    _, summary_file, records = counted
+    parts = _write_parts(tmp_path / "parts", records, 3)
+    wrong = _mutated(tmp_path, summary_file, _move_one_race_trial)
+    r = subprocess.run([_node(), str(PARITY), *[a for p in parts for a in ("--records", str(p))],
+                        "--summary", str(wrong)], capture_output=True, text=True)
+    assert r.returncode == 1
+    assert {m["check"] for m in json.loads(r.stdout)["mismatches"]} == \
+        {"counts in 2016", "counts in 2017", "painted: the trend chart's Race series"}
+
+
+def test_parts_from_two_runs_are_an_input_error(tmp_path: pathlib.Path,
+                                                counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    _, summary_file, records = counted
+    other = {**h.STAMPS, "pipeline_commit": "abc1234"}
+    parts = _write_parts(tmp_path, records, 2, stamps=[h.STAMPS, other])
+    r = subprocess.run([_node(), str(PARITY), "--records", str(parts[0]), "--records", str(parts[1]),
+                        "--summary", str(summary_file)], capture_output=True, text=True)
+    assert r.returncode == 2 and r.stdout == ""
+    assert f"first_view_parity: {parts[1]} is from another run" in r.stderr and "abc1234" in r.stderr
+
+
+def test_the_parity_holds_on_the_split_layouts_core_parts(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """Under the split layout the publish step passes the core parts, which
+    carry the site's core class only: cut by scripts/split_data.py with the
+    site's own contract, they must still give the site's code every field the
+    Overview reads on the default view."""
+    _, summary_file, records = counted
+    dataset = h.split(tmp_path / "engine", records, h.site_contract(enabled=True))
+    parts = sorted(dataset.glob("demographics.part*.json.gz"), key=lambda p: int(re.search(r"part(\d+)", p.name).group(1)))
+    assert len(parts) > 1 and "layout" in h.read_gz(parts[0])
+    r = subprocess.run([_node(), str(PARITY), *[a for p in parts for a in ("--records", str(p))],
+                        "--summary", str(summary_file)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    report = json.loads(r.stdout)
+    _assert_parity(r.returncode, report, json.loads(summary_file.read_text())["firstView"])
+    assert report["records"]["count"] == len(records)

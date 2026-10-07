@@ -49,9 +49,15 @@ def cut(tmp: pathlib.Path, day: str, split: bool = False, ids: list[str] | None 
 
 
 def summary(day: str, ids: list[str] | None = None) -> dict[str, Any]:
+    """The week's summary as the generator writes it: its firstView counted
+    from the week's records (the publish gate recounts data/'s)."""
+    from src import first_view as fv
     ids = ids or IDS
-    return {**stamps(day), "totalStudies": len(ids),
-            "recentStudies": [{"nct_id": nct, "brief_title": f"study {i}"} for i, nct in enumerate(ids)]}
+    s = stamps(day)
+    return {**s, "totalStudies": len(ids),
+            "recentStudies": [{"nct_id": nct, "brief_title": f"study {i}"} for i, nct in enumerate(ids)],
+            "firstView": json.loads(json.dumps(fv.first_view(h.whole_records(ids), s["extracted_at"],
+                                                             s["pipeline_commit"])))}
 
 
 def sex_gender_table(day: str, n: int) -> bytes:

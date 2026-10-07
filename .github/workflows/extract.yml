@@ -231,6 +231,15 @@ jobs:
           fi
           echo "Archived $(basename "$ASSET") to release $TAG"
 
+      - name: Set up Node (the publish step runs the site's own Overview code)
+        # scripts/first_view_parity.mjs runs the site's app.js over this week's
+        # parts before the push; pinned as in ci.yml, so the check does not
+        # depend on the runner's default node. Here, with the site-side steps:
+        # like them, it is skipped once an earlier step fails.
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Check out the site repository
         uses: actions/checkout@v4
         with:
@@ -336,8 +345,44 @@ jobs:
           # missing, another run's or not covering its recent studies), a
           # file over GitHub's 100 MiB per-file push limit, or a site over
           # GitHub Pages' 1 GB limit stops the publish here, and the site
-          # keeps last week's data. Over the size budgets only warns.
+          # keeps last week's data. Over the size budgets only warns. The same
+          # check recounts dashboard-summary.json's firstView (the Overview as
+          # it opens, src/first_view.py) from the staged parts and stops the
+          # publish when the block is missing or differs in any number.
           python3 ../scripts/check_site_contract.py --site . --latest "$DATE" --report "$RUNNER_TEMP/site_check.json"
+          # The block against the site's own Overview code: this checkout's
+          # app.js and index.html, the page this push updates, run over the
+          # staged parts (scripts/first_view_parity.mjs). A site change to the
+          # Overview's rules that the engine has not followed stops the
+          # publish here, rather than publishing numbers the page would not
+          # draw; the site keeps last week's data. Exit 1 is a mismatch;
+          # exit 2, an input or site code the script cannot read (its message
+          # is printed above), or a check it could not run faithfully: a
+          # function of app.js it does not run, stubbed inert, ran and the
+          # numbers differ, or they change when the stubs that ran (its fixed
+          # ELSEWHERE stubs too) return true instead of nothing, all at once
+          # or, for those whose answer the Overview reads, in combination, so
+          # the report's could_not_run is annotated and its mismatches go to the
+          # log only. A stubbed app.js function that ran with the numbers
+          # agreeing either way passes, and is named; the fixed stubs run
+          # every week and are listed in the report only. GitHub shows
+          # at most 10 error annotations a step, so the line that says nothing
+          # was pushed comes first, then eight mismatches and a count of the
+          # rest, which follow as plain log lines (the whole report is
+          # $RUNNER_TEMP/first_view_parity.json).
+          FV_RECORDS=""
+          for part in data/demographics.part*.json.gz; do FV_RECORDS="$FV_RECORDS --records $part"; done
+          if ! node ../scripts/first_view_parity.mjs $FV_RECORDS --summary data/dashboard-summary.json --app app.js --index index.html > "$RUNNER_TEMP/first_view_parity.json"; then
+            echo "::error::dashboard-summary.json's firstView is not what the site's own Overview code (app.js, index.html) counts and paints from this week's parts, or the check could not run; nothing was pushed, and the site keeps last week's data."
+            jq -r '(.mismatches // []) as $m
+              | if .could_not_run then "::error::first-view parity could not run faithfully: \(.could_not_run)",
+                  ($m[] | "first-view parity (with a stub), \(.check): \(.detail | tojson | .[0:500])")
+                else ($m[:8][] | "::error::first-view parity, \(.check): \(.detail | tojson | .[0:500])"),
+                  (if ($m | length) > 8 then "::error::first-view parity: \(($m | length) - 8) more mismatches, in the step log below",
+                     ($m[8:][] | "first-view parity, \(.check): \(.detail | tojson | .[0:500])") else empty end) end' "$RUNNER_TEMP/first_view_parity.json" 2>/dev/null || true
+            exit 1
+          fi
+          echo "first-view parity: ok, $(jq -r '"\(.checked) checks on \(.records.count) records\((.site_functions_stubbed // []) as $s | if ($s | length) > 0 then "; stubbed inert and run: \($s | join(", "))" else "" end)"' "$RUNNER_TEMP/first_view_parity.json")"
           git commit -m "Update demographics data $DATE$REPLACED" || exit 0
           git push
 
@@ -495,6 +540,18 @@ jobs:
             echo "| Full-record release | step ${{ steps.data_release.outcome }} (release data-$CURRENT_DATE) |"
             if [ -f "$RUNNER_TEMP/site_check.json" ]; then
               echo "| Site contract check | $(jq -r '"\(if .ok then "passed" else "FAILED, nothing published" end): \(.records // 0) records; parts \((.parts_gzip_bytes // 0) / 1e6 | floor) MB of a \((.total_budget_bytes // 0) / 1e6 | floor) MB budget; site \((.tree_bytes // 0) / 1e6 | floor) MB; \(.errors | length) errors, \(.warnings | length) warnings"' "$RUNNER_TEMP/site_check.json") |"
+            fi
+            # The first-view parity has its own row: when it stops the push,
+            # the contract check above still reads passed.
+            if [ -f "$RUNNER_TEMP/first_view_parity.json" ]; then
+              # A pass that stubbed site functions says how many and which.
+              FV_ROW=$(jq -r '(.site_functions_stubbed // []) as $s
+                | if .ok then "passed\(if ($s | length) > 0 then " (\($s | length) site function\(if ($s | length) > 1 then "s" else "" end) stubbed: \($s | join(", ")))" else "" end): \(.checked) checks on \(.records.count) records"
+                  elif .could_not_run then "could not run faithfully, nothing published: \(.could_not_run)"
+                  else "FAILED, nothing published: \(.mismatches | length) of \(.checked) checks differ" end' "$RUNNER_TEMP/first_view_parity.json" 2>/dev/null || true)
+              echo "| First-view parity | ${FV_ROW:-could not run, nothing published (the publish step log says why)} |"
+            elif [ -f "$RUNNER_TEMP/site_check.json" ]; then
+              echo "| First-view parity | not run: the publish step stopped before it |"
             fi
             # What retention did this week (scripts/prune_snapshots.py): until
             # 2026-10 removals went only to the log, and a pruning bug deleted

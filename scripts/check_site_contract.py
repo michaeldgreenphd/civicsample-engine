@@ -29,7 +29,15 @@ EXITS   1 when the push must not happen:
             an empty list, which is how a record says "none"; it may not be
             absent);
           - a file is over GitHub's 100 MiB per-file push limit, or the
-            published tree is over GitHub Pages' 1 GB limit.
+            published tree is over GitHub Pages' 1 GB limit;
+          - data/dashboard-summary.json is missing, has no firstView block,
+            comes from another run than the parts, or its firstView is not,
+            key for key, what src/first_view.py counts from the staged parts'
+            records (the first differing paths are named). Under the split
+            layout the parts carry the core class only, so a contract that
+            leaves out of core a field firstView reads (src/first_view.py
+            READS) blocks too, rather than recounting from absent fields.
+            Snapshot summaries are not asked for the block.
         Parts with no `layout` block are inline: they carry every class, and
         the rules above are the whole check. When core part 1 carries a layout
         (the split), the parts carry the core class, and it also stops the
@@ -98,6 +106,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import archive_records  # noqa: E402
 from src import dataset_folder as df  # noqa: E402
+from src import first_view as fv  # noqa: E402
 from src import site_layout as sl  # noqa: E402
 
 # GitHub rejects a push with a file over 100 MiB. (The site serves its parts
@@ -111,6 +120,8 @@ MAX_REPORTED = 20
 EXAMPLES_PER_PATH = 3
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 HISTORY_FILE = "history.json"
+FIRST_VIEW = "firstView"
+DIFFERENCES_NAMED = 5
 _ABSENT = object()
 
 
@@ -269,6 +280,8 @@ def check(site: str, part_hard_limit: int = PART_HARD_LIMIT_BYTES,
     seen: set[Any] = set()
     part_ids: dict[int, list[Any]] = {}
     records = 0
+    counted: list[Any] = []              # every record, cut to what firstView reads
+    parts_counted = 0
     for i, name in enumerate(expected, start=1):
         if name not in sizes:
             continue
@@ -333,7 +346,9 @@ def check(site: str, part_hard_limit: int = PART_HARD_LIMIT_BYTES,
                     for key in plan.stray_keys(record, "core"):
                         f.fat.add(f"core records carry {key}, which core does not read", str(nct))
             f.need(record, check_paths, name, nct)
+            counted.append(fv.essentials(record))
         part_ids[i] = ids
+        parts_counted += 1
         del part
     report["records"] = records
 
@@ -351,6 +366,8 @@ def check(site: str, part_hard_limit: int = PART_HARD_LIMIT_BYTES,
         if switch is not None and switch.split:
             warnings.append("the site's contract turns the split layout on, but this week's parts carry whole records")
         check_inline_run(f, data_dir, first, part_count, records)
+
+    check_first_view(f, data_dir, counted, first, mode, plan, every_part=parts_counted == part_count)
 
     if latest is not None or os.path.exists(os.path.join(site, HISTORY_FILE)):
         check_history(f, latest, part_count)
@@ -562,6 +579,85 @@ def check_inline_run(f: Findings, data_dir: str, first: dict[str, Any] | None, p
             f.err(f"data/{sl.RUN_FILE} says {key} {run.get(key)!r}; the parts say {value!r}")
     if "layout" in run:
         f.err(f"data/{sl.RUN_FILE} carries a layout ({run['layout']!r}), but this week's parts carry whole records")
+
+
+def _shown(value: Any) -> str:
+    text = json.dumps(value, ensure_ascii=False)
+    return text if len(text) <= 80 else text[:77] + "..."
+
+
+def first_view_differences(want: Any, got: Any, path: str = FIRST_VIEW) -> list[str]:
+    """Every path at which got (the summary's block) is not want (the recount),
+    in the recount's order: a key either side lacks, a list of another length,
+    or a value that differs in type or value (1 is not 1.0 or true here)."""
+    if isinstance(want, dict) and isinstance(got, dict):
+        out: list[str] = []
+        for key in [*want, *(k for k in got if k not in want)]:
+            where = f"{path}.{key}"
+            if key not in got:
+                out.append(f"{where}: the summary has no such key; the staged parts give {_shown(want[key])}")
+            elif key not in want:
+                out.append(f"{where}: the summary has {_shown(got[key])}; the recount has no such key")
+            else:
+                out.extend(first_view_differences(want[key], got[key], where))
+        return out
+    if isinstance(want, list) and isinstance(got, list) and len(want) == len(got):
+        return [d for i, (a, b) in enumerate(zip(want, got)) for d in first_view_differences(a, b, f"{path}[{i}]")]
+    if type(want) is type(got) and want == got:
+        return []
+    return [f"{path}: the summary says {_shown(got)}; the staged parts give {_shown(want)}"]
+
+
+def check_first_view(f: Findings, data_dir: str, records: list[Any], first: dict[str, Any] | None,
+                     mode: str | None, plan: sl.Plan | None, every_part: bool) -> None:
+    """data/dashboard-summary.json's firstView block, recounted from the staged
+    parts (the bytes about to be pushed) by src/first_view.py, must be the
+    block, key for key: the site paints the Overview from it before the
+    records arrive. A summary without the block blocks too: the generator
+    always writes it. (Snapshot summaries are not asked for one: weeks
+    published before the block have none, and no page paints one from it.)"""
+    entry: dict[str, Any] = {"recounted": False}
+    f.report["first_view"] = entry
+    name = f"data/{df.SUMMARY_FILE}"
+    summary = df.read_summary(data_dir)
+    if summary is None:
+        f.err(f"{name} is missing or not a JSON object; the site opens the Overview on its {FIRST_VIEW} block")
+        return
+    block = summary.get(FIRST_VIEW)
+    if not isinstance(block, dict):
+        f.err(f"{name} has no {FIRST_VIEW} block ({FIRST_VIEW}: {_shown(block)}); the weekly generator always "
+              "writes one, and the site opens the Overview on it")
+        return
+    if first is None or mode not in ("inline", "split"):
+        return                            # the parts cannot be read as one run: reported above
+    stamps = (first["extracted_at"], first["pipeline_commit"])
+    if (summary.get("extracted_at"), summary.get("pipeline_commit")) != stamps:
+        f.err(f"{name} comes from another run ({summary.get('extracted_at')!r}, {summary.get('pipeline_commit')!r}) "
+              f"than the parts ({stamps[0]!r}, {stamps[1]!r})")
+    if mode == "split":
+        # What the core parts carry is what the core projection keeps: a READS
+        # path itself, a path that holds it whole, or an optional path the
+        # layout puts in core.
+        absent = [p for p in fv.READS if plan is None or not sl.keeps(plan.spec["core"], p)]
+        if absent:
+            f.err(f"{FIRST_VIEW} is counted from {', '.join(absent)}, which the site's contract does not put in core, "
+                  f"so the core parts do not carry {'it' if len(absent) == 1 else 'them'} and the block cannot be "
+                  "recounted from the files about to be pushed (src/first_view.py READS)")
+            return
+    if not every_part:
+        return                            # a part did not read: reported above, and a recount would be partial
+    try:
+        recount = json.loads(json.dumps(fv.first_view(records, *stamps)))
+    except fv.FirstViewError as e:
+        f.err(f"{FIRST_VIEW} cannot be recounted from the staged parts: {e}")
+        return
+    found = first_view_differences(recount, block)
+    entry.update(recounted=True, trials=recount["trials"], differences=len(found))
+    if found:
+        more = len(found) - DIFFERENCES_NAMED
+        f.err(f"{name}'s {FIRST_VIEW} is not what the staged parts count ({len(found)} difference"
+              f"{'' if len(found) == 1 else 's'}): " + "; ".join(found[:DIFFERENCES_NAMED])
+              + (f"; and {more} more" if more > 0 else ""))
 
 
 def _is_date(value: Any) -> bool:

@@ -206,6 +206,56 @@ excerpt byte for byte. A site change to that code is followed by rewriting the
 excerpt from the site and checking a real week's records with the script. A change that loosens the check, or edits
 the excerpt by hand, is the defect it exists to catch.
 
+The weekly publish checks the block twice before the push, and either
+failure stops it, leaving the site on last week's data like any other
+correctness failure. `scripts/check_site_contract.py` recounts the block with
+`src/first_view.py` from the staged parts, the bytes about to be pushed, and
+requires it key for key, naming the first paths that differ; a data folder
+whose summary has no `firstView` fails too (snapshot summaries are not asked
+for one: older weeks never had it). Under the split layout the parts carry the
+core class only, so a site contract that moves a field the block reads
+(`READS` in `src/first_view.py`) out of core fails the check rather than
+recounting from absent fields. Then `scripts/first_view_parity.mjs` runs on the
+staged parts (`--records` once per part) against the site checkout's own
+app.js and index.html, so a site change to the Overview's rules that the
+engine has not followed blocks the push instead of publishing numbers the
+page would not draw; the job sets node up for it. A change that makes either
+advisory, or moves it after the push, is the defect they exist to catch.
+Every other top-level function of the site's app.js runs in the parity as an
+inert stub that records its calls, so a site change that only adds a call from
+the Overview to a helper of its own (a new chart) does not stop the push. The
+functions the default view always calls outside the Overview (`ELSEWHERE`) are
+stubbed by name the same way: inert (the site's own return nothing), and their
+calls recorded. When any stub ran, the site code runs again with every stub
+returning true instead of nothing, since a new rule written through a helper
+(`if (isWithdrawnStudy(study)) return false;`, or the same through a fixed
+one, `if (updateActiveFilters(study)) return false;`) is a no-op on undefined
+and would otherwise pass; when that run differs, halves of the stubs that ran
+are flipped alone to name the ones whose answer matters. Answers can cancel
+out (`if (strictModeOn() && !passesStrict(study)) return false;` excludes
+nothing whether both answer nothing or both true), so the stubs whose answer
+the Overview may read, any mention but a lone call statement
+(`answerReadFrom`, `answer_read_from` in the report; none on site main today),
+are also flipped in combination: every combination of up to four, else each
+alone and all but each one. No stub may change the counted numbers without
+the parity noticing, within those runs: a fixed stub that the Overview comes
+to need an answer from gets a stub mirroring the site's function, never a
+value that keeps it out of those runs. With the numbers agreeing and every run
+the same, the parity passes and names the stubbed app.js functions that ran
+(the report also lists the fixed ones, in `predeclared_stubs_run`; they run
+every week and are not noted); with a run with flipped answers differing, the
+numbers differing while an app.js function ran as a stub, or the site code
+throwing, it exits 2, "could not run faithfully", never
+1, since the difference may be the stub's (`answer_matters_for` names it).
+Exit 2 still blocks: follow such a site change by running the helper in the
+parity (`APP_PIECES`) or stubbing it with what the Overview needs
+(`ELSEWHERE`). A rename or removal of a piece, or a call to a name app.js does
+not declare as a function, also stays exit 2. No run sees a helper whose
+answer matters only as some other value (`=== 'withdrawn'`), a rule over five
+or more read stubs that needs two or more of them true while two or more
+others answer nothing, or a helper that repaints an Overview number on the
+real page.
+
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM
 extraction results, which cost money to produce and are the record the
