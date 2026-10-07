@@ -87,6 +87,12 @@ def _without_commit(folder: pathlib.Path) -> None:
         summary.write_text(json.dumps(doc))
 
 
+def _laid_out(path: pathlib.Path) -> None:
+    """A summary in bytes json.dumps would not give back (indented, a
+    trailing newline), so "byte for byte" can tell a copy from a re-dump."""
+    path.write_text(json.dumps(json.loads(path.read_text()), indent=1) + "\n")
+
+
 def _build_template(tmp: pathlib.Path) -> tuple[pathlib.Path, dict[str, str]]:
     site = tmp / "site"
     site.mkdir()
@@ -101,8 +107,10 @@ def _build_template(tmp: pathlib.Path) -> tuple[pathlib.Path, dict[str, str]]:
     commits[FEB] = _commit(site, "Backfill historical snapshot directories")
     sh.write_week(tmp, snaps / JUL, JUL, extras=False)
     _without_commit(snaps / JUL)
+    _laid_out(snaps / JUL / "dashboard-summary.json")
     commits[JUL] = _commit(site, f"Update demographics data {JUL}")
     sh.write_week(tmp, snaps / SEP, SEP)
+    _laid_out(snaps / SEP / "dashboard-summary.json")
     commits[SEP] = _commit(site, f"Update demographics data {SEP}")
     # The old rule: February slimmed to its summary, July and September deleted.
     for p in (snaps / FEB).iterdir():
