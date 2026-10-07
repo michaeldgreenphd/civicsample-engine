@@ -204,6 +204,16 @@ app.js and index.html, so a site change to the Overview's rules that the
 engine has not followed blocks the push instead of publishing numbers the
 page would not draw; the job sets node up for it. A change that makes either
 advisory, or moves it after the push, is the defect they exist to catch.
+Every other top-level function of the site's app.js runs in the parity as an
+inert stub that records its calls, so a site change that only adds a call
+from the Overview to a helper of its own (a new chart) does not stop the
+push: with the numbers agreeing the parity passes and names the stubbed
+functions that ran; with them differing it exits 2, "could not run
+faithfully", never 1, since the difference may be the stub's. Exit 2 still
+blocks: follow such a site change by running the helper in the parity
+(`APP_PIECES`) or stubbing it with what the Overview needs (`ELSEWHERE`). A
+rename or removal of a piece, or a call to a name app.js does not declare as a
+function, also stays exit 2.
 
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM

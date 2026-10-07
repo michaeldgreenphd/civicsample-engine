@@ -1096,19 +1096,29 @@ PARITY_MISMATCH = {"ok": False, "checked": 41, "records": {"count": 3},
                    "mismatches": [{"check": "counts in 2016", "ok": False,
                                    "detail": {"site": {"trials": 3}, "block": {"trials": 4}}}]}
 PARITY_OK = {"ok": True, "checked": 41, "records": {"count": 3}, "mismatches": []}
+# A site function the parity does not run, stubbed inert: run with the numbers
+# agreeing (a pass that names it), and run with them differing (exit 2).
+PARITY_STUBBED_OK = {**PARITY_OK, "could_not_run": None, "site_functions_stubbed": ["renderTrialPhaseMix"]}
+COULD_NOT_RUN = ("the Overview now calls formatRaceTile, which the parity does not run: with it stubbed inert, "
+                 "1 of 41 checks differ, so whether the block or the stub is wrong is unknown; make the parity run it "
+                 "(APP_PIECES) or stub it with what the Overview needs (ELSEWHERE)")
+PARITY_UNFAITHFUL = {"ok": False, "checked": 41, "records": {"count": 3}, "could_not_run": COULD_NOT_RUN,
+                     "site_functions_stubbed": ["formatRaceTile"],
+                     "mismatches": [{"check": f"painted: #race-reporting{k}", "ok": False,
+                                     "detail": {"records": "undefined", "block": "60.0%"}} for k in range(12)]}
 
 
 def _publish(tmp_path: pathlib.Path, last_week: dict[str, str], this_week: dict[str, str], check_rc: int = 0,
              last_snapshot: str | None = "2026-10-04",
              history: str = '{"dates": ["2026-10-04"]}',
-             parity_rc: int = 0, parity_mismatch: dict | None = None
+             parity_rc: int = 0, parity_mismatch: dict | None = None, parity_report: dict | None = None
              ) -> tuple[subprocess.CompletedProcess[str], str, pathlib.Path]:
     """Run the publish step's own block under bash -e: real files, real git and
     real jq in a site repository whose last commit holds last week's dataset (in
     data/, and in snapshots/<last_snapshot>/ as the publish step before this
     change wrote it), stubs for the check, the first-view parity, retention and
     push. The parity stub exits parity_rc and prints the report the script
-    prints for it (none for 2, an input it cannot read)."""
+    prints for it (none for 2, an input it cannot read), or parity_report."""
     real_git = shutil.which("git")
     assert real_git, "git is not installed"
     if not shutil.which("jq"):
@@ -1142,14 +1152,16 @@ def _publish(tmp_path: pathlib.Path, last_week: dict[str, str], this_week: dict[
     for name, script in {
         "git": f'echo "git $*" >> "$CALLS"; case "$1" in push) exit 0;; esac; exec "{real_git}" "$@"',
         "python3": 'echo "python3 $*" >> "$CALLS"; case "$*" in *check_site_contract.py*) exit "$CHECK_RC";; esac; exit 0',
-        "node": 'echo "node $*" >> "$CALLS"; case "$PARITY_RC" in 0) echo "$PARITY_OK";; 1) echo "$PARITY_MISMATCH";; '
+        "node": 'echo "node $*" >> "$CALLS"; if [ -n "$PARITY_REPORT" ]; then echo "$PARITY_REPORT"; exit "$PARITY_RC"; fi; '
+                'case "$PARITY_RC" in 0) echo "$PARITY_OK";; 1) echo "$PARITY_MISMATCH";; '
                 '*) echo "first_view_parity: app.js has no function getFilteredData()" >&2;; esac; exit "$PARITY_RC"',
     }.items():
         (stub / name).write_text(f"#!/bin/bash\n{script}\n")
         (stub / name).chmod(0o755)
     env.update({"PATH": f"{stub}:{os.environ['PATH']}", "CALLS": str(log), "CHECK_RC": str(check_rc),
                 "CURRENT_DATE": DATE, "RUNNER_TEMP": str(tmp_path), "PARITY_RC": str(parity_rc),
-                "PARITY_OK": json.dumps(PARITY_OK), "PARITY_MISMATCH": json.dumps(parity_mismatch or PARITY_MISMATCH)})
+                "PARITY_OK": json.dumps(PARITY_OK), "PARITY_MISMATCH": json.dumps(parity_mismatch or PARITY_MISMATCH),
+                "PARITY_REPORT": json.dumps(parity_report) if parity_report else ""})
     r = subprocess.run(["bash", "-e", "-c", _publish_block()], cwd=engine, env=env, capture_output=True, text=True)
     return r, log.read_text() if log.exists() else "", site
 
@@ -1665,7 +1677,31 @@ def test_a_passing_parity_lets_the_publish_step_push(tmp_path: pathlib.Path) -> 
     r, calls, _ = _publish(tmp_path, _whole_week("last"), _whole_week("this"))
     assert r.returncode == 0, r.stdout + r.stderr
     assert calls.index("check_site_contract.py") < calls.index("first_view_parity.mjs") < calls.index("git commit")
-    assert "first-view parity: ok, 41 checks on 3 records" in r.stdout
+    assert "first-view parity: ok, 41 checks on 3 records\n" in r.stdout
+
+
+def test_a_pass_with_a_stubbed_site_function_pushes_and_names_it(tmp_path: pathlib.Path) -> None:
+    """A site PR added a call the parity does not run, and the numbers agree
+    with it stubbed: the push goes ahead, and the log names the function."""
+    r, calls, _ = _publish(tmp_path, _whole_week("last"), _whole_week("this"), parity_report=PARITY_STUBBED_OK)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "git push" in calls
+    assert "first-view parity: ok, 41 checks on 3 records; stubbed inert and run: renderTrialPhaseMix\n" in r.stdout
+
+
+def test_a_parity_that_could_not_run_faithfully_stops_the_push_and_says_why_not_mismatch(tmp_path: pathlib.Path) -> None:
+    """Exit 2 with a stubbed function run and the numbers differing: the
+    annotation says the check could not run faithfully and names the function;
+    the differences, which may be the stub's, are log lines, not annotated
+    as the block's mismatches."""
+    r, calls, _ = _publish(tmp_path, _whole_week("last"), _whole_week("this"), parity_rc=2,
+                           parity_report=PARITY_UNFAITHFUL)
+    assert r.returncode == 1 and "git commit" not in calls and "git push" not in calls, r.stdout + r.stderr
+    errors = [line for line in r.stdout.splitlines() if line.startswith("::error::")]
+    assert errors == [CLOSING, f"::error::first-view parity could not run faithfully: {COULD_NOT_RUN}"], errors
+    for k in range(12):
+        assert (f'first-view parity (with a stub), painted: #race-reporting{k}: '
+                '{"records":"undefined","block":"60.0%"}') in r.stdout.splitlines()
 
 
 CLOSING = ("::error::dashboard-summary.json's firstView is not what the site's own Overview code (app.js, index.html) "
@@ -1705,12 +1741,18 @@ def _summary_parity_block() -> str:
 
 @pytest.mark.parametrize("report,check,row", [
     (PARITY_OK, {"ok": True}, "| First-view parity | passed: 41 checks on 3 records |"),
+    (PARITY_STUBBED_OK, {"ok": True},
+     "| First-view parity | passed (1 site function stubbed: renderTrialPhaseMix): 41 checks on 3 records |"),
+    ({**PARITY_STUBBED_OK, "site_functions_stubbed": ["a", "b"]}, {"ok": True},
+     "| First-view parity | passed (2 site functions stubbed: a, b): 41 checks on 3 records |"),
     (PARITY_MISMATCH, {"ok": True}, "| First-view parity | FAILED, nothing published: 1 of 41 checks differ |"),
+    (PARITY_UNFAITHFUL, {"ok": True}, f"| First-view parity | could not run faithfully, nothing published: {COULD_NOT_RUN} |"),
     ("", {"ok": True}, "| First-view parity | could not run, nothing published (the publish step log says why) |"),
     (None, {"ok": True}, "| First-view parity | not run: the publish step stopped before it |"),
     (None, {"ok": False}, "| First-view parity | not run: the publish step stopped before it |"),
     (None, None, None),
-], ids=["passed", "a-mismatch", "could-not-run", "not-reached", "after-a-failed-check", "no-publish"])
+], ids=["passed", "passed-with-a-stub", "passed-with-two-stubs", "a-mismatch", "could-not-run-faithfully",
+        "could-not-run", "not-reached", "after-a-failed-check", "no-publish"])
 def test_the_run_summary_says_whether_the_parity_passed(tmp_path: pathlib.Path, report: object, check: dict | None,
                                                         row: str | None) -> None:
     """A parity block must not read as a clean run: the contract check's row

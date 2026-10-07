@@ -28,6 +28,16 @@
  *   stamps   the records, the block and the summary carry one extracted_at and
  *            pipeline_commit, and the summary counted as many records.
  *
+ * Every other function app.js declares at the top level runs as an inert
+ * stub that records each call (autoStubs): a site change that adds a call
+ * from one of the pieces to a helper of its own (a chart added to the
+ * Overview) does not stop the check. When the numbers agree, the report and
+ * a note on stderr name the stubbed functions that ran (exit 0). When they
+ * differ and one ran, the check could not run faithfully: the difference may
+ * be the stub's, so it is exit 2, never a mismatch (exit 1). A rename or
+ * removal of a piece, and a call to a name app.js never declares as a
+ * function, stay exit 2 as before.
+ *
  * The full-record file is read item by item (a week's is about 1.3 GB, over
  * V8's string limit), plain or gzipped, as src/full_records.py reads it.
  * --records may be given more than once: the weekly publish passes the
@@ -42,7 +52,8 @@
  *     The site files default to the excerpt in tests/fixtures/site_overview/;
  *     pass the site's own app.js and index.html to check against them.
  *     Prints a JSON report; exits 0 when everything matches, 1 on a mismatch,
- *     2 when an input cannot be read or the site code cannot run.
+ *     2 when an input cannot be read or the site code cannot run, or cannot
+ *     run faithfully (below).
  *   node scripts/first_view_parity.mjs --excerpt --app <site app.js> --index <site index.html>
  *        --source "<repo>@<commit>" [--out-dir tests/fixtures/site_overview]
  *     Rewrites the excerpt from the site's files: the pieces below, unchanged.
@@ -82,7 +93,11 @@ const APP_PIECES = [
 // every element those functions read or write, the filter panel included.
 const INDEX_SLICE = ['<header>', '<section id="overview"', '</section>'];
 
-// What renderDashboard and initFilters call outside the Overview: inert here.
+// What renderDashboard and initFilters call outside the Overview today: inert
+// here, and not reported when they run, since the default view always runs
+// them and none paints the Overview's numbers. Kept by name because the
+// vendored excerpt holds the pieces only; any other top-level function of
+// the site's own app.js is stubbed by autoStubs below, and reported.
 const ELSEWHERE = [
     'sgApplyMode', 'sgAfterRender', 'refreshStudiesTab', 'updateActiveFilters',
     'populateConditionsDropdown', 'populateCountriesDropdown', 'populateSecondaryConditionDropdown',
@@ -97,6 +112,9 @@ const ELSEWHERE = [
 // site change that makes the default view run one fails the check.
 const AWAY_FROM_DEFAULT = ['isAIStudy', 'getStudyPediatricStatus', 'studyMatchesConditionFilter', 'sgRow',
     'resetFilters', 'updateShareUrl'];
+// What the check itself gives the site's code (siteRuntime): never stubbed.
+const PROVIDED = ['document', 'window', 'console', 'requestAnimationFrame', 'cancelAnimationFrame', 'Chart',
+    'sgActive', 'data', 'dashboardSummary', 'charts', 'sgV2Filters', 'COLORS', 'CHART_ASPECT_RATIO'];
 
 // The Overview's text, as renderDashboard and its helpers write it.
 const TILES = ['total-studies', 'race-reporting', 'ethnicity-reporting', 'both-reporting'];
@@ -130,11 +148,39 @@ function sliceIndex(text, label) {
     return text.slice(at, end + close.length);
 }
 
+// A top-level declaration starts a line: app.js indents everything nested,
+// as the site tests' fnSource ("\n}\n") already relies on. A function is a
+// `function NAME(` (async and generator ones too), or a const/let/var bound
+// to a function expression or an arrow, `NAME = (a, b) =>` or `NAME = a =>`.
+// An arrow that is called on the spot, `NAME = (() => { ... })()`, is a value,
+// not a function, and is left alone ([^()] stops at its inner parenthesis).
+const TOP_FUNCTION = /^(async[ \t]+)?function\b[ \t]*\*?[ \t]*([A-Za-z_$][\w$]*)[ \t]*\(/gm;
+const TOP_FUNCTION_VALUE = /^(?:const|let|var)[ \t]+([A-Za-z_$][\w$]*)[ \t]*=[ \t]*(async\b[ \t]*)?(?:function\b|\([^()]*\)[ \t]*=>|[A-Za-z_$][\w$]*[ \t]*=>)/gm;
+const TOP_NAME = /^(?:(?:async[ \t]+)?function\b[ \t]*\*?[ \t]*|(?:const|let|var|class)[ \t]+)([A-Za-z_$][\w$]*)/gm;
+
+// Every function app.js declares at the top level that the check does not
+// run, as [{ name, async }] by name: what a piece may call besides the fixed
+// list. Left out: the pieces' own names (their declarations are the site's
+// code), the fixed list, the filters that must throw on the default view,
+// and what the check provides. A name app.js binds some other way (a
+// top-level value, a class, an object's method, window.NAME = ...) is not
+// seen, and a call to it still stops the check as a name not defined.
+export function autoStubs(app, pieces = APP_PIECES.map((p) => slicePiece(app, p, 'app.js'))) {
+    const own = new Set([...PROVIDED, ...ELSEWHERE, ...AWAY_FROM_DEFAULT]);
+    for (const piece of pieces) for (const m of piece.matchAll(TOP_NAME)) own.add(m[1]);
+    const found = new Map();
+    for (const m of app.matchAll(TOP_FUNCTION)) if (!own.has(m[2])) found.set(m[2], !!m[1]);
+    for (const m of app.matchAll(TOP_FUNCTION_VALUE)) if (!own.has(m[1])) found.set(m[1], !!m[2]);
+    return [...found].sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, isAsync]) => ({ name, async: isAsync }));
+}
+
 function readSite(appPath, indexPath) {
     const app = readFileSync(appPath, 'utf8'), index = readFileSync(indexPath, 'utf8');
     const source = /^\/\/ Copied unchanged from (.+?):?$/m.exec(app.slice(0, 600));
+    const pieces = APP_PIECES.map((p) => slicePiece(app, p, appPath));
     return {
-        pieces: APP_PIECES.map((p) => slicePiece(app, p, appPath)),
+        pieces,
+        stubs: autoStubs(app, pieces),
         markup: sliceIndex(index, indexPath),
         source: source ? source[1] : `${appPath} and ${indexPath}`,
     };
@@ -414,6 +460,12 @@ function siteRuntime(site) {
         sgActive: () => sgOn,
     };
     for (const name of ELSEWHERE) sandbox[name] = () => {};
+    // The site's other functions: inert, but each call is recorded. A plain
+    // function, so `new NAME()` works too; an async one returns a promise.
+    const stubbedRan = new Set();
+    for (const { name, async: isAsync } of site.stubs) {
+        sandbox[name] = function () { stubbedRan.add(name); return isAsync ? Promise.resolve() : undefined; };
+    }
     for (const name of AWAY_FROM_DEFAULT) {
         sandbox[name] = () => { throw new Error(`${name} ran in the Overview's default view`); };
     }
@@ -432,6 +484,7 @@ function siteRuntime(site) {
     return {
         context, byId, controls, run,
         setSg: (on) => { sgOn = on; },
+        stubbedRan: () => [...stubbedRan].sort(),
         lastCounts: () => run('__finding.length ? __finding[__finding.length - 1].slice() : null'),
         chart: () => {
             const made = charts.filter((c) => c.canvas && c.canvas.id === 'reporting-trends-chart');
@@ -493,26 +546,50 @@ function shapeProblems(block) {
 
 function check(summaryFile, appPath, indexPath, full) {
     const checks = [];
-    const ok = (name, pass, detail) => { checks.push({ check: name, ok: !!pass, ...(pass ? {} : { detail }) }); return pass; };
+    // filesOnly: the check compares the files alone and runs none of the
+    // site's code, so a stub can never be why it fails.
+    const filesOnly = new Set();
+    const ok = (name, pass, detail, files = false) => {
+        if (files) filesOnly.add(name);
+        checks.push({ check: name, ok: !!pass, ...(pass ? {} : { detail }) });
+        return pass;
+    };
     const summary = JSON.parse(readFileSync(summaryFile, 'utf8'));
     const block = summary.firstView;
     if (!block || typeof block !== 'object') throw new InputError(`${summaryFile} has no firstView block`);
     const shape = shapeProblems(block);
-    ok('the block is well formed', !shape.length, shape);
-    if (shape.length) return { checks };
+    ok('the block is well formed', !shape.length, shape, true);
+    if (shape.length) return { checks, filesOnly };
 
     const { records } = full;
     ok('stamps: the records, the block and the summary are one run',
        full.extracted_at === block.extracted_at && block.extracted_at === summary.extracted_at
        && full.pipeline_commit === block.pipeline_commit && block.pipeline_commit === summary.pipeline_commit,
        { records: [full.extracted_at, full.pipeline_commit], block: [block.extracted_at, block.pipeline_commit],
-         summary: [summary.extracted_at, summary.pipeline_commit] });
+         summary: [summary.extracted_at, summary.pipeline_commit] }, true);
     ok('the summary counted the same records', summary.totalStudies === records.length,
-       { summary: summary.totalStudies, records: records.length });
+       { summary: summary.totalStudies, records: records.length }, true);
 
     const site = readSite(appPath, indexPath);
     const s = siteRuntime(site);
     s.context.__records = records;
+    try {
+        runSite(s, block, records, ok);
+    } catch (err) {
+        // The site code threw after a stub stood in for one of its functions:
+        // the stub's undefined may be what it threw on.
+        const ran = s.stubbedRan();
+        if (err instanceof InputError || !ran.length) throw err;
+        throw new InputError(`could not run faithfully: ${callsNote(ran)}, which the parity does not run, `
+            + `and the site code then threw: ${err && err.message}`);
+    }
+    return { checks, filesOnly, site: s.result, site_code: site.source, stubbed: s.stubbedRan() };
+}
+
+const callsNote = (names) => `the Overview now calls ${names.join(', ')}`;
+
+// The site's code over the records and the block: every check below runs it.
+function runSite(s, block, records, ok) {
 
     // 1. The desktop Overview from the records, as startup leaves it.
     s.run('data = __records; dashboardSummary = null; initFilters(); renderDashboard();');
@@ -605,19 +682,15 @@ function check(summaryFile, appPath, indexPath, full) {
     const notFrom = Object.entries(nc).find(([k]) => k.startsWith('results_year_not_from_'))?.[1];
     ok('absence: trials plus not_counted is every record',
        block.trials + Object.values(nc).reduce((a, b) => a + b, 0) === records.length,
-       { trials: block.trials, not_counted: nc, records: records.length });
+       { trials: block.trials, not_counted: nc, records: records.length }, true);
     ok('absence: not interventional, by the site\'s filter with study type All',
        nc.not_interventional === allTypes - block.trials, { block: nc.not_interventional, site: allTypes - block.trials });
-    ok('absence: no results date', nc.no_results_date === noDate, { block: nc.no_results_date, records: noDate });
+    ok('absence: no results date', nc.no_results_date === noDate, { block: nc.no_results_date, records: noDate }, true);
     ok('absence: a results date that is not a year from 2009 on', notFrom === records.length - allTypes - noDate,
        { block: notFrom, site: records.length - allTypes - noDate });
 
-    return {
-        checks,
-        site: { ...fromRecords, newest_results_year: newest, by_results_year: siteYears,
-                painted: Object.fromEntries(Object.entries(painted).map(([id, v]) => [id, v.html || v.text])) },
-        site_code: site.source,
-    };
+    s.result = { ...fromRecords, newest_results_year: newest, by_results_year: siteYears,
+                 painted: Object.fromEntries(Object.entries(painted).map(([id, v]) => [id, v.html || v.text])) };
 }
 
 // ── command line ───────────────────────────────────────────────────────────
@@ -650,8 +723,19 @@ async function main() {
     const t1 = Date.now();
     const result = check(a.summary, appPath, indexPath, full);
     const failed = result.checks.filter((c) => !c.ok);
+    const stubbed = result.stubbed ?? [];
+    // A difference with a stubbed function run is not a data mismatch unless a
+    // check of the files alone fails too: the check could not run faithfully.
+    const unfaithful = failed.length > 0 && stubbed.length > 0 && failed.every((c) => !result.filesOnly.has(c.check));
+    const code = unfaithful ? 2 : failed.length ? 1 : 0;
     const report = {
-        ok: failed.length === 0,
+        ok: code === 0,
+        could_not_run: unfaithful ? `${callsNote(stubbed)}, which the parity does not run: with `
+            + `${stubbed.length === 1 ? 'it' : 'them'} stubbed inert, ${failed.length} of ${result.checks.length} checks differ, `
+            + 'so whether the block or the stub is wrong is unknown; make the parity run '
+            + `${stubbed.length === 1 ? 'it' : 'them'} (APP_PIECES) or stub ${stubbed.length === 1 ? 'it' : 'them'} `
+            + 'with what the Overview needs (ELSEWHERE)' : null,
+        site_functions_stubbed: stubbed,
         records: { file: a.records.length === 1 ? a.records[0] : a.records, count: full.records.length, extracted_at: full.extracted_at, pipeline_commit: full.pipeline_commit },
         site_code: result.site_code ?? null,
         checked: result.checks.length,
@@ -660,10 +744,21 @@ async function main() {
         seconds: { read: (t1 - t0) / 1000, check: (Date.now() - t1) / 1000 },
     };
     console.log(JSON.stringify(report, null, 2));
-    return failed.length ? 1 : 0;
+    if (unfaithful) console.error(`first_view_parity: could not run faithfully: ${report.could_not_run}`);
+    else if (stubbed.length) {
+        console.error(`first_view_parity: note: ${callsNote(stubbed)}, which the parity does not run; `
+            + `${stubbed.length === 1 ? 'it ran as an inert stub' : 'they ran as inert stubs'}`
+            + (failed.length ? '.' : ', and the numbers agree.'));
+    }
+    return code;
 }
 
-main().then((code) => { process.exitCode = code; }, (err) => {
-    console.error(err instanceof InputError ? `first_view_parity: ${err.message}` : err);
-    process.exitCode = 2;
-});
+// Always run, unless an importer (the tests, for autoStubs) set this flag
+// before importing: however the script is invoked, it never silently skips
+// its check.
+if (!globalThis.FIRST_VIEW_PARITY_NO_MAIN) {
+    main().then((code) => { process.exitCode = code; }, (err) => {
+        console.error(err instanceof InputError ? `first_view_parity: ${err.message}` : err);
+        process.exitCode = 2;
+    });
+}

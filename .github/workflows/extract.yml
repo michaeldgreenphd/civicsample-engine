@@ -347,21 +347,28 @@ jobs:
           # publish here, rather than publishing numbers the page would not
           # draw; the site keeps last week's data. Exit 1 is a mismatch;
           # exit 2, an input or site code the script cannot read (its message
-          # is printed above). GitHub shows at most 10 error annotations a
-          # step, so the line that says nothing was pushed comes first, then
-          # eight mismatches and a count of the rest, which follow as plain
-          # log lines (the whole report is $RUNNER_TEMP/first_view_parity.json).
+          # is printed above), or a check it could not run faithfully: a
+          # function of app.js it does not run, stubbed inert, ran and the
+          # numbers differ, so the report's could_not_run is annotated and its
+          # mismatches go to the log only. A stubbed function that ran with
+          # the numbers agreeing passes, and is named. GitHub shows at most 10
+          # error annotations a step, so the line that says nothing was pushed
+          # comes first, then eight mismatches and a count of the rest, which
+          # follow as plain log lines (the whole report is
+          # $RUNNER_TEMP/first_view_parity.json).
           FV_RECORDS=""
           for part in data/demographics.part*.json.gz; do FV_RECORDS="$FV_RECORDS --records $part"; done
           if ! node ../scripts/first_view_parity.mjs $FV_RECORDS --summary data/dashboard-summary.json --app app.js --index index.html > "$RUNNER_TEMP/first_view_parity.json"; then
             echo "::error::dashboard-summary.json's firstView is not what the site's own Overview code (app.js, index.html) counts and paints from this week's parts, or the check could not run; nothing was pushed, and the site keeps last week's data."
             jq -r '(.mismatches // []) as $m
-              | ($m[:8][] | "::error::first-view parity, \(.check): \(.detail | tojson | .[0:500])"),
-                (if ($m | length) > 8 then "::error::first-view parity: \(($m | length) - 8) more mismatches, in the step log below",
-                   ($m[8:][] | "first-view parity, \(.check): \(.detail | tojson | .[0:500])") else empty end)' "$RUNNER_TEMP/first_view_parity.json" 2>/dev/null || true
+              | if .could_not_run then "::error::first-view parity could not run faithfully: \(.could_not_run)",
+                  ($m[] | "first-view parity (with a stub), \(.check): \(.detail | tojson | .[0:500])")
+                else ($m[:8][] | "::error::first-view parity, \(.check): \(.detail | tojson | .[0:500])"),
+                  (if ($m | length) > 8 then "::error::first-view parity: \(($m | length) - 8) more mismatches, in the step log below",
+                     ($m[8:][] | "first-view parity, \(.check): \(.detail | tojson | .[0:500])") else empty end) end' "$RUNNER_TEMP/first_view_parity.json" 2>/dev/null || true
             exit 1
           fi
-          echo "first-view parity: ok, $(jq -r '"\(.checked) checks on \(.records.count) records"' "$RUNNER_TEMP/first_view_parity.json")"
+          echo "first-view parity: ok, $(jq -r '"\(.checked) checks on \(.records.count) records\((.site_functions_stubbed // []) as $s | if ($s | length) > 0 then "; stubbed inert and run: \($s | join(", "))" else "" end)"' "$RUNNER_TEMP/first_view_parity.json")"
           git commit -m "Update demographics data $DATE$REPLACED" || exit 0
           git push
 
@@ -523,7 +530,11 @@ jobs:
             # The first-view parity has its own row: when it stops the push,
             # the contract check above still reads passed.
             if [ -f "$RUNNER_TEMP/first_view_parity.json" ]; then
-              FV_ROW=$(jq -r 'if .ok then "passed: \(.checked) checks on \(.records.count) records" else "FAILED, nothing published: \(.mismatches | length) of \(.checked) checks differ" end' "$RUNNER_TEMP/first_view_parity.json" 2>/dev/null || true)
+              # A pass that stubbed site functions says how many and which.
+              FV_ROW=$(jq -r '(.site_functions_stubbed // []) as $s
+                | if .ok then "passed\(if ($s | length) > 0 then " (\($s | length) site function\(if ($s | length) > 1 then "s" else "" end) stubbed: \($s | join(", ")))" else "" end): \(.checked) checks on \(.records.count) records"
+                  elif .could_not_run then "could not run faithfully, nothing published: \(.could_not_run)"
+                  else "FAILED, nothing published: \(.mismatches | length) of \(.checked) checks differ" end' "$RUNNER_TEMP/first_view_parity.json" 2>/dev/null || true)
               echo "| First-view parity | ${FV_ROW:-could not run, nothing published (the publish step log says why)} |"
             elif [ -f "$RUNNER_TEMP/site_check.json" ]; then
               echo "| First-view parity | not run: the publish step stopped before it |"

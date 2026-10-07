@@ -21,7 +21,11 @@ records arrive. These tests pin:
   writes them and compactly;
 - the parity check fails when the block is wrong: a count moved between
   years, another filter, another run's stamps, or the block counted with
-  Python's truthiness or Python's idea of a digit.
+  Python's truthiness or Python's idea of a digit;
+- a site change that adds a call from the Overview to a function app.js
+  declares elsewhere runs it as an inert stub: a pass that names it when the
+  numbers agree, exit 2 (could not run faithfully), never a mismatch, when
+  they do not.
 
 The parity tests run node; the CI job sets node up before the Python suite.
 """
@@ -519,6 +523,224 @@ def test_a_record_that_is_not_an_object_is_cut_to_itself_and_still_refused(recor
     assert fv.essentials(record) is record
     with pytest.raises(fv.FirstViewError, match="record 1 is a"):
         fv.first_view([fv.essentials(record)], None, None)
+
+
+# ── a site change the parity does not run: stubbed, and said so ─────────────
+
+# Where a routine site PR adds one more call: the summary path, the desktop
+# path, and initFilters. Each anchor is a line the excerpt has once.
+_NEW_CALLS = {
+    "summary_path": ("        sgAfterRender(stub);\n", "        sgAfterRender(stub);\n        {call}(stub);\n"),
+    "desktop_path": ("    renderReportingTrends(filtered);\n", "    renderReportingTrends(filtered);\n    {call}(filtered);\n"),
+    "init_filters": ("function initFilters() {\n", "function initFilters() {\n    {call}();\n"),
+}
+# The helper, declared elsewhere in app.js, in each form the scan recognises.
+_NEW_HELPERS = {
+    "function": "function {call}(rows) {{\n    return rows ? rows.length : 0;\n}}\n",
+    "async_function": "async function {call}(rows) {{\n    return rows;\n}}\n",
+    "arrow_const": "const {call} = (rows) => rows;\n",
+    "bare_arrow_let": "let {call} = rows => rows;\n",
+    "function_expression_const": "const {call} = function (rows) {{\n    return rows;\n}};\n",
+}
+_DESKTOP_RACE = "    const raceCount = filtered.filter(s => s.race?.reported).length;\n"
+
+
+def _excerpt_app() -> str:
+    return (EXCERPT / "app_overview.js").read_text(encoding="utf-8")
+
+
+def _write_app(tmp: pathlib.Path, app: str) -> pathlib.Path:
+    tmp.mkdir(parents=True, exist_ok=True)
+    out = tmp / "app.js"
+    out.write_text(app, encoding="utf-8")
+    return out
+
+
+def _with_call(app: str, where: str, call: str) -> str:
+    anchor, replacement = _NEW_CALLS[where]
+    assert app.count(anchor) == 1, f"the excerpt no longer has one {anchor!r}"
+    return app.replace(anchor, replacement.replace("{call}", call))
+
+
+def _site_with_a_new_call(tmp: pathlib.Path, where: str, helper: str | None,
+                          call: str = "renderTrialPhaseMix") -> pathlib.Path:
+    """The vendored excerpt with one more call in a function the parity slices,
+    and (unless helper is None) that function declared elsewhere in app.js."""
+    app = _with_call(_excerpt_app(), where, call)
+    if helper is not None:
+        app += "\n" + _NEW_HELPERS[helper].format(call=call)
+    return _write_app(tmp, app)
+
+
+def _run_parity(records_file: pathlib.Path, summary_file: pathlib.Path,
+                app: pathlib.Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([_node(), str(PARITY), "--records", str(records_file), "--summary", str(summary_file),
+                           "--app", str(app), "--index", str(EXCERPT / "index_overview.html")],
+                          capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("helper", sorted(_NEW_HELPERS))
+@pytest.mark.parametrize("where", sorted(_NEW_CALLS))
+def test_a_new_call_to_a_helper_defined_elsewhere_in_app_js_passes_and_is_named(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]],
+        where: str, helper: str) -> None:
+    """A site PR that adds a chart to the Overview adds one more call, from a
+    function the parity runs, to a function app.js declares elsewhere. Until
+    2026-10 that stopped the weekly push (exit 2, "is not defined") though the
+    numbers agreed. The helper now runs as an inert stub; the numbers still
+    agree, so the check passes and names what it stubbed."""
+    records_file, summary_file, _ = counted
+    r = _run_parity(records_file, summary_file, _site_with_a_new_call(tmp_path, where, helper))
+    assert r.returncode == 0, r.stderr[-3000:]
+    report = json.loads(r.stdout)
+    _assert_parity(0, report, json.loads(summary_file.read_text())["firstView"])
+    assert report["site_functions_stubbed"] == ["renderTrialPhaseMix"] and report["could_not_run"] is None
+    assert ("first_view_parity: note: the Overview now calls renderTrialPhaseMix, which the parity does not run; "
+            "it ran as an inert stub, and the numbers agree.") in r.stderr
+
+
+def test_the_sites_code_unchanged_stubs_nothing_and_says_nothing(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """The excerpt as vendored, and the excerpt with functions declared
+    elsewhere that the Overview does not call (as the site's whole app.js
+    has hundreds): nothing is stubbed that runs, and nothing is printed."""
+    records_file, summary_file, _ = counted
+    block = json.loads(summary_file.read_text())["firstView"]
+    unused = "".join(h.format(call=f"unused{i}") for i, h in enumerate(_NEW_HELPERS.values()))
+    for app in (EXCERPT / "app_overview.js", _write_app(tmp_path, _excerpt_app() + "\n" + unused)):
+        r = _run_parity(records_file, summary_file, app)
+        assert r.returncode == 0 and r.stderr == "", r.stderr[-3000:]
+        report = json.loads(r.stdout)
+        _assert_parity(0, report, block)
+        assert report["site_functions_stubbed"] == [] and report["could_not_run"] is None
+
+
+# A stub that changes a number: the helper decides what the Overview paints,
+# so with it inert the site's own two paths disagree.
+_NUMBER_CHANGES = {
+    # the race count's test moved into a helper of its own
+    "counts_the_race_tile": (
+        lambda app: app.replace(_DESKTOP_RACE, "    const raceCount = filtered.filter(s => reportsRace(s)).length;\n"),
+        "function reportsRace(study) {\n    return !!study.race?.reported;\n}\n",
+        "reportsRace"),
+    # #race-reporting rewritten from what a helper returns
+    "rewrites_race_reporting": (
+        lambda app: _with_call(app, "desktop_path", "renderTrialPhaseMix").replace(
+            "    renderTrialPhaseMix(filtered);\n",
+            "    document.getElementById('race-reporting').textContent = formatRaceTile(raceCount, filtered.length);\n"),
+        "const formatRaceTile = (n, total) => `${((n / total) * 100).toFixed(1)}%`;\n",
+        "formatRaceTile"),
+}
+
+
+@pytest.mark.parametrize("change", sorted(_NUMBER_CHANGES))
+def test_a_stub_that_changes_a_number_is_could_not_run_never_a_mismatch(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]], change: str) -> None:
+    """With the helper inert the numbers differ, but the block is right: the
+    difference is the stub's. That is exit 2, naming the helper, never exit 1,
+    which would say the engine's numbers are wrong. The push is blocked
+    either way."""
+    records_file, summary_file, _ = counted
+    edit, helper, name = _NUMBER_CHANGES[change]
+    app = edit(_excerpt_app())
+    assert app != _excerpt_app()
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app + "\n" + helper))
+    assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert not report["ok"] and report["mismatches"] and report["site_functions_stubbed"] == [name]
+    assert report["could_not_run"].startswith(f"the Overview now calls {name}, which the parity does not run: ")
+    assert f"first_view_parity: could not run faithfully: the Overview now calls {name}," in r.stderr
+    assert any(m["check"].startswith(("counts", "painted")) for m in report["mismatches"])
+
+
+def test_a_site_error_after_a_stub_ran_names_the_stub(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """The site code using what the stub returned (undefined) throws: exit 2,
+    and the message says which stub stood in."""
+    records_file, summary_file, _ = counted
+    app = _with_call(_excerpt_app(), "desktop_path", "renderTrialPhaseMix").replace(
+        "    renderTrialPhaseMix(filtered);\n", "    renderTrialPhaseMix(filtered).forEach(() => {});\n")
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app + "\n" + _NEW_HELPERS["function"].format(
+        call="renderTrialPhaseMix")))
+    assert r.returncode == 2 and r.stdout == ""
+    assert ("first_view_parity: could not run faithfully: the Overview now calls renderTrialPhaseMix, which the "
+            "parity does not run, and the site code then threw: ") in r.stderr
+
+
+def test_a_wrong_block_with_no_stub_run_is_still_a_mismatch_and_a_stamp_one_always_is(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """Exit 1 stays what it was: a wrong block with nothing stubbed run, and a
+    check of the files alone (here, another run's stamps), which no stub can
+    change, even when a stub ran."""
+    records_file, summary_file, _ = counted
+    wrong = _mutated(tmp_path, summary_file, _move_one_race_trial)
+    code, report = _parity(records_file, wrong, "--app", str(EXCERPT / "app_overview.js"),
+                           "--index", str(EXCERPT / "index_overview.html"))
+    assert code == 1 and report["could_not_run"] is None and report["site_functions_stubbed"] == []
+    assert {m["check"] for m in report["mismatches"]} == {"counts in 2016", "counts in 2017",
+                                                         "painted: the trend chart's Race series"}
+    (tmp_path / "stamps").mkdir()
+    other_run = _mutated(tmp_path / "stamps", summary_file,
+                         lambda s: s["firstView"].update(extracted_at="2026-09-27T11:49:53+00:00"))
+    r = _run_parity(records_file, other_run, _site_with_a_new_call(tmp_path / "site", "desktop_path", "function"))
+    assert r.returncode == 1, r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert report["could_not_run"] is None and report["site_functions_stubbed"] == ["renderTrialPhaseMix"]
+    assert {m["check"] for m in report["mismatches"]} == {"stamps: the records, the block and the summary are one run"}
+
+
+def test_a_call_to_a_function_app_js_never_declares_still_cannot_run(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """A call the site's own page would throw on (app.js declares no such
+    function) is still a check that cannot run: the stubs come from app.js,
+    not from whatever the sliced code happens to call."""
+    records_file, summary_file, _ = counted
+    r = _run_parity(records_file, summary_file, _site_with_a_new_call(tmp_path, "desktop_path", None, call="renderNowhere"))
+    assert r.returncode == 2 and r.stdout == ""
+    assert "renderNowhere is not defined" in r.stderr
+
+
+def _auto_stubs(app: str) -> dict[str, bool]:
+    script = ("globalThis.FIRST_VIEW_PARITY_NO_MAIN = true;"
+              f"const {{ autoStubs }} = await import({json.dumps(PARITY.as_uri())});"
+              f"console.log(JSON.stringify(autoStubs({json.dumps(app)})));")
+    r = subprocess.run([_node(), "--input-type=module", "-e", script], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return {s["name"]: s["async"] for s in json.loads(r.stdout)}
+
+
+def test_what_is_stubbed_never_replaces_a_piece_a_guard_or_a_value() -> None:
+    """Stubbed: every top-level function app.js declares, in each form.
+    Never: the pieces the check runs (their declarations are the site's
+    code), the filters that must throw on the default view, the fixed list,
+    what the check itself provides, a value computed by an arrow called on
+    the spot, any other value, and anything nested."""
+    app = _excerpt_app() + "\n" + "".join([
+        "function isAIStudy() {\n    return false;\n}\n",            # a guard
+        "function sgActive() {\n    return true;\n}\n",              # provided by the check
+        "function sgAfterRender() {\n}\n",                           # the fixed list
+        "function renderTrialPhaseMix(rows) {\n    function nested() {}\n}\n",
+        "async function loadPhases() {\n}\n",
+        "function* phaseRows() {\n}\n",
+        "const capitalize = text => text.charAt(0).toUpperCase() + text.slice(1);\n",
+        "let pick = async (a, b) => a;\n",
+        "var legacy = function () {};\n",
+        "const isMobileDevice = (() => {\n    return false;\n})();\n",   # a value, not a function
+        "const PHASES = ['1', '2'];\n",
+        "class PhaseChart {\n}\n",
+    ])
+    assert _auto_stubs(app) == {"capitalize": False, "legacy": False, "loadPhases": True, "phaseRows": False,
+                                "pick": True, "renderTrialPhaseMix": False}
+
+
+def test_a_guard_declared_in_app_js_still_throws_on_the_default_view(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """isAIStudy is declared in the site's app.js; the default view calling it
+    is still a site change the check refuses (exit 2), not an inert stub."""
+    records_file, summary_file, _ = counted
+    app = _with_call(_excerpt_app(), "desktop_path", "isAIStudy") + "\nfunction isAIStudy(s) {\n    return false;\n}\n"
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app))
+    assert r.returncode == 2 and "isAIStudy ran in the Overview's default view" in r.stderr
 
 
 # ── the staged parts as the records (the weekly publish) ────────────────────
