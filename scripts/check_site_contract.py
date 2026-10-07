@@ -635,8 +635,10 @@ def check_first_view(f: Findings, data_dir: str, records: list[Any], first: dict
         f.err(f"{name} comes from another run ({summary.get('extracted_at')!r}, {summary.get('pipeline_commit')!r}) "
               f"than the parts ({stamps[0]!r}, {stamps[1]!r})")
     if mode == "split":
-        core = plan.contract_paths["core"] if plan is not None else []
-        absent = [p for p in fv.READS if p not in core]
+        # What the core parts carry is what the core projection keeps: a READS
+        # path itself, a path that holds it whole, or an optional path the
+        # layout puts in core.
+        absent = [p for p in fv.READS if plan is None or not sl.keeps(plan.spec["core"], p)]
         if absent:
             f.err(f"{FIRST_VIEW} is counted from {', '.join(absent)}, which the site's contract does not put in core, "
                   f"so the core parts do not carry {'it' if len(absent) == 1 else 'them'} and the block cannot be "

@@ -95,6 +95,7 @@ import snapshot_helpers as sh  # noqa: E402
 import split_helpers  # noqa: E402
 from src import archive_records  # noqa: E402
 from src import first_view as fv  # noqa: E402
+from src import site_layout as sl  # noqa: E402
 
 WORKFLOW = open(os.path.join(ROOT, ".github", "workflows", "extract.yml")).read()
 
@@ -1571,6 +1572,40 @@ def test_a_split_whose_core_lacks_a_field_first_view_reads_blocks_loudly(tmp_pat
         f"firstView is counted from {path}, which the site's contract does not put in core, so the core parts do "
         "not carry it and the block cannot be recounted from the files about to be pushed (src/first_view.py READS)"]
     assert report["first_view"] == {"recounted": False}
+
+
+def _ethnicity_whole_in_core(contract: dict) -> None:
+    core = contract["classes"]["core"]
+    core[core.index("ethnicity.reported")] = "ethnicity"
+
+
+def _results_date_optional(contract: dict) -> None:
+    contract["classes"]["core"].remove("results_date")
+    contract["optional"].append("results_date")          # a top-level optional path rides with core
+
+
+@pytest.mark.parametrize("change", [_ethnicity_whole_in_core, _results_date_optional],
+                         ids=["a-whole-dimension-in-core", "an-optional-path-core-carries"])
+def test_a_split_whose_core_carries_a_field_first_view_reads_by_another_path_is_recounted(
+        tmp_path: pathlib.Path, change: Callable[[dict], object]) -> None:
+    """The core parts carry what the core projection keeps: a path the contract
+    keeps whole (ethnicity, so ethnicity.reported with it), or an optional path
+    placed in core. Neither names the READS path itself, and neither blocks."""
+    contract = copy.deepcopy(SPLIT_CONTRACT)
+    change(contract)
+    site = _split_site(tmp_path, contract=contract)
+    r, report = _check_split(site)
+    assert r.returncode == 0, report["errors"]
+    assert report["first_view"] == {"recounted": True, "trials": 16, "differences": 0}
+
+
+@pytest.mark.parametrize("path,kept", [
+    ("ethnicity.reported", True), ("race", False), ("race.reported", True), ("race.raw_categories", False),
+    ("study_sites[].country", True), ("study_sites[].facility", False), ("study_sites", False),
+    ("references[].pmid", True), ("nct_id", True), ("results_date", False)])
+def test_a_projection_keeps_a_path_named_or_held_whole(path: str, kept: bool) -> None:
+    spec = sl.build_spec(["nct_id", "ethnicity", "race.reported", "study_sites[].country", "references[]"])
+    assert sl.keeps(spec, path) is kept
 
 
 def test_differences_are_exact_and_in_the_recounts_order() -> None:
