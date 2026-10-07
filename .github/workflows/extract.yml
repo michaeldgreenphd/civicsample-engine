@@ -520,6 +520,14 @@ jobs:
             if [ -f "$RUNNER_TEMP/site_check.json" ]; then
               echo "| Site contract check | $(jq -r '"\(if .ok then "passed" else "FAILED, nothing published" end): \(.records // 0) records; parts \((.parts_gzip_bytes // 0) / 1e6 | floor) MB of a \((.total_budget_bytes // 0) / 1e6 | floor) MB budget; site \((.tree_bytes // 0) / 1e6 | floor) MB; \(.errors | length) errors, \(.warnings | length) warnings"' "$RUNNER_TEMP/site_check.json") |"
             fi
+            # The first-view parity has its own row: when it stops the push,
+            # the contract check above still reads passed.
+            if [ -f "$RUNNER_TEMP/first_view_parity.json" ]; then
+              FV_ROW=$(jq -r 'if .ok then "passed: \(.checked) checks on \(.records.count) records" else "FAILED, nothing published: \(.mismatches | length) of \(.checked) checks differ" end' "$RUNNER_TEMP/first_view_parity.json" 2>/dev/null || true)
+              echo "| First-view parity | ${FV_ROW:-could not run, nothing published (the publish step log says why)} |"
+            elif [ -f "$RUNNER_TEMP/site_check.json" ]; then
+              echo "| First-view parity | not run: the publish step stopped before it |"
+            fi
             # What retention did this week (scripts/prune_snapshots.py): until
             # 2026-10 removals went only to the log, and a pruning bug deleted
             # every week's snapshot for three months unnoticed.

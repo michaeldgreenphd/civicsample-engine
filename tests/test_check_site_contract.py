@@ -1692,3 +1692,36 @@ def test_a_large_parity_failure_says_nothing_was_pushed_first_and_stays_within_t
     assert errors[9] == "::error::first-view parity: 17 more mismatches, in the step log below"
     for k in range(8, 25):
         assert f'first-view parity, counts in {2000 + k}: {{"site":{k},"block":{k + 1}}}' in r.stdout
+
+
+def _summary_parity_block() -> str:
+    """The run summary's first-view parity row, as its own shell block."""
+    lines = _step("Write run summary").splitlines()
+    start = next(i for i, line in enumerate(lines) if '"$RUNNER_TEMP/first_view_parity.json" ]' in line)
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    end = next(i for i in range(start + 1, len(lines)) if lines[i] == " " * indent + "fi")
+    return "\n".join(line[indent:] for line in lines[start:end + 1])
+
+
+@pytest.mark.parametrize("report,check,row", [
+    (PARITY_OK, {"ok": True}, "| First-view parity | passed: 41 checks on 3 records |"),
+    (PARITY_MISMATCH, {"ok": True}, "| First-view parity | FAILED, nothing published: 1 of 41 checks differ |"),
+    ("", {"ok": True}, "| First-view parity | could not run, nothing published (the publish step log says why) |"),
+    (None, {"ok": True}, "| First-view parity | not run: the publish step stopped before it |"),
+    (None, {"ok": False}, "| First-view parity | not run: the publish step stopped before it |"),
+    (None, None, None),
+], ids=["passed", "a-mismatch", "could-not-run", "not-reached", "after-a-failed-check", "no-publish"])
+def test_the_run_summary_says_whether_the_parity_passed(tmp_path: pathlib.Path, report: object, check: dict | None,
+                                                        row: str | None) -> None:
+    """A parity block must not read as a clean run: the contract check's row
+    says passed, so the parity has its own."""
+    if not shutil.which("jq"):
+        pytest.skip("jq is not installed here (the runner has it)")
+    if report is not None:
+        (tmp_path / "first_view_parity.json").write_text(report if isinstance(report, str) else json.dumps(report))
+    if check is not None:
+        (tmp_path / "site_check.json").write_text(json.dumps(check))
+    r = subprocess.run(["bash", "-e", "-c", _summary_parity_block()], capture_output=True, text=True,
+                       env={**os.environ, "RUNNER_TEMP": str(tmp_path)})
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == (row or ""), r.stdout
