@@ -345,14 +345,20 @@ jobs:
           # staged parts (scripts/first_view_parity.mjs). A site change to the
           # Overview's rules that the engine has not followed stops the
           # publish here, rather than publishing numbers the page would not
-          # draw; the site keeps last week's data. Exit 1 is a mismatch (each
-          # one printed below); exit 2, an input or site code the script
-          # cannot read (its message is printed above).
+          # draw; the site keeps last week's data. Exit 1 is a mismatch;
+          # exit 2, an input or site code the script cannot read (its message
+          # is printed above). GitHub shows at most 10 error annotations a
+          # step, so the line that says nothing was pushed comes first, then
+          # eight mismatches and a count of the rest, which follow as plain
+          # log lines (the whole report is $RUNNER_TEMP/first_view_parity.json).
           FV_RECORDS=""
           for part in data/demographics.part*.json.gz; do FV_RECORDS="$FV_RECORDS --records $part"; done
           if ! node ../scripts/first_view_parity.mjs $FV_RECORDS --summary data/dashboard-summary.json --app app.js --index index.html > "$RUNNER_TEMP/first_view_parity.json"; then
-            jq -r '.mismatches[]? | "::error::first-view parity, \(.check): \(.detail | tojson | .[0:500])"' "$RUNNER_TEMP/first_view_parity.json" 2>/dev/null || true
             echo "::error::dashboard-summary.json's firstView is not what the site's own Overview code (app.js, index.html) counts and paints from this week's parts, or the check could not run; nothing was pushed, and the site keeps last week's data."
+            jq -r '(.mismatches // []) as $m
+              | ($m[:8][] | "::error::first-view parity, \(.check): \(.detail | tojson | .[0:500])"),
+                (if ($m | length) > 8 then "::error::first-view parity: \(($m | length) - 8) more mismatches, in the step log below",
+                   ($m[8:][] | "first-view parity, \(.check): \(.detail | tojson | .[0:500])") else empty end)' "$RUNNER_TEMP/first_view_parity.json" 2>/dev/null || true
             exit 1
           fi
           echo "first-view parity: ok, $(jq -r '"\(.checked) checks on \(.records.count) records"' "$RUNNER_TEMP/first_view_parity.json")"

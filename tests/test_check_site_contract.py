@@ -1101,7 +1101,8 @@ PARITY_OK = {"ok": True, "checked": 41, "records": {"count": 3}, "mismatches": [
 def _publish(tmp_path: pathlib.Path, last_week: dict[str, str], this_week: dict[str, str], check_rc: int = 0,
              last_snapshot: str | None = "2026-10-04",
              history: str = '{"dates": ["2026-10-04"]}',
-             parity_rc: int = 0) -> tuple[subprocess.CompletedProcess[str], str, pathlib.Path]:
+             parity_rc: int = 0, parity_mismatch: dict | None = None
+             ) -> tuple[subprocess.CompletedProcess[str], str, pathlib.Path]:
     """Run the publish step's own block under bash -e: real files, real git and
     real jq in a site repository whose last commit holds last week's dataset (in
     data/, and in snapshots/<last_snapshot>/ as the publish step before this
@@ -1148,7 +1149,7 @@ def _publish(tmp_path: pathlib.Path, last_week: dict[str, str], this_week: dict[
         (stub / name).chmod(0o755)
     env.update({"PATH": f"{stub}:{os.environ['PATH']}", "CALLS": str(log), "CHECK_RC": str(check_rc),
                 "CURRENT_DATE": DATE, "RUNNER_TEMP": str(tmp_path), "PARITY_RC": str(parity_rc),
-                "PARITY_OK": json.dumps(PARITY_OK), "PARITY_MISMATCH": json.dumps(PARITY_MISMATCH)})
+                "PARITY_OK": json.dumps(PARITY_OK), "PARITY_MISMATCH": json.dumps(parity_mismatch or PARITY_MISMATCH)})
     r = subprocess.run(["bash", "-e", "-c", _publish_block()], cwd=engine, env=env, capture_output=True, text=True)
     return r, log.read_text() if log.exists() else "", site
 
@@ -1665,3 +1666,29 @@ def test_a_passing_parity_lets_the_publish_step_push(tmp_path: pathlib.Path) -> 
     assert r.returncode == 0, r.stdout + r.stderr
     assert calls.index("check_site_contract.py") < calls.index("first_view_parity.mjs") < calls.index("git commit")
     assert "first-view parity: ok, 41 checks on 3 records" in r.stdout
+
+
+CLOSING = ("::error::dashboard-summary.json's firstView is not what the site's own Overview code (app.js, index.html) "
+           "counts and paints from this week's parts, or the check could not run; nothing was pushed, and the site "
+           "keeps last week's data.")
+
+
+def test_a_large_parity_failure_says_nothing_was_pushed_first_and_stays_within_the_annotation_cap(
+        tmp_path: pathlib.Path) -> None:
+    """GitHub shows at most 10 error annotations per step. A site change such
+    as the slider starting at 2010 gives about 25 mismatches: the line that
+    says nothing was pushed comes first, eight mismatches are annotated, one
+    line counts the rest, and the rest are still in the step log."""
+    mismatches = [{"check": f"counts in {2000 + k}", "ok": False, "detail": {"site": k, "block": k + 1}}
+                  for k in range(25)]
+    r, calls, _ = _publish(tmp_path, _whole_week("last"), _whole_week("this"), parity_rc=1,
+                           parity_mismatch={**PARITY_MISMATCH, "mismatches": mismatches})
+    assert r.returncode == 1 and "git commit" not in calls, r.stdout + r.stderr
+    errors = [line for line in r.stdout.splitlines() if line.startswith("::error::")]
+    assert errors[0] == CLOSING, errors[:2]
+    assert len(errors) <= 10, errors
+    assert errors[1:9] == [f'::error::first-view parity, counts in {2000 + k}: {{"site":{k},"block":{k + 1}}}'
+                           for k in range(8)]
+    assert errors[9] == "::error::first-view parity: 17 more mismatches, in the step log below"
+    for k in range(8, 25):
+        assert f'first-view parity, counts in {2000 + k}: {{"site":{k},"block":{k + 1}}}' in r.stdout
