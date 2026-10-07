@@ -424,6 +424,35 @@ def test_an_archive_that_checks_but_differs_is_kept_and_said(site: pathlib.Path,
         f"snapshots/{FEB}/{sl.ARCHIVE_FILE}": "kept"}
 
 
+def test_the_archive_bytes_do_not_depend_on_the_python_that_wrote_them() -> None:
+    """gzip.compress writes the OS byte (header byte 9) its Python chooses:
+    3.11 and 3.12 hand it to zlib (0x03 on Linux, 0x13 on macOS), 3.13 writes
+    0xff. encode writes 0xff ("unknown") on every version, so the same records
+    give the same bytes under any Python."""
+    data = archive_records.encode({"source_extracted_at": "x", "data": {}})
+    assert data[:10] == bytes.fromhex("1f8b08000000000002ff"), data[:10].hex()
+    assert json.loads(gzip.decompress(data)) == {"source_extracted_at": "x", "data": {}}
+
+
+def test_an_archive_written_by_another_python_is_unchanged_not_kept(site: pathlib.Path,
+                                                                    commits: dict[str, str]) -> None:
+    """The same records gzipped with another OS byte are the same file: no
+    "kept", no warning, nothing to commit."""
+    ba.run(str(site), targets(commits), write=True)
+    _commit(site, "the backfill")
+    for d in (FEB, JUL, SEP):
+        path = site / "snapshots" / d / sl.ARCHIVE_FILE
+        data = bytearray(path.read_bytes())
+        data[9] = 0x03 if data[9] != 0x03 else 0x13      # what Python 3.11 on Linux writes
+        path.write_bytes(bytes(data))
+    _commit(site, "written by another Python")
+    before = digest(site)
+    report = ba.run(str(site), targets(commits), write=True)
+    assert report["ok"] and report["changed"] == []
+    assert all(set(t["actions"].values()) == {"unchanged"} for t in report["targets"]), report["targets"]
+    assert digest(site) == before
+
+
 # ── re-runs ─────────────────────────────────────────────────────────────────
 
 def test_a_second_run_changes_nothing(site: pathlib.Path, commits: dict[str, str]) -> None:

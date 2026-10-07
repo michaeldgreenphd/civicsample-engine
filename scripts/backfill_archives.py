@@ -53,16 +53,18 @@ EXITS   0  the plan is sound (and, with --write, carried out and the site
            date, the site's for an existing aggregate) is not their run or not
            that date's; the projection would lose a field; a date's folder on
            the site holds anything but an aggregate's files, or a file this
-           job would write that is not byte-identical and does not check;
+           job would write that is not the same (the same JSON for an archive
+           file, the same bytes for a summary) and does not check;
            or the retention policy would not keep a restored date as its
            month's aggregate (or would change what else it keeps);
         1  with --write, when the written site fails check_site_contract.py:
            the files stay in the working tree, uncommitted.
 
-A second run finds every file byte-identical and history.json unchanged, and
-writes nothing; a run that stopped part way is completed. An archive file
-that is already there and checks against its summary but differs from what
-this run builds (the contract changed since) is left as it is, and said.
+A second run finds every file there already (an archive file holding the same
+JSON, whatever Python gzipped it) and history.json unchanged, and writes
+nothing; a run that stopped part way is completed. An archive file that is
+already there and checks against its summary but holds other JSON than this
+run builds is left as it is, and said.
 """
 from __future__ import annotations
 
@@ -272,12 +274,14 @@ def read_history(site: str) -> dict[str, Any]:
 
 
 def existing_archive(path: str, built: Built) -> str:
-    """write, unchanged or kept, for an archive file at path. Refused when one
-    is there that is not this run's bytes and does not check."""
+    """write, unchanged or kept, for an archive file at path: unchanged when
+    the file there holds the same JSON as this run's (its gzip header may
+    differ: another Python writes another OS byte). Refused when one is there
+    that holds other JSON and does not check."""
     if not os.path.exists(path):
         return "write"
     with open(path, "rb") as fh:
-        if fh.read() == built.archive:
+        if archive_records.same_records(fh.read(), built.archive):
             return "unchanged"
     found = archive_records.problems(path, built.summary)
     if found:
@@ -498,8 +502,8 @@ def main(argv: list[str] | None = None) -> int:
               f"covers {t['covered']} of {t['recent_studies']} recentStudies, {t['archive_bytes']:,} bytes "
               f"(source_pipeline_commit {t['source_pipeline_commit']}); {acts}")
         if any(a == "kept" for a in t["actions"].values()):
-            print(f"::warning::{t['date']}: the archive file there checks but differs from what this run builds "
-                  "(the contract changed since?); it is left as it is")
+            print(f"::warning::{t['date']}: the archive file there checks against its summary but holds other "
+                  "records than this run builds; it is left as it is, for the owner to compare")
     print(f"  history.json: {'adds ' + ', '.join(report['history']['dates_added']) if report['history']['dates_added'] else 'no dates added'}"
           f"; {'changes' if report['history']['changed'] else 'unchanged'}")
     for when, plan in report["retention"].items():
