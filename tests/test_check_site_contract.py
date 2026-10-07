@@ -44,8 +44,20 @@ run's stamps (a part, its summary, its sex/gender meta, its methods text)
 each block; a folder for the latest date, an unlisted folder, an archive file
 history.json does not name and stray files in an aggregate only warn.
 
+data/'s dashboard-summary.json must carry a firstView that is, key for key,
+src/first_view.py's count of the staged parts: a count changed, moved between
+years or of another type, a year renamed, the block's or the summary's stamps
+from another run, a record the site's code would throw on, a missing summary
+or block each block, and the error names the differing paths; a part that
+does not read leaves the block unrecounted; a split dataset is recounted from
+its core parts, and a contract whose core lacks a field the block reads
+blocks without a recount; snapshot summaries are not asked for the block.
+
 extract.yml: retention runs before data/ is replaced and the check after
-staging and before the commit and push; nothing writes snapshots/<this
+staging and before the commit and push; node is set up before the publish
+step, and the first-view parity runs in the site checkout on the staged parts
+and its own app.js and index.html, after the check and before the commit, and
+a mismatch (exit 1) or a site it cannot run (exit 2) stops the step; nothing writes snapshots/<this
 week>/, the sponsor step included; the publish step's own run block is run
 under bash -e, with real git on a site repository and stubs for the check,
 prune and push, for a whole week, a split week, the rollback from split to
@@ -82,6 +94,7 @@ import prune_snapshots as ps  # noqa: E402
 import snapshot_helpers as sh  # noqa: E402
 import split_helpers  # noqa: E402
 from src import archive_records  # noqa: E402
+from src import first_view as fv  # noqa: E402
 
 WORKFLOW = open(os.path.join(ROOT, ".github", "workflows", "extract.yml")).read()
 
@@ -100,7 +113,21 @@ STAMPS = {"extracted_at": "2026-09-27T11:49:53.609081+00:00", "pipeline_commit":
 
 def _record(n: int) -> dict:
     return {"nct_id": f"NCT{n:08d}", "race": {"reported": True, "raw_categories": [{"omb_category": "white"}]},
-            "countries": [{"country": "France"}], "references": [{"pmid": "1"}], "status": "COMPLETED"}
+            "countries": [{"country": "France"}], "references": [{"pmid": "1"}], "status": "COMPLETED",
+            "study_type": "INTERVENTIONAL", "results_date": f"{2009 + n % 4}-03-01",
+            "ethnicity": {"reported": n % 2 == 0}}
+
+
+def _summary(records: list[dict], stamps: dict | None = None) -> dict:
+    """data/'s dashboard-summary.json as the generator writes it, with the
+    firstView counted from these records (the whole records the parts came from)."""
+    st = stamps or STAMPS
+    block = fv.first_view(records, st["extracted_at"], st["pipeline_commit"])
+    return {**st, "totalStudies": len(records), "firstView": json.loads(json.dumps(block))}
+
+
+def _write_summary(site: pathlib.Path, summary: dict) -> None:
+    (site / "data" / "dashboard-summary.json").write_text(json.dumps(summary))
 
 
 def _site(tmp_path: pathlib.Path, records: tuple[list[dict], list[dict]] | None = None,
@@ -114,6 +141,7 @@ def _site(tmp_path: pathlib.Path, records: tuple[list[dict], list[dict]] | None 
     records = records or ([_record(1), _record(2)], [_record(3)])
     for i, recs in enumerate(records, start=1):
         _write_part(site, i, {**STAMPS, "part": i, "total_parts": len(records), "data": recs})
+    _write_summary(site, _summary([r for recs in records for r in recs]))
     return site
 
 
@@ -379,7 +407,8 @@ def test_split_files_beside_inline_parts_and_a_switch_left_on_only_warn(tmp_path
 
 SPLIT_CONTRACT = {
     "classes": {
-        "core": ["nct_id", "race.reported", "countries[].country", "study_sites[].country"],
+        "core": ["nct_id", "race.reported", "countries[].country", "study_sites[].country",
+                 "study_type", "results_date", "ethnicity.reported"],
         "studies_tab": ["references[].pmid", "race.raw_categories[].omb_category"],
         "detail": ["status", "study_sites[].facility"],
     },
@@ -411,8 +440,8 @@ def _split_site(tmp_path: pathlib.Path, contract: dict | None = None, budget: di
     snapshots/DATE/ with its summary, history.json listing both; the site's
     contract is `site_contract` (default: the same)."""
     contract = copy.deepcopy(contract or SPLIT_CONTRACT)
-    dataset = split_helpers.split(tmp_path / "engine", records or [_split_record(n) for n in range(1, 17)],
-                                  contract, stamps=STAMPS)
+    records = records or [_split_record(n) for n in range(1, 17)]
+    dataset = split_helpers.split(tmp_path / "engine", records, contract, stamps=STAMPS)
     site = tmp_path / "site"
     (site / "tests").mkdir(parents=True)
     (site / "tests" / "record_contract.json").write_text(json.dumps(site_contract or contract))
@@ -423,6 +452,7 @@ def _split_site(tmp_path: pathlib.Path, contract: dict | None = None, budget: di
     _history(site, [DATE, LATEST], LATEST)
     _run_json(lambda run: run.update(snapshot_date=LATEST))(site / "data")
     (site / "data" / "details.part1.json.gz").write_bytes(b"the frozen March details: not a dataset file")
+    _write_summary(site, _summary(records))
     return site
 
 
@@ -968,6 +998,8 @@ def test_a_pull_past_midnight_is_served_under_its_snapshot_date(tmp_path: pathli
         with gzip.open(part, "wt") as fh:
             json.dump(body, fh)
     _json_change("data/run.json", lambda b: b.update(extracted_at=late))(site)
+    _json_change("data/dashboard-summary.json",                      # the summary is the same pull's
+                 lambda b: (b.update(extracted_at=late), b["firstView"].update(extracted_at=late)))(site)
     r, report = _check(site, "--latest", RETAINED)
     assert r.returncode == 0, report["errors"]
 
@@ -1059,13 +1091,22 @@ def _split_week(tag: str) -> dict[str, str]:
             **{f"detail/{n}.json.gz": f"{tag} shard {n}" for n in range(4)}}
 
 
+PARITY_MISMATCH = {"ok": False, "checked": 41, "records": {"count": 3},
+                   "mismatches": [{"check": "counts in 2016", "ok": False,
+                                   "detail": {"site": {"trials": 3}, "block": {"trials": 4}}}]}
+PARITY_OK = {"ok": True, "checked": 41, "records": {"count": 3}, "mismatches": []}
+
+
 def _publish(tmp_path: pathlib.Path, last_week: dict[str, str], this_week: dict[str, str], check_rc: int = 0,
              last_snapshot: str | None = "2026-10-04",
-             history: str = '{"dates": ["2026-10-04"]}') -> tuple[subprocess.CompletedProcess[str], str, pathlib.Path]:
+             history: str = '{"dates": ["2026-10-04"]}',
+             parity_rc: int = 0) -> tuple[subprocess.CompletedProcess[str], str, pathlib.Path]:
     """Run the publish step's own block under bash -e: real files, real git and
     real jq in a site repository whose last commit holds last week's dataset (in
     data/, and in snapshots/<last_snapshot>/ as the publish step before this
-    change wrote it), stubs for the check, retention and push."""
+    change wrote it), stubs for the check, the first-view parity, retention and
+    push. The parity stub exits parity_rc and prints the report the script
+    prints for it (none for 2, an input it cannot read)."""
     real_git = shutil.which("git")
     assert real_git, "git is not installed"
     if not shutil.which("jq"):
@@ -1099,11 +1140,14 @@ def _publish(tmp_path: pathlib.Path, last_week: dict[str, str], this_week: dict[
     for name, script in {
         "git": f'echo "git $*" >> "$CALLS"; case "$1" in push) exit 0;; esac; exec "{real_git}" "$@"',
         "python3": 'echo "python3 $*" >> "$CALLS"; case "$*" in *check_site_contract.py*) exit "$CHECK_RC";; esac; exit 0',
+        "node": 'echo "node $*" >> "$CALLS"; case "$PARITY_RC" in 0) echo "$PARITY_OK";; 1) echo "$PARITY_MISMATCH";; '
+                '*) echo "first_view_parity: app.js has no function getFilteredData()" >&2;; esac; exit "$PARITY_RC"',
     }.items():
         (stub / name).write_text(f"#!/bin/bash\n{script}\n")
         (stub / name).chmod(0o755)
     env.update({"PATH": f"{stub}:{os.environ['PATH']}", "CALLS": str(log), "CHECK_RC": str(check_rc),
-                "CURRENT_DATE": DATE, "RUNNER_TEMP": str(tmp_path)})
+                "CURRENT_DATE": DATE, "RUNNER_TEMP": str(tmp_path), "PARITY_RC": str(parity_rc),
+                "PARITY_OK": json.dumps(PARITY_OK), "PARITY_MISMATCH": json.dumps(PARITY_MISMATCH)})
     r = subprocess.run(["bash", "-e", "-c", _publish_block()], cwd=engine, env=env, capture_output=True, text=True)
     return r, log.read_text() if log.exists() else "", site
 
@@ -1199,6 +1243,10 @@ def test_with_the_real_retention_and_check_the_publish_step_archives_last_week_a
     assert real_git, "git is not installed"
     engine = tmp_path / "engine"
     site = sh.make_site(engine, "2026-10-04", history={"dates": ["2026-10-04"], "latest": "2026-10-04", "archives": {}})
+    # The site's Overview code for the first-view parity, which runs for real
+    # here: the vendored excerpt of its app.js and index.html.
+    shutil.copyfile(os.path.join(ROOT, "tests", "fixtures", "site_overview", "app_overview.js"), site / "app.js")
+    shutil.copyfile(os.path.join(ROOT, "tests", "fixtures", "site_overview", "index_overview.html"), site / "index.html")
     for name in ("scripts", "src"):
         (engine / name).symlink_to(os.path.join(ROOT, name))
     shutil.copytree(sh.cut(engine, DATE), engine / "data" / "dataset")
@@ -1241,6 +1289,10 @@ def test_with_the_real_retention_and_check_the_publish_step_archives_last_week_a
     assert json.loads((tmp_path / "retention.json").read_text())["archived"]["status"] == "archived"
     check = json.loads((tmp_path / "site_check.json").read_text())
     assert check["ok"] and check["history"]["complete"] == ["2026-10-04"], check["errors"]
+    assert check["first_view"] == {"recounted": True, "trials": 16, "differences": 0}
+    parity = json.loads((tmp_path / "first_view_parity.json").read_text())
+    assert parity["ok"] and parity["records"]["count"] == 16 and len(parity["records"]["file"]) == 8, parity
+    assert "first-view parity: ok, 41 checks on 16 records" in r.stdout
     subject = subprocess.run([real_git, "log", "-1", "--format=%s"], cwd=site, capture_output=True, text=True).stdout
     assert subject.strip() == f"Update demographics data {DATE}"
 
@@ -1320,3 +1372,261 @@ def test_a_whole_record_weeks_run_json_from_another_run_blocks_though_its_date_i
     r, report = _check(_inline_week(tmp_path, **change), "--latest", "2026-10-18")
     assert r.returncode == 1
     assert any(needle in e for e in report["errors"]), report["errors"]
+
+
+# ── data/'s firstView, recounted from the staged parts ───────────────────────
+
+def _summary_change(change: Callable[[dict], object]) -> Callable[[pathlib.Path], object]:
+    return _json_change("data/dashboard-summary.json", change)
+
+
+def _fv_errors(report: dict) -> list[str]:
+    return [e for e in report["errors"] if "firstView" in e or "dashboard-summary.json" in e]
+
+
+def test_a_summary_whose_first_view_is_the_staged_parts_count_passes(tmp_path: pathlib.Path) -> None:
+    """Three records, results 2010-2012, race reported on all, ethnicity on one."""
+    site = _site(tmp_path)
+    r, report = _check(site)
+    assert r.returncode == 0, report["errors"]
+    assert report["first_view"] == {"recounted": True, "trials": 3, "differences": 0}
+    block = json.loads((site / "data" / "dashboard-summary.json").read_text())["firstView"]
+    assert (block["trials_reporting_race"], block["trials_reporting_ethnicity"]) == (3, 1)
+    assert sorted(block["by_results_year"]) == ["2010", "2011", "2012"]
+
+
+def _move_race_count(s: dict) -> None:
+    """2010's race count down one and 2011's up one: the totals still agree."""
+    years = s["firstView"]["by_results_year"]
+    years["2010"]["trials_reporting_race"] -= 1
+    years["2011"]["trials_reporting_race"] += 1
+
+
+def _rename_year(s: dict) -> None:
+    years = s["firstView"]["by_results_year"]
+    years["2009"] = years.pop("2010")
+
+
+@pytest.mark.parametrize("change,named", [
+    (lambda s: s["firstView"].update(trials_reporting_race=2),
+     ["firstView.trials_reporting_race: the summary says 2; the staged parts give 3"]),
+    (lambda s: s["firstView"].update(trials=3.0), ["firstView.trials: the summary says 3.0; the staged parts give 3"]),
+    (lambda s: s["firstView"].update(newest_results_year=2026),
+     ["firstView.newest_results_year: the summary says 2026; the staged parts give 2012"]),
+    (_move_race_count, ["firstView.by_results_year.2010.trials_reporting_race: the summary says 0; the staged parts give 1",
+                        "firstView.by_results_year.2011.trials_reporting_race: the summary says 2; the staged parts give 1"]),
+    (_rename_year, ["firstView.by_results_year.2010: the summary has no such key; the staged parts give {",
+                    "firstView.by_results_year.2009: the summary has {"]),
+    (lambda s: s["firstView"]["not_counted"].update(not_interventional=1),
+     ["firstView.not_counted.not_interventional: the summary says 1; the staged parts give 0"]),
+    (lambda s: s["firstView"]["filter"].pop("results_year_to"),
+     ["firstView.filter.results_year_to: the summary has no such key; the staged parts give null"]),
+    (lambda s: s["firstView"].update(pipeline_commit="abc1234"),
+     [f"firstView.pipeline_commit: the summary says \"abc1234\"; the staged parts give \"{STAMPS['pipeline_commit']}\""]),
+    (lambda s: s["firstView"]["about"].pop(),
+     ["firstView.about: the summary says [\"The Overview as it opens"]),
+], ids=["a-count", "a-float-count", "the-newest-year", "a-count-moved-between-years", "a-year-renamed",
+        "not-counted", "a-filter-key-gone", "the-blocks-stamp", "the-about-text"])
+def test_a_first_view_that_is_not_the_staged_parts_count_blocks_and_names_the_paths(
+        tmp_path: pathlib.Path, change: Callable[[dict], object], named: list[str]) -> None:
+    site = _site(tmp_path)
+    _summary_change(change)(site)
+    r, report = _check(site)
+    assert r.returncode == 1
+    errors = _fv_errors(report)
+    assert len(errors) == 1, report["errors"]
+    assert errors[0].startswith("data/dashboard-summary.json's firstView is not what the staged parts count ("), errors[0]
+    for path in named:
+        assert path in errors[0], errors[0]
+    assert f"::error::{errors[0]}" in r.stdout
+    assert report["first_view"]["recounted"] and report["first_view"]["differences"] == len(named)
+
+
+def test_the_recount_is_of_the_staged_bytes_not_the_records_the_summary_was_made_from(tmp_path: pathlib.Path) -> None:
+    """The summary counted race on all three; the part about to be pushed says one does not report it."""
+    site = _site(tmp_path)
+    rec = _record(3)
+    rec["race"]["reported"] = False
+    _write_part(site, 2, {**STAMPS, "part": 2, "total_parts": 2, "data": [rec]})
+    r, report = _check(site)
+    assert r.returncode == 1
+    assert "firstView.trials_reporting_race: the summary says 3; the staged parts give 2" in _fv_errors(report)[0]
+    assert "firstView.by_results_year.2012.trials_reporting_race: the summary says 1; the staged parts give 0" \
+        in _fv_errors(report)[0]
+
+
+def test_many_differences_name_the_first_five_and_count_the_rest(tmp_path: pathlib.Path) -> None:
+    site = _site(tmp_path)
+    _summary_change(lambda s: s["firstView"].update(by_results_year={}))(site)
+    r, report = _check(site)
+    error = _fv_errors(report)[0]
+    assert "(3 differences)" in error and error.count("the summary has no such key") == 3, error
+    assert "and 1 more" not in error and "; and " not in error
+    site2 = _site(tmp_path / "more")
+    _summary_change(lambda s: s["firstView"].update(trials=0, trials_reporting_race=0, trials_reporting_ethnicity=0,
+                                                    trials_reporting_race_and_ethnicity=0, newest_results_year=0,
+                                                    extracted_at="x", pipeline_commit="y"))(site2)
+    _, report2 = _check(site2)
+    error2 = _fv_errors(report2)[0]
+    assert "(7 differences)" in error2 and error2.endswith("; and 2 more"), error2
+    assert error2.count(": the summary says") == 5
+
+
+@pytest.mark.parametrize("summary,message", [
+    (None, "data/dashboard-summary.json is missing or not a JSON object"),
+    ("[1, 2]", "data/dashboard-summary.json is missing or not a JSON object"),
+    ("not json", "data/dashboard-summary.json is missing or not a JSON object"),
+    ({**STAMPS, "totalStudies": 3}, "data/dashboard-summary.json has no firstView block (firstView: null)"),
+    ({**STAMPS, "totalStudies": 3, "firstView": None}, "data/dashboard-summary.json has no firstView block (firstView: null)"),
+    ({**STAMPS, "totalStudies": 3, "firstView": [1]}, "data/dashboard-summary.json has no firstView block (firstView: [1])"),
+], ids=["no-summary", "a-list", "not-json", "no-block", "a-null-block", "a-list-block"])
+def test_a_summary_without_a_first_view_block_blocks(tmp_path: pathlib.Path, summary: object, message: str) -> None:
+    """The generator always writes the block; data/ without it would open the Overview on nothing."""
+    site = _site(tmp_path)
+    path = site / "data" / "dashboard-summary.json"
+    if summary is None:
+        path.unlink()
+    else:
+        path.write_text(summary if isinstance(summary, str) else json.dumps(summary))
+    r, report = _check(site)
+    assert r.returncode == 1
+    assert _fv_errors(report) and _fv_errors(report)[0].startswith(message), report["errors"]
+    assert report["first_view"] == {"recounted": False}
+
+
+@pytest.mark.parametrize("key", ["extracted_at", "pipeline_commit"])
+def test_a_summary_from_another_run_than_the_parts_blocks(tmp_path: pathlib.Path, key: str) -> None:
+    """Its top-level stamps, and the block's, are the parts' run's."""
+    site = _site(tmp_path)
+    other = {"extracted_at": "2026-09-20T11:49:53+00:00", "pipeline_commit": "abc1234"}[key]
+    _summary_change(lambda s: (s.update({key: other}), s["firstView"].update({key: other})))(site)
+    r, report = _check(site)
+    assert r.returncode == 1
+    errors = _fv_errors(report)
+    assert errors[0].startswith(f"data/dashboard-summary.json comes from another run ("), errors
+    assert f"firstView.{key}: the summary says \"{other}\"" in errors[1], errors
+    # The top-level stamps alone, the block left as the parts' run.
+    site2 = _site(tmp_path / "top")
+    _summary_change(lambda s: s.update({key: other}))(site2)
+    _, report2 = _check(site2)
+    assert [e[:40] for e in _fv_errors(report2)] == ["data/dashboard-summary.json comes from a"]
+
+
+def test_a_record_the_sites_code_would_throw_on_blocks_the_recount(tmp_path: pathlib.Path) -> None:
+    site = _site(tmp_path)
+    rec = _record(3)
+    rec["results_date"] = 20120301
+    _write_part(site, 2, {**STAMPS, "part": 2, "total_parts": 2, "data": [rec]})
+    r, report = _check(site)
+    assert r.returncode == 1
+    assert any(e.startswith("firstView cannot be recounted from the staged parts: record 3 (NCT00000003): "
+                            "results_date is a int") for e in report["errors"]), report["errors"]
+
+
+def test_a_part_that_does_not_read_leaves_the_block_unrecounted(tmp_path: pathlib.Path) -> None:
+    """The part's own error blocks the push; a recount of the rest would be partial and only add noise."""
+    site = _site(tmp_path)
+    (site / "data" / "demographics.part2.json.gz").write_bytes(b"not gzip")
+    r, report = _check(site)
+    assert r.returncode == 1
+    assert any("demographics.part2.json.gz is not gzipped JSON" in e for e in report["errors"])
+    assert not _fv_errors(report) and report["first_view"] == {"recounted": False}
+
+
+def test_a_split_dataset_is_recounted_from_its_core_parts(tmp_path: pathlib.Path) -> None:
+    site = _split_site(tmp_path)
+    r, report = _check_split(site)
+    assert r.returncode == 0, report["errors"]
+    assert report["first_view"] == {"recounted": True, "trials": 16, "differences": 0}
+    # The archived snapshot's summary has no firstView (weeks published before
+    # the block never had one), and is not asked for it.
+    assert "firstView" not in json.loads((site / "snapshots" / DATE / "dashboard-summary.json").read_text())
+    _summary_change(_move_race_count)(site)
+    r, report = _check_split(site)
+    assert r.returncode == 1
+    assert len(_fv_errors(report)) == 1 and "firstView.by_results_year.2010.trials_reporting_race" in _fv_errors(report)[0]
+
+
+def test_the_engines_split_of_the_sites_own_contract_is_recounted(tmp_path: pathlib.Path) -> None:
+    """The site's real core class carries every field firstView reads."""
+    contract = split_helpers.site_contract(enabled=True)
+    assert set(fv.READS) <= set(contract["classes"]["core"])
+    site = _split_site(tmp_path, contract=contract, records=split_helpers.whole_records(split_helpers.ids(16)))
+    r, report = _check_split(site)
+    assert r.returncode == 0, report["errors"]
+    assert report["first_view"] == {"recounted": True, "trials": 16, "differences": 0}
+
+
+@pytest.mark.parametrize("path,to", [("results_date", "detail"), ("ethnicity.reported", "studies_tab")])
+def test_a_split_whose_core_lacks_a_field_first_view_reads_blocks_loudly(tmp_path: pathlib.Path, path: str, to: str) -> None:
+    """The core parts would not carry it: recounting would count every record as
+    lacking it. The check says which field, and does not recount."""
+    contract = copy.deepcopy(SPLIT_CONTRACT)
+    contract["classes"]["core"].remove(path)
+    contract["classes"][to].append(path)
+    site = _split_site(tmp_path, contract=contract)
+    r, report = _check_split(site)
+    assert r.returncode == 1
+    assert _fv_errors(report) == [
+        f"firstView is counted from {path}, which the site's contract does not put in core, so the core parts do "
+        "not carry it and the block cannot be recounted from the files about to be pushed (src/first_view.py READS)"]
+    assert report["first_view"] == {"recounted": False}
+
+
+def test_differences_are_exact_and_in_the_recounts_order() -> None:
+    want = {"a": 1, "b": {"x": True, "y": [1, 2]}, "c": None}
+    assert csc.first_view_differences(want, copy.deepcopy(want)) == []
+    assert csc.first_view_differences(want, {"a": 1.0, "b": {"x": 1, "y": [1]}, "c": None, "d": 0}) == [
+        "firstView.a: the summary says 1.0; the staged parts give 1",
+        "firstView.b.x: the summary says 1; the staged parts give true",
+        "firstView.b.y: the summary says [1]; the staged parts give [1, 2]",
+        "firstView.d: the summary has 0; the recount has no such key",
+    ]
+
+
+# ── extract.yml: the first-view parity before the push ──────────────────────
+
+PARITY_LINE = ('if ! node ../scripts/first_view_parity.mjs $FV_RECORDS --summary data/dashboard-summary.json '
+               '--app app.js --index index.html > "$RUNNER_TEMP/first_view_parity.json"; then')
+
+
+def test_the_publish_step_runs_the_parity_on_the_staged_parts_with_the_live_sites_code_before_the_push() -> None:
+    """In the site checkout (cd site), after the staging and the contract check
+    and before the commit and push: the staged parts, the staged summary, and
+    the checkout's own app.js and index.html, the page this push updates."""
+    lines = [line.strip() for line in _step(PUBLISH).splitlines()]
+    assert PARITY_LINE in lines, "the parity line was changed (an || or a wrapper makes it advisory)"
+    parity = lines.index(PARITY_LINE)
+    loop = lines.index('for part in data/demographics.part*.json.gz; do FV_RECORDS="$FV_RECORDS --records $part"; done')
+    assert lines.index("cd site") < lines.index(CHECK_LINE) < loop < parity
+    assert lines[parity:].index("exit 1") < lines[parity:].index("fi"), "a failed parity does not stop the step"
+    assert parity < lines.index('git commit -m "Update demographics data $DATE$REPLACED" || exit 0') < lines.index("git push")
+    order = [m.group(1) for m in re.finditer(r"\n      - name: (.+)", WORKFLOW)]
+    node = [i for i, name in enumerate(order) if "actions/setup-node@" in _step(name)]
+    assert node and node[0] < order.index(PUBLISH), "node is not set up before the publish step"
+    assert "node-version: '22'" in _step(order[node[0]])
+
+
+@pytest.mark.parametrize("parity_rc,printed", [
+    (1, '::error::first-view parity, counts in 2016: {"site":{"trials":3},"block":{"trials":4}}'),
+    (2, "first_view_parity: app.js has no function getFilteredData()"),
+], ids=["a-mismatch", "site-code-it-cannot-run"])
+def test_a_failed_parity_stops_the_publish_step_before_commit_and_push(tmp_path: pathlib.Path, parity_rc: int,
+                                                                      printed: str) -> None:
+    r, calls, site = _publish(tmp_path, _whole_week("last"), _split_week("this"), parity_rc=parity_rc)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert ("node ../scripts/first_view_parity.mjs --records data/demographics.part1.json.gz "
+            "--records data/demographics.part2.json.gz --summary data/dashboard-summary.json "
+            "--app app.js --index index.html") in calls, calls
+    assert "git commit" not in calls and "git push" not in calls, calls
+    assert printed in r.stdout + r.stderr, r.stdout + r.stderr
+    assert "::error::dashboard-summary.json's firstView is not what the site's own Overview code" in r.stdout
+    log = subprocess.run(["git", "log", "--format=%s"], cwd=site, capture_output=True, text=True).stdout.split("\n")
+    assert log[0] == "last week"
+
+
+def test_a_passing_parity_lets_the_publish_step_push(tmp_path: pathlib.Path) -> None:
+    r, calls, _ = _publish(tmp_path, _whole_week("last"), _whole_week("this"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert calls.index("check_site_contract.py") < calls.index("first_view_parity.mjs") < calls.index("git commit")
+    assert "first-view parity: ok, 41 checks on 3 records" in r.stdout

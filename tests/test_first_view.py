@@ -486,3 +486,94 @@ def test_the_check_reads_a_weeks_file_item_by_item(tmp_path: pathlib.Path, count
     assert report["records"]["count"] == len(records)
     assert (report["records"]["extracted_at"], report["records"]["pipeline_commit"]) == \
         (h.STAMPS["extracted_at"], h.STAMPS["pipeline_commit"])
+
+
+# ── the records cut to what the block reads (the publish gate's recount) ────
+
+def test_the_cut_records_count_as_the_whole_ones(counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """scripts/check_site_contract.py holds a week's records cut to fv.READS:
+    every edge the rules decide counts the same cut as whole."""
+    _, _, records = counted
+    cut = [fv.essentials(r) for r in records]
+    assert fv.first_view(cut, "a", "b") == fv.first_view(records, "a", "b")
+    assert all(set(c) <= {p.split(".")[0] for p in fv.READS} for c in cut)
+
+
+@pytest.mark.parametrize("record,cut", [
+    ({"nct_id": "NCT1", "results_date": None, "study_type": "X", "phase": "P1"},
+     {"nct_id": "NCT1", "results_date": None, "study_type": "X"}),
+    ({}, {}),
+    ({"race": {"reported": [], "omb_totals": {}}, "ethnicity": {"omb_totals": {}}},
+     {"race": {"reported": []}, "ethnicity": {}}),
+    ({"race": "reported", "ethnicity": [{"reported": True}]}, {"race": "reported", "ethnicity": [{"reported": True}]}),
+    ({"race": None}, {"race": None}),
+])
+def test_the_cut_keeps_absence_and_shape(record: dict[str, Any], cut: dict[str, Any]) -> None:
+    assert fv.essentials(record) == cut
+    assert fv.reports(fv.essentials(record), "race") is fv.reports(record, "race")
+    assert fv.reports(fv.essentials(record), "ethnicity") is fv.reports(record, "ethnicity")
+
+
+@pytest.mark.parametrize("record", [None, "NCT00000001", 7, []])
+def test_a_record_that_is_not_an_object_is_cut_to_itself_and_still_refused(record: Any) -> None:
+    assert fv.essentials(record) is record
+    with pytest.raises(fv.FirstViewError, match="record 1 is a"):
+        fv.first_view([fv.essentials(record)], None, None)
+
+
+# ── the staged parts as the records (the weekly publish) ────────────────────
+
+def _write_parts(folder: pathlib.Path, records: list[dict[str, Any]], n: int,
+                 stamps: list[dict[str, Any]] | None = None) -> list[pathlib.Path]:
+    """The records as the site's parts: n gzipped containers, each with the
+    run's stamps and its own data array (scripts/split_data.py's shape)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    size = -(-len(records) // n)
+    paths = []
+    for k in range(n):
+        path = folder / f"demographics.part{k + 1}.json.gz"
+        body = {**((stamps or [])[k] if stamps else h.STAMPS), "part": k + 1, "total_parts": n,
+                "data": records[k * size:(k + 1) * size]}
+        with gzip.open(path, "wt", encoding="utf-8") as f:
+            json.dump(body, f, separators=(",", ":"))
+        paths.append(path)
+    return paths
+
+
+def test_the_parity_reads_the_staged_parts_as_one_set_of_records(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    records_file, summary_file, records = counted
+    parts = _write_parts(tmp_path, records, 4)
+    r = subprocess.run([_node(), str(PARITY), *[a for p in parts for a in ("--records", str(p))],
+                        "--summary", str(summary_file)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    report = json.loads(r.stdout)
+    block = json.loads(summary_file.read_text())["firstView"]
+    _assert_parity(r.returncode, report, block)
+    assert report["records"]["file"] == [str(p) for p in parts] and report["records"]["count"] == len(records)
+    # One file is still reported as one path, as before.
+    _, one = _parity(records_file, summary_file)
+    assert one["records"]["file"] == str(records_file)
+
+
+def test_the_parity_on_parts_still_finds_a_wrong_block(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    _, summary_file, records = counted
+    parts = _write_parts(tmp_path / "parts", records, 3)
+    wrong = _mutated(tmp_path, summary_file, _move_one_race_trial)
+    r = subprocess.run([_node(), str(PARITY), *[a for p in parts for a in ("--records", str(p))],
+                        "--summary", str(wrong)], capture_output=True, text=True)
+    assert r.returncode == 1
+    assert {m["check"] for m in json.loads(r.stdout)["mismatches"]} == \
+        {"counts in 2016", "counts in 2017", "painted: the trend chart's Race series"}
+
+
+def test_parts_from_two_runs_are_an_input_error(tmp_path: pathlib.Path,
+                                                counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    _, summary_file, records = counted
+    other = {**h.STAMPS, "pipeline_commit": "abc1234"}
+    parts = _write_parts(tmp_path, records, 2, stamps=[h.STAMPS, other])
+    r = subprocess.run([_node(), str(PARITY), "--records", str(parts[0]), "--records", str(parts[1]),
+                        "--summary", str(summary_file)], capture_output=True, text=True)
+    assert r.returncode == 2 and r.stdout == ""
+    assert f"first_view_parity: {parts[1]} is from another run" in r.stderr and "abc1234" in r.stderr

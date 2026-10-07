@@ -30,10 +30,15 @@
  *
  * The full-record file is read item by item (a week's is about 1.3 GB, over
  * V8's string limit), plain or gzipped, as src/full_records.py reads it.
+ * --records may be given more than once: the weekly publish passes the
+ * site's staged parts (data/demographics.partN.json.gz, each a container of
+ * the same shape with its own "data" array), and their records are counted
+ * together, in the order given. The files must be one run: a file whose
+ * extracted_at or pipeline_commit is not the first file's is an input error.
  *
  * Usage:
- *   node scripts/first_view_parity.mjs --records demographics.json[.gz] --summary dashboard-summary.json
- *        [--app path/to/app.js --index path/to/index.html]
+ *   node scripts/first_view_parity.mjs --records demographics.json[.gz] [--records more.json.gz ...]
+ *        --summary dashboard-summary.json [--app path/to/app.js --index path/to/index.html]
  *     The site files default to the excerpt in tests/fixtures/site_overview/;
  *     pass the site's own app.js and index.html to check against them.
  *     Prints a JSON report; exits 0 when everything matches, 1 on a mismatch,
@@ -245,6 +250,22 @@ async function readFullRecords(file) {
     if (!sawData) throw new InputError(`${file}: no data array`);
     const container = JSON.parse(skeleton.join(''));
     return { records, extracted_at: container.extracted_at ?? null, pipeline_commit: container.pipeline_commit ?? null };
+}
+
+// Several files of one run (the staged parts) read as one: their records in
+// the order given, and the first file's stamps, which every other must share.
+async function readRecordFiles(files) {
+    let full = null;
+    for (const file of files) {
+        const one = await readFullRecords(file);
+        if (full === null) { full = one; continue; }
+        if (one.extracted_at !== full.extracted_at || one.pipeline_commit !== full.pipeline_commit) {
+            throw new InputError(`${file} is from another run (${one.extracted_at}, ${one.pipeline_commit}) `
+                + `than ${files[0]} (${full.extracted_at}, ${full.pipeline_commit})`);
+        }
+        for (const r of one.records) full.records.push(r);
+    }
+    return full;
 }
 
 // ── a document for the site's code ─────────────────────────────────────────
@@ -602,13 +623,14 @@ function check(summaryFile, appPath, indexPath, full) {
 // ── command line ───────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-    const out = { excerpt: false };
+    const out = { excerpt: false, records: [] };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '--excerpt') { out.excerpt = true; continue; }
         const m = /^--(records|summary|app|index|source|out-dir)$/.exec(a);
         if (!m || i + 1 >= argv.length) throw new InputError(`unknown or incomplete argument ${a}`);
-        out[m[1]] = argv[++i];
+        if (m[1] === 'records') out.records.push(argv[++i]);
+        else out[m[1]] = argv[++i];
     }
     return out;
 }
@@ -620,17 +642,17 @@ async function main() {
         console.log(JSON.stringify(writeExcerpt(a.app, a.index, a.source, a['out-dir'] || EXCERPT_DIR), null, 2));
         return 0;
     }
-    if (!a.records || !a.summary) throw new InputError('needs --records and --summary');
+    if (!a.records.length || !a.summary) throw new InputError('needs --records and --summary');
     const appPath = a.app || path.join(EXCERPT_DIR, EXCERPT_APP);
     const indexPath = a.index || path.join(EXCERPT_DIR, EXCERPT_INDEX);
     const t0 = Date.now();
-    const full = await readFullRecords(a.records);
+    const full = await readRecordFiles(a.records);
     const t1 = Date.now();
     const result = check(a.summary, appPath, indexPath, full);
     const failed = result.checks.filter((c) => !c.ok);
     const report = {
         ok: failed.length === 0,
-        records: { file: a.records, count: full.records.length, extracted_at: full.extracted_at, pipeline_commit: full.pipeline_commit },
+        records: { file: a.records.length === 1 ? a.records[0] : a.records, count: full.records.length, extracted_at: full.extracted_at, pipeline_commit: full.pipeline_commit },
         site_code: result.site_code ?? null,
         checked: result.checks.length,
         mismatches: failed,

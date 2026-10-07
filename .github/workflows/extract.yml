@@ -221,6 +221,15 @@ jobs:
           fi
           echo "Archived $(basename "$ASSET") to release $TAG"
 
+      - name: Set up Node (the publish step runs the site's own Overview code)
+        # scripts/first_view_parity.mjs runs the site's app.js over this week's
+        # parts before the push; pinned as in ci.yml, so the check does not
+        # depend on the runner's default node. Here, with the site-side steps:
+        # like them, it is skipped once an earlier step fails.
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Check out the site repository
         uses: actions/checkout@v4
         with:
@@ -326,8 +335,27 @@ jobs:
           # missing, another run's or not covering its recent studies), a
           # file over GitHub's 100 MiB per-file push limit, or a site over
           # GitHub Pages' 1 GB limit stops the publish here, and the site
-          # keeps last week's data. Over the size budgets only warns.
+          # keeps last week's data. Over the size budgets only warns. The same
+          # check recounts dashboard-summary.json's firstView (the Overview as
+          # it opens, src/first_view.py) from the staged parts and stops the
+          # publish when the block is missing or differs in any number.
           python3 ../scripts/check_site_contract.py --site . --latest "$DATE" --report "$RUNNER_TEMP/site_check.json"
+          # The block against the site's own Overview code: this checkout's
+          # app.js and index.html, the page this push updates, run over the
+          # staged parts (scripts/first_view_parity.mjs). A site change to the
+          # Overview's rules that the engine has not followed stops the
+          # publish here, rather than publishing numbers the page would not
+          # draw; the site keeps last week's data. Exit 1 is a mismatch (each
+          # one printed below); exit 2, an input or site code the script
+          # cannot read (its message is printed above).
+          FV_RECORDS=""
+          for part in data/demographics.part*.json.gz; do FV_RECORDS="$FV_RECORDS --records $part"; done
+          if ! node ../scripts/first_view_parity.mjs $FV_RECORDS --summary data/dashboard-summary.json --app app.js --index index.html > "$RUNNER_TEMP/first_view_parity.json"; then
+            jq -r '.mismatches[]? | "::error::first-view parity, \(.check): \(.detail | tojson | .[0:500])"' "$RUNNER_TEMP/first_view_parity.json" 2>/dev/null || true
+            echo "::error::dashboard-summary.json's firstView is not what the site's own Overview code (app.js, index.html) counts and paints from this week's parts, or the check could not run; nothing was pushed, and the site keeps last week's data."
+            exit 1
+          fi
+          echo "first-view parity: ok, $(jq -r '"\(.checked) checks on \(.records.count) records"' "$RUNNER_TEMP/first_view_parity.json")"
           git commit -m "Update demographics data $DATE$REPLACED" || exit 0
           git push
 

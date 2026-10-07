@@ -189,6 +189,22 @@ excerpt byte for byte. A site change to that code is followed by rewriting the
 excerpt from the site and checking a real week's records with the script. A change that loosens the check, or edits
 the excerpt by hand, is the defect it exists to catch.
 
+The weekly publish checks the block twice before the push, and either
+failure stops it, leaving the site on last week's data like any other
+correctness failure. `scripts/check_site_contract.py` recounts the block with
+`src/first_view.py` from the staged parts, the bytes about to be pushed, and
+requires it key for key, naming the first paths that differ; a data folder
+whose summary has no `firstView` fails too (snapshot summaries are not asked
+for one: older weeks never had it). Under the split layout the parts carry the
+core class only, so a site contract that moves a field the block reads
+(`READS` in `src/first_view.py`) out of core fails the check rather than
+recounting from absent fields. Then `scripts/first_view_parity.mjs` runs on the
+staged parts (`--records` once per part) against the site checkout's own
+app.js and index.html, so a site change to the Overview's rules that the
+engine has not followed blocks the push instead of publishing numbers the
+page would not draw; the job sets node up for it. A change that makes either
+advisory, or moves it after the push, is the defect they exist to catch.
+
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM
 extraction results, which cost money to produce and are the record the

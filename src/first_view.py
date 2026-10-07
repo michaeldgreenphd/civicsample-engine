@@ -55,6 +55,12 @@ from typing import Any
 STUDY_TYPE = "INTERVENTIONAL"   # #study-type's selected option
 RESULTS_YEAR_FROM = 2009        # app.js YEAR_WINDOW_MIN: #year-start's min and value
 
+# Every record field the block is counted from, as site-contract paths. The
+# publish gate (scripts/check_site_contract.py) recounts the block from the
+# staged parts, which under the split layout carry the contract's core class
+# only: it checks these are all core before it counts.
+READS = ("nct_id", "results_date", "study_type", "race.reported", "ethnicity.reported")
+
 DENOMINATOR = "trials"
 NOT_FROM = f"results_year_not_from_{RESULTS_YEAR_FROM}"
 NUMERATORS = {                  # numerator field -> the dimensions a trial must report
@@ -119,6 +125,24 @@ def results_year(record: dict[str, Any], where: str = "a record") -> str | None:
     if len(head) == 4 and all("0" <= ch <= "9" for ch in head):
         return head
     return None
+
+
+def essentials(record: Any) -> Any:
+    """The record cut to what first_view reads (READS), so a whole week's
+    records can be held for a recount: first_view counts the cut records
+    exactly as it counts the whole ones. A key that is absent stays absent, a
+    dimension block that is not an object is kept as it is (the site reads no
+    reported member on it), and a record that is not an object is returned
+    unchanged, for first_view to refuse."""
+    if not isinstance(record, dict):
+        return record
+    out = {key: record[key] for key in ("nct_id", "results_date", "study_type") if key in record}
+    for dim in ("race", "ethnicity"):
+        if dim in record:
+            block = record[dim]
+            out[dim] = ({"reported": block["reported"]} if "reported" in block else {}) \
+                if isinstance(block, dict) else block
+    return out
 
 
 def _where(index: int, record: Any) -> str:
