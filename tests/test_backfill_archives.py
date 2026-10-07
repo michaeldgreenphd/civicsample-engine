@@ -42,6 +42,7 @@ import re
 import shutil
 import subprocess
 import sys
+import textwrap
 from typing import Any
 
 import pytest
@@ -527,7 +528,79 @@ def test_without_write_nothing_in_the_site_changes(site: pathlib.Path, commits: 
     assert sh.files(out) == sorted([f"snapshots/{d}/{sl.ARCHIVE_FILE}" for d in (FEB, JUL, SEP)]
                                    + [f"snapshots/{d}/dashboard-summary.json" for d in (JUL, SEP)]
                                    + ["history.json", "plan.json"])
-    assert ba.main(["--site", str(site)]) == 1, "the real targets' commits are not in this repository"
+
+
+
+def test_main_refuses_a_target_commit_the_checkout_does_not_have(site: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+                                                                 capsys: pytest.CaptureFixture[str]) -> None:
+    """The real 02-22 target against this fixture: its folder is an aggregate
+    here, so what refuses is that the site commit is not in the checkout."""
+    monkeypatch.setattr(ba, "TARGETS", (ba.TARGETS[0],))
+    before = digest(site)
+    assert ba.main(["--site", str(site), "--write"]) == 1
+    out = capsys.readouterr().out
+    assert f"the site checkout has no commit {ba.TARGETS[0].commit}" in out, out
+    assert digest(site) == before
+
+
+def _push_step() -> str:
+    """The shell of the workflow's "Commit and push to the site" step."""
+    text = open(os.path.join(WORKFLOWS, "backfill-archives.yml")).read()
+    step = next(s for s in _steps(text) if s.startswith("name: Commit and push to the site\n"))
+    body = step.split("        run: |\n", 1)[1]
+    return textwrap.dedent(body).rstrip() + "\n"
+
+
+def _run_push_step(site: pathlib.Path, runner_temp: pathlib.Path) -> subprocess.CompletedProcess[str]:
+    # GitHub's shell for a run step: bash --noprofile --norc -eo pipefail.
+    return subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", _push_step()], cwd=site,
+                          capture_output=True, text=True,
+                          env={**os.environ, "RUNNER_TEMP": str(runner_temp)}, check=False)
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="the push step reads the report with jq")
+def test_main_writes_the_report_and_the_push_step_commits_exactly_what_it_lists(
+        site: pathlib.Path, commits: dict[str, str], tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """main as the workflow runs it, then the push step's own shell against a
+    bare remote: one commit holding exactly the files the report lists, none
+    deleted; a second run has nothing to commit; a file the script did not
+    write stops the push."""
+    remote = tmp_path / "remote.git"
+    _git(tmp_path, "clone", "-q", "--bare", str(site), str(remote))
+    _git(site, "remote", "add", "origin", str(remote))
+    base = _git(site, "rev-parse", "HEAD")
+    monkeypatch.setattr(ba, "TARGETS", tuple(targets(commits)))
+    runner_temp = tmp_path / "runner"
+    out = runner_temp / "backfill"
+    out.mkdir(parents=True)
+    argv = ["--site", str(site), "--write", "--out", str(out), "--report", str(out / "report.json")]
+    assert ba.main(argv) == 0
+    report = json.loads((out / "report.json").read_text())
+    status = subprocess.run(["git", "-C", str(site), "status", "--porcelain", "--untracked-files=all"], check=True,
+                            capture_output=True, text=True).stdout.splitlines()
+    assert sorted(line[3:] for line in status) == sorted(report["changed"])
+    assert len(report["changed"]) == 6 and report["ok"] and report["gate"]["ok"]
+    r = _run_push_step(site, runner_temp)
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = _git(remote, "log", "--format=%H", f"{base}..main").split()
+    assert len(log) == 1, "one commit"
+    pushed = _git(remote, "show", "--name-status", "--format=", log[0]).split("\n")
+    assert sorted(line.split("\t", 1)[1] for line in pushed) == sorted(report["changed"])
+    assert {line.split("\t", 1)[0] for line in pushed} <= {"A", "M"}, pushed
+    assert _git(site, "status", "--porcelain", "--untracked-files=all") == ""
+    # A second run: nothing to commit.
+    assert ba.main(argv) == 0
+    assert json.loads((out / "report.json").read_text())["changed"] == []
+    r = _run_push_step(site, runner_temp)
+    assert r.returncode == 0 and "Nothing to commit" in r.stdout, r.stdout + r.stderr
+    assert _git(remote, "rev-parse", "main") == log[0]
+    # A change the script did not report stops the push.
+    (site / "snapshots" / FEB / sl.ARCHIVE_FILE).unlink()
+    assert ba.main(argv) == 0
+    (site / "stray.txt").write_text("x")
+    r = _run_push_step(site, runner_temp)
+    assert r.returncode == 1 and "changes the script did not report" in r.stdout, r.stdout + r.stderr
+    assert _git(remote, "rev-parse", "main") == log[0], "nothing pushed"
 
 
 def test_a_gate_failure_fails_the_run(site: pathlib.Path, commits: dict[str, str]) -> None:

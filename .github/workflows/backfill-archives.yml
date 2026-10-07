@@ -93,12 +93,12 @@ jobs:
             echo "Nothing to commit: every archive is already there."
             exit 0
           fi
-          xargs -d '\n' git add -- < "$RUNNER_TEMP/changed.txt"
+          git --literal-pathspecs add --pathspec-from-file="$RUNNER_TEMP/changed.txt"
           if [ -n "$(git diff --cached --name-only --diff-filter=DR)" ]; then
             echo "::error::the staged change deletes or renames a file; nothing is pushed"
             exit 1
           fi
-          if [ -n "$(git status --porcelain --untracked-files=all | grep -v '^A  \|^M  ')" ]; then
+          if [ -n "$(git status --porcelain --untracked-files=all | grep -Ev '^(A|M)  ')" ]; then
             echo "::error::the checkout holds changes the script did not report; nothing is pushed"
             git status --porcelain --untracked-files=all
             exit 1
