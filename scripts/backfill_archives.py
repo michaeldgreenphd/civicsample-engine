@@ -42,8 +42,12 @@ WRITES  with --write only, and only these, never deleting anything:
         unchanged or kept), at their site paths; history.json as it would
         be; and plan.json (the report); --report: the report alone
 INVOKED by .github/workflows/backfill-archives.yml (workflow_dispatch; dry_run
-        true by default, which uploads --out and pushes nothing), as
-          python3 scripts/backfill_archives.py --site site --write --out ... --report ...
+        true by default, which uploads --out and pushes nothing): first, in a
+        job of its own with no concurrency group, as
+          python3 scripts/backfill_archives.py --check-window
+        (no site, no dependencies: it only says whether the weekly run's
+        window is open), then, in the job that may push, as
+          python3 scripts/backfill_archives.py --site site --write --outside-weekly-window --out ... --report ...
         By hand, without --write, it changes nothing in the site.
 EXITS   0  the plan is sound (and, with --write, carried out and the site
            passes scripts/check_site_contract.py: the commit may be made);
@@ -63,6 +67,8 @@ EXITS   0  the plan is sound (and, with --write, carried out and the site
            the files stay in the working tree, uncommitted;
         1  with --outside-weekly-window (the workflow passes it), when it is
            Saturday 18:00 to Sunday 18:00 UTC: see weekly_window_problem.
+--check-window alone: 1 inside that window, 0 outside it; it reads and
+        writes nothing.
 
 A second run finds every file there already (an archive file holding the same
 JSON, whatever Python gzipped it) and history.json unchanged, and writes
@@ -129,14 +135,18 @@ class Refused(Exception):
 
 # ── the weekly run's window ─────────────────────────────────────────────────
 #
-# extract.yml (cron Sunday 06:00 UTC) and this job share the concurrency
-# group site-publish. GitHub keeps one pending run per group and cancels it
-# when another run in the group is queued, so a weekly run waiting behind
-# this job would be cancelled by any further dispatch, and that week would
-# not be published. Run from the workflow (--outside-weekly-window), the
-# job refuses to start from Saturday 18:00 to Sunday 18:00 UTC, so it is
-# never running when the weekly cron fires. It cannot stop a dispatch made
-# while a run is pending: that is the rule in AGENTS.md and README.
+# extract.yml (cron Sunday 06:00 UTC) and the workflow's backfill job share
+# the concurrency group site-publish. GitHub keeps one pending run per group
+# and cancels it when another run in the group is queued, so a weekly run
+# waiting behind the backfill would be cancelled by any further dispatch, and
+# that week would not be published. The workflow's window job, which has no
+# group, runs --check-window first and the backfill job needs it, so a
+# dispatch from Saturday 18:00 to Sunday 18:00 UTC never joins the group and
+# cancels nothing, and the backfill is never running when the weekly cron
+# fires; the backfill job checks again (--outside-weekly-window). A dry run
+# joins a group of its own. What this cannot stop is a non-dry dispatch
+# outside the window while a site-publish run is pending: that is the rule in
+# AGENTS.md and README.
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -152,6 +162,18 @@ def weekly_window_problem(now: datetime) -> str | None:
         return (f"it is {t:%A %H:%M} UTC, inside the weekly run's window (Saturday 18:00 to Sunday 18:00 UTC, "
                 "around extract.yml's Sunday 06:00 cron); dispatch it again outside that window")
     return None
+
+
+def check_window(now: datetime) -> int:
+    """--check-window: 1, with an error line, inside the weekly run's window;
+    0 outside it."""
+    why = weekly_window_problem(now)
+    if why:
+        print(f"::error::archive backfill refused before joining the site-publish group: {why}")
+        return 1
+    print(f"It is {now.astimezone(timezone.utc):%A %H:%M} UTC, outside the weekly run's window "
+          "(Saturday 18:00 to Sunday 18:00 UTC): the backfill may start.")
+    return 0
 
 
 # ── the site's history, through git ─────────────────────────────────────────
@@ -525,7 +547,8 @@ def run(site: str, targets: list[Target], write: bool, out: str | None = None,
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Rebuild old monthly archives from the site's git history (one-off).")
-    ap.add_argument("--site", required=True, help="a site checkout with its history (full or blobless clone)")
+    ap.add_argument("--site", default=None,
+                    help="a site checkout with its history (full or blobless clone); required but with --check-window")
     ap.add_argument("--write", action="store_true",
                     help="write the files and history.json into the site, then run the publish gate on it")
     ap.add_argument("--out", default=None, help="put the files built, history.json and plan.json here")
@@ -534,7 +557,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="the site's record contract (default: <site>/tests/record_contract.json)")
     ap.add_argument("--outside-weekly-window", action="store_true",
                     help="refuse to start between Saturday 18:00 and Sunday 18:00 UTC (the workflow passes it)")
+    ap.add_argument("--check-window", action="store_true",
+                    help="only say whether the weekly run's window is open: exit 1 inside it, 0 outside "
+                         "(the workflow's window job); needs no site")
     a = ap.parse_args(argv)
+    if a.check_window:
+        return check_window(utc_now())
+    if a.site is None:
+        ap.error("the following arguments are required: --site")
     if a.outside_weekly_window:
         why = weekly_window_problem(utc_now())
         if why:

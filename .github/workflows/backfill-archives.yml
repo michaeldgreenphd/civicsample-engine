@@ -18,9 +18,16 @@ name: Backfill archived snapshots (one-off)
 # Sunday 18:00 UTC. GitHub keeps one pending run per concurrency group and
 # cancels it when another is queued: a Sunday weekly run pending behind this
 # job would be cancelled by a second dispatch, and that week not published.
-# The job refuses to start inside that window (--outside-weekly-window), so
-# it is never running when the Sunday 06:00 cron fires; a dispatch made
-# while a run is pending it cannot stop, so check the Actions tab first.
+# What the workflow guards:
+#   - the window job, which has no concurrency group, refuses a dispatch
+#     from Saturday 18:00 to Sunday 18:00 UTC, and the backfill job needs
+#     it, so a refused dispatch is never queued in site-publish and cancels
+#     nothing; the backfill is never running when the Sunday 06:00 cron
+#     fires (the build step checks the window again);
+#   - a dry run pushes nothing and never joins site-publish: it gets a group
+#     of its own.
+# What it cannot stop: a dispatch with dry_run unchecked, outside the
+# window, while a site-publish run is pending. Check the Actions tab first.
 
 on:
   workflow_dispatch:
@@ -31,20 +38,37 @@ on:
         required: true
         default: true
 
-# The weekly extract's group: this job and the Sunday publish never run at
-# the same time (one waits for the other), so neither pushes over a
-# history.json the other is rewriting. A pending run in the group is
-# cancelled when another is queued: see "When to dispatch it" above.
-concurrency:
-  group: site-publish
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
 jobs:
-  backfill:
+  # Before anything joins site-publish: no group, no site, no secrets, no
+  # dependencies. Fails (and so the backfill job never starts) from Saturday
+  # 18:00 to Sunday 18:00 UTC.
+  window:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Refuse to start in the weekly run's window
+        run: python3 scripts/backfill_archives.py --check-window
+
+  backfill:
+    needs: window
+    runs-on: ubuntu-latest
+    # The weekly extract's group when this run may push: the backfill and the
+    # Sunday publish never run at the same time (one waits for the other), so
+    # neither pushes over a history.json the other is rewriting. A pending
+    # run in the group is cancelled when another is queued: see "When to
+    # dispatch it" above. A dry run pushes nothing, so it waits for no one
+    # and makes no one wait: a group of its own. (inputs.dry_run is a
+    # boolean; github.event.inputs.dry_run would be the string "false",
+    # which is true.)
+    concurrency:
+      group: ${{ inputs.dry_run && format('backfill-dry-{0}', github.run_id) || 'site-publish' }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -78,7 +102,8 @@ jobs:
         # policy would not keep a restored month. Then
         # scripts/check_site_contract.py on the written checkout: a failure
         # here stops the job before anything is committed. Refuses to start
-        # from Saturday 18:00 to Sunday 18:00 UTC (the weekly run's window).
+        # from Saturday 18:00 to Sunday 18:00 UTC (the weekly run's window),
+        # a second check after the window job's.
         run: |
           mkdir -p "$RUNNER_TEMP/backfill"
           python3 scripts/backfill_archives.py --site site --write --outside-weekly-window \

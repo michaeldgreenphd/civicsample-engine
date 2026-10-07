@@ -221,10 +221,13 @@ and when was it made":
   come back as their months' summary snapshots, each from that week's own
   files in the site's history. It can run only after the first weekly run
   with the retention rule (2026-10-11), and it is dispatched by hand: never
-  while another run of it or of the weekly job is in progress or pending,
-  and never from Saturday 18:00 to Sunday 18:00 UTC, when it refuses to
-  start (a pending weekly run is cancelled when another run in its
-  concurrency group is queued).
+  while another run of it or of the weekly job is in progress or pending
+  (a pending weekly run is cancelled when another run in its concurrency
+  group is queued), and never from Saturday 18:00 to Sunday 18:00 UTC. A
+  dispatch in that window is refused by a first job before anything joins
+  the group, so it cancels nothing; a dry run never joins the group. A
+  non-dry dispatch outside the window while a run is pending is the case
+  only the rule above prevents.
 - **LLM extraction runs are versioned by their commits and their metrics.**
   Output files keep stable names (so the site always reads the latest);
   each run's commit records who triggered it, the pipeline and mode, and

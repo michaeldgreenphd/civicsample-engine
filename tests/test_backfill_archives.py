@@ -29,7 +29,9 @@ scripts/split_data.py):
   that would change what else retention keeps.
 - A second run writes nothing; a run that stopped part way is completed.
 - Without --write nothing in the site changes; the workflow pushes only when
-  dry_run is unchecked, and shares the weekly extract's concurrency group.
+  dry_run is unchecked, and only its backfill job, after a window job with no
+  group has passed, shares the weekly extract's concurrency group (a dry run
+  gets a group of its own).
 """
 from __future__ import annotations
 
@@ -619,14 +621,37 @@ def test_the_targets_are_the_owners() -> None:
     assert ba.COPIED == ("dashboard-summary.json",), "an aggregate keeps its summary and the archive file only"
 
 
-def _steps(text: str) -> list[str]:
-    return re.split(r"\n      - ", text.split("\n    steps:\n", 1)[1])
+def _job(text: str, name: str) -> str:
+    """The lines of jobs.<name>, up to the next job (or the end)."""
+    jobs = text.split("\njobs:\n", 1)[1]
+    m = re.search(rf"^  {name}:\n((?:(?:    .*|\s*)\n)*)", jobs + "\n", re.M)
+    assert m, f"no job {name}"
+    return m.group(1).rstrip("\n") + "\n"
+
+
+def _steps(text: str, job: str = "backfill") -> list[str]:
+    return re.split(r"\n      - ", "\n" + _job(text, job).split("\n    steps:\n", 1)[1])[1:]
 
 
 def _concurrency(text: str) -> str:
     m = re.search(r"^concurrency:\n  group: (\S+)\n  cancel-in-progress: false$", text, re.M)
     assert m, "a workflow-level concurrency group that never cancels a run in progress"
     return m.group(1)
+
+
+BACKFILL_GROUP = "${{ inputs.dry_run && format('backfill-dry-{0}', github.run_id) || 'site-publish' }}"
+
+
+def _group(expression: str, dry_run: bool, run_id: int) -> str:
+    """A concurrency group expression evaluated as GitHub does: && and || give
+    back an operand (a non-empty string is truthy), format() fills {0}."""
+    m = re.fullmatch(r"\$\{\{ (.*) \}\}", expression)
+    assert m, expression
+    py = m.group(1).replace("&&", " and ").replace("||", " or ")
+    assert not re.search(r"github\.event\.inputs", py), "github.event.inputs turns the boolean into a string"
+    ns = {"inputs": type("I", (), {"dry_run": dry_run}), "github": type("G", (), {"run_id": run_id}),
+          "format": lambda f, *a: f.format(*a)}
+    return str(eval(py, {"__builtins__": {}}, ns))  # noqa: S307 - our own workflow's expression
 
 
 def test_the_workflow_pushes_only_when_dry_run_is_unchecked() -> None:
@@ -649,10 +674,37 @@ def test_the_workflow_pushes_only_when_dry_run_is_unchecked() -> None:
     assert steps.index(build) < steps.index(upload) < steps.index(pushing[0])
 
 
-def test_the_workflow_shares_the_weekly_extracts_concurrency_group() -> None:
+def test_the_workflow_shares_the_weekly_extracts_concurrency_group_only_when_it_may_push() -> None:
+    """The backfill job, not the workflow, joins site-publish, and only after
+    the window job passed: a dispatch the window refuses is never queued in
+    the group, so it cancels nothing. A dry run (it pushes nothing) gets a
+    group of its own."""
     backfill = open(os.path.join(WORKFLOWS, "backfill-archives.yml")).read()
     extract = open(os.path.join(WORKFLOWS, "extract.yml")).read()
-    assert _concurrency(backfill) == _concurrency(extract) == "site-publish"
+    assert _concurrency(extract) == "site-publish"
+    assert not re.search(r"^concurrency:", backfill, re.M), "no workflow-level group: a refused dispatch would join it"
+    assert re.findall(r"^  (\w+):\n", backfill.split("\njobs:\n", 1)[1], re.M) == ["window", "backfill"]
+    window, job = _job(backfill, "window"), _job(backfill, "backfill")
+    assert "concurrency:" not in window and "needs:" not in window
+    assert re.search(r"^    needs: window\n", job, re.M)
+    m = re.search(r"^    concurrency:\n      group: (.+)\n      cancel-in-progress: false\n", job, re.M)
+    assert m, "the backfill job's group, never cancelling a run in progress"
+    assert m.group(1) == BACKFILL_GROUP
+    assert _group(m.group(1), dry_run=False, run_id=7) == "site-publish"
+    assert _group(m.group(1), dry_run=True, run_id=7) == "backfill-dry-7"
+    assert _group(m.group(1), dry_run=True, run_id=7) != _group(m.group(1), dry_run=True, run_id=8)
+
+
+def test_the_window_job_checks_the_window_with_nothing_but_the_engine() -> None:
+    """No site checkout, no secrets, no write token, no dependencies: it runs
+    the script's --check-window with the runner's own python3."""
+    text = open(os.path.join(WORKFLOWS, "backfill-archives.yml")).read()
+    window = _job(text, "window")
+    assert "secrets." not in window and "clinical-trial-populations" not in window and "pip " not in window
+    assert "persist-credentials: false" in window
+    steps = _steps(text, "window")
+    assert len(steps) == 2 and steps[0].startswith("uses: actions/checkout@v4\n")
+    assert re.search(r"^        run: python3 scripts/backfill_archives\.py --check-window$", steps[1], re.M)
 
 
 # ── the weekly run's window ─────────────────────────────────────────────────
@@ -690,6 +742,36 @@ def test_main_with_the_window_flag_refuses_inside_it_and_writes_nothing(
 def test_the_workflow_refuses_to_run_in_the_weekly_window() -> None:
     text = open(os.path.join(WORKFLOWS, "backfill-archives.yml")).read()
     build = next(s for s in _steps(text) if "backfill_archives.py" in s)
-    assert "--outside-weekly-window" in build
+    assert "--outside-weekly-window" in build, "the build step checks the window again"
     header = text.split("\non:\n", 1)[0]
     assert "Saturday 18:00" in header and "pending" in header, "the workflow says when not to dispatch it"
+
+
+@pytest.mark.parametrize("now, inside", [
+    (datetime(2026, 10, 10, 17, 59, tzinfo=timezone.utc), False),   # Saturday 17:59
+    (datetime(2026, 10, 10, 18, 0, tzinfo=timezone.utc), True),     # Saturday 18:00
+    (datetime(2026, 10, 11, 17, 59, tzinfo=timezone.utc), True),    # Sunday 17:59
+    (datetime(2026, 10, 11, 18, 0, tzinfo=timezone.utc), False),    # Sunday 18:00
+])
+def test_check_window_exits_non_zero_only_inside_the_window(
+        now: datetime, inside: bool, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(ba, "utc_now", lambda: now)
+    monkeypatch.setattr(ba, "run", lambda *a, **k: pytest.fail("--check-window builds nothing"))
+    assert ba.main(["--check-window"]) == (1 if inside else 0), "no --site needed"
+    out = capsys.readouterr().out
+    assert ("::error::" in out) == inside and f"{now:%A %H:%M} UTC" in out, out
+
+
+def test_check_window_runs_on_the_standard_library_alone() -> None:
+    """The window job runs it with the runner's python3 and installs nothing:
+    -S leaves out site-packages, so a third-party import would fail here."""
+    r = subprocess.run([sys.executable, "-S", os.path.join(ROOT, "scripts", "backfill_archives.py"), "--check-window"],
+                       capture_output=True, text=True, check=False)
+    assert r.returncode in (0, 1) and r.stderr == "", r.stderr
+    assert "weekly run's window" in r.stdout, r.stdout
+
+
+def test_main_still_needs_a_site_without_check_window(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as e:
+        ba.main([])
+    assert e.value.code == 2 and "--site" in capsys.readouterr().err
