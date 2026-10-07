@@ -12,6 +12,15 @@ name: Backfill archived snapshots (one-off)
 # It needs history.json in the form scripts/prune_snapshots.py writes (dates,
 # latest, archives) and a data/run.json for the week data/ serves: the first
 # weekly run with retention (#22) writes both, so run this after it.
+#
+# When to dispatch it: never while another site-publish run (extract.yml or
+# this one) is in progress or pending, and never from Saturday 18:00 to
+# Sunday 18:00 UTC. GitHub keeps one pending run per concurrency group and
+# cancels it when another is queued: a Sunday weekly run pending behind this
+# job would be cancelled by a second dispatch, and that week not published.
+# The job refuses to start inside that window (--outside-weekly-window), so
+# it is never running when the Sunday 06:00 cron fires; a dispatch made
+# while a run is pending it cannot stop, so check the Actions tab first.
 
 on:
   workflow_dispatch:
@@ -24,7 +33,8 @@ on:
 
 # The weekly extract's group: this job and the Sunday publish never run at
 # the same time (one waits for the other), so neither pushes over a
-# history.json the other is rewriting.
+# history.json the other is rewriting. A pending run in the group is
+# cancelled when another is queued: see "When to dispatch it" above.
 concurrency:
   group: site-publish
   cancel-in-progress: false
@@ -67,10 +77,12 @@ jobs:
         # that date, the projection would lose a field, or the retention
         # policy would not keep a restored month. Then
         # scripts/check_site_contract.py on the written checkout: a failure
-        # here stops the job before anything is committed.
+        # here stops the job before anything is committed. Refuses to start
+        # from Saturday 18:00 to Sunday 18:00 UTC (the weekly run's window).
         run: |
           mkdir -p "$RUNNER_TEMP/backfill"
-          python3 scripts/backfill_archives.py --site site --write --out "$RUNNER_TEMP/backfill" --report "$RUNNER_TEMP/backfill/report.json"
+          python3 scripts/backfill_archives.py --site site --write --outside-weekly-window \
+            --out "$RUNNER_TEMP/backfill" --report "$RUNNER_TEMP/backfill/report.json"
 
       - name: Upload what was built
         if: ${{ !cancelled() }}

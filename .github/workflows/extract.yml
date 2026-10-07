@@ -12,7 +12,9 @@ on:
 # Shared with backfill-archives.yml, the other workflow that rewrites the
 # site's history.json and snapshots/: one waits while the other runs, so
 # neither pushes over the other. Never cancelled in progress: a run stopped
-# part way would leave the week unpublished.
+# part way would leave the week unpublished. GitHub keeps one PENDING run per
+# group and cancels it when another is queued: do not dispatch a run in this
+# group while one is pending (backfill-archives.yml says when it may run).
 concurrency:
   group: site-publish
   cancel-in-progress: false

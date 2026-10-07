@@ -60,7 +60,9 @@ EXITS   0  the plan is sound (and, with --write, carried out and the site
            or the retention policy would not keep a restored date as its
            month's aggregate (or would change what else it keeps);
         1  with --write, when the written site fails check_site_contract.py:
-           the files stay in the working tree, uncommitted.
+           the files stay in the working tree, uncommitted;
+        1  with --outside-weekly-window (the workflow passes it), when it is
+           Saturday 18:00 to Sunday 18:00 UTC: see weekly_window_problem.
 
 A second run finds every file there already (an archive file holding the same
 JSON, whatever Python gzipped it) and history.json unchanged, and writes
@@ -79,7 +81,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -123,6 +125,33 @@ TARGETS = (
 
 class Refused(Exception):
     """The job stops before writing anything."""
+
+
+# ── the weekly run's window ─────────────────────────────────────────────────
+#
+# extract.yml (cron Sunday 06:00 UTC) and this job share the concurrency
+# group site-publish. GitHub keeps one pending run per group and cancels it
+# when another run in the group is queued, so a weekly run waiting behind
+# this job would be cancelled by any further dispatch, and that week would
+# not be published. Run from the workflow (--outside-weekly-window), the
+# job refuses to start from Saturday 18:00 to Sunday 18:00 UTC, so it is
+# never running when the weekly cron fires. It cannot stop a dispatch made
+# while a run is pending: that is the rule in AGENTS.md and README.
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def weekly_window_problem(now: datetime) -> str | None:
+    """Why the job may not start at now (an aware datetime): it is between
+    Saturday 18:00 and Sunday 18:00 UTC. None outside that window."""
+    t = now.astimezone(timezone.utc)
+    start = datetime.combine(t.date() - timedelta(days=(t.weekday() - 5) % 7), datetime.min.time(),
+                             tzinfo=timezone.utc) + timedelta(hours=18)
+    if start <= t < start + timedelta(days=1):
+        return (f"it is {t:%A %H:%M} UTC, inside the weekly run's window (Saturday 18:00 to Sunday 18:00 UTC, "
+                "around extract.yml's Sunday 06:00 cron); dispatch it again outside that window")
+    return None
 
 
 # ── the site's history, through git ─────────────────────────────────────────
@@ -503,7 +532,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--report", default=None, help="write the report here as JSON")
     ap.add_argument("--contract", default=None,
                     help="the site's record contract (default: <site>/tests/record_contract.json)")
+    ap.add_argument("--outside-weekly-window", action="store_true",
+                    help="refuse to start between Saturday 18:00 and Sunday 18:00 UTC (the workflow passes it)")
     a = ap.parse_args(argv)
+    if a.outside_weekly_window:
+        why = weekly_window_problem(utc_now())
+        if why:
+            print(f"::error::archive backfill refused, nothing written: {why}")
+            return 1
     try:
         report = run(a.site, list(TARGETS), a.write, a.out, a.contract)
     except Refused as e:

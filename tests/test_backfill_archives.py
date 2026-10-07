@@ -43,6 +43,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -652,3 +653,43 @@ def test_the_workflow_shares_the_weekly_extracts_concurrency_group() -> None:
     backfill = open(os.path.join(WORKFLOWS, "backfill-archives.yml")).read()
     extract = open(os.path.join(WORKFLOWS, "extract.yml")).read()
     assert _concurrency(backfill) == _concurrency(extract) == "site-publish"
+
+
+# ── the weekly run's window ─────────────────────────────────────────────────
+
+@pytest.mark.parametrize("now, inside", [
+    ("2026-10-10T17:59:59", False),   # Saturday, before the window
+    ("2026-10-10T18:00:00", True),    # Saturday 18:00 UTC: the window opens
+    ("2026-10-11T06:00:00", True),    # Sunday, the weekly cron
+    ("2026-10-11T17:59:59", True),
+    ("2026-10-11T18:00:00", False),   # Sunday 18:00 UTC: it closes
+    ("2026-10-07T12:00:00", False),   # a Wednesday
+])
+def test_the_weekly_window_is_saturday_18_to_sunday_18_utc(now: str, inside: bool) -> None:
+    when = datetime.fromisoformat(now).replace(tzinfo=timezone.utc)
+    problem = ba.weekly_window_problem(when)
+    assert (problem is not None) == inside, problem
+    if inside:
+        assert "weekly" in problem and "18:00" in problem
+    # The same instant in another zone is the same answer.
+    assert (ba.weekly_window_problem(when.astimezone(timezone(timedelta(hours=-7)))) is not None) == inside
+
+
+def test_main_with_the_window_flag_refuses_inside_it_and_writes_nothing(
+        site: pathlib.Path, commits: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(ba, "TARGETS", tuple(targets(commits)))
+    monkeypatch.setattr(ba, "utc_now", lambda: datetime(2026, 10, 11, 6, 30, tzinfo=timezone.utc))
+    before = digest(site)
+    assert ba.main(["--site", str(site), "--write", "--outside-weekly-window"]) == 1
+    assert "weekly" in capsys.readouterr().out
+    assert digest(site) == before
+    assert ba.main(["--site", str(site)]) == 0, "without the flag (by hand) the window does not apply"
+
+
+def test_the_workflow_refuses_to_run_in_the_weekly_window() -> None:
+    text = open(os.path.join(WORKFLOWS, "backfill-archives.yml")).read()
+    build = next(s for s in _steps(text) if "backfill_archives.py" in s)
+    assert "--outside-weekly-window" in build
+    header = text.split("\non:\n", 1)[0]
+    assert "Saturday 18:00" in header and "pending" in header, "the workflow says when not to dispatch it"
