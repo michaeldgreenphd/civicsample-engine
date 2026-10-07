@@ -37,8 +37,10 @@ WRITES  with --write only, and only these, never deleting anything:
           <site>/snapshots/<date>/archive_records.json.gz   (each target)
           <site>/snapshots/<date>/dashboard-summary.json    (each restored date)
           <site>/history.json
-        --out DIR: the files built (at their site paths), history.json as it
-        would be, and plan.json (the report); --report: the report alone
+        --out DIR: the files the site holds for each date once the run is
+        done (this run's where it writes them, the site's where they are
+        unchanged or kept), at their site paths; history.json as it would
+        be; and plan.json (the report); --report: the report alone
 INVOKED by .github/workflows/backfill-archives.yml (workflow_dispatch; dry_run
         true by default, which uploads --out and pushes nothing), as
           python3 scripts/backfill_archives.py --site site --write --out ... --report ...
@@ -69,6 +71,7 @@ run builds is left as it is, and said.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import shutil
@@ -183,17 +186,23 @@ class Built:
     summary: dict[str, Any]
     summary_bytes: bytes                  # the summary the archive file is checked against
     doc: dict[str, Any]
-    archive: bytes
+    archive: bytes                        # the archive file this run built
     actions: dict[str, str] = field(default_factory=dict)   # site path -> write / unchanged / kept
+    # The archive file the site holds once the run is done: this run's when it
+    # writes one, the site's own when that is unchanged or kept (plan_site).
+    final: bytes | None = None
 
     def report(self) -> dict[str, Any]:
+        """What the site holds for this date once the run is done."""
         ids = archive_records.summary_ids(self.summary)
+        final = self.archive if self.final is None else self.final
+        data = self.doc["data"] if final == self.archive else json.loads(gzip.decompress(final))["data"]
         return {"date": self.target.date, "commit": self.target.commit,
                 "kind": "restored aggregate" if self.target.restore else "archive file for an aggregate",
                 "source_extracted_at": self.stamps[0], "source_pipeline_commit": self.stamps[1],
                 "parts": self.parts, "parts_bytes": sum(self.parts.values()),
-                "archive_bytes": len(self.archive), "archive_records": len(self.doc["data"]),
-                "recent_studies": len(ids), "covered": sum(1 for nct in ids if nct in self.doc["data"]),
+                "archive_bytes": len(final), "archive_records": len(data),
+                "recent_studies": len(ids), "covered": sum(1 for nct in ids if nct in data),
                 "actions": self.actions}
 
 
@@ -333,7 +342,14 @@ def plan_site(site: str, built: Built) -> None:
                 raise Refused(f"{t.date}: {t.folder}/{name} is there and is not the one at {t.commit}; "
                               "it is left for the owner")
             built.actions[f"{t.folder}/{name}"] = "unchanged"
-    built.actions[f"{t.folder}/{sl.ARCHIVE_FILE}"] = existing_archive(os.path.join(path, sl.ARCHIVE_FILE), built)
+    archive = os.path.join(path, sl.ARCHIVE_FILE)
+    action = existing_archive(archive, built)
+    built.actions[f"{t.folder}/{sl.ARCHIVE_FILE}"] = action
+    if action == "write":
+        built.final = built.archive
+    else:
+        with open(archive, "rb") as fh:
+            built.final = fh.read()
 
 
 def retention(site: str, history: dict[str, Any], targets: list[Target]) -> dict[str, Any]:
@@ -411,12 +427,14 @@ def apply(site: str, built: Built) -> None:
 
 
 def save_out(out: str, builds: list[Built], doc: dict[str, Any], report: dict[str, Any]) -> None:
-    """The files built, at their site paths, history.json as it would be, and plan.json."""
+    """The files the site holds for each target once the run is done (this
+    run's where it writes them, the site's own where they are unchanged or
+    kept), at their site paths; history.json as it would be; and plan.json."""
     for b in builds:
         folder = os.path.join(out, b.target.folder)
         os.makedirs(folder, exist_ok=True)
         with open(os.path.join(folder, sl.ARCHIVE_FILE), "wb") as fh:
-            fh.write(b.archive)
+            fh.write(b.archive if b.final is None else b.final)
         if b.target.restore:
             with open(os.path.join(folder, df.SUMMARY_FILE), "wb") as fh:
                 fh.write(b.summary_bytes)

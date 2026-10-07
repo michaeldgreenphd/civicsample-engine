@@ -424,6 +424,36 @@ def test_an_archive_that_checks_but_differs_is_kept_and_said(site: pathlib.Path,
         f"snapshots/{FEB}/{sl.ARCHIVE_FILE}": "kept"}
 
 
+def test_the_report_and_the_artifact_describe_the_file_the_site_keeps(site: pathlib.Path, commits: dict[str, str],
+                                                                      tmp_path: pathlib.Path) -> None:
+    """A kept or unchanged archive file stays as the site has it: the report
+    gives that file's size and counts, and --out holds that file, not the
+    one this run built."""
+    ba.run(str(site), targets(commits), write=True)
+    path = site / "snapshots" / FEB / sl.ARCHIVE_FILE
+    doc = json.loads(gzip.decompress(path.read_bytes()))
+    first = next(iter(doc["data"]))
+    doc["data"][first] = {"nct_id": first}
+    kept = gzip.compress(json.dumps(doc).encode(), compresslevel=1, mtime=0)
+    path.write_bytes(kept)
+    assert archive_records.problems(str(path), json.loads((path.parent / "dashboard-summary.json").read_text())) == []
+    jul = site / "snapshots" / JUL / sl.ARCHIVE_FILE
+    jul_bytes = bytearray(jul.read_bytes())
+    jul_bytes[9] = 0x03 if jul_bytes[9] != 0x03 else 0x13
+    jul.write_bytes(bytes(jul_bytes))
+    out = tmp_path / "out"
+    report = ba.run(str(site), targets(commits), write=False, out=str(out))
+    feb = next(t for t in report["targets"] if t["date"] == FEB)
+    assert feb["actions"] == {f"snapshots/{FEB}/{sl.ARCHIVE_FILE}": "kept"}
+    assert feb["archive_bytes"] == len(kept)
+    assert feb["archive_records"] == feb["covered"] == feb["recent_studies"] == sh.RECORDS
+    assert feb["archive_bytes"] != len(archive_records.encode(ba.build(str(site), targets(commits)[0], json.loads(
+        (site / "tests" / "record_contract.json").read_text()), str(tmp_path / "w")).doc)), "the built file's size differs"
+    assert (out / "snapshots" / FEB / sl.ARCHIVE_FILE).read_bytes() == kept
+    assert (out / "snapshots" / JUL / sl.ARCHIVE_FILE).read_bytes() == bytes(jul_bytes), "unchanged: the site's file"
+    assert next(t for t in report["targets"] if t["date"] == JUL)["archive_bytes"] == len(jul_bytes)
+
+
 def test_the_archive_bytes_do_not_depend_on_the_python_that_wrote_them() -> None:
     """gzip.compress writes the OS byte (header byte 9) its Python chooses:
     3.11 and 3.12 hand it to zlib (0x03 on Linux, 0x13 on macOS), 3.13 writes
