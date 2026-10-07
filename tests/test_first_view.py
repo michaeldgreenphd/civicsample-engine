@@ -577,3 +577,21 @@ def test_parts_from_two_runs_are_an_input_error(tmp_path: pathlib.Path,
                         "--summary", str(summary_file)], capture_output=True, text=True)
     assert r.returncode == 2 and r.stdout == ""
     assert f"first_view_parity: {parts[1]} is from another run" in r.stderr and "abc1234" in r.stderr
+
+
+def test_the_parity_holds_on_the_split_layouts_core_parts(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """Under the split layout the publish step passes the core parts, which
+    carry the site's core class only: cut by scripts/split_data.py with the
+    site's own contract, they must still give the site's code every field the
+    Overview reads on the default view."""
+    _, summary_file, records = counted
+    dataset = h.split(tmp_path / "engine", records, h.site_contract(enabled=True))
+    parts = sorted(dataset.glob("demographics.part*.json.gz"), key=lambda p: int(re.search(r"part(\d+)", p.name).group(1)))
+    assert len(parts) > 1 and "layout" in h.read_gz(parts[0])
+    r = subprocess.run([_node(), str(PARITY), *[a for p in parts for a in ("--records", str(p))],
+                        "--summary", str(summary_file)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    report = json.loads(r.stdout)
+    _assert_parity(r.returncode, report, json.loads(summary_file.read_text())["firstView"])
+    assert report["records"]["count"] == len(records)
