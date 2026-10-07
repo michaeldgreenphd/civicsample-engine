@@ -127,15 +127,21 @@ def _canonical(value: Any) -> Any:
     return value
 
 
+def encode(doc: dict[str, Any]) -> bytes:
+    """The archive file's bytes: compact ASCII JSON, gzip level 9 and no time
+    in the gzip header, so the same records give the same bytes (a re-run
+    that finds the file it would write can say so, scripts/backfill_archives.py)."""
+    return gzip.compress(json.dumps(doc, separators=(",", ":")).encode("ascii"), compresslevel=9, mtime=0)
+
+
 def write(doc: dict[str, Any], path: str, summary: Any) -> int:
     """Write the archive file beside path, check it against the summary, and
-    only then move it into place. Level 9 and no time in the gzip header, so
-    the same records give the same bytes. Returns its size.
+    only then move it into place (bytes from encode). Returns its size.
 
     ArchiveError, with nothing moved into place, when the written file does
     not check."""
     tmp = path + ".partial"
-    data = gzip.compress(json.dumps(doc, separators=(",", ":")).encode("ascii"), compresslevel=9, mtime=0)
+    data = encode(doc)
     try:
         with open(tmp, "wb") as fh:
             fh.write(data)

@@ -9,6 +9,14 @@ on:
     - cron: '0 6 * * 0'  # Weekly on Sunday at 6 AM UTC
   workflow_dispatch:  # Manual trigger
 
+# Shared with backfill-archives.yml, the other workflow that rewrites the
+# site's history.json and snapshots/: one waits while the other runs, so
+# neither pushes over the other. Never cancelled in progress: a run stopped
+# part way would leave the week unpublished.
+concurrency:
+  group: site-publish
+  cancel-in-progress: false
+
 jobs:
   extract:
     runs-on: ubuntu-latest

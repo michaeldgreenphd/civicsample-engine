@@ -62,7 +62,13 @@ slims an older month's snapshot only after its own `archive_records.json.gz`
 is written and checked (`src/archive_records.py`); a change to either
 constant deletes snapshots the old values kept. Its tests chain weekly runs:
 the rule it replaced was tested on one call and deleted every week's snapshot
-for three months.
+for three months. One other workflow writes there: the one-off
+`.github/workflows/backfill-archives.yml` (by hand, a dry run unless told
+otherwise), whose `scripts/backfill_archives.py` rebuilds the archives slimmed
+or deleted before that rule from the site's own git history. It only adds
+files, refuses anything retention would not keep, runs
+`scripts/check_site_contract.py` before it commits, and shares the weekly
+job's concurrency group, so the two never push at once.
 
 **The sponsor rules file is schema, not data.** `sponsors/company_aliases.csv`
 changes only by deliberate commit, and every version of it is keyed by its own

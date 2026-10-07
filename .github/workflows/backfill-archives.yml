@@ -1,0 +1,108 @@
+name: Backfill archived snapshots (one-off)
+
+# Owner decisions 21a and 22a: rebuild, from the site repository's own git
+# history, the monthly archives the retention policy would have kept
+# (scripts/backfill_archives.py says what and from which commits). Run by
+# hand. dry_run (the default) builds everything, writes it into this job's
+# own site checkout, runs the publish gate on it and uploads what was built as
+# a workflow artifact; it pushes nothing. dry_run unchecked does the same and
+# then pushes one commit to the site. It never deletes a file, and a second
+# run finds nothing to do.
+#
+# It needs history.json in the form scripts/prune_snapshots.py writes (dates,
+# latest, archives) and a data/run.json for the week data/ serves: the first
+# weekly run with retention (#22) writes both, so run this after it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: build, check and upload the files; push nothing"
+        type: boolean
+        required: true
+        default: true
+
+# The weekly extract's group: this job and the Sunday publish never run at
+# the same time (one waits for the other), so neither pushes over a
+# history.json the other is rewriting.
+concurrency:
+  group: site-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check out the site repository with its history
+        # Every commit (fetch-depth 0), so the script can check that each
+        # commit it reads is in main's history; file contents only on demand
+        # (blob:none), the old parts fetched when the script reads them.
+        # Credentials are kept only when this run may push.
+        uses: actions/checkout@v4
+        with:
+          repository: michaeldgreenphd/clinical-trial-populations
+          ref: main
+          token: ${{ secrets.PIPELINE_DEPLOY_TOKEN }}
+          path: site
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: ${{ !inputs.dry_run }}
+
+      - name: Build the archives, write them into the checkout and run the publish gate
+        # Refuses, writing nothing, when a commit is not in the site's history
+        # or does not hold its date's folder, its parts are not one run of
+        # that date, the projection would lose a field, or the retention
+        # policy would not keep a restored month. Then
+        # scripts/check_site_contract.py on the written checkout: a failure
+        # here stops the job before anything is committed.
+        run: |
+          mkdir -p "$RUNNER_TEMP/backfill"
+          python3 scripts/backfill_archives.py --site site --write --out "$RUNNER_TEMP/backfill" --report "$RUNNER_TEMP/backfill/report.json"
+
+      - name: Upload what was built
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-backfill
+          path: ${{ runner.temp }}/backfill
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Commit and push to the site
+        if: ${{ !inputs.dry_run }}
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Exactly the files the script wrote, and nothing else.
+          jq -r '.changed[]' "$RUNNER_TEMP/backfill/report.json" > "$RUNNER_TEMP/changed.txt"
+          if [ ! -s "$RUNNER_TEMP/changed.txt" ]; then
+            echo "Nothing to commit: every archive is already there."
+            exit 0
+          fi
+          xargs -d '\n' git add -- < "$RUNNER_TEMP/changed.txt"
+          if [ -n "$(git diff --cached --name-only --diff-filter=DR)" ]; then
+            echo "::error::the staged change deletes or renames a file; nothing is pushed"
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain --untracked-files=all | grep -v '^A  \|^M  ')" ]; then
+            echo "::error::the checkout holds changes the script did not report; nothing is pushed"
+            git status --porcelain --untracked-files=all
+            exit 1
+          fi
+          git commit -m "Rebuild old monthly archives from the site history" \
+                     -m "Restores 2026-07-26 and 2026-09-27 as monthly aggregates and adds each old aggregate's own study records (archive_records.json.gz), built from each week's own files in this repository's history by the engine's backfill-archives workflow."
+          git push origin HEAD:main

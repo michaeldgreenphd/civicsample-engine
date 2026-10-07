@@ -213,6 +213,13 @@ and when was it made":
   c=$(git log -1 --format=%H --diff-filter=D -- snapshots/<date>/demographics.part1.json.gz)
   git restore --source="$c^" -- snapshots/<date>/
   ```
+
+  The months the retention rule before 2026-10 slimmed or deleted were
+  rebuilt that way once, by a job (`.github/workflows/backfill-archives.yml`,
+  `scripts/backfill_archives.py`), never by hand: 2026-02-22 and 2026-04-26
+  got their own `archive_records.json.gz`, and 2026-07-26 and 2026-09-27
+  came back as their months' summary snapshots, each from that week's own
+  files in the site's history.
 - **LLM extraction runs are versioned by their commits and their metrics.**
   Output files keep stable names (so the site always reads the latest);
   each run's commit records who triggered it, the pipeline and mode, and
