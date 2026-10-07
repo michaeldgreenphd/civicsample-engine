@@ -31,19 +31,24 @@
  * Every other function app.js declares at the top level runs as an inert
  * stub that records each call (autoStubs): a site change that adds a call
  * from one of the pieces to a helper of its own (a chart added to the
- * Overview) does not stop the check. When one ran, the site code runs a
- * second time with the stubs returning true instead of nothing: a helper
- * whose answer the Overview uses (a new exclusion, `if (isX(study)) return
- * false;`, is a no-op on undefined) changes what the second run sees. When
- * both runs see the same and the numbers agree, the report and a note on
- * stderr name the stubbed functions that ran (exit 0). When the numbers
- * differ, the two runs differ, or the site code throws, with one run, the
- * check could not run faithfully: the difference may be the stub's, so it is
- * exit 2, never a mismatch (exit 1). A rename or removal of a piece, and a
- * call to a name app.js never declares as a function, stay exit 2 as before.
- * What neither run sees: a helper whose answer matters only as some value
- * other than nothing or true (`=== 'withdrawn'`), and one that repaints an
- * Overview number on the real page.
+ * Overview) does not stop the check. So do the functions stubbed by name
+ * (ELSEWHERE), which the default view always calls. Whenever any stub ran,
+ * the site code runs a second time with every stub returning true instead
+ * of nothing: a function whose answer the Overview uses (a new exclusion,
+ * `if (isX(study)) return false;`, is a no-op on undefined) changes what the
+ * second run sees, and halves of the stubs that ran are then flipped alone to
+ * name the ones whose answer matters. When both runs see the same and the
+ * numbers agree, the check passes (exit 0); the report names the stubs that
+ * ran, and a note on stderr names the ones found in app.js (the ELSEWHERE
+ * ones run every time and are not noted). When the second run differs, the
+ * numbers differ with one of app.js's stubs run, or the site code throws
+ * with one run, the check could not run faithfully: the difference may be
+ * the stub's, so it is exit 2, never a mismatch (exit 1). A rename or
+ * removal of a piece, and a call to a name app.js never declares as a
+ * function, stay exit 2 as before. What neither run sees: a function whose
+ * answer matters only as some value other than nothing or true
+ * (`=== 'withdrawn'`), and one that repaints an Overview number on the real
+ * page.
  *
  * The full-record file is read item by item (a week's is about 1.3 GB, over
  * V8's string limit), plain or gzipped, as src/full_records.py reads it.
@@ -100,11 +105,21 @@ const APP_PIECES = [
 // every element those functions read or write, the filter panel included.
 const INDEX_SLICE = ['<header>', '<section id="overview"', '</section>'];
 
-// What renderDashboard and initFilters call outside the Overview today: inert
-// here, and not reported when they run, since the default view always runs
-// them and none paints the Overview's numbers. Kept by name because the
-// vendored excerpt holds the pieces only; any other top-level function of
-// the site's own app.js is stubbed by autoStubs below, and reported.
+// What renderDashboard and initFilters call outside the Overview today, kept
+// by name because the vendored excerpt holds the pieces only; any other
+// top-level function of the site's own app.js is stubbed by autoStubs below.
+// None paints the Overview's numbers. Each stub returns nothing, which is
+// what the site's own function returns (site main, 2026-10-07: none has a
+// `return` with a value outside its nested callbacks), and every call the
+// pieces make to one throws the value away. Each is still treated exactly
+// as an automatic stub: its calls are recorded (the report's
+// predeclared_stubs_run), and it returns true in the second run, so a site
+// change that starts using one's answer (`if (updateActiveFilters(study))
+// return false;`) is caught rather than answered with the stub's nothing.
+// None is given a value that would keep it out of that run: should the
+// Overview come to need one's answer, give it here a stub that mirrors the
+// site's function, or run it (APP_PIECES). They are not noted on stderr when
+// they run, since the default view always runs them.
 const ELSEWHERE = [
     'sgApplyMode', 'sgAfterRender', 'refreshStudiesTab', 'updateActiveFilters',
     'populateConditionsDropdown', 'populateCountriesDropdown', 'populateSecondaryConditionDropdown',
@@ -122,6 +137,7 @@ const AWAY_FROM_DEFAULT = ['isAIStudy', 'getStudyPediatricStatus', 'studyMatches
 // What the check itself gives the site's code (siteRuntime): never stubbed.
 const PROVIDED = ['document', 'window', 'console', 'requestAnimationFrame', 'cancelAnimationFrame', 'Chart',
     'sgActive', 'data', 'dashboardSummary', 'charts', 'sgV2Filters', 'COLORS', 'CHART_ASPECT_RATIO'];
+const PREDECLARED = new Set(ELSEWHERE);
 
 // The Overview's text, as renderDashboard and its helpers write it.
 const TILES = ['total-studies', 'race-reporting', 'ethnicity-reporting', 'both-reporting'];
@@ -456,9 +472,9 @@ function buildDocument(markup) {
 
 // ── the site's code in a vm ────────────────────────────────────────────────
 
-// stubReturns: what each stubbed function returns, undefined or true (an
-// async one returns a promise of it).
-function siteRuntime(site, stubReturns) {
+// answerTrue: the stubs that return true; every other returns nothing (an
+// async one returns a promise of its answer).
+function siteRuntime(site, answerTrue) {
     const { document, byId, controls } = buildDocument(site.markup);
     const charts = [];
     let sgOn = false;
@@ -468,13 +484,17 @@ function siteRuntime(site, stubReturns) {
         Chart: class { constructor(canvas, config) { charts.push({ canvas, config }); } destroy() {} },
         sgActive: () => sgOn,
     };
-    for (const name of ELSEWHERE) sandbox[name] = () => {};
-    // The site's other functions: inert, but each call is recorded. A plain
+    // Every stub, the fixed ones and the site's other functions alike: inert
+    // unless named in answerTrue, and each call is recorded. A plain
     // function, so `new NAME()` works too; an async one returns a promise.
     const stubbedRan = new Set();
-    for (const { name, async: isAsync } of site.stubs) {
-        sandbox[name] = function () { stubbedRan.add(name); return isAsync ? Promise.resolve(stubReturns) : stubReturns; };
-    }
+    const stub = (name, isAsync) => function () {
+        stubbedRan.add(name);
+        const answer = answerTrue.has(name) ? true : undefined;
+        return isAsync ? Promise.resolve(answer) : answer;
+    };
+    for (const name of ELSEWHERE) sandbox[name] = stub(name, false);
+    for (const { name, async: isAsync } of site.stubs) sandbox[name] = stub(name, isAsync);
     for (const name of AWAY_FROM_DEFAULT) {
         sandbox[name] = () => { throw new Error(`${name} ran in the Overview's default view`); };
     }
@@ -580,23 +600,63 @@ function check(summaryFile, appPath, indexPath, full) {
        { summary: summary.totalStudies, records: records.length }, true);
 
     const site = readSite(appPath, indexPath);
-    const inert = siteChecks(site, block, records, undefined);
+    const inert = siteChecks(site, block, records, new Set());
+    if (inert.error) {
+        // The site code threw after one of app.js's functions ran as a stub:
+        // what the stub returned may be what it threw on. With only the fixed
+        // stubs run, it is the site code's own error, as before.
+        const found = inert.stubbed.filter((n) => !PREDECLARED.has(n));
+        if (!found.length) throw inert.error;
+        throw new InputError(`could not run faithfully: ${callsNote(found)}, which the parity does not run, `
+            + `and the site code then threw: ${inert.error && inert.error.message}`);
+    }
     for (const c of inert.checks) checks.push(c);
     for (const name of inert.filesOnly) filesOnly.add(name);
-    let stubbed = inert.stubbed, answerMatters = null;
-    if (stubbed.length) {
-        // A stubbed function ran: does the Overview use what it returns?
-        const truthy = siteChecks(site, block, records, true);
-        stubbed = [...new Set([...stubbed, ...truthy.stubbed])].sort();
-        answerMatters = firstDifference(inert.seen, truthy.seen);
+    let ran = inert.stubbed, answerMatters = null, answerMattersFor = [], thrown = null;
+    if (ran.length) {
+        // A stub ran: does the Overview use what it returns? Every stub,
+        // fixed or found, answers true in the second run.
+        const everyStub = new Set([...ELSEWHERE, ...site.stubs.map((s) => s.name)]);
+        const truthy = siteChecks(site, block, records, everyStub);
+        ran = [...new Set([...ran, ...truthy.stubbed])].sort();
+        const differs = (run) => (run.error ? 'the site code threw' : firstDifference(inert.seen, run.seen));
+        answerMatters = differs(truthy);
+        if (answerMatters !== null) {
+            // Which: halve the stubs that ran, flipping each half on its
+            // own, down to the single stubs whose answer changes the
+            // Overview (a few runs, not one per stub: the default view runs
+            // two dozen fixed ones). A set that differs only as a whole is
+            // named whole. app.js's own stubs go first, so a half holds one
+            // kind where it can.
+            const blame = (names, known) => {
+                if (!known && differs(siteChecks(site, block, records, new Set(names))) === null) return [];
+                if (names.length === 1) return names;
+                const mid = names.length >> 1;
+                const found = [...blame(names.slice(0, mid), false), ...blame(names.slice(mid), false)];
+                return found.length ? found : names;
+            };
+            const order = [...ran.filter((n) => !PREDECLARED.has(n)), ...ran.filter((n) => PREDECLARED.has(n))];
+            answerMattersFor = blame(order, true).sort();
+            thrown = truthy.error;
+        }
     }
-    return { checks, filesOnly, site: inert.result, site_code: site.source, stubbed, answerMatters };
+    if (thrown) {
+        const one = answerMattersFor.length === 1;
+        throw new InputError(`could not run faithfully: ${stubNote(answerMattersFor)}, and with ${one ? 'it' : 'them'} `
+            + `stubbed to return true the site code threw: ${thrown && thrown.message}`);
+    }
+    return {
+        checks, filesOnly, site: inert.result, site_code: site.source,
+        stubbed: ran.filter((n) => !PREDECLARED.has(n)), predeclared: ran.filter((n) => PREDECLARED.has(n)),
+        answerMatters, answerMattersFor,
+    };
 }
 
-// One run of the site's code over the records and the block, with the
-// stubbed functions returning stubReturns. seen is everything the run's
-// checks saw, passed or not, to compare one run with another.
-function siteChecks(site, block, records, stubReturns) {
+// One run of the site's code over the records and the block, with the stubs
+// in answerTrue returning true and every other nothing. seen is everything
+// the run's checks saw, passed or not, to compare one run with another;
+// error, what the site code threw (an input error is thrown on).
+function siteChecks(site, block, records, answerTrue) {
     const checks = [], filesOnly = new Set(), seen = [];
     const ok = (name, pass, detail, files = false) => {
         if (files) filesOnly.add(name);
@@ -604,22 +664,16 @@ function siteChecks(site, block, records, stubReturns) {
         checks.push({ check: name, ok: !!pass, ...(pass ? {} : { detail }) });
         return pass;
     };
-    const s = siteRuntime(site, stubReturns);
+    const s = siteRuntime(site, answerTrue);
     s.context.__records = records;
     try {
         runSite(s, block, records, ok);
     } catch (err) {
-        // The site code threw after a stub stood in for one of its functions:
-        // what the stub returned may be what it threw on.
-        const ran = s.stubbedRan();
-        if (err instanceof InputError || !ran.length) throw err;
-        const how = stubReturns === undefined ? 'and the site code then threw'
-            : `and with ${ran.length === 1 ? 'it' : 'them'} stubbed to return ${stubReturns} the site code threw`;
-        throw new InputError(`could not run faithfully: ${callsNote(ran)}, which the parity does not run, ${how}: `
-            + `${err && err.message}`);
+        if (err instanceof InputError) throw err;
+        return { checks, filesOnly, seen, result: null, stubbed: s.stubbedRan(), error: err };
     }
     seen.push(['the site\'s counts and painted text', JSON.stringify(s.result)]);
-    return { checks, filesOnly, seen, result: s.result, stubbed: s.stubbedRan() };
+    return { checks, filesOnly, seen, result: s.result, stubbed: s.stubbedRan(), error: null };
 }
 
 // The first check two runs saw differently, or null when they saw the same.
@@ -633,6 +687,19 @@ function firstDifference(a, b) {
 }
 
 const callsNote = (names) => `the Overview now calls ${names.join(', ')}`;
+
+// Stubs the check blames, by kind: app.js's functions the parity does not
+// run, and the fixed stubs, which the Overview always called.
+function stubNote(names) {
+    const found = names.filter((n) => !PREDECLARED.has(n)), fixed = names.filter((n) => PREDECLARED.has(n));
+    const parts = [];
+    if (found.length) parts.push(`${callsNote(found)}, which the parity does not run`);
+    if (fixed.length) {
+        parts.push(`the Overview uses what ${fixed.join(', ')} return${fixed.length === 1 ? 's' : ''}, `
+            + 'which the parity stubs to return nothing (ELSEWHERE)');
+    }
+    return parts.join('; ');
+}
 
 // The site's code over the records and the block: every check below runs it.
 function runSite(s, block, records, ok) {
@@ -770,28 +837,34 @@ async function main() {
     const result = check(a.summary, appPath, indexPath, full);
     const failed = result.checks.filter((c) => !c.ok);
     const stubbed = result.stubbed ?? [];
-    // With a stubbed function run, a difference (in the numbers, or between
-    // the run where it returns nothing and the one where it returns true) is
-    // not a data mismatch unless a check of the files alone fails too: the
-    // check could not run faithfully.
+    // A difference is not a data mismatch unless a check of the files alone
+    // fails too, when it may be a stub's: the numbers differing with one of
+    // app.js's functions run as a stub, or the Overview changing when the
+    // stubs that ran (fixed ones too) return true instead of nothing. The
+    // fixed stubs' nothing is the site's own answer, so with those alone run
+    // and the second run the same, differing numbers are a mismatch.
     const answerMatters = result.answerMatters ?? null;
-    const unfaithful = stubbed.length > 0 && (failed.length > 0 || answerMatters !== null)
-        && failed.every((c) => !result.filesOnly.has(c.check));
+    const blamed = [...new Set([...(result.answerMattersFor ?? []), ...(failed.length ? stubbed : [])])].sort();
+    const unfaithful = blamed.length > 0 && failed.every((c) => !result.filesOnly.has(c.check));
     const code = unfaithful ? 2 : failed.length ? 1 : 0;
-    const one = stubbed.length === 1;
+    const one = blamed.length === 1;
     const fix = `make the parity run ${one ? 'it' : 'them'} (APP_PIECES) or stub ${one ? 'it' : 'them'} `
         + 'with what the Overview needs (ELSEWHERE)';
+    const changes = `the Overview changes when ${one ? 'it returns' : 'they return'} true instead `
+        + `(first difference: ${answerMatters})`;
     const report = {
         ok: code === 0,
         could_not_run: !unfaithful ? null
-            : failed.length ? `${callsNote(stubbed)}, which the parity does not run: with `
-                + `${one ? 'it' : 'them'} stubbed inert, ${failed.length} of ${result.checks.length} checks differ, `
-                + `so whether the block or the stub is wrong is unknown; ${fix}`
-            : `${callsNote(stubbed)}, which the parity does not run: the numbers agree with ${one ? 'it' : 'them'} `
-                + `stubbed to return nothing, but the Overview changes when ${one ? 'it returns' : 'they return'} true `
-                + `instead (first difference: ${answerMatters}), so what ${one ? 'it returns' : 'they return'} decides `
+            : failed.length ? `${stubNote(blamed)}: with ${one ? 'it' : 'them'} stubbed inert, `
+                + `${failed.length} of ${result.checks.length} checks differ`
+                + (answerMatters !== null ? `, and ${changes}` : '')
+                + `, so whether the block or the stub is wrong is unknown; ${fix}`
+            : `${stubNote(blamed)}: the numbers agree with ${one ? 'it' : 'them'} stubbed to return nothing, `
+                + `but ${changes}, so what ${one ? 'it returns' : 'they return'} decides `
                 + `what the page shows and whether the block is right is unknown; ${fix}`,
         site_functions_stubbed: stubbed,
+        predeclared_stubs_run: result.predeclared ?? [],
+        answer_matters_for: result.answerMattersFor ?? [],
         records: { file: a.records.length === 1 ? a.records[0] : a.records, count: full.records.length, extracted_at: full.extracted_at, pipeline_commit: full.pipeline_commit },
         site_code: result.site_code ?? null,
         checked: result.checks.length,
@@ -802,9 +875,12 @@ async function main() {
     console.log(JSON.stringify(report, null, 2));
     if (unfaithful) console.error(`first_view_parity: could not run faithfully: ${report.could_not_run}`);
     else if (stubbed.length) {
+        // A pass with app.js's own functions stubbed is noted; the fixed
+        // stubs run every time and are listed in the report only.
+        const single = stubbed.length === 1;
         console.error(`first_view_parity: note: ${callsNote(stubbed)}, which the parity does not run; `
-            + `${one ? 'it ran as an inert stub' : 'they ran as inert stubs'}`
-            + (failed.length ? '.' : `, and the numbers agree whether ${one ? 'it returns' : 'they return'} nothing or true.`));
+            + `${single ? 'it ran as an inert stub' : 'they ran as inert stubs'}`
+            + (failed.length ? '.' : `, and the numbers agree whether ${single ? 'it returns' : 'they return'} nothing or true.`));
     }
     return code;
 }

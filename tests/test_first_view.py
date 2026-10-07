@@ -25,7 +25,8 @@ records arrive. These tests pin:
 - a site change that adds a call from the Overview to a function app.js
   declares elsewhere runs it as an inert stub: a pass that names it when the
   numbers agree, exit 2 (could not run faithfully), never a mismatch, when
-  they do not.
+  they do not; every stub, the fixed ones included, also answers true in a
+  second run, so a rule that uses a stub's answer never passes.
 
 The parity tests run node; the CI job sets node up before the Python suite.
 """
@@ -613,6 +614,11 @@ def test_the_sites_code_unchanged_stubs_nothing_and_says_nothing(
         report = json.loads(r.stdout)
         _assert_parity(0, report, block)
         assert report["site_functions_stubbed"] == [] and report["could_not_run"] is None
+        # The fixed stubs the default view always calls ran, tracked, and
+        # their answers were flipped without changing the Overview.
+        assert {"sgApplyMode", "sgAfterRender", "updateActiveFilters", "populateConditionsDropdown",
+                "renderRaceDistribution"} <= set(report["predeclared_stubs_run"])
+        assert report["answer_matters_for"] == []
 
 
 # A stub that changes a number: the helper decides what the Overview paints,
@@ -710,7 +716,7 @@ def test_a_new_rule_through_a_helper_whose_inert_answer_is_a_no_op_never_passes(
     assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
     report = json.loads(r.stdout)
     assert not report["ok"] and report["site_functions_stubbed"] == [name]
-    assert report["mismatches"] == []
+    assert report["mismatches"] == [] and report["answer_matters_for"] == [name], "named alone, not the fixed stubs"
     assert report["could_not_run"].startswith(
         f"the Overview now calls {name}, which the parity does not run: the numbers agree with it stubbed to "
         "return nothing, but the Overview changes when it returns true instead (first difference: ")
@@ -731,6 +737,63 @@ def test_a_new_rule_that_keeps_on_a_true_answer_never_passes_either(
     assert report["site_functions_stubbed"] == ["studyMatchesPhaseScope"] and report["mismatches"]
     assert report["could_not_run"].startswith("the Overview now calls studyMatchesPhaseScope, which the parity "
                                               "does not run: with it stubbed inert, ")
+
+
+# The same rule written through a function the parity stubs by name
+# (ELSEWHERE), not one it finds in app.js: Codex's reproduction. The fixed
+# stubs answer nothing, as the site's own functions do where the Overview
+# calls them, but a site change can start using one's answer.
+_PREDECLARED_RULES = {
+    "excludes_on_a_true_answer": "        if (updateActiveFilters(study)) return false;\n",
+    "keeps_on_a_true_answer": "        if (!updateActiveFilters(study)) return false;\n",
+}
+
+
+@pytest.mark.parametrize("rule", sorted(_PREDECLARED_RULES))
+def test_a_rule_through_a_predeclared_stub_never_passes(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]], rule: str) -> None:
+    """`if (updateActiveFilters(study)) return false;` in getFilteredData,
+    with the site's real updateActiveFilters returning true: the fixed stub
+    stood in untracked and answered undefined, so the parity passed (exit 0,
+    nothing named) and the push would have published a block the page does
+    not draw. Every stub the parity supplies is now call-tracked and takes
+    part in the run with the answers flipped: exit 2, naming the one stub
+    whose answer changes the Overview, never exit 1 and never a pass."""
+    records_file, summary_file, _ = counted
+    app = _excerpt_app()
+    assert app.count(_YEAR_TEST) == 1
+    app = app.replace(_YEAR_TEST, _YEAR_TEST + _PREDECLARED_RULES[rule])
+    app += "\nfunction updateActiveFilters(study) {\n    return true;\n}\n"
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app))
+    assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert not report["ok"] and report["site_functions_stubbed"] == []
+    assert report["answer_matters_for"] == ["updateActiveFilters"]
+    assert "updateActiveFilters" in report["predeclared_stubs_run"]
+    assert report["could_not_run"].startswith(
+        "the Overview uses what updateActiveFilters returns, which the parity stubs to return nothing (ELSEWHERE): ")
+    assert "the Overview changes when it returns true instead (first difference: " in report["could_not_run"]
+    assert ("first_view_parity: could not run faithfully: the Overview uses what updateActiveFilters returns, "
+            "which the parity stubs") in r.stderr
+    # Named alone: the other fixed stubs ran too, and their answers do not matter.
+    assert "sgAfterRender" in report["predeclared_stubs_run"]
+    assert "sgAfterRender" not in report["could_not_run"]
+
+
+def test_a_predeclared_stub_called_as_a_statement_still_passes_quietly(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """A call to a fixed stub whose value is thrown away, here one more in
+    the filter loop, cannot change the Overview whatever it answers: the run
+    with the answers flipped sees the same, so it passes, with no note (the
+    fixed stubs always run), and the report lists the fixed stubs that ran."""
+    records_file, summary_file, _ = counted
+    app = _excerpt_app().replace(_YEAR_TEST, _YEAR_TEST + "        updateActiveFilters(study);\n")
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app))
+    assert r.returncode == 0 and r.stderr == "", r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    _assert_parity(0, report, json.loads(summary_file.read_text())["firstView"])
+    assert report["site_functions_stubbed"] == [] and report["answer_matters_for"] == []
+    assert "updateActiveFilters" in report["predeclared_stubs_run"]
 
 
 def test_a_site_error_only_when_the_stub_answers_true_names_the_stub(
