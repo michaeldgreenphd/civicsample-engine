@@ -349,12 +349,13 @@ jobs:
           # exit 2, an input or site code the script cannot read (its message
           # is printed above), or a check it could not run faithfully: a
           # function of app.js it does not run, stubbed inert, ran and the
-          # numbers differ, so the report's could_not_run is annotated and its
+          # numbers differ, or they change when the stub returns true instead
+          # of nothing, so the report's could_not_run is annotated and its
           # mismatches go to the log only. A stubbed function that ran with
-          # the numbers agreeing passes, and is named. GitHub shows at most 10
-          # error annotations a step, so the line that says nothing was pushed
-          # comes first, then eight mismatches and a count of the rest, which
-          # follow as plain log lines (the whole report is
+          # the numbers agreeing either way passes, and is named. GitHub shows
+          # at most 10 error annotations a step, so the line that says nothing
+          # was pushed comes first, then eight mismatches and a count of the
+          # rest, which follow as plain log lines (the whole report is
           # $RUNNER_TEMP/first_view_parity.json).
           FV_RECORDS=""
           for part in data/demographics.part*.json.gz; do FV_RECORDS="$FV_RECORDS --records $part"; done

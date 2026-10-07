@@ -207,13 +207,19 @@ advisory, or moves it after the push, is the defect they exist to catch.
 Every other top-level function of the site's app.js runs in the parity as an
 inert stub that records its calls, so a site change that only adds a call
 from the Overview to a helper of its own (a new chart) does not stop the
-push: with the numbers agreeing the parity passes and names the stubbed
-functions that ran; with them differing it exits 2, "could not run
+push. When a stub ran, the site code runs again with the stubs returning true
+instead of nothing, since a new rule written through a helper (`if
+(isWithdrawnStudy(study)) return false;`) is a no-op on undefined and would
+otherwise pass. With the numbers agreeing and both runs the same, the parity
+passes and names the stubbed functions that ran; with the numbers differing,
+the runs differing, or the site code throwing, it exits 2, "could not run
 faithfully", never 1, since the difference may be the stub's. Exit 2 still
 blocks: follow such a site change by running the helper in the parity
 (`APP_PIECES`) or stubbing it with what the Overview needs (`ELSEWHERE`). A
 rename or removal of a piece, or a call to a name app.js does not declare as a
-function, also stays exit 2.
+function, also stays exit 2. Neither run sees a helper whose answer matters
+only as some other value (`=== 'withdrawn'`) or one that repaints an Overview
+number on the real page; the pass note names every stub that ran.
 
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM

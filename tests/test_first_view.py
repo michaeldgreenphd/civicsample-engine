@@ -596,7 +596,7 @@ def test_a_new_call_to_a_helper_defined_elsewhere_in_app_js_passes_and_is_named(
     _assert_parity(0, report, json.loads(summary_file.read_text())["firstView"])
     assert report["site_functions_stubbed"] == ["renderTrialPhaseMix"] and report["could_not_run"] is None
     assert ("first_view_parity: note: the Overview now calls renderTrialPhaseMix, which the parity does not run; "
-            "it ran as an inert stub, and the numbers agree.") in r.stderr
+            "it ran as an inert stub, and the numbers agree whether it returns nothing or true.") in r.stderr
 
 
 def test_the_sites_code_unchanged_stubs_nothing_and_says_nothing(
@@ -665,6 +665,87 @@ def test_a_site_error_after_a_stub_ran_names_the_stub(
     assert r.returncode == 2 and r.stdout == ""
     assert ("first_view_parity: could not run faithfully: the Overview now calls renderTrialPhaseMix, which the "
             "parity does not run, and the site code then threw: ") in r.stderr
+
+
+# A new rule in the counting path, written through a helper declared
+# elsewhere in app.js. Stubbed to return nothing, the helper's answer is a
+# no-op (nothing is excluded, nothing suppressed), so the site's numbers would
+# match a block that never applied the rule. Each is [anchor, the rule inline,
+# the rule through the helper, the helper's name]. The inline rule leaves out
+# the trials whose NCT number ends in an even digit, so it changes the numbers.
+_YEAR_TEST = "        if (isNaN(year) || year < yearStart || year > yearEnd) return false;\n"
+_RULES = {
+    # a default-view exclusion in getFilteredData
+    "excluded_in_getFilteredData": (
+        _YEAR_TEST,
+        _YEAR_TEST + "        if (/[02468]$/.test(String(study.nct_id))) return false;\n",
+        _YEAR_TEST + "        if (isWithdrawnStudy(study)) return false;\n",
+        "isWithdrawnStudy"),
+    # a suppression in renderDashboard's desktop race count
+    "suppressed_in_the_race_count": (
+        _DESKTOP_RACE,
+        "    const raceCount = filtered.filter(s => s.race?.reported && !/[02468]$/.test(String(s.nct_id))).length;\n",
+        "    const raceCount = filtered.filter(s => s.race?.reported && !isSuppressed(s)).length;\n",
+        "isSuppressed"),
+}
+
+
+@pytest.mark.parametrize("rule", sorted(_RULES))
+def test_a_new_rule_through_a_helper_whose_inert_answer_is_a_no_op_never_passes(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]], rule: str) -> None:
+    """The defect the gate exists to catch, written through a helper: the
+    inline rule is a mismatch (exit 1); the same rule through a helper must
+    not pass on the stub's undefined. The parity reruns the site code with
+    the stubs answering true, the Overview changes, so it could not run
+    faithfully (exit 2, naming the helper). Until this the helper form exited
+    0 and the weekly push went ahead with numbers the page would not draw."""
+    records_file, summary_file, _ = counted
+    anchor, inline, via_helper, name = _RULES[rule]
+    app = _excerpt_app()
+    assert app.count(anchor) == 1, f"the excerpt no longer has one {anchor!r}"
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path / "inline", app.replace(anchor, inline)))
+    assert r.returncode == 1, r.stderr[-2000:]
+    helper = f"\nfunction {name}(study) {{\n    return /[02468]$/.test(String(study.nct_id));\n}}\n"
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path / "helper", app.replace(anchor, via_helper) + helper))
+    assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert not report["ok"] and report["site_functions_stubbed"] == [name]
+    assert report["mismatches"] == []
+    assert report["could_not_run"].startswith(
+        f"the Overview now calls {name}, which the parity does not run: the numbers agree with it stubbed to "
+        "return nothing, but the Overview changes when it returns true instead (first difference: ")
+    assert f"first_view_parity: could not run faithfully: the Overview now calls {name}," in r.stderr
+
+
+def test_a_new_rule_that_keeps_on_a_true_answer_never_passes_either(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """The other polarity, `if (!helper(study)) return false;`: on the stub's
+    undefined every record is left out, so the numbers differ and it could
+    not run faithfully (exit 2), as before the rerun was added."""
+    records_file, summary_file, _ = counted
+    app = _excerpt_app().replace(_YEAR_TEST, _YEAR_TEST + "        if (!studyMatchesPhaseScope(study)) return false;\n")
+    app += "\nfunction studyMatchesPhaseScope(study) {\n    return true;\n}\n"
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app))
+    assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert report["site_functions_stubbed"] == ["studyMatchesPhaseScope"] and report["mismatches"]
+    assert report["could_not_run"].startswith("the Overview now calls studyMatchesPhaseScope, which the parity "
+                                              "does not run: with it stubbed inert, ")
+
+
+def test_a_site_error_only_when_the_stub_answers_true_names_the_stub(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """Code that uses the helper's answer only when there is one: inert on
+    undefined, it throws on true. Its answer matters, so exit 2, naming it."""
+    records_file, summary_file, _ = counted
+    app = _with_call(_excerpt_app(), "desktop_path", "renderTrialPhaseMix").replace(
+        "    renderTrialPhaseMix(filtered);\n",
+        "    const phaseMix = renderTrialPhaseMix(filtered);\n    if (phaseMix) phaseMix.forEach(() => {});\n")
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app + "\n" + _NEW_HELPERS["function"].format(
+        call="renderTrialPhaseMix")))
+    assert r.returncode == 2 and r.stdout == "", r.stdout[-2000:]
+    assert ("first_view_parity: could not run faithfully: the Overview now calls renderTrialPhaseMix, which the "
+            "parity does not run, and with it stubbed to return true the site code threw: ") in r.stderr
 
 
 def test_a_wrong_block_with_no_stub_run_is_still_a_mismatch_and_a_stamp_one_always_is(

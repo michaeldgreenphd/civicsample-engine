@@ -1704,6 +1704,25 @@ def test_a_parity_that_could_not_run_faithfully_stops_the_push_and_says_why_not_
                 '{"records":"undefined","block":"60.0%"}') in r.stdout.splitlines()
 
 
+
+ANSWER_MATTERS = ("the Overview now calls isWithdrawnStudy, which the parity does not run: the numbers agree with it "
+                  "stubbed to return nothing, but the Overview changes when it returns true instead (first difference: "
+                  "counts: trials), so what it returns decides what the page shows and whether the block is right is "
+                  "unknown; make the parity run it (APP_PIECES) or stub it with what the Overview needs (ELSEWHERE)")
+
+
+def test_a_stub_whose_answer_matters_stops_the_push_with_no_mismatches_to_list(tmp_path: pathlib.Path) -> None:
+    """Exit 2 with every check passing on the stub's undefined but the
+    Overview changing when it returns true (a new rule through a helper): the
+    push stops on the one annotation, with no mismatch lines after it."""
+    report = {"ok": False, "checked": 41, "records": {"count": 3}, "could_not_run": ANSWER_MATTERS,
+              "site_functions_stubbed": ["isWithdrawnStudy"], "mismatches": []}
+    r, calls, _ = _publish(tmp_path, _whole_week("last"), _whole_week("this"), parity_rc=2, parity_report=report)
+    assert r.returncode == 1 and "git commit" not in calls and "git push" not in calls, r.stdout + r.stderr
+    errors = [line for line in r.stdout.splitlines() if line.startswith("::error::")]
+    assert errors == [CLOSING, f"::error::first-view parity could not run faithfully: {ANSWER_MATTERS}"], errors
+    assert not any(line.startswith("first-view parity") for line in r.stdout.splitlines()), r.stdout
+
 CLOSING = ("::error::dashboard-summary.json's firstView is not what the site's own Overview code (app.js, index.html) "
            "counts and paints from this week's parts, or the check could not run; nothing was pushed, and the site "
            "keeps last week's data.")

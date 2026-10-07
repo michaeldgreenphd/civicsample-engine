@@ -31,12 +31,19 @@
  * Every other function app.js declares at the top level runs as an inert
  * stub that records each call (autoStubs): a site change that adds a call
  * from one of the pieces to a helper of its own (a chart added to the
- * Overview) does not stop the check. When the numbers agree, the report and
- * a note on stderr name the stubbed functions that ran (exit 0). When they
- * differ and one ran, the check could not run faithfully: the difference may
- * be the stub's, so it is exit 2, never a mismatch (exit 1). A rename or
- * removal of a piece, and a call to a name app.js never declares as a
- * function, stay exit 2 as before.
+ * Overview) does not stop the check. When one ran, the site code runs a
+ * second time with the stubs returning true instead of nothing: a helper
+ * whose answer the Overview uses (a new exclusion, `if (isX(study)) return
+ * false;`, is a no-op on undefined) changes what the second run sees. When
+ * both runs see the same and the numbers agree, the report and a note on
+ * stderr name the stubbed functions that ran (exit 0). When the numbers
+ * differ, the two runs differ, or the site code throws, with one run, the
+ * check could not run faithfully: the difference may be the stub's, so it is
+ * exit 2, never a mismatch (exit 1). A rename or removal of a piece, and a
+ * call to a name app.js never declares as a function, stay exit 2 as before.
+ * What neither run sees: a helper whose answer matters only as some value
+ * other than nothing or true (`=== 'withdrawn'`), and one that repaints an
+ * Overview number on the real page.
  *
  * The full-record file is read item by item (a week's is about 1.3 GB, over
  * V8's string limit), plain or gzipped, as src/full_records.py reads it.
@@ -449,7 +456,9 @@ function buildDocument(markup) {
 
 // ── the site's code in a vm ────────────────────────────────────────────────
 
-function siteRuntime(site) {
+// stubReturns: what each stubbed function returns, undefined or true (an
+// async one returns a promise of it).
+function siteRuntime(site, stubReturns) {
     const { document, byId, controls } = buildDocument(site.markup);
     const charts = [];
     let sgOn = false;
@@ -464,7 +473,7 @@ function siteRuntime(site) {
     // function, so `new NAME()` works too; an async one returns a promise.
     const stubbedRan = new Set();
     for (const { name, async: isAsync } of site.stubs) {
-        sandbox[name] = function () { stubbedRan.add(name); return isAsync ? Promise.resolve() : undefined; };
+        sandbox[name] = function () { stubbedRan.add(name); return isAsync ? Promise.resolve(stubReturns) : stubReturns; };
     }
     for (const name of AWAY_FROM_DEFAULT) {
         sandbox[name] = () => { throw new Error(`${name} ran in the Overview's default view`); };
@@ -571,19 +580,56 @@ function check(summaryFile, appPath, indexPath, full) {
        { summary: summary.totalStudies, records: records.length }, true);
 
     const site = readSite(appPath, indexPath);
-    const s = siteRuntime(site);
+    const inert = siteChecks(site, block, records, undefined);
+    for (const c of inert.checks) checks.push(c);
+    for (const name of inert.filesOnly) filesOnly.add(name);
+    let stubbed = inert.stubbed, answerMatters = null;
+    if (stubbed.length) {
+        // A stubbed function ran: does the Overview use what it returns?
+        const truthy = siteChecks(site, block, records, true);
+        stubbed = [...new Set([...stubbed, ...truthy.stubbed])].sort();
+        answerMatters = firstDifference(inert.seen, truthy.seen);
+    }
+    return { checks, filesOnly, site: inert.result, site_code: site.source, stubbed, answerMatters };
+}
+
+// One run of the site's code over the records and the block, with the
+// stubbed functions returning stubReturns. seen is everything the run's
+// checks saw, passed or not, to compare one run with another.
+function siteChecks(site, block, records, stubReturns) {
+    const checks = [], filesOnly = new Set(), seen = [];
+    const ok = (name, pass, detail, files = false) => {
+        if (files) filesOnly.add(name);
+        seen.push([name, JSON.stringify([!!pass, detail ?? null])]);
+        checks.push({ check: name, ok: !!pass, ...(pass ? {} : { detail }) });
+        return pass;
+    };
+    const s = siteRuntime(site, stubReturns);
     s.context.__records = records;
     try {
         runSite(s, block, records, ok);
     } catch (err) {
         // The site code threw after a stub stood in for one of its functions:
-        // the stub's undefined may be what it threw on.
+        // what the stub returned may be what it threw on.
         const ran = s.stubbedRan();
         if (err instanceof InputError || !ran.length) throw err;
-        throw new InputError(`could not run faithfully: ${callsNote(ran)}, which the parity does not run, `
-            + `and the site code then threw: ${err && err.message}`);
+        const how = stubReturns === undefined ? 'and the site code then threw'
+            : `and with ${ran.length === 1 ? 'it' : 'them'} stubbed to return ${stubReturns} the site code threw`;
+        throw new InputError(`could not run faithfully: ${callsNote(ran)}, which the parity does not run, ${how}: `
+            + `${err && err.message}`);
     }
-    return { checks, filesOnly, site: s.result, site_code: site.source, stubbed: s.stubbedRan() };
+    seen.push(['the site\'s counts and painted text', JSON.stringify(s.result)]);
+    return { checks, filesOnly, seen, result: s.result, stubbed: s.stubbedRan() };
+}
+
+// The first check two runs saw differently, or null when they saw the same.
+function firstDifference(a, b) {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        if (!a[i] || !b[i]) return 'which checks ran';
+        if (a[i][0] !== b[i][0]) return 'which checks ran';
+        if (a[i][1] !== b[i][1]) return a[i][0];
+    }
+    return null;
 }
 
 const callsNote = (names) => `the Overview now calls ${names.join(', ')}`;
@@ -724,17 +770,27 @@ async function main() {
     const result = check(a.summary, appPath, indexPath, full);
     const failed = result.checks.filter((c) => !c.ok);
     const stubbed = result.stubbed ?? [];
-    // A difference with a stubbed function run is not a data mismatch unless a
-    // check of the files alone fails too: the check could not run faithfully.
-    const unfaithful = failed.length > 0 && stubbed.length > 0 && failed.every((c) => !result.filesOnly.has(c.check));
+    // With a stubbed function run, a difference (in the numbers, or between
+    // the run where it returns nothing and the one where it returns true) is
+    // not a data mismatch unless a check of the files alone fails too: the
+    // check could not run faithfully.
+    const answerMatters = result.answerMatters ?? null;
+    const unfaithful = stubbed.length > 0 && (failed.length > 0 || answerMatters !== null)
+        && failed.every((c) => !result.filesOnly.has(c.check));
     const code = unfaithful ? 2 : failed.length ? 1 : 0;
+    const one = stubbed.length === 1;
+    const fix = `make the parity run ${one ? 'it' : 'them'} (APP_PIECES) or stub ${one ? 'it' : 'them'} `
+        + 'with what the Overview needs (ELSEWHERE)';
     const report = {
         ok: code === 0,
-        could_not_run: unfaithful ? `${callsNote(stubbed)}, which the parity does not run: with `
-            + `${stubbed.length === 1 ? 'it' : 'them'} stubbed inert, ${failed.length} of ${result.checks.length} checks differ, `
-            + 'so whether the block or the stub is wrong is unknown; make the parity run '
-            + `${stubbed.length === 1 ? 'it' : 'them'} (APP_PIECES) or stub ${stubbed.length === 1 ? 'it' : 'them'} `
-            + 'with what the Overview needs (ELSEWHERE)' : null,
+        could_not_run: !unfaithful ? null
+            : failed.length ? `${callsNote(stubbed)}, which the parity does not run: with `
+                + `${one ? 'it' : 'them'} stubbed inert, ${failed.length} of ${result.checks.length} checks differ, `
+                + `so whether the block or the stub is wrong is unknown; ${fix}`
+            : `${callsNote(stubbed)}, which the parity does not run: the numbers agree with ${one ? 'it' : 'them'} `
+                + `stubbed to return nothing, but the Overview changes when ${one ? 'it returns' : 'they return'} true `
+                + `instead (first difference: ${answerMatters}), so what ${one ? 'it returns' : 'they return'} decides `
+                + `what the page shows and whether the block is right is unknown; ${fix}`,
         site_functions_stubbed: stubbed,
         records: { file: a.records.length === 1 ? a.records[0] : a.records, count: full.records.length, extracted_at: full.extracted_at, pipeline_commit: full.pipeline_commit },
         site_code: result.site_code ?? null,
@@ -747,8 +803,8 @@ async function main() {
     if (unfaithful) console.error(`first_view_parity: could not run faithfully: ${report.could_not_run}`);
     else if (stubbed.length) {
         console.error(`first_view_parity: note: ${callsNote(stubbed)}, which the parity does not run; `
-            + `${stubbed.length === 1 ? 'it ran as an inert stub' : 'they ran as inert stubs'}`
-            + (failed.length ? '.' : ', and the numbers agree.'));
+            + `${one ? 'it ran as an inert stub' : 'they ran as inert stubs'}`
+            + (failed.length ? '.' : `, and the numbers agree whether ${one ? 'it returns' : 'they return'} nothing or true.`));
     }
     return code;
 }
