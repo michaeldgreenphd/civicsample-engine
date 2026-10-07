@@ -26,7 +26,9 @@ records arrive. These tests pin:
   declares elsewhere runs it as an inert stub: a pass that names it when the
   numbers agree, exit 2 (could not run faithfully), never a mismatch, when
   they do not; every stub, the fixed ones included, also answers true in a
-  second run, so a rule that uses a stub's answer never passes.
+  second run, and the stubs whose answer the Overview reads are flipped in
+  combination, so a rule that uses stubs' answers, alone or together, never
+  passes.
 
 The parity tests run node; the CI job sets node up before the Python suite.
 """
@@ -619,6 +621,9 @@ def test_the_sites_code_unchanged_stubs_nothing_and_says_nothing(
         assert {"sgApplyMode", "sgAfterRender", "updateActiveFilters", "populateConditionsDropdown",
                 "renderRaceDistribution"} <= set(report["predeclared_stubs_run"])
         assert report["answer_matters_for"] == []
+        # Every call the excerpt makes to a stub throws the answer away, so
+        # no stub is flipped in combination: the weekly run costs two runs.
+        assert report["answer_read_from"] == []
 
 
 # A stub that changes a number: the helper decides what the Overview paints,
@@ -794,6 +799,138 @@ def test_a_predeclared_stub_called_as_a_statement_still_passes_quietly(
     _assert_parity(0, report, json.loads(summary_file.read_text())["firstView"])
     assert report["site_functions_stubbed"] == [] and report["answer_matters_for"] == []
     assert "updateActiveFilters" in report["predeclared_stubs_run"]
+
+
+# A rule that combines stub answers of opposite polarity: with every stub
+# answering nothing, and again with every one answering true, it excludes
+# nothing (`undefined && ...`, `true && !true`), so the two runs match. The
+# real helpers answer differently from each other and the page drops records.
+# Each is [the rule, the helpers declared in app.js (None: fixed stubs), the
+# names the parity must blame].
+_COMBINED_RULES: dict[str, tuple[str, str | None, list[str]]] = {
+    # the verifier's reproduction: a mode switch gating a test
+    "gated_by_a_mode": (
+        "if (strictModeOn() && !passesStrict(study)) return false;",
+        "function strictModeOn() {\n    return true;\n}\nfunction passesStrict(s) {\n    return s.race?.reported;\n}\n",
+        ["strictModeOn"]),
+    # the same through two fixed stubs (Codex's premise: the site makes them answer)
+    "two_fixed_stubs": (
+        "if (updateActiveFilters(study) && !refreshStudiesTab(study)) return false;",
+        None,
+        ["updateActiveFilters"]),
+    # one of app.js's and one fixed
+    "one_of_each": (
+        "if (isWithdrawnStudy(study) && !refreshStudiesTab(study)) return false;",
+        "function isWithdrawnStudy(s) {\n    return true;\n}\n",
+        ["isWithdrawnStudy"]),
+    # the other way round, and as a conditional expression
+    "conditional": (
+        "if (hasPostedResults(study) ? false : isWithdrawnStudy(study)) return false;",
+        "function hasPostedResults(s) {\n    return false;\n}\nfunction isWithdrawnStudy(s) {\n    return true;\n}\n",
+        ["isWithdrawnStudy"]),
+    # two that must both answer true, against a third that must not
+    "two_against_one": (
+        "if (isA(study) && isB(study) && !isC(study)) return false;",
+        "".join(f"function is{x}(s) {{\n    return true;\n}}\n" for x in "ABC"),
+        ["isA", "isB"]),
+    # four against one: more than the parity tries every combination of
+    "four_against_one": (
+        "if (isA(study) && isB(study) && isC(study) && isD(study) && !isE(study)) return false;",
+        "".join(f"function is{x}(s) {{\n    return true;\n}}\n" for x in "ABCDE"),
+        ["isA", "isB", "isC", "isD"]),
+}
+
+
+@pytest.mark.parametrize("rule", sorted(_COMBINED_RULES))
+def test_a_rule_combining_stub_answers_never_passes(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]], rule: str) -> None:
+    """`if (strictModeOn() && !passesStrict(study)) return false;`: with every
+    stub answering nothing and again with every one answering true, nothing
+    is excluded, so both runs saw the same and the parity passed (exit 0,
+    nothing named) while the page drops every record that does not report
+    race. The stubs whose answers the Overview reads are now also flipped in
+    combination, so the rule is exit 2, naming the stubs whose answer
+    changes the Overview, never a pass."""
+    records_file, summary_file, _ = counted
+    text, helpers, blamed = _COMBINED_RULES[rule]
+    app = _excerpt_app()
+    assert app.count(_YEAR_TEST) == 1
+    app = app.replace(_YEAR_TEST, _YEAR_TEST + "        " + text + "\n") + ("\n" + helpers if helpers else "")
+    r = _run_parity(records_file, summary_file, _write_app(tmp_path, app))
+    assert r.returncode == 2, r.stdout[-2000:] + r.stderr[-2000:]
+    report = json.loads(r.stdout)
+    assert not report["ok"] and report["mismatches"] == []
+    assert report["answer_matters_for"] == blamed
+    named = set(re.findall(r"\b(?:is[A-E]|strictModeOn|passesStrict|isWithdrawnStudy|hasPostedResults|"
+                           r"updateActiveFilters|refreshStudiesTab)\b", text))
+    assert report["answer_read_from"] == sorted(named)
+    rest = sorted(named - set(blamed))
+    one = len(blamed) == 1
+    assert (f"the Overview changes when {'it returns' if one else 'they return'} true instead and "
+            f"{', '.join(rest)} still return{'s' if len(rest) == 1 else ''} nothing (first difference: "
+            ) in report["could_not_run"]
+    assert "first_view_parity: could not run faithfully: " in r.stderr
+
+
+def _answer_read_from(names: list[str], code: str) -> list[str]:
+    script = ("globalThis.FIRST_VIEW_PARITY_NO_MAIN = true;"
+              f"const {{ answerReadFrom }} = await import({json.dumps(PARITY.as_uri())});"
+              f"console.log(JSON.stringify(answerReadFrom({json.dumps(names)}, {json.dumps(code)})));")
+    r = subprocess.run([_node(), "--input-type=module", "-e", script], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    result: list[str] = json.loads(r.stdout)
+    return result
+
+
+# Lines that throw the stub's answer away, each after a line that ends a
+# statement: a lone call, perhaps under if or else, perhaps awaited, with a
+# string argument holding a semicolon or a parenthesis, or guarded by typeof.
+_ANSWER_THROWN_AWAY = [
+    "    f(rows);",
+    "    f();  // repaint",
+    "    if (rows.length > 0) f(rows);",
+    "    if (typeof f === 'function') f();",
+    "    } else f(rows);",
+    "    else f('a;b)', \"c(\");",
+    "    } else if (rows.length) f(rows);",
+    "    await f(rows);",
+    "    if (typeof f !== 'undefined') console.log('ok');",
+    "    // f(rows) is called below",
+]
+# Lines that may use the answer, or read so that the scan cannot tell.
+_ANSWER_MAY_BE_READ = [
+    "    if (f(study)) return false;",
+    "    const n = f(rows);",
+    "    return f(rows);",
+    "    rows.filter(f);",
+    "    f(rows) && g();",
+    "    el.textContent = `${f(rows)}%`;",
+    "    f(g(rows));",
+    "    f(rows)",
+    "    x = cond ? f(rows) : 0;",
+    "    if (!f(study) || g(study)) return false;",
+    "    f(rows), g(rows);",
+    "    f?.(rows);",
+]
+
+
+@pytest.mark.parametrize("line", _ANSWER_THROWN_AWAY)
+def test_a_call_that_throws_the_answer_away_is_not_flipped_in_combination(line: str) -> None:
+    code = "function piece() {\n    const rows = [];\n" + line + "\n}\n"
+    assert _answer_read_from(["f", "g"], code) == []
+
+
+@pytest.mark.parametrize("line", _ANSWER_MAY_BE_READ)
+def test_any_other_mention_of_a_stub_is_flipped_in_combination(line: str) -> None:
+    code = "function piece() {\n    const rows = [];\n" + line + "\n}\n"
+    assert "f" in _answer_read_from(["f", "g"], code)
+
+
+@pytest.mark.parametrize("before", ["    const ok = cond &&", "    const n = rows.length +", "    x = cond ?",
+                                    "    run(a,", "    const n = await"])
+def test_a_call_that_continues_the_line_before_may_be_read(before: str) -> None:
+    code = "function piece() {\n" + before + "\n        f(rows);\n}\n"
+    assert _answer_read_from(["f"], code) == ["f"]
 
 
 def test_a_site_error_only_when_the_stub_answers_true_names_the_stub(

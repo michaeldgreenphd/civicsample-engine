@@ -350,8 +350,9 @@ jobs:
           # is printed above), or a check it could not run faithfully: a
           # function of app.js it does not run, stubbed inert, ran and the
           # numbers differ, or they change when the stubs that ran (its fixed
-          # ELSEWHERE stubs too) return true instead of nothing, so the
-          # report's could_not_run is annotated and its mismatches go to the
+          # ELSEWHERE stubs too) return true instead of nothing, all at once
+          # or, for those whose answer the Overview reads, in combination, so
+          # the report's could_not_run is annotated and its mismatches go to the
           # log only. A stubbed app.js function that ran with the numbers
           # agreeing either way passes, and is named; the fixed stubs run
           # every week and are listed in the report only. GitHub shows

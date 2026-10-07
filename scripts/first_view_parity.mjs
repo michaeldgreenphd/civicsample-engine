@@ -37,18 +37,24 @@
  * of nothing: a function whose answer the Overview uses (a new exclusion,
  * `if (isX(study)) return false;`, is a no-op on undefined) changes what the
  * second run sees, and halves of the stubs that ran are then flipped alone to
- * name the ones whose answer matters. When both runs see the same and the
+ * name the ones whose answer matters. Answers can cancel out (`if (A() &&
+ * !B(study)) return false;` excludes nothing either way), so when both runs
+ * see the same, the stubs whose answer the Overview may read (any mention
+ * but a lone call statement, answerReadFrom; none on site main today) are
+ * flipped in combination as well: every combination of up to four, else
+ * each one alone and all but each one. When every run sees the same and the
  * numbers agree, the check passes (exit 0); the report names the stubs that
  * ran, and a note on stderr names the ones found in app.js (the ELSEWHERE
- * ones run every time and are not noted). When the second run differs, the
- * numbers differ with one of app.js's stubs run, or the site code throws
- * with one run, the check could not run faithfully: the difference may be
- * the stub's, so it is exit 2, never a mismatch (exit 1). A rename or
+ * ones run every time and are not noted). When a run with answers flipped
+ * differs, the numbers differ with one of app.js's stubs run, or the site
+ * code throws with one run, the check could not run faithfully: the
+ * difference may be the stub's, so it is exit 2, never a mismatch (exit 1). A rename or
  * removal of a piece, and a call to a name app.js never declares as a
- * function, stay exit 2 as before. What neither run sees: a function whose
+ * function, stay exit 2 as before. What no run sees: a function whose
  * answer matters only as some value other than nothing or true
- * (`=== 'withdrawn'`), and one that repaints an Overview number on the real
- * page.
+ * (`=== 'withdrawn'`); a rule over five or more read stubs that needs two
+ * or more true while two or more others answer nothing; and one that
+ * repaints an Overview number on the real page.
  *
  * The full-record file is read item by item (a week's is about 1.3 GB, over
  * V8's string limit), plain or gzipped, as src/full_records.py reads it.
@@ -195,6 +201,58 @@ export function autoStubs(app, pieces = APP_PIECES.map((p) => slicePiece(app, p,
     for (const m of app.matchAll(TOP_FUNCTION)) if (!own.has(m[2])) found.set(m[2], !!m[1]);
     for (const m of app.matchAll(TOP_FUNCTION_VALUE)) if (!own.has(m[1])) found.set(m[1], !!m[2]);
     return [...found].sort(([a], [b]) => (a < b ? -1 : 1)).map(([name, isAsync]) => ({ name, async: isAsync }));
+}
+
+// Which of the named stubs the code may read the answer of: every one it
+// mentions anywhere but on a line that throws the answer away. Such a line is
+// a lone call statement, `NAME(args);` (perhaps after `if (...)`, `else` or
+// `await`, perhaps with a comment after the semicolon; the arguments hold no
+// parentheses outside plain strings), after a line that ends a statement or
+// opens or closes a block (`;`, `{`, `}`, `)`), so it cannot continue an
+// expression. `typeof NAME` reads no answer, and a whole-line `//` comment is
+// skipped. Anything else that names a stub, a call whose value is kept or
+// tested, a reference passed on (`rows.filter(NAME)`), a call inside a
+// template or another call, or a line the scan cannot place, counts as read:
+// a wrong guess that way costs runs only. app.js's code is read line by line
+// as written (the site's style: one statement a line); a statement split
+// oddly, a `for` header with its test alone on a line, could pass for a lone
+// call, and its stub would then answer true only with every other.
+export function answerReadFrom(names, code) {
+    const lines = code.split(/\r?\n/);
+    const read = new Set();
+    let ended = true;       // the line before ends a statement or opens or closes a block
+    for (const line of lines) {
+        const bare = line.trim();
+        if (!bare || bare.startsWith('//')) continue;
+        for (const name of names) {
+            if (read.has(name)) continue;
+            const id = name.replace(/\$/g, '\\$');
+            const mention = new RegExp(`(?<![\\w$.])${id}(?![\\w$])`, 'g');
+            const rest = line.replace(new RegExp(`(?<![\\w$.])typeof[ \\t]+${id}(?![\\w$])`, 'g'), 'typeof _');
+            const count = (rest.match(mention) || []).length;
+            if (!count) continue;
+            const arg = `(?:[^()'"\`\\n]|'[^'\\\\\\n]*'|"[^"\\\\\\n]*")*`;
+            const call = new RegExp(`^[ \\t]*(?:(?:\\}[ \\t]*)?else[ \\t]+)?(?:if[ \\t]*\\(.*\\)[ \\t]*)?`
+                + `(?:await[ \\t]+)?${id}[ \\t]*\\(${arg}\\)[ \\t]*;[ \\t]*(?:\\/\\/.*)?$`);
+            // The call itself is the line's one mention, the condition before it naming the stub only by typeof.
+            if (!(ended && count === 1 && call.test(rest))) read.add(name);
+        }
+        ended = /[;{})]$/.test(bare.replace(/[ \t]*\/\/[^'"`]*$/, ''));
+    }
+    return names.filter((n) => read.has(n)).sort();
+}
+
+// Sets of the stubs whose answers are read, each flipped to true while the
+// rest answer nothing: every combination of up to four (the run with them all
+// true has been made), else each one alone and all but each one. Smallest first.
+function flipSets(names) {
+    if (names.length < 2) return [];
+    if (names.length <= 4) {
+        const sets = [];
+        for (let mask = 1; mask < (1 << names.length) - 1; mask++) sets.push(names.filter((_, i) => mask & (1 << i)));
+        return sets.sort((a, b) => a.length - b.length);
+    }
+    return [...names.map((n) => [n]), ...names.map((n) => names.filter((m) => m !== n))];
 }
 
 function readSite(appPath, indexPath) {
@@ -612,7 +670,7 @@ function check(summaryFile, appPath, indexPath, full) {
     }
     for (const c of inert.checks) checks.push(c);
     for (const name of inert.filesOnly) filesOnly.add(name);
-    let ran = inert.stubbed, answerMatters = null, answerMattersFor = [], thrown = null;
+    let ran = inert.stubbed, answerMatters = null, answerMattersFor = [], answerRead = [], thrown = null;
     if (ran.length) {
         // A stub ran: does the Overview use what it returns? Every stub,
         // fixed or found, answers true in the second run.
@@ -620,24 +678,40 @@ function check(summaryFile, appPath, indexPath, full) {
         const truthy = siteChecks(site, block, records, everyStub);
         ran = [...new Set([...ran, ...truthy.stubbed])].sort();
         const differs = (run) => (run.error ? 'the site code threw' : firstDifference(inert.seen, run.seen));
+        // Which: halve a set of stubs that differs, flipping each half on
+        // its own, down to the single stubs whose answer changes the
+        // Overview (a few runs, not one per stub: the default view runs two
+        // dozen fixed ones). A set that differs only as a whole is named
+        // whole.
+        const blame = (names, known) => {
+            if (!known && differs(siteChecks(site, block, records, new Set(names))) === null) return [];
+            if (names.length === 1) return names;
+            const mid = names.length >> 1;
+            const found = [...blame(names.slice(0, mid), false), ...blame(names.slice(mid), false)];
+            return found.length ? found : names;
+        };
         answerMatters = differs(truthy);
+        answerRead = answerReadFrom(ran, site.pieces.join('\n'));
         if (answerMatters !== null) {
-            // Which: halve the stubs that ran, flipping each half on its
-            // own, down to the single stubs whose answer changes the
-            // Overview (a few runs, not one per stub: the default view runs
-            // two dozen fixed ones). A set that differs only as a whole is
-            // named whole. app.js's own stubs go first, so a half holds one
-            // kind where it can.
-            const blame = (names, known) => {
-                if (!known && differs(siteChecks(site, block, records, new Set(names))) === null) return [];
-                if (names.length === 1) return names;
-                const mid = names.length >> 1;
-                const found = [...blame(names.slice(0, mid), false), ...blame(names.slice(mid), false)];
-                return found.length ? found : names;
-            };
+            // app.js's own stubs go first, so a half holds one kind where it can.
             const order = [...ran.filter((n) => !PREDECLARED.has(n)), ...ran.filter((n) => PREDECLARED.has(n))];
             answerMattersFor = blame(order, true).sort();
             thrown = truthy.error;
+        } else {
+            // Both runs the same, but answers can cancel out: a rule
+            // `if (A() && !B(study))` excludes nothing when both answer
+            // nothing and nothing when both answer true. The stubs whose
+            // answer the Overview may read are flipped in combination too,
+            // the rest answering nothing; every other stub's answer is
+            // thrown away, so the site's code as it stands costs no run.
+            for (const set of flipSets(answerRead)) {
+                const run = siteChecks(site, block, records, new Set(set));
+                answerMatters = differs(run);
+                if (answerMatters === null) continue;
+                answerMattersFor = blame(set, true).sort();
+                thrown = run.error;
+                break;
+            }
         }
     }
     if (thrown) {
@@ -648,7 +722,7 @@ function check(summaryFile, appPath, indexPath, full) {
     return {
         checks, filesOnly, site: inert.result, site_code: site.source,
         stubbed: ran.filter((n) => !PREDECLARED.has(n)), predeclared: ran.filter((n) => PREDECLARED.has(n)),
-        answerMatters, answerMattersFor,
+        answerMatters, answerMattersFor, answerRead,
     };
 }
 
@@ -850,8 +924,12 @@ async function main() {
     const one = blamed.length === 1;
     const fix = `make the parity run ${one ? 'it' : 'them'} (APP_PIECES) or stub ${one ? 'it' : 'them'} `
         + 'with what the Overview needs (ELSEWHERE)';
-    const changes = `the Overview changes when ${one ? 'it returns' : 'they return'} true instead `
-        + `(first difference: ${answerMatters})`;
+    // The stubs whose answers are read that still answered nothing in the
+    // run that differed (empty when every one was flipped).
+    const still = (result.answerRead ?? []).filter((n) => !(result.answerMattersFor ?? []).includes(n));
+    const changes = `the Overview changes when ${one ? 'it returns' : 'they return'} true instead`
+        + (still.length ? ` and ${still.join(', ')} still return${still.length === 1 ? 's' : ''} nothing` : '')
+        + ` (first difference: ${answerMatters})`;
     const report = {
         ok: code === 0,
         could_not_run: !unfaithful ? null
@@ -865,6 +943,7 @@ async function main() {
         site_functions_stubbed: stubbed,
         predeclared_stubs_run: result.predeclared ?? [],
         answer_matters_for: result.answerMattersFor ?? [],
+        answer_read_from: result.answerRead ?? [],
         records: { file: a.records.length === 1 ? a.records[0] : a.records, count: full.records.length, extracted_at: full.extracted_at, pipeline_commit: full.pipeline_commit },
         site_code: result.site_code ?? null,
         checked: result.checks.length,

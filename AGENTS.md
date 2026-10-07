@@ -214,22 +214,30 @@ returning true instead of nothing, since a new rule written through a helper
 (`if (isWithdrawnStudy(study)) return false;`, or the same through a fixed
 one, `if (updateActiveFilters(study)) return false;`) is a no-op on undefined
 and would otherwise pass; when that run differs, halves of the stubs that ran
-are flipped alone to name the ones whose answer matters. No stub may change
-the counted numbers without the parity noticing: a fixed stub that the
-Overview comes to need an answer from gets a stub mirroring the site's
-function, never a value that keeps it out of that run. With the numbers
-agreeing and both runs the same, the parity passes and names the stubbed
-app.js functions that ran (the report also lists the fixed ones, in
-`predeclared_stubs_run`; they run every week and are not noted); with the
-second run differing, the numbers differing while an app.js function ran as a
-stub, or the site code throwing, it exits 2, "could not run faithfully", never
+are flipped alone to name the ones whose answer matters. Answers can cancel
+out (`if (strictModeOn() && !passesStrict(study)) return false;` excludes
+nothing whether both answer nothing or both true), so the stubs whose answer
+the Overview may read, any mention but a lone call statement
+(`answerReadFrom`, `answer_read_from` in the report; none on site main today),
+are also flipped in combination: every combination of up to four, else each
+alone and all but each one. No stub may change the counted numbers without
+the parity noticing, within those runs: a fixed stub that the Overview comes
+to need an answer from gets a stub mirroring the site's function, never a
+value that keeps it out of those runs. With the numbers agreeing and every run
+the same, the parity passes and names the stubbed app.js functions that ran
+(the report also lists the fixed ones, in `predeclared_stubs_run`; they run
+every week and are not noted); with a run with flipped answers differing, the
+numbers differing while an app.js function ran as a stub, or the site code
+throwing, it exits 2, "could not run faithfully", never
 1, since the difference may be the stub's (`answer_matters_for` names it).
 Exit 2 still blocks: follow such a site change by running the helper in the
 parity (`APP_PIECES`) or stubbing it with what the Overview needs
 (`ELSEWHERE`). A rename or removal of a piece, or a call to a name app.js does
-not declare as a function, also stays exit 2. Neither run sees a helper whose
-answer matters only as some other value (`=== 'withdrawn'`) or one that
-repaints an Overview number on the real page.
+not declare as a function, also stays exit 2. No run sees a helper whose
+answer matters only as some other value (`=== 'withdrawn'`), a rule over five
+or more read stubs that needs two or more of them true while two or more
+others answer nothing, or a helper that repaints an Overview number on the
+real page.
 
 **Weekly artifacts are outputs, not source.** They are gitignored here and
 committed only to the site repo by CI. The deliberate exception is the LLM
