@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import sys
 from typing import Any
 
@@ -169,3 +170,22 @@ def test_nothing_else_in_the_summary_changes(tmp_path: pathlib.Path, monkeypatch
         assert new_bytes.startswith(old_bytes[:-1]), new["nct_id"]
         assert {k: v for k, v in new.items() if k in old} == old
         assert set(new) - set(old) <= {"lists_locations", *gmd.POPULATION_FIELDS}
+
+
+def test_lists_locations_is_written_as_a_json_boolean(tmp_path: pathlib.Path) -> None:
+    """The site reads lists_locations only when it is a real JSON true or false
+    (site PR #261); a string, 0/1 or null would read as absent. So the flag is
+    a Python bool, and the file holds the literals true and false."""
+    records, _, _ = _records()
+    summary = _summarise(tmp_path, records)
+    raw = (tmp_path / "dashboard-summary.json").read_text()
+    written = [row["lists_locations"] for row in summary["recentStudies"] if "lists_locations" in row]
+    assert written and all(type(v) is bool for v in written)
+    assert {True, False} <= set(written), "the fixture writes both values"
+    # Every flag in the file is a bare true or false, never quoted, a number or null.
+    values = [m.split(":", 1)[1] for m in re.findall(r'"lists_locations":[^,}]*', raw)]
+    assert len(values) == len(written)
+    assert set(values) == {"true", "false"}
+    for case in LOCATION_CASES.values():
+        flag = gmd.lists_locations(_record(1, **case[0]))
+        assert flag is None or type(flag) is bool
