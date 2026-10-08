@@ -15,6 +15,13 @@ READS the week's full records (data/demographics.json, src.full_records),
 not the site's parts: recentStudies carries status, why_stopped, ages and a
 reference count, which the parts will stop carrying.
 
+Each recentStudies row also carries what the site cannot work out from the
+row itself (owner decisions 6d and 5a, 2026-10-07; summary_row_fields):
+lists_locations, whether the record lists a study site or a country, by the
+site's own test (studyHasGeography); and pediatric_status and std_ages,
+copied unchanged, from which the study pop-up reads its Population. They are
+the last keys of a row, so every key before them keeps its bytes.
+
 firstView (src/first_view.py) is the Overview as it opens on desktop: study
 type Interventional, results from 2009 on, every other filter at All. Every
 other key counts all study types, so the Overview cannot be painted from them
@@ -29,6 +36,7 @@ import json
 import os
 import sys
 from collections import defaultdict
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -39,6 +47,51 @@ from src import sex_gender_table as sgt  # noqa: E402
 # Drill-down label lists carry at most this many distinct labels each; every
 # label is still in the parsed table and the audit's label_buckets.csv.
 LABEL_LIST_LIMIT = 200
+
+# The record's location lists, as the site's studyHasGeography reads them, and
+# the fields its study pop-up reads the Population from (getStudyPediatricStatus:
+# pediatric_status, else std_ages, else a guess from min_age and max_age).
+LOCATION_LISTS = ("study_sites", "countries")
+POPULATION_FIELDS = ("pediatric_status", "std_ages")
+
+
+def _lists_something(value: Any) -> bool:
+    """(value || []).length > 0, as the site's JavaScript reads it: a non-empty
+    array (or string) lists something; null, a missing key, an empty list and
+    any value without a length (an object, a number) list nothing."""
+    return isinstance(value, (list, str)) and len(value) > 0
+
+
+def lists_locations(record: dict[str, Any]) -> bool | None:
+    """Whether the record lists at least one study site or country.
+
+    True when either list has an entry (the site's studyHasGeography:
+    (study.study_sites || []).length > 0 || (study.countries || []).length > 0).
+    False only when the record carries both keys and neither lists anything
+    (empty or null, which is how a record says "none" in the site's contract).
+    None, and the row gets no lists_locations key, when a list's key is absent
+    and the other lists nothing: absence is not "no locations", and the site
+    keeps reading such a row as it reads one today."""
+    if any(_lists_something(record.get(k)) for k in LOCATION_LISTS):
+        return True
+    if all(k in record for k in LOCATION_LISTS):
+        return False
+    return None
+
+
+def summary_row_fields(record: dict[str, Any]) -> dict[str, Any]:
+    """The keys a recentStudies row adds from its full record, in this order:
+    lists_locations (omitted when lists_locations() cannot say), then
+    pediatric_status and std_ages copied unchanged, null included, each only
+    when the record has the key. Nothing is derived for a key the record lacks."""
+    out: dict[str, Any] = {}
+    flag = lists_locations(record)
+    if flag is not None:
+        out["lists_locations"] = flag
+    for key in POPULATION_FIELDS:
+        if key in record:
+            out[key] = record[key]
+    return out
 
 
 def sex_gender_summary(all_studies, table_rows=None):
@@ -459,7 +512,7 @@ def main(argv: list[str] | None = None) -> None:
             return None
         return {k: row.get(k) for k in _COMPACT_SG}
 
-    def _compact(s):
+    def _compact(s: dict[str, Any]) -> dict[str, Any]:
         return {
             "nct_id": s.get("nct_id"),
             "brief_title": s.get("brief_title"),
@@ -488,8 +541,11 @@ def main(argv: list[str] | None = None) -> None:
             "sex_gender": _compact_sex_gender(s),
             # Geography details aren't shipped to mobile (study_sites is heavy
             # and desktop-only). Leaving countries empty makes the cell show ✗
-            # rather than a ✓ that opens an empty modal.
+            # rather than a ✓ that opens an empty modal; lists_locations below
+            # says whether the record lists any, without the lists.
             "reference_count": len(s.get("references") or []),
+            # Last, so every key above keeps its bytes.
+            **summary_row_fields(s),
         }
 
     with_results = [s for s in all_studies if s.get("results_date")]
