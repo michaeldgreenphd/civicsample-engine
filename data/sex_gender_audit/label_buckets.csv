@@ -1,373 +1,373 @@
 level,label,bucket,reason,consequential,n_occurrences,n_trials,example_nct,parser_rules_version
-category,Female,female,mapped,True,79181,78265,NCT05496231,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Male,male,mapped,True,79170,78255,NCT05496231,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Female,female,mapped,True,1505,1490,NCT03110029,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Male,male,mapped,True,1436,1422,NCT03210701,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Gender,,structural_or_group,False,172,172,NCT05130281,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Unknown,unknown,mapped,True,176,170,NCT05120544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Other,gender_diverse,mapped,True,154,147,NCT03210701,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Sex,,structural_or_group,True,119,119,NCT02845375,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Other,gender_diverse,mapped,True,109,104,NCT03063294,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Unknown,unknown,mapped,True,106,84,NCT05910879,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Missing,unknown,mapped,True,81,80,NCT00640042,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Non-binary,gender_diverse,mapped,True,57,57,NCT05090683,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Bisexual,,sexual_orientation,True,52,52,NCT03464422,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Transgender,gender_diverse,mapped,True,48,48,NCT01350544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Woman,female,mapped,True,47,47,NCT06648226,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Man,male,mapped,True,46,46,NCT06648226,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Missing,unknown,mapped,True,60,46,NCT02596230,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Sex/Gender,,unrecognized,False,37,37,NCT05736874,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Caregivers,,unrecognized,False,33,33,NCT04421989,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Non-binary,gender_diverse,mapped,True,33,32,NCT05130281,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,female,female,mapped,True,31,31,NCT04548544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Man,male,mapped,True,29,29,NCT05144477,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Female,female,mapped,True,79266,78346,NCT02000583,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Male,male,mapped,True,79255,78336,NCT02000583,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Female,female,mapped,True,1509,1494,NCT04067544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Male,male,mapped,True,1439,1425,NCT04613453,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Gender,,structural_or_group,False,172,172,NCT04445792,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Unknown,unknown,mapped,True,177,171,NCT01535118,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Other,gender_diverse,mapped,True,154,147,NCT03962491,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Sex,,structural_or_group,True,120,120,NCT04445792,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Other,gender_diverse,mapped,True,110,105,NCT03985800,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Unknown,unknown,mapped,True,106,84,NCT04445792,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Missing,unknown,mapped,True,81,80,NCT02362750,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Non-binary,gender_diverse,mapped,True,57,57,NCT04613453,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Bisexual,,sexual_orientation,True,53,53,NCT04971967,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Transgender,gender_diverse,mapped,True,48,48,NCT03403231,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Woman,female,mapped,True,48,48,NCT05700383,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Man,male,mapped,True,47,47,NCT05700383,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Missing,unknown,mapped,True,60,46,NCT03599557,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Sex/Gender,,unrecognized,False,37,37,NCT05595369,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Caregivers,,unrecognized,False,33,33,NCT06291246,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Non-binary,gender_diverse,mapped,True,33,32,NCT06425458,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,female,female,mapped,True,31,31,NCT03981861,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Man,male,mapped,True,30,30,NCT05150860,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,male,male,mapped,True,29,29,NCT02362750,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Women,female,mapped,True,28,28,NCT02606500,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Females,female,mapped,True,27,27,NCT01888003,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Woman,female,mapped,True,27,27,NCT05144477,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Patients,,structural_or_group,False,25,25,NCT03931174,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Males,male,mapped,True,23,23,NCT01888003,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Non-Binary,gender_diverse,mapped,True,23,23,NCT04585269,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Prefer not to answer,unknown,mapped,True,24,23,NCT03684057,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Prefer not to answer,unknown,mapped,True,25,23,NCT04636528,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Bisexual,,sexual_orientation,True,22,22,NCT01350544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Heterosexual,,sexual_orientation,True,22,22,NCT04925570,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Transgender,gender_diverse,mapped,True,22,22,NCT03954535,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Woman,female,mapped,True,28,28,NCT05150860,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Women,female,mapped,True,28,28,NCT00771173,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Females,female,mapped,True,27,27,NCT01746732,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Patients,,structural_or_group,False,25,25,NCT04088656,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Males,male,mapped,True,23,23,NCT03109418,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Non-Binary,gender_diverse,mapped,True,23,23,NCT04344028,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Prefer not to answer,unknown,mapped,True,25,23,NCT04445792,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Prefer not to answer,unknown,mapped,True,24,23,NCT05714696,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Transgender,gender_diverse,mapped,True,23,23,NCT04445792,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Bisexual,,sexual_orientation,True,22,22,NCT06229132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Heterosexual,,sexual_orientation,True,22,22,NCT06213883,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,FEMALE,female,mapped,True,21,21,NCT01607593,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,MALE,male,mapped,True,21,21,NCT01607593,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Gender Identity,,unrecognized,False,18,18,NCT03954535,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,No,,unrecognized,True,23,18,NCT05797961,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Nonbinary,gender_diverse,mapped,True,18,18,NCT05520190,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Not Reported,unknown,mapped,True,19,18,NCT04735653,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Part A,,unrecognized,False,18,18,NCT01739231,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Queer,,sexual_orientation,True,18,17,NCT03464422,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Unspecified,unknown,mapped,True,17,17,NCT00827502,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,No,,unrecognized,True,23,16,NCT00970632,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Part B,,unrecognized,False,16,16,NCT01739231,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Yes,,unrecognized,True,21,16,NCT04584294,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Yes,,unrecognized,True,23,16,NCT00970632,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Asexual,,sexual_orientation,True,15,15,NCT06213883,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Children,,structural_or_group,False,15,15,NCT04767282,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Gay,,sexual_orientation,True,15,15,NCT03464422,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Men,male,mapped,True,15,15,NCT03204890,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Part 1,,unrecognized,False,15,15,NCT03655236,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Unknown or Not Reported,unknown,mapped,True,16,15,NCT07149155,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Unknown or Not Reported,unknown,mapped,True,15,15,NCT04375761,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,female,female,mapped,True,15,15,NCT01056276,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,unknown,unknown,mapped,True,15,15,NCT01561989,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Not reported,unknown,mapped,True,14,14,NCT06418997,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Gender Identity,,unrecognized,False,18,18,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,No,,unrecognized,True,23,18,NCT04971967,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Nonbinary,gender_diverse,mapped,True,18,18,NCT05580575,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Not Reported,unknown,mapped,True,19,18,NCT06628167,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Part A,,unrecognized,False,18,18,NCT02210208,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Queer,,sexual_orientation,True,18,17,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Unspecified,unknown,mapped,True,17,17,NCT00460798,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,No,,unrecognized,True,23,16,NCT00906178,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Part B,,unrecognized,False,16,16,NCT02210208,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Unknown or Not Reported,unknown,mapped,True,16,16,NCT04769466,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Yes,,unrecognized,True,21,16,NCT04971967,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Yes,,unrecognized,True,23,16,NCT00906178,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Asexual,,sexual_orientation,True,15,15,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Children,,structural_or_group,False,15,15,NCT02876328,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Gay,,sexual_orientation,True,15,15,NCT04971967,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Men,male,mapped,True,15,15,NCT04783519,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Part 1,,unrecognized,False,15,15,NCT04550676,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Unknown or Not Reported,unknown,mapped,True,16,15,NCT04445792,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,female,female,mapped,True,15,15,NCT03176953,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,unknown,unknown,mapped,True,15,15,NCT03023410,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Not reported,unknown,mapped,True,14,14,NCT01421277,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Parent,,structural_or_group,False,14,14,NCT04516252,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Part 2,,unrecognized,False,14,14,NCT05261191,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,male,male,mapped,True,14,14,NCT01056276,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Intersex,gender_diverse,mapped,True,13,13,NCT06034457,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Men,male,mapped,True,14,13,NCT04620668,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Parents,,structural_or_group,False,13,13,NCT05820659,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Prefer not to say,unknown,mapped,True,13,13,NCT06034457,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Transgender Female,ambiguous,mapped,True,13,13,NCT03552978,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Women,female,mapped,True,14,13,NCT04620668,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Pansexual,,sexual_orientation,True,12,12,NCT04925570,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Parents,,structural_or_group,False,14,14,NCT05277194,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Part 2,,unrecognized,False,14,14,NCT04550676,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,male,male,mapped,True,14,14,NCT03176953,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Intersex,gender_diverse,mapped,True,13,13,NCT05180383,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Men,male,mapped,True,14,13,NCT02653664,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Prefer not to say,unknown,mapped,True,13,13,NCT05700383,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Transgender Female,ambiguous,mapped,True,13,13,NCT05580575,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Women,female,mapped,True,14,13,NCT02653664,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Pansexual,,sexual_orientation,True,12,12,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Phase 2,,unrecognized,False,12,12,NCT00712296,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Gay,,sexual_orientation,True,11,11,NCT02929069,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Heterosexual,,sexual_orientation,True,11,11,NCT05020353,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Not reported,unknown,mapped,True,11,11,NCT04141839,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Undifferentiated,unknown,mapped,True,17,11,NCT05508867,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,sex,,structural_or_group,False,11,11,NCT02096549,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Queer,,sexual_orientation,True,10,10,NCT02929069,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Transgender Male,ambiguous,mapped,True,10,10,NCT04906707,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Adolescent,,unrecognized,False,9,9,NCT03580369,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Caregiver,,unrecognized,False,9,9,NCT04593472,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Child,,structural_or_group,False,9,9,NCT03442114,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Homosexual,,sexual_orientation,True,9,9,NCT05732675,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Gay,,sexual_orientation,True,11,11,NCT06229132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Heterosexual,,sexual_orientation,True,11,11,NCT06229132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Not reported,unknown,mapped,True,11,11,NCT03681535,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Undifferentiated,unknown,mapped,True,17,11,NCT05595369,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,sex,,structural_or_group,False,11,11,NCT03176953,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Non-Binary,gender_diverse,mapped,True,12,10,NCT04524598,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Queer,,sexual_orientation,True,10,10,NCT06229132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Transgender Male,ambiguous,mapped,True,10,10,NCT05580575,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Adolescent,,unrecognized,False,9,9,NCT04516252,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Caregiver,,unrecognized,False,9,9,NCT02809677,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Child,,structural_or_group,False,9,9,NCT03866902,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Homosexual,,sexual_orientation,True,9,9,NCT02611362,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Intersex,gender_diverse,mapped,True,10,9,NCT04427202,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Missing data,unknown,mapped,True,9,9,NCT04599166,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Non-Binary,gender_diverse,mapped,True,9,9,NCT05590910,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Not collected,unknown,mapped,True,9,9,NCT02918773,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Unknown or not reported,unknown,mapped,True,11,9,NCT03681119,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Cohort 2,,structural_or_group,False,8,8,NCT04340362,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Gender identity,,unrecognized,False,8,8,NCT05604508,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Genderqueer,gender_diverse,mapped,True,8,8,NCT02929069,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Lesbian,,sexual_orientation,True,8,8,NCT04559698,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Missing Data,unknown,mapped,True,8,8,NCT01628588,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Missing data,unknown,mapped,True,9,9,NCT00830115,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Not collected,unknown,mapped,True,9,9,NCT04752189,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Unknown or not reported,unknown,mapped,True,11,9,NCT04451161,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Cohort 2,,structural_or_group,False,8,8,NCT02773446,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Gender identity,,unrecognized,False,8,8,NCT04935931,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Genderqueer,gender_diverse,mapped,True,8,8,NCT03801174,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Lesbian,,sexual_orientation,True,8,8,NCT04589559,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Missing Data,unknown,mapped,True,8,8,NCT01637246,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Phase 1,,unrecognized,False,8,8,NCT00712296,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Prefer Not to Answer,unknown,mapped,True,8,8,NCT05736874,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Stage 1,,unrecognized,False,8,8,NCT01196871,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Stage 2,,unrecognized,False,8,8,NCT01196871,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Prefer Not to Answer,unknown,mapped,True,8,8,NCT04168645,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Stage 1,,unrecognized,False,8,8,NCT05000216,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Stage 2,,unrecognized,False,8,8,NCT05000216,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Straight,,sexual_orientation,True,8,8,NCT04971967,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Total,,structural_or_group,False,8,8,NCT04911296,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Adolescents,,unrecognized,False,7,7,NCT04421989,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,All Participants,,unrecognized,False,7,7,NCT02699450,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Child Participants,,unrecognized,False,7,7,NCT02323204,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Cohort 1,,structural_or_group,False,7,7,NCT04340362,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Mothers,,structural_or_group,False,7,7,NCT03573830,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Nonbinary,gender_diverse,mapped,True,8,7,NCT05900115,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Adolescents,,unrecognized,False,7,7,NCT02544321,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,All Participants,,unrecognized,False,7,7,NCT03621280,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Child Participants,,unrecognized,False,7,7,NCT02531594,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Cohort 1,,structural_or_group,False,7,7,NCT02773446,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Mothers,,structural_or_group,False,7,7,NCT03101891,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Nonbinary,gender_diverse,mapped,True,8,7,NCT05090995,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Not Reported,unknown,mapped,True,14,7,NCT05626231,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Not disclosed,unknown,mapped,True,7,7,NCT05975008,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Overall,,structural_or_group,False,7,7,NCT03276754,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Prefer not to say,unknown,mapped,True,7,7,NCT06129487,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Straight,,sexual_orientation,True,7,7,NCT05855655,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Straight/Heterosexual,,sexual_orientation,True,7,7,NCT04584294,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Undifferentiated,unknown,mapped,True,7,7,NCT05551117,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Unknown or not reported,unknown,mapped,True,8,7,NCT05752721,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Not disclosed,unknown,mapped,True,7,7,NCT04543188,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Overall,,structural_or_group,False,7,7,NCT02785354,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Prefer not to say,unknown,mapped,True,7,7,NCT04589559,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Straight/Heterosexual,,sexual_orientation,True,7,7,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Undifferentiated,unknown,mapped,True,7,7,NCT04908722,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Unknown or not reported,unknown,mapped,True,8,7,NCT05393869,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unknown/Not Reported,unknown,mapped,True,7,7,NCT05617300,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Unknown/Not reported,unknown,mapped,True,7,7,NCT06834763,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Cisgender,gender_diverse,mapped,True,6,6,NCT05630885,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Unknown/Not reported,unknown,mapped,True,7,7,NCT04477304,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Cisgender,gender_diverse,mapped,True,6,6,NCT03819114,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Male or Female,female,mapped,True,6,6,NCT02946229,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Patient,,structural_or_group,True,6,6,NCT06756113,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Prefer Not to Answer,unknown,mapped,True,6,6,NCT06476496,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Providers,,structural_or_group,False,6,6,NCT03931174,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Sex at Birth,,unrecognized,False,6,6,NCT03982043,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,"Sex: Female, Male",female,mapped,True,6,6,NCT04072159,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Transgender Female,ambiguous,mapped,True,6,6,NCT04950816,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Transgender Man,ambiguous,mapped,True,6,6,NCT03620708,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Unknown/Missing,unknown,mapped,True,6,6,NCT03680755,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Adults,,unrecognized,False,5,5,NCT03830177,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Patient,,structural_or_group,True,6,6,NCT06226649,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Prefer Not to Answer,unknown,mapped,True,6,6,NCT03759223,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Providers,,structural_or_group,False,6,6,NCT05626231,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Sex at Birth,,unrecognized,False,6,6,NCT06050083,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,"Sex: Female, Male",female,mapped,True,6,6,NCT04308759,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Transgender Female,ambiguous,mapped,True,6,6,NCT04276935,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Transgender Man,ambiguous,mapped,True,6,6,NCT03751020,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Unknown/Missing,unknown,mapped,True,6,6,NCT03715335,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Adults,,unrecognized,False,5,5,NCT02544321,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Cisgender Male,ambiguous,mapped,True,5,5,NCT04216589,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Genderqueer,gender_diverse,mapped,True,5,5,NCT04811664,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Main Study,,unrecognized,False,5,5,NCT04006457,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Gay/Lesbian,,sexual_orientation,True,5,5,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Genderqueer,gender_diverse,mapped,True,5,5,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Main Study,,unrecognized,False,5,5,NCT05375929,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Male and Female,female,mapped,True,5,5,NCT01126957,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Missing data,unknown,mapped,True,5,5,NCT03419078,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Missing data,unknown,mapped,True,5,5,NCT02847858,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Not sure,unknown,mapped,True,5,5,NCT03954535,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Others,gender_diverse,mapped,True,5,5,NCT03680755,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Others,gender_diverse,mapped,True,5,5,NCT06238128,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Parent Participants,,unrecognized,False,5,5,NCT03506880,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Participants,,structural_or_group,False,5,5,NCT02534129,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Transgender Male,ambiguous,mapped,True,5,5,NCT04950816,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Transgender Woman,ambiguous,mapped,True,5,5,NCT03620708,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Transgender female,ambiguous,mapped,True,5,5,NCT06509100,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Transgender women,ambiguous,mapped,True,5,5,NCT02720094,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Unknown/Not Reported,unknown,mapped,True,5,5,NCT04676152,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Prefer not to disclose,unknown,mapped,True,5,5,NCT03316911,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Transgender Male,ambiguous,mapped,True,5,5,NCT03498651,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Transgender Woman,ambiguous,mapped,True,5,5,NCT04036500,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Transgender female,ambiguous,mapped,True,5,5,NCT06552325,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Transgender women,ambiguous,mapped,True,5,5,NCT04760691,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Unknown/Not Reported,unknown,mapped,True,5,5,NCT06029907,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Unspecified,unknown,mapped,True,5,5,NCT02674386,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,gender,,structural_or_group,False,5,5,NCT01538615,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,missing,unknown,mapped,True,5,5,NCT00651183,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,other,gender_diverse,mapped,True,5,5,NCT04548544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Agender,gender_diverse,mapped,True,4,4,NCT03516513,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Asexual,,sexual_orientation,True,4,4,NCT05512949,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Baseline,,unrecognized,False,4,4,NCT04427527,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,gender,,structural_or_group,False,5,5,NCT05268276,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,missing,unknown,mapped,True,5,5,NCT05444855,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,other,gender_diverse,mapped,True,5,5,NCT05207033,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Agender,gender_diverse,mapped,True,4,4,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Asexual,,sexual_orientation,True,4,4,NCT03844321,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Baseline,,unrecognized,False,4,4,NCT01167595,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Caregiver Sex,,unrecognized,False,4,4,NCT03818711,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Child Sex,,unrecognized,False,4,4,NCT04528732,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Child participants,,unrecognized,False,4,4,NCT02029976,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,China Cohort,,structural_or_group,False,4,4,NCT01844986,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Cisgender male,ambiguous,mapped,True,4,4,NCT01495598,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Child Sex,,unrecognized,False,4,4,NCT03548558,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Child participants,,unrecognized,False,4,4,NCT05229120,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,China Cohort,,structural_or_group,False,4,4,NCT01874353,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Cisgender male,ambiguous,mapped,True,4,4,NCT05564299,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Did not answer,unknown,mapped,True,4,4,NCT05006833,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Females,female,mapped,True,4,4,NCT02615158,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Gay/Lesbian,,sexual_orientation,True,4,4,NCT04974645,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Gender not reported,unknown,mapped,True,4,4,NCT01083160,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Global cohort,,structural_or_group,False,4,4,NCT02542293,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Heterosexual/straight,,sexual_orientation,True,4,4,NCT03930797,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Gender not reported,unknown,mapped,True,4,4,NCT01078571,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Global cohort,,structural_or_group,False,4,4,NCT04305496,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Heterosexual/straight,,sexual_orientation,True,4,4,NCT03624972,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Homosexual,,sexual_orientation,True,4,4,NCT04233372,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Infants,,structural_or_group,False,4,4,NCT04629534,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Lesbian,,sexual_orientation,True,4,4,NCT05080972,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Infants,,structural_or_group,False,4,4,NCT04382404,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Lesbian,,sexual_orientation,True,4,4,NCT03844321,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,MALE,male,mapped,True,4,4,NCT01836458,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Male Participants,male,mapped,True,4,4,NCT03507608,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Mother,,structural_or_group,False,4,4,NCT04050202,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,NA,,structural_or_group,False,4,4,NCT05182554,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Mother,,structural_or_group,False,4,4,NCT03866902,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,NA,,structural_or_group,False,4,4,NCT03982355,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Not Collected,unknown,mapped,True,4,4,NCT06637878,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Not Disclosed,unknown,mapped,True,8,4,NCT05526781,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Not Specified,unknown,mapped,True,4,4,NCT05358951,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Other Gender,gender_diverse,mapped,True,4,4,NCT05752721,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Part C,,unrecognized,False,4,4,NCT02565914,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Not Disclosed,unknown,mapped,True,8,4,NCT02159066,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Not Specified,unknown,mapped,True,4,4,NCT05249582,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Other Gender,gender_diverse,mapped,True,4,4,NCT03671239,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Part C,,unrecognized,False,4,4,NCT04206332,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Period 1,,unrecognized,False,4,4,NCT00856167,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Prefer not to disclose,unknown,mapped,True,4,4,NCT03316911,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Questioning,gender_diverse,mapped,True,4,4,NCT05247229,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Sex/gender,,unrecognized,False,4,4,NCT06487390,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Straight or heterosexual,,sexual_orientation,True,4,4,NCT03242954,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Trans Man,ambiguous,mapped,True,4,4,NCT04090060,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Trans Woman,ambiguous,mapped,True,4,4,NCT06316102,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Trans male,ambiguous,mapped,True,4,4,NCT03838510,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Transgender spectrum,gender_diverse,mapped,True,4,4,NCT03070223,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Transgender woman,ambiguous,mapped,True,4,4,NCT03897049,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Veterans,,unrecognized,False,4,4,NCT04241094,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,caregivers,,unrecognized,False,4,4,NCT03046121,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,unknown,unknown,mapped,True,4,4,NCT01056276,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Adult,,unrecognized,False,3,3,NCT03580369,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Ambiguous,gender_diverse,mapped,True,3,3,NCT01192776,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Questioning,gender_diverse,mapped,True,4,4,NCT03487796,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Sex/gender,,unrecognized,False,4,4,NCT05018689,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Straight or heterosexual,,sexual_orientation,True,4,4,NCT04589559,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Teachers,,unrecognized,False,4,4,NCT05277194,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Trans Man,ambiguous,mapped,True,4,4,NCT07085845,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Trans Woman,ambiguous,mapped,True,4,4,NCT03489707,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Trans male,ambiguous,mapped,True,4,4,NCT04376346,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Transgender spectrum,gender_diverse,mapped,True,4,4,NCT03819114,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Transgender woman,ambiguous,mapped,True,4,4,NCT06229132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Veterans,,unrecognized,False,4,4,NCT03474380,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,caregivers,,unrecognized,False,4,4,NCT04912245,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,unknown,unknown,mapped,True,4,4,NCT04505969,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Adult,,unrecognized,False,3,3,NCT03580356,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Ambiguous,gender_diverse,mapped,True,3,3,NCT03844321,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Boy,male,mapped,True,3,3,NCT04734015,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Child Gender,,unrecognized,False,3,3,NCT02713659,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Child sex,,unrecognized,False,3,3,NCT02973815,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,China cohort,,structural_or_group,False,3,3,NCT02542293,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Cisgender,gender_diverse,mapped,True,3,3,NCT02859558,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Cisgender female,ambiguous,mapped,True,3,3,NCT05389657,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Child sex,,unrecognized,False,3,3,NCT04174521,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,China cohort,,structural_or_group,False,3,3,NCT04305496,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Cisgender,gender_diverse,mapped,True,3,3,NCT03512210,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Cisgender female,ambiguous,mapped,True,3,3,NCT05564299,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,De-identified,unknown,mapped,True,3,3,NCT04975438,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Decline to Answer,unknown,mapped,True,3,3,NCT03498287,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Decline to Answer,unknown,mapped,True,3,3,NCT04041414,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Decline to Answer,unknown,mapped,True,3,3,NCT05454813,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Declined to answer,unknown,mapped,True,3,3,NCT03320512,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Don't know,,unrecognized,True,3,3,NCT04925570,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,FEMALE,female,mapped,True,3,3,NCT06132282,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Declined to answer,unknown,mapped,True,3,3,NCT04937504,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Don't know,,unrecognized,True,3,3,NCT05359952,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,FEMALE,female,mapped,True,3,3,NCT02140762,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Female (Comparison 1),female,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Female (Comparison 2),female,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Female (Comparison 3),female,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Female (Comparison 4),female,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Female only,female,mapped,True,3,3,NCT02449915,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Female only,female,mapped,True,3,3,NCT03451071,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Female participants,female,mapped,True,3,3,NCT03801252,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Full analysis set,,unrecognized,False,3,3,NCT05796245,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Gay or Lesbian,,sexual_orientation,True,3,3,NCT04925570,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Gay/homosexual,,sexual_orientation,True,3,3,NCT03803683,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Gender : Female,female,mapped,True,3,3,NCT01552408,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Gender : Male,male,mapped,True,3,3,NCT01552408,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Gender Queer,gender_diverse,mapped,True,3,3,NCT05470400,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Full analysis set,,unrecognized,False,3,3,NCT02472795,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Gay or Lesbian,,sexual_orientation,True,3,3,NCT03045341,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Gay/homosexual,,sexual_orientation,True,3,3,NCT01848483,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Gender : Female,female,mapped,True,3,3,NCT02610725,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Gender : Male,male,mapped,True,3,3,NCT02610725,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Gender Queer,gender_diverse,mapped,True,3,3,NCT03751020,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Gender Unknown,unknown,mapped,True,3,3,NCT02051790,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Girl,female,mapped,True,3,3,NCT04734015,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Global Cohort,,structural_or_group,False,3,3,NCT01844986,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Global Cohort,,structural_or_group,False,3,3,NCT01874353,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Heterosexual or Straight,,sexual_orientation,True,3,3,NCT03316911,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Lesbian/Gay,,sexual_orientation,True,3,3,NCT04584294,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Maintenance Phase,,unrecognized,False,3,3,NCT02394028,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Maintenance Phase,,unrecognized,False,3,3,NCT04995029,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Male (Comparison 1),male,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Male (Comparison 2),male,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Male (Comparison 3),male,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Male (Comparison 4),male,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Males,male,mapped,True,3,3,NCT02615158,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Missing/declined to answer,unknown,mapped,True,8,3,NCT05805657,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Non-binary or gender fluid,gender_diverse,mapped,True,3,3,NCT04600414,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Non-binary/third gender,gender_diverse,mapped,True,3,3,NCT04909229,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,None,,unrecognized,True,4,3,NCT00276094,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Missing/declined to answer,unknown,mapped,True,8,3,NCT04154631,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Non-binary or gender fluid,gender_diverse,mapped,True,3,3,NCT05185453,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Non-binary/third gender,gender_diverse,mapped,True,3,3,NCT04806165,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,None,,unrecognized,True,4,3,NCT00635570,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,None,,unrecognized,True,3,3,NCT05617820,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Not Available,unknown,mapped,True,3,3,NCT01167608,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Not Listed,unknown,mapped,True,3,3,NCT05035550,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Not Available,unknown,mapped,True,3,3,NCT00630331,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Not Listed,unknown,mapped,True,3,3,NCT04867382,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Number of Enrolled Females,female,mapped,True,3,3,NCT05192109,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Number of Enrolled Males,male,mapped,True,3,3,NCT05192109,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Other Gender,gender_diverse,mapped,True,3,3,NCT05229406,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Pansexual,,sexual_orientation,True,3,3,NCT05512949,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Other Gender,gender_diverse,mapped,True,3,3,NCT04757649,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Pansexual,,sexual_orientation,True,3,3,NCT06229132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Parent Female,female,mapped,True,3,3,NCT06408818,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Parent Male,male,mapped,True,3,3,NCT06408818,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Partner,,unrecognized,False,3,3,NCT05374798,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Partner,,unrecognized,False,3,3,NCT05958615,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Period 2,,unrecognized,False,3,3,NCT00856167,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Phase I,,unrecognized,False,3,3,NCT01897714,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Phase II,,unrecognized,False,3,3,NCT01897714,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Phase I,,unrecognized,False,3,3,NCT02008877,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Phase II,,unrecognized,False,3,3,NCT05124691,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Prefer Not to Answer the Question,unknown,mapped,True,9,3,NCT05890586,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Prefer Not to Say,unknown,mapped,True,3,3,NCT04854694,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Prefer not to disclose,unknown,mapped,True,4,3,NCT04096274,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Prefers not to identify,unknown,mapped,True,3,3,NCT02606279,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Refuse to answer,unknown,mapped,True,4,3,NCT03150173,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,SEX,,structural_or_group,False,3,3,NCT03546062,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Prefers not to identify,unknown,mapped,True,3,3,NCT03636490,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Refuse to answer,unknown,mapped,True,4,3,NCT01687218,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,SEX,,structural_or_group,False,3,3,NCT00614822,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Sex : Female,female,mapped,True,3,3,NCT01968356,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Sex : Male,male,mapped,True,3,3,NCT01968356,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Sex assigned at birth,,unrecognized,False,3,3,NCT03605368,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Sex assigned at birth,,unrecognized,False,3,3,NCT04636840,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Sex at birth,,unrecognized,False,3,3,NCT05910879,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,"Sex, Female",female,mapped,True,3,3,NCT03323723,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,"Sex, Female",female,mapped,True,3,3,NCT04660331,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,"Sex/Gender, Customized",,unrecognized,False,3,3,NCT05135767,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Something Else,gender_diverse,mapped,True,3,3,NCT03316911,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Straight,,sexual_orientation,True,3,3,NCT01350544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Straight/heterosexual,,sexual_orientation,True,3,3,NCT03803683,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Teachers,,unrecognized,False,3,3,NCT03599648,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Transgender Woman,ambiguous,mapped,True,3,3,NCT05135767,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Unavailable,unknown,mapped,True,3,3,NCT00704808,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Undisclosed,unknown,mapped,True,3,3,NCT03450980,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Straight,,sexual_orientation,True,3,3,NCT03844321,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Straight/heterosexual,,sexual_orientation,True,3,3,NCT06425458,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Transgender Woman,ambiguous,mapped,True,3,3,NCT04811664,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Unavailable,unknown,mapped,True,3,3,NCT00705666,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Undisclosed,unknown,mapped,True,3,3,NCT04589689,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unknown or Not Reported (Comparison 1),unknown,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unknown or Not Reported (Comparison 2),unknown,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unknown or Not Reported (Comparison 3),unknown,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unknown or Not Reported (Comparison 4),unknown,mapped,True,3,3,NCT07513259,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Unknown/Not reported,unknown,mapped,True,3,3,NCT03308097,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Youth,,unrecognized,False,3,3,NCT05117099,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,mITT,,unrecognized,False,3,3,NCT06403605,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,mITT,,unrecognized,False,3,3,NCT03861169,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,males,male,mapped,True,3,3,NCT01835912,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,0,,unrecognized,True,2,2,NCT00655057,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,1,,unrecognized,True,2,2,NCT00865566,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,2,,unrecognized,True,2,2,NCT00865566,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Adolescent Female,female,mapped,True,2,2,NCT02678455,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Adolescent Male,male,mapped,True,2,2,NCT02678455,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,1,,unrecognized,True,2,2,NCT01234103,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,2,,unrecognized,True,2,2,NCT01234103,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Adolescent Female,female,mapped,True,2,2,NCT05714943,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Adolescent Male,male,mapped,True,2,2,NCT05714943,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Adolescent Sex,,unrecognized,False,2,2,NCT03818711,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,All female,female,mapped,True,2,2,NCT02058420,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,All participants,,unrecognized,False,2,2,NCT02542293,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,All female,female,mapped,True,2,2,NCT02038023,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,All participants,,unrecognized,False,2,2,NCT03559010,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,All patients,,unrecognized,False,2,2,NCT02891837,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Another identity,gender_diverse,mapped,True,2,2,NCT04597190,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Any STI,,unrecognized,True,2,2,NCT01836445,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Baseline (12 months),,unrecognized,False,2,2,NCT05423756,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Baseline (12 months),,unrecognized,False,2,2,NCT05423743,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Bisexual Males,,sexual_orientation,True,2,2,NCT05797961,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Boy/Man,male,mapped,True,2,2,NCT05376358,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Boys,male,mapped,True,2,2,NCT06017050,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Care Partners,,unrecognized,False,2,2,NCT04058886,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Care partners,,unrecognized,False,2,2,NCT04621448,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Boy/Man,male,mapped,True,2,2,NCT05521906,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Boys,male,mapped,True,2,2,NCT00968149,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Care Partners,,unrecognized,False,2,2,NCT02328326,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Care partners,,unrecognized,False,2,2,NCT02729311,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Caregiver Gender,,unrecognized,False,2,2,NCT03740113,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Caregiver Participants,,unrecognized,False,2,2,NCT03773757,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Caregiver Sex Demographics,,unrecognized,False,2,2,NCT04506437,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Caregiver sex,,unrecognized,False,2,2,NCT05586269,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Child Female,female,mapped,True,2,2,NCT06408818,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Child Male,male,mapped,True,2,2,NCT06408818,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,China,,unrecognized,False,2,2,NCT02763579,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Choose not to disclose,unknown,mapped,True,2,2,NCT05142618,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Chose not to answer,unknown,mapped,True,2,2,NCT06096506,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,China,,unrecognized,False,2,2,NCT03434379,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Choose not to disclose,unknown,mapped,True,2,2,NCT04625686,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Chose not to answer,unknown,mapped,True,2,2,NCT06268730,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Cisgender Female,ambiguous,mapped,True,2,2,NCT04216589,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Cisgender Man,ambiguous,mapped,True,2,2,NCT05135767,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Cisgender Man,ambiguous,mapped,True,2,2,NCT05512949,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Cisgender Man,ambiguous,mapped,True,2,2,NCT05374525,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Cisgender Woman,ambiguous,mapped,True,2,2,NCT05135767,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Cisgender male,ambiguous,mapped,True,2,2,NCT04797221,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Cisgender man or boy,ambiguous,mapped,True,2,2,NCT05140421,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Cisgender woman or girl,ambiguous,mapped,True,2,2,NCT05140421,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Cisgender women,ambiguous,mapped,True,2,2,NCT03721276,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Cisgender male,ambiguous,mapped,True,2,2,NCT04036396,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Cisgender man or boy,ambiguous,mapped,True,2,2,NCT03628287,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Cisgender woman or girl,ambiguous,mapped,True,2,2,NCT03628287,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Cisgender women,ambiguous,mapped,True,2,2,NCT04878328,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Clinicians,,structural_or_group,False,2,2,NCT02807506,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Decline to answer,unknown,mapped,True,2,2,NCT04882501,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Declined to respond,unknown,mapped,True,2,2,NCT04108429,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Did not answer,unknown,mapped,True,2,2,NCT05130281,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Did not answer,unknown,mapped,True,2,2,NCT05421754,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Different Identity,gender_diverse,mapped,True,2,2,NCT04153864,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Different identity,gender_diverse,mapped,True,2,2,NCT04734015,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Different identity,gender_diverse,mapped,True,2,2,NCT05906784,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Enrolled,,unrecognized,False,2,2,NCT02768727,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Expansion Phase,,unrecognized,False,2,2,NCT01693562,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,F-F,,unrecognized,True,2,2,NCT03959241,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,F-M,,unrecognized,True,2,2,NCT03959241,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,F-F,,unrecognized,True,2,2,NCT02793544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,F-M,,unrecognized,True,2,2,NCT02793544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Father,,structural_or_group,False,2,2,NCT02937194,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Female (at birth),female,mapped,True,3,2,NCT03964415,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Female (at birth),female,mapped,True,3,2,NCT05875974,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,"Female Donor, Female Recipient",female,mapped,True,2,2,NCT02266888,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,"Female Donor, Male Recipient",female,mapped,True,2,2,NCT02266888,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Female gender,female,mapped,True,2,2,NCT05339659,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Female patients,female,mapped,True,2,2,NCT05627596,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Female sex,female,mapped,True,2,2,NCT04755283,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Female gender,female,mapped,True,2,2,NCT06331403,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Female patients,female,mapped,True,2,2,NCT02555228,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Female sex,female,mapped,True,2,2,NCT01154296,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Female to Male Transgender,ambiguous,mapped,True,2,2,NCT04646369,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Full Analysis Set,,unrecognized,False,2,2,NCT03487445,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Full Analysis Set,,unrecognized,False,2,2,NCT02603809,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,GA28948 & GA28949 Pooled Population,,unrecognized,False,2,2,NCT02171429,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Gay or Lesbian,,sexual_orientation,True,2,2,NCT03316911,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Gay or lesbian,,sexual_orientation,True,2,2,NCT04342494,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Gay/Homosexual,,sexual_orientation,True,2,2,NCT04041414,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Gender Fluid,gender_diverse,mapped,True,2,2,NCT04757649,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Gay/Homosexual,,sexual_orientation,True,2,2,NCT03213366,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Gender Fluid,gender_diverse,mapped,True,2,2,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Gender Identification,,unrecognized,False,2,2,NCT04276935,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Gender Identity : Other,gender_diverse,mapped,True,2,2,NCT04559698,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Gender Non-Conforming,gender_diverse,mapped,True,2,2,NCT04757649,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Gender Non-Conforming,gender_diverse,mapped,True,2,2,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Gender Nonconforming,gender_diverse,mapped,True,2,2,NCT03873337,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Gender Nonconforming/Gender Variant,gender_diverse,mapped,True,2,2,NCT04811664,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Gender Nonconforming/Gender Variant,gender_diverse,mapped,True,2,2,NCT03670355,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Gender fluid,gender_diverse,mapped,True,2,2,NCT03954535,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Gender Nonconforming/Gender Variant,gender_diverse,mapped,True,2,2,NCT04811664,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Gender fluid,gender_diverse,mapped,True,2,2,NCT06552325,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Gender nonconforming,gender_diverse,mapped,True,2,2,NCT06487390,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Gender queer,gender_diverse,mapped,True,2,2,NCT01327651,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Gender unknown,unknown,mapped,True,2,2,NCT05535777,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Genderfluid,gender_diverse,mapped,True,2,2,NCT04317274,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Genderqueer/Gender Nonconforming,gender_diverse,mapped,True,2,2,NCT03316911,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Girl/Woman,female,mapped,True,2,2,NCT05376358,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Girls,female,mapped,True,2,2,NCT06017050,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Global,,unrecognized,False,2,2,NCT02763579,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Healthcare Workers,,unrecognized,False,2,2,NCT05343390,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Heterosexual/Straight,,sexual_orientation,True,2,2,NCT03213366,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Girl/Woman,female,mapped,True,2,2,NCT05521906,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Girls,female,mapped,True,2,2,NCT00968149,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Global,,unrecognized,False,2,2,NCT03434379,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Healthcare Workers,,unrecognized,False,2,2,NCT04088656,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Heterosexual/Straight,,sexual_orientation,True,2,2,NCT04559698,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,ITT Population,,unrecognized,False,2,2,NCT03622593,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Identified Patient,,unrecognized,False,2,2,NCT05374798,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Induction Phase,,unrecognized,False,2,2,NCT02394028,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Infant sex,,unrecognized,False,2,2,NCT02901665,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Initial Treatment,,unrecognized,False,2,2,NCT02360579,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Intervention (12 months),,unrecognized,False,2,2,NCT05423756,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Induction Phase,,unrecognized,False,2,2,NCT04995029,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Infant sex,,unrecognized,False,2,2,NCT03621943,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Initial Treatment,,unrecognized,False,2,2,NCT03108495,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Intervention (12 months),,unrecognized,False,2,2,NCT05423743,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Kappa FLC Subtype,,unrecognized,False,2,2,NCT04504825,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Lambda FLC Subtype,,unrecognized,False,2,2,NCT04504825,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Lesbian or Gay,,sexual_orientation,True,2,2,NCT06554431,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Lesbian or gay,,sexual_orientation,True,2,2,NCT05512949,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,M-F,,unrecognized,True,2,2,NCT03959241,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,M-M,,unrecognized,True,2,2,NCT03959241,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Main,,unrecognized,False,2,2,NCT02333071,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Lesbian or gay,,sexual_orientation,True,2,2,NCT05393869,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,M-F,,unrecognized,True,2,2,NCT02793544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,M-M,,unrecognized,True,2,2,NCT02793544,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Main,,unrecognized,False,2,2,NCT02338960,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Main Study Phase,,unrecognized,False,2,2,NCT03436797,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Male (at birth),male,mapped,True,3,2,NCT03964415,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Male (at birth),male,mapped,True,3,2,NCT05875974,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,"Male Donor, Female Recipient",female,mapped,True,2,2,NCT02266888,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,"Male Donor, Male Recipient",male,mapped,True,2,2,NCT02266888,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Male Gender,male,mapped,True,2,2,NCT02067039,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Male gender,male,mapped,True,2,2,NCT05339659,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Male Gender,male,mapped,True,2,2,NCT01579214,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Male gender,male,mapped,True,2,2,NCT01053741,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Male only,male,mapped,True,2,2,NCT04550221,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Male patients,male,mapped,True,2,2,NCT05627596,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Male to Female Transgender,ambiguous,mapped,True,2,2,NCT03003403,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Male patients,male,mapped,True,2,2,NCT02555228,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Male to Female Transgender,ambiguous,mapped,True,2,2,NCT04646369,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Male/Female,female,mapped,True,2,2,NCT00916305,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Males who have sex with Men,male,mapped,True,2,2,NCT05797961,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Men who have sex with men,male,mapped,True,2,2,NCT02720094,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Mild,,unrecognized,True,2,2,NCT00276094,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Men who have sex with men,male,mapped,True,2,2,NCT00924898,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Mild,,unrecognized,True,2,2,NCT03332303,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Missing Data,unknown,mapped,True,2,2,NCT03523962,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Missing value,unknown,mapped,True,2,2,NCT01663636,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Missing/Unknown,unknown,mapped,True,2,2,NCT03959241,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Moderate,,unrecognized,True,3,2,NCT00276094,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Multiple,,structural_or_group,True,2,2,NCT04811664,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Missing/Unknown,unknown,mapped,True,2,2,NCT03373110,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Moderate,,unrecognized,True,3,2,NCT03332303,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Multiple,,structural_or_group,True,2,2,NCT03741725,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Neonatal Sex,,unrecognized,False,2,2,NCT03631940,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Never,,unrecognized,True,2,2,NCT05396014,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,No data,unknown,mapped,True,2,2,NCT02624947,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Never,,unrecognized,True,2,2,NCT05161689,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,No data,unknown,mapped,True,2,2,NCT03281200,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,No response,unknown,mapped,True,2,2,NCT03854734,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Non Binary,gender_diverse,mapped,True,2,2,NCT04088097,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Non binary,gender_diverse,mapped,True,2,2,NCT04233372,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -379,36 +379,38 @@ class,Not available,unknown,mapped,True,2,2,NCT00770289,parsers.R@2026-08-17 / o
 category,Not collected,unknown,mapped,True,2,2,NCT01272999,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Not specified,unknown,mapped,True,2,2,NCT04880200,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Number Prefer not to Answer,unknown,mapped,True,2,2,NCT05192109,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,OLE,,unrecognized,False,2,2,NCT02333071,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Other Sexual Orientation,gender_diverse,mapped,True,2,2,NCT04757649,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,OLE,,unrecognized,False,2,2,NCT02338960,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Other Sexual Orientation,gender_diverse,mapped,True,2,2,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Other or unknown,unknown,mapped,True,2,2,NCT04939532,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Other/Missing,unknown,mapped,True,2,2,NCT06516627,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Other/Unknown,unknown,mapped,True,2,2,NCT04228965,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Other/Unknown,unknown,mapped,True,2,2,NCT03628287,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Overall (All Randomized Participants),,unrecognized,False,2,2,NCT04504825,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Overall Study,,unrecognized,False,2,2,NCT06127524,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,PP,,unrecognized,False,2,2,NCT06403605,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Parent gender,,unrecognized,False,2,2,NCT01816074,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Parent participants,,unrecognized,False,2,2,NCT03766906,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Parents/Caregivers,,unrecognized,False,2,2,NCT03388294,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Part I,,unrecognized,False,2,2,NCT02065882,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Part II,,unrecognized,False,2,2,NCT02065882,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Participants with dementia,,unrecognized,False,2,2,NCT04621448,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Partners,,unrecognized,False,2,2,NCT02240485,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Overall Study,,unrecognized,False,2,2,NCT04104022,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,PP,,unrecognized,False,2,2,NCT04796935,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Parent gender,,unrecognized,False,2,2,NCT01332851,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Parent participants,,unrecognized,False,2,2,NCT05229120,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Parents/Caregivers,,unrecognized,False,2,2,NCT05019144,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Part A (15 Days),,unrecognized,False,2,2,NCT05882357,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Part B (24 Weeks),,unrecognized,False,2,2,NCT05882357,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Part I,,unrecognized,False,2,2,NCT02159066,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Part II,,unrecognized,False,2,2,NCT02159066,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Participants with dementia,,unrecognized,False,2,2,NCT04238520,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Partners,,unrecognized,False,2,2,NCT03784820,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Patient Participants,,unrecognized,False,2,2,NCT03773757,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Per Protocol Set,,unrecognized,False,2,2,NCT03487445,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Phase 1b,,unrecognized,False,2,2,NCT03123783,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Physician,,unrecognized,False,2,2,NCT02320175,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Per Protocol Set,,unrecognized,False,2,2,NCT02603809,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Phase 1b,,unrecognized,False,2,2,NCT02795988,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Physician,,unrecognized,False,2,2,NCT03658642,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Prefer not to Answer,unknown,mapped,True,2,2,NCT04859699,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Prefer to self-describe,gender_diverse,mapped,True,2,2,NCT04330365,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Prefer to self-describe,gender_diverse,mapped,True,2,2,NCT04334109,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Preschoolers,,unrecognized,False,2,2,NCT04164277,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Questioning,gender_diverse,mapped,True,2,2,NCT03242954,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Questioning or unsure,unknown,mapped,True,2,2,NCT04958694,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Questioning or unsure,unknown,mapped,True,2,2,NCT04108988,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Refused,unknown,mapped,True,2,2,NCT03683173,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Refused to answer,unknown,mapped,True,2,2,NCT02183909,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Refused to answer,unknown,mapped,True,2,2,NCT03624972,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Refused/Missing,unknown,mapped,True,2,2,NCT05819086,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Reported Gender,,unrecognized,False,2,2,NCT03565497,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Retreatment,,unrecognized,False,2,2,NCT02360579,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Severe,,unrecognized,True,3,2,NCT00276094,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Retreatment,,unrecognized,False,2,2,NCT03108495,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Severe,,unrecognized,True,3,2,NCT03332303,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Sex Data for Participants Enrolled in Study mRNA-1273-P301,,unrecognized,False,2,2,NCT04796896,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Sex of Child,,unrecognized,False,2,2,NCT03575884,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Sex of Parent,,unrecognized,False,2,2,NCT03575884,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -417,57 +419,58 @@ class,"Sex, female",female,mapped,True,2,2,NCT02572323,parsers.R@2026-08-17 / ou
 class,"Sex, male",male,mapped,True,2,2,NCT02572323,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,"Sex, n",,unrecognized,False,2,2,NCT01852071,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Sex/gender unknown,unknown,mapped,True,2,2,NCT06046872,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Sexual desire,,unrecognized,False,2,2,NCT00351819,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Sexual desire,,unrecognized,False,2,2,NCT00512707,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Sexual satisfaction,,unrecognized,False,2,2,NCT03624972,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Significant other,gender_diverse,mapped,True,2,2,NCT06756113,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Significant other,gender_diverse,mapped,True,2,2,NCT06226649,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Something else,gender_diverse,mapped,True,2,2,NCT04589559,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Sometimes,,unrecognized,True,2,2,NCT05396014,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Straight or Heterosexual,,sexual_orientation,True,2,2,NCT06554431,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Straight or Heterosexual,,sexual_orientation,True,2,2,NCT04278586,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Substudy,,unrecognized,False,2,2,NCT04777201,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Survivors,,unrecognized,False,2,2,NCT06517394,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Teens,,unrecognized,False,2,2,NCT04333966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Trans,gender_diverse,mapped,True,2,2,NCT05984966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Sometimes,,unrecognized,True,2,2,NCT03741725,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Straight or Heterosexual,,sexual_orientation,True,2,2,NCT03313310,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Straight or Heterosexual,,sexual_orientation,True,2,2,NCT03628287,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Students,,unrecognized,False,2,2,NCT05277194,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Substudy,,unrecognized,False,2,2,NCT05375929,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Survivors,,unrecognized,False,2,2,NCT02222337,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Teens,,unrecognized,False,2,2,NCT04317664,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Trans,gender_diverse,mapped,True,2,2,NCT05521906,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Trans Female/Trans Woman,ambiguous,mapped,True,2,2,NCT03316911,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Trans Male/Trans Man,ambiguous,mapped,True,2,2,NCT03316911,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Trans Man,ambiguous,mapped,True,2,2,NCT04757649,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Trans Woman,ambiguous,mapped,True,2,2,NCT04757649,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Trans female,ambiguous,mapped,True,2,2,NCT03838510,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Trans Man,ambiguous,mapped,True,2,2,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Trans Woman,ambiguous,mapped,True,2,2,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Trans female,ambiguous,mapped,True,2,2,NCT06634342,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Trans man,ambiguous,mapped,True,2,2,NCT03242954,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Trans woman,ambiguous,mapped,True,2,2,NCT03242954,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Transgender (Female to Male),ambiguous,mapped,True,2,2,NCT02460692,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Transgender Man,ambiguous,mapped,True,2,2,NCT03464422,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Transgender (Female to Male),ambiguous,mapped,True,2,2,NCT02567266,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Transgender Man,ambiguous,mapped,True,2,2,NCT04811664,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Transgender Men,ambiguous,mapped,True,4,2,NCT05626231,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Transgender Spectrum,gender_diverse,mapped,True,2,2,NCT02859558,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Transgender Women,ambiguous,mapped,True,2,2,NCT02842086,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Transgender Spectrum,gender_diverse,mapped,True,2,2,NCT03512210,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Transgender Women,ambiguous,mapped,True,4,2,NCT05626231,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Transgender Women,ambiguous,mapped,True,2,2,NCT02842086,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Transgender male,ambiguous,mapped,True,2,2,NCT06509100,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Transgender man,ambiguous,mapped,True,2,2,NCT05852015,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Transgender man,ambiguous,mapped,True,2,2,NCT04408469,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Transgender women,ambiguous,mapped,True,2,2,NCT02597790,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Transgender/Other,gender_diverse,mapped,True,2,2,NCT05514002,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Transgender/Other,gender_diverse,mapped,True,2,2,NCT05467982,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Transgender/non-binary,gender_diverse,mapped,True,2,2,NCT03522324,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Transwoman,gender_diverse,mapped,True,2,2,NCT04269434,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Treatment-Naive Population,,unrecognized,False,2,2,NCT03622593,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Two-spirit,gender_diverse,mapped,True,2,2,NCT02929069,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Two-spirit,gender_diverse,mapped,True,2,2,NCT03751020,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Undecided,,unrecognized,True,2,2,NCT03308097,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,United States,,unrecognized,False,2,2,NCT06456671,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unknown gender,unknown,mapped,True,2,2,NCT04750902,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unknown/Unreported,unknown,mapped,True,2,2,NCT05305443,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,White,,structural_or_group,False,2,2,NCT01316887,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,White,,structural_or_group,False,2,2,NCT07458737,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Youth Sex Demographics,,unrecognized,False,2,2,NCT04506437,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,adolescents,,unrecognized,False,2,2,NCT02693665,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,any gender,,structural_or_group,False,2,2,NCT00138073,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,adolescents,,unrecognized,False,2,2,NCT04231669,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,any gender,,structural_or_group,False,2,2,NCT04460690,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,cisgender man,ambiguous,mapped,True,2,2,NCT05471349,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,females,female,mapped,True,2,2,NCT01811355,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,men,male,mapped,True,2,2,NCT05199467,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,non-binary,gender_diverse,mapped,True,2,2,NCT04602741,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,females,female,mapped,True,2,2,NCT01280617,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,men,male,mapped,True,2,2,NCT05997901,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,non-binary,gender_diverse,mapped,True,2,2,NCT03877744,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,not reported,unknown,mapped,True,2,2,NCT05186311,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,number of participants,,structural_or_group,True,2,2,NCT05933525,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,other,gender_diverse,mapped,True,2,2,NCT04464720,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,number of participants,,structural_or_group,True,2,2,NCT01196533,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,other,gender_diverse,mapped,True,2,2,NCT04573972,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,patients,,structural_or_group,False,2,2,NCT03046121,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,transgender woman,ambiguous,mapped,True,2,2,NCT05471349,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,unreported,unknown,mapped,True,2,2,NCT05472116,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,women,female,mapped,True,2,2,NCT02073929,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,women,female,mapped,True,2,2,NCT01722097,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,% Female Sex,female,mapped,True,1,1,NCT01868334,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,0,,unrecognized,True,1,1,NCT00865566,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,0 Criteria,,unrecognized,False,1,1,NCT03313310,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -540,8 +543,8 @@ class,AYA,,unrecognized,False,1,1,NCT06191679,parsers.R@2026-08-17 / outcomes@20
 class,AYA living with HIV,,unrecognized,False,1,1,NCT03758066,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Abol Field Station,,unrecognized,False,1,1,NCT00223990,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,About half the time,,unrecognized,True,1,1,NCT05161689,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Absent,,unrecognized,True,1,1,NCT03332303,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Absent,,unrecognized,True,1,1,NCT05617820,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Absent,,unrecognized,True,1,1,NCT03332303,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,According to Group,,unrecognized,False,1,1,NCT05253573,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Ace/Asexual,,sexual_orientation,True,1,1,NCT05393869,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,"Active Phase, Female",female,mapped,True,1,1,NCT00603733,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -623,10 +626,10 @@ class,Androgynous,gender_diverse,mapped,True,1,1,NCT04498143,parsers.R@2026-08-1
 class,Another Gender,gender_diverse,mapped,True,1,1,NCT05849051,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,"Another category (transgender, genderqueer, bigender, agender)",gender_diverse,mapped,True,1,1,NCT05150860,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Another description,gender_diverse,mapped,True,1,1,NCT06290180,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Another gender,gender_diverse,mapped,True,1,1,NCT03539900,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Another gender,gender_diverse,mapped,True,1,1,NCT04643964,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Another gender identity,gender_diverse,mapped,True,1,1,NCT04223687,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Another gender,gender_diverse,mapped,True,1,1,NCT03539900,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Another gender identity,gender_diverse,mapped,True,1,1,NCT04742491,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Another gender identity,gender_diverse,mapped,True,1,1,NCT04223687,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Anxiety Patients,,unrecognized,False,1,1,NCT00055224,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Any female dyspareunia reported,female,mapped,True,1,1,NCT01262573,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Any male dyspareunia reported,male,mapped,True,1,1,NCT01262573,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -686,8 +689,8 @@ class,Blood contact/exchange,,unrecognized,False,1,1,NCT04233372,parsers.R@2026-
 class,Booster Period Month 49,,unrecognized,False,1,1,NCT00955682,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Booster Phase: Placebo,,unrecognized,False,1,1,NCT03970733,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Booster Phase: VLA15 with Alum higher dose,,unrecognized,False,1,1,NCT03970733,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Both,,structural_or_group,True,1,1,NCT04148508,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Both,,structural_or_group,True,1,1,NCT04363320,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Both,,structural_or_group,True,1,1,NCT04148508,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Both Male and Female,female,mapped,True,1,1,NCT03670355,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Both genders,,structural_or_group,False,1,1,NCT01365091,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Both male or female,female,mapped,True,1,1,NCT01650584,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -917,8 +920,8 @@ category,Declined to respond,unknown,mapped,True,1,1,NCT06172907,parsers.R@2026-
 category,Declined to state,unknown,mapped,True,2,1,NCT04446910,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Dementia Caregiver,,unrecognized,False,1,1,NCT03896711,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Demiboy,male,mapped,True,1,1,NCT06479980,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Demisexual,,unrecognized,True,1,1,NCT03912753,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Demisexual,,unrecognized,False,1,1,NCT06229132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Demisexual,,unrecognized,True,1,1,NCT03912753,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Demographic information not collected,unknown,mapped,True,1,1,NCT00827502,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Demographics,,unrecognized,False,1,1,NCT03297645,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Demographics Across Arms,,unrecognized,False,1,1,NCT02981303,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -930,10 +933,10 @@ class,Did not collect,unknown,mapped,True,1,1,NCT03712891,parsers.R@2026-08-17 /
 category,Did not give,unknown,mapped,True,1,1,NCT04643964,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Did not have anal sex with men in the past 6 months,male,mapped,True,1,1,NCT05161689,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Did not have receptive sex without a condom in past 3 months,,unrecognized,True,1,1,NCT03897049,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Did not identify,unknown,mapped,True,1,1,NCT04697173,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Did not identify,unknown,mapped,True,1,1,NCT02747849,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Did not report,unknown,mapped,True,1,1,NCT05302440,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Did not identify,unknown,mapped,True,1,1,NCT04697173,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Did not report,unknown,mapped,True,1,1,NCT04344028,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Did not report,unknown,mapped,True,1,1,NCT05302440,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Did not respond,unknown,mapped,True,1,1,NCT04180020,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Did not specify,,unrecognized,True,1,1,NCT06425458,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Disagree,,unrecognized,True,1,1,NCT03808883,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -943,8 +946,8 @@ category,Disclosed to others,gender_diverse,mapped,True,1,1,NCT02796963,parsers.
 class,Distribution of Male/Female Participants,female,mapped,True,1,1,NCT04078126,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Diverse,gender_diverse,mapped,True,2,1,NCT03550131,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Do Not Identify As Any of These Options,gender_diverse,mapped,True,1,1,NCT04168645,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,"Do not identify as female, male, or transgender",ambiguous,mapped,True,1,1,NCT05319600,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,"Do not identify as female, male, or transgender",ambiguous,mapped,True,1,1,NCT04445792,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,"Do not identify as female, male, or transgender",ambiguous,mapped,True,1,1,NCT05319600,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Do not wish to disclose,unknown,mapped,True,1,1,NCT03543865,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Do not wish to report,unknown,mapped,True,1,1,NCT04556591,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Do not wish to say,unknown,mapped,True,1,1,NCT06638840,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -968,6 +971,7 @@ class,Double-blind 8 week arm,,structural_or_group,False,1,1,NCT00958633,parsers
 class,Double-blind period,,unrecognized,False,1,1,NCT04424927,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Dual Intervention,,unrecognized,False,1,1,NCT03316950,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,"Due to privacy concerns of single participant, data will not be shown for this outcome",,unrecognized,False,1,1,NCT04986072,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,ED RCT,,unrecognized,False,1,1,NCT03584386,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,ELL (English Language Learner),,unrecognized,True,1,1,NCT04717479,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,EMPOWER Study (randomized),,unrecognized,False,1,1,NCT03445988,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Efficacy Population,,unrecognized,False,1,1,NCT02221869,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -1337,8 +1341,8 @@ class,Heterosexual Male,,sexual_orientation,True,1,1,NCT00924898,parsers.R@2026-
 category,Heterosexual Males (HM),,sexual_orientation,True,1,1,NCT04635423,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Heterosexual or Other,gender_diverse,mapped,True,1,1,NCT03535337,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Heterosexual or Straight,,sexual_orientation,True,1,1,NCT04881942,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Heterosexual or straight,,sexual_orientation,True,1,1,NCT05512949,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Heterosexual or straight,,sexual_orientation,True,1,1,NCT04762537,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Heterosexual or straight,,sexual_orientation,True,1,1,NCT05512949,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,History of STI :,,unrecognized,False,1,1,NCT03058835,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Home-Based Trust,,unrecognized,False,1,1,NCT02354482,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Homosexual or gay,,sexual_orientation,True,1,1,NCT03842436,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -1407,8 +1411,8 @@ class,Kitare Field Station,,unrecognized,False,1,1,NCT00223990,parsers.R@2026-08
 class,Known Gender,,unrecognized,False,1,1,NCT02206035,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Kuoyo-Kowe Field Station,,unrecognized,False,1,1,NCT00223990,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,LGBQ,,unrecognized,True,1,1,NCT02332239,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,LGBTQ+,,unrecognized,True,1,1,NCT05838027,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,LGBTQ+,,unrecognized,False,1,1,NCT02951455,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,LGBTQ+,,unrecognized,True,1,1,NCT05838027,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,LTF and Minute Ventilation Analysis Population,,unrecognized,False,1,1,NCT00732199,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Lanadelumab Sub-protocol,,unrecognized,False,1,1,NCT04590586,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Lead-In TP1: Humira (Adalimumab),,unrecognized,False,1,1,NCT04230213,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -1651,8 +1655,8 @@ class,NSCLC,,unrecognized,False,1,1,NCT03004183,parsers.R@2026-08-17 / outcomes@
 class,Nduru Kadero Field Station,,unrecognized,False,1,1,NCT00223990,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Needle Syringe Program,,unrecognized,False,1,1,NCT06187415,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Negative,,unrecognized,False,1,1,NCT00978068,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Neither,,structural_or_group,True,1,1,NCT04148508,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Neither,,structural_or_group,True,1,1,NCT03810053,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Neither,,structural_or_group,True,1,1,NCT04148508,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Neither male nor female,female,mapped,True,1,1,NCT04504357,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Neonates,,structural_or_group,False,1,1,NCT04152603,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Nephrologists,,unrecognized,False,1,1,NCT04392440,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -1743,8 +1747,8 @@ category,Not Collected,unknown,mapped,True,1,1,NCT02657577,parsers.R@2026-08-17 
 class,Not Disclosed,unknown,mapped,True,1,1,NCT02995434,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Not Frail,,unrecognized,False,1,1,NCT03354546,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Not Indicated,unknown,mapped,True,1,1,NCT04949243,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Not Provided,unknown,mapped,True,1,1,NCT06213701,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Not Provided,unknown,mapped,True,1,1,NCT01804036,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Not Provided,unknown,mapped,True,1,1,NCT06213701,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Not Recorded,unknown,mapped,True,1,1,NCT04553484,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Not Reported or Other,unknown,mapped,True,1,1,NCT04491539,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Not Sexually Active with ED,,unrecognized,True,1,1,NCT00384930,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -1814,8 +1818,8 @@ category,Other (prefer to self-describe),gender_diverse,mapped,True,1,1,NCT04935
 category,Other (self described as genderqueer or nonbinary),gender_diverse,mapped,False,1,1,NCT03254940,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Other (unspecified),unknown,mapped,True,1,1,NCT04950816,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Other / Missing,unknown,mapped,True,1,1,NCT05916664,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Other Gender Identity,gender_diverse,mapped,True,1,1,NCT03313310,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Other Gender Identity,gender_diverse,mapped,True,1,1,NCT05087966,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Other Gender Identity,gender_diverse,mapped,True,1,1,NCT03313310,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Other Identity,gender_diverse,mapped,True,6,1,NCT05132322,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Other combination,gender_diverse,mapped,True,1,1,NCT03419078,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Other identity,gender_diverse,mapped,True,1,1,NCT04974580,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -1838,8 +1842,8 @@ class,Other/Not Listed Above,unknown,mapped,True,1,1,NCT05900700,parsers.R@2026-
 category,Other/Not Reported,unknown,mapped,True,1,1,NCT04678245,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Other/Not Specified,unknown,mapped,True,1,1,NCT03277794,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Other/Not listed,unknown,mapped,True,1,1,NCT04498143,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Other/Prefer not to answer,unknown,mapped,True,1,1,NCT03923582,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Other/Prefer not to answer,unknown,mapped,True,1,1,NCT04971967,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Other/Prefer not to answer,unknown,mapped,True,1,1,NCT03923582,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Other/Queer,gender_diverse,mapped,True,1,1,NCT04289116,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Other/Refused/Missing,unknown,mapped,True,1,1,NCT04246593,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Other/Unknown,unknown,mapped,True,1,1,NCT06554431,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -1919,7 +1923,6 @@ class,Part 2 (OLE),,unrecognized,False,1,1,NCT03098797,parsers.R@2026-08-17 / ou
 class,Part 2-Arm C-Cohort 5 only,,structural_or_group,False,1,1,NCT03184870,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Part 2: Open-label extension period (Week 16 and onwards),,structural_or_group,False,1,1,NCT02036970,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Part 3,,unrecognized,False,1,1,NCT04905407,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Part A (15 Days),,unrecognized,False,1,1,NCT03691779,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Part A (<14 kg Weight),,unrecognized,False,1,1,NCT02797132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Part A (>=14 kg Weight),,unrecognized,False,1,1,NCT02797132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Part A (n = 9): Female,female,mapped,True,1,1,NCT01705145,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -1934,7 +1937,6 @@ class,Part A.2 and Parts J,,unrecognized,False,1,1,NCT04927065,parsers.R@2026-08
 class,Part A: Female (n = 8),female,mapped,True,1,1,NCT01161537,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Part A: Male (n = 8),male,mapped,True,1,1,NCT01161537,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Part A: Part A: Dose Escalation (Within Group),,unrecognized,False,1,1,NCT02705755,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Part B (24 Weeks),,unrecognized,False,1,1,NCT03691779,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Part B (<14 kg Weight),,unrecognized,False,1,1,NCT02797132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Part B (>=14 kg Weight),,unrecognized,False,1,1,NCT02797132,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Part B (n = 34): Female,female,mapped,True,1,1,NCT01705145,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -2104,8 +2106,8 @@ class,Pregnant,,structural_or_group,False,1,1,NCT05764408,parsers.R@2026-08-17 /
 class,Pregnant Women,female,mapped,True,1,1,NCT01400880,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Premenopausal females,female,mapped,True,1,1,NCT04267562,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Premenopausal women: estrogen substitution,female,mapped,True,1,1,NCT01546922,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Present,,unrecognized,True,1,1,NCT03332303,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Present,,unrecognized,True,1,1,NCT05617820,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Present,,unrecognized,True,1,1,NCT03332303,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Previously Treated : Female,female,mapped,True,1,1,NCT00633594,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Previously Treated : Male,male,mapped,True,1,1,NCT00633594,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Previously Treated Participants,,unrecognized,False,1,1,NCT02699450,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -2357,7 +2359,6 @@ class,Student Gender,,unrecognized,False,1,1,NCT03740113,parsers.R@2026-08-17 / 
 class,Student gender (number that are male) by cluster.,male,mapped,True,1,1,NCT03694418,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Student participants,,unrecognized,False,1,1,NCT03766906,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Students,,unrecognized,False,6,1,NCT04752189,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Students,,unrecognized,False,1,1,NCT03132805,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Students: Female,female,mapped,True,1,1,NCT00612690,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Students: Male,male,mapped,True,1,1,NCT00612690,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Study 1,,unrecognized,False,1,1,NCT04169373,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -2405,6 +2406,7 @@ class,Teen Gender,,unrecognized,False,1,1,NCT03521115,parsers.R@2026-08-17 / out
 class,Teen Male,male,mapped,True,1,1,NCT03592186,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Teen Other / Prefer not to answer,unknown,mapped,True,1,1,NCT03592186,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Teen Participants,,unrecognized,False,1,1,NCT03506880,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Telehealth RCT,,unrecognized,False,1,1,NCT03584386,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Thailand/Mae Ramat,,unrecognized,False,1,1,NCT00440999,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Thailand/Mae Sot,,unrecognized,False,1,1,NCT00440999,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,The Children's Hospital Colorado Base ED,,unrecognized,False,1,1,NCT01657344,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -2447,6 +2449,7 @@ class,Trans woman,ambiguous,mapped,True,1,1,NCT05187442,parsers.R@2026-08-17 / o
 category,Trans-female,ambiguous,mapped,True,1,1,NCT04307394,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Trans-male,ambiguous,mapped,True,1,1,NCT04307394,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Trans/FTM,gender_diverse,mapped,True,1,1,NCT02427399,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Trans/Non-binary,gender_diverse,mapped,True,1,1,NCT03356483,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Trans/Other gender identity,gender_diverse,mapped,True,1,1,NCT03654690,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Trans/nonbinary,gender_diverse,mapped,True,1,1,NCT03867734,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,TransMale,male,mapped,True,2,1,NCT04446910,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -2458,8 +2461,8 @@ class,Transfemale or Transwoman,gender_diverse,mapped,True,1,1,NCT03313310,parse
 class,Transfemale/trans woman,ambiguous,mapped,True,1,1,NCT05906784,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Transformista,,unrecognized,True,1,1,NCT06316102,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Transgender (Female-to-Male),ambiguous,mapped,True,1,1,NCT05280756,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,Transgender (Male to Female),ambiguous,mapped,True,1,1,NCT02460692,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Transgender (Male to Female),ambiguous,mapped,True,1,1,NCT01354314,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Transgender (Male to Female),ambiguous,mapped,True,1,1,NCT02460692,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Transgender (Male-to-Female),ambiguous,mapped,True,1,1,NCT05280756,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Transgender (female to male),ambiguous,mapped,True,1,1,NCT04418076,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Transgender (female),ambiguous,mapped,True,1,1,NCT04646291,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -2581,10 +2584,11 @@ class,Unknown or non-binary,unknown,mapped,True,1,1,NCT04601480,parsers.R@2026-0
 class,Unknown or other,unknown,mapped,True,1,1,NCT06648226,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unknown or refused to answer,unknown,mapped,True,1,1,NCT06264726,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,"Unknown, Not Reported",unknown,mapped,True,2,1,NCT05965323,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,"Unknown, Refused, or Missing",unknown,mapped,True,1,1,NCT05500274,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,"Unknown, Refused, or Missing",unknown,mapped,True,1,1,NCT04743908,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,"Unknown, Refused, or Missing",unknown,mapped,True,1,1,NCT05500274,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,"Unknown, not reported",unknown,mapped,True,1,1,NCT03987581,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Unknown/ Non Response,unknown,mapped,True,1,1,NCT02909673,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,Unknown/Missing,unknown,mapped,True,1,1,NCT05505435,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unknown/Not Specified,unknown,mapped,True,1,1,NCT04126278,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Unknown/Not Stated,unknown,mapped,True,1,1,NCT01467466,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Unknown/Other,unknown,mapped,True,1,1,NCT04133831,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -2592,8 +2596,8 @@ class,Unknown/Other/Not Reported,unknown,mapped,True,1,1,NCT00244374,parsers.R@2
 class,Unknown/Refused/Prefer not to answer,unknown,mapped,True,1,1,NCT04274764,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Unknown/missing,unknown,mapped,True,1,1,NCT06199934,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Unknown/not collected,unknown,mapped,True,1,1,NCT06000683,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-class,Unknown/not reported,unknown,mapped,True,1,1,NCT00128713,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Unknown/not reported,unknown,mapped,True,1,1,NCT03581123,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+class,Unknown/not reported,unknown,mapped,True,1,1,NCT00128713,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unknown/unlisted,unknown,mapped,True,1,1,NCT03698591,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 category,Unknown: Missing Data,unknown,mapped,True,1,1,NCT05376371,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,Unkown,,unrecognized,True,1,1,NCT04601493,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
@@ -2772,5 +2776,5 @@ category,transgender men,ambiguous,mapped,True,1,1,NCT04517604,parsers.R@2026-08
 category,transgender women,ambiguous,mapped,True,1,1,NCT04517604,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,two-spirit,gender_diverse,mapped,True,1,1,NCT04376346,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,unspecified,unknown,mapped,True,1,1,NCT00892008,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
-category,woman,female,mapped,True,1,1,NCT02969512,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
 class,woman,female,mapped,True,1,1,NCT04602741,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
+category,woman,female,mapped,True,1,1,NCT02969512,parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14
