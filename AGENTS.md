@@ -1,6 +1,9 @@
 # AGENTS.md
 
-Guidance for AI agents working in this repository.
+Guidance for AI agents working in this repository. This is the effective root
+instruction file; [CLAUDE.md](CLAUDE.md) supplies architecture and coding
+constraints for this repository, and [verify.md](verify.md) is the canonical
+setup and verification guide.
 
 ## What this repository is
 
@@ -13,6 +16,54 @@ where GitHub Pages serves them to the dashboard.
 Nothing here is part of the website itself. A change to how the dashboard
 looks or behaves belongs in the site repo; a change to what the numbers *are*
 belongs here.
+
+## Start here
+
+Before choosing checks, read the applicable instructions from the workspace
+through the files being changed, including nested AGENTS.md files and any
+AGENTS.override.md files. Capitalization matters on Linux. An override takes
+precedence over AGENTS.md in the same directory; any active override must
+preserve the requirement to consult [verify.md](verify.md) when selecting
+checks and again before declaring work complete. Check the current tree rather
+than assuming the instruction hierarchy is unchanged.
+
+| Responsibility | Entry points and source of truth |
+|---|---|
+| Weekly extraction and standardization | [src/extract_all.py](src/extract_all.py), [src/api_client.py](src/api_client.py), the dimension extractors under [src/](src/), and canonical [condition_ontology.json](condition_ontology.json) |
+| Published dataset layout | [scripts/split_data.py](scripts/split_data.py), [src/site_layout.py](src/site_layout.py), [scripts/check_site_contract.py](scripts/check_site_contract.py); the **site repository** owns tests/record_contract.json and tests/data_budget.json |
+| Initial Overview summary | [src/first_view.py](src/first_view.py), [scripts/generate_mobile_data.py](scripts/generate_mobile_data.py), [scripts/first_view_parity.mjs](scripts/first_view_parity.mjs); the site's actual Overview code defines the counts |
+| Sponsors | [sponsors/README.md](sponsors/README.md), curated [sponsors/company_aliases.csv](sponsors/company_aliases.csv), Python attribution and its JavaScript parity module |
+| Sex/gender table | The parser and wrapper described below, [tests/sex_gender/](tests/sex_gender/), retained raw measures and their provenance |
+| LLM document streams | [scripts/extraction/prompts/README.md](scripts/extraction/prompts/README.md), extraction scripts and their separate requirements file |
+| Automation and retention | [.github/workflows/](.github/workflows/), [scripts/prune_snapshots.py](scripts/prune_snapshots.py); publication writes to the site repository |
+| Setup, architecture, checks | [README.md](README.md), [CLAUDE.md](CLAUDE.md), [verify.md](verify.md), [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+
+The repositories communicate through generated files, not a running backend
+API. The engine owns analytical definitions, extraction and provenance; the
+site owns the fields/layout its readers require, its size budgets and the
+geography pin. The engine's copied contract fixture lets tests run offline;
+it is not a replacement for a missing or incompatible site contract. See
+[the connected verification path](verify.md#connected-verification) before
+changing either side of that interface. Whole-record parts remain supported
+while the site's layout switch is off; the reader supports both inline and
+version-1 split datasets. Enabling split is a separate owner decision, not a
+prerequisite for verifying the supported inline production path.
+
+For each change:
+
+1. Inspect branch/status, the affected code and applicable instructions;
+   preserve unrelated and concurrent edits.
+2. Write concrete acceptance criteria, including unchanged data semantics and
+   downstream compatibility. Identify input provenance and required checks
+   with [verify.md](verify.md).
+3. Implement one focused change; add a meaningful regression case when
+   behavior changes, preserving the gates below.
+4. Run the selected checks and required CI gates. Distinguish fixture results,
+   real-input runs and actual producer-to-site checks; record skipped or blocked
+   checks and their reasons.
+5. Re-read the applicable instructions and verification guide, inspect the
+   complete diff, run git diff --check, and report commands, outcomes and
+   remaining risks. Session results belong in the completion report, not here.
 
 ## Repository workflow
 
@@ -270,6 +321,10 @@ source without anything noticing.
 as environment variables at run time.
 
 ## Running the checks
+
+Consult [verify.md](verify.md) for runtime setup, targeted checks, side effects,
+expected evidence and connected verification. Preserve these CI gates; the
+first Bash block below is checked against CI by the documentation tests.
 
 ```bash
 pip install -r requirements-dev.txt                 # includes requirements.txt
