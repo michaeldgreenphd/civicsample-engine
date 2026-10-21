@@ -11,6 +11,10 @@ of the website itself — if you want to change how the dashboard looks or
 behaves, you're in the wrong repo; if you want to change what the numbers
 *are*, you're in the right one.
 
+For repository guidance, read [AGENTS.md](AGENTS.md), the architecture and
+coding constraints in [CLAUDE.md](CLAUDE.md), and the canonical
+[setup and verification guide](verify.md).
+
 ## What happens every Sunday
 
 The weekly run (`extract.yml`, Sundays 06:00 UTC) does six things, in order:
@@ -109,9 +113,6 @@ site repository's git history, which is never rewritten.
 | `src/sex_gender_parser.py` | The sex and gender manuscript's deterministic parser, vendored unchanged. Its rules are the paper's; changes go into the bundle first, then get re-vendored |
 | `src/sex_gender_table.py` | The per-trial `sex_gender` row built from that parser: five-state status, outcomes, provenance, `enrollment_minus_parsed`. No denominator balancing |
 | `data/sex_gender_audit/` | The weekly sex/gender curation inbox: unrecognized labels with ages, labels that left the inbox, bucket changes with causes, and the status-count drift, all stamped with the parser rules version |
-| `src/sex_gender_parser.py` | The sex and gender manuscript's deterministic parser, vendored unchanged. Its rules are the paper's; changes go into the bundle first, then get re-vendored |
-| `src/sex_gender_table.py` | The per-trial `sex_gender` row built from that parser: five-state status, outcomes, provenance, `enrollment_minus_parsed`. No denominator balancing |
-| `data/sex_gender_audit/` | The weekly sex/gender curation inbox: unrecognized labels with ages, labels that left the inbox, bucket changes with causes, and the status-count drift, all stamped with the parser rules version |
 | `condition_ontology.json` | The condition category tree. Canonical copy — edit it here; the weekly run publishes it to the site |
 | `data/` | Inputs: pilot PDF sets and review CSVs, tracked so CI can run pilots. Also the committed record of LLM extraction outputs. Weekly artifacts are *never* committed here (`.gitignore` enforces this) |
 | `.github/workflows/` | The schedules. `ci.yml` gates every push: everything must compile, the extractor harness must pass, and `pytest tests` must pass (sponsor rules, index, adapter parity against AACT, the 2026-06-19 fixture regression, the three-week audit loop, snapshot pruning) |
@@ -152,21 +153,14 @@ dropdown. Until that lands, `anthropic` is the only live provider.
 
 ## Running it locally
 
-```bash
-pip install -r requirements.txt                       # weekly pipeline
-pip install -r scripts/extraction/requirements.txt    # + LLM streams
-
-pip install -r requirements-dev.txt  # + pytest, for the test suite
-
-python scripts/validate_fixes.py    # the extractor test harness (no network)
-python -m pytest tests -q           # the Python test suite (needs node: the first-view parity)
-node --test tests/sponsors/*.test.mjs   # the browser filter module
-python -m src.extract_all --output data/demographics.json --results-after 2009-01-01
-# the site's dataset files, from the site's own contract (a site checkout's tests/)
-python scripts/split_data.py --contract ../clinical-trial-populations/tests/record_contract.json
-```
-
-Run everything from the repo root — paths are relative to it.
+Use [verify.md](verify.md) for Python/Node versions, dependency setup, the
+mandatory CI commands, targeted tests and the connected producer-to-site
+smoke test. The Python suite also needs Node for first-view parity and GitHub
+access for its pinned site-excerpt check. The guide distinguishes fixtures,
+checks against published files, a disposable producer rehearsal, and live
+registry or paid LLM runs. There is no backend server to start. Run engine
+commands from this repository's root unless a step explicitly names the site
+checkout as its working directory.
 
 ## Dates, times, and versions
 
@@ -205,14 +199,23 @@ and when was it made":
   back, in a full clone of the site repository (not a shallow one):
 
   ```bash
+  # Set the requested date and a NEW output directory whose parent exists.
+  snapshot_date=YYYY-MM-DD
+  restore_dir=/absolute/path/to/restore
+  set -o pipefail
   # any week the site served, as its weekly run published it into data/,
-  # into a folder <dir>
-  c=$(git log -1 --format=%H --grep='^Update demographics data <date>')
-  test -n "$c" && mkdir -p <dir> && git archive "$c" data | tar -x -C <dir> --strip-components=1
+  # into restore_dir
+  c=$(git log -1 --format=%H --grep="^Update demographics data $snapshot_date")
+  test -n "$c" && mkdir "$restore_dir" && git archive "$c" data | tar -x -C "$restore_dir" --strip-components=1
   # a snapshot folder that was slimmed or deleted, back in place
-  c=$(git log -1 --format=%H --diff-filter=D -- snapshots/<date>/demographics.part1.json.gz)
-  git restore --source="$c^" -- snapshots/<date>/
+  c=$(git log -1 --format=%H --diff-filter=D -- "snapshots/$snapshot_date/demographics.part1.json.gz")
+  test -n "$c" && git restore --source="$c^" -- "snapshots/$snapshot_date/"
   ```
+
+  The first command refuses any existing restore_dir, even an empty one;
+  reusing a recovery could mix files from different dates or layouts. On a
+  failed extraction, keep the partial output for diagnosis and choose a new
+  destination for a retry. Do not treat a nonzero exit as a complete recovery.
 
   The months the retention rule before 2026-10 slimmed or deleted are
   rebuilt that way once, by a job (`.github/workflows/backfill-archives.yml`,

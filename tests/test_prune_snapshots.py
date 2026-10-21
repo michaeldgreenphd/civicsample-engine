@@ -868,6 +868,9 @@ def test_the_documented_recovery_commands_bring_back_any_week(tmp_path: pathlib.
     commands = _recovery_commands()
     assert len(commands) == 2, f"the docstring gives {len(commands)} recovery commands, not 2: {list(commands)}"
     readme = (pathlib.Path(ROOT) / "README.md").read_text()
+    shell_options = "set -o pipefail"
+    for setup in ("snapshot_date=YYYY-MM-DD", "restore_dir=/absolute/path/to/restore", shell_options):
+        assert setup in (ps.__doc__ or "") and setup in readme, f"both recovery guides must give {setup}"
     for pair in commands.values():
         assert all(c in readme for c in pair), f"README.md does not give {pair}"
     (anywhere, in_place) = commands.values()
@@ -904,15 +907,33 @@ def test_the_documented_recovery_commands_bring_back_any_week(tmp_path: pathlib.
     state = kinds(site)
     assert "2026-10-18" not in state and "2026-10-04" not in state and state["2026-05-31"] == ps.AGGREGATE
 
-    def run(pair: list[str], day: str, into: str = "") -> subprocess.CompletedProcess[str]:
-        script = "\n".join(pair).replace("<date>", day).replace("<dir>", into)
-        return subprocess.run(["bash", "-e", "-c", script], cwd=site, env=env, capture_output=True, text=True)
+    def run(pair: list[str], day: str, into: str = "", path: str | None = None) -> subprocess.CompletedProcess[str]:
+        # Supply the documented variables without rewriting the commands:
+        # spaces and shell syntax in an output path must remain literal.
+        script = "\n".join([shell_options, *pair])
+        run_env = {**env, "snapshot_date": day, "restore_dir": into}
+        if path is not None:
+            run_env["PATH"] = path
+        return subprocess.run(["bash", "-e", "-c", script], cwd=site, env=run_env, capture_output=True, text=True)
 
     for day in ("2026-10-18", "2026-10-04", "2026-10-11"):
-        out = tmp_path / f"back-{day}"
+        out = tmp_path / f"back {day} $literal"
         r = run(anywhere, day, str(out))
         assert r.returncode == 0, r.stderr
         assert week_files(out) == served[day], f"{day} did not come back as its run published it"
+    # Recovery must start in a new directory. Reusing an old one would mix
+    # layouts/runs, retaining stale files the selected publish never contained.
+    for populated in (True, False):
+        existing = tmp_path / ("existing-populated" if populated else "existing-empty")
+        existing.mkdir()
+        if populated:
+            (existing / "dashboard-summary.json").write_bytes(b"previous recovery")
+            (existing / "detail").mkdir()
+            (existing / "detail/stale.json.gz").write_bytes(b"previous split shard")
+        before = tree_digest(existing)
+        r = run(anywhere, "2026-10-18", str(existing))
+        assert r.returncode != 0, "recovery accepted an existing output directory"
+        assert tree_digest(existing) == before, "refused recovery changed the existing destination"
     for day in ("2026-05-31", "2026-10-04"):
         r = run(in_place, day)
         assert r.returncode == 0, r.stderr
@@ -923,6 +944,26 @@ def test_the_documented_recovery_commands_bring_back_any_week(tmp_path: pathlib.
     # out loud, and makes no folder.
     r = run(anywhere, "2026-10-19", str(tmp_path / "back-2026-10-19"))
     assert r.returncode != 0 and not (tmp_path / "back-2026-10-19").exists()
+    # A successful tar consumer must not mask a failing archive producer.
+    # Emit a valid real archive, then fail: without the documented pipefail
+    # setting, tar succeeds and the recovery command wrongly reports success.
+    fake_bin = tmp_path / "failing-archive-bin"
+    fake_bin.mkdir()
+    wrapper = fake_bin / "git"
+    wrapper.write_text(
+        '#!/bin/bash\n'
+        'if [ "$1" = archive ]; then\n'
+        '  "$RECOVERY_REAL_GIT" "$@" || exit "$?"\n'
+        '  exit 47\n'
+        'fi\n'
+        'exec "$RECOVERY_REAL_GIT" "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    env["RECOVERY_REAL_GIT"] = git
+    out = tmp_path / "failed-archive-output"
+    r = run(anywhere, "2026-10-18", str(out), f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+    assert week_files(out) == served["2026-10-18"], "the downstream tar must have succeeded in this probe"
+    assert r.returncode == 47, f"the archive producer's failure was hidden: {r.returncode}, {r.stderr}"
 
 
 def test_with_nothing_to_retain_it_says_so(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]) -> None:

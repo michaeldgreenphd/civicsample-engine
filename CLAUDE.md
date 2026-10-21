@@ -3,7 +3,11 @@
 The source of truth for code generation (Claude Code) and pull request review
 (Codex, Copilot) in this repository. `AGENTS.md` holds the review rules
 themselves and the places this repository most easily causes harm; this file
-describes the system those rules are applied to. Read both.
+describes the system those rules are applied to. Read both. Consult
+[verify.md](verify.md), the canonical setup and verification guide, when
+selecting checks and before completion. Follow applicable nested instructions
+and any active AGENTS.override.md in the paths being changed; an override
+must retain that verification requirement.
 
 ## 1. Stack & Environment
 
@@ -26,14 +30,18 @@ here.
 * **A small amount of JavaScript** ships from here as the browser-side sponsor
   filter module, tested with `node --test`. It is the only browser code in
   this repository and exists to keep one filtering rule identical on both
-  sides of the split.
+  sides of the split. Node 22 also runs `scripts/first_view_parity.mjs`, a
+  verification tool for the site's Overview; the Python suite invokes it,
+  so Node must be on PATH before pytest starts.
 * **This repository writes into another repository.** The scheduled jobs push
   finished artifacts into the site repo with a deploy token and prune old
   snapshots there. That is the highest-consequence thing it does.
 * **Secrets** never appear in code, config or committed data. CI injects them
   as environment variables at run time.
-* **Checks:** see "Running the checks" in `AGENTS.md`. `.github/workflows/ci.yml`
-  runs exactly those, in that order, on every push and pull request.
+* **Checks:** [verify.md](verify.md) documents setup, targeted checks and the
+  producer-to-site verification path. "Running the checks" in `AGENTS.md`
+  preserves the exact commands `.github/workflows/ci.yml` runs, in order, on
+  every push and pull request.
 
 ## 2. Agent Responsibilities
 
