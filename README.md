@@ -199,18 +199,23 @@ and when was it made":
   back, in a full clone of the site repository (not a shallow one):
 
   ```bash
-  # Set these to the requested date and a separate output directory.
+  # Set the requested date and a NEW output directory whose parent exists.
   snapshot_date=YYYY-MM-DD
   restore_dir=/absolute/path/to/restore
   set -o pipefail
   # any week the site served, as its weekly run published it into data/,
   # into restore_dir
   c=$(git log -1 --format=%H --grep="^Update demographics data $snapshot_date")
-  test -n "$c" && mkdir -p "$restore_dir" && git archive "$c" data | tar -x -C "$restore_dir" --strip-components=1
+  test -n "$c" && mkdir "$restore_dir" && git archive "$c" data | tar -x -C "$restore_dir" --strip-components=1
   # a snapshot folder that was slimmed or deleted, back in place
   c=$(git log -1 --format=%H --diff-filter=D -- "snapshots/$snapshot_date/demographics.part1.json.gz")
   test -n "$c" && git restore --source="$c^" -- "snapshots/$snapshot_date/"
   ```
+
+  The first command refuses any existing restore_dir, even an empty one;
+  reusing a recovery could mix files from different dates or layouts. On a
+  failed extraction, keep the partial output for diagnosis and choose a new
+  destination for a retry. Do not treat a nonzero exit as a complete recovery.
 
   The months the retention rule before 2026-10 slimmed or deleted are
   rebuilt that way once, by a job (`.github/workflows/backfill-archives.yml`,

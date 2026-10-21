@@ -77,7 +77,7 @@ The policy (owner decisions 19b, 20a and 21a, 2026-10-05):
   which is never rewritten (and from 2026-08-28 on, each week's full records
   are on its data-<date> release too). To get a week's files back, in a full
   clone of the site repository (a shallow one lacks the older commits):
-    set the requested date and a separate output directory:
+    set the requested date and a NEW output directory whose parent exists:
       snapshot_date=YYYY-MM-DD
       restore_dir=/absolute/path/to/restore
       set -o pipefail
@@ -85,10 +85,14 @@ The policy (owner decisions 19b, 20a and 21a, 2026-10-05):
     is: it lived in data/ only), as its weekly run published it into data/,
     into restore_dir:
       c=$(git log -1 --format=%H --grep="^Update demographics data $snapshot_date")
-      test -n "$c" && mkdir -p "$restore_dir" && git archive "$c" data | tar -x -C "$restore_dir" --strip-components=1
+      test -n "$c" && mkdir "$restore_dir" && git archive "$c" data | tar -x -C "$restore_dir" --strip-components=1
     a snapshot folder that was slimmed or deleted, back in place:
       c=$(git log -1 --format=%H --diff-filter=D -- "snapshots/$snapshot_date/demographics.part1.json.gz")
       test -n "$c" && git restore --source="$c^" -- "snapshots/$snapshot_date/"
+  The first command refuses an existing restore_dir, even an empty one, so
+  different dates/layouts cannot mix. If extraction fails, preserve the partial
+  output for diagnosis and retry into a new destination; a nonzero exit does
+  not establish a complete recovery.
   Either way a split week's studies_tab parts, detail shards and run.json
   come back with it. (The second alone finds no commit for a week that never
   had a folder.)

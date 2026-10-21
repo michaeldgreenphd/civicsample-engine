@@ -921,6 +921,19 @@ def test_the_documented_recovery_commands_bring_back_any_week(tmp_path: pathlib.
         r = run(anywhere, day, str(out))
         assert r.returncode == 0, r.stderr
         assert week_files(out) == served[day], f"{day} did not come back as its run published it"
+    # Recovery must start in a new directory. Reusing an old one would mix
+    # layouts/runs, retaining stale files the selected publish never contained.
+    for populated in (True, False):
+        existing = tmp_path / ("existing-populated" if populated else "existing-empty")
+        existing.mkdir()
+        if populated:
+            (existing / "dashboard-summary.json").write_bytes(b"previous recovery")
+            (existing / "detail").mkdir()
+            (existing / "detail/stale.json.gz").write_bytes(b"previous split shard")
+        before = tree_digest(existing)
+        r = run(anywhere, "2026-10-18", str(existing))
+        assert r.returncode != 0, "recovery accepted an existing output directory"
+        assert tree_digest(existing) == before, "refused recovery changed the existing destination"
     for day in ("2026-05-31", "2026-10-04"):
         r = run(in_place, day)
         assert r.returncode == 0, r.stderr

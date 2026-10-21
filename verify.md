@@ -288,6 +288,25 @@ its table/meta. Do not remove newer archives, restamp old records or change
 expectations to get a pass. An isolated historical replay is different evidence
 and requires its own explicitly selected historical publication state.
 
+**Choose the evidence required by the change.** A same-date replay is valid
+for producer/consumer compatibility, but its retention step is **pruning-only
+evidence**: it checks existing snapshots/history and skips archive_outgoing.
+It does not copy or validate the outgoing data/ dataset. For a retention or
+publication-sequencing change, use a genuine strictly newer complete run with
+matching CSV/meta to exercise the outgoing-week transition. If that input is
+unavailable, report the transition check as blocked; do not restamp old input
+or claim that a same-date pass satisfies it. Existing chained-week fixture
+tests remain required and are separate evidence.
+
+A newer date is necessary but not sufficient to prove a new archive was
+copied. Inspect retention.json's previous_latest, latest and archived status:
+"not kept" (the policy excludes that week) or "already archived" does not
+exercise copying. To claim outgoing-copy verification, the selected disposable
+site must have a policy-kept outgoing week with no existing archive; require
+archived.status "archived", its files/bytes, and compare the copied files and
+run stamps against the outgoing data/ before replacing it. Report the actual
+policy branch exercised; do not alter real history or the policy to force it.
+
 The clone checks the frontend's committed HEAD and keeps Git metadata. If
 verifying uncommitted frontend changes, apply only their reviewed tracked diff
 and intended new files at the marked point. Retain the comparison_base SHA
@@ -348,7 +367,7 @@ python scripts/generate_industry_sponsors.py "$integration_dir/generated" --demo
 python scripts/split_data.py --contract "$integration_dir/site/tests/record_contract.json" \
     --demographics "$full_records" --out-dir "$integration_dir/dataset" \
     --snapshot-date "$snapshot_date"
-# Archive/prune while the disposable site's data/ still holds its outgoing run.
+# Prune while data/ holds the outgoing run; only a newer date can archive it.
 python scripts/prune_snapshots.py --site "$integration_dir/site" \
     --latest "$snapshot_date" --report "$integration_dir/retention.json"
 python - "$integration_dir" <<'PY'
@@ -393,7 +412,10 @@ fetch-failure states as the frontend guide specifies.
 
 This smoke regenerates the dataset, summary and industry analysis, stages the
 same-run sex/gender CSV/meta, and exercises retention in the disposable copy.
-It leaves the newest run only in data/, as production does. Sponsor/audit/
+It leaves the newest run only in data/, as production does. With equal dates,
+the retention result is pruning-only evidence; outgoing archival remains
+unexercised. A claim about that transition needs the newer-date and report/file
+evidence above. Sponsor/audit/
 methods, LLM, condition ontology and other untouched inputs are copied from
 the source site; do not claim those flows were rebuilt or share the new run.
 For a complete publication rehearsal follow their relevant producers in
