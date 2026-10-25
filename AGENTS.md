@@ -80,6 +80,24 @@ Practical consequences:
   backed by a run against real inputs or a fixture, not by inspection alone.
 - Say plainly what you did *not* do, and why, rather than leaving it implied.
 
+## Dual-AI PR Review Architecture
+
+- **Codex** audits hunk-level diff logic, local edge cases, syntax/types and
+  isolated code correctness.
+- **Gemini CLI** follows [GEMINI.md](GEMINI.md) to audit whole-repository blast
+  radius, untouched downstream callers, data provenance, and contract sync
+  between civicsample-engine and clinical-trial-populations. It reports only
+  regressions supported by both a changed line and an untouched consumer.
+
+These roles complement the review rules below; Gemini does not repeat Codex's
+local checks. The [Gemini workflow](.github/workflows/gemini-pr-review.yml)
+runs automatically on non-draft same-repository PRs, including when marked
+ready, and accepts an `@gemini-cli` PR comment from a collaborator with write
+access even on drafts. It maintains one sticky review comment. Fork and
+Dependabot PRs are skipped because this job needs a secret and a comment-writing
+token. Comment triggers become available once the workflow is on the default
+branch.
+
 ## Code Review Rules
 
 - Flag changes that could corrupt, silently alter, or irreversibly delete

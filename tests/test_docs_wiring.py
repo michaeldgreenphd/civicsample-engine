@@ -51,6 +51,29 @@ def test_docs_exist():
         assert (REPO / d).is_file(), f"{d} is missing; the other tests here assert its claims"
 
 
+def test_gemini_context_imports_resolve_without_importing_bot_mentions() -> None:
+    """Bare bot mentions in imported AGENTS.md become missing-file imports.
+
+    Gemini ignores backtick code spans/blocks when resolving imports:
+    https://geminicli.com/docs/reference/memport/#code-region-detection
+    Keep the baseline import active while checking the context documents.
+    """
+    imports_by_doc: dict[str, list[str]] = {}
+    missing: list[str] = []
+    for doc in ["GEMINI.md", *DOCS]:
+        prose = re.sub(r"(`+)[\s\S]*?\1", "", (REPO / doc).read_text())
+        imports = re.findall(r"(?<!\S)@([A-Za-z./][^\s]*)", prose)
+        imports_by_doc[doc] = imports
+        for target in imports:
+            if not (REPO / target).is_file():
+                missing.append(f"{doc}: @{target}")
+    assert "AGENTS.md" in imports_by_doc["GEMINI.md"], "keep the baseline import active"
+    assert not missing, (
+        "Gemini context imports must resolve; wrap literal bot mentions in backticks:\n  "
+        + "\n  ".join(missing)
+    )
+
+
 def test_every_path_the_docs_name_resolves():
     """A path in backticks must exist. This is what a reader will try to open."""
     tracked = set(_tracked())
