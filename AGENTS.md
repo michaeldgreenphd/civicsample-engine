@@ -92,7 +92,7 @@ Practical consequences:
 These roles complement the review rules below; Gemini does not repeat Codex's
 local checks. The [Gemini workflow](.github/workflows/gemini-pr-review.yml)
 runs automatically on non-draft same-repository PRs, including when marked
-ready, and accepts an @gemini-cli PR comment from a collaborator with write
+ready, and accepts an `@gemini-cli` PR comment from a collaborator with write
 access even on drafts. It maintains one sticky review comment. Fork and
 Dependabot PRs are skipped because this job needs a secret and a comment-writing
 token. Comment triggers become available once the workflow is on the default
