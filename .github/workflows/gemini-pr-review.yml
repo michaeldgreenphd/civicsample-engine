@@ -142,7 +142,7 @@ jobs:
           settings: |
             {
               "tools": {
-                "core": ["list_directory", "read_file", "glob", "search_file_content"]
+                "core": ["list_directory", "read_file", "glob", "grep_search"]
               },
               "context": {
                 "fileFiltering": {"respectGitIgnore": false}
