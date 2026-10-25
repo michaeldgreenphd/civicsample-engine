@@ -1,31 +1,31 @@
 {
-  "audited_at": "2026-10-18T11:06:26.829317+00:00",
-  "snapshot_date": "2026-10-18",
-  "pipeline_commit": "2bfbc1bed60f03fea2e9001f5b54272b552b2636",
-  "source_extracted_at": "2026-10-18T10:47:37.585248+00:00",
+  "audited_at": "2026-10-25T11:26:33.489659+00:00",
+  "snapshot_date": "2026-10-25",
+  "pipeline_commit": "3219f0ecb196bd5d0846aafab917b248a63b8d69",
+  "source_extracted_at": "2026-10-25T11:07:38.289914+00:00",
   "rules_sha256": "3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c",
   "rules_changed_vs_prior": false,
-  "n_literals": 15761,
+  "n_literals": 15789,
   "n_attributed": 139,
   "n_reviewed_excluded": 1,
-  "n_unreviewed": 15621,
+  "n_unreviewed": 15649,
   "n_blank_literal_trials": 0,
-  "inbox_size": 29,
+  "inbox_size": 30,
   "inbox_top": {
-    "name": "Akaza Bioscience Ltd",
+    "name": "Biodexa Pharmaceuticals",
     "n_trials": 1,
-    "roles": "lead",
+    "roles": "collaborator",
     "agency_class": "INDUSTRY"
   },
-  "inbox_open_count": 15621,
-  "inbox_open_industry_count": 5208,
+  "inbox_open_count": 15649,
+  "inbox_open_industry_count": 5219,
   "inbox_open_oldest": {
     "name": "National Cancer Institute (NCI)",
-    "n_trials": 4512,
+    "n_trials": 4518,
     "roles": "collaborator,lead",
     "agency_class": "NIH",
     "first_seen": "2026-08-30",
-    "weeks_open": 7
+    "weeks_open": 8
   },
   "inbox_open_oldest_industry": {
     "name": "Medtronic",
@@ -33,7 +33,7 @@
     "roles": "collaborator,lead",
     "agency_class": "INDUSTRY",
     "first_seen": "2026-08-30",
-    "weeks_open": 7
+    "weeks_open": 8
   },
   "n_match_changes": 0,
   "match_change_causes": {},
