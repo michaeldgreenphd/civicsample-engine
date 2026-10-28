@@ -47,6 +47,7 @@ reported, never applied.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import re
 from datetime import datetime
@@ -488,7 +489,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     except ImportError_ as e:
         print(f"::error::{e}")
         return 1
-    with open(a.out, "w") as fh:
+    # The same suffix rule full_records.load reads by: a .gz path is gzipped,
+    # so the joined records load back in the next step.
+    opener = gzip.open if str(a.out).endswith(".gz") else open
+    with opener(a.out, "wt", encoding="utf-8") as fh:
         json.dump({"extracted_at": extracted_at, "pipeline_commit": commit, "data": records}, fh, indent=2)
     if a.report:
         with open(a.report, "w") as fh:

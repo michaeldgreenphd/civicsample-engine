@@ -372,3 +372,20 @@ def test_a_later_revocation_advances_the_tombstone():
         ei.apply(recs, doc, "2026-10-28")
     f = recs[0]["enrichment"]["fields"]["conditions.accepted_membership"]
     assert f["value_state"] == "revoked" and f["revision"] == 4 and f["revocation_ref"] == "fictional-revocation-4"
+
+
+def test_cli_writes_gzip_when_the_output_path_says_so(tmp_path):
+    """A .json.gz --out is gzipped, so full_records.load reads it back."""
+    from src import full_records
+    demo = tmp_path / "demographics.json"
+    demo.write_text(json.dumps({"extracted_at": "2026-10-28T00:00:00+00:00", "pipeline_commit": "abc1234", "data": records()}))
+    exp = tmp_path / "export.json"
+    exp.write_text(json.dumps(export()))
+    out = tmp_path / "joined.json.gz"
+    ei.main(["--export", str(exp), "--demographics", str(demo), "--snapshot-date", "2026-10-28", "--out", str(out)])
+    recs, at, commit = full_records.load(str(out))
+    assert at == "2026-10-28T00:00:00+00:00" and commit == "abc1234"
+    assert recs[0]["enrichment"]["schema_version"] == "enrichment/1.0"
+    plain = tmp_path / "joined.json"
+    ei.main(["--export", str(exp), "--demographics", str(demo), "--snapshot-date", "2026-10-28", "--out", str(plain)])
+    assert json.loads(plain.read_text())["data"][0]["enrichment"]["exports"] == ["fictional-export-0001"]
