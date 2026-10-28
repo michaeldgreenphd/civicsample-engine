@@ -34,6 +34,7 @@ written last, so every key above keeps its bytes.
 import argparse
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 from typing import Any
@@ -219,6 +220,22 @@ def sex_gender_summary(all_studies, table_rows=None):
     }
 
 
+def check_analysis_provenance(meta_path: str, extracted_at: str, pipeline_commit: str, table_path: str) -> dict:
+    """Refuse an analysis sidecar whose meta file is missing or was derived from
+    another pull. Returns the meta on success. A stale sidecar joined by NCT id
+    would publish old reporting states under this run's stamps."""
+    if not os.path.exists(meta_path):
+        raise SystemExit(f"{table_path}: no meta file at {meta_path}; the sidecar's provenance cannot be checked")
+    with open(meta_path) as fh:
+        meta = json.load(fh)
+    want = (extracted_at, pipeline_commit)
+    got = (meta.get("source_extracted_at"), meta.get("source_pipeline_commit"))
+    if got != want:
+        raise SystemExit(f"{table_path}: derived from extracted_at {got[0]!r} / commit {got[1]!r}, but the full records "
+                         f"are {want[0]!r} / {want[1]!r}; rebuild the sidecar from this pull or remove it")
+    return meta
+
+
 def sex_gender_analysis_summary(all_studies, analysis_rows=None):
     """The sexGenderAnalysis block of dashboard-summary.json, built ONLY from
     the analytical layer's per-trial blocks (src/sex_gender_analysis.py).
@@ -253,6 +270,9 @@ def main(argv: list[str] | None = None) -> None:
                     help="the full sex/gender table (default: %(default)s)")
     ap.add_argument("--analysis-table", default="data/sex_gender_analysis.csv.gz",
                     help="the sex/gender analysis sidecar table (default: %(default)s)")
+    ap.add_argument("--analysis-meta", default=None,
+                    help="its meta file (default: the table's name with _meta.json); its source stamps must match "
+                         "the full records or the run stops")
     ap.add_argument("--out", default="data/dashboard-summary.json",
                     help="where to write the summary (default: %(default)s)")
     a = ap.parse_args(argv)
@@ -273,7 +293,14 @@ def main(argv: list[str] | None = None) -> None:
     table_path = a.table
     table_rows = sgt.read_table(table_path) if os.path.exists(table_path) else None
     print(f"Sex/gender table: {len(table_rows) if table_rows else 'absent (lean rows only)'}")
-    analysis_rows = sga.read_table(a.analysis_table) if os.path.exists(a.analysis_table) else None
+    analysis_rows = None
+    if os.path.exists(a.analysis_table):
+        # The sidecar is a derived file: it is used only when its meta file says
+        # it was derived from this pull (extracted_at and pipeline_commit), so a
+        # table left over from an earlier run can never outrun the records.
+        meta_path = a.analysis_meta or re.sub(r"\.csv(\.gz)?$", "_meta.json", a.analysis_table)
+        check_analysis_provenance(meta_path, extracted_at, pipeline_commit, a.analysis_table)
+        analysis_rows = sga.read_table(a.analysis_table)
     print(f"Sex/gender analysis table: {len(analysis_rows) if analysis_rows else 'absent (lean blocks only)'}")
     analysis_by_nct = {r.get("nct_id"): r for r in (analysis_rows or [])}
 

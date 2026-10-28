@@ -214,11 +214,35 @@ def _label_values(measure: dict) -> tuple[list[tuple[str, Optional[float]]], boo
     return rows, binary
 
 
+def measure_is_participant_count(measure: dict) -> Optional[bool]:
+    """What the vendored parser says is_participant_count is for this one
+    measure's (paramType, unitOfMeasure); asked of the module itself so the
+    rule stays exact across parser versions (sex_gender_table does the same)."""
+    from . import sex_gender_table as _sgt  # local import: sex_gender_table imports nothing from here
+    return _sgt._module_is_participant_count(measure.get("paramType"), measure.get("unitOfMeasure"))
+
+
 def _count_driving(selected: list) -> list:
     """The measures the parser takes its counts from: the sex/gender-typed
     ones when any exist (parse_trial's ms_cnt), else every selected measure."""
     typed = [m for m in selected if isinstance(m, dict) and sgp.measure_type(m.get("title")) in sgp.SG_TYPES]
     return typed or [m for m in selected if isinstance(m, dict)]
+
+
+def explicit_unknown_with_values(selected: list) -> bool:
+    """R-EU-01: an explicit Unknown row with a non-zero value in the SAME
+    measure as a non-zero Female, Male, gender-diverse or ambiguous row. Two
+    tables, one with values and one with only Unknown, do not qualify: the
+    parser takes Unknown as a maximum across tables, so the row-level counts
+    cannot make this distinction and the measures are read directly."""
+    for m in _count_driving([x for x in selected if isinstance(x, dict)]):
+        rows, _ = _label_values(m)
+        has_values = any(sgp.canon_bucket(lab) in ("female", "male", "gender_diverse", "ambiguous")
+                         and v is not None and v > 0 for lab, v in rows)
+        has_unknown = any(sgp.canon_bucket(lab) == "unknown" and v is not None and v > 0 for lab, v in rows)
+        if has_values and has_unknown:
+            return True
+    return False
 
 
 def derive_gender_categories(selected: Optional[list], row: dict, enrollment: Any) -> dict:
@@ -249,10 +273,17 @@ def derive_gender_categories(selected: Optional[list], row: dict, enrollment: An
         return out
     per_table: list[dict] = []
     tables_with_identity = 0
+    non_participant_tables: list = []
     for m in _count_driving(selected):
         rows, binary = _label_values(m)
         sums: dict = {}
         has_identity = False
+        # The parser's is_participant_count describes its primary Female/Male
+        # table only. Each table that posts an identity category is checked on
+        # its own units: a COUNT_OF_UNITS (or mean/median/percent) gender table
+        # never contributes participants (AGENTS.md: COUNT_OF_UNITS tables stay
+        # out of composition), and its presence excludes the trial below.
+        table_is_participants = measure_is_participant_count(m)
         for raw_label, value in rows:
             cat = detailed_gender_category(raw_label)
             if cat is None:
@@ -270,6 +301,8 @@ def derive_gender_categories(selected: Optional[list], row: dict, enrollment: An
             tables_with_identity += 1
             if binary:
                 out["flags"]["two_question_table"] = True
+            if table_is_participants is False:
+                non_participant_tables.append(m.get("title"))
         per_table.append(sums)
     out["flags"]["possible_double_count"] = tables_with_identity > 1
     for cat in (*D3_CATEGORIES, *SEPARATE_ROWS):
@@ -288,10 +321,14 @@ def derive_gender_categories(selected: Optional[list], row: dict, enrollment: An
     out["d3_total"] = sum(d3) if d3 else None
     d5 = [v for c, v in out["categories"].items() if v is not None and c != "another_self_described"]
     out["d5_strict"] = sum(d5) if d5 else None
-    # The two eTable 5 exclusions, recorded rather than applied silently.
-    if row.get("is_participant_count") is False:
+    # The two eTable 5 exclusions, recorded rather than applied silently. The
+    # first fires on the parser's primary table or on any table that posted an
+    # identity category in non-participant units.
+    if row.get("is_participant_count") is False or non_participant_tables:
         out["status"] = "excluded"
         out["exclusion"] = {"reason": "non_participant_units"}
+        if non_participant_tables:
+            out["exclusion"]["tables"] = non_participant_tables
         return out
     enr = sgp._num(enrollment)
     if enr is not None and out["d3_total"] is not None and out["d3_total"] > enr * (1 + ENROLLMENT_EXCESS_TOLERANCE):
@@ -380,12 +417,16 @@ def analyze(row: dict, selected: Optional[list], enrollment: Any) -> dict:
                .enrollmentInfo.count), for the eTable 5 exclusion only"""
     dim, reason = reporting_dimension(row)
     status = row.get("sex_report_status")
-    known = (row.get("n_female") or 0) + (row.get("n_male") or 0) + (row.get("n_gender_diverse") or 0) \
-        + (row.get("n_ambiguous_gender") or 0)
     eu_with_values: Optional[bool]
     if status == "parse_error":
         eu_with_values = None
+    elif selected is not None:
+        eu_with_values = explicit_unknown_with_values(selected)
     else:
+        # No measures to hand (a lean-only caller): the row-level reading, which
+        # cannot tell one table with both from two tables with one each.
+        known = (row.get("n_female") or 0) + (row.get("n_male") or 0) + (row.get("n_gender_diverse") or 0) \
+            + (row.get("n_ambiguous_gender") or 0)
         eu_with_values = bool((row.get("n_unknown") or 0) > 0 and known > 0)
     gc = derive_gender_categories(selected, row, enrollment)
     unresolved = ["R-FS-01"]

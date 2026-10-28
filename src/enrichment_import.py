@@ -102,14 +102,20 @@ class ImportError_(ValueError):
     """The export cannot be applied; the message lists every reason."""
 
 
-def _iso(v: Any) -> bool:
+def _instant(v: Any) -> Optional[datetime]:
+    """An ISO-8601 timestamp WITH a UTC offset, parsed; None otherwise. A naive
+    timestamp is refused: without an offset two decisions cannot be ordered."""
     if not isinstance(v, str):
-        return False
+        return None
     try:
-        datetime.fromisoformat(v.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
     except ValueError:
-        return False
-    return True
+        return None
+    return dt if dt.tzinfo is not None else None
+
+
+def _iso(v: Any) -> bool:
+    return _instant(v) is not None
 
 
 def _scan_private(obj: Any, path: str, out: list[str]) -> None:
@@ -274,8 +280,8 @@ def validate_export(doc: Any) -> list[str]:
         chron = r.get("chronology")
         if not isinstance(chron, dict) or not all(_iso(chron.get(k)) for k in ("validated_at", "reviewed_at", "released_at")):
             errors.append(f"{where}: chronology needs validated_at, reviewed_at and released_at timestamps")
-        elif not (chron["validated_at"] <= chron["reviewed_at"] <= chron["released_at"]):
-            errors.append(f"{where}: chronology is out of order (validated <= reviewed <= released)")
+        elif not (_instant(chron["validated_at"]) <= _instant(chron["reviewed_at"]) <= _instant(chron["released_at"])):
+            errors.append(f"{where}: chronology is out of order (validated <= reviewed <= released, as instants)")
         if not r.get("decision_ref"):
             errors.append(f"{where}: decision_ref is missing")
         if "supersedes" not in r:
@@ -363,6 +369,13 @@ def apply(records: list[dict], export: dict, target_snapshot_date: Optional[str]
             if r["release_status"] == "revoked":
                 if existing and existing.get("record_id") == r["record_id"] and existing.get("value_state") == "revoked":
                     report["unchanged"] += 1
+                elif existing and existing.get("record_id") == r["record_id"] \
+                        and r["revision"] < (existing.get("revision") or 0):
+                    # A revocation of an older revision than the one installed
+                    # (exports replayed out of order): the newer accepted value stands.
+                    report["quarantined"].append({"nct_id": nct, "reason": "revocation of an older revision than the installed one",
+                                                  "record_ids": [r["record_id"]],
+                                                  "installed_revision": existing.get("revision"), "revoked_revision": r["revision"]})
                 elif existing and existing.get("record_id") == r["record_id"]:
                     ns["history"].append({**existing, "removed_by": {"revocation_ref": r["revocation_ref"],
                                                                      "revoked_at": r["revoked_at"]}})

@@ -379,3 +379,72 @@ def test_mobile_summary_block_and_compact_rows_carry_the_layer():
     # the sidecar rows win over the records' own blocks when given
     rows = [sga.flat_row(c["nct_id"], _derive(c)[1], SNAP) for c in _cases()]
     assert sex_gender_analysis_summary(studies, rows)["trials"] == len(_cases())
+
+
+# --------------------------------------------------------------- 9. review findings (PR 29)
+def _sex_table(female, male, unknown=None, title="Sex: Female, Male", **extra):
+    cats = [{"title": "Female", "measurements": [{"groupId": "BG002", "value": str(female)}]},
+            {"title": "Male", "measurements": [{"groupId": "BG002", "value": str(male)}]}]
+    if unknown is not None:
+        cats.append({"title": "Unknown", "measurements": [{"groupId": "BG002", "value": str(unknown)}]})
+    return {"title": title, "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+            "classes": [{"categories": cats}], **extra}
+
+
+def _gender_table(param_type="COUNT_OF_PARTICIPANTS", unit="Participants", trans=25, female=40, male=35):
+    return {"title": "Gender", "paramType": param_type, "unitOfMeasure": unit, "classes": [{"categories": [
+        {"title": "Female", "measurements": [{"groupId": "BG002", "value": str(female)}]},
+        {"title": "Male", "measurements": [{"groupId": "BG002", "value": str(male)}]},
+        {"title": "Transgender", "measurements": [{"groupId": "BG002", "value": str(trans)}]}]}]}
+
+
+def _analyze(measures, enrollment=100):
+    study = _study("NCT99000090", measures, enrollment)
+    row = sgt.build_row(study, SNAP)
+    raw = sgt.select_raw_measures(study)
+    return row, sga.analyze(row, raw["measures"], raw["enrollment"])
+
+
+def test_gender_table_in_non_participant_units_excludes_the_trial():
+    """A participant-count Sex table beside a COUNT_OF_UNITS Gender table: the
+    parser's is_participant_count describes the primary table, so the units of
+    the table that posts the identity category are checked on their own."""
+    row, full = _analyze([_sex_table(50, 50), _gender_table("COUNT_OF_UNITS", "Eyes")])
+    assert row["is_participant_count"] is True
+    gc = full["gender_categories"]
+    assert gc["status"] == "excluded"
+    assert gc["exclusion"]["reason"] == "non_participant_units" and gc["exclusion"]["tables"] == ["Gender"]
+    assert sga.lean_block(full)["gender_categories_status"] == "excluded"
+    # the same tables in participants derive
+    row, full = _analyze([_sex_table(50, 50), _gender_table()])
+    assert full["gender_categories"]["status"] == "derived"
+    assert full["gender_categories"]["d3_total"] == 25
+
+
+def test_explicit_unknown_with_values_is_per_measure():
+    """R-EU-01 is values and Unknown in the SAME measure. Two Sex tables, one
+    with Female/Male and one with only Unknown, do not qualify, although the
+    row-level counts (Unknown taken as a maximum across tables) look the same."""
+    unknown_only = {"title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+                    "classes": [{"categories": [{"title": "Unknown", "measurements": [{"groupId": "BG002", "value": "100"}]}]}]}
+    row, full = _analyze([_sex_table(50, 50), unknown_only])
+    assert (row.get("n_unknown") or 0) > 0 and (row.get("n_female") or 0) > 0  # the row cannot tell
+    assert full["reporting"]["explicit_unknown_with_values"] is False
+    row, full = _analyze([_sex_table(50, 50, unknown=100)])
+    assert full["reporting"]["explicit_unknown_with_values"] is True
+    # the lean-only fallback keeps the row-level reading and says so by its input
+    assert sga.analyze(row, None, 100)["reporting"]["explicit_unknown_with_values"] is True
+
+
+def test_mobile_summary_refuses_a_sidecar_from_another_pull(tmp_path):
+    import generate_mobile_data as gmd
+    table = tmp_path / "sex_gender_analysis.csv.gz"
+    table.write_bytes(b"")
+    meta = tmp_path / "sex_gender_analysis_meta.json"
+    meta.write_text(json.dumps({"source_extracted_at": "2026-10-21T00:00:00+00:00", "source_pipeline_commit": "old0000"}))
+    with pytest.raises(SystemExit, match="derived from extracted_at"):
+        gmd.check_analysis_provenance(str(meta), "2026-10-28T00:00:00+00:00", "new0000", str(table))
+    with pytest.raises(SystemExit, match="no meta file"):
+        gmd.check_analysis_provenance(str(tmp_path / "missing.json"), "2026-10-28T00:00:00+00:00", "new0000", str(table))
+    meta.write_text(json.dumps({"source_extracted_at": "2026-10-28T00:00:00+00:00", "source_pipeline_commit": "new0000"}))
+    assert gmd.check_analysis_provenance(str(meta), "2026-10-28T00:00:00+00:00", "new0000", str(table))["source_pipeline_commit"] == "new0000"

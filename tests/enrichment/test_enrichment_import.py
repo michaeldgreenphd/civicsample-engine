@@ -269,3 +269,38 @@ def test_private_tool_export_is_accepted_and_joins():
     # The same export again changes nothing.
     again = ei.apply(records, doc, "2026-10-28")
     assert again["applied"] == 0 and again["unchanged"] == 3
+
+
+def test_revocation_of_an_older_revision_does_not_remove_the_newer_value():
+    recs = records()
+    ei.apply(recs, export(), "2026-10-28")
+    doc = export()
+    doc["export_id"] = "fictional-export-0002"
+    r3 = copy.deepcopy(doc["records"][0]); r3["revision"] = 3
+    doc["records"] = [r3]
+    assert ei.apply(recs, doc, "2026-10-28")["superseded"] == 1
+    doc["export_id"] = "fictional-export-0003"
+    rev2 = copy.deepcopy(doc["records"][0]); rev2["revision"] = 2
+    rev2["release_status"] = "revoked"; rev2["revocation_ref"] = "fictional-revocation-0002"
+    rev2["revoked_at"] = "2026-10-29T00:00:00+00:00"; rev2["value"] = None; rev2["value_state"] = "not_assessed"
+    rev2["state_reason"] = "revoked"
+    doc["records"] = [rev2]
+    report = ei.apply(recs, doc, "2026-10-28")
+    assert report["revoked"] == 0 and report["quarantined"][0]["reason"].startswith("revocation of an older revision")
+    f = recs[0]["enrichment"]["fields"]["conditions.accepted_membership"]
+    assert f["revision"] == 3 and f["value_state"] == "present"
+
+
+def test_chronology_is_compared_as_instants():
+    doc = export()
+    r = doc["records"][0]
+    # review at 10:00+02:00 is 08:00Z, before validation at 09:00Z: out of order despite the string order
+    r["chronology"] = {"validated_at": "2026-10-27T09:00:00+00:00", "reviewed_at": "2026-10-27T10:00:00+02:00",
+                       "released_at": "2026-10-28T11:00:00+00:00"}
+    assert any("out of order" in e for e in ei.validate_export(doc))
+    # review at 08:30-01:00 is 09:30Z, after validation: in order despite the string order
+    r["chronology"]["reviewed_at"] = "2026-10-27T08:30:00-01:00"
+    assert not any("chronology" in e for e in ei.validate_export(doc))
+    # a naive timestamp carries no instant and is refused
+    r["chronology"]["reviewed_at"] = "2026-10-27T15:00:00"
+    assert any("chronology needs" in e for e in ei.validate_export(doc))
