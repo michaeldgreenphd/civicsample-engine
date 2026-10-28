@@ -324,3 +324,31 @@ def test_supersession_chain_in_one_export_applies_in_dependency_order():
     again = ei.apply(recs, doc, "2026-10-28")
     assert again["applied"] == 0 and again["superseded"] == 0 and again["quarantined"] == []
     assert recs[0]["enrichment"]["fields"]["conditions.accepted_membership"]["record_id"] == "a-newest"
+
+
+def test_supersession_cycle_is_refused_and_chain_order_is_irrelevant():
+    base = export()["records"][0]
+    def rec(rid, supersedes):
+        r = copy.deepcopy(base); r["record_id"] = rid; r["revision"] = 1; r["supersedes"] = supersedes
+        return r
+    # a cycle is refused before anything is applied
+    doc = export(); doc["records"] = [rec("original", "middle"), rec("middle", "original")]
+    errs = ei.validate_export(doc)
+    assert any("supersession cycle" in e for e in errs), errs
+    recs = records()
+    with pytest.raises(ei.ImportError_):
+        ei.apply(recs, doc, "2026-10-28")
+    assert "enrichment" not in recs[0]
+    # a chain validates and applies to its tip whatever the array order
+    for order in (["newest", "middle", "original"], ["original", "middle", "newest"], ["middle", "newest", "original"]):
+        by = {"original": rec("original", None), "middle": rec("middle", "original"), "newest": rec("newest", "middle")}
+        doc = export(); doc["records"] = [by[k] for k in order]
+        assert ei.validate_export(doc) == [], order
+        recs = records()
+        ei.apply(recs, doc, "2026-10-28")
+        assert recs[0]["enrichment"]["fields"]["conditions.accepted_membership"]["record_id"] == "newest", order
+        again = ei.apply(recs, doc, "2026-10-28")
+        assert again["applied"] == 0 and again["superseded"] == 0 and again["quarantined"] == [], order
+    # two tips that nothing links are still a conflict
+    doc = export(); doc["records"] = [rec("left", None), rec("right", None)]
+    assert any("conflict" in e for e in ei.validate_export(doc))

@@ -290,21 +290,35 @@ def validate_export(doc: Any) -> list[str]:
         if not isinstance(link, dict) or link.get("status") != "validated" or link.get("method") not in LINKAGE_METHODS \
                 or not link.get("evidence"):
             errors.append(f"{where}: linkage must be validated by one of {LINKAGE_METHODS} with evidence")
-    # Conflicts: two live records for one study and field that neither
-    # supersedes the other, or a revision chain with a gap.
-    live: dict = {}
-    for rid, rs in by_id.items():
-        revs = sorted(r.get("revision") for r in rs if type(r.get("revision")) is int)
-        if revs and revs != list(range(1, len(revs) + 1)) and revs[0] != 1:
-            pass  # a partial chain is allowed: the export carries the revisions it releases
-        head = max(rs, key=lambda r: r.get("revision") or 0)
-        key = (head.get("nct_id"), head.get("field"))
-        if key in live and live[key].get("record_id") != rid:
-            other = live[key]
-            if head.get("supersedes") != other.get("record_id") and other.get("supersedes") != rid:
-                errors.append(f"conflict: records {other.get('record_id')} and {rid} both release {key[1]} for {key[0]} "
-                              "and neither supersedes the other")
-        live[key] = head if key not in live or (head.get("supersedes") == live[key].get("record_id")) else live[key]
+    # Conflicts: for one study and field, the heads (latest revision per
+    # record id) must form one supersession chain. Supersession is followed
+    # across the whole chain, whatever order the records sit in the array: a
+    # cycle (records superseding each other) is refused, and more than one
+    # tip (a head no other head supersedes) is a conflict.
+    heads: dict = {rid: max(rs, key=lambda r: r.get("revision") or 0) for rid, rs in by_id.items()}
+    groups: dict = {}
+    for rid, head in heads.items():
+        groups.setdefault((head.get("nct_id"), head.get("field")), []).append(rid)
+    for (nct, field), rids in groups.items():
+        in_group = set(rids)
+        superseded_here = set()
+        for rid in rids:
+            prev = heads[rid].get("supersedes")
+            if prev in in_group:
+                superseded_here.add(prev)
+            # follow the chain from this head; a revisit is a cycle
+            seen = [rid]
+            cur = prev
+            while cur in in_group:
+                if cur in seen:
+                    errors.append(f"supersession cycle among {', '.join(sorted(seen))} for {field} of {nct}")
+                    break
+                seen.append(cur)
+                cur = heads[cur].get("supersedes")
+        tips = sorted(r for r in rids if r not in superseded_here)
+        if len(tips) > 1:
+            errors.append(f"conflict: records {' and '.join(tips)} both release {field} for {nct} "
+                          "and neither supersedes the other")
     return errors
 
 
@@ -324,8 +338,8 @@ def _supersession_order(heads: dict) -> list:
     """The heads of one export for one study, a record after the one it
     supersedes when both are in the export, so a chain (original -> middle ->
     newest) installs in one pass whatever the record ids sort to. Ties keep
-    record-id order; a cycle (which validate_export does not admit) breaks at
-    depth of the number of heads."""
+    record-id order; validate_export refuses a cycle before apply reaches
+    this, and the depth bound is a guard, never an ordering."""
     def depth(r: dict, seen: int = 0) -> int:
         prev = heads.get(r.get("supersedes"))
         if prev is None or seen >= len(heads):
