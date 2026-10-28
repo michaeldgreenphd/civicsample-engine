@@ -56,7 +56,7 @@ def derive(path: str, snapshot_date: str | None, envelope: bool) -> tuple[list[d
     rows: list[dict] = []
     leans: list[dict] = []
     stamps: dict = {"snapshot_date": None, "extracted_at": None, "source_pipeline_commit": None,
-                    "n_parse_errors": 0, "n_records": 0, "envelope_version": None}
+                    "n_parse_errors": 0, "n_records": 0, "n_unstamped": 0, "envelope_version": None}
     for n, line in iter_records(path):
         try:
             raw = json.loads(line)
@@ -67,6 +67,10 @@ def derive(path: str, snapshot_date: str | None, envelope: bool) -> tuple[list[d
             stamps["n_parse_errors"] += 1
             continue
         stamps["n_records"] += 1
+        if not raw.get("extracted_at") or not raw.get("pipeline_commit"):
+            # Counted, never filled in: an unstamped record's provenance is
+            # unknown, and nothing downstream may claim it for a pull.
+            stamps["n_unstamped"] += 1
         for k, src in (("snapshot_date", "snapshot_date"), ("extracted_at", "extracted_at"),
                        ("source_pipeline_commit", "pipeline_commit")):
             v = raw.get(src)
@@ -159,10 +163,19 @@ def main(argv: list[str] | None = None) -> int:
         # behind the target's own stamps.
         c_at = container.get("extracted_at")
         c_commit = container.get("pipeline_commit")
-        if stamps["extracted_at"] and c_at and c_at != stamps["extracted_at"]:
+        # Write-back needs provenance on both sides: every raw record stamped,
+        # and the target stamped. Missing stamps are a refusal, never a match.
+        if stamps["n_unstamped"] or not stamps["extracted_at"] or not stamps["source_pipeline_commit"]:
+            raise SystemExit(f"--write-back refused: {stamps['n_unstamped']} of {stamps['n_records']} raw records lack "
+                             f"extracted_at or pipeline_commit, so their extraction cannot be matched to "
+                             f"{a.write_back}; nothing written")
+        if not c_at or not c_commit:
+            raise SystemExit(f"--write-back refused: {a.write_back} carries no extracted_at or pipeline_commit to "
+                             f"match the raw records against; nothing written")
+        if c_at != stamps["extracted_at"]:
             raise SystemExit(f"--write-back refused: the raw records were extracted at {stamps['extracted_at']} but "
                              f"{a.write_back} was extracted at {c_at}; nothing written")
-        if stamps["source_pipeline_commit"] and c_commit and c_commit != stamps["source_pipeline_commit"]:
+        if c_commit != stamps["source_pipeline_commit"]:
             raise SystemExit(f"--write-back refused: the raw records came from pipeline commit "
                              f"{stamps['source_pipeline_commit']} but {a.write_back} carries {c_commit}; nothing written")
         ids = [l.get("nct_id") for l in leans]
@@ -193,8 +206,11 @@ def main(argv: list[str] | None = None) -> int:
         "written_back": written_back,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "pipeline_commit": pipeline_commit(),
-        "source_pipeline_commit": stamps["source_pipeline_commit"] or (container or {}).get("pipeline_commit"),
-        "source_extracted_at": stamps["extracted_at"] or (container or {}).get("extracted_at"),
+        # Source stamps come from the raw records only. When any record was
+        # unstamped they are null, and generate_mobile_data refuses the sidecar.
+        "source_pipeline_commit": None if stamps["n_unstamped"] else stamps["source_pipeline_commit"],
+        "source_extracted_at": None if stamps["n_unstamped"] else stamps["extracted_at"],
+        "n_unstamped_source_records": stamps["n_unstamped"],
         "snapshot_date": snapshot_date,
         "source": f"derived from {path}" + (" (raw envelope)" if a.from_envelope else " (raw measures)"),
         "raw_envelope_version": stamps["envelope_version"],

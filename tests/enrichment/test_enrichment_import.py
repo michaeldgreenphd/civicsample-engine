@@ -352,3 +352,23 @@ def test_supersession_cycle_is_refused_and_chain_order_is_irrelevant():
     # two tips that nothing links are still a conflict
     doc = export(); doc["records"] = [rec("left", None), rec("right", None)]
     assert any("conflict" in e for e in ei.validate_export(doc))
+
+
+def test_a_later_revocation_advances_the_tombstone():
+    """Released 1, revoked 2, revoked 4, then released 3 replayed late: 3 must
+    not come back, because revision 4 revoked the record after it."""
+    recs = records()
+    ei.apply(recs, export(), "2026-10-28")
+    base = export()["records"][0]
+    def rev(n, revoked):
+        r = copy.deepcopy(base); r["revision"] = n
+        if revoked:
+            r.update({"release_status": "revoked", "revocation_ref": f"fictional-revocation-{n}",
+                      "revoked_at": f"2026-10-29T0{n}:00:00+00:00", "value": None, "value_state": "not_assessed",
+                      "state_reason": "revoked"})
+        return r
+    for i, (n, revoked) in enumerate([(2, True), (4, True), (3, False)]):
+        doc = export(); doc["export_id"] = f"fictional-export-1{i}"; doc["records"] = [rev(n, revoked)]
+        ei.apply(recs, doc, "2026-10-28")
+    f = recs[0]["enrichment"]["fields"]["conditions.accepted_membership"]
+    assert f["value_state"] == "revoked" and f["revision"] == 4 and f["revocation_ref"] == "fictional-revocation-4"

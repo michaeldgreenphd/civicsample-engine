@@ -396,7 +396,17 @@ def apply(records: list[dict], export: dict, target_snapshot_date: Optional[str]
             pub = _public_record(r)
             if r["release_status"] == "revoked":
                 if existing and existing.get("record_id") == r["record_id"] and existing.get("value_state") == "revoked":
-                    report["unchanged"] += 1
+                    if r["revision"] > (existing.get("revision") or 0):
+                        # A later revocation advances the tombstone, so an older
+                        # release replayed afterwards cannot come back as newer.
+                        ns["history"].append({**existing, "superseded_by": {"record_id": r["record_id"],
+                                                                            "revision": r["revision"]}})
+                        ns["fields"][field] = {**existing, "revision": r["revision"],
+                                               "state_reason": r.get("state_reason") or "release revoked",
+                                               "revocation_ref": r["revocation_ref"], "revoked_at": r["revoked_at"]}
+                        report["revoked"] += 1
+                    else:
+                        report["unchanged"] += 1
                 elif existing and existing.get("record_id") == r["record_id"] \
                         and r["revision"] < (existing.get("revision") or 0):
                     # A revocation of an older revision than the one installed

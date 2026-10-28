@@ -468,3 +468,30 @@ def test_write_back_refuses_another_pipeline_commit(tmp_path):
         bld.main(["--from-envelope", str(src), "--out", str(tmp_path / "a.csv.gz"), "--meta", str(tmp_path / "a_meta.json"),
                   "--write-back", str(demo)])
     assert demo.read_text() == before
+
+
+def test_write_back_refuses_unstamped_raw_records_and_meta_never_borrows_target_stamps(tmp_path):
+    import build_sex_gender_analysis as bld
+    cases = _cases()
+    study = _study(cases[0]["nct_id"], cases[0]["measures"], cases[0]["enrollment"])
+    env = sgt.select_raw_envelope(study)
+    env.update({"refetched": False, "snapshot_date": SNAP})  # no extracted_at, no pipeline_commit
+    src = tmp_path / "sex_gender_raw_envelope.jsonl.gz"
+    _write_jsonl(src, [env])
+    row = sgt.build_row(study, SNAP)
+    demo = tmp_path / "demographics.json"
+    demo.write_text(json.dumps({"extracted_at": "2026-10-28T00:00:00+00:00", "pipeline_commit": "bbbbbbb",
+                                "data": [{"nct_id": cases[0]["nct_id"], "sex_gender": sgt.lean_row(row)}]}))
+    before = demo.read_text()
+    with pytest.raises(SystemExit, match="lack extracted_at or pipeline_commit"):
+        bld.main(["--from-envelope", str(src), "--out", str(tmp_path / "a.csv.gz"), "--meta", str(tmp_path / "a_meta.json"),
+                  "--write-back", str(demo)])
+    assert demo.read_text() == before
+    # without write-back the sidecar is built, but its meta names no source pull
+    bld.main(["--from-envelope", str(src), "--out", str(tmp_path / "b.csv.gz"), "--meta", str(tmp_path / "b_meta.json")])
+    meta = json.loads((tmp_path / "b_meta.json").read_text())
+    assert meta["source_extracted_at"] is None and meta["source_pipeline_commit"] is None
+    assert meta["n_unstamped_source_records"] == 1
+    import generate_mobile_data as gmd
+    with pytest.raises(SystemExit, match="derived from extracted_at None"):
+        gmd.check_analysis_provenance(str(tmp_path / "b_meta.json"), "2026-10-28T00:00:00+00:00", "bbbbbbb", "b.csv.gz")
