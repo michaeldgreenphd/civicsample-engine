@@ -39,6 +39,7 @@ from src.gender_extractor import extract_gender_data
 from src.condition_classifier import classify_conditions
 from src.pubmed_fetcher import PubMedFetcher
 from src import sex_gender_table as sgt
+from src import sex_gender_analysis as sga
 
 # Set up logging
 logging.basicConfig(
@@ -48,6 +49,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 RAW_MEASURES_FILENAME = "sex_gender_raw_measures.jsonl.gz"
+# The versioned raw envelope (sex_gender_table.select_raw_envelope): written
+# only with --raw-envelope, beside the raw measures, never in their place.
+RAW_ENVELOPE_FILENAME = "sex_gender_raw_envelope.jsonl.gz"
 
 
 def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMedFetcher] = None,
@@ -92,6 +96,20 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
             logger.error(f"[{nct}] sex/gender parser failed ({type(e).__name__}: {e}); row filed as parse_error")
             sex_gender_row = sgt.parse_error_row(nct, enr, snap)
 
+        # ── Analytical layer (sex_gender_analysis): the reporting dimension,
+        # the "neither" sub-states, composition eligibility and the detailed
+        # gender categories of the newer manuscript, derived from the parser
+        # row and the selected measures. It never changes the parser row. A
+        # failure here is recorded on the block (parse_error dimension) and
+        # never drops the study.
+        try:
+            _env = sgt.select_raw_measures(study)
+            analysis = sga.analyze(sex_gender_row, _env["measures"], _env["enrollment"])
+        except Exception as e:  # noqa: BLE001 - the block has a parse_error state for this
+            nct = ((study.get("protocolSection") or {}).get("identificationModule") or {}).get("nctId")
+            logger.error(f"[{nct}] sex/gender analysis layer failed ({type(e).__name__}: {e}); block filed as parse_error")
+            analysis = sga.analyze(sgt.parse_error_row(nct, None, snap), None, None)
+
         # Extract demographic breakdowns for interactive display
         baseline_measures = get_baseline_measures(study)
         overall_group_id = get_overall_group_id(study)
@@ -126,6 +144,9 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
             # Only the lean subset rides in the parts; the full row is rebuilt
             # from the retained raw measures into sex_gender_parsed.csv.gz.
             "sex_gender": sgt.lean_row(sex_gender_row),
+            # The newer analytical layer's lean block; the full block is rebuilt
+            # from the retained raw measures into sex_gender_analysis.csv.gz.
+            "sex_gender_analysis": sga.lean_block(analysis),
             # Add breakdowns for interactive dashboard
             "raceBreakdown": race_breakdown,
             "ethnicityBreakdown": ethnicity_breakdown,
@@ -270,6 +291,12 @@ def main():
         help="YYYY-MM-DD stamped on every sex_gender row and raw-measure record (default: today, UTC)"
     )
     parser.add_argument(
+        "--raw-envelope",
+        action="store_true",
+        help=f"also write {RAW_ENVELOPE_FILENAME} beside the output: the versioned raw envelope "
+             "(selected measures plus the baseline module's groups, denominators and eligibility, verbatim)"
+    )
+    parser.add_argument(
         "--no-legacy-sex-gender",
         action="store_true",
         help="Do not run the legacy sex/gender extractors (sg=v1); study['sex'] and study['gender'] become null"
@@ -301,6 +328,7 @@ def main():
 
     results = []
     raw_records = []
+    envelopes = []
     errors = 0
 
     studies = client.iter_all_studies_with_results(
@@ -324,6 +352,7 @@ def main():
                                                  snapshot_date=snapshot_date, legacy_sex_gender=legacy)
         raw = sgt.select_raw_measures(study)
         raw["refetched"] = False
+        env = sgt.select_raw_envelope(study) if args.raw_envelope else None
 
         # The search endpoint occasionally omits measurement values for large
         # studies while keeping category titles intact.  Detect this and
@@ -341,6 +370,8 @@ def main():
                                                          refetched=True)
                 raw = sgt.select_raw_measures(full_study)
                 raw["refetched"] = True          # survives the rebuild from raw measures
+                if args.raw_envelope:
+                    env = sgt.select_raw_envelope(full_study)
                 refetch_count += 1
                 refetch_reasons[why] += 1
                 if _needs_refetch(result, full_study, raw):
@@ -362,6 +393,12 @@ def main():
             raw["extracted_at"] = extracted_at
             raw["pipeline_commit"] = source_commit
             raw_records.append(raw)
+            if env is not None:
+                env["refetched"] = raw["refetched"]
+                env["snapshot_date"] = snapshot_date
+                env["extracted_at"] = extracted_at
+                env["pipeline_commit"] = source_commit
+                envelopes.append(env)
         else:
             errors += 1
 
@@ -376,6 +413,10 @@ def main():
     raw_path = output_path.parent / RAW_MEASURES_FILENAME
     logger.info(f"Saving {len(raw_records)} raw sex/gender measure records to {raw_path}")
     write_raw_measures(raw_records, raw_path)
+    if args.raw_envelope:
+        env_path = output_path.parent / RAW_ENVELOPE_FILENAME
+        logger.info(f"Saving {len(envelopes)} raw sex/gender envelopes to {env_path}")
+        write_raw_measures(envelopes, env_path)
 
     # Summary statistics
     logger.info("\n=== Extraction Summary ===")

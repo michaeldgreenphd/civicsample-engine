@@ -3,3 +3,4 @@
 # requirements files). The runtime pipeline needs none of these.
 -r requirements.txt
 pytest>=8.0.0
+jsonschema>=4.0.0

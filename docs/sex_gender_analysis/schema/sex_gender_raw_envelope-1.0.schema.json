@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/michaeldgreenphd/civicsample-engine/docs/sex_gender_analysis/schema/sex_gender_raw_envelope-1.0.schema.json",
+  "title": "sex_gender_raw_envelope/1.0: one trial's retained raw input for the sex/gender layers",
+  "description": "One JSON object per line of sex_gender_raw_envelope.jsonl.gz (src/sex_gender_table.select_raw_envelope, written by src/extract_all.py --raw-envelope). A superset of the retained raw-measure record: the SELECTED measures verbatim plus the baseline module's group and denominator context, the registry's eligibility fields and the run stamps, so a later rule that needs group-level coverage can be applied to this snapshot without a registry pull. The existing raw-measure file is unchanged; an archive that has no envelope cannot support such a rule, and a consumer reports unavailable evidence rather than joining today's registry to it.",
+  "type": "object",
+  "required": ["envelope_version", "nct_id", "enrollment", "eligibility", "baseline_groups", "baseline_denoms", "population_description", "measures", "measure_index", "n_measures_in_module", "refetched", "snapshot_date", "extracted_at", "pipeline_commit"],
+  "additionalProperties": false,
+  "properties": {
+    "envelope_version": {"const": "sex_gender_raw_envelope/1.0"},
+    "nct_id": {"type": ["string", "null"], "pattern": "^NCT[0-9]{8}$"},
+    "enrollment": {"type": ["number", "string", "null"], "description": "protocolSection.designModule.enrollmentInfo.count as the API gives it"},
+    "eligibility": {
+      "type": "object", "required": ["schema_version", "sex", "gender_based", "gender_description", "present"], "additionalProperties": false,
+      "description": "src/utils.extract_eligibility: who may enrol, never observed sex or gender identity",
+      "properties": {
+        "schema_version": {"const": "eligibility/1.0"},
+        "sex": {"type": ["string", "null"]},
+        "gender_based": {"type": ["boolean", "string", "null"]},
+        "gender_description": {"type": ["string", "null"]},
+        "present": {"type": "array", "items": {"enum": ["sex", "gender_based", "gender_description"]}}
+      }
+    },
+    "baseline_groups": {"type": "array", "items": {"type": "object"}, "description": "baselineCharacteristicsModule.groups verbatim (id, title, description)"},
+    "baseline_denoms": {"type": "array", "items": {"type": "object"}, "description": "baselineCharacteristicsModule.denoms verbatim (units, per-group counts)"},
+    "population_description": {"type": ["string", "null"]},
+    "measures": {"type": "array", "items": {"type": "object"}, "description": "The selected sex/gender-titled measures, verbatim: classes, categories, measurements with groupIds, values and comments (the NA explanations), paramType, dispersionType, unitOfMeasure, denoms, populationDescription"},
+    "measure_index": {"type": "array", "items": {"type": "integer", "minimum": 0}, "description": "Each selected measure's position in the module's measures list"},
+    "n_measures_in_module": {"type": "integer", "minimum": 0},
+    "refetched": {"type": "boolean"},
+    "snapshot_date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "extracted_at": {"type": "string"},
+    "pipeline_commit": {"type": ["string", "null"]}
+  }
+}

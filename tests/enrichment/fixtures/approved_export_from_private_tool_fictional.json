@@ -1,0 +1,202 @@
+{
+  "allowlist_version": "public-allowlist/1.0",
+  "applies_to": {
+    "registry_snapshot_date": "2026-10-28"
+  },
+  "coverage": {
+    "fictional-c-run-1": {
+      "coverage": "complete",
+      "task": "civicsample-ai-label-pilot/1.0",
+      "units_completed": 2,
+      "units_planned": 2
+    }
+  },
+  "export_id": "fictional-export-0002",
+  "exported_at": "2026-10-28T12:00:00+00:00",
+  "format": "civicsample-approved-enrichment-export-1.0",
+  "promotion_package": "enrichment-promotion/1.0",
+  "records": [
+    {
+      "chronology": {
+        "released_at": "2026-10-28T11:00:00+00:00",
+        "reviewed_at": "2026-10-27T15:00:00+00:00",
+        "validated_at": "2026-10-27T09:00:00+00:00"
+      },
+      "decision_ref": "dec-665ca5b2fc4d963211b9c332,dec-800923346144441c1c970800",
+      "evidence": {
+        "pointer": "conditions_registered.0",
+        "population": null,
+        "timepoint": null
+      },
+      "field": "conditions.accepted_membership",
+      "linkage": {
+        "evidence": "the candidate was derived from the registry record of NCT99000010 itself",
+        "method": "registry_nct",
+        "status": "validated"
+      },
+      "method": {
+        "guide_version": "fictional-guide-r0",
+        "kind": "ai_classification",
+        "model_id": "fictional-model-1",
+        "native_task": "civicsample-ai-label-pilot/1.0",
+        "run_coverage": "complete",
+        "run_id": "fictional-c-run-1",
+        "taxonomy_version": "civicsample-condition-catalog-20/1.0",
+        "units_completed": 2,
+        "units_planned": 2
+      },
+      "nct_id": "NCT99000010",
+      "record_id": "rec-2f8cf7fa2497d2fa42d659e2",
+      "release_status": "released",
+      "review_status": "accepted",
+      "revision": 1,
+      "schema_version": "approved_enrichment_record/1.0",
+      "source": {
+        "identity": "fictional registry snapshot 2026-10-28, label pilot packets",
+        "kind": "registry_snapshot",
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "snapshot_date": "2026-10-28"
+      },
+      "state_reason": null,
+      "supersedes": null,
+      "validation_status": "validated",
+      "value": {
+        "labels": [
+          {
+            "id": "AREA_RESPIRATORY",
+            "status": "accepted"
+          },
+          {
+            "id": "ROW_AST",
+            "status": "accepted"
+          }
+        ],
+        "taxonomy_version": "civicsample-condition-catalog-20/1.0"
+      },
+      "value_state": "present"
+    },
+    {
+      "chronology": {
+        "released_at": "2026-10-28T11:00:00+00:00",
+        "reviewed_at": "2026-10-27T15:00:00+00:00",
+        "validated_at": "2026-10-27T09:00:00+00:00"
+      },
+      "decision_ref": "dec-4e2d59ce0c8412ba0472206f",
+      "evidence": {
+        "pointer": "detailed_description",
+        "population": null,
+        "timepoint": null
+      },
+      "field": "conditions.review_leads",
+      "linkage": {
+        "evidence": "the candidate was derived from the registry record of NCT99000010 itself",
+        "method": "registry_nct",
+        "status": "validated"
+      },
+      "method": {
+        "guide_version": "fictional-guide-r0",
+        "kind": "ai_classification",
+        "model_id": "fictional-model-1",
+        "native_task": "civicsample-ai-label-pilot/1.0",
+        "run_coverage": "complete",
+        "run_id": "fictional-c-run-1",
+        "taxonomy_version": "civicsample-condition-catalog-20/1.0",
+        "units_completed": 2,
+        "units_planned": 2
+      },
+      "nct_id": "NCT99000010",
+      "record_id": "rec-e7d49aa61c1bdc705c52ce82",
+      "release_status": "released",
+      "review_status": "accepted",
+      "revision": 1,
+      "schema_version": "approved_enrichment_record/1.0",
+      "source": {
+        "identity": "fictional registry snapshot 2026-10-28, label pilot packets",
+        "kind": "registry_snapshot",
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "snapshot_date": "2026-10-28"
+      },
+      "state_reason": null,
+      "supersedes": null,
+      "validation_status": "validated",
+      "value": {
+        "labels": [
+          {
+            "id": "AREA_INFECTIOUS",
+            "lead_kind": "addition",
+            "native_decision": "SUPPORTED",
+            "native_task": "civicsample-ai-label-pilot/1.0",
+            "status": "proposed"
+          }
+        ],
+        "taxonomy_version": "civicsample-condition-catalog-20/1.0"
+      },
+      "value_state": "present"
+    },
+    {
+      "chronology": {
+        "released_at": "2026-10-28T11:00:00+00:00",
+        "reviewed_at": "2026-10-27T15:00:00+00:00",
+        "validated_at": "2026-10-27T09:00:00+00:00"
+      },
+      "decision_ref": "dec-d5dc04b354271c029a2c8c68",
+      "evidence": {
+        "pointer": "brief_summary",
+        "population": null,
+        "timepoint": null
+      },
+      "field": "conditions.review_leads",
+      "linkage": {
+        "evidence": "the candidate was derived from the registry record of NCT99000011 itself",
+        "method": "registry_nct",
+        "status": "validated"
+      },
+      "method": {
+        "guide_version": "fictional-guide-r0",
+        "kind": "ai_classification",
+        "model_id": "fictional-model-1",
+        "native_task": "civicsample-ai-label-pilot/1.0",
+        "run_coverage": "complete",
+        "run_id": "fictional-c-run-1",
+        "taxonomy_version": "civicsample-condition-catalog-20/1.0",
+        "units_completed": 2,
+        "units_planned": 2
+      },
+      "nct_id": "NCT99000011",
+      "record_id": "rec-77422526b57a9a94a64b0acf",
+      "release_status": "released",
+      "review_status": "accepted",
+      "revision": 1,
+      "schema_version": "approved_enrichment_record/1.0",
+      "source": {
+        "identity": "fictional registry snapshot 2026-10-28, label pilot packets",
+        "kind": "registry_snapshot",
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "snapshot_date": "2026-10-28"
+      },
+      "state_reason": null,
+      "supersedes": null,
+      "validation_status": "validated",
+      "value": {
+        "labels": [
+          {
+            "id": "ROW_DIAB",
+            "lead_kind": "removal",
+            "native_decision": "NOT_SUPPORTED",
+            "native_task": "civicsample-ai-label-pilot/1.0",
+            "status": "proposed"
+          }
+        ],
+        "taxonomy_version": "civicsample-condition-catalog-20/1.0"
+      },
+      "value_state": "present"
+    }
+  ],
+  "release_decision": {
+    "decided_at": "2026-10-28T11:00:00+00:00",
+    "decision_id": "fictional-release-0002",
+    "release_status": "released"
+  },
+  "source_commit": "0123456789abcdef0123456789abcdef01234567",
+  "source_repository": "civicsample-verify-ai-private"
+}
