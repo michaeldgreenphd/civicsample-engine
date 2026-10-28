@@ -1,60 +1,61 @@
 {
   "about": [
-    "Fictional trials for src/sex_gender_analysis.py. No case is a registry record: the NCT ids are reserved fictional values and every measure was written for the case it names.",
-    "Each case gives the API v2 baseline measures (as select_raw_measures retains them), the registered enrollment, and the expected lean block (src/sex_gender_analysis.lean_block) plus selected keys of the full block. The parser row is built with src/sex_gender_table.build_row, so the parser's own counts are checked by the vendored suite, not here."
+      "Fictional trials for src/sex_gender_analysis.py. No case is a registry record: the NCT ids are reserved fictional values and every measure was written for the case it names.",
+      "Each case gives the API v2 baseline measures (as select_raw_measures retains them), the registered enrollment, and the expected lean block (src/sex_gender_analysis.lean_block) plus selected keys of the full block. The parser row is built with src/sex_gender_table.build_row, so the parser's own counts are checked by the vendored suite, not here.",
+      "2026-10-28: after the owner's rule decisions only R-GC-05 is listed in `unresolved` (where gender categories were derived or excluded); R-IC-01, R-PO-01 and R-FS-01 are decided limitations stated on their fields."
   ],
   "cases": [
     {
       "nct_id": "NCT99000001", "tags": ["normal_count"], "enrollment": 90,
       "measures": [{"title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
         "classes": [{"categories": [{"title": "Female", "measurements": [{"groupId": "BG000", "value": "40"}]}, {"title": "Male", "measurements": [{"groupId": "BG000", "value": "50"}]}]}]}],
-      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01", "R-IC-01", "R-PO-01"]},
+      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {"composition.ineligible_reason": null}
     },
     {
       "nct_id": "NCT99000002", "tags": ["explicit_unknown_only"], "enrollment": 20,
       "measures": [{"title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
         "classes": [{"categories": [{"title": "Female", "measurements": [{"groupId": "BG000", "value": "0"}]}, {"title": "Male", "measurements": [{"groupId": "BG000", "value": "0"}]}, {"title": "Unknown or Not Reported", "measurements": [{"groupId": "BG000", "value": "9"}]}]}]}],
-      "expected_lean": {"reporting_dimension": "neither", "neither_reason": "explicit_unknown_or_not_collected", "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01", "R-PO-01"]},
+      "expected_lean": {"reporting_dimension": "neither", "neither_reason": "explicit_unknown_or_not_collected", "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {"composition.ineligible_reason": "not_reported_sex", "gender_categories.separate.explicit_unknown_declined": null}
     },
     {
       "nct_id": "NCT99000003", "tags": ["explicit_unknown_with_values"], "enrollment": 55,
       "measures": [{"title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
         "classes": [{"categories": [{"title": "Female", "measurements": [{"groupId": "BG000", "value": "30"}]}, {"title": "Male", "measurements": [{"groupId": "BG000", "value": "20"}]}, {"title": "Unknown or Not Reported", "measurements": [{"groupId": "BG000", "value": "5"}]}]}]}],
-      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": true, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01", "R-IC-01", "R-PO-01"]},
+      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": true, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {}
     },
     {
       "nct_id": "NCT99000004", "tags": ["measure_absent"], "enrollment": 12,
       "measures": [],
-      "expected_lean": {"reporting_dimension": "neither", "neither_reason": "measure_absent", "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01", "R-PO-01"]},
+      "expected_lean": {"reporting_dimension": "neither", "neither_reason": "measure_absent", "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {"composition.ineligible_reason": "not_reported_sex"}
     },
     {
       "nct_id": "NCT99000005", "tags": ["measure_present_no_usable_breakdown"], "enrollment": 300,
       "measures": [{"title": "Sex: Female, Male", "classes": [{"categories": [{"title": "Female"}, {"title": "Male"}]}]}],
-      "expected_lean": {"reporting_dimension": "neither", "neither_reason": "measure_present_no_usable_breakdown", "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01", "R-PO-01"]},
+      "expected_lean": {"reporting_dimension": "neither", "neither_reason": "measure_present_no_usable_breakdown", "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {}
     },
     {
       "nct_id": "NCT99000006", "tags": ["declared_not_collected"], "enrollment": 40,
       "measures": [{"title": "Sex: Female, Male", "populationDescription": "Sex was not collected for this study.", "classes": [{"categories": [{"title": "Female", "measurements": [{"groupId": "BG000", "value": "0"}]}, {"title": "Male", "measurements": [{"groupId": "BG000", "value": "0"}]}]}]}],
-      "expected_lean": {"reporting_dimension": "neither", "neither_reason": "explicit_unknown_or_not_collected", "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01", "R-PO-01"]},
+      "expected_lean": {"reporting_dimension": "neither", "neither_reason": "explicit_unknown_or_not_collected", "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {"reporting.declared_not_collected": true, "parser.sex_report_status": "uninformative"}
     },
     {
       "nct_id": "NCT99000007", "tags": ["non_participant_units"], "enrollment": 25,
       "measures": [{"title": "Sex: Female, Male", "paramType": "COUNT_OF_UNITS", "unitOfMeasure": "Eyes",
         "classes": [{"categories": [{"title": "Female", "measurements": [{"groupId": "BG000", "value": "30"}]}, {"title": "Male", "measurements": [{"groupId": "BG000", "value": "10"}]}]}]}],
-      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01", "R-IC-01", "R-PO-01"]},
+      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {"composition.ineligible_reason": "non_participant_units"}
     },
     {
       "nct_id": "NCT99000008", "tags": ["partial_coverage_unevaluated"], "enrollment": 100,
       "measures": [{"title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants", "populationDescription": "Participants in the randomized subset only",
         "classes": [{"categories": [{"title": "Female", "measurements": [{"groupId": "BG000", "value": "10"}, {"groupId": "BG001", "value": "10"}]}, {"title": "Male", "measurements": [{"groupId": "BG000", "value": "10"}, {"groupId": "BG001", "value": "10"}]}]}]}],
-      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01", "R-IC-01", "R-PO-01"]},
+      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {"composition.incomplete_composition_reason": "not evaluated (R-IC-01)"}
     },
     {
@@ -63,7 +64,7 @@
         {"title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants", "populationDescription": "Enrolled patients", "classes": [{"categories": [{"title": "Female", "measurements": [{"groupId": "BG000", "value": "20"}]}, {"title": "Male", "measurements": [{"groupId": "BG000", "value": "20"}]}]}]},
         {"title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants", "populationDescription": "Participating clinicians (the delivery staff, not the patient cohort)", "classes": [{"categories": [{"title": "Female", "measurements": [{"groupId": "BG000", "value": "30"}]}, {"title": "Male", "measurements": [{"groupId": "BG000", "value": "30"}]}]}]}
       ],
-      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01", "R-IC-01", "R-PO-01"]},
+      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {"patients_only.status": "not_evaluated"},
       "note": "The parser takes the fullest Female + Male table (the clinicians, 60). The patients-only rule (E7) is validated on named historical cases only, so this layer records not_evaluated and leaves the parser's counts as they are: the evidence that a general rule would need is on the block for review, nothing is rewritten."
     },
@@ -78,7 +79,7 @@
         {"title": "Gender Identity", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants", "classes": [{"categories": [
           {"title": "Transgender", "measurements": [{"groupId": "BG000", "value": "4"}]}, {"title": "Non-binary", "measurements": [{"groupId": "BG000", "value": "1"}]}]}]}
       ],
-      "expected_lean": {"reporting_dimension": "both", "neither_reason": null, "explicit_unknown_with_values": true, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "derived", "d3_total": 10, "d5_strict": 9, "unresolved": ["R-FS-01", "R-IC-01", "R-PO-01", "R-GC-05"]},
+      "expected_lean": {"reporting_dimension": "both", "neither_reason": null, "explicit_unknown_with_values": true, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "derived", "d3_total": 10, "d5_strict": 9, "unresolved": ["R-GC-05"]},
       "expected_full": {
         "gender_categories.categories.transgender_with_sex_term": 3, "gender_categories.categories.transgender_no_sex_term": 4,
         "gender_categories.categories.nonbinary_gender_expansive": 2, "gender_categories.categories.another_self_described": 1,
@@ -92,14 +93,14 @@
     {
       "nct_id": "NCT99000011", "tags": ["gender_sum_exceeds_enrollment"], "enrollment": 10,
       "measures": [{"title": "Gender", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants", "classes": [{"categories": [{"title": "Woman", "measurements": [{"groupId": "BG000", "value": "5"}]}, {"title": "Man", "measurements": [{"groupId": "BG000", "value": "4"}]}, {"title": "Non-binary", "measurements": [{"groupId": "BG000", "value": "20"}]}]}]}],
-      "expected_lean": {"reporting_dimension": "both", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "excluded", "d3_total": 20, "d5_strict": 20, "unresolved": ["R-FS-01", "R-IC-01", "R-PO-01", "R-GC-05"]},
+      "expected_lean": {"reporting_dimension": "both", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "excluded", "d3_total": 20, "d5_strict": 20, "unresolved": ["R-GC-05"]},
       "expected_full": {"gender_categories.exclusion.reason": "sum_exceeds_enrollment_10pct"},
       "note": "The counts stay on the block for audit; the summary never sums an excluded trial's D3 into its aggregate."
     },
     {
       "nct_id": "NCT99000012", "tags": ["gender_non_participant_units"], "enrollment": 8,
       "measures": [{"title": "Gender", "paramType": "COUNT_OF_UNITS", "unitOfMeasure": "Tests", "classes": [{"categories": [{"title": "Non-binary", "measurements": [{"groupId": "BG000", "value": "2"}]}]}]}],
-      "expected_lean": {"reporting_dimension": "gender_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "excluded", "d3_total": 2, "d5_strict": 2, "unresolved": ["R-FS-01", "R-PO-01", "R-GC-05"]},
+      "expected_lean": {"reporting_dimension": "gender_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "excluded", "d3_total": 2, "d5_strict": 2, "unresolved": ["R-GC-05"]},
       "expected_full": {"gender_categories.exclusion.reason": "non_participant_units", "composition.ineligible_reason": "not_reported_sex"}
     },
     {
@@ -107,20 +108,20 @@
       "measures": [{"title": "Gender Identity", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants", "classes": [{"categories": [
         {"title": "Cisgender woman", "measurements": [{"groupId": "BG000", "value": "10"}]}, {"title": "Cisgender man", "measurements": [{"groupId": "BG000", "value": "8"}]},
         {"title": "Intersex", "measurements": [{"groupId": "BG000", "value": "1"}]}, {"title": "Transgender man", "measurements": [{"groupId": "BG000", "value": "2"}]}]}]}],
-      "expected_lean": {"reporting_dimension": "gender_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "derived", "d3_total": 2, "d5_strict": 2, "unresolved": ["R-FS-01", "R-PO-01", "R-GC-05"]},
+      "expected_lean": {"reporting_dimension": "gender_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": false, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "derived", "d3_total": 2, "d5_strict": 2, "unresolved": ["R-GC-05"]},
       "expected_full": {"gender_categories.separate.cisgender_labeled": 18, "gender_categories.separate.intersex": 1, "gender_categories.categories.transgender_with_sex_term": 2, "gender_categories.flags.two_question_table": false},
       "note": "Cisgender-labelled rows carry a sex word, so the parser holds them as cis/trans-qualified and never as Female or Male; here they are a separate row, not D3. Intersex is a separate row too."
     },
     {
       "nct_id": "NCT99000014", "tags": ["parse_error"], "enrollment": 10,
       "parse_error": true, "measures": [],
-      "expected_lean": {"reporting_dimension": "parse_error", "neither_reason": null, "explicit_unknown_with_values": null, "composition_eligible": null, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "parse_error", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01"]},
+      "expected_lean": {"reporting_dimension": "parse_error", "neither_reason": null, "explicit_unknown_with_values": null, "composition_eligible": null, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "parse_error", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {"composition.ineligible_reason": "parse_error", "reporting.declared_not_collected": null}
     },
     {
       "nct_id": "NCT99000015", "tags": ["unresolved_interpretation"], "enrollment": 60,
       "measures": [{"title": "Gender", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants", "classes": [{"categories": [{"title": "Female", "measurements": [{"groupId": "BG000", "value": "30"}]}, {"title": "Male", "measurements": [{"groupId": "BG000", "value": "30"}]}]}]}],
-      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": ["R-FS-01", "R-IC-01", "R-PO-01"]},
+      "expected_lean": {"reporting_dimension": "sex_only", "neither_reason": null, "explicit_unknown_with_values": false, "composition_eligible": true, "incomplete_composition": null, "incomplete_composition_evaluated": false, "gender_categories_status": "not_applicable", "d3_total": null, "d5_strict": null, "unresolved": []},
       "expected_full": {},
       "note": "A Gender-titled Female/Male table is sex data under a gender label (the category-based rule): sex_only, and no gender category. Whether a manual FINAL reading would differ is R-FS-01, listed as unresolved, never decided here."
     }
