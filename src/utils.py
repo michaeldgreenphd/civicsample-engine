@@ -357,6 +357,34 @@ def get_total_baseline_participants(study: dict, overall_group_id: Optional[str]
 
     return None
 
+ELIGIBILITY_SCHEMA_VERSION = "eligibility/1.0"
+
+
+def extract_eligibility(eligibility_mod: Optional[dict]) -> dict:
+    """The registry's sex/gender eligibility fields, verbatim, with absence kept.
+
+    sex                 eligibilityModule.sex as the API gives it (ALL, FEMALE,
+                        MALE) or None when the module omits it
+    gender_based        eligibilityModule.genderBased (true/false) or None
+    gender_description  eligibilityModule.genderDescription (free text) or None
+    present             which of the three keys the registry record carried, so
+                        a None can be told apart from a key that was never there
+
+    None of this is observed participant sex or gender identity; the parser
+    row (sex_gender) and the analysis block (sex_gender_analysis) never read
+    it, and tests/sex_gender_analysis/test_analysis.py pins that.
+    """
+    mod = eligibility_mod if isinstance(eligibility_mod, dict) else {}
+    keys = {"sex": "sex", "genderBased": "gender_based", "genderDescription": "gender_description"}
+    out: dict = {"schema_version": ELIGIBILITY_SCHEMA_VERSION, "sex": None, "gender_based": None,
+                 "gender_description": None, "present": []}
+    for api_key, our_key in keys.items():
+        if api_key in mod:
+            out["present"].append(our_key)
+            out[our_key] = mod.get(api_key)
+    return out
+
+
 def get_study_metadata(study: dict) -> dict:
     """Extract common study metadata."""
     protocol = study.get("protocolSection", {})
@@ -489,6 +517,15 @@ def get_study_metadata(study: dict) -> dict:
     std_ages = eligibility_mod.get("stdAges", [])
     gender = eligibility_mod.get("sex", "ALL")
     healthy_volunteers = eligibility_mod.get("healthyVolunteers", False)
+    # The registry's eligibility fields, verbatim and in their own namespace.
+    # eligibilityModule.sex (ALL / FEMALE / MALE) is who may enrol, not the
+    # observed sex of anyone who did; genderBased and genderDescription are
+    # the registrant's statement that eligibility is based on gender identity.
+    # The legacy "gender" key above is overwritten by the gender extractor in
+    # src/extract_all.py, so until this namespace existed the eligibility sex
+    # never reached the published records. A field the registry omits is
+    # None here, never a default: absence is recorded as absence.
+    eligibility = extract_eligibility(eligibility_mod)
 
     # Compute pediatric status from stdAges
     has_child = "CHILD" in std_ages
@@ -565,6 +602,7 @@ def get_study_metadata(study: dict) -> dict:
         "std_ages": std_ages,
         "pediatric_status": pediatric_status,
         "gender": gender,
+        "eligibility": eligibility,
         "healthy_volunteers": healthy_volunteers,
         # Time metrics
         "completion_to_report_days": completion_to_report,

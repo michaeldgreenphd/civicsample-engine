@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/michaeldgreenphd/civicsample-engine/docs/sex_gender_analysis/schema/sex_gender_analysis-1.0.schema.json",
+  "title": "sex_gender_analysis/1.0: the analytical layer around the vendored sex/gender parser",
+  "description": "The full block src/sex_gender_analysis.analyze returns for one trial (published as a row of sex_gender_analysis.csv.gz) and, under $defs/lean, the per-study subset that rides in the published parts under the study key sex_gender_analysis. A record published before this layer carries no such key; readers say the newer analysis is unavailable and never manufacture a value from the legacy counts. Every absent quantity is null, never zero. Layer as_run: derived from the parser's as-run output; the manuscript's FINAL states (manual reconciliation) are not reproduced.",
+  "type": "object",
+  "required": ["schema_version", "rules_version", "layer", "parser", "reporting", "composition", "gender_categories", "patients_only", "unresolved"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "sex_gender_analysis/1.0"},
+    "rules_version": {"type": "string", "description": "The analytical rules this block was derived under (src/sex_gender_analysis.RULES_VERSION). Values are comparable only under one rules version."},
+    "layer": {"const": "as_run"},
+    "parser": {
+      "type": "object", "required": ["rules_version", "module_version", "sex_report_status"], "additionalProperties": false,
+      "properties": {
+        "rules_version": {"type": "string"},
+        "module_version": {"type": "string"},
+        "sex_report_status": {"enum": ["reported", "explicit_unknown_only", "uninformative", "not_reported", "parse_error"], "description": "The parser's own five-state status, untouched."}
+      }
+    },
+    "reporting": {
+      "type": "object", "required": ["dimension", "neither_reason", "explicit_unknown_with_values", "declared_not_collected"], "additionalProperties": false,
+      "properties": {
+        "dimension": {"enum": ["sex_only", "both", "gender_only", "neither", "parse_error"], "description": "eTable 1 panel A: sex only, both, gender only, neither; parse_error is an operational failure, not a substantive state."},
+        "neither_reason": {"enum": ["explicit_unknown_or_not_collected", "measure_absent", "measure_present_no_usable_breakdown", null], "description": "The three sub-states of neither (eTable 1); null for every other dimension."},
+        "explicit_unknown_with_values": {"type": ["boolean", "null"], "description": "An explicit Unknown count beside reported values (eTable 1 panel B). Both are kept; null on parse_error."},
+        "declared_not_collected": {"type": ["boolean", "null"]}
+      }
+    },
+    "composition": {
+      "type": "object", "required": ["eligible", "ineligible_reason", "incomplete_composition", "incomplete_composition_evaluated", "incomplete_composition_reason"], "additionalProperties": false,
+      "properties": {
+        "eligible": {"type": ["boolean", "null"], "description": "Enters the composition and percent-female denominators (reported_sex AND is_participant_count AND Female + Male > 0); null on parse_error."},
+        "ineligible_reason": {"enum": ["parse_error", "not_reported_sex", "non_participant_units", "no_female_male_counts", null]},
+        "incomplete_composition": {"type": ["boolean", "null"], "description": "Female and male counts covering only some participants, or clusters (eMethods 2). null until evaluated; a false is only ever a measured false."},
+        "incomplete_composition_evaluated": {"type": "boolean", "description": "Whether incomplete_composition was evaluated at all. A null value with evaluated false is an unevaluated quantity, never proof of complete composition."},
+        "incomplete_composition_reason": {"type": "string"}
+      }
+    },
+    "gender_categories": {
+      "type": "object",
+      "required": ["status", "definition", "categories", "separate", "d3_total", "d5_strict", "exclusion", "flags", "labels", "unclassified_labels"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"enum": ["derived", "not_applicable", "excluded", "not_evaluated", "parse_error"], "description": "derived: at least one gender-identity category posted and no exclusion applied; not_applicable: no such category posted; excluded: an eTable 5 exclusion applied (counts kept for audit, never summed into D3 aggregates)."},
+        "definition": {"type": "string"},
+        "categories": {
+          "type": "object", "additionalProperties": false,
+          "description": "eTable 5 gender-identity categories (D3). Each is the largest value across the count-driving tables, or null when no table posted it.",
+          "properties": {
+            "transgender_with_sex_term": {"type": ["number", "null"]},
+            "transgender_no_sex_term": {"type": ["number", "null"]},
+            "nonbinary_gender_expansive": {"type": ["number", "null"]},
+            "questioning": {"type": ["number", "null"]},
+            "combined_gender_minority": {"type": ["number", "null"]},
+            "another_self_described": {"type": ["number", "null"], "description": "Includes rows labeled only Other (the documented bare-Other convention)."}
+          },
+          "required": ["transgender_with_sex_term", "transgender_no_sex_term", "nonbinary_gender_expansive", "questioning", "combined_gender_minority", "another_self_described"]
+        },
+        "separate": {
+          "type": "object", "additionalProperties": false, "required": ["intersex", "cisgender_labeled", "explicit_unknown_declined"],
+          "description": "Rows reported separately, never as gender diverse (eTable 5).",
+          "properties": {
+            "intersex": {"type": ["number", "null"]},
+            "cisgender_labeled": {"type": ["number", "null"]},
+            "explicit_unknown_declined": {"type": ["number", "null"]}
+          }
+        },
+        "d3_total": {"type": ["number", "null"], "description": "Sum of the posted D3 categories (eTable 5 total, gender identity categories). An aggregate operational rule, not person-level deduplication."},
+        "d5_strict": {"type": ["number", "null"], "description": "D3 without another_self_described: the strict lower bound."},
+        "exclusion": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "required": ["reason"], "properties": {"reason": {"enum": ["non_participant_units", "sum_exceeds_enrollment_10pct"]}, "d3_total": {"type": "number"}, "enrollment": {"type": "number"}}}
+          ]
+        },
+        "flags": {
+          "type": "object", "required": ["two_question_table", "possible_double_count"], "additionalProperties": false,
+          "properties": {
+            "two_question_table": {"type": "boolean", "description": "A count-driving table carries Female/Male rows beside gender-identity rows (the same participants counted under sex and under gender)."},
+            "possible_double_count": {"type": "boolean", "description": "More than one count-driving table carries gender-identity rows; the max rule applied."}
+          }
+        },
+        "labels": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "unclassified_labels": {"type": "array", "items": {"type": "string"}, "description": "Labels the parser bucketed as gender diverse or cis/trans-qualified that no eTable 5 pattern matched; surfaced for review, never counted."}
+      }
+    },
+    "patients_only": {
+      "type": "object", "required": ["status", "rule"], "additionalProperties": false,
+      "properties": {"status": {"const": "not_evaluated"}, "rule": {"const": "R-PO-01"}}
+    },
+    "unresolved": {"type": "array", "items": {"enum": ["R-IC-01", "R-PO-01", "R-FS-01", "R-GC-05"]}, "description": "The rule-matrix ids this block leaves open."}
+  },
+  "$defs": {
+    "lean": {
+      "title": "The per-study subset in the published parts (study.sex_gender_analysis)",
+      "type": "object",
+      "required": ["schema_version", "reporting_dimension", "neither_reason", "explicit_unknown_with_values", "composition_eligible", "incomplete_composition", "incomplete_composition_evaluated", "gender_categories_status", "d3_total", "d5_strict", "unresolved"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {"const": "sex_gender_analysis/1.0"},
+        "reporting_dimension": {"enum": ["sex_only", "both", "gender_only", "neither", "parse_error"]},
+        "neither_reason": {"enum": ["explicit_unknown_or_not_collected", "measure_absent", "measure_present_no_usable_breakdown", null]},
+        "explicit_unknown_with_values": {"type": ["boolean", "null"]},
+        "composition_eligible": {"type": ["boolean", "null"]},
+        "incomplete_composition": {"type": ["boolean", "null"]},
+        "incomplete_composition_evaluated": {"type": "boolean"},
+        "gender_categories_status": {"enum": ["derived", "not_applicable", "excluded", "not_evaluated", "parse_error"]},
+        "d3_total": {"type": ["number", "null"]},
+        "d5_strict": {"type": ["number", "null"]},
+        "unresolved": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

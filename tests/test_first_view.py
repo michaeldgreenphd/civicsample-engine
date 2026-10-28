@@ -65,7 +65,7 @@ DELETE = object()      # a change that removes the key
 
 SUMMARY_KEYS = ["extracted_at", "pipeline_commit", "totalStudies", "cards", "raceDistribution",
                 "ethnicityDistribution", "sexDistribution", "genderDistribution", "raceSubcategories",
-                "ethnicitySubcategories", "byYear", "fda", "recentStudies", "sexGender"]
+                "ethnicitySubcategories", "byYear", "fda", "recentStudies", "sexGender", "sexGenderAnalysis"]
 
 
 # ── the rules ───────────────────────────────────────────────────────────────
