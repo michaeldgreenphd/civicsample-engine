@@ -304,3 +304,23 @@ def test_chronology_is_compared_as_instants():
     # a naive timestamp carries no instant and is refused
     r["chronology"]["reviewed_at"] = "2026-10-27T15:00:00"
     assert any("chronology needs" in e for e in ei.validate_export(doc))
+
+
+def test_supersession_chain_in_one_export_applies_in_dependency_order():
+    recs = records()
+    ei.apply(recs, export(), "2026-10-28")
+    doc = export()
+    doc["export_id"] = "fictional-export-0002"
+    base = doc["records"][0]
+    middle = copy.deepcopy(base); middle["record_id"] = "z-middle"; middle["revision"] = 1; middle["supersedes"] = base["record_id"]
+    newest = copy.deepcopy(base); newest["record_id"] = "a-newest"; newest["revision"] = 1; newest["supersedes"] = "z-middle"
+    newest["value"]["labels"][2]["status"] = "rejected"
+    doc["records"] = [newest, middle]
+    assert ei.validate_export(doc) == []
+    report = ei.apply(recs, doc, "2026-10-28")
+    f = recs[0]["enrichment"]["fields"]["conditions.accepted_membership"]
+    assert f["record_id"] == "a-newest", report
+    assert report["quarantined"] == [] and report["superseded"] == 2
+    again = ei.apply(recs, doc, "2026-10-28")
+    assert again["applied"] == 0 and again["superseded"] == 0 and again["quarantined"] == []
+    assert recs[0]["enrichment"]["fields"]["conditions.accepted_membership"]["record_id"] == "a-newest"

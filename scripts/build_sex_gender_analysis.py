@@ -154,10 +154,17 @@ def main(argv: list[str] | None = None) -> int:
     if a.write_back:
         with open(a.write_back) as f:
             container = json.load(f)
+        # Both source stamps must agree: the same extracted_at from another code
+        # revision is another pull's output, and a write-back would hide that
+        # behind the target's own stamps.
         c_at = container.get("extracted_at")
+        c_commit = container.get("pipeline_commit")
         if stamps["extracted_at"] and c_at and c_at != stamps["extracted_at"]:
             raise SystemExit(f"--write-back refused: the raw records were extracted at {stamps['extracted_at']} but "
                              f"{a.write_back} was extracted at {c_at}; nothing written")
+        if stamps["source_pipeline_commit"] and c_commit and c_commit != stamps["source_pipeline_commit"]:
+            raise SystemExit(f"--write-back refused: the raw records came from pipeline commit "
+                             f"{stamps['source_pipeline_commit']} but {a.write_back} carries {c_commit}; nothing written")
         ids = [l.get("nct_id") for l in leans]
         no_id = sum(1 for i in ids if not i)
         dupes = sorted(i for i, n in Counter(i for i in ids if i).items() if n > 1)

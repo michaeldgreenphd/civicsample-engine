@@ -448,3 +448,23 @@ def test_mobile_summary_refuses_a_sidecar_from_another_pull(tmp_path):
         gmd.check_analysis_provenance(str(tmp_path / "missing.json"), "2026-10-28T00:00:00+00:00", "new0000", str(table))
     meta.write_text(json.dumps({"source_extracted_at": "2026-10-28T00:00:00+00:00", "source_pipeline_commit": "new0000"}))
     assert gmd.check_analysis_provenance(str(meta), "2026-10-28T00:00:00+00:00", "new0000", str(table))["source_pipeline_commit"] == "new0000"
+
+
+def test_write_back_refuses_another_pipeline_commit(tmp_path):
+    """Same extracted_at, different pipeline_commit: another pull's output, refused."""
+    import build_sex_gender_analysis as bld
+    cases = _cases()
+    study = _study(cases[0]["nct_id"], cases[0]["measures"], cases[0]["enrollment"])
+    env = sgt.select_raw_envelope(study)
+    env.update({"refetched": False, "snapshot_date": SNAP, "extracted_at": "2026-10-28T00:00:00+00:00", "pipeline_commit": "aaaaaaa"})
+    src = tmp_path / "sex_gender_raw_envelope.jsonl.gz"
+    _write_jsonl(src, [env])
+    row = sgt.build_row(study, SNAP)
+    demo = tmp_path / "demographics.json"
+    demo.write_text(json.dumps({"extracted_at": "2026-10-28T00:00:00+00:00", "pipeline_commit": "bbbbbbb",
+                                "data": [{"nct_id": cases[0]["nct_id"], "sex_gender": sgt.lean_row(row)}]}))
+    before = demo.read_text()
+    with pytest.raises(SystemExit, match="pipeline commit"):
+        bld.main(["--from-envelope", str(src), "--out", str(tmp_path / "a.csv.gz"), "--meta", str(tmp_path / "a_meta.json"),
+                  "--write-back", str(demo)])
+    assert demo.read_text() == before

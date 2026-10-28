@@ -320,6 +320,20 @@ def _public_record(r: dict) -> dict:
     }
 
 
+def _supersession_order(heads: dict) -> list:
+    """The heads of one export for one study, a record after the one it
+    supersedes when both are in the export, so a chain (original -> middle ->
+    newest) installs in one pass whatever the record ids sort to. Ties keep
+    record-id order; a cycle (which validate_export does not admit) breaks at
+    depth of the number of heads."""
+    def depth(r: dict, seen: int = 0) -> int:
+        prev = heads.get(r.get("supersedes"))
+        if prev is None or seen >= len(heads):
+            return 0
+        return 1 + depth(prev, seen + 1)
+    return sorted(heads.values(), key=lambda r: (depth(r), r["record_id"]))
+
+
 def apply(records: list[dict], export: dict, target_snapshot_date: Optional[str],
           historical_decision_ref: Optional[str] = None) -> dict:
     """Join the export onto the full records in place. Returns a report.
@@ -362,7 +376,7 @@ def apply(records: list[dict], export: dict, target_snapshot_date: Optional[str]
             cur = heads.get(r["record_id"])
             if cur is None or r["revision"] > cur["revision"]:
                 heads[r["record_id"]] = r
-        for r in heads.values():
+        for r in _supersession_order(heads):
             field = r["field"]
             existing = ns["fields"].get(field)
             pub = _public_record(r)
@@ -407,6 +421,11 @@ def apply(records: list[dict], export: dict, target_snapshot_date: Optional[str]
                                                                     "revision": r["revision"]}})
                 ns["fields"][field] = pub
                 report["superseded"] += 1
+            elif any(h.get("record_id") == r["record_id"] and h.get("revision") == r["revision"]
+                     and h.get("superseded_by") for h in ns["history"]):
+                # Already applied and since superseded (a replayed export whose
+                # chain this study has walked to its end): nothing to do.
+                report["unchanged"] += 1
             else:
                 report["quarantined"].append({"nct_id": nct, "reason": f"{field} already carries {existing.get('record_id')}, "
                                                                         "which this record does not supersede",
