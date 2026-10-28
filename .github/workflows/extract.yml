@@ -180,18 +180,33 @@ jobs:
           # Added when this run produced them: the raw envelope (--raw-envelope)
           # and the analysis table and its meta. A missing one never holds up
           # the full records.
-          for f in data/sex_gender_raw_envelope.jsonl.gz data/analysis_sidecar/sex_gender_analysis.csv.gz \
-                   data/analysis_sidecar/sex_gender_analysis_meta.json; do
+          OPTIONAL="data/sex_gender_raw_envelope.jsonl.gz data/analysis_sidecar/sex_gender_analysis.csv.gz data/analysis_sidecar/sex_gender_analysis_meta.json"
+          for f in $OPTIONAL; do
             if [ -f "$f" ]; then ASSETS="$ASSETS $f"; fi
           done
           gzip -c extraction_log.txt > extraction_log.txt.gz || true
           # sex_gender_raw_measures.jsonl.gz: the SELECTED sex/gender baseline
           # measures per trial, verbatim. Nothing else retains them, and they are
           # what makes this snapshot re-parseable after a parser rule change.
-          ok=0
+          ok=0; stale=""
           for attempt in 1 2 3; do
             if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              # Same-day re-run: replace the assets on the existing release
+              # Same-day re-run: replace the assets on the existing release.
+              # --clobber replaces only the files uploaded, so an optional file
+              # an earlier run attached and this run did not produce would stay
+              # beside full records it was not built from. This job never
+              # deletes from a release, so it uploads nothing and fails instead:
+              # the files are kept as the artifact and the run turns red.
+              if ! names=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'); then
+                echo "::warning::release $TAG, attempt $attempt: could not list its assets"
+                [ "$attempt" = 3 ] || sleep 20
+                continue
+              fi
+              for f in $OPTIONAL; do
+                n=$(basename "$f")
+                if [ ! -f "$f" ] && printf '%s\n' "$names" | grep -qxF "$n"; then stale="$stale $n"; fi
+              done
+              [ -z "$stale" ] || break
               gh release upload "$TAG" $ASSETS --clobber --repo "$GITHUB_REPOSITORY" && { ok=1; break; }
             else
               gh release create "$TAG" $ASSETS \
@@ -203,6 +218,10 @@ jobs:
             echo "::warning::release $TAG, attempt $attempt failed"
             [ "$attempt" = 3 ] || sleep 20
           done
+          if [ -n "$stale" ]; then
+            echo "::error::release $TAG already holds$stale from an earlier run today, and this run did not produce them; nothing was uploaded, so the release is not left mixing two runs. The files are kept as this run's artifact full-records-$CURRENT_DATE for 90 days: remove the stale assets by hand and upload the artifact's files with gh release upload $TAG <files> --clobber --repo $GITHUB_REPOSITORY, or re-run once the analysis table builds."
+            exit 1
+          fi
           if [ "$ok" != "1" ]; then
             echo "::error::the full-record release $TAG failed three times. The files are kept as this run's artifact full-records-$CURRENT_DATE for 90 days: download it and run gh release create $TAG <its three files> --repo $GITHUB_REPOSITORY (or gh release upload $TAG <files> --clobber if the release exists)."
             exit 1

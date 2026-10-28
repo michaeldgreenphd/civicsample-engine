@@ -398,16 +398,20 @@ def _release_block() -> str:
     return "\n".join(line[10:] for line in m.group(1).splitlines())
 
 
-def _run_release(tmp_path: pathlib.Path, view_rc: int, fail_first: int) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+def _run_release(tmp_path: pathlib.Path, view_rc: int, fail_first: int,
+                 assets: tuple[str, ...] = ()) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     """Run the release step under bash -e with stub gh and sleep on PATH.
 
-    gh exits view_rc for `release view`, and fails its first fail_first
+    gh exits view_rc for `release view` (listing `assets` as the release's
+    asset names when asked for --json), and fails its first fail_first
     create/upload calls before succeeding."""
     stub = tmp_path / "bin"
     stub.mkdir()
     (stub / "gh").write_text(
         '#!/bin/bash\necho "$@" >> "$GH_LOG"\n'
-        'if [ "$2" = "view" ]; then exit "$VIEW_RC"; fi\n'
+        'if [ "$2" = "view" ]; then\n'
+        '  case "$*" in *--json*) [ "$VIEW_RC" = 0 ] && [ -n "$VIEW_ASSETS" ] && printf "%s\\n" $VIEW_ASSETS;; esac\n'
+        '  exit "$VIEW_RC"\nfi\n'
         'n=$(cat "$GH_COUNT" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$GH_COUNT"\n'
         'if [ "$n" -le "$FAIL_FIRST" ]; then exit 1; fi\nexit 0\n')
     (stub / "sleep").write_text("#!/bin/bash\nexit 0\n")
@@ -415,7 +419,7 @@ def _run_release(tmp_path: pathlib.Path, view_rc: int, fail_first: int) -> tuple
         (stub / f).chmod(0o755)
     (tmp_path / "extraction_log.txt").write_text("log")
     env = {**os.environ, "PATH": f"{stub}:{os.environ['PATH']}", "GH_LOG": str(tmp_path / "gh.log"),
-           "GH_COUNT": str(tmp_path / "gh.count"), "VIEW_RC": str(view_rc), "FAIL_FIRST": str(fail_first),
+           "GH_COUNT": str(tmp_path / "gh.count"), "VIEW_RC": str(view_rc), "FAIL_FIRST": str(fail_first), "VIEW_ASSETS": " ".join(assets),
            "CURRENT_DATE": "2026-09-27", "GITHUB_REPOSITORY": "o/r", "GITHUB_SHA": "abc"}
     r = subprocess.run(["bash", "-e", "-c", _release_block()], cwd=tmp_path, env=env,
                        capture_output=True, text=True)
@@ -500,6 +504,32 @@ def test_the_release_attaches_the_envelope_and_analysis_table_only_when_present(
     for f in ("data/demographics.json.gz", "data/sex_gender_raw_envelope.jsonl.gz",
               "data/analysis_sidecar/sex_gender_analysis.csv.gz", "data/analysis_sidecar/sex_gender_analysis_meta.json"):
         assert f in calls[0].split(), f
+
+
+def test_a_same_day_rerun_never_leaves_an_earlier_runs_analysis_beside_new_records(tmp_path: pathlib.Path) -> None:
+    """An earlier run today attached the analysis table; this run did not build
+    it. --clobber would replace the full records and leave the old table, so the
+    step uploads nothing and fails (the files go to the artifact). It deletes
+    nothing from the release."""
+    earlier = ("demographics.json.gz", "sex_gender_analysis.csv.gz", "sex_gender_analysis_meta.json")
+    r, calls = _run_release(tmp_path, view_rc=0, fail_first=0, assets=earlier)
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert calls == [], f"uploaded despite a stale analysis asset: {calls}"
+    assert "sex_gender_analysis.csv.gz sex_gender_analysis_meta.json from an earlier run" in r.stdout
+    assert "artifact full-records-2026-09-27" in r.stdout
+    # This run built the table too: the upload replaces all of it.
+    built = tmp_path / "built"
+    (built / "data" / "analysis_sidecar").mkdir(parents=True)
+    for f in ("data/analysis_sidecar/sex_gender_analysis.csv.gz", "data/analysis_sidecar/sex_gender_analysis_meta.json"):
+        (built / f).write_text("x")
+    r, calls = _run_release(built, view_rc=0, fail_first=0, assets=earlier)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert len(calls) == 1 and "data/analysis_sidecar/sex_gender_analysis.csv.gz" in calls[0].split()
+    # The earlier run had no table either: nothing is stale.
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    r, calls = _run_release(bare, view_rc=0, fail_first=0, assets=("demographics.json.gz",))
+    assert r.returncode == 0 and len(calls) == 1, r.stdout + r.stderr
 
 
 def test_the_weekly_job_writes_the_envelope_and_builds_the_analysis_table_without_risking_the_site() -> None:
