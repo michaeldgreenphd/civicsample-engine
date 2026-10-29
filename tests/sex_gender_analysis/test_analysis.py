@@ -212,7 +212,11 @@ def test_summary_counts_and_excludes_excluded_trials_d3():
                        "denominator": "trials with gender_categories_status derived and a non-null d3_total"}
     assert s["d5"]["participants"] == 11
     assert s["incompleteComposition"]["evaluated"] == 0
-    assert s["unresolved"]["R-FS-01"] == len(_cases())
+    # after the 2026-10-28 decisions only R-GC-05 is listed: the four cases with derived or excluded categories
+    assert s["unresolved"] == {"R-GC-05": 4}
+    assert set(s["unresolvedRules"]) == {"R-GC-05"}
+    assert set(s["decidedRules"]) == {"R-IC-01", "R-PO-01", "R-FS-01", "R-GC-04"}
+    assert all(v.startswith("decided 2026-10-28") for v in s["decidedRules"].values())
     # a block from another schema version is not counted
     assert sga.summarize([{**leans[0], "schema_version": "sex_gender_analysis/0.9"}])["trials"] == 0
     assert sga.summarize([])["d3"]["participants"] is None

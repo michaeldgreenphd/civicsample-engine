@@ -64,3 +64,5 @@ data/sex_gender_parsed.csv.gz
 data/sex_gender_parsed_meta.json
 data/sex_gender_raw_measures.jsonl.gz
 data/sex_gender/
+data/sex_gender_raw_envelope.jsonl.gz
+data/analysis_sidecar/

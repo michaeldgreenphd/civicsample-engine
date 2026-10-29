@@ -57,6 +57,10 @@ WHAT THIS LAYER IS, AND IS NOT
                              no general rule is approved for new inputs.
   unresolved                 the rule ids this block leaves open, so a reader
                              can tell an undecided value from a measured one.
+                             Since the owner's decisions of 2026-10-28 only
+                             R-GC-05 is open; R-IC-01, R-PO-01 and R-FS-01 are
+                             decided limitations, stated on the fields they
+                             affect (DECIDED_RULES).
 
   The layer label is "as_run": the manuscript's FINAL states include manual
   reconciliation of borderline records that no automated run reproduces.
@@ -80,7 +84,8 @@ SCHEMA_VERSION = "sex_gender_analysis/1.0"
 # The analytical rules this module implements, with the manuscript source they
 # follow. Bumped whenever a mapping, regex or threshold below changes; a row's
 # value is comparable with another row's only under the same version.
-RULES_VERSION = "analysis@2026-10-28 draft1 / manuscript 2026-10-26 supp1 (eMethods 2, eTable 1, eTable 5)"
+RULES_VERSION = ("analysis@2026-10-28 decided (R-IC-01, R-PO-01, R-FS-01, R-GC-04; R-GC-05 open) / "
+                 "manuscript 2026-10-26 supp1 (eMethods 2, eTable 1, eTable 5)")
 LAYER = "as_run"
 
 REPORTING_DIMENSIONS: tuple = ("sex_only", "both", "gender_only", "neither", "parse_error")
@@ -99,9 +104,8 @@ GENDER_EXCLUSION_REASONS: tuple = ("non_participant_units", "sum_exceeds_enrollm
 # eTable 5: "whose category sum exceeded enrollment by more than 10%".
 ENROLLMENT_EXCESS_TOLERANCE = 0.10
 
-# The rules this layer cannot settle from the as-run output and an approved
-# general rule. Listed on every block (where they apply) so a consumer never
-# reads an unevaluated quantity as a measured one. Ids are the rule matrix's.
+# Every rule id a block may list in `unresolved`, including ids that blocks
+# built before the 2026-10-28 decisions carry. Ids are the rule matrix's.
 UNRESOLVED_RULES: dict = {
     "R-IC-01": "incomplete composition (female and male counts covering only some participants, or clusters) "
                "needs group-level coverage evidence and an approved general rule; not evaluated",
@@ -111,6 +115,18 @@ UNRESOLVED_RULES: dict = {
                "U01-U03, U08-U11 as of the inspected v5.2 file); this block is the as-run layer",
     "R-GC-05": "the detailed gender-category vocabulary is reconstructed from eTable 5's category descriptions; "
                "parity with the manuscript's A20 derivation script is unverified in this environment",
+}
+# Still open: listed on every block it applies to.
+OPEN_RULES: tuple = ("R-GC-05",)
+# Decided by the owner on 2026-10-28 (docs/sex_gender_analysis/DECISIONS_2026-10-28.md).
+# Each keeps the behaviour this module already had; the decision makes it a
+# stated limitation rather than an open question, so blocks no longer list it.
+DECIDED_RULES: dict = {
+    "R-IC-01": "decided 2026-10-28: incomplete composition is not evaluated in this version "
+               "(incomplete_composition stays null, with its reason)",
+    "R-PO-01": "decided 2026-10-28: no general patients-only rule; patients_only stays not_evaluated",
+    "R-FS-01": "decided 2026-10-28: the layer stays as-run and is labelled so; no FINAL overlay",
+    "R-GC-04": "decided 2026-10-28: the 10% enrollment exclusion compares the D3 total",
 }
 
 # ---------------------------------------------------------------------------
@@ -429,15 +445,12 @@ def analyze(row: dict, selected: Optional[list], enrollment: Any) -> dict:
             + (row.get("n_ambiguous_gender") or 0)
         eu_with_values = bool((row.get("n_unknown") or 0) > 0 and known > 0)
     gc = derive_gender_categories(selected, row, enrollment)
-    unresolved = ["R-FS-01"]
-    if dim == "parse_error":
-        unresolved = ["R-FS-01"]
-    else:
-        if row.get("reported_sex") is True:
-            unresolved.append("R-IC-01")
-        unresolved.append("R-PO-01")
-        if gc["status"] in ("derived", "excluded"):
-            unresolved.append("R-GC-05")
+    # Only open rules are listed (OPEN_RULES): the decided ones are stated on
+    # the fields they affect (incomplete_composition_reason, patients_only,
+    # layer, gender_categories.exclusion).
+    unresolved = []
+    if dim != "parse_error" and gc["status"] in ("derived", "excluded"):
+        unresolved.append("R-GC-05")
     return {
         "schema_version": SCHEMA_VERSION,
         "rules_version": RULES_VERSION,
@@ -587,7 +600,8 @@ def summarize(blocks: Iterable[dict]) -> dict:
         "d5": {"participants": d5 if d5n else None, "trials": d5n,
                "denominator": "trials with gender_categories_status derived and a non-null d5_strict"},
         "unresolved": unresolved,
-        "unresolvedRules": dict(UNRESOLVED_RULES),
+        "unresolvedRules": {k: UNRESOLVED_RULES[k] for k in OPEN_RULES},
+        "decidedRules": dict(DECIDED_RULES),
     }
 
 

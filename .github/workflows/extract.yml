@@ -50,7 +50,11 @@ jobs:
           set -o pipefail
           # --snapshot-date stamps every sex_gender row and raw-measure record
           # with the same date the snapshot folder and release tag use.
-          python -m src.extract_all --output data/demographics.json --results-after 2009-01-01 --snapshot-date "$CURRENT_DATE" 2>&1 | tee extraction_log.txt
+          # --raw-envelope also writes data/sex_gender_raw_envelope.jsonl.gz:
+          # the baseline groups, denominators, units and measure paths beside
+          # the selected measures, so a later analysis rule can be evaluated
+          # on this week without a new registry pull (owner decision W-2).
+          python -m src.extract_all --output data/demographics.json --results-after 2009-01-01 --snapshot-date "$CURRENT_DATE" --raw-envelope 2>&1 | tee extraction_log.txt
 
       - name: Build the sex/gender table (full record) and write the lean rows back
         # The full per-trial row is rebuilt from the retained raw measures into
@@ -66,6 +70,27 @@ jobs:
             --snapshot-date "$CURRENT_DATE" \
             --write-back data/demographics.json \
             --strict
+
+      - name: Build the sex/gender analysis table for the weekly release
+        # The full per-trial analysis table (sex_gender_analysis/1.0), derived
+        # from the raw envelope above, kept on the week's data-* release only
+        # (owner decision W-1); nothing here is copied to the site. Every record
+        # already carries its lean analysis block from the extraction, so the
+        # site does not depend on this step: on any failure it removes its
+        # partial outputs and warns, and the release goes ahead without them.
+        # It writes to data/analysis_sidecar/, not the path the summary step
+        # reads by default, so the summary keeps reading the records' blocks.
+        if: ${{ !cancelled() && steps.extract.outcome == 'success' }}
+        run: |
+          mkdir -p data/analysis_sidecar
+          if ! python3 scripts/build_sex_gender_analysis.py \
+               --from-envelope data/sex_gender_raw_envelope.jsonl.gz \
+               --snapshot-date "$CURRENT_DATE" \
+               --out data/analysis_sidecar/sex_gender_analysis.csv.gz \
+               --meta data/analysis_sidecar/sex_gender_analysis_meta.json; then
+            rm -f data/analysis_sidecar/sex_gender_analysis.csv.gz data/analysis_sidecar/sex_gender_analysis_meta.json
+            echo "::warning::the sex/gender analysis table was not built; the weekly release goes ahead without it, and the site is unaffected"
+          fi
 
       - name: Compress CT.gov Data for Drive
         id: compress_full
@@ -152,25 +177,51 @@ jobs:
         run: |
           TAG="data-$CURRENT_DATE"
           ASSETS="data/demographics.json.gz data/sex_gender_raw_measures.jsonl.gz extraction_log.txt.gz"
+          # Added when this run produced them: the raw envelope (--raw-envelope)
+          # and the analysis table and its meta. A missing one never holds up
+          # the full records.
+          OPTIONAL="data/sex_gender_raw_envelope.jsonl.gz data/analysis_sidecar/sex_gender_analysis.csv.gz data/analysis_sidecar/sex_gender_analysis_meta.json"
+          for f in $OPTIONAL; do
+            if [ -f "$f" ]; then ASSETS="$ASSETS $f"; fi
+          done
           gzip -c extraction_log.txt > extraction_log.txt.gz || true
           # sex_gender_raw_measures.jsonl.gz: the SELECTED sex/gender baseline
           # measures per trial, verbatim. Nothing else retains them, and they are
           # what makes this snapshot re-parseable after a parser rule change.
-          ok=0
+          ok=0; stale=""
           for attempt in 1 2 3; do
             if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              # Same-day re-run: replace the assets on the existing release
+              # Same-day re-run: replace the assets on the existing release.
+              # --clobber replaces only the files uploaded, so an optional file
+              # an earlier run attached and this run did not produce would stay
+              # beside full records it was not built from. This job never
+              # deletes from a release, so it uploads nothing and fails instead:
+              # the files are kept as the artifact and the run turns red.
+              if ! names=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'); then
+                echo "::warning::release $TAG, attempt $attempt: could not list its assets"
+                [ "$attempt" = 3 ] || sleep 20
+                continue
+              fi
+              for f in $OPTIONAL; do
+                n=$(basename "$f")
+                if [ ! -f "$f" ] && printf '%s\n' "$names" | grep -qxF "$n"; then stale="$stale $n"; fi
+              done
+              [ -z "$stale" ] || break
               gh release upload "$TAG" $ASSETS --clobber --repo "$GITHUB_REPOSITORY" && { ok=1; break; }
             else
               gh release create "$TAG" $ASSETS \
                 --repo "$GITHUB_REPOSITORY" \
                 --title "Weekly data $CURRENT_DATE" \
-                --notes "Raw ClinicalTrials.gov extraction from the $CURRENT_DATE weekly run (code commit $GITHUB_SHA): demographics.json.gz holds the week's full study records. Kept permanently; weekly data releases are not pruned. sex_gender_raw_measures.jsonl.gz holds the selected sex/gender baseline measures per trial for re-parsing." \
+                --notes "Raw ClinicalTrials.gov extraction from the $CURRENT_DATE weekly run (code commit $GITHUB_SHA): demographics.json.gz holds the week's full study records. Kept permanently; weekly data releases are not pruned. sex_gender_raw_measures.jsonl.gz holds the selected sex/gender baseline measures per trial for re-parsing; sex_gender_raw_envelope.jsonl.gz adds their groups, denominators and units; sex_gender_analysis.csv.gz and its meta are the week's sex/gender analysis table." \
                 && { ok=1; break; }
             fi
             echo "::warning::release $TAG, attempt $attempt failed"
             [ "$attempt" = 3 ] || sleep 20
           done
+          if [ -n "$stale" ]; then
+            echo "::error::release $TAG already holds$stale from an earlier run today, and this run did not produce them; nothing was uploaded, so the release is not left mixing two runs. The files are kept as this run's artifact full-records-$CURRENT_DATE for 90 days: remove the stale assets by hand and upload the artifact's files with gh release upload $TAG <files> --clobber --repo $GITHUB_REPOSITORY, or re-run once the analysis table builds."
+            exit 1
+          fi
           if [ "$ok" != "1" ]; then
             echo "::error::the full-record release $TAG failed three times. The files are kept as this run's artifact full-records-$CURRENT_DATE for 90 days: download it and run gh release create $TAG <its three files> --repo $GITHUB_REPOSITORY (or gh release upload $TAG <files> --clobber if the release exists)."
             exit 1
@@ -189,6 +240,9 @@ jobs:
             data/demographics.json.gz
             data/sex_gender_raw_measures.jsonl.gz
             extraction_log.txt.gz
+            data/sex_gender_raw_envelope.jsonl.gz
+            data/analysis_sidecar/sex_gender_analysis.csv.gz
+            data/analysis_sidecar/sex_gender_analysis_meta.json
           retention-days: 90
           if-no-files-found: error
 
