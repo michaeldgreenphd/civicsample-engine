@@ -170,8 +170,13 @@ test('the CLI settings are the bounded read-only set', () => {
     model: { maxSessionTurns: 30 },
     general: { maxAttempts: 3 },
     context: { fileFiltering: { respectGitIgnore: false } },
-    telemetry: { enabled: true, target: 'local', outfile: '.gemini/telemetry.log', logPrompts: false },
+    telemetry: { enabled: true, target: 'local', outfile: '.gemini/telemetry.log', logPrompts: true },
+    privacy: { usageStatisticsEnabled: false },
   });
+  // logPrompts is what makes the CLI record tool arguments; with usage statistics on it would
+  // also send routing reasoning and prompts to Google, so the two must never be on together.
+  assert.ok(!(settings.telemetry.logPrompts && settings.privacy?.usageStatisticsEnabled !== false),
+    'logPrompts needs usage statistics off');
   assert.match(prompt, /stops after 30 model turns/, 'the prompt must state the same turn budget');
   assert.doesNotMatch(prompt, /by turn \d+/, 'the model cannot see its turn count, so do not ask it to count');
   assert.match(prompt, /read_many_files/, 'the prompt must ask for batched reads');

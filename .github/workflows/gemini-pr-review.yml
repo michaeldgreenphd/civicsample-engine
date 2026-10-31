@@ -58,8 +58,12 @@ jobs:
       # (about 4 minutes at the observed 8 s a turn) stops only a runaway
       # session; the step timeout bounds the rest.
       # Local telemetry records each tool call and model request in
-      # .gemini/telemetry.log, without prompt text, so a run that still stops
-      # early shows where its turns went. It leaves stdout and stderr alone.
+      # .gemini/telemetry.log, so a run that still stops early shows where its
+      # turns went. It leaves stdout and stderr alone. logPrompts must be on for
+      # the CLI to record tool arguments, and it also adds prompt and response
+      # text to the file; the file stays on the runner and is not uploaded.
+      # With logPrompts on, the CLI's usage statistics would send routing
+      # reasoning and prompts to Google, so usage statistics are off.
       # Named outside the CLI's GEMINI_* environment variables on purpose.
       REVIEW_CLI_SETTINGS: |
         {
@@ -77,8 +81,9 @@ jobs:
           },
           "telemetry": {
             "enabled": true, "target": "local",
-            "outfile": ".gemini/telemetry.log", "logPrompts": false
-          }
+            "outfile": ".gemini/telemetry.log", "logPrompts": true
+          },
+          "privacy": {"usageStatisticsEnabled": false}
         }
       REVIEW_PROMPT: |
         Perform a cross-file PR review in strictly read-only inspection mode.
@@ -306,8 +311,9 @@ jobs:
           prompt: ${{ env.REVIEW_PROMPT }}
 
       - name: List the review's tool calls and model requests
-        # Diagnostic only: prints function names, arguments and models from the
-        # local telemetry file into this log. It never fails the job.
+        # Diagnostic only: prints function names, compacted arguments and models
+        # from the local telemetry file into this log, never prompt or response
+        # text. It never fails the job.
         if: always() && steps.pr.outputs.review == 'true'
         continue-on-error: true
         shell: bash
@@ -318,7 +324,7 @@ jobs:
             select(."event.name" == "gemini_cli.api_request" or ."event.name" == "gemini_cli.tool_call") |
             if ."event.name" == "gemini_cli.api_request"
             then "request  model=\(.model // "?")"
-            else "tool     \(.function_name // "?") \((.function_args // "") | tostring | .[0:300])"
+            else "tool     \(.function_name // "?") \((.function_args // "") | tostring | . as $raw | (try (fromjson | tojson) catch $raw) | .[0:300])"
             end' "$log" || echo "Could not parse $log."
           echo "Model requests: $(jq -s '[.[] | .. | objects | select(."event.name"? == "gemini_cli.api_request")] | length' "$log" 2>/dev/null || echo '?')"
 
