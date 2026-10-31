@@ -50,6 +50,8 @@ jobs:
       # Read-only tools, read_many_files to batch reads into one turn, a hard
       # turn cap, and nothing loaded from the PR's own hooks, skills, MCP
       # servers or .env files. The evidence files live in gitignored .gemini/.
+      # maxAttempts 3 (CLI default 10): under a 503 storm ten backed-off retries
+      # took about 8 minutes, leaving the fallback no time to run.
       # Named outside the CLI's GEMINI_* environment variables on purpose.
       REVIEW_CLI_SETTINGS: |
         {
@@ -61,6 +63,7 @@ jobs:
           "skills": {"enabled": false},
           "advanced": {"ignoreLocalEnv": true},
           "model": {"maxSessionTurns": 8},
+          "general": {"maxAttempts": 3},
           "context": {
             "fileFiltering": {"respectGitIgnore": false}
           }
@@ -304,12 +307,26 @@ jobs:
             }
             const marker = '<!-- gemini-macro-review -->';
             const status = state => `<!-- gemini-review-status: ${state} head=${env.PR_HEAD} -->`;
-            // Error text is posted publicly: drop the key, bound the length.
+            // Error text is posted publicly: drop the key, bound the length. The
+            // CLI's stderr starts with startup notices and ends with a JSON object
+            // naming the error, so prefer that message, then the denoised tail.
             const brief = text => {
               let out = String(text ?? '');
               if (env.GEMINI_API_KEY) out = out.split(env.GEMINI_API_KEY).join('[redacted]');
-              out = out.replace(/AIza[0-9A-Za-z_-]{20,}/g, '[redacted]').replace(/\s+/g, ' ').trim();
-              return out.length > 400 ? `${out.slice(0, 400)}…` : out;
+              out = out.replace(/AIza[0-9A-Za-z_-]{20,}/g, '[redacted]');
+              for (let at = out.lastIndexOf('{'); at >= 0; at = out.lastIndexOf('{', at - 1)) {
+                try {
+                  const error = JSON.parse(out.slice(at))?.error;
+                  if (error?.message) {
+                    out = `${error.message}${error.code !== undefined ? ` (code ${error.code})` : ''}`;
+                    break;
+                  }
+                } catch {}
+                if (at === 0) break;
+              }
+              out = out.split('\n').filter(line => !/^(Warning: 256-color|YOLO mode is enabled|\[STARTUP\])/.test(line) &&
+                !/^\s+at /.test(line)).join(' ').replace(/\s+/g, ' ').trim();
+              return out.length > 400 ? `…${out.slice(-400)}` : out;
             };
             const runs = [
               {model: env.PRIMARY_MODEL, outcome: env.PRIMARY_OUTCOME, body: env.PRIMARY_BODY, error: env.PRIMARY_ERROR},

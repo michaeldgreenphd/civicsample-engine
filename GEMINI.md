@@ -47,8 +47,9 @@ that summary; do not claim compatibility or a passing test you did not verify.
 ## Review inputs and paired checkout
 
 The workflow defaults to `gemini-3.8-flash`; the repository Actions variable
-`GEMINI_MODEL` overrides that default. After a 503 or 429 error it retries once
-on `gemini-2.5-flash`, which `GEMINI_FALLBACK_MODEL` overrides. Automatic reviews
+`GEMINI_MODEL` overrides that default. The CLI makes at most 3 attempts per
+request; after a 503 or 429 error the review retries once on `gemini-2.5-flash`,
+which `GEMINI_FALLBACK_MODEL` overrides. Automatic reviews
 skip draft PRs and run when they become ready; an authorized `@codex review` or
 `@gemini-cli` comment reviews drafts too, and each head is reviewed once unless
 `@gemini-cli` asks again. The session ends after 8 turns: read the prepared

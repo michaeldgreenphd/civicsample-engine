@@ -168,6 +168,7 @@ test('the CLI settings are the bounded read-only set', () => {
     skills: { enabled: false },
     advanced: { ignoreLocalEnv: true },
     model: { maxSessionTurns: 8 },
+    general: { maxAttempts: 3 },
     context: { fileFiltering: { respectGitIgnore: false } },
   });
   assert.match(prompt, /ends after 8 turns/, 'the prompt must state the same turn budget');
@@ -254,6 +255,31 @@ test('a failed review leaves a diagnostic on the PR, redacts the key and fails t
   assert.match(body, /fallback-model: step failure \(no error output/);
 });
 
+// The shape of the CLI's stderr on the first live run (civicsample-engine #31): startup
+// notices, retried stack traces, then one JSON object naming the error.
+const NOISE = 'Warning: 256-color support not detected. Using a terminal with at least 256-color support is recommended.\n' +
+  'YOLO mode is enabled. All tool calls will be automatically approved.\n' +
+  "[STARTUP] Phase 'cleanup_ops' was started but never ended. Skipping metrics.\n";
+const cliError = (message, code) => NOISE +
+  'Attempt 1 failed with status 503. Retrying with backoff... _ApiError: {"error":{"message":"{\\n  \\"error\\": {}}","code":503}}\n' +
+  '    at throwErrorIfNotOK (file:///usr/local/lib/node_modules/@google/gemini-cli/bundle/chunk.js:1:1)\n' +
+  `{\n  "session_id": "fictional",\n  "error": {\n    "type": "Error",\n    "message": "${message}",\n    "code": ${code}\n  }\n}`;
+
+test('the posted reason is the CLI error message, not its startup notices', async () => {
+  const { calls } = await post({
+    PRIMARY_OUTCOME: 'failure', PRIMARY_ERROR: cliError('This model is currently experiencing high demand.', 503),
+    FALLBACK_OUTCOME: 'failure', FALLBACK_ERROR: cliError('This model models/fallback is no longer available to new users.', 1),
+  });
+  const body = calls.created[0];
+  assert.match(body, /primary-model: step failure \(This model is currently experiencing high demand\. \(code 503\)\)/);
+  assert.match(body, /fallback-model: step failure \(This model models\/fallback is no longer available to new users\. \(code 1\)\)/);
+  assert.doesNotMatch(body, /256-color|YOLO mode|\[STARTUP\]|throwErrorIfNotOK/);
+  const plain = await post({ PRIMARY_OUTCOME: 'failure', PRIMARY_ERROR: `${NOISE}fetch failed\n    at x (y.js:1:1)\n` + 'z'.repeat(500) });
+  const reason = plain.calls.created[0];
+  assert.doesNotMatch(reason, /256-color|YOLO mode|\[STARTUP\]/);
+  assert.match(reason, /…z{400}\)/, 'without a JSON error, the tail is kept, not the head');
+});
+
 test('a timeout with no output still reports, and an empty review counts as a failure', async () => {
   let { core, calls } = await post({ PRIMARY_OUTCOME: 'failure' });
   assert.ok(core.failed);
@@ -290,7 +316,8 @@ test('a review for a superseded head or a closed PR is discarded without failing
 test('GEMINI.md describes the triggers, budget and fallback the workflow uses', () => {
   const flat = read('GEMINI.md').replace(/\s+/g, ' ');
   for (const claim of ['`@codex review`', '`@gemini-cli`', '`GEMINI_FALLBACK_MODEL`', '`gemini-2.5-flash`',
-    '8 turns', '`read_many_files`', '10-minute timeout within a 15-minute job', 'queue rather than cancel']) {
+    '8 turns', '`read_many_files`', '10-minute timeout within a 15-minute job', 'queue rather than cancel',
+    'at most 3 attempts per request']) {
     assert.ok(flat.includes(claim), `GEMINI.md no longer says ${claim}; keep it and the workflow together`);
   }
 });
