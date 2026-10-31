@@ -167,17 +167,35 @@ test('the CLI settings are the bounded read-only set', () => {
     hooksConfig: { enabled: false },
     skills: { enabled: false },
     advanced: { ignoreLocalEnv: true },
-    model: { maxSessionTurns: 8 },
+    model: { maxSessionTurns: 12 },
     general: { maxAttempts: 3 },
     context: { fileFiltering: { respectGitIgnore: false } },
   });
-  assert.match(prompt, /ends after 8 turns/, 'the prompt must state the same turn budget');
+  assert.match(prompt, /stops after 12 model turns/, 'the prompt must state the same turn budget');
+  assert.match(prompt, /by turn 10/, 'the prompt must leave turns spare for writing the review');
   assert.match(prompt, /read_many_files/, 'the prompt must ask for batched reads');
   for (const name of [REVIEW, FALLBACK]) {
     const { text } = step(name);
     assert.match(text, /settings: \$\{\{ env\.REVIEW_CLI_SETTINGS \}\}/, `${name} must use the shared settings`);
     assert.match(text, /prompt: \$\{\{ env\.REVIEW_PROMPT \}\}/, `${name} must use the shared prompt`);
   }
+});
+
+test('the prompt attaches the rules and evidence so no turn is spent reading them', () => {
+  // The CLI expands each @path before the first model request; the evidence
+  // step must write the .gemini files before the review step reads them.
+  const refs = [...prompt.matchAll(/(?<![\\\w])@(\S+)/g)].map(m => m[1]);
+  const evidence = ['.gemini/review-context.json', '.gemini/changed-files.txt', '.gemini/pr.diff'];
+  assert.deepEqual(refs, ['AGENTS.md', 'GEMINI.md', ...evidence], 'the prompt must attach exactly these files');
+  for (const ref of refs) {
+    assert.match(prompt, new RegExp(`^@${ref.replace(/\./g, '\\.')}$`, 'm'), `@${ref} must sit on its own line`);
+  }
+  const prepare = step('Prepare the diff and record comparison revisions').text;
+  for (const file of evidence) {
+    assert.ok(prepare.includes(`> ${file}`), `the evidence step must write ${file}`);
+  }
+  assert.ok(workflow.indexOf('Prepare the diff and record comparison revisions') < workflow.indexOf(`name: ${REVIEW}`),
+    'the evidence must be written before the review step');
 });
 
 test('the head checkout skips historical blobs and ripgrep is ready before the review', () => {
@@ -316,7 +334,7 @@ test('a review for a superseded head or a closed PR is discarded without failing
 test('GEMINI.md describes the triggers, budget and fallback the workflow uses', () => {
   const flat = read('GEMINI.md').replace(/\s+/g, ' ');
   for (const claim of ['`@codex review`', '`@gemini-cli`', '`GEMINI_FALLBACK_MODEL`', '`gemini-3.5-flash-lite`',
-    '8 turns', '`read_many_files`', '10-minute timeout within a 15-minute job', 'queue rather than cancel',
+    '12 turns', 'review written by turn 10', '`read_many_files`', '10-minute timeout within a 15-minute job', 'queue rather than cancel',
     'at most 3 attempts per request']) {
     assert.ok(flat.includes(claim), `GEMINI.md no longer says ${claim}; keep it and the workflow together`);
   }
