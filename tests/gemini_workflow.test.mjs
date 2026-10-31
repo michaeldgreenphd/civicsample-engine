@@ -167,12 +167,13 @@ test('the CLI settings are the bounded read-only set', () => {
     hooksConfig: { enabled: false },
     skills: { enabled: false },
     advanced: { ignoreLocalEnv: true },
-    model: { maxSessionTurns: 12 },
+    model: { maxSessionTurns: 30 },
     general: { maxAttempts: 3 },
     context: { fileFiltering: { respectGitIgnore: false } },
+    telemetry: { enabled: true, target: 'local', outfile: '.gemini/telemetry.log', logPrompts: false },
   });
-  assert.match(prompt, /stops after 12 model turns/, 'the prompt must state the same turn budget');
-  assert.match(prompt, /by turn 10/, 'the prompt must leave turns spare for writing the review');
+  assert.match(prompt, /stops after 30 model turns/, 'the prompt must state the same turn budget');
+  assert.doesNotMatch(prompt, /by turn \d+/, 'the model cannot see its turn count, so do not ask it to count');
   assert.match(prompt, /read_many_files/, 'the prompt must ask for batched reads');
   for (const name of [REVIEW, FALLBACK]) {
     const { text } = step(name);
@@ -206,6 +207,16 @@ test('the head checkout skips historical blobs and ripgrep is ready before the r
   const rg = step('Ensure ripgrep for the search tool');
   assert.match(rg.text, /apt-get install[^\n]*ripgrep/);
   assert.ok(rg.at < step(REVIEW).at, 'ripgrep must be installed before the review step');
+});
+
+test('the tool calls and model requests are listed after the review, without failing the job', () => {
+  const STEP = "List the review's tool calls and model requests";
+  const { text, at } = step(STEP);
+  assert.ok(step(FALLBACK).at < at && at < step('Post one consolidated PR review comment').at,
+    'the listing must run after both review attempts and before the comment step');
+  assert.match(text, /if: always\(\) && steps\.pr\.outputs\.review == 'true'/, 'it must run after a failed review too');
+  assert.match(text, /continue-on-error: true/, 'a diagnostic must never fail the job');
+  assert.match(text, /\.gemini\/telemetry\.log/, 'it must read the telemetry file the settings name');
 });
 
 test('timeouts leave room for the fallback and the comment step', () => {
@@ -334,7 +345,7 @@ test('a review for a superseded head or a closed PR is discarded without failing
 test('GEMINI.md describes the triggers, budget and fallback the workflow uses', () => {
   const flat = read('GEMINI.md').replace(/\s+/g, ' ');
   for (const claim of ['`@codex review`', '`@gemini-cli`', '`GEMINI_FALLBACK_MODEL`', '`gemini-3.5-flash-lite`',
-    '12 turns', 'review written by turn 10', '`read_many_files`', '10-minute timeout within a 15-minute job', 'queue rather than cancel',
+    '30 turns', 'telemetry', '`read_many_files`', '10-minute timeout within a 15-minute job', 'queue rather than cancel',
     'at most 3 attempts per request']) {
     assert.ok(flat.includes(claim), `GEMINI.md no longer says ${claim}; keep it and the workflow together`);
   }
