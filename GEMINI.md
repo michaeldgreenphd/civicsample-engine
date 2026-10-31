@@ -47,9 +47,14 @@ that summary; do not claim compatibility or a passing test you did not verify.
 ## Review inputs and paired checkout
 
 The workflow defaults to `gemini-3.8-flash`; the repository Actions variable
-`GEMINI_MODEL` overrides that default. Automatic reviews skip draft PRs and run
-when they become ready; authorized `@gemini-cli` comments can review drafts.
-Review jobs have a 10-minute timeout and cancel older reviews of the same PR.
+`GEMINI_MODEL` overrides that default. After a 503 or 429 error it retries once
+on `gemini-2.5-flash`, which `GEMINI_FALLBACK_MODEL` overrides. Automatic reviews
+skip draft PRs and run when they become ready; an authorized `@codex review` or
+`@gemini-cli` comment reviews drafts too, and each head is reviewed once unless
+`@gemini-cli` asks again. The session ends after 8 turns: read the prepared
+`.gemini/` files in one `read_many_files` call and batch later reads. The review
+step has a 10-minute timeout within a 15-minute job, and reviews of the same PR
+queue rather than cancel.
 
 Locally the consumer is `../clinical-trial-populations`. In Actions it is
 `.gemini/paired/clinical-trial-populations`; `.gemini/review-context.json`
