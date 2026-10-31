@@ -36,9 +36,9 @@ jobs:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    # Room for setup, the 10-minute review step, the 3-minute fallback and the
+    # Room for setup, the 15-minute review step, the 4-minute fallback and the
     # comment step, so a slow or failing model still reports on the PR.
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Explicit trust for collaborator PRs; retain the read-only tool allowlist.
@@ -56,9 +56,11 @@ jobs:
       # no partial output: 8 and then 12 both ended live reviews before they
       # wrote anything, and the model cannot see how many turns remain. At 30,
       # completed reviews took 22 to 30 turns, one tool call each, mostly
-      # 20-100-line read_file slices; one used all 30. 50 (about 5 minutes at
-      # the observed 6 s a turn) stops only a runaway session; the step timeout
-      # bounds the rest.
+      # 20-100-line read_file slices; one used all 30, and a 50-turn review
+      # still took 31. In michaeldgreenphd/patientwords-engine, 40 ran out on a
+      # nine-file PR, and that repository moved to 80, as this one does. 80 turns
+      # take up to about 11 minutes at the observed 6-8 s a turn, so the review
+      # step has 15 and the job 25.
       # Local telemetry records each tool call and model request in
       # .gemini/telemetry.log, so a run that still stops early shows where its
       # turns went. It leaves stdout and stderr alone. logPrompts must be on for
@@ -76,7 +78,7 @@ jobs:
           "hooksConfig": {"enabled": false},
           "skills": {"enabled": false},
           "advanced": {"ignoreLocalEnv": true},
-          "model": {"maxSessionTurns": 50},
+          "model": {"maxSessionTurns": 80},
           "general": {"maxAttempts": 3},
           "context": {
             "fileFiltering": {"respectGitIgnore": false}
@@ -105,8 +107,10 @@ jobs:
         .gemini/paired/clinical-trial-populations; inspect its actual contract
         and consumer source and cite its recorded SHA.
 
-        The session stops after 50 model turns without warning and discards
-        anything not yet written. Each reply that calls tools is one turn
+        The session stops after 80 model turns without warning and discards
+        anything not yet written. Aim to finish in about 40: after roughly 30
+        turns of searching and reading, stop exploring and write the review,
+        listing the consumers you did not inspect. Each reply that calls tools is one turn
         however many calls it makes: put every read you need next into one
         reply. Read any file under 2000 lines whole, without line ranges, and
         read several files in one read_many_files call; never read the same
@@ -283,7 +287,7 @@ jobs:
         # A failure or timeout must not skip the fallback or the comment step;
         # the comment step fails the job when no review was produced.
         continue-on-error: true
-        timeout-minutes: 10
+        timeout-minutes: 15
         uses: google-github-actions/run-gemini-cli@v0
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}

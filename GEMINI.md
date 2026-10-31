@@ -52,14 +52,21 @@ request; after a 503 or 429 error the review retries once on `gemini-3.5-flash-l
 which `GEMINI_FALLBACK_MODEL` overrides. Automatic reviews
 skip draft PRs and run when they become ready; an authorized `@codex review` or
 `@gemini-cli` comment reviews drafts too, and each head is reviewed once unless
-`@gemini-cli` asks again. The session stops after 50 turns, one per model
+`@gemini-cli` asks again. The session stops after 80 turns, one per model
 request, and a review not written by then is lost. The prompt therefore attaches
 `AGENTS.md`, `GEMINI.md` and the prepared `.gemini/` files before the first turn
 and asks for later reads batched in `read_many_files` calls, with files under
-2000 lines read whole rather than in line ranges. Local telemetry
+2000 lines read whole rather than in line ranges, and for the review after
+roughly 30 turns of reading, listing the consumers not inspected. Local telemetry
 lists each run's tool calls and model requests in the Actions log. The review
-step has a 10-minute timeout within a 15-minute job, and reviews of the same PR
+step has a 15-minute timeout within a 25-minute job, and reviews of the same PR
 queue rather than cancel.
+
+Exit criterion (owner decision 2026-10-31, shared with the patientwords
+repositories): with the 80-turn workflow on `main` here and in the paired
+repository, count the next five PRs whose Gemini review runs. If two or more end
+without a posted review, turn the automatic review off and rely on Codex, keeping
+`@gemini-cli` for reviews on request or removing the workflow.
 
 Locally the consumer is `../clinical-trial-populations`. In Actions it is
 `.gemini/paired/clinical-trial-populations`; `.gemini/review-context.json`
