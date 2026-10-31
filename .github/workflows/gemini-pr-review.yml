@@ -53,8 +53,19 @@ jobs:
       # maxAttempts 3 (CLI default 10): under a 503 storm ten backed-off retries
       # took about 8 minutes, leaving the fallback no time to run.
       # maxSessionTurns counts model requests, and the CLI stops at the cap with
-      # no partial output: 8 ended a live review before it wrote anything. 12
-      # keeps one review inside a 20-requests-a-day free-tier quota.
+      # no partial output: 8 and then 12 both ended live reviews before they
+      # wrote anything, and the model cannot see how many turns remain. At 30,
+      # completed reviews took 22 to 30 turns, one tool call each, mostly
+      # 20-100-line read_file slices; one used all 30. 50 (about 5 minutes at
+      # the observed 6 s a turn) stops only a runaway session; the step timeout
+      # bounds the rest.
+      # Local telemetry records each tool call and model request in
+      # .gemini/telemetry.log, so a run that still stops early shows where its
+      # turns went. It leaves stdout and stderr alone. logPrompts must be on for
+      # the CLI to record tool arguments, and it also adds prompt and response
+      # text to the file; the file stays on the runner and is not uploaded.
+      # With logPrompts on, the CLI's usage statistics would send routing
+      # reasoning and prompts to Google, so usage statistics are off.
       # Named outside the CLI's GEMINI_* environment variables on purpose.
       REVIEW_CLI_SETTINGS: |
         {
@@ -65,11 +76,16 @@ jobs:
           "hooksConfig": {"enabled": false},
           "skills": {"enabled": false},
           "advanced": {"ignoreLocalEnv": true},
-          "model": {"maxSessionTurns": 12},
+          "model": {"maxSessionTurns": 50},
           "general": {"maxAttempts": 3},
           "context": {
             "fileFiltering": {"respectGitIgnore": false}
-          }
+          },
+          "telemetry": {
+            "enabled": true, "target": "local",
+            "outfile": ".gemini/telemetry.log", "logPrompts": true
+          },
+          "privacy": {"usageStatisticsEnabled": false}
         }
       REVIEW_PROMPT: |
         Perform a cross-file PR review in strictly read-only inspection mode.
@@ -89,13 +105,15 @@ jobs:
         .gemini/paired/clinical-trial-populations; inspect its actual contract
         and consumer source and cite its recorded SHA.
 
-        The session stops after 12 model turns without warning and discards
-        anything not yet written, so the review must be your reply by turn 10
-        at the latest. Each reply that calls tools is one turn however many
-        calls it makes: put every read you need next into one reply, use
-        read_many_files for several files, and grep_search before reading a
-        whole file. If the budget stops the audit early, say which files were
-        not inspected.
+        The session stops after 50 model turns without warning and discards
+        anything not yet written. Each reply that calls tools is one turn
+        however many calls it makes: put every read you need next into one
+        reply. Read any file under 2000 lines whole, without line ranges, and
+        read several files in one read_many_files call; never read the same
+        file twice. Use grep_search across directories to find files, not
+        inside a file you can read. Stop reading once the evidence supports or rules
+        out each candidate finding, and reply with the review and no tool
+        call. If evidence is still missing, say which files were not inspected.
 
         Use file-search/read tools and the 1M-token context window to inspect
         all relevant unmodified callers, consumers, fixtures and specifications
@@ -287,7 +305,7 @@ jobs:
            contains(steps.gemini.outputs.error, 'quota'))
         id: fallback
         continue-on-error: true
-        timeout-minutes: 3
+        timeout-minutes: 4
         uses: google-github-actions/run-gemini-cli@v0
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
@@ -295,6 +313,24 @@ jobs:
           gemini_model: ${{ env.FALLBACK_MODEL }}
           settings: ${{ env.REVIEW_CLI_SETTINGS }}
           prompt: ${{ env.REVIEW_PROMPT }}
+
+      - name: List the review's tool calls and model requests
+        # Diagnostic only: prints function names, compacted arguments and models
+        # from the local telemetry file into this log, never prompt or response
+        # text. It never fails the job.
+        if: always() && steps.pr.outputs.review == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          log=.gemini/telemetry.log
+          if [ ! -s "$log" ]; then echo "No telemetry was written."; exit 0; fi
+          jq -r '.. | objects | select(has("event.name")) |
+            select(."event.name" == "gemini_cli.api_request" or ."event.name" == "gemini_cli.tool_call") |
+            if ."event.name" == "gemini_cli.api_request"
+            then "request  model=\(.model // "?")"
+            else "tool     \(.function_name // "?") \((.function_args // "") | tostring | . as $raw | (try (fromjson | tojson) catch $raw) | .[0:300])"
+            end' "$log" || echo "Could not parse $log."
+          echo "Model requests: $(jq -s '[.[] | .. | objects | select(."event.name"? == "gemini_cli.api_request")] | length' "$log" 2>/dev/null || echo '?')"
 
       - name: Post one consolidated PR review comment
         # Runs after a failed or timed-out review too, so the PR shows why.
