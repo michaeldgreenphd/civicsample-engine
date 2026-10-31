@@ -167,7 +167,7 @@ test('the CLI settings are the bounded read-only set', () => {
     hooksConfig: { enabled: false },
     skills: { enabled: false },
     advanced: { ignoreLocalEnv: true },
-    model: { maxSessionTurns: 50 },
+    model: { maxSessionTurns: 80 },
     general: { maxAttempts: 3 },
     context: { fileFiltering: { respectGitIgnore: false } },
     telemetry: { enabled: true, target: 'local', outfile: '.gemini/telemetry.log', logPrompts: true },
@@ -177,7 +177,9 @@ test('the CLI settings are the bounded read-only set', () => {
   // also send routing reasoning and prompts to Google, so the two must never be on together.
   assert.ok(!(settings.telemetry.logPrompts && settings.privacy?.usageStatisticsEnabled !== false),
     'logPrompts needs usage statistics off');
-  assert.match(prompt, /stops after 50 model turns/, 'the prompt must state the same turn budget');
+  assert.match(prompt, /stops after 80 model turns/, 'the prompt must state the same turn budget');
+  assert.match(prompt, /after roughly 30\s+turns of searching and reading, stop exploring/,
+    'the prompt must ask for the review well before the cap');
   assert.match(prompt, /under 2000 lines whole, without line ranges/,
     'each line-range slice costs a turn, so the prompt must ask for whole files');
   assert.doesNotMatch(prompt, /by turn \d+/, 'the model cannot see its turn count, so do not ask it to count');
@@ -231,7 +233,7 @@ test('timeouts leave room for the fallback and the comment step', () => {
   const job = Number(workflow.match(/^ {4}timeout-minutes: (\d+)$/m)?.[1]);
   const review = minutes(step(REVIEW).text);
   const fallback = minutes(step(FALLBACK).text);
-  assert.deepEqual([job, review], [15, 10]);
+  assert.deepEqual([job, review], [25, 15]);
   assert.ok(review + fallback < job, `review ${review} + fallback ${fallback} must stay under the ${job}-minute job`);
   for (const name of [REVIEW, FALLBACK]) {
     assert.match(step(name).text, /continue-on-error: true/, `${name} must not skip the comment step when it fails`);
@@ -352,7 +354,8 @@ test('a review for a superseded head or a closed PR is discarded without failing
 test('GEMINI.md describes the triggers, budget and fallback the workflow uses', () => {
   const flat = read('GEMINI.md').replace(/\s+/g, ' ');
   for (const claim of ['`@codex review`', '`@gemini-cli`', '`GEMINI_FALLBACK_MODEL`', '`gemini-3.5-flash-lite`',
-    '50 turns', 'telemetry', '`read_many_files`', '10-minute timeout within a 15-minute job', 'queue rather than cancel',
+    '80 turns', 'telemetry', '`read_many_files`', '15-minute timeout within a 25-minute job', 'queue rather than cancel',
+    'two or more end without a posted review',
     'at most 3 attempts per request']) {
     assert.ok(flat.includes(claim), `GEMINI.md no longer says ${claim}; keep it and the workflow together`);
   }
