@@ -52,9 +52,11 @@ request; after a 503 or 429 error the review retries once on `gemini-3.5-flash-l
 which `GEMINI_FALLBACK_MODEL` overrides. Automatic reviews
 skip draft PRs and run when they become ready; an authorized `@codex review` or
 `@gemini-cli` comment reviews drafts too, and each head is reviewed once unless
-`@gemini-cli` asks again. The session ends after 8 turns: read the prepared
-`.gemini/` files in one `read_many_files` call and batch later reads. The review
-step has a 10-minute timeout within a 15-minute job, and reviews of the same PR
+`@gemini-cli` asks again. The session stops after 12 turns, one per model
+request, and a review not written by then is lost. The prompt therefore attaches
+`AGENTS.md`, `GEMINI.md` and the prepared `.gemini/` files before the first turn,
+and asks for later reads batched in `read_many_files` calls and the review
+written by turn 10. The review step has a 10-minute timeout within a 15-minute job, and reviews of the same PR
 queue rather than cancel.
 
 Locally the consumer is `../clinical-trial-populations`. In Actions it is
