@@ -205,7 +205,7 @@ test('timeouts leave room for the fallback and the comment step', () => {
 
 test('the fallback runs only after a capacity or quota error, on its own model', () => {
   const { text } = step(FALLBACK);
-  assert.match(workflow, /FALLBACK_MODEL: \$\{\{ vars\.GEMINI_FALLBACK_MODEL \|\| 'gemini-2\.5-flash' \}\}/);
+  assert.match(workflow, /FALLBACK_MODEL: \$\{\{ vars\.GEMINI_FALLBACK_MODEL \|\| 'gemini-3\.5-flash-lite' \}\}/);
   assert.match(text, /steps\.gemini\.outcome == 'failure'/);
   for (const signal of ['503', '429']) {
     assert.ok(text.includes(`contains(steps.gemini.outputs.error, '${signal}')`), `fallback ignores ${signal}`);
@@ -315,7 +315,7 @@ test('a review for a superseded head or a closed PR is discarded without failing
 
 test('GEMINI.md describes the triggers, budget and fallback the workflow uses', () => {
   const flat = read('GEMINI.md').replace(/\s+/g, ' ');
-  for (const claim of ['`@codex review`', '`@gemini-cli`', '`GEMINI_FALLBACK_MODEL`', '`gemini-2.5-flash`',
+  for (const claim of ['`@codex review`', '`@gemini-cli`', '`GEMINI_FALLBACK_MODEL`', '`gemini-3.5-flash-lite`',
     '8 turns', '`read_many_files`', '10-minute timeout within a 15-minute job', 'queue rather than cancel',
     'at most 3 attempts per request']) {
     assert.ok(flat.includes(claim), `GEMINI.md no longer says ${claim}; keep it and the workflow together`);
