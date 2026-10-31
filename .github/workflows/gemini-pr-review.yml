@@ -46,7 +46,7 @@ jobs:
       GEMINI_TRUST_WORKSPACE: "true"
       GEMINI_CLI_TRUST_WORKSPACE: "true"
       PRIMARY_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
-      FALLBACK_MODEL: ${{ vars.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash' }}
+      FALLBACK_MODEL: ${{ vars.GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash-lite' }}
       # Read-only tools, read_many_files to batch reads into one turn, a hard
       # turn cap, and nothing loaded from the PR's own hooks, skills, MCP
       # servers or .env files. The evidence files live in gitignored .gemini/.
