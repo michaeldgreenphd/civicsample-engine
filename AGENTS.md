@@ -276,7 +276,9 @@ same records and checks every number of the block against what it counts and
 paints; `tests/test_first_view.py` runs it on a fixture against
 `tests/fixtures/site_overview/`, the pieces of the site's app.js and
 index.html that the Overview runs, copied unchanged by the script's
-`--excerpt` mode, whose first line names the site commit. `--excerpt` also
+`--excerpt` mode, whose first line names the site commit. It also copies,
+after them, the declarations of any app.js functions those pieces call
+that the parity stubs rather than runs, so the excerpt runs as app.js does. `--excerpt` also
 writes `tests/fixtures/site_overview/SOURCE.json`, the SHA-256 of the site's two files at that commit and of
 the excerpt; CI checks the excerpt against it and fetches the site's files at
 that commit (the site repository is public) to check that they still give the

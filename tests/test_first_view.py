@@ -311,9 +311,10 @@ def _assert_parity(code: int, report: dict[str, Any], block: dict[str, Any]) -> 
     for year, c in block["by_results_year"].items():
         assert {k: site["by_results_year"][year][k] for k in ["trials", *names]} == {k: c[k] for k in ["trials", *names]}
     # 40 checks of the view, and one for each year it shows; on a site that
-    # paints sex/gender, 4 counts, 8 rows painted twice, and one more per year.
+    # paints sex/gender, 4 counts, 8 rows painted twice, its Sex and Gender
+    # trend lines, and one more per year.
     per_year = 2 if checked else 1
-    assert report["checked"] == 40 + (4 + 16 if checked else 0) + per_year * len(block["by_results_year"])
+    assert report["checked"] == 40 + (4 + 16 + 2 if checked else 0) + per_year * len(block["by_results_year"])
 
 
 def test_the_block_is_what_the_sites_own_code_counts_and_paints(counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
@@ -1227,67 +1228,35 @@ def test_the_summary_has_no_parser_counts_when_a_record_lacks_the_row(tmp_path: 
     assert not any(k.startswith(("sg_", "all_four")) for y in s["byYear"].values() for k in y)
 
 
-# ── the parity on a site that paints the sex/gender rows ────────────────────
+# ── the parity on the site's sex/gender rows ────────────────────────────────
 
-# What a site PR adds, written against the vendored excerpt: the rows in
-# index.html, a painter, and the calls from both of renderDashboard's paths
-# (the parser's flags, === true, only when every filtered record has the row).
-_SG_PAINTER = '''
-function renderOverviewSexGender(total, sex, gender, sexGender, allFour) {
-    const rows = [['sex-reporting', 'stat-sub-sex', sex], ['gender-reporting', 'stat-sub-gender', gender],
-        ['sex-gender-reporting', 'stat-sub-sex-gender', sexGender], ['all-four-reporting', 'stat-sub-all-four', allFour]];
-    for (const [value, sub, n] of rows) {
-        document.getElementById(value).textContent = n === null ? '\\u2014'
-            : total > 0 ? `${((n / total) * 100).toFixed(1)}%` : '0%';
-        document.getElementById(sub).textContent = n === null ? '' : `${n.toLocaleString()} of ${total.toLocaleString()} trials`;
-    }
-}
-'''
-_SG_DESKTOP = ("    renderOverviewFinding(filtered.length, raceCount, ethCount, bothCount);\n",
-               "    renderOverviewFinding(filtered.length, raceCount, ethCount, bothCount);\n"
-               "    const sgRows = filtered.every(s => s.sex_gender && typeof s.sex_gender === 'object' && !Array.isArray(s.sex_gender));\n"
-               "    const sgSex = (s) => s.sex_gender?.reported_sex === true, sgGender = (s) => s.sex_gender?.reported_gender === true;\n"
-               "    renderOverviewSexGender(filtered.length, ...(sgRows ? [filtered.filter(sgSex).length, filtered.filter(sgGender).length,\n"
-               "        filtered.filter(s => sgSex(s) && sgGender(s)).length,\n"
-               "        filtered.filter(s => s.race?.reported && s.ethnicity?.reported && sgSex(s) && sgGender(s)).length] : [null, null, null, null]));\n")
-_SG_SUMMARY = ("        renderOverviewFinding(t, s.cards.raceCount, s.cards.ethCount, s.cards.bothCount);\n",
-               "        renderOverviewFinding(t, s.cards.raceCount, s.cards.ethCount, s.cards.bothCount);\n"
-               "        renderOverviewSexGender(t, s.cards.sgSexCount ?? null, s.cards.sgGenderCount ?? null,\n"
-               "            s.cards.sgSexGenderCount ?? null, s.cards.allFourCount ?? null);\n")
-_SG_MARKUP = ('<p class="stat-sub" id="stat-sub-both">&nbsp;</p>',
-              '<p class="stat-sub" id="stat-sub-both">&nbsp;</p>' + "".join(
-                  f'<p id="{v}">-</p><p id="{s}"></p>' for v, s in (
-                      ("sex-reporting", "stat-sub-sex"), ("gender-reporting", "stat-sub-gender"),
-                      ("sex-gender-reporting", "stat-sub-sex-gender"), ("all-four-reporting", "stat-sub-all-four"))))
-
-
-def _site_painting_sex_and_gender(tmp: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+# Site main (the vendored excerpt) paints the rows (renderOverviewSexGender,
+# site PR #274). A site from before it is the same code with that function
+# renamed away: the parity then stubs it like any helper it does not run,
+# paints no sex/gender row and says it checked none.
+def _site_without_the_sex_gender_painter(tmp: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
     app = _excerpt_app()
-    for anchor, replacement in (_SG_DESKTOP, _SG_SUMMARY):
-        assert app.count(anchor) == 1, f"the excerpt no longer has one {anchor!r}"
-        app = app.replace(anchor, replacement)
-    index = (EXCERPT / "index_overview.html").read_text(encoding="utf-8")
-    assert index.count(_SG_MARKUP[0]) == 1
-    tmp.mkdir(parents=True, exist_ok=True)
-    index_file = tmp / "index.html"
-    index_file.write_text(index.replace(*_SG_MARKUP), encoding="utf-8")
-    return _write_app(tmp, app + _SG_PAINTER), index_file
+    assert app.count("function renderOverviewSexGender(") == 1
+    return (_write_app(tmp, app.replace("renderOverviewSexGender", "renderOverviewSexGenderElsewhere")),
+            EXCERPT / "index_overview.html")
 
 
 def _parity_on(records_file: pathlib.Path, summary_file: pathlib.Path,
-               site: tuple[pathlib.Path, pathlib.Path]) -> tuple[int, dict[str, Any]]:
+               site: tuple[pathlib.Path, pathlib.Path] | None = None) -> tuple[int, dict[str, Any]]:
+    if site is None:
+        return _parity(records_file, summary_file)
     return _parity(records_file, summary_file, "--app", str(site[0]), "--index", str(site[1]))
 
 
 @pytest.fixture(scope="module")
-def sg_counted(tmp_path_factory: pytest.TempPathFactory) -> tuple[pathlib.Path, pathlib.Path, tuple[pathlib.Path, pathlib.Path]]:
+def sg_counted(tmp_path_factory: pytest.TempPathFactory) -> tuple[pathlib.Path, pathlib.Path, None]:
     tmp = tmp_path_factory.mktemp("first_view_sg")
     records_file, summary_file = _case(tmp, _sg_records())
-    return records_file, summary_file, _site_painting_sex_and_gender(tmp / "site")
+    return records_file, summary_file, None
 
 
-def test_a_site_that_paints_sex_and_gender_is_checked_against_the_block(
-        sg_counted: tuple[pathlib.Path, pathlib.Path, tuple[pathlib.Path, pathlib.Path]]) -> None:
+def test_site_main_paints_sex_and_gender_and_is_checked_against_the_block(
+        sg_counted: tuple[pathlib.Path, pathlib.Path, None]) -> None:
     records_file, summary_file, site = sg_counted
     block = json.loads(summary_file.read_text())["firstView"]
     assert block["trials_reporting_gender"] > block["trials_reporting_sex_and_gender"] > 0
@@ -1298,11 +1267,12 @@ def test_a_site_that_paints_sex_and_gender_is_checked_against_the_block(
     assert report["site"]["painted"]["stat-sub-all-four"].endswith(f"of {block['trials']:,} trials")
 
 
-def test_the_site_main_excerpt_is_not_checked_for_sex_and_gender_and_says_so(
-        sg_counted: tuple[pathlib.Path, pathlib.Path, tuple[pathlib.Path, pathlib.Path]]) -> None:
+def test_a_site_without_the_painter_is_not_checked_for_sex_and_gender_and_says_so(
+        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, None]) -> None:
     records_file, summary_file, _ = sg_counted
-    code, report = _parity(records_file, summary_file)
-    assert code == 0 and report["sex_gender_checked"] is False
+    code, report = _parity_on(records_file, summary_file, _site_without_the_sex_gender_painter(tmp_path))
+    assert code == 0 and report["sex_gender_checked"] is False, json.dumps(report["mismatches"])[:3000]
+    assert report["site_functions_stubbed"] == ["renderOverviewSexGenderElsewhere"]
 
 
 def _move_one_gender_trial(s: dict[str, Any]) -> None:
@@ -1324,7 +1294,7 @@ def _drop_sex_and_gender(s: dict[str, Any]) -> None:
     (_drop_sex_and_gender, {f"counts: {k}" for k in fv.SEX_GENDER}),
 ])
 def test_the_parity_names_what_the_block_gets_wrong_about_sex_and_gender(
-        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, tuple[pathlib.Path, pathlib.Path]],
+        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, None],
         change: Callable[[dict[str, Any]], None], expected: set[str]) -> None:
     records_file, summary_file, site = sg_counted
     code, report = _parity_on(records_file, _mutated(tmp_path, summary_file, change), site)
@@ -1338,13 +1308,13 @@ def test_a_week_without_the_parser_row_passes_on_a_site_that_shows_none(tmp_path
     records_file, summary_file = _case(tmp_path, records)
     block = json.loads(summary_file.read_text())["firstView"]
     assert fv.first_view(records, None, None)["trials"] and not any(k in block for k in fv.SEX_GENDER)
-    code, report = _parity_on(records_file, summary_file, _site_painting_sex_and_gender(tmp_path / "site"))
+    code, report = _parity_on(records_file, summary_file)
     assert code == 0 and report["sex_gender_checked"] is True, json.dumps(report["mismatches"])[:3000]
     assert report["site"]["painted"]["sex-reporting"] == "—"
 
 
 def test_a_block_with_some_sex_and_gender_counts_is_malformed(
-        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, tuple[pathlib.Path, pathlib.Path]]) -> None:
+        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, None]) -> None:
     records_file, summary_file, site = sg_counted
     code, report = _parity_on(records_file, _mutated(tmp_path, summary_file,
                                                      lambda s: s["firstView"].pop("trials_reporting_gender")), site)
@@ -1354,7 +1324,7 @@ def test_a_block_with_some_sex_and_gender_counts_is_malformed(
 
 
 def test_a_block_whose_years_lack_the_counts_it_has_is_malformed(
-        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, tuple[pathlib.Path, pathlib.Path]]) -> None:
+        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, None]) -> None:
     records_file, summary_file, site = sg_counted
 
     def drop_2016(s: dict[str, Any]) -> None:
@@ -1364,3 +1334,35 @@ def test_a_block_whose_years_lack_the_counts_it_has_is_malformed(
     assert code == 1
     detail = next(m for m in report["mismatches"] if m["check"] == "the block is well formed")["detail"]
     assert "firstView.by_results_year.2016 has no sex/gender counts, but the block has" in detail
+
+
+def test_the_excerpt_carries_the_helpers_its_pieces_call_so_it_runs_as_app_js_does(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """A site PR that adds a call from a piece to a helper declared elsewhere in
+    app.js (site PRs #255 and #259 did) must leave an excerpt the parity can run:
+    the --excerpt writer copies the helper's declaration after the pieces, so
+    the excerpt declares it and the parity stubs it there as in app.js. Before,
+    the refreshed excerpt called a name it never declared and stopped the check."""
+    records_file, summary_file, _ = counted
+    site_app = _site_with_a_new_call(tmp_path / "site", "desktop_path", "function")
+    out = tmp_path / "excerpt"
+    r = subprocess.run([_node(), str(PARITY), "--excerpt", "--app", str(site_app),
+                        "--index", str(EXCERPT / "index_overview.html"),
+                        "--source", "michaeldgreenphd/clinical-trial-populations@" + "0" * 40,
+                        "--out-dir", str(out)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["helpers"] == ["renderTrialPhaseMix"]
+    excerpt = (out / "app_overview.js").read_text(encoding="utf-8")
+    assert excerpt.count("function renderTrialPhaseMix(rows) {") == 1
+    # Written again from itself, the same bytes: the helper slices back out too.
+    again = tmp_path / "again"
+    r = subprocess.run([_node(), str(PARITY), "--excerpt", "--app", str(out / "app_overview.js"),
+                        "--index", str(out / "index_overview.html"),
+                        "--source", "michaeldgreenphd/clinical-trial-populations@" + "0" * 40,
+                        "--out-dir", str(again)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert (again / "app_overview.js").read_bytes() == (out / "app_overview.js").read_bytes()
+    # And the parity runs on it as on the site's app.js: the helper stubbed and named.
+    r = _run_parity(records_file, summary_file, out / "app_overview.js")
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert json.loads(r.stdout)["site_functions_stubbed"] == ["renderTrialPhaseMix"]

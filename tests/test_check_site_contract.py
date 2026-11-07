@@ -1310,7 +1310,11 @@ def test_with_the_real_retention_and_check_the_publish_step_archives_last_week_a
     assert check["first_view"] == {"recounted": True, "trials": 16, "differences": 0}
     parity = json.loads((tmp_path / "first_view_parity.json").read_text())
     assert parity["ok"] and parity["records"]["count"] == 16 and len(parity["records"]["file"]) == 8, parity
-    assert "first-view parity: ok, 41 checks on 16 records" in r.stdout
+    # 41 checks of the view and its one year, and 23 on its sex/gender rows,
+    # which the site excerpt paints (4 counts, 8 rows painted twice, 2 trend
+    # lines, the year's sex/gender counts).
+    assert parity["sex_gender_checked"] is True
+    assert "first-view parity: ok, 64 checks on 16 records" in r.stdout
     subject = subprocess.run([real_git, "log", "-1", "--format=%s"], cwd=site, capture_output=True, text=True).stdout
     assert subject.strip() == f"Update demographics data {DATE}"
 

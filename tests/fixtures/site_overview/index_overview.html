@@ -1,4 +1,4 @@
-<!-- Copied unchanged from michaeldgreenphd/clinical-trial-populations@c4e297ab45d61f2872eff5140cc9b91ddd0605d6: index.html from its header through the Overview. Written by scripts/first_view_parity.mjs --excerpt. -->
+<!-- Copied unchanged from michaeldgreenphd/clinical-trial-populations@ca2d6d34d08729590611e92f8f1b4c6d8b538f9c: index.html from its header through the Overview. Written by scripts/first_view_parity.mjs --excerpt. -->
 <header>
         <div class="masthead-identity">
             <h1>Civic Sample</h1>
@@ -8,7 +8,7 @@
             <p class="last-updated">Last updated: <span id="last-updated"></span></p>
             <div class="history-selector">
                 <label for="history-date">View snapshot:</label>
-                <select id="history-date">
+                <select id="history-date" autocomplete="off">
                     <option value="latest">Latest</option>
                     <!-- Historical dates populated by JavaScript -->
                 </select>
@@ -19,6 +19,10 @@
     <!-- Every tab is still a <button class="tab" data-tab="…">; the groups
          only change where the buttons sit in the DOM, so tab switching,
          hash routing and deep links are untouched. -->
+    <!-- autocomplete="off" on every control that waits for the records
+         (app.js setRecordsPending): Firefox otherwise keeps a button's or
+         select's disabled state across a reload, and a refresh during the
+         wait would bring them back disabled with nothing to open them. -->
     <!-- The filter panel states its selection in words and stays closed
          until asked for; the panel itself is unchanged behind it. -->
     <nav class="tabs">
@@ -27,36 +31,36 @@
         <details class="nav-group" id="nav-demographics">
             <summary>Demographics</summary>
             <div class="nav-menu">
-                <button class="tab" data-tab="race">Race</button>
-                <button class="tab" data-tab="ethnicity">Ethnicity</button>
-                <button class="tab" data-tab="sex">Sex</button>
-                <button class="tab" data-tab="gender">Gender</button>
-                <button class="tab" data-tab="geography">Geography</button>
+                <button class="tab" data-tab="race" autocomplete="off">Race</button>
+                <button class="tab" data-tab="ethnicity" autocomplete="off">Ethnicity</button>
+                <button class="tab" data-tab="sex" autocomplete="off">Sex</button>
+                <button class="tab" data-tab="gender" autocomplete="off">Gender</button>
+                <button class="tab" data-tab="geography" autocomplete="off">Geography</button>
             </div>
         </details>
 
         <details class="nav-group" id="nav-context">
             <summary>Context</summary>
             <div class="nav-menu">
-                <button class="tab" data-tab="studies">Studies</button>
-                <button class="tab" data-tab="fda-oversight">FDA Oversight</button>
-                <button class="tab" data-tab="ai-devices">AI Devices</button>
+                <button class="tab" data-tab="studies" autocomplete="off">Studies</button>
+                <button class="tab" data-tab="fda-oversight" autocomplete="off">FDA Oversight</button>
+                <button class="tab" data-tab="ai-devices" autocomplete="off">AI Devices</button>
             </div>
         </details>
 
         <details class="nav-group" id="nav-tools">
             <summary>Tools <span class="nav-beta">Beta</span></summary>
             <div class="nav-menu">
-                <button class="tab" data-tab="fda-extraction">AI Demographic Extraction</button>
-                <button class="tab" data-tab="lit-extraction">Paper Data Extraction</button>
-                <button class="tab" data-tab="approval-queue">Approval Queue</button>
-                <button class="tab" data-tab="industry">Industry Sponsors</button>
+                <button class="tab" data-tab="fda-extraction" autocomplete="off">AI Demographic Extraction</button>
+                <button class="tab" data-tab="lit-extraction" autocomplete="off">Paper Data Extraction</button>
+                <button class="tab" data-tab="approval-queue" autocomplete="off">Approval Queue</button>
+                <button class="tab" data-tab="industry" autocomplete="off">Industry Sponsors</button>
             </div>
         </details>
 
         <span class="nav-secondary">
-            <button class="tab" data-tab="about">About</button>
-            <button class="tab" data-tab="faq">FAQ</button>
+            <button class="tab" data-tab="about" autocomplete="off">About</button>
+            <button class="tab" data-tab="faq" autocomplete="off">FAQ</button>
         </span>
     </nav>
 
@@ -68,7 +72,7 @@
             <span class="filter-summary-label">Showing</span>
             <span class="filter-summary-text" id="filter-summary-text">the full dataset</span>
             <button type="button" class="filter-summary-toggle" id="filter-summary-toggle"
-                    aria-expanded="false" aria-controls="filters">Filters</button>
+                    aria-expanded="false" aria-controls="filters" autocomplete="off">Filters</button>
             <!-- app.js hides this button on the phone view, where the panel
                  it controls is not part of that experience. -->
         </div>
@@ -324,32 +328,53 @@
                 <p class="finding-context" id="finding-context"></p>
             </div>
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <h3>Total Studies</h3>
-                    <p class="stat-value" id="total-studies">-</p>
-                    <p class="stat-sub" id="stat-sub-total">&nbsp;</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Report Race</h3>
-                    <p class="stat-value" id="race-reporting">-</p>
-                    <p class="stat-sub" id="stat-sub-race">&nbsp;</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Report Ethnicity</h3>
-                    <p class="stat-value" id="ethnicity-reporting">-</p>
-                    <p class="stat-sub" id="stat-sub-ethnicity">&nbsp;</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Report Both</h3>
-                    <p class="stat-value" id="both-reporting">-</p>
-                    <p class="stat-sub" id="stat-sub-both">&nbsp;</p>
-                </div>
+            <!-- The reporting rates: one row per dimension, grouped. Each value
+                 is a published count over the row's own denominator (named in
+                 its count line); a row the data cannot fill shows "—".
+                 Bars are drawn from the same counts (renderOverviewTileContext,
+                 renderOverviewSexGender) and carry no meaning of their own. -->
+            <div class="overview-rates num" role="group" aria-label="Reporting rates">
+                <span class="rate-group-spacer"></span>
+                <span class="rate-label rate-top">Total Studies</span>
+                <span class="rate-value rate-top" id="total-studies">-</span>
+                <span class="rate-count rate-top" id="stat-sub-total">&nbsp;</span>
+                <span class="rate-bar rate-scale rate-top" aria-hidden="true"><span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span></span>
+                <span class="rate-group rate-start">Race/Ethnicity</span>
+                <span class="rate-label rate-start">Report Race</span>
+                <span class="rate-value rate-start" id="race-reporting">-</span>
+                <span class="rate-count rate-start" id="stat-sub-race">&nbsp;</span>
+                <span class="rate-bar rate-start" aria-hidden="true"><span class="rate-fill rate-fill-race" id="rate-bar-race"></span></span>
+                <span class="rate-label">Report Ethnicity</span>
+                <span class="rate-value" id="ethnicity-reporting">-</span>
+                <span class="rate-count" id="stat-sub-ethnicity">&nbsp;</span>
+                <span class="rate-bar" aria-hidden="true"><span class="rate-fill rate-fill-ethnicity" id="rate-bar-ethnicity"></span></span>
+                <span class="rate-label">Report Race and Ethnicity</span>
+                <span class="rate-value" id="both-reporting">-</span>
+                <span class="rate-count" id="stat-sub-both">&nbsp;</span>
+                <span class="rate-bar" aria-hidden="true"><span class="rate-fill rate-fill-both" id="rate-bar-both"></span></span>
+                <span class="rate-group rate-start">Sex/Gender</span>
+                <span class="rate-label rate-start">Report Sex</span>
+                <span class="rate-value rate-start" id="sex-reporting">-</span>
+                <span class="rate-count rate-start" id="stat-sub-sex">&nbsp;</span>
+                <span class="rate-bar rate-start" aria-hidden="true"><span class="rate-fill rate-fill-sex" id="rate-bar-sex"></span></span>
+                <span class="rate-label">Report Gender</span>
+                <span class="rate-value" id="gender-reporting">-</span>
+                <span class="rate-count" id="stat-sub-gender">&nbsp;</span>
+                <span class="rate-bar" aria-hidden="true"><span class="rate-fill rate-fill-gender" id="rate-bar-gender"></span></span>
+                <span class="rate-label">Report Sex and Gender</span>
+                <span class="rate-value" id="sex-gender-reporting">-</span>
+                <span class="rate-count" id="stat-sub-sex-gender">&nbsp;</span>
+                <span class="rate-bar" aria-hidden="true"><span class="rate-fill rate-fill-sex-gender" id="rate-bar-sex-gender"></span></span>
+                <span class="rate-label rate-start rate-all">Report Race, Ethnicity, Sex, and Gender</span>
+                <span class="rate-value rate-start rate-all" id="all-four-reporting">-</span>
+                <span class="rate-count rate-start rate-all" id="stat-sub-all-four">&nbsp;</span>
+                <span class="rate-bar rate-start rate-all" aria-hidden="true"><span class="rate-fill rate-fill-all-four" id="rate-bar-all-four"></span></span>
             </div>
 
-            <div class="chart-container">
+            <div class="chart-container overview-trends">
                 <h3>Reporting Trends Over Time</h3>
-                <canvas id="reporting-trends-chart"></canvas>
+                <p class="overview-trends-key" id="reporting-trends-key" hidden></p>
+                <div class="overview-trends-canvas"><canvas id="reporting-trends-chart"></canvas></div>
                 <p class="chart-footnote">Dashed 2017 marker: the FDAAA Final Rule (42 CFR Part 11) took effect January 18, 2017, clarifying and enforcing sponsors’ obligation to report trial results — see the FAQ entry on FDAAA for the policy history.</p>
             </div>
         </section>
