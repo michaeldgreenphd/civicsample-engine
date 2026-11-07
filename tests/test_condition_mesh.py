@@ -44,13 +44,15 @@ def test_each_state_keeps_absence_as_absence(derived: Any, state: str, meshes: A
     assert line["schema_version"] == cm.SCHEMA_VERSION and "problem" not in line
 
 
-def test_a_derived_section_that_is_not_an_object_is_malformed_not_absent() -> None:
-    line = cm.select_condition_mesh(_study(derived=["conditionBrowseModule"]))
+@pytest.mark.parametrize("derived", [["conditionBrowseModule"], None], ids=["list", "null"])
+def test_a_derived_section_that_is_not_an_object_is_malformed_not_absent(derived: Any) -> None:
+    line = cm.select_condition_mesh(_study(derived=derived))
     assert line["state"] == "malformed" and line["problem"] == "derivedSection is not an object"
 
 
 @pytest.mark.parametrize("module,problem", [
     ("D006086", "conditionBrowseModule is not an object"),
+    (None, "conditionBrowseModule is not an object"),
     ({"meshes": "D006086"}, "meshes is not a list of id/term pairs"),
     ({"meshes": MESHES, "ancestors": [{"id": "D007154"}]}, "ancestors is not a list of id/term pairs"),
 ])
@@ -77,11 +79,11 @@ def _api_study(i: int, mesh: bool) -> dict[str, Any]:
     return study
 
 
-def test_extract_all_writes_one_stamped_line_per_kept_study(tmp_path: pathlib.Path,
-                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+def _run_extract_all(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch, studies: list[dict[str, Any]],
+                     full: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Run extract_all.main() on `studies` (search results), with `full` as the
+    individually fetched documents; return the MeSH lines and the output file."""
     from src import extract_all
-    studies = [_api_study(1, mesh=True), _api_study(2, mesh=False)]
-    full = {s["protocolSection"]["identificationModule"]["nctId"]: copy.deepcopy(s) for s in studies}
 
     class Client:
         def __init__(self, **_: Any) -> None:
@@ -97,14 +99,39 @@ def test_extract_all_writes_one_stamped_line_per_kept_study(tmp_path: pathlib.Pa
     out = tmp_path / "data" / "demographics.json"
     monkeypatch.setattr(sys, "argv", ["extract_all", "--output", str(out), "--snapshot-date", "2026-11-08"])
     extract_all.main()
-
     with gzip.open(out.parent / cm.FILENAME, "rt") as f:
         lines = [json.loads(line) for line in f]
+    return lines, json.loads(out.read_text())
+
+
+def test_extract_all_writes_one_stamped_line_per_kept_study(tmp_path: pathlib.Path,
+                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    studies = [_api_study(1, mesh=True), _api_study(2, mesh=False)]
+    full = {s["protocolSection"]["identificationModule"]["nctId"]: copy.deepcopy(s) for s in studies}
+    lines, records = _run_extract_all(tmp_path, monkeypatch, studies, full)
     assert [(m["nct_id"], m["state"]) for m in lines] == [("NCT00000001", "indexed"), ("NCT00000002", "no_derived")]
     assert lines[0]["meshes"] == MESHES and lines[0]["ancestors"] == ANCESTORS
-    records = json.loads(out.read_text())
     for m in lines:
         assert m["snapshot_date"] == "2026-11-08" and m["extracted_at"] == records["extracted_at"]
         assert "pipeline_commit" in m and m["refetched"] is False
     for record in records["data"]:
         assert not {"meshes", "ancestors", "condition_mesh"} & set(record), "MeSH leaked onto a site record"
+
+
+def test_a_refetched_study_takes_its_mesh_from_the_fetched_document(tmp_path: pathlib.Path,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """The search result carries no MeSH; the individually fetched document
+    does. The line must come from the fetched one and say it was refetched."""
+    from src import extract_all
+    search = _api_study(1, mesh=False)
+    fetched = _api_study(1, mesh=True)
+    calls: list[str] = []
+
+    def needs_refetch(result: Any, study: dict[str, Any], raw: Any) -> str:
+        calls.append("x")
+        return "legacy" if len(calls) == 1 else ""
+
+    monkeypatch.setattr(extract_all, "_needs_refetch", needs_refetch)
+    lines, _ = _run_extract_all(tmp_path, monkeypatch, [search], {"NCT00000001": fetched})
+    assert len(lines) == 1
+    assert lines[0]["state"] == "indexed" and lines[0]["meshes"] == MESHES and lines[0]["refetched"] is True

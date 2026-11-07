@@ -20,9 +20,10 @@ on nct_id with the full records) and from there to the week's data-* release.
 ABSENCE IS RECORDED, NOT FLATTENED. Each line carries a `state`:
   indexed      the module is present with at least one descriptor
   not_indexed  the module is present, its `meshes` missing or empty
-  no_module    derivedSection is present without a conditionBrowseModule
-  no_derived   the study has no derivedSection
-  malformed    derivedSection or the module is not an object, or `meshes` or
+  no_module    derivedSection has no conditionBrowseModule key
+  no_derived   the study has no derivedSection key
+  malformed    derivedSection or the module is present but not an object
+               (null included), or `meshes` or
                `ancestors` is not a list of {"id": str, "term": str};
                `problem` names which
 `meshes` and `ancestors` hold the registry's lists verbatim when they are
@@ -61,17 +62,19 @@ def select_condition_mesh(study: dict[str, Any]) -> dict[str, Any]:
     pipeline_commit), as it does for the raw sex/gender measures."""
     line: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "nct_id": _nct_id(study),
                             "state": None, "meshes": None, "ancestors": None}
-    derived = study.get("derivedSection")
-    if derived is None:
+    # Absence is the key missing; a key present with null (or any non-object)
+    # is malformed, so a broken payload never reads as "the registry gave none".
+    if "derivedSection" not in study:
         line["state"] = "no_derived"
         return line
+    derived = study["derivedSection"]
     if not isinstance(derived, dict):
         line["state"], line["problem"] = "malformed", "derivedSection is not an object"
         return line
-    module = derived.get("conditionBrowseModule")
-    if module is None:
+    if "conditionBrowseModule" not in derived:
         line["state"] = "no_module"
         return line
+    module = derived["conditionBrowseModule"]
     if not isinstance(module, dict):
         line["state"], line["problem"] = "malformed", "conditionBrowseModule is not an object"
         return line
