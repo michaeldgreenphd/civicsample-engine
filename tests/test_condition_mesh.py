@@ -5,13 +5,18 @@ from __future__ import annotations
 import copy
 import gzip
 import json
+import os
 import pathlib
 import sys
 from typing import Any, Iterator
 
 import pytest
 
-from src import condition_mesh as cm
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "scripts"))  # validate_fixes' study builders
+
+from src import condition_mesh as cm  # noqa: E402
 
 MESHES = [{"id": "D006086", "term": "Graft vs Host Disease"}]
 ANCESTORS = [{"id": "D007154", "term": "Immune System Diseases"}]
@@ -37,6 +42,11 @@ def test_each_state_keeps_absence_as_absence(derived: Any, state: str, meshes: A
     assert line["state"] == state and line["nct_id"] == "NCT00000001"
     assert line["meshes"] == meshes and line["ancestors"] == ancestors
     assert line["schema_version"] == cm.SCHEMA_VERSION and "problem" not in line
+
+
+def test_a_derived_section_that_is_not_an_object_is_malformed_not_absent() -> None:
+    line = cm.select_condition_mesh(_study(derived=["conditionBrowseModule"]))
+    assert line["state"] == "malformed" and line["problem"] == "derivedSection is not an object"
 
 
 @pytest.mark.parametrize("module,problem", [

@@ -22,8 +22,9 @@ ABSENCE IS RECORDED, NOT FLATTENED. Each line carries a `state`:
   not_indexed  the module is present, its `meshes` missing or empty
   no_module    derivedSection is present without a conditionBrowseModule
   no_derived   the study has no derivedSection
-  malformed    the module is present but `meshes` or `ancestors` is not a list
-               of {"id": str, "term": str}; `problem` names which
+  malformed    derivedSection or the module is not an object, or `meshes` or
+               `ancestors` is not a list of {"id": str, "term": str};
+               `problem` names which
 `meshes` and `ancestors` hold the registry's lists verbatim when they are
 well-formed lists and null otherwise, so "no list" never reads as "an empty
 list". A line never invents a descriptor the registry did not give.
@@ -61,8 +62,11 @@ def select_condition_mesh(study: dict[str, Any]) -> dict[str, Any]:
     line: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "nct_id": _nct_id(study),
                             "state": None, "meshes": None, "ancestors": None}
     derived = study.get("derivedSection")
-    if not isinstance(derived, dict):
+    if derived is None:
         line["state"] = "no_derived"
+        return line
+    if not isinstance(derived, dict):
+        line["state"], line["problem"] = "malformed", "derivedSection is not an object"
         return line
     module = derived.get("conditionBrowseModule")
     if module is None:
