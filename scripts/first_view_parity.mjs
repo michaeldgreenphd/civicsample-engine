@@ -151,6 +151,15 @@ const ELSEWHERE = [
     'renderSexReportedParticipants', 'renderSexFullDistribution', 'renderSexDistribution', 'renderSexTrends',
     'renderGenderReportedParticipants', 'renderGenderFullDistribution', 'renderGenderDistribution',
     'renderGenderTrends', 'renderFdaOversight', 'renderGeographyDashboard',
+    // Called from the pieces since site PRs #255 and #259 (site main
+    // ca2d6d3, 2026-11-07): the Filters button's archive state
+    // (syncFilterToggle), the filter line over a summary or archive
+    // (renderUnfilteredFilterSummary, from renderFilterSummary), and a phone's
+    // Overview from the block (phoneOverview, which returns at once off a
+    // phone). None returns a value, each is called as a lone statement, and
+    // none paints a desktop tile, the finding or the chart (the site's own
+    // tests/first_view.test.mjs names them, ENGINE_STUBBED).
+    'syncFilterToggle', 'renderUnfilteredFilterSummary', 'phoneOverview',
 ];
 // Filters that apply only away from the default view. They throw here, so a
 // site change that makes the default view run one fails the check.
@@ -300,8 +309,30 @@ function readSite(appPath, indexPath) {
     };
 }
 
+// The app.js functions the pieces call that the check does not run, as
+// their declarations copied verbatim, in name order. The excerpt carries them
+// after the pieces so the check finds and stubs them there exactly as it
+// stubs them in app.js (autoStubs): without them, a piece's call to one is a
+// name the excerpt never declares, which stops the check (exit 2) though the
+// site's own app.js runs. Only a `function NAME(` declaration (async or not)
+// can be copied; any other form is an input error, never skipped.
+function calledHelpers(app, pieces) {
+    const text = pieces.join('\n');
+    return autoStubs(app, pieces).map((s) => s.name)
+        .filter((name) => new RegExp(`(?<![\\w$.])${name.replace(/\$/g, '\\$')}[ \\t]*\\(`).test(text))
+        .sort()
+        .map((name) => {
+            const decl = app.includes(`\nasync function ${name}(`) ? `async function ${name}(` : `function ${name}(`;
+            if (!app.includes(`\n${decl}`)) {
+                throw new InputError(`the pieces call ${name}, which app.js does not declare as a top-level function the excerpt can copy`);
+            }
+            return slicePiece(app, ['fn', `\n${decl}`], 'app.js').slice(1);
+        });
+}
+
 function writeExcerpt(appPath, indexPath, source, outDir) {
     const site = readSite(appPath, indexPath);
+    const helpers = calledHelpers(readFileSync(appPath, 'utf8'), site.pieces);
     // The year window runs up to initFilters, so the two are written with
     // nothing between them; every piece slices back out unchanged.
     const head = [
@@ -312,7 +343,9 @@ function writeExcerpt(appPath, indexPath, source, outDir) {
         '// exactly as it slices the site\'s own app.js.',
         '',
     ].join('\n');
-    const app = head + site.pieces[0] + site.pieces.slice(1).join('\n\n') + '\n';
+    const app = head + site.pieces[0] + site.pieces.slice(1).join('\n\n') + '\n'
+        + (helpers.length ? '\n// Declared in app.js and called from the pieces above: the check stubs these, '
+            + 'as it stubs them in app.js, and never runs them.\n\n' + helpers.join('\n\n') + '\n' : '');
     const index = `<!-- Copied unchanged from ${source}: index.html from its header through the Overview. ` +
         'Written by scripts/first_view_parity.mjs --excerpt. -->\n' + site.markup + '\n';
     mkdirSync(outDir, { recursive: true });
@@ -323,6 +356,8 @@ function writeExcerpt(appPath, indexPath, source, outDir) {
         if (p !== site.pieces[i]) throw new InputError(`the excerpt does not slice back to ${site.specs[i][1]}`);
     });
     if (back.markup !== site.markup) throw new InputError('the excerpt does not slice back to the markup');
+    const backHelpers = calledHelpers(readFileSync(path.join(outDir, EXCERPT_APP), 'utf8'), back.pieces);
+    if (JSON.stringify(backHelpers) !== JSON.stringify(helpers)) throw new InputError('the excerpt does not slice back to the helpers its pieces call');
     // The pins: the site's own files at that commit, and the excerpt written
     // from them. tests/test_first_view.py checks the excerpt against the second,
     // and, fetching the site's files at the commit, against the first, so the
@@ -335,7 +370,8 @@ function writeExcerpt(appPath, indexPath, source, outDir) {
     };
     writeFileSync(path.join(outDir, EXCERPT_SOURCE), JSON.stringify(pins, null, 2) + '\n');
     return { app: path.join(outDir, EXCERPT_APP), index: path.join(outDir, EXCERPT_INDEX),
-             source: path.join(outDir, EXCERPT_SOURCE), pieces: site.pieces.length };
+             source: path.join(outDir, EXCERPT_SOURCE), pieces: site.pieces.length,
+             helpers: helpers.map((h) => /function\s+([\w$]+)/.exec(h)[1]) };
 }
 
 // ── the full records ───────────────────────────────────────────────────────
