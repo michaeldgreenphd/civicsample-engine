@@ -36,6 +36,8 @@ data/dataset/
 data/dataset.partial/
 data/dashboard-summary.json
 data/industry_sponsors.json
+# CT.gov MeSH indexing per trial (src/condition_mesh.py): kept on the data-* release
+data/condition_mesh.jsonl.gz
 # Sponsor bridge is published to the site; the audit under data/sponsor_audit/ IS committed
 data/sponsors/
 

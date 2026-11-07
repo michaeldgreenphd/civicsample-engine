@@ -20,6 +20,10 @@ Alongside the output JSON the run writes sex_gender_raw_measures.jsonl.gz:
 one line per trial with the SELECTED sex/gender measures verbatim, so any
 later rule bump can re-parse every retained snapshot without a registry pull
 (scripts/build_sex_gender_table.py --from-raw).
+
+It also writes condition_mesh.jsonl.gz: one line per trial with CT.gov's MeSH
+indexing of its conditions (src/condition_mesh.py), kept out of the records
+so the site's whole-record parts do not grow.
 """
 import argparse
 import gzip
@@ -40,6 +44,7 @@ from src.condition_classifier import classify_conditions
 from src.pubmed_fetcher import PubMedFetcher
 from src import sex_gender_table as sgt
 from src import sex_gender_analysis as sga
+from src import condition_mesh as cmesh
 
 # Set up logging
 logging.basicConfig(
@@ -255,7 +260,7 @@ def write_raw_measures(raw_records: list, path: Path) -> None:
             fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Extract demographics data from ClinicalTrials.gov"
     )
@@ -329,6 +334,9 @@ def main():
     results = []
     raw_records = []
     envelopes = []
+    # CT.gov's MeSH indexing of each trial's conditions (src/condition_mesh.py):
+    # written to its own file, never onto the records the site's parts carry.
+    mesh_lines = []
     errors = 0
 
     studies = client.iter_all_studies_with_results(
@@ -353,6 +361,7 @@ def main():
         raw = sgt.select_raw_measures(study)
         raw["refetched"] = False
         env = sgt.select_raw_envelope(study) if args.raw_envelope else None
+        mesh = cmesh.select_condition_mesh(study)
 
         # The search endpoint occasionally omits measurement values for large
         # studies while keeping category titles intact.  Detect this and
@@ -372,6 +381,7 @@ def main():
                 raw["refetched"] = True          # survives the rebuild from raw measures
                 if args.raw_envelope:
                     env = sgt.select_raw_envelope(full_study)
+                mesh = cmesh.select_condition_mesh(full_study)
                 refetch_count += 1
                 refetch_reasons[why] += 1
                 if _needs_refetch(result, full_study, raw):
@@ -399,6 +409,11 @@ def main():
                 env["extracted_at"] = extracted_at
                 env["pipeline_commit"] = source_commit
                 envelopes.append(env)
+            mesh["refetched"] = raw["refetched"]
+            mesh["snapshot_date"] = snapshot_date
+            mesh["extracted_at"] = extracted_at
+            mesh["pipeline_commit"] = source_commit
+            mesh_lines.append(mesh)
         else:
             errors += 1
 
@@ -417,6 +432,11 @@ def main():
         env_path = output_path.parent / RAW_ENVELOPE_FILENAME
         logger.info(f"Saving {len(envelopes)} raw sex/gender envelopes to {env_path}")
         write_raw_measures(envelopes, env_path)
+    mesh_path = output_path.parent / cmesh.FILENAME
+    mesh_states = {state: sum(1 for m in mesh_lines if m["state"] == state) for state in cmesh.STATES}
+    logger.info(f"Saving {len(mesh_lines)} condition MeSH lines to {mesh_path} "
+                f"({', '.join(f'{k} {v}' for k, v in mesh_states.items())})")
+    write_raw_measures(mesh_lines, mesh_path)
 
     # Summary statistics
     logger.info("\n=== Extraction Summary ===")

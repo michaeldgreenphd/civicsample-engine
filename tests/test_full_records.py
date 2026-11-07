@@ -455,7 +455,8 @@ def test_the_release_runs_before_the_site_and_is_kept_when_it_fails() -> None:
     assert "id: compress_full" in _step("Compress CT.gov Data for Drive")
     artifact = _step("Keep the full records as a workflow artifact if the release failed")
     assert "steps.data_release.outcome == 'failure'" in artifact and "actions/upload-artifact" in artifact
-    for f in ("data/demographics.json.gz", "data/sex_gender_raw_measures.jsonl.gz", "extraction_log.txt.gz"):
+    for f in ("data/demographics.json.gz", "data/sex_gender_raw_measures.jsonl.gz", "extraction_log.txt.gz",
+              "data/condition_mesh.jsonl.gz"):
         assert f in artifact
     assert order.index("Keep the full records as a workflow artifact if the release failed") == release + 1
     gate = _step("Fail the run if the week's full-record release failed")
@@ -487,22 +488,24 @@ def test_the_sex_gender_table_refuses_parts_cut_in_the_split_layout(tmp_path: pa
 
 
 def test_the_release_attaches_the_envelope_and_analysis_table_only_when_present(tmp_path: pathlib.Path) -> None:
-    """W-1/W-2: the raw envelope and the analysis table ride on the week's
-    data-* release when this run produced them, and their absence never holds
+    """W-1/W-2: the raw envelope, the analysis table and the condition MeSH
+    file ride on the week's data-* release when this run produced them, and their absence never holds
     up the full records."""
     r, calls = _run_release(tmp_path, view_rc=1, fail_first=0)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "data/sex_gender_raw_envelope.jsonl.gz" not in calls[0].split() and "analysis_sidecar" not in calls[0]
+    assert "data/condition_mesh.jsonl.gz" not in calls[0].split()
     other = tmp_path / "with"
     other.mkdir()
     (other / "data" / "analysis_sidecar").mkdir(parents=True)
     for f in ("data/sex_gender_raw_envelope.jsonl.gz", "data/analysis_sidecar/sex_gender_analysis.csv.gz",
-              "data/analysis_sidecar/sex_gender_analysis_meta.json"):
+              "data/analysis_sidecar/sex_gender_analysis_meta.json", "data/condition_mesh.jsonl.gz"):
         (other / f).write_text("x")
     r, calls = _run_release(other, view_rc=1, fail_first=0)
     assert r.returncode == 0, r.stdout + r.stderr
     for f in ("data/demographics.json.gz", "data/sex_gender_raw_envelope.jsonl.gz",
-              "data/analysis_sidecar/sex_gender_analysis.csv.gz", "data/analysis_sidecar/sex_gender_analysis_meta.json"):
+              "data/analysis_sidecar/sex_gender_analysis.csv.gz", "data/analysis_sidecar/sex_gender_analysis_meta.json",
+              "data/condition_mesh.jsonl.gz"):
         assert f in calls[0].split(), f
 
 
