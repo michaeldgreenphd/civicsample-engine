@@ -27,6 +27,17 @@
  *            with study type All splits not_counted's reasons the same way;
  *   stamps   the records, the block and the summary carry one extracted_at and
  *            pipeline_commit, and the summary counted as many records.
+ *   sex and gender
+ *            when the site's app.js declares renderOverviewSexGender (its
+ *            Overview's sex/gender rows), that function runs as a piece too and
+ *            the four sex/gender counts (the manuscript parser's flags) are
+ *            checked as the three above are: what renderDashboard hands it from
+ *            the records, each year's, the rows and the trend chart painted from
+ *            the block. A block without them (some counted trial has no parser
+ *            row) must meet a site that counts none. A site without the
+ *            function paints no sex/gender numbers, and the report says they
+ *            went unchecked here (sex_gender_checked: false); the publish's
+ *            contract check still recounts them from the staged parts.
  *
  * Every other function app.js declares at the top level runs as an inert
  * stub that records each call (autoStubs): a site change that adds a call
@@ -107,6 +118,11 @@ const APP_PIECES = [
     ['fn', 'function escapeHtml('],
     ['fn', 'function renderReportingTrends('],
 ];
+// Pieces the site may not have yet: run when its app.js declares them (after
+// the pieces above, in the excerpt), and their checks with them.
+const OPTIONAL_PIECES = [
+    ['fn', 'function renderOverviewSexGender('],
+];
 // index.html from the header (the tabs) to the end of the Overview's section:
 // every element those functions read or write, the filter panel included.
 const INDEX_SLICE = ['<header>', '<section id="overview"', '</section>'];
@@ -150,6 +166,15 @@ const TILES = ['total-studies', 'race-reporting', 'ethnicity-reporting', 'both-r
 const SUB_LINES = ['stat-sub-race', 'stat-sub-ethnicity', 'stat-sub-both'];
 const FINDING = ['finding-headline', 'finding-context'];
 const NUMERATORS = ['trials_reporting_race', 'trials_reporting_ethnicity', 'trials_reporting_race_and_ethnicity'];
+// The sex/gender rows (renderOverviewSexGender's arguments after the total,
+// in this order), checked only on a site that paints them.
+const SG_NUMERATORS = ['trials_reporting_sex', 'trials_reporting_gender', 'trials_reporting_sex_and_gender',
+    'trials_reporting_race_ethnicity_sex_and_gender'];
+const SG_TILES = ['sex-reporting', 'gender-reporting', 'sex-gender-reporting', 'all-four-reporting'];
+const SG_SUB_LINES = ['stat-sub-sex', 'stat-sub-gender', 'stat-sub-sex-gender', 'stat-sub-all-four'];
+// The summary's names for them (scripts/generate_mobile_data.py), in that order.
+const SG_CARDS = ['sgSexCount', 'sgGenderCount', 'sgSexGenderCount', 'allFourCount'];
+const SG_YEAR_KEYS = ['sg_sex_reported', 'sg_gender_reported', 'sg_sex_gender_reported', 'all_four_reported'];
 
 class InputError extends Error {}
 
@@ -194,7 +219,7 @@ const TOP_NAME = /^(?:(?:async[ \t]+)?function\b[ \t]*\*?[ \t]*|(?:const|let|var
 // and what the check provides. A name app.js binds some other way (a
 // top-level value, a class, an object's method, window.NAME = ...) is not
 // seen, and a call to it still stops the check as a name not defined.
-export function autoStubs(app, pieces = APP_PIECES.map((p) => slicePiece(app, p, 'app.js'))) {
+export function autoStubs(app, pieces = piecesOf(app).map((p) => slicePiece(app, p, 'app.js'))) {
     const own = new Set([...PROVIDED, ...ELSEWHERE, ...AWAY_FROM_DEFAULT]);
     for (const piece of pieces) for (const m of piece.matchAll(TOP_NAME)) own.add(m[1]);
     const found = new Map();
@@ -255,12 +280,20 @@ function flipSets(names) {
     return [...names.map((n) => [n]), ...names.map((n) => names.filter((m) => m !== n))];
 }
 
+// The pieces this app.js runs: every one of APP_PIECES, then each optional
+// piece it declares.
+function piecesOf(app) {
+    return [...APP_PIECES, ...OPTIONAL_PIECES.filter(([, from]) => app.includes(from))];
+}
+
 function readSite(appPath, indexPath) {
     const app = readFileSync(appPath, 'utf8'), index = readFileSync(indexPath, 'utf8');
     const source = /^\/\/ Copied unchanged from (.+?):?$/m.exec(app.slice(0, 600));
-    const pieces = APP_PIECES.map((p) => slicePiece(app, p, appPath));
+    const specs = piecesOf(app);
+    const pieces = specs.map((p) => slicePiece(app, p, appPath));
     return {
-        pieces,
+        pieces, specs,
+        sexGender: specs.some(([, from]) => from === OPTIONAL_PIECES[0][1]),
         stubs: autoStubs(app, pieces),
         markup: sliceIndex(index, indexPath),
         source: source ? source[1] : `${appPath} and ${indexPath}`,
@@ -287,7 +320,7 @@ function writeExcerpt(appPath, indexPath, source, outDir) {
     writeFileSync(path.join(outDir, EXCERPT_INDEX), index);
     const back = readSite(path.join(outDir, EXCERPT_APP), path.join(outDir, EXCERPT_INDEX));
     back.pieces.forEach((p, i) => {
-        if (p !== site.pieces[i]) throw new InputError(`the excerpt does not slice back to ${APP_PIECES[i][1]}`);
+        if (p !== site.pieces[i]) throw new InputError(`the excerpt does not slice back to ${site.specs[i][1]}`);
     });
     if (back.markup !== site.markup) throw new InputError('the excerpt does not slice back to the markup');
     // The pins: the site's own files at that commit, and the excerpt written
@@ -566,6 +599,12 @@ function siteRuntime(site, answerTrue) {
         'var __finding = [];',
         'const __siteFinding = renderOverviewFinding;',
         'renderOverviewFinding = function (...args) { __finding.push(args); return __siteFinding(...args); };',
+        // The sex/gender counts, the same way, on a site that paints them.
+        'var __sexGender = [];',
+        ...(site.sexGender ? [
+            'const __siteSexGender = renderOverviewSexGender;',
+            'renderOverviewSexGender = function (...args) { __sexGender.push(args); return __siteSexGender(...args); };',
+        ] : []),
     ].join('\n'), context, { filename: 'site-overview.js' });
     const run = (code) => vm.runInContext(code, context);
     return {
@@ -573,6 +612,8 @@ function siteRuntime(site, answerTrue) {
         setSg: (on) => { sgOn = on; },
         stubbedRan: () => [...stubbedRan].sort(),
         lastCounts: () => run('__finding.length ? __finding[__finding.length - 1].slice() : null'),
+        lastSexGender: () => run('__sexGender.length ? __sexGender[__sexGender.length - 1].slice() : null'),
+        sexGender: site.sexGender,
         chart: () => {
             const made = charts.filter((c) => c.canvas && c.canvas.id === 'reporting-trends-chart');
             if (!made.length) return null;
@@ -590,16 +631,25 @@ function siteRuntime(site, answerTrue) {
 // ── the comparison ─────────────────────────────────────────────────────────
 
 const counts = (c) => ({ trials: c[0], ...Object.fromEntries(NUMERATORS.map((n, i) => [n, c[i + 1]])) });
+// renderOverviewSexGender's arguments as the block's names; null for each
+// when the site counted none (or never called it).
+const sgCounts = (c) => Object.fromEntries(SG_NUMERATORS.map((n, i) => [n, c ? c[i + 1] ?? null : null]));
+// The block's sex/gender counts in that shape: null for each when it has none.
+const blockSg = (b) => Object.fromEntries(SG_NUMERATORS.map((n) => [n, n in b ? b[n] : null]));
+const hasSg = (b) => SG_NUMERATORS.some((n) => n in b);
 const sameNumbers = (a, b) => a.length === b.length && a.every((x, i) => Object.is(x, b[i]));
 
 // The block in the summary's shape, renamed only, for the summary painter.
 function asSummary(block) {
+    // The sex/gender counts under the summary's own names, when the block has them.
+    const sg = (c, names) => (hasSg(block) ? Object.fromEntries(SG_NUMERATORS.map((n, i) => [names[i], c[n]])) : {});
     const one = (c) => ({ total: c.trials, race_reported: c.trials_reporting_race,
-        eth_reported: c.trials_reporting_ethnicity, both_reported: c.trials_reporting_race_and_ethnicity });
+        eth_reported: c.trials_reporting_ethnicity, both_reported: c.trials_reporting_race_and_ethnicity,
+        ...sg(c, SG_YEAR_KEYS) });
     return {
         totalStudies: block.trials,
         cards: { raceCount: block.trials_reporting_race, ethCount: block.trials_reporting_ethnicity,
-                 bothCount: block.trials_reporting_race_and_ethnicity },
+                 bothCount: block.trials_reporting_race_and_ethnicity, ...sg(block, SG_CARDS) },
         byYear: Object.fromEntries(Object.entries(block.by_results_year).map(([y, c]) => [y, one(c)])),
     };
 }
@@ -625,6 +675,27 @@ function shapeProblems(block) {
     for (const k of ['trials', ...NUMERATORS]) {
         const sum = Object.values(years).reduce((s, c) => s + (c?.[k] ?? 0), 0);
         if (sum !== block[k]) out.push(`firstView.${k} is ${block[k]}, its years sum to ${sum}`);
+    }
+    // The sex/gender counts: all four or none in each scope (a year has them
+    // when every trial counted in it has the parser's row; the block, when
+    // every year does), each a count within its trials, and the block's the
+    // sum of its years'.
+    const sgIn = (c) => SG_NUMERATORS.filter((k) => c && typeof c === 'object' && k in c).length;
+    const sgScopes = [['firstView', block], ...Object.entries(years).map(([y, c]) => [`firstView.by_results_year.${y}`, c])];
+    for (const [where, c] of sgScopes) {
+        const n = sgIn(c);
+        if (n !== 0 && n !== SG_NUMERATORS.length) { out.push(`${where} has some of the sex/gender counts, not all`); continue; }
+        if (n) for (const k of SG_NUMERATORS) if (!isCount(c[k]) || c[k] > c.trials) out.push(`${where}.${k} is not a count within its trials`);
+    }
+    if (sgIn(block)) {
+        for (const [y, c] of Object.entries(years)) {
+            if (!sgIn(c)) out.push(`firstView.by_results_year.${y} has no sex/gender counts, but the block has`);
+        }
+        for (const k of SG_NUMERATORS) {
+            if (block.denominators?.[k] !== 'trials') out.push(`firstView.denominators.${k} does not name trials`);
+            const sum = Object.values(years).reduce((s, c) => s + (c?.[k] ?? 0), 0);
+            if (sum !== block[k]) out.push(`firstView.${k} is ${block[k]}, its years sum to ${sum}`);
+        }
     }
     if (!block.not_counted || !Object.values(block.not_counted).every(isCount)) out.push('firstView.not_counted is not a set of counts');
     if (!block.filter || typeof block.filter !== 'object') out.push('firstView.filter is missing');
@@ -720,7 +791,7 @@ function check(summaryFile, appPath, indexPath, full) {
             + `stubbed to return true the site code threw: ${thrown && thrown.message}`);
     }
     return {
-        checks, filesOnly, site: inert.result, site_code: site.source,
+        checks, filesOnly, site: inert.result, site_code: site.source, sexGender: site.sexGender,
         stubbed: ran.filter((n) => !PREDECLARED.has(n)), predeclared: ran.filter((n) => PREDECLARED.has(n)),
         answerMatters, answerMattersFor, answerRead,
     };
@@ -781,13 +852,23 @@ function runSite(s, block, records, ok) {
     // 1. The desktop Overview from the records, as startup leaves it.
     s.run('data = __records; dashboardSummary = null; initFilters(); renderDashboard();');
     const fromRecords = counts(s.lastCounts());
-    const painted = Object.fromEntries([...TILES, 'stat-sub-total', ...SUB_LINES, ...FINDING, 'filter-summary-text']
+    // The sex/gender rows' ids, on a site that paints them.
+    const sgIds = s.sexGender ? [...SG_TILES, ...SG_SUB_LINES] : [];
+    const sgFromRecords = s.sexGender ? sgCounts(s.lastSexGender()) : null;
+    const painted = Object.fromEntries([...TILES, 'stat-sub-total', ...SUB_LINES, ...FINDING, 'filter-summary-text', ...sgIds]
         .map((id) => [id, s.text(id)]));
     const findingShown = !s.byId.get('overview-finding').hidden;
     const chart = s.chart();
     const filtered = s.run('getFilteredData().length');
     for (const k of ['trials', ...NUMERATORS]) {
         ok(`counts: ${k}`, fromRecords[k] === block[k], { site: fromRecords[k], block: block[k] });
+    }
+    if (s.sexGender) {
+        // A block without the counts must meet a site that counted none.
+        const want = blockSg(block);
+        for (const k of SG_NUMERATORS) {
+            ok(`counts: ${k}`, sgFromRecords[k] === want[k], { site: sgFromRecords[k], block: want[k] });
+        }
     }
     ok('counts: the site\'s filtered records are its total', filtered === fromRecords.trials, { filtered, total: fromRecords.trials });
     ok('counts: the trend chart lists the block\'s years',
@@ -825,7 +906,7 @@ function runSite(s, block, records, ok) {
     // 3. The block painted by the site's summary painter, as phones paint a summary.
     s.context.__summary = asSummary(block);
     s.run('dashboardSummary = __summary; renderDashboard();');
-    for (const id of [...TILES, ...SUB_LINES, ...FINDING]) {
+    for (const id of [...TILES, ...SUB_LINES, ...FINDING, ...sgIds]) {
         const got = s.text(id);
         ok(`painted: #${id}`, got.text === painted[id].text && got.html === painted[id].html, { records: painted[id], block: got });
     }
@@ -842,7 +923,11 @@ function runSite(s, block, records, ok) {
     // 4. The block through the desktop painters: the lines that read the controls.
     const args = [block.trials, ...NUMERATORS.map((k) => block[k])].join(', ');
     s.run(`dashboardSummary = null; renderOverviewTileContext(${args}); renderOverviewFinding(${args}); renderFilterSummary(${block.trials});`);
-    for (const id of ['stat-sub-total', ...SUB_LINES, ...FINDING, 'filter-summary-text']) {
+    if (s.sexGender) {
+        const sgArgs = [block.trials, ...SG_NUMERATORS.map((k) => JSON.stringify(blockSg(block)[k]))].join(', ');
+        s.run(`renderOverviewSexGender(${sgArgs});`);
+    }
+    for (const id of ['stat-sub-total', ...SUB_LINES, ...FINDING, 'filter-summary-text', ...sgIds]) {
         const got = s.text(id);
         ok(`painted on desktop: #${id}`, got.text === painted[id].text && got.html === painted[id].html, { records: painted[id], block: got });
     }
@@ -858,6 +943,15 @@ function runSite(s, block, records, ok) {
         const want = block.by_results_year[y] ?? { trials: 0, ...Object.fromEntries(NUMERATORS.map((k) => [k, 0])) };
         const same = ['trials', ...NUMERATORS].every((k) => siteYears[y][k] === want[k]);
         ok(`counts in ${y}`, same, { site: siteYears[y], block: block.by_results_year[y] ?? null });
+        if (s.sexGender) {
+            // A year the block lacks has no trials: zero of each, as above (an
+            // empty set's records all have the parser's row).
+            const wantSg = block.by_results_year[y] ? blockSg(block.by_results_year[y])
+                : Object.fromEntries(SG_NUMERATORS.map((k) => [k, 0]));
+            const siteSg = sgCounts(s.lastSexGender());
+            Object.assign(siteYears[y], siteSg);
+            ok(`sex/gender counts in ${y}`, SG_NUMERATORS.every((k) => siteSg[k] === wantSg[k]), { site: siteSg, block: wantSg });
+        }
     }
 
     // 6. Absence: what the default view leaves out, by the site's own filter.
@@ -876,7 +970,7 @@ function runSite(s, block, records, ok) {
     ok('absence: a results date that is not a year from 2009 on', notFrom === records.length - allTypes - noDate,
        { block: notFrom, site: records.length - allTypes - noDate });
 
-    s.result = { ...fromRecords, newest_results_year: newest, by_results_year: siteYears,
+    s.result = { ...fromRecords, ...(s.sexGender ? sgFromRecords : {}), newest_results_year: newest, by_results_year: siteYears,
                  painted: Object.fromEntries(Object.entries(painted).map(([id, v]) => [id, v.html || v.text])) };
 }
 
@@ -940,6 +1034,7 @@ async function main() {
             : `${stubNote(blamed)}: the numbers agree with ${one ? 'it' : 'them'} stubbed to return nothing, `
                 + `but ${changes}, so what ${one ? 'it returns' : 'they return'} decides `
                 + `what the page shows and whether the block is right is unknown; ${fix}`,
+        sex_gender_checked: result.sexGender ?? false,
         site_functions_stubbed: stubbed,
         predeclared_stubs_run: result.predeclared ?? [],
         answer_matters_for: result.answerMattersFor ?? [],

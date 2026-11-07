@@ -266,7 +266,11 @@ Python's: JavaScript truthiness for `reported`, a results year only when the
 first four characters of `results_date` are ASCII digits, the study type
 compared strictly, the newest results year taken over every study type. What
 the view leaves out is counted in `not_counted`, never folded into a zero, and
-a record the site's code would throw on stops the generator.
+a record the site's code would throw on stops the generator. Its sex and
+gender counts are the manuscript parser's flags (`sex_gender.reported_sex`,
+`sex_gender.reported_gender`, counted when exactly true), present for a scope
+only when every trial counted in it has the parser's row; the parity checks
+them once the site's app.js declares `renderOverviewSexGender`.
 `scripts/first_view_parity.mjs` runs the site's own Overview code over the
 same records and checks every number of the block against what it counts and
 paints; `tests/test_first_view.py` runs it on a fixture against
