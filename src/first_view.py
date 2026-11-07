@@ -27,6 +27,17 @@ commit the parity excerpt was copied from, tests/fixtures/site_overview/):
   numerator), as on the site. Truthiness is JavaScript's, not Python's: an
   empty list or object, or the string "false", is truthy there and counts as
   reported here too.
+- sex and gender reported (the Overview's sex/gender rows): the manuscript
+  parser's own flags, sex_gender.reported_sex and sex_gender.reported_gender,
+  each counted only when it is exactly true, as the site reads every parser
+  flag (=== true; app.js's Sex and Gender tabs do the same). reported_gender is
+  category-based: a "Gender"-titled table with only Female and Male is sex
+  data, not gender reporting (src/sex_gender_parser.py derive_outcomes). These
+  four counts are written for a scope (the whole view, or one results year)
+  only when every record counted in it carries the parser's row (a sex_gender
+  object), as the site shows them only over a filtered set whose records all
+  do: a week without the row, or an archive from before it, has no sex/gender
+  numbers to show, which is absence and never a zero.
 - newest results year (datasetLatestYear): the newest results year among ALL
   the records, any study type, or null when none is 2009 or later. It is where
   the slider ends and the end of the Overview's "results posted 2009-YYYY".
@@ -59,15 +70,26 @@ RESULTS_YEAR_FROM = 2009        # app.js YEAR_WINDOW_MIN: #year-start's min and 
 # publish gate (scripts/check_site_contract.py) recounts the block from the
 # staged parts, which under the split layout carry the contract's core class
 # only: it checks these are all core before it counts.
-READS = ("nct_id", "results_date", "study_type", "race.reported", "ethnicity.reported")
+READS = ("nct_id", "results_date", "study_type", "race.reported", "ethnicity.reported",
+         "sex_gender.reported_sex", "sex_gender.reported_gender")
 
 DENOMINATOR = "trials"
 NOT_FROM = f"results_year_not_from_{RESULTS_YEAR_FROM}"
-NUMERATORS = {                  # numerator field -> the dimensions a trial must report
+RACE_ETHNICITY = {              # numerator field -> the dimensions a trial must report
     "trials_reporting_race": ("race",),
     "trials_reporting_ethnicity": ("ethnicity",),
     "trials_reporting_race_and_ethnicity": ("race", "ethnicity"),
 }
+# The parser's dimensions: written only when every counted record has the
+# parser's row (has_parser_row), so a week without it has none of these keys.
+SEX_GENDER = {
+    "trials_reporting_sex": ("sex",),
+    "trials_reporting_gender": ("gender",),
+    "trials_reporting_sex_and_gender": ("sex", "gender"),
+    "trials_reporting_race_ethnicity_sex_and_gender": ("race", "ethnicity", "sex", "gender"),
+}
+NUMERATORS = {**RACE_ETHNICITY, **SEX_GENDER}
+PARSER_FLAGS = {"sex": "reported_sex", "gender": "reported_gender"}
 
 ABOUT = [
     "The Overview as it opens: what it paints, counted from the week's full records by the site's own rules "
@@ -78,6 +100,9 @@ ABOUT = [
     "Each percentage is a numerator over the trials of its scope, as denominators names: the whole view, or one "
     "year of by_results_year (years with trials only). A trial whose race.reported (ethnicity.reported) is not "
     "set counts in trials and not in the numerator.",
+    "Sex and gender are the manuscript parser's flags, sex_gender.reported_sex and sex_gender.reported_gender, "
+    "counted when exactly true; reported_gender needs a gender-diverse or cis/trans-qualified category. Their four "
+    "counts appear only when every counted trial carries the parser's row; otherwise they are absent, never zero.",
     "not_counted: the file's other studies, by the first rule they fail. trials plus these is totalStudies.",
 ]
 
@@ -127,6 +152,27 @@ def results_year(record: dict[str, Any], where: str = "a record") -> str | None:
     return None
 
 
+def parser_reports(record: dict[str, Any], dimension: str) -> bool:
+    """The site's record.sex_gender?.[flag] === true for the parser's sex or
+    gender flag: anything but JSON true (false, null, a missing key, a
+    missing or malformed row) does not report."""
+    row = record.get("sex_gender")
+    return isinstance(row, dict) and row.get(PARSER_FLAGS[dimension]) is True
+
+
+def has_parser_row(record: dict[str, Any]) -> bool:
+    """Whether the record carries the parser's row at all: the site shows the
+    sex/gender counts only over records that all do."""
+    return isinstance(record.get("sex_gender"), dict)
+
+
+def dimensions_reported(record: dict[str, Any]) -> dict[str, bool]:
+    """Each Overview dimension as the site reads it on this record."""
+    out = {dim: reports(record, dim) for dim in ("race", "ethnicity")}
+    out.update({dim: parser_reports(record, dim) for dim in PARSER_FLAGS})
+    return out
+
+
 def essentials(record: Any) -> Any:
     """The record cut to what first_view reads (READS), so a whole week's
     records can be held for a recount: first_view counts the cut records
@@ -142,6 +188,10 @@ def essentials(record: Any) -> Any:
             block = record[dim]
             out[dim] = ({"reported": block["reported"]} if "reported" in block else {}) \
                 if isinstance(block, dict) else block
+    if "sex_gender" in record:
+        row = record["sex_gender"]
+        out["sex_gender"] = {flag: row[flag] for flag in PARSER_FLAGS.values() if flag in row} \
+            if isinstance(row, dict) else row
     return out
 
 
@@ -175,6 +225,7 @@ def first_view(records: list[Any], extracted_at: str | None, pipeline_commit: st
     totals = _counts()
     by_year: dict[str, dict[str, int]] = {}
     not_counted = {"no_results_date": 0, NOT_FROM: 0, "not_interventional": 0}
+    lacking_row: set[str] = set()   # the years with a counted record that has no parser row
     for i, record in enumerate(records):
         if not isinstance(record, dict):
             raise FirstViewError(f"{_where(i, record)} is a {type(record).__name__}, not a study record")
@@ -188,12 +239,21 @@ def first_view(records: list[Any], extracted_at: str | None, pipeline_commit: st
         if record.get("study_type") != STUDY_TYPE:
             not_counted["not_interventional"] += 1
             continue
-        reported = {dim: reports(record, dim) for dim in ("race", "ethnicity")}
+        reported = dimensions_reported(record)
+        if not has_parser_row(record):
+            lacking_row.add(year)
         for bucket in (totals, by_year.setdefault(year, _counts())):
             bucket[DENOMINATOR] += 1
             for name, dims in NUMERATORS.items():
                 if all(reported[d] for d in dims):
                     bucket[name] += 1
+    # Absence, not zero: a scope with a counted trial that has no parser row
+    # has no sex/gender numbers (the site shows none for it either); the whole
+    # view has none when any of its years lacks them.
+    for bucket in ([totals] if lacking_row else []) + [by_year[y] for y in lacking_row]:
+        for name in SEX_GENDER:
+            del bucket[name]
+    present = [name for name in NUMERATORS if name in totals]
     return {
         "about": ABOUT,
         "extracted_at": extracted_at,
@@ -206,7 +266,7 @@ def first_view(records: list[Any], extracted_at: str | None, pipeline_commit: st
         },
         "newest_results_year": newest_results_year(records),
         **totals,
-        "denominators": {name: DENOMINATOR for name in NUMERATORS},
+        "denominators": {name: DENOMINATOR for name in present},
         "by_results_year": dict(sorted(by_year.items())),
         "not_counted": not_counted,
     }

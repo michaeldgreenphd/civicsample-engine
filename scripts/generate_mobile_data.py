@@ -312,6 +312,27 @@ def main(argv: list[str] | None = None) -> None:
     both_count = sum(1 for s in all_studies
                      if (s.get("race") or {}).get("reported")
                      and (s.get("ethnicity") or {}).get("reported"))
+    # The Overview's sex/gender rows when a summary paints it (phones before
+    # firstView, aggregate archives): the manuscript parser's flags, counted
+    # when exactly true (first_view.parser_reports), over every study as the
+    # cards above are. Written only when every record carries the parser's
+    # row; without it there are no sex/gender numbers, never zeros.
+    sg_every = bool(all_studies) and all(fv.has_parser_row(s) for s in all_studies)
+
+    def _sg_reports(s: dict[str, Any]) -> dict[str, bool]:
+        race = bool((s.get("race") or {}).get("reported"))
+        eth = bool((s.get("ethnicity") or {}).get("reported"))
+        sex, gender = fv.parser_reports(s, "sex"), fv.parser_reports(s, "gender")
+        return {"sex": sex, "gender": gender, "sex_gender": sex and gender,
+                "all_four": race and eth and sex and gender}
+
+    sg_cards: dict[str, int] = {}
+    if sg_every:
+        flags = [_sg_reports(s) for s in all_studies]
+        sg_cards = {"sgSexCount": sum(f["sex"] for f in flags),
+                    "sgGenderCount": sum(f["gender"] for f in flags),
+                    "sgSexGenderCount": sum(f["sex_gender"] for f in flags),
+                    "allFourCount": sum(f["all_four"] for f in flags)}
 
     # ── Aggregate distributions (non-year-grouped) ──
     race_dist = defaultdict(int)
@@ -404,6 +425,13 @@ def main(argv: list[str] | None = None) -> None:
             y["gender_reported"] += 1
         if r_rep and e_rep:
             y["both_reported"] += 1
+
+        if sg_every:
+            # Appended after the bucket's other keys, so they keep their order.
+            f = _sg_reports(s)
+            for key, flag in (("sg_sex_reported", "sex"), ("sg_gender_reported", "gender"),
+                              ("sg_sex_gender_reported", "sex_gender"), ("all_four_reported", "all_four")):
+                y[key] = y.get(key, 0) + int(f[flag])
 
         # Race aggregates
         if r_rep:
@@ -633,6 +661,7 @@ def main(argv: list[str] | None = None) -> None:
             "sexCount": sex_count,
             "genderCount": gender_count,
             "bothCount": both_count,
+            **sg_cards,
         },
         "raceDistribution": dict(race_dist),
         "ethnicityDistribution": dict(eth_dist),
@@ -664,7 +693,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"  ({total} studies pre-aggregated into {len(years)} year buckets)")
     trials = first["trials"]
     shares = ", ".join(f"{name.removeprefix('trials_reporting_')} {first[name] / trials * 100:.1f}%"
-                       for name in fv.NUMERATORS) if trials else "no trials"
+                       for name in fv.NUMERATORS if name in first) if trials else "no trials"
     print(f"  firstView: {trials} interventional trials with results from {fv.RESULTS_YEAR_FROM} "
           f"(newest results year {first['newest_results_year']}): {shares}; not counted {first['not_counted']}")
 
