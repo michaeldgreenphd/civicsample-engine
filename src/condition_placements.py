@@ -50,6 +50,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from collections import Counter
 from typing import Any, Iterable
 
@@ -66,6 +67,27 @@ class PlacementError(ValueError):
     """The placements file is not one this code can apply safely."""
 
 
+# The provenance a published placement set must carry: without these an
+# output cannot be traced back to the reviewed private file it came from.
+PROVENANCE_FIELDS = {
+    "repository": re.compile(r"[A-Za-z0-9_.-]+"),
+    "commit": re.compile(r"[0-9a-f]{40}"),
+    "file": re.compile(r"\S.*"),
+    "file_sha256": re.compile(r"[0-9a-f]{64}"),
+}
+
+
+def check_provenance(prov: Any) -> None:
+    """Raise unless `prov` names the source repository, a full commit sha,
+    the source file and its sha256."""
+    if not isinstance(prov, dict):
+        raise PlacementError("no provenance block")
+    for key, shape in PROVENANCE_FIELDS.items():
+        value = prov.get(key)
+        if not isinstance(value, str) or not shape.fullmatch(value):
+            raise PlacementError(f"provenance.{key} is missing or malformed: {value!r}")
+
+
 def ontology_areas(path: str = ONTOLOGY_PATH) -> set[str]:
     """The site's primary categories. A placement must name one exactly,
     because the site filters industry rows by primary name."""
@@ -79,6 +101,7 @@ def check(doc: dict[str, Any], areas: set[str]) -> dict[str, dict[str, str]]:
         raise PlacementError(f"not a {FORMAT} file")
     if doc.get("applies_when") != {"primary": APPLIES_WHEN[0], "secondary": APPLIES_WHEN[1]}:
         raise PlacementError("applies_when must be primary Other, secondary Uncategorized")
+    check_provenance(doc.get("provenance"))
     rows = doc.get("placements")
     if not isinstance(rows, list) or not rows:
         raise PlacementError("no placements")
@@ -164,6 +187,14 @@ def from_private(doc: dict[str, Any], areas: set[str], source_commit: str, sourc
     records (no quotations, rationales or answers)."""
     if not isinstance(doc, dict) or doc.get("format") != PRIVATE_FORMAT:
         raise PlacementError(f"not a {PRIVATE_FORMAT} file")
+    # Every private row is checked for a repeated id, not only the disease-area
+    # ones carried over: a repeat means the source is not one row per trial,
+    # and keying by id below would keep one of the two without saying so.
+    seen: set[str] = set()
+    for r in doc["rows"]:
+        if r["nct_id"] in seen:
+            raise PlacementError(f"{r['nct_id']} appears twice in the private placements")
+        seen.add(r["nct_id"])
     rows = sorted(({"nct_id": r["nct_id"], "area": r["placement"], "source": r["source"]}
                    for r in doc["rows"] if r["placement"] in areas), key=lambda r: r["nct_id"])
     for r in rows:

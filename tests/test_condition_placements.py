@@ -21,12 +21,14 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from src import condition_placements as cp  # noqa: E402
 
 AREAS = {"Ophthalmology", "Infectious Disease", "Oncology"}
+PROV = {"repository": "fictional-private-repo", "commit": "f" * 40,
+        "file": "docs/placements.json", "file_sha256": "0" * 64}
 
 
 def _doc(rows: list[dict[str, str]]) -> dict[str, Any]:
     placements = {r["nct_id"]: {"area": r["area"], "source": r["source"]} for r in rows}
     return {"format": cp.FORMAT, "applies_when": {"primary": "Other", "secondary": "Uncategorized"},
-            "provenance": {"commit": "f" * 40}, "counts": cp.summarize(placements), "placements": rows}
+            "provenance": dict(PROV), "counts": cp.summarize(placements), "placements": rows}
 
 
 ROWS = [{"nct_id": "NCT90000001", "area": "Ophthalmology", "source": "mesh_map_v3"},
@@ -50,6 +52,12 @@ def test_check_accepts_a_well_formed_file() -> None:
     (lambda d: d["placements"][0].update(area="No disease area"), "primary category"),
     (lambda d: d["placements"][0].update(source="healthy_volunteer_rule"), "unknown source"),
     (lambda d: d["counts"].update(trials=4), "counts"),
+    (lambda d: d.pop("provenance"), "no provenance"),
+    (lambda d: d["provenance"].pop("commit"), "provenance.commit"),
+    (lambda d: d["provenance"].update(commit="abc1234"), "provenance.commit"),
+    (lambda d: d["provenance"].update(file_sha256="not-a-hash"), "provenance.file_sha256"),
+    (lambda d: d["provenance"].update(repository=""), "provenance.repository"),
+    (lambda d: d["provenance"].update(file=None), "provenance.file"),
 ])
 def test_check_refuses_every_malformed_file(mutate: Any, why: str) -> None:
     d = copy.deepcopy(_doc(ROWS))
@@ -119,6 +127,16 @@ def test_from_private_refuses_a_disease_area_from_the_healthy_volunteer_rule() -
         cp.from_private(_private(rows), AREAS, "c" * 40, "d" * 64)
 
 
+def test_from_private_refuses_a_trial_listed_twice() -> None:
+    row = {"nct_id": "NCT90000001", "placement": "Ophthalmology", "source": "mesh_map_v3", "detail": {}, "vaccine": None}
+    twice_placed = [row, dict(row, placement="Oncology")]
+    # also when the repeat is a row that would not be carried over
+    once_dropped = [row, dict(row, placement="No disease area", source="healthy_volunteer_rule")]
+    for rows in (twice_placed, once_dropped):
+        with pytest.raises(cp.PlacementError, match="appears twice"):
+            cp.from_private(_private(rows), AREAS, "c" * 40, "d" * 64)
+
+
 def test_import_script_writes_a_file_the_loader_accepts(tmp_path: pathlib.Path) -> None:
     import import_condition_placements as icp
     src = tmp_path / "placements.json"
@@ -185,7 +203,7 @@ def test_the_generator_applies_placements_and_records_what_moved(tmp_path: pathl
     assert block["applied"] == 2 and block["uncategorized_remaining"] == 28
     assert block["not_applied"] == {"not_in_cohort": 1, "categorized_by_keywords_now": 1}
     assert block["file_sha256"] == cp.file_sha256(str(placements))
-    assert block["provenance"] == {"commit": "f" * 40}
+    assert block["provenance"] == PROV
 
     off = _run(tmp_path, monkeypatch, "--no-placements")
     assert off["condition_placements"] is None
