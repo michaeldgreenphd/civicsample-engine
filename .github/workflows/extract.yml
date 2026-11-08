@@ -177,10 +177,11 @@ jobs:
         run: |
           TAG="data-$CURRENT_DATE"
           ASSETS="data/demographics.json.gz data/sex_gender_raw_measures.jsonl.gz extraction_log.txt.gz"
-          # Added when this run produced them: the raw envelope (--raw-envelope)
-          # and the analysis table and its meta. A missing one never holds up
-          # the full records.
-          OPTIONAL="data/sex_gender_raw_envelope.jsonl.gz data/analysis_sidecar/sex_gender_analysis.csv.gz data/analysis_sidecar/sex_gender_analysis_meta.json"
+          # Added when this run produced them: the raw envelope (--raw-envelope),
+          # the analysis table and its meta, and CT.gov's MeSH indexing of each
+          # trial's conditions (src/condition_mesh.py; kept here, not in the
+          # site's parts). A missing one never holds up the full records.
+          OPTIONAL="data/sex_gender_raw_envelope.jsonl.gz data/analysis_sidecar/sex_gender_analysis.csv.gz data/analysis_sidecar/sex_gender_analysis_meta.json data/condition_mesh.jsonl.gz"
           for f in $OPTIONAL; do
             if [ -f "$f" ]; then ASSETS="$ASSETS $f"; fi
           done
@@ -212,7 +213,7 @@ jobs:
               gh release create "$TAG" $ASSETS \
                 --repo "$GITHUB_REPOSITORY" \
                 --title "Weekly data $CURRENT_DATE" \
-                --notes "Raw ClinicalTrials.gov extraction from the $CURRENT_DATE weekly run (code commit $GITHUB_SHA): demographics.json.gz holds the week's full study records. Kept permanently; weekly data releases are not pruned. sex_gender_raw_measures.jsonl.gz holds the selected sex/gender baseline measures per trial for re-parsing; sex_gender_raw_envelope.jsonl.gz adds their groups, denominators and units; sex_gender_analysis.csv.gz and its meta are the week's sex/gender analysis table." \
+                --notes "Raw ClinicalTrials.gov extraction from the $CURRENT_DATE weekly run (code commit $GITHUB_SHA): demographics.json.gz holds the week's full study records. Kept permanently; weekly data releases are not pruned. sex_gender_raw_measures.jsonl.gz holds the selected sex/gender baseline measures per trial for re-parsing; sex_gender_raw_envelope.jsonl.gz adds their groups, denominators and units; sex_gender_analysis.csv.gz and its meta are the week's sex/gender analysis table; condition_mesh.jsonl.gz holds CT.gov's MeSH descriptors and ancestors for each trial's conditions." \
                 && { ok=1; break; }
             fi
             echo "::warning::release $TAG, attempt $attempt failed"
@@ -243,6 +244,7 @@ jobs:
             data/sex_gender_raw_envelope.jsonl.gz
             data/analysis_sidecar/sex_gender_analysis.csv.gz
             data/analysis_sidecar/sex_gender_analysis_meta.json
+            data/condition_mesh.jsonl.gz
           retention-days: 90
           if-no-files-found: error
 

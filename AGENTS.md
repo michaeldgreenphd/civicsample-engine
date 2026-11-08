@@ -216,7 +216,12 @@ data-loss defect.
 
 **The weekly `data-*` releases are the permanent full record.** Each holds
 that week's `demographics.json.gz`, every field of every study record. They
-are never pruned. The release runs before the site checkout, so a site-side
+are never pruned. From the first run with `src/condition_mesh.py`, each also
+holds `condition_mesh.jsonl.gz`: CT.gov's MeSH descriptors and ancestors for
+each trial's conditions, one line per trial with a state that records why a
+trial has none. The descriptors stay off the study records because, while the
+site's split layout is off, every record field ships in the site's
+whole-record parts. The release runs before the site checkout, so a site-side
 failure cannot skip it; if it fails, the files are kept as a 90-day workflow
 artifact and the run turns red, and the site is published all the same.
 Releases start at `data-2026-08-28`: for earlier weeks the full records exist
