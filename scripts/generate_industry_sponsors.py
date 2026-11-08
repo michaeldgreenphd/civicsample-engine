@@ -35,8 +35,10 @@ the industry-sponsor female-enrollment analyses from the standalone R pipeline
 
   Condition categories: the primary and secondary categories are the keyword
   classifier's (src/condition_classifier.py), except that a trial the
-  classifier leaves Other / Uncategorized takes the primary area from the
-  reviewed placements in condition_placements.json when it has one
+  classifier leaves Other / Uncategorized takes the primary area, or the
+  "No disease area" category, from the reviewed placements in
+  condition_placements.json when it has one. "No disease area" carries no
+  area covariate flag, as "Other" carries none
   (src/condition_placements.py; --no-placements turns this off for a
   before/after comparison). The output's condition_placements block records
   the file's sha256, its source, and how many trials moved and how.

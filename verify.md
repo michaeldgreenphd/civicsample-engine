@@ -152,8 +152,8 @@ replacing the full CI gates above before completion.
   legacy company-grouping rules are distinct from the curated sponsor bridge.
   The full-record tests cover its input path; they do not establish dedicated
   cohort/model regression coverage. Trials the keyword classifier leaves
-  Other / Uncategorized take their primary area from the reviewed
-  `condition_placements.json` (`src/condition_placements.py`, tested in
+  Other / Uncategorized take their primary area, or the "No disease area"
+  category, from the reviewed `condition_placements.json` (`src/condition_placements.py`, tested in
   `tests/test_condition_placements.py`); `--no-placements` reproduces the
   output without them, which is the before side of any count comparison. Changes need explicit count comparisons
   and targeted cases rather than relying only on a green packaging suite.
