@@ -33,6 +33,14 @@ the industry-sponsor female-enrollment analyses from the standalone R pipeline
   fallback. The AACT fork defines the field-extraction contract above but
   carries no company-grouping rules, so there is nothing to override.
 
+  Condition categories: the primary and secondary categories are the keyword
+  classifier's (src/condition_classifier.py), except that a trial the
+  classifier leaves Other / Uncategorized takes the primary area from the
+  reviewed placements in condition_placements.json when it has one
+  (src/condition_placements.py; --no-placements turns this off for a
+  before/after comparison). The output's condition_placements block records
+  the file's sha256, its source, and how many trials moved and how.
+
   Outputs:
     - compact per-trial rows so the frontend can recompute the heatmap and
       time-trend medians under the dashboard's global filters,
@@ -60,12 +68,13 @@ import re
 import sys
 from collections import defaultdict
 from datetime import date, datetime, timezone
+from typing import Any
 
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import full_records  # noqa: E402
+from src import condition_placements, full_records  # noqa: E402
 
 MIN_CELL = 10          # heatmap cells below this many trials are uncolored (Rmd ppr_min_cell)
 TOP_N_SPONSORS = 10
@@ -224,7 +233,7 @@ def load_records(path: str) -> tuple[str | None, str | None, list[dict]]:
     return extracted_at, source_commit, records
 
 
-def build_cohort(records):
+def build_cohort(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for r in records:
         if (r.get("study_type") or "").upper() != "INTERVENTIONAL":
@@ -252,6 +261,7 @@ def build_cohort(records):
         if pf is None and race_shares is None and eth_shares is None:
             continue
         rows.append({
+            "nct_id": r.get("nct_id"),
             "company": company,
             "via_lead": bool(via_lead),
             "pf": pf,
@@ -353,6 +363,11 @@ def main(argv: list[str] | None = None) -> None:
                     help="where industry_sponsors.json is written (default: %(default)s)")
     ap.add_argument("--demographics", default=None,
                     help="the week's full records (default: <data_dir>/demographics.json)")
+    ap.add_argument("--placements", default=condition_placements.DEFAULT_PATH,
+                    help="reviewed disease-area placements for Uncategorized trials (default: %(default)s)")
+    ap.add_argument("--no-placements", action="store_true",
+                    help="leave Uncategorized trials as the keyword classifier filed them, "
+                         "for a before/after comparison; the output then records condition_placements null")
     a = ap.parse_args(argv)
     data_dir = a.data_dir
     demographics = a.demographics or os.path.join(data_dir, "demographics.json")
@@ -362,6 +377,19 @@ def main(argv: list[str] | None = None) -> None:
 
     rows = build_cohort(records)
     print(f"Industry mixed-sex, sex-reporting cohort: {len(rows):,} trials")
+
+    # Reviewed placements for trials the keyword ontology leaves Other /
+    # Uncategorized (src/condition_placements.py). They set the primary
+    # category, so they reach the condition filter and the seven area
+    # covariates below; the secondary stays "Uncategorized". Applied before
+    # anything is counted or fitted, so every output uses the same rows.
+    placement_report = None
+    if not a.no_placements:
+        placements, placement_meta = condition_placements.load(a.placements)
+        placement_report = {**placement_meta, **condition_placements.apply(rows, placements)}
+        print(f"Condition placements applied to {placement_report['applied']:,} Uncategorized trials "
+              f"{placement_report['applied_by_source']}; not applied {placement_report['not_applied']}; "
+              f"{placement_report['uncategorized_remaining']:,} remain Uncategorized")
 
     # ALL industry sponsors, sorted by eligible-cohort trial volume (ties
     # alphabetical). The first TOP_N_SPONSORS entries are the named-sponsor
@@ -467,6 +495,10 @@ def main(argv: list[str] | None = None) -> None:
         "top_n": TOP_N_SPONSORS,
         "primaries": primaries,
         "secondaries": secondaries,
+        # What the reviewed placements changed in `primaries` (null when the
+        # build ran with --no-placements). The per-trial rows carry no flag;
+        # this block is the record of how many moved and how.
+        "condition_placements": placement_report,
         "heatmap_conditions": heatmap_conditions,
         "contrasts": contrasts,
         "pooled": pooled,
