@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import sys
 from datetime import date, datetime, timezone
@@ -122,13 +123,73 @@ def shard_name(nct_id: str) -> str:
     return f'records/r{int(nct_id[3:]) % SHARDS:02d}.json'
 
 
+_NCT = re.compile(r'^NCT\d{8}$')
+_HEX64 = re.compile(r'^[0-9a-f]{64}$')
+_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+
+def _envelope_problems(doc: Any) -> list[str]:
+    """Every field of the export outside its assessments, checked for exact keys and types: these
+    are copied into run.json, so they are held to the same allowlist as the assessments."""
+    if not isinstance(doc, dict):
+        return ['the export is not an object']
+    p: list[str] = []
+    top = {'format', 'display_mode', 'generated_at', 'producer', 'method_version', 'rules_sha256',
+           'methods_spec_sha256', 'cutoff', 'collections', 'assessments'}
+    if set(doc) != top:
+        p.append(f'export keys differ from the allowlist: {sorted(set(doc) ^ top)}')
+
+    def text(v: Any, where: str, pattern: re.Pattern[str] | None = None, optional: bool = False) -> None:
+        if v is None and optional:
+            return
+        if not isinstance(v, str) or (pattern is not None and not pattern.match(v)):
+            p.append(f'{where} is not the expected string')
+
+    def obj(v: Any, keys: set[str], where: str) -> dict[str, Any]:
+        if not isinstance(v, dict) or set(v) != keys:
+            p.append(f'{where} must be an object with exactly {sorted(keys)}')
+            return {}
+        return v
+
+    def ncts(v: Any, where: str) -> None:
+        if not isinstance(v, list) or not all(isinstance(x, str) and _NCT.match(x) for x in v):
+            p.append(f'{where} is not a list of NCT ids')
+
+    text(doc.get('generated_at'), 'generated_at')
+    text(doc.get('method_version'), 'method_version')
+    text(doc.get('rules_sha256'), 'rules_sha256', _HEX64)
+    text(doc.get('methods_spec_sha256'), 'methods_spec_sha256', _HEX64)
+    text(doc.get('cutoff'), 'cutoff', _DATE)
+    prod = obj(doc.get('producer'), {'repository', 'commit'}, 'producer')
+    if prod:
+        text(prod['repository'], 'producer.repository')
+        text(prod['commit'], 'producer.commit', re.compile(r'^[0-9a-f]{7,40}$'), optional=True)
+    cols = obj(doc.get('collections'), {'audit', 'human_reviewed'}, 'collections')
+    if cols:
+        audit = obj(cols['audit'], {'definition', 'nct_ids', 'eligible_nct_ids'}, 'collections.audit')
+        if audit:
+            text(audit['definition'], 'collections.audit.definition')
+            ncts(audit['nct_ids'], 'collections.audit.nct_ids')
+            ncts(audit['eligible_nct_ids'], 'collections.audit.eligible_nct_ids')
+        rev = obj(cols['human_reviewed'], {'definition', 'nct_ids'}, 'collections.human_reviewed')
+        if rev:
+            text(rev['definition'], 'collections.human_reviewed.definition')
+            ncts(rev['nct_ids'], 'collections.human_reviewed.nct_ids')
+    if not isinstance(doc.get('assessments'), list) or not all(isinstance(a, dict) for a in doc['assessments']):
+        p.append('assessments is not a list of objects')
+    return p
+
+
 def read_export(raw: bytes) -> dict[str, Any]:
     """The private assessment export, checked against the allowlist before anything uses it."""
     doc = json.loads(raw)
-    if doc.get('format') != EXPORT_FORMAT:
+    if not isinstance(doc, dict) or doc.get('format') != EXPORT_FORMAT:
         raise BuildError('the assessments file is not a civicsample outcomes assessment export')
     if doc.get('display_mode') not in DISPLAY_MODES:
         raise BuildError('unknown display mode in the assessments export')
+    envelope = _envelope_problems(doc)
+    if envelope:
+        raise BuildError('export envelope refused: ' + '; '.join(envelope))
     ids = [a.get('nct_id') for a in doc.get('assessments') or []]
     dupes = sorted({n for n in ids if ids.count(n) > 1})
     if dupes:

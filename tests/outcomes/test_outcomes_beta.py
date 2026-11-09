@@ -359,6 +359,30 @@ def test_an_interrupted_swap_is_recovered_before_cleanup(tmp_path: Path, public:
     assert contract.load_dir(out) == before and not (tmp_path / 'outcomes.previous').exists()
 
 
+@pytest.mark.parametrize('path', [('producer', 'commit'), ('collections', 'audit', 'definition'),
+                                  ('collections', 'human_reviewed', 'definition'), ('method_version',),
+                                  ('generated_at',)])
+def test_an_object_in_export_metadata_is_refused(path: tuple[str, ...]) -> None:
+    exp = F.export('evidence_only')
+    target = exp
+    for k in path[:-1]:
+        target = target[k]
+    target[path[-1]] = {'reviewer_note': 'private content'}
+    with pytest.raises(artifacts.BuildError, match='envelope refused'):
+        artifacts.read_export(json.dumps(exp).encode())
+
+
+def test_extra_export_metadata_is_refused() -> None:
+    exp = F.export('evidence_only')
+    exp['reviewer_notes'] = ['private']
+    with pytest.raises(artifacts.BuildError, match='envelope refused'):
+        artifacts.read_export(json.dumps(exp).encode())
+    exp = F.export('evidence_only')
+    exp['producer']['host'] = 'private'
+    with pytest.raises(artifacts.BuildError, match='envelope refused'):
+        artifacts.read_export(json.dumps(exp).encode())
+
+
 def test_duplicate_assessments_are_refused() -> None:
     exp = F.export('evidence_only')
     exp['assessments'].append(copy.deepcopy(exp['assessments'][0]))
