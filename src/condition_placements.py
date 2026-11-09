@@ -11,8 +11,8 @@ the result into the public analysis.
 
 What the file holds, and what it does not
 -----------------------------------------
-Only trials placed in a disease area, each with the area and how it was
-placed (`source`):
+Trials placed in a disease area, and trials placed in no disease area, each
+with its placement and how it was placed (`source`):
 
   mesh_map_v3     the trial's CT.gov MeSH condition terms
                   (derivedSection.conditionBrowseModule) reach the area
@@ -24,13 +24,24 @@ placed (`source`):
                   in `provenance.experiments`;
   procedure_rule  the audited label was UNCERTAIN and a reviewed
                   condition-text rule names the area (dental, joint and
-                  limb, bowel surgery, eye, urology, cardiac device, ear).
+                  limb, bowel surgery, eye, urology, cardiac device, ear);
+  vaccine_target  a vaccine trial with a recorded target disease, placed in
+                  that disease's area whatever placed it before (decided
+                  2026-11-08);
+  healthy_volunteer_rule
+                  every listed condition is a healthy-volunteer term; the
+                  placement is always "No disease area".
 
-Trials placed nowhere are left out on purpose: "No disease area"
-(healthy-volunteer studies and others that study no disease), "Other"
-(MeSH terms that reach no site area), "Uncertain" and "Missing". They stay
-Other / Uncategorized, exactly as before. How the site should show the
-no-disease group is an open decision, and this file does not make it.
+"No disease area" (`NO_DISEASE`) is a category of its own, decided
+2026-11-08: a study of healthy volunteers, a device, a pharmacokinetic or a
+cosmetic question studies no disease, which is an answer, not a failure to
+classify. It is placed only by the healthy-volunteer rule or by an audited
+AI label of NONE, and carries no therapeutic-area covariate flag, as "Other"
+carries none.
+
+Trials placed nowhere are left out on purpose: "Other" (MeSH terms that reach
+no site area), "Uncertain" and "Missing". They stay Other / Uncategorized,
+exactly as before.
 
 When a placement applies
 ------------------------
@@ -50,13 +61,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from collections import Counter
 from typing import Any, Iterable
 
-FORMAT = "civicsample-condition-placements/1"
+FORMAT = "civicsample-condition-placements/2"
 PRIVATE_FORMAT = "civicsample-uncategorized-placements/1"
 APPLIES_WHEN = ("Other", "Uncategorized")
-SOURCES = ("mesh_map_v3", "ai_label", "procedure_rule")
+SOURCES = ("mesh_map_v3", "ai_label", "procedure_rule", "vaccine_target", "healthy_volunteer_rule")
+NO_DISEASE = "No disease area"
+# Which sources may place a trial in no disease area; every other source names a disease area,
+# and the healthy-volunteer rule names nothing else.
+NO_DISEASE_SOURCES = ("ai_label", "healthy_volunteer_rule")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_PATH = os.path.join(ROOT, "condition_placements.json")
 ONTOLOGY_PATH = os.path.join(ROOT, "condition_ontology.json")
@@ -64,6 +80,27 @@ ONTOLOGY_PATH = os.path.join(ROOT, "condition_ontology.json")
 
 class PlacementError(ValueError):
     """The placements file is not one this code can apply safely."""
+
+
+# The provenance a published placement set must carry: without these an
+# output cannot be traced back to the reviewed private file it came from.
+PROVENANCE_FIELDS = {
+    "repository": re.compile(r"[A-Za-z0-9_.-]+"),
+    "commit": re.compile(r"[0-9a-f]{40}"),
+    "file": re.compile(r"\S.*"),
+    "file_sha256": re.compile(r"[0-9a-f]{64}"),
+}
+
+
+def check_provenance(prov: Any) -> None:
+    """Raise unless `prov` names the source repository, a full commit sha,
+    the source file and its sha256."""
+    if not isinstance(prov, dict):
+        raise PlacementError("no provenance block")
+    for key, shape in PROVENANCE_FIELDS.items():
+        value = prov.get(key)
+        if not isinstance(value, str) or not shape.fullmatch(value):
+            raise PlacementError(f"provenance.{key} is missing or malformed: {value!r}")
 
 
 def ontology_areas(path: str = ONTOLOGY_PATH) -> set[str]:
@@ -79,6 +116,7 @@ def check(doc: dict[str, Any], areas: set[str]) -> dict[str, dict[str, str]]:
         raise PlacementError(f"not a {FORMAT} file")
     if doc.get("applies_when") != {"primary": APPLIES_WHEN[0], "secondary": APPLIES_WHEN[1]}:
         raise PlacementError("applies_when must be primary Other, secondary Uncategorized")
+    check_provenance(doc.get("provenance"))
     rows = doc.get("placements")
     if not isinstance(rows, list) or not rows:
         raise PlacementError("no placements")
@@ -91,10 +129,15 @@ def check(doc: dict[str, Any], areas: set[str]) -> dict[str, dict[str, str]]:
             raise PlacementError(f"not an NCT id: {nct!r}")
         if nct in out:
             raise PlacementError(f"{nct} is placed twice")
-        if area not in areas:
-            raise PlacementError(f"{nct}: {area!r} is not a primary category of the ontology")
         if source not in SOURCES:
             raise PlacementError(f"{nct}: unknown source {source!r}")
+        if area == NO_DISEASE:
+            if source not in NO_DISEASE_SOURCES:
+                raise PlacementError(f"{nct}: {source} cannot place a trial in {NO_DISEASE}")
+        elif area not in areas:
+            raise PlacementError(f"{nct}: {area!r} is not a primary category of the ontology")
+        elif source == "healthy_volunteer_rule":
+            raise PlacementError(f"{nct}: the healthy-volunteer rule places only {NO_DISEASE}, not {area!r}")
         out[nct] = {"area": area, "source": source}
     counts = doc.get("counts")
     if counts != summarize(out):
@@ -159,16 +202,22 @@ def apply(rows: Iterable[dict[str, Any]], placements: dict[str, dict[str, str]])
 
 
 def from_private(doc: dict[str, Any], areas: set[str], source_commit: str, source_sha256: str) -> dict[str, Any]:
-    """The public file from the private placements file: disease-area rows
-    only, with nct_id, area and source, and nothing from the labelling
-    records (no quotations, rationales or answers)."""
+    """The public file from the private placements file: disease-area and
+    no-disease rows only, with nct_id, area and source, and nothing from the
+    labelling records (no quotations, rationales or answers)."""
     if not isinstance(doc, dict) or doc.get("format") != PRIVATE_FORMAT:
         raise PlacementError(f"not a {PRIVATE_FORMAT} file")
+    # Every private row is checked for a repeated id, not only the disease-area
+    # ones carried over: a repeat means the source is not one row per trial,
+    # and keying by id below would keep one of the two without saying so.
+    seen: set[str] = set()
+    for r in doc["rows"]:
+        if r["nct_id"] in seen:
+            raise PlacementError(f"{r['nct_id']} appears twice in the private placements")
+        seen.add(r["nct_id"])
     rows = sorted(({"nct_id": r["nct_id"], "area": r["placement"], "source": r["source"]}
-                   for r in doc["rows"] if r["placement"] in areas), key=lambda r: r["nct_id"])
-    for r in rows:
-        if r["source"] not in SOURCES:
-            raise PlacementError(f"{r['nct_id']}: a disease-area placement from {r['source']!r}")
+                   for r in doc["rows"] if r["placement"] in areas or r["placement"] == NO_DISEASE),
+                  key=lambda r: r["nct_id"])
     placements = {r["nct_id"]: {"area": r["area"], "source": r["source"]} for r in rows}
     out = {
         "format": FORMAT,

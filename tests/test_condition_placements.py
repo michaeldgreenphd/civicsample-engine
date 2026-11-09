@@ -21,12 +21,14 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from src import condition_placements as cp  # noqa: E402
 
 AREAS = {"Ophthalmology", "Infectious Disease", "Oncology"}
+PROV = {"repository": "fictional-private-repo", "commit": "f" * 40,
+        "file": "docs/placements.json", "file_sha256": "0" * 64}
 
 
 def _doc(rows: list[dict[str, str]]) -> dict[str, Any]:
     placements = {r["nct_id"]: {"area": r["area"], "source": r["source"]} for r in rows}
     return {"format": cp.FORMAT, "applies_when": {"primary": "Other", "secondary": "Uncategorized"},
-            "provenance": {"commit": "f" * 40}, "counts": cp.summarize(placements), "placements": rows}
+            "provenance": dict(PROV), "counts": cp.summarize(placements), "placements": rows}
 
 
 ROWS = [{"nct_id": "NCT90000001", "area": "Ophthalmology", "source": "mesh_map_v3"},
@@ -40,6 +42,15 @@ def test_check_accepts_a_well_formed_file() -> None:
     assert len(got) == 3
 
 
+def test_check_accepts_no_disease_from_the_two_sources_that_place_it_and_vaccine_targets() -> None:
+    rows = ROWS + [{"nct_id": "NCT90000011", "area": "No disease area", "source": "healthy_volunteer_rule"},
+                   {"nct_id": "NCT90000012", "area": "No disease area", "source": "ai_label"},
+                   {"nct_id": "NCT90000013", "area": "Infectious Disease", "source": "vaccine_target"}]
+    got = cp.check(_doc(rows), AREAS)
+    assert got["NCT90000011"]["area"] == got["NCT90000012"]["area"] == cp.NO_DISEASE
+    assert got["NCT90000013"] == {"area": "Infectious Disease", "source": "vaccine_target"}
+
+
 @pytest.mark.parametrize("mutate,why", [
     (lambda d: d.update(format="something-else/1"), "not a civicsample-condition-placements"),
     (lambda d: d.update(applies_when={"primary": "Other", "secondary": "Other"}), "applies_when"),
@@ -47,9 +58,19 @@ def test_check_accepts_a_well_formed_file() -> None:
     (lambda d: d["placements"][0].update(extra=1), "exactly"),
     (lambda d: d["placements"][0].update(nct_id="NCT123"), "NCT id"),
     (lambda d: d["placements"].append(dict(d["placements"][0])), "twice"),
-    (lambda d: d["placements"][0].update(area="No disease area"), "primary category"),
-    (lambda d: d["placements"][0].update(source="healthy_volunteer_rule"), "unknown source"),
+    (lambda d: d["placements"][0].update(area="Eyes"), "primary category"),
+    (lambda d: d["placements"][0].update(source="keyword_guess"), "unknown source"),
+    (lambda d: d["placements"][0].update(area="No disease area"), "mesh_map_v3 cannot place"),       # MeSH names a disease
+    (lambda d: d["placements"][2].update(area="No disease area"), "procedure_rule cannot place"),
+    (lambda d: d["placements"][0].update(source="vaccine_target", area="No disease area"), "vaccine_target cannot place"),
+    (lambda d: d["placements"][0].update(source="healthy_volunteer_rule"), "places only No disease area"),
     (lambda d: d["counts"].update(trials=4), "counts"),
+    (lambda d: d.pop("provenance"), "no provenance"),
+    (lambda d: d["provenance"].pop("commit"), "provenance.commit"),
+    (lambda d: d["provenance"].update(commit="abc1234"), "provenance.commit"),
+    (lambda d: d["provenance"].update(file_sha256="not-a-hash"), "provenance.file_sha256"),
+    (lambda d: d["provenance"].update(repository=""), "provenance.repository"),
+    (lambda d: d["provenance"].update(file=None), "provenance.file"),
 ])
 def test_check_refuses_every_malformed_file(mutate: Any, why: str) -> None:
     d = copy.deepcopy(_doc(ROWS))
@@ -91,7 +112,7 @@ def _private(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "experiments": {"x-v1": {"ledger_tip": "a" * 64, "plan_sha256": "b" * 64}}, "rows": rows}
 
 
-def test_from_private_keeps_disease_areas_only_and_drops_the_labelling_detail() -> None:
+def test_from_private_keeps_areas_and_no_disease_and_drops_the_labelling_detail() -> None:
     rows = [{"nct_id": "NCT90000003", "placement": "Oncology", "source": "procedure_rule",
              "detail": {"rule": "x"}, "vaccine": None},
             {"nct_id": "NCT90000001", "placement": "Ophthalmology", "source": "mesh_map_v3",
@@ -106,7 +127,9 @@ def test_from_private_keeps_disease_areas_only_and_drops_the_labelling_detail() 
     out = cp.from_private(_private(rows), AREAS, "c" * 40, "d" * 64)
     assert out["placements"] == [
         {"nct_id": "NCT90000001", "area": "Ophthalmology", "source": "mesh_map_v3"},
-        {"nct_id": "NCT90000003", "area": "Oncology", "source": "procedure_rule"}]
+        {"nct_id": "NCT90000003", "area": "Oncology", "source": "procedure_rule"},
+        {"nct_id": "NCT90000004", "area": "No disease area", "source": "healthy_volunteer_rule"},
+        {"nct_id": "NCT90000005", "area": "No disease area", "source": "ai_label"}]
     assert out["provenance"]["commit"] == "c" * 40 and out["provenance"]["file_sha256"] == "d" * 64
     assert out["provenance"]["experiments"] == {"x-v1": {"ledger_tip": "a" * 64}}
     cp.check(out, AREAS)
@@ -115,8 +138,18 @@ def test_from_private_keeps_disease_areas_only_and_drops_the_labelling_detail() 
 def test_from_private_refuses_a_disease_area_from_the_healthy_volunteer_rule() -> None:
     rows = [{"nct_id": "NCT90000004", "placement": "Oncology", "source": "healthy_volunteer_rule",
              "detail": {}, "vaccine": None}]
-    with pytest.raises(cp.PlacementError, match="healthy_volunteer_rule"):
+    with pytest.raises(cp.PlacementError, match="places only No disease area"):
         cp.from_private(_private(rows), AREAS, "c" * 40, "d" * 64)
+
+
+def test_from_private_refuses_a_trial_listed_twice() -> None:
+    row = {"nct_id": "NCT90000001", "placement": "Ophthalmology", "source": "mesh_map_v3", "detail": {}, "vaccine": None}
+    twice_placed = [row, dict(row, placement="Oncology")]
+    # also when the repeat is a row that would not be carried over
+    once_dropped = [row, dict(row, placement="No disease area", source="healthy_volunteer_rule")]
+    for rows in (twice_placed, once_dropped):
+        with pytest.raises(cp.PlacementError, match="appears twice"):
+            cp.from_private(_private(rows), AREAS, "c" * 40, "d" * 64)
 
 
 def test_import_script_writes_a_file_the_loader_accepts(tmp_path: pathlib.Path) -> None:
@@ -128,7 +161,8 @@ def test_import_script_writes_a_file_the_loader_accepts(tmp_path: pathlib.Path) 
     out = tmp_path / "condition_placements.json"
     icp.main([str(src), "--source-commit", "e" * 40, "--out", str(out)])
     placements, meta = cp.load(str(out))
-    assert placements == {"NCT90000001": {"area": "Ophthalmology", "source": "mesh_map_v3"}}
+    assert placements == {"NCT90000001": {"area": "Ophthalmology", "source": "mesh_map_v3"},
+                          "NCT90000002": {"area": "No disease area", "source": "ai_label"}}
     assert meta["file_sha256"] == cp.file_sha256(str(out))
     assert meta["provenance"]["file_sha256"] == cp.file_sha256(str(src))
     with pytest.raises(SystemExit):
@@ -174,18 +208,21 @@ def test_the_generator_applies_placements_and_records_what_moved(tmp_path: pathl
         {"nct_id": "NCT90000001", "area": "Infectious Disease", "source": "ai_label"},
         {"nct_id": "NCT90000030", "area": "Ophthalmology", "source": "ai_label"},     # keywords place it: stays
         {"nct_id": "NCT99999999", "area": "Oncology", "source": "procedure_rule"},    # not in the cohort
+        {"nct_id": "NCT90000002", "area": "No disease area", "source": "healthy_volunteer_rule"},
     ])))
     on = _run(tmp_path, monkeypatch, "--placements", str(placements))
     prim = [on["primaries"][t[4]] for t in on["trials"]]
     sec = [on["secondaries"][t[5]] for t in on["trials"]]
     assert prim[0] == "Ophthalmology" and prim[1] == "Infectious Disease" and prim[30] == "Oncology"
-    assert sec[0] == sec[1] == "Uncategorized"
-    assert prim.count("Other") == 28
+    assert prim[2] == "No disease area" and "No disease area" in on["primaries"]
+    assert sec[0] == sec[1] == sec[2] == "Uncategorized"
+    assert prim.count("Other") == 27
     block = on["condition_placements"]
-    assert block["applied"] == 2 and block["uncategorized_remaining"] == 28
+    assert block["applied"] == 3 and block["uncategorized_remaining"] == 27
+    assert block["applied_by_area"]["No disease area"] == 1
     assert block["not_applied"] == {"not_in_cohort": 1, "categorized_by_keywords_now": 1}
     assert block["file_sha256"] == cp.file_sha256(str(placements))
-    assert block["provenance"] == {"commit": "f" * 40}
+    assert block["provenance"] == PROV
 
     off = _run(tmp_path, monkeypatch, "--no-placements")
     assert off["condition_placements"] is None
@@ -209,5 +246,5 @@ def test_the_committed_file_loads_and_names_its_source() -> None:
     assert prov["repository"] == "civicsample-verify-ai-private"
     assert len(prov["commit"]) == 40 and len(prov["file_sha256"]) == 64
     assert len(placements) == sum(v for k, v in prov["population_by_placement"].items()
-                                  if k in cp.ontology_areas())
+                                  if k in cp.ontology_areas() | {cp.NO_DISEASE})
     assert {p["source"] for p in placements.values()} <= set(cp.SOURCES)
