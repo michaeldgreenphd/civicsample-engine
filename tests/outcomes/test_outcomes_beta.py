@@ -317,6 +317,48 @@ def test_a_nested_object_where_a_scalar_belongs_is_refused() -> None:
         artifacts.read_export(json.dumps(exp).encode())
 
 
+@pytest.mark.parametrize('field', ['trial_rationale', 'trial_sub_reason', 'multiplicity'])
+def test_an_object_in_a_scalar_assessment_field_is_refused(field: str) -> None:
+    exp = F.export('evidence_only')
+    exp['assessments'][0][field] = {'reviewer_note': 'private content'}
+    with pytest.raises(artifacts.BuildError, match='not a scalar'):
+        artifacts.read_export(json.dumps(exp).encode())
+
+
+def test_an_object_in_group_titles_is_refused() -> None:
+    exp = F.export('evidence_only')
+    exp['assessments'][0]['units'][0]['group_titles'] = [{'reviewer_note': 'private'}]
+    with pytest.raises(artifacts.BuildError, match='group_titles'):
+        artifacts.read_export(json.dumps(exp).encode())
+
+
+def test_a_failed_final_rename_restores_the_previous_family(tmp_path: Path, public: dict[str, Any],
+                                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / 'outcomes'
+    artifacts.write(public, out)
+    before = contract.load_dir(out)
+    real_rename = Path.rename
+
+    def rename(self: Path, target: Any) -> Any:
+        if self.name.endswith('.staging'):
+            raise OSError('rename failed')
+        return real_rename(self, target)
+    monkeypatch.setattr(Path, 'rename', rename)
+    with pytest.raises(OSError):
+        artifacts.write(public, out)
+    monkeypatch.undo()
+    assert contract.load_dir(out) == before
+
+
+def test_an_interrupted_swap_is_recovered_before_cleanup(tmp_path: Path, public: dict[str, Any]) -> None:
+    out = tmp_path / 'outcomes'
+    artifacts.write(public, out)
+    before = contract.load_dir(out)
+    out.rename(tmp_path / 'outcomes.previous')        # as if the process died mid-swap
+    artifacts.write(public, out)
+    assert contract.load_dir(out) == before and not (tmp_path / 'outcomes.previous').exists()
+
+
 def test_duplicate_assessments_are_refused() -> None:
     exp = F.export('evidence_only')
     exp['assessments'].append(copy.deepcopy(exp['assessments'][0]))
@@ -367,6 +409,28 @@ def test_eligibility_drift_against_the_export_refuses_the_build(tmp_path: Path) 
     with pytest.raises(artifacts.BuildError, match='eligibility disagrees'):
         artifacts.build(studies, {}, F.CUTOFF, artifacts.read_export(raw), 'x', attribution.attribute(elig, rules),
                         ({}, {}), {'commit': 'c'})
+
+
+def test_a_refused_export_stops_before_any_fetch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    exp = F.export('evidence_only')
+    exp['assessments'][0]['reviewer'] = 'x'
+    path = tmp_path / 'export.json'
+    path.write_text(json.dumps(exp))
+    monkeypatch.setattr(acquire, 'fetch', lambda *a, **k: pytest.fail('fetched before the export was checked'))
+    assert build_outcomes_beta.main(['--fetch', '--assessments', str(path), '--out', str(tmp_path / 'o')]) == 1
+
+
+def test_a_fetch_is_archived_under_its_content_hash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(build_outcomes_beta, 'ROOT', tmp_path)
+    rules = tmp_path / 'rules.csv'
+    rules.write_text(F.RULES_CSV)
+    monkeypatch.setattr(attribution.attribute, '__defaults__', (rules,))
+    batches = [F.studies(), F.studies()[:-1]]
+    monkeypatch.setattr(acquire, 'fetch', lambda *a, **k: batches.pop(0))
+    for _ in range(2):
+        assert build_outcomes_beta.main(['--fetch', '--cutoff', '2026-11-09', '--out', str(tmp_path / 'o')]) == 0
+    archives = sorted((tmp_path / 'build' / 'outcomes_cache').glob('frame-2026-11-09-*.jsonl.gz'))
+    assert len(archives) == 2, 'a second, different fetch must not replace the first archive'
 
 
 def test_cli_builds_from_an_archive_without_network(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

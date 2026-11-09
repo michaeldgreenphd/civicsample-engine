@@ -72,6 +72,18 @@ def _extra_keys(a: dict[str, Any]) -> set[str]:
                 bad.add(f'{where}.{k} is not a scalar')
         return bad
     extra = {k for k in set(a) - ASSESSMENT_KEYS}
+    for k in ('nct_id', 'assessment_kind', 'trial_state', 'trial_sub_reason', 'trial_rationale', 'multiplicity',
+              'method_version'):
+        if k in a and not isinstance(a[k], SCALAR):
+            extra.add(f'{k} is not a scalar')
+    for k in ('units', 'human_evidence'):
+        if k in a and not (isinstance(a[k], list) and all(isinstance(x, dict) for x in a[k])):
+            extra.add(f'{k} is not a list of objects')
+    for k in ('review', 'prespecification'):
+        if k in a and not isinstance(a[k], dict):
+            extra.add(f'{k} is not an object')
+    if extra & {'units is not a list of objects', 'human_evidence is not a list of objects'}:
+        return extra
     extra |= obj(a.get('review') or {}, REVIEW_KEYS, 'review')
     extra |= obj(a.get('prespecification') or {}, NESTED_KEYS['prespecification'], 'prespecification')
     for i, e in enumerate(a.get('human_evidence') or []):
@@ -86,6 +98,11 @@ def _extra_keys(a: dict[str, Any]) -> set[str]:
         for k in UNIT_KEYS - {'reported', 'decision_rule', 'evidence', 'group_titles'}:
             if k in u and not isinstance(u[k], SCALAR):
                 extra.add(f"{u.get('au_id')}.{k} is not a scalar")
+        gt = u.get('group_titles')
+        if gt is not None and not (isinstance(gt, list) and all(isinstance(x, SCALAR) for x in gt)):
+            extra.add(f"{u.get('au_id')}.group_titles is not a list of scalars")
+        if u.get('evidence') is not None and not isinstance(u['evidence'], list):
+            extra.add(f"{u.get('au_id')}.evidence is not a list")
     return extra
 
 
@@ -323,7 +340,10 @@ def write(files: dict[str, Any], out: Path) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     stage = out.with_name(out.name + '.staging')
     old = out.with_name(out.name + '.previous')
-    for d in (stage, old):
+    # Recover an interrupted swap first: a .previous with no output is the last good family.
+    if old.exists() and not out.exists():
+        old.rename(out)
+    for d in (stage, old):            # now only leftovers of a completed or failed run
         if d.exists():
             shutil.rmtree(d)
     (stage / 'records').mkdir(parents=True)
@@ -333,6 +353,11 @@ def write(files: dict[str, Any], out: Path) -> None:
     (stage / 'run.json').write_text(json.dumps(files['run.json'], indent=1, ensure_ascii=False) + '\n')
     if out.exists():
         out.rename(old)
-    stage.rename(out)
+    try:
+        stage.rename(out)
+    except BaseException:
+        if old.exists() and not out.exists():
+            old.rename(out)           # put the previous family back before failing
+        raise
     if old.exists():
         shutil.rmtree(old)

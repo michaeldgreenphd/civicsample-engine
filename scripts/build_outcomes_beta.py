@@ -49,17 +49,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument('--cutoff', type=date.fromisoformat)
     args = ap.parse_args(argv)
     cutoff = args.cutoff or datetime.now(timezone.utc).date()
+    export = export_sha = None
+    if args.assessments:              # checked before any fetch, so a refused export writes nothing
+        raw = args.assessments.read_bytes()
+        try:
+            export, export_sha = artifacts.read_export(raw), hashlib.sha256(raw).hexdigest()
+        except artifacts.BuildError as exc:
+            print(f'refused: {exc}', file=sys.stderr)
+            return 1
     if args.archive:
         studies, meta = acquire.read_archive(args.archive, evidence.FRAME_QUERY)
     else:
         studies = acquire.fetch(evidence.FRAME_QUERY)
-        path = ROOT / 'build' / 'outcomes_cache' / f'frame-{cutoff.isoformat()}.jsonl.gz'
-        meta = acquire.write_archive(studies, path, evidence.FRAME_QUERY)
+        # Content-addressed: a later fetch never replaces the archive an earlier build recorded.
+        sha = hashlib.sha256(acquire.encode(studies)).hexdigest()
+        path = ROOT / 'build' / 'outcomes_cache' / f'frame-{cutoff.isoformat()}-{sha[:12]}.jsonl.gz'
+        if path.exists():
+            _, meta = acquire.read_archive(path, evidence.FRAME_QUERY)
+        else:
+            meta = acquire.write_archive(studies, path, evidence.FRAME_QUERY)
         print(f'fetched {len(studies)} records -> {path.relative_to(ROOT)}')
-    export = export_sha = None
-    if args.assessments:
-        raw = args.assessments.read_bytes()
-        export, export_sha = artifacts.read_export(raw), hashlib.sha256(raw).hexdigest()
     facts = [evidence.facts(s) for s in studies]
     eligible_ids = sorted(f['nct_id'] for f in facts if not evidence.eligibility(f))
     attr = attribution.attribute([f for f in facts if f['nct_id'] in set(eligible_ids)])
