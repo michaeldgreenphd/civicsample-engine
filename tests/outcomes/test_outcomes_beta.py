@@ -76,6 +76,12 @@ def test_certified_delay_extends_pending_two_years_from_certification() -> None:
     assert evidence.results_state(f, date(2023, 4, 30)) == ('PENDING', 'CERTIFIED_DELAY')
 
 
+def test_a_certification_filed_after_the_cutoff_does_not_apply_at_it() -> None:
+    f = facts(has_results=False, pcd='2020-06-15', disp='2024-05-01')
+    assert evidence.results_state(f, date(2022, 6, 15)) == ('UNREPORTED', 'PAST_STANDARD_WINDOW')
+    assert evidence.results_state(f, date(2024, 5, 1)) == ('PENDING', 'CERTIFIED_DELAY')
+
+
 def test_results_posted_after_a_historical_cutoff_were_not_yet_posted() -> None:
     f = facts(has_results=True)                      # results first posted 2021-05-01
     assert evidence.results_state(f, date(2021, 5, 1)) == ('POSTED', None)

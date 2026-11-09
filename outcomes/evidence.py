@@ -158,7 +158,8 @@ def results_state(f: dict[str, Any], cutoff: date) -> tuple[str, str | None]:
         return 'PENDING', 'STATUS_UNCERTAIN'
     pcd = period_end(pcd, prec)
     cert, _ = parse_date(f['certification_first_submit_date'])
-    if cert and cutoff < add_years(cert, 2):
+    # A certification counts only once it exists: filed on or before the cutoff.
+    if cert and cert <= cutoff < add_years(cert, 2):
         return 'PENDING', 'CERTIFIED_DELAY'
     if cutoff < add_years(pcd, 1):
         return 'PENDING', 'WITHIN_STANDARD_WINDOW'
