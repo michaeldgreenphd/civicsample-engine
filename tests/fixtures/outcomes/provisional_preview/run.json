@@ -1,0 +1,108 @@
+{
+ "schema_version": 1,
+ "run_id": "outcomes-2026-11-09-e126baddb9",
+ "generated_at": "2026-11-09T12:00:00+00:00",
+ "cutoff": "2026-11-09",
+ "producer": {
+  "repository": "civicsample-engine",
+  "commit": "fixture"
+ },
+ "manual_run": true,
+ "display_mode": "provisional_preview",
+ "acquisition": {
+  "source": "fictional",
+  "query": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+  "n_records": 8,
+  "sha256_uncompressed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "retrieved_at": "2026-11-09T12:00:00+00:00"
+ },
+ "cohort": {
+  "definition": "Interventional, Phase 3 (Phase 2/3 excluded as its own stratum), randomized trials with an INDUSTRY lead sponsor class and primary completion inside 2020 (a month- or year-precision date must lie wholly inside).",
+  "window": [
+   "2020-01-01",
+   "2020-12-31"
+  ],
+  "frame_query": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+  "n_frame": 8,
+  "n_eligible": 6,
+  "n_excluded": 2,
+  "exclusions": {
+   "NOT_INTERVENTIONAL": 0,
+   "NOT_PHASE3": 0,
+   "PHASE2_PHASE3_STRATUM": 1,
+   "LEAD_SPONSOR_NOT_INDUSTRY": 0,
+   "NOT_RANDOMIZED": 0,
+   "PRIMARY_COMPLETION_OUTSIDE_WINDOW": 1
+  },
+  "differs_from_frame": "The frame query matches Phase 2/3 records through its PHASE3 term; those are excluded here, and every other rule is re-checked on the record as retrieved."
+ },
+ "method": {
+  "version": "0.3.0",
+  "rules_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "methods_spec_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "assessment_cutoff": "2026-11-09",
+  "export_sha256": "e8c56481c57ab600a4ba9597d06b3c2d649061751141ebf376f13b74acb1de6c",
+  "export_producer_commit": "cccccccccccccccccccccccccccccccccccccccc"
+ },
+ "collections": {
+  "eligible": {
+   "n": 6,
+   "definition": "The beta cohort above."
+  },
+  "audit": {
+   "n": 3,
+   "n_including_excluded": 4,
+   "definition": "Fictional development collection."
+  },
+  "human_reviewed": {
+   "n": 1,
+   "definition": "Trials whose assessment a named person has reviewed."
+  },
+  "demographics_linked": {
+   "n": 1,
+   "definition": "Eligible trials that appear in the site's participant-demographics dataset."
+  }
+ },
+ "sponsor_attribution": {
+  "method": "curated lead-sponsor rules (sponsors/company_aliases.csv)",
+  "rules_sha256": "757194e70ba103e1d8f656dd48c84dd6f40f97e4ea601d15d307c0f92e67ba09",
+  "lead_review_states": {
+   "attributed": 5,
+   "reviewed_excluded": 0,
+   "unreviewed": 1
+  },
+  "n_differs_from_industry_recode": 5,
+  "n_differs_by_review_state": {
+   "attributed": 5,
+   "reviewed_excluded": 0,
+   "unreviewed": 0
+  },
+  "industry_recode": "scripts/generate_industry_sponsors.py assign_industry_company (unchanged)"
+ },
+ "demographics_link": {
+  "state": "COMPUTED",
+  "site_snapshot_date": "2026-11-08",
+  "n_in_dataset": 1,
+  "n_in_industry_demographics_cohort": 1
+ },
+ "assessments": {
+  "display_mode": "provisional_preview",
+  "n_human_reviewed": 1,
+  "n_machine_provisional": 2
+ },
+ "dates": {
+  "outcomes_cutoff": "2026-11-09",
+  "assessment_cutoff": "2026-11-09",
+  "demographics_snapshot": "2026-11-08"
+ },
+ "files": {
+  "index.json": "161c455e9e61ba1a9a574dccc74183a10ff9a3abcd7621eaa8480276a1ab99cd",
+  "records/r00.json": "4aebf8152bab52263a2bd54ebe61c612f40847dd472ad9d16e4c9e33e064e7c0",
+  "records/r01.json": "4026b97b93af94c178381716bc02560a39957c2799584ad1afb154bbc485bda5",
+  "records/r02.json": "4c85f9c21e5cf5ee2db98f92565795ca495a300968f227d9b2ac80f8fe7da681",
+  "records/r03.json": "19dc9ec83cdbc84ea7019cc48284f777cce1136f41d2311341b36345c2be061b",
+  "records/r04.json": "d7bf6ba2c7f9244d11ddc8f08bd3b8f0cdbe07f29b7839a0cc850ae9f2aff132",
+  "records/r07.json": "707eb87b68cda7b2e2464fa2a6aeb2cd2f0e9f709aa0eae0ffa57d6985bfd385",
+  "summary.json": "e52b9e68fd5e025936880354c09586f156dd00291202d7ec4091c9aeb5e3b318"
+ }
+}

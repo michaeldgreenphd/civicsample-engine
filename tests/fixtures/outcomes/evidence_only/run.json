@@ -1,0 +1,108 @@
+{
+ "schema_version": 1,
+ "run_id": "outcomes-2026-11-09-6526d9a11f",
+ "generated_at": "2026-11-09T12:00:00+00:00",
+ "cutoff": "2026-11-09",
+ "producer": {
+  "repository": "civicsample-engine",
+  "commit": "fixture"
+ },
+ "manual_run": true,
+ "display_mode": "evidence_only",
+ "acquisition": {
+  "source": "fictional",
+  "query": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+  "n_records": 8,
+  "sha256_uncompressed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "retrieved_at": "2026-11-09T12:00:00+00:00"
+ },
+ "cohort": {
+  "definition": "Interventional, Phase 3 (Phase 2/3 excluded as its own stratum), randomized trials with an INDUSTRY lead sponsor class and primary completion inside 2020 (a month- or year-precision date must lie wholly inside).",
+  "window": [
+   "2020-01-01",
+   "2020-12-31"
+  ],
+  "frame_query": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+  "n_frame": 8,
+  "n_eligible": 6,
+  "n_excluded": 2,
+  "exclusions": {
+   "NOT_INTERVENTIONAL": 0,
+   "NOT_PHASE3": 0,
+   "PHASE2_PHASE3_STRATUM": 1,
+   "LEAD_SPONSOR_NOT_INDUSTRY": 0,
+   "NOT_RANDOMIZED": 0,
+   "PRIMARY_COMPLETION_OUTSIDE_WINDOW": 1
+  },
+  "differs_from_frame": "The frame query matches Phase 2/3 records through its PHASE3 term; those are excluded here, and every other rule is re-checked on the record as retrieved."
+ },
+ "method": {
+  "version": "0.3.0",
+  "rules_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "methods_spec_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "assessment_cutoff": "2026-11-09",
+  "export_sha256": "8db2457545430faebfb152b4b134e37ee5adbd4ef1eea662b3a1c126373e7d6e",
+  "export_producer_commit": "cccccccccccccccccccccccccccccccccccccccc"
+ },
+ "collections": {
+  "eligible": {
+   "n": 6,
+   "definition": "The beta cohort above."
+  },
+  "audit": {
+   "n": 3,
+   "n_including_excluded": 4,
+   "definition": "Fictional development collection."
+  },
+  "human_reviewed": {
+   "n": 1,
+   "definition": "Trials whose assessment a named person has reviewed."
+  },
+  "demographics_linked": {
+   "n": 1,
+   "definition": "Eligible trials that appear in the site's participant-demographics dataset."
+  }
+ },
+ "sponsor_attribution": {
+  "method": "curated lead-sponsor rules (sponsors/company_aliases.csv)",
+  "rules_sha256": "757194e70ba103e1d8f656dd48c84dd6f40f97e4ea601d15d307c0f92e67ba09",
+  "lead_review_states": {
+   "attributed": 5,
+   "reviewed_excluded": 0,
+   "unreviewed": 1
+  },
+  "n_differs_from_industry_recode": 5,
+  "n_differs_by_review_state": {
+   "attributed": 5,
+   "reviewed_excluded": 0,
+   "unreviewed": 0
+  },
+  "industry_recode": "scripts/generate_industry_sponsors.py assign_industry_company (unchanged)"
+ },
+ "demographics_link": {
+  "state": "COMPUTED",
+  "site_snapshot_date": "2026-11-08",
+  "n_in_dataset": 1,
+  "n_in_industry_demographics_cohort": 1
+ },
+ "assessments": {
+  "display_mode": "evidence_only",
+  "n_human_reviewed": 1,
+  "n_machine_provisional": 0
+ },
+ "dates": {
+  "outcomes_cutoff": "2026-11-09",
+  "assessment_cutoff": "2026-11-09",
+  "demographics_snapshot": "2026-11-08"
+ },
+ "files": {
+  "index.json": "eb1afddbd8c14151db5d4689853f03e36858238bdcc33e4ab7f3ea9e68649ce5",
+  "records/r00.json": "d1f838dec2ca244c0e546a124ff4c5171c9ef0119b784c3055dfa08ca192301d",
+  "records/r01.json": "32f5f7cbe04a3d16d75cff79cff92c739fed61486b4c46a3681fb995f8d6682c",
+  "records/r02.json": "b4f835e700f0622f0a6bfebb5e0e316237e06103886d1b9ed48323b91dfcdb19",
+  "records/r03.json": "33349bb840909a3a843669174e7d7b8f923121d227ddb6832bfd33496464414b",
+  "records/r04.json": "5d329cc1ea12baaf4ab194880aa9b8ad75c91d1da7d7b40eec08b2cd03526234",
+  "records/r07.json": "7c103b5fa73ab89ddf5599a2035a81506aad819637b36dd26b1a7b81c03a9147",
+  "summary.json": "88659dfa92c140f9670407c2e044aa68c107b89df335e93a12f069f14eec963c"
+ }
+}

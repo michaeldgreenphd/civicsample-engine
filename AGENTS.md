@@ -36,6 +36,7 @@ than assuming the instruction hierarchy is unchanged.
 | Sex/gender table | The parser and wrapper described below, [tests/sex_gender/](tests/sex_gender/), retained raw measures and their provenance |
 | LLM document streams | [scripts/extraction/prompts/README.md](scripts/extraction/prompts/README.md), extraction scripts and their separate requirements file |
 | Automation and retention | [.github/workflows/](.github/workflows/), [scripts/prune_snapshots.py](scripts/prune_snapshots.py); publication writes to the site repository |
+| Industry Outcomes beta (manual, not scheduled) | [outcomes/README.md](outcomes/README.md), [scripts/build_outcomes_beta.py](scripts/build_outcomes_beta.py), [scripts/check_outcomes_contract.py](scripts/check_outcomes_contract.py) |
 | Setup, architecture, checks | [README.md](README.md), [CLAUDE.md](CLAUDE.md), [verify.md](verify.md), [.github/workflows/ci.yml](.github/workflows/ci.yml) |
 
 The repositories communicate through generated files, not a running backend
