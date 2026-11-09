@@ -68,8 +68,9 @@ def write_archive(studies: list[dict[str, Any]], path: Path, query: str) -> dict
     return meta
 
 
-def read_archive(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Studies and metadata from a frozen archive; refuses bytes that do not match the metadata."""
+def read_archive(path: Path, expected_query: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Studies and metadata from a frozen archive; refuses bytes that do not match the metadata,
+    and an archive made for another query or field set."""
     raw = gzip.decompress(path.read_bytes())
     meta_path = path.with_name(path.name + '.meta.json')
     if not meta_path.exists():
@@ -77,6 +78,8 @@ def read_archive(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     meta = json.loads(meta_path.read_text())
     if hashlib.sha256(raw).hexdigest() != meta.get('sha256_uncompressed'):
         raise ValueError(f'{path.name}: bytes do not match the recorded sha256')
+    if meta.get('query') != expected_query or meta.get('fields') != FIELDS:
+        raise ValueError(f'{path.name}: archived for another query or field set, not this cohort')
     studies = [json.loads(line) for line in raw.splitlines() if line]
     if len(studies) != meta.get('n_records'):
         raise ValueError(f'{path.name}: record count does not match the metadata')

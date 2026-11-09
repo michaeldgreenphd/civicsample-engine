@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     cutoff = args.cutoff or datetime.now(timezone.utc).date()
     if args.archive:
-        studies, meta = acquire.read_archive(args.archive)
+        studies, meta = acquire.read_archive(args.archive, evidence.FRAME_QUERY)
     else:
         studies = acquire.fetch(evidence.FRAME_QUERY)
         path = ROOT / 'build' / 'outcomes_cache' / f'frame-{cutoff.isoformat()}.jsonl.gz'

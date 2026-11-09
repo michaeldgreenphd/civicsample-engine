@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -47,6 +48,45 @@ ASSESSMENT_KEYS = {'nct_id', 'assessment_kind', 'trial_state', 'trial_sub_reason
 UNIT_KEYS = {'au_id', 'measure_title', 'time_frame', 'part', 'analysis_role', 'hypothesis_type', 'group_titles',
              'reported', 'decision_rule', 'state', 'sub_reason', 'rationale', 'evidence', 'amended_by_review'}
 REVIEW_KEYS = {'status', 'reviewed_on', 'decision', 'machine_trial_state', 'machine_trial_sub_reason'}
+# Nested objects are allowlisted too: a private field placed inside any of them must not pass.
+NESTED_KEYS = {
+    'prespecification': {'registration_timing', 'level'},
+    'reported': {'paramType', 'paramValue', 'ciPctValue', 'ciNumSides', 'ciLowerLimit', 'ciUpperLimit', 'pValue',
+                 'statisticalMethod'},
+    'decision_rule': {'alpha', 'alpha_sides', 'margin', 'margin_side', 'source'},
+    'evidence': {'json_path', 'excerpt'},
+    'human_evidence': {'json_path', 'excerpt', 'document', 'page', 'quotation'},
+}
+SCALAR = (str, int, float, bool, type(None))
+
+
+def _extra_keys(a: dict[str, Any]) -> set[str]:
+    """Every key in one exported assessment that is outside the allowlist, at any depth, and any
+    value that is not the scalar or list-of-scalars the allowlisted field holds."""
+    def obj(o: Any, allowed: set[str], where: str) -> set[str]:
+        if not isinstance(o, dict):
+            return {f'{where} is not an object'}
+        bad = {f'{where}.{k}' for k in set(o) - allowed}
+        for k, v in o.items():
+            if k in allowed and not (isinstance(v, SCALAR) or (isinstance(v, list) and all(isinstance(x, SCALAR) for x in v))):
+                bad.add(f'{where}.{k} is not a scalar')
+        return bad
+    extra = {k for k in set(a) - ASSESSMENT_KEYS}
+    extra |= obj(a.get('review') or {}, REVIEW_KEYS, 'review')
+    extra |= obj(a.get('prespecification') or {}, NESTED_KEYS['prespecification'], 'prespecification')
+    for i, e in enumerate(a.get('human_evidence') or []):
+        extra |= obj(e, NESTED_KEYS['human_evidence'], f'human_evidence[{i}]')
+    for u in a.get('units') or []:
+        extra |= {f"unit.{k}" for k in set(u) - UNIT_KEYS}
+        for k in ('reported', 'decision_rule'):
+            if u.get(k) is not None:
+                extra |= obj(u[k], NESTED_KEYS[k], f"{u.get('au_id')}.{k}")
+        for i, e in enumerate(u.get('evidence') or []):
+            extra |= obj(e, NESTED_KEYS['evidence'], f"{u.get('au_id')}.evidence[{i}]")
+        for k in UNIT_KEYS - {'reported', 'decision_rule', 'evidence', 'group_titles'}:
+            if k in u and not isinstance(u[k], SCALAR):
+                extra.add(f"{u.get('au_id')}.{k} is not a scalar")
+    return extra
 
 
 class BuildError(Exception):
@@ -72,11 +112,12 @@ def read_export(raw: bytes) -> dict[str, Any]:
         raise BuildError('the assessments file is not a civicsample outcomes assessment export')
     if doc.get('display_mode') not in DISPLAY_MODES:
         raise BuildError('unknown display mode in the assessments export')
+    ids = [a.get('nct_id') for a in doc.get('assessments') or []]
+    dupes = sorted({n for n in ids if ids.count(n) > 1})
+    if dupes:
+        raise BuildError(f'the export carries more than one assessment for {dupes}')
     for a in doc.get('assessments') or []:
-        extra = set(a) - ASSESSMENT_KEYS
-        extra |= set(a.get('review') or {}) - REVIEW_KEYS
-        for u in a.get('units') or []:
-            extra |= set(u) - UNIT_KEYS
+        extra = _extra_keys(a)
         if extra:
             raise BuildError(f"{a.get('nct_id')}: non-allowlisted keys {sorted(extra)} in the export")
         if a.get('assessment_kind') not in ASSESSMENT_KINDS or a.get('trial_state') not in TRIAL_STATES:
@@ -276,12 +317,22 @@ def summarize(rows: list[dict[str, Any]], eligible: list[dict[str, Any]], exclud
 
 
 def write(files: dict[str, Any], out: Path) -> None:
-    """Write the family; run.json last, so a partial write has no manifest."""
-    out.mkdir(parents=True, exist_ok=True)
-    (out / 'records').mkdir(exist_ok=True)
-    for old in (out / 'records').glob('r*.json'):
-        old.unlink()
+    """Write the whole family into a staging sibling, then swap it in with renames, so a failed
+    or interrupted write leaves the previous family intact and never a mix of two runs."""
+    out = out.resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    stage = out.with_name(out.name + '.staging')
+    old = out.with_name(out.name + '.previous')
+    for d in (stage, old):
+        if d.exists():
+            shutil.rmtree(d)
+    (stage / 'records').mkdir(parents=True)
     for path, obj in files.items():
         if path != 'run.json':
-            (out / path).write_bytes(dump(obj))
-    (out / 'run.json').write_text(json.dumps(files['run.json'], indent=1, ensure_ascii=False) + '\n')
+            (stage / path).write_bytes(dump(obj))
+    (stage / 'run.json').write_text(json.dumps(files['run.json'], indent=1, ensure_ascii=False) + '\n')
+    if out.exists():
+        out.rename(old)
+    stage.rename(out)
+    if old.exists():
+        shutil.rmtree(old)

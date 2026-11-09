@@ -109,7 +109,11 @@ def check(files: dict[str, Any], publishable: bool = False) -> list[str]:
             p.append(f"metric {m.get('id')}: numerator outside 0..{d['n']}")
         if not m.get('definition'):
             p.append(f"metric {m.get('id')}: no definition")
-    by_kind = (summary.get('assessment_states') or {}).get('by_kind') or {}
+    by_kind = (summary.get('assessment_states') or {}).get('by_kind')
+    expected_kinds = {'human_reviewed'} | ({'machine_provisional'} if mode == 'provisional_preview' else set())
+    if not isinstance(by_kind, dict) or set(by_kind) != expected_kinds:
+        p.append(f'assessment_states.by_kind must hold exactly {sorted(expected_kinds)} for a {mode} build')
+        by_kind = by_kind if isinstance(by_kind, dict) else {}
     for kind, states in by_kind.items():
         if set(states) != set(TRIAL_STATES) or not all(isinstance(v, int) and v >= 0 for v in states.values()):
             p.append(f'assessment_states.{kind} must count all eight trial states, none dropped or merged')

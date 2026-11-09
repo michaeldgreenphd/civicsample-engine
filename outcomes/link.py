@@ -36,13 +36,18 @@ def load_site_records(site: Path, wanted: set[str]) -> tuple[dict[str, dict[str,
                       'reason': 'the site dataset uses the split layout; this link reads whole-record parts only'}
     found: dict[str, dict[str, Any]] = {}
     for p in parts:
-        part = json.loads(gzip.decompress(p.read_bytes()))
+        try:
+            part = json.loads(gzip.decompress(p.read_bytes()))
+        except (OSError, EOFError, ValueError) as exc:
+            return None, {**meta, 'state': 'NOT_COMPUTED', 'reason': f'{p.name} could not be read ({type(exc).__name__})'}
+        if not isinstance(part, dict) or not isinstance(part.get('data'), list):
+            return None, {**meta, 'state': 'NOT_COMPUTED', 'reason': f'{p.name} has no list of records'}
         if part.get('layout') is not None:
             return None, {**meta, 'state': 'NOT_COMPUTED',
                           'reason': f'{p.name} is a split-layout core part, not a whole-record part'}
-        if part.get('extracted_at') != run.get('extracted_at'):
+        if part.get('extracted_at') != run.get('extracted_at') or part.get('pipeline_commit') != run.get('pipeline_commit'):
             return None, {**meta, 'state': 'NOT_COMPUTED', 'reason': f'{p.name} is from another run'}
-        for r in part.get('data') or []:
+        for r in part['data']:
             if r.get('nct_id') in wanted:
                 found[r['nct_id']] = r
     return found, {**meta, 'state': 'COMPUTED', 'n_site_parts': len(parts)}

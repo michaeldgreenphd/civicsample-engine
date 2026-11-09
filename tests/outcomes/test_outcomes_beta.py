@@ -129,12 +129,19 @@ def test_archive_round_trip_is_byte_stable_and_refuses_tampering(tmp_path: Path)
     m1 = acquire.write_archive(F.studies(), p1, 'q')
     m2 = acquire.write_archive(list(reversed(F.studies())), p2, 'q')
     assert p1.read_bytes() == p2.read_bytes() and m1['sha256_uncompressed'] == m2['sha256_uncompressed']
-    studies, meta = acquire.read_archive(p1)
+    studies, meta = acquire.read_archive(p1, 'q')
     assert len(studies) == meta['n_records'] == len(F.studies())
     raw = gzip.decompress(p1.read_bytes()).replace(b'Fictional trial 1 ', b'Fictional trial X ')
     p1.write_bytes(gzip.compress(raw))
     with pytest.raises(ValueError, match='sha256'):
-        acquire.read_archive(p1)
+        acquire.read_archive(p1, 'q')
+
+
+def test_an_archive_for_another_query_is_refused(tmp_path: Path) -> None:
+    p = tmp_path / 'a.jsonl.gz'
+    acquire.write_archive(F.studies(), p, 'AREA[Phase]PHASE2')
+    with pytest.raises(ValueError, match='another query'):
+        acquire.read_archive(p, evidence.FRAME_QUERY)
 
 
 def test_duplicate_ids_are_refused() -> None:
@@ -193,6 +200,16 @@ def test_link_reads_contract_fields_and_reports_absence_with_a_reason(tmp_path: 
     part.write_bytes(gzip.compress(json.dumps(doc).encode()))
     out4, s4 = link.link(['NCT99000001'], split)
     assert s4['state'] == 'NOT_COMPUTED' and 'split' in s4['reason'] and out4 == {'NCT99000001': None}
+    corrupt = write_site(tmp_path / 'c', [rec])
+    (corrupt / 'data' / 'demographics.part1.json.gz').write_bytes(b'not gzip')
+    _, s5 = link.link(['NCT99000001'], corrupt)
+    assert s5['state'] == 'NOT_COMPUTED' and 'could not be read' in s5['reason']
+    mixed = write_site(tmp_path / 'm', [rec])
+    run = json.loads((mixed / 'data' / 'run.json').read_text())
+    run['pipeline_commit'] = 'other'
+    (mixed / 'data' / 'run.json').write_text(json.dumps(run))
+    _, s6 = link.link(['NCT99000001'], mixed)
+    assert s6['state'] == 'NOT_COMPUTED' and 'another run' in s6['reason']
 
 
 # ---------------------------------------------------------------- artifacts and contract
@@ -273,6 +290,64 @@ def test_export_is_checked_before_use() -> None:
     exp['display_mode'] = 'evidence_only'
     with pytest.raises(artifacts.BuildError, match='machine assessment'):
         artifacts.read_export(json.dumps(exp).encode())
+
+
+@pytest.mark.parametrize('where', ['reported', 'decision_rule', 'evidence', 'prespecification', 'human_evidence'])
+def test_private_keys_nested_anywhere_in_the_export_are_refused(where: str) -> None:
+    exp = F.export('evidence_only')
+    a = exp['assessments'][0]
+    target = {'reported': a['units'][0]['reported'], 'decision_rule': a['units'][0]['decision_rule'],
+              'evidence': a['units'][0]['evidence'][0], 'prespecification': a['prespecification'],
+              'human_evidence': a['human_evidence'][0]}[where]
+    target['reviewer_note'] = 'private'
+    with pytest.raises(artifacts.BuildError, match='non-allowlisted'):
+        artifacts.read_export(json.dumps(exp).encode())
+
+
+def test_a_nested_object_where_a_scalar_belongs_is_refused() -> None:
+    exp = F.export('evidence_only')
+    exp['assessments'][0]['units'][0]['rationale'] = {'raw_model_response': 'x'}
+    with pytest.raises(artifacts.BuildError, match='not a scalar'):
+        artifacts.read_export(json.dumps(exp).encode())
+
+
+def test_duplicate_assessments_are_refused() -> None:
+    exp = F.export('evidence_only')
+    exp['assessments'].append(copy.deepcopy(exp['assessments'][0]))
+    with pytest.raises(artifacts.BuildError, match='more than one assessment'):
+        artifacts.read_export(json.dumps(exp).encode())
+
+
+def test_contract_requires_the_assessment_kinds_of_the_mode(public: dict[str, Any], preview: dict[str, Any]) -> None:
+    bad = copy.deepcopy(public)
+    bad['summary.json']['assessment_states']['by_kind'] = {}
+    assert any('must hold exactly' in p for p in contract.check(bad))
+    bad = copy.deepcopy(preview)
+    del bad['summary.json']['assessment_states']['by_kind']['machine_provisional']
+    assert any('must hold exactly' in p for p in contract.check(bad))
+
+
+def test_write_swaps_the_family_in_whole_and_keeps_the_old_one_on_failure(tmp_path: Path, public: dict[str, Any],
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / 'outcomes'
+    artifacts.write(public, out)
+    before = contract.load_dir(out)
+    stale = out / 'records' / 'r05.json'
+    stale.write_text('{}')                        # a file from an older family must not survive a write
+    artifacts.write(public, out)
+    assert not stale.exists() and contract.load_dir(out) == before
+    real_dump = artifacts.dump
+    calls = {'n': 0}
+
+    def failing(obj: Any) -> bytes:
+        calls['n'] += 1
+        if calls['n'] == 3:
+            raise OSError('disk full')
+        return real_dump(obj)
+    monkeypatch.setattr(artifacts, 'dump', failing)
+    with pytest.raises(OSError):
+        artifacts.write(public, out)
+    assert contract.load_dir(out) == before and not (tmp_path / 'outcomes.previous').exists()
 
 
 def test_eligibility_drift_against_the_export_refuses_the_build(tmp_path: Path) -> None:
