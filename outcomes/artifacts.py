@@ -96,6 +96,10 @@ def build(studies: list[dict[str, Any]], acquisition: dict[str, Any], cutoff: da
     unless generated_at is given (fixtures), the clock."""
     attr, attr_summary = attribution
     links, link_summary = demographics
+    retrieved, _ = E.parse_date(str(acquisition.get('retrieved_at') or '')[:10])
+    if retrieved is not None and cutoff > retrieved:
+        raise BuildError(f'cutoff {cutoff} is after the records were retrieved ({retrieved}); '
+                         'the registry evidence cannot speak for a later date')
     all_facts = [E.facts(s) for s in studies]
     excluded, eligible = [], []
     for f in all_facts:
@@ -253,9 +257,12 @@ def summarize(rows: list[dict[str, Any]], eligible: list[dict[str, Any]], exclud
                'At least one of the two is posted.'),
         metric('human_reviewed', 'Assessments reviewed by a person', len(reviewed & audit), 'audit_eligible',
                'Audit-collection trials whose assessment a named person has reviewed.'),
-        metric('demographics_linked', 'In the participant-demographics dataset', count(lambda r: r['in_demographics']),
-               'eligible', "The trial appears in the site's participant-demographics dataset."),
     ]
+    # Only when the link was computed: an uncomputed link is absent, not a measured zero.
+    if rows and all(r['in_demographics'] is not None for r in rows):
+        metrics.append(metric('demographics_linked', 'In the participant-demographics dataset',
+                              count(lambda r: r['in_demographics']), 'eligible',
+                              "The trial appears in the site's participant-demographics dataset."))
     by_kind = {}
     for kind in ASSESSMENT_KINDS:
         if kind == 'machine_provisional' and mode != 'provisional_preview':

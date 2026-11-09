@@ -76,6 +76,23 @@ def test_certified_delay_extends_pending_two_years_from_certification() -> None:
     assert evidence.results_state(f, date(2023, 4, 30)) == ('PENDING', 'CERTIFIED_DELAY')
 
 
+def test_results_posted_after_a_historical_cutoff_were_not_yet_posted() -> None:
+    f = facts(has_results=True)                      # results first posted 2021-05-01
+    assert evidence.results_state(f, date(2021, 5, 1)) == ('POSTED', None)
+    assert evidence.results_state(f, date(2021, 4, 30)) == ('PENDING', 'WITHIN_STANDARD_WINDOW')
+    assert evidence.results_state(f, date(2020, 12, 31)) == ('PENDING', 'WITHIN_STANDARD_WINDOW')
+
+
+def test_a_cutoff_after_retrieval_is_refused(tmp_path: Path) -> None:
+    rules = tmp_path / 'r.csv'
+    rules.write_text(F.RULES_CSV)
+    studies = F.studies()
+    elig = [evidence.facts(s) for s in studies if not evidence.eligibility(evidence.facts(s))]
+    with pytest.raises(artifacts.BuildError, match='after the records were retrieved'):
+        artifacts.build(studies, {'retrieved_at': '2026-11-09T12:00:00+00:00'}, date(2026, 11, 10), None, None,
+                        attribution.attribute(elig, rules), ({}, {}), {'commit': 'c'})
+
+
 def test_document_flags_are_availability_only() -> None:
     assert evidence.document_flags(facts()) == {'protocol': True, 'sap': True}
     assert evidence.document_flags(facts(docs=False)) == {'protocol': False, 'sap': False}
@@ -169,6 +186,13 @@ def test_link_reads_contract_fields_and_reports_absence_with_a_reason(tmp_path: 
     broken = write_site(tmp_path / 'b', [rec], total_parts=2)
     _, s3 = link.link(['NCT99000001'], broken)
     assert s3['state'] == 'NOT_COMPUTED' and 'parts' in s3['reason']
+    split = write_site(tmp_path / 's', [rec])
+    part = split / 'data' / 'demographics.part1.json.gz'
+    doc = json.loads(gzip.decompress(part.read_bytes()))
+    doc['layout'] = {'version': 1}
+    part.write_bytes(gzip.compress(json.dumps(doc).encode()))
+    out4, s4 = link.link(['NCT99000001'], split)
+    assert s4['state'] == 'NOT_COMPUTED' and 'split' in s4['reason'] and out4 == {'NCT99000001': None}
 
 
 # ---------------------------------------------------------------- artifacts and contract
@@ -279,6 +303,9 @@ def test_cli_builds_from_an_archive_without_network(tmp_path: Path, monkeypatch:
                                      '--cutoff', '2026-11-09']) == 0
     assert contract.check(contract.load_dir(out), publishable=True) == []
     assert json.loads((out / 'run.json').read_text())['demographics_link']['state'] == 'NOT_COMPUTED'
+    # an uncomputed link publishes no demographics count, rather than a measured zero
+    metrics = {m['id'] for m in json.loads((out / 'summary.json').read_text())['metrics']}
+    assert 'demographics_linked' not in metrics and 'results_posted' in metrics
 
 
 def test_committed_fixtures_are_current() -> None:

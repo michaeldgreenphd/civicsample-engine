@@ -143,7 +143,11 @@ def results_state(f: dict[str, Any], cutoff: date) -> tuple[str, str | None]:
     extension was granted, so PAST_STANDARD_WINDOW is a timing fact, not a finding of
     non-compliance. ESTIMATED primary completion or UNKNOWN status leaves the window
     undeterminable (STATUS_UNCERTAIN)."""
-    if f['has_results']:
+    posted, _ = parse_date(f['results_first_post_date'])
+    # A record retrieved after the cutoff can carry results first posted after it: as of the
+    # cutoff those results were not yet posted. A missing post date on a record with results
+    # is read as posted (the registry sets the date whenever it posts results).
+    if f['has_results'] and (posted is None or posted <= cutoff):
         return 'POSTED', None
     if f['overall_status'] == 'WITHDRAWN':
         return 'NOT_APPLICABLE', 'WITHDRAWN_NO_PARTICIPANTS'

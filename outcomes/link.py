@@ -31,9 +31,15 @@ def load_site_records(site: Path, wanted: set[str]) -> tuple[dict[str, dict[str,
     if not parts or len(parts) != run.get('total_parts'):
         return None, {**meta, 'state': 'NOT_COMPUTED',
                       'reason': 'the site dataset is not in the inline layout this link reads, or its parts are incomplete'}
+    if run.get('layout') is not None:
+        return None, {**meta, 'state': 'NOT_COMPUTED',
+                      'reason': 'the site dataset uses the split layout; this link reads whole-record parts only'}
     found: dict[str, dict[str, Any]] = {}
     for p in parts:
         part = json.loads(gzip.decompress(p.read_bytes()))
+        if part.get('layout') is not None:
+            return None, {**meta, 'state': 'NOT_COMPUTED',
+                          'reason': f'{p.name} is a split-layout core part, not a whole-record part'}
         if part.get('extracted_at') != run.get('extracted_at'):
             return None, {**meta, 'state': 'NOT_COMPUTED', 'reason': f'{p.name} is from another run'}
         for r in part.get('data') or []:
