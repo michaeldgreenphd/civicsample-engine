@@ -140,8 +140,8 @@ def percentage_denominator(measure: dict, overall_group_id: Optional[str],
     """The participants a percentage measure's rows are percentages of.
 
     The measure's own Number Analyzed when it posts one at the measure level.
-    Otherwise a class-level Number Analyzed only when every class that posts
-    one posts the same number: a table analyzed on part of the population
+    Otherwise a class-level Number Analyzed only when every class posts one
+    and all post the same number: a table analyzed on part of the population
     repeats that number on each class (NCT00812214: 75 of 79 on every class,
     rows 80% + 20%). When classes post different numbers they are not a
     denominator: registrants put each row's own count there while the
@@ -156,7 +156,8 @@ def percentage_denominator(measure: dict, overall_group_id: Optional[str],
         return n
     per_class = {get_measure_denom({"denoms": cls.get("denoms") or []}, overall_group_id)
                  for cls in measure.get("classes", []) if isinstance(cls, dict)}
-    per_class.discard(None)
-    if len(per_class) == 1:
+    # Every class must post it: a number on some classes only is not a
+    # denominator the whole table repeats (a None in the set fails this).
+    if len(per_class) == 1 and None not in per_class:
         return per_class.pop()
     return fallback

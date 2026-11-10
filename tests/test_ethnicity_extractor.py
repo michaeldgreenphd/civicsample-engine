@@ -166,3 +166,12 @@ def test_a_class_number_every_class_repeats_is_the_tables_denominator() -> None:
     table = _percent_classes([("Hispanic or Latino", "20", 80), ("Not Hispanic or Latino", "80", 80)])
     eth = extract_ethnicity_data(_study("NCT99000210", [table], participants=100))
     assert eth["omb_totals"] == {"hispanic_latino": 16, "not_hispanic_latino": 64, "unknown_not_reported": 20}
+
+
+def test_a_class_number_on_some_classes_only_is_not_the_tables_denominator() -> None:
+    """A reviewer's case: 40 on one class and nothing on the other is not a
+    number the table repeats; the rows convert against the baseline (100)."""
+    table = _percent_classes([("Hispanic or Latino", "20", 40), ("Not Hispanic or Latino", "80", 40)])
+    del table["classes"][1]["denoms"]
+    eth = extract_ethnicity_data(_study("NCT99000211", [table], participants=100))
+    assert eth["omb_totals"] == {"hispanic_latino": 20, "not_hispanic_latino": 80, "unknown_not_reported": 0}
