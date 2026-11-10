@@ -5,7 +5,8 @@ Extracts biological sex data from baseline characteristics.
 Implements context-aware routing: only biological sex labels (Female, Male)
 are mapped here.  Gender identity labels (Woman, Man) are never cross-mapped.
 """
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+from src.race_extractor import is_sex_titled_race_table
 from src.utils import clean_demographic_label, is_sex_qualified_identity_label
 
 # ── Strict standardized target array for biological sex ──
@@ -109,6 +110,57 @@ def _should_quarantine_sex_label(mapping: Dict) -> bool:
         return False
     label_lower = clean_demographic_label(mapping["original"]).lower()
     return not any(kw in label_lower for kw in _PLAUSIBLE_SEX_KEYWORDS)
+
+
+# ── Race rows posted under a sex/gender title ──────────────────────────────
+#
+# Some registrants post race in a table titled "Sex/Gender, Customized" (one
+# row per race: "White", "African American/African Heritage", ...), usually
+# beside a "Sex: Female, Male" table for the same participants. Nothing here
+# maps such a row to female or male, so it fell to sex "unknown": in a
+# combined Sex/Gender table every such row becomes "ambiguous_combined_table",
+# and in a sex-titled table an unmapped row is counted as unknown unless the
+# keyword test above quarantines it. Since the race extractor reads these
+# tables for race (flag race_from_sex_titled_table), the same participants
+# were counted as race AND as sex unknown, on top of the female/male rows of
+# the trial's sex table.
+#
+# Method. The table test is the race extractor's own gate
+# (race_extractor.is_sex_titled_race_table, the function extract_race_data
+# calls), never a copy: a sex/gender-titled table that is not race-titled is a
+# race table only when every row maps to a race-specific category, without
+# the "unmapped" flag, with no row skipped or quarantined; one "Unknown",
+# "Other", "Female" or unmapped row and the table is not. In a table that
+# passes, every row the sex path would count as "unknown" is quarantined with
+# reason "race_label_in_sex_table". Rows that map to female or male there
+# ("White female", "Black male") carry sex as well as race and stay counted.
+# Whether race then counts that table or a race-titled table supersedes it
+# does not matter here: either way the row is not a sex label.
+#
+# Quarantined, not dropped: the rows stay visible in quarantined_labels with
+# their counts and the reason, as orientation rows do. Denominator balancing
+# below still runs on what remains, so a trial whose female + male fall short
+# of the baseline total keeps that gap as unknown_inferred; only the race rows
+# stop being counted as explicit unknown. A trial whose only sex-titled table
+# is race rows ends with no counted row and, through the all-zero rejection,
+# as not reported, which is how an all-quarantined orientation table already
+# ends. The vendored manuscript parser (sex_gender_parser) treats the same
+# rows as context structural (no sex word) and is not changed by this.
+_RACE_LABEL_IN_SEX_TABLE = "race_label_in_sex_table"
+
+
+def _quarantine_reason(mapping: Dict, race_table: bool) -> Optional[str]:
+    """Why a sex row is kept out of sex.totals, or None when it is counted.
+
+    race_table is is_sex_titled_race_table() for the row's measure (see the
+    block comment above); it is checked first because it is the more specific
+    reason. Otherwise the unmapped-label keyword test applies as before.
+    """
+    if race_table and mapping.get("category") == "unknown":
+        return _RACE_LABEL_IN_SEX_TABLE
+    if _should_quarantine_sex_label(mapping):
+        return "unmapped_non_sex_label"
+    return None
 
 
 def is_sex_table(title: str) -> bool:
@@ -232,8 +284,9 @@ def extract_sex_from_measure(measure: dict, overall_group_id=None,
     return results
 
 
-def extract_sex_from_combined_measure(measure: dict, overall_group_id=None,
-                                      fallback_denom: int = None):
+def extract_sex_from_combined_measure(measure: dict, overall_group_id: Optional[str] = None,
+                                      fallback_denom: Optional[int] = None
+                                      ) -> Tuple[List[Dict], List[Dict]]:
     """Extract from a combined Sex/Gender table (Context C).
 
     Uses strict row-level routing: Female/Male → sex, Woman/Man → gender.
@@ -298,7 +351,9 @@ def extract_sex_from_combined_measure(measure: dict, overall_group_id=None,
                        "count": row["count"]}
             gender_rows.append(mapping)
         else:
-            # Both present or neither — default to sex unknown
+            # Both present or neither — default to sex unknown. When the
+            # table is race rows only, extract_sex_data quarantines these
+            # (reason race_label_in_sex_table; see _quarantine_reason).
             mapping = {"category": "unknown", "confidence": "low",
                        "original": row["label"], "flags": ["ambiguous_combined_table"],
                        "count": row["count"]}
@@ -344,16 +399,19 @@ def extract_sex_data(study: dict) -> Dict:
             sex_rows, _gender_rows = extract_sex_from_combined_measure(
                 measure, overall_group_id, fallback_denom=total_participants
             )
+            race_table = is_sex_titled_race_table(measure, overall_group_id, total_participants)
             if sex_rows:
                 result["reported"] = True
                 for cat in sex_rows:
-                    # Quarantine irrelevant unmapped labels (e.g. orientation
+                    # Quarantine race rows the race extractor reads from this
+                    # table, and irrelevant unmapped labels (e.g. orientation
                     # options that slipped in via a combined table)
-                    if _should_quarantine_sex_label(cat):
+                    reason = _quarantine_reason(cat, race_table)
+                    if reason:
                         result["quarantined_labels"].append({
                             "original": cat["original"],
                             "count": cat["count"],
-                            "reason": "unmapped_non_sex_label",
+                            "reason": reason,
                         })
                         result["flags"].append("quarantined_label")
                         continue
@@ -370,15 +428,18 @@ def extract_sex_data(study: dict) -> Dict:
         result["reported"] = True
         categories = extract_sex_from_measure(measure, overall_group_id,
                                              fallback_denom=total_participants)
+        race_table = is_sex_titled_race_table(measure, overall_group_id, total_participants)
         for cat in categories:
-            # Quarantine irrelevant unmapped labels (e.g. "Bisexual", "Gay" —
+            # Quarantine race rows the race extractor reads from this table,
+            # and irrelevant unmapped labels (e.g. "Bisexual", "Gay" —
             # sexual-orientation options that leaked in via a substring-
             # matched table title) so they don't pollute sex totals.
-            if _should_quarantine_sex_label(cat):
+            reason = _quarantine_reason(cat, race_table)
+            if reason:
                 result["quarantined_labels"].append({
                     "original": cat["original"],
                     "count": cat["count"],
-                    "reason": "unmapped_non_sex_label",
+                    "reason": reason,
                 })
                 result["flags"].append("quarantined_label")
                 continue

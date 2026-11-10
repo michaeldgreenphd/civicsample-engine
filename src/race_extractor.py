@@ -552,6 +552,9 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # none is skipped or quarantined. An "Unknown" or "Other" row fails the test:
 # in a sex table it is more likely sex than race. The title test is the
 # manuscript parser's measure selection (sex_gender_parser.MEASURE_TITLE_RX).
+# The whole gate is _sex_titled_race_table; the legacy sex extractor calls it
+# too (is_sex_titled_race_table) and quarantines the rows of a table that
+# passes instead of counting them as sex "unknown".
 #
 # Which table wins. The sex/gender parser (sex_gender_parser.parse_trial)
 # never adds duplicate tables: it counts from the sex/gender-typed measures
@@ -738,6 +741,32 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         "quarantined": quarantined,
     }
 
+def _sex_titled_race_table(measure: dict, index: int, overall_group_id: Optional[str],
+                           fallback_denom: Optional[int]) -> Optional[Dict]:
+    """The race table a sex/gender-titled measure carries, or None.
+
+    The gate of the block comment above, in one place: a measure that is not
+    race-titled (is_race_table) but whose title the manuscript parser selects
+    (MEASURE_TITLE_RX) is read as race only when _parse_race_table accepts
+    every row. extract_race_data and the legacy sex extractor
+    (sex_extractor.extract_sex_data, through is_sex_titled_race_table) both
+    call this, so a row the race path reads as race is the row the sex path
+    keeps out of sex "unknown".
+    """
+    title = measure.get("title", "")
+    if is_race_table(title) or not MEASURE_TITLE_RX.search(title):
+        return None
+    return _parse_race_table(measure, index, overall_group_id, fallback_denom, sex_titled=True)
+
+def is_sex_titled_race_table(measure: dict, overall_group_id: Optional[str] = None,
+                             fallback_denom: Optional[int] = None) -> bool:
+    """True when extract_race_data reads this sex/gender-titled measure as race
+    (the race_from_sex_titled_table gate), whether or not a race-titled table
+    later supersedes it. Pass the overall group id and baseline participant
+    count extract_race_data would use, so percentage rows convert the same way.
+    """
+    return _sex_titled_race_table(measure, 0, overall_group_id, fallback_denom) is not None
+
 def _race_specific_sum(table: Dict) -> int:
     """Participants a table places in the race-specific categories."""
     return sum(c["count"] for c in table["categories"] if c["omb_category"] in _RACE_SPECIFIC)
@@ -899,9 +928,8 @@ def extract_race_data(study: dict) -> Dict:
         if is_race_table(title):
             typed.append(_parse_race_table(measure, index, overall_group_id,
                                            total_participants, sex_titled=False))
-        elif MEASURE_TITLE_RX.search(title):
-            table = _parse_race_table(measure, index, overall_group_id,
-                                      total_participants, sex_titled=True)
+        else:
+            table = _sex_titled_race_table(measure, index, overall_group_id, total_participants)
             if table is not None:
                 sex_titled.append(table)
 
