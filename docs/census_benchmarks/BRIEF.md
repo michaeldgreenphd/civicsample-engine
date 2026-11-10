@@ -48,8 +48,23 @@ curl -s -o /dev/null -w '%{http_code}\n' "https://clinicaltrials.gov/api/v2/vers
 
 If a census.gov host fails, stop and ask the user to allow `api.census.gov`
 and `www2.census.gov` for this environment. Do not substitute numbers from
-memory, a different source, or a synthetic file presented as census data. A
-Census API key is not needed at this volume.
+memory, a different source, or a synthetic file presented as census data.
+
+**Census API key.** As of 2026-11-10 the API answers metadata requests
+(`/data/<year>/acs/acs5/groups/<table>.json`) without a key but returns a
+"Missing Key" HTML page, with status 200, for every data request. The key is
+free from the Census Bureau's key sign-up page and travels as the `key` query
+parameter. Read it from the environment variable `CENSUS_API_KEY`; if that is
+unset, stop and ask the user to add it in the environment's settings. Never
+ask for the key in chat, and never write it anywhere: strip `key=` from every
+URL before it goes into a log, an error message or the output's `files`
+list. Treat a non-JSON response as a failure, whatever its status code.
+
+As of the same date the newest 5-year release the API serves is 2024
+(2020–2024); `/data/2025/acs/acs5` returns 404. The 2024 boundary files
+`cb_2024_us_county_500k.zip` and `cb_2024_us_cbsa_500k.zip` are listed under
+`https://www2.census.gov/geo/tiger/GENZ2024/shp/`. B01001A has 14 age bands
+per sex (Under 5 years to 85 years and over), confirmed from its metadata.
 
 ## Inputs
 
