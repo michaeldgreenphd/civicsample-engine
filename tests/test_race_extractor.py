@@ -14,7 +14,9 @@ NIH/OMB template on the category):
 and the shapes a looser rule would misread (a sex word on some rows only,
 "Man" the Manchu ethnic group, sex rows with no race part, a waist-circumference
 table split by sex). The rule for duplicate tables follows the sex/gender
-parser: race-titled tables first, then one fullest table, the first on ties.
+parser: race-titled tables first, then one fullest table, the first on ties;
+tables whose own Number Analyzed shows they cover different people are
+summed.
 """
 from __future__ import annotations
 
@@ -44,11 +46,25 @@ def _class_row(label: str, value: Any) -> dict[str, Any]:
     return {"title": label, "categories": [{"measurements": [{"groupId": "BG000", "value": str(value)}]}]}
 
 
-def _category_table(title: str, rows: list[tuple[str, Any]]) -> dict[str, Any]:
-    """An NIH/OMB-template table: one untitled class, labels on categories."""
-    return {"title": title, "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
-            "classes": [{"categories": [{"title": label, "measurements": [{"groupId": "BG000", "value": str(v)}]}
-                                        for label, v in rows]}]}
+def _denoms(n: int) -> list[dict[str, Any]]:
+    return [{"units": "Participants", "counts": [{"groupId": "BG000", "value": str(n)}]}]
+
+
+def _category_table(title: str, rows: list[tuple[str, Any]], analyzed: Optional[int] = None,
+                    analyzed_on: str = "class") -> dict[str, Any]:
+    """An NIH/OMB-template table: one untitled class, labels on categories.
+    analyzed posts the table's own Number Analyzed, on its class (as the
+    registry returns most) or, with analyzed_on="measure", on the measure."""
+    cls: dict[str, Any] = {"categories": [{"title": label, "measurements": [{"groupId": "BG000", "value": str(v)}]}
+                                          for label, v in rows]}
+    table: dict[str, Any] = {"title": title, "paramType": "COUNT_OF_PARTICIPANTS",
+                             "unitOfMeasure": "Participants", "classes": [cls]}
+    if analyzed is not None:
+        if analyzed_on == "measure":
+            table["denoms"] = _denoms(analyzed)
+        else:
+            cls["denoms"] = _denoms(analyzed)
+    return table
 
 
 def _class_table(title: str, rows: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -357,6 +373,7 @@ def test_joint_counts_are_never_inferred_from_separate_race_and_sex_tables() -> 
 
 CROSSED = _class_table("Race/Ethnicity, Customized", [
     ("White : Female", 12), ("White : Male", 14), ("Black : Female", 6), ("Black : Male", 8),
+    ("Unknown : Female", 1), ("Unknown : Male", 1),
 ])
 PLAIN = _category_table("Race (NIH/OMB)", [("White", 26), ("Black or African American", 14), ("Unknown or Not Reported", 2)])
 
@@ -364,7 +381,8 @@ PLAIN = _category_table("Race (NIH/OMB)", [("White", 26), ("Black or African Ame
 @pytest.mark.parametrize("order", ["crossed_first", "plain_first"])
 def test_a_race_table_and_a_race_by_sex_table_are_never_added(order: str) -> None:
     """Same participants twice: one table is counted. Equal race-specific
-    sums (40 and 40) are a tie, so the first in source order wins."""
+    sums (40 and 40) and equal counted sums (42 and 42) are a tie, so the
+    first in source order wins."""
     measures = [CROSSED, PLAIN] if order == "crossed_first" else [PLAIN, CROSSED]
     race = extract_race_data(_study("NCT99000014", measures + [SEX_TABLE], participants=42))
     assert sum(race["omb_totals"].values()) == 42  # one table's 42, not 40 + 42
@@ -374,7 +392,8 @@ def test_a_race_table_and_a_race_by_sex_table_are_never_added(order: str) -> Non
     assert "race_table_superseded" in race["flags"]
     assert "multiple_race_tables_2" in race["flags"]
     joint = race["joint_sex_counts"]
-    assert joint["counts"] == {"white": {"female": 12, "male": 14}, "black_african_american": {"female": 6, "male": 8}}
+    assert joint["counts"] == {"white": {"female": 12, "male": 14}, "black_african_american": {"female": 6, "male": 8},
+                               "unknown_not_reported": {"female": 1, "male": 1}}
     assert joint["used_for_totals"] is (order == "crossed_first")
     tables = {c.get("sex") is not None for c in race["raw_categories"]}
     assert tables == {order == "crossed_first"}
@@ -389,14 +408,175 @@ def test_the_fuller_table_wins_whatever_its_position() -> None:
     assert race["joint_sex_counts"]["counts"] == {"white": {"female": 12, "male": 14}}
 
 
-def test_plain_race_tables_are_still_summed() -> None:
-    """Unchanged behaviour outside race-by-sex tables (flagged, not fixed here)."""
-    a = _category_table("Race (NIH/OMB)", [("White", 10)])
-    b = _class_table("Race/Ethnicity, Customized", [("Asian", 3)])
-    race = extract_race_data(_study("NCT99000016", [a, b], participants=13))
-    assert _nonzero(race) == {"white": 10, "asian": 3}
-    assert "multiple_race_tables_2" in race["flags"]
+# ── several plain race tables ──────────────────────────────────────────────
+
+RACE_42 = _category_table("Race (NIH/OMB)", [("American Indian or Alaska Native", 0), ("Asian", 3),
+                                             ("Black or African American", 9), ("White", 28),
+                                             ("Unknown or Not Reported", 2)])
+
+
+def test_an_ethnicity_table_titled_race_adds_nothing_to_race() -> None:
+    """The common case: the second "Race/Ethnicity, Customized" table is an
+    ethnicity table. Its Hispanic rows were already left out; its Unknown row
+    is no longer added to race unknown."""
+    ethnicity = _class_table("Race/Ethnicity, Customized", [
+        ("Hispanic or Latino", 5), ("Not Hispanic or Latino", 34), ("Unknown", 3)])
+    race = extract_race_data(_study("NCT99000019", [RACE_42, ethnicity, SEX_TABLE], participants=42))
+    assert _nonzero(race) == {"asian": 3, "black_african_american": 9, "white": 28, "unknown_not_reported": 2}
+    assert sum(race["omb_totals"].values()) == 42
+    assert {"race_table_superseded", "multiple_race_tables_2"} <= set(race["flags"])
+    assert [c["original"] for c in race["raw_categories"]].count("Unknown") == 0
+
+
+def test_one_part_table_beside_an_ethnicity_table_is_not_a_partition() -> None:
+    """Only one table has race counts: it is counted alone, whatever its own
+    Number Analyzed, and nothing is flagged as summed parts."""
+    part = _category_table("Race (NIH/OMB)", [("White", 20), ("Asian", 5)], analyzed=25)
+    ethnicity = _class_table("Race/Ethnicity, Customized", [("Not Hispanic or Latino", 45), ("Unknown", 5)])
+    race = extract_race_data(_study("NCT99000028", [part, ethnicity], participants=50))
+    assert _nonzero(race) == {"white": 20, "asian": 5, "unknown_not_reported": 25}
+    assert race["unknown_explicit"] == 0
+    assert "race_tables_partitioned" not in race["flags"]
+    assert "race_table_superseded" in race["flags"]
+
+
+def test_the_same_people_posted_twice_are_counted_once() -> None:
+    repost = _class_table("Race/Ethnicity, Customized", [
+        ("White", 28), ("African American", 9), ("Asian", 3), ("Unknown/not reported", 2)])
+    for measures in ([RACE_42, repost], [repost, RACE_42]):
+        race = extract_race_data(_study("NCT99000020", measures, participants=42))
+        assert sum(race["omb_totals"].values()) == 42
+        assert race["omb_totals"]["white"] == 28
+        assert "race_tables_partitioned" not in race["flags"]
+
+
+@pytest.mark.parametrize("detail_first", [False, True])
+def test_a_repost_with_more_detail_keeps_its_subcategories(detail_first: bool) -> None:
+    """The same 25 people as "Asian" and as "Chinese": counted once, and the
+    choice keeps the subcategory whichever table comes first."""
+    whole = _class_table("Race/Ethnicity, Customized", [("Asian", 25)])
+    detail = _class_table("Race/Ethnicity, Customized", [("Chinese", 25)])
+    measures = [detail, whole] if detail_first else [whole, detail]
+    race = extract_race_data(_study("NCT99000029", measures, participants=25))
+    assert _nonzero(race) == {"asian": 25}
+    assert race["subcategory_totals"] == {"asian_chinese": 25}
+
+
+def test_a_tie_with_different_categories_stays_with_the_first_table() -> None:
+    """Equal sums but "Unknown" 8 in one table and "Other" 8 in the other:
+    not the same counts, so source order decides, not detail."""
+    omb = _category_table("Race (NIH/OMB)", [("Black or African American", 9), ("White", 82),
+                                             ("Unknown or Not Reported", 8)])
+    custom = _class_table("Race/Ethnicity, Customized", [("White", 82), ("African American", 9), ("Other", 8)])
+    race = extract_race_data(_study("NCT99000030", [omb, custom], participants=99))
+    assert _nonzero(race) == {"black_african_american": 9, "white": 82, "unknown_not_reported": 8}
+    assert race["subcategory_totals"] == {}
+
+
+def test_a_subgroup_detail_table_does_not_add_to_the_whole() -> None:
+    whole = _class_table("Race/Ethnicity, Customized", [("Asian", 25)])
+    detail = _class_table("Race/Ethnicity, Customized", [
+        ("Asian (Other Than Chinese or Japanese)", 15), ("Chinese", 3), ("Japanese", 7)])
+    race = extract_race_data(_study("NCT99000021", [whole, detail], participants=25))
+    assert _nonzero(race) == {"asian": 25}
+    assert race["subcategory_totals"] == {}
+
+
+@pytest.mark.parametrize("analyzed_on", ["class", "measure"])
+def test_tables_for_disjoint_parts_are_summed(analyzed_on: str) -> None:
+    """Each table posts its own Number Analyzed (caregivers 20, patients 30)
+    and together they make the 50 baseline participants: summed."""
+    caregivers = _category_table("Race (NIH/OMB)", [("Asian", 2), ("White", 16), ("Black or African American", 2)],
+                                 analyzed=20, analyzed_on=analyzed_on)
+    patients = _category_table("Race (NIH/OMB)", [("Asian", 3), ("White", 21), ("Black or African American", 5),
+                                                  ("Unknown or Not Reported", 1)],
+                               analyzed=30, analyzed_on=analyzed_on)
+    race = extract_race_data(_study("NCT99000022", [caregivers, patients], participants=50))
+    assert _nonzero(race) == {"asian": 5, "white": 37, "black_african_american": 7, "unknown_not_reported": 1}
+    assert "race_tables_partitioned" in race["flags"]
     assert "race_table_superseded" not in race["flags"]
+    assert race["unknown_inferred"] == 0
+
+
+@pytest.mark.parametrize("first_n, second_n, first_rows", [
+    (30, 30, [("White", 25), ("Asian", 5)]),   # numbers analyzed exceed the 50 participants
+    (20, 30, [("White", 25), ("Asian", 5)]),   # first table counts more than its own 20
+])
+def test_disjoint_parts_need_consistent_numbers_analyzed(first_n: int, second_n: int,
+                                                         first_rows: list[tuple[str, int]]) -> None:
+    first = _category_table("Race (NIH/OMB)", first_rows, analyzed=first_n)
+    second = _category_table("Race (NIH/OMB)", [("White", 20), ("Asian", 4)], analyzed=second_n)
+    race = extract_race_data(_study("NCT99000023", [first, second], participants=50))
+    assert _nonzero(race) == {"white": 25, "asian": 5, "unknown_not_reported": 20}
+    assert race["unknown_inferred"] == 20
+    assert "race_tables_partitioned" not in race["flags"]
+    assert "race_table_superseded" in race["flags"]
+
+
+def test_the_same_subset_posted_twice_is_not_summed() -> None:
+    """Two plain tables each analyzed on the same 20 of 50 participants: the
+    numbers analyzed (40) do not make up the baseline total, so nothing shows
+    they are different people. One is counted; 30 are unknown_inferred."""
+    first = _category_table("Race (NIH/OMB)", [("White", 15), ("Asian", 5)], analyzed=20)
+    again = _class_table("Race/Ethnicity, Customized", [("White", 15), ("Asian", 5)])
+    again["classes"][0]["denoms"] = _denoms(20)
+    race = extract_race_data(_study("NCT99000031", [first, again], participants=50))
+    assert _nonzero(race) == {"white": 15, "asian": 5, "unknown_not_reported": 30}
+    assert race["unknown_inferred"] == 30
+    assert "race_tables_partitioned" not in race["flags"]
+
+
+@pytest.mark.parametrize("participants", [50, 40])
+def test_a_race_by_sex_table_is_never_summed_with_a_plain_table(participants: int) -> None:
+    """The case a reviewer traced: a plain table (White 20) and a race-by-sex
+    table (White F10/M10), each analyzed on the same 20 participants. Not
+    summed, even when the two numbers analyzed happen to make up the total."""
+    plain = _category_table("Race (NIH/OMB)", [("White", 20)], analyzed=20)
+    crossed = _class_table("Race/Ethnicity, Customized", [("White : Female", 10), ("White : Male", 10)])
+    for cls in crossed["classes"]:
+        cls["denoms"] = _denoms(participants - 20 if participants == 40 else 20)
+    race = extract_race_data(_study("NCT99000032", [plain, crossed], participants=participants))
+    assert race["omb_totals"]["white"] == 20
+    assert race["unknown_inferred"] == participants - 20
+    assert "race_tables_partitioned" not in race["flags"]
+    assert race["joint_sex_counts"]["counts"] == {"white": {"female": 10, "male": 10}}
+
+
+def test_a_whole_population_table_beats_subset_tables() -> None:
+    """Subset tables (own Number Analyzed below the total) re-count people the
+    whole-population table already counts, even when they add up to it."""
+    season_a = _category_table("Race (NIH/OMB) (Season 2, Group A)", [("White", 15), ("Asian", 5)], analyzed=20)
+    season_b = _category_table("Race (NIH/OMB) (Season 2, Group B)", [("White", 25), ("Asian", 5)], analyzed=30)
+    whole = _category_table("Race (NIH/OMB)", [("White", 40), ("Asian", 10)])
+    race = extract_race_data(_study("NCT99000024", [season_a, season_b, whole], participants=50))
+    assert _nonzero(race) == {"white": 40, "asian": 10}
+    assert "race_tables_partitioned" not in race["flags"]
+
+
+def test_parts_without_their_own_numbers_analyzed_are_not_summed() -> None:
+    """A "Child Race" table beside "Race" with no Number Analyzed of its own
+    cannot be told from a re-count: the fullest is counted and the rest of the
+    baseline total is unknown_inferred, never a second count."""
+    parents = _class_table("Race/Ethnicity, Customized", [("White", 20), ("Black", 6)])
+    children = _class_table("Child Race and Ethnicity", [("White", 18), ("Black", 5)])
+    race = extract_race_data(_study("NCT99000025", [parents, children], participants=49))
+    assert _nonzero(race) == {"white": 20, "black_african_american": 6, "unknown_not_reported": 23}
+    assert race["unknown_inferred"] == 23
+
+
+def test_equal_race_sums_go_to_the_table_that_counts_more() -> None:
+    """A stub with nothing in it never wins over a table with rows; between
+    equal race-specific sums, the table that also counts unknowns wins."""
+    stub = _category_table("Race and Ethnicity Not Collected", [("Number of participants", 0)])
+    unknown_only = _class_table("Race/Ethnicity, Customized", [("Unknown", 20)])
+    race = extract_race_data(_study("NCT99000026", [stub, unknown_only], participants=20))
+    assert race["reported"] is True
+    assert _nonzero(race) == {"unknown_not_reported": 20}
+    short = _category_table("Race (NIH/OMB)", [("White", 18)])
+    full = _category_table("Race (NIH/OMB)", [("White", 18), ("Unknown or Not Reported", 2)])
+    for measures in ([short, full], [full, short]):
+        race = extract_race_data(_study("NCT99000027", measures, participants=20))
+        assert race["unknown_explicit"] == 2 and race["unknown_inferred"] == 0
 
 
 def test_all_zero_race_by_sex_table_is_rejected_whole() -> None:

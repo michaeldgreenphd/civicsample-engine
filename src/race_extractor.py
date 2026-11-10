@@ -518,23 +518,58 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # never adds duplicate tables: it counts from the sex/gender-typed measures
 # when any exist, else from all selected measures, and takes female/male from
 # the ONE measure with the largest female + male, the first in source order on
-# ties. The same rule is applied here:
+# ties. The same rule is applied here, with one exception for tables that the
+# registry itself marks as covering different people (rule 3):
 #   1. Race-titled tables (is_race_table) are the typed tables. A
 #      sex/gender-titled table that carries race rows is used only when the
 #      trial has no race-titled table at all; otherwise it is superseded.
-#   2. When the tables in play include a race-by-sex table, or come from
-#      sex/gender titles, and there is more than one, only the table with the
-#      largest sum over the race-specific categories is counted (the analogue
-#      of female + male: "other" and "unknown_not_reported" are left out, as
-#      the parser leaves out unknown), the first in source order on ties.
-#      The others are recorded with the race_table_superseded flag.
+#   2. When more than one table is in play, one table is counted: the fullest
+#      of those that cover the whole baseline population. Fullest means the
+#      largest sum over the race-specific categories (the analogue of female
+#      + male: "other" and "unknown_not_reported" are left out, as the parser
+#      leaves out unknown); on equal sums, the one that counts more
+#      participants in all; then the first in source order, except that of
+#      two tables with the same count in every OMB category the one with more
+#      subcategory detail is kept (see _fullest). A table with no
+#      race-specific count (an ethnicity table posted as "Race/Ethnicity,
+#      Customized" whose "Unknown" row is the only row kept) never wins over
+#      one with any.
+#   3. Disjoint parts. A table analyzed on part of the population carries its
+#      own Number Analyzed (see _number_analyzed): e.g. one "Race (NIH/OMB)"
+#      table for caregivers and one for patients, or one per study part. The
+#      tables are summed (flag race_tables_partitioned) only when all of these
+#      hold:
+#        - every table in play is a plain race-titled table (a race-by-sex or
+#          sex/gender-titled table is always deduplicated by rule 2: it is
+#          the same population re-posted with another breakdown);
+#        - every table with race-specific counts carries its own Number
+#          Analyzed below the baseline total;
+#        - those numbers add up to EXACTLY the baseline total, so the parts
+#          account for every baseline participant once. A smaller sum is not
+#          evidence of disjoint people: the same 20 of 50 participants posted
+#          twice also add up to less than 50;
+#        - no table counts more participants than its own Number Analyzed.
+#      Otherwise rule 2 applies: a table with no Number Analyzed of its own
+#      was analyzed on everyone, so another table can only re-count some of
+#      the same people, and two subsets that do not make up the whole may be
+#      the same subset.
+# Every table not counted is recorded with the race_table_superseded flag.
 # The parser takes its residual buckets (unknown, gender diverse) as the MAX
 # across tables; here the winning table is used whole, so the totals stay the
-# sum of one table's posted rows and raw_categories lists exactly the rows
-# counted. Denominator balancing below restores any gap to unknown_inferred.
-# Trials whose race-titled tables are all plain keep the previous behaviour
-# (every table summed, flagged multiple_race_tables_N); this change does not
-# alter that rule.
+# sum of posted rows of the tables counted and raw_categories lists exactly
+# those rows. Denominator balancing below restores any gap to unknown_inferred.
+#
+# Rule 2 replaced summing every race-titled table. On the 2026-11-08 snapshot
+# the sum exceeded the baseline participant count in 701 of the 1,704 trials
+# with more than one race-titled table (by 326,105 participants), mostly an
+# ethnicity table's "Unknown" or "Other" row counted again as race, or the
+# same people posted in a "Race (NIH/OMB)" and a customized table. Rule 3
+# keeps the 32 trials whose posted denominators make up the baseline total
+# summed. Parts posted without a Number Analyzed of their own, or whose
+# numbers fall short of the total (a "Child Race" table
+# beside "Race", one table per country) cannot be told from re-counts by
+# their counts alone; only the fullest is counted and the rest of the
+# baseline total becomes unknown_inferred, never a second count.
 #
 # joint_sex_counts holds the posted (race, sex) counts of the race-by-sex
 # table that supplied the totals, else of the first race-by-sex table in
@@ -548,7 +583,8 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # Flags added: "race_by_sex" on each crossed row (which also carries
 # race_part and sex, with original kept as the posted label);
 # "race_by_sex_table" and "race_from_sex_titled_table" when the counted table
-# is one; "race_table_superseded" when a table was left out by the rule above;
+# is one; "race_table_superseded" when a table was left out by the rules above;
+# "race_tables_partitioned" when rule 3 summed disjoint parts;
 # "multiple_race_by_sex_tables" when more than one race-by-sex table exists
 # (joint_sex_counts then describes one of them, as above).
 
@@ -593,8 +629,9 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
                       fallback_denom: Optional[int], sex_titled: bool) -> Optional[Dict]:
     """Read one baseline measure as a race table.
 
-    Returns {"title", "index", "sex_titled", "race_by_sex", "categories",
-    "quarantined"}: the counted category records and the quarantined labels.
+    Returns {"title", "index", "analyzed", "sex_titled", "race_by_sex",
+    "categories", "quarantined"}: the table's own Number Analyzed (or None),
+    the counted category records and the quarantined labels.
     A race-titled measure always returns a table (plain rows unless it passes
     the race-by-sex test). A sex/gender-titled measure returns None unless
     every row maps to a race-specific category (see the block comment above).
@@ -655,6 +692,7 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
     return {
         "title": title,
         "index": index,
+        "analyzed": _number_analyzed(measure, overall_group_id),
         "sex_titled": sex_titled,
         "race_by_sex": race_by_sex,
         "categories": categories,
@@ -664,6 +702,87 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
 def _race_specific_sum(table: Dict) -> int:
     """Participants a table places in the race-specific categories."""
     return sum(c["count"] for c in table["categories"] if c["omb_category"] in _RACE_SPECIFIC)
+
+def _counted_sum(table: Dict) -> int:
+    """Participants a table counts in any category."""
+    return sum(c["count"] for c in table["categories"])
+
+def _number_analyzed(measure: dict, overall_group_id: Optional[str]) -> Optional[int]:
+    """A table's own Number Analyzed, in participants, or None if it posts none.
+
+    Registry schema fact (API v2): a baseline measure analyzed on fewer people
+    than the baseline population posts its own "Number Analyzed", at the
+    measure level (measure["denoms"]) or, as the registry returns most of them,
+    on its classes (classes[]["denoms"]). A measure with neither was analyzed on
+    the whole baseline population. The overall value is read exactly as
+    get_measure_denom reads it (Overall group, else the single or last count;
+    units "Participants" only). If classes post different numbers, the largest
+    is taken, which can only make the table look whole and so never leads to
+    summing on unclear evidence.
+    """
+    from src.utils import get_measure_denom
+
+    n = get_measure_denom(measure, overall_group_id)
+    if n is not None:
+        return n
+    per_class = [get_measure_denom({"denoms": cls.get("denoms") or []}, overall_group_id)
+                 for cls in measure.get("classes", []) if isinstance(cls, dict)]
+    per_class = [v for v in per_class if v is not None]
+    return max(per_class) if per_class else None
+
+def _omb_counts(table: Dict) -> Dict[str, int]:
+    """A table's counts by OMB category (categories it counts nobody in left out)."""
+    out: Dict[str, int] = {}
+    for c in table["categories"]:
+        if c["count"]:
+            out[c["omb_category"]] = out.get(c["omb_category"], 0) + c["count"]
+    return out
+
+def _subcategory_sum(table: Dict) -> int:
+    """Participants a table places in a granular subcategory."""
+    return sum(c["count"] for c in table["categories"] if c["subcategory"])
+
+def _fullest(tables: List[Dict]) -> Dict:
+    """Rule 2's table: largest race-specific sum, then largest counted sum,
+    then the first in source order. One exception to source order: a tied
+    table with the same count in every OMB category (the same people in the
+    same categories, e.g. "Asian" 25 re-posted as "Chinese" 25) replaces the
+    leader when it places more of them in a subcategory, so choosing between
+    re-posts never discards detail. A tie with any category count different
+    ("Unknown" 8 in one table, "Other" 8 in the other) stays with the first."""
+    best = tables[0]
+    for table in tables[1:]:
+        key = (_race_specific_sum(table), _counted_sum(table))
+        best_key = (_race_specific_sum(best), _counted_sum(best))
+        if key > best_key:
+            best = table
+        elif (key == best_key and _omb_counts(table) == _omb_counts(best)
+              and _subcategory_sum(table) > _subcategory_sum(best)):
+            best = table
+    return best
+
+def _select_tables(tables: List[Dict], total_participants: Optional[int],
+                   allow_parts: bool) -> Tuple[List[Dict], bool]:
+    """The tables to count, and whether they were summed as disjoint parts
+    (rules 2 and 3 of the block comment above). allow_parts is False when any
+    table in play is a race-by-sex or sex/gender-titled table."""
+    if len(tables) <= 1:
+        return tables, False
+    race = [t for t in tables if _race_specific_sum(t) > 0]
+    if not race:
+        return [_fullest(tables)], False
+    if len(race) == 1:
+        return race, False  # the only table with race counts; the rest add residuals only
+    if total_participants is None:
+        return [_fullest(race)], False
+    whole = [t for t in race if t["analyzed"] is None or t["analyzed"] >= total_participants]
+    if whole:
+        return [_fullest(whole)], False
+    if (allow_parts
+            and sum(t["analyzed"] for t in race) == total_participants
+            and all(_counted_sum(t) <= t["analyzed"] for t in race)):
+        return race, True
+    return [_fullest(race)], False
 
 def _joint_sex_counts(table: Dict, used_for_totals: bool) -> Dict:
     """The posted (race, sex) counts of one race-by-sex table, with sources."""
@@ -750,21 +869,15 @@ def extract_race_data(study: dict) -> Dict:
     race_tables_found = len(typed)
     # Rule 1: race-titled tables when any exist, else the sex/gender-titled ones.
     in_play = typed or sex_titled
-    superseded = sex_titled if typed else []
-    # Rule 2: one table, the fullest, when a race-by-sex or sex/gender-titled
-    # table competes with another; plain race-titled tables are summed as before.
-    if len(in_play) > 1 and (not typed or any(t["race_by_sex"] for t in in_play)):
-        best = in_play[0]
-        for table in in_play[1:]:
-            if _race_specific_sum(table) > _race_specific_sum(best):
-                best = table  # strictly greater: the first wins ties
-        superseded = superseded + [t for t in in_play if t is not best]
-        counted = [best]
-    else:
-        counted = in_play
+    # Rules 2 and 3: the fullest whole-population table, or disjoint parts.
+    plain_only = bool(typed) and not any(t["race_by_sex"] for t in in_play)
+    counted, partitioned = _select_tables(in_play, total_participants, allow_parts=plain_only)
+    superseded = (sex_titled if typed else []) + [t for t in in_play if not any(t is c for c in counted)]
 
     if superseded:
         result["flags"].append("race_table_superseded")
+    if partitioned:
+        result["flags"].append("race_tables_partitioned")
 
     for table in counted:
         result["reported"] = True
