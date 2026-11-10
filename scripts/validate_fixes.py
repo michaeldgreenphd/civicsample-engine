@@ -18,8 +18,13 @@ Tests:
   9. NCT99000105 — Race rows under the camelCase title "RaceEthnicityOther"
      (fictional study)
 
+  10. NCT99000106 — Ethnicity table plus a race table titled
+      "Race/Ethnicity, Customized" whose "Unknown" row maps to ethnicity
+      (fictional study)
+
 Studies 7-9 also assert their expected race block and raceBreakdown
-(EXPECTED_RACE); a mismatch stops the harness.
+(EXPECTED_RACE), and study 10 its ethnicity totals and flags
+(EXPECTED_ETHNICITY); a mismatch stops the harness.
 """
 import json
 import sys
@@ -341,6 +346,39 @@ MOCK_NCT99000105 = _make_study(
 )
 
 
+# ---------- NCT99000106 (fictional): a race table posted under an ethnicity title ----------
+# 80 participants. The ethnicity table counts everyone; the "Race/Ethnicity,
+# Customized" table is a race table whose race rows are dropped for ethnicity
+# but whose "Unknown" row maps to ethnicity unknown: counted once, 80, not 86.
+MOCK_NCT99000106 = _make_study(
+    "NCT99000106",
+    "NCT99000106 - Ethnicity plus race table (fictional mock)",
+    [
+        _make_measure("Ethnicity (NIH/OMB)", [
+            _make_class("", [
+                _make_category("Hispanic or Latino", 9),
+                _make_category("Not Hispanic or Latino", 68),
+                _make_category("Unknown or Not Reported", 3),
+            ])
+        ]),
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 55),
+                _make_category("Black or African American", 19),
+                _make_category("Unknown", 6),
+            ])
+        ]),
+    ],
+    total_participants=80,
+)
+
+# Expected ethnicity results for the table-selection study.
+EXPECTED_ETHNICITY = {
+    "NCT99000106": {"omb": {"hispanic_latino": 9, "not_hispanic_latino": 68, "unknown_not_reported": 3},
+                    "flags": ["ethnicity_table_superseded", "multiple_ethnicity_tables_2"]},
+}
+
+
 # Expected race results for the title-rule studies: reported, the non-zero
 # OMB totals, top-level flags, and the raceBreakdown counts (None = no table).
 EXPECTED_RACE = {
@@ -430,6 +468,11 @@ def validate_study(study: dict, nct_id: str) -> None:
 
     if nct_id in EXPECTED_RACE:
         check_expected(nct_id, race, breakdown)
+    if nct_id in EXPECTED_ETHNICITY:
+        expected = EXPECTED_ETHNICITY[nct_id]
+        assert ethnicity["omb_totals"] == expected["omb"], f"{nct_id} ethnicity: {ethnicity['omb_totals']}"
+        assert ethnicity["flags"] == expected["flags"], f"{nct_id} ethnicity flags: {ethnicity['flags']}"
+        print(f"\n  {nct_id}: expected ethnicity totals and flags — OK")
 
 
 def main() -> None:
@@ -443,6 +486,7 @@ def main() -> None:
         (MOCK_NCT99000103, "NCT99000103"),
         (MOCK_NCT99000104, "NCT99000104"),
         (MOCK_NCT99000105, "NCT99000105"),
+        (MOCK_NCT99000106, "NCT99000106"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
