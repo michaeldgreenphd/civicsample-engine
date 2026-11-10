@@ -11,19 +11,30 @@ Tests:
   5. NCT99000101 — Race-by-sex table beside a sex table (fictional study)
   6. NCT99000102 — Race table plus an ethnicity table titled "Race/Ethnicity,
      Customized" (fictional study)
-  7. NCT99000103 — Race rows in a "Sex/Gender, Customized" table beside a sex
+  7. NCT99000103 — A contraception table as the only table whose title
+     contains the letters "race" (fictional study)
+  8. NCT99000104 — An Unknown-only race table plus a contraception table
+     with an "Other" row (fictional study)
+  9. NCT99000105 — Race rows under the camelCase title "RaceEthnicityOther"
+     (fictional study)
+ 10. NCT99000106 — Race rows in a "Sex/Gender, Customized" table beside a sex
      table: race only, never also sex unknown (fictional study)
+
+Studies 7-9 also assert their expected race block and raceBreakdown
+(EXPECTED_RACE); study 10 asserts its race and sex blocks
+(check_race_rows_in_sex_table). A mismatch stops the harness.
 """
 import json
 import sys
 import os
-from typing import Tuple
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.race_extractor import extract_race_data
 from src.ethnicity_extractor import extract_ethnicity_data
 from src.sex_extractor import extract_sex_data
+from src.utils import extract_demographic_breakdown, get_baseline_measures, get_overall_group_id
 
 
 def _make_measurement(value, group_id="BG000"):
@@ -249,7 +260,91 @@ MOCK_NCT99000102 = _make_study(
 )
 
 
-# ---------- NCT99000103 (fictional): race rows under a sex/gender title ----------
+# ---------- NCT99000103 (fictional): a contraception table, no race table ----------
+# 102 participants. "Contraception" contains the letters "race"; the old
+# substring title test made this the trial's race table, "Other method" (7)
+# became race "other" and balancing added 95 unknown.
+# Key tests:
+#   - race not reported, no flags, raceBreakdown None
+MOCK_NCT99000103 = _make_study(
+    "NCT99000103",
+    "NCT99000103 - Contraception table only (fictional mock)",
+    [
+        _make_measure("Contraception use at time of enrollment", [
+            _make_class("", [
+                _make_category("None", 33),
+                _make_category("Condoms", 62),
+                _make_category("Other method", 7),
+            ])
+        ]),
+        _make_measure("Sex: Female, Male", [
+            _make_class("", [
+                _make_category("Female", 102),
+                _make_category("Male", 0),
+            ])
+        ]),
+    ],
+    total_participants=102,
+)
+
+
+# ---------- NCT99000104 (fictional): Unknown-only race table + contraception table ----------
+# 50 participants. Neither table has a race-specific count; under the old
+# title test the fuller one by counted sum won, and the contraception
+# table's "Other" 30 became race "other".
+# Key tests:
+#   - race is the race table's Unknown 20 plus 30 balanced: unknown 50, other 0
+#   - no multiple_race_tables_2 / race_table_superseded flags
+MOCK_NCT99000104 = _make_study(
+    "NCT99000104",
+    "NCT99000104 - Unknown-only race table plus contraception table (fictional mock)",
+    [
+        _make_measure("Race (NIH/OMB)", [
+            _make_class("", [
+                _make_category("Unknown or Not Reported", 20),
+            ])
+        ]),
+        _make_measure("Contraception History", [
+            _make_class("", [
+                _make_category("Pill", 12),
+                _make_category("Other", 30),
+                _make_category("None", 8),
+            ])
+        ]),
+    ],
+    total_participants=50,
+)
+
+
+# ---------- NCT99000105 (fictional): race rows under a camelCase title ----------
+# 40 participants. The only race rows are under "RaceEthnicityOther"; the
+# "Race/Ethnicity, Customized" table holds ethnicity rows only. A \b regex
+# title rule finds no word break in the camelCase title and would drop it.
+# Key tests:
+#   - White 30, Black 8, Other 2 from the camelCase table
+MOCK_NCT99000105 = _make_study(
+    "NCT99000105",
+    "NCT99000105 - camelCase race title (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("Hispanic or Latino", 4),
+                _make_category("Not Hispanic or Latino", 36),
+            ])
+        ]),
+        _make_measure("RaceEthnicityOther", [
+            _make_class("", [
+                _make_category("White", 30),
+                _make_category("Black/African American", 8),
+                _make_category("Other", 2),
+            ])
+        ]),
+    ],
+    total_participants=40,
+)
+
+
+# ---------- NCT99000106 (fictional): race rows under a sex/gender title ----------
 # 80 participants. The "Sex/Gender, Customized" table posts race, one row per
 # race; the "Sex: Female, Male" table posts sex for the same people.
 # Key tests:
@@ -258,9 +353,9 @@ MOCK_NCT99000102 = _make_study(
 #   - sex counts the sex table only: Female 35, Male 45, Unknown 0; the race
 #     rows are in sex.quarantined_labels (reason race_label_in_sex_table), not
 #     sex unknown 80 as before
-MOCK_NCT99000103 = _make_study(
-    "NCT99000103",
-    "NCT99000103 - Race rows in a Sex/Gender table (fictional mock)",
+MOCK_NCT99000106 = _make_study(
+    "NCT99000106",
+    "NCT99000106 - Race rows in a Sex/Gender table (fictional mock)",
     [
         _make_measure("Sex/Gender, Customized", [
             _make_class("", [
@@ -280,7 +375,50 @@ MOCK_NCT99000103 = _make_study(
 )
 
 
-def validate_study(study: dict, nct_id: str) -> Tuple[dict, dict]:
+# Expected race results for the title-rule studies: reported, the non-zero
+# OMB totals, top-level flags, and the raceBreakdown counts (None = no table).
+EXPECTED_RACE = {
+    "NCT99000103": {"reported": False, "omb": {}, "flags": [], "breakdown": None},
+    "NCT99000104": {"reported": True, "omb": {"unknown_not_reported": 50},
+                    "flags": ["denominator_balanced"],
+                    "breakdown": {"Unknown or Not Reported": 20}},
+    "NCT99000105": {"reported": True,
+                    "omb": {"white": 30, "black_african_american": 8, "other": 2},
+                    "flags": ["combined_race_ethnicity", "multiple_race_tables_2",
+                              "race_table_superseded", "slash_normalized"],
+                    "breakdown": {"Hispanic or Latino": 4, "Not Hispanic or Latino": 36,
+                                  "White": 30, "Black/African American": 8, "Other": 2}},
+}
+
+
+def check_expected(nct_id: str, race: dict, breakdown: Optional[dict]) -> None:
+    """Assert a title-rule study's race block and raceBreakdown."""
+    expected = EXPECTED_RACE[nct_id]
+    nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+    counts = None if breakdown is None else {k: v["count"] for k, v in breakdown.items()}
+    assert race["reported"] is expected["reported"], f"{nct_id} reported: {race['reported']}"
+    assert nonzero == expected["omb"], f"{nct_id} omb_totals: {nonzero}"
+    assert race["flags"] == expected["flags"], f"{nct_id} flags: {race['flags']}"
+    assert counts == expected["breakdown"], f"{nct_id} raceBreakdown: {counts}"
+    print(f"\n  {nct_id}: expected race block and raceBreakdown — OK")
+
+
+def check_race_rows_in_sex_table(race: dict, sex: dict) -> None:
+    """NCT99000106: rows race reads from a sex/gender-titled table are never
+    also sex unknown."""
+    assert race["omb_totals"]["white"] == 64 and race["omb_totals"]["black_african_american"] == 12 \
+        and race["omb_totals"]["asian"] == 4, race["omb_totals"]
+    assert "race_from_sex_titled_table" in race["flags"], race["flags"]
+    assert sex["totals"] == {"female": 35, "male": 45, "unknown": 0}, sex["totals"]
+    assert {q["original"]: q["reason"] for q in sex["quarantined_labels"]} == {
+        "White": "race_label_in_sex_table",
+        "Black/African Heritage": "race_label_in_sex_table",
+        "East Asian/South East Asian": "race_label_in_sex_table",
+    }, sex["quarantined_labels"]
+    print("\n  NCT99000106: race rows counted once, as race (sex unknown 0) — OK")
+
+
+def validate_study(study: dict, nct_id: str) -> None:
     print(f"\n{'='*70}")
     print(f"  {nct_id}")
     print(f"{'='*70}")
@@ -315,6 +453,10 @@ def validate_study(study: dict, nct_id: str) -> Tuple[dict, dict]:
                   f"(confidence={rc['confidence']}, count={rc.get('count', 0)}, flags={rc['flags']})")
     print(f"    joint_sex_counts: "
           f"{json.dumps(race['joint_sex_counts']['counts']) if race.get('joint_sex_counts') else None}")
+    breakdown = extract_demographic_breakdown(get_baseline_measures(study), "race",
+                                              get_overall_group_id(study))
+    print(f"    raceBreakdown: "
+          f"{json.dumps({k: v['count'] for k, v in breakdown.items()}) if breakdown else None}")
 
     # Ethnicity
     print(f"\n  ETHNICITY:")
@@ -338,22 +480,11 @@ def validate_study(study: dict, nct_id: str) -> Tuple[dict, dict]:
         for q in sex["quarantined_labels"]:
             print(f"      - \"{q['original']}\" (count={q['count']}, reason={q['reason']})")
     print(f"    flags: {sex['flags']}")
-    return race, sex
 
-
-def check_race_rows_in_sex_table(race: dict, sex: dict) -> None:
-    """NCT99000103: rows race reads from a sex/gender-titled table are never
-    also sex unknown."""
-    assert race["omb_totals"]["white"] == 64 and race["omb_totals"]["black_african_american"] == 12 \
-        and race["omb_totals"]["asian"] == 4, race["omb_totals"]
-    assert "race_from_sex_titled_table" in race["flags"], race["flags"]
-    assert sex["totals"] == {"female": 35, "male": 45, "unknown": 0}, sex["totals"]
-    assert {q["original"]: q["reason"] for q in sex["quarantined_labels"]} == {
-        "White": "race_label_in_sex_table",
-        "Black/African Heritage": "race_label_in_sex_table",
-        "East Asian/South East Asian": "race_label_in_sex_table",
-    }, sex["quarantined_labels"]
-    print("\n  NCT99000103: race rows counted once, as race (sex unknown 0)")
+    if nct_id in EXPECTED_RACE:
+        check_expected(nct_id, race, breakdown)
+    if nct_id == "NCT99000106":
+        check_race_rows_in_sex_table(race, sex)
 
 
 def main() -> None:
@@ -365,11 +496,12 @@ def main() -> None:
         (MOCK_NCT99000101, "NCT99000101"),
         (MOCK_NCT99000102, "NCT99000102"),
         (MOCK_NCT99000103, "NCT99000103"),
+        (MOCK_NCT99000104, "NCT99000104"),
+        (MOCK_NCT99000105, "NCT99000105"),
+        (MOCK_NCT99000106, "NCT99000106"),
     ]
     for study, nct_id in studies:
-        race, sex = validate_study(study, nct_id)
-        if nct_id == "NCT99000103":
-            check_race_rows_in_sex_table(race, sex)
+        validate_study(study, nct_id)
 
     print(f"\n{'='*70}")
     print("  Validation complete.")

@@ -35,6 +35,8 @@ defaults and say that you did.
 | 7 | Referral centres | Flag ZIPs with 200+ single-site trials; report every area with and without them |
 | 8 | Floor | 50 qualifying trials per area, counted separately for race and for ethnicity |
 | 9 | Placing a site | CT.gov coordinates, point-in-polygon against Census boundary files |
+| 10 | Pooling method | Each trial counts once (the investigator's choice, 2026-11-10); the participant-weighted figure is written as a secondary result |
+| 11 | Size cap | Exclude studies over 5,000 participants in that dimension from every figure, listed with the reason |
 
 ## Before writing code: check the network
 
@@ -164,20 +166,39 @@ Write each assumption as a comment next to the code that makes it.
    `race.reported` true and a positive total; ethnicity likewise. The three
    states (reported, explicitly unknown, not reported) stay distinct in the
    counts you report.
-8. **Pool by area.** Observed = summed category counts over summed totals.
-   Expected = the trials' expected shares weighted by their totals.
-   `diff_pp` = observed − expected, in points; `ratio` = observed / expected
-   (null when expected is 0, with the reason).
-9. **Interval.** Bootstrap over trials within the area, 2,000 resamples,
+   **Size cap.** A trial whose total for that dimension exceeds 5,000 is
+   excluded from that dimension with `exclusion_reason` `over_size_cap`. In
+   2026-11-08 that is 170 of the 18,682 race-reporting trials and 127 of the
+   13,351 ethnicity-reporting trials, holding about 82% of the participants in
+   each. Several are not local recruitment: the largest is a Kaiser Permanente
+   Northern California vaccine study with 1,630,328 participants, and the
+   Apple Heart Study (419,927) is registered at Stanford but recruited
+   nationwide.
+8. **Pool by area: each trial counts once.** The median race-reporting
+   single-site trial has 36 participants, while the 10 largest hold 39% of all
+   participants; summing participants would let a handful of studies set an
+   area's result. So the primary figures are plain means over the area's
+   trials: `observed_pct` = mean of the trials' observed shares;
+   `expected_pct` = mean of their expected shares; `diff_pp` =
+   `observed_pct` − `expected_pct` (equal to the mean of per-trial
+   differences); `ratio` = `observed_pct` / `expected_pct`, a ratio of means,
+   not a mean of per-trial ratios (null when expected is 0, with the reason).
+   Also write the participant-weighted version under `weighted`: observed =
+   summed category counts over summed totals, expected = the trials' expected
+   shares weighted by their totals, and its `diff_pp`. The weighted figure is
+   secondary and is never the headline.
+9. **Interval.** Bootstrap over trials within the area (recomputing the
+   primary and weighted figures from each resample), 2,000 resamples,
    `numpy.random.default_rng` with a fixed seed recorded in the output.
    Report the 2.5th and 97.5th percentiles as a 95% interval and write
    `interval_level: 0.95`. This is the first random draw in the repository;
    say so in the pull request.
 10. **Flags.** `concentration_flag` when one trial holds more than 50% of the
-    area's participants. `referral_zip` on trials whose ZIP has 200 or more
+    area's participants (after the size cap); it qualifies the `weighted`
+    figure, since the primary figure already counts each trial once. `referral_zip` on trials whose ZIP has 200 or more
     single-site trials (33 ZIPs, 11,830 trials in 2026-11-08). Produce every
     area twice: `with_referral` and `without_referral`.
-11. **Floor.** Fewer than 50 qualifying trials → `display_rule: "withheld"`
+11. **Floor.** Fewer than 50 qualifying trials, counted after the size cap, → `display_rule: "withheld"`
     with `gate_reason` and the count; never filled from another level.
 12. **Levels stay separate.** No output ranks or compares a CBSA with a state
     or a state with a region.
@@ -193,7 +214,10 @@ Write each assumption as a comment next to the code that makes it.
   PyPI). Do not add them to the root `requirements.txt`.
 - `tests/test_census_benchmarks.py`: offline tests on small hand-computed
   inputs: band overlap at edges and partial bands, "N/A" ages, months,
-  single-sex trials, pooling weights, a withheld area, the concentration flag,
+  single-sex trials, equal-weight pooling (a 10,000-participant trial and a
+  20-participant trial moving the primary figure equally), the weighted
+  secondary figure, the size cap excluding a trial with its reason, a
+  withheld area, the concentration flag,
   the unknown row staying out of redistribution, and a fixed-seed bootstrap
   giving the same interval twice. The root suite must not import shapely.
 - Type hints on every function. Add the cache and output directories to
@@ -212,14 +236,17 @@ Write each assumption as a comment next to the code that makes it.
   "source_pipeline_commit": "<from demographics.json.gz>",
   "acs_release": "acs5 <year>",
   "files": [{"url": "...", "retrieved_at": "...", "sha256": "..."}],
-  "parameters": {"floor": 50, "referral_zip_min_trials": 200, "bootstrap_resamples": 2000, "seed": 0},
+  "parameters": {"floor": 50, "referral_zip_min_trials": 200, "size_cap": 5000,
+                 "pooling": "per_trial_mean", "bootstrap_resamples": 2000, "seed": 0},
   "areas": [
     {"level": "cbsa", "geoid": "...", "name": "...", "variant": "with_referral",
-     "dimension": "race", "n_trials": 0, "n_participants": 0,
+     "dimension": "race", "n_trials": 0, "n_participants": 0, "n_excluded_size_cap": 0,
      "display_rule": "show", "gate_reason": null, "concentration_flag": false,
      "categories": [{"category": "black_african_american", "observed_pct": 0.0,
        "expected_pct": 0.0, "diff_pp": 0.0, "ratio": 0.0, "lo_pp": 0.0, "hi_pp": 0.0,
-       "interval_level": 0.95}]}
+       "interval_level": 0.95,
+       "weighted": {"observed_pct": 0.0, "expected_pct": 0.0, "diff_pp": 0.0,
+                    "lo_pp": 0.0, "hi_pp": 0.0}}]}
   ]
 }
 ```
@@ -232,10 +259,12 @@ ethnicity_included, exclusion_reason`.
 
 - The CI checks in AGENTS.md "Running the checks" pass, run and reported.
 - A full run against the real release completes, and the pull request body
-  reports: trials placed by each method and unplaced with reasons; areas shown
+  reports: trials placed by each method and unplaced with reasons; trials
+  excluded by the size cap per dimension; areas shown
   and withheld per level, dimension and variant; the ACS release and file
   checksums; and, for the four regions and the five largest CBSAs by trial
-  count, observed, expected and `diff_pp` for each category.
+  count, observed, expected and `diff_pp` for each category, primary and
+  weighted side by side.
 - Re-running with the same inputs and seed gives a byte-identical
   `census_benchmarks.json` apart from `extracted_at`.
 - The pull request says plainly what it did not do: no site changes, no

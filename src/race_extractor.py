@@ -132,8 +132,40 @@ RACE_MAPPINGS = {
     "Missing": ("unknown_not_reported", None),
 }
 
-# Keywords to identify race tables
-RACE_TABLE_KEYWORDS = ["race", "racial"]
+# ── Which baseline measures are race tables ─────────────────────────────────
+#
+# Method. A measure is a race table when its title contains the WORD race,
+# races or racial, in any case. The title's words are its runs of ASCII
+# letters, with a camelCase hump starting a new word and a run of capitals
+# kept whole: "Race/Ethnicity, Customized" -> Race, Ethnicity, Customized;
+# "RaceEthnicityOther" -> Race, Ethnicity, Other; "RACE (NIH/OMB)" -> RACE,
+# NIH, OMB. Anything that is not a letter (space, punctuation, digit,
+# underscore) separates words.
+#
+# Why. The rule it replaces admitted any title containing the letters "race"
+# or "racial" anywhere, so words that merely contain them were read as race
+# tables. Re-fetching the baseline modules of the 80,890 trials in the
+# 2026-11-08 snapshot (CT.gov API v2, 2026-11-10), 144 distinct titles
+# contained the letters; 72 of them, posted by 57 trials, are not race
+# tables: contraception in 33 trials ("Contraception History", "Female method
+# of contraception", "Oral Contraceptive Use History"), and "intracerebral",
+# "paracetamol", "GRACE score", "extracellular", "trace", "brace",
+# "Levetiracetam", "ultracentrifugation", "paracentesis". Admitted, such a
+# table counted towards multiple_race_tables_N, could be a trial's only "race"
+# table (making race "reported"), and its "Other" / "Unknown" rows mapped to
+# race categories that quarantine (_should_quarantine) keeps, since those
+# words are plausible race labels.
+#
+# A plain regex word boundary (\brac(e|ial)\b) would also drop
+# "RaceEthnicityOther" (NCT00277212's only table with race rows; \b sees no
+# boundary inside a camelCase word), which is why camelCase humps split words
+# here. "races" keeps a plural title that the old rule admitted. Every title
+# this rule admits, the old rule admitted too; nothing new becomes a race
+# table. Titles about race that are not race-composition tables ("Racial
+# Pride", "Race Consciousness", "Implicit Association Test- Race Bias") contain
+# the word and are still admitted; this rule does not judge content.
+RACE_TITLE_WORDS = frozenset({"race", "races", "racial"})
+_TITLE_WORD_RX = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
 
 # Labels containing these keywords are plausibly race-related even when
 # unmapped (e.g. "Other race", "Race - Other").  Labels that don't contain
@@ -150,16 +182,22 @@ _PLAUSIBLE_RACE_KEYWORDS = {
     "alaska", "indigenous", "caribbean",
 }
 
-def is_race_table(title: str) -> bool:
-    """Check if a baseline measure is about race.
+def title_words(title: Optional[str]) -> List[str]:
+    """The words of a measure title, as the race-table rule reads them (see
+    the block comment above RACE_TITLE_WORDS)."""
+    return _TITLE_WORD_RX.findall(title or "")
+
+def is_race_table(title: Optional[str]) -> bool:
+    """Check if a baseline measure is about race: its title contains the word
+    race, races or racial (block comment above RACE_TITLE_WORDS).
 
     Combined titles like "Race/Ethnicity, Customized" are accepted — the
     race extractor will map whatever it can and flag unmapped labels as
     "other".  The ethnicity extractor independently handles the same
-    measure and drops labels it cannot map.
+    measure and drops labels it cannot map. "Contraception History" is not
+    a race table: "race" is only letters inside another word.
     """
-    title_lower = title.lower()
-    return any(kw in title_lower for kw in RACE_TABLE_KEYWORDS)
+    return any(word.lower() in RACE_TITLE_WORDS for word in title_words(title))
 
 def map_race_category(label: str, fuzzy_threshold: int = 85) -> Dict:
     """
@@ -501,8 +539,9 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # race-by-sex row and at least one race part maps to a category without the
 # "unmapped" flag. A sex word on some rows only is not a crossing: in the
 # 2026-11-08 snapshot that pattern is "Condoms (female and male)" and "Male
-# Partner Sterilization" in contraception tables that is_race_table admits,
-# "male subject: not recorded", and "Man Chinese" beside "Han Chinese".
+# Partner Sterilization" in contraception tables that the substring title
+# test admitted before is_race_table became a word rule, "male subject: not
+# recorded", and "Man Chinese" beside "Han Chinese".
 # Those tables, and a table whose race parts all fail to map ("Female
 # participants" / "Male participants"), are read row by row as before.
 #
