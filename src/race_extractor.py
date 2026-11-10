@@ -4,9 +4,14 @@ Race Data Extractor
 Extracts race data from baseline characteristics and maps to NIH/OMB categories
 with granular subcategories preserved.
 """
+import re
 from typing import Dict, List, Tuple, Optional
 from rapidfuzz import fuzz, process
 from src.utils import clean_demographic_label
+# The manuscript parser's sex/gender measure selection (/sex|gender/i), reused
+# to find race rows posted under a sex/gender title. Imported, not copied, so
+# the two selections cannot drift; the vendored parser is not modified.
+from src.sex_gender_parser import MEASURE_TITLE_RX
 
 # Translation table that strips invisible Unicode characters commonly
 # inserted by ClinicalTrials.gov (zero-width space, joiner, etc.)
@@ -368,34 +373,23 @@ def _map_race_label(label: str) -> Dict:
 
     return mapping
 
-def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = None,
-                              fallback_denom: int = None) -> List[Dict]:
-    """
-    Extract race data from a single baseline measure.
+def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
+                  fallback_denom: Optional[int] = None) -> Tuple[List[Tuple[str, int]], bool]:
+    """Return one measure's labelled rows as (label, count), in source order,
+    and whether percentages were converted to counts.
 
-    Row-level routing: each row is evaluated individually.  Rows that are
-    purely ethnicity labels (e.g. "Hispanic or Latino") are skipped entirely
-    so they are handled exclusively by the ethnicity pipeline.  Each
-    remaining row produces an independent mapping — labels are never
-    concatenated or merged.
+    A row is a category, or a class that carries measurements directly. When a
+    category title is a measurement label (e.g. "Count") the row's label is its
+    parent class title. Unlabelled rows are dropped.
 
     Percentage-aware: if the measure reports percentages (detected via
-    unitOfMeasure/paramType), values are converted to estimated counts
-    using the measure's Number Analyzed denominator, or the study's
-    enrollment count as a fallback (for cluster-randomized studies where
-    the measure's denom is "Number of Clinics" instead of "Participants").
-
-    Args:
-        measure: A single baseline measure dict from the API
-        overall_group_id: groupId of the Overall group (avoids double-counting arms)
-        fallback_denom: Study enrollment count, used when measure-level denom
-            is unavailable (e.g. cluster-randomized studies)
-
-    Returns list of category records with counts.
+    unitOfMeasure/paramType), values are converted to estimated counts using
+    the measure's Number Analyzed denominator, or the study's enrollment count
+    as a fallback (for cluster-randomized studies where the measure's denom is
+    "Number of Clinics" instead of "Participants").
     """
     from src.utils import sum_measurements, is_percentage_measure, get_measure_denom
 
-    # Detect percentage measures and get denominator for conversion
     is_pct = is_percentage_measure(measure)
     denom = None
     if is_pct:
@@ -403,11 +397,9 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
         if denom is None:
             denom = fallback_denom  # fall back to study enrollment
 
-    results = []
-
+    rows: List[Tuple[str, int]] = []
     for cls in measure.get("classes", []):
         categories = cls.get("categories", [])
-
         if categories:
             for cat in categories:
                 cat_title = (cat.get("title") or "").strip()
@@ -419,37 +411,281 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
                     label = cat_title or cls.get("title", "").strip()
                 if not label:
                     continue
-
-                # Row-level routing: skip pure ethnicity labels
-                if _is_ethnicity_only_label(label):
-                    continue
-
-                count = sum_measurements(cat.get("measurements", []), overall_group_id,
-                                         is_pct=is_pct, denom=denom)
-                mapping = _map_race_label(label)
-                mapping["count"] = count
-                if is_pct and denom:
-                    mapping["flags"].append("pct_to_count")
-                results.append(mapping)
+                rows.append((label, sum_measurements(cat.get("measurements", []), overall_group_id,
+                                                     is_pct=is_pct, denom=denom)))
         else:
             # Fallback: class itself carries measurements with no categories
             label = cls.get("title", "").strip()
             if not label:
                 continue
+            rows.append((label, sum_measurements(cls.get("measurements", []), overall_group_id,
+                                                 is_pct=is_pct, denom=denom)))
+    return rows, bool(is_pct and denom)
 
-            # Row-level routing: skip pure ethnicity labels
-            if _is_ethnicity_only_label(label):
-                continue
+def _map_plain_row(label: str, count: int, pct_converted: bool) -> Optional[Dict]:
+    """Map one row the way every plain race row is mapped.
 
-            count = sum_measurements(cls.get("measurements", []), overall_group_id,
-                                     is_pct=is_pct, denom=denom)
-            mapping = _map_race_label(label)
-            mapping["count"] = count
-            if is_pct and denom:
-                mapping["flags"].append("pct_to_count")
+    Returns None for a purely ethnicity label (e.g. "Hispanic or Latino"), which
+    is left to the ethnicity pipeline. Otherwise the mapping of
+    _map_race_label (direct, slash-fragment, fuzzy, then race/ethnicity split)
+    with the row's count. A race-by-sex row's race part goes through exactly
+    this function, so it lands where the same text would land on its own row.
+    """
+    if _is_ethnicity_only_label(label):
+        return None
+    mapping = _map_race_label(label)
+    mapping["count"] = count
+    if pct_converted:
+        mapping["flags"].append("pct_to_count")
+    return mapping
+
+def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = None,
+                              fallback_denom: Optional[int] = None) -> List[Dict]:
+    """
+    Extract race data from a single baseline measure, one plain row at a time.
+
+    Row-level routing: each row is evaluated individually.  Rows that are
+    purely ethnicity labels (e.g. "Hispanic or Latino") are skipped entirely
+    so they are handled exclusively by the ethnicity pipeline.  Each
+    remaining row produces an independent mapping — labels are never
+    concatenated or merged.
+
+    Args:
+        measure: A single baseline measure dict from the API
+        overall_group_id: groupId of the Overall group (avoids double-counting arms)
+        fallback_denom: Study enrollment count, used when measure-level denom
+            is unavailable (e.g. cluster-randomized studies)
+
+    Returns list of category records with counts. Race-by-sex tables are not
+    split here; extract_race_data reads them through _parse_race_table.
+    """
+    rows, pct_converted = _measure_rows(measure, overall_group_id, fallback_denom)
+    results = []
+    for label, count in rows:
+        mapping = _map_plain_row(label, count, pct_converted)
+        if mapping is not None:
             results.append(mapping)
-
     return results
+
+# ── Race-by-sex tables ──────────────────────────────────────────────────────
+#
+# Some registrants post race crossed with sex in one table, one row per
+# (race, sex) pair: "White : Female", "Caucasian (Female)", "African American-
+# Male", "African American Male Veterans". Mapped whole, such a label is not a
+# race label: the exact and case-insensitive lookups miss, a fuzzy match lands
+# on one row of a pair and not the other ("Black or African American : Male"
+# scored 87.7 against "Black or African American"; ": Female" did not), and the
+# rest fall to "other". The race totals of those trials were then wrong and
+# the joint counts were lost.
+#
+# Method. A row is a race-by-sex row when its label, cleaned as every race
+# label is (clean_demographic_label), contains exactly one sex word (female,
+# females, male, males; whole words, any case) and other text. The race part
+# is the text before the sex word with trailing separators (space : ; , - – —
+# / and an opening bracket) removed; when nothing precedes the sex word it is
+# the text after it ("Female: White"). Text after the sex word that is not the
+# race part is a descriptor ("Veterans") and is kept only in the source label.
+# The race part is then mapped by _map_plain_row, the function every plain
+# row goes through: an ethnicity-only race part ("Hispanic/Latino- Male") is
+# left to the ethnicity pipeline, an unmapped one falls to "other" or
+# quarantine, exactly as that text would on a row of its own. The sex word is
+# kept as "female" or "male" on the row and in joint_sex_counts.
+#
+# Only sex words trigger the split. Gender words (woman/man, women/men) are a
+# different taxonomy that this pipeline never maps onto sex (see
+# sex_extractor._GENDER_ONLY_LABELS), and "Man" is also the Manchu ethnic
+# group in posted Chinese ethnicity lists ("Han", "Hui", "Man", "Man
+# Chinese"). The 2026-11-08 snapshot has no race-by-gender-word table.
+#
+# A table is a race-by-sex table only when EVERY labelled row is a
+# race-by-sex row and at least one race part maps to a category without the
+# "unmapped" flag. A sex word on some rows only is not a crossing: in the
+# 2026-11-08 snapshot that pattern is "Condoms (female and male)" and "Male
+# Partner Sterilization" in contraception tables that is_race_table admits,
+# "male subject: not recorded", and "Man Chinese" beside "Han Chinese".
+# Those tables, and a table whose race parts all fail to map ("Female
+# participants" / "Male participants"), are read row by row as before.
+#
+# Race rows posted under a sex/gender title (e.g. "Sex/Gender, Customized"
+# holding "White", or "White male" / "White female") are read for race only
+# when every row of that table, plain or race-by-sex, maps to one of the
+# race-specific categories (_RACE_SPECIFIC) without the "unmapped" flag, and
+# none is skipped or quarantined. An "Unknown" or "Other" row fails the test:
+# in a sex table it is more likely sex than race. The title test is the
+# manuscript parser's measure selection (sex_gender_parser.MEASURE_TITLE_RX).
+#
+# Which table wins. The sex/gender parser (sex_gender_parser.parse_trial)
+# never adds duplicate tables: it counts from the sex/gender-typed measures
+# when any exist, else from all selected measures, and takes female/male from
+# the ONE measure with the largest female + male, the first in source order on
+# ties. The same rule is applied here:
+#   1. Race-titled tables (is_race_table) are the typed tables. A
+#      sex/gender-titled table that carries race rows is used only when the
+#      trial has no race-titled table at all; otherwise it is superseded.
+#   2. When the tables in play include a race-by-sex table, or come from
+#      sex/gender titles, and there is more than one, only the table with the
+#      largest sum over the race-specific categories is counted (the analogue
+#      of female + male: "other" and "unknown_not_reported" are left out, as
+#      the parser leaves out unknown), the first in source order on ties.
+#      The others are recorded with the race_table_superseded flag.
+# The parser takes its residual buckets (unknown, gender diverse) as the MAX
+# across tables; here the winning table is used whole, so the totals stay the
+# sum of one table's posted rows and raw_categories lists exactly the rows
+# counted. Denominator balancing below restores any gap to unknown_inferred.
+# Trials whose race-titled tables are all plain keep the previous behaviour
+# (every table summed, flagged multiple_race_tables_N); this change does not
+# alter that rule.
+#
+# joint_sex_counts holds the posted (race, sex) counts of the race-by-sex
+# table that supplied the totals, else of the first race-by-sex table in
+# source order (used_for_totals says which). Counts are keyed by OMB category
+# and then "female"/"male", only for the pairs posted: a table that posts
+# female rows only has no "male" key, and nothing is inferred, balanced or
+# carried over from the sex table. Rows skipped as ethnicity-only or
+# quarantined are not in it. It is None for every trial without a
+# race-by-sex table and after all-zero rejection.
+#
+# Flags added: "race_by_sex" on each crossed row (which also carries
+# race_part and sex, with original kept as the posted label);
+# "race_by_sex_table" and "race_from_sex_titled_table" when the counted table
+# is one; "race_table_superseded" when a table was left out by the rule above;
+# "multiple_race_by_sex_tables" when more than one race-by-sex table exists
+# (joint_sex_counts then describes one of them, as above).
+
+_SEX_WORD_RE = re.compile(r"\b(females?|males?)\b", re.IGNORECASE)
+_RACE_PART_TRAILING = " \t:;,-–—/(["
+_RACE_PART_EDGES = " \t:;,-–—/()[]"
+
+# The race-specific OMB categories. "other" and "unknown_not_reported" are
+# residual categories: they do not make a sex/gender-titled table a race
+# table, and they do not count towards "fullest table".
+_RACE_SPECIFIC = frozenset({
+    "american_indian_alaska_native", "asian", "black_african_american",
+    "native_hawaiian_pacific_islander", "white", "more_than_one_race",
+})
+
+def split_race_by_sex_label(label: str) -> Optional[Tuple[str, str]]:
+    """Split a race-by-sex label into (race_part, sex).
+
+    sex is "female" or "male". Returns None when the cleaned label has no sex
+    word, more than one, or nothing besides the sex word. Examples:
+      "White : Female"                  -> ("White", "female")
+      "Caucasian (Female)"              -> ("Caucasian", "female")
+      "Asian or Pacific Islander-Male"  -> ("Asian or Pacific Islander", "male")
+      "African American Male Veterans" -> ("African American", "male")
+      "Female: Black"                   -> ("Black", "female")
+      "Condoms (female and male)"       -> None
+    """
+    text = clean_demographic_label(label)
+    hits = list(_SEX_WORD_RE.finditer(text))
+    if len(hits) != 1:
+        return None
+    hit = hits[0]
+    sex = "female" if hit.group(1).lower().startswith("f") else "male"
+    before = text[:hit.start()].rstrip(_RACE_PART_TRAILING)
+    after = text[hit.end():].strip(_RACE_PART_EDGES)
+    race_part = before or after
+    if not race_part:
+        return None
+    return race_part, sex
+
+def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str],
+                      fallback_denom: Optional[int], sex_titled: bool) -> Optional[Dict]:
+    """Read one baseline measure as a race table.
+
+    Returns {"title", "index", "sex_titled", "race_by_sex", "categories",
+    "quarantined"}: the counted category records and the quarantined labels.
+    A race-titled measure always returns a table (plain rows unless it passes
+    the race-by-sex test). A sex/gender-titled measure returns None unless
+    every row maps to a race-specific category (see the block comment above).
+    """
+    title = measure.get("title", "")
+    rows, pct_converted = _measure_rows(measure, overall_group_id, fallback_denom)
+    splits = [split_race_by_sex_label(label) for label, _count in rows]
+    by_sex_rows = bool(rows) and all(sp is not None for sp in splits)
+
+    categories: List[Dict] = []
+    quarantined: List[Dict] = []
+    skipped = 0
+    race_by_sex = False
+    if by_sex_rows:
+        for (label, count), (race_part, sex) in zip(rows, splits):
+            mapping = _map_plain_row(race_part, count, pct_converted)
+            if mapping is None:
+                skipped += 1
+                continue
+            # Quarantine is decided on the race part, as for a plain row; the
+            # record then carries the posted label so the source stays visible.
+            is_quarantined = _should_quarantine(mapping)
+            mapping["original"] = clean_demographic_label(label)
+            mapping["race_part"] = race_part
+            mapping["sex"] = sex
+            mapping["flags"].append("race_by_sex")
+            if is_quarantined:
+                quarantined.append(mapping)
+            else:
+                categories.append(mapping)
+        race_by_sex = any("unmapped" not in c["flags"] for c in categories)
+
+    if not race_by_sex:
+        # Plain table, or sex words that are not a race-by-sex crossing:
+        # every row mapped whole, as before.
+        categories, quarantined, skipped = [], [], 0
+        for label, count in rows:
+            mapping = _map_plain_row(label, count, pct_converted)
+            if mapping is None:
+                skipped += 1
+                continue
+            if _should_quarantine(mapping):
+                quarantined.append(mapping)
+            else:
+                categories.append(mapping)
+
+    if sex_titled:
+        # Race rows under a sex/gender title: every row must be race-specific
+        # and mapped, whether plain or race-by-sex; a row with a sex word that
+        # did not split ("Female") fails the plain mapping test here.
+        if (not categories or skipped or quarantined
+                or any(c["omb_category"] not in _RACE_SPECIFIC or "unmapped" in c["flags"]
+                       for c in categories)):
+            return None
+        for cat in categories:
+            cat["flags"].append("race_from_sex_titled_table")
+
+    return {
+        "title": title,
+        "index": index,
+        "sex_titled": sex_titled,
+        "race_by_sex": race_by_sex,
+        "categories": categories,
+        "quarantined": quarantined,
+    }
+
+def _race_specific_sum(table: Dict) -> int:
+    """Participants a table places in the race-specific categories."""
+    return sum(c["count"] for c in table["categories"] if c["omb_category"] in _RACE_SPECIFIC)
+
+def _joint_sex_counts(table: Dict, used_for_totals: bool) -> Dict:
+    """The posted (race, sex) counts of one race-by-sex table, with sources."""
+    counts: Dict[str, Dict[str, int]] = {}
+    rows = []
+    for cat in table["categories"]:
+        by_sex = counts.setdefault(cat["omb_category"], {})
+        by_sex[cat["sex"]] = by_sex.get(cat["sex"], 0) + cat["count"]
+        rows.append({
+            "source_label": cat["original"],
+            "race_part": cat["race_part"],
+            "omb_category": cat["omb_category"],
+            "subcategory": cat["subcategory"],
+            "sex": cat["sex"],
+            "count": cat["count"],
+        })
+    return {
+        "source_table": table["title"],
+        "used_for_totals": used_for_totals,
+        "counts": counts,
+        "rows": rows,
+    }
 
 def extract_race_data(study: dict) -> Dict:
     """
@@ -460,6 +696,8 @@ def extract_race_data(study: dict) -> Dict:
         - omb_totals: Dict of NIH/OMB category totals
         - subcategory_totals: Dict of granular subcategory totals
         - raw_categories: List of all extracted categories
+        - joint_sex_counts: posted race-by-sex counts, or None (see the
+          race-by-sex block comment above)
         - flags: List of any issues
     """
     from src.utils import get_baseline_measures, get_overall_group_id, get_total_baseline_participants
@@ -490,49 +728,74 @@ def extract_race_data(study: dict) -> Dict:
         "subcategory_totals": {},
         "raw_categories": [],
         "quarantined_labels": [],
+        "joint_sex_counts": None,
         "flags": []
     }
 
-    race_tables_found = 0
-    has_combined_table = False
-
-    for measure in measures:
+    # Typed (race-titled) tables, and sex/gender-titled tables that carry
+    # race rows, in source order.
+    typed: List[Dict] = []
+    sex_titled: List[Dict] = []
+    for index, measure in enumerate(measures):
         title = measure.get("title", "")
+        if is_race_table(title):
+            typed.append(_parse_race_table(measure, index, overall_group_id,
+                                           total_participants, sex_titled=False))
+        elif MEASURE_TITLE_RX.search(title):
+            table = _parse_race_table(measure, index, overall_group_id,
+                                      total_participants, sex_titled=True)
+            if table is not None:
+                sex_titled.append(table)
 
-        if not is_race_table(title):
-            continue
+    race_tables_found = len(typed)
+    # Rule 1: race-titled tables when any exist, else the sex/gender-titled ones.
+    in_play = typed or sex_titled
+    superseded = sex_titled if typed else []
+    # Rule 2: one table, the fullest, when a race-by-sex or sex/gender-titled
+    # table competes with another; plain race-titled tables are summed as before.
+    if len(in_play) > 1 and (not typed or any(t["race_by_sex"] for t in in_play)):
+        best = in_play[0]
+        for table in in_play[1:]:
+            if _race_specific_sum(table) > _race_specific_sum(best):
+                best = table  # strictly greater: the first wins ties
+        superseded = superseded + [t for t in in_play if t is not best]
+        counted = [best]
+    else:
+        counted = in_play
 
-        race_tables_found += 1
+    if superseded:
+        result["flags"].append("race_table_superseded")
+
+    for table in counted:
         result["reported"] = True
-
-        categories = extract_race_from_measure(measure, overall_group_id,
-                                               fallback_denom=total_participants)
+        categories = table["categories"]
 
         # Annotate categories from non-standard / combined measures so the
         # dashboard can surface the match-quality signal to the user
-        title_lower = title.lower()
+        title_lower = table["title"].lower()
         is_combined   = "ethnicity" in title_lower
         is_customized = "customized" in title_lower
-        if is_combined:
-            has_combined_table = True
         if is_combined or is_customized:
             for cat in categories:
                 if is_combined:
                     cat["flags"].append("combined_race_ethnicity")
                 if is_customized:
                     cat["flags"].append("customized_table")
+        if table["race_by_sex"]:
+            result["flags"].append("race_by_sex_table")
+        if table["sex_titled"]:
+            result["flags"].append("race_from_sex_titled_table")
+
+        # Quarantine irrelevant unmapped labels (e.g. "Condom", "IUD")
+        for cat in table["quarantined"]:
+            result["quarantined_labels"].append({
+                "original": cat["original"],
+                "count": cat["count"],
+                "reason": "unmapped_non_race_label"
+            })
+            result["flags"].append("quarantined_label")
 
         for cat in categories:
-            # Quarantine irrelevant unmapped labels (e.g. "Condom", "IUD")
-            if _should_quarantine(cat):
-                result["quarantined_labels"].append({
-                    "original": cat["original"],
-                    "count": cat["count"],
-                    "reason": "unmapped_non_race_label"
-                })
-                result["flags"].append("quarantined_label")
-                continue
-
             result["raw_categories"].append(cat)
 
             # Add to OMB totals
@@ -547,6 +810,15 @@ def extract_race_data(study: dict) -> Dict:
             # Collect flags
             result["flags"].extend(cat["flags"])
 
+    # Joint counts: the counted race-by-sex table, else the first one posted.
+    by_sex_tables = sorted((t for t in typed + sex_titled if t["race_by_sex"]),
+                           key=lambda t: t["index"])
+    if by_sex_tables:
+        joint = next((t for t in by_sex_tables if any(t is c for c in counted)), by_sex_tables[0])
+        result["joint_sex_counts"] = _joint_sex_counts(joint, any(joint is c for c in counted))
+        if len(by_sex_tables) > 1:
+            result["flags"].append("multiple_race_by_sex_tables")
+
     if race_tables_found > 1:
         result["flags"].append(f"multiple_race_tables_{race_tables_found}")
 
@@ -558,7 +830,8 @@ def extract_race_data(study: dict) -> Dict:
     # be added to unknown_not_reported.
     # Only balance when at least some non-zero data was extracted — if every
     # count is zero, the study has no real data and all-zero rejection should
-    # take precedence.
+    # take precedence. joint_sex_counts is never balanced: it holds posted
+    # counts only.
     if result["reported"] and total_participants is not None:
         extracted_sum = sum(result["omb_totals"].values())
         if extracted_sum > 0:
@@ -581,6 +854,7 @@ def extract_race_data(study: dict) -> Dict:
         result["omb_totals"] = {k: 0 for k in result["omb_totals"]}
         result["raw_categories"] = []
         result["subcategory_totals"] = {}
+        result["joint_sex_counts"] = None
         result["flags"] = ["all_zero_rejection"]
 
     # Dedupe flags

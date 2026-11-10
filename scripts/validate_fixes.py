@@ -8,6 +8,7 @@ Tests:
   2. NCT01221441 — Row-level routing + alias mapping on combined table
   3. NCT02498067 — Quarantine of non-race labels
   4. NCT05109104 — All-zero count rejection
+  5. NCT99000101 — Race-by-sex table beside a sex table (fictional study)
 """
 import json
 import sys
@@ -180,6 +181,38 @@ MOCK_NCT05109104 = _make_study(
 )
 
 
+# ---------- NCT99000101 (fictional): race crossed with sex in one table ----------
+# 40 participants. The race table posts one row per (race, sex) pair, in the
+# three layouts seen in the registry ("X : Female", "X (Male)", "X- Female").
+# Key tests:
+#   - each row's race part maps as a plain race row would: White 22, Black 12,
+#     Asian 6, nothing in "other"
+#   - race.joint_sex_counts keeps the posted pairs; the sex table is untouched
+MOCK_NCT99000101 = _make_study(
+    "NCT99000101",
+    "NCT99000101 - Race-by-sex table (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White : Female", 10),
+                _make_category("White (Male)", 12),
+                _make_category("Black or African American- Female", 5),
+                _make_category("Black or African American- Male", 7),
+                _make_category("Asian : Female", 2),
+                _make_category("Asian : Male", 4),
+            ])
+        ]),
+        _make_measure("Sex: Female, Male", [
+            _make_class("", [
+                _make_category("Female", 17),
+                _make_category("Male", 23),
+            ])
+        ]),
+    ],
+    total_participants=40,
+)
+
+
 def validate_study(study, nct_id):
     print(f"\n{'='*70}")
     print(f"  {nct_id}")
@@ -213,6 +246,8 @@ def validate_study(study, nct_id):
         for rc in race["raw_categories"]:
             print(f"      - \"{rc['original']}\" -> {rc['omb_category']} "
                   f"(confidence={rc['confidence']}, count={rc.get('count', 0)}, flags={rc['flags']})")
+    print(f"    joint_sex_counts: "
+          f"{json.dumps(race['joint_sex_counts']['counts']) if race.get('joint_sex_counts') else None}")
 
     # Ethnicity
     print(f"\n  ETHNICITY:")
@@ -240,6 +275,7 @@ def main():
         (MOCK_NCT01221441, "NCT01221441"),
         (MOCK_NCT02498067, "NCT02498067"),
         (MOCK_NCT05109104, "NCT05109104"),
+        (MOCK_NCT99000101, "NCT99000101"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
