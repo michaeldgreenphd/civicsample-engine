@@ -81,28 +81,21 @@ Practical consequences:
   backed by a run against real inputs or a fixture, not by inspection alone.
 - Say plainly what you did *not* do, and why, rather than leaving it implied.
 
-## Dual-AI PR Review Architecture
+## Automated PR review
 
-- **Codex** audits hunk-level diff logic, local edge cases, syntax/types and
-  isolated code correctness.
-- **Gemini CLI** follows [GEMINI.md](GEMINI.md) to audit whole-repository blast
-  radius, untouched downstream callers, data provenance, and contract sync
-  between civicsample-engine and clinical-trial-populations. It reports only
-  regressions supported by both a changed line and an untouched consumer.
+**Codex** is the only automated reviewer. It audits hunk-level diff logic, local
+edge cases, syntax/types and isolated code correctness; the `@codex review`
+comment that opens every review requests it.
 
-These roles complement the review rules below; Gemini does not repeat Codex's
-local checks. The [Gemini workflow](.github/workflows/gemini-pr-review.yml)
-runs on non-draft same-repository PRs when they are opened, pushed to or marked
-ready. It also runs on a PR comment containing `@codex review` or `@gemini-cli`
-from a collaborator with write access, drafts included, so the `@codex review`
-comment that opens every review requests both reviews and no separate Gemini
-comment is needed. Each head is reviewed once: a later event or `@codex review`
-comment for an already reviewed head is skipped, and `@gemini-cli` forces a
-rerun. It maintains one sticky review comment. If the model fails or times out,
-that comment records the reason for the head, a completed review of the same
-head is kept, and the check fails. Fork and Dependabot PRs are skipped because
-this job needs a secret and a comment-writing token. Comment triggers become
-available once the workflow is on the default branch.
+Nothing automated checks cross-file effects: untouched downstream callers, data
+provenance, or the contract between civicsample-engine and
+clinical-trial-populations. The author covers these with this repository's own
+verification steps: the targeted checks and
+[the connected verification path](verify.md#connected-verification) in
+[verify.md](verify.md), including `scripts/check_site_contract.py` and
+`scripts/first_view_parity.mjs` against a site checkout.
+
+The Gemini PR review was removed on 2026-11-10 at the owner's request.
 
 ## Code Review Rules
 
