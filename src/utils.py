@@ -617,7 +617,8 @@ def get_study_metadata(study: dict) -> dict:
         "references": references
     }
 
-def extract_demographic_breakdown(measures: list, category_type: str, overall_group_id: Optional[str] = None) -> dict:
+def extract_demographic_breakdown(measures: list, category_type: str,
+                                  overall_group_id: Optional[str] = None) -> Optional[dict]:
     """
     Extract demographic breakdown with counts and percentages.
 
@@ -627,16 +628,30 @@ def extract_demographic_breakdown(measures: list, category_type: str, overall_gr
         overall_group_id: groupId of the Overall group (from get_overall_group_id)
 
     Returns:
-        Dictionary mapping category names to {count, percent} dicts
+        Dictionary mapping category names to {count, percent} dicts, or None
+        when no measure of that type has a labelled row
     """
+    # Imported here: race_extractor imports this module at load time.
+    from src.race_extractor import is_race_table
+
     breakdown = {}
     category_lower = category_type.lower()
 
     for measure in measures:
-        title = measure.get("title", "").lower()
+        posted_title = measure.get("title", "")
+        title = posted_title.lower()
 
-        # Match the category type
-        if category_lower not in title:
+        # Match the category type. Race uses the race extractor's word rule
+        # (race_extractor.is_race_table), so raceBreakdown reads the same
+        # race-titled tables extract_race_data does (not its sex/gender-titled
+        # fallback): "Contraception History" is not a race table, "Racial
+        # Group" is. It reads the title as posted, since a camelCase title
+        # ("RaceEthnicityOther") loses its word breaks when lowercased.
+        # Ethnicity and sex keep the substring test.
+        if category_lower == "race":
+            if not is_race_table(posted_title):
+                continue
+        elif category_lower not in title:
             continue
 
         # Combined "Race/Ethnicity" tables: process for race (the race

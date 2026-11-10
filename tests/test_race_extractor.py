@@ -17,6 +17,11 @@ table split by sex). The rule for duplicate tables follows the sex/gender
 parser: race-titled tables first, then one fullest table, the first on ties;
 tables whose own Number Analyzed shows they cover different people are
 summed.
+
+Which measures are race tables at all is the title word rule
+(race_extractor.is_race_table): titles that only contain the letters "race"
+inside another word ("Contraception History", "GRACE score", "Intracerebral
+hemorrhage") are not race tables, for the race block or for raceBreakdown.
 """
 from __future__ import annotations
 
@@ -32,7 +37,8 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from src import race_extractor as rx  # noqa: E402
-from src.race_extractor import extract_race_data, split_race_by_sex_label  # noqa: E402
+from src.race_extractor import extract_race_data, is_race_table, split_race_by_sex_label  # noqa: E402
+from src.utils import extract_demographic_breakdown  # noqa: E402
 
 RACE_KEYS = ("american_indian_alaska_native", "asian", "black_african_american",
              "native_hawaiian_pacific_islander", "white", "more_than_one_race",
@@ -321,8 +327,11 @@ def test_sex_tables_without_race_only_rows_are_not_read_as_race(rows: list[tuple
 @pytest.mark.parametrize("title, rows", [
     ("Race/Ethnicity, Customized", [("Han Chinese", 50), ("Hui Chinese", 2), ("Man Chinese", 1)]),
     ("Race/Ethnicity, Customized", [("Han", 50), ("Man", 3), ("Hui", 2)]),
-    ("Contraception History", [("Oral contraceptive pill", 4), ("Condoms (female and male)", 2), ("Unknown", 1)]),
-    ("Female method of contraception", [("Male Partner Sterilization", 1), ("Abstinence", 3)]),
+    # Contraception rows under a race title (the registry posted them under
+    # "Contraception History" and "Female method of contraception", which
+    # is_race_table no longer admits; see the title-rule tests below).
+    ("Race/Ethnicity, Customized", [("Oral contraceptive pill", 4), ("Condoms (female and male)", 2), ("Unknown", 1)]),
+    ("Race (NIH/OMB)", [("Male Partner Sterilization", 1), ("Abstinence", 3)]),
     ("Race/Ethnicity, Customized", [("Female participants", 20), ("Male participants", 20)]),
     ("Race/Ethnicity, Customized", [("Non-Hispanic/Latino Black Female", 3), ("Hispanic/Latino Black Male", 2)]),
 ])
@@ -595,3 +604,126 @@ def test_output_is_deterministic_and_flags_sorted() -> None:
     assert first == second
     assert first["flags"] == sorted(first["flags"])
     assert set(first["omb_totals"]) == set(RACE_KEYS)
+
+
+# ── which titles are race tables ───────────────────────────────────────────
+#
+# Titles below are shapes posted in the registry; the studies around them are
+# fictional. Before the word rule, every title containing the letters "race"
+# or "racial" was a race table.
+
+@pytest.mark.parametrize("title", [
+    "Race (NIH/OMB)",
+    "RACE (NIH/OMB)",
+    "Race/Ethnicity, Customized",
+    "Ethnicity/Race",
+    "Racial group",
+    "Child Race",
+    "Race - Peru",
+    "Race (NIH/OMB) (Influenza Season 2015-2016)",
+    "RaceEthnicityOther",    # camelCase: a \b regex finds no word break after "Race"
+    "Race_Ethnicity",        # "_" is a regex word character, not a separator here
+    "Races",
+])
+def test_titles_with_the_word_race_are_race_tables(title: str) -> None:
+    assert is_race_table(title) is True
+
+
+@pytest.mark.parametrize("title", [
+    "Contraception History",
+    "Female method of contraception",
+    "Method of Contraception (Female)",
+    "Oral Contraceptive Use History",
+    "GRACE score",
+    "Intracerebral hemorrhage (ICH) volume",
+    "Total paracetamol ingested",
+    "Extracellular water",
+    "Out-of-brace Cobb angle at Baseline",
+    "Paravalvular aortic regurgitation - none or trace",
+    "Use of Levetiracetam as Baseline AED",
+    "",
+    None,
+])
+def test_titles_with_race_only_inside_another_word_are_not(title: Optional[str]) -> None:
+    assert is_race_table(title) is False
+
+
+CONTRACEPTION = _class_table("Contraception use at time of enrollment",
+                             [("None", 33), ("Condoms", 62), ("Other method", 7)])
+
+
+def test_a_contraception_table_alone_does_not_report_race() -> None:
+    """Before the word rule this table was the trial's race table: "Other
+    method" counted 7 as race "other" (the word "other" keeps it out of
+    quarantine) and balancing filled the rest of the 102 with unknown."""
+    study = _study("NCT99000033", [CONTRACEPTION, SEX_TABLE], participants=102)
+    race = extract_race_data(study)
+    assert race["reported"] is False
+    assert race["flags"] == []
+    assert race["raw_categories"] == [] and race["quarantined_labels"] == []
+    measures = study["resultsSection"]["baselineCharacteristicsModule"]["measures"]
+    assert extract_demographic_breakdown(measures, "race") is None
+
+
+def test_a_contraception_table_is_not_a_second_race_table() -> None:
+    study = _study("NCT99000034", [RACE_42, CONTRACEPTION], participants=42)
+    race = extract_race_data(study)
+    assert _nonzero(race) == {"asian": 3, "black_african_american": 9, "white": 28, "unknown_not_reported": 2}
+    assert not any(f.startswith("multiple_race_tables_") for f in race["flags"])
+    assert "race_table_superseded" not in race["flags"]
+    assert race["quarantined_labels"] == []
+
+
+def test_a_contraception_other_row_no_longer_outcounts_an_unknown_only_race_table() -> None:
+    """Neither table has a race-specific count, so the fullest by counted sum
+    won: the contraception table's "Other" 30 beat the race table's Unknown
+    20 and became race "other". Now the race table is the only one."""
+    unknown_only = _category_table("Race (NIH/OMB)", [("Unknown or Not Reported", 20)])
+    contraception = _class_table("Contraception History", [("Pill", 12), ("Other", 30), ("None", 8)])
+    race = extract_race_data(_study("NCT99000035", [unknown_only, contraception], participants=50))
+    assert _nonzero(race) == {"unknown_not_reported": 50}
+    assert race["unknown_explicit"] == 20 and race["unknown_inferred"] == 30
+    assert race["flags"] == ["denominator_balanced"]
+
+
+def test_a_contraception_table_no_longer_supersedes_race_rows_in_a_sex_titled_table() -> None:
+    """Rule 1 sets sex/gender-titled tables aside whenever a race-titled table
+    exists; a contraception table was enough to do that."""
+    sex_titled = _class_table("Sex/Gender, Customized", [("White", 30), ("Black or African American", 10)])
+    contraception = _class_table("Contraception History", [("Other", 5), ("Pill", 35)])
+    race = extract_race_data(_study("NCT99000036", [sex_titled, contraception], participants=40))
+    assert _nonzero(race) == {"white": 30, "black_african_american": 10}
+    assert "race_from_sex_titled_table" in race["flags"]
+    assert "race_table_superseded" not in race["flags"]
+
+
+def test_a_camel_case_race_title_is_read() -> None:
+    """The race rows sit under "RaceEthnicityOther"; the other race-titled
+    table holds ethnicity rows only. A \\b regex rule would leave this trial
+    with the ethnicity table alone, and race not reported."""
+    ethnicity = _class_table("Race/Ethnicity, Customized", [("Hispanic or Latino", 4), ("Not Hispanic or Latino", 36)])
+    camel = _class_table("RaceEthnicityOther", [("White", 30), ("Black/African American", 8), ("Other", 2)])
+    study = _study("NCT99000037", [ethnicity, camel], participants=40)
+    race = extract_race_data(study)
+    assert _nonzero(race) == {"white": 30, "black_african_american": 8, "other": 2}
+    measures = study["resultsSection"]["baselineCharacteristicsModule"]["measures"]
+    breakdown = extract_demographic_breakdown(measures, "race")
+    assert {k: v["count"] for k, v in breakdown.items()} == {
+        "Hispanic or Latino": 4, "Not Hispanic or Latino": 36,
+        "White": 30, "Black/African American": 8, "Other": 2}
+
+
+def test_race_breakdown_uses_the_race_title_rule() -> None:
+    """raceBreakdown used its own substring test ("race" only), so it read
+    contraception tables and missed "Racial ..." titles. It now uses
+    is_race_table; ethnicity and sex keep their substring tests."""
+    racial = _class_table("Racial Group", [("White", 18), ("Asian", 4)])
+    contraception = _class_table("Contraception History", [("Pill", 12), ("Other", 3)])
+    ethnicity = _category_table("Ethnicity (NIH/OMB)", [("Hispanic or Latino", 2), ("Not Hispanic or Latino", 20)])
+    measures = [racial, contraception, ethnicity, SEX_TABLE]
+    breakdown = extract_demographic_breakdown(measures, "race")
+    assert {k: v["count"] for k, v in breakdown.items()} == {"White": 18, "Asian": 4}
+    assert {k: v["count"] for k, v in extract_demographic_breakdown(measures, "ethnicity").items()} == {
+        "Hispanic or Latino": 2, "Not Hispanic or Latino": 20}
+    assert {k: v["count"] for k, v in extract_demographic_breakdown(measures, "sex").items()} == {
+        "Female": 20, "Male": 20}
