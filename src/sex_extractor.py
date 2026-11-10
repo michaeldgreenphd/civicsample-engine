@@ -228,12 +228,16 @@ def _extract_rows_from_measure(measure: dict, overall_group_id=None,
     converted to estimated counts using the measure's Number Analyzed,
     or the study enrollment as a fallback for cluster-randomized studies.
     """
-    from src.utils import sum_measurements, is_percentage_measure, get_measure_denom
+    from src.utils import sum_measurements, is_percentage_measure
 
     is_pct = is_percentage_measure(measure)
     denom = None
     if is_pct:
-        denom = get_measure_denom(measure, overall_group_id)
+        # The measure's own Number Analyzed, else a class-level one every
+        # class repeats, else the baseline total, as in the race and
+        # ethnicity extractors (table_selection.percentage_denominator says
+        # why class numbers that differ are not used).
+        denom = table_selection.percentage_denominator(measure, overall_group_id, None)
         if denom is None:
             denom = fallback_denom
 

@@ -130,3 +130,16 @@ def test_flags_sorted_and_output_deterministic() -> None:
     study = _study("NCT99000309", [SEX_60, customized], participants=60)
     first, second = extract_sex_data(study), extract_sex_data(study)
     assert first == second and first["flags"] == sorted(first["flags"])
+
+
+def test_percentage_parts_convert_against_their_own_numbers_analyzed() -> None:
+    """100% female of a 40-person part and 100% male of a 60-person part,
+    Number Analyzed on each class: 40 and 60 summed as parts, not 100 each."""
+    part_a = _category_table("Sex: Female, Male", [("Female", 100), ("Male", 0)], analyzed=40)
+    part_b = _category_table("Sex: Female, Male", [("Female", 0), ("Male", 100)], analyzed=60)
+    for table in (part_a, part_b):
+        table["paramType"] = "NUMBER"
+        table["unitOfMeasure"] = "Percentage of participants"
+    sex = extract_sex_data(_study("NCT99000310", [part_a, part_b], participants=100))
+    assert sex["totals"] == {"female": 40, "male": 60, "unknown": 0}
+    assert "sex_tables_partitioned" in sex["flags"]
