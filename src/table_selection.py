@@ -30,7 +30,8 @@ select_tables applies:
      with more subcategory detail is kept. A table with no specific count never
      wins over one with any.
   3. Disjoint parts are summed only when the caller allows it, every table
-     with specific counts posts its own Number Analyzed below the baseline
+     (all tables in play, residual-only ones included; else every table
+     with specific counts) posts its own Number Analyzed below the baseline
      total, those numbers add up to EXACTLY the baseline total, and no table
      counts more participants than its own Number Analyzed. A smaller sum is
      no evidence of different people: the same 20 of 50 participants posted
@@ -117,6 +118,10 @@ def select_tables(tables: List[Dict], total_participants: Optional[int],
     (rules 2 and 3 above)."""
     if len(tables) <= 1:
         return tables, False
+    if allow_parts and total_participants is not None and _parts(tables, total_participants):
+        # Every table is a proven part, residual-only ones included (a part
+        # whose only row is "Unknown" is still that part's people).
+        return tables, True
     informative = [t for t in tables if specific_sum(t, specific, key) > 0]
     if not informative:
         return [fullest(tables, specific, key)], False
@@ -127,11 +132,18 @@ def select_tables(tables: List[Dict], total_participants: Optional[int],
     whole = [t for t in informative if t["analyzed"] is None or t["analyzed"] >= total_participants]
     if whole:
         return [fullest(whole, specific, key)], False
-    if (allow_parts
-            and sum(t["analyzed"] for t in informative) == total_participants
-            and all(counted_sum(t) <= t["analyzed"] for t in informative)):
+    if allow_parts and _parts(informative, total_participants):
         return informative, True
     return [fullest(informative, specific, key)], False
+
+
+def _parts(tables: List[Dict], total_participants: int) -> bool:
+    """Rule 3's test: every table posts its own Number Analyzed below the
+    baseline total, the numbers add up to exactly that total, and no table
+    counts more participants than its own number."""
+    return (all(t["analyzed"] is not None and t["analyzed"] < total_participants for t in tables)
+            and sum(t["analyzed"] for t in tables) == total_participants
+            and all(counted_sum(t) <= t["analyzed"] for t in tables))
 
 
 

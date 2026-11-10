@@ -193,3 +193,15 @@ def test_one_class_with_several_rows_uses_its_number() -> None:
         "Ethnicity (NIH/OMB)", [("Hispanic or Latino", 25), ("Not Hispanic or Latino", 75)], analyzed=80))],
         participants=100))
     assert eth["omb_totals"] == {"hispanic_latino": 20, "not_hispanic_latino": 60, "unknown_not_reported": 20}
+
+
+def test_a_part_with_only_unknown_rows_is_still_a_part() -> None:
+    """A reviewer's case: parts of 40 and 60 by their own Number Analyzed;
+    the 40-person part posts only "Unknown". Both are summed as parts, and
+    the 40 stay explicit unknowns rather than becoming inferred ones."""
+    part_a = _table("Ethnicity (NIH/OMB)", [("Unknown or Not Reported", 40)], analyzed=40)
+    part_b = _table("Ethnicity (NIH/OMB)", [("Hispanic or Latino", 6), ("Not Hispanic or Latino", 54)], analyzed=60)
+    eth = extract_ethnicity_data(_study("NCT99000214", [part_a, part_b], participants=100))
+    assert eth["omb_totals"] == {"hispanic_latino": 6, "not_hispanic_latino": 54, "unknown_not_reported": 40}
+    assert "ethnicity_tables_partitioned" in eth["flags"]
+    assert "denominator_balanced" not in eth["flags"]
