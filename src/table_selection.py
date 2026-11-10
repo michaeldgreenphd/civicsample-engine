@@ -132,3 +132,31 @@ def select_tables(tables: List[Dict], total_participants: Optional[int],
             and all(counted_sum(t) <= t["analyzed"] for t in informative)):
         return informative, True
     return [fullest(informative, specific, key)], False
+
+
+
+def percentage_denominator(measure: dict, overall_group_id: Optional[str],
+                           fallback: Optional[int]) -> Optional[int]:
+    """The participants a percentage measure's rows are percentages of.
+
+    The measure's own Number Analyzed when it posts one at the measure level.
+    Otherwise a class-level Number Analyzed only when every class that posts
+    one posts the same number: a table analyzed on part of the population
+    repeats that number on each class (NCT00812214: 75 of 79 on every class,
+    rows 80% + 20%). When classes post different numbers they are not a
+    denominator: registrants put each row's own count there while the
+    percentages are of the whole baseline (NCT02649218: Asian class "51",
+    22.6%; White class "163", 72.1%; baseline 226, and 22.6% of 226 = 51).
+    Then, as with no number at all, ``fallback`` (the baseline total).
+    """
+    from src.utils import get_measure_denom
+
+    n = get_measure_denom(measure, overall_group_id)
+    if n is not None:
+        return n
+    per_class = {get_measure_denom({"denoms": cls.get("denoms") or []}, overall_group_id)
+                 for cls in measure.get("classes", []) if isinstance(cls, dict)}
+    per_class.discard(None)
+    if len(per_class) == 1:
+        return per_class.pop()
+    return fallback

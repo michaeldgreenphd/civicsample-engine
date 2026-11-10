@@ -139,3 +139,30 @@ def test_percentage_parts_convert_against_their_own_numbers_analyzed() -> None:
     eth = extract_ethnicity_data(_study("NCT99000209", [part_a, part_b], participants=100))
     assert eth["omb_totals"] == {"hispanic_latino": 40, "not_hispanic_latino": 60, "unknown_not_reported": 0}
     assert "ethnicity_tables_partitioned" in eth["flags"]
+
+
+
+def _percent_classes(rows: list[tuple[str, str, int]]) -> dict[str, Any]:
+    """A percentage table with labels on classes: (label, value %, class Number Analyzed)."""
+    return {"title": "Ethnicity (NIH/OMB)", "paramType": "NUMBER", "unitOfMeasure": "Percentage of participants",
+             "classes": [{"title": label, "denoms": _denoms(n),
+                          "categories": [{"measurements": [{"groupId": "BG000", "value": value}]}]}
+                         for label, value, n in rows]}
+
+
+def test_class_numbers_that_differ_are_row_counts_not_denominators() -> None:
+    """The registry pattern behind NCT02649218: each class "Number Analyzed"
+    is that row's own count, and the percentages are of the whole baseline
+    (23% of 100 = 23, 77% of 100 = 77). Converting each row against its own
+    number would give 5 and 59; the baseline total is used instead."""
+    table = _percent_classes([("Hispanic or Latino", "23", 23), ("Not Hispanic or Latino", "77", 77)])
+    eth = extract_ethnicity_data(_study("NCT99000210", [table], participants=100))
+    assert eth["omb_totals"] == {"hispanic_latino": 23, "not_hispanic_latino": 77, "unknown_not_reported": 0}
+
+
+def test_a_class_number_every_class_repeats_is_the_tables_denominator() -> None:
+    """The pattern behind NCT00812214: every class repeats one Number
+    Analyzed (80 of 100), and the percentages add to 100% of those 80."""
+    table = _percent_classes([("Hispanic or Latino", "20", 80), ("Not Hispanic or Latino", "80", 80)])
+    eth = extract_ethnicity_data(_study("NCT99000210", [table], participants=100))
+    assert eth["omb_totals"] == {"hispanic_latino": 16, "not_hispanic_latino": 64, "unknown_not_reported": 20}

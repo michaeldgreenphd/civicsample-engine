@@ -423,22 +423,20 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 
     Percentage-aware: if the measure reports percentages (detected via
     unitOfMeasure/paramType), values are converted to estimated counts using
-    the measure's Number Analyzed denominator, or the study's enrollment count
-    as a fallback (for cluster-randomized studies where the measure's denom is
-    "Number of Clinics" instead of "Participants").
+    the measure's Number Analyzed, else a class-level one every class
+    repeats, or the study's baseline total as a fallback (for
+    cluster-randomized studies where the measure's denom is "Number of
+    Clinics" instead of "Participants").
     """
     from src.utils import sum_measurements, is_percentage_measure
 
     is_pct = is_percentage_measure(measure)
-    denom = None
-    if is_pct:
-        # The table's own Number Analyzed, measure-level or, as the registry
-        # returns most of them, class-level (table_selection.number_analyzed):
-        # a percentage table analyzed on part of the population converts
-        # against that part, the same number the table-selection rules read.
-        denom = table_selection.number_analyzed(measure, overall_group_id)
-        if denom is None:
-            denom = fallback_denom  # fall back to study enrollment
+    # Percentages convert against the measure's own Number Analyzed, else a
+    # class-level one that every class repeats, else the study's baseline
+    # total (table_selection.percentage_denominator, which says why
+    # class numbers that differ are not used).
+    denom = (table_selection.percentage_denominator(measure, overall_group_id, fallback_denom)
+             if is_pct else None)
 
     rows: List[Tuple[str, int]] = []
     for cls in measure.get("classes", []):

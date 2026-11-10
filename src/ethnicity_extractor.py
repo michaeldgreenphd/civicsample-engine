@@ -172,15 +172,12 @@ def extract_ethnicity_from_measure(measure: dict, overall_group_id=None,
 
     # Detect percentage measures and get denominator for conversion
     is_pct = is_percentage_measure(measure)
-    denom = None
-    if is_pct:
-        # The table's own Number Analyzed, measure-level or, as the registry
-        # returns most of them, class-level (table_selection.number_analyzed):
-        # a percentage table analyzed on part of the population converts
-        # against that part, the same number the table-selection rules read.
-        denom = table_selection.number_analyzed(measure, overall_group_id)
-        if denom is None:
-            denom = fallback_denom  # fall back to study enrollment
+    # Percentages convert against the measure's own Number Analyzed, else a
+    # class-level one that every class repeats, else the study's baseline
+    # total (table_selection.percentage_denominator, which says why
+    # class numbers that differ are not used).
+    denom = (table_selection.percentage_denominator(measure, overall_group_id, fallback_denom)
+             if is_pct else None)
 
     results = []
 
