@@ -9,6 +9,8 @@ Tests:
   3. NCT02498067 — Quarantine of non-race labels
   4. NCT05109104 — All-zero count rejection
   5. NCT99000101 — Race-by-sex table beside a sex table (fictional study)
+  6. NCT99000102 — Race table plus an ethnicity table titled "Race/Ethnicity,
+     Customized" (fictional study)
 """
 import json
 import sys
@@ -213,6 +215,37 @@ MOCK_NCT99000101 = _make_study(
 )
 
 
+# ---------- NCT99000102 (fictional): an ethnicity table posted under a race title ----------
+# 60 participants. The race table counts everyone; the second "Race/Ethnicity,
+# Customized" table is an ethnicity table whose "Unknown" row maps to race.
+# Key tests:
+#   - the race table alone is counted: White 41, Black 12, Asian 4, Unknown 3
+#     = 60, not 60 + 5 ethnicity unknowns
+#   - flags race_table_superseded and multiple_race_tables_2
+MOCK_NCT99000102 = _make_study(
+    "NCT99000102",
+    "NCT99000102 - Race plus ethnicity table (fictional mock)",
+    [
+        _make_measure("Race (NIH/OMB)", [
+            _make_class("", [
+                _make_category("White", 41),
+                _make_category("Black or African American", 12),
+                _make_category("Asian", 4),
+                _make_category("Unknown or Not Reported", 3),
+            ])
+        ]),
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("Hispanic or Latino", 9),
+                _make_category("Not Hispanic or Latino", 46),
+                _make_category("Unknown", 5),
+            ])
+        ]),
+    ],
+    total_participants=60,
+)
+
+
 def validate_study(study, nct_id):
     print(f"\n{'='*70}")
     print(f"  {nct_id}")
@@ -276,6 +309,7 @@ def main():
         (MOCK_NCT02498067, "NCT02498067"),
         (MOCK_NCT05109104, "NCT05109104"),
         (MOCK_NCT99000101, "NCT99000101"),
+        (MOCK_NCT99000102, "NCT99000102"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
