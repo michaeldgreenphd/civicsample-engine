@@ -536,14 +536,23 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 #      one with any.
 #   3. Disjoint parts. A table analyzed on part of the population carries its
 #      own Number Analyzed (see _number_analyzed): e.g. one "Race (NIH/OMB)"
-#      table for caregivers and one for patients, or one per study part. When
-#      every table with race-specific counts carries its own Number Analyzed
-#      below the baseline total, those numbers add up to no more than the
-#      baseline total, and no table counts more participants than its own
-#      Number Analyzed, the tables are parts of the population and are summed
-#      (flag race_tables_partitioned). Otherwise rule 2 applies: a table with
-#      no Number Analyzed of its own was analyzed on everyone, so another
-#      table can only re-count some of the same people.
+#      table for caregivers and one for patients, or one per study part. The
+#      tables are summed (flag race_tables_partitioned) only when all of these
+#      hold:
+#        - every table in play is a plain race-titled table (a race-by-sex or
+#          sex/gender-titled table is always deduplicated by rule 2: it is
+#          the same population re-posted with another breakdown);
+#        - every table with race-specific counts carries its own Number
+#          Analyzed below the baseline total;
+#        - those numbers add up to EXACTLY the baseline total, so the parts
+#          account for every baseline participant once. A smaller sum is not
+#          evidence of disjoint people: the same 20 of 50 participants posted
+#          twice also add up to less than 50;
+#        - no table counts more participants than its own Number Analyzed.
+#      Otherwise rule 2 applies: a table with no Number Analyzed of its own
+#      was analyzed on everyone, so another table can only re-count some of
+#      the same people, and two subsets that do not make up the whole may be
+#      the same subset.
 # Every table not counted is recorded with the race_table_superseded flag.
 # The parser takes its residual buckets (unknown, gender diverse) as the MAX
 # across tables; here the winning table is used whole, so the totals stay the
@@ -555,8 +564,9 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # with more than one race-titled table (by 326,105 participants), mostly an
 # ethnicity table's "Unknown" or "Other" row counted again as race, or the
 # same people posted in a "Race (NIH/OMB)" and a customized table. Rule 3
-# keeps the 34 trials whose posted denominators show disjoint parts summed.
-# Parts posted without a Number Analyzed of their own (a "Child Race" table
+# keeps the 32 trials whose posted denominators make up the baseline total
+# summed. Parts posted without a Number Analyzed of their own, or whose
+# numbers fall short of the total (a "Child Race" table
 # beside "Race", one table per country) cannot be told from re-counts by
 # their counts alone; only the fullest is counted and the rest of the
 # baseline total becomes unknown_inferred, never a second count.
@@ -751,9 +761,11 @@ def _fullest(tables: List[Dict]) -> Dict:
             best = table
     return best
 
-def _select_tables(tables: List[Dict], total_participants: Optional[int]) -> Tuple[List[Dict], bool]:
+def _select_tables(tables: List[Dict], total_participants: Optional[int],
+                   allow_parts: bool) -> Tuple[List[Dict], bool]:
     """The tables to count, and whether they were summed as disjoint parts
-    (rules 2 and 3 of the block comment above)."""
+    (rules 2 and 3 of the block comment above). allow_parts is False when any
+    table in play is a race-by-sex or sex/gender-titled table."""
     if len(tables) <= 1:
         return tables, False
     race = [t for t in tables if _race_specific_sum(t) > 0]
@@ -766,7 +778,8 @@ def _select_tables(tables: List[Dict], total_participants: Optional[int]) -> Tup
     whole = [t for t in race if t["analyzed"] is None or t["analyzed"] >= total_participants]
     if whole:
         return [_fullest(whole)], False
-    if (sum(t["analyzed"] for t in race) <= total_participants
+    if (allow_parts
+            and sum(t["analyzed"] for t in race) == total_participants
             and all(_counted_sum(t) <= t["analyzed"] for t in race)):
         return race, True
     return [_fullest(race)], False
@@ -857,7 +870,8 @@ def extract_race_data(study: dict) -> Dict:
     # Rule 1: race-titled tables when any exist, else the sex/gender-titled ones.
     in_play = typed or sex_titled
     # Rules 2 and 3: the fullest whole-population table, or disjoint parts.
-    counted, partitioned = _select_tables(in_play, total_participants)
+    plain_only = bool(typed) and not any(t["race_by_sex"] for t in in_play)
+    counted, partitioned = _select_tables(in_play, total_participants, allow_parts=plain_only)
     superseded = (sex_titled if typed else []) + [t for t in in_play if not any(t is c for c in counted)]
 
     if superseded:

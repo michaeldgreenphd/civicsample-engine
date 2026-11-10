@@ -513,6 +513,35 @@ def test_disjoint_parts_need_consistent_numbers_analyzed(first_n: int, second_n:
     assert "race_table_superseded" in race["flags"]
 
 
+def test_the_same_subset_posted_twice_is_not_summed() -> None:
+    """Two plain tables each analyzed on the same 20 of 50 participants: the
+    numbers analyzed (40) do not make up the baseline total, so nothing shows
+    they are different people. One is counted; 30 are unknown_inferred."""
+    first = _category_table("Race (NIH/OMB)", [("White", 15), ("Asian", 5)], analyzed=20)
+    again = _class_table("Race/Ethnicity, Customized", [("White", 15), ("Asian", 5)])
+    again["classes"][0]["denoms"] = _denoms(20)
+    race = extract_race_data(_study("NCT99000031", [first, again], participants=50))
+    assert _nonzero(race) == {"white": 15, "asian": 5, "unknown_not_reported": 30}
+    assert race["unknown_inferred"] == 30
+    assert "race_tables_partitioned" not in race["flags"]
+
+
+@pytest.mark.parametrize("participants", [50, 40])
+def test_a_race_by_sex_table_is_never_summed_with_a_plain_table(participants: int) -> None:
+    """The case a reviewer traced: a plain table (White 20) and a race-by-sex
+    table (White F10/M10), each analyzed on the same 20 participants. Not
+    summed, even when the two numbers analyzed happen to make up the total."""
+    plain = _category_table("Race (NIH/OMB)", [("White", 20)], analyzed=20)
+    crossed = _class_table("Race/Ethnicity, Customized", [("White : Female", 10), ("White : Male", 10)])
+    for cls in crossed["classes"]:
+        cls["denoms"] = _denoms(participants - 20 if participants == 40 else 20)
+    race = extract_race_data(_study("NCT99000032", [plain, crossed], participants=participants))
+    assert race["omb_totals"]["white"] == 20
+    assert race["unknown_inferred"] == participants - 20
+    assert "race_tables_partitioned" not in race["flags"]
+    assert race["joint_sex_counts"]["counts"] == {"white": {"female": 10, "male": 10}}
+
+
 def test_a_whole_population_table_beats_subset_tables() -> None:
     """Subset tables (own Number Analyzed below the total) re-count people the
     whole-population table already counts, even when they add up to it."""
