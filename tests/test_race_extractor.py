@@ -727,3 +727,17 @@ def test_race_breakdown_uses_the_race_title_rule() -> None:
         "Hispanic or Latino": 2, "Not Hispanic or Latino": 20}
     assert {k: v["count"] for k, v in extract_demographic_breakdown(measures, "sex").items()} == {
         "Female": 20, "Male": 20}
+
+
+def test_percentage_parts_convert_against_their_own_numbers_analyzed() -> None:
+    """As for ethnicity: 100% White of a 40-person part and 100% Asian of a
+    60-person part, Number Analyzed on each class, are 40 and 60 summed as
+    parts, not 100 each."""
+    part_a = _category_table("Race (NIH/OMB)", [("White", 100), ("Asian", 0)], analyzed=40)
+    part_b = _category_table("Race (NIH/OMB)", [("White", 0), ("Asian", 100)], analyzed=60)
+    for table in (part_a, part_b):
+        table["paramType"] = "NUMBER"
+        table["unitOfMeasure"] = "Percentage of participants"
+    race = extract_race_data(_study("NCT99000033", [part_a, part_b], participants=100))
+    assert _nonzero(race) == {"white": 40, "asian": 60}
+    assert "race_tables_partitioned" in race["flags"]

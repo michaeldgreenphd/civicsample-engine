@@ -119,3 +119,23 @@ def test_flags_sorted_and_output_deterministic() -> None:
     study = _study("NCT99000208", [ETH_100, race], participants=100)
     first, second = extract_ethnicity_data(study), extract_ethnicity_data(study)
     assert first == second and first["flags"] == sorted(first["flags"])
+
+
+def _percent(table: dict[str, Any]) -> dict[str, Any]:
+    table["paramType"] = "NUMBER"
+    table["unitOfMeasure"] = "Percentage of participants"
+    return table
+
+
+def test_percentage_parts_convert_against_their_own_numbers_analyzed() -> None:
+    """A reviewer's case: 100% Hispanic of a 40-person part and 100% Not
+    Hispanic of a 60-person part, each posting Number Analyzed on its class.
+    Converted against the whole baseline (100) both parts became 100; against
+    their own numbers they are 40 and 60 and add up as parts."""
+    part_a = _percent(_table("Ethnicity (NIH/OMB)", [("Hispanic or Latino", 100), ("Not Hispanic or Latino", 0)],
+                             analyzed=40))
+    part_b = _percent(_table("Ethnicity (NIH/OMB)", [("Hispanic or Latino", 0), ("Not Hispanic or Latino", 100)],
+                             analyzed=60))
+    eth = extract_ethnicity_data(_study("NCT99000209", [part_a, part_b], participants=100))
+    assert eth["omb_totals"] == {"hispanic_latino": 40, "not_hispanic_latino": 60, "unknown_not_reported": 0}
+    assert "ethnicity_tables_partitioned" in eth["flags"]

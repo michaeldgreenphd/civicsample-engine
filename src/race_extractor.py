@@ -427,12 +427,16 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
     as a fallback (for cluster-randomized studies where the measure's denom is
     "Number of Clinics" instead of "Participants").
     """
-    from src.utils import sum_measurements, is_percentage_measure, get_measure_denom
+    from src.utils import sum_measurements, is_percentage_measure
 
     is_pct = is_percentage_measure(measure)
     denom = None
     if is_pct:
-        denom = get_measure_denom(measure, overall_group_id)
+        # The table's own Number Analyzed, measure-level or, as the registry
+        # returns most of them, class-level (table_selection.number_analyzed):
+        # a percentage table analyzed on part of the population converts
+        # against that part, the same number the table-selection rules read.
+        denom = table_selection.number_analyzed(measure, overall_group_id)
         if denom is None:
             denom = fallback_denom  # fall back to study enrollment
 

@@ -168,13 +168,17 @@ def extract_ethnicity_from_measure(measure: dict, overall_group_id=None,
 
     Returns list of category records with counts.
     """
-    from src.utils import sum_measurements, is_percentage_measure, get_measure_denom
+    from src.utils import sum_measurements, is_percentage_measure
 
     # Detect percentage measures and get denominator for conversion
     is_pct = is_percentage_measure(measure)
     denom = None
     if is_pct:
-        denom = get_measure_denom(measure, overall_group_id)
+        # The table's own Number Analyzed, measure-level or, as the registry
+        # returns most of them, class-level (table_selection.number_analyzed):
+        # a percentage table analyzed on part of the population converts
+        # against that part, the same number the table-selection rules read.
+        denom = table_selection.number_analyzed(measure, overall_group_id)
         if denom is None:
             denom = fallback_denom  # fall back to study enrollment
 
