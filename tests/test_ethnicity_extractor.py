@@ -175,3 +175,21 @@ def test_a_class_number_on_some_classes_only_is_not_the_tables_denominator() -> 
     del table["classes"][1]["denoms"]
     eth = extract_ethnicity_data(_study("NCT99000211", [table], participants=100))
     assert eth["omb_totals"] == {"hispanic_latino": 20, "not_hispanic_latino": 80, "unknown_not_reported": 0}
+
+
+def test_a_lone_rows_class_number_is_not_the_tables_denominator() -> None:
+    """A reviewer's case: one class, one row (20% Hispanic) whose Number
+    Analyzed is its own count (20). Nothing shows it is table-wide, so the
+    row converts against the baseline: 20, not 4."""
+    table = _percent_classes([("Hispanic or Latino", "20", 20)])
+    eth = extract_ethnicity_data(_study("NCT99000212", [table], participants=100))
+    assert eth["omb_totals"]["hispanic_latino"] == 20
+
+
+def test_one_class_with_several_rows_uses_its_number() -> None:
+    """The NIH/OMB template form: one class, a row per category, Number
+    Analyzed 80 on the class: the rows are percentages of those 80."""
+    eth = extract_ethnicity_data(_study("NCT99000213", [_percent(_table(
+        "Ethnicity (NIH/OMB)", [("Hispanic or Latino", 25), ("Not Hispanic or Latino", 75)], analyzed=80))],
+        participants=100))
+    assert eth["omb_totals"] == {"hispanic_latino": 20, "not_hispanic_latino": 60, "unknown_not_reported": 20}
