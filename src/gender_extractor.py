@@ -7,6 +7,8 @@ Woman/Man.  Only tables explicitly labeled as "gender" are parsed here.
 """
 from typing import Dict, List, Optional
 from src.utils import clean_demographic_label, is_sex_qualified_identity_label
+from src import table_selection
+from src.sex_gender_parser import SG_TYPES, measure_type
 
 # ── Strict standardized target array for gender identity ──
 GENDER_CATEGORIES = ["Woman", "Man", "Non-binary", "Transgender", "Other", "Unknown or Not Reported"]
@@ -199,6 +201,12 @@ def extract_gender_from_measure(measure: dict, overall_group_id=None,
     return results
 
 
+# The gender categories that say something about a participant; "other" and
+# "unknown" are residual (see the table-selection comment in
+# extract_gender_data).
+_GENDER_SPECIFIC = frozenset({"woman", "man", "nonbinary", "transgender"})
+
+
 def extract_gender_data(study: dict) -> Dict:
     """Extract all gender data from a study.
 
@@ -236,55 +244,76 @@ def extract_gender_data(study: dict) -> Dict:
         "flags": [],
     }
 
+    # Which tables are counted: the rules of sex_extractor.extract_sex_data
+    # (the parser's measure types first, then the fullest table by woman +
+    # man + non-binary + transgender — "other" and "unknown" are residual —
+    # or disjoint parts whose own Number Analyzed make up the baseline total;
+    # src/table_selection.py). The legacy extractor added every table, so the
+    # same people posted in two "Gender" tables were counted twice. Tables
+    # left out are flagged gender_table_superseded; summed parts,
+    # gender_tables_partitioned.
     combined_table_found = False
-
+    tables: List[Dict] = []
     for measure in measures:
         title = measure.get("title", "")
 
-        # Context C: combined Sex/Gender table — extract only gender rows
         if is_combined_sex_gender_table(title):
+            # Context C: combined Sex/Gender table — extract only gender rows
             combined_table_found = True
-            _sex_rows, gender_rows = extract_sex_from_combined_measure(
+            _sex_rows, rows = extract_sex_from_combined_measure(
                 measure, overall_group_id, fallback_denom=total_participants
             )
-            if gender_rows:
-                result["reported"] = True
-                for cat in gender_rows:
-                    if _should_quarantine_gender_label(cat):
-                        result["quarantined_labels"].append({
-                            "original": cat["original"],
-                            "count": cat["count"],
-                            "reason": "unmapped_non_gender_label",
-                        })
-                        result["flags"].append("quarantined_label")
-                        continue
-                    result["raw_categories"].append(cat)
-                    result["totals"][cat["category"]] += cat["count"]
-                    result["flags"].extend(cat["flags"])
-                result["flags"].append("from_combined_table")
+            if not rows:
+                continue
+            combined = True
+        elif is_gender_table(title):
+            # Standard or Customized gender table (Context B)
+            rows = extract_gender_from_measure(measure, overall_group_id,
+                                               fallback_denom=total_participants)
+            combined = False
+        else:
             continue
-
-        # Standard or Customized gender table (Context B)
-        if not is_gender_table(title):
-            continue
-
-        result["reported"] = True
-        categories = extract_gender_from_measure(measure, overall_group_id,
-                                                 fallback_denom=total_participants)
-        for cat in categories:
+        kept: List[Dict] = []
+        quarantined: List[Dict] = []
+        for cat in rows:
             # Quarantine irrelevant unmapped labels that leaked in via a
             # gender-titled table (e.g. survey noise unrelated to gender).
-            if _should_quarantine_gender_label(cat):
-                result["quarantined_labels"].append({
-                    "original": cat["original"],
-                    "count": cat["count"],
-                    "reason": "unmapped_non_gender_label",
-                })
-                result["flags"].append("quarantined_label")
-                continue
+            (quarantined if _should_quarantine_gender_label(cat) else kept).append(cat)
+        tables.append({"title": title, "typed": measure_type(title) in SG_TYPES,
+                       "combined": combined,
+                       "analyzed": table_selection.number_analyzed(measure, overall_group_id),
+                       "categories": kept, "quarantined": quarantined})
+
+    if tables:
+        result["reported"] = True
+    # Rule 1: the parser's sex/gender-typed tables, when any of them counts
+    # anyone; an all-zero typed template does not hide tables that do.
+    in_play = [t for t in tables if t["typed"] and table_selection.counted_sum(t) > 0] or tables
+    counted, partitioned = table_selection.select_tables(
+        in_play, total_participants, _GENDER_SPECIFIC, "category", allow_parts=True)
+    if len(counted) < len(tables):
+        result["flags"].append("gender_table_superseded")
+    if partitioned:
+        result["flags"].append("gender_tables_partitioned")
+
+    # Quarantined rows are listed from every table read, counted or not (as
+    # in extract_sex_data): the list records why a label is kept out of
+    # gender, which does not depend on table selection.
+    for table in tables:
+        for cat in table["quarantined"]:
+            result["quarantined_labels"].append({
+                "original": cat["original"],
+                "count": cat["count"],
+                "reason": "unmapped_non_gender_label",
+            })
+            result["flags"].append("quarantined_label")
+    for table in counted:
+        for cat in table["categories"]:
             result["raw_categories"].append(cat)
             result["totals"][cat["category"]] += cat["count"]
             result["flags"].extend(cat["flags"])
+        if table["combined"]:
+            result["flags"].append("from_combined_table")
 
     # "Not Collected" enforcement: if a combined table was found but yielded
     # no gender rows (only Female/Male), explicitly mark as not collected

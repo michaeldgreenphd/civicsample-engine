@@ -22,11 +22,14 @@ Tests:
  11. NCT99000107 — Ethnicity table plus a race table titled
      "Race/Ethnicity, Customized" whose "Unknown" row maps to ethnicity
      (fictional study)
+ 12. NCT99000108 — The same people in a "Sex/Gender, Customized" and a
+     "Sex: Female, Male" table (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
-(check_race_rows_in_sex_table), and study 11 its ethnicity totals and flags
-(EXPECTED_ETHNICITY). A mismatch stops the harness.
+(check_race_rows_in_sex_table), study 11 its ethnicity totals and flags
+(EXPECTED_ETHNICITY), and study 12 its sex totals and flags (EXPECTED_SEX).
+A mismatch stops the harness.
 """
 import json
 import sys
@@ -405,6 +408,35 @@ MOCK_NCT99000107 = _make_study(
     total_participants=80,
 )
 
+# ---------- NCT99000108 (fictional): one population in two sex tables ----------
+# 60 participants posted in a "Sex/Gender, Customized" table and again in the
+# "Sex: Female, Male" table: counted once, 60, not 120.
+MOCK_NCT99000108 = _make_study(
+    "NCT99000108",
+    "NCT99000108 - Two sex tables (fictional mock)",
+    [
+        _make_measure("Sex/Gender, Customized", [
+            _make_class("", [
+                _make_category("Female", 34),
+                _make_category("Male", 26),
+            ])
+        ]),
+        _make_measure("Sex: Female, Male", [
+            _make_class("", [
+                _make_category("Female", 34),
+                _make_category("Male", 26),
+            ])
+        ]),
+    ],
+    total_participants=60,
+)
+
+# Expected sex results for the legacy table-selection study.
+EXPECTED_SEX = {
+    "NCT99000108": {"totals": {"female": 34, "male": 26, "unknown": 0},
+                    "flags": ["from_combined_table", "sex_table_superseded"]},
+}
+
 # Expected ethnicity results for the table-selection study.
 EXPECTED_ETHNICITY = {
     "NCT99000107": {"omb": {"hispanic_latino": 9, "not_hispanic_latino": 68, "unknown_not_reported": 3},
@@ -520,6 +552,11 @@ def validate_study(study: dict, nct_id: str) -> None:
 
     if nct_id in EXPECTED_RACE:
         check_expected(nct_id, race, breakdown)
+    if nct_id in EXPECTED_SEX:
+        expected = EXPECTED_SEX[nct_id]
+        assert sex["totals"] == expected["totals"], f"{nct_id} sex: {sex['totals']}"
+        assert sex["flags"] == expected["flags"], f"{nct_id} sex flags: {sex['flags']}"
+        print(f"\n  {nct_id}: expected sex totals and flags — OK")
     if nct_id in EXPECTED_ETHNICITY:
         expected = EXPECTED_ETHNICITY[nct_id]
         assert ethnicity["omb_totals"] == expected["omb"], f"{nct_id} ethnicity: {ethnicity['omb_totals']}"
@@ -542,6 +579,7 @@ def main() -> None:
         (MOCK_NCT99000105, "NCT99000105"),
         (MOCK_NCT99000106, "NCT99000106"),
         (MOCK_NCT99000107, "NCT99000107"),
+        (MOCK_NCT99000108, "NCT99000108"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

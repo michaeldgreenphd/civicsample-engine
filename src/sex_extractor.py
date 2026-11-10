@@ -8,6 +8,8 @@ are mapped here.  Gender identity labels (Woman, Man) are never cross-mapped.
 from typing import Dict, List, Optional, Tuple
 from src.race_extractor import is_sex_titled_race_table
 from src.utils import clean_demographic_label, is_sex_qualified_identity_label
+from src import table_selection
+from src.sex_gender_parser import SG_TYPES, measure_type
 
 # ── Strict standardized target array for biological sex ──
 SEX_CATEGORIES = ["Female", "Male", "Unknown or Not Reported"]
@@ -362,14 +364,87 @@ def extract_sex_from_combined_measure(measure: dict, overall_group_id: Optional[
     return sex_rows, gender_rows
 
 
+# Which tables are counted. The legacy extractor added every sex-titled table
+# together, so a trial that posts the same people in a "Sex/Gender,
+# Customized" table and a "Sex: Female, Male" table, or in two "Sex: Female,
+# Male" tables, counted them twice. On the 2026-11-08 snapshot (re-fetched
+# registry records; main reproduced every published sex block) 446 trials
+# had more than one sex table; female + male exceeded the manuscript
+# parser's single-table count by 226,589 over the multi-table trials, and
+# the parser and this extractor agreed in fewer than half of them. The
+# tables are now chosen the way the
+# manuscript parser chooses them (sex_gender_parser.parse_trial), through the
+# rules shared with race and ethnicity (src/table_selection.py):
+#   1. Tables of the parser's sex/gender measure types (measure_type in
+#      SG_TYPES: "Sex: ..."/"Sex", "... Customized", "Gender ...") are used
+#      when any of them counts anyone; other sex-titled tables ("Donor Sex",
+#      "Child Gender", "Sexual Activity") only otherwise. The parser uses its
+#      typed measures whenever any exist; the legacy path also requires a
+#      count, because an all-zero "Sex/Gender, Customized" template would
+#      otherwise hide the real tables (NCT04096274: "Phase I: Youth sex" 234
+#      and "Phase II: Youth sex" 452 beside an empty typed template).
+#   2. One table is counted: the fullest by female + male (unknown is
+#      residual, as in the parser), then by everything counted, then the
+#      first in source order.
+#   3. Disjoint parts are summed only when their own Number Analyzed add up
+#      to exactly the baseline total.
+# Tables left out are flagged sex_table_superseded; summed parts,
+# sex_tables_partitioned. The parser takes unknown as the MAX across tables;
+# here the winning table is used whole and denominator balancing below fills
+# any gap into unknown_inferred.
+_SEX_SPECIFIC = frozenset({"female", "male"})
+
+def _sex_tables(measures: List[dict], overall_group_id: Optional[str],
+                total_participants: Optional[int]) -> List[Dict]:
+    """Every table the legacy extractor reads for sex, in source order, each
+    with its counted and quarantined rows, its own Number Analyzed, whether
+    the parser types it as a sex/gender measure, and whether it is a
+    combined Sex/Gender table (Context C)."""
+    tables: List[Dict] = []
+    for measure in measures:
+        title = measure.get("title", "")
+        if is_combined_sex_gender_table(title):
+            # Context C: combined Sex/Gender table — only its sex rows
+            rows, _gender_rows = extract_sex_from_combined_measure(
+                measure, overall_group_id, fallback_denom=total_participants
+            )
+            if not rows:
+                continue
+            combined = True
+        elif is_sex_table(title):
+            # Standard or Customized sex table (Context A)
+            rows = extract_sex_from_measure(measure, overall_group_id,
+                                            fallback_denom=total_participants)
+            combined = False
+        else:
+            continue
+        race_table = is_sex_titled_race_table(measure, overall_group_id, total_participants)
+        kept: List[Dict] = []
+        quarantined: List[Tuple[Dict, str]] = []
+        for cat in rows:
+            # Quarantine race rows the race extractor reads from this table,
+            # and irrelevant unmapped labels (e.g. "Bisexual", "Gay" —
+            # sexual-orientation options that leaked in via a substring-
+            # matched table title) so they don't pollute sex totals.
+            reason = _quarantine_reason(cat, race_table)
+            if reason:
+                quarantined.append((cat, reason))
+            else:
+                kept.append(cat)
+        tables.append({"title": title, "typed": measure_type(title) in SG_TYPES,
+                       "combined": combined,
+                       "analyzed": table_selection.number_analyzed(measure, overall_group_id),
+                       "categories": kept, "quarantined": quarantined})
+    return tables
+
+
 def extract_sex_data(study: dict) -> Dict:
     """Extract all sex data from a study.
 
-    Unified iterative loop — exhaustively checks all available modules:
-      1) Standard sex tables (Context A) → all rows to sex
-      2) Combined Sex/Gender tables (Context C) → row-level routing, sex portion
-      3) Customized sex tables → handled same as standard
-    Only declares "Not Reported" after checking all tables.
+    Reads every sex table (standard and customized, Context A) and the sex
+    rows of every combined Sex/Gender table (Context C), then counts the
+    tables chosen by the rules above. Only declares "Not Reported" after
+    checking all tables.
     """
     from src.utils import get_baseline_measures, get_overall_group_id, get_total_baseline_participants
 
@@ -391,61 +466,37 @@ def extract_sex_data(study: dict) -> Dict:
         "flags": [],
     }
 
-    for measure in measures:
-        title = measure.get("title", "")
-
-        # Context C: combined Sex/Gender table — extract only sex rows
-        if is_combined_sex_gender_table(title):
-            sex_rows, _gender_rows = extract_sex_from_combined_measure(
-                measure, overall_group_id, fallback_denom=total_participants
-            )
-            race_table = is_sex_titled_race_table(measure, overall_group_id, total_participants)
-            if sex_rows:
-                result["reported"] = True
-                for cat in sex_rows:
-                    # Quarantine race rows the race extractor reads from this
-                    # table, and irrelevant unmapped labels (e.g. orientation
-                    # options that slipped in via a combined table)
-                    reason = _quarantine_reason(cat, race_table)
-                    if reason:
-                        result["quarantined_labels"].append({
-                            "original": cat["original"],
-                            "count": cat["count"],
-                            "reason": reason,
-                        })
-                        result["flags"].append("quarantined_label")
-                        continue
-                    result["raw_categories"].append(cat)
-                    result["totals"][cat["category"]] += cat["count"]
-                    result["flags"].extend(cat["flags"])
-                result["flags"].append("from_combined_table")
-            continue
-
-        # Standard or Customized sex table (Context A)
-        if not is_sex_table(title):
-            continue
-
+    tables = _sex_tables(measures, overall_group_id, total_participants)
+    if tables:
         result["reported"] = True
-        categories = extract_sex_from_measure(measure, overall_group_id,
-                                             fallback_denom=total_participants)
-        race_table = is_sex_titled_race_table(measure, overall_group_id, total_participants)
-        for cat in categories:
-            # Quarantine race rows the race extractor reads from this table,
-            # and irrelevant unmapped labels (e.g. "Bisexual", "Gay" —
-            # sexual-orientation options that leaked in via a substring-
-            # matched table title) so they don't pollute sex totals.
-            reason = _quarantine_reason(cat, race_table)
-            if reason:
-                result["quarantined_labels"].append({
-                    "original": cat["original"],
-                    "count": cat["count"],
-                    "reason": reason,
-                })
-                result["flags"].append("quarantined_label")
-                continue
+    # Rule 1: the parser's sex/gender-typed tables, when any of them counts
+    # anyone; an all-zero typed template does not hide tables that do.
+    in_play = [t for t in tables if t["typed"] and table_selection.counted_sum(t) > 0] or tables
+    counted, partitioned = table_selection.select_tables(
+        in_play, total_participants, _SEX_SPECIFIC, "category", allow_parts=True)
+    if len(counted) < len(tables):
+        result["flags"].append("sex_table_superseded")
+    if partitioned:
+        result["flags"].append("sex_tables_partitioned")
+
+    # Quarantined rows are listed from every table read, counted or not: the
+    # list records why a label is kept out of sex (race rows in a sex/gender
+    # table, orientation noise), which does not depend on table selection.
+    for table in tables:
+        for cat, reason in table["quarantined"]:
+            result["quarantined_labels"].append({
+                "original": cat["original"],
+                "count": cat["count"],
+                "reason": reason,
+            })
+            result["flags"].append("quarantined_label")
+    for table in counted:
+        for cat in table["categories"]:
             result["raw_categories"].append(cat)
             result["totals"][cat["category"]] += cat["count"]
             result["flags"].extend(cat["flags"])
+        if table["combined"]:
+            result["flags"].append("from_combined_table")
 
     # All-zero rejection
     if result["reported"] and all(v == 0 for v in result["totals"].values()):
