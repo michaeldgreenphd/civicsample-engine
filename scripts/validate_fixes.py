@@ -11,10 +11,13 @@ Tests:
   5. NCT99000101 — Race-by-sex table beside a sex table (fictional study)
   6. NCT99000102 — Race table plus an ethnicity table titled "Race/Ethnicity,
      Customized" (fictional study)
+  7. NCT99000103 — Race rows in a "Sex/Gender, Customized" table beside a sex
+     table: race only, never also sex unknown (fictional study)
 """
 import json
 import sys
 import os
+from typing import Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -246,7 +249,38 @@ MOCK_NCT99000102 = _make_study(
 )
 
 
-def validate_study(study, nct_id):
+# ---------- NCT99000103 (fictional): race rows under a sex/gender title ----------
+# 80 participants. The "Sex/Gender, Customized" table posts race, one row per
+# race; the "Sex: Female, Male" table posts sex for the same people.
+# Key tests:
+#   - race reads the sex-titled table (flag race_from_sex_titled_table):
+#     White 64, Black 12, Asian 4
+#   - sex counts the sex table only: Female 35, Male 45, Unknown 0; the race
+#     rows are in sex.quarantined_labels (reason race_label_in_sex_table), not
+#     sex unknown 80 as before
+MOCK_NCT99000103 = _make_study(
+    "NCT99000103",
+    "NCT99000103 - Race rows in a Sex/Gender table (fictional mock)",
+    [
+        _make_measure("Sex/Gender, Customized", [
+            _make_class("", [
+                _make_category("White", 64),
+                _make_category("Black/African Heritage", 12),
+                _make_category("East Asian/South East Asian", 4),
+            ])
+        ]),
+        _make_measure("Sex: Female, Male", [
+            _make_class("", [
+                _make_category("Female", 35),
+                _make_category("Male", 45),
+            ])
+        ]),
+    ],
+    total_participants=80,
+)
+
+
+def validate_study(study: dict, nct_id: str) -> Tuple[dict, dict]:
     print(f"\n{'='*70}")
     print(f"  {nct_id}")
     print(f"{'='*70}")
@@ -299,10 +333,30 @@ def validate_study(study, nct_id):
     print(f"\n  SEX:")
     print(f"    reported: {sex['reported']}")
     print(f"    totals: {json.dumps(sex.get('totals', {}), indent=6)}")
+    if sex.get("quarantined_labels"):
+        print(f"    quarantined_labels:")
+        for q in sex["quarantined_labels"]:
+            print(f"      - \"{q['original']}\" (count={q['count']}, reason={q['reason']})")
     print(f"    flags: {sex['flags']}")
+    return race, sex
 
 
-def main():
+def check_race_rows_in_sex_table(race: dict, sex: dict) -> None:
+    """NCT99000103: rows race reads from a sex/gender-titled table are never
+    also sex unknown."""
+    assert race["omb_totals"]["white"] == 64 and race["omb_totals"]["black_african_american"] == 12 \
+        and race["omb_totals"]["asian"] == 4, race["omb_totals"]
+    assert "race_from_sex_titled_table" in race["flags"], race["flags"]
+    assert sex["totals"] == {"female": 35, "male": 45, "unknown": 0}, sex["totals"]
+    assert {q["original"]: q["reason"] for q in sex["quarantined_labels"]} == {
+        "White": "race_label_in_sex_table",
+        "Black/African Heritage": "race_label_in_sex_table",
+        "East Asian/South East Asian": "race_label_in_sex_table",
+    }, sex["quarantined_labels"]
+    print("\n  NCT99000103: race rows counted once, as race (sex unknown 0)")
+
+
+def main() -> None:
     studies = [
         (MOCK_NCT02766335, "NCT02766335"),
         (MOCK_NCT01221441, "NCT01221441"),
@@ -310,9 +364,12 @@ def main():
         (MOCK_NCT05109104, "NCT05109104"),
         (MOCK_NCT99000101, "NCT99000101"),
         (MOCK_NCT99000102, "NCT99000102"),
+        (MOCK_NCT99000103, "NCT99000103"),
     ]
     for study, nct_id in studies:
-        validate_study(study, nct_id)
+        race, sex = validate_study(study, nct_id)
+        if nct_id == "NCT99000103":
+            check_race_rows_in_sex_table(race, sex)
 
     print(f"\n{'='*70}")
     print("  Validation complete.")
