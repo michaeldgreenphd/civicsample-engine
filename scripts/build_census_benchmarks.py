@@ -169,7 +169,7 @@ def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[st
         if 'error' in elig:
             reason = 'eligible_ages_unreadable'
         elif not obs['structure']['usable_for_shares']:
-            reason = 'rows_overlap_or_combine_race_with_ethnicity'   # no share is meaningful
+            reason = 'table_rows_not_one_classification'             # see trials.category_structure
         elif dim == 'sex' and len(elig['sexes']) == 1:
             reason = 'single_sex_by_eligibility'           # the sex mix is fixed by design
         elif n > PARAMETERS['size_cap_participants']:
@@ -357,6 +357,7 @@ def summarise(rows: list[dict[str, Any]], funnel: dict[str, int], areas: list[di
                      'not_reported': sum(d.get('state') == 'not_reported' for d in ds),
                      'pooled': sum(bool(d.get('pooled')) for d in ds),
                      'category_structure': dict(c(d['structure']['check'] for d in ds if d.get('structure'))),
+                     'category_cautions': dict(c(x for d in ds for x in (d.get('structure') or {}).get('cautions', []))),
                      'classified_share_computed': sum(d.get('observed_pct_of_classified') is not None for d in ds),
                      'geography_sensitivity': dict(c(str((d.get('geography_sensitivity') or {}).get('flag')) for d in ds
                                                      if d.get('state') == 'reported')),

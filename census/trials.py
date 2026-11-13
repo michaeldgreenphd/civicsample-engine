@@ -166,8 +166,7 @@ def cohort(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[st
     return keep, funnel
 
 
-# Parser flags that mean the table's rows are not one exclusive classification of each person.
-_NOT_A_PARTITION = ('combined_race_ethnicity', 'multiple_race_tables')
+_ETHNICITY_LABEL = re.compile(r'hispanic|latin[oax]?\b|latinx', re.I)
 
 
 def _table_total(record: dict[str, Any], dimension: str) -> int | None:
@@ -179,26 +178,39 @@ def _table_total(record: dict[str, Any], dimension: str) -> int | None:
 
 
 def category_structure(record: dict[str, Any], dimension: str, total: int) -> dict[str, Any]:
-    """Whether the table's rows can be read as each participant counted once.
+    """Whether the table's rows can be read as each participant counted once, in one
+    classification that the survey's tables match.
 
-    A share needs that. Two checks, both from data the engine already holds: the parser's own
-    flags (a table that mixes race with ethnicity, or several race tables summed), and the
-    sex table, which counts each participant once: a race or ethnicity table adding up to more
-    than it has counted someone twice. Agreement with the sex table does not prove the rows
-    are exclusive; disagreement upward proves they are not."""
-    flags = sorted({str(f) for f in ((record.get(dimension) or {}).get('flags') or [])})
-    hit = [f for f in flags if f.startswith(_NOT_A_PARTITION)]
+    A share needs both. Three checks, all from data the engine already holds:
+      * a race table that carries an ethnicity row ("Hispanic", "White/Non-Hispanic") is a
+        combined classification: its race rows leave Hispanic participants out, which the
+        survey's race tables do not. It is not compared. (The parser flags a table whose
+        *title* mentions ethnicity; most of those have race rows only, 3,410 of 3,489 in the
+        2026-11-08 cohort, and are compared with the flag recorded as a caution.)
+      * the sex table counts each participant once, so a race or ethnicity table adding up to
+        more than it has counted someone twice;
+      * a table adding up to less describes a subset, which the recorded totals make visible.
+    Agreement with the sex table does not prove the rows are exclusive; exceeding it proves
+    they are not."""
+    block = record.get(dimension) or {}
+    flags = sorted({str(f) for f in (block.get('flags') or [])}
+                   | {str(f) for c in (block.get('raw_categories') or []) for f in (c.get('flags') or [])})
+    labels = [str(c.get('original') or '') for c in (block.get('raw_categories') or [])]
+    labels += [str(q.get('original') if isinstance(q, dict) else q) for q in (block.get('quarantined_labels') or [])]
     other = None if dimension == 'sex' else _table_total(record, 'sex')
     out: dict[str, Any] = {'parser_flags': flags, 'sex_table_total': other}
-    if hit:
-        return {**out, 'usable_for_shares': False, 'check': 'parser_flags_overlapping_or_combined_rows', 'flags_hit': hit}
+    if dimension == 'race':
+        mixed = [x for x in labels if _ETHNICITY_LABEL.search(x)]
+        if mixed:
+            return {**out, 'usable_for_shares': False, 'check': 'race_table_has_ethnicity_rows', 'labels': mixed[:5]}
     if other and total > other + max(1, 0.01 * other):
         return {**out, 'usable_for_shares': False, 'check': 'table_total_exceeds_sex_table'}
+    caution = ['title_names_ethnicity_rows_are_race_only'] if 'combined_race_ethnicity' in flags else []
     if other and total < other - max(1, 0.01 * other):
-        # a table covering fewer people than the sex table describes a subset; shares are
-        # shares of that subset, which the recorded totals make visible
-        return {**out, 'usable_for_shares': True, 'check': 'table_total_below_sex_table'}
-    return {**out, 'usable_for_shares': True, 'check': 'matches_sex_table' if other else 'no_other_table_to_check_against'}
+        check = 'table_total_below_sex_table'
+    else:
+        check = 'matches_sex_table' if other else 'no_other_table_to_check_against'
+    return {**out, 'usable_for_shares': True, 'check': check, **({'cautions': caution} if caution else {})}
 
 
 def observed(record: dict[str, Any], dimension: str) -> dict[str, Any]:

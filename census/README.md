@@ -63,9 +63,12 @@ unknown share beside them. Neither replaces the other.
 | B (`of_classified`) | Participants with a reported, classifiable category | A second view, **not** a correction that recovers the true distribution: people without a recorded category may differ from those with one, and B is biased where a table reports one category and files everyone else as unknown. |
 
 Before any share is computed, `trials.category_structure` checks that the table's rows can be
-read as each participant counted once: the parser must not have flagged overlapping or combined
-rows, and the table must not add up to more than the trial's sex table. A table that fails is
-kept in the per-trial file with the reason and left out of every pooled figure.
+read as each participant counted once, in a classification the survey's tables match. A race
+table that carries an ethnicity row ("Hispanic", "White/Non-Hispanic") is a combined
+classification and is not compared; a table adding up to more than the trial's sex table has
+counted someone twice. Either is kept in the per-trial file with the reason and left out of
+every pooled figure. A table whose title mentions ethnicity but whose rows are race only is
+compared, with that caution recorded.
 
 The trial side is the registry's baseline characteristics table: the baseline analysis
 population with all arms combined. It can differ from enrolment; the ratio is recorded.

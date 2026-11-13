@@ -257,9 +257,23 @@ def test_a_table_whose_rows_overlap_is_not_used_for_shares() -> None:
     doubled = {'race': {'reported': True, 'omb_totals': {'white': 40, 'asian': 30}}, 'sex': sex}
     assert trials.observed(doubled, 'race')['structure'] == {
         'parser_flags': [], 'sex_table_total': 40, 'usable_for_shares': False, 'check': 'table_total_exceeds_sex_table'}
-    combined = {'race': {'reported': True, 'omb_totals': {'white': 25, 'asian': 15}, 'flags': ['combined_race_ethnicity']}, 'sex': sex}
-    s = trials.observed(combined, 'race')['structure']
-    assert s['usable_for_shares'] is False and s['flags_hit'] == ['combined_race_ethnicity']
+    # a table that carries an ethnicity row is a combined classification: not compared
+    mixed = {'race': {'reported': True, 'omb_totals': {'white': 25, 'black_african_american': 10, 'unknown_not_reported': 5},
+                      'raw_categories': [{'original': 'White/Non-Hispanic', 'count': 25}, {'original': 'Black', 'count': 10}],
+                      'quarantined_labels': [{'original': 'Latin', 'count': 5}]}, 'sex': sex}
+    s = trials.observed(mixed, 'race')['structure']
+    assert s['usable_for_shares'] is False and s['check'] == 'race_table_has_ethnicity_rows'
+    assert s['labels'] == ['White/Non-Hispanic', 'Latin']
+    # a title that mentions ethnicity over race-only rows is compared, with the caution kept
+    titled = {'race': {'reported': True, 'omb_totals': {'white': 25, 'asian': 15},
+                       'raw_categories': [{'original': 'White', 'count': 25, 'flags': ['combined_race_ethnicity']},
+                                          {'original': 'Asian', 'count': 15, 'flags': ['combined_race_ethnicity']}]}, 'sex': sex}
+    s = trials.observed(titled, 'race')['structure']
+    assert s['usable_for_shares'] is True and s['cautions'] == ['title_names_ethnicity_rows_are_race_only']
+    # the same words in an ethnicity table are what that table is for
+    eth = {'ethnicity': {'reported': True, 'omb_totals': {'hispanic_latino': 10, 'not_hispanic_latino': 30},
+                         'raw_categories': [{'original': 'Hispanic or Latino', 'count': 10}]}, 'sex': sex}
+    assert trials.observed(eth, 'ethnicity')['structure']['usable_for_shares'] is True
     subset = {'race': {'reported': True, 'omb_totals': {'white': 20, 'asian': 5}}, 'sex': sex}
     assert trials.observed(subset, 'race')['structure']['check'] == 'table_total_below_sex_table'
     alone = {'race': {'reported': True, 'omb_totals': {'white': 20}}}
