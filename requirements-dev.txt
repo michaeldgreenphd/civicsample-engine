@@ -4,3 +4,5 @@
 -r requirements.txt
 pytest>=8.0.0
 jsonschema>=4.0.0
+# The census benchmark's geography resolver (manual build; see census/README.md).
+-r scripts/census/requirements.txt
