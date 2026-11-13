@@ -79,12 +79,16 @@ def expected(level: acs.Level, geoid: str, dimension: str, sexes: tuple[str, ...
         for key, table in RACE_TABLE.items():
             put(key, *_sum(level, area, table, sexes, w))
     elif dimension == 'ethnicity':
-        h, h_moe = _sum(level, area, 'hispanic_latino', sexes, w)
-        put('hispanic_latino', h, h_moe)
-        # Not Hispanic is everyone else; its margin combines the two it is derived from.
-        put('not_hispanic_latino', den - h, float(np.sqrt(den_moe ** 2 + h_moe ** 2)))
+        put('hispanic_latino', *_sum(level, area, 'hispanic_latino', sexes, w))
+        # Not Hispanic is the exact complement, so its share is 100 minus the Hispanic share
+        # and its margin of error is the same: an error in one is the same error in the other.
+        out['pct']['not_hispanic_latino'] = round(100 - out['pct']['hispanic_latino'], 3)
+        out['moe90_pp']['not_hispanic_latino'] = out['moe90_pp']['hispanic_latino']
     elif dimension == 'sex':
-        # Only meaningful for a trial open to both sexes; the caller enforces that.
+        if len(sexes) != 2:
+            # With one eligible sex the denominator is that sex alone, so a "composition"
+            # would be 100% by construction. There is nothing to compare.
+            return {'available': False, 'reason': 'single_sex_by_eligibility'}
         for key in ('female', 'male'):
             put(key, *_sum(level, area, 'total', (key,), w))
     return out

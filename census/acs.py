@@ -110,8 +110,14 @@ def fetch(year: int, table: str, level: str, cache: Path, session: requests.Sess
     cache.mkdir(parents=True, exist_ok=True)
     stem = cache / f'acs5_{year}_{table}_{level}'
     meta_path = stem.with_suffix('.meta.json')
-    if meta_path.exists() and stem.with_suffix('.json.gz').exists():
-        return json.loads(meta_path.read_text())
+    payload_path = stem.with_suffix('.json.gz')
+    if meta_path.exists() and payload_path.exists():
+        # A cached table is reused only when its bytes are the bytes recorded when it was
+        # written. Anything else (an altered or half-restored file, or a cache from before the
+        # hash was recorded) is fetched again, so the manifest never vouches for other bytes.
+        meta = json.loads(meta_path.read_text())
+        if meta.get('sha256_cached_payload') == hashlib.sha256(payload_path.read_bytes()).hexdigest():
+            return meta
     session = session or requests.Session()
     base = API.format(year=year)
     out = {}
@@ -130,11 +136,12 @@ def fetch(year: int, table: str, level: str, cache: Path, session: requests.Sess
             raise RuntimeError(f'{redact(r.url)}: status {r.status_code}')
         out[kind] = (body, redact(r.url), hashlib.sha256(r.content).hexdigest())
     payload = {'variables': out['variables'][0]['variables'], 'rows': out['data'][0]}
-    with gzip.GzipFile(stem.with_suffix('.json.gz'), 'wb', mtime=0) as fh:
+    with gzip.GzipFile(payload_path, 'wb', mtime=0) as fh:
         fh.write(json.dumps(payload, separators=(',', ':')).encode())
     meta = {'product': 'ACS 5-year', 'window': f'{year - 4}-{year}', 'table': table, 'level': level,
             'url': out['data'][1], 'variables_url': out['variables'][1],
             'sha256_response': out['data'][2], 'sha256_variables': out['variables'][2],
+            'sha256_cached_payload': hashlib.sha256(payload_path.read_bytes()).hexdigest(),
             'retrieved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
             'n_rows': len(out['data'][0]) - 1}
     meta_path.write_text(json.dumps(meta, indent=1) + '\n')

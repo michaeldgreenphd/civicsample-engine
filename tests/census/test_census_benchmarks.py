@@ -156,8 +156,13 @@ def test_expected_share_restricts_to_eligible_ages_and_sex_and_carries_the_margi
     assert women['eligible_residents'] == 500 and women['pct']['white'] == pytest.approx(58.0)
     eth = benchmark.expected(level, '01', 'ethnicity', ('male', 'female'), 18.0, 65.0)
     assert eth['pct'] == {'hispanic_latino': 20.0, 'not_hispanic_latino': 80.0}
+    # the complement carries the same margin as the share it is the complement of
+    assert eth['moe90_pp']['not_hispanic_latino'] == eth['moe90_pp']['hispanic_latino'] > 0
     sex = benchmark.expected(level, '01', 'sex', ('male', 'female'), 0.0, None)
     assert sex['pct'] == {'female': 50.0, 'male': 50.0}
+    # a single-sex trial has no sex composition to compare: nothing is computed
+    assert benchmark.expected(level, '01', 'sex', ('female',), 0.0, None) == {
+        'available': False, 'reason': 'single_sex_by_eligibility'}
 
 
 def test_a_partly_covered_band_counts_in_proportion() -> None:
@@ -292,3 +297,38 @@ def test_a_general_population_benchmark_is_labelled_contextual_when_it_does_not_
     child = trials.reference_caveats({'healthy_volunteers': True}, 2.0, 18.0, ('female',), True)
     assert child == ['site_in_a_referral_centre_zip', 'children_only', 'single_sex_eligibility']
     assert trials.reference_caveats({'healthy_volunteers': True}, 18.0, None, ('male', 'female'), False) == []
+
+
+def test_a_cached_table_is_reused_only_when_its_bytes_are_the_recorded_ones(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+
+    class Reply:
+        status_code = 200
+
+        def __init__(self, url: str, body: object) -> None:
+            self.url, self._body, self.content = url, body, json.dumps(body).encode()
+
+        def json(self) -> object:
+            return self._body
+
+    class Session:
+        def get(self, url: str, params: dict[str, str], timeout: int) -> Reply:
+            calls.append(url)
+            if url.endswith('.json'):
+                return Reply(url, {'variables': {'B01001_001E': {'label': 'Estimate!!Total:'}}})
+            return Reply(url + '?key=secret&get=x', [['NAME', 'us'], ['United States', '1']])
+
+    monkeypatch.setenv('CENSUS_API_KEY', 'secret')
+    first = acs.fetch(2024, 'B01001', 'us', tmp_path, Session())
+    assert 'secret' not in json.dumps(first) and len(calls) == 2
+    assert acs.fetch(2024, 'B01001', 'us', tmp_path, Session()) == first and len(calls) == 2     # reused
+    payload = tmp_path / 'acs5_2024_B01001_us.json.gz'
+    with gzip.open(payload, 'wt') as fh:                                                         # altered on disk
+        json.dump({'variables': {}, 'rows': [['NAME', 'us'], ['United States', '999']]}, fh)
+    acs.fetch(2024, 'B01001', 'us', tmp_path, Session())
+    assert len(calls) == 4, 'altered bytes must be fetched again, not trusted'
+    meta = json.loads((tmp_path / 'acs5_2024_B01001_us.meta.json').read_text())
+    del meta['sha256_cached_payload']                                                            # a cache from before the hash
+    (tmp_path / 'acs5_2024_B01001_us.meta.json').write_text(json.dumps(meta))
+    acs.fetch(2024, 'B01001', 'us', tmp_path, Session())
+    assert len(calls) == 6
