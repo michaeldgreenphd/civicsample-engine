@@ -438,6 +438,7 @@ def _sex_tables(measures: List[dict], overall_group_id: Optional[str],
         tables.append({"title": title, "typed": measure_type(title) in SG_TYPES,
                        "combined": combined,
                        "analyzed": table_selection.number_analyzed(measure, overall_group_id),
+                       "population": table_selection.population_of(measure),
                        "categories": kept, "quarantined": quarantined})
     return tables
 

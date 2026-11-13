@@ -143,3 +143,28 @@ def test_percentage_parts_convert_against_their_own_numbers_analyzed() -> None:
     sex = extract_sex_data(_study("NCT99000310", [part_a, part_b], participants=100))
     assert sex["totals"] == {"female": 40, "male": 60, "unknown": 0}
     assert "sex_tables_partitioned" in sex["flags"]
+
+
+def test_identical_halves_are_a_repost_not_two_parts() -> None:
+    """A reviewer's case: two identical tables (12 female / 8 male, each
+    analyzed on 20) in a 40-person trial. Their numbers make up the total,
+    but identical tables are one subset posted twice: counted once, and the
+    other 20 are unknown_inferred."""
+    first = _category_table("Sex: Female, Male", [("Female", 12), ("Male", 8)], analyzed=20)
+    again = _class_table("Sex/Gender, Customized", [("Female", 12), ("Male", 8)], analyzed=20)
+    sex = extract_sex_data(_study("NCT99000311", [first, again], participants=40))
+    assert sex["totals"] == {"female": 12, "male": 8, "unknown": 20}
+    assert "sex_tables_partitioned" not in sex["flags"]
+
+
+def test_identical_halves_described_as_different_people_are_parts() -> None:
+    """The registry pattern behind NCT03711370 and NCT05314712: the same
+    counts for two populations the registrant describes differently
+    (mothers / infants, adults / children). Those are parts."""
+    mothers = _category_table("Sex: Female, Male", [("Female", 12), ("Male", 8)], analyzed=20)
+    mothers["populationDescription"] = "Data are for mothers only (n = 20)"
+    infants = _class_table("Sex/Gender, Customized", [("Female", 12), ("Male", 8)], analyzed=20)
+    infants["populationDescription"] = "Data are for infants only (n = 20)"
+    sex = extract_sex_data(_study("NCT99000312", [mothers, infants], participants=40))
+    assert sex["totals"] == {"female": 24, "male": 16, "unknown": 0}
+    assert "sex_tables_partitioned" in sex["flags"]

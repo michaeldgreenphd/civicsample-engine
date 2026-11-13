@@ -286,6 +286,7 @@ def extract_gender_data(study: dict) -> Dict:
         tables.append({"title": title, "typed": measure_type(title) in SG_TYPES,
                        "combined": combined,
                        "analyzed": table_selection.number_analyzed(measure, overall_group_id),
+                       "population": table_selection.population_of(measure),
                        "categories": kept, "quarantined": quarantined})
 
     if tables:

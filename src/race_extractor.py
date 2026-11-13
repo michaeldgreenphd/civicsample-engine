@@ -738,6 +738,7 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         "title": title,
         "index": index,
         "analyzed": _number_analyzed(measure, overall_group_id),
+        "population": table_selection.population_of(measure),
         "sex_titled": sex_titled,
         "race_by_sex": race_by_sex,
         "categories": categories,

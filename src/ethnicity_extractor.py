@@ -301,6 +301,7 @@ def extract_ethnicity_data(study: dict) -> Dict:
 
         tables.append({"title": title,
                        "analyzed": table_selection.number_analyzed(measure, overall_group_id),
+                       "population": table_selection.population_of(measure),
                        "categories": categories})
 
     ethnicity_tables_found = len(tables)
