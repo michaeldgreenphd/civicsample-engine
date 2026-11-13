@@ -94,7 +94,9 @@ def read_shapes(path: Path, kind: str, only: Iterable[str] | None = None) -> dic
     from shapely.geometry import shape
     want = set(only) if only is not None else None
     out: dict[str, Any] = {}
-    with shapefile.Reader(str(path)) as reader:
+    # Only the identifier is read. The 2010 files store names in Latin-1 ("Doña Ana"); an
+    # undecodable name must not stop the build, so decoding errors are replaced.
+    with shapefile.Reader(str(path), encodingErrors='replace') as reader:
         for sr in reader.iterShapeRecords():
             code = _code(sr.record.as_dict(), kind)
             if want is None or code in want:
