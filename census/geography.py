@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -94,9 +95,13 @@ def read_shapes(path: Path, kind: str, only: Iterable[str] | None = None) -> dic
     from shapely.geometry import shape
     want = set(only) if only is not None else None
     out: dict[str, Any] = {}
-    # Only the identifier is read. The 2010 files store names in Latin-1 ("Doña Ana"); an
-    # undecodable name must not stop the build, so decoding errors are replaced.
-    with shapefile.Reader(str(path), encodingErrors='replace') as reader:
+    # Only the identifier (digits) is read, so the text encoding is forced to Latin-1, which
+    # decodes any byte: the 2010 files store names in Latin-1 ("Doña Ana") without saying so, and
+    # the 2014 files declare "ISO 88591", a label Python does not know.
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', UserWarning)
+        reader = shapefile.Reader(str(path), encoding='latin-1', encodingErrors='replace')
+    with reader:
         for sr in reader.iterShapeRecords():
             code = _code(sr.record.as_dict(), kind)
             if want is None or code in want:
