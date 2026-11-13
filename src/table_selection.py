@@ -174,6 +174,24 @@ def _parts(tables: List[Dict], total_participants: int, key: str) -> bool:
     return True
 
 
+def parted_by_description(tables: List[Dict], key: str) -> bool:
+    """Whether summed parts include two tables told apart only by their
+    population description: the same Number Analyzed and the same count in
+    every category. _parts sums those as different people (NCT03711370,
+    "mothers only" / "infants only"), but a description is free text, and one
+    subset posted twice under reworded descriptions ("participants with
+    available data" / "available-data participants") would pass the same
+    test and be counted twice. The callers flag such sums so they can be
+    audited; the counts are not changed."""
+    seen = set()
+    for t in tables:
+        signature = (t["analyzed"], tuple(sorted(category_counts(t, key).items())))
+        if signature in seen:
+            return True
+        seen.add(signature)
+    return False
+
+
 
 def percentage_denominator(measure: dict, overall_group_id: Optional[str],
                            fallback: Optional[int]) -> Optional[int]:

@@ -255,7 +255,9 @@ def extract_gender_data(study: dict) -> Dict:
     # src/table_selection.py). The legacy extractor added every table, so the
     # same people posted in two "Gender" tables were counted twice. Tables
     # left out are flagged gender_table_superseded; summed parts,
-    # gender_tables_partitioned.
+    # gender_tables_partitioned, and gender_tables_partitioned_by_description
+    # too when two parts differ only in their population description
+    # (table_selection.parted_by_description).
     combined_table_found = False
     tables: List[Dict] = []
     for measure in measures:
@@ -300,6 +302,8 @@ def extract_gender_data(study: dict) -> Dict:
         result["flags"].append("gender_table_superseded")
     if partitioned:
         result["flags"].append("gender_tables_partitioned")
+        if table_selection.parted_by_description(counted, "category"):
+            result["flags"].append("gender_tables_partitioned_by_description")
 
     # Quarantined rows are listed from every table read, counted or not (as
     # in extract_sex_data): the list records why a label is kept out of

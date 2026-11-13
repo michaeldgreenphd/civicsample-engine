@@ -393,7 +393,10 @@ def extract_sex_from_combined_measure(measure: dict, overall_group_id: Optional[
 #   3. Disjoint parts are summed only when their own Number Analyzed add up
 #      to exactly the baseline total.
 # Tables left out are flagged sex_table_superseded; summed parts,
-# sex_tables_partitioned. The parser takes unknown as the MAX across tables;
+# sex_tables_partitioned, and sex_tables_partitioned_by_description too when
+# two parts differ only in their population description
+# (table_selection.parted_by_description).
+# The parser takes unknown as the MAX across tables;
 # here the winning table is used whole and denominator balancing below fills
 # any gap into unknown_inferred.
 _SEX_SPECIFIC = frozenset({"female", "male"})
@@ -483,6 +486,8 @@ def extract_sex_data(study: dict) -> Dict:
         result["flags"].append("sex_table_superseded")
     if partitioned:
         result["flags"].append("sex_tables_partitioned")
+        if table_selection.parted_by_description(counted, "category"):
+            result["flags"].append("sex_tables_partitioned_by_description")
 
     # Quarantined rows are listed from every table read, counted or not: the
     # list records why a label is kept out of sex (race rows in a sex/gender
