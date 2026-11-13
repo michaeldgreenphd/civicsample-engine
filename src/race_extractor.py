@@ -12,6 +12,7 @@ from src.utils import clean_demographic_label
 # to find race rows posted under a sex/gender title. Imported, not copied, so
 # the two selections cannot drift; the vendored parser is not modified.
 from src.sex_gender_parser import MEASURE_TITLE_RX
+from src import table_selection
 
 # Translation table that strips invisible Unicode characters commonly
 # inserted by ClinicalTrials.gov (zero-width space, joiner, etc.)
@@ -422,18 +423,20 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 
     Percentage-aware: if the measure reports percentages (detected via
     unitOfMeasure/paramType), values are converted to estimated counts using
-    the measure's Number Analyzed denominator, or the study's enrollment count
-    as a fallback (for cluster-randomized studies where the measure's denom is
-    "Number of Clinics" instead of "Participants").
+    the measure's Number Analyzed, else a class-level one every class
+    repeats, or the study's baseline total as a fallback (for
+    cluster-randomized studies where the measure's denom is "Number of
+    Clinics" instead of "Participants").
     """
-    from src.utils import sum_measurements, is_percentage_measure, get_measure_denom
+    from src.utils import sum_measurements, is_percentage_measure
 
     is_pct = is_percentage_measure(measure)
-    denom = None
-    if is_pct:
-        denom = get_measure_denom(measure, overall_group_id)
-        if denom is None:
-            denom = fallback_denom  # fall back to study enrollment
+    # Percentages convert against the measure's own Number Analyzed, else a
+    # class-level one that every class repeats, else the study's baseline
+    # total (table_selection.percentage_denominator, which says why
+    # class numbers that differ are not used).
+    denom = (table_selection.percentage_denominator(measure, overall_group_id, fallback_denom)
+             if is_pct else None)
 
     rows: List[Tuple[str, int]] = []
     for cls in measure.get("classes", []):
@@ -572,12 +575,12 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 #      leaves out unknown); on equal sums, the one that counts more
 #      participants in all; then the first in source order, except that of
 #      two tables with the same count in every OMB category the one with more
-#      subcategory detail is kept (see _fullest). A table with no
+#      subcategory detail is kept (see table_selection.fullest). A table with no
 #      race-specific count (an ethnicity table posted as "Race/Ethnicity,
 #      Customized" whose "Unknown" row is the only row kept) never wins over
 #      one with any.
 #   3. Disjoint parts. A table analyzed on part of the population carries its
-#      own Number Analyzed (see _number_analyzed): e.g. one "Race (NIH/OMB)"
+#      own Number Analyzed (see table_selection.number_analyzed): e.g. one "Race (NIH/OMB)"
 #      table for caregivers and one for patients, or one per study part. The
 #      tables are summed (flag race_tables_partitioned) only when all of these
 #      hold:
@@ -767,90 +770,23 @@ def is_sex_titled_race_table(measure: dict, overall_group_id: Optional[str] = No
     """
     return _sex_titled_race_table(measure, 0, overall_group_id, fallback_denom) is not None
 
+# The selection helpers live in src/table_selection.py, shared with the
+# ethnicity and legacy sex/gender extractors; race passes its race-specific
+# categories and its "omb_category" field.
+_number_analyzed = table_selection.number_analyzed
+
 def _race_specific_sum(table: Dict) -> int:
     """Participants a table places in the race-specific categories."""
-    return sum(c["count"] for c in table["categories"] if c["omb_category"] in _RACE_SPECIFIC)
-
-def _counted_sum(table: Dict) -> int:
-    """Participants a table counts in any category."""
-    return sum(c["count"] for c in table["categories"])
-
-def _number_analyzed(measure: dict, overall_group_id: Optional[str]) -> Optional[int]:
-    """A table's own Number Analyzed, in participants, or None if it posts none.
-
-    Registry schema fact (API v2): a baseline measure analyzed on fewer people
-    than the baseline population posts its own "Number Analyzed", at the
-    measure level (measure["denoms"]) or, as the registry returns most of them,
-    on its classes (classes[]["denoms"]). A measure with neither was analyzed on
-    the whole baseline population. The overall value is read exactly as
-    get_measure_denom reads it (Overall group, else the single or last count;
-    units "Participants" only). If classes post different numbers, the largest
-    is taken, which can only make the table look whole and so never leads to
-    summing on unclear evidence.
-    """
-    from src.utils import get_measure_denom
-
-    n = get_measure_denom(measure, overall_group_id)
-    if n is not None:
-        return n
-    per_class = [get_measure_denom({"denoms": cls.get("denoms") or []}, overall_group_id)
-                 for cls in measure.get("classes", []) if isinstance(cls, dict)]
-    per_class = [v for v in per_class if v is not None]
-    return max(per_class) if per_class else None
-
-def _omb_counts(table: Dict) -> Dict[str, int]:
-    """A table's counts by OMB category (categories it counts nobody in left out)."""
-    out: Dict[str, int] = {}
-    for c in table["categories"]:
-        if c["count"]:
-            out[c["omb_category"]] = out.get(c["omb_category"], 0) + c["count"]
-    return out
-
-def _subcategory_sum(table: Dict) -> int:
-    """Participants a table places in a granular subcategory."""
-    return sum(c["count"] for c in table["categories"] if c["subcategory"])
-
-def _fullest(tables: List[Dict]) -> Dict:
-    """Rule 2's table: largest race-specific sum, then largest counted sum,
-    then the first in source order. One exception to source order: a tied
-    table with the same count in every OMB category (the same people in the
-    same categories, e.g. "Asian" 25 re-posted as "Chinese" 25) replaces the
-    leader when it places more of them in a subcategory, so choosing between
-    re-posts never discards detail. A tie with any category count different
-    ("Unknown" 8 in one table, "Other" 8 in the other) stays with the first."""
-    best = tables[0]
-    for table in tables[1:]:
-        key = (_race_specific_sum(table), _counted_sum(table))
-        best_key = (_race_specific_sum(best), _counted_sum(best))
-        if key > best_key:
-            best = table
-        elif (key == best_key and _omb_counts(table) == _omb_counts(best)
-              and _subcategory_sum(table) > _subcategory_sum(best)):
-            best = table
-    return best
+    return table_selection.specific_sum(table, _RACE_SPECIFIC, "omb_category")
 
 def _select_tables(tables: List[Dict], total_participants: Optional[int],
                    allow_parts: bool) -> Tuple[List[Dict], bool]:
     """The tables to count, and whether they were summed as disjoint parts
-    (rules 2 and 3 of the block comment above). allow_parts is False when any
-    table in play is a race-by-sex or sex/gender-titled table."""
-    if len(tables) <= 1:
-        return tables, False
-    race = [t for t in tables if _race_specific_sum(t) > 0]
-    if not race:
-        return [_fullest(tables)], False
-    if len(race) == 1:
-        return race, False  # the only table with race counts; the rest add residuals only
-    if total_participants is None:
-        return [_fullest(race)], False
-    whole = [t for t in race if t["analyzed"] is None or t["analyzed"] >= total_participants]
-    if whole:
-        return [_fullest(whole)], False
-    if (allow_parts
-            and sum(t["analyzed"] for t in race) == total_participants
-            and all(_counted_sum(t) <= t["analyzed"] for t in race)):
-        return race, True
-    return [_fullest(race)], False
+    (rules 2 and 3 of the block comment above; table_selection.select_tables).
+    allow_parts is False when any table in play is a race-by-sex or
+    sex/gender-titled table."""
+    return table_selection.select_tables(tables, total_participants, _RACE_SPECIFIC,
+                                         "omb_category", allow_parts)
 
 def _joint_sex_counts(table: Dict, used_for_totals: bool) -> Dict:
     """The posted (race, sex) counts of one race-by-sex table, with sources."""

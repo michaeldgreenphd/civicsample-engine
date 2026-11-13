@@ -6,6 +6,7 @@ Extracts ethnicity data from baseline characteristics.
 from typing import Dict, List
 from rapidfuzz import fuzz, process
 from src.utils import clean_demographic_label
+from src import table_selection
 
 ETHNICITY_MAPPINGS = {
     # Hispanic or Latino - with subcategories
@@ -167,15 +168,16 @@ def extract_ethnicity_from_measure(measure: dict, overall_group_id=None,
 
     Returns list of category records with counts.
     """
-    from src.utils import sum_measurements, is_percentage_measure, get_measure_denom
+    from src.utils import sum_measurements, is_percentage_measure
 
     # Detect percentage measures and get denominator for conversion
     is_pct = is_percentage_measure(measure)
-    denom = None
-    if is_pct:
-        denom = get_measure_denom(measure, overall_group_id)
-        if denom is None:
-            denom = fallback_denom  # fall back to study enrollment
+    # Percentages convert against the measure's own Number Analyzed, else a
+    # class-level one that every class repeats, else the study's baseline
+    # total (table_selection.percentage_denominator, which says why
+    # class numbers that differ are not used).
+    denom = (table_selection.percentage_denominator(measure, overall_group_id, fallback_denom)
+             if is_pct else None)
 
     results = []
 
@@ -235,6 +237,27 @@ def extract_ethnicity_from_measure(measure: dict, overall_group_id=None,
 
     return results
 
+# Which tables are counted. A trial can post several ethnicity-titled tables
+# (is_ethnicity_table), and adding them together counted people twice. On the
+# 2026-11-08 snapshot (re-fetched registry records; engine main reproduced
+# every published ethnicity block), 4,018 trials had more than one, and in
+# 1,117 the sum exceeded the baseline participant count, by 374,659:
+#   - in 993 trials (332,712 of the excess) the extra table was a RACE table
+#     titled "Race/Ethnicity, Customized": its race rows are dropped below as
+#     low-confidence, but its "Unknown" row maps to ethnicity unknown and was
+#     added on top of the real ethnicity table (NCT05525494: +113,822);
+#   - in 41 trials the same people were posted twice (an "Ethnicity
+#     (NIH/OMB)" table and a customized re-post).
+# The tables are now chosen by table_selection.select_tables, the rule the
+# race extractor uses: one table, the fullest by Hispanic + Not Hispanic
+# (unknown is residual, as the sex/gender parser leaves unknown out of
+# female + male); a table that counts only "Unknown" never wins over one that
+# counts anyone as Hispanic or Not Hispanic; disjoint parts are summed only
+# when their own Number Analyzed make up exactly the baseline total. Tables
+# left out are flagged ethnicity_table_superseded; summed parts,
+# ethnicity_tables_partitioned. Denominator balancing below is unchanged.
+_ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
+
 def extract_ethnicity_data(study: dict) -> Dict:
     """Extract all ethnicity data from a study."""
     from src.utils import get_baseline_measures, get_overall_group_id, get_total_baseline_participants
@@ -255,20 +278,14 @@ def extract_ethnicity_data(study: dict) -> Dict:
         "flags": []
     }
 
-    ethnicity_tables_found = 0
-    has_combined_table = False
-
+    tables: List[Dict] = []
     for measure in measures:
         title = measure.get("title", "")
 
         if not is_ethnicity_table(title):
             continue
 
-        ethnicity_tables_found += 1
         result["reported"] = True
-
-        if "race" in title.lower():
-            has_combined_table = True
 
         categories = extract_ethnicity_from_measure(measure, overall_group_id,
                                                     fallback_denom=total_participants)
@@ -282,6 +299,20 @@ def extract_ethnicity_data(study: dict) -> Dict:
         if "race" in title.lower():
             categories = [c for c in categories if c.get("confidence") != "low"]
 
+        tables.append({"title": title,
+                       "analyzed": table_selection.number_analyzed(measure, overall_group_id),
+                       "categories": categories})
+
+    ethnicity_tables_found = len(tables)
+    counted, partitioned = table_selection.select_tables(
+        tables, total_participants, _ETHNICITY_SPECIFIC, "omb_category", allow_parts=True)
+    if len(counted) < len(tables):
+        result["flags"].append("ethnicity_table_superseded")
+    if partitioned:
+        result["flags"].append("ethnicity_tables_partitioned")
+
+    for table in counted:
+        categories = table["categories"]
         result["raw_categories"].extend(categories)
 
         for cat in categories:

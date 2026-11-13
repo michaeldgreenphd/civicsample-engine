@@ -727,3 +727,44 @@ def test_race_breakdown_uses_the_race_title_rule() -> None:
         "Hispanic or Latino": 2, "Not Hispanic or Latino": 20}
     assert {k: v["count"] for k, v in extract_demographic_breakdown(measures, "sex").items()} == {
         "Female": 20, "Male": 20}
+
+
+def test_percentage_parts_convert_against_their_own_numbers_analyzed() -> None:
+    """As for ethnicity: 100% White of a 40-person part and 100% Asian of a
+    60-person part, Number Analyzed on each class, are 40 and 60 summed as
+    parts, not 100 each."""
+    part_a = _category_table("Race (NIH/OMB)", [("White", 100), ("Asian", 0)], analyzed=40)
+    part_b = _category_table("Race (NIH/OMB)", [("White", 0), ("Asian", 100)], analyzed=60)
+    for table in (part_a, part_b):
+        table["paramType"] = "NUMBER"
+        table["unitOfMeasure"] = "Percentage of participants"
+    race = extract_race_data(_study("NCT99000033", [part_a, part_b], participants=100))
+    assert _nonzero(race) == {"white": 40, "asian": 60}
+    assert "race_tables_partitioned" in race["flags"]
+
+
+
+def _percent_classes(rows: list[tuple[str, str, int]]) -> dict[str, Any]:
+    """A percentage table with labels on classes: (label, value %, class Number Analyzed)."""
+    return {"title": "Race/Ethnicity, Customized", "paramType": "NUMBER", "unitOfMeasure": "Percentage of participants",
+             "classes": [{"title": label, "denoms": _denoms(n),
+                          "categories": [{"measurements": [{"groupId": "BG000", "value": value}]}]}
+                         for label, value, n in rows]}
+
+
+def test_class_numbers_that_differ_are_row_counts_not_denominators() -> None:
+    """The registry pattern behind NCT02649218: each class "Number Analyzed"
+    is that row's own count, and the percentages are of the whole baseline
+    (23% of 100 = 23, 77% of 100 = 77). Converting each row against its own
+    number would give 5 and 59; the baseline total is used instead."""
+    table = _percent_classes([("White", "23", 23), ("Asian", "77", 77)])
+    race = extract_race_data(_study("NCT99000034", [table], participants=100))
+    assert _nonzero(race) == {"white": 23, "asian": 77}
+
+
+def test_a_class_number_every_class_repeats_is_the_tables_denominator() -> None:
+    """The pattern behind NCT00812214: every class repeats one Number
+    Analyzed (80 of 100), and the percentages add to 100% of those 80."""
+    table = _percent_classes([("White", "20", 80), ("Asian", "80", 80)])
+    race = extract_race_data(_study("NCT99000034", [table], participants=100))
+    assert _nonzero(race) == {"white": 16, "asian": 64, "unknown_not_reported": 20}
