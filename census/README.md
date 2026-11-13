@@ -129,6 +129,7 @@ population at every level).
 pip install -r scripts/census/requirements.txt
 python scripts/build_census_benchmarks.py --release demographics.json.gz --release-tag data-2026-11-08
 python scripts/census/check_against_api.py build/census/trials.jsonl.gz
+python scripts/census/export_site.py build/census ../clinical-trial-populations/data/census   # the files the site reads
 python -m pytest tests/census -q
 ```
 
@@ -138,5 +139,5 @@ recorded URL, and never written to an artifact. Downloads are cached under `buil
 
 ## Not done here
 
-No site view, no published file, no workflow. The decennial census, ACS margins of error in the
+No workflow and nothing scheduled. The site's view and its data arrive by a site pull request built from `scripts/census/export_site.py`. The decennial census, ACS margins of error in the
 bootstrap interval, facility-level geocoding, and an age comparison are not implemented.
