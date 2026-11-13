@@ -385,6 +385,11 @@ def summarise(rows: list[dict[str, Any]], funnel: dict[str, int], areas: list[di
                               'at_least_0.9': sum(1 for r in res if (r['resolution']['county'].get('area_share') or 0) >= 0.9)},
         'referral_zips': {'n_zips': len(referral), 'n_trials': sum(r['referral_zip'] for r in rows)},
         'reference_population_fit': dict(c((r.get('reference_population') or {}).get('fit', 'not_assessed') for r in rows)),
+        # the denominator for "contextual": trials whose eligibility could be read, so fit could be judged
+        'reference_population_assessed': {
+            'n': sum(1 for r in rows if r.get('reference_population')),
+            'definition': 'Trials in the cohort whose registered eligibility could be read, so the fit of a '
+                          'general-population benchmark could be assessed. The rest are counted as not_assessed.'},
         'reference_caveats': dict(c(x for r in rows for x in (r.get('reference_population') or {}).get('caveats', []))),
         'dimensions': dims,
         'areas': [{'level': k[0], 'dimension': k[1], 'site_basis': k[2], 'variant': k[3], 'display_rule': k[4], 'n': n}
