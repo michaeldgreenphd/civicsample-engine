@@ -229,3 +229,18 @@ def test_the_known_only_figure_divides_by_participants_with_a_known_category() -
     cat = benchmark.pool(rows, ['x'], floor=2, resamples=50, rng=np.random.default_rng(3))['categories'][0]
     assert cat['observed_pct'] == pytest.approx(26.67, abs=0.01)
     assert cat['among_known'] == {'n_trials': 2, 'observed_pct': 80.0, 'diff_pp': 20.0}
+
+
+def test_unknowns_bound_the_difference_and_say_when_its_direction_is_open() -> None:
+    def row(obs: float, unknown: float) -> dict[str, object]:
+        return {**_row(100, obs, 30.0), 'unknown': unknown}
+    # 20% observed against 30% expected with 25% unknown: between 10 points under and 15 over
+    open_case = benchmark.pool([row(20.0, 25.0)] * 2, ['x'], floor=2, resamples=20, rng=np.random.default_rng(1))
+    assert open_case['categories'][0]['unknown_bounds'] == {
+        'diff_pp_if_no_unknown_is_in_category': -10.0, 'diff_pp_if_every_unknown_is_in_category': 15.0,
+        'direction_settled': False}
+    # 5% unknown cannot close a 10-point gap; a share already above the reference stays above
+    under = benchmark.pool([row(20.0, 5.0)] * 2, ['x'], floor=2, resamples=20, rng=np.random.default_rng(1))
+    over = benchmark.pool([row(45.0, 25.0)] * 2, ['x'], floor=2, resamples=20, rng=np.random.default_rng(1))
+    assert under['categories'][0]['unknown_bounds']['direction_settled'] is True
+    assert over['categories'][0]['unknown_bounds']['direction_settled'] is True

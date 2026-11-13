@@ -24,6 +24,7 @@ it says "compared with residents of the selected area", never "underrepresented"
 | Reference population | `acs.py`, `benchmark.expected` | Sex-by-age tables by race (B01001A–G), Hispanic origin (B01001I) and all residents (B01001), restricted to the eligible ages and sexes, at ZCTA, county, metro area, state, region and nation side by side. 90% margins of error are carried through. |
 | Comparison | `benchmark.compare` | Percentage-point difference and representation ratio per category; the ratio is recorded as undefined when the reference share is zero. |
 | Areas | `benchmark.pool` | Each trial counts once (the investigator's choice, 2026-11-10); a participant-weighted figure is secondary. Bootstrap interval over trials; areas under 50 qualifying trials are withheld with their count. Variants: site basis (one listed facility / self-described only) × with or without referral-centre ZIPs. |
+| Unknowns | `benchmark.pool` | Unknown stays in each trial's denominator, so an observed share is a floor. Each category carries `unknown_bounds` (the difference at the floor and at the ceiling, where every unknown is in the category) with `direction_settled`, and `among_known`, a point figure that assumes unknowns are spread like knowns. |
 
 ## Harmonisation
 

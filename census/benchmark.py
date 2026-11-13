@@ -143,9 +143,20 @@ def pool(rows: list[dict[str, Any]], keys: list[str], *, floor: int, resamples: 
             'expected_moe90_pp': None if np.isnan(m).all() else round(float(np.nanmean(m)), 2),
             'weighted': {'observed_pct': round(ow, 2), 'expected_pct': round(ew, 2), 'diff_pp': round(ow - ew, 2),
                          'lo_pp': round(float(lo_w[j]), 2), 'hi_pp': round(float(hi_w[j]), 2)}})
-    # Sensitivity to unknowns. The primary figure keeps unknown in each trial's denominator, so
-    # every observed share is a floor; this one divides by participants with a known category
-    # instead, for the trials that have any. Reading both shows how much of a gap unknowns explain.
+    # What unknowns allow. The primary figure keeps unknown in each trial's denominator, so every
+    # observed share is a floor: it is the share if no unknown participant belongs to the
+    # category. The ceiling is the share if every unknown participant does. The true share lies
+    # between them whatever the reason for the unknowns, so when the two differences have
+    # opposite signs the data cannot say which side of the reference the trials fall on.
+    unknown = np.array([r.get('unknown') or 0.0 for r in rows])
+    for j, cat in enumerate(cats):
+        upper = float((obs[:, j] + unknown).mean())
+        cat['unknown_bounds'] = {'diff_pp_if_no_unknown_is_in_category': cat['diff_pp'],
+                                 'diff_pp_if_every_unknown_is_in_category': round(upper - cat['expected_pct'], 2),
+                                 'direction_settled': bool(cat['diff_pp'] > 0 or upper - cat['expected_pct'] < 0)}
+    # 'among_known' is a point figure, not a bound: the share among participants with a known
+    # category, which is right only if unknowns are spread like knowns. It is biased where a
+    # table reports one category and files everyone else as unknown.
     known = [r for r in rows if r.get('obs_known')]
     if known:
         ok = np.array([[r['obs_known'][k] for k in keys] for r in known])

@@ -56,8 +56,10 @@ LIMITATIONS = [
     'non-overlapping windows by an enrolment proxy (start to primary completion), which runs late by the length of follow-up.',
     'Margins of error are the survey\'s 90% margins carried through by the Census Bureau\'s approximations; '
     'the interval on each area is a bootstrap over its trials and does not include survey error.',
-    'Unknown or unreported participants stay in each trial\'s denominator, so every observed share is a floor; '
-    'the "among_known" figure divides by participants with a known category instead. Neither is the truth when unknowns are many.',
+    'Unknown or unreported participants stay in each trial\'s denominator, so every observed share is a floor. '
+    '"unknown_bounds" gives the difference at that floor and at the ceiling (every unknown in the category); the truth lies '
+    'between, and "direction_settled" is false when the two disagree in sign. "among_known" is a point figure that assumes '
+    'unknowns are spread like knowns; it is biased where a table reports one category and files everyone else as unknown.',
     'The survey changed how it codes race responses from 2020: "Two or More Races" and "Some Other Race" are much larger '
     'in the 2020-2024 window than before for the same people. Those two categories are not comparable across windows, '
     'and their gaps against trial tables reflect the question as much as the population.',
