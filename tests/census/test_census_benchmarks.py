@@ -220,3 +220,12 @@ def test_registry_facts_take_the_point_only_from_a_single_location() -> None:
     assert registry.site_facts(one)['point'] == (1.0, 2.0) and 'single-center' in registry.site_facts(one)['text']
     assert registry.site_facts(two)['point'] is None and registry.site_facts(two)['n_locations_now'] == 2
     assert registry.site_facts(None)['found'] is False
+
+
+def test_the_known_only_figure_divides_by_participants_with_a_known_category() -> None:
+    # two trials, each 40% in category x with half the table unknown: 40% of all, 80% of known
+    rows = [{**_row(100, 40.0, 60.0), 'obs_known': {'x': 80.0}}, {**_row(50, 40.0, 60.0), 'obs_known': {'x': 80.0}},
+            {**_row(10, 0.0, 60.0), 'obs_known': None}]                     # nobody known: left out
+    cat = benchmark.pool(rows, ['x'], floor=2, resamples=50, rng=np.random.default_rng(3))['categories'][0]
+    assert cat['observed_pct'] == pytest.approx(26.67, abs=0.01)
+    assert cat['among_known'] == {'n_trials': 2, 'observed_pct': 80.0, 'diff_pp': 20.0}

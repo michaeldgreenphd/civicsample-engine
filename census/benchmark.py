@@ -143,6 +143,16 @@ def pool(rows: list[dict[str, Any]], keys: list[str], *, floor: int, resamples: 
             'expected_moe90_pp': None if np.isnan(m).all() else round(float(np.nanmean(m)), 2),
             'weighted': {'observed_pct': round(ow, 2), 'expected_pct': round(ew, 2), 'diff_pp': round(ow - ew, 2),
                          'lo_pp': round(float(lo_w[j]), 2), 'hi_pp': round(float(hi_w[j]), 2)}})
+    # Sensitivity to unknowns. The primary figure keeps unknown in each trial's denominator, so
+    # every observed share is a floor; this one divides by participants with a known category
+    # instead, for the trials that have any. Reading both shows how much of a gap unknowns explain.
+    known = [r for r in rows if r.get('obs_known')]
+    if known:
+        ok = np.array([[r['obs_known'][k] for k in keys] for r in known])
+        ek = np.array([[r['exp'][k] for k in keys] for r in known])
+        for j, cat in enumerate(cats):
+            cat['among_known'] = {'n_trials': len(known), 'observed_pct': round(float(ok[:, j].mean()), 2),
+                                  'diff_pp': round(float((ok[:, j] - ek[:, j]).mean()), 2)}
     return {**out, 'display_rule': 'show', 'gate_reason': None,
             # qualifies the weighted figure: one trial holding most participants
             'concentration_flag': bool(n.max() / n.sum() > 0.5), 'categories': cats}

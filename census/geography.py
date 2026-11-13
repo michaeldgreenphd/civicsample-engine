@@ -99,14 +99,13 @@ def read_shapes(path: Path, kind: str, only: Iterable[str] | None = None) -> dic
     # decodes any byte: the 2010 files store names in Latin-1 ("Doña Ana") without saying so, and
     # the 2014 files declare "ISO 88591", a label Python does not know.
     with warnings.catch_warnings():
-        warnings.simplefilter('ignore', UserWarning)
-        reader = shapefile.Reader(str(path), encoding='latin-1', encodingErrors='replace')
-    with reader:
-        for sr in reader.iterShapeRecords():
-            code = _code(sr.record.as_dict(), kind)
-            if want is None or code in want:
-                geom = shape(sr.shape.__geo_interface__)
-                out[code] = geom if geom.is_valid else geom.buffer(0)
+        warnings.simplefilter('ignore', UserWarning)       # "encoding differs from the .cpg file"
+        with shapefile.Reader(str(path), encoding='latin-1', encodingErrors='replace') as reader:
+            for sr in reader.iterShapeRecords():
+                code = _code(sr.record.as_dict(), kind)
+                if want is None or code in want:
+                    geom = shape(sr.shape.__geo_interface__)
+                    out[code] = geom if geom.is_valid else geom.buffer(0)
     return out
 
 

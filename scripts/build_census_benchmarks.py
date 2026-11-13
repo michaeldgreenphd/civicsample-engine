@@ -56,6 +56,11 @@ LIMITATIONS = [
     'non-overlapping windows by an enrolment proxy (start to primary completion), which runs late by the length of follow-up.',
     'Margins of error are the survey\'s 90% margins carried through by the Census Bureau\'s approximations; '
     'the interval on each area is a bootstrap over its trials and does not include survey error.',
+    'Unknown or unreported participants stay in each trial\'s denominator, so every observed share is a floor; '
+    'the "among_known" figure divides by participants with a known category instead. Neither is the truth when unknowns are many.',
+    'The survey changed how it codes race responses from 2020: "Two or More Races" and "Some Other Race" are much larger '
+    'in the 2020-2024 window than before for the same people. Those two categories are not comparable across windows, '
+    'and their gaps against trial tables reflect the question as much as the population.',
     'The registry table describes the baseline analysis population with all arms combined, which can differ from enrolment.',
     'Age is matched only on the reference side (eligible range); participants\' own ages by race are not reported. '
     'Sex is the registry\'s sex field; nothing here describes gender identity or sexual orientation.',
@@ -124,6 +129,12 @@ def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[st
             'table_to_enrollment_ratio': round(n / rec['enrollment'], 3) if rec.get('enrollment') else None,
             'observed_counts': obs['counts'], 'original_categories': obs['original_categories'],
             'observed_pct': {k: round(100 * v / n, 3) for k, v in obs['counts'].items()}}
+        unknown = obs['counts'].get('unknown_not_reported', obs['counts'].get('unknown', 0))
+        known_n = n - unknown - sum(obs.get('unharmonised_counts', {}).values())
+        # shares among participants with a known category (a sensitivity figure; see benchmark.pool)
+        d['n_known'] = known_n
+        d['observed_pct_of_known'] = ({k: round(100 * v / known_n, 3) for k, v in obs['counts'].items()
+                                       if k not in ('unknown_not_reported', 'unknown')} if known_n > 0 else None)
         if 'unharmonised_counts' in obs:
             d['unharmonised_counts'] = obs['unharmonised_counts']
         reason = None
@@ -170,6 +181,7 @@ def pool_areas(rows: list[dict[str, Any]], names: dict[tuple[int, str, str], str
                                 and not (referral == 'without_referral_zips' and r['referral_zip'])):
                             groups[b['geoid']].append({
                                 'n': d['n_in_table'], 'obs': d['observed_pct'], 'exp': b['pct'], 'moe': b['moe90_pp'],
+                                'obs_known': d['observed_pct_of_known'],
                                 'vintage': r['benchmark_period']['vintage'],
                                 'unknown': d['observed_pct'].get('unknown_not_reported', d['observed_pct'].get('unknown'))})
                     for geoid in sorted(groups):
