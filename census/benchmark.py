@@ -137,7 +137,8 @@ def pool(rows: list[dict[str, Any]], keys: list[str], *, floor: int, resamples: 
         m = moe[:, j]
         cats.append({
             'category': k, 'observed_pct': round(o, 2), 'expected_pct': round(e, 2), 'diff_pp': round(o - e, 2),
-            'ratio': round(o / e, 3) if e > 0 else None,
+            # ratio of the two mean shares on denominator A (everyone in the tables)
+            'ratio': round(o / e, 3) if e > 0 else None, 'ratio_denominator': 'all_participants_in_tables',
             **({} if e > 0 else {'ratio_undefined': 'reference_share_is_zero'}),
             'lo_pp': round(float(lo[j]), 2), 'hi_pp': round(float(hi[j]), 2), 'interval_level': 0.95,
             'expected_moe90_pp': None if np.isnan(m).all() else round(float(np.nanmean(m)), 2),
@@ -154,16 +155,22 @@ def pool(rows: list[dict[str, Any]], keys: list[str], *, floor: int, resamples: 
         cat['unknown_bounds'] = {'diff_pp_if_no_unknown_is_in_category': cat['diff_pp'],
                                  'diff_pp_if_every_unknown_is_in_category': round(upper - cat['expected_pct'], 2),
                                  'direction_settled': bool(cat['diff_pp'] > 0 or upper - cat['expected_pct'] < 0)}
-    # 'among_known' is a point figure, not a bound: the share among participants with a known
-    # category, which is right only if unknowns are spread like knowns. It is biased where a
-    # table reports one category and files everyone else as unknown.
+    # Denominator B: shares of participants with a reported, classifiable category, for the
+    # trials that have any. It is a second view, not a correction: it equals the truth only if
+    # people without a recorded category are distributed like those with one, which is not
+    # known, and it is biased where a table reports one category and files everyone else as
+    # unknown. Shown beside denominator A with both participant totals.
     known = [r for r in rows if r.get('obs_known')]
+    out['denominators'] = {'participants_in_tables': int(n.sum()),
+                           'participants_classified': int(sum(r.get('n_known') or 0 for r in rows)),
+                           'unknown_or_unmapped_pct_mean': round(float(unknown.mean()), 2)}
     if known:
         ok = np.array([[r['obs_known'][k] for k in keys] for r in known])
         ek = np.array([[r['exp'][k] for k in keys] for r in known])
         for j, cat in enumerate(cats):
-            cat['among_known'] = {'n_trials': len(known), 'observed_pct': round(float(ok[:, j].mean()), 2),
-                                  'diff_pp': round(float((ok[:, j] - ek[:, j]).mean()), 2)}
+            ko, ke = float(ok[:, j].mean()), float(ek[:, j].mean())
+            cat['of_classified'] = {'n_trials': len(known), 'observed_pct': round(ko, 2), 'diff_pp': round(ko - ke, 2),
+                                    'ratio': round(ko / ke, 3) if ke > 0 else None}
     return {**out, 'display_rule': 'show', 'gate_reason': None,
             # qualifies the weighted figure: one trial holding most participants
             'concentration_flag': bool(n.max() / n.sum() > 0.5), 'categories': cats}

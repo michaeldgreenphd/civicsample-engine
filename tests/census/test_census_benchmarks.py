@@ -73,10 +73,12 @@ def test_observed_keeps_unknown_as_a_row_and_absence_as_a_reason() -> None:
            'sex': {'reported': True, 'totals': {'female': 3, 'male': 6, 'intersex': 1}}}
     race = trials.observed(rec, 'race')
     assert race['n_in_table'] == 10 and race['counts']['unknown_not_reported'] == 2
+    assert race['n_classified'] == 8 and race['structure']['check'] == 'matches_sex_table'
     assert race['original_categories'] == [{'original': 'White', 'count': 6}]
     assert trials.observed(rec, 'ethnicity') == {'reported': False, 'reason': 'ethnicity_not_reported'}
     sex = trials.observed(rec, 'sex')
     assert sex['n_in_table'] == 10 and sex['unharmonised_counts'] == {'intersex': 1}
+    assert sex['n_classified'] == 9          # an unmapped category is not "classified" here
 
 
 # --- survey tables ---------------------------------------------------------------------------
@@ -224,11 +226,15 @@ def test_registry_facts_take_the_point_only_from_a_single_location() -> None:
 
 def test_the_known_only_figure_divides_by_participants_with_a_known_category() -> None:
     # two trials, each 40% in category x with half the table unknown: 40% of all, 80% of known
-    rows = [{**_row(100, 40.0, 60.0), 'obs_known': {'x': 80.0}}, {**_row(50, 40.0, 60.0), 'obs_known': {'x': 80.0}},
-            {**_row(10, 0.0, 60.0), 'obs_known': None}]                     # nobody known: left out
-    cat = benchmark.pool(rows, ['x'], floor=2, resamples=50, rng=np.random.default_rng(3))['categories'][0]
-    assert cat['observed_pct'] == pytest.approx(26.67, abs=0.01)
-    assert cat['among_known'] == {'n_trials': 2, 'observed_pct': 80.0, 'diff_pp': 20.0}
+    rows = [{**_row(100, 40.0, 60.0), 'obs_known': {'x': 80.0}, 'n_known': 50},
+            {**_row(50, 40.0, 60.0), 'obs_known': {'x': 80.0}, 'n_known': 25},
+            {**_row(10, 0.0, 60.0), 'obs_known': None, 'n_known': 0}]       # nobody classified: left out of B
+    out = benchmark.pool(rows, ['x'], floor=2, resamples=50, rng=np.random.default_rng(3))
+    cat = out['categories'][0]
+    assert cat['observed_pct'] == pytest.approx(26.67, abs=0.01) and cat['ratio_denominator'] == 'all_participants_in_tables'
+    assert cat['of_classified'] == {'n_trials': 2, 'observed_pct': 80.0, 'diff_pp': 20.0, 'ratio': 1.333}
+    assert out['denominators'] == {'participants_in_tables': 160, 'participants_classified': 75,
+                                   'unknown_or_unmapped_pct_mean': 0.0}
 
 
 def test_unknowns_bound_the_difference_and_say_when_its_direction_is_open() -> None:
@@ -244,3 +250,31 @@ def test_unknowns_bound_the_difference_and_say_when_its_direction_is_open() -> N
     over = benchmark.pool([row(45.0, 25.0)] * 2, ['x'], floor=2, resamples=20, rng=np.random.default_rng(1))
     assert under['categories'][0]['unknown_bounds']['direction_settled'] is True
     assert over['categories'][0]['unknown_bounds']['direction_settled'] is True
+
+
+def test_a_table_whose_rows_overlap_is_not_used_for_shares() -> None:
+    sex = {'reported': True, 'totals': {'female': 20, 'male': 20}}
+    doubled = {'race': {'reported': True, 'omb_totals': {'white': 40, 'asian': 30}}, 'sex': sex}
+    assert trials.observed(doubled, 'race')['structure'] == {
+        'parser_flags': [], 'sex_table_total': 40, 'usable_for_shares': False, 'check': 'table_total_exceeds_sex_table'}
+    combined = {'race': {'reported': True, 'omb_totals': {'white': 25, 'asian': 15}, 'flags': ['combined_race_ethnicity']}, 'sex': sex}
+    s = trials.observed(combined, 'race')['structure']
+    assert s['usable_for_shares'] is False and s['flags_hit'] == ['combined_race_ethnicity']
+    subset = {'race': {'reported': True, 'omb_totals': {'white': 20, 'asian': 5}}, 'sex': sex}
+    assert trials.observed(subset, 'race')['structure']['check'] == 'table_total_below_sex_table'
+    alone = {'race': {'reported': True, 'omb_totals': {'white': 20}}}
+    assert trials.observed(alone, 'race')['structure']['check'] == 'no_other_table_to_check_against'
+
+
+def test_one_us_site_among_international_sites_is_counted_and_excluded() -> None:
+    kept, funnel = trials.cohort([{'nct_id': 'A', 'study_sites': [{'country': 'United States'}, {'country': 'France'}]},
+                                  {'nct_id': 'B', 'study_sites': [{'country': 'France'}, {'country': 'Spain'}]}])
+    assert kept == [] and funnel['one_us_facility_plus_non_us_facilities'] == 1 and funnel['any_non_us_facility'] == 2
+
+
+def test_a_general_population_benchmark_is_labelled_contextual_when_it_does_not_fit() -> None:
+    patient = {'healthy_volunteers': False}
+    assert trials.reference_caveats(patient, 18.0, None, ('male', 'female'), False) == ['enrols_patients_not_the_general_population']
+    child = trials.reference_caveats({'healthy_volunteers': True}, 2.0, 18.0, ('female',), True)
+    assert child == ['site_in_a_referral_centre_zip', 'children_only', 'single_sex_eligibility']
+    assert trials.reference_caveats({'healthy_volunteers': True}, 18.0, None, ('male', 'female'), False) == []

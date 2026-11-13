@@ -145,6 +145,7 @@ def cohort(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[st
     A trial with several facilities is never single-site here, even when only one of them has a
     usable address; that case is counted so it is visible, and left out."""
     funnel = {'records': len(records), 'no_facility_listed': 0, 'any_non_us_facility': 0,
+              'one_us_facility_plus_non_us_facilities': 0,
               'us_several_facilities': 0, 'us_several_facilities_one_with_zip': 0, 'us_one_listed_facility': 0}
     keep = []
     for r in records:
@@ -153,6 +154,9 @@ def cohort(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[st
             funnel['no_facility_listed'] += 1
         elif any(s.get('country') != 'United States' for s in sites):
             funnel['any_non_us_facility'] += 1
+            # one US site among international ones is a multinational study, not a single-site
+            # one; counted on its own because it is the case most easily mistaken for it
+            funnel['one_us_facility_plus_non_us_facilities'] += sum(s.get('country') == 'United States' for s in sites) == 1
         elif len(sites) > 1:
             funnel['us_several_facilities'] += 1
             funnel['us_several_facilities_one_with_zip'] += sum(1 for s in sites if s.get('zip')) == 1
@@ -162,11 +166,51 @@ def cohort(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[st
     return keep, funnel
 
 
+# Parser flags that mean the table's rows are not one exclusive classification of each person.
+_NOT_A_PARTITION = ('combined_race_ethnicity', 'multiple_race_tables')
+
+
+def _table_total(record: dict[str, Any], dimension: str) -> int | None:
+    block = record.get(dimension) or {}
+    totals = block.get('totals') if dimension == 'sex' else block.get('omb_totals')
+    if not block.get('reported') or not isinstance(totals, dict):
+        return None
+    return sum(v for v in totals.values() if isinstance(v, (int, float)))
+
+
+def category_structure(record: dict[str, Any], dimension: str, total: int) -> dict[str, Any]:
+    """Whether the table's rows can be read as each participant counted once.
+
+    A share needs that. Two checks, both from data the engine already holds: the parser's own
+    flags (a table that mixes race with ethnicity, or several race tables summed), and the
+    sex table, which counts each participant once: a race or ethnicity table adding up to more
+    than it has counted someone twice. Agreement with the sex table does not prove the rows
+    are exclusive; disagreement upward proves they are not."""
+    flags = sorted({str(f) for f in ((record.get(dimension) or {}).get('flags') or [])})
+    hit = [f for f in flags if f.startswith(_NOT_A_PARTITION)]
+    other = None if dimension == 'sex' else _table_total(record, 'sex')
+    out: dict[str, Any] = {'parser_flags': flags, 'sex_table_total': other}
+    if hit:
+        return {**out, 'usable_for_shares': False, 'check': 'parser_flags_overlapping_or_combined_rows', 'flags_hit': hit}
+    if other and total > other + max(1, 0.01 * other):
+        return {**out, 'usable_for_shares': False, 'check': 'table_total_exceeds_sex_table'}
+    if other and total < other - max(1, 0.01 * other):
+        # a table covering fewer people than the sex table describes a subset; shares are
+        # shares of that subset, which the recorded totals make visible
+        return {**out, 'usable_for_shares': True, 'check': 'table_total_below_sex_table'}
+    return {**out, 'usable_for_shares': True, 'check': 'matches_sex_table' if other else 'no_other_table_to_check_against'}
+
+
 def observed(record: dict[str, Any], dimension: str) -> dict[str, Any]:
     """Counts as the registry table gives them, with unknown kept as its own row.
 
-    'reported': the table exists. Absence is recorded as a reason, never as zeros. The total is
-    the sum of the table's own rows, so every share has the table as its denominator."""
+    'reported': the table exists. Absence is recorded as a reason, never as zeros. Two
+    denominators are returned and neither replaces the other:
+      n_in_table    everyone the table counts (denominator A);
+      n_classified  those with a reported, classifiable category (denominator B): the table
+                    less unknown or not reported and less any category this module does not map.
+    B is not a correction for missing data: people without a recorded category may differ
+    from those with one."""
     block = record.get(dimension) or {}
     totals = block.get('totals') if dimension == 'sex' else block.get('omb_totals')
     if not block.get('reported') or not isinstance(totals, dict):
@@ -176,9 +220,31 @@ def observed(record: dict[str, Any], dimension: str) -> dict[str, Any]:
     total = sum(counts.values()) + sum(extra.values())
     if total <= 0:
         return {'reported': False, 'reason': f'{dimension}_table_total_is_zero'}
+    unknown = sum(v for k, v in counts.items() if k.startswith('unknown'))
     out: dict[str, Any] = {'reported': True, 'counts': counts, 'n_in_table': total,
+                           'n_unknown': unknown, 'n_unmapped': sum(extra.values()),
+                           'n_classified': total - unknown - sum(extra.values()),
+                           'structure': category_structure(record, dimension, total),
                            'original_categories': [{'original': c.get('original'), 'count': c.get('count')}
                                                    for c in (block.get('raw_categories') or [])][:40]}
-    if extra:   # a category this module does not harmonise stays in the denominator and is named
+    if extra:   # a category this module does not harmonise stays in denominator A and is named
         out['unharmonised_counts'] = extra
+    return out
+
+
+def reference_caveats(record: dict[str, Any], lo: float, hi: float | None, sexes: tuple[str, ...],
+                      referral_zip: bool) -> list[str]:
+    """Reasons a general-population benchmark is only context for this trial. Every trial of
+    patients has the first: residents of an area are not the people who have the condition."""
+    out = []
+    if not record.get('healthy_volunteers'):
+        out.append('enrols_patients_not_the_general_population')
+    if referral_zip:
+        out.append('site_in_a_referral_centre_zip')
+    if hi is not None and hi <= 18:
+        out.append('children_only')
+    if lo >= 60:
+        out.append('older_adults_only')
+    if len(sexes) == 1:
+        out.append('single_sex_eligibility')
     return out

@@ -36,12 +36,24 @@ PARAMETERS = {
     'size_cap_participants': 5000,        # larger studies are mostly not local recruitment
     'min_participants_in_table': 10,      # a share out of fewer people is too coarse to pool
     'bootstrap_resamples': 2000, 'seed': 20261113, 'interval_level': 0.95,
+    # a trial is flagged when the reference share of any category moves by this much between
+    # the area levels available to it; a judgement about what counts as a material change
+    'geography_spread_flag_pp': 10.0,
     'cbsa_min_area_share': geography.CBSA_MIN_SHARE}
 LEVEL_ORDER = ('zcta', 'county', 'cbsa', 'state', 'region', 'us')
 # Which tiers each site basis admits. A registration whose own text names several sites is in
 # neither: its one listed facility is known not to be the whole study.
 SITE_BASES = {'one_listed_facility': ('self_described_single_site', 'one_listed_facility', 'conflicting_text'),
               'self_described_single_site': ('self_described_single_site',)}
+SENSITIVITY_LEVELS = ('zcta', 'county', 'cbsa', 'state')
+# The level shown first. Not the smallest area: a ZCTA around a medical campus can hold almost
+# no residents (1,297 race comparisons found none who met eligibility) and exists for only three
+# of the four windows, and its margins of error are the widest. The metro area is the Census
+# Bureau's commuting-based unit, resolves for nearly every site, and has stable estimates.
+# County and ZCTA are published beside it; none is "the" benchmark.
+DEFAULT_LEVEL = {'level': 'cbsa', 'label': 'Metropolitan or micropolitan statistical area',
+                 'reason': 'Widest coverage among local levels and stable estimates; reflects commuting patterns. '
+                           'A default for display, not a claim about where participants live.'}
 COMPARED = {'race': list(benchmark.RACE_TABLE), 'ethnicity': ['hispanic_latino', 'not_hispanic_latino'],
             'sex': ['female', 'male']}
 LIMITATIONS = [
@@ -56,13 +68,16 @@ LIMITATIONS = [
     'non-overlapping windows by an enrolment proxy (start to primary completion), which runs late by the length of follow-up.',
     'Margins of error are the survey\'s 90% margins carried through by the Census Bureau\'s approximations; '
     'the interval on each area is a bootstrap over its trials and does not include survey error.',
-    'Unknown or unreported participants stay in each trial\'s denominator, so every observed share is a floor. '
-    '"unknown_bounds" gives the difference at that floor and at the ceiling (every unknown in the category); the truth lies '
-    'between, and "direction_settled" is false when the two disagree in sign. "among_known" is a point figure that assumes '
-    'unknowns are spread like knowns; it is biased where a table reports one category and files everyone else as unknown.',
-    'The survey changed how it codes race responses from 2020: "Two or More Races" and "Some Other Race" are much larger '
-    'in the 2020-2024 window than before for the same people. Those two categories are not comparable across windows, '
-    'and their gaps against trial tables reflect the question as much as the population.',
+    'Two denominators are reported and neither replaces the other. A: everyone the registry table counts, with unknown '
+    'kept as its own row, so each observed share is a floor ("unknown_bounds" gives the difference at that floor and at '
+    'the ceiling where every unknown is in the category; "direction_settled" is false when their signs differ). '
+    'B ("of_classified"): participants with a reported, classifiable category. B is not a correction that recovers the '
+    'true distribution; missingness may be systematic. Tables whose rows overlap or combine race with ethnicity are not pooled.',
+    'Race comparability across windows is affected by a measurement change: the ACS question on race was revised in 2020 '
+    'to be consistent with the 2020 Census question, and the Census Bureau states that ACS race data "are not directly '
+    'comparable across all years" (2023 ACS Subject Definitions, Race, Comparability). The 2020-2024 window lies wholly '
+    'after the revision and the three earlier windows wholly before it. summary.json reports the national share of each '
+    'race table by window; how much of any change is measurement and how much is population is not estimated here.',
     'The registry table describes the baseline analysis population with all arms combined, which can differ from enrolment.',
     'Age is matched only on the reference side (eligible range); participants\' own ages by race are not reported. '
     'Sex is the registry\'s sex field; nothing here describes gender identity or sexual orientation.',
@@ -108,7 +123,13 @@ def trial_row(rec: dict[str, Any], facts: dict[str, Any], referral: set[str]) ->
         lo, hi = trials.eligible_ages(rec)
         row['eligibility'] = {'min_age': rec.get('min_age'), 'max_age': rec.get('max_age'), 'age_from': lo,
                               'age_to_exclusive': hi, 'sex': (rec.get('eligibility') or {}).get('sex'),
-                              'sexes': list(trials.eligible_sexes(rec))}
+                              'sexes': list(trials.eligible_sexes(rec)),
+                              'healthy_volunteers': bool(rec.get('healthy_volunteers'))}
+        caveats = trials.reference_caveats(rec, lo, hi, trials.eligible_sexes(rec), row['referral_zip'])
+        # 'contextual': the area's residents are background for this trial, not a like-for-like
+        # denominator. True of nearly every trial, since most enrol patients.
+        row['reference_population'] = {'label': 'site-area population benchmark',
+                                       'fit': 'contextual' if caveats else 'general', 'caveats': caveats}
     except ValueError as exc:
         row['eligibility'] = {'min_age': rec.get('min_age'), 'max_age': rec.get('max_age'), 'error': str(exc)}
     return row
@@ -130,18 +151,25 @@ def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[st
             'state': 'reported', 'population_basis': trials.POPULATION_BASIS, 'n_in_table': n,
             'table_to_enrollment_ratio': round(n / rec['enrollment'], 3) if rec.get('enrollment') else None,
             'observed_counts': obs['counts'], 'original_categories': obs['original_categories'],
-            'observed_pct': {k: round(100 * v / n, 3) for k, v in obs['counts'].items()}}
-        unknown = obs['counts'].get('unknown_not_reported', obs['counts'].get('unknown', 0))
-        known_n = n - unknown - sum(obs.get('unharmonised_counts', {}).values())
-        # shares among participants with a known category (a sensitivity figure; see benchmark.pool)
-        d['n_known'] = known_n
-        d['observed_pct_of_known'] = ({k: round(100 * v / known_n, 3) for k, v in obs['counts'].items()
-                                       if k not in ('unknown_not_reported', 'unknown')} if known_n > 0 else None)
+            'structure': obs['structure'],
+            # denominator A: everyone the table counts
+            'observed_pct': {k: round(100 * v / n, 3) for k, v in obs['counts'].items()},
+            'denominators': {'all_in_table': n, 'classified': obs['n_classified'], 'unknown_or_not_reported': obs['n_unknown'],
+                             'unmapped_category': obs['n_unmapped'],
+                             'unknown_or_unmapped_pct': round(100 * (n - obs['n_classified']) / n, 3)}}
+        known_n = obs['n_classified']
+        # denominator B: participants with a reported, classifiable category. Only where the rows
+        # can be read as one classification of each person; never a correction for missing data.
+        d['observed_pct_of_classified'] = (
+            {k: round(100 * v / known_n, 3) for k, v in obs['counts'].items() if not k.startswith('unknown')}
+            if known_n > 0 and obs['structure']['usable_for_shares'] else None)
         if 'unharmonised_counts' in obs:
             d['unharmonised_counts'] = obs['unharmonised_counts']
         reason = None
         if 'error' in elig:
             reason = 'eligible_ages_unreadable'
+        elif not obs['structure']['usable_for_shares']:
+            reason = 'rows_overlap_or_combine_race_with_ethnicity'   # no share is meaningful
         elif dim == 'sex' and len(elig['sexes']) == 1:
             reason = 'single_sex_by_eligibility'           # the sex mix is fixed by design
         elif n > PARAMETERS['size_cap_participants']:
@@ -165,6 +193,18 @@ def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[st
                     if exp['available']:
                         exp.update(benchmark.compare(d['observed_pct'], exp))
                     d['benchmarks'][lvl] = {'geoid': where['geoid'], **exp}
+            # How far the reference share moves with the choice of area, for this trial.
+            avail = {lvl: d['benchmarks'][lvl]['pct'] for lvl in SENSITIVITY_LEVELS
+                     if d['benchmarks'].get(lvl, {}).get('available')}
+            if len(avail) >= 2:
+                spread = {k: max(v[k] for v in avail.values()) - min(v[k] for v in avail.values()) for k in COMPARED[dim]}
+                worst = max(spread, key=lambda k: spread[k])
+                d['geography_sensitivity'] = {
+                    'levels_compared': list(avail), 'max_spread_pp': round(spread[worst], 2), 'category': worst,
+                    'flag': bool(spread[worst] >= PARAMETERS['geography_spread_flag_pp'])}
+            else:
+                d['geography_sensitivity'] = {'levels_compared': list(avail), 'flag': None,
+                                              'reason': 'fewer_than_two_local_levels_available'}
         row['dimensions'][dim] = d
 
 
@@ -183,7 +223,8 @@ def pool_areas(rows: list[dict[str, Any]], names: dict[tuple[int, str, str], str
                                 and not (referral == 'without_referral_zips' and r['referral_zip'])):
                             groups[b['geoid']].append({
                                 'n': d['n_in_table'], 'obs': d['observed_pct'], 'exp': b['pct'], 'moe': b['moe90_pp'],
-                                'obs_known': d['observed_pct_of_known'],
+                                'obs_known': d['observed_pct_of_classified'], 'n_known': d['denominators']['classified'],
+                                'geo_flag': (d.get('geography_sensitivity') or {}).get('flag'),
                                 'vintage': r['benchmark_period']['vintage'],
                                 'unknown': d['observed_pct'].get('unknown_not_reported', d['observed_pct'].get('unknown'))})
                     for geoid in sorted(groups):
@@ -200,6 +241,7 @@ def pool_areas(rows: list[dict[str, Any]], names: dict[tuple[int, str, str], str
                                     'dimension': dim, 'site_basis': basis, 'variant': referral,
                                     'windows': {f'{v - 4}-{v}': c for v, c in sorted(vint.items())},
                                     'trial_only_unknown_pct_mean': round(float(np.mean([x['unknown'] or 0 for x in g])), 2),
+                                    'trials_sensitive_to_geography': sum(1 for x in g if x['geo_flag']),
                                     **res})
     return out
 
@@ -235,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sources: list[dict[str, Any]] = []
     names: dict[tuple[int, str, str], str] = {}
+    reference_series: dict[str, dict[str, float]] = {}
     unmatched = [r for r in rows if r['benchmark_period']['vintage'] is None]
     for r in unmatched:
         r['resolution'], r['dimensions'] = None, {}
@@ -249,6 +292,10 @@ def main(argv: list[str] | None = None) -> int:
         for lvl, data in levels.items():
             for g, i in data.index.items():
                 names[(vintage, lvl, g)] = data.names[i]
+        us = levels['us']                    # all ages, both sexes: the published national shares
+        total = float(np.nansum(us.est[0, acs.TABLE_ORDER.index('total')]))
+        reference_series[f'{vintage - 4}-{vintage}'] = {
+            cat: round(100 * float(np.nansum(us.est[0, t])) / total, 2) for t, cat in enumerate(acs.TABLE_ORDER) if cat != 'total'}
         for rel in geography.BOUNDARIES[vintage].values():
             sources.append({'product': 'cartographic boundary file', **geography.download(rel, args.cache / 'boundaries')})
         resolver = geography.Resolver(vintage, args.cache / 'boundaries', {r['site']['zip5'] for r in mine if r['site']['zip5']},
@@ -261,6 +308,10 @@ def main(argv: list[str] | None = None) -> int:
 
     areas = pool_areas([r for r in rows if r.get('resolution')], names)
     summary = summarise(rows, funnel, areas, referral)
+    summary['national_share_by_window_pct'] = {
+        'definition': 'Share of all US residents in each ACS table, by window, as pulled. A change between windows mixes '
+                      'population change with the 2020 revision of the race question; the two are not separated.',
+        'series': reference_series}
     seen, files = set(), []
     for s in sources:                       # each downloaded file once
         if s['url'] not in seen:
@@ -275,6 +326,8 @@ def main(argv: list[str] | None = None) -> int:
         'registry_archive': reg_meta, 'parameters': PARAMETERS,
         'windows': [f'{a}-{b}' for a, b in trials.WINDOWS], 'product': 'ACS 5-year estimates (90% margins of error)',
         'product_choice': acs.__doc__.split('\n\n')[1], 'population_basis': trials.POPULATION_BASIS,
+        'comparison_label': 'site-area population benchmark', 'default_level': DEFAULT_LEVEL,
+        'tables': acs.TABLES, 'margin_of_error_level': 0.90,
         'limitations': LIMITATIONS, 'limit': args.limit, 'sources': files}
 
     stage = Path(tempfile.mkdtemp(prefix='census_', dir=args.out.parent if args.out.parent.exists() else None))
@@ -303,6 +356,10 @@ def summarise(rows: list[dict[str, Any]], funnel: dict[str, int], areas: list[di
         dims[dim] = {'reported': sum(d.get('state') == 'reported' for d in ds),
                      'not_reported': sum(d.get('state') == 'not_reported' for d in ds),
                      'pooled': sum(bool(d.get('pooled')) for d in ds),
+                     'category_structure': dict(c(d['structure']['check'] for d in ds if d.get('structure'))),
+                     'classified_share_computed': sum(d.get('observed_pct_of_classified') is not None for d in ds),
+                     'geography_sensitivity': dict(c(str((d.get('geography_sensitivity') or {}).get('flag')) for d in ds
+                                                     if d.get('state') == 'reported')),
                      'not_pooled_reasons': dict(c(d['not_pooled_reason'] for d in ds if d.get('not_pooled_reason'))),
                      'benchmark_available_by_level': {
                          lvl: sum(bool(((d.get('benchmarks') or {}).get(lvl) or {}).get('available')) for d in ds)
@@ -326,6 +383,8 @@ def summarise(rows: list[dict[str, Any]], funnel: dict[str, int], areas: list[di
         'county_area_share': {'under_0.5': sum(1 for r in res if (r['resolution']['county'].get('area_share') or 1) < 0.5),
                               'at_least_0.9': sum(1 for r in res if (r['resolution']['county'].get('area_share') or 0) >= 0.9)},
         'referral_zips': {'n_zips': len(referral), 'n_trials': sum(r['referral_zip'] for r in rows)},
+        'reference_population_fit': dict(c((r.get('reference_population') or {}).get('fit', 'not_assessed') for r in rows)),
+        'reference_caveats': dict(c(x for r in rows for x in (r.get('reference_population') or {}).get('caveats', []))),
         'dimensions': dims,
         'areas': [{'level': k[0], 'dimension': k[1], 'site_basis': k[2], 'variant': k[3], 'display_rule': k[4], 'n': n}
                   for k, n in sorted(shown.items())]}
