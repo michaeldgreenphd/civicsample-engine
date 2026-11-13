@@ -32,8 +32,11 @@ select_tables applies:
   3. Disjoint parts are summed only when the caller allows it, every table
      (all tables in play, residual-only ones included; else every table
      with specific counts) posts its own Number Analyzed below the baseline
-     total, those numbers add up to EXACTLY the baseline total, and no table
-     counts more participants than its own Number Analyzed. A smaller sum is
+     total, those numbers add up to EXACTLY the baseline total, no table
+     counts more participants than its own Number Analyzed, and no two
+     tables are identical (the same Number Analyzed, the same count in every
+     category and the same population description: a re-post of one subset,
+     not two matching halves). A smaller sum is
      no evidence of different people: the same 20 of 50 participants posted
      twice also add up to less than 50.
 (Rule 1, which titles qualify and which take precedence, is each extractor's.)
@@ -65,6 +68,15 @@ def number_analyzed(measure: dict, overall_group_id: Optional[str]) -> Optional[
                  for cls in measure.get("classes", []) if isinstance(cls, dict)]
     per_class = [v for v in per_class if v is not None]
     return max(per_class) if per_class else None
+
+
+def population_of(measure: dict) -> Optional[str]:
+    """The measure's population description, whitespace- and case-normalized,
+    or None. Registrants describe a table analyzed on part of the population
+    here ("Data are for mothers only"), which tells two otherwise identical
+    part tables apart."""
+    text = " ".join(str(measure.get("populationDescription") or "").split()).lower()
+    return text or None
 
 
 def specific_sum(table: Dict, specific: FrozenSet[str], key: str) -> int:
@@ -118,7 +130,7 @@ def select_tables(tables: List[Dict], total_participants: Optional[int],
     (rules 2 and 3 above)."""
     if len(tables) <= 1:
         return tables, False
-    if allow_parts and total_participants is not None and _parts(tables, total_participants):
+    if allow_parts and total_participants is not None and _parts(tables, total_participants, key):
         # Every table is a proven part, residual-only ones included (a part
         # whose only row is "Unknown" is still that part's people).
         return tables, True
@@ -132,18 +144,34 @@ def select_tables(tables: List[Dict], total_participants: Optional[int],
     whole = [t for t in informative if t["analyzed"] is None or t["analyzed"] >= total_participants]
     if whole:
         return [fullest(whole, specific, key)], False
-    if allow_parts and _parts(informative, total_participants):
+    if allow_parts and _parts(informative, total_participants, key):
         return informative, True
     return [fullest(informative, specific, key)], False
 
 
-def _parts(tables: List[Dict], total_participants: int) -> bool:
+def _parts(tables: List[Dict], total_participants: int, key: str) -> bool:
     """Rule 3's test: every table posts its own Number Analyzed below the
-    baseline total, the numbers add up to exactly that total, and no table
-    counts more participants than its own number."""
-    return (all(t["analyzed"] is not None and t["analyzed"] < total_participants for t in tables)
+    baseline total, the numbers add up to exactly that total, no table counts
+    more participants than its own number, and no two tables are the same
+    table posted twice. Two tables with the same Number Analyzed, the same
+    count in every category and the same population description (or none)
+    (12 female / 8 male of 20, twice, in a 40-person trial) are read as a
+    re-post of one subset: the sum of their numbers alone does not show them
+    disjoint. Identical counts with different population descriptions are
+    different people: NCT03711370 posts the same race counts for "mothers
+    only (n = 76)" and "infants only (n = 76)", NCT05314712 "23 adults" and
+    "23 children", all Blackfeet."""
+    if not (all(t["analyzed"] is not None and t["analyzed"] < total_participants for t in tables)
             and sum(t["analyzed"] for t in tables) == total_participants
-            and all(counted_sum(t) <= t["analyzed"] for t in tables))
+            and all(counted_sum(t) <= t["analyzed"] for t in tables)):
+        return False
+    seen = set()
+    for t in tables:
+        signature = (t["analyzed"], tuple(sorted(category_counts(t, key).items())), t.get("population"))
+        if signature in seen:
+            return False
+        seen.add(signature)
+    return True
 
 
 
