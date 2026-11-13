@@ -48,7 +48,10 @@ here.
 * **Generator (Claude Code):** writes implementations, structures multi-file
   edits, runs the checks, and opens the pull request. A claim about weekly
   output is backed by a run against real inputs or a fixture, never by
-  inspection alone. It says plainly what it did not do.
+  inspection alone. It says plainly what it did not do. After opening the
+  pull request it requests the Codex review as the pull request workflow in
+  `AGENTS.md` requires, subscribes to the PR's activity so that review wakes
+  the session, and keeps a fallback check-in until the PR is merged or closed.
 * **Reviewers (Codex, Copilot):** audit for security, data loss and
   correctness; check that a change to attribution or extraction logic moves
   the counts deliberately and visibly. Do not report formatting or lint nits,

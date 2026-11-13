@@ -84,8 +84,10 @@ Practical consequences:
 ## Automated PR review
 
 **Codex** is the only automated reviewer. It audits hunk-level diff logic, local
-edge cases, syntax/types and isolated code correctness; the `@codex review`
-comment that opens every review requests it.
+edge cases, syntax/types and isolated code correctness. A `@codex review`
+comment requests it, on every pull request and after every push that changes
+the diff (see the pull request workflow below); do not rely on opening a pull
+request or marking it ready to start one.
 
 Nothing automated checks cross-file effects: untouched downstream callers, data
 provenance, or the contract between civicsample-engine and
@@ -96,6 +98,28 @@ verification steps: the targeted checks and
 `scripts/first_view_parity.mjs` against a site checkout.
 
 The Gemini PR review was removed on 2026-11-10 at the owner's request.
+
+## Pull request workflow — required
+
+1. Branch from `main` and open a pull request against `main`. Never push to
+   `main` directly unless the owner explicitly says to.
+2. Immediately after opening the PR, or after marking a draft ready, post a
+   comment containing exactly `@codex review`. Do this for every PR, without
+   being asked, and again after any push that changes the diff: a Codex
+   review covers only the commit it ran on.
+3. Address every Codex finding before the PR is considered done: verify it
+   against the diff, push a fix for anything real, and reply on the thread
+   saying what changed. Resolve the threads you addressed.
+4. Ask before disputing. When a finding is unclear or looks wrong, do not
+   argue with it or ignore it — post a comment addressed to `@codex` with the
+   specific question, then act on the answer: fix, or reply with the reason
+   it should not be taken. Codex answers direct questions; it does not
+   respond to ordinary thread replies.
+5. One editor per branch. Never use `@codex address that feedback`, or
+   otherwise ask Codex to push commits, while an agent or session is working
+   on the branch. Asking Codex questions is fine at any time.
+6. Keep the PR title and description accurate as the branch changes.
+7. Agents do not merge; the owner merges.
 
 ## Code Review Rules
 
