@@ -330,21 +330,24 @@ _ETHNICITY_KEYWORDS = {
 #
 # Measured on the baseline modules of the 80,890 trials in the 2026-11-08
 # snapshot (CT.gov API v2, re-fetched 2026-11-14), against the extraction
-# without this rule: 1,293 rows (163 distinct labels) holding 1,242,692
+# without this rule: 1,292 rows (162 distinct labels) holding 1,242,690
 # participants become race rows, 981,350 of them White, 194,863 Black or
-# African American, 63,880 Other. unknown_inferred falls by 799,461 and 127
-# trials that reported no race now report it (46,565 to 46,692). The counts of
-# 691 race blocks change; in 251 more only the recorded label changes ("White"
-# becomes the posted "White, not Hispanic"). No trial's counted table changes
-# and no other block changes. Three trials newly add up to more than their
-# baseline population, by 1, 2 and 7 participants, from rows that do so as
-# posted (NCT02841033, NCT01049919, NCT04646616).
+# African American, 63,878 Other; one row that was an unmapped "other"
+# becomes White ("Non-Latine White", 96). unknown_inferred falls by 799,459
+# and 127 trials that reported no race now report it (46,565 to 46,692). The
+# counts of 691 race blocks change; in 251 more only the recorded label
+# changes ("White" becomes the posted "White, not Hispanic"). No trial's
+# counted table changes and no other block changes. Three trials newly add up
+# to more than their baseline population, by 1, 2 and 7 participants, from
+# rows that do so as posted (NCT02841033, NCT01049919, NCT04646616).
 #
 # Left as ethnicity-only by the exact match, with a race word in the label:
 # 119 rows in 92 trials (37,413 participants), mostly "Hispanic (regardless of
 # race)" and its variants, and a few plural or longer forms ("Non-Hispanic
 # Whites", "Non-Hispanic White or European American").
-_ETHNICITY_WORD = r"(?:hispanic|latin(?:o|a|x|e)?)s?"
+# "Latin" alone is not an ethnicity word here: taking it out of "Native Latin
+# American" would leave "Native American", a different label.
+_ETHNICITY_WORD = r"(?:hispanic|latin(?:o|a|x|e))s?"
 _ETHNICITY_NEGATION = r"(?:(?:non|not)[\s\-]*(?:of\s+)?)"
 _ETHNICITY_PHRASE_RX = re.compile(
     rf"(?<![a-z]){_ETHNICITY_NEGATION}?{_ETHNICITY_WORD}"
@@ -431,14 +434,17 @@ def _split_combined_label(label: str) -> Optional[Tuple[str, str]]:
         separator to split at (_race_joined_to_ethnicity, tried first: what
         it returns is exactly a known race label)
     """
+    # Tried before the keyword test below: the joined reader has its own
+    # ethnicity vocabulary (_ETHNICITY_PHRASE_RX), which also knows forms the
+    # keyword list does not ("Latine White").
+    joined = _race_joined_to_ethnicity(label)
+    if joined is not None:
+        return joined
+
     label_lower = label.lower()
     # Check for ethnicity keyword presence
     if not any(kw in label_lower for kw in _ETHNICITY_KEYWORDS):
         return None
-
-    joined = _race_joined_to_ethnicity(label)
-    if joined is not None:
-        return joined
 
     race_keys_lower = {k.lower(): k for k in RACE_MAPPINGS}
     import re
@@ -676,8 +682,8 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # no such key, which is "not looked at", not "none".
 #
 # Measured on the baseline modules of the 80,890 trials in the 2026-11-08
-# snapshot (CT.gov API v2, re-fetched 2026-11-14): 3,778 trials record at
-# least one row (4,331 rows) and 3,692 carry the flag. In 3,238 the block is
+# snapshot (CT.gov API v2, re-fetched 2026-11-14): 3,779 trials record at
+# least one row (4,332 rows) and 3,693 carry the flag. In 3,239 the block is
 # reported and the race rows fall short of the population (unknown_inferred
 # above zero), in 335 the race rows cover everyone, in 80 every recorded row
 # is zero, and 125 end in all-zero rejection. In 15 of the reported ones the
@@ -689,7 +695,7 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # that rule such rows were skipped too, and the field listed 5,624 rows in
 # 3,929 trials. A label the rule's exact match leaves out can still name a
 # race ("Hispanic (regardless of race)", "Non-Hispanic Whites": 119 of the
-# 4,331 rows), so a reader must not take every recorded row for ethnicity
+# 4,332 rows), so a reader must not take every recorded row for ethnicity
 # alone.
 
 def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,

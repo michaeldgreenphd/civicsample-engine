@@ -1017,6 +1017,8 @@ def test_recorded_rows_enter_no_count(rows: list[tuple[str, int]], participants:
     ("Hispanic (Regardless of Race)", None),
     ("American Hispanic", None),
     ("Race Hispanic", None),
+    # "Latin" inside "Latin American" is not an ethnicity phrase to take out.
+    ("Native Latin American", None),
     # Exact, never fuzzy: a plural or a longer form is left alone.
     ("Non-Hispanic Whites", None),
     ("Non-Hispanic White or European American", None),
@@ -1027,6 +1029,22 @@ def test_race_joined_to_ethnicity(label: str, expected: Optional[tuple[str, str]
     assert rx._race_joined_to_ethnicity(label) == expected
     if expected is not None:
         assert not rx._is_ethnicity_only_label(label)
+
+
+@pytest.mark.parametrize("label, category", [
+    ("Latine White", "white"),
+    ("White Latine", "white"),
+    ("Black (Latine)", "black_african_american"),
+])
+def test_an_ethnicity_form_the_keyword_list_lacks_still_reaches_the_joined_reader(label: str, category: str) -> None:
+    """"Latine" is in the joined reader's vocabulary but not in
+    _ETHNICITY_KEYWORDS, so the keyword test must not run first: the row is
+    a race row of the race it names, not an unmapped "other"."""
+    assert not any(kw in label.lower() for kw in rx._ETHNICITY_KEYWORDS)
+    mapping = rx._map_plain_row(label, 7, False)
+    assert mapping is not None
+    assert (mapping["omb_category"], mapping["original"], mapping["count"]) == (category, label, 7)
+    assert "split_from_combined" in mapping["flags"] and "unmapped" not in mapping["flags"]
 
 
 def test_non_hispanic_race_rows_are_counted_in_their_race() -> None:
