@@ -270,16 +270,17 @@ def number_search_results(records: dict[str, dict[str, Any]], submission_numbers
             out[sn] = {'state': 'incomplete', 'reason': 'the single-number follow-up has no usable answer',
                        'n_search_hits': None, 'hits': []}
             continue
-        hits, missing = [], []
+        hits, missing, other = [], [], []
         returned = (one['body'] or {}).get('studies') or []
         total = (one['body'] or {}).get('totalCount')
-        if not isinstance(total, int) or total > len(returned):
+        counted = isinstance(total, int) and not isinstance(total, bool)     # a JSON true/false is no count
+        if not counted or total > len(returned):
             # One page of up to 100 records is asked for. A search that found more, or did not say
             # how many it found, was not read in full, so it cannot support "no candidate".
             out[sn] = {'state': 'incomplete',
                        'reason': (f'the search found {total} records and the page read holds {len(returned)}; the rest were not read'
-                                  if isinstance(total, int) else 'the search did not state how many records it found'),
-                       'n_search_hits': total, 'hits': [], 'searched_at': one['fetched_at']}
+                                  if counted else 'the search did not state how many records it found'),
+                       'n_search_hits': total if counted else None, 'hits': [], 'searched_at': one['fetched_at']}
             continue
         for st in returned:
             nct = st['protocolSection']['identificationModule']['nctId']
@@ -287,13 +288,19 @@ def number_search_results(records: dict[str, dict[str, Any]], submission_numbers
             if full is None or full['status'] != 200:
                 missing.append(nct)
                 continue
+            own = study_facts(full['body'] or {})['nct_id']
+            if own != nct:
+                # The record held for the hit is another study (an alias or a redirect, as
+                # nct_state() models): searching it would credit that study's text to this hit.
+                other.append(f'{nct} (the record held is {own})')
+                continue
             hits.append({'nct_id': nct, 'located': locate_identifier(full['body'], sn),
                          'study': study_facts(full['body']), 'retrieved_at': full['fetched_at']})
-        out[sn] = {'state': 'incomplete' if missing else 'completed',
-                   'reason': (f'full records not held for {missing}' if missing else
-                              'full-text search answered; each hit record fetched and read'),
-                   'n_search_hits': (one['body'] or {}).get('totalCount'), 'hits': hits,
-                   'searched_at': one['fetched_at']}
+        problems = ([f'full records not held for {missing}'] if missing else []) + \
+                   ([f'full record held under another id for {other}'] if other else [])
+        out[sn] = {'state': 'incomplete' if problems else 'completed',
+                   'reason': '; '.join(problems) if problems else 'full-text search answered; each hit record fetched and read',
+                   'n_search_hits': total, 'hits': hits, 'searched_at': one['fetched_at']}
     return out
 
 

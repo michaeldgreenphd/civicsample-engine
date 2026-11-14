@@ -736,6 +736,33 @@ def test_a_search_answer_that_states_no_count_is_not_a_completed_search() -> Non
     assert cell['state'] == 'search_incomplete_or_blocked' and 'without stating how many records matched' in cell['reason']
 
 
+
+def _number_search(single: Any, full_id: str = 'NCT99000001') -> dict[str, Any]:
+    chunk = registry.number_batches(['K990001'])[0]
+    t = '2026-11-13T00:00:00+00:00'
+    records = {registry._key('ctgov/number_batch', registry._batch_params(chunk)): {'status': 200, 'body': {'totalCount': 1}, 'fetched_at': t},
+               registry._key('ctgov/number', registry._single_params('K990001')): {'status': 200, 'body': single, 'fetched_at': t},
+               'ctgov/study_full/NCT99000001': {'status': 200, 'fetched_at': t, 'body': {'protocolSection': {
+                   'identificationModule': {'nctId': full_id}, 'descriptionModule': {'briefSummary': 'cleared as K990001'}}}}}
+    return registry.number_search_results(records, ['K990001'])['K990001']
+
+
+def test_a_single_number_search_with_a_boolean_count_is_incomplete() -> None:
+    hit = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'}}}
+    for total, studies in ((False, []), (True, [hit])):
+        out = _number_search({'totalCount': total, 'studies': studies})
+        assert out['state'] == 'incomplete' and out['n_search_hits'] is None and 'did not state how many' in out['reason']
+    good = _number_search({'totalCount': 1, 'studies': [hit]})
+    assert good['state'] == 'completed' and good['hits'][0]['located']
+
+
+def test_a_full_record_held_under_another_id_is_not_read_for_the_hit() -> None:
+    out = _number_search({'totalCount': 1, 'studies': [{'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'}}}]},
+                         full_id='NCT99000009')
+    assert out['state'] == 'incomplete' and out['hits'] == []
+    assert 'NCT99000001 (the record held is NCT99000009)' in out['reason']
+
+
 @pytest.mark.parametrize('review, counts', [('accepted', True), ('unreviewed', False), ('unresolved', False),
                                             ('rejected', False)])
 def test_a_record_set_aside_by_rule_counts_once_a_person_accepts_it(review: str, counts: bool) -> None:
