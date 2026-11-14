@@ -249,7 +249,10 @@ def from_registry_citation(submission_number: str, hit: dict[str, Any], decision
     for loc in by_field.values():
         exact = loc['supplement_cited'] is not False
         out.append(_record(
-            lid=link_id('submission', submission_number, nct, method, loc['registry_field'], loc['quote'][:80]),
+            # The whole quote, whitespace normalised, is part of what the evidence is: a later record
+            # that changes the text around the number is new evidence, and an old review is orphaned.
+            lid=link_id('submission', submission_number, nct, method, loc['registry_field'],
+                        re.sub(r'\s+', ' ', loc['quote'] or '').strip()),
             level='submission' if exact else 'family', source_type='submission', source_id=submission_number,
             nct_id=nct, relationship='submission_cited_in_registry_record', method=method,
             evidence={'source_kind': 'registry_record', 'source_id': nct,

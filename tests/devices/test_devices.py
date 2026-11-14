@@ -2316,3 +2316,33 @@ def test_a_locally_recovered_document_whose_stored_copy_is_damaged_is_copied_aga
         assert acquire.recover_local(local, {'K990001': url}, manifest, store) == 0       # nothing newly registered
         assert stored.read_bytes() == pdf                                                 # the copy is restored
     assert len(manifest.lines) == 1
+
+
+def test_a_local_copy_is_restored_after_a_later_network_attempt_failed(tmp_path: Path) -> None:
+    local, store = tmp_path / 'local', tmp_path / 'store'
+    local.mkdir()
+    pdf = b'%PDF-1.4 local copy'
+    (local / '2026-04-16_K990001.pdf').write_bytes(pdf)
+    url = f'{F.DOCS}/pdf99/K990001.pdf'
+    manifest = acquire.Manifest(tmp_path / 'manifest.jsonl')
+    acquire.recover_local(local, {'K990001': url}, manifest, store)
+    stored = store / f'{acquire.sha256(pdf)}.pdf'
+    stored.unlink()
+    plan = [{'document_id': acquire.document_id('K990001', url), 'submission_number': 'K990001', 'url': url,
+             'official_label': None, 'discovery': 'inventory_pdf_url', 'scope': 'this_submission'}]
+    acquire.fetch_documents(plan, manifest, store, lambda u, p: (None, {}, b'', 'connection reset'), F.no_wait())
+    assert manifest.latest()[plan[0]['document_id']]['outcome'] == 'network_error'
+    acquire.recover_local(local, {'K990001': url}, manifest, store)
+    assert stored.read_bytes() == pdf
+
+
+def test_a_registry_citation_is_new_evidence_when_its_quote_changes_past_the_first_80_characters() -> None:
+    head = 'This trial supported clearance K990001 of the device, as the sponsor states in the record here'
+    def lid(tail: str) -> str:
+        record = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'},
+                                      'descriptionModule': {'briefSummary': head + tail}}}
+        hit = {'nct_id': 'NCT99000001', 'located': registry.locate_identifier(record, 'K990001'),
+               'study': registry.study_facts(record), 'retrieved_at': 't'}
+        return links.from_registry_citation('K990001', hit, '2026-01-01', {})[0]['link_id']
+    assert lid(', and enrolled 40 patients.') != lid(', and was later withdrawn.')
+    assert lid(', and enrolled 40 patients.') == lid(',  and enrolled\n40 patients.')

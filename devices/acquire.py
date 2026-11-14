@@ -648,6 +648,10 @@ def recover_local(local_dir: Path, url_of: dict[str, str], manifest: Manifest, s
     latest, n = manifest.latest(), 0
     registered = {(line['document_id'], line.get('local_source')) for line in manifest.lines
                   if line.get('origin') == 'local_recovered'}
+    # The last retrieval from each local file: a later network attempt (a failure, say) becomes the
+    # latest line, and must not hide that this file's bytes are the ones the store should hold.
+    local_retrieved = {(line['document_id'], line.get('local_source')): line for line in manifest.lines
+                       if line.get('origin') == 'local_recovered' and line['outcome'] == 'retrieved'}
     for path in sorted(local_dir.glob('*.pdf')):
         m = re.fullmatch(r'(\d{4}-\d{2}-\d{2})_([A-Z]+\d{6})\.pdf', path.name)
         if not m or m.group(2) not in url_of:
@@ -655,14 +659,14 @@ def recover_local(local_dir: Path, url_of: dict[str, str], manifest: Manifest, s
         sn, url = m.group(2), url_of[m.group(2)]
         did = document_id(sn, url)
         cur = latest.get(did)
-        if cur and cur.get('origin') == 'local_recovered' and cur.get('local_source') == path.name \
-                and cur['outcome'] == 'retrieved' and store_problem(store, cur['sha256'], cur.get('bytes')):
+        mine = local_retrieved.get((did, path.name))
+        if mine and store_problem(store, mine['sha256'], mine.get('bytes')):
             # Registered from this file, but its stored copy is missing or damaged: copy it again
             # when the file still holds the recorded bytes (a document fetched from the network is
             # repaired by the documents stage instead).
             raw = path.read_bytes()
-            if sha256(raw) == cur['sha256']:
-                write_atomic(store / f"{cur['sha256']}.pdf", raw)
+            if sha256(raw) == mine['sha256']:
+                write_atomic(store / f"{mine['sha256']}.pdf", raw)
             continue
         if settled(cur) or (did, path.name) in registered:
             continue
