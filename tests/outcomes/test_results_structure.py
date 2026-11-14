@@ -623,3 +623,18 @@ def test_an_analysis_signal_names_only_the_dimensions_its_groups_differ_on() -> 
     m = F.measure(titles=titles, analysed=('50',) * 4, values=('1',) * 4, analyses=[F.analysis(('OG000', 'OG001'))])
     published = [(s['field'], s['dimension']) for s in RS.subgroup_signals('NCT99000001', [m])]
     assert ('analysis_groupIds', 'sex') in published and ('analysis_groupIds', 'age') not in published
+
+
+def test_an_analysis_signal_found_in_group_descriptions_shows_and_is_keyed_on_them() -> None:
+    """Titles "Arm A" and "Arm B" carry no level; the descriptions "Women" and "Men" do. The signal
+    shows the descriptions it fired on, and a change to them is a new signal."""
+    def signal(descriptions: tuple[str, str]) -> dict:
+        m = F.measure(titles=('Arm A', 'Arm B'), analyses=[F.analysis(('OG000', 'OG001'))])
+        for g, d in zip(m['groups'], descriptions):
+            g['description'] = d
+        (s,) = [s for s in RS.subgroup_signals('NCT99000001', [m]) if s['field'] == 'analysis_groupIds']
+        return s
+    s = signal(('Women', 'Men'))
+    assert s['dimension'] == 'sex' and s['matched_text'] == ['Arm A', 'Women', 'Arm B', 'Men']
+    assert signal(('Female participants', 'Male participants'))['signal_id'] != s['signal_id']
+    assert signal(('Women', 'Men'))['signal_id'] == s['signal_id']

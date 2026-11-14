@@ -787,6 +787,7 @@ def detect_measure(m: dict[str, Any]) -> list[dict[str, Any]]:
     if lvl_dims:
         by_id = {g['id']: (g.get('title') or '') + ' ' + (g.get('description') or '') for g in groups}
         title_of = {g['id']: g.get('title') or '' for g in groups}
+        desc_of = {g['id']: g.get('description') or '' for g in groups}
         for j, a in enumerate(m.get('analyses') or []):
             ids = a.get('groupIds') or []
             ref = [by_id.get(i, '') for i in ids]
@@ -799,9 +800,14 @@ def detect_measure(m: dict[str, Any]) -> list[dict[str, Any]]:
             if compared:
                 sig.append({'field': 'analysis_groupIds', 'dimension': '+'.join(sorted(compared)),
                             'text': 'analysis compares level-defined groups: ' + ' vs '.join(r[:40] for r in ref[:3]),
-                            'matched': [title_of.get(i, '') for i in ids], 'path': f'analyses[{j}].groupIds',
-                            # the compared groups are a set: their titles, sorted
-                            'ident': sorted(title_of.get(i, '') for i in ids)})
+                            # The rule read each compared group's title AND description, so both are
+                            # shown, verbatim and as separate strings (title, then description when
+                            # one is posted), and both are in the id: a review of "Women" against
+                            # "Men" in the descriptions must not carry over to other descriptions.
+                            'matched': [t for i in ids for t in (title_of.get(i, ''), desc_of.get(i, '')) if t],
+                            'path': f'analyses[{j}].groupIds',
+                            # the compared groups are a set: their (title, description) pairs, sorted
+                            'ident': sorted([title_of.get(i, ''), desc_of.get(i, '')] for i in ids)})
                 break
     for field, key in (('measure_title', 'title'), ('measure_description', 'description'),
                        ('population_description', 'populationDescription')):
