@@ -91,6 +91,10 @@ def main(argv: list[str] | None = None) -> int:
             if not args.nct_list:
                 ap.error('--fetch needs --nct-list')
             requested = B.read_nct_list(args.nct_list)
+            if not requested:
+                # An empty list would build an empty family and, with --out on the site, replace the
+                # published data with it. Refused before any request, as an archive with no ids is.
+                raise B.BuildError(f'{args.nct_list.name} lists no NCT ids; nothing to fetch')
             lines, record = B.fetch(requested)
             # One archive per fetch, named by what was returned and by the fetch's own record
             # (B.archive_name): a later fetch never replaces the archive an earlier build recorded

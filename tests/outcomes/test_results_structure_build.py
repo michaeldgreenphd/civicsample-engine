@@ -578,3 +578,18 @@ def test_a_committed_run_record_agrees_with_its_manifest(run_dir: Path) -> None:
     # the committed copy of the archive's metadata is the record the archive is named by
     meta = json.loads((run_dir / 'archive.meta.json').read_text())
     assert meta['archive'] == run['acquisition']['archive'] == B._name_of({k: v for k, v in meta.items() if k != 'archive'})
+
+
+def test_cli_refuses_an_empty_fetch_list_before_any_request_and_leaves_the_output_alone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                                                        capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(build_results_structure, 'ROOT', tmp_path)
+    monkeypatch.setattr(B, 'fetch', lambda ids: pytest.fail('no request is made for an empty list'))
+    out = tmp_path / 'published'
+    out.mkdir()
+    (out / 'run.json').write_text('{"kept": true}')
+    for text in ('', '# only a comment\n\n'):
+        ids = tmp_path / 'ids.txt'
+        ids.write_text(text)
+        assert build_results_structure.main(['--fetch', '--nct-list', str(ids), '--out', str(out)]) != 0
+        assert 'lists no NCT ids' in capsys.readouterr().err
+        assert json.loads((out / 'run.json').read_text()) == {'kept': True}

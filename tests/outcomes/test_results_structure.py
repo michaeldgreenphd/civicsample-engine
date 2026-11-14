@@ -638,3 +638,12 @@ def test_an_analysis_signal_found_in_group_descriptions_shows_and_is_keyed_on_th
     assert s['dimension'] == 'sex' and s['matched_text'] == ['Arm A', 'Women', 'Arm B', 'Men']
     assert signal(('Female participants', 'Male participants'))['signal_id'] != s['signal_id']
     assert signal(('Women', 'Men'))['signal_id'] == s['signal_id']
+
+
+def test_an_analysis_that_repeats_one_group_is_not_between_arm() -> None:
+    def facts(group_ids: tuple[str, ...]) -> dict:
+        m = F.measure(analyses=[F.analysis(group_ids, pValue='0.01', paramValue='-1.2', ciLowerLimit='-2', ciUpperLimit='-0.4')])
+        return RS.analysis_facts(m, 0)[0]
+    assert facts(('OG000', 'OG001'))['between_arm'] is True
+    same = facts(('OG000', 'OG000'))
+    assert same['usable'] is True and same['between_arm'] is False

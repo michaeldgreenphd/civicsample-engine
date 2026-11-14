@@ -347,7 +347,8 @@ def analysis_facts(m: dict[str, Any], measure_index: int) -> list[dict[str, Any]
     `names_measure_groups`: a non-empty `groupIds` that all resolve to this measure's `groups[].id`.
     `usable` (S1): names its groups and has a p-value containing a digit, or a numeric `paramValue`
     with a numeric `ciLowerLimit` and a numeric `ciUpperLimit`.
-    `between_arm` (S1_between): usable and names two or more groups.
+    `between_arm` (S1_between): usable and names two or more distinct groups (a `groupIds` that
+    repeats one id names one group).
     A one-sided interval posts one limit and so has no "estimate with both limits"."""
     gids = {g['id'] for g in m.get('groups') or []}
     out = []
@@ -361,7 +362,7 @@ def analysis_facts(m: dict[str, Any], measure_index: int) -> list[dict[str, Any]
         usable = named and (p or ec)
         out.append({
             'measure_index': measure_index, 'analysis_index': j, 'group_ids': list(ref),
-            'names_measure_groups': named, 'usable': usable, 'between_arm': usable and len(ref) >= 2,
+            'names_measure_groups': named, 'usable': usable, 'between_arm': usable and len(set(ref)) >= 2,
             'estimate_type': a.get('paramType'), 'estimate_value_numeric': is_num(a.get('paramValue')),
             'ci_lower_limit_numeric': lo, 'ci_upper_limit_numeric': hi, 'both_confidence_limits': lo and hi,
             'estimate_with_both_limits': ec, 'ci_percent': a.get('ciPctValue'), 'ci_sides': a.get('ciNumSides'),
