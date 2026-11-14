@@ -62,3 +62,7 @@ data/sex_gender_parsed.csv.gz
 data/sex_gender_parsed_meta.json
 data/sex_gender_raw_measures.jsonl.gz
 data/sex_gender/
+
+# Rule-census downloaded PDFs
+pdfs/
+rule-census-20261114/pdfs/
