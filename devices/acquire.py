@@ -230,14 +230,19 @@ def logged_json(log: ResponseLog, get: Get, throttle: Throttle, key: str, url: s
                 valid: Callable[[Any], bool] | None = None) -> dict[str, Any] | None:
     """The logged answer to a JSON request, fetching it once if it is not logged yet. None when no
     answer arrived (the caller records the route as incomplete). `valid`, when given, says whether
-    a parsed 200 body has the shape an answer must have; one that does not is no answer.
+    a parsed 200 body has the shape an answer must have; one that does not is no answer, whether
+    it arrives now or was logged earlier.
 
     A logged answer is this request's answer only if it was logged for these very parameters: a
     key can outlive the request it was made for (an inventory revision that changes an interior
     number of a batch keeps its first, last and length), and a different request is asked again,
     its answer becoming the latest under the key."""
     rec = log.settled(key)
-    if rec is not None and rec.get('params', {}) == (params or {}):
+    # A settled 200 logged before its caller's shape check existed must pass it too, so a cache
+    # made under older rules is asked again for what those rules would now refuse. (Its body was
+    # transformed when logged, so the transform is not applied again.)
+    if rec is not None and rec.get('params', {}) == (params or {}) and \
+            (valid is None or rec.get('status') != 200 or valid(rec.get('body'))):
         return rec
     (status, _, body, error), attempts = polite_get(get, throttle, url, params)
     if status is None:

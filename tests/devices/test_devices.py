@@ -1820,6 +1820,28 @@ def test_repairing_a_stored_file_counts_only_the_net_bytes_against_the_budget(tm
     assert (out['retrieved'], out['skipped_disk_budget']) == (2, 0)
 
 
+
+def test_a_settled_answer_logged_before_its_shape_check_is_asked_again(tmp_path: Path) -> None:
+    """A cache made under older rules: a 200 the search check would now refuse is not reused."""
+    log = acquire.ResponseLog(tmp_path / 'registry.jsonl')
+    q = {'kind': 'name', 'string': 'Quanta', 'key': 'ctgov/name/x', 'params': {'query.term': 'Quanta'}}
+    log.put({'key': q['key'], 'params': q['params'], 'status': 200, 'body': {'totalCount': 1, 'studies': [{}]},
+             'fetched_at': 't'})
+    good = {'totalCount': 1, 'studies': [{'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'}}}]}
+    calls: list[str] = []
+    def get(url: str, params: dict[str, Any] | None) -> acquire.Response:
+        calls.append(url)
+        return 200, {}, json.dumps(good).encode(), None
+    registry.fetch_searches([q], log, get, F.no_wait())
+    assert len(calls) >= 1 and acquire.ResponseLog(tmp_path / 'registry.jsonl').get(q['key'])['body'] == good
+    # an answer that passes is reused, and a settled 404 is not asked again
+    calls.clear()
+    registry.fetch_searches([q], log, get, F.no_wait())
+    log.put({'key': 'k404', 'params': {}, 'status': 404, 'body': None, 'fetched_at': 't'})
+    acquire.logged_json(log, get, F.no_wait(), 'k404', 'https://example.invalid/x', valid=registry.search_answer)
+    assert calls == []
+
+
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])
 def test_a_200_without_a_usable_body_is_no_answer_and_is_asked_again(tmp_path: Path, body: bytes) -> None:
     """An empty, cut-off, non-JSON or null body under HTTP 200 is logged, not settled, and reads as
