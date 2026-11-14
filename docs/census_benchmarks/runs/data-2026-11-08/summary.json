@@ -23,23 +23,23 @@
   "no_usable_date": 3
  },
  "benchmark_window": {
-  "2015-2019": 9174,
-  "2020-2024": 9153,
-  "2010-2014": 7510,
-  "2005-2009": 4921,
+  "2015-2019": 9182,
+  "2020-2024": 9142,
+  "2010-2014": 7511,
+  "2005-2009": 4923,
   "None": 3
  },
  "benchmark_window_reason": {
-  "midpoint_inside_window": 30222,
+  "midpoint_inside_window": 30226,
   "before_first_window": 291,
-  "after_last_window": 245,
+  "after_last_window": 241,
   "no_usable_date": 3
  },
  "resolution": {
   "zcta": {
-   "zip_has_no_zcta_in_this_window": 3741,
+   "zip_has_no_zcta_in_this_window": 3739,
    "zip_code_equals_published_zcta_code": 21797,
-   "zcta_tables_not_published_for_this_window": 4917,
+   "zcta_tables_not_published_for_this_window": 4919,
    "resolved_place_is_outside_the_registered_state": 44,
    "no_zip_in_registration": 259
   },
@@ -112,8 +112,8 @@
    },
    "classified_share_computed": 18314,
    "geography_sensitivity": {
-    "True": 15543,
-    "False": 3099,
+    "True": 15542,
+    "False": 3100,
     "None": 40
    },
    "not_pooled_reasons": {
@@ -132,10 +132,10 @@
    },
    "benchmark_unavailable_reasons": {
     "zcta": {
-     "zip_has_no_zcta_in_this_window": 2575,
+     "zip_has_no_zcta_in_this_window": 2573,
      "no_eligible_residents_estimated": 1297,
      "resolved_place_is_outside_the_registered_state": 35,
-     "zcta_tables_not_published_for_this_window": 1054,
+     "zcta_tables_not_published_for_this_window": 1056,
      "no_zip_in_registration": 104,
      "eligible_ages_unreadable": 1
     },
@@ -174,8 +174,8 @@
    "category_cautions": {},
    "classified_share_computed": 12919,
    "geography_sensitivity": {
-    "False": 7239,
-    "True": 6081,
+    "False": 7238,
+    "True": 6082,
     "None": 31
    },
    "not_pooled_reasons": {
@@ -193,10 +193,10 @@
    },
    "benchmark_unavailable_reasons": {
     "zcta": {
-     "zip_has_no_zcta_in_this_window": 1785,
+     "zip_has_no_zcta_in_this_window": 1783,
      "no_eligible_residents_estimated": 1003,
      "resolved_place_is_outside_the_registered_state": 26,
-     "zcta_tables_not_published_for_this_window": 659,
+     "zcta_tables_not_published_for_this_window": 661,
      "no_zip_in_registration": 86
     },
     "county": {
@@ -244,8 +244,8 @@
    },
    "benchmark_unavailable_reasons": {
     "zcta": {
-     "zip_has_no_zcta_in_this_window": 3618,
-     "zcta_tables_not_published_for_this_window": 4694,
+     "zip_has_no_zcta_in_this_window": 3616,
+     "zcta_tables_not_published_for_this_window": 4696,
      "single_sex_by_eligibility": 2514,
      "no_eligible_residents_estimated": 1662,
      "resolved_place_is_outside_the_registered_state": 42,

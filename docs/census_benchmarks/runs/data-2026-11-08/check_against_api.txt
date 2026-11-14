@@ -1,13 +1,13 @@
-NCT02905578 state 19 sexes male+female from age 18: white api 86.431 build 86.431, black_african_american api 3.419 build 3.419, hispanic_latino api 5.984 build 5.984
-NCT03054298 state 42 sexes male+female from age 18: white api 76.988 build 76.988, black_african_american api 10.125 build 10.125, hispanic_latino api 7.316 build 7.316
-NCT03428126 state 48 sexes male+female from age 18: white api 50.650 build 50.650, black_african_american api 12.188 build 12.188, hispanic_latino api 36.784 build 36.784
-NCT03569878 state 53 sexes male+female from age 18: white api 68.711 build 68.711, black_african_american api 3.855 build 3.855, hispanic_latino api 11.875 build 11.875
-NCT03734692 state 42 sexes female from age 18: white api 76.832 build 76.832, black_african_american api 10.402 build 10.402, hispanic_latino api 7.077 build 7.077
-NCT03910439 state 24 sexes male+female from age 18: white api 50.576 build 50.576, black_african_american api 29.378 build 29.378, hispanic_latino api 10.625 build 10.625
-NCT03921073 state 12 sexes male+female from age 18: white api 58.258 build 58.258, black_african_american api 14.158 build 14.158, hispanic_latino api 26.232 build 26.232
-NCT04134767 state 21 sexes male+female from age 18: white api 84.437 build 84.437, black_african_american api 7.394 build 7.394, hispanic_latino api 4.104 build 4.104
-NCT04905082 state 06 sexes male+female from age 18: white api 42.025 build 42.025, black_african_american api 5.559 build 5.559, hispanic_latino api 36.900 build 36.900
-NCT05026736 state 48 sexes male+female from age 18: white api 50.650 build 50.650, black_african_american api 12.188 build 12.188, hispanic_latino api 36.784 build 36.784
-NCT05395936 state 37 sexes female from age 18: white api 64.194 build 64.194, black_african_american api 21.144 build 21.144, hispanic_latino api 8.631 build 8.631
-NCT05862870 state 09 sexes male+female from age 18: white api 68.008 build 68.008, black_african_american api 10.305 build 10.305, hispanic_latino api 15.969 build 15.969
-checked 12 trials (11 distinct state/sex/age combinations) from 2384 eligible; largest absolute difference 0.0005 percentage points
+NCT02905591 state 19 sexes male+female from age 18: white api 86.431 build 86.431, black_african_american api 3.419 build 3.419, hispanic_latino api 5.984 build 5.984
+NCT03064490 state 37 sexes male+female from age 18: white api 64.670 build 64.670, black_african_american api 20.163 build 20.163, hispanic_latino api 9.208 build 9.208
+NCT03436563 state 48 sexes male+female from age 18: white api 50.650 build 50.650, black_african_american api 12.188 build 12.188, hispanic_latino api 36.784 build 36.784
+NCT03578965 state 29 sexes female from age 18: white api 79.100 build 79.100, black_african_american api 11.077 build 11.077, hispanic_latino api 4.169 build 4.169
+NCT03738826 state 37 sexes male+female from age 18: white api 64.670 build 64.670, black_african_american api 20.163 build 20.163, hispanic_latino api 9.208 build 9.208
+NCT03915652 state 25 sexes male+female from age 18: white api 71.301 build 71.301, black_african_american api 6.472 build 6.472, hispanic_latino api 11.546 build 11.546
+NCT03922802 state 17 sexes male+female from age 18: white api 63.251 build 63.251, black_african_american api 13.287 build 13.287, hispanic_latino api 16.946 build 16.946
+NCT04136912 state 37 sexes male+female from age 18: white api 64.670 build 64.670, black_african_american api 20.163 build 20.163, hispanic_latino api 9.208 build 9.208
+NCT04907045 state 53 sexes male+female from age 18: white api 68.711 build 68.711, black_african_american api 3.855 build 3.855, hispanic_latino api 11.875 build 11.875
+NCT05028517 state 36 sexes male+female from age 18: white api 56.972 build 56.972, black_african_american api 14.144 build 14.144, hispanic_latino api 18.383 build 18.383
+NCT05405309 state 49 sexes male+female from age 18: white api 80.168 build 80.168, black_african_american api 1.126 build 1.126, hispanic_latino api 14.295 build 14.295
+NCT05867316 state 34 sexes male+female from age 18: white api 56.271 build 56.271, black_african_american api 12.632 build 12.632, hispanic_latino api 20.542 build 20.542
+checked 12 trials (10 distinct state/sex/age combinations) from 2381 eligible; largest absolute difference 0.0005 percentage points

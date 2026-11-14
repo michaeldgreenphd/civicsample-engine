@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T00:31:37+00:00 by `scripts/build_census_benchmarks.py` at engine commit `14e0bf1bf32b` (no uncommitted changes) |
+| Built | 2026-11-14T00:53:58+00:00 by `scripts/build_census_benchmarks.py` at engine commit `0295a6fe4445` (no uncommitted changes) |
 | Trial records | release `data-2026-11-08`, extracted 2026-11-08, pipeline commit `f6a2e7b74790`, sha256 `2168d258dd26d1c8…` |
 | Registry text and locations | 30,761 of 30,761 trials retrieved 2026-11-13, sha256 `75a2fec8613e2174…` |
 | Census sources | 217 files (ACS 5-year tables and boundary files), each listed in `run.json` with its URL (key removed), retrieval time and sha256 |
@@ -18,12 +18,30 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 ## Files not here
 
-`areas.json` (950664a9c1a05171…) and `trials.jsonl.gz` (5e6e81688d78952c…) are
+`areas.json` (4a6b74161db0747d…) and `trials.jsonl.gz` (ef827e9321cc3f22…) are
 8 MB and 28 MB and are not committed; their sha256 values are in `run.json`. Rebuilding from the
 same release, registry archive and cached Census files reproduces them byte for byte: two
-consecutive builds were compared at commits `6f96dd9` and `9b30103`. This run was built once, at the commit above, from Census tables and boundary files whose cached bytes are checked against their recorded sha256. Against the first reviewed run its area figures differ only in the margin of error of Not Hispanic or Latino (299 values), which a review fix corrected; the area file is byte-for-byte the same as the run before it. Each dimension now accounts for all 30,761 cohort trials: three trials with no usable date keep their tables and are marked as having no benchmark window. The one trial whose eligibility ages cannot be read is now written as having no benchmark at every level, with that reason, so each level's available and unavailable benchmarks add up to the reported tables; against the build at `4d541b6` that is the only change, and `areas.json` is byte-for-byte the same. `check_against_api.txt` was produced against that same `areas.json` and was not rerun. No single-facility trial is at a different place in today's registration than in the release (0 of 30,761), so the check added for that case changes nothing here. A later commit narrowed that check so that a place field missing from one record is listed as not comparable and is not treated as a move. Applied to all 30,761 cohort trials with this run's registry archive, it finds no moved site and no missing field, so no output of this run changes and the run was not rebuilt for it.
-`run.json` differs between
+consecutive builds were compared at commits `6f96dd9` and `9b30103`. `run.json` differs between
 builds only in `generated_at`, which is kept as provenance.
+
+## How this run differs from the earlier ones
+
+The run was rebuilt once after each review round that changed the method, and compared field
+by field with the build before it. Cached Census tables and boundary files are reused only
+when their bytes match their recorded sha256.
+
+| Built at | What changed in the outputs |
+|---|---|
+| `7b9307e` | First reviewed run. Against the unreviewed one: the margin of error of Not Hispanic or Latino (299 values), which a review fix corrected. |
+| `4d541b6` | `areas.json` identical. Three trials with no usable date keep their tables and are marked as having no benchmark window, so each dimension accounts for all 30,761 cohort trials. |
+| `14e0bf1` | `areas.json` identical. The one trial with unreadable eligibility ages is written as having no benchmark at every level. |
+| `0295a6f` (this record) | The survey window is assigned from the unrounded enrolment midpoint. 16 of 30,758 dated trials move to the earlier window (2005-2009 +2, 2010-2014 +1, 2015-2019 +8, 2020-2024 -11), and 4 trials that were recorded as after the last window are inside it. 172 of 16,195 area records change, 139 of them shown; no area moves between shown and withheld, and the largest change in a shown difference is 0.11 points. |
+
+Two later checks change no output of this run and it was not rebuilt for them: a single
+facility at a different place in today's registration than in the release (0 of 30,761), and
+a place field present in one record and missing from the other (0 of 30,761).
+
+`check_against_api.txt` was rerun against this build.
 
 ## What this record does not establish
 
