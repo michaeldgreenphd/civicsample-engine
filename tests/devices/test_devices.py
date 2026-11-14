@@ -1607,6 +1607,36 @@ def test_a_study_answer_without_its_own_id_is_no_answer(tmp_path: Path, body: An
     assert registry.nct_state({'ctgov/study/NCT99000001': {'status': 200, 'body': body}}, 'NCT99000001')[0] == 'lookup_failed'
 
 
+
+@pytest.mark.parametrize('path', ['protocolSection..identificationModule.briefTitle',
+                                  'protocolSection.identificationModule.briefTitle.', '.protocolSection.identificationModule.briefTitle',
+                                  'protocolSection.identificationModule[.briefTitle', 'protocolSection.identificationModule]briefTitle',
+                                  'protocolSection identificationModule briefTitle'])
+def test_a_malformed_registry_field_path_resolves_to_nothing(path: str) -> None:
+    record = {'protocolSection': {'identificationModule': {'briefTitle': 'A title'}, 'armsInterventionsModule': {
+        'interventions': [{'name': 'A device'}]}}}
+    assert artifacts.registry_field_text(record, path) is None
+    assert artifacts.registry_field_text(record, 'protocolSection.identificationModule.briefTitle') == 'A title'
+    assert artifacts.registry_field_text(record, 'protocolSection.armsInterventionsModule.interventions[0].name') == 'A device'
+
+
+@pytest.mark.parametrize('body', [{'error': {'message': 'try again'}}, {'studies': []}, {'totalCount': True, 'studies': []},
+                                  {'totalCount': '3'}, {'totalCount': 1, 'studies': {}}])
+def test_a_search_answer_without_a_count_is_asked_again(tmp_path: Path, body: Any) -> None:
+    log = acquire.ResponseLog(tmp_path / 'registry.jsonl')
+    calls: list[str] = []
+    def get(url: str, params: dict[str, Any] | None) -> acquire.Response:
+        calls.append(url)
+        return 200, {}, json.dumps(body).encode(), None
+    q = {'kind': 'name', 'string': 'Quanta', 'key': 'ctgov/name/x', 'params': {'query.term': 'Quanta'}}
+    registry.fetch_searches([q], log, get, F.no_wait())
+    assert log.get('ctgov/name/x')['status'] == acquire.UNUSABLE_200 and log.settled('ctgov/name/x') is None
+    registry.fetch_number_search(['K990001'], log, get, F.no_wait())
+    batch = registry._key('ctgov/number_batch', registry._batch_params(registry.number_batches(['K990001'])[0]))
+    assert log.get(batch)['status'] == acquire.UNUSABLE_200 and log.settled(batch) is None
+    assert registry.search_answer({'totalCount': 0}) and registry.search_answer({'totalCount': 2, 'studies': [{}, {}]})
+
+
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])
 def test_a_200_without_a_usable_body_is_no_answer_and_is_asked_again(tmp_path: Path, body: bytes) -> None:
     """An empty, cut-off, non-JSON or null body under HTTP 200 is logged, not settled, and reads as

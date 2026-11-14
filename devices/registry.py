@@ -88,6 +88,16 @@ def fetch_version(log: A.ResponseLog, get: A.Get, throttle: A.Throttle, day: str
     return A.logged_json(log, get, throttle, f'ctgov/version/{day}', f'{API}/version')
 
 
+def search_answer(body: Any) -> bool:
+    """A 200 from /studies (a search) answers only with an integer count of the records matched,
+    and a list of studies when it returns any; an error envelope is no answer, and is asked again."""
+    if not isinstance(body, dict):
+        return False
+    total = body.get('totalCount')
+    return (isinstance(total, int) and not isinstance(total, bool)
+            and isinstance(body.get('studies', []), list))
+
+
 def study_answer(body: Any) -> bool:
     """A 200 from /studies/{id} answers only with a study record that states its own id; an
     error envelope or an object without the id is no answer, and is asked again."""
@@ -179,7 +189,7 @@ def fetch_number_search(submission_numbers: list[str], log: A.ResponseLog, get: 
     for chunk in number_batches(submission_numbers):
         p = _batch_params(chunk)
         rec = A.logged_json(log, get, throttle, _key('ctgov/number_batch', p), f'{API}/studies', p,
-                            tag={'numbers': chunk})
+                            tag={'numbers': chunk}, valid=search_answer)
         asked += 1
         if rec is None:
             unanswered += 1
@@ -189,7 +199,7 @@ def fetch_number_search(submission_numbers: list[str], log: A.ResponseLog, get: 
         for number in chunk:
             p1 = _single_params(number)
             one = A.logged_json(log, get, throttle, _key('ctgov/number', p1), f'{API}/studies', p1,
-                                tag={'number': number})
+                                tag={'number': number}, valid=search_answer)
             asked += 1
             if one is None:
                 unanswered += 1
@@ -382,13 +392,14 @@ def fetch_searches(queries: list[dict[str, Any]], log: A.ResponseLog, get: A.Get
             continue
         seen.add(q['key'])
         rec = A.logged_json(log, get, throttle, q['key'], f'{API}/studies', q['params'],
-                            tag={'kind': q['kind'], 'string': q['string']})
+                            tag={'kind': q['kind'], 'string': q['string']}, valid=search_answer)
         answered, unanswered = answered + (rec is not None), unanswered + (rec is None)
         total = _cut_off(rec)
         if total is not None and total <= FULL_PAGE_SIZE:
             f = full_variant(q)
             followed += A.logged_json(log, get, throttle, f['key'], f'{API}/studies', f['params'],
-                                      tag={'kind': q['kind'], 'string': q['string'], 'follow_up': True}) is not None
+                                      tag={'kind': q['kind'], 'string': q['string'], 'follow_up': True},
+                                      valid=search_answer) is not None
         if progress:
             progress(answered + unanswered)
     return {'searches_answered': answered, 'searches_without_answer': unanswered, 'follow_ups_answered': followed}

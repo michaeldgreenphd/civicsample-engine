@@ -346,8 +346,12 @@ def run_identity(files: dict[str, Any]) -> str:
 
 def registry_field_text(record: Any, path: str) -> str | None:
     """The text at a dotted path in a registry record (`a.b[0].c`), or None when the path does not
-    resolve. A value that is not a string is given as its JSON, so a number or list can be quoted."""
+    resolve. A value that is not a string is given as its JSON, so a number or list can be quoted.
+    A path that is not well formed (an empty part, a stray bracket) resolves to nothing, so the
+    field published is always the field read."""
     import re
+    if not re.fullmatch(r'[A-Za-z_]\w*(?:\[\d+\])*(?:\.[A-Za-z_]\w*(?:\[\d+\])*)*', path or ''):
+        return None
     node = record
     for part in re.findall(r'[^.\[\]]+|\[\d+\]', path or ''):
         try:
