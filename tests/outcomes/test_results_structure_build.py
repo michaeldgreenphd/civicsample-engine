@@ -227,7 +227,7 @@ def test_a_fetch_without_the_registry_version_is_refused_before_any_study_is_req
 def test_the_archive_is_byte_stable_and_refuses_changed_bytes(tmp_path: Path) -> None:
     from outcomes import acquire
     lines = {RS.nct_id_of(s): acquire.encode([s]) for s in F.studies()}
-    record_meta = {'retrieved_at': F.GENERATED_AT, 'n_records': len(lines), 'n_requested': 7}
+    record_meta = {'api_version': '2.0.5', 'data_timestamp': '2026-11-13T10:00:06', 'retrieved_at': F.GENERATED_AT, 'n_records': len(lines), 'n_requested': 7}
     # two copies of one fetch, in two directories: an archive is named by its bytes and its record
     name = B.archive_name(lines, record_meta, F.REQUESTED)
     a, b = tmp_path / 'a' / name, tmp_path / 'b' / name
@@ -276,7 +276,7 @@ def test_the_archive_is_byte_stable_and_refuses_changed_bytes(tmp_path: Path) ->
 def archive(tmp_path: Path) -> Path:
     from outcomes import acquire
     lines = {RS.nct_id_of(s): acquire.encode([s]) for s in F.studies()}
-    record = {'source': 'fictional', 'retrieved_at': F.GENERATED_AT, 'retrieved_from': F.GENERATED_AT,
+    record = {'source': 'fictional', 'api_version': '2.0.5', 'data_timestamp': '2026-11-13T10:00:06', 'retrieved_at': F.GENERATED_AT, 'retrieved_from': F.GENERATED_AT,
               'retrieved_to': F.GENERATED_AT, 'n_records': len(lines), 'n_requested': len(F.FRAME),
               'not_retrieved': [{'nct_id': 'NCT99000003', 'reason': 'not returned by the registry for filter.ids'}]}
     path = tmp_path / B.archive_name(lines, record, F.FRAME)
@@ -401,7 +401,7 @@ def test_cli_fetch_freezes_the_archive_under_its_content_hash(tmp_path: Path, mo
     from outcomes import acquire
     monkeypatch.setattr(build_results_structure, 'ROOT', tmp_path)
     lines = {RS.nct_id_of(s): acquire.encode([s]) for s in F.studies()}
-    rec = {'source': 'fictional', 'retrieved_at': F.GENERATED_AT, 'retrieved_from': F.GENERATED_AT, 'retrieved_to': F.GENERATED_AT,
+    rec = {'source': 'fictional', 'api_version': '2.0.5', 'data_timestamp': '2026-11-13T10:00:06', 'retrieved_at': F.GENERATED_AT, 'retrieved_from': F.GENERATED_AT, 'retrieved_to': F.GENERATED_AT,
            'n_records': len(lines), 'n_requested': 7, 'n_requests': 2, 'n_failed_requests': 0,
            'not_retrieved': [{'nct_id': 'NCT99000003', 'reason': 'not returned by the registry for filter.ids'}]}
     monkeypatch.setattr(B, 'fetch', lambda ids: (dict(lines), dict(rec)))
@@ -467,7 +467,7 @@ def test_cli_fetches_for_different_id_lists_never_share_an_archive(tmp_path: Pat
     monkeypatch.setattr(build_results_structure, 'ROOT', tmp_path)
 
     def nothing(ids: list[str]) -> tuple[dict[str, bytes], dict[str, object]]:
-        return {}, {'source': 'fictional', 'retrieved_at': F.GENERATED_AT, 'retrieved_from': F.GENERATED_AT,
+        return {}, {'source': 'fictional', 'api_version': '2.0.5', 'data_timestamp': '2026-11-13T10:00:06', 'retrieved_at': F.GENERATED_AT, 'retrieved_from': F.GENERATED_AT,
                     'retrieved_to': F.GENERATED_AT, 'n_records': 0, 'n_requested': len(ids), 'n_requests': 1,
                     'n_failed_requests': 1, 'not_retrieved': [{'nct_id': i, 'reason': 'request failed'} for i in ids]}
 
@@ -495,7 +495,7 @@ def test_cli_a_repeated_fetch_keeps_its_own_record_even_when_the_bytes_are_the_s
     fetches = {'first': ('2026-11-14T01:00:00+00:00', 'HTTP 500 after 3 attempts'),
                'second': ('2026-11-14T09:00:00+00:00', 'not returned by the registry for filter.ids')}
     for name, (at, reason) in fetches.items():
-        rec = {'source': 'fictional', 'retrieved_at': at, 'retrieved_from': at, 'retrieved_to': at, 'n_records': 1,
+        rec = {'source': 'fictional', 'api_version': '2.0.5', 'data_timestamp': '2026-11-13T10:00:06', 'retrieved_at': at, 'retrieved_from': at, 'retrieved_to': at, 'n_records': 1,
                'n_requested': 2, 'n_requests': 1, 'n_failed_requests': 0, 'not_retrieved': [{'nct_id': 'NCT99000002', 'reason': reason}]}
         monkeypatch.setattr(B, 'fetch', lambda _ids, rec=rec: ({'NCT99000001': acquire.encode([F.study(1)])}, dict(rec)))
         assert build_results_structure.main(['--fetch', '--nct-list', str(ids), '--out', str(tmp_path / name)]) == 0
@@ -513,7 +513,7 @@ def test_cli_a_repeated_fetch_keeps_its_own_record_even_when_the_bytes_are_the_s
     edited['n_retries'] = 9
     meta_path.write_text(json.dumps(edited))
     at = edited['retrieved_at']
-    rec = {'source': 'fictional', 'retrieved_at': at, 'retrieved_from': at, 'retrieved_to': at, 'n_records': 1, 'n_requested': 2,
+    rec = {'source': 'fictional', 'api_version': '2.0.5', 'data_timestamp': '2026-11-13T10:00:06', 'retrieved_at': at, 'retrieved_from': at, 'retrieved_to': at, 'n_records': 1, 'n_requested': 2,
            'n_requests': 1, 'n_failed_requests': 0, 'not_retrieved': edited['not_retrieved']}
     monkeypatch.setattr(B, 'fetch', lambda _ids: ({'NCT99000001': acquire.encode([F.study(1)])}, dict(rec)))
     assert build_results_structure.main(['--fetch', '--nct-list', str(ids), '--out', str(tmp_path / 'third')]) != 0
@@ -612,3 +612,17 @@ def test_cli_refuses_an_empty_fetch_list_before_any_request_and_leaves_the_outpu
         assert build_results_structure.main(['--fetch', '--nct-list', str(ids), '--out', str(out)]) != 0
         assert 'lists no NCT ids' in capsys.readouterr().err
         assert json.loads((out / 'run.json').read_text()) == {'kept': True}
+
+
+@pytest.mark.parametrize('missing', [{}, {'api_version': None, 'data_timestamp': None}, {'api_version': '2.0.5'},
+                                     {'api_version': '2.0.5', 'data_timestamp': ' '}])
+def test_an_archive_without_registry_provenance_is_refused(tmp_path: Path, missing: dict[str, Any]) -> None:
+    """A self-consistent archive (its name is its own record's) whose record lacks the registry's
+    version or data timestamp: an archive made before the fetch required them."""
+    from outcomes import acquire
+    lines = {RS.nct_id_of(s): acquire.encode([s]) for s in F.studies()}
+    record = {'retrieved_at': F.GENERATED_AT, 'n_records': len(lines), 'n_requested': len(F.REQUESTED), **missing}
+    path = tmp_path / B.archive_name(lines, record, F.REQUESTED)
+    B.write_archive(lines, path, record, F.REQUESTED)
+    with pytest.raises(B.BuildError, match='no registry API version or data timestamp'):
+        B.read_archive_meta(path)

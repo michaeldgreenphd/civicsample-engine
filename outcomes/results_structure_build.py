@@ -263,6 +263,10 @@ def read_archive_meta(path: Path) -> dict[str, Any]:
         raise BuildError(f'{path.name}: the requested ids do not match their recorded sha256')
     if len(ids) != meta.get('n_requested'):
         raise BuildError(f'{path.name}: the number of requested ids does not match the metadata')
+    # The same provenance a fetch refuses to go without (fetch): an archive from before that rule,
+    # or one whose metadata lost the values, would publish a run with empty registry provenance.
+    if not all(isinstance(meta.get(k), str) and meta[k].strip() for k in ('api_version', 'data_timestamp')):
+        raise BuildError(f'{path.name}: the metadata has no registry API version or data timestamp')
     # The archive's name is the only thing that says which fetch these bytes are: two fetches can
     # return the same bytes. It carries a digest of the fetch record (archive_name), so the metadata
     # beside it is checked against the name. A metadata file from another fetch, or one whose
