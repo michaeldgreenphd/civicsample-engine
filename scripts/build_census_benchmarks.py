@@ -143,7 +143,9 @@ def trial_row(rec: dict[str, Any], facts: dict[str, Any], referral: set[str]) ->
                  'history': 'current registration only; earlier versions not examined'},
         'site_count': {**trials.site_tier(facts.get('text', '')), 'locations_in_release': 1,
                        'locations_in_registry_now': facts.get('n_locations_now') if facts.get('found') else None},
-        'referral_zip': zip5 in referral, 'period': period, 'benchmark_period': trials.assign_window(period['midpoint']),
+        'referral_zip': zip5 in referral, 'period': period,
+        # from the unrounded midpoint: the rounded one in `period` can cross a year boundary
+        'benchmark_period': trials.assign_window(trials.enrolment_midpoint(rec)[1]),
         'registered_enrollment': rec.get('enrollment'), 'enrollment_type': rec.get('enrollment_type'),
         '_point': facts.get('point')}
     if not facts.get('found'):

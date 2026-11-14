@@ -138,6 +138,9 @@ def test_a_lone_facility_that_moved_is_not_treated_as_the_release_site() -> None
     moved = build.trial_row(rec, {**facts, 'place_now': {**same, 'city': 'Worcester', 'zip': '01605'}}, set())
     assert moved['site_count']['tier'] == 'listing_changed_since_release' and moved['_point'] is None
     assert moved['site_count']['place_in_registry_now']['city'] == 'Worcester'
+    # the build takes the window from the unrounded midpoint, not from the rounded field it records
+    edge = build.trial_row({**rec, 'start_date': '2014-12-30', 'primary_completion_date': '2014-12-31'}, facts, set())
+    assert edge['period']['midpoint'] == 2015.0 and edge['benchmark_period']['window'] == '2010-2014'
     assert build.place_changed(site, None) is False          # no place recorded: no change can be shown
     # a field today's record no longer carries is not evidence of a move
     no_zip = build.trial_row(rec, {**facts, 'place_now': {**same, 'zip': None}}, set())

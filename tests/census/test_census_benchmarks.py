@@ -41,6 +41,16 @@ def test_a_trial_is_matched_to_one_non_overlapping_window_with_its_reason() -> N
     assert trials.enrolment_period({})['basis'] == 'no_usable_date'
 
 
+def test_the_window_is_assigned_from_the_unrounded_midpoint() -> None:
+    # both dates in the last two days of 2009: the midpoint is 2009.9975, which rounds to 2010.0
+    rec = {'start_date': '2009-12-30', 'primary_completion_date': '2009-12-31'}
+    basis, exact = trials.enrolment_midpoint(rec)
+    assert basis == 'midpoint_of_start_to_primary_completion' and 2009.99 < exact < 2010
+    assert trials.enrolment_period(rec)['midpoint'] == 2010.0          # the recorded, rounded value
+    assert trials.assign_window(exact)['window'] == '2005-2009'        # the window follows the dates
+    assert trials.enrolment_midpoint({}) == ('no_usable_date', None)
+
+
 @pytest.mark.parametrize('text,tier', [
     ('A single-center randomized study', 'self_described_single_site'),
     ('Monocentric pilot', 'self_described_single_site'),

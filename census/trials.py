@@ -68,29 +68,39 @@ def year_fraction(date: str | None) -> float | None:
     return year + (int(month) - 1) / 12 + ((int(day) - 1) / 365 if day else 1 / 24)
 
 
-def enrolment_period(record: dict[str, Any]) -> dict[str, Any]:
-    """The period the benchmark is aligned to, and which dates stood in for enrolment.
+def enrolment_midpoint(record: dict[str, Any]) -> tuple[str, float | None]:
+    """(basis, midpoint as an unrounded decimal year) for the enrolment proxy.
 
     The registry does not record when enrolment opened and closed. Start date to primary
     completion date is the closest available proxy: it runs past the last enrolment by the
-    length of follow-up, so its midpoint sits somewhat late. The basis is recorded per trial."""
+    length of follow-up, so its midpoint sits somewhat late.
+
+    The value is left unrounded because it decides the survey window: rounded to two decimals,
+    a midpoint in the last two days of a year (2009.9975) becomes the next year (2010.0) and
+    the trial is matched to the following window."""
     start = year_fraction(record.get('start_date'))
     end = year_fraction(record.get('primary_completion_date'))
     end_basis = 'primary_completion'
     if end is None:
         end, end_basis = year_fraction(record.get('completion_date')), 'completion'
-    out: dict[str, Any] = {'start_date': record.get('start_date'),
-                           'primary_completion_date': record.get('primary_completion_date'),
-                           'completion_date': record.get('completion_date')}
     if start is not None and end is not None and end >= start:
-        out.update(basis=f'midpoint_of_start_to_{end_basis}', midpoint=round((start + end) / 2, 2))
-    elif start is not None:
-        out.update(basis='start_date_only', midpoint=round(start, 2))
-    elif end is not None:
-        out.update(basis=f'{end_basis}_date_only', midpoint=round(end, 2))
-    else:
-        out.update(basis='no_usable_date', midpoint=None)
-    return out
+        return f'midpoint_of_start_to_{end_basis}', (start + end) / 2
+    if start is not None:
+        return 'start_date_only', start
+    if end is not None:
+        return f'{end_basis}_date_only', end
+    return 'no_usable_date', None
+
+
+def enrolment_period(record: dict[str, Any]) -> dict[str, Any]:
+    """The period the benchmark is aligned to, and which dates stood in for enrolment.
+
+    `midpoint` is rounded to two decimals for the record only. The window is assigned from the
+    unrounded value (enrolment_midpoint), never from this field."""
+    basis, exact = enrolment_midpoint(record)
+    return {'start_date': record.get('start_date'), 'primary_completion_date': record.get('primary_completion_date'),
+            'completion_date': record.get('completion_date'), 'basis': basis,
+            'midpoint': None if exact is None else round(exact, 2)}
 
 
 def assign_window(midpoint: float | None) -> dict[str, Any]:
