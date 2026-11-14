@@ -641,7 +641,9 @@ def recover_local(local_dir: Path, url_of: dict[str, str], manifest: Manifest, s
     Assumption, from the script that made them: each file was fetched from that row's pdf_url on
     the date in its name. The HTTP status of that fetch was not recorded and is stored as absent.
     A file that is not a PDF (an error page saved under a .pdf name) is recorded as `not_a_pdf`
-    with no size or hash and is not copied into the store; each file is registered once.
+    with no size or hash and is not copied into the store; each file is registered once. A file
+    registered earlier whose stored copy is missing or damaged is copied again, if it still holds the
+    recorded bytes.
     """
     latest, n = manifest.latest(), 0
     registered = {(line['document_id'], line.get('local_source')) for line in manifest.lines
@@ -652,12 +654,22 @@ def recover_local(local_dir: Path, url_of: dict[str, str], manifest: Manifest, s
             continue
         sn, url = m.group(2), url_of[m.group(2)]
         did = document_id(sn, url)
-        if settled(latest.get(did)) or (did, path.name) in registered:
+        cur = latest.get(did)
+        if cur and cur.get('origin') == 'local_recovered' and cur.get('local_source') == path.name \
+                and cur['outcome'] == 'retrieved' and store_problem(store, cur['sha256'], cur.get('bytes')):
+            # Registered from this file, but its stored copy is missing or damaged: copy it again
+            # when the file still holds the recorded bytes (a document fetched from the network is
+            # repaired by the documents stage instead).
+            raw = path.read_bytes()
+            if sha256(raw) == cur['sha256']:
+                write_atomic(store / f"{cur['sha256']}.pdf", raw)
+            continue
+        if settled(cur) or (did, path.name) in registered:
             continue
         raw = path.read_bytes()
         is_pdf = raw[:5] == b'%PDF-'
         digest = sha256(raw) if is_pdf else None
-        if is_pdf and not (store / f'{digest}.pdf').exists():
+        if is_pdf and store_problem(store, digest, len(raw)):
             write_atomic(store / f'{digest}.pdf', raw)
         manifest.append({'document_id': did, 'submission_number': sn, 'url': url, 'official_label': None,
                          'discovery': 'inventory_pdf_url', 'scope': 'this_submission', 'origin': 'local_recovered',

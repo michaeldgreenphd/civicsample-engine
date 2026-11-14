@@ -293,7 +293,11 @@ def from_name_match(family: dict[str, Any], study: dict[str, Any], name: dict[st
                        'curated alias (an investigator-led study, a renamed company, or a coincidence of names)')
     reasons += flags
     return _record(
-        lid=link_id('family', family['family_id'], study['nct_id'], 'name', name['registry_field'], name['matched_form']),
+        # The id binds a review to the evidence reviewed: the method and the organisation that agrees
+        # are part of it, so a curated alias or a later record that changes manufacturer agreement
+        # makes new evidence, and a review of the old reads as orphaned rather than carried over.
+        lid=link_id('family', family['family_id'], study['nct_id'], method, name['registry_field'], name['matched_form'],
+                    f"{organisation['role']}:{organisation['registry_name']}" if agrees else ''),
         level='family', source_type='family', source_id=family['family_id'], nct_id=study['nct_id'],
         relationship='name_and_organisation_candidate' if agrees else 'name_only_candidate', method=method,
         evidence={'source_kind': 'registry_record', 'source_id': study['nct_id'],

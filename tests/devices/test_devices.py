@@ -1020,6 +1020,8 @@ def test_a_common_word_name_without_organisation_agreement_is_rejected_by_rule_a
     agreeing = {'tier': 'normalised_exact', 'role': 'lead_sponsor', 'registry_name': 'Bright Optics', 'listed_name': 'Bright Optics LLC'}
     y = links.from_name_match(family, m['study'], m['name'], agreeing, {'K990004': '2020-07-07'}, {}, [], True)
     assert (y['automated_validation'], y['method']) == ('not_validated', 'device_name_and_organisation_match')
+    # Changed agreement is changed evidence: a review of the name-only record must not attach to it.
+    assert x['link_id'] != y['link_id']
 
 
 @pytest.mark.parametrize('change, message', [
@@ -2298,3 +2300,19 @@ def test_a_study_whose_fields_have_the_wrong_type_is_no_answer(field: dict[str, 
     study = {'protocolSection': field}
     assert not registry.study_answer(study)
     assert not registry.search_answer({'totalCount': 1, 'studies': [study]})
+
+
+def test_a_locally_recovered_document_whose_stored_copy_is_damaged_is_copied_again(tmp_path: Path) -> None:
+    local, store = tmp_path / 'local', tmp_path / 'store'
+    local.mkdir()
+    pdf = b'%PDF-1.4 local copy'
+    (local / '2026-04-16_K990001.pdf').write_bytes(pdf)
+    url = f'{F.DOCS}/pdf99/K990001.pdf'
+    manifest = acquire.Manifest(tmp_path / 'manifest.jsonl')
+    assert acquire.recover_local(local, {'K990001': url}, manifest, store) == 1
+    stored = store / f'{acquire.sha256(pdf)}.pdf'
+    for damage in (lambda: stored.write_bytes(b'X' * len(pdf)), stored.unlink):
+        damage()
+        assert acquire.recover_local(local, {'K990001': url}, manifest, store) == 0       # nothing newly registered
+        assert stored.read_bytes() == pdf                                                 # the copy is restored
+    assert len(manifest.lines) == 1
