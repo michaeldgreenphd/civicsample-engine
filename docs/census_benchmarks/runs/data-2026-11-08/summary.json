@@ -136,20 +136,29 @@
      "no_eligible_residents_estimated": 1297,
      "resolved_place_is_outside_the_registered_state": 35,
      "zcta_tables_not_published_for_this_window": 1054,
-     "no_zip_in_registration": 104
+     "no_zip_in_registration": 104,
+     "eligible_ages_unreadable": 1
     },
     "county": {
      "resolved_place_is_outside_the_registered_state": 35,
-     "no_zcta_polygon_and_no_coordinates": 4
+     "no_zcta_polygon_and_no_coordinates": 4,
+     "eligible_ages_unreadable": 1
     },
     "cbsa": {
      "resolved_place_is_outside_the_registered_state": 35,
      "outside_any_metro_or_micro_area": 26,
-     "no_zcta_polygon_and_no_coordinates": 4
+     "no_zcta_polygon_and_no_coordinates": 4,
+     "eligible_ages_unreadable": 1
     },
-    "state": {},
-    "region": {},
-    "us": {}
+    "state": {
+     "eligible_ages_unreadable": 1
+    },
+    "region": {
+     "eligible_ages_unreadable": 1
+    },
+    "us": {
+     "eligible_ages_unreadable": 1
+    }
    }
   },
   "ethnicity": {
@@ -241,12 +250,14 @@
      "no_eligible_residents_estimated": 1662,
      "resolved_place_is_outside_the_registered_state": 42,
      "no_zip_in_registration": 246,
+     "eligible_ages_unreadable": 1,
      "no_benchmark_window": 3
     },
     "county": {
      "single_sex_by_eligibility": 3829,
      "resolved_place_is_outside_the_registered_state": 42,
      "no_zcta_polygon_and_no_coordinates": 16,
+     "eligible_ages_unreadable": 1,
      "no_benchmark_window": 3
     },
     "cbsa": {
@@ -254,19 +265,23 @@
      "resolved_place_is_outside_the_registered_state": 42,
      "outside_any_metro_or_micro_area": 33,
      "no_zcta_polygon_and_no_coordinates": 16,
+     "eligible_ages_unreadable": 1,
      "no_benchmark_window": 3,
      "area_not_in_this_window_file": 1
     },
     "state": {
      "single_sex_by_eligibility": 3844,
+     "eligible_ages_unreadable": 1,
      "no_benchmark_window": 3
     },
     "region": {
      "single_sex_by_eligibility": 3844,
+     "eligible_ages_unreadable": 1,
      "no_benchmark_window": 3
     },
     "us": {
      "single_sex_by_eligibility": 3844,
+     "eligible_ages_unreadable": 1,
      "no_benchmark_window": 3
     }
    }

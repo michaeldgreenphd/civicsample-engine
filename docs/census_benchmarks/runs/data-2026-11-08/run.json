@@ -1,11 +1,11 @@
 {
  "schema_version": 1,
  "method_version": "census-benchmarks-1",
- "generated_at": "2026-11-14T00:14:20+00:00",
+ "generated_at": "2026-11-14T00:31:37+00:00",
  "manual_run": true,
  "producer": {
   "repository": "civicsample-engine",
-  "commit": "4d541b6ec08c1cfb651b0bbc2ea73e625ab20a42",
+  "commit": "14e0bf1bf32b4caaf27726013d93126c4201c836",
   "uncommitted_changes": false
  },
  "source_release": {
@@ -2839,7 +2839,7 @@
  ],
  "files": {
   "areas.json": "950664a9c1a05171f0c784bc6283908e56be5080a0a7a1d2b5af568d66b8a833",
-  "summary.json": "860f66d2dcc27ae8048e75838ad26562b7778343fda18ef0732833896f124502",
-  "trials.jsonl.gz": "79686b19f65fd6967bb8e1fc8066ad06b1fe7038a6b09850085144823f0418ba"
+  "summary.json": "59ad82951431032cc19ddd8be34ab8c1dde36836d7793ff821120a74c40e41d9",
+  "trials.jsonl.gz": "5e6e81688d78952c58e70417e7479f60270dbe0c711769ec3a4341f07db28cac"
  }
 }
