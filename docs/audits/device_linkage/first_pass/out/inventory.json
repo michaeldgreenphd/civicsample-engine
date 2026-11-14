@@ -1,0 +1,1462 @@
+{
+ "n_rows_enriched": 1451,
+ "n_rows_raw": 1451,
+ "columns": [
+  "Date of Final Decision",
+  "Submission Number",
+  "Device",
+  "Company",
+  "Panel (Lead)",
+  "Primary Product Code",
+  "pdf_url",
+  "local_pdf_path"
+ ],
+ "completeness": {
+  "Date of Final Decision": {
+   "non_blank": 1451,
+   "blank": 0,
+   "literal_not_found": 0,
+   "distinct": 981
+  },
+  "Submission Number": {
+   "non_blank": 1451,
+   "blank": 0,
+   "literal_not_found": 0,
+   "distinct": 1430
+  },
+  "Device": {
+   "non_blank": 1451,
+   "blank": 0,
+   "literal_not_found": 0,
+   "distinct": 1176
+  },
+  "Company": {
+   "non_blank": 1451,
+   "blank": 0,
+   "literal_not_found": 0,
+   "distinct": 747
+  },
+  "Panel (Lead)": {
+   "non_blank": 1451,
+   "blank": 0,
+   "literal_not_found": 0,
+   "distinct": 17
+  },
+  "Primary Product Code": {
+   "non_blank": 1451,
+   "blank": 0,
+   "literal_not_found": 0,
+   "distinct": 168
+  },
+  "pdf_url": {
+   "non_blank": 1451,
+   "blank": 0,
+   "literal_not_found": 0,
+   "distinct": 1430
+  },
+  "local_pdf_path": {
+   "non_blank": 1451,
+   "blank": 0,
+   "literal_not_found": 31,
+   "distinct": 1401
+  }
+ },
+ "raw_equals_enriched_on_shared_columns": false,
+ "submission_number": {
+  "distinct": 1430,
+  "duplicated_values": {
+   "K243144": 2,
+   "K250268": 2,
+   "K250151": 2,
+   "K250436": 2,
+   "K250443": 2,
+   "K240795": 2,
+   "K243234": 2,
+   "K251153": 2,
+   "K242737": 2,
+   "K250749": 2,
+   "K251397": 2,
+   "K242600": 2,
+   "K243558": 2,
+   "K242748": 2,
+   "K243743": 2,
+   "K242295": 2,
+   "K243567": 2,
+   "K243769": 2,
+   "K240398": 2,
+   "K241887": 2,
+   "P210015": 2
+  },
+  "not_upper_or_padded": [],
+  "shapes": {
+   "K999999": 1396,
+   "DEN999999": 37,
+   "P999999": 17,
+   "P999999/S999": 1
+  },
+  "prefix_counts": {
+   "K": 1396,
+   "DEN": 37,
+   "P": 18
+  },
+  "pathway_counts": {
+   "510(k)": 1396,
+   "De Novo": 37,
+   "PMA": 18
+  },
+  "with_supplement_suffix": [
+   "P140011/S008"
+  ],
+  "duplicate_groups_by_differing_columns": {
+   "Company": 14,
+   "(byte-identical rows)": 7
+  },
+  "duplicate_groups_by_decision_month": {
+   "6/2025": 11,
+   "4/2025": 8,
+   "7/2024": 1,
+   "10/2022": 1
+  },
+  "duplicate_groups_same_level1_company": 21
+ },
+ "text_hygiene": {
+  "Device": {
+   "rows_with_control_chars": 24,
+   "rows_with_non_ascii": 59,
+   "rows_with_leading_or_trailing_space": 0,
+   "control_char_codes": {
+    "0x99": 34,
+    "0x93": 3,
+    "0x94": 3,
+    "0x96": 4
+   }
+  },
+  "Company": {
+   "rows_with_control_chars": 2,
+   "rows_with_non_ascii": 0,
+   "rows_with_leading_or_trailing_space": 2,
+   "control_char_codes": {
+    "0x9": 2,
+    "0xa": 1
+   }
+  }
+ },
+ "decision_year_counts": {
+  "1995": 2,
+  "1997": 1,
+  "1998": 2,
+  "2001": 2,
+  "2002": 1,
+  "2004": 1,
+  "2005": 1,
+  "2006": 1,
+  "2008": 5,
+  "2010": 2,
+  "2011": 3,
+  "2012": 5,
+  "2013": 4,
+  "2014": 6,
+  "2015": 6,
+  "2016": 18,
+  "2017": 27,
+  "2018": 65,
+  "2019": 80,
+  "2020": 114,
+  "2021": 130,
+  "2022": 163,
+  "2023": 226,
+  "2024": 236,
+  "2025": 350
+ },
+ "unparseable_dates": [],
+ "decision_date_min": "1995-09-29",
+ "decision_date_max": "2025-12-30",
+ "decision_year_minus_submission_year": {
+  "0": 822,
+  "1": 606,
+  "2": 19,
+  "3": 3,
+  "10": 1
+ },
+ "pathway_by_year": {
+  "1995": {
+   "PMA": 2
+  },
+  "1997": {
+   "510(k)": 1
+  },
+  "1998": {
+   "PMA": 2
+  },
+  "2001": {
+   "PMA": 1,
+   "510(k)": 1
+  },
+  "2002": {
+   "PMA": 1
+  },
+  "2004": {
+   "510(k)": 1
+  },
+  "2005": {
+   "510(k)": 1
+  },
+  "2006": {
+   "PMA": 1
+  },
+  "2008": {
+   "510(k)": 5
+  },
+  "2010": {
+   "510(k)": 2
+  },
+  "2011": {
+   "510(k)": 2,
+   "PMA": 1
+  },
+  "2012": {
+   "PMA": 1,
+   "510(k)": 4
+  },
+  "2013": {
+   "510(k)": 3,
+   "De Novo": 1
+  },
+  "2014": {
+   "De Novo": 1,
+   "510(k)": 5
+  },
+  "2015": {
+   "510(k)": 6
+  },
+  "2016": {
+   "510(k)": 17,
+   "PMA": 1
+  },
+  "2017": {
+   "510(k)": 23,
+   "De Novo": 2,
+   "PMA": 2
+  },
+  "2018": {
+   "510(k)": 58,
+   "De Novo": 7
+  },
+  "2019": {
+   "510(k)": 80
+  },
+  "2020": {
+   "510(k)": 113,
+   "De Novo": 1
+  },
+  "2021": {
+   "510(k)": 122,
+   "De Novo": 7,
+   "PMA": 1
+  },
+  "2022": {
+   "510(k)": 160,
+   "PMA": 2,
+   "De Novo": 1
+  },
+  "2023": {
+   "510(k)": 219,
+   "De Novo": 6,
+   "PMA": 1
+  },
+  "2024": {
+   "510(k)": 226,
+   "PMA": 1,
+   "De Novo": 9
+  },
+  "2025": {
+   "510(k)": 347,
+   "De Novo": 2,
+   "PMA": 1
+  }
+ },
+ "panel_distinct": 17,
+ "panel_top15": [
+  [
+   "Radiology",
+   1104
+  ],
+  [
+   "Cardiovascular",
+   141
+  ],
+  [
+   "Neurology",
+   67
+  ],
+  [
+   "Anesthesiology",
+   27
+  ],
+  [
+   "Gastroenterology-Urology",
+   26
+  ],
+  [
+   "Hematology",
+   21
+  ],
+  [
+   "Ophthalmic",
+   10
+  ],
+  [
+   "Pathology",
+   9
+  ],
+  [
+   "Clinical Chemistry",
+   9
+  ],
+  [
+   "General and Plastic Surgery",
+   7
+  ],
+  [
+   "Microbiology",
+   6
+  ],
+  [
+   "Orthopedic",
+   5
+  ],
+  [
+   "Dental",
+   5
+  ],
+  [
+   "Clinical Toxcicology",
+   5
+  ],
+  [
+   "Obstetrics and Gynecology",
+   4
+  ]
+ ],
+ "product_code_distinct": 168,
+ "product_code_top15": [
+  [
+   "QIH",
+   257
+  ],
+  [
+   "LLZ",
+   160
+  ],
+  [
+   "IYN",
+   109
+  ],
+  [
+   "LNH",
+   94
+  ],
+  [
+   "JAK",
+   91
+  ],
+  [
+   "QAS",
+   78
+  ],
+  [
+   "MYN",
+   41
+  ],
+  [
+   "QKB",
+   40
+  ],
+  [
+   "QFM",
+   39
+  ],
+  [
+   "MUJ",
+   32
+  ],
+  [
+   "QDQ",
+   30
+  ],
+  [
+   "DQK",
+   26
+  ],
+  [
+   "KPS",
+   24
+  ],
+  [
+   "QNP",
+   19
+  ],
+  [
+   "POK",
+   19
+  ]
+ ],
+ "product_code_singletons": 82,
+ "product_code_bad_shape": [],
+ "device_name": {
+  "distinct_exact": 1176,
+  "exact_names_with_gt1_submission": 186,
+  "submissions_sharing_exact_name": 461,
+  "normalised": {
+   "distinct_keys": 1143,
+   "keys_with_gt1_submission": 192,
+   "submissions_in_such_groups": 500,
+   "of_which_groups_spanning_gt1_normalised_company": 26
+  },
+  "family_version_stripped": {
+   "distinct_keys": 1055,
+   "keys_with_gt1_submission": 235,
+   "submissions_in_such_groups": 631,
+   "of_which_groups_spanning_gt1_normalised_company": 33
+  },
+  "top20_family": [
+   [
+    "briefcase",
+    18,
+    [
+     "aidoc medical"
+    ]
+   ],
+   [
+    "swoop portable mr imaging system",
+    9,
+    [
+     "hyperfine"
+    ]
+   ],
+   [
+    "epiq series diagnostic ultrasound system affiniti series diagnostic ultrasound system",
+    8,
+    [
+     "philips medical systems",
+     "philips ultrasound"
+    ]
+   ],
+   [
+    "art plan",
+    7,
+    [
+     "therapanacea"
+    ]
+   ],
+   [
+    "briefcase triage",
+    7,
+    [
+     "aidoc medical"
+    ]
+   ],
+   [
+    "ai rad companion",
+    7,
+    [
+     "siemens healthcare",
+     "siemens medical solutions usa"
+    ]
+   ],
+   [
+    "lvivo software application",
+    6,
+    [
+     "dia imaging analysis",
+     "diacardio"
+    ]
+   ],
+   [
+    "contour protegeai",
+    6,
+    [
+     "mim software"
+    ]
+   ],
+   [
+    "vantage galan 3t mrt",
+    6,
+    [
+     "canon medical systems"
+    ]
+   ],
+   [
+    "aquilion one",
+    6,
+    [
+     "canon medical systems"
+    ]
+   ],
+   [
+    "transpara",
+    6,
+    [
+     "screenpoint medical"
+    ]
+   ],
+   [
+    "deep learning image reconstruction",
+    6,
+    [
+     "ge healthcare japan",
+     "ge medical systems"
+    ]
+   ],
+   [
+    "raystation",
+    6,
+    [
+     "raysearch laboratories"
+    ]
+   ],
+   [
+    "peekmed web",
+    5,
+    [
+     "peek health"
+    ]
+   ],
+   [
+    "skout system",
+    5,
+    [
+     "iterative health",
+     "iterative scopes"
+    ]
+   ],
+   [
+    "umr",
+    5,
+    [
+     "shanghai united imaging healthcare",
+     "shanghai united imaging intelligence"
+    ]
+   ],
+   [
+    "briefcase quantification",
+    5,
+    [
+     "aidoc medical"
+    ]
+   ],
+   [
+    "syngo via rt image suite",
+    5,
+    [
+     "siemens medical solutions usa"
+    ]
+   ],
+   [
+    "deeprhythmai",
+    4,
+    [
+     "medicalgorithmics"
+    ]
+   ],
+   [
+    "saige dx",
+    4,
+    [
+     "deephealth"
+    ]
+   ]
+  ],
+  "same_name_different_company_examples": [
+   [
+    "epiq series diagnostic ultrasound system affiniti series diagnostic ultrasound system",
+    [
+     "Philips Medical Systems",
+     "Philips Ultrasound LLC",
+     "Philips Ultrasound, LLC"
+    ],
+    [
+     "K251651",
+     "K251455",
+     "K243793",
+     "K250177",
+     "K243794",
+     "K242020",
+     "K233788",
+     "K211597"
+    ]
+   ],
+   [
+    "lvivo software application",
+    [
+     "DIACARDIO, LTD.",
+     "DiA Imaging Analysis Ltd",
+     "DiA Imaging Analysis Ltd."
+    ],
+    [
+     "K243862",
+     "K243235",
+     "K240553",
+     "K210053",
+     "K200232",
+     "K161382"
+    ]
+   ],
+   [
+    "deep learning image reconstruction",
+    [
+     "GE Healthcare Japan Corporation",
+     "GE Medical Systems, LLC."
+    ],
+    [
+     "K230807",
+     "K220961",
+     "K213999",
+     "K212067",
+     "K193170",
+     "K183202"
+    ]
+   ],
+   [
+    "skout system",
+    [
+     "Iterative Health",
+     "Iterative Scopes Inc.",
+     "Iterative Scopes, Inc."
+    ],
+    [
+     "K253664",
+     "K251126",
+     "K241508",
+     "K240781",
+     "K230658"
+    ]
+   ],
+   [
+    "umr 680",
+    [
+     "Shanghai United Imaging Healthcare Co., Ltd.",
+     "Shanghai United Imaging Intelligence Co., Ltd."
+    ],
+    [
+     "K252371",
+     "K243397",
+     "K240744",
+     "K222755"
+    ]
+   ],
+   [
+    "ai rad companion organs rt",
+    [
+     "Siemens Healthcare GmbH",
+     "Siemens Medical Solutions U.S.A.",
+     "Siemens Medical Solutions USA, Inc",
+     "Siemens Medical Solutions USA, Inc."
+    ],
+    [
+     "K242745",
+     "K232899",
+     "K221305",
+     "K193562"
+    ]
+   ],
+   [
+    "magnetom free max magnetom free star",
+    [
+     "Siemens Medical Solutions USA, Inc.",
+     "Siemens Shenzhen Magnetic Resonance , Ltd."
+    ],
+    [
+     "K251822",
+     "K231617",
+     "K220575"
+    ]
+   ],
+   [
+    "aurora",
+    [
+     "EnsoData",
+     "GE Medical Systems Israel",
+     "Ge Medical Systems Israel"
+    ],
+    [
+     "K251153",
+     "K251153",
+     "K231355"
+    ]
+   ],
+   [
+    "vivid iq",
+    [
+     "GE Medical Systems Ultrasound & Primary Care Diagnostics LLC",
+     "GE Medical Systems Ultrasound and",
+     "GE Medical Systems Ultrasound and Primary Care Diagnostics"
+    ],
+    [
+     "K243620",
+     "K221148",
+     "K200708"
+    ]
+   ],
+   [
+    "ai rad companion pulmonary",
+    [
+     "Siemens Healthcare GmBh",
+     "Siemens Healthcare GmbH",
+     "Siemens Medical Solutions USA, Inc."
+    ],
+    [
+     "K233753",
+     "K213713",
+     "K183271"
+    ]
+   ],
+   [
+    "ai rad companion brain mr",
+    [
+     "Siemens Healthcare GmBh",
+     "Siemens Medical Solutions U.S.A.",
+     "Siemens Medical Solutions USA, Inc."
+    ],
+    [
+     "K232305",
+     "K213706",
+     "K193290"
+    ]
+   ],
+   [
+    "braininsight",
+    [
+     "Hyperfine Research, Inc",
+     "Hyperfine, Inc."
+    ],
+    [
+     "K223268",
+     "K220815",
+     "K202414"
+    ]
+   ],
+   [
+    "vivid e80 vivid e90 vivid e95",
+    [
+     "GE Medical Systems Ultrasound and",
+     "GE Medical Systems Ultrasound and Primary Care Diagnostics,"
+    ],
+    [
+     "K220882",
+     "K200743",
+     "K181685"
+    ]
+   ],
+   [
+    "volpara imaging software",
+    [
+     "Matakina Technology LTD",
+     "Volpara Health Technologies Limited"
+    ],
+    [
+     "K211279",
+     "K182310",
+     "K153427"
+    ]
+   ],
+   [
+    "caption guidance",
+    [
+     "Bay Labs, Inc.",
+     "Caption Health"
+    ],
+    [
+     "K201992",
+     "K200755",
+     "DEN190040"
+    ]
+   ],
+   [
+    "inferread lung ct ai",
+    [
+     "Beijing Infervision Technology Co.,Ltd.",
+     "Infervision Medical Technology Co., Ltd."
+    ],
+    [
+     "K240554",
+     "K192880"
+    ]
+   ],
+   [
+    "arvis shoulder",
+    [
+     "Insight Medical Systems, Inc.",
+     "Kico Knee Innovation Company Pty Ltd"
+    ],
+    [
+     "K243950",
+     "K240062"
+    ]
+   ],
+   [
+    "adas 3d",
+    [
+     "Adas3D Medical S.L",
+     "Galgo Medical S.L"
+    ],
+    [
+     "K240791",
+     "K191125"
+    ]
+   ],
+   [
+    "healthccsng",
+    [
+     "Nano-X AI Ltd.",
+     "Zebra Medical Vision Ltd."
+    ],
+    [
+     "K241440",
+     "K210085"
+    ]
+   ],
+   [
+    "columbo",
+    [
+     "Smart Soft Healthcare",
+     "Smart Soft Healthcare AD"
+    ],
+    [
+     "K241211",
+     "K220497"
+    ]
+   ],
+   [
+    "accucontour",
+    [
+     "Manteia Technologies Co., Ltd.",
+     "Xiamen Manteia Technology LTD."
+    ],
+    [
+     "K221706",
+     "K191928"
+    ]
+   ],
+   [
+    "venue",
+    [
+     "GE Medical Systems",
+     "GE Medical Systems Ultrasound and Primary Care Diagnostics,"
+    ],
+    [
+     "K220851",
+     "K180599"
+    ]
+   ],
+   [
+    "idx dr",
+    [
+     "Digital Diagnostics Inc.",
+     "IDx, LLC"
+    ],
+    [
+     "K203629",
+     "DEN180001"
+    ]
+   ],
+   [
+    "syngo ct lung cad",
+    [
+     "Siemens Healthcare GmbH",
+     "Siemens Medical Solutions, Inc"
+    ],
+    [
+     "K203258",
+     "K193216"
+    ]
+   ],
+   [
+    "signa premier",
+    [
+     "GE Healthcare (GE Medical Systems, LLC)",
+     "GE Medical Systems, LLC"
+    ],
+    [
+     "K193282",
+     "K183231"
+    ]
+   ],
+   [
+    "tissue of origin test kit ffpe",
+    [
+     "Cancer Genetics, Inc.",
+     "PATHWORK DIAGNOSTICS, INC."
+    ],
+    [
+     "K173839",
+     "K120489"
+    ]
+   ]
+  ],
+  "name_len_words_hist": {
+   "1": 231,
+   "2": 415,
+   "3": 237,
+   "4": 165,
+   "5": 113,
+   "6": 80,
+   "7": 43,
+   "8": 167
+  },
+  "names_with_version_or_parenthesis": 299,
+  "names_with_semicolon_or_multiple_models": 184
+ },
+ "company": {
+  "distinct_exact_strings": 747,
+  "distinct_level1_normalised": 555,
+  "distinct_level2_brand_families": 517,
+  "level1_clusters_merging_gt1_spelling": 128,
+  "level1_singletons_one_submission": 315,
+  "level1_with_ge5": 63,
+  "level1_with_ge10": 21,
+  "top25_level1": [
+   [
+    "siemens medical solutions usa",
+    65,
+    {
+     "Siemens Medical Solutions USA, Inc.": 51,
+     "SIEMENS MEDICAL SOLUTIONS USA, INC.": 2,
+     "Siemens Medical Solutions, USA, Inc.": 2,
+     "Siemens Medical Solutions U.S.A.": 3,
+     "Siemens Medical Solutions USA Inc.": 5,
+     "Siemens Medical Solutions USA, Inc": 2
+    }
+   ],
+   [
+    "canon medical systems",
+    38,
+    {
+     "Canon Medical Systems Corporation": 38
+    }
+   ],
+   [
+    "shanghai united imaging healthcare",
+    34,
+    {
+     "Shanghai United Imaging Healthcare Co., Ltd.": 24,
+     "Shanghai United Imaging Healthcare Co.,Ltd.": 6,
+     "Shanghai United Imaging Healthcare Co., Ltd": 4
+    }
+   ],
+   [
+    "aidoc medical",
+    31,
+    {
+     "Aidoc Medical , Ltd.": 1,
+     "Aidoc Medical, Ltd.": 30
+    }
+   ],
+   [
+    "ge medical systems ultrasound primary care diagnostics",
+    29,
+    {
+     "Ge Medical Systems Ultrasound and Primary Care Diagnostics": 3,
+     "GE Medical Systems Ultrasound and Primary care Diagnostics,": 4,
+     "GE Medical Systems Ultrasound and Primary Care Diagnostics": 10,
+     "GE Medical Systems Ultrasound and Primary care Diagnostics": 2,
+     "GE Medical Systems Ultrasound and Primary Care Diagnostics,": 9,
+     "GE Medical Systems Ultrasound & Primary Care Diagnostics LLC": 1
+    }
+   ],
+   [
+    "ge medical systems",
+    23,
+    {
+     "Ge Medical Systems, LLC": 1,
+     "GE Medical Systems, LLC": 13,
+     "GE Medical Systems,LLC (GE Healthcare)": 2,
+     "GE Medical Systems": 2,
+     "GE Medical Systems, LLC.": 5
+    }
+   ],
+   [
+    "philips ultrasound",
+    19,
+    {
+     "Philips Ultrasound, LLC": 2,
+     "Philips Ultrasound LLC": 14,
+     "Philips Ultrasound": 2,
+     "Philips Ultrasound, Inc.": 1
+    }
+   ],
+   [
+    "ischemaview",
+    17,
+    {
+     "iSchemaView, Inc.": 7,
+     "iSchemaView Inc.": 7,
+     "iSchemaView": 1,
+     "iSchemaview Inc.": 1,
+     "iSchemaView Incorporated": 1
+    }
+   ],
+   [
+    "samsung medison",
+    17,
+    {
+     "Samsung Medison Co., Ltd.": 12,
+     "Samsung Medison CO., LTD.": 4,
+     "Samsung Medison Co., LTD": 1
+    }
+   ],
+   [
+    "ge healthcare",
+    14,
+    {
+     "GE HealthCare": 1,
+     "GE Healthcare (Tianjin) Company Limited": 4,
+     "GE Healthcare": 6,
+     "GE Healthcare(Tianjin) Company Limited": 1,
+     "GE Healthcare (GE Medical Systems, LLC)": 2
+    }
+   ],
+   [
+    "siemens healthcare",
+    13,
+    {
+     "Siemens Healthcare GmbH": 11,
+     "Siemens Healthcare GmBh": 2
+    }
+   ],
+   [
+    "ge medical systems scs",
+    13,
+    {
+     "GE Medical Systems SCS": 12,
+     "GE MEDICAL SYSTEMS SCS": 1
+    }
+   ],
+   [
+    "hyperfine",
+    12,
+    {
+     "Hyperfine, Inc.": 12
+    }
+   ],
+   [
+    "viz ai",
+    11,
+    {
+     "Viz.ai, Inc.": 10,
+     "Viz. ai, Inc.": 1
+    }
+   ],
+   [
+    "clarius mobile health",
+    11,
+    {
+     "Clarius Mobile Health Corp.": 11
+    }
+   ],
+   [
+    "overjet",
+    10,
+    {
+     "Overjet, Inc.": 4,
+     "Overjet Inc": 1,
+     "Overjet, Inc": 4,
+     "Overjet Inc.": 1
+    }
+   ],
+   [
+    "coreline soft",
+    10,
+    {
+     "Coreline Soft Co.,Ltd": 2,
+     "Coreline Soft Co., Ltd.": 4,
+     "Coreline Soft Co.,Ltd.": 2,
+     "Coreline Soft Co., Ltd": 2
+    }
+   ],
+   [
+    "pearl",
+    10,
+    {
+     "Pearl, Inc.": 5,
+     "Pearl Inc.": 5
+    }
+   ],
+   [
+    "brainlab",
+    10,
+    {
+     "Brainlab AG": 9,
+     "Brainlab Ltd.": 1
+    }
+   ],
+   [
+    "dia imaging analysis",
+    10,
+    {
+     "DiA Imaging Analysis Ltd.": 5,
+     "DiA Imaging Analysis Ltd": 5
+    }
+   ],
+   [
+    "ever fortune ai",
+    10,
+    {
+     "Ever Fortune.AI, Co., Ltd.": 3,
+     "Ever Fortune.AI Co., Ltd.": 5,
+     "Ever Fortune AI Co., Ltd.": 1,
+     "Ever Fortune. AI Co., Ltd.": 1
+    }
+   ],
+   [
+    "circle cardiovascular imaging",
+    9,
+    {
+     "Circle Cardiovascular Imaging, Inc.": 2,
+     "Circle Cardiovascular Imaging Inc.": 3,
+     "Circle Cardiovascular Imaging": 2,
+     "Circle Cardiovascular Imaging Inc": 1,
+     "CIRCLE CARDIOVASCULAR IMAGING INC": 1
+    }
+   ],
+   [
+    "quantib",
+    9,
+    {
+     "Quantib BV": 7,
+     "Quantib B.V.": 1,
+     "QUANTIB BV": 1
+    }
+   ],
+   [
+    "hologic",
+    9,
+    {
+     "Hologic, Inc.": 5,
+     "Hologic Inc.": 1,
+     "HOLOGIC, INC.": 3
+    }
+   ],
+   [
+    "raysearch laboratories",
+    9,
+    {
+     "RaySearch Laboratories AB (PUBL)": 1,
+     "RaySearch Laboratories AB (publ)": 8
+    }
+   ]
+  ],
+  "top25_level2_families": [
+   [
+    "ge",
+    95,
+    {
+     "ge medical systems ultrasound primary care diagnostics": 29,
+     "ge medical systems": 23,
+     "ge healthcare": 14,
+     "ge medical systems scs": 13,
+     "ge healthcare japan": 7,
+     "ge medical systems ultrasound": 3,
+     "ge medical systems israel": 2,
+     "ge medical systems israel functional imaging": 2,
+     "ge medical systems ultrasound primary care diagnostic": 2
+    }
+   ],
+   [
+    "siemens",
+    83,
+    {
+     "siemens medical solutions usa": 65,
+     "siemens healthcare": 13,
+     "siemens medical solutions": 4,
+     "siemens medical solution usa": 1
+    }
+   ],
+   [
+    "canon",
+    40,
+    {
+     "canon medical systems": 38,
+     "canon medical informatics": 1,
+     "canon": 1
+    }
+   ],
+   [
+    "philips",
+    39,
+    {
+     "philips ultrasound": 19,
+     "philips medical systems nederland": 6,
+     "philips healthcare": 6,
+     "philips medical systems": 2,
+     "philips france commercial": 1,
+     "philips medical systems dmc": 1,
+     "philips medical systems nederlands": 1,
+     "philips": 1,
+     "philips medical systems mr finland": 1,
+     "philips medical systems technologies": 1
+    }
+   ],
+   [
+    "shanghai united",
+    38,
+    {
+     "shanghai united imaging healthcare": 34,
+     "shanghai united imaging intelligence": 4
+    }
+   ],
+   [
+    "aidoc",
+    31,
+    {
+     "aidoc medical": 31
+    }
+   ],
+   [
+    "ischemaview",
+    17,
+    {
+     "ischemaview": 17
+    }
+   ],
+   [
+    "samsung medison",
+    17,
+    {
+     "samsung medison": 17
+    }
+   ],
+   [
+    "hyperfine",
+    13,
+    {
+     "hyperfine": 12,
+     "hyperfine research": 1
+    }
+   ],
+   [
+    "viz ai",
+    11,
+    {
+     "viz ai": 11
+    }
+   ],
+   [
+    "clarius mobile",
+    11,
+    {
+     "clarius mobile health": 11
+    }
+   ],
+   [
+    "overjet",
+    10,
+    {
+     "overjet": 10
+    }
+   ],
+   [
+    "coreline soft",
+    10,
+    {
+     "coreline soft": 10
+    }
+   ],
+   [
+    "pearl",
+    10,
+    {
+     "pearl": 10
+    }
+   ],
+   [
+    "brainlab",
+    10,
+    {
+     "brainlab": 10
+    }
+   ],
+   [
+    "dia analysis",
+    10,
+    {
+     "dia imaging analysis": 10
+    }
+   ],
+   [
+    "ever fortune ai",
+    10,
+    {
+     "ever fortune ai": 10
+    }
+   ],
+   [
+    "circle cardiovascular",
+    9,
+    {
+     "circle cardiovascular imaging": 9
+    }
+   ],
+   [
+    "quantib",
+    9,
+    {
+     "quantib": 9
+    }
+   ],
+   [
+    "fujifilm",
+    9,
+    {
+     "fujifilm": 5,
+     "fujifilm healthcare americas": 2,
+     "fujifilm healthcare": 2
+    }
+   ],
+   [
+    "hologic",
+    9,
+    {
+     "hologic": 9
+    }
+   ],
+   [
+    "raysearch",
+    9,
+    {
+     "raysearch laboratories": 9
+    }
+   ],
+   [
+    "zebra vision",
+    9,
+    {
+     "zebra medical vision": 9
+    }
+   ],
+   [
+    "bunkerhill",
+    8,
+    {
+     "bunkerhill health": 7,
+     "bunkerhill": 1
+    }
+   ],
+   [
+    "qure ai",
+    8,
+    {
+     "qure ai technologies": 8
+    }
+   ]
+  ],
+  "families_merging_gt1_level1_name": 19,
+  "share_top10_level1": 287,
+  "share_top10_level2": 384,
+  "casing": {
+   "Mixed": 1392,
+   "ALLCAPS": 59
+  }
+ },
+ "pdf_url": {
+  "present": 1451,
+  "patterns": {
+   "https://www.accessdata.fda.gov/cdrh_docs/pdf99/<SN>.pdf": 1450,
+   "https://www.accessdata.fda.gov/cdrh_docs/pdf99/P999999/<SN>.pdf": 1
+  },
+  "by_pathway_pattern": {
+   "('510(k)', 'https://www.accessdata.fda.gov/cdrh_docs/pdf<YY>/')": 1396,
+   "('De Novo', 'https://www.accessdata.fda.gov/cdrh_docs/pdf<YY>/')": 37,
+   "('PMA', 'https://www.accessdata.fda.gov/cdrh_docs/pdf<YY>/')": 18
+  },
+  "url_sn_matches_row_sn": 1451,
+  "pre2002_pdf_dir_without_yy": 0
+ },
+ "local_pdf_path": {
+  "claimed_present": 1420,
+  "dir_patterns": {
+   "Data/FDA Summary Statements": 1420,
+   "": 31
+  },
+  "date_prefixes": {
+   "2026-04-16": 1420
+  },
+  "claimed_paths_existing_under_root": {
+   "/home/user/clinical-trial-populations": 0,
+   "/home/user/civicsample-engine": 0
+  }
+ },
+ "fda_summary_pdfs_on_disk": {
+  "/home/user/clinical-trial-populations": {
+   "count": 0,
+   "in_device_list": 0,
+   "files": []
+  },
+  "/home/user/civicsample-engine": {
+   "count": 12,
+   "in_device_list": 12,
+   "files": [
+    [
+     "data/pilot_summary_statements/2026-04-16_DEN170073.pdf",
+     "DEN170073",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_DEN180005.pdf",
+     "DEN180005",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_K203042.pdf",
+     "K203042",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_DEN160044.pdf",
+     "DEN160044",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_DEN170090.pdf",
+     "DEN170090",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_DEN160026.pdf",
+     "DEN160026",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_K203103.pdf",
+     "K203103",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_DEN140025.pdf",
+     "DEN140025",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_DEN180001.pdf",
+     "DEN180001",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_DEN170043.pdf",
+     "DEN170043",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_DEN170091.pdf",
+     "DEN170091",
+     true
+    ],
+    [
+     "data/pilot_summary_statements/2026-04-16_DEN170022.pdf",
+     "DEN170022",
+     true
+    ]
+   ]
+  }
+ }
+}

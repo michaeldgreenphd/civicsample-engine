@@ -1,0 +1,8 @@
+source rows 1451
+distinct submission numbers 1430
+numbers on more than one row 21 | extra rows 21
+  of which all list columns identical 7 | differing in some list column 14
+  columns that differ among duplicated numbers {'Company': 14}
+pathway by number format (distinct submissions) {'510k': 1376, 'de_novo': 37, 'pma': 16, 'pma_supplement': 1}
+pathway by number format (rows) {'510k': 1396, 'de_novo': 37, 'pma': 17, 'pma_supplement': 1}
+distinct raw company strings 748

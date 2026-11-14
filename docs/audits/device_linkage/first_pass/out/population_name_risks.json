@@ -1,0 +1,265 @@
+{
+ "distinct_submissions": 1430,
+ "names_generic_by_rule": 101,
+ "names_core_differs_from_raw": 394,
+ "names_with_gt1_model_segment": 154,
+ "names_core_single_token": 298,
+ "names_core_single_token_le5_chars": 51,
+ "names_core_contains_company_brand": 282,
+ "core_name_keys": 1048,
+ "core_name_keys_with_gt1_submission": 219,
+ "submissions_in_multi_submission_families": 601,
+ "family_size_hist": {
+  "1": 829,
+  "2": 140,
+  "3": 47,
+  "4": 15,
+  "5": 6,
+  "6": 11
+ },
+ "families_spanning_gt1_level1_company": 37,
+ "families_spanning_gt1_brand_key": 17,
+ "families_spanning_gt1_brand_key_list": [
+  {
+   "core_name": "lvivo software application",
+   "companies": [
+    "DIACARDIO, LTD.",
+    "DiA Imaging Analysis Ltd",
+    "DiA Imaging Analysis Ltd."
+   ],
+   "submissions": [
+    "K243862",
+    "K243235",
+    "K240553",
+    "K210053",
+    "K200232",
+    "K161382"
+   ]
+  },
+  {
+   "core_name": "skout system",
+   "companies": [
+    "Iterative Health",
+    "Iterative Scopes Inc.",
+    "Iterative Scopes, Inc."
+   ],
+   "submissions": [
+    "K253664",
+    "K251126",
+    "K241508",
+    "K240781",
+    "K230658"
+   ]
+  },
+  {
+   "core_name": "magnetom free max",
+   "companies": [
+    "Siemens Medical Solutions USA, Inc.",
+    "Siemens Shenzhen Magnetic Resonance , Ltd."
+   ],
+   "submissions": [
+    "K251822",
+    "K231617",
+    "K220575",
+    "K210611"
+   ]
+  },
+  {
+   "core_name": "bonemri",
+   "companies": [
+    "MRIguidance B.V",
+    "MRIguidance B.V.",
+    "MRlguidance B.V."
+   ],
+   "submissions": [
+    "K233030",
+    "K230197",
+    "K221762",
+    "K202404"
+   ]
+  },
+  {
+   "core_name": "rapid",
+   "companies": [
+    "iSchema View Inc.",
+    "iSchemaView, Inc."
+   ],
+   "submissions": [
+    "K233582",
+    "K233512",
+    "K213165"
+   ]
+  },
+  {
+   "core_name": "idx dr",
+   "companies": [
+    "Digital Diagnostics Inc.",
+    "IDx, LLC"
+   ],
+   "submissions": [
+    "K213037",
+    "K203629",
+    "DEN180001"
+   ]
+  },
+  {
+   "core_name": "volpara imaging software",
+   "companies": [
+    "Matakina Technology LTD",
+    "Volpara Health Technologies Limited"
+   ],
+   "submissions": [
+    "K211279",
+    "K182310",
+    "K153427"
+   ]
+  },
+  {
+   "core_name": "caption guidance",
+   "companies": [
+    "Bay Labs, Inc.",
+    "Caption Health"
+   ],
+   "submissions": [
+    "K201992",
+    "K200755",
+    "DEN190040"
+   ]
+  },
+  {
+   "core_name": "syngo carbon clinicals",
+   "companies": [
+    "Siemens Healthcare GmbH",
+    "Siemens Healthineers AG"
+   ],
+   "submissions": [
+    "K251059",
+    "K232856"
+   ]
+  },
+  {
+   "core_name": "aurora",
+   "companies": [
+    "EnsoData",
+    "Ge Medical Systems Israel"
+   ],
+   "submissions": [
+    "K251153",
+    "K231355"
+   ]
+  },
+  {
+   "core_name": "inferread lung ct ai",
+   "companies": [
+    "Beijing Infervision Technology Co.,Ltd.",
+    "Infervision Medical Technology Co., Ltd."
+   ],
+   "submissions": [
+    "K240554",
+    "K192880"
+   ]
+  },
+  {
+   "core_name": "arvis shoulder",
+   "companies": [
+    "Insight Medical Systems, Inc.",
+    "Kico Knee Innovation Company Pty Ltd"
+   ],
+   "submissions": [
+    "K243950",
+    "K240062"
+   ]
+  },
+  {
+   "core_name": "adas 3d",
+   "companies": [
+    "Adas3D Medical S.L",
+    "Galgo Medical S.L"
+   ],
+   "submissions": [
+    "K240791",
+    "K191125"
+   ]
+  },
+  {
+   "core_name": "healthccsng",
+   "companies": [
+    "Nano-X AI Ltd.",
+    "Zebra Medical Vision Ltd."
+   ],
+   "submissions": [
+    "K241440",
+    "K210085"
+   ]
+  },
+  {
+   "core_name": "columbo",
+   "companies": [
+    "Smart Soft Healthcare",
+    "Smart Soft Healthcare AD"
+   ],
+   "submissions": [
+    "K241211",
+    "K220497"
+   ]
+  },
+  {
+   "core_name": "accucontour",
+   "companies": [
+    "Manteia Technologies Co., Ltd.",
+    "Xiamen Manteia Technology LTD."
+   ],
+   "submissions": [
+    "K221706",
+    "K191928"
+   ]
+  },
+  {
+   "core_name": "tissue of origin test kit ffpe",
+   "companies": [
+    "Cancer Genetics, Inc.",
+    "PATHWORK DIAGNOSTICS, INC."
+   ],
+   "submissions": [
+    "K173839",
+    "K120489"
+   ]
+  }
+ ],
+ "family_year_span_hist": {
+  "0": 22,
+  "1": 69,
+  "2": 51,
+  "3": 29,
+  "4": 20,
+  "5": 17,
+  "6": 11
+ },
+ "predicates_in_local_510k_summaries": [
+  {
+   "submission_number": "K203042",
+   "cited": [
+    "K150003",
+    "K192832"
+   ],
+   "cited_on_ai_list": [
+    "K192832"
+   ]
+  },
+  {
+   "submission_number": "K203103",
+   "cited": [
+    "K120361",
+    "K120679",
+    "K123566",
+    "K130542",
+    "K141514",
+    "K142521",
+    "K162287",
+    "K191544",
+    "K200973"
+   ],
+   "cited_on_ai_list": []
+  }
+ ]
+}

@@ -1,0 +1,6 @@
+# Single run, 2026-11-13, through the session's agent proxy. One request per URL.
+# url	result
+https://clinicaltrials.gov/api/v2/version	HTTP 200 application/json (71 bytes; apiVersion 2.0.5, dataTimestamp 2026-11-13T10:00:06)
+https://www.accessdata.fda.gov/cdrh_docs/pdf25/K253532.pdf	BLOCKED - curl (56) "CONNECT tunnel failed, response 403" (proxy refused the host; no bytes from FDA)
+https://api.fda.gov/device/510k.json?limit=1	BLOCKED - curl (56) "CONNECT tunnel failed, response 403" (proxy refused the host; no bytes from FDA)
+https://www.fda.gov/	HTTP 200 text/html (40686 bytes)
