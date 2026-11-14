@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T03:32:26+00:00 by `scripts/build_device_links.py build` at engine commit `4d958dd79f16` (no uncommitted changes; producing-code digest `89640a4916d1…`), run id `devices-2026-11-14-4a05b0d599`, method `device-links-1` |
+| Built | 2026-11-14T03:41:17+00:00 by `scripts/build_device_links.py build` at engine commit `c415897d7718` (no uncommitted changes; producing-code digest `1cfaaa9e59bc…`), run id `devices-2026-11-14-272ff4e880`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -102,4 +102,6 @@ audit, the build report and an independent recount.
 
 ## Rebuilt on the pull-request branch
 
-The build was first made at `7a79adb` (run `devices-2026-11-14-cf872a1604`) on a working branch. Its commits were replayed onto `main` after the results-structure pull request merged, which gave them new hashes, and the run id was changed to a digest of what the build publishes, including a digest of the producing code (the fix made to the results-structure build in its review). The build was then rebuilt from the same frozen cache at the commit named above. Every output file is identical to the first build apart from the run id; `run.json` differs in the run id, the build time, the producer (commit and code digest) and the file checksums, which cover the run id.
+The build was first made at `7a79adb` (run `devices-2026-11-14-cf872a1604`) on a working branch. Its commits were replayed onto `main` after the results-structure pull request merged, which gave them new hashes, and the run id was changed to a digest of what the build publishes, including a digest of the producing code (the fix made to the results-structure build in its review). The build was then rebuilt from the same frozen cache at `4d958dd` (run `devices-2026-11-14-4a05b0d599`). Every output file is identical to the first build apart from the run id; `run.json` differs in the run id, the build time, the producer (commit and code digest) and the file checksums, which cover the run id.
+
+It was rebuilt again after the first review round, at the commit named above. That round's three fixes (a truncated number search reads as incomplete; a documentary statement must come from the submission's own document; a file served at two addresses counts once against a disk budget) change no output of this run: its single-number searches each found at most one record, the statements file has no rows, and no budget was set. Every output file is identical to the previous build apart from the run id.
