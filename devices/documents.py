@@ -406,6 +406,22 @@ def read_text(cache: Path, digest: str, version: str) -> dict[str, Any] | None:
     return json.loads(gzip.decompress(path.read_bytes()))
 
 
+def store_problem(cache: Path, digest: str, size: int | None) -> str | None:
+    """Why the bytes recorded for a retrieved document are not held as recorded, or None: the
+    content-addressed file must exist, have the recorded size and hash to its name."""
+    import hashlib
+    path = cache / 'documents' / 'store' / f'{digest}.pdf'
+    if not path.is_file():
+        return 'not in the document store'
+    if size is not None and path.stat().st_size != size:
+        return f'held with {path.stat().st_size} bytes, {size} recorded'
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+    return None if h.hexdigest() == digest else 'the bytes held do not hash to the recorded digest'
+
+
 def build(manifest_lines: list[dict[str, Any]], pathway_of: dict[str, str], cache: Path,
           extraction_version: str, labels: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """One record per document id, from the manifest's history and the text cache.
@@ -422,6 +438,8 @@ def build(manifest_lines: list[dict[str, Any]], pathway_of: dict[str, str], cach
         history.setdefault(line['document_id'], []).append(line)
     by_digest: dict[str, list[str]] = {}
     docs: list[dict[str, Any]] = []
+    store_checked: dict[str, str | None] = {}
+    not_held: list[str] = []
     for did, lines in history.items():
         cur = dict(lines[-1])
         cur['official_label'] = cur.get('official_label') or (labels or {}).get(did)
@@ -447,6 +465,12 @@ def build(manifest_lines: list[dict[str, Any]], pathway_of: dict[str, str], cach
             'identifiers': [], 'study_language': None, 'study_description': None, 'same_bytes_as': [],
         }
         if cur['outcome'] == 'retrieved':
+            # The bytes a "retrieved" document stands for must still be held as recorded; a
+            # build does not publish a document, or links from its text, whose source is gone.
+            if cur['sha256'] not in store_checked:
+                store_checked[cur['sha256']] = store_problem(cache, cur['sha256'], cur.get('bytes'))
+            if store_checked[cur['sha256']]:
+                not_held.append(f"{did} ({cur['sha256'][:12]}…): {store_checked[cur['sha256']]}")
             by_digest.setdefault(cur['sha256'], []).append(did)
             text = read_text(cache, cur['sha256'], extraction_version)
             if text is None:
@@ -489,4 +513,7 @@ def build(manifest_lines: list[dict[str, Any]], pathway_of: dict[str, str], cach
     for doc in docs:
         if doc['sha256']:
             doc['same_bytes_as'] = sorted(d for d in by_digest[doc['sha256']] if d != doc['document_id'])
+    if not_held:
+        raise ValueError(f'{len(not_held)} retrieved document(s) are not held as the manifest records them, so '
+                         'nothing is built from them: ' + '; '.join(not_held[:5]))
     return sorted(docs, key=lambda d: (d['submission_number'], d['url']))

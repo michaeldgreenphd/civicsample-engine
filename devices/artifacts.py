@@ -132,7 +132,10 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
         docs_of.setdefault(d['submission_number'], []).append(d)
 
     # ---- registry version stamp
-    versions = sorted((r for k, r in registry.items() if k.startswith('ctgov/version/')), key=lambda r: r['fetched_at'])
+    # Only an answered stamp counts: a version record without both fields (logged before answers
+    # were checked for shape) would publish no provenance on every record.
+    versions = sorted((r for k, r in registry.items() if k.startswith('ctgov/version/') and r.get('status') == 200
+                       and R.version_answer(r.get('body'))), key=lambda r: r['fetched_at'])
     api = (versions[-1].get('body') or {}) if versions else {}
     registry_version = {'registry': 'ClinicalTrials.gov', 'registry_api_version': api.get('apiVersion'),
                         'registry_data_timestamp': api.get('dataTimestamp')}

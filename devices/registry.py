@@ -85,7 +85,14 @@ def study_facts(study: dict[str, Any]) -> dict[str, Any]:
 def fetch_version(log: A.ResponseLog, get: A.Get, throttle: A.Throttle, day: str) -> dict[str, Any] | None:
     """The API version and data timestamp, once per acquisition day: the registry's own version
     stamp for everything fetched alongside it."""
-    return A.logged_json(log, get, throttle, f'ctgov/version/{day}', f'{API}/version')
+    return A.logged_json(log, get, throttle, f'ctgov/version/{day}', f'{API}/version', valid=version_answer)
+
+
+def version_answer(body: Any) -> bool:
+    """A 200 from /version answers only with the API version and the data timestamp, the
+    registry's provenance stamp for every record fetched beside it; anything else is asked again."""
+    return (isinstance(body, dict) and isinstance(body.get('apiVersion'), str) and bool(body['apiVersion'])
+            and isinstance(body.get('dataTimestamp'), str) and bool(body['dataTimestamp']))
 
 
 def search_answer(body: Any) -> bool:

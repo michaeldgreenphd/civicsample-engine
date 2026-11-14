@@ -1373,10 +1373,14 @@ def test_nothing_schedules_this_build() -> None:
 def test_garbled_summary_pages_leave_the_document_unread_in_the_registry(tmp_path: Path) -> None:
     readable = 'The device is intended for use by trained readers in the review of images. ' * 4
     shifted = ''.join(chr(ord(c) - 29) if c.isalpha() else '\x03' for c in readable)
-    F.write_text(tmp_path, 'a' * 64, [LETTER, shifted, shifted])
+    pdf = b'%PDF-1.4 garbled summary'
+    digest = acquire.sha256(pdf)
+    (tmp_path / 'documents' / 'store').mkdir(parents=True)
+    (tmp_path / 'documents' / 'store' / f'{digest}.pdf').write_bytes(pdf)
+    F.write_text(tmp_path, digest, [LETTER, shifted, shifted])
     line = {'document_id': 'doc:K990001:x', 'submission_number': 'K990001', 'url': f'{F.DOCS}/pdf99/K990001.pdf',
             'official_label': 'Summary', 'discovery': 'fda_database_page', 'scope': 'this_submission', 'origin': 'fda_fetch',
-            'retrieved_at': 't', 'http_status': 200, 'bytes': 10, 'sha256': 'a' * 64, 'outcome': 'retrieved', 'attempts': 1}
+            'retrieved_at': 't', 'http_status': 200, 'bytes': len(pdf), 'sha256': digest, 'outcome': 'retrieved', 'attempts': 1}
     (doc,) = documents.build([line], {'K990001': '510k'}, tmp_path, pdftext.extraction_version())
     assert doc['text']['extractor_status'] == 'text' and doc['text']['status'] == 'partial'
     assert (doc['text']['n_pages_garbled'], doc['text']['n_pages_with_text']) == (2, 1)
@@ -1690,6 +1694,49 @@ def test_a_build_does_not_replace_a_directory_that_only_borrows_its_names(tmp_pa
 def test_a_study_answer_needs_an_nct_shaped_id(nct: str) -> None:
     assert not registry.study_answer({'protocolSection': {'identificationModule': {'nctId': nct}}})
     assert registry.study_answer({'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'}}})
+
+
+
+def test_a_retrieved_document_whose_bytes_are_not_held_stops_the_build(tmp_path: Path) -> None:
+    pdf = b'%PDF-1.4 a summary'
+    digest = acquire.sha256(pdf)
+    store = tmp_path / 'documents' / 'store'
+    store.mkdir(parents=True)
+    line = {'document_id': 'doc:K990001:x', 'submission_number': 'K990001', 'url': f'{F.DOCS}/pdf99/K990001.pdf',
+            'official_label': 'Summary', 'discovery': 'fda_database_page', 'scope': 'this_submission', 'origin': 'fda_fetch',
+            'retrieved_at': 't', 'http_status': 200, 'bytes': len(pdf), 'sha256': digest, 'outcome': 'retrieved', 'attempts': 1}
+    def build() -> list[dict[str, Any]]:
+        return documents.build([line], {'K990001': '510k'}, tmp_path, pdftext.extraction_version())
+    for content, why in ((None, 'not in the document store'), (pdf[:-3], 'bytes, '),
+                         (b'%PDF-1.4 a summarx', 'do not hash to the recorded digest')):
+        if content is not None:
+            (store / f'{digest}.pdf').write_bytes(content)
+        with pytest.raises(ValueError, match=why):
+            build()
+    (store / f'{digest}.pdf').write_bytes(pdf)
+    assert build()[0]['availability'] == 'retrieved'
+
+
+@pytest.mark.parametrize('body', [{'error': 'x'}, {'apiVersion': '2.0.5'}, {'dataTimestamp': '2026-11-13T10:00:06'},
+                                  {'apiVersion': '', 'dataTimestamp': 't'}])
+def test_a_registry_version_answer_without_its_stamp_is_asked_again(tmp_path: Path, body: Any) -> None:
+    log = acquire.ResponseLog(tmp_path / 'registry.jsonl')
+    registry.fetch_version(log, lambda u, p: (200, {}, json.dumps(body).encode(), None), F.no_wait(), '2026-11-14')
+    assert log.get('ctgov/version/2026-11-14')['status'] == acquire.UNUSABLE_200
+    assert log.settled('ctgov/version/2026-11-14') is None
+    assert registry.version_answer({'apiVersion': '2.0.5', 'dataTimestamp': '2026-11-13T10:00:06'})
+
+
+def test_the_build_stamps_records_from_the_latest_answered_version(tmp_path: Path, acquired: dict[str, Any]) -> None:
+    a = copy.deepcopy(acquired)
+    records, _ = a['frozen']['registry']
+    good = next(r for k, r in records.items() if k.startswith('ctgov/version/'))
+    records['ctgov/version/2099-01-01'] = {**good, 'key': 'ctgov/version/2099-01-01', 'fetched_at': '2099-01-01T00:00:00+00:00',
+                                           'body': {'error': 'x'}}
+    family = F.build_family(tmp_path, a)
+    stamped = {x['source_version'].get('registry_api_version') for x in family['links.json']['links']
+               if x['evidence']['source_kind'] == 'registry_record'}
+    assert stamped == {good['body']['apiVersion']}
 
 
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])
