@@ -673,9 +673,10 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # is set from the word "ethnicity" in the title, also on tables whose rows are
 # race only.
 #
-# What it does not do. Nothing is reclassified: omb_totals, unknown_explicit,
-# unknown_inferred, raw_categories and the table selection are computed
-# exactly as before, and the recorded rows are in none of them. The record is
+# What it does not do. The recorded rows are in none of omb_totals,
+# raw_categories or the table selection, which are computed as if the rows
+# were not there. (Whether a shortfall is filed as unknown_ethnicity_only or
+# unknown_inferred does read their counts: next block comment.) The record is
 # the posted rows, not a verdict on the table: whether the rows form one
 # exclusive classification (race rows short of the population by about the
 # recorded counts) or repeat people already in the race rows (race rows cover
@@ -711,6 +712,94 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # race ("Hispanic (regardless of race)", "Non-Hispanic Whites": 119 of the
 # 4,332 rows), so a reader must not take every recorded row for ethnicity
 # alone.
+
+# ── A shortfall that the ethnicity rows account for ─────────────────────────
+#
+# In a combined classification each participant is in exactly one row: a race
+# row, the table's own "Unknown" row, or a Hispanic row. The Hispanic row's
+# participants were given no race by the table. They are not participants the
+# table lost track of, yet denominator balancing put them in unknown_inferred
+# with every other gap.
+#
+# Method. unknown_not_reported has three parts that add up to it:
+#   unknown_explicit        counted rows that map to unknown ("Unknown", "Not
+#                           Reported");
+#   unknown_ethnicity_only  participants of the recorded ethnicity rows, when
+#                           those rows account for the whole shortfall (below);
+#   unknown_inferred        the rest of the gap between the counted rows and
+#                           the baseline population, with no row behind it.
+# The shortfall (baseline population minus the sum of the counted rows) is
+# moved from unknown_inferred to unknown_ethnicity_only only when all of
+# these hold:
+#   - the block is reported and its baseline population is known;
+#   - the recorded rows (skipped_ethnicity_rows) that state the ethnicity
+#     ("Hispanic", "Latinx", "Hispanic (regardless of race)") add up to
+#     EXACTLY the shortfall;
+#   - no recorded row that negates it ("Not Hispanic or Latino",
+#     "Non-Hispanic": _negates_ethnicity) has a count above zero. Such a row
+#     describes people the race rows already hold, so the table is not one
+#     exclusive classification.
+# The block then carries the flag "shortfall_is_ethnicity_rows", and
+# unknown_inferred is 0. In every other case unknown_ethnicity_only is 0 and
+# unknown_inferred is the whole shortfall, as before.
+#
+# The test is exact on purpose. Where the Hispanic rows are smaller than the
+# shortfall, part of the gap has no row behind it; where they are larger,
+# they overlap the race rows. In neither case do the counts show which
+# participants of the gap are the Hispanic row's, so nothing is moved.
+#
+# What does not change: omb_totals (unknown_not_reported is the same number),
+# unknown_explicit, raw_categories, skipped_ethnicity_rows, the table
+# selection and the flag denominator_balanced, which still says that the
+# shortfall was added to unknown_not_reported. Only the split of that number
+# between its parts changes. A reader of unknown_inferred alone must add
+# unknown_ethnicity_only to it to get the shortfall it used to hold.
+#
+# A record extracted before this field existed has no unknown_ethnicity_only
+# key: "not looked at", not 0.
+#
+# Measured on the baseline modules of the 80,890 trials in the 2026-11-08
+# snapshot (CT.gov API v2, re-fetched 2026-11-14): 2,688 trials carry the
+# flag, and their 881,433 participants are filed as unknown_ethnicity_only.
+# unknown_inferred goes from 2,329,443 to 1,448,010; unknown_not_reported
+# (5,659,420) and every other value of every block are the same. In 551 more
+# trials with a shortfall and recorded rows above zero, the rows do not add
+# up to the shortfall exactly or a negating row has participants, and
+# nothing is moved.
+
+_ETHNICITY_TERM_RX = re.compile(r"hispanic|latin(?:o|a|x|e)", re.IGNORECASE)
+_NEGATION_RX = re.compile(r"\b(?:non|not|no|neither|nor)\b|\bnon(?=[a-z])|\bother\s+than\b", re.IGNORECASE)
+# A bare answer after the last ethnicity term: "Hispanic or Latino: No",
+# "Hispanic or Latino ethnicity - No". Anything longer ("Hispanic (not
+# African American)", "Hispanic: No retinopathy") qualifies something else.
+_NEGATED_ANSWER_RX = re.compile(
+    r"^[\W_]*(?:(?:ethnicity|origin|descent)[\W_]*)?(?:no|not|none)[\W_]*$", re.IGNORECASE)
+
+def _negates_ethnicity(label: str) -> bool:
+    """True when a recorded ethnicity row says its participants are NOT of the
+    ethnicity: a negation ("non", "not", "no", "neither", "nor", "other than",
+    or "non" joined to the next word) stands before the first ethnicity term,
+    or the label ends in a bare negative answer after the last one.
+
+      "Not Hispanic or Latino", "Non-Hispanic", "Nonhispanic"   -> True
+      "Not of Hispanic, Latino/a, or Spanish origin"           -> True
+      "Other than Hispanic or Latino"                          -> True
+      "Hispanic or Latino: No", "Hispanic ethnicity - No"      -> True
+      "Hispanic", "Hispanic (not African American)"            -> False
+      "Latino, non-Black", "Hispanic: No retinopathy"          -> False
+
+    A negation before the term that belongs to another word ("Non-Black
+    Hispanic", "Prefer not to answer (Hispanic)") also reads as True. That
+    errs towards leaving a shortfall in unknown_inferred. A label with no
+    ethnicity term at all reads as True for the same reason.
+    """
+    text = clean_demographic_label(label)
+    terms = list(_ETHNICITY_TERM_RX.finditer(text))
+    if not terms:
+        return True
+    if _NEGATION_RX.search(text[:terms[0].start()]) is not None:
+        return True
+    return _NEGATED_ANSWER_RX.match(text[terms[-1].end():]) is not None
 
 def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
                            race_part: Optional[str] = None,
@@ -1047,6 +1136,8 @@ def extract_race_data(study: dict) -> Dict:
         - raw_categories: List of all extracted categories
         - joint_sex_counts: posted race-by-sex counts, or None (see the
           race-by-sex block comment above)
+        - unknown_explicit, unknown_ethnicity_only, unknown_inferred: the
+          three parts of omb_totals["unknown_not_reported"]
         - skipped_ethnicity_rows: the ethnicity-only rows of the counted
           tables, which are in none of the totals (see the block comment
           "Ethnicity rows inside a race table")
@@ -1070,12 +1161,14 @@ def extract_race_data(study: dict) -> Dict:
             "unknown_not_reported": 0,
             "other": 0
         },
-        # unknown_explicit / unknown_inferred disaggregate
-        # omb_totals["unknown_not_reported"] into its two sources (see the
-        # denominator-balancing comment below). unknown_not_reported always
-        # equals their sum — current dashboard display is unaffected; this
-        # is purely additive.
+        # unknown_explicit / unknown_ethnicity_only / unknown_inferred
+        # disaggregate omb_totals["unknown_not_reported"] into its three
+        # sources (see the denominator-balancing comment below and the block
+        # comment "A shortfall that the ethnicity rows account for").
+        # unknown_not_reported always equals their sum — current dashboard
+        # display is unaffected; this is purely additive.
         "unknown_explicit": 0,
+        "unknown_ethnicity_only": 0,
         "unknown_inferred": 0,
         "subcategory_totals": {},
         "raw_categories": [],
@@ -1187,8 +1280,9 @@ def extract_race_data(study: dict) -> Dict:
     # enrollment.  The remaining participants' race is genuinely unknown
     # (they were categorized by ethnicity only), so the difference should
     # be added to unknown_not_reported.  The rows themselves are listed in
-    # skipped_ethnicity_rows, so a reader can tell this gap from participants
-    # the table did not classify at all; the balancing does not read them.
+    # skipped_ethnicity_rows; when they add up to exactly this gap, the gap
+    # is filed as unknown_ethnicity_only, else as unknown_inferred. The
+    # amount added to unknown_not_reported is the same either way.
     # Only balance when at least some non-zero data was extracted — if every
     # count is zero, the study has no real data and all-zero rejection should
     # take precedence. joint_sex_counts is never balanced: it holds posted
@@ -1205,8 +1299,21 @@ def extract_race_data(study: dict) -> Dict:
             remainder = total_participants - extracted_sum
             if remainder > 0:
                 result["omb_totals"]["unknown_not_reported"] += remainder
-                result["unknown_inferred"] = remainder
                 result["flags"].append("denominator_balanced")
+                # Which part of unknown the shortfall belongs to (block
+                # comment "A shortfall that the ethnicity rows account for"):
+                # the ethnicity rows' participants when those rows add up to
+                # exactly the shortfall and none negates the ethnicity; else
+                # a gap with no row behind it.
+                stated = sum(row["count"] for row in result["skipped_ethnicity_rows"]
+                             if not _negates_ethnicity(row["original"]))
+                negated = sum(row["count"] for row in result["skipped_ethnicity_rows"]
+                              if _negates_ethnicity(row["original"]))
+                if stated == remainder and negated == 0:
+                    result["unknown_ethnicity_only"] = remainder
+                    result["flags"].append("shortfall_is_ethnicity_rows")
+                else:
+                    result["unknown_inferred"] = remainder
 
     # All-zero rejection: if every mapped category has 0 participants,
     # mark the demographic as not collected rather than showing empty rows

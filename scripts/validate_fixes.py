@@ -443,7 +443,8 @@ MOCK_NCT99000108 = _make_study(
 
 # ---------- NCT99000109 (fictional): combined race and ethnicity classification ----------
 # 50 participants, each in exactly one row. The race rows hold 44; the 6 in
-# the Hispanic row are not counted as race and arrive as unknown_inferred.
+# the Hispanic row are not counted as race; they are the whole shortfall, so
+# they are filed as unknown_ethnicity_only, not unknown_inferred.
 # The race block records that row, so the gap can be told from race the table
 # did not report.
 MOCK_NCT99000109 = _make_study(
@@ -500,7 +501,7 @@ EXPECTED_SKIPPED_ETHNICITY = {
                     "unknown_inferred": 0},
     "NCT99000109": {"rows": [("Hispanic", 6)],
                     "omb": {"white": 30, "black_african_american": 12, "unknown_not_reported": 8},
-                    "unknown_inferred": 6},
+                    "unknown_ethnicity_only": 6, "unknown_inferred": 0},
 }
 
 # Expected sex results for the legacy table-selection study.
@@ -555,6 +556,11 @@ def check_skipped_ethnicity(nct_id: str, race: dict) -> None:
     assert nonzero == expected["omb"], f"{nct_id} omb_totals: {nonzero}"
     assert race["unknown_inferred"] == expected["unknown_inferred"], \
         f"{nct_id} unknown_inferred: {race['unknown_inferred']}"
+    assert race["unknown_ethnicity_only"] == expected.get("unknown_ethnicity_only", 0), \
+        f"{nct_id} unknown_ethnicity_only: {race['unknown_ethnicity_only']}"
+    assert race["omb_totals"]["unknown_not_reported"] == (
+        race["unknown_explicit"] + race["unknown_ethnicity_only"] + race["unknown_inferred"]), \
+        f"{nct_id}: the parts of unknown do not add up"
     assert not any(c["original"] in dict(rows) for c in race["raw_categories"]), \
         f"{nct_id}: an ethnicity row is among the counted rows"
     print(f"\n  {nct_id}: ethnicity rows recorded, not counted — OK")
@@ -566,8 +572,8 @@ def check_joined_labels(race: dict) -> None:
     nonzero = {k: v for k, v in race["omb_totals"].items() if v}
     assert nonzero == {"asian": 12, "black_african_american": 98, "white": 150, "other": 14,
                        "unknown_not_reported": 26}, nonzero
-    assert (race["unknown_explicit"], race["unknown_inferred"]) == (18, 8), \
-        (race["unknown_explicit"], race["unknown_inferred"])
+    assert (race["unknown_explicit"], race["unknown_ethnicity_only"], race["unknown_inferred"]) == (18, 8, 0), \
+        (race["unknown_explicit"], race["unknown_ethnicity_only"], race["unknown_inferred"])
     assert [(r["original"], r["count"]) for r in race["skipped_ethnicity_rows"]] == [
         ("Hispanic (regardless of race)", 8)], race["skipped_ethnicity_rows"]
     joined = {c["original"]: (c["race_part"], c["omb_category"]) for c in race["raw_categories"] if "race_part" in c}

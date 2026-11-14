@@ -382,6 +382,11 @@ def test_a_title_flagged_race_table_is_compared_only_when_its_race_rows_cover_ev
     assert out['usable_for_shares'] is False and out['check'] == 'race_table_has_ethnicity_rows'
     assert out['labels'] == ['Hispanic'] and out['evidence'] == 'row_in_registry_table_dropped_by_extractor'
     # the same shortfall with no registry table to look at: not compared, and it says why
+    # The same shortfall filed by the extractor as its ethnicity rows' part of unknown.
+    split = rec(0)
+    split['race']['unknown_ethnicity_only'] = 2
+    assert trials.category_structure(split, 'race', 53, hispanic)['check'] == 'race_table_has_ethnicity_rows'
+    assert trials.category_structure(split, 'race', 53, None)['check'] == 'combined_table_not_checked_against_registry'
     out = trials.category_structure(rec(2), 'race', 53, None)
     assert out['usable_for_shares'] is False and out['check'] == 'combined_table_not_checked_against_registry'
     # ethnicity rows beside race rows that cover everyone take nobody out of the race rows
