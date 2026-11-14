@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T16:32:09+00:00 by `scripts/build_device_links.py build` at engine commit `efb4ef0e7b11` (no uncommitted changes; producing-code digest `f95e8288ba9a…`), run id `devices-2026-11-14-3c21849a48`, method `device-links-1` |
+| Built | 2026-11-14T17:40:35+00:00 by `scripts/build_device_links.py build` at engine commit `0c4a99458197` (no uncommitted changes; producing-code digest `d4fbb25fb29a…`), run id `devices-2026-11-14-63b371dc69`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -82,9 +82,9 @@ identifier, and 159 more say only that no clinical study was done.
 | Verified link (identifier cited; what the citation means is not reviewed) | 11 |
 | Candidate link awaiting review | 282 |
 | No candidate found in the completed search scope | 763 |
-| Available document insufficient for the question | 36 |
+| Available document insufficient for the question | 8 |
 | Not searched (name made only of device-type words) | 17 |
-| Search incomplete or blocked | 320 |
+| Search incomplete or blocked | 348 |
 | Document unavailable | 1 |
 
 ## Demographic evidence
@@ -192,4 +192,6 @@ It was rebuilt a forty-fourth time after the forty-third review round, at `543b0
 
 It was rebuilt again for that round's second fix, at `07a39bb` (run `devices-2026-11-14-ce2564e543`): cached text whose payload names another extractor version than the one asked for is not read, so the text a build uses always matches the extraction version `run.json` stamps. All 1,532 cached extractions name their own version, and every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a forty-fifth time after the forty-fourth review round, at the commit named above. That round's fix: the text stage counts a cached extraction as done only under the conditions the build reads it under, the same bytes and the same extractor version, so a file naming another version is extracted again rather than left to read as not extracted. All 1,532 cached extractions name the current version, and every output file is identical to the previous build apart from the run id.
+It was rebuilt a forty-fifth time after the forty-fourth review round, at `efb4ef0` (run `devices-2026-11-14-3c21849a48`). That round's fix: the text stage counts a cached extraction as done only under the conditions the build reads it under, the same bytes and the same extractor version, so a file naming another version is extracted again rather than left to read as not extracted. All 1,532 cached extractions name the current version, and every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a forty-sixth time, at the commit named above, to apply the investigator's decisions of 2026-11-14 on the questions still open. In the investigator's words: "D1. 2 D2 follow up PR D3. copy then delete D4. review merge the source archive. D5 finish then mergeD6. open it after 61". D1 is the image-only question from the thirty-third review round, and option 2 was chosen: a citation scan whose held documents cannot answer reads `search_incomplete_or_blocked`, not `available_document_insufficient`, when an unread page belongs to a document that could cite a study (a summary, an SSED, a decision summary, or a file whose type is not known). A clearance letter, an approval order, labeling or a 510(k) Statement cannot cite a study, so its unread pages leave the scan insufficient. This changes `coverage.json`, `submissions.json` and `summary.json`; every other output file is identical to the previous build apart from the run id. On the citation-scan route, 30 submissions move from document insufficient to search incomplete (40 → 10 and 376 → 406 on the route): 23 whose FDA-labelled 510(k) summary has text only on its letter page, 2 image-only 510(k) summaries, 1 PMA whose SSED is image-only, and 4 image-only files with no FDA label. The 3 whose unread document cannot cite a study (2 clearance letters, 1 510(k) Statement) stay insufficient. Overall, 28 submissions move from document insufficient to search incomplete (36 → 8 and 320 → 348); the other 2 of the 30 already read candidate awaiting review, which outranks both. No other state changes. The thread's estimate was "about 29" and "about 7"; these are the measured counts. D2 (registry snapshot provenance and the same-day version refresh) is left to the follow-up pull request with OCR, as decided. D5 ("finish then merge"): no further review rounds are requested on this pull request, and the two round-45 findings about archives frozen before validation existed are carried to the same follow-up.
