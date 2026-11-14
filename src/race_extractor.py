@@ -335,11 +335,14 @@ _ETHNICITY_KEYWORDS = {
 # African American, 63,878 Other; one row that was an unmapped "other"
 # becomes White ("Non-Latine White", 96). unknown_inferred falls by 799,459
 # and 127 trials that reported no race now report it (46,565 to 46,692). The
-# counts of 691 race blocks change; in 251 more only the recorded label
-# changes ("White" becomes the posted "White, not Hispanic"). No trial's
-# counted table changes and no other block changes. Three trials newly add up
-# to more than their baseline population, by 1, 2 and 7 participants, from
-# rows that do so as posted (NCT02841033, NCT01049919, NCT04646616).
+# counts of 691 race blocks change; in 327 more only the record of a row
+# that was already counted in the same category changes ("White" becomes the
+# posted "White, not Hispanic"; "White/Non-Hispanic" keeps its label and is
+# flagged split_from_combined where it was slash_normalized; each gains
+# race_part). No trial's counted table changes and no other block changes.
+# Three trials newly add up to more than their baseline population, by 1, 2
+# and 7 participants, from rows that do so as posted (NCT02841033,
+# NCT01049919, NCT04646616).
 #
 # Left as ethnicity-only by the exact match, with a race word in the label:
 # 119 rows in 92 trials (37,413 participants), mostly "Hispanic (regardless of
@@ -506,10 +509,27 @@ _MEASUREMENT_LABELS = {"count", "number", "n", "total", "value", "mean", "median
 def _map_race_label(label: str) -> Dict:
     """Map a single label to a race category.
 
-    Attempts direct mapping first, then tries combined-label splitting as
-    a fallback.  Each unmapped row is kept as an independent entity — labels
-    are never concatenated or merged.
+    A label that names a race beside one ethnicity phrase
+    (_race_joined_to_ethnicity) is mapped from that exact race part, before
+    anything else: the generic mapping below would split "Native
+    Hawaiian/Pacific Islander Hispanic" at the slash and keep only "Native
+    Hawaiian", or reach "Black or African American Latino" by fuzzy match.
+    Otherwise attempts direct mapping first, then tries combined-label
+    splitting as a fallback.  Each unmapped row is kept as an independent
+    entity — labels are never concatenated or merged.
     """
+    joined = _race_joined_to_ethnicity(label)
+    if joined is not None:
+        race_part, _eth_part = joined
+        mapping = map_race_category(race_part)
+        mapping["flags"].append("split_from_combined")
+        # A joined label keeps what was posted: "Non-Hispanic White" and
+        # "Hispanic White" stay two different source labels, with the part
+        # that was mapped beside them.
+        mapping["original"] = clean_demographic_label(label)
+        mapping["race_part"] = race_part
+        return mapping
+
     mapping = map_race_category(label)
 
     # Combined label splitting: if the whole label fails to map
@@ -521,12 +541,6 @@ def _map_race_label(label: str) -> Dict:
             race_part, _eth_part = split
             mapping = map_race_category(race_part)
             mapping["flags"].append("split_from_combined")
-            if _race_joined_to_ethnicity(label) is not None:
-                # A joined label keeps what was posted: "Non-Hispanic White"
-                # and "Hispanic White" stay two different source labels, with
-                # the part that was mapped beside them.
-                mapping["original"] = clean_demographic_label(label)
-                mapping["race_part"] = race_part
 
     return mapping
 
