@@ -98,17 +98,36 @@ def producer() -> dict[str, Any]:
             'uncommitted_changes': bool(run('status', '--porcelain', '--', 'census', 'scripts/build_census_benchmarks.py'))}
 
 
+PLACE_FIELDS = ('city', 'state', 'country', 'zip')
+
+
+def _place(record: dict[str, Any], field: str) -> str:
+    """One place field in comparable form: case and spacing removed, a ZIP cut to five digits."""
+    value = ' '.join(str(record.get(field) or '').casefold().split())
+    return value[:5] if field == 'zip' else value
+
+
 def place_changed(release_site: dict[str, Any], place_now: dict[str, Any] | None) -> bool:
     """Whether the single facility in today's record is somewhere other than the release's.
 
-    Compares city, state, country and five-digit ZIP, ignoring case and spacing. The facility
-    name is left out: institutions are renamed without moving. A record that carries no place
-    (an older archive, or a test double) cannot show a change and is not treated as one."""
-    if not place_now or not any(place_now.values()):
+    Only a field that both records carry, with different values, shows a move. A field that
+    one record lacks shows nothing either way (see place_fields_not_comparable). The facility
+    name is left out: institutions are renamed without moving."""
+    if not place_now:
         return False
-    norm = lambda v: ' '.join(str(v or '').casefold().split())  # noqa: E731
-    same_zip = norm(release_site.get('zip'))[:5] == norm(place_now.get('zip'))[:5]
-    return not same_zip or any(norm(release_site.get(k)) != norm(place_now.get(k)) for k in ('city', 'state', 'country'))
+    return any(_place(release_site, f) and _place(place_now, f) and _place(release_site, f) != _place(place_now, f)
+               for f in PLACE_FIELDS)
+
+
+def place_fields_not_comparable(release_site: dict[str, Any], place_now: dict[str, Any] | None) -> list[str]:
+    """The place fields that one record carries and the other lacks.
+
+    These are insufficient for comparison, not evidence of a move: a registration can drop
+    a ZIP while the facility stays where it was. They are written on the trial so that a
+    'no change found' is never read as 'every field was checked'."""
+    if not place_now:
+        return []
+    return [f for f in PLACE_FIELDS if bool(_place(release_site, f)) != bool(_place(place_now, f))]
 
 
 def trial_row(rec: dict[str, Any], facts: dict[str, Any], referral: set[str]) -> dict[str, Any]:
@@ -139,6 +158,9 @@ def trial_row(rec: dict[str, Any], facts: dict[str, Any], referral: set[str]) ->
         row['site_count']['tier'] = 'listing_changed_since_release'
         row['site_count']['place_in_registry_now'] = facts['place_now']
         row['_point'] = None
+    missing = place_fields_not_comparable(site, facts.get('place_now'))
+    if missing:
+        row['site_count']['place_fields_not_comparable'] = missing
     try:
         lo, hi = trials.eligible_ages(rec)
         row['eligibility'] = {'min_age': rec.get('min_age'), 'max_age': rec.get('max_age'), 'age_from': lo,

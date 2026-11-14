@@ -139,3 +139,10 @@ def test_a_lone_facility_that_moved_is_not_treated_as_the_release_site() -> None
     assert moved['site_count']['tier'] == 'listing_changed_since_release' and moved['_point'] is None
     assert moved['site_count']['place_in_registry_now']['city'] == 'Worcester'
     assert build.place_changed(site, None) is False          # no place recorded: no change can be shown
+    # a field today's record no longer carries is not evidence of a move
+    no_zip = build.trial_row(rec, {**facts, 'place_now': {**same, 'zip': None}}, set())
+    assert no_zip['site_count']['tier'] == 'self_described_single_site' and no_zip['_point'] == (42.3, -71.1)
+    assert no_zip['site_count']['place_fields_not_comparable'] == ['zip']
+    assert 'place_fields_not_comparable' not in kept['site_count']
+    # a missing field does not hide a contradiction in another one
+    assert build.place_changed(site, {**same, 'zip': None, 'state': 'Maine'}) is True
