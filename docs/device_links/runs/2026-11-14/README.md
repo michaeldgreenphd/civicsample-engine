@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T14:25:30+00:00 by `scripts/build_device_links.py build` at engine commit `9f7a1667f24e` (no uncommitted changes; producing-code digest `355d33ec042a…`), run id `devices-2026-11-14-48162bb3c1`, method `device-links-1` |
+| Built | 2026-11-14T14:36:01+00:00 by `scripts/build_device_links.py build` at engine commit `026fadeae6d3` (no uncommitted changes; producing-code digest `d653f5be335a…`), run id `devices-2026-11-14-a27333fd87`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -166,4 +166,6 @@ It was rebuilt a thirty-first time after the thirtieth review round, at `93a0d9f
 
 It was rebuilt a thirty-second time after the thirty-first review round, at `9d351c6` (run `devices-2026-11-14-af31bf600f`). That round's fix (a registry record fetched before any version answer has no version stamp and a reason, rather than a later snapshot's) changes no output of this run: no registry record in the cache was fetched before the first version answer (2026-11-13T23:31:12Z). Every output file is identical to the previous build apart from the run id. A second finding of that round, whether a citation scan of a document with no readable text should read as incomplete rather than as available document insufficient, changes what a published state means and was put to the investigator; this run keeps the documented rule.
 
-It was rebuilt a thirty-third time after the thirty-second review round, at the commit named above. That round's fix (a timeout or crash of the text worker is cached as a failed extraction but extracted again on the next run) changes no output of this run: the text cache holds no failed extraction. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a thirty-third time after the thirty-second review round, at `9f7a166` (run `devices-2026-11-14-48162bb3c1`). That round's fix (a timeout or crash of the text worker is cached as a failed extraction but extracted again on the next run) changes no output of this run: the text cache holds no failed extraction. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a thirty-fourth time after the thirty-third review round, at the commit named above. That round's fix (the repair of a recorded document's damaged file is not stopped by the disk budget) changes no output of this run: no budget was set. Every output file is identical to the previous build apart from the run id. A second finding of that round, that a study's facts in `studies.json` could come from a different registry snapshot than a later evidence record for it, changes the published format of the build and the site and was put to the investigator; in this run every registry record was fetched between 23:31 and 00:28 UTC and both version answers report the same data timestamp.
