@@ -592,7 +592,7 @@ def main(argv: list[str] | None = None) -> None:
             return {"reported": False}
         return {"reported": True, totals_key: obj.get(totals_key) or {}}
 
-    def _race_row(obj):
+    def _race_row(obj: dict[str, Any] | None) -> dict[str, Any]:
         """The race block of a summary row: _demo's, plus the part of
         unknown_not_reported that a combined race and ethnicity table counted
         as Hispanic or Latino and gave no race (race_extractor,
