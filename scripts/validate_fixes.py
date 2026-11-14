@@ -27,13 +27,19 @@ Tests:
  13. NCT99000109 — A combined race and ethnicity classification, one row per
      participant: Caucasian / African-American / Hispanic / Unknown
      (fictional study, the table shape of NCT00416078)
+ 14. NCT99000110 — Race crossed with ethnicity in joined labels:
+     "Non-Hispanic White", "Hispanic White", ... (fictional study, the table
+     shape of NCT03709602)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
 (check_race_rows_in_sex_table), study 11 its ethnicity totals and flags
 (EXPECTED_ETHNICITY), and study 12 its sex totals and flags (EXPECTED_SEX).
 Studies 1, 2 and 13 assert the ethnicity rows the race block records without
-counting them (EXPECTED_SKIPPED_ETHNICITY).
+counting them (EXPECTED_SKIPPED_ETHNICITY); study 13 also asserts that its
+race rows are counted as not Hispanic (EXPECTED_ETHNICITY). Study 14 asserts that a label
+naming a race beside an ethnicity term is counted in that race
+(check_joined_labels).
 A mismatch stops the harness.
 """
 import json
@@ -438,7 +444,8 @@ MOCK_NCT99000108 = _make_study(
 
 # ---------- NCT99000109 (fictional): combined race and ethnicity classification ----------
 # 50 participants, each in exactly one row. The race rows hold 44; the 6 in
-# the Hispanic row are not counted as race and arrive as unknown_inferred.
+# the Hispanic row are not counted as race; they are the whole shortfall, so
+# they are filed as unknown_ethnicity_only, not unknown_inferred.
 # The race block records that row, so the gap can be told from race the table
 # did not report.
 MOCK_NCT99000109 = _make_study(
@@ -457,6 +464,30 @@ MOCK_NCT99000109 = _make_study(
     total_participants=50,
 )
 
+# ---------- NCT99000110 (fictional): race named beside ethnicity in one label ----------
+# 300 participants, each in exactly one row. "Non-Hispanic White", "Hispanic
+# White" and "Non Hispanic Black or African American" name a race and are
+# counted in it; "Hispanic Other" is race Other; "Hispanic (regardless of
+# race)" names none and stays an ethnicity row, recorded and not counted.
+MOCK_NCT99000110 = _make_study(
+    "NCT99000110",
+    "NCT99000110 - Race named beside ethnicity in one label (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("Asian", 12),
+                _make_category("Non Hispanic Black or African American", 98),
+                _make_category("Non-Hispanic White", 145),
+                _make_category("Hispanic White", 5),
+                _make_category("Hispanic Other", 14),
+                _make_category("Hispanic (regardless of race)", 8),
+                _make_category("Unknown or Not Reported", 18),
+            ])
+        ]),
+    ],
+    total_participants=300,
+)
+
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
 # OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
@@ -471,7 +502,7 @@ EXPECTED_SKIPPED_ETHNICITY = {
                     "unknown_inferred": 0},
     "NCT99000109": {"rows": [("Hispanic", 6)],
                     "omb": {"white": 30, "black_african_american": 12, "unknown_not_reported": 8},
-                    "unknown_inferred": 6},
+                    "unknown_ethnicity_only": 6, "unknown_inferred": 0},
 }
 
 # Expected sex results for the legacy table-selection study.
@@ -484,6 +515,10 @@ EXPECTED_SEX = {
 EXPECTED_ETHNICITY = {
     "NCT99000107": {"omb": {"hispanic_latino": 9, "not_hispanic_latino": 68, "unknown_not_reported": 3},
                     "flags": ["ethnicity_table_superseded", "multiple_ethnicity_tables_2"]},
+    # One exact combined classification: its 42 participants in race rows are
+    # not Hispanic; its "Unknown" row stays unknown.
+    "NCT99000109": {"omb": {"hispanic_latino": 6, "not_hispanic_latino": 42, "unknown_not_reported": 2},
+                    "flags": ["not_hispanic_from_combined_table"]},
 }
 
 
@@ -526,9 +561,34 @@ def check_skipped_ethnicity(nct_id: str, race: dict) -> None:
     assert nonzero == expected["omb"], f"{nct_id} omb_totals: {nonzero}"
     assert race["unknown_inferred"] == expected["unknown_inferred"], \
         f"{nct_id} unknown_inferred: {race['unknown_inferred']}"
+    assert race["unknown_ethnicity_only"] == expected.get("unknown_ethnicity_only", 0), \
+        f"{nct_id} unknown_ethnicity_only: {race['unknown_ethnicity_only']}"
+    assert race["omb_totals"]["unknown_not_reported"] == (
+        race["unknown_explicit"] + race["unknown_ethnicity_only"] + race["unknown_inferred"]), \
+        f"{nct_id}: the parts of unknown do not add up"
     assert not any(c["original"] in dict(rows) for c in race["raw_categories"]), \
         f"{nct_id}: an ethnicity row is among the counted rows"
     print(f"\n  {nct_id}: ethnicity rows recorded, not counted — OK")
+
+
+def check_joined_labels(race: dict) -> None:
+    """NCT99000110: a label naming a race beside an ethnicity term is counted
+    in that race, under the posted label; one that names no race is not."""
+    nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+    assert nonzero == {"asian": 12, "black_african_american": 98, "white": 150, "other": 14,
+                       "unknown_not_reported": 26}, nonzero
+    assert (race["unknown_explicit"], race["unknown_ethnicity_only"], race["unknown_inferred"]) == (18, 8, 0), \
+        (race["unknown_explicit"], race["unknown_ethnicity_only"], race["unknown_inferred"])
+    assert [(r["original"], r["count"]) for r in race["skipped_ethnicity_rows"]] == [
+        ("Hispanic (regardless of race)", 8)], race["skipped_ethnicity_rows"]
+    joined = {c["original"]: (c["race_part"], c["omb_category"]) for c in race["raw_categories"] if "race_part" in c}
+    assert joined == {
+        "Non Hispanic Black or African American": ("Black or African American", "black_african_american"),
+        "Non-Hispanic White": ("White", "white"),
+        "Hispanic White": ("White", "white"),
+        "Hispanic Other": ("Other", "other"),
+    }, joined
+    print("\n  NCT99000110: joined race and ethnicity labels counted in their race — OK")
 
 
 def check_race_rows_in_sex_table(race: dict, sex: dict) -> None:
@@ -627,6 +687,8 @@ def validate_study(study: dict, nct_id: str) -> None:
         print(f"\n  {nct_id}: expected ethnicity totals and flags — OK")
     if nct_id == "NCT99000106":
         check_race_rows_in_sex_table(race, sex)
+    if nct_id == "NCT99000110":
+        check_joined_labels(race)
 
 
 def main() -> None:
@@ -644,6 +706,7 @@ def main() -> None:
         (MOCK_NCT99000107, "NCT99000107"),
         (MOCK_NCT99000108, "NCT99000108"),
         (MOCK_NCT99000109, "NCT99000109"),
+        (MOCK_NCT99000110, "NCT99000110"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

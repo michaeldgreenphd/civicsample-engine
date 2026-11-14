@@ -347,6 +347,14 @@ def main(argv: list[str] | None = None) -> None:
         if r.get("reported"):
             for k, v in (r.get("omb_totals") or {}).items():
                 race_dist[k] += v or 0
+            # The part of unknown_not_reported that is the Hispanic rows of an
+            # exact combined race and ethnicity classification
+            # (race_extractor, "A shortfall that the ethnicity rows account
+            # for"). A PART of unknown_not_reported, not a further category:
+            # the site draws it as its own row and takes it out of "Unknown".
+            # Records extracted before the field existed add 0, so their
+            # unknown stays whole.
+            race_dist["unknown_ethnicity_only"] += r.get("unknown_ethnicity_only") or 0
             for k, v in (r.get("subcategory_totals") or {}).items():
                 race_subcats[k] += v or 0
 
@@ -584,6 +592,19 @@ def main(argv: list[str] | None = None) -> None:
             return {"reported": False}
         return {"reported": True, totals_key: obj.get(totals_key) or {}}
 
+    def _race_row(obj: dict[str, Any] | None) -> dict[str, Any]:
+        """The race block of a summary row: _demo's, plus the part of
+        unknown_not_reported that a combined race and ethnicity table counted
+        as Hispanic or Latino and gave no race (race_extractor,
+        "A shortfall that the ethnicity rows account for"), so the site's
+        race pop-up splits it on a phone as it does from the full record.
+        Only when the record carries it: an older record's row has no such
+        key, and the site then shows unknown whole."""
+        row = _demo(obj, "omb_totals")
+        if row["reported"] and "unknown_ethnicity_only" in obj:
+            row["unknown_ethnicity_only"] = obj.get("unknown_ethnicity_only") or 0
+        return row
+
     _COMPACT_SG = ("sex_report_status", "reported_sex", "reported_gender", "reported_both",
                    "gender_labeled_binary_only", "is_participant_count", "n_female", "n_male",
                    "n_unknown", "n_gender_diverse", "n_ambiguous_gender", "uninformative_reason",
@@ -627,7 +648,7 @@ def main(argv: list[str] | None = None) -> None:
             "is_fda_regulated_drug": s.get("is_fda_regulated_drug"),
             "is_fda_regulated_device": s.get("is_fda_regulated_device"),
             "is_unapproved_device": s.get("is_unapproved_device"),
-            "race": _demo(s.get("race"), "omb_totals"),
+            "race": _race_row(s.get("race")),
             "ethnicity": _demo(s.get("ethnicity"), "omb_totals"),
             "sex": _demo(s.get("sex"), "totals"),
             "gender": _demo(s.get("gender"), "totals"),

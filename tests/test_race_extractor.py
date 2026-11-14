@@ -20,7 +20,9 @@ summed.
 
 A purely ethnicity row inside a counted race table ("Hispanic" beside
 "Caucasian") is never counted; the block records it in
-skipped_ethnicity_rows and flags ethnicity_rows_skipped (last section).
+skipped_ethnicity_rows and flags ethnicity_rows_skipped. A label that names a
+race beside the ethnicity term ("Non-Hispanic White") is a race row of that
+race (last two sections).
 
 Which measures are race tables at all is the title word rule
 (race_extractor.is_race_table): titles that only contain the letters "race"
@@ -221,8 +223,9 @@ def test_hyphen_pattern_routes_each_race_part_as_a_plain_row() -> None:
     assert race["omb_totals"]["other"] == 8
     assert race["joint_sex_counts"]["counts"]["other"] == {"male": 3, "female": 5}
     assert race["joint_sex_counts"]["counts"]["black_african_american"] == {"male": 3, "female": 4}
-    # Hispanic/Latino rows are not race rows: 11 participants are the gap
-    assert race["unknown_inferred"] == 11
+    # Hispanic/Latino rows are not race rows: their 11 participants are the
+    # whole gap, filed as the ethnicity rows' part of unknown
+    assert (race["unknown_ethnicity_only"], race["unknown_inferred"]) == (11, 0)
     assert not any(r["race_part"] == "Hispanic/Latino" for r in race["joint_sex_counts"]["rows"])
     assert rx._is_ethnicity_only_label("Hispanic/Latino")
 
@@ -337,7 +340,10 @@ def test_sex_tables_without_race_only_rows_are_not_read_as_race(rows: list[tuple
     ("Race/Ethnicity, Customized", [("Oral contraceptive pill", 4), ("Condoms (female and male)", 2), ("Unknown", 1)]),
     ("Race (NIH/OMB)", [("Male Partner Sterilization", 1), ("Abstinence", 3)]),
     ("Race/Ethnicity, Customized", [("Female participants", 20), ("Male participants", 20)]),
-    ("Race/Ethnicity, Customized", [("Non-Hispanic/Latino Black Female", 3), ("Hispanic/Latino Black Male", 2)]),
+    # An ethnicity phrase beside text that is not a race label stays whole
+    # (with "Black" in that place the rows are race by sex: see the tests of
+    # labels that name a race beside an ethnicity term).
+    ("Race/Ethnicity, Customized", [("Non-Hispanic/Latino Veteran Female", 3), ("Hispanic/Latino Veteran Male", 2)]),
 ])
 def test_tables_that_are_not_race_by_sex_keep_the_plain_mapping(title: str, rows: list[tuple[str, int]]) -> None:
     """Whatever the plain path made of these before, it still makes: compared
@@ -802,6 +808,12 @@ def test_a_class_number_every_class_repeats_is_the_tables_denominator() -> None:
 
 COMBINED_TITLE = "Race/Ethnicity, Customized"
 NEW_FLAG = "ethnicity_rows_skipped"
+SPLIT_FLAG = "shortfall_is_ethnicity_rows"
+
+
+def _unknown_parts(race: dict[str, Any]) -> tuple[int, int, int]:
+    """(explicit, ethnicity rows, inferred): the three parts of unknown."""
+    return race["unknown_explicit"], race["unknown_ethnicity_only"], race["unknown_inferred"]
 
 
 def _skipped(race: dict[str, Any]) -> list[tuple[str, int]]:
@@ -819,9 +831,10 @@ def test_combined_exclusive_table_records_its_hispanic_row() -> None:
     assert race["skipped_ethnicity_rows"] == [
         {"original": "Hispanic", "count": 6, "source_table": COMBINED_TITLE, "flags": []}]
     assert NEW_FLAG in race["flags"]
-    # Unchanged: the Hispanic participants are still only in unknown_inferred.
+    # The totals are what they were before the row was recorded; the Hispanic
+    # participants are the ethnicity rows' part of unknown (next section).
     assert _nonzero(race) == {"white": 30, "black_african_american": 12, "unknown_not_reported": 8}
-    assert (race["unknown_explicit"], race["unknown_inferred"]) == (2, 6)
+    assert _unknown_parts(race) == (2, 6, 0)
     assert [c["original"] for c in race["raw_categories"]] == ["Caucasian", "African-American", "Unknown"]
     assert race["quarantined_labels"] == []
 
@@ -905,7 +918,7 @@ def test_race_by_sex_ethnicity_rows_keep_their_race_part_and_sex() -> None:
         {"original": "Hispanic/Latino- Female", "count": 6, "source_table": COMBINED_TITLE,
          "race_part": "Hispanic/Latino", "sex": "female", "flags": ["race_by_sex"]},
     ]
-    assert race["unknown_inferred"] == 11
+    assert _unknown_parts(race) == (0, 11, 0)
     # The joint counts hold counted rows only, as before.
     assert not any(r["race_part"] == "Hispanic/Latino" for r in race["joint_sex_counts"]["rows"])
 
@@ -961,31 +974,362 @@ def _without_ethnicity_rows(table: dict[str, Any]) -> dict[str, Any]:
     ([("White", 10), ("Hispanic", 3)], None),
 ])
 def test_recorded_rows_enter_no_count(rows: list[tuple[str, int]], participants: Optional[int]) -> None:
-    """The recorded rows are in none of the block's other fields: taking them
-    out of the posted table leaves the block the same, apart from the new
-    list and its flag."""
+    """The recorded rows are in none of the block's totals: taking them out
+    of the posted table leaves the block the same, apart from the list, its
+    flag, and which part of unknown a shortfall is filed under (the rows'
+    counts decide that; the amount is the same)."""
     table = _class_table(COMBINED_TITLE, rows)
     with_rows = extract_race_data(_study("NCT99000513", [table], participants=participants))
     without = extract_race_data(_study("NCT99000513", [_without_ethnicity_rows(table)], participants=participants))
     assert with_rows["skipped_ethnicity_rows"] and without["skipped_ethnicity_rows"] == []
     with_rows["skipped_ethnicity_rows"] = []
-    with_rows["flags"] = [f for f in with_rows["flags"] if f != NEW_FLAG]
+    with_rows["flags"] = [f for f in with_rows["flags"] if f not in (NEW_FLAG, SPLIT_FLAG)]
+    with_rows["unknown_inferred"] += with_rows["unknown_ethnicity_only"]
+    with_rows["unknown_ethnicity_only"] = 0
     assert with_rows == without
 
 
-def test_a_label_joining_race_and_ethnicity_without_a_separator_is_recorded_as_posted() -> None:
-    """A known limit of the ethnicity-only label test, pinned here and not
-    changed by the record: "Non-Hispanic White" has no separator, so the test
-    finds no race fragment and the row is left out of race, as before. The
-    record shows the posted label, so a reader can see that such a row names
-    a race. With the separator ("White, Non-Hispanic") the row is counted."""
-    assert rx._is_ethnicity_only_label("Non-Hispanic White")
-    assert not rx._is_ethnicity_only_label("White, Non-Hispanic")
+# ── a race named beside an ethnicity term in one label ─────────────────────
+#
+# "Non-Hispanic White" names a race. One ethnicity phrase is taken out of the
+# label and the row is a race row when what is left is exactly a known race
+# label (src/race_extractor.py, "A race named beside an ethnicity term in one
+# label"). Before this rule the ethnicity-only test accepted such labels and
+# their participants were in no race category.
+
+@pytest.mark.parametrize("label, expected", [
+    ("Non-Hispanic White", ("White", "Non-Hispanic")),
+    ("White Non-Hispanic", ("White", "Non-Hispanic")),
+    ("White (non-Hispanic)", ("White", "non-Hispanic")),
+    ("White (not of Hispanic origin)", ("White", "not of Hispanic origin")),
+    ("Nonhispanic White", ("White", "Nonhispanic")),
+    ("Non-Latino Black", ("Black", "Non-Latino")),
+    ("Black or African American (not Hispanic)", ("Black or African American", "not Hispanic")),
+    ("Not Hispanic or Latino - White", ("White", "Not Hispanic or Latino")),
+    ("Non-Hispanic/Latino Black", ("Black", "Non-Hispanic/Latino")),
+    ("American Indian/Alaska Native, non-Hispanic", ("American Indian/Alaska Native", "non-Hispanic")),
+    ("Hispanic White", ("White", "Hispanic")),
+    ("Black Hispanic", ("Black", "Hispanic")),
+    ("Hispanic Other", ("Other", "Hispanic")),
+    ("Non-Hispanic White only", ("White", "Non-Hispanic")),
+    ("White, Non-Hispanic", ("White", "Non-Hispanic")),
+    # Ethnicity alone.
+    ("Hispanic", None),
+    ("Hispanic or Latino", None),
+    ("Not Hispanic or Latino", None),
+    ("Non-Hispanic", None),
+    ("Latinx", None),
+    # Text that limits or joins groups, or is not a race label, is not a race.
+    ("Non-Black Hispanic", None),
+    ("Hispanic (not African American)", None),
+    ("Hispanic or African-American", None),
+    ("non-White or Hispanic", None),
+    ("Black and Latino", None),
+    ("Hispanic (Regardless of Race)", None),
+    ("American Hispanic", None),
+    ("Race Hispanic", None),
+    # "Latin" inside "Latin American" is not an ethnicity phrase to take out.
+    ("Native Latin American", None),
+    # Exact, never fuzzy: a plural or a longer form is left alone.
+    ("Non-Hispanic Whites", None),
+    ("Non-Hispanic White or European American", None),
+    # No ethnicity phrase at all.
+    ("White", None),
+])
+def test_race_joined_to_ethnicity(label: str, expected: Optional[tuple[str, str]]) -> None:
+    assert rx._race_joined_to_ethnicity(label) == expected
+    if expected is not None:
+        assert not rx._is_ethnicity_only_label(label)
+
+
+@pytest.mark.parametrize("label, category", [
+    ("Latine White", "white"),
+    ("White Latine", "white"),
+    ("Black (Latine)", "black_african_american"),
+])
+def test_an_ethnicity_form_the_keyword_list_lacks_still_reaches_the_joined_reader(label: str, category: str) -> None:
+    """"Latine" is in the joined reader's vocabulary but not in
+    _ETHNICITY_KEYWORDS, so the keyword test must not run first: the row is
+    a race row of the race it names, not an unmapped "other"."""
+    assert not any(kw in label.lower() for kw in rx._ETHNICITY_KEYWORDS)
+    mapping = rx._map_plain_row(label, 7, False)
+    assert mapping is not None
+    assert (mapping["omb_category"], mapping["original"], mapping["count"]) == (category, label, 7)
+    assert "split_from_combined" in mapping["flags"] and "unmapped" not in mapping["flags"]
+
+
+@pytest.mark.parametrize("label, race_part, category, subcategory", [
+    # The generic mapping would split at the slash and keep "Native Hawaiian".
+    ("Native Hawaiian/Pacific Islander Hispanic", "Native Hawaiian/Pacific Islander",
+     "native_hawaiian_pacific_islander", None),
+    ("Caucasian/White, Hispanic", "Caucasian/White", "white", None),
+    ("Hispanic/Black", "Black", "black_african_american", None),
+    # The generic mapping would reach this one by fuzzy match, at medium confidence.
+    ("Black or African American Latino", "Black or African American", "black_african_american", None),
+])
+def test_a_joined_label_is_mapped_from_its_exact_race_part_first(label: str, race_part: str, category: str,
+                                                                subcategory: Optional[str]) -> None:
+    mapping = rx._map_race_label(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["confidence"]) == (category, subcategory, "high")
+    assert (mapping["original"], mapping["race_part"]) == (label, race_part)
+    assert mapping["flags"] == ["split_from_combined"]
+
+
+def test_non_hispanic_race_rows_are_counted_in_their_race() -> None:
+    """One exclusive classification written with joined labels: the race rows
+    are counted, the Hispanic row is still not race and is still recorded.
+    Before the rule every row was skipped and the block reported no race."""
     table = _class_table(COMBINED_TITLE, [("Non-Hispanic White", 30), ("Non-Hispanic Black", 12), ("Hispanic", 8)])
     race = extract_race_data(_study("NCT99000514", [table], participants=50))
-    assert _skipped(race) == [("Non-Hispanic White", 30), ("Non-Hispanic Black", 12), ("Hispanic", 8)]
-    assert race["reported"] is False and race["flags"] == ["all_zero_rejection", NEW_FLAG]
-    separated = _class_table(COMBINED_TITLE, [("White, Non-Hispanic", 30), ("Black, Non-Hispanic", 12), ("Hispanic", 8)])
-    race = extract_race_data(_study("NCT99000515", [separated], participants=50))
+    assert race["reported"] is True
     assert _nonzero(race) == {"white": 30, "black_african_american": 12, "unknown_not_reported": 8}
+    assert _unknown_parts(race) == (0, 8, 0)
     assert _skipped(race) == [("Hispanic", 8)]
+    # The posted label is kept, with the part that was mapped beside it.
+    assert [(c["original"], c["race_part"], c["omb_category"], c["confidence"]) for c in race["raw_categories"]] == [
+        ("Non-Hispanic White", "White", "white", "high"),
+        ("Non-Hispanic Black", "Black", "black_african_american", "high")]
+    assert all("split_from_combined" in c["flags"] for c in race["raw_categories"])
+    assert {"split_from_combined", NEW_FLAG, "denominator_balanced"} <= set(race["flags"])
+
+
+def test_hispanic_and_non_hispanic_rows_of_one_race_are_both_that_race() -> None:
+    """The NCT03150173 shape: race crossed with ethnicity, every participant in
+    one row. The ethnicity word does not change the race, and the two source
+    labels stay apart in raw_categories."""
+    table = _class_table(COMBINED_TITLE, [
+        ("Hispanic Black", 16), ("Hispanic White", 9), ("Hispanic Other", 27),
+        ("Non-Hispanic Black", 16), ("Non-Hispanic White", 24), ("Non-Hispanic Other", 5)])
+    race = extract_race_data(_study("NCT99000515", [table], participants=97))
+    assert _nonzero(race) == {"black_african_american": 32, "white": 33, "other": 32}
+    assert race["unknown_inferred"] == 0 and race["skipped_ethnicity_rows"] == []
+    assert [c["original"] for c in race["raw_categories"]] == [
+        "Hispanic Black", "Hispanic White", "Hispanic Other",
+        "Non-Hispanic Black", "Non-Hispanic White", "Non-Hispanic Other"]
+    assert NEW_FLAG not in race["flags"] and "unmapped" not in race["flags"]
+
+
+def test_plain_rows_beside_joined_rows_add_up_to_the_population() -> None:
+    """The NCT00360555 shape: "White" beside "White Hispanic" holds the people
+    the joined row does not, so counting both is counting each person once."""
+    table = _class_table(COMBINED_TITLE, [("White", 1363), ("White Hispanic", 83), ("Black Hispanic", 2),
+                                          ("Black", 110), ("Asian", 23), ("Asian Hispanic", 0)])
+    race = extract_race_data(_study("NCT99000516", [table], participants=1581))
+    assert _nonzero(race) == {"white": 1446, "black_african_american": 112, "asian": 23}
+    assert sum(race["omb_totals"].values()) == 1581
+    assert "denominator_balanced" not in race["flags"]
+
+
+def test_labels_that_limit_or_join_groups_stay_ethnicity_rows() -> None:
+    """The NCT01351805 shape: "Hispanic (not African American)" names no race,
+    so it stays out of race and is recorded; the joined white row is counted."""
+    table = _class_table(COMBINED_TITLE, [("Non-Hispanic white", 180), ("African American", 51),
+                                          ("Hispanic (not African American)", 10), ("Non-Black Hispanic", 4),
+                                          ("Hispanic (regardless of race)", 5)])
+    race = extract_race_data(_study("NCT99000517", [table], participants=250))
+    assert _nonzero(race) == {"white": 180, "black_african_american": 51, "unknown_not_reported": 19}
+    assert _skipped(race) == [("Hispanic (not African American)", 10), ("Non-Black Hispanic", 4),
+                              ("Hispanic (regardless of race)", 5)]
+
+
+def test_a_separated_label_keeps_the_posted_label_too() -> None:
+    """"White, Non-Hispanic" was counted as White before the rule, recorded
+    under the fragment "White". Its count is the same; the record now shows
+    the posted label, as for a label with no separator."""
+    table = _class_table(COMBINED_TITLE, [("White, Non-Hispanic", 30), ("Black, Non-Hispanic", 12), ("Hispanic", 8)])
+    race = extract_race_data(_study("NCT99000518", [table], participants=50))
+    assert _nonzero(race) == {"white": 30, "black_african_american": 12, "unknown_not_reported": 8}
+    assert [(c["original"], c["race_part"]) for c in race["raw_categories"]] == [
+        ("White, Non-Hispanic", "White"), ("Black, Non-Hispanic", "Black")]
+    # A label the exact match does not read keeps the fragment, as before.
+    other = _class_table(COMBINED_TITLE, [("Caucasian/White, Hispanic or Latino origin group", 5), ("Asian", 5)])
+    race = extract_race_data(_study("NCT99000519", [other], participants=10))
+    assert "race_part" not in race["raw_categories"][0]
+
+
+def test_joined_labels_crossed_with_sex_are_a_race_by_sex_table() -> None:
+    """"Non-Hispanic/Latino Black Female": the sex word splits off, and the
+    race part "Non-Hispanic/Latino Black" is Black. Before the rule both rows
+    were skipped and the table gave no race."""
+    table = _class_table(COMBINED_TITLE, [("Non-Hispanic/Latino Black Female", 3), ("Hispanic/Latino Black Male", 2)])
+    race = extract_race_data(_study("NCT99000520", [table, SEX_TABLE], participants=5))
+    assert _nonzero(race) == {"black_african_american": 5}
+    assert "race_by_sex_table" in race["flags"]
+    assert race["joint_sex_counts"]["counts"] == {"black_african_american": {"female": 3, "male": 2}}
+    assert [(r["source_label"], r["race_part"]) for r in race["joint_sex_counts"]["rows"]] == [
+        ("Non-Hispanic/Latino Black Female", "Non-Hispanic/Latino Black"),
+        ("Hispanic/Latino Black Male", "Hispanic/Latino Black")]
+    assert race["skipped_ethnicity_rows"] == []
+
+
+# ── a shortfall that the ethnicity rows account for ────────────────────────
+#
+# unknown_not_reported = unknown_explicit + unknown_ethnicity_only +
+# unknown_inferred. A shortfall is filed under the ethnicity rows only when
+# the rows that state the ethnicity add up to exactly the shortfall and no
+# row that negates it has participants (src/race_extractor.py, "A shortfall
+# that the ethnicity rows account for"). The amount in unknown_not_reported
+# is the same either way.
+
+@pytest.mark.parametrize("label, negates", [
+    ("Not Hispanic or Latino", True),
+    ("Non-Hispanic", True),
+    ("Nonhispanic", True),
+    ("Not of Hispanic, Latino/a, or Spanish origin", True),
+    ("Ethnicity: Not Hispanic or Latino", True),
+    ("Hispanic", False),
+    ("Hispanic or Latino", False),
+    ("Latinx", False),
+    ("Hispanic (regardless of race)", False),
+    ("Hispanic (not African American)", False),
+    ("Latino, non-Black", False),
+    # Negated outside the prefix: a phrase before the term, or a bare answer after it.
+    ("Other than Hispanic or Latino", True),
+    ("Hispanic or Latino: No", True),
+    ("Hispanic or Latino ethnicity - No", True),
+    ("Hispanic/Latino (none)", True),
+    ("Hispanic or Latino: Yes", False),
+    ("Hispanic: No retinopathy", False),
+    ("Hispanic, not otherwise specified", False),
+    # A negation before the term reads as negating it, whatever it belongs
+    # to: the shortfall then stays in unknown_inferred.
+    ("Non-Black Hispanic", True),
+    ("Prefer not to answer (Hispanic)", True),
+])
+def test_negates_ethnicity(label: str, negates: bool) -> None:
+    assert rx._negates_ethnicity(label) is negates
+
+
+def test_an_exact_shortfall_is_the_ethnicity_rows_part_of_unknown() -> None:
+    """The NCT00416078 shape: 39 + 10 race, 2 in the table's Unknown row and 2
+    Hispanic, of 53. The 2 Hispanic participants are the whole shortfall."""
+    table = _class_table(COMBINED_TITLE, [("Caucasian", 39), ("African-American", 10), ("Hispanic", 2), ("Unknown", 2)])
+    race = extract_race_data(_study("NCT99000521", [table], participants=53))
+    assert _nonzero(race) == {"white": 39, "black_african_american": 10, "unknown_not_reported": 4}
+    assert _unknown_parts(race) == (2, 2, 0)
+    assert {SPLIT_FLAG, NEW_FLAG, "denominator_balanced"} <= set(race["flags"])
+
+
+@pytest.mark.parametrize("rows, participants, why", [
+    ([("White", 30), ("Black", 12), ("Hispanic", 6)], 50, "the shortfall (8) is larger than the Hispanic row"),
+    ([("White", 30), ("Black", 12), ("Hispanic", 9)], 50, "the Hispanic row is larger than the shortfall (8)"),
+    ([("White", 30), ("Black", 12), ("Hispanic", 8), ("Not Hispanic or Latino", 42)], 50,
+     "a row that negates the ethnicity has participants"),
+    ([("White", 30), ("Black", 12), ("Not Hispanic or Latino", 8)], 50, "only a negating row matches the shortfall"),
+    ([("White", 30), ("Black", 12), ("Non-Black Hispanic", 8)], 50, "the label reads as negating"),
+    ([("White", 30), ("Black", 12), ("Hispanic or Latino: No", 8)], 50, "a bare negative answer"),
+    ([("White", 30), ("Black", 12), ("Other than Hispanic or Latino", 8)], 50, "negated by a phrase"),
+    ([("White", 30), ("Black", 12)], 50, "no ethnicity row at all"),
+])
+def test_a_shortfall_the_rows_do_not_account_for_exactly_stays_inferred(
+        rows: list[tuple[str, int]], participants: int, why: str) -> None:
+    race = extract_race_data(_study("NCT99000522", [_class_table(COMBINED_TITLE, rows)], participants=participants))
+    assert _unknown_parts(race) == (0, 0, 8), why
+    assert SPLIT_FLAG not in race["flags"] and "denominator_balanced" in race["flags"], why
+    assert race["omb_totals"]["unknown_not_reported"] == 8
+
+
+def test_a_negating_row_of_zero_does_not_block_the_split() -> None:
+    table = _class_table(COMBINED_TITLE, [("White", 30), ("Black", 12), ("Hispanic", 8), ("Not Hispanic or Latino", 0)])
+    race = extract_race_data(_study("NCT99000523", [table], participants=50))
+    assert _unknown_parts(race) == (0, 8, 0)
+    assert SPLIT_FLAG in race["flags"]
+
+
+def test_no_shortfall_or_no_population_leaves_the_new_part_at_zero() -> None:
+    covered = _class_table(COMBINED_TITLE, [("White", 30), ("Black", 20), ("Hispanic or Latino", 8)])
+    race = extract_race_data(_study("NCT99000524", [covered], participants=50))
+    assert _unknown_parts(race) == (0, 0, 0) and SPLIT_FLAG not in race["flags"]
+    # No baseline population: nothing is balanced, so there is no shortfall to file.
+    race = extract_race_data(_study("NCT99000525", [_class_table(COMBINED_TITLE, [("White", 30), ("Hispanic", 8)])],
+                                    participants=None))
+    assert _unknown_parts(race) == (0, 0, 0) and SPLIT_FLAG not in race["flags"]
+    # No race table at all.
+    race = extract_race_data(_study("NCT99000526", [SEX_TABLE], participants=40))
+    assert _unknown_parts(race) == (0, 0, 0)
+
+
+def test_several_hispanic_rows_and_summed_parts_are_added_up() -> None:
+    """The stated rows are summed over every counted table: two rows in one
+    table, and one row in each of two disjoint parts (rule 3)."""
+    table = _class_table(COMBINED_TITLE, [("White", 30), ("Black", 12), ("Hispanic", 5), ("Latino", 3)])
+    race = extract_race_data(_study("NCT99000527", [table], participants=50))
+    assert _unknown_parts(race) == (0, 8, 0)
+    adults = _category_table("Race, Adults", [("White", 20), ("Hispanic", 10)], analyzed=30)
+    children = _category_table("Race, Children", [("Asian", 15), ("Hispanic or Latino", 5)], analyzed=20)
+    race = extract_race_data(_study("NCT99000528", [adults, children], participants=50))
+    assert "race_tables_partitioned" in race["flags"]
+    assert _unknown_parts(race) == (0, 15, 0)
+
+
+@pytest.mark.parametrize("rows, participants", [
+    ([("Caucasian", 39), ("African-American", 10), ("Hispanic", 2), ("Unknown", 2)], 53),
+    ([("White", 30), ("Black", 12), ("Hispanic", 6), ("Unknown", 1)], 50),
+    ([("White", 30), ("Black", 12), ("Unknown", 3)], 50),
+    ([("Non-Hispanic White", 30), ("Non-Hispanic Black", 12), ("Hispanic", 8)], 50),
+    ([("White", 30), ("Black", 20), ("Hispanic", 8)], 50),
+])
+def test_the_three_parts_of_unknown_always_add_up(rows: list[tuple[str, int]], participants: int) -> None:
+    race = extract_race_data(_study("NCT99000529", [_class_table(COMBINED_TITLE, rows)], participants=participants))
+    assert sum(_unknown_parts(race)) == race["omb_totals"]["unknown_not_reported"]
+    assert (race["unknown_ethnicity_only"] > 0) is (SPLIT_FLAG in race["flags"])
+    assert not (race["unknown_ethnicity_only"] and race["unknown_inferred"])
+
+
+
+# ── the combined classification the ethnicity extractor reads ──────────────
+
+def test_combined_classification_describes_an_exact_table() -> None:
+    table = _class_table(COMBINED_TITLE, [("Caucasian", 39), ("African-American", 10), ("Other/Unknown", 3),
+                                          ("Hispanic", 2), ("Unknown", 2)])
+    study = _study("NCT99000530", [SEX_TABLE, table], participants=56)
+    assert rx.combined_classification(study) == {
+        "index": 1, "title": COMBINED_TITLE,
+        "race_rows": 52,            # Caucasian, African-American and Other/Unknown (race "other")
+        "race_rows_named": 49,      # without the row that also names an unknown
+        "ethnicity_rows": 2, "unknown_rows": 2}
+
+
+@pytest.mark.parametrize("measures, participants", [
+    ([_class_table(COMBINED_TITLE, [("White", 30), ("Black", 12), ("Hispanic", 6)])], 50),   # not exact
+    ([_class_table(COMBINED_TITLE, [("White", 30), ("Black", 20)])], 50),                    # no Hispanic row
+    ([_category_table("Race, Adults", [("White", 20), ("Hispanic", 10)], analyzed=30),
+      _category_table("Race, Children", [("Asian", 15), ("Hispanic or Latino", 5)], analyzed=20)], 50),  # parts
+    ([SEX_TABLE], 40),                                                                        # no race table
+])
+def test_combined_classification_is_none_otherwise(measures: list[dict[str, Any]], participants: int) -> None:
+    assert rx.combined_classification(_study("NCT99000531", measures, participants=participants)) is None
+
+
+@pytest.mark.parametrize("label, unknown", [
+    ("Other/Unknown", True), ("Other/multiple/unknown", True), ("Other-Unspecified", True),
+    ("Declined To Provide", True), ("Prefer not to answer", True), ("Missing", True), ("N/A", True),
+    ("Other/No response", True), ("Other/UTD", True), ("Subject did not offer ethnicity", True),
+    ("Other or declines to state", True), ("Other/Refused", True), ("Don't know", True),
+    ("Race not listed", False), ("Other (not included above; including mixed race)", False),
+    ("Other", False), ("Other or Multiple", False), ("White", False), ("Native American", False),
+])
+def test_unknown_terms_in_a_race_rows_label(label: str, unknown: bool) -> None:
+    assert bool(rx._UNKNOWN_TERM_RX.search(label)) is unknown
+
+
+
+@pytest.mark.parametrize("label, states", [
+    ("Hispanic White", True), ("Black Latino", True), ("White - Hispanic/Latino", True),
+    ("Hispanic Native American", True), ("Mixed Hispanic/Native American", True),
+    ("Non-Hispanic White", False), ("White (not Hispanic)", False), ("Not Hispanic - White", False),
+    ("White", False), ("Other", False),
+])
+def test_a_race_row_that_states_the_ethnicity(label: str, states: bool) -> None:
+    assert rx._states_ethnicity(label) is states
+
+
+def test_race_rows_that_state_the_ethnicity_are_not_counted_as_not_hispanic() -> None:
+    """Non-Hispanic White 30 / Non-Hispanic Black 12 / Hispanic White 5 /
+    Hispanic 3, of 50: the race block is exact (the Hispanic row is the 3 the
+    race rows fall short by), but "Hispanic White" holds Hispanic people."""
+    table = _class_table(COMBINED_TITLE, [("Non-Hispanic White", 30), ("Non-Hispanic Black", 12),
+                                          ("Hispanic White", 5), ("Hispanic", 3)])
+    combined = rx.combined_classification(_study("NCT99000532", [table], participants=50))
+    assert combined is not None
+    assert (combined["race_rows"], combined["race_rows_named"]) == (47, 42)
