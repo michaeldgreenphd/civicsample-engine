@@ -333,6 +333,9 @@ def run_build(args: argparse.Namespace, rows: list[dict[str, Any]], subs: dict[s
         pages_of = {d['document_id']: (documents.read_text(args.cache, d['sha256'], version) or {}).get('pages')
                     for d in document_of.values()}
         return demographics.observations(path, document_of, pages_of)
+    outside = documents.outside_inventory(manifest.lines, subs)
+    if outside:
+        log(f'documents: {outside} cached document(s) belong to submissions not in this inventory and are left out')
     try:
         files = artifacts.build(
             rows=rows, inventory_meta=inventory_meta(args, rows), aliases=aliases, curated_families=curated_families,

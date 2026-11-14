@@ -421,6 +421,11 @@ def store_problem(cache: Path, digest: str, size: int | None) -> str | None:
     return acquire.store_problem(cache / 'documents' / 'store', digest, size)
 
 
+def outside_inventory(manifest_lines: list[dict[str, Any]], submission_numbers: Any) -> int:
+    """How many documents in the manifest belong to a submission not in this inventory."""
+    return len({line['document_id'] for line in manifest_lines if line['submission_number'] not in submission_numbers})
+
+
 def build(manifest_lines: list[dict[str, Any]], pathway_of: dict[str, str], cache: Path,
           extraction_version: str, labels: dict[str, str] | None = None) -> list[dict[str, Any]]:
     """One record per document id, from the manifest's history and the text cache.
@@ -431,10 +436,15 @@ def build(manifest_lines: list[dict[str, Any]], pathway_of: dict[str, str], cach
 
     `labels` ({document id: FDA's link label}) supplies the label for a document that was fetched
     by URL pattern before its database page answered; `discovery` still says how it was found.
+
+    Only documents of the submissions in `pathway_of` are built. A cache kept across a revised
+    inventory can hold documents of a submission no longer listed; those belong to no submission
+    of this build and are left out (outside_inventory() counts them, and the build logs the count).
     """
     history: dict[str, list[dict[str, Any]]] = {}
     for line in manifest_lines:
-        history.setdefault(line['document_id'], []).append(line)
+        if line['submission_number'] in pathway_of:
+            history.setdefault(line['document_id'], []).append(line)
     by_digest: dict[str, list[str]] = {}
     docs: list[dict[str, Any]] = []
     store_checked: dict[str, str | None] = {}

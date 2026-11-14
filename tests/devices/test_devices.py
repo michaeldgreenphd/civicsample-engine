@@ -2116,3 +2116,22 @@ def test_an_openfda_200_with_an_empty_result_list_is_no_answer(tmp_path: Path) -
     log = acquire.ResponseLog(tmp_path / 'log.jsonl')
     acquire.fetch_openfda(['K990001'], log, lambda u, p: (200, {}, b'{"results": []}', None), F.no_wait())
     assert log.get(q['key'])['status'] == acquire.UNUSABLE_200 and log.settled(q['key']) is None
+
+
+@pytest.mark.parametrize('text', ['cleared as P990007-S002', 'P990007 – S002', 'P990007—S002', 'P990007 ‐ S002'])
+def test_a_supplement_joined_by_a_hyphen_or_dash_is_the_supplement_not_the_original(text: str) -> None:
+    record = {'protocolSection': {'descriptionModule': {'briefSummary': text}}}
+    assert registry.locate_identifier(record, 'P990007') == []
+    assert [h['supplement_cited'] for h in registry.locate_identifier(record, 'P990007/S002')] == [True]
+    assert registry.locate_identifier(record, 'P990007/S003') == []
+    # a hyphen before a word is not a supplement: the original stands alone there
+    plain = {'protocolSection': {'descriptionModule': {'briefSummary': 'P990007 - related device'}}}
+    assert len(registry.locate_identifier(plain, 'P990007')) == 1
+
+
+def test_cached_documents_of_submissions_not_in_the_inventory_are_left_out(tmp_path: Path) -> None:
+    line, _ = _held_document(tmp_path, b'%PDF-1.4 a summary')
+    gone = {**line, 'document_id': 'doc:K990009:x', 'submission_number': 'K990009'}
+    docs = documents.build([line, gone], {'K990001': '510k'}, tmp_path, pdftext.extraction_version())
+    assert [d['submission_number'] for d in docs] == ['K990001']
+    assert documents.outside_inventory([line, gone], {'K990001': {}}) == 1

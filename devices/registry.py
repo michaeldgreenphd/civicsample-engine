@@ -242,7 +242,7 @@ def locate_identifier(study: dict[str, Any], submission_number: str, window: int
     Exact means the whole number as a token: not preceded by a letter or digit, and the whole number
     (with its supplement, when one is cited) not followed by a letter or digit, in any letter case, so "K990001ABC" and
     "P140011/S0089" are not "K990001" and "P140011/S008". For a PMA supplement the base number must be followed by its supplement ("P140011/S008",
-    "P140011 S008", "P140011S008"); a record citing only the original PMA is reported with
+    "P140011-S008", "P140011 S008", "P140011S008"); a record citing only the original PMA is reported with
     `supplement_cited: false` and is not a citation of the supplement. A record citing another
     supplement ("P140011/S007" when S008 is sought) cites neither and is not located. For an
     original PMA the number must stand alone: "P140011/S008" is the supplement, not P140011.
@@ -252,10 +252,13 @@ def locate_identifier(study: dict[str, Any], submission_number: str, window: int
     # A PMA base that is not followed by a supplement the pattern consumed must not be followed by
     # a supplement-like suffix it could not consume ("P990007/S0029", "P990007 S01", "P990007/XYZ"):
     # the number does not stand alone there. A slash before another submission number is a list.
-    unconsumed = (r'(?!\s*/?\s*S\d)(?!\s*/\s*(?![A-Z]{1,3}\d{6}(?![A-Za-z0-9]))[A-Za-z0-9])'
+    # A supplement may be joined to its PMA by a slash, a hyphen or a dash ("P990007-S002",
+    # "P990007 – S002"), by spaces, or by nothing.
+    sep = r'\s*[/\-\u2010-\u2015]?\s*'
+    unconsumed = (r'(?!' + sep + r'S\d)(?!\s*/\s*(?![A-Z]{1,3}\d{6}(?![A-Za-z0-9]))[A-Za-z0-9])'
                   if base.upper().startswith('P') else '')
     pattern = re.compile(r'(?<![A-Za-z0-9])' + re.escape(base)
-                         + r'(?:\s*/?\s*(S\d{3})(?![A-Za-z0-9])|(?![A-Za-z0-9])' + unconsumed + ')', re.IGNORECASE)
+                         + r'(?:' + sep + r'(S\d{3})(?![A-Za-z0-9])|(?![A-Za-z0-9])' + unconsumed + ')', re.IGNORECASE)
     found = []
     for path, text in _walk(study):
         for m in pattern.finditer(text):
