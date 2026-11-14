@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Run | `results-structure-2026-11-14-f24a809312`, generated 2026-11-14T01:43:11+00:00 by `scripts/build_results_structure.py` at engine commit `7e431f8a175f` (no uncommitted changes) |
+| Run | `results-structure-2026-11-14-b8d6e968c6`, generated 2026-11-14T01:57:18+00:00 by `scripts/build_results_structure.py` at engine commit `0a4a27de8dfe` (no uncommitted changes; producing-code digest `af1ccaa5dd77…`) |
 | Method | `results-structure-1`: usable-content rules B1, F1, O1, A1; comparative classes C1, C2; analysis rule S1; subgroup rule SG2 |
 | Scope | Frame 648 registry records fetched; **598 trials in this build** (the eligible cohort of the Industry Outcomes beta, the rows of the site's `data/outcomes/index.json`, outcomes run `outcomes-2026-11-09-d41f32ec4d`); 50 frame records left out: excluded by the outcomes cohort's eligibility rules (see data/outcomes/index.json excluded). The lists are `frame_ids.txt` (sha256 `637bb40370bedcb8…`), `eligible_ids.txt` (`dcfc1e3fc8829b23…`) and `excluded_ids.txt` (`e7f7925eacf48b28…`) |
 | Registry records | 648 of 648 frame records retrieved from the ClinicalTrials.gov API v2, 2026-11-14T00:41:41+00:00 to 2026-11-14T00:41:57+00:00; API version 2.0.5, registry `dataTimestamp` 2026-11-13T10:00:06 |
@@ -143,4 +143,4 @@ The build was first made on a working branch at commit `e097d22`. Those commits 
 
 It was rebuilt once more after the first review round, at the commit named above. No record changed: the review's three fixes guard the build's inputs and make signal ids independent of measure order, and no signal in this cohort depended on that order. Only the run id differs, because it includes the commit.
 
-Two fixes from the second review round came after this run and change none of its output, so it was not rebuilt: the list of files whose uncommitted changes the manifest reports now includes the archive encoder (this run read a frozen archive and fetched nothing), and a review row that matches no signal is reported once (this run has no review rows).
+It was rebuilt again after the third review round, at the commit named above. Every signal id changed, because an id is now derived from the text around the match as well as the matched text; no review rows exist, so nothing had to follow. No other field of any record changed, and `summary.json` is identical apart from the run id. The run id now also reflects a digest of the producing code. The second round's two fixes (the archive encoder in the list of producing files; an unmatched review reported once) change no output of this run.
