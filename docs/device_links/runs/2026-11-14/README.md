@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T05:09:49+00:00 by `scripts/build_device_links.py build` at engine commit `a11cd0371d60` (no uncommitted changes; producing-code digest `86a2584c88ad…`), run id `devices-2026-11-14-504dc82cae`, method `device-links-1` |
+| Built | 2026-11-14T05:17:04+00:00 by `scripts/build_device_links.py build` at engine commit `475747ba978b` (no uncommitted changes; producing-code digest `49d9093f3f57…`), run id `devices-2026-11-14-5b2f2c7363`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -124,4 +124,6 @@ It was rebuilt a tenth time after the ninth review round, at `0d8923a` (run `dev
 
 It was rebuilt an eleventh time after the tenth review round, at `a0a5a1c` (run `devices-2026-11-14-6d322b3e15`). That round's fix (a registry record a curated statement quotes is fetched whole, not through the projected lookup) changes no output of this run: the statements file has no rows. Every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a twelfth time after the eleventh review round, at the commit named above. That round's two fixes (a search answer that states no count is not a completed search; a record set aside by rule counts toward coverage once a person accepts it) change no output of this run: every one of the 3,086 cached search answers states an integer count, and the reviews file has no rows. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a twelfth time after the eleventh review round, at `a11cd03` (run `devices-2026-11-14-504dc82cae`). That round's two fixes (a search answer that states no count is not a completed search; a record set aside by rule counts toward coverage once a person accepts it) change no output of this run: every one of the 3,086 cached search answers states an integer count, and the reviews file has no rows. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a thirteenth time after the twelfth review round, at the commit named above. That round's two fixes (a number-search hit is read only from a full record whose own id is the hit's; a JSON true/false is not a count) change no output of this run: the 4 full records held for number-search hits each carry their own id, and every cached search answer states an integer count. Every output file is identical to the previous build apart from the run id.
