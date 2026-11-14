@@ -219,7 +219,13 @@ def locate_identifier(study: dict[str, Any], submission_number: str, window: int
     """
     base, _, supp = submission_number.partition('/')
     # Case is ignored: a record may write the number in lower or mixed case ("k990001").
-    pattern = re.compile(r'(?<![A-Za-z0-9])' + re.escape(base) + r'(?:\s*/?\s*(S\d{3}))?(?![A-Za-z0-9])', re.IGNORECASE)
+    # A PMA base that is not followed by a supplement the pattern consumed must not be followed by
+    # a supplement-like suffix it could not consume ("P990007/S0029", "P990007 S01", "P990007/XYZ"):
+    # the number does not stand alone there. A slash before another submission number is a list.
+    unconsumed = (r'(?!\s*/?\s*S\d)(?!\s*/\s*(?![A-Z]{1,3}\d{6}(?![A-Za-z0-9]))[A-Za-z0-9])'
+                  if base.upper().startswith('P') else '')
+    pattern = re.compile(r'(?<![A-Za-z0-9])' + re.escape(base)
+                         + r'(?:\s*/?\s*(S\d{3})(?![A-Za-z0-9])|(?![A-Za-z0-9])' + unconsumed + ')', re.IGNORECASE)
     found = []
     for path, text in _walk(study):
         for m in pattern.finditer(text):

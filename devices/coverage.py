@@ -96,12 +96,17 @@ def _documents_cell(route: str, docs: list[dict[str, Any]], links: list[dict[str
         return _cell(route, state, why, **detail)
     transient = [d for d in docs if d['availability'] in TRANSIENT]
     unread = [d for d in held if (d['text'] or {}).get('status') in ('not_extracted', 'failed')]
-    if transient or unread:
+    # A file over the size limit was served but not stored or read: the source holds a document
+    # the pipeline could not read, which is blocked, not "no document".
+    oversized = [d for d in docs if d['availability'] == 'too_large']
+    if transient or unread or oversized:
         budget = sum(1 for d in transient if d['availability'] == 'skipped_disk_budget')
-        return _cell(route, 'search_incomplete_or_blocked',
-                     f'{len(transient) - budget} document request(s) failed without an answer, {budget} were not '
-                     f'requested because the document store reached its disk budget, and {len(unread)} retrieved '
-                     f'document(s) could not be read', **detail)
+        reason = (f'{len(transient) - budget} document request(s) failed without an answer, {budget} were not '
+                  f'requested because the document store reached its disk budget, and {len(unread)} retrieved '
+                  f'document(s) could not be read')
+        if oversized:
+            reason += f'; {len(oversized)} document(s) served were over the size limit and were not stored or read'
+        return _cell(route, 'search_incomplete_or_blocked', reason, **detail)
     if not held:
         return _cell(route, 'document_unavailable',
                      f'the source answered for {len(docs)} address(es) and holds no document at any of them', **detail)

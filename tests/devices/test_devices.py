@@ -664,7 +664,10 @@ def test_nct_validation_states(acquired: dict[str, Any]) -> None:
     ('model K990001ABC and K990001', 'K990001', 1, None),
     # an original PMA is cited only by its number standing alone
     ('approved as P990007/S002 and as P990007', 'P990007', 1, None),
-    ('approved as P990007/S0029 and as P990007/S002', 'P990007/S002', 2, False),
+    # a malformed supplement suffix is no citation; the well-formed supplement after it is
+    ('approved as P990007/S0029 and as P990007/S002', 'P990007/S002', 1, True),
+    ('approved with P990007/P990008', 'P990007', 1, None),         # a slash before another number is a list
+    ('cleared as K990001/K990002', 'K990001', 1, None),
     # letter case is ignored, with the same boundaries and supplement checks
     ('cleared as k990001', 'K990001', 1, None), ('De Novo den990005 granted', 'DEN990005', 1, None),
     ('approved as p990007/s002', 'P990007/S002', 1, True), ('approved as p990007', 'P990007/S002', 1, False),
@@ -774,6 +777,37 @@ def test_a_record_set_aside_by_rule_counts_once_a_person_accepts_it(review: str,
 def test_another_supplement_of_the_pma_is_not_a_citation_of_the_supplement_or_the_original(text: str) -> None:
     assert registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}},
                                       'P990007/S002') == []
+
+
+@pytest.mark.parametrize('text', ['approved as P990007/S0029', 'approved as P990007/XYZ', 'approved as P990007 S0029',
+                                  'approved as P990007 / s01'])
+def test_an_original_pma_followed_by_a_malformed_suffix_is_not_located(text: str) -> None:
+    assert registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}}, 'P990007') == []
+
+
+def test_a_field_that_names_the_number_twice_is_one_citation() -> None:
+    study = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001', 'briefTitle': 'T'},
+                                 'descriptionModule': {'briefSummary': 'K990001; see K990001'}}}
+    hit = {'nct_id': 'NCT99000001', 'located': registry.locate_identifier(study, 'K990001'),
+           'study': registry.study_facts(study), 'retrieved_at': '2026-11-13'}
+    assert len(hit['located']) == 2
+    made = links.from_registry_citation('K990001', hit, '2026-01-01', {})
+    assert len(made) == 1 and made[0]['automated_validation'] == 'identifier_confirmed'
+    # the exact citation is kept where a field also cites only the original PMA
+    supp = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001', 'briefTitle': 'T'},
+                                'descriptionModule': {'briefSummary': 'P990007, later P990007/S002'}}}
+    hit = {'nct_id': 'NCT99000001', 'located': registry.locate_identifier(supp, 'P990007/S002'),
+           'study': registry.study_facts(supp), 'retrieved_at': '2026-11-13'}
+    made = links.from_registry_citation('P990007/S002', hit, '2026-01-01', {})
+    assert [(x['level'], x['automated_validation']) for x in made] == [('submission', 'identifier_confirmed')]
+
+
+def test_a_document_over_the_size_limit_leaves_the_route_blocked() -> None:
+    doc = {'document_id': 'doc:x', 'origin': 'fda_fetch', 'scope': 'this_submission', 'availability': 'too_large',
+           'url': f'{F.DOCS}/pdf99/K990001.pdf', 'http_status': 200, 'document_type': None, 'text': None}
+    page = {'status': 200, 'body': {'document_links': [{'url': doc['url'], 'official_label': 'Summary'}]}}
+    for cell in (coverage.fda_document_fetch(page, [doc], []), coverage.nct_citation_scan([doc], [])):
+        assert cell['state'] == 'search_incomplete_or_blocked' and 'over the size limit' in cell['reason']
 
 
 def _record_page(label: str, number: str) -> str:
@@ -1551,8 +1585,9 @@ def test_a_longer_identifier_that_begins_with_the_number_is_not_located() -> Non
         return registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}}, number)
     assert where('model K990001ABC', 'K990001') == []
     assert where('model K9900012', 'K990001') == []
-    # a supplement number with a fourth digit is not the supplement; the base still stands, uncited
-    assert [f['supplement_cited'] for f in where('approved as P990007/S0029', 'P990007/S002')] == [False]
+    # a supplement number with a fourth digit is not the supplement, nor a citation of the original:
+    # the base does not stand alone there
+    assert where('approved as P990007/S0029', 'P990007/S002') == []
     assert [f['supplement_cited'] for f in where('approved as P990007/S002.', 'P990007/S002')] == [True]
 
 

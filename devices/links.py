@@ -234,8 +234,15 @@ def from_registry_citation(submission_number: str, hit: dict[str, Any], decision
             confidence_reasons=['returned by full-text search for the number'], validation='rejected_by_rule',
             validation_reasons=['the submission number stands in no field of the returned record; a search hit '
                                 'alone is not a citation'], timing=timing)]
-    out = []
+    # One record per registry field: a field that names the number twice is one citation. Where a
+    # field holds both the exact number and only the original PMA's, the exact citation is kept.
+    by_field: dict[str, dict[str, Any]] = {}
     for loc in hit['located']:
+        held = by_field.get(loc['registry_field'])
+        if held is None or (held['supplement_cited'] is False and loc['supplement_cited'] is not False):
+            by_field[loc['registry_field']] = loc
+    out = []
+    for loc in by_field.values():
         exact = loc['supplement_cited'] is not False
         out.append(_record(
             lid=link_id('submission', submission_number, nct, method, loc['registry_field'], loc['quote'][:80]),
