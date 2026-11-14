@@ -684,6 +684,7 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
     With a `store_budget_bytes`, acquisition stops requesting once the store holds that much:
     every remaining document gets a `skipped_disk_budget` line (not settled, so a later run with
     room fetches it) and its submission's coverage reads search incomplete, with that reason.
+    The repair of a recorded document's missing or damaged file is never stopped by the budget.
     """
     latest = manifest.latest()
     counts = {k: 0 for k in DOCUMENT_OUTCOMES}
@@ -696,8 +697,11 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
             counts['already_settled'] += 1
             continue
         # A "retrieved" document whose stored file is missing or damaged is fetched again, so a
-        # store the build refuses can be repaired by rerunning acquisition.
-        if store_budget_bytes is not None and held >= store_budget_bytes:
+        # store the build refuses can be repaired by rerunning acquisition. A repair restores a file
+        # the manifest already records, not growth of the store, so the budget does not stop it:
+        # otherwise a store at its budget could never be repaired and the build would refuse it.
+        repair = bool(line) and line['outcome'] == 'retrieved'
+        if store_budget_bytes is not None and held >= store_budget_bytes and not repair:
             if (latest.get(item['document_id']) or {}).get('outcome') != 'skipped_disk_budget':
                 manifest.append({**item, 'origin': 'fda_fetch', 'retrieved_at': now(), 'retrieved_at_precision': 'second',
                                  'http_status': None, 'http_status_absent_reason': 'not_requested', 'bytes': None,

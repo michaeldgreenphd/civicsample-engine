@@ -2179,3 +2179,19 @@ def test_a_text_worker_failure_is_extracted_again_on_the_next_run(tmp_path: Path
     again = json.loads(gzip.decompress(target.read_bytes()))
     assert again['n_pages'] == 1 and 'worker_failure' not in again
     assert failed.get('worker_failure') is True
+
+
+def test_a_store_at_its_budget_still_repairs_a_damaged_recorded_file(tmp_path: Path) -> None:
+    manifest, store = acquire.Manifest(tmp_path / 'manifest.jsonl'), tmp_path / 'store'
+    u = f'{F.DOCS}/pdf99/K990001.pdf'
+    plan = [{'document_id': acquire.document_id('K990001', u), 'submission_number': 'K990001', 'url': u,
+             'official_label': None, 'discovery': 'url_pattern', 'scope': 'this_submission'}]
+    acquire.fetch_documents(plan, manifest, store, F.stub_get(), F.no_wait())
+    line = manifest.latest()[plan[0]['document_id']]
+    stored = store / f"{line['sha256']}.pdf"
+    good = stored.read_bytes()
+    stored.write_bytes(b'X' * len(good))              # same size, damaged; the store is exactly at its budget
+    calls: list[str] = []
+    out = acquire.fetch_documents(plan, manifest, store, F.stub_get(calls), F.no_wait(), store_budget_bytes=len(good))
+    assert (out['retrieved'], out['skipped_disk_budget'], len(calls)) == (1, 0, 1)
+    assert stored.read_bytes() == good and acquire.store_problem(store, line['sha256'], line['bytes']) is None
