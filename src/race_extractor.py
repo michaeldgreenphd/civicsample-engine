@@ -1362,23 +1362,30 @@ def combined_classification(study: dict) -> Optional[Dict]:
     Returns {"index": the measure's position among the baseline measures,
     "title", "race_rows": participants in the counted rows other than
     unknown (the race-specific categories and "other"), "race_rows_named":
-    the part of race_rows in rows whose label names no unknown term,
-    "ethnicity_rows": unknown_ethnicity_only, "unknown_rows":
+    the part of race_rows in rows that place their participants outside the
+    Hispanic row, "ethnicity_rows": unknown_ethnicity_only, "unknown_rows":
     unknown_explicit}. The ethnicity extractor reads it to count the
     participants of race_rows_named as not Hispanic (ethnicity_extractor,
     "Race rows of a combined classification").
 
-    A row such as "Other/Unknown" or "Other/multiple/unknown" maps to race
-    "other" (by its first fragment), but some of its participants are
-    unknown, and an unknown participant of a combined classification may be
-    Hispanic. Such a row is in race_rows and not in race_rows_named.
+    Two kinds of race row are in race_rows and not in race_rows_named:
+      - a row whose label also names an unknown ("Other/Unknown",
+        "Other/No response", "Other/UTD", "Subject did not offer
+        ethnicity"): it maps to race "other", but some of its participants
+        are unknown, and an unknown participant may be Hispanic;
+      - a row whose label states the ethnicity ("Hispanic White", "Black
+        Latino", "White - Hispanic/Latino"): a race row since the joined
+        reading, but its participants are Hispanic, not outside the Hispanic
+        row. A label that negates it ("Non-Hispanic White") or names no
+        ethnicity ("White") stays in.
     """
     race, counted = _extract_race(study)
     if "shortfall_is_ethnicity_rows" not in race["flags"] or len(counted) != 1:
         return None
     table = counted[0]
     race_cats = [c for c in table["categories"] if c["omb_category"] != "unknown_not_reported"]
-    named = [c for c in race_cats if not _UNKNOWN_TERM_RX.search(c["original"])]
+    named = [c for c in race_cats
+             if not _UNKNOWN_TERM_RX.search(c["original"]) and not _states_ethnicity(c["original"])]
     return {"index": table["index"], "title": table["title"],
             "race_rows": sum(c["count"] for c in race_cats),
             "race_rows_named": sum(c["count"] for c in named),
@@ -1387,6 +1394,20 @@ def combined_classification(study: dict) -> Optional[Dict]:
 
 # Words that put a row's participants, or some of them, among the unknown.
 _UNKNOWN_TERM_RX = re.compile(
-    r"\b(?:unknown|not\s+(?:reported|known|available|specified|stated|collected)|missing|unspecified"
-    r"|declined?|refused|prefer(?:red)?\s+not|undisclosed|not\s+disclosed|n/?a)\b",
+    r"\b(?:unknown|unk|missing|unspecified|undisclosed|undetermined|indeterminate|unsure|utd|n/?a"
+    r"|not\s+(?:reported|known|available|specified|stated|collected|disclosed|given|provided|obtained"
+    r"|recorded|documented|determined|identified|answered|sure)"
+    r"|declin(?:e|ed|es|ing)|refus(?:e|ed|es|al)|prefer(?:red|s)?\s+not"
+    r"|no\s+(?:response|answer|data)|non-?response|unable\s+to\s+determine"
+    r"|did\s+not\s+(?:offer|answer|provide|report|disclose|specify|state|respond)"
+    r"|don'?t\s+know|do\s+not\s+know)\b",
     re.IGNORECASE)
+
+
+def _states_ethnicity(label: str) -> bool:
+    """True when a race row's label says its participants ARE Hispanic or
+    Latino: it holds an ethnicity term and _negates_ethnicity does not read
+    it as negated ("Hispanic White", "Black Latino"; not "Non-Hispanic
+    White", not "White")."""
+    text = clean_demographic_label(label)
+    return _ETHNICITY_TERM_RX.search(text) is not None and not _negates_ethnicity(text)

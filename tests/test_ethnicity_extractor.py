@@ -309,3 +309,20 @@ def test_summed_race_parts_are_not_one_classification() -> None:
 def test_every_block_carries_the_field() -> None:
     assert extract_ethnicity_data(_study("NCT99000603", [ETH_100], participants=100))["not_hispanic_from_race_rows"] == 0
     assert extract_ethnicity_data(_study("NCT99000604", [], participants=100))["not_hispanic_from_race_rows"] == 0
+
+
+
+def test_hispanic_race_rows_stay_out_of_not_hispanic() -> None:
+    """"Hispanic White" names Hispanic participants: they are not counted as
+    not Hispanic, and are balanced into unknown, as before, because this
+    extractor does not read joined labels."""
+    eth = extract_ethnicity_data(_combined([("Non-Hispanic White", 30), ("Non-Hispanic Black", 12),
+                                            ("Hispanic White", 5), ("Hispanic", 3)], 50))
+    assert eth["omb_totals"] == {"hispanic_latino": 3, "not_hispanic_latino": 42, "unknown_not_reported": 5}
+    assert eth["not_hispanic_from_race_rows"] == 42
+    assert {MOVED_FLAG, "denominator_balanced"} <= set(eth["flags"])
+
+
+def test_a_race_row_with_no_response_stays_unknown() -> None:
+    eth = extract_ethnicity_data(_combined([("White", 60), ("Black", 20), ("Hispanic", 12), ("Other/No response", 8)], 100))
+    assert eth["omb_totals"] == {"hispanic_latino": 12, "not_hispanic_latino": 80, "unknown_not_reported": 8}

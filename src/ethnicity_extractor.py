@@ -285,13 +285,17 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 #   - this block's Hispanic count equals the race extractor's Hispanic rows,
 #     its unknown count equals the race extractor's unknown rows, and the
 #     baseline population minus both equals the race rows exactly.
-# The participants of the race rows whose label names no unknown term go to
-# omb_totals["not_hispanic_latino"] and are recorded as
+# The participants of the race rows that place them outside the Hispanic row
+# go to omb_totals["not_hispanic_latino"] and are recorded as
 # not_hispanic_from_race_rows, with the flag not_hispanic_from_combined_table.
-# A race row that also names an unknown ("Other/Unknown", "Other/multiple/
-# unknown") is left out of that count: some of its participants are unknown,
-# and an unknown participant of a combined classification may be Hispanic.
-# Denominator balancing then files those participants as unknown, as before.
+# Two kinds of race row are left out of that count
+# (race_extractor.combined_classification): a row that also names an unknown
+# ("Other/Unknown", "Other/No response"), since an unknown participant of a
+# combined classification may be Hispanic; and a row that states the
+# ethnicity ("Hispanic White", "Black Latino"), whose participants are
+# Hispanic. Denominator balancing then files both as unknown, as before: this
+# block does not count the second kind as Hispanic, because it does not read
+# those labels.
 # In every other case not_hispanic_from_race_rows is 0 and nothing changes.
 # raw_categories still lists the posted rows only: the race rows are not
 # ethnicity labels.
@@ -306,11 +310,11 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 # not_hispanic_from_race_rows key: "not looked at", not 0.
 #
 # Measured on the baseline modules of the 80,890 trials in the 2026-11-08
-# snapshot (CT.gov API v2, re-fetched 2026-11-14): 2,228 trials, 4,434,914
+# snapshot (CT.gov API v2, re-fetched 2026-11-14): 2,228 trials, 4,434,745
 # participants move from unknown_not_reported to not_hispanic_latino. One
 # trial is 45% of that (NCT02958995, 2,006,280 of 2,738,161 participants) and
-# ten are 77%. In 105 of the trials, 88,624 participants of race rows that
-# also name an unknown stay unknown. Of the 2,688 trials whose race block
+# ten are 77%. In 113 of the trials, 88,793 participants of race rows that
+# name an unknown or state the ethnicity stay unknown. Of the 2,688 trials whose race block
 # carries shortfall_is_ethnicity_rows, 460 move nothing: 176 report no
 # ethnicity, 198 count a separate table with a Not Hispanic count of its own,
 # 45 count a different number of Hispanic participants from the race reading

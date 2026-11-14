@@ -1304,7 +1304,32 @@ def test_combined_classification_is_none_otherwise(measures: list[dict[str, Any]
 @pytest.mark.parametrize("label, unknown", [
     ("Other/Unknown", True), ("Other/multiple/unknown", True), ("Other-Unspecified", True),
     ("Declined To Provide", True), ("Prefer not to answer", True), ("Missing", True), ("N/A", True),
+    ("Other/No response", True), ("Other/UTD", True), ("Subject did not offer ethnicity", True),
+    ("Other or declines to state", True), ("Other/Refused", True), ("Don't know", True),
+    ("Race not listed", False), ("Other (not included above; including mixed race)", False),
     ("Other", False), ("Other or Multiple", False), ("White", False), ("Native American", False),
 ])
 def test_unknown_terms_in_a_race_rows_label(label: str, unknown: bool) -> None:
     assert bool(rx._UNKNOWN_TERM_RX.search(label)) is unknown
+
+
+
+@pytest.mark.parametrize("label, states", [
+    ("Hispanic White", True), ("Black Latino", True), ("White - Hispanic/Latino", True),
+    ("Hispanic Native American", True), ("Mixed Hispanic/Native American", True),
+    ("Non-Hispanic White", False), ("White (not Hispanic)", False), ("Not Hispanic - White", False),
+    ("White", False), ("Other", False),
+])
+def test_a_race_row_that_states_the_ethnicity(label: str, states: bool) -> None:
+    assert rx._states_ethnicity(label) is states
+
+
+def test_race_rows_that_state_the_ethnicity_are_not_counted_as_not_hispanic() -> None:
+    """Non-Hispanic White 30 / Non-Hispanic Black 12 / Hispanic White 5 /
+    Hispanic 3, of 50: the race block is exact (the Hispanic row is the 3 the
+    race rows fall short by), but "Hispanic White" holds Hispanic people."""
+    table = _class_table(COMBINED_TITLE, [("Non-Hispanic White", 30), ("Non-Hispanic Black", 12),
+                                          ("Hispanic White", 5), ("Hispanic", 3)])
+    combined = rx.combined_classification(_study("NCT99000532", [table], participants=50))
+    assert combined is not None
+    assert (combined["race_rows"], combined["race_rows_named"]) == (47, 42)
