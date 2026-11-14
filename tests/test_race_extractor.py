@@ -223,8 +223,9 @@ def test_hyphen_pattern_routes_each_race_part_as_a_plain_row() -> None:
     assert race["omb_totals"]["other"] == 8
     assert race["joint_sex_counts"]["counts"]["other"] == {"male": 3, "female": 5}
     assert race["joint_sex_counts"]["counts"]["black_african_american"] == {"male": 3, "female": 4}
-    # Hispanic/Latino rows are not race rows: 11 participants are the gap
-    assert race["unknown_inferred"] == 11
+    # Hispanic/Latino rows are not race rows: their 11 participants are the
+    # whole gap, filed as the ethnicity rows' part of unknown
+    assert (race["unknown_ethnicity_only"], race["unknown_inferred"]) == (11, 0)
     assert not any(r["race_part"] == "Hispanic/Latino" for r in race["joint_sex_counts"]["rows"])
     assert rx._is_ethnicity_only_label("Hispanic/Latino")
 
@@ -807,6 +808,12 @@ def test_a_class_number_every_class_repeats_is_the_tables_denominator() -> None:
 
 COMBINED_TITLE = "Race/Ethnicity, Customized"
 NEW_FLAG = "ethnicity_rows_skipped"
+SPLIT_FLAG = "shortfall_is_ethnicity_rows"
+
+
+def _unknown_parts(race: dict[str, Any]) -> tuple[int, int, int]:
+    """(explicit, ethnicity rows, inferred): the three parts of unknown."""
+    return race["unknown_explicit"], race["unknown_ethnicity_only"], race["unknown_inferred"]
 
 
 def _skipped(race: dict[str, Any]) -> list[tuple[str, int]]:
@@ -824,9 +831,10 @@ def test_combined_exclusive_table_records_its_hispanic_row() -> None:
     assert race["skipped_ethnicity_rows"] == [
         {"original": "Hispanic", "count": 6, "source_table": COMBINED_TITLE, "flags": []}]
     assert NEW_FLAG in race["flags"]
-    # Unchanged: the Hispanic participants are still only in unknown_inferred.
+    # The totals are what they were before the row was recorded; the Hispanic
+    # participants are the ethnicity rows' part of unknown (next section).
     assert _nonzero(race) == {"white": 30, "black_african_american": 12, "unknown_not_reported": 8}
-    assert (race["unknown_explicit"], race["unknown_inferred"]) == (2, 6)
+    assert _unknown_parts(race) == (2, 6, 0)
     assert [c["original"] for c in race["raw_categories"]] == ["Caucasian", "African-American", "Unknown"]
     assert race["quarantined_labels"] == []
 
@@ -910,7 +918,7 @@ def test_race_by_sex_ethnicity_rows_keep_their_race_part_and_sex() -> None:
         {"original": "Hispanic/Latino- Female", "count": 6, "source_table": COMBINED_TITLE,
          "race_part": "Hispanic/Latino", "sex": "female", "flags": ["race_by_sex"]},
     ]
-    assert race["unknown_inferred"] == 11
+    assert _unknown_parts(race) == (0, 11, 0)
     # The joint counts hold counted rows only, as before.
     assert not any(r["race_part"] == "Hispanic/Latino" for r in race["joint_sex_counts"]["rows"])
 
@@ -966,15 +974,18 @@ def _without_ethnicity_rows(table: dict[str, Any]) -> dict[str, Any]:
     ([("White", 10), ("Hispanic", 3)], None),
 ])
 def test_recorded_rows_enter_no_count(rows: list[tuple[str, int]], participants: Optional[int]) -> None:
-    """The recorded rows are in none of the block's other fields: taking them
-    out of the posted table leaves the block the same, apart from the new
-    list and its flag."""
+    """The recorded rows are in none of the block's totals: taking them out
+    of the posted table leaves the block the same, apart from the list, its
+    flag, and which part of unknown a shortfall is filed under (the rows'
+    counts decide that; the amount is the same)."""
     table = _class_table(COMBINED_TITLE, rows)
     with_rows = extract_race_data(_study("NCT99000513", [table], participants=participants))
     without = extract_race_data(_study("NCT99000513", [_without_ethnicity_rows(table)], participants=participants))
     assert with_rows["skipped_ethnicity_rows"] and without["skipped_ethnicity_rows"] == []
     with_rows["skipped_ethnicity_rows"] = []
-    with_rows["flags"] = [f for f in with_rows["flags"] if f != NEW_FLAG]
+    with_rows["flags"] = [f for f in with_rows["flags"] if f not in (NEW_FLAG, SPLIT_FLAG)]
+    with_rows["unknown_inferred"] += with_rows["unknown_ethnicity_only"]
+    with_rows["unknown_ethnicity_only"] = 0
     assert with_rows == without
 
 
@@ -1055,7 +1066,7 @@ def test_non_hispanic_race_rows_are_counted_in_their_race() -> None:
     race = extract_race_data(_study("NCT99000514", [table], participants=50))
     assert race["reported"] is True
     assert _nonzero(race) == {"white": 30, "black_african_american": 12, "unknown_not_reported": 8}
-    assert (race["unknown_explicit"], race["unknown_inferred"]) == (0, 8)
+    assert _unknown_parts(race) == (0, 8, 0)
     assert _skipped(race) == [("Hispanic", 8)]
     # The posted label is kept, with the part that was mapped beside it.
     assert [(c["original"], c["race_part"], c["omb_category"], c["confidence"]) for c in race["raw_categories"]] == [
@@ -1132,3 +1143,107 @@ def test_joined_labels_crossed_with_sex_are_a_race_by_sex_table() -> None:
         ("Non-Hispanic/Latino Black Female", "Non-Hispanic/Latino Black"),
         ("Hispanic/Latino Black Male", "Hispanic/Latino Black")]
     assert race["skipped_ethnicity_rows"] == []
+
+
+# ── a shortfall that the ethnicity rows account for ────────────────────────
+#
+# unknown_not_reported = unknown_explicit + unknown_ethnicity_only +
+# unknown_inferred. A shortfall is filed under the ethnicity rows only when
+# the rows that state the ethnicity add up to exactly the shortfall and no
+# row that negates it has participants (src/race_extractor.py, "A shortfall
+# that the ethnicity rows account for"). The amount in unknown_not_reported
+# is the same either way.
+
+@pytest.mark.parametrize("label, negates", [
+    ("Not Hispanic or Latino", True),
+    ("Non-Hispanic", True),
+    ("Nonhispanic", True),
+    ("Not of Hispanic, Latino/a, or Spanish origin", True),
+    ("Ethnicity: Not Hispanic or Latino", True),
+    ("Hispanic", False),
+    ("Hispanic or Latino", False),
+    ("Latinx", False),
+    ("Hispanic (regardless of race)", False),
+    ("Hispanic (not African American)", False),
+    ("Latino, non-Black", False),
+    # A negation before the term reads as negating it, whatever it belongs
+    # to: the shortfall then stays in unknown_inferred.
+    ("Non-Black Hispanic", True),
+    ("Prefer not to answer (Hispanic)", True),
+])
+def test_negates_ethnicity(label: str, negates: bool) -> None:
+    assert rx._negates_ethnicity(label) is negates
+
+
+def test_an_exact_shortfall_is_the_ethnicity_rows_part_of_unknown() -> None:
+    """The NCT00416078 shape: 39 + 10 race, 2 in the table's Unknown row and 2
+    Hispanic, of 53. The 2 Hispanic participants are the whole shortfall."""
+    table = _class_table(COMBINED_TITLE, [("Caucasian", 39), ("African-American", 10), ("Hispanic", 2), ("Unknown", 2)])
+    race = extract_race_data(_study("NCT99000521", [table], participants=53))
+    assert _nonzero(race) == {"white": 39, "black_african_american": 10, "unknown_not_reported": 4}
+    assert _unknown_parts(race) == (2, 2, 0)
+    assert {SPLIT_FLAG, NEW_FLAG, "denominator_balanced"} <= set(race["flags"])
+
+
+@pytest.mark.parametrize("rows, participants, why", [
+    ([("White", 30), ("Black", 12), ("Hispanic", 6)], 50, "the shortfall (8) is larger than the Hispanic row"),
+    ([("White", 30), ("Black", 12), ("Hispanic", 9)], 50, "the Hispanic row is larger than the shortfall (8)"),
+    ([("White", 30), ("Black", 12), ("Hispanic", 8), ("Not Hispanic or Latino", 42)], 50,
+     "a row that negates the ethnicity has participants"),
+    ([("White", 30), ("Black", 12), ("Not Hispanic or Latino", 8)], 50, "only a negating row matches the shortfall"),
+    ([("White", 30), ("Black", 12), ("Non-Black Hispanic", 8)], 50, "the label reads as negating"),
+    ([("White", 30), ("Black", 12)], 50, "no ethnicity row at all"),
+])
+def test_a_shortfall_the_rows_do_not_account_for_exactly_stays_inferred(
+        rows: list[tuple[str, int]], participants: int, why: str) -> None:
+    race = extract_race_data(_study("NCT99000522", [_class_table(COMBINED_TITLE, rows)], participants=participants))
+    assert _unknown_parts(race) == (0, 0, 8), why
+    assert SPLIT_FLAG not in race["flags"] and "denominator_balanced" in race["flags"], why
+    assert race["omb_totals"]["unknown_not_reported"] == 8
+
+
+def test_a_negating_row_of_zero_does_not_block_the_split() -> None:
+    table = _class_table(COMBINED_TITLE, [("White", 30), ("Black", 12), ("Hispanic", 8), ("Not Hispanic or Latino", 0)])
+    race = extract_race_data(_study("NCT99000523", [table], participants=50))
+    assert _unknown_parts(race) == (0, 8, 0)
+    assert SPLIT_FLAG in race["flags"]
+
+
+def test_no_shortfall_or_no_population_leaves_the_new_part_at_zero() -> None:
+    covered = _class_table(COMBINED_TITLE, [("White", 30), ("Black", 20), ("Hispanic or Latino", 8)])
+    race = extract_race_data(_study("NCT99000524", [covered], participants=50))
+    assert _unknown_parts(race) == (0, 0, 0) and SPLIT_FLAG not in race["flags"]
+    # No baseline population: nothing is balanced, so there is no shortfall to file.
+    race = extract_race_data(_study("NCT99000525", [_class_table(COMBINED_TITLE, [("White", 30), ("Hispanic", 8)])],
+                                    participants=None))
+    assert _unknown_parts(race) == (0, 0, 0) and SPLIT_FLAG not in race["flags"]
+    # No race table at all.
+    race = extract_race_data(_study("NCT99000526", [SEX_TABLE], participants=40))
+    assert _unknown_parts(race) == (0, 0, 0)
+
+
+def test_several_hispanic_rows_and_summed_parts_are_added_up() -> None:
+    """The stated rows are summed over every counted table: two rows in one
+    table, and one row in each of two disjoint parts (rule 3)."""
+    table = _class_table(COMBINED_TITLE, [("White", 30), ("Black", 12), ("Hispanic", 5), ("Latino", 3)])
+    race = extract_race_data(_study("NCT99000527", [table], participants=50))
+    assert _unknown_parts(race) == (0, 8, 0)
+    adults = _category_table("Race, Adults", [("White", 20), ("Hispanic", 10)], analyzed=30)
+    children = _category_table("Race, Children", [("Asian", 15), ("Hispanic or Latino", 5)], analyzed=20)
+    race = extract_race_data(_study("NCT99000528", [adults, children], participants=50))
+    assert "race_tables_partitioned" in race["flags"]
+    assert _unknown_parts(race) == (0, 15, 0)
+
+
+@pytest.mark.parametrize("rows, participants", [
+    ([("Caucasian", 39), ("African-American", 10), ("Hispanic", 2), ("Unknown", 2)], 53),
+    ([("White", 30), ("Black", 12), ("Hispanic", 6), ("Unknown", 1)], 50),
+    ([("White", 30), ("Black", 12), ("Unknown", 3)], 50),
+    ([("Non-Hispanic White", 30), ("Non-Hispanic Black", 12), ("Hispanic", 8)], 50),
+    ([("White", 30), ("Black", 20), ("Hispanic", 8)], 50),
+])
+def test_the_three_parts_of_unknown_always_add_up(rows: list[tuple[str, int]], participants: int) -> None:
+    race = extract_race_data(_study("NCT99000529", [_class_table(COMBINED_TITLE, rows)], participants=participants))
+    assert sum(_unknown_parts(race)) == race["omb_totals"]["unknown_not_reported"]
+    assert (race["unknown_ethnicity_only"] > 0) is (SPLIT_FLAG in race["flags"])
+    assert not (race["unknown_ethnicity_only"] and race["unknown_inferred"])

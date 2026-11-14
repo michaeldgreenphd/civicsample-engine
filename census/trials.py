@@ -237,7 +237,10 @@ def category_structure(record: dict[str, Any], dimension: str, total: int,
             return {**out, 'usable_for_shares': False, 'check': 'race_table_has_ethnicity_rows', 'labels': mixed[:5],
                     'evidence': 'label_in_release'}
         if race_table_titled_with_ethnicity(record):
-            shortfall = (block.get('unknown_inferred') or 0) > 0     # rows add up to fewer than the population
+            # Rows add up to fewer than the population. The extractor files the gap as
+            # unknown_ethnicity_only when its ethnicity rows account for it exactly and as
+            # unknown_inferred otherwise; a release built before that split has only the latter.
+            shortfall = ((block.get('unknown_inferred') or 0) + (block.get('unknown_ethnicity_only') or 0)) > 0
             nonzero = [r for r in (registry_ethnicity_rows or []) if (r.get('largest_count') or 0) > 0]
             out['registry_table_checked'] = registry_ethnicity_rows is not None
             if shortfall and registry_ethnicity_rows is None:
