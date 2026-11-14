@@ -139,19 +139,23 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
 
     def stamp(fetched_at: str | None) -> dict[str, Any]:
         """The registry's version stamp for a record fetched at `fetched_at`: the latest version
-        answer fetched at or before it (the snapshot current when the record was asked for); the
-        earliest when none came before; the latest for the run as a whole (fetched_at None). An
-        acquisition resumed across the registry's daily refresh holds records of more than one
-        snapshot, and each is stamped with its own."""
+        answer fetched at or before it (the snapshot current when the record was asked for), or
+        the latest for the run as a whole (fetched_at None). An acquisition resumed across the
+        registry's daily refresh holds records of more than one snapshot, and each is stamped with
+        its own. A record fetched before any version answer was is not stamped with a later
+        snapshot, which might not hold it: its version is unknown, and says why."""
         chosen = versions[-1] if versions and fetched_at is None else None
         for v in versions if fetched_at is not None else []:
             if v['fetched_at'] <= fetched_at:
                 chosen = v
-        if chosen is None and versions:
-            chosen = versions[0]
         api = (chosen or {}).get('body') or {}
-        return {'registry': 'ClinicalTrials.gov', 'registry_api_version': api.get('apiVersion'),
-                'registry_data_timestamp': api.get('dataTimestamp')}
+        out = {'registry': 'ClinicalTrials.gov', 'registry_api_version': api.get('apiVersion'),
+               'registry_data_timestamp': api.get('dataTimestamp')}
+        if chosen is None:
+            out['registry_version_absent_reason'] = (
+                'no registry version answer was fetched at or before this record' if versions
+                else 'no registry version answer was fetched')
+        return out
     registry_version = stamp(None)
 
     # ---- evidence records

@@ -2135,3 +2135,20 @@ def test_cached_documents_of_submissions_not_in_the_inventory_are_left_out(tmp_p
     docs = documents.build([line, gone], {'K990001': '510k'}, tmp_path, pdftext.extraction_version())
     assert [d['submission_number'] for d in docs] == ['K990001']
     assert documents.outside_inventory([line, gone], {'K990001': {}}) == 1
+
+
+def test_a_record_fetched_before_any_version_answer_is_not_stamped_with_a_later_snapshot(
+        tmp_path: Path, acquired: dict[str, Any]) -> None:
+    """The /version request failed while studies were fetched, and a later run fetched it: the later
+    snapshot may not hold those records, so their stamp is unknown, with the reason."""
+    a = copy.deepcopy(acquired)
+    records, _ = a['frozen']['registry']
+    for k in [k for k in records if k.startswith('ctgov/version/')]:
+        records[k] = {**records[k], 'fetched_at': '2099-01-01T00:00:00+00:00'}
+    family = F.build_family(tmp_path, a)
+    versions = [x['source_version'] for x in family['links.json']['links'] if x['evidence']['source_kind'] == 'registry_record']
+    assert versions and all(v.get('registry_api_version') is None and v.get('registry_data_timestamp') is None
+                            for v in versions)
+    assert {v.get('registry_version_absent_reason') for v in versions} == \
+        {'no registry version answer was fetched at or before this record'}
+    assert family['run.json']['sources']['registry']['registry_api_version']        # the run names the latest
