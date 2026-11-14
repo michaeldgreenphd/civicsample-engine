@@ -427,10 +427,13 @@ def summarize(records: dict[str, Any], problems: dict[str, Any]) -> dict[str, An
     return {
         'denominators': denominators, 'metrics': metrics, 'subgroup_states': states, 'signals': signals,
         'tables': {
-            'retrieval_failures': {'denominator': 'requested', 'definition': 'Requested trials whose record was not retrieved. Their results were not read.',
+            # n is published with each table so the page never counts rows itself.
+            'retrieval_failures': {'n': n(recs, lambda r: r['results_status'] == 'not_retrieved'), 'denominator': 'requested',
+                                   'definition': 'Requested trials whose record was not retrieved. Their results were not read.',
                                    'rows': [{'nct_id': r['nct_id'], 'reason': r['retrieval']['reason']} for r in recs if r['results_status'] == 'not_retrieved'],
                                    'unkeyed_archive_lines': problems['unkeyed_lines'], 'unrequested_records': problems['unrequested_records']},
-            'parsing_failures': {'denominator': 'retrieved', 'definition': 'Retrieved records with at least one section the parser could not read. The record is kept; the section is recorded as not evaluated.',
+            'parsing_failures': {'n': n(retrieved, lambda r: r['parse']['status'] != 'ok'), 'denominator': 'retrieved',
+                                 'definition': 'Retrieved records with at least one section the parser could not read. The record is kept; the section is recorded as not evaluated. n counts trials; rows list each section.',
                                  'rows': [{'nct_id': r['nct_id'], 'section': f['section'], 'reason': f['reason']}
                                           for r in retrieved for f in r['parse']['failures']]},
             'missing_data': {'definition': 'What the records do not contain. Each row is a count of trials, with its denominator.', 'rows': missing},

@@ -97,6 +97,9 @@ def test_failures_missing_data_and_negative_findings_are_separate_tables(family:
     tables = family['summary.json']['tables']
     assert set(tables) == {'retrieval_failures', 'parsing_failures', 'missing_data', 'negative_findings'}
     assert tables['retrieval_failures']['rows'] == [{'nct_id': 'NCT99000003', 'reason': 'not returned by the registry for filter.ids'}]
+    assert (tables['retrieval_failures']['n'], tables['retrieval_failures']['denominator']) == (1, 'requested')
+    assert (tables['parsing_failures']['n'], tables['parsing_failures']['denominator']) == (1, 'retrieved')
+    assert len(tables['parsing_failures']['rows']) > 1, 'one trial, several sections: n counts trials'
     assert {(r['nct_id'], r['section']) for r in tables['parsing_failures']['rows']} >= {('NCT99000005', 'subgroup')}
     missing = {r['id']: r['n'] for r in tables['missing_data']['rows']}
     assert missing['no_posted_results'] == 2
