@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T16:20:46+00:00 by `scripts/build_device_links.py build` at engine commit `543b0b136938` (no uncommitted changes; producing-code digest `13613846b4ca…`), run id `devices-2026-11-14-f337a8f6a1`, method `device-links-1` |
+| Built | 2026-11-14T16:24:44+00:00 by `scripts/build_device_links.py build` at engine commit `07a39bb6560c` (no uncommitted changes; producing-code digest `2df868c90ed3…`), run id `devices-2026-11-14-ce2564e543`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -188,4 +188,6 @@ It was rebuilt a forty-second time after the forty-first review round, at `f3c86
 
 It was rebuilt a forty-third time after the forty-second review round, at `0d95883` (run `devices-2026-11-14-bba6cb4e60`). That round's fix: a documentary statement's evidence-record id includes its proposed relationship, the curator's claim, so changing the claim while keeping the quote makes a new record and a review of the old claim is not carried over. This run has no documentary statements, and every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a forty-fourth time after the forty-third review round, at the commit named above. That round's fix: an openFDA answer is settled only when it holds as many results as openFDA's stated total (`meta.results.total`), so a page cut short by the request's limit, or partial, is asked again rather than read as "openFDA holds no record" for a supplement it omits. All 46 openFDA answers in the cache state a total equal to the results they hold (at most 50), and every output file is identical to the previous build apart from the run id.
+It was rebuilt a forty-fourth time after the forty-third review round, at `543b0b1` (run `devices-2026-11-14-f337a8f6a1`). That round's first fix: an openFDA answer is settled only when it holds as many results as openFDA's stated total (`meta.results.total`), so a page cut short by the request's limit, or partial, is asked again rather than read as "openFDA holds no record" for a supplement it omits. All 46 openFDA answers in the cache state a total equal to the results they hold (at most 50), and every output file is identical to the previous build apart from the run id.
+
+It was rebuilt again for that round's second fix, at the commit named above: cached text whose payload names another extractor version than the one asked for is not read, so the text a build uses always matches the extraction version `run.json` stamps. All 1,532 cached extractions name their own version, and every output file is identical to the previous build apart from the run id.
