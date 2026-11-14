@@ -196,13 +196,32 @@ def test_fetch_asks_for_full_records_in_batches_and_reports_what_did_not_come_ba
 
 def test_a_failed_batch_is_retried_then_recorded_never_dropped() -> None:
     def get(url: str, params: dict[str, Any]) -> Response:
-        return Response({}, 200) if url.endswith('/version') else Response({'error': 'unavailable'}, 503)
+        return (Response({'apiVersion': '2.0.5', 'dataTimestamp': '2026-11-13T10:00:06'}, 200) if url.endswith('/version')
+                else Response({'error': 'unavailable'}, 503))
 
     lines, rec = B.fetch(F.REQUESTED[:2], get=get, sleep=lambda s: None)
     assert lines == {}
     assert rec['n_failed_requests'] == B.MAX_TRIES and rec['n_retries'] == B.MAX_TRIES - 1
     assert rec['not_retrieved'] == [{'nct_id': n, 'reason': 'request failed: HTTP 503'} for n in F.REQUESTED[:2]]
-    assert rec['api_version'] is None
+    assert rec['api_version'] == '2.0.5'
+
+
+@pytest.mark.parametrize('version', [
+    Response({'error': 'unavailable'}, 503),                        # the request fails every time
+    Response({}, 200),                                              # a body without the two fields
+    Response({'apiVersion': '2.0.5'}, 200),                         # one field only
+    Response({'apiVersion': '2.0.5', 'dataTimestamp': ''}, 200),    # an empty value
+])
+def test_a_fetch_without_the_registry_version_is_refused_before_any_study_is_requested(version: Response) -> None:
+    asked: list[str] = []
+
+    def get(url: str, params: dict[str, Any]) -> Response:
+        asked.append(url)
+        return version if url.endswith('/version') else Response({'studies': []}, 200)
+
+    with pytest.raises(B.BuildError, match='registry version request failed'):
+        B.fetch(F.REQUESTED[:2], get=get, sleep=lambda s: None)
+    assert all(u.endswith('/version') for u in asked), 'no study is requested'
 
 
 def test_the_archive_is_byte_stable_and_refuses_changed_bytes(tmp_path: Path) -> None:

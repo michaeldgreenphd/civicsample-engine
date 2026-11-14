@@ -148,7 +148,14 @@ def fetch(ids: list[str], get: Callable[..., Any] | None = None, delay: float = 
         return None
 
     started = _now()
-    version = request(f'{API}/version', {}, 'version') or {}
+    version = request(f'{API}/version', {}, 'version')
+    # The registry's API version and data timestamp say which registry state the records are from;
+    # the manifest publishes both. Without them the fetch is refused before any study is requested,
+    # rather than building a family whose provenance fields are empty.
+    if not isinstance(version, dict) or not all(isinstance(version.get(k), str) and version[k].strip()
+                                                for k in ('apiVersion', 'dataTimestamp')):
+        why = log[-1].get('gave_up') if version is None else f'the response lacks apiVersion or dataTimestamp: {str(version)[:200]}'
+        raise BuildError(f'the registry version request failed ({why}); nothing was fetched')
     for i in range(0, len(ids), BATCH):
         batch = ids[i:i + BATCH]
         token, pages = None, 0
