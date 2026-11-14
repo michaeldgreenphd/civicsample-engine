@@ -118,6 +118,13 @@ responses and the same release.
   the recount cannot answer. Nor does it check the reader's judgements in
   the subgroup review, which have had no second reviewer.
 
+**The 2020 cohort build.** `independent_recount/recheck_cohort.py` recounts the results-structure
+build of the 598 eligible trials (`docs/results_structure/runs/2026-11-14/`) from its frozen
+registry archive: 416 with posted results, 406 comparative (C1 and C2), 291 with a between-arm
+analysis on a primary measure and 258 with an estimate and both limits. All five equal the
+build's figures. The same limits apply: it confirms the counting under the stated rules, not
+the rules. The archive (7.9 MB) is not committed; its sha256 is in that run's `run.json`.
+
 ## What is not stored here, and how to regenerate it
 
 Two derived files are left out for size. Both are rebuilt from the release
