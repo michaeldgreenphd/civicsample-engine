@@ -182,8 +182,10 @@ isolated mode per document), `nct` (look up cited NCT ids), `registry-numbers`, 
 `freeze`. A rerun asks only what is not yet answered; a 404 is recorded as a finding and not asked
 again; any other non-200 answer is logged and asked again. A killed run is safe to resume: files
 are written under a temporary name and renamed, and an interrupted final line of a log is dropped
-with a message. `--store-budget-gb N` stops requesting documents once the store holds N GB; the
-rest are recorded as `skipped_disk_budget` and their coverage reads search incomplete. Text is
+with a message. `--store-budget-gb N` is a limit on the store: a document whose file would take it past
+N GB is not written, requests stop once it is full, and those documents are recorded as
+`skipped_disk_budget` (with the HTTP status when one was received); their coverage reads search
+incomplete. A repair that restores a document's recorded bytes is exempt. Text is
 extracted one document at a time by default (`--workers 1`); the build streams the text cache and
 holds no document text in memory. Needs `pypdf` (listed in `devices/requirements.txt`) in
 addition to the runtime requirements. The 2026-11-13/14 run made about 6,200 requests and holds
