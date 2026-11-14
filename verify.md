@@ -91,6 +91,7 @@ replacing the full CI gates above before completion.
 | Browser UI | Implement and verify in the frontend repository using its root verify.md in the [frontend repository](https://github.com/michaeldgreenphd/clinical-trial-populations); this repository has no dashboard render path. The sponsor module's Node tests are rule tests, not a browser UI test. |
 | LLM prompt, schema or model | Compile + CI; read [prompts/README.md](scripts/extraction/prompts/README.md). A live pilot is additional paid/network verification, not part of ordinary CI. |
 | Industry Outcomes beta | `python -m pytest tests/outcomes -q`; `python scripts/check_outcomes_contract.py <dir> [--publishable]` on a build; regenerate `tests/fixtures/outcomes/` with `python scripts/build_outcomes_fixture.py` after a contract change and copy it to the site. See [outcomes/README.md](outcomes/README.md). |
+| Census benchmarks | `python -m pytest tests/census -q` (offline; the geography tests need `scripts/census/requirements.txt`, which `requirements-dev.txt` includes). A real build needs `CENSUS_API_KEY` and network access to `api.census.gov` and `www2.census.gov`. See [census/README.md](census/README.md). |
 | Runtime/dependency or infrastructure configuration | Full CI on its pinned runtimes; inspect affected workflows, permissions, secret names, schedules and publish guards. Do not dispatch publishing workflows merely to validate documentation. |
 
 ## Inputs, fixtures and established invariants

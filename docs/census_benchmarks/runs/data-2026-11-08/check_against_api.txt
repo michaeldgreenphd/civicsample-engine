@@ -1,0 +1,13 @@
+NCT02905591 state 19 sexes male+female from age 18: white api 86.431 build 86.431, black_african_american api 3.419 build 3.419, hispanic_latino api 5.984 build 5.984
+NCT03064490 state 37 sexes male+female from age 18: white api 64.670 build 64.670, black_african_american api 20.163 build 20.163, hispanic_latino api 9.208 build 9.208
+NCT03436563 state 48 sexes male+female from age 18: white api 50.650 build 50.650, black_african_american api 12.188 build 12.188, hispanic_latino api 36.784 build 36.784
+NCT03578965 state 29 sexes female from age 18: white api 79.100 build 79.100, black_african_american api 11.077 build 11.077, hispanic_latino api 4.169 build 4.169
+NCT03738826 state 37 sexes male+female from age 18: white api 64.670 build 64.670, black_african_american api 20.163 build 20.163, hispanic_latino api 9.208 build 9.208
+NCT03915652 state 25 sexes male+female from age 18: white api 71.301 build 71.301, black_african_american api 6.472 build 6.472, hispanic_latino api 11.546 build 11.546
+NCT03922802 state 17 sexes male+female from age 18: white api 63.251 build 63.251, black_african_american api 13.287 build 13.287, hispanic_latino api 16.946 build 16.946
+NCT04136912 state 37 sexes male+female from age 18: white api 64.670 build 64.670, black_african_american api 20.163 build 20.163, hispanic_latino api 9.208 build 9.208
+NCT04907045 state 53 sexes male+female from age 18: white api 68.711 build 68.711, black_african_american api 3.855 build 3.855, hispanic_latino api 11.875 build 11.875
+NCT05028517 state 36 sexes male+female from age 18: white api 56.972 build 56.972, black_african_american api 14.144 build 14.144, hispanic_latino api 18.383 build 18.383
+NCT05405309 state 49 sexes male+female from age 18: white api 80.168 build 80.168, black_african_american api 1.126 build 1.126, hispanic_latino api 14.295 build 14.295
+NCT05867316 state 34 sexes male+female from age 18: white api 56.271 build 56.271, black_african_american api 12.632 build 12.632, hispanic_latino api 20.542 build 20.542
+checked 12 trials (10 distinct state/sex/age combinations) from 2381 eligible; largest absolute difference 0.0005 percentage points

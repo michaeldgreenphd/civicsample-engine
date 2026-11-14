@@ -37,6 +37,7 @@ than assuming the instruction hierarchy is unchanged.
 | LLM document streams | [scripts/extraction/prompts/README.md](scripts/extraction/prompts/README.md), extraction scripts and their separate requirements file |
 | Automation and retention | [.github/workflows/](.github/workflows/), [scripts/prune_snapshots.py](scripts/prune_snapshots.py); publication writes to the site repository |
 | Industry Outcomes beta (manual, not scheduled) | [outcomes/README.md](outcomes/README.md), [scripts/build_outcomes_beta.py](scripts/build_outcomes_beta.py), [scripts/check_outcomes_contract.py](scripts/check_outcomes_contract.py) |
+| Census benchmarks for single-site US trials (manual, not scheduled) | [census/README.md](census/README.md), [scripts/build_census_benchmarks.py](scripts/build_census_benchmarks.py); needs `CENSUS_API_KEY` in the environment, never in a file |
 | Setup, architecture, checks | [README.md](README.md), [CLAUDE.md](CLAUDE.md), [verify.md](verify.md), [.github/workflows/ci.yml](.github/workflows/ci.yml) |
 
 The repositories communicate through generated files, not a running backend
