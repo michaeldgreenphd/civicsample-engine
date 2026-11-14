@@ -714,6 +714,35 @@ def test_a_record_a_statement_quotes_is_fetched_whole_under_its_own_key(tmp_path
     assert build_device_links.statement_study_ids(build_device_links.ROOT / 'devices' / 'documentary_statements.csv') == set()
 
 
+def test_a_search_answer_that_states_no_count_is_not_a_completed_search() -> None:
+    chunk = registry.number_batches(['K990001'])[0]
+    key = registry._key('ctgov/number_batch', registry._batch_params(chunk))
+    def run(body: Any) -> dict[str, Any]:
+        records = {key: {'status': 200, 'body': body, 'fetched_at': '2026-11-13T00:00:00+00:00'}}
+        return registry.number_search_results(records, ['K990001'])['K990001']
+    for body in ({'error': {'message': 'bad query'}}, {'studies': []}, {'totalCount': None}, {'totalCount': '0'}, None):
+        out = run(body)
+        assert out['state'] == 'incomplete' and out['n_search_hits'] is None, body
+        assert 'did not state how many' in out['reason']
+    assert run({'totalCount': 0})['state'] == 'completed'
+    # the name searches: an answer with no count is counted apart and leaves the route incomplete
+    q = {'kind': 'name', 'string': 'Quanta', 'key': 'ctgov/name/x', 'params': {}}
+    for body, uncounted in (({'studies': []}, 1), ({'totalCount': 0, 'studies': []}, 0)):
+        state = registry.search_state({'ctgov/name/x': {'status': 200, 'body': body, 'fetched_at': 't'}}, [q])
+        assert (state['n_uncounted'], state['n_failed']) == (uncounted, 0)
+    cell = coverage.registry_name_organisation_search(
+        {**registry.search_state({'ctgov/name/x': {'status': 200, 'body': {'studies': []}, 'fetched_at': 't'}}, [q]),
+         'n_name_queries': 1}, [])
+    assert cell['state'] == 'search_incomplete_or_blocked' and 'without stating how many records matched' in cell['reason']
+
+
+@pytest.mark.parametrize('review, counts', [('accepted', True), ('unreviewed', False), ('unresolved', False),
+                                            ('rejected', False)])
+def test_a_record_set_aside_by_rule_counts_once_a_person_accepts_it(review: str, counts: bool) -> None:
+    link = {'automated_validation': 'rejected_by_rule', 'human_review': review, 'target': {'id': 'NCT99000001'}}
+    state, _ = coverage._link_outcome([link])
+    assert (state == 'candidate_awaiting_review') is counts and (state is None) is not counts
+
 @pytest.mark.parametrize('text', ['approved as P990007/S005', 'approved as P990007 S005', 'approved as P990007s005'])
 def test_another_supplement_of_the_pma_is_not_a_citation_of_the_supplement_or_the_original(text: str) -> None:
     assert registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}},

@@ -254,7 +254,14 @@ def number_search_results(records: dict[str, dict[str, Any]], submission_numbers
             out[sn] = {'state': 'incomplete', 'reason': 'the batch request covering this number has no usable answer',
                        'n_search_hits': None, 'hits': []}
             continue
-        if not (batch['body'] or {}).get('totalCount'):
+        batch_total = (batch['body'] or {}).get('totalCount')
+        if not isinstance(batch_total, int) or isinstance(batch_total, bool):
+            # A 200 that does not say how many records matched (an error object, say) is no answer:
+            # a missing count is not a count of zero.
+            out[sn] = {'state': 'incomplete', 'reason': 'the batch search did not state how many records it found',
+                       'n_search_hits': None, 'hits': [], 'searched_at': batch['fetched_at']}
+            continue
+        if batch_total == 0:
             out[sn] = {'state': 'completed', 'reason': 'full-text search over the batch returned no record',
                        'n_search_hits': 0, 'hits': [], 'searched_at': batch['fetched_at']}
             continue
@@ -416,8 +423,10 @@ def organisation_evidence(study: dict[str, Any], company_raw: str,
 
 def search_state(records: dict[str, dict[str, Any]], queries: list[dict[str, Any]]) -> dict[str, Any]:
     """Whether a set of searches was answered, and whether any answer was cut off by the page
-    size (more records matched than were returned and read)."""
-    detail, missing, failed, truncated = [], 0, 0, 0
+    size (more records matched than were returned and read). A 200 that does not state how many
+    records matched is counted apart (`n_uncounted`): it is no answer, since nothing shows that
+    the page read was all there was."""
+    detail, missing, failed, truncated, uncounted = [], 0, 0, 0, 0
     for q in queries:
         rec = answer(records, q)
         if rec is None:
@@ -428,13 +437,15 @@ def search_state(records: dict[str, dict[str, Any]], queries: list[dict[str, Any
         total, returned = body.get('totalCount'), len(body.get('studies') or [])
         ok = rec['status'] == 200
         failed += not ok
-        cut = bool(ok and isinstance(total, int) and total > returned)
+        counted = isinstance(total, int) and not isinstance(total, bool)
+        uncounted += ok and not counted
+        cut = bool(ok and counted and total > returned)
         truncated += cut
         detail.append({'kind': q['kind'], 'string': q['string'], 'answered': True, 'http_status': rec['status'],
                        'total_count': total, 'n_returned': returned, 'truncated': cut,
                        'searched_at': rec['fetched_at']})
     return {'n_queries': len(queries), 'n_missing': missing, 'n_failed': failed, 'n_truncated': truncated,
-            'queries': detail}
+            'n_uncounted': uncounted, 'queries': detail}
 
 
 def studies_from(records: dict[str, dict[str, Any]], queries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

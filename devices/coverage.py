@@ -62,8 +62,11 @@ def _cell(route: str, state: str, reason: str, **detail: Any) -> dict[str, Any]:
 
 def _link_outcome(links: list[dict[str, Any]]) -> tuple[str | None, str]:
     """verified_link / candidate_awaiting_review / None from a route's links, honouring review:
-    a link a person rejected is neither; one a person accepted or left unresolved stays visible."""
-    live = [x for x in links if x['human_review'] != 'rejected' and x['automated_validation'] != 'rejected_by_rule']
+    a link a person rejected is neither; one a person accepted or left unresolved stays visible.
+    A record set aside by rule counts only once a person has accepted it; unreviewed or left
+    unresolved, the rule's verdict stands."""
+    live = [x for x in links if x['human_review'] != 'rejected'
+            and (x['automated_validation'] != 'rejected_by_rule' or x['human_review'] == 'accepted')]
     confirmed = [x for x in live if x['automated_validation'] == 'identifier_confirmed']
     if confirmed:
         reviewed = sum(1 for x in confirmed if x['human_review'] != 'unreviewed')
@@ -200,10 +203,11 @@ def registry_name_organisation_search(search: dict[str, Any] | None, links: list
         return _cell(route, state, why + ' (family level: shared by every submission of the family)', **detail)
     set_aside = sum(1 for x in links if x['automated_validation'] == 'rejected_by_rule')
     detail['n_matches_rejected_by_rule'] = set_aside
-    if search['n_missing'] or search['n_failed']:
-        return _cell(route, 'search_incomplete_or_blocked',
-                     f"{search['n_missing']} query(ies) without an answer, {search['n_failed']} answered with an error",
-                     **detail)
+    if search['n_missing'] or search['n_failed'] or search.get('n_uncounted'):
+        reason = f"{search['n_missing']} query(ies) without an answer, {search['n_failed']} answered with an error"
+        if search.get('n_uncounted'):
+            reason += f", {search['n_uncounted']} answered without stating how many records matched"
+        return _cell(route, 'search_incomplete_or_blocked', reason, **detail)
     if search.get('n_name_queries') == 0:
         return _cell(route, 'not_searched',
                      'the listed name is made only of device-type words, so no name query is possible; the sponsor '
