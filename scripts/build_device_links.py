@@ -201,11 +201,31 @@ def stage_freeze(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> N
             log(f"freeze: {name}: {meta['n_records']} records, sha256 {meta['sha256_uncompressed'][:12]}")
 
 
+def producer_paths(root: Path = ROOT) -> list[str]:
+    """The producing files: every file of the devices package (code and the curated files it reads)
+    and this script."""
+    return sorted([str(p.relative_to(root)) for p in (root / 'devices').rglob('*')
+                   if p.is_file() and '__pycache__' not in p.parts] + ['scripts/build_device_links.py'])
+
+
+def source_digest(root: Path = ROOT) -> str:
+    """One sha256 over the producing files as they stand on disk, path by path. A clean checkout of
+    a commit always gives the same value; any uncommitted change to those files gives another, so
+    two builds whose code differed cannot share a run id."""
+    h = hashlib.sha256()
+    for rel in producer_paths(root):
+        h.update(rel.encode() + b'\0' + (root / rel).read_bytes() + b'\0')
+    return h.hexdigest()
+
+
 def producer() -> dict[str, object]:
+    """The commit that produced the build, whether the producing files differ from it, and a digest
+    of those files as they were."""
     commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True).stdout.strip() or None
     dirty = bool(subprocess.run(['git', 'status', '--porcelain', '--', 'devices', 'scripts/build_device_links.py'],
                                 cwd=ROOT, capture_output=True, text=True).stdout.strip()) if commit else None
-    return {'repository': 'civicsample-engine', 'commit': commit, 'uncommitted_changes': dirty}
+    return {'repository': 'civicsample-engine', 'commit': commit, 'uncommitted_changes': dirty,
+            'source_sha256': source_digest()}
 
 
 def file_meta(path: Path) -> dict[str, Any]:

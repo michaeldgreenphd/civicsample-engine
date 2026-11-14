@@ -1147,3 +1147,41 @@ def test_garbled_summary_pages_leave_the_document_unread_in_the_registry(tmp_pat
     assert doc['demographic_summary_candidate'] is False and 'OCR' in doc['demographic_summary_reason']
     scan = coverage.nct_citation_scan([doc], [])
     assert scan['state'] == 'available_document_insufficient' and scan['detail']['n_pages_without_usable_text'] == 2
+
+
+def test_the_run_id_follows_from_the_published_content(family: dict[str, Any]) -> None:
+    """The id is a digest of what the family publishes (the producing code's digest included), not of
+    a hand-kept list of inputs; the contract recomputes it."""
+    assert contract.check(family) == []
+    assert family['run.json']['run_id'][-10:] == artifacts.run_identity(family)
+    # one published value changed: another id, and the old id is refused for the changed content
+    changed = copy.deepcopy(family)
+    changed['summary.json']['denominators'] = {**changed['summary.json'].get('denominators', {}), 'extra': {'n': 1}}
+    assert artifacts.run_identity(changed) != artifacts.run_identity(family)
+    changed['run.json']['files']['summary.json'] = artifacts.sha256(artifacts.dump(changed['summary.json']))
+    assert 'run.json run_id does not follow from the content of the family' in contract.check(changed)
+    # the same content built from other code: another id
+    other_code = copy.deepcopy(family)
+    other_code['run.json']['producer']['source_sha256'] = '1' * 64
+    assert artifacts.run_identity(other_code) != artifacts.run_identity(family)
+    # the build time is not part of it
+    later = copy.deepcopy(family)
+    later['run.json']['generated_at'] = '2030-01-01T00:00:00+00:00'
+    assert artifacts.run_identity(later) == artifacts.run_identity(family)
+    # a manifest without the code digest is refused
+    no_digest = copy.deepcopy(family)
+    del no_digest['run.json']['producer']['source_sha256']
+    assert 'run.json producer does not carry a digest of the producing code' in contract.check(no_digest)
+
+
+def test_the_code_digest_covers_every_producing_file(tmp_path: Path) -> None:
+    paths = build_device_links.producer_paths()
+    assert 'scripts/build_device_links.py' in paths and 'devices/links.py' in paths and 'devices/reviews.csv' in paths
+    assert not any('__pycache__' in p for p in paths)
+    for rel in paths:
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes((ROOT / rel).read_bytes())
+    before = build_device_links.source_digest(tmp_path)
+    assert before == build_device_links.source_digest(ROOT)
+    (tmp_path / 'devices' / 'reviews.csv').write_bytes((tmp_path / 'devices' / 'reviews.csv').read_bytes() + b'\n')
+    assert build_device_links.source_digest(tmp_path) != before

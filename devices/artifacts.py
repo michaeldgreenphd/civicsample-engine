@@ -273,13 +273,10 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
     }
     files['summary.json'] = summarise(rows, subs, fams, orgs, docs, links, pairs, studies, coverage, observations,
                                       reconciliation, name_search, number_results)
-    inputs_digest = sha256(dump([inventory_meta, curated_meta, openfda_meta, pages_meta, manifest_meta, registry_meta,
-                                 demographics_meta, extraction_version, METHOD_VERSION]))
-    run_id = f'devices-{generated_at[:10]}-{inputs_digest[:10]}'
     for name in FILES:
-        files[name] = {'schema_version': SCHEMA_VERSION, 'run_id': run_id, **files[name]}
+        files[name] = {'schema_version': SCHEMA_VERSION, **files[name]}
     files['run.json'] = {
-        'schema_version': SCHEMA_VERSION, 'run_id': run_id, 'generated_at': generated_at, 'producer': producer,
+        'schema_version': SCHEMA_VERSION, 'producer': producer,
         'method_version': METHOD_VERSION, 'scheduled': False,
         'counting_units': COUNTING_UNITS,
         'inputs': {'inventory': inventory_meta, 'curated': curated_meta},
@@ -300,9 +297,30 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
             'confidence': list(L.CONFIDENCE), 'timing_relations': list(L.TIMING_RELATIONS),
             'coverage_states': list(C.STATES), 'coverage_routes': list(C.ROUTES), 'nct_states': list(R.NCT_STATES)},
         'reviews': {'n_rows': len(reviews), 'n_applied': len(reviews) - len(orphaned), 'orphaned_link_ids': orphaned},
-        'files': {name: sha256(dump(files[name])) for name in FILES},
     }
+    # The id follows from what is published (run_identity): the inputs and sources, the producing
+    # commit and code digest are in the manifest, and what they gave is in the other files. A list
+    # of inputs would have to be kept complete by hand, and would give one id to builds made from
+    # different code.
+    run_id = f'devices-{generated_at[:10]}-{run_identity(files)}'
+    for name in FILES:
+        files[name] = {'schema_version': SCHEMA_VERSION, 'run_id': run_id,
+                       **{k: v for k, v in files[name].items() if k != 'schema_version'}}
+    files['run.json'] = {'schema_version': SCHEMA_VERSION, 'run_id': run_id, 'generated_at': generated_at,
+                         **{k: v for k, v in files['run.json'].items() if k != 'schema_version'}}
+    files['run.json']['files'] = {name: sha256(dump(files[name])) for name in FILES}
     return files
+
+
+def run_identity(files: dict[str, Any]) -> str:
+    """The ten hex digits that end a run id: a digest of everything the family publishes except the
+    id itself, the build time and the file checksums (which cover the id). Two families that differ
+    in any published value, the producing commit and code digest included, never share an id; the
+    same content gives the same id whenever it is built. `files` maps every file name, run.json
+    included, to its object, with or without `run_id` set."""
+    run = {k: v for k, v in files['run.json'].items() if k not in ('run_id', 'generated_at', 'files')}
+    content = {name: sha256(dump({k: v for k, v in files[name].items() if k != 'run_id'})) for name in sorted(FILES)}
+    return sha256(dump([run, content]))[:10]
 
 
 def _slim_document(d: dict[str, Any]) -> dict[str, Any]:

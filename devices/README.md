@@ -138,6 +138,13 @@ the registry's data timestamp, the text-extraction version, the curated files ap
 vocabularies and the sha256 of every other file. Every count in `summary.json` names its
 denominator and definition; the browser computes no aggregate.
 
+The run id ends in a digest of what the family publishes: `run.json` apart from the id, the build
+time and the file checksums (so the inputs, the sources, the producing commit and a digest of the
+producing code), and the content of every other file (`artifacts.run_identity`). Two builds that
+publish different content, or come from different code, never share an id; the same content from the
+same code gives the same id whenever it is built. `scripts/check_device_links_contract.py`
+recomputes it and refuses a family whose id does not follow from its content.
+
 ## Curated files (tracked; header only to start)
 
 | File | Purpose |

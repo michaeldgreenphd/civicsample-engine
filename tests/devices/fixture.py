@@ -283,7 +283,7 @@ def build_family(tmp: Path, acquired: dict[str, Any] | None = None, curated: Pat
         pages=a['frozen']['fda_pages'][0], pages_meta=a['frozen']['fda_pages'][1],
         manifest_lines=a['manifest'].lines, manifest_meta={'n_lines': len(a['manifest'].lines)}, cache=a['cache'],
         extraction_version=version, registry=a['frozen']['registry'][0], registry_meta=a['frozen']['registry'][1],
-        demographic_observations=observations, producer={'repository': 'fixture', 'commit': None},
+        demographic_observations=observations, producer={'repository': 'fixture', 'commit': None, 'source_sha256': '0' * 64},
         generated_at=GENERATED_AT)
 
 

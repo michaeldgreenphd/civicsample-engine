@@ -33,7 +33,7 @@ from devices import coverage as C
 from devices import documents as D
 from devices import inventory as I
 from devices import links as L
-from devices.artifacts import FILES, SCHEMA_VERSION, dump
+from devices.artifacts import FILES, SCHEMA_VERSION, dump, run_identity
 
 RUN_ID = re.compile(r'^devices-\d{4}-\d{2}-\d{2}-[0-9a-f]{10}$')
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
@@ -65,6 +65,11 @@ def check(files: dict[str, Any]) -> list[str]:
             p.append(f'{path}: from another run or schema')
     if set(FILES) - present:
         return p + [f'missing files: {sorted(set(FILES) - present)}']
+    if isinstance(run.get('run_id'), str) and run['run_id'][-10:] != run_identity(files):
+        p.append('run.json run_id does not follow from the content of the family')
+    prod = run.get('producer') or {}
+    if not HEX64.match(str(prod.get('source_sha256'))):
+        p.append('run.json producer does not carry a digest of the producing code')
     inv = ((run.get('inputs') or {}).get('inventory') or {})
     if not HEX64.match(str(inv.get('sha256'))):
         p.append('run.json does not pin the inventory by sha256')
