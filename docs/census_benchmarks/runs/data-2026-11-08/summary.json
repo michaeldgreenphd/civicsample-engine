@@ -84,6 +84,10 @@
   "general": 4751,
   "not_assessed": 1
  },
+ "reference_population_assessed": {
+  "n": 30760,
+  "definition": "Trials in the cohort whose registered eligibility could be read, so the fit of a general-population benchmark could be assessed. The rest are counted as not_assessed."
+ },
  "reference_caveats": {
   "enrols_patients_not_the_general_population": 22045,
   "site_in_a_referral_centre_zip": 11829,
@@ -210,9 +214,9 @@
    "category_cautions": {},
    "classified_share_computed": 29696,
    "geography_sensitivity": {
-    "False": 27173,
-    "True": 2540,
-    "None": 59
+    "False": 24755,
+    "None": 3888,
+    "True": 1129
    },
    "not_pooled_reasons": {
     "single_sex_by_eligibility": 3844,
@@ -221,34 +225,43 @@
     "eligible_ages_unreadable": 1
    },
    "benchmark_available_by_level": {
-    "zcta": 19509,
-    "county": 29713,
-    "cbsa": 29679,
-    "state": 29771,
-    "region": 29771,
-    "us": 29771
+    "zcta": 16995,
+    "county": 25884,
+    "cbsa": 25852,
+    "state": 25927,
+    "region": 25927,
+    "us": 25927
    },
    "benchmark_unavailable_reasons": {
     "zcta": {
      "zip_has_no_zcta_in_this_window": 3618,
      "zcta_tables_not_published_for_this_window": 4694,
+     "single_sex_by_eligibility": 2514,
      "no_eligible_residents_estimated": 1662,
      "resolved_place_is_outside_the_registered_state": 42,
      "no_zip_in_registration": 246
     },
     "county": {
+     "single_sex_by_eligibility": 3829,
      "resolved_place_is_outside_the_registered_state": 42,
      "no_zcta_polygon_and_no_coordinates": 16
     },
     "cbsa": {
+     "single_sex_by_eligibility": 3827,
      "resolved_place_is_outside_the_registered_state": 42,
      "outside_any_metro_or_micro_area": 33,
      "no_zcta_polygon_and_no_coordinates": 16,
      "area_not_in_this_window_file": 1
     },
-    "state": {},
-    "region": {},
-    "us": {}
+    "state": {
+     "single_sex_by_eligibility": 3844
+    },
+    "region": {
+     "single_sex_by_eligibility": 3844
+    },
+    "us": {
+     "single_sex_by_eligibility": 3844
+    }
    }
   }
  },
