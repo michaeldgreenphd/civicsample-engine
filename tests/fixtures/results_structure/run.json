@@ -130,10 +130,10 @@
   "Participant flow counts are for the first period only.",
   "The registry record is read as retrieved on the stated date; registry records change."
  ],
- "run_id": "results-structure-2026-11-14-1bf5f21f72",
+ "run_id": "results-structure-2026-11-14-e9bbc10ef2",
  "generated_at": "2026-11-14T12:00:00+00:00",
  "files": {
-  "records.json": "948c1be00a30ceb36a854ca884260b522974bb729ff53d846a0083d044b44fd8",
-  "summary.json": "28da0bcabd5fcfc5c3de7e40bd834fc0f4002d0d08c96cac87b4fa04e081dbb6"
+  "records.json": "671ab13104bd1c6f159d418b562078127341ae3a1317ddfe68d5592adec80794",
+  "summary.json": "ec80f8be2c287d2b8ecc00c34546255e57ffa932614586416dec69bd0a909d41"
  }
 }

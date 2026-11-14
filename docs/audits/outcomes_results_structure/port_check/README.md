@@ -76,6 +76,12 @@ listed so the comparison is not read as covering them.
   numbers (37 of them posted with a leading equals sign), 344 bounds such as
   `<0.001`, 353 with no p-value. Rule S1 itself is unchanged: a p-value counts
   when the string contains a digit.
+- **A second departure, in the number started.** With a STARTED milestone and
+  no flow group to sum over (none posted, or only one titled "Total"), the
+  audit's script summed over nothing and reported 0. The production module
+  records the number started as missing, with the reason `no_flow_groups`.
+  Neither the 2,000 audit records nor the frozen 2020 cohort archive has such
+  a record, so no compared figure is affected.
 - **One deliberate departure from the audit rule.** The audit's script labelled
   an `analysis_groupIds` signal with every dimension the measure's groups
   carry. The production module labels it with the dimensions the compared

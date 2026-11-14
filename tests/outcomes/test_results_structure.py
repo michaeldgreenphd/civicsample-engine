@@ -254,6 +254,17 @@ def test_baseline_population_records_absence_with_a_reason() -> None:
     assert RS.baseline_total({})['reason'] == 'no_denominator_row'
     assert RS.flow_started({})['reason'] == 'no_period'
     assert RS.flow_started(F.flow(started=('100', 'NA')))['reason'] == 'non_numeric_or_missing_numSubjects'
+    # A STARTED milestone with no flow group to sum over is missing, never a count of zero.
+    for no_groups in ({**F.flow(), 'groups': []}, {k: v for k, v in F.flow().items() if k != 'groups'},
+                      F.flow(titles=('Total',), started=('200',), completed=('185',))):
+        assert RS.flow_started(no_groups)['value'] is None and RS.flow_started(no_groups)['reason'] == 'no_flow_groups'
+    # ...and such a trial is counted where the summary counts a number started that cannot be formed
+    rec = record(F.study(1, results=F.results_section(participantFlowModule={**F.flow(), 'groups': []})))
+    assert rec['baseline_population']['started'] == {'value': None, 'reason': 'no_flow_groups', 'source_field': RS.flow_started({**F.flow(), 'groups': []})['source_field']}
+    assert rec['baseline_population']['relations']['total_vs_started'] == 'missing'
+    assert rec['modules']['participant_flow']['reason'] == 'no_groups'
+    # an explicit zero in every group is still a count of zero
+    assert RS.flow_started(F.flow(started=('0', '0'), completed=('0', '0')))['value'] == 0
     rec = record(F.study(1, enrollment=None, results=F.results_section(
         baselineCharacteristicsModule=F.baseline(population='Participants who received a dose.'))))
     bp = rec['baseline_population']

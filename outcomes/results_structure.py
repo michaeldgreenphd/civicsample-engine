@@ -515,6 +515,10 @@ def flow_started(fmod: dict[str, Any]) -> dict[str, Any]:
     ms = [m for m in periods[0].get('milestones') or [] if m.get('type') == 'STARTED']
     if not ms:
         return {'value': None, 'reason': 'no_STARTED_in_first_period', 'source_field': source}
+    if not groups:
+        # No flow group to sum over (none posted, or only one titled "Total"). Without this the sum
+        # below is over nothing and would publish 0 as a count that was read, where nothing was.
+        return {'value': None, 'reason': 'no_flow_groups', 'source_field': source}
     a = {x['groupId']: x.get('numSubjects') for x in ms[0].get('achievements') or []}
     vals = [a.get(g['id']) for g in groups]
     if not all(is_num(v) for v in vals):

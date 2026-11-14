@@ -506,7 +506,7 @@ def summarize(records: dict[str, Any], problems: dict[str, Any], scope: dict[str
          'definition': 'No participants denominator row, or a non-numeric count for a group. Recorded as missing, not zero.'},
         {'id': 'flow_started_not_formed', 'label': 'Number started cannot be formed',
          'n': n(posted, lambda r: bp(r).get('started', {}).get('value') is None), 'denominator': 'posted',
-         'definition': 'No first period, no STARTED milestone in it, or a non-numeric count for a group.'},
+         'definition': 'No first period, no STARTED milestone in it, no flow group to sum over, or a non-numeric count for a group. Recorded as missing, not zero.'},
         {'id': 'enrollment_not_registered', 'label': 'No registered enrolment count',
          'n': n(retrieved, lambda r: bp(r).get('enrollment', {}).get('value') is None), 'denominator': 'retrieved',
          'definition': 'protocolSection.designModule.enrollmentInfo.count is absent.'},
