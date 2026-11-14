@@ -1783,6 +1783,43 @@ def test_a_retrieved_document_whose_stored_file_is_damaged_is_fetched_again(tmp_
     assert len(calls) == 3
 
 
+
+@pytest.mark.parametrize('results', [[{'pma_number': 'P990001'}], [{'k_number': 'error'}], [{'k_number': 'K990009'}]])
+def test_an_openfda_entry_must_carry_a_number_the_request_asked_for(tmp_path: Path, results: list[Any]) -> None:
+    q = acquire.openfda_requests(['K990001', 'K990002'])[0]
+    assert not acquire.openfda_answer({'results': results}, q)
+    log = acquire.ResponseLog(tmp_path / 'openfda.jsonl')
+    acquire.fetch_openfda(['K990001', 'K990002'], log, lambda u, p: (200, {}, json.dumps({'results': results}).encode(), None),
+                          F.no_wait())
+    assert log.get(q['key'])['status'] == acquire.UNUSABLE_200
+    # the PMA endpoint answers under pma_number, for the base number of a supplement
+    pma = acquire.openfda_requests(['P990007/S002'])[0]
+    assert acquire.openfda_answer({'results': [{'pma_number': 'P990007', 'supplement_number': 'S002'}]}, pma)
+    assert not acquire.openfda_answer({'results': [{'k_number': 'P990007'}]}, pma)
+    assert acquire.openfda_answer({'results': [{'k_number': 'K990002'}]}, q)
+
+
+@pytest.mark.parametrize('body', [{'totalCount': -1, 'studies': []}, {'totalCount': 0, 'studies': [
+    {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'}}}]}])
+def test_a_search_count_below_the_studies_returned_is_no_answer(body: dict[str, Any]) -> None:
+    assert not registry.search_answer(body)
+
+
+def test_repairing_a_stored_file_counts_only_the_net_bytes_against_the_budget(tmp_path: Path) -> None:
+    manifest, store = acquire.Manifest(tmp_path / 'manifest.jsonl'), tmp_path / 'store'
+    urls = [f'{F.DOCS}/pdf99/K990001.pdf', f'{F.DOCS}/pdf99/K990002.pdf']
+    plan = [{'document_id': acquire.document_id(u.rsplit('/', 1)[1][:7], u), 'submission_number': u.rsplit('/', 1)[1][:7],
+             'url': u, 'official_label': None, 'discovery': 'url_pattern', 'scope': 'this_submission'} for u in urls]
+    acquire.fetch_documents(plan[:1], manifest, store, F.stub_get(), F.no_wait())
+    stored = store / f"{manifest.latest()[plan[0]['document_id']]['sha256']}.pdf"
+    size = stored.stat().st_size
+    stored.write_bytes(b'X' * size)                   # same size, damaged
+    second = len(F.stub_get()(urls[1], None)[2])
+    # a budget that fits the two files once: the repair adds nothing, so the second still fits
+    out = acquire.fetch_documents(plan, manifest, store, F.stub_get(), F.no_wait(), store_budget_bytes=size + second)
+    assert (out['retrieved'], out['skipped_disk_budget']) == (2, 0)
+
+
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])
 def test_a_200_without_a_usable_body_is_no_answer_and_is_asked_again(tmp_path: Path, body: bytes) -> None:
     """An empty, cut-off, non-JSON or null body under HTTP 200 is logged, not settled, and reads as

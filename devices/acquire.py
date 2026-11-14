@@ -300,22 +300,27 @@ def openfda_requests(submission_numbers: list[str]) -> list[dict[str, Any]]:
     return reqs
 
 
-def openfda_answer(body: Any) -> bool:
-    """A 200 from openFDA answers only with a list of results, each carrying its submission number
-    (k_number on the 510(k) endpoint, pma_number on the PMA one); no match is a 404, so a 200
-    without the list, or with an entry no number can be read from, is no answer about any number
-    it covers."""
+def openfda_answer(body: Any, request: dict[str, Any] | None = None) -> bool:
+    """A 200 from openFDA answers only with a list of results, each carrying its submission number;
+    no match is a 404, so a 200 without the list, or with an entry no number can be read from, is
+    no answer about any number it covers. Given the request, each entry must carry the endpoint's
+    own field (k_number on device/510k.json, pma_number on device/pma.json) holding one of the
+    numbers asked for: the search matches only those, so any other value is a malformed answer."""
     if not (isinstance(body, dict) and isinstance(body.get('results'), list)):
         return False
-    return all(isinstance(r, dict) and any(isinstance(r.get(f), str) and r[f].strip() for f in ('k_number', 'pma_number'))
-               for r in body['results'])
+    if request is None:
+        return all(isinstance(r, dict) and any(isinstance(r.get(f), str) and r[f].strip()
+                                               for f in ('k_number', 'pma_number')) for r in body['results'])
+    field = 'pma_number' if request['url'].endswith('pma.json') else 'k_number'
+    wanted = {n.split('/')[0] for n in request['numbers']}
+    return all(isinstance(r, dict) and r.get(field) in wanted for r in body['results'])
 
 
 def fetch_openfda(submission_numbers: list[str], log: ResponseLog, get: Get, throttle: Throttle) -> dict[str, int]:
     done = failed = 0
     for q in openfda_requests(submission_numbers):
         rec = logged_json(log, get, throttle, q['key'], q['url'], q['params'], tag={'numbers': q['numbers']},
-                          transform=_strip_openfda, valid=openfda_answer)
+                          transform=_strip_openfda, valid=lambda body, q=q: openfda_answer(body, q))
         done, failed = done + (rec is not None), failed + (rec is None)
     return {'requests_answered': done, 'requests_without_answer': failed}
 
@@ -345,7 +350,7 @@ def openfda_by_submission(records: dict[str, dict[str, Any]], submission_numbers
             if rec['status'] not in (200, 404):
                 out[sn] = {'state': 'error', 'reason': f"openFDA answered HTTP {rec['status']}", 'record': None}
                 continue
-            if rec['status'] == 200 and not openfda_answer(rec.get('body')):
+            if rec['status'] == 200 and not openfda_answer(rec.get('body'), q):
                 # Logged before answers were checked for shape: still no answer about this number.
                 out[sn] = {'state': 'error', 'reason': 'openFDA answered HTTP 200 without a list of results',
                            'record': None}
@@ -693,10 +698,12 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
             target = store / f'{digest}.pdf'
             if store_problem(store, digest, len(body)):
                 # Absent, or held damaged (truncated, replaced): the fetched bytes are written.
+                # Only the bytes this adds to the store count against the budget: the store is
+                # addressed by content, so a second address serving a file held adds nothing, and
+                # a damaged file being replaced is already in the tally, so only the net change counts.
+                before = target.stat().st_size if target.is_file() else 0
                 write_atomic(target, body)
-                # Only bytes newly stored count against the budget: the store is addressed by
-                # content, so a second address serving the same file adds nothing to it.
-                held += len(body)
+                held += len(body) - before
             line['outcome'], line['sha256'] = 'retrieved', digest
         manifest.append(line)
         latest[item['document_id']] = line

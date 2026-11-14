@@ -97,12 +97,14 @@ def version_answer(body: Any) -> bool:
 
 def search_answer(body: Any) -> bool:
     """A 200 from /studies (a search) answers only with an integer count of the records matched,
-    and a list of studies when it returns any, each stating its own id; an error envelope, or a
-    study the reader would have to drop, is no answer, and is asked again."""
+    no smaller than the studies returned, and a list of studies when it returns any, each stating
+    its own id; an error envelope, an impossible count, or a study the reader would have to drop,
+    is no answer, and is asked again."""
     if not isinstance(body, dict):
         return False
     total, studies = body.get('totalCount'), body.get('studies', [])
     return (isinstance(total, int) and not isinstance(total, bool) and isinstance(studies, list)
+            and total >= 0 and total >= len(studies)        # a count below what came back is no count
             and all(study_answer(st) for st in studies))
 
 
