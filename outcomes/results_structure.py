@@ -790,7 +790,9 @@ def detect_measure(m: dict[str, Any]) -> list[dict[str, Any]]:
         title_of = {g['id']: g.get('title') or '' for g in groups}
         desc_of = {g['id']: g.get('description') or '' for g in groups}
         for j, a in enumerate(m.get('analyses') or []):
-            ids = a.get('groupIds') or []
+            # The compared groups are a set: a group listed twice is one group, in what is shown
+            # and in the id, so a redundant reference added or removed does not move the id.
+            ids = list(dict.fromkeys(a.get('groupIds') or []))
             ref = [by_id.get(i, '') for i in ids]
             # Only the dimensions the compared groups differ on. The audit's script labelled this
             # signal with every dimension the measure's groups carry, so an analysis of "Women age 18"

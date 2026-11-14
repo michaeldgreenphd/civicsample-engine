@@ -647,3 +647,12 @@ def test_an_analysis_that_repeats_one_group_is_not_between_arm() -> None:
     assert facts(('OG000', 'OG001'))['between_arm'] is True
     same = facts(('OG000', 'OG000'))
     assert same['usable'] is True and same['between_arm'] is False
+
+
+def test_an_analysis_signal_lists_a_repeated_group_once_and_keeps_its_id() -> None:
+    def signal(group_ids: tuple[str, ...]) -> dict:
+        m = F.measure(titles=('Women', 'Men'), analyses=[F.analysis(group_ids)])
+        (s,) = [s for s in RS.subgroup_signals('NCT99000001', [m]) if s['field'] == 'analysis_groupIds']
+        return s
+    once, twice = signal(('OG000', 'OG001')), signal(('OG000', 'OG001', 'OG001'))
+    assert twice['signal_id'] == once['signal_id'] and twice['matched_text'] == once['matched_text'] == ['Women', 'Men']
