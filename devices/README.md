@@ -173,6 +173,38 @@ holds no document text in memory. Needs `pypdf` (listed in `devices/requirements
 addition to the runtime requirements. The 2026-11-13/14 run made about 6,200 requests and holds
 1.8 GB of documents.
 
+## Site export
+
+```bash
+python scripts/export_device_links_site.py build/devices ../clinical-trial-populations/data/devices
+```
+
+`scripts/export_device_links_site.py` cuts a build down to the seven files the site's AI Devices
+tab reads (`device_links.js` there): `run.json`, `summary.json`, `submissions.json`,
+`families.json`, `evidence.json`, `evidence_set_aside.json` and `documents.json`, site schema 1.
+It runs by hand, makes no network call and commits nothing; a person commits the result to the
+site repository.
+
+- **A selection, not a second count.** `summary.json` is the build's with only the run id
+  changed. The per-row tallies it adds (evidence records by kind, documents held) are breakdowns
+  that must add up to the build's own counts, or the export stops.
+- **The build is checked first.** Every file is compared with the sha256 in the build's
+  `run.json`; a build that was edited, cut short or mixed with another is refused.
+- **The run id ends with a digest of the build's files**, so two builds whose bytes differ never
+  share an id even when their inputs and commit are the same. The build's own id is kept as
+  `build_run_id`.
+- **The output directory is replaced as a whole**, staged beside it and moved into place. A
+  directory holding any other file is refused, so a mistyped path cannot delete another dataset.
+- **What stays with the build:** `organizations.json`, `studies.json` and `coverage.json` (the
+  fields the tab shows are copied onto the rows and records), `review_queue.json`, and
+  `demographics.json`, which holds model outputs and is shown only as counts.
+- Records rejected by rule go to `evidence_set_aside.json`, which the site loads only on request.
+  Repeated text (coverage reasons, confidence and validation reasons) is written once per file as
+  a table the rows index; the script's docstring gives the layout.
+
+The 2026-11-14 build exports to 5.7 MB. `tests/devices/site_fixture.py` writes the fictional
+family the site's tests read, through the same build and export.
+
 ## Which checks are which
 
 - **Engineering validation**: `tests/devices/` (offline, fictional records), the contract
@@ -185,6 +217,7 @@ addition to the runtime requirements. The 2026-11-13/14 run made about 6,200 req
 ## Compatibility
 
 New files only: `devices/`, `scripts/build_device_links.py`,
-`scripts/check_device_links_contract.py`, `tests/devices/`. No existing module, workflow,
-published file or cohort definition changes. Nothing is written to the site repository; the
-artifacts are new files a later site change may read.
+`scripts/check_device_links_contract.py`, `scripts/export_device_links_site.py`, `tests/devices/`. No existing module, workflow,
+published file or cohort definition changes. The build writes nothing to the site repository.
+`scripts/export_device_links_site.py` writes only the directory it is given, by hand; the site's
+`data/devices/` is a new folder that no weekly job reads, writes or prunes.
