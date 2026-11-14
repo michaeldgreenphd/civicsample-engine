@@ -10,6 +10,13 @@
   records.json   one record per requested NCT id (outcomes/results_structure.py), including the
                  trials the registry did not return and the records that could not be parsed
 
+Scope. The archive holds every record that was fetched (the frame). A build may cover fewer: the
+requested list names the trials it covers, and an exclude list names the frame records it leaves
+out, with one stated reason. run.json and summary.json both carry the three counts (frame,
+included, excluded) and the reason, so a reader never has to work out why a count's denominator
+is smaller than the number of records fetched. A frame record that is neither requested nor
+excluded stops the build when an exclude list is given.
+
 Built by hand with scripts/build_results_structure.py; no workflow calls it. The conventions are
 those of outcomes/artifacts.py: canonical bytes from `dump`, a manifest that lists each file's
 sha256, a producer-side `check` run before anything is written, and an atomic swap on write.
@@ -231,14 +238,48 @@ def iter_archive(path: Path) -> Iterator[Any]:
 
 # ---------------------------------------------------------------- records, summary, manifest
 
+def build_scope(frame: list[str], requested: list[str], excluded: list[str] | None = None,
+                reason: str | None = None) -> dict[str, Any]:
+    """Which of the fetched records a build covers: the frame (every id the archive was fetched
+    for), the included trials (the requested list, one record each) and the excluded frame records
+    with the one reason they are left out.
+
+    With an exclude list, every frame id must be either requested or excluded, an id may not be
+    both, an excluded id must be in the frame, and the reason must be stated; anything else raises,
+    so no fetched record leaves the build without a recorded reason. A requested id that is not in
+    the frame is allowed: it has no record in the archive, and build_records gives it a
+    not_yet_processed record with that reason. Without an exclude list nothing is excluded, and an
+    archive record outside the requested list is reported by build_records as unrequested."""
+    frame_set, want, out = set(frame), set(requested), sorted(excluded or [])
+    if excluded is not None:
+        if not (reason or '').strip():
+            raise BuildError('an exclude list needs a stated reason')
+        if len(set(out)) != len(out):
+            raise BuildError('repeated ids in the exclude list')
+        if want & set(out):
+            raise BuildError(f'ids both requested and excluded: {sorted(want & set(out))[:5]}')
+        if set(out) - frame_set:
+            raise BuildError(f'excluded ids that are not in the frame: {sorted(set(out) - frame_set)[:5]}')
+        left = frame_set - want - set(out)
+        if left:
+            raise BuildError(f'{len(left)} frame records are neither requested nor excluded: {sorted(left)[:5]}')
+    return {'frame': {'n': len(frame_set), 'definition': 'Registry records the archive was fetched for.'},
+            'included': {'n': len(want), 'definition': 'Trials this build covers: the requested list, one record each in records.json.'},
+            'excluded': {'n': len(out), 'reason': reason.strip() if out and reason else None, 'nct_ids': out,
+                         'definition': 'Frame records left out of this build. They have no record in records.json and are in no count.'}}
+
+
 def build_records(studies: Iterable[Any], requested: list[str], not_retrieved: dict[str, str],
-                  reviews: dict[str, dict[tuple[str, str], dict[str, str]]]) -> tuple[dict[str, Any], dict[str, Any]]:
+                  reviews: dict[str, dict[tuple[str, str], dict[str, str]]],
+                  excluded: frozenset[str] = frozenset()) -> tuple[dict[str, Any], dict[str, Any]]:
     """One record per requested NCT id. Returns (records by id, problems).
 
     A requested id with no record in the archive gets a not-retrieved record (its results were not
     read). An archive line that is not JSON, or has no NCT id, cannot be keyed to a trial and is
     reported in problems['unkeyed_lines']; the trial it was for then shows as not retrieved with
-    that reason. A record for an id that was not requested is reported and left out. Reviews of
+    that reason. A record for an id that was not requested is reported and left out; a record
+    whose id is in `excluded` (build_scope) is left out without a report, because the scope
+    already states it and its reason. Reviews of
     trials outside the requested list, or of signals no current record has, are reported in
     problems['reviews_not_matched'] and applied to nothing."""
     records: dict[str, Any] = {}
@@ -252,6 +293,8 @@ def build_records(studies: Iterable[Any], requested: list[str], not_retrieved: d
         n = rec['nct_id']
         if n is None:
             problems['unkeyed_lines'].append({'line': i, 'reason': 'no NCT id in protocolSection.identificationModule'})
+        elif n in excluded:
+            continue
         elif n not in wanted:
             problems['unrequested_records'].append(n)
         elif n in records:
@@ -291,7 +334,21 @@ STATE_DEFINITIONS = {
 }
 
 
-def summarize(records: dict[str, Any], problems: dict[str, Any]) -> dict[str, Any]:
+def scope_table(scope: dict[str, Any]) -> dict[str, Any]:
+    """The scope as the three rows the page states: how many records were fetched, how many
+    trials this build covers, and how many frame records are left out and why."""
+    ex = scope['excluded']
+    return {'definition': 'Which of the fetched registry records this build covers. Every count in this file is over the included trials.',
+            'rows': [
+                {'id': 'frame', 'label': 'Registry records fetched (the frame)', 'n': scope['frame']['n'],
+                 'definition': scope['frame']['definition']},
+                {'id': 'included', 'label': 'Trials in this build', 'n': scope['included']['n'],
+                 'definition': scope['included']['definition']},
+                {'id': 'excluded', 'label': 'Frame records left out', 'n': ex['n'], 'reason': ex['reason'],
+                 'definition': ex['definition']}]}
+
+
+def summarize(records: dict[str, Any], problems: dict[str, Any], scope: dict[str, Any]) -> dict[str, Any]:
     """Every count the page shows, with its numerator, a named denominator and a definition, and
     four separate tables: retrieval failures, parsing failures, missing data, negative findings.
 
@@ -308,7 +365,7 @@ def summarize(records: dict[str, Any], problems: dict[str, Any]) -> dict[str, An
         return sum(1 for r in pool if pred(r))
 
     denominators = {
-        'requested': {'n': len(recs), 'definition': 'NCT ids in the requested list (the frame).'},
+        'requested': {'n': len(recs), 'definition': 'Trials this build covers (the requested list). See scope for the records fetched and those left out.'},
         'retrieved': {'n': len(retrieved), 'definition': 'Requested trials whose record the registry returned.'},
         'posted': {'n': len(posted), 'definition': 'Retrieved trials with posted results (hasResults true and a results section).'},
         'C1': {'n': len(c1), 'definition': 'Posted-results trials that are interventional with two or more groups on a posted primary measure.'},
@@ -425,6 +482,7 @@ def summarize(records: dict[str, Any], problems: dict[str, Any]) -> dict[str, An
          'definition': 'The module is present with no serious-event row. With numeric totals this is a report of none; without them it is not.'},
     ]
     return {
+        'scope': scope_table(scope),
         'denominators': denominators, 'metrics': metrics, 'subgroup_states': states, 'signals': signals,
         'tables': {
             # n is published with each table so the page never counts rows itself.
@@ -458,15 +516,18 @@ LIMITATIONS = (
 
 
 def build(records: dict[str, Any], problems: dict[str, Any], acquisition: dict[str, Any], producer: dict[str, Any],
-          reviews_file: dict[str, Any], parameters: dict[str, Any], generated_at: str | None = None) -> dict[str, Any]:
+          reviews_file: dict[str, Any], parameters: dict[str, Any], scope: dict[str, Any],
+          generated_at: str | None = None) -> dict[str, Any]:
     """{file name: object} for the family. Pure apart from the clock when generated_at is not given."""
     retrieved_at = str(acquisition.get('retrieved_at') or '')[:10]
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', retrieved_at):
         raise BuildError('the acquisition record has no retrieval date')
+    # The same archive can be built for different cohorts, so the scope is part of the run's identity.
     run_id = 'results-structure-{}-{}'.format(retrieved_at, sha256(dump(
-        [acquisition.get('sha256_uncompressed'), reviews_file.get('sha256'), producer.get('commit'), RS.METHOD_VERSION]))[:10])
+        [acquisition.get('sha256_uncompressed'), reviews_file.get('sha256'), producer.get('commit'), RS.METHOD_VERSION,
+         sorted(records), scope['excluded']['nct_ids'], scope['excluded']['reason']]))[:10])
     files: dict[str, Any] = {
-        'summary.json': summarize(records, problems),
+        'summary.json': summarize(records, problems, scope),
         'records.json': {'records': records},
     }
     for obj in files.values():
@@ -486,6 +547,8 @@ def build(records: dict[str, Any], problems: dict[str, Any], acquisition: dict[s
         'retrieval_window': {'from': acquisition.get('retrieved_from'), 'to': acquisition.get('retrieved_to')},
         'registry': {'api_version': acquisition.get('api_version'), 'data_timestamp': acquisition.get('data_timestamp')},
         'parameters': parameters,
+        # frame, included and excluded, with the reason for the excluded records (build_scope).
+        'scope': scope,
         'reviews': reviews_file,
         'n_records': len(records),
         'fields_inspected': list(RS.FIELDS_INSPECTED),
@@ -565,10 +628,21 @@ def check(files: dict[str, Any]) -> list[str]:
         if r['results_status'] == 'unknown' and r['parse']['status'] != 'failed':
             p.append(f'{n}: unknown results status without a recorded parsing failure')
     # The published summary must be the one these records give: recount it.
+    scope = run.get('scope')
+    if not isinstance(scope, dict) or set(scope) != {'frame', 'included', 'excluded'}:
+        p.append('run.json has no scope (frame, included, excluded)')
+        return p
+    ex = scope['excluded']
+    if scope['included']['n'] != len(records):
+        p.append('scope: the included count is not the number of records')
+    if ex['n'] != len(ex['nct_ids']) or (ex['n'] > 0 and not ex['reason']):
+        p.append('scope: excluded records need their ids and a stated reason')
+    if set(ex['nct_ids']) & set(records):
+        p.append('scope: an excluded id has a record')
     recount = summarize(records, {'unkeyed_lines': summary['tables']['retrieval_failures'].get('unkeyed_archive_lines', []),
                                   'unrequested_records': summary['tables']['retrieval_failures'].get('unrequested_records', []),
-                                  'reviews_not_matched': (summary.get('reviews') or {}).get('not_matched', [])})
-    for key in ('denominators', 'metrics', 'subgroup_states', 'signals', 'tables'):
+                                  'reviews_not_matched': (summary.get('reviews') or {}).get('not_matched', [])}, scope)
+    for key in ('scope', 'denominators', 'metrics', 'subgroup_states', 'signals', 'tables'):
         if recount[key] != summary.get(key):
             p.append(f'summary.json {key} is not what records.json gives')
     den = summary.get('denominators') or {}

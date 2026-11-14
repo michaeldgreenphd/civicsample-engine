@@ -119,7 +119,8 @@ def results_section(**kw: Any) -> dict[str, Any]:
 
 
 def studies() -> list[dict[str, Any]]:
-    """The fixture cohort. NCT99000003 is requested but deliberately not here (a retrieval failure)."""
+    """The fixture frame. NCT99000003 is requested but deliberately not here (a retrieval failure);
+    NCT99000009 is here but excluded from the build (EXCLUDED), so it must have no record."""
     return [
         # 1: every rule passes; randomised with two arms (C2); a between-arm analysis whose p-value is a
         #    bound; class titles by sex and by age band (two level signals, reviewed in reviews_csv).
@@ -150,9 +151,15 @@ def studies() -> list[dict[str, Any]]:
                 measure('Fictional exposure', 'SECONDARY', titles=('Zorbatinib',), analysed=('12',), values=('3.3',),
                         description='Measured in the subgroup of participants who gave a week 4 sample.')]},
             adverseEventsModule=adverse(('Zorbatinib',), ('12',)))),
+        # 9: a complete record that the build leaves out, with a stated reason.
+        study(9),
     ]
 
 
+EXCLUDED = ['NCT99000009']
+EXCLUDE_REASON = 'fictional: excluded by the cohort\'s eligibility rules'
+FRAME = ['NCT99000001', 'NCT99000002', 'NCT99000003', 'NCT99000004', 'NCT99000005', 'NCT99000006', 'NCT99000007',
+         'NCT99000009']
 REQUESTED = ['NCT99000001', 'NCT99000002', 'NCT99000003', 'NCT99000004', 'NCT99000005', 'NCT99000006', 'NCT99000007']
 
 

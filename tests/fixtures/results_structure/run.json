@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "run_id": "results-structure-2026-11-14-94fb5d1ce3",
+ "run_id": "results-structure-2026-11-14-66f2b1f495",
  "generated_at": "2026-11-14T12:00:00+00:00",
  "producer": {
   "repository": "civicsample-engine",
@@ -32,15 +32,15 @@
   "retrieved_at": "2026-11-14T12:00:00+00:00",
   "api_version": "fictional",
   "data_timestamp": "2026-11-14T10:00:00",
-  "n_requested": 7,
-  "n_records": 6,
+  "n_requested": 8,
+  "n_records": 7,
   "n_requests": 0,
   "n_studies_requests": 0,
   "n_retries": 0,
   "n_failed_requests": 0,
   "min_seconds_between_requests": 0.5,
-  "requested_ids_sha256": "6c38573b1ad1fcbf43ae3d3c01a621f89fa41345e39553a8d0da10a1ab38641b",
-  "sha256_uncompressed": "e343a999cc978128647df0b85bae37cd6c58ed54686ef4ba36311e67b06fdc1c",
+  "requested_ids_sha256": "66ae80d295390a13378ec7acdb4ce5be65880a8a7cdfd815a38883280085bc81",
+  "sha256_uncompressed": "7555554b288ea9c990073b3fd86ebcdd2d2cd4cddf15fd02fcd3210647f15b9d",
   "archive": null
  },
  "retrieval_window": {
@@ -53,7 +53,26 @@
  },
  "parameters": {
   "source": "fixture",
-  "n_requested": 7
+  "n_requested": 7,
+  "exclude_reason": "fictional: excluded by the cohort's eligibility rules"
+ },
+ "scope": {
+  "frame": {
+   "n": 8,
+   "definition": "Registry records the archive was fetched for."
+  },
+  "included": {
+   "n": 7,
+   "definition": "Trials this build covers: the requested list, one record each in records.json."
+  },
+  "excluded": {
+   "n": 1,
+   "reason": "fictional: excluded by the cohort's eligibility rules",
+   "nct_ids": [
+    "NCT99000009"
+   ],
+   "definition": "Frame records left out of this build. They have no record in records.json and are in no count."
+  }
  },
  "reviews": {
   "file": "fictional review rows",
@@ -114,7 +133,7 @@
   "The registry record is read as retrieved on the stated date; registry records change."
  ],
  "files": {
-  "records.json": "51cb8a5b2be877a4d4b22fe67c9a4478e89c4bae92cccf212902b6d53b394648",
-  "summary.json": "bc8eece4e7309782c1b3486cba862c61f8548ef3a15781db64ee9fd0ea0c9b4d"
+  "records.json": "d5e147f85790ba8efc79bf68feecfbcb28b45fe37ce79fe1b3db2ac04a88c78c",
+  "summary.json": "3161690aa647df9911b25a5789ac9362b0316c80dd72790533dac3b207b46dcc"
  }
 }

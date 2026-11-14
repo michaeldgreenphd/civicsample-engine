@@ -24,7 +24,8 @@ from outcomes import results_structure_build as B  # noqa: E402
 
 
 def family() -> dict[str, object]:
-    """The fixture family: six fictional records and one requested trial that was not retrieved."""
+    """The fixture family: a frame of eight ids, of which seven are requested (six retrieved, one
+    not) and one is excluded with a stated reason."""
     studies = F.studies()
     raw = acquire.encode(studies)
     text = F.reviews_csv()
@@ -32,17 +33,20 @@ def family() -> dict[str, object]:
         path = Path(d) / 'subgroup_reviews.csv'
         path.write_text(text)
         reviews = RS.load_reviews(path)
-    records, problems = B.build_records(studies, F.REQUESTED, {'NCT99000003': 'not returned by the registry for filter.ids'}, reviews)
+    scope = B.build_scope(F.FRAME, F.REQUESTED, F.EXCLUDED, F.EXCLUDE_REASON)
+    records, problems = B.build_records(studies, F.REQUESTED, {'NCT99000003': 'not returned by the registry for filter.ids'},
+                                        reviews, frozenset(F.EXCLUDED))
     acquisition = {'source': 'fictional', 'endpoint': None, 'request': 'fictional records, no request made',
                    'retrieved_from': F.GENERATED_AT, 'retrieved_to': F.GENERATED_AT, 'retrieved_at': F.GENERATED_AT,
                    'api_version': 'fictional', 'data_timestamp': '2026-11-14T10:00:00',
-                   'n_requested': len(F.REQUESTED), 'n_records': len(studies), 'n_requests': 0, 'n_studies_requests': 0,
+                   'n_requested': len(F.FRAME), 'n_records': len(studies), 'n_requests': 0, 'n_studies_requests': 0,
                    'n_retries': 0, 'n_failed_requests': 0, 'min_seconds_between_requests': B.MIN_DELAY,
-                   'requested_ids_sha256': hashlib.sha256('\n'.join(F.REQUESTED).encode()).hexdigest(),
+                   'requested_ids_sha256': hashlib.sha256('\n'.join(F.FRAME).encode()).hexdigest(),
                    'sha256_uncompressed': hashlib.sha256(raw).hexdigest(), 'archive': None}
     files = B.build(records, problems, acquisition, {'repository': 'civicsample-engine', 'commit': 'fixture'},
                     {'file': 'fictional review rows', 'sha256': hashlib.sha256(text.encode()).hexdigest(), 'n_rows': 2},
-                    {'source': 'fixture', 'n_requested': len(F.REQUESTED)}, generated_at=F.GENERATED_AT)
+                    {'source': 'fixture', 'n_requested': len(F.REQUESTED), 'exclude_reason': F.EXCLUDE_REASON},
+                    scope, generated_at=F.GENERATED_AT)
     problems_found = B.check(files)
     if problems_found:
         raise SystemExit('\n'.join(problems_found))

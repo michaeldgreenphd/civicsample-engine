@@ -12,6 +12,11 @@
                            jsonl.gz with its sha256
   --archive PATH           reuse a frozen archive (its .meta.json must match its bytes); the
                            requested ids are the ones its metadata lists, unless --nct-list is given
+  --exclude-list FILE      with --archive and --nct-list: the frame records this build leaves out.
+                           Every record the archive was fetched for must then be in one list or
+                           the other. Needs --exclude-reason.
+  --exclude-reason TEXT    the one reason those records are left out; written to run.json and
+                           summary.json with the frame, included and excluded counts
   --reviews PATH           human review records; default outcomes/subgroup_reviews.csv
   --out PATH               where to write run.json, summary.json and records.json; default
                            build/results_structure
@@ -52,9 +57,15 @@ def main(argv: list[str] | None = None) -> int:
     src.add_argument('--fetch', action='store_true')
     src.add_argument('--archive', type=Path)
     ap.add_argument('--nct-list', type=Path)
+    ap.add_argument('--exclude-list', type=Path)
+    ap.add_argument('--exclude-reason')
     ap.add_argument('--reviews', type=Path, default=DEFAULT_REVIEWS)
     ap.add_argument('--out', type=Path, default=ROOT / 'build' / 'results_structure')
     args = ap.parse_args(argv)
+    if (args.exclude_list is None) != (args.exclude_reason is None):
+        ap.error('--exclude-list and --exclude-reason go together')
+    if args.exclude_list and not (args.archive and args.nct_list):
+        ap.error('--exclude-list needs --archive and --nct-list: a fetch asks only for the ids it will build')
     try:
         # The review file is read before any fetch, so a refused file costs no request.
         reviews = RS.load_reviews(args.reviews)
@@ -79,13 +90,20 @@ def main(argv: list[str] | None = None) -> int:
             if not requested:
                 raise B.BuildError('the archive metadata lists no requested ids; give --nct-list')
         not_retrieved = {x['nct_id']: x['reason'] for x in meta.get('not_retrieved') or []}
-        records, problems = B.build_records(B.iter_archive(path), requested, not_retrieved, reviews)
+        excluded = B.read_nct_list(args.exclude_list) if args.exclude_list else None
+        # The frame is every id the archive was fetched for, whether or not the registry returned it.
+        scope = B.build_scope(list(meta.get('requested_ids') or requested), requested, excluded, args.exclude_reason)
+        records, problems = B.build_records(B.iter_archive(path), requested, not_retrieved, reviews,
+                                            frozenset(excluded or ()))
         parameters = {'source': 'fetch' if args.fetch else 'archive',
                       'nct_list': args.nct_list.name if args.nct_list else None,
                       'nct_list_sha256': hashlib.sha256(args.nct_list.read_bytes()).hexdigest() if args.nct_list else None,
-                      'n_requested': len(requested), 'batch_size': B.BATCH,
+                      'n_requested': len(requested),
+                      'exclude_list': args.exclude_list.name if args.exclude_list else None,
+                      'exclude_list_sha256': hashlib.sha256(args.exclude_list.read_bytes()).hexdigest() if args.exclude_list else None,
+                      'exclude_reason': args.exclude_reason, 'batch_size': B.BATCH,
                       'min_seconds_between_requests': B.MIN_DELAY}
-        files = B.build(records, problems, meta, producer(), reviews_file, parameters)
+        files = B.build(records, problems, meta, producer(), reviews_file, parameters, scope)
     except (B.BuildError, RS.ReviewError) as exc:
         print(f'refused: {exc}', file=sys.stderr)
         return 1
@@ -95,6 +113,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     B.write(files, args.out)
     den = files['summary.json']['denominators']
+    sc = files['run.json']['scope']
+    print(f"scope: frame {sc['frame']['n']}, included {sc['included']['n']}, excluded {sc['excluded']['n']}")
     print(f"{files['run.json']['run_id']}: {den['requested']['n']} requested, {den['retrieved']['n']} retrieved, "
           f"{den['posted']['n']} with posted results; {files['summary.json']['signals']['n_signals']} signals -> {args.out}")
     return 0

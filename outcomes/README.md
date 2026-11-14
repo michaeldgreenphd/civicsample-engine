@@ -143,6 +143,22 @@ time, at least 0.5 s apart) and freezes them under `build/results_structure_cach
 byte-stable `jsonl.gz` with its sha256. `--archive` reuses one. Run records are kept under
 `docs/results_structure/runs/`.
 
+A build can cover fewer trials than the archive holds, for example the eligible cohort of a
+frame that was fetched whole:
+
+```bash
+python scripts/build_results_structure.py --archive build/results_structure_cache/NAME.jsonl.gz \
+    --nct-list eligible_ids.txt --exclude-list excluded_ids.txt \
+    --exclude-reason "excluded by the outcomes cohort's eligibility rules (see data/outcomes/index.json excluded)" \
+    --out ../clinical-trial-populations/data/results_structure
+```
+
+Every id the archive was fetched for must then be in one list or the other, or the build stops.
+`run.json` (`scope`) and `summary.json` (`scope`) state the frame size, the number of trials
+included, and the number excluded with the reason; excluded records have no record in
+`records.json` and are in no count. A listed trial that the archive does not hold gets a
+`not_yet_processed` record with the reason, never an empty result.
+
 ### Compatibility
 
 New files only: `results_structure.py`, `results_structure_build.py`, `subgroup_reviews.csv`,
