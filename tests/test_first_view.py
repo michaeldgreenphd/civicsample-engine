@@ -283,6 +283,32 @@ def test_the_generator_writes_the_block_last_with_the_summarys_stamps(counted: t
     assert block["not_counted"] == {"no_results_date": 3, "results_year_not_from_2009": 6, "not_interventional": 5}
 
 
+def test_the_race_distribution_carries_the_ethnicity_rows_part_of_unknown(tmp_path: pathlib.Path) -> None:
+    """raceDistribution.unknown_ethnicity_only sums race.unknown_ethnicity_only
+    over the trials that report race. It is a part of unknown_not_reported,
+    which keeps its whole sum; a record without the field adds 0."""
+    records = [r for r in _records(40) if isinstance(r.get("race"), dict)
+               and isinstance(r["race"].get("omb_totals"), dict)][:12]
+    assert len(records) == 12
+    parts = [5, 0, 3, 0, 7, 0, 0, 2, 0, 0, 0, 0]
+    for r, part in zip(records, parts):
+        r["race"] = dict(r["race"], omb_totals=dict(r["race"]["omb_totals"]))
+        if part:
+            r["race"]["unknown_ethnicity_only"] = part
+            r["race"]["omb_totals"]["unknown_not_reported"] = (r["race"]["omb_totals"].get("unknown_not_reported") or 0) + part
+        else:
+            r["race"].pop("unknown_ethnicity_only", None)
+    for r in records:
+        r["race"]["reported"] = True
+    records[4]["race"]["reported"] = False            # a trial that does not report race adds nothing
+    _, summary_file = _case(tmp_path, records)
+    dist = json.loads(summary_file.read_text())["raceDistribution"]
+    reporting = [r for r in records if r["race"].get("reported")]
+    assert dist["unknown_ethnicity_only"] == sum(r["race"].get("unknown_ethnicity_only", 0) for r in reporting) == 10
+    assert dist["unknown_not_reported"] == sum(r["race"]["omb_totals"].get("unknown_not_reported") or 0 for r in reporting)
+    assert dist["unknown_ethnicity_only"] <= dist["unknown_not_reported"]
+
+
 def test_the_generator_stops_on_a_results_date_the_site_cannot_read(tmp_path: pathlib.Path) -> None:
     records = _records(4)
     records[2]["results_date"] = 20200301
