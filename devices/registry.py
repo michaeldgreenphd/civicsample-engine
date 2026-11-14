@@ -88,6 +88,14 @@ def fetch_version(log: A.ResponseLog, get: A.Get, throttle: A.Throttle, day: str
     return A.logged_json(log, get, throttle, f'ctgov/version/{day}', f'{API}/version')
 
 
+def study_answer(body: Any) -> bool:
+    """A 200 from /studies/{id} answers only with a study record that states its own id; an
+    error envelope or an object without the id is no answer, and is asked again."""
+    nct = ((((body or {}).get('protocolSection') or {}).get('identificationModule') or {}).get('nctId')
+           if isinstance(body, dict) else None)
+    return isinstance(nct, str) and bool(nct)
+
+
 def fetch_studies(nct_ids: list[str], log: A.ResponseLog, get: A.Get, throttle: A.Throttle) -> dict[str, int]:
     """One request per id to /studies/{id}: 200 with the record, or 404. Asked once."""
     answered = unanswered = 0
@@ -95,7 +103,7 @@ def fetch_studies(nct_ids: list[str], log: A.ResponseLog, get: A.Get, throttle: 
         if not NCT.match(nct):
             raise ValueError(f'{nct!r} is not an NCT id')
         rec = A.logged_json(log, get, throttle, f'ctgov/study/{nct}', f'{API}/studies/{nct}',
-                            {'fields': SEARCH_FIELDS}, tag={'nct_id': nct})
+                            {'fields': SEARCH_FIELDS}, tag={'nct_id': nct}, valid=study_answer)
         answered, unanswered = answered + (rec is not None), unanswered + (rec is None)
     return {'lookups_answered': answered, 'lookups_without_answer': unanswered}
 
@@ -111,7 +119,7 @@ def fetch_full_studies(nct_ids: list[str], log: A.ResponseLog, get: A.Get, throt
         if not NCT.match(nct):
             raise ValueError(f'{nct!r} is not an NCT id')
         rec = A.logged_json(log, get, throttle, f'ctgov/study_full/{nct}', f'{API}/studies/{nct}', None,
-                            tag={'nct_id': nct})
+                            tag={'nct_id': nct}, valid=study_answer)
         answered, unanswered = answered + (rec is not None), unanswered + (rec is None)
     return {'full_records_answered': answered, 'full_records_without_answer': unanswered}
 
@@ -132,7 +140,9 @@ def nct_state(records: dict[str, dict[str, Any]], nct_id: str) -> tuple[str, dic
         return 'not_looked_up', None
     if rec['status'] == 404:
         return 'not_found', None
-    if rec['status'] != 200 or not isinstance(rec.get('body'), dict):
+    if rec['status'] != 200 or not study_answer(rec.get('body')):
+        # A 200 without a study that states its own id (logged before answers were checked for
+        # shape) is no answer: not a record under another id.
         return 'lookup_failed', None
     facts = study_facts(rec['body'])
     return ('resolves' if facts['nct_id'] == nct_id else 'resolved_to_different_id'), facts
@@ -188,7 +198,7 @@ def fetch_number_search(submission_numbers: list[str], log: A.ResponseLog, get: 
                 nct = ((st.get('protocolSection') or {}).get('identificationModule') or {}).get('nctId')
                 if nct:
                     full = A.logged_json(log, get, throttle, f'ctgov/study_full/{nct}', f'{API}/studies/{nct}', None,
-                                         tag={'nct_id': nct})
+                                         tag={'nct_id': nct}, valid=study_answer)
                     asked += 1
                     unanswered += full is None
     return {'requests': asked, 'requests_without_answer': unanswered}

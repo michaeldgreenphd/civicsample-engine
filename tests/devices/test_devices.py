@@ -589,8 +589,9 @@ def test_openfda_records_map_to_submissions_and_absence_is_stated(acquired: dict
     assert 'registration_number' not in found['K990001']['record']['openfda']
     # A number nobody asked openFDA about has no answer; it is not reported as "no record".
     assert acquire.openfda_by_submission({}, ['K999999'])['K999999']['state'] == 'no_answer'
-    key = acquire.openfda_requests(['K999999'])[0]['key']
-    absent = acquire.openfda_by_submission({key: {'status': 404, 'body': {'error': {}}, 'fetched_at': 't'}}, ['K999999'])
+    q = acquire.openfda_requests(['K999999'])[0]
+    absent = acquire.openfda_by_submission({q['key']: {'status': 404, 'params': q['params'], 'body': {'error': {}},
+                                                       'fetched_at': 't'}}, ['K999999'])
     assert absent['K999999']['state'] == 'no_record'
     assert acquire.official_metadata({'record': None, 'reason': 'none held'}) == {'available': False, 'reason': 'none held'}
 
@@ -1567,6 +1568,43 @@ def test_an_openfda_200_without_a_list_of_results_is_no_answer(tmp_path: Path) -
     # an answer logged as 200 before answers were checked for shape is still no answer
     legacy = {req['key']: {**rec, 'status': 200, 'body': {'meta': {}}}}
     assert {v['state'] for v in acquire.openfda_by_submission(legacy, ['K990001', 'K990002']).values()} == {'error'}
+
+
+def test_an_answer_logged_for_other_parameters_is_not_this_requests_answer(tmp_path: Path) -> None:
+    """Two 510(k) batches can share a key (first number, last number, length) and differ inside."""
+    old = acquire.openfda_requests(['K990001', 'K990002', 'K990009'])[0]
+    new = acquire.openfda_requests(['K990001', 'K990005', 'K990009'])[0]
+    assert old['key'] == new['key'] and old['params'] != new['params']
+    log = acquire.ResponseLog(tmp_path / 'openfda.jsonl')
+    calls: list[Any] = []
+    def get(url: str, params: dict[str, Any] | None) -> acquire.Response:
+        calls.append(params)
+        return 200, {}, json.dumps({'results': [{'k_number': 'K990005'}]}).encode(), None
+    log.put({'key': old['key'], 'params': old['params'], 'status': 200, 'body': {'results': []}, 'fetched_at': 't'})
+    # the reader does not take the old batch's answer for the new batch
+    stale = acquire.openfda_by_submission(log.records, ['K990001', 'K990005', 'K990009'])
+    assert stale['K990005']['state'] == 'no_answer' and 'different request' in stale['K990005']['reason']
+    # acquisition asks the new batch, and its answer becomes the one held under the key
+    acquire.fetch_openfda(['K990001', 'K990005', 'K990009'], log, get, F.no_wait())
+    assert calls == [new['params']]
+    fresh = acquire.openfda_by_submission(acquire.ResponseLog(tmp_path / 'openfda.jsonl').records,
+                                          ['K990001', 'K990005', 'K990009'])
+    assert fresh['K990005']['state'] == 'found'
+
+
+@pytest.mark.parametrize('body', [{'error': {'message': 'try again'}}, {'protocolSection': {}}, {}])
+def test_a_study_answer_without_its_own_id_is_no_answer(tmp_path: Path, body: Any) -> None:
+    log = acquire.ResponseLog(tmp_path / 'registry.jsonl')
+    calls: list[str] = []
+    def get(url: str, params: dict[str, Any] | None) -> acquire.Response:
+        calls.append(url)
+        return 200, {}, json.dumps(body).encode(), None
+    for fetch, key in ((registry.fetch_studies, 'ctgov/study/NCT99000001'),
+                       (registry.fetch_full_studies, 'ctgov/study_full/NCT99000001')):
+        fetch(['NCT99000001'], log, get, F.no_wait())
+        assert log.get(key)['status'] == acquire.UNUSABLE_200 and log.settled(key) is None
+    # a 200 of that shape logged before the check is a failed lookup, not a record under another id
+    assert registry.nct_state({'ctgov/study/NCT99000001': {'status': 200, 'body': body}}, 'NCT99000001')[0] == 'lookup_failed'
 
 
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])

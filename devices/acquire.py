@@ -230,9 +230,14 @@ def logged_json(log: ResponseLog, get: Get, throttle: Throttle, key: str, url: s
                 valid: Callable[[Any], bool] | None = None) -> dict[str, Any] | None:
     """The logged answer to a JSON request, fetching it once if it is not logged yet. None when no
     answer arrived (the caller records the route as incomplete). `valid`, when given, says whether
-    a parsed 200 body has the shape an answer must have; one that does not is no answer."""
+    a parsed 200 body has the shape an answer must have; one that does not is no answer.
+
+    A logged answer is this request's answer only if it was logged for these very parameters: a
+    key can outlive the request it was made for (an inventory revision that changes an interior
+    number of a batch keeps its first, last and length), and a different request is asked again,
+    its answer becoming the latest under the key."""
     rec = log.settled(key)
-    if rec is not None:
+    if rec is not None and rec.get('params', {}) == (params or {}):
         return rec
     (status, _, body, error), attempts = polite_get(get, throttle, url, params)
     if status is None:
@@ -317,10 +322,15 @@ def openfda_by_submission(records: dict[str, dict[str, Any]], submission_numbers
     out: dict[str, dict[str, Any]] = {}
     for q in openfda_requests(submission_numbers):
         rec = records.get(q['key'])
+        other_request = rec is not None and rec.get('params') != q['params']
         results = ((rec or {}).get('body') or {}).get('results') or []
         for sn in q['numbers']:
-            if rec is None:
-                out[sn] = {'state': 'no_answer', 'reason': 'the openFDA request covering this number was not answered',
+            if rec is None or other_request:
+                # An answer logged under this key for different parameters (another batch that
+                # shares its first and last number and its length) is not this request's answer.
+                out[sn] = {'state': 'no_answer',
+                           'reason': ('the answer logged for this batch was for a different request'
+                                      if other_request else 'the openFDA request covering this number was not answered'),
                            'record': None}
                 continue
             # openFDA answers a search with no matches with HTTP 404 and an error body.
