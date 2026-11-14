@@ -697,6 +697,9 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
     source now serves other bytes, that is a new version, and the budget applies to it.
     """
     latest = manifest.latest()
+    # The last line that retrieved each document: a failed repair attempt becomes the latest line,
+    # and must not make a recorded document look like a new one to the budget.
+    last_retrieved = {ln['document_id']: ln for ln in manifest.lines if ln['outcome'] == 'retrieved'}
     counts = {k: 0 for k in DOCUMENT_OUTCOMES}
     counts['already_settled'] = 0
     held = store_bytes(store) if store_budget_bytes is not None else 0
@@ -710,7 +713,7 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
         # store the build refuses can be repaired by rerunning acquisition. A repair restores a file
         # the manifest already records, not growth of the store, so the budget does not stop it:
         # otherwise a store at its budget could never be repaired and the build would refuse it.
-        recorded = line if line and line['outcome'] == 'retrieved' else None
+        recorded = last_retrieved.get(item['document_id'])
         full = store_budget_bytes is not None and held >= store_budget_bytes
         if full and not recorded:
             if (latest.get(item['document_id']) or {}).get('outcome') != 'skipped_disk_budget':

@@ -2235,3 +2235,34 @@ def test_a_study_with_a_field_the_build_cannot_read_is_no_answer(module: dict[st
     good = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'},
                                 'sponsorCollaboratorsModule': {'collaborators': [{'name': 'Acme'}]}}}
     assert registry.study_answer(good)
+
+
+def test_a_failed_repair_attempt_does_not_make_a_recorded_document_new_to_the_budget(tmp_path: Path) -> None:
+    manifest, store = acquire.Manifest(tmp_path / 'manifest.jsonl'), tmp_path / 'store'
+    u = f'{F.DOCS}/pdf99/K990001.pdf'
+    plan = [{'document_id': acquire.document_id('K990001', u), 'submission_number': 'K990001', 'url': u,
+             'official_label': None, 'discovery': 'url_pattern', 'scope': 'this_submission'}]
+    acquire.fetch_documents(plan, manifest, store, F.stub_get(), F.no_wait())
+    line = manifest.latest()[plan[0]['document_id']]
+    stored = store / f"{line['sha256']}.pdf"
+    good = stored.read_bytes()
+    stored.write_bytes(b'X' * len(good))              # damaged; the store is exactly at its budget
+    out = acquire.fetch_documents(plan, manifest, store, lambda u, p: (503, {}, b'', None), F.no_wait(),
+                                  store_budget_bytes=len(good))
+    assert out['http_error'] == 1 and manifest.latest()[plan[0]['document_id']]['outcome'] == 'http_error'
+    out = acquire.fetch_documents(plan, manifest, store, F.stub_get(), F.no_wait(), store_budget_bytes=len(good))
+    assert (out['retrieved'], out['skipped_disk_budget']) == (1, 0) and stored.read_bytes() == good
+
+
+def test_a_frozen_full_record_the_build_cannot_read_leaves_the_number_search_incomplete() -> None:
+    chunk = registry.number_batches(['K990001'])[0]
+    t = '2026-11-13T00:00:00+00:00'
+    hit = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'}}}
+    records = {registry._key('ctgov/number_batch', registry._batch_params(chunk)): {'status': 200, 'body': {'totalCount': 1}, 'fetched_at': t},
+               registry._key('ctgov/number', registry._single_params('K990001')): {'status': 200, 'fetched_at': t,
+                                                                                   'body': {'totalCount': 1, 'studies': [hit]}},
+               'ctgov/study_full/NCT99000001': {'status': 200, 'fetched_at': t, 'body': {'protocolSection': {
+                   'identificationModule': {'nctId': 'NCT99000001'}, 'descriptionModule': {'briefSummary': 'cleared as K990001'},
+                   'sponsorCollaboratorsModule': {'collaborators': [None]}}}}}
+    out = registry.number_search_results(records, ['K990001'])['K990001']
+    assert out['state'] == 'incomplete' and out['hits'] == [] and 'could not be read' in out['reason']

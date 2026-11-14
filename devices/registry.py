@@ -323,7 +323,7 @@ def number_search_results(records: dict[str, dict[str, Any]], submission_numbers
             out[sn] = {'state': 'incomplete', 'reason': 'the single-number follow-up has no usable answer',
                        'n_search_hits': None, 'hits': []}
             continue
-        hits, missing, other = [], [], []
+        hits, missing, other, unreadable = [], [], [], []
         returned = (one['body'] or {}).get('studies') or []
         total = (one['body'] or {}).get('totalCount')
         counted = isinstance(total, int) and not isinstance(total, bool)     # a JSON true/false is no count
@@ -346,6 +346,11 @@ def number_search_results(records: dict[str, dict[str, Any]], submission_numbers
             if full is None or full['status'] != 200:
                 missing.append(nct)
                 continue
+            if not study_answer(full.get('body')):
+                # Held, but a record the build cannot read (one frozen before records were checked
+                # this way): no answer, so the search is incomplete rather than the build failing.
+                unreadable.append(nct)
+                continue
             own = study_facts(full['body'] or {})['nct_id']
             if own != nct:
                 # The record held for the hit is another study (an alias or a redirect, as
@@ -355,7 +360,8 @@ def number_search_results(records: dict[str, dict[str, Any]], submission_numbers
             hits.append({'nct_id': nct, 'located': locate_identifier(full['body'], sn),
                          'study': study_facts(full['body']), 'retrieved_at': full['fetched_at']})
         problems = ([f'full records not held for {missing}'] if missing else []) + \
-                   ([f'full record held under another id for {other}'] if other else [])
+                   ([f'full record held under another id for {other}'] if other else []) + \
+                   ([f'full records that could not be read for {unreadable}'] if unreadable else [])
         out[sn] = {'state': 'incomplete' if problems else 'completed',
                    'reason': '; '.join(problems) if problems else 'full-text search answered; each hit record fetched and read',
                    'n_search_hits': total, 'hits': hits, 'searched_at': one['fetched_at']}
