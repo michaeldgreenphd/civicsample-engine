@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T14:08:16+00:00 by `scripts/build_device_links.py build` at engine commit `93a0d9f5e322` (no uncommitted changes; producing-code digest `d8b9b0ab5573…`), run id `devices-2026-11-14-057c8cacab`, method `device-links-1` |
+| Built | 2026-11-14T14:17:16+00:00 by `scripts/build_device_links.py build` at engine commit `9d351c6bcb49` (no uncommitted changes; producing-code digest `20605505e5e7…`), run id `devices-2026-11-14-af31bf600f`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -162,4 +162,6 @@ It was rebuilt a twenty-ninth time after the twenty-eighth review round, at `e2e
 
 It was rebuilt a thirtieth time after the twenty-ninth review round, at `f4aefa0` (run `devices-2026-11-14-41f64d9e75`). That round's fix (an openFDA 200 must list at least one entry; openFDA reports no match with a 404) changes no output of this run: each of the 46 cached openFDA answers lists between 1 and 50 entries. Every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a thirty-first time after the thirtieth review round, at the commit named above. That round's two fixes (a PMA supplement joined to its number by a hyphen or dash is the supplement, never a citation of the original; documents of a submission not in the inventory are left out rather than stopping the build) change no output of this run: the frozen registry answers hold no dash-joined supplement, and every document in the manifest belongs to a submission in the inventory. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a thirty-first time after the thirtieth review round, at `93a0d9f` (run `devices-2026-11-14-057c8cacab`). That round's two fixes (a PMA supplement joined to its number by a hyphen or dash is the supplement, never a citation of the original; documents of a submission not in the inventory are left out rather than stopping the build) change no output of this run: the frozen registry answers hold no dash-joined supplement, and every document in the manifest belongs to a submission in the inventory. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a thirty-second time after the thirty-first review round, at the commit named above. That round's fix (a registry record fetched before any version answer has no version stamp and a reason, rather than a later snapshot's) changes no output of this run: both cached version answers were fetched before every other registry record. Every output file is identical to the previous build apart from the run id. A second finding of that round, whether a citation scan of a document with no readable text should read as incomplete rather than as available document insufficient, changes what a published state means and was put to the investigator; this run keeps the documented rule.
