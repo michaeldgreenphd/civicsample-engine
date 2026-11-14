@@ -36,6 +36,7 @@ import json
 import math
 import re
 from collections import defaultdict
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
@@ -956,6 +957,11 @@ def load_reviews(path: Path) -> dict[str, dict[tuple[str, str], dict[str, str]]]
                 raise ReviewError(f'{where}: no reviewer; a review record names the person who made it')
             if not _DATE.match(row['reviewed_on']):
                 raise ReviewError(f'{where}: reviewed_on {row["reviewed_on"]!r} is not YYYY-MM-DD')
+            try:
+                # the shape alone admits 2026-02-31; the date is published with the signal
+                date.fromisoformat(row['reviewed_on'])
+            except ValueError:
+                raise ReviewError(f'{where}: reviewed_on {row["reviewed_on"]!r} is not a calendar date') from None
             if not row['note']:
                 raise ReviewError(f'{where}: empty note; every review records why it was decided')
             key = (row['signal_id'], row['dimension'])

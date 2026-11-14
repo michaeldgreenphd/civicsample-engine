@@ -207,8 +207,13 @@ def archive_name(lines: dict[str, bytes], record: dict[str, Any], requested: lis
     the same bytes AND have the same record, so a repeated fetch (another retrieval window, retry
     history or failure reason, even with identical bytes) never reuses an earlier fetch's metadata,
     and never replaces the archive an earlier build recorded."""
-    rec = fetch_record(lines, record, requested)
-    return f"records-{str(record.get('retrieved_at') or '')[:10]}-{rec['sha256_uncompressed'][:12]}-{sha256(dump(rec))[:8]}.jsonl.gz"
+    return _name_of(fetch_record(lines, record, requested))
+
+
+def _name_of(rec: dict[str, Any]) -> str:
+    """archive_name from a fetch record, as fetch_record builds it and as an archive's metadata
+    file holds it (without its `archive` key)."""
+    return f"records-{str(rec.get('retrieved_at') or '')[:10]}-{str(rec.get('sha256_uncompressed'))[:12]}-{sha256(dump(rec))[:8]}.jsonl.gz"
 
 
 def write_archive(lines: dict[str, bytes], path: Path, record: dict[str, Any], requested: list[str]) -> dict[str, Any]:
@@ -224,8 +229,9 @@ def write_archive(lines: dict[str, bytes], path: Path, record: dict[str, Any], r
 
 
 def read_archive_meta(path: Path) -> dict[str, Any]:
-    """The archive's metadata, after checking that the bytes are the ones it records. An archive
-    with no metadata file is refused: its retrieval time and requested ids would be unknown."""
+    """The archive's metadata, after checking that the bytes, the requested ids and the archive's
+    name are the ones it records. An archive with no metadata file is refused: its retrieval time
+    and requested ids would be unknown."""
     meta_path = path.with_name(path.name + '.meta.json')
     if not meta_path.exists():
         raise BuildError(f'{path.name}: no metadata file beside the archive')
@@ -250,6 +256,14 @@ def read_archive_meta(path: Path) -> dict[str, Any]:
         raise BuildError(f'{path.name}: the requested ids do not match their recorded sha256')
     if len(ids) != meta.get('n_requested'):
         raise BuildError(f'{path.name}: the number of requested ids does not match the metadata')
+    # The archive's name is the only thing that says which fetch these bytes are: two fetches can
+    # return the same bytes. It carries a digest of the fetch record (archive_name), so the metadata
+    # beside it is checked against the name. A metadata file from another fetch, or one whose
+    # retrieval window, request log or failure reasons were edited, gives another name and is refused.
+    expected = _name_of({k: v for k, v in meta.items() if k != 'archive'})
+    if path.name != expected or meta.get('archive') != path.name:
+        raise BuildError(f'{path.name}: the metadata beside this archive is not the record it is named by '
+                         f'(that record names {expected})')
     return meta
 
 

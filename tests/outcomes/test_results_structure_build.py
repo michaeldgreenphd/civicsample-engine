@@ -209,7 +209,9 @@ def test_the_archive_is_byte_stable_and_refuses_changed_bytes(tmp_path: Path) ->
     from outcomes import acquire
     lines = {RS.nct_id_of(s): acquire.encode([s]) for s in F.studies()}
     record_meta = {'retrieved_at': F.GENERATED_AT, 'n_records': len(lines), 'n_requested': 7}
-    a, b = tmp_path / 'a.jsonl.gz', tmp_path / 'b.jsonl.gz'
+    # two copies of one fetch, in two directories: an archive is named by its bytes and its record
+    name = B.archive_name(lines, record_meta, F.REQUESTED)
+    a, b = tmp_path / 'a' / name, tmp_path / 'b' / name
     meta = B.write_archive(lines, a, record_meta, F.REQUESTED)
     B.write_archive(dict(reversed(list(lines.items()))), b, record_meta, F.REQUESTED)
     assert a.read_bytes() == b.read_bytes(), 'the same records give the same bytes, whatever the order fetched'
@@ -220,7 +222,7 @@ def test_the_archive_is_byte_stable_and_refuses_changed_bytes(tmp_path: Path) ->
         B.read_archive_meta(a)
     # The metadata's list of requested ids decides the frame of an archive-only build, so it is
     # checked against its own digest and count: an edited or left-over metadata file is refused.
-    meta_path = tmp_path / 'b.jsonl.gz.meta.json'
+    meta_path = b.with_name(b.name + '.meta.json')
     good = json.loads(meta_path.read_text())
     assert B.read_archive_meta(b)['requested_ids'] == sorted(F.REQUESTED)
     for change, message in (
@@ -230,12 +232,23 @@ def test_the_archive_is_byte_stable_and_refuses_changed_bytes(tmp_path: Path) ->
             (lambda m: m.update(n_requested=6), 'number of requested ids does not match'),
             (lambda m: m['requested_ids'].append(m['requested_ids'][0]), 'each once'),
             (lambda m: m.update(requested_ids=['not an id']), 'each once'),
-            (lambda m: m.pop('requested_ids'), 'each once')):
+            (lambda m: m.pop('requested_ids'), 'each once'),
+            # the rest of the fetch record is bound to the archive by its name
+            (lambda m: m.update(retrieved_at='2026-11-14T23:00:00+00:00'), 'not the record it is named by'),
+            (lambda m: m.update(not_retrieved=[{'nct_id': 'NCT99000003', 'reason': 'another reason'}]), 'not the record it is named by'),
+            (lambda m: m.update(archive='records-other.jsonl.gz'), 'not the record it is named by')):
         edited = copy.deepcopy(good)
         change(edited)
         meta_path.write_text(json.dumps(edited))
         with pytest.raises(B.BuildError, match=message):
             B.read_archive_meta(b)
+    # an archive under a name its record does not give (an older naming, or a renamed file)
+    meta_path.write_text(json.dumps(good))
+    legacy = b.with_name('records-2026-11-14-0123456789ab.jsonl.gz')
+    legacy.write_bytes(b.read_bytes())
+    legacy.with_name(legacy.name + '.meta.json').write_text(json.dumps({**good, 'archive': legacy.name}))
+    with pytest.raises(B.BuildError, match=f'that record names {name}'):
+        B.read_archive_meta(legacy)
     meta_path.unlink()
     with pytest.raises(B.BuildError, match='no metadata file'):
         B.read_archive_meta(b)
@@ -244,11 +257,11 @@ def test_the_archive_is_byte_stable_and_refuses_changed_bytes(tmp_path: Path) ->
 def archive(tmp_path: Path) -> Path:
     from outcomes import acquire
     lines = {RS.nct_id_of(s): acquire.encode([s]) for s in F.studies()}
-    path = tmp_path / 'records.jsonl.gz'
-    B.write_archive(lines, path, {'source': 'fictional', 'retrieved_at': F.GENERATED_AT, 'retrieved_from': F.GENERATED_AT,
-                                  'retrieved_to': F.GENERATED_AT, 'n_records': len(lines), 'n_requested': len(F.FRAME),
-                                  'not_retrieved': [{'nct_id': 'NCT99000003', 'reason': 'not returned by the registry for filter.ids'}]},
-                    F.FRAME)
+    record = {'source': 'fictional', 'retrieved_at': F.GENERATED_AT, 'retrieved_from': F.GENERATED_AT,
+              'retrieved_to': F.GENERATED_AT, 'n_records': len(lines), 'n_requested': len(F.FRAME),
+              'not_retrieved': [{'nct_id': 'NCT99000003', 'reason': 'not returned by the registry for filter.ids'}]}
+    path = tmp_path / B.archive_name(lines, record, F.FRAME)
+    B.write_archive(lines, path, record, F.FRAME)
     return path
 
 
@@ -271,8 +284,9 @@ def test_cli_builds_from_an_archive_without_network_and_with_the_shipped_empty_r
     assert states_block['by_dimension']['sex'][RS.FAILED_OR_INDETERMINATE] == 3     # 01 unreviewed, 05 parse, 07 keyword
     assert files['records.json']['records']['NCT99000003']['retrieval'] == {
         'status': 'failed', 'reason': 'not returned by the registry for filter.ids'}
-    assert files['run.json']['acquisition']['sha256_uncompressed'] == json.loads(
-        (tmp_path / 'records.jsonl.gz.meta.json').read_text())['sha256_uncompressed']
+    (meta_file,) = tmp_path.glob('records-*.jsonl.gz.meta.json')
+    assert files['run.json']['acquisition']['sha256_uncompressed'] == json.loads(meta_file.read_text())['sha256_uncompressed']
+    assert files['run.json']['acquisition']['archive'] + '.meta.json' == meta_file.name
     # No lists given: the build covers the whole frame and excludes nothing.
     scope = files['run.json']['scope']
     assert (scope['frame']['n'], scope['included']['n'], scope['excluded']) == (8, 8, {

@@ -548,6 +548,8 @@ GOOD = 'NCT99000001,sex,sg-0123456789ab,accepted,Fictional Reviewer,2026-11-14,f
     ([GOOD.replace('NCT99000001', 'NCT1')], 'not an NCT id'),
     ([GOOD.replace('sg-0123456789ab', 'measure 3')], 'not a signal id'),
     ([GOOD.replace('2026-11-14', '14 Nov 2026')], 'not YYYY-MM-DD'),
+    ([GOOD.replace('2026-11-14', '2026-02-31')], 'not a calendar date'),
+    ([GOOD.replace('2026-11-14', '2026-13-01')], 'not a calendar date'),
     ([GOOD + ',extra'], 'more cells than columns'),
 ])
 def test_the_review_loader_raises_instead_of_resolving(tmp_path: Path, rows: list[str], message: str) -> None:

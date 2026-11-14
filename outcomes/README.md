@@ -102,8 +102,8 @@ national-origin levels) leaves all four dimensions indeterminate until a person 
 
 Human reviews are read from `subgroup_reviews.csv` (columns `nct_id, dimension, signal_id,
 decision, reviewer, reviewed_on, note`; decision is `accepted`, `rejected` or `unresolved`).
-`load_reviews` raises on a wrong header, an empty note or reviewer, and on two rows for the same
-signal and dimension. The file ships with a header and no rows, so no trial is in the detected
+`load_reviews` raises on a wrong header, an empty note or reviewer, a `reviewed_on` that is not a
+calendar date, and on two rows for the same signal and dimension. The file ships with a header and no rows, so no trial is in the detected
 state; that is intended. The audit's labels
 (`docs/audits/outcomes_results_structure/second_pass/subgroup_review.csv`) were made by one
 automated reader and are not human reviews; the loader refuses that file. The reviewer's name and
@@ -167,7 +167,8 @@ without an exclude list too: an `--nct-list` that leaves out a fetched id is ref
 record leaves a build without a stated reason. An archive's file name carries a digest of the fetch's
 whole record (the ids asked for, the retrieval window, every request and each failure) as well as of
 its bytes, so every fetch has its own archive and metadata, even one that returned the same bytes as
-an earlier fetch.
+an earlier fetch. `--archive` checks the metadata beside an archive against that name and refuses an
+archive whose metadata is another fetch's, or was edited.
 `run.json` (`scope`) and `summary.json` (`scope`) state the frame size, the number of trials
 included, and the number excluded with the reason; excluded records have no record in
 `records.json` and are in no count. A listed trial that the archive does not hold gets a
