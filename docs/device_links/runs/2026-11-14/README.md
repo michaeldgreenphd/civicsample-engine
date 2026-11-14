@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T04:54:46+00:00 by `scripts/build_device_links.py build` at engine commit `0d8923a975de` (no uncommitted changes; producing-code digest `f04b2db3ae35…`), run id `devices-2026-11-14-ba872e874d`, method `device-links-1` |
+| Built | 2026-11-14T05:02:04+00:00 by `scripts/build_device_links.py build` at engine commit `a0a5a1c98f4d` (no uncommitted changes; producing-code digest `da724a1e8306…`), run id `devices-2026-11-14-6d322b3e15`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -120,4 +120,6 @@ It was rebuilt an eighth time after the seventh review round, at `0f54e7b` (run 
 
 It was rebuilt a ninth time after the eighth review round, at `d3a9c5b` (run `devices-2026-11-14-5433ca19c6`). That round's two fixes (a submission number is located in a registry field in any letter case; the acquisition stage for NCT ids also looks up the studies the curated statements name) change no output of this run: no searched number appears in lower or mixed case in the frozen registry records, and the statements file has no rows. Every output file is identical to the previous build apart from the run id. A third finding of that round, that a citation scan with pages it could not read should not read as a completed scope, changes the definition of a published state and was put to the investigator; this run keeps the documented rule.
 
-It was rebuilt a tenth time after the ninth review round, at the commit named above. That round's two fixes (510(k) and De Novo database pages are confirmed from their "510(k) Number" or "De Novo Number" row, as PMA pages are from theirs; an HTML page served in place of a document is asked again and leaves its route incomplete) change no output of this run. The new page check confirms all 1,431 cached pages, and no document in the manifest is `not_a_pdf`. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a tenth time after the ninth review round, at `0d8923a` (run `devices-2026-11-14-ba872e874d`). That round's two fixes (510(k) and De Novo database pages are confirmed from their "510(k) Number" or "De Novo Number" row, as PMA pages are from theirs; an HTML page served in place of a document is asked again and leaves its route incomplete) change no output of this run. The new page check confirms all 1,431 cached pages, and no document in the manifest is `not_a_pdf`. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt an eleventh time after the tenth review round, at the commit named above. That round's fix (a registry record a curated statement quotes is fetched whole, not through the projected lookup) changes no output of this run: the statements file has no rows. Every output file is identical to the previous build apart from the run id.
