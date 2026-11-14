@@ -126,6 +126,12 @@ failures, missing data and negative findings in four separate tables. `records.j
 record per requested NCT id, including trials that were not retrieved. The browser computes no
 aggregate.
 
+The run id ends in a digest of what the family publishes: the manifest apart from the id, the
+build time and the file checksums, and the content of `summary.json` and `records.json`
+(`run_identity`). Two builds that publish different content never share an id, the same content
+gives the same id whenever it is built, and the producer-side check refuses a family whose id does
+not follow from its content.
+
 ### Running it
 
 ```bash

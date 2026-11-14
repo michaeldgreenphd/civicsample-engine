@@ -491,3 +491,19 @@ def test_a_build_from_changed_code_does_not_share_a_run_id_with_a_clean_one(fami
     assert same == build_results_structure.source_digest()
     (tmp_path / 'outcomes/acquire.py').write_text((ROOT / 'outcomes/acquire.py').read_text() + '\n# an uncommitted change\n')
     assert build_results_structure.source_digest(tmp_path) != same
+
+
+@pytest.mark.parametrize('run_dir', sorted((ROOT / 'docs' / 'results_structure' / 'runs').iterdir()), ids=lambda d: d.name)
+def test_a_committed_run_record_agrees_with_its_manifest(run_dir: Path) -> None:
+    """records.json is not committed here, so the README's quoted checksum is what a reader checks a
+    downloaded copy against. It, the run id and the producing commit must be the manifest's, and the
+    committed summary.json must be the file the manifest lists."""
+    run = json.loads((run_dir / 'run.json').read_text())
+    summary = json.loads((run_dir / 'summary.json').read_text())
+    readme = (run_dir / 'README.md').read_text()
+    assert B.sha256(B.dump(summary)) == run['files']['summary.json'] and summary['run_id'] == run['run_id']
+    assert f"| Run | `{run['run_id']}`, generated {run['generated_at']} " in readme
+    assert f"at engine commit `{run['producer']['commit'][:12]}`" in readme
+    assert f"producing-code digest `{run['producer']['source_sha256'][:12]}…`" in readme
+    assert f"`records.json` (sha256 `{run['files']['records.json'][:16]}…`" in readme
+    assert f"sha256 of the uncompressed bytes `{run['acquisition']['sha256_uncompressed']}`" in readme
