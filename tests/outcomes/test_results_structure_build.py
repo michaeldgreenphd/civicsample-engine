@@ -574,4 +574,7 @@ def test_a_committed_run_record_agrees_with_its_manifest(run_dir: Path) -> None:
     assert f"at engine commit `{run['producer']['commit'][:12]}`" in readme
     assert f"producing-code digest `{run['producer']['source_sha256'][:12]}…`" in readme
     assert f"`records.json` (sha256 `{run['files']['records.json'][:16]}…`" in readme
-    assert f"sha256 of the uncompressed bytes `{run['acquisition']['sha256_uncompressed']}`" in readme
+    assert f"| Archive | `{run['acquisition']['archive']}`, sha256 of the uncompressed bytes `{run['acquisition']['sha256_uncompressed']}`" in readme
+    # the committed copy of the archive's metadata is the record the archive is named by
+    meta = json.loads((run_dir / 'archive.meta.json').read_text())
+    assert meta['archive'] == run['acquisition']['archive'] == B._name_of({k: v for k, v in meta.items() if k != 'archive'})

@@ -4,12 +4,12 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Run | `results-structure-2026-11-14-a5a8dda9cb`, generated 2026-11-14T02:28:46+00:00 by `scripts/build_results_structure.py` at engine commit `bf20e0918ac8` (no uncommitted changes; producing-code digest `c96f81be9097…`) |
+| Run | `results-structure-2026-11-14-9a083dc09a`, generated 2026-11-14T02:36:39+00:00 by `scripts/build_results_structure.py` at engine commit `b3c99866ef77` (no uncommitted changes; producing-code digest `5694f86c500a…`) |
 | Method | `results-structure-1`: usable-content rules B1, F1, O1, A1; comparative classes C1, C2; analysis rule S1; subgroup rule SG2 |
 | Scope | Frame 648 registry records fetched; **598 trials in this build** (the eligible cohort of the Industry Outcomes beta, the rows of the site's `data/outcomes/index.json`, outcomes run `outcomes-2026-11-09-d41f32ec4d`); 50 frame records left out: excluded by the outcomes cohort's eligibility rules (see data/outcomes/index.json excluded). The lists are `frame_ids.txt` (sha256 `637bb40370bedcb8…`), `eligible_ids.txt` (`dcfc1e3fc8829b23…`) and `excluded_ids.txt` (`e7f7925eacf48b28…`) |
 | Registry records | 648 of 648 frame records retrieved from the ClinicalTrials.gov API v2, 2026-11-14T00:41:41+00:00 to 2026-11-14T00:41:57+00:00; API version 2.0.5, registry `dataTimestamp` 2026-11-13T10:00:06 |
 | Requests | 27 (26 for study records in batches of 25 ids, 1 for the API version), one at a time and at least 0.5 s apart; 0 retries, 0 failed |
-| Archive | `records-2026-11-14-cc8e86b9b06d.jsonl.gz`, sha256 of the uncompressed bytes `cc8e86b9b06ddc0b5cf229a5d2c6af1430ecc5d0fc1554fd090a8085c1ede39e` |
+| Archive | `records-2026-11-14-cc8e86b9b06d-dcec4894.jsonl.gz`, sha256 of the uncompressed bytes `cc8e86b9b06ddc0b5cf229a5d2c6af1430ecc5d0fc1554fd090a8085c1ede39e` |
 | Human reviews | `outcomes/subgroup_reviews.csv`, 0 rows (sha256 `173e1437b0922e3e…`) |
 
 The registry was asked once, for the whole frame. This run is built from the frozen archive of
@@ -102,7 +102,7 @@ Negative findings (each is a search that found nothing, with its scope in `summa
 
 ## Files not here
 
-`records.json` (sha256 `6974e565f26cc3fc…`, 4.1 MB) is written to the site
+`records.json` (sha256 `923a584568a79ac5…`, 4.1 MB) is written to the site
 repository at `data/results_structure/`. The archive of registry records (7.9 MB compressed) is
 under the gitignored `build/results_structure_cache/`; its sha256 is in `run.json`. Two
 consecutive builds of this run from the archive gave the same bytes for `summary.json` and
@@ -151,4 +151,6 @@ It was rebuilt a fifth time after the fifth review round, at `0887892` (run `res
 
 It was rebuilt a sixth time after the sixth review round, at `095c911` (run `results-structure-2026-11-14-3599e78b61`). That round changed how a signal from an analysis's compared groups is labelled (with the dimensions those groups differ on, not every dimension the measure's groups carry). This cohort has no such signal, so `summary.json` and `records.json` are identical to the previous build apart from the run id, which changes because the producing code did.
 
-It was rebuilt a seventh time after the seventh review round, at the commit named above. That round changed only how a fetched archive is named (every fetch is now frozen under a digest of its own record). This run was built from the existing archive with `--archive` and fetched nothing, so `summary.json` and `records.json` are identical to the previous build apart from the run id, which changes because the producing code did.
+It was rebuilt a seventh time after the seventh review round, at `bf20e09` (run `results-structure-2026-11-14-a5a8dda9cb`). That round changed only how a fetched archive is named (every fetch is now frozen under a digest of its own record). This run was built from the existing archive with `--archive` and fetched nothing, so `summary.json` and `records.json` are identical to the previous build apart from the run id, which changes because the producing code did.
+
+It was rebuilt an eighth time after the eighth review round, at the commit named above. The archive file was renamed from `records-2026-11-14-cc8e86b9b06d.jsonl.gz` to the name its own fetch record gives under the current naming, because `--archive` now refuses an archive whose metadata is not the record it is named by. Its bytes are unchanged (the same sha256), and the only change to `archive.meta.json` is the `archive` field. `summary.json` and `records.json` are identical to the previous build apart from the run id. The round's other fix (a review date must be a calendar date) changes no output: there are no review rows.

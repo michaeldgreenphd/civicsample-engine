@@ -2,9 +2,9 @@
  "schema_version": 1,
  "producer": {
   "repository": "civicsample-engine",
-  "commit": "bf20e0918ac89cbb65a1aac8ede56a438fb87719",
+  "commit": "b3c99866ef774a549657a50263ef8ac261ccc7f4",
   "uncommitted_changes": false,
-  "source_sha256": "c96f81be9097bd828cc34331752da8ada7a71c1875b3b779d0a50933faea7689"
+  "source_sha256": "5694f86c500aab49fbd11d318a50999727bf089d6b5b41de89bdc09c36ae5c10"
  },
  "manual_run": true,
  "method": {
@@ -41,7 +41,7 @@
   "min_seconds_between_requests": 0.5,
   "requested_ids_sha256": "b504f64e2371f35fd4dde94184a48eef7d3afb2cdc1d037ce524ef177ba69aba",
   "sha256_uncompressed": "cc8e86b9b06ddc0b5cf229a5d2c6af1430ecc5d0fc1554fd090a8085c1ede39e",
-  "archive": "records-2026-11-14-cc8e86b9b06d.jsonl.gz"
+  "archive": "records-2026-11-14-cc8e86b9b06d-dcec4894.jsonl.gz"
  },
  "retrieval_window": {
   "from": "2026-11-14T00:41:41+00:00",
@@ -187,10 +187,10 @@
   "Participant flow counts are for the first period only.",
   "The registry record is read as retrieved on the stated date; registry records change."
  ],
- "run_id": "results-structure-2026-11-14-a5a8dda9cb",
- "generated_at": "2026-11-14T02:28:46+00:00",
+ "run_id": "results-structure-2026-11-14-9a083dc09a",
+ "generated_at": "2026-11-14T02:36:39+00:00",
  "files": {
-  "records.json": "6974e565f26cc3fc1f35a92a51e289f38f97d2e5d035234ee54e66995549c112",
-  "summary.json": "314058588977d043d821d077aa999978cbe1ce7fc59541a97b20c16e73dcf24d"
+  "records.json": "923a584568a79ac54fec51088df633e42f1e192e32cf844c5bd87aee13849161",
+  "summary.json": "01146c40edb5bf410f2880888cc92429777c11dc8c57cf65cc3939ece18d3d98"
  }
 }
