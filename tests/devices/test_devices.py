@@ -1634,7 +1634,33 @@ def test_a_search_answer_without_a_count_is_asked_again(tmp_path: Path, body: An
     registry.fetch_number_search(['K990001'], log, get, F.no_wait())
     batch = registry._key('ctgov/number_batch', registry._batch_params(registry.number_batches(['K990001'])[0]))
     assert log.get(batch)['status'] == acquire.UNUSABLE_200 and log.settled(batch) is None
-    assert registry.search_answer({'totalCount': 0}) and registry.search_answer({'totalCount': 2, 'studies': [{}, {}]})
+    study = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'}}}
+    assert registry.search_answer({'totalCount': 0}) and registry.search_answer({'totalCount': 1, 'studies': [study]})
+    # a returned study without its own id would be dropped by the reader: the answer is no answer
+    assert not registry.search_answer({'totalCount': 2, 'studies': [study, {}]})
+
+
+def test_a_build_does_not_replace_a_directory_that_is_not_a_device_build(tmp_path: Path, family: dict[str, Any]) -> None:
+    other = tmp_path / 'not-a-build'
+    other.mkdir()
+    (other / 'notes.txt').write_text('keep me')
+    with pytest.raises(ValueError, match='refusing to replace it'):
+        artifacts.write(family, other)
+    assert (other / 'notes.txt').read_text() == 'keep me'
+    a_file = tmp_path / 'a-file'
+    a_file.write_text('keep me too')
+    with pytest.raises(ValueError):
+        artifacts.write(family, a_file)
+    assert a_file.read_text() == 'keep me too'
+    # a stray directory named like the old fixed staging path is left alone
+    out = tmp_path / 'build'
+    (tmp_path / 'build.staging').mkdir()
+    (tmp_path / 'build.staging' / 'keep').write_text('x')
+    artifacts.write(family, out)
+    artifacts.write(family, out)                                    # a device build is replaced
+    assert sorted(p.name for p in out.iterdir()) == sorted(family)
+    assert (tmp_path / 'build.staging' / 'keep').exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ['a-file', 'build', 'build.staging', 'not-a-build']
 
 
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])

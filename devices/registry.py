@@ -90,12 +90,13 @@ def fetch_version(log: A.ResponseLog, get: A.Get, throttle: A.Throttle, day: str
 
 def search_answer(body: Any) -> bool:
     """A 200 from /studies (a search) answers only with an integer count of the records matched,
-    and a list of studies when it returns any; an error envelope is no answer, and is asked again."""
+    and a list of studies when it returns any, each stating its own id; an error envelope, or a
+    study the reader would have to drop, is no answer, and is asked again."""
     if not isinstance(body, dict):
         return False
-    total = body.get('totalCount')
-    return (isinstance(total, int) and not isinstance(total, bool)
-            and isinstance(body.get('studies', []), list))
+    total, studies = body.get('totalCount'), body.get('studies', [])
+    return (isinstance(total, int) and not isinstance(total, bool) and isinstance(studies, list)
+            and all(study_answer(st) for st in studies))
 
 
 def study_answer(body: Any) -> bool:

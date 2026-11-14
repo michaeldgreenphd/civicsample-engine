@@ -653,13 +653,40 @@ def summarise(rows: list[dict[str, Any]], subs: dict[str, dict[str, Any]], fams:
 
 
 def write(files: dict[str, Any], out: Path) -> None:
-    """Replace the family in `out` as a whole: staged beside it, then moved into place."""
-    stage = out.with_name(out.name + '.staging')
-    if stage.exists():
-        shutil.rmtree(stage)
-    stage.mkdir(parents=True)
-    for name, obj in files.items():
-        (stage / name).write_bytes(dump(obj))
+    """Replace the family in `out` as a whole: staged in a new directory beside it, then moved
+    into place, so a failure leaves `out` as it was.
+
+    `out` is replaced, so an existing `out` that is not a directory, or that holds anything but
+    this family's files, is refused (ValueError): a mistyped path must not delete another
+    dataset. The staging and set-aside directories are new ones made for this write, never an
+    existing path.
+    """
+    import tempfile
+    names = set(FILES) | {'run.json'}
     if out.exists():
-        shutil.rmtree(out)
-    stage.rename(out)
+        strangers = sorted(p.name for p in out.iterdir()) if out.is_dir() else [out.name]
+        strangers = [n for n in strangers if n not in names] if out.is_dir() else strangers
+        if strangers:
+            raise ValueError(f'{out} holds files that are not a device-linkage build ({strangers[:5]}); '
+                             'refusing to replace it')
+    out.parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=out.name + '.staging.', dir=out.parent))
+    try:
+        for name, obj in files.items():
+            (stage / name).write_bytes(dump(obj))
+        old = None
+        if out.exists():
+            old = Path(tempfile.mkdtemp(prefix=out.name + '.replaced.', dir=out.parent))
+            out.rename(old / out.name)
+        try:
+            stage.rename(out)
+        except OSError:
+            if old is not None:             # put the previous family back before reporting
+                (old / out.name).rename(out)
+                old.rmdir()
+            raise
+        if old is not None:
+            shutil.rmtree(old)
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)

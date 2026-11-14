@@ -322,7 +322,11 @@ def run_build(args: argparse.Namespace, rows: list[dict[str, Any]], subs: dict[s
     if problems:
         print(f'contract problems ({len(problems)}); nothing written:', *problems[:60], sep='\n  ', file=sys.stderr)
         return 1
-    artifacts.write(files, args.out)
+    try:
+        artifacts.write(files, args.out)
+    except ValueError as exc:
+        print(f'refused: {exc}', file=sys.stderr)
+        return 1
     run, den = files['run.json'], files['summary.json']['denominators']
     print(f"{run['run_id']}: {den['source_rows']['n']} rows -> {den['submissions']['n']} submissions -> "
           f"{den['families']['n']} families; {den['documents_retrieved']['n']} documents held; "
