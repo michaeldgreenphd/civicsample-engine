@@ -1282,3 +1282,35 @@ def test_a_registry_statement_quoted_from_another_field_is_not_validated(tmp_pat
     stated = {x['proposed_relationship']: x for x in family['links.json']['links'] if x['method'] == 'documentary_statement'}
     assert stated['related_validation_study']['automated_validation'] == 'quote_confirmed_in_source'
     assert stated['explicitly_cited_supporting_study']['automated_validation'] == 'not_validated'
+
+
+@pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])
+def test_a_200_without_a_usable_body_is_no_answer_and_is_asked_again(tmp_path: Path, body: bytes) -> None:
+    """An empty, cut-off, non-JSON or null body under HTTP 200 is logged, not settled, and reads as
+    no answer, so a route it belongs to stays incomplete."""
+    log = acquire.ResponseLog(tmp_path / 'responses.jsonl')
+    calls: list[str] = []
+    def get(url: str, params: dict[str, Any] | None) -> acquire.Response:
+        calls.append(url)
+        return (200, {'content-type': 'application/json'}, body, None)
+    rec = acquire.logged_json(log, get, F.no_wait(), 'k', 'https://example.invalid/x')
+    first = len(calls)
+    assert rec['status'] == acquire.UNUSABLE_200 and rec['http_status'] == 200 and rec['body'] is None and rec['error']
+    assert log.settled('k') is None
+    acquire.logged_json(log, get, F.no_wait(), 'k', 'https://example.invalid/x')
+    assert len(calls) == 2 * first, 'asked again on the next run'
+    # a number search whose batch answer is such a record is incomplete, never "no record found"
+    batch_key = registry._key('ctgov/number_batch', registry._batch_params(registry.number_batches(['K990001'])[0]))
+    out = registry.number_search_results({batch_key: {**rec, 'key': batch_key}}, ['K990001'])['K990001']
+    assert out['state'] == 'incomplete'
+
+
+def test_a_registry_statement_must_quote_the_study_it_names(tmp_path: Path, acquired: dict[str, Any]) -> None:
+    body = acquired['frozen']['registry'][0]['ctgov/study/NCT99000002']['body']
+    title = body['protocolSection']['identificationModule']['briefTitle']
+    curated = tmp_path / 'curated'
+    F.write_curated(curated, documentary_statements=[
+        ['DEN990005', 'NCT99000001', 'registry_record', 'NCT99000002', 'protocolSection.identificationModule.briefTitle',
+         title, 'related_validation_study', '2026-11-13', 'the record cited is another study']])
+    with pytest.raises(ValueError, match=r'the registry record cited \(NCT99000002\) is not the statement.s study \(NCT99000001\)'):
+        F.build_family(tmp_path, acquired, curated)

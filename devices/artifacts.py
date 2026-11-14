@@ -198,7 +198,15 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
                 text = cached['pages'][page - 1]
             version = {'document_sha256': d['sha256'], 'retrieved_at': d['retrieved_at']}
         elif row['source_kind'] == 'registry_record':
+            # The quote must come from the target study's own record; another study's record would
+            # attribute its words to the target.
+            if row['source_id'].strip() != row['nct_id']:
+                raise ValueError(f"documentary_statements.csv: the registry record cited ({row['source_id']}) "
+                                 f"is not the statement's study ({row['nct_id']})")
             rec = registry.get(f"ctgov/study_full/{row['source_id']}") or registry.get(f"ctgov/study/{row['source_id']}")
+            own = ((((rec or {}).get('body') or {}).get('protocolSection') or {}).get('identificationModule') or {}).get('nctId')
+            if rec and own and own != row['nct_id']:
+                raise ValueError(f"documentary_statements.csv: the record held for {row['source_id']} is study {own}")
             # The quote is checked only in the field the row names (a dotted path such as
             # protocolSection.descriptionModule.briefSummary, with [i] for list items). A path that
             # does not resolve gives no text, so the quote reads not validated.

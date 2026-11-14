@@ -154,6 +154,7 @@ def write_atomic(path: Path, data: bytes) -> None:
 # logged (it is what happened) but asked again on a rerun: on 2026-11-13 the FDA database pages
 # answered four of 1,431 requests with a bare HTTP 400 and served the same pages minutes later.
 FINAL_STATUSES = frozenset({200, 404})
+UNUSABLE_200 = 'unusable_200'   # HTTP 200 with an empty or unparsable body: logged, not final, not an answer
 
 
 class ResponseLog:
@@ -241,7 +242,13 @@ def logged_json(log: ResponseLog, get: Get, throttle: Throttle, key: str, url: s
             error = error or 'response is not JSON'
     if transform is not None and parsed is not None:
         parsed = transform(parsed)
+    if status == 200 and parsed is None:
+        # A 200 whose body is empty or not JSON (a proxy page, a cut-off response) is no answer.
+        # It is logged under its own status, which no reader takes for 200 and which is not final,
+        # so the route reads incomplete and the next run asks again. The HTTP status is kept.
+        status, error = UNUSABLE_200, error or 'empty response body'
     rec = {'key': key, 'url': url, 'params': params or {}, 'tag': tag or {}, 'fetched_at': now(), 'status': status,
+           'http_status': 200 if status == UNUSABLE_200 else status,
            'attempts': attempts, 'body': parsed, 'error': error}
     log.put(rec)
     return rec
