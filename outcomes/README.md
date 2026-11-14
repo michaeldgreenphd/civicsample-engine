@@ -64,7 +64,10 @@ No workflow calls it. It does not change the outcomes beta build above or any we
 `results_structure.py` holds pure functions over one ClinicalTrials.gov API v2 study record. The
 rules are ported from the audit scripts under
 `docs/audits/outcomes_results_structure/second_pass/scripts/`, and their definitions are in
-`docs/audits/outcomes_results_structure/second_pass/definitions.json`.
+`docs/audits/outcomes_results_structure/second_pass/definitions.json`. One rule departs from the
+audit's script: a signal from an analysis's compared groups is labelled with the dimensions those
+groups differ on, not with every dimension the measure's groups carry
+(`docs/audits/outcomes_results_structure/port_check/README.md`).
 
 | Fact | Rule and source |
 |---|---|

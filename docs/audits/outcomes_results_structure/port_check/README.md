@@ -76,6 +76,14 @@ listed so the comparison is not read as covering them.
   numbers (37 of them posted with a leading equals sign), 344 bounds such as
   `<0.001`, 353 with no p-value. Rule S1 itself is unchanged: a p-value counts
   when the string contains a digit.
+- **One deliberate departure from the audit rule.** The audit's script labelled
+  an `analysis_groupIds` signal with every dimension the measure's groups
+  carry. The production module labels it with the dimensions the compared
+  groups differ on, so an analysis of two groups that differ by sex alone, in
+  a measure whose groups also encode age, is a sex signal only. Which analysis
+  fires is unchanged. On the 2,000 records all 12 such signals (in 6 trials)
+  compare groups that differ on every labelled dimension, so the comparison
+  above is unaffected; the frozen 2020 cohort archive has no such signal.
 - **Verbatim matched text and field paths** on each signal. The audit's
   display text (truncated titles joined with ` | `) is what is compared above.
 

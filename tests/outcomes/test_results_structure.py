@@ -592,3 +592,21 @@ def test_a_level_signal_keeps_its_id_when_the_registry_reorders_the_sibling_rows
     # the function the ids are taken from, directly
     assert RS.level_identity(list(reversed(race))) == {'race': sorted(race)}
     assert RS.level_dimensions(list(race)) == {'race': list(race)}
+
+
+def test_an_analysis_signal_names_only_the_dimensions_its_groups_differ_on() -> None:
+    """Four groups crossing sex and age. An analysis of two groups that differ by sex alone is a sex
+    signal, not an age one; an analysis across both is both."""
+    titles = ('Women age 18 to 64 years', 'Men age 18 to 64 years', 'Women age 65 years and older', 'Men age 65 years and older')
+    def analysis_dims(*group_ids: str) -> list[str]:
+        m = F.measure(titles=titles, analysed=('50',) * 4, values=('1',) * 4, analyses=[F.analysis(group_ids)])
+        assert {s['dimension'] for s in RS.detect_measure(m) if s['field'] == 'group_titles'} == {'sex', 'age'}
+        return [s['dimension'] for s in RS.detect_measure(m) if s['field'] == 'analysis_groupIds']
+    assert analysis_dims('OG000', 'OG001') == ['sex']
+    assert analysis_dims('OG000', 'OG002') == ['age']
+    assert analysis_dims('OG000', 'OG003') == ['age+sex']
+    assert analysis_dims('OG000', 'OG001', 'OG002', 'OG003') == ['age+sex']
+    # published: one entry per dimension the analysis splits, and none for the other
+    m = F.measure(titles=titles, analysed=('50',) * 4, values=('1',) * 4, analyses=[F.analysis(('OG000', 'OG001'))])
+    published = [(s['field'], s['dimension']) for s in RS.subgroup_signals('NCT99000001', [m])]
+    assert ('analysis_groupIds', 'sex') in published and ('analysis_groupIds', 'age') not in published

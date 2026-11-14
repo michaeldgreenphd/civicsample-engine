@@ -752,7 +752,8 @@ def detect_measure(m: dict[str, Any]) -> list[dict[str, Any]]:
     Level rules run on the set of class titles, the set of category titles and the set of group
     titles; then on group descriptions (sex and age only) for dimensions the group titles did not
     fire; then one `analysis_groupIds` signal for the first analysis whose `groupIds` reference
-    two or more groups that carry different levels. Cue rules run on the measure title,
+    two or more groups that carry different levels, labelled with the dimensions those groups
+    differ on. Cue rules run on the measure title,
     description and population description, on the first class title and first category title
     with a cue, on each of nine analysis text fields, and on the first measurement comment with
     a cue."""
@@ -784,8 +785,14 @@ def detect_measure(m: dict[str, Any]) -> list[dict[str, Any]]:
         for j, a in enumerate(m.get('analyses') or []):
             ids = a.get('groupIds') or []
             ref = [by_id.get(i, '') for i in ids]
-            if len(ref) >= 2 and level_dimensions(ref, dims=tuple(lvl_dims)):
-                sig.append({'field': 'analysis_groupIds', 'dimension': '+'.join(sorted(lvl_dims)),
+            # Only the dimensions the compared groups differ on. The audit's script labelled this
+            # signal with every dimension the measure's groups carry, so an analysis of "Women age 18"
+            # against "Men age 18", in a measure that also has age-65 groups, was labelled age as
+            # well as sex. Which analysis fires is unchanged. In the audit's 2,000 records all 12 such
+            # signals compare groups that differ on every labelled dimension, so none changes.
+            compared = level_dimensions(ref, dims=tuple(sorted(lvl_dims))) if len(ref) >= 2 else {}
+            if compared:
+                sig.append({'field': 'analysis_groupIds', 'dimension': '+'.join(sorted(compared)),
                             'text': 'analysis compares level-defined groups: ' + ' vs '.join(r[:40] for r in ref[:3]),
                             'matched': [title_of.get(i, '') for i in ids], 'path': f'analyses[{j}].groupIds',
                             # the compared groups are a set: their titles, sorted
