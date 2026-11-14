@@ -107,17 +107,20 @@ def stage_documents(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -
     log(f'documents: {len(plan)} planned; {out}')
 
 
-def text_bound_to(path: Path, digest: str) -> bool:
-    """True when a cached extraction exists, records that it parsed the bytes named `digest`, and is
-    not a worker failure (a timeout or a crash of the isolated worker says nothing lasting about the
-    file, so it is extracted again on the next run; the build reads it as failed until then)."""
+def text_bound_to(path: Path, digest: str, version: str) -> bool:
+    """True when a cached extraction exists, records that it parsed the bytes named `digest` with
+    the extractor `version` (the conditions documents.read_text reads it under, so text the build
+    would refuse is never counted as done), and is not a worker failure (a timeout or a crash of
+    the isolated worker says nothing lasting about the file, so it is extracted again on the next
+    run; the build reads it as failed until then)."""
     if not path.exists():
         return False
     try:
         cached = json.loads(gzip.decompress(path.read_bytes()))
     except (OSError, ValueError):
         return False
-    return cached.get('source_sha256') == digest and not cached.get('worker_failure')
+    return (cached.get('source_sha256') == digest and cached.get('extraction_version') == version
+            and not cached.get('worker_failure'))
 
 
 def stage_text(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> None:
@@ -130,7 +133,7 @@ def stage_text(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> Non
     version = pdftext.extraction_version()
     size_of = {line['sha256']: line.get('bytes') for line in manifest.latest().values() if line['outcome'] == 'retrieved'}
     digests = sorted(size_of)
-    todo = [d for d in digests if not text_bound_to(text_path(args.cache, d, version), d)]
+    todo = [d for d in digests if not text_bound_to(text_path(args.cache, d, version), d, version)]
     log(f'text: {len(digests)} document versions, {len(todo)} to extract with {version}')
     skipped: list[str] = []
 
@@ -156,7 +159,7 @@ def stage_text(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> Non
                                'n_pages_with_text': None, 'pages': [], 'page_errors': {}, 'error': failure,
                                'source_sha256': digest, 'worker_failure': True}
             acquire.write_atomic(target, gzip.compress(json.dumps(pdftext_failure).encode(), mtime=0))
-        elif not text_bound_to(target, digest):
+        elif not text_bound_to(target, digest, version):
             # The file changed between the check and the read: keep nothing; a later run tries again.
             target.unlink()
             skipped.append(f'{digest[:12]}…: the bytes parsed do not hash to the digest')

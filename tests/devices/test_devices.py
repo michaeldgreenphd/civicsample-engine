@@ -2115,6 +2115,13 @@ def test_the_text_stage_skips_a_damaged_file_and_redoes_text_not_bound_to_its_by
     target.write_bytes(gzip.compress(json.dumps(stale).encode(), mtime=0))
     build_device_links.stage_text(args, {})
     assert cached()['source_sha256'] == digest and cached()['n_pages'] == 1
+    # a file at this version's path naming another extractor is extracted again, not left for the
+    # build to read as not extracted
+    other = {**cached(), 'extraction_version': 'pypdf-0.0.0-r0', 'n_pages': 99}
+    target.write_bytes(gzip.compress(json.dumps(other).encode(), mtime=0))
+    build_device_links.stage_text(args, {})
+    assert cached()['extraction_version'] == pdftext.extraction_version() and cached()['n_pages'] == 1
+    assert documents.read_text(tmp_path, digest, pdftext.extraction_version()) is not None
 
 
 def test_no_reader_uses_cached_text_not_bound_to_the_documents_bytes(tmp_path: Path, acquired: dict[str, Any]) -> None:
