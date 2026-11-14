@@ -188,7 +188,13 @@ def statement_study_ids(path: Path) -> set[str]:
     registry-record statement quotes (the build checks the quote against that record, so it must be
     held, not merely returned by some other search)."""
     rows = links.read_statements(path)
-    return {r['nct_id'] for r in rows} | {r['source_id'] for r in rows if r['source_kind'] == 'registry_record'}
+    return {r['nct_id'] for r in rows} | statement_quoted_records(path)
+
+
+def statement_quoted_records(path: Path) -> set[str]:
+    """The registry records a registry-record statement quotes. Each is fetched whole, since the
+    quoted field may be one the projected lookup leaves out."""
+    return {r['source_id'] for r in links.read_statements(path) if r['source_kind'] == 'registry_record'}
 
 
 def stage_nct(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> None:
@@ -198,12 +204,14 @@ def stage_nct(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> None
     docs = documents.build(manifest.lines, {sn: s['pathway'] for sn, s in subs.items()}, args.cache,
                            pdftext.extraction_version())
     cited = {i['identifier'] for d in docs for i in d['identifiers'] if i['kind'] == 'nct'}
-    stated = statement_study_ids(ROOT / 'devices' / 'documentary_statements.csv')
+    statements = ROOT / 'devices' / 'documentary_statements.csv'
+    stated, quoted = statement_study_ids(statements), statement_quoted_records(statements)
     ids = sorted(cited | stated)
     get, throttle, rlog = acquire.requests_get(), acquire.Throttle(), registry_log(args)
     registry.fetch_version(rlog, get, throttle, acquire.now()[:10])
     log(f'nct: {len(cited)} distinct ids cited in documents, {len(stated - cited)} more named by curated statements; '
-        f'{registry.fetch_studies(ids, rlog, get, throttle)}')
+        f'{registry.fetch_studies(ids, rlog, get, throttle)}; {len(quoted)} record(s) quoted by statements, read whole: '
+        f'{registry.fetch_full_studies(sorted(quoted), rlog, get, throttle)}')
 
 
 def stage_freeze(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> None:

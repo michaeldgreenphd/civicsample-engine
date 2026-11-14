@@ -688,6 +688,28 @@ def test_acquisition_looks_up_the_studies_curated_statements_name(tmp_path: Path
         w.writerow({**base, 'submission_number': 'K990002', 'nct_id': 'NCT99000002', 'source_kind': 'registry_record',
                     'source_id': 'NCT99000002', 'page_or_field': 'protocolSection.descriptionModule.briefSummary'})
     assert build_device_links.statement_study_ids(path) == {'NCT99000001', 'NCT99000002'}
+    assert build_device_links.statement_quoted_records(path) == {'NCT99000002'}
+
+
+def test_a_record_a_statement_quotes_is_fetched_whole_under_its_own_key(tmp_path: Path) -> None:
+    asked: list[tuple[str, Any]] = []
+    record = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000002'},
+                                  'descriptionModule': {'briefSummary': 'the pivotal study'}}}
+    def get(url: str, params: dict[str, Any] | None) -> acquire.Response:
+        asked.append((url, params))
+        return 200, {}, json.dumps(record).encode(), None
+    log = acquire.ResponseLog(tmp_path / 'log.jsonl')
+    # a projected lookup already held for the id does not stand in for the whole record
+    log.put({'key': 'ctgov/study/NCT99000002', 'status': 200, 'body': {'protocolSection': {}}})
+    out = registry.fetch_full_studies(['NCT99000002'], log, get, F.no_wait())
+    assert out == {'full_records_answered': 1, 'full_records_without_answer': 0}
+    assert asked == [(f'{registry.API}/studies/NCT99000002', None)]         # no `fields` projection
+    held = acquire.ResponseLog(tmp_path / 'log.jsonl').settled('ctgov/study_full/NCT99000002')
+    assert held['body']['protocolSection']['descriptionModule']['briefSummary'] == 'the pivotal study'
+    registry.fetch_full_studies(['NCT99000002'], log, get, F.no_wait())
+    assert len(asked) == 1                                                  # asked once
+    with pytest.raises(ValueError):
+        registry.fetch_full_studies(['K990001'], log, get, F.no_wait())
     # the committed file is read the same way (it has no rows yet)
     assert build_device_links.statement_study_ids(build_device_links.ROOT / 'devices' / 'documentary_statements.csv') == set()
 

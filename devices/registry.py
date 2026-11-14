@@ -100,6 +100,22 @@ def fetch_studies(nct_ids: list[str], log: A.ResponseLog, get: A.Get, throttle: 
     return {'lookups_answered': answered, 'lookups_without_answer': unanswered}
 
 
+def fetch_full_studies(nct_ids: list[str], log: A.ResponseLog, get: A.Get, throttle: A.Throttle) -> dict[str, int]:
+    """The whole record, no field projection, under `ctgov/study_full/{id}`: for a record a curated
+    statement quotes, whose quoted field may lie outside SEARCH_FIELDS. The key is the one the
+    number search uses for the records it reads in full, and the build checks a statement's quote
+    against this copy first, so a projected lookup held under `ctgov/study/{id}` cannot stand in
+    for it. Asked once."""
+    answered = unanswered = 0
+    for nct in sorted(set(nct_ids)):
+        if not NCT.match(nct):
+            raise ValueError(f'{nct!r} is not an NCT id')
+        rec = A.logged_json(log, get, throttle, f'ctgov/study_full/{nct}', f'{API}/studies/{nct}', None,
+                            tag={'nct_id': nct})
+        answered, unanswered = answered + (rec is not None), unanswered + (rec is None)
+    return {'full_records_answered': answered, 'full_records_without_answer': unanswered}
+
+
 def nct_state(records: dict[str, dict[str, Any]], nct_id: str) -> tuple[str, dict[str, Any] | None]:
     """(state, study facts or None) for one cited id.
 
