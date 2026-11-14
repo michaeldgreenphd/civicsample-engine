@@ -112,7 +112,13 @@ is readable, is a `failed` extraction. The citation scan reports how many pages 
 and a scan with any such page and no identifier found is `search_incomplete_or_blocked`, not a
 completed scope: an unread page could hold the identifier. This was the investigator's decision on
 2026-11-14, in review of the pull request that added this build; reading those pages by OCR is the
-planned follow-up.
+planned follow-up. The same holds where every document held is one that cannot answer by itself
+only because its pages were not read: a scan that would otherwise read
+`available_document_insufficient` is `search_incomplete_or_blocked` when an unread page belongs to a
+document that could cite a study (a summary, an SSED, a decision summary, or a file whose type is
+not known). A clearance or granting letter, an approval order, labeling or a 510(k) Statement cannot
+cite a study whatever its pages hold, so its unread pages leave the scan insufficient (the
+investigator's decision of the same day, "D1. 2").
 
 ## Coverage
 
