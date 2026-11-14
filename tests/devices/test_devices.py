@@ -643,7 +643,9 @@ def test_nct_validation_states(acquired: dict[str, Any]) -> None:
     ('Device: Viz LVO (De Novo Number DEN990005)', 'DEN990005', 1, None),
     ('cleared under 510(k) (K990001), see K9900012 and XK990001', 'K990001', 1, None),
     ('approved as P990007/S002', 'P990007/S002', 1, True), ('approved as P990007 S002', 'P990007/S002', 1, True),
-    ('approved as P990007', 'P990007/S002', 1, False), ('approved as P990007/S005', 'P990007/S002', 1, False),
+    ('approved as P990007', 'P990007/S002', 1, False),
+    # another supplement of the same PMA is not located; the original standing alone still is
+    ('approved as P990007/S005 and as P990007', 'P990007/S002', 1, False),
     # a longer identifier that begins with the number is not the number
     ('model K990001ABC and K990001', 'K990001', 1, None),
     # an original PMA is cited only by its number standing alone
@@ -654,6 +656,43 @@ def test_a_submission_number_must_stand_exactly_in_a_named_field(text: str, numb
     found = registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}}, number)
     assert len(found) == n and found[0]['supplement_cited'] is supplement
     assert found[0]['registry_field'] == 'protocolSection.descriptionModule.briefSummary' and found[0]['quote'] == text
+
+
+@pytest.mark.parametrize('text', ['approved as P990007/S005', 'approved as P990007 S005', 'approved as P990007s005'])
+def test_another_supplement_of_the_pma_is_not_a_citation_of_the_supplement_or_the_original(text: str) -> None:
+    assert registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}},
+                                      'P990007/S002') == []
+
+
+def _pma_page(pma: str, supplement: str | None = None) -> str:
+    rows = f'<TR><TH Align="Left">PMA Number</TH><TD Align="Left">{pma}</TD></TR>'
+    if supplement:
+        rows += f'<TR><TH Align="Left">Supplement Number</TH><TD Align="Left">{supplement}</TD></TR>'
+    return f'<html><a href="pma.cfm?id={pma}">original PMA</a><TABLE>{rows}</TABLE></html>'
+
+
+@pytest.mark.parametrize('number, page, names_it', [
+    ('P990007/S002', _pma_page('P990007', 'S002'), True),
+    ('P990007/S002', _pma_page('P990007'), False),                 # the original's page
+    ('P990007/S002', _pma_page('P990007', 'S005'), False),         # another supplement's page
+    ('P990007', _pma_page('P990007'), True),
+    ('P990007', _pma_page('P990007', 'S002'), False),              # a supplement's page for the original
+    ('P990007', _pma_page('P990008'), False),
+    ('P990007', '<html>P990007 is not found</html>', False),       # the number is printed, but no record rows
+    ('K990001', '<html>510(k) Number K990001</html>', True),
+    ('K990001', '<html>510(k) Number K990002</html>', False),
+])
+def test_a_pma_page_is_confirmed_from_its_number_rows(number: str, page: str, names_it: bool) -> None:
+    assert acquire.page_names_the_submission(number, page) is names_it
+
+
+def test_the_original_pmas_page_served_for_a_supplement_is_not_its_answer(tmp_path: Path) -> None:
+    log = acquire.ResponseLog(tmp_path / 'log.jsonl')
+    page = _pma_page('P990007').encode()
+    acquire.fetch_database_pages(['P990007/S002'], log, tmp_path / 'html', lambda u, p: (200, {}, page, None), F.no_wait())
+    rec = log.get('fda_page/P990007/S002')
+    assert (rec['status'], rec['http_status'], rec['page_names_the_submission']) == ('not_the_record', 200, False)
+    assert log.settled('fda_page/P990007/S002') is None
 
 
 def test_a_search_hit_without_the_number_in_the_record_is_reported_as_such(acquired: dict[str, Any]) -> None:

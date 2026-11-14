@@ -197,8 +197,9 @@ def locate_identifier(study: dict[str, Any], submission_number: str, window: int
     (with its supplement, when one is cited) not followed by a letter or digit, so "K990001ABC" and
     "P140011/S0089" are not "K990001" and "P140011/S008". For a PMA supplement the base number must be followed by its supplement ("P140011/S008",
     "P140011 S008", "P140011S008"); a record citing only the original PMA is reported with
-    `supplement_cited: false` and is not a citation of the supplement. For an original PMA the
-    number must stand alone: "P140011/S008" is the supplement, not P140011.
+    `supplement_cited: false` and is not a citation of the supplement. A record citing another
+    supplement ("P140011/S007" when S008 is sought) cites neither and is not located. For an
+    original PMA the number must stand alone: "P140011/S008" is the supplement, not P140011.
     """
     base, _, supp = submission_number.partition('/')
     pattern = re.compile(r'(?<![A-Za-z0-9])' + re.escape(base) + r'(?:\s*/?\s*(S\d{3}))?(?![A-Za-z0-9])')
@@ -208,6 +209,10 @@ def locate_identifier(study: dict[str, Any], submission_number: str, window: int
             if not supp and m.group(1):
                 # An original PMA is cited only by its number standing alone; "P140011/S008" is a
                 # supplement, another submission.
+                continue
+            if supp and m.group(1) and m.group(1).upper() != supp.upper():
+                # Another supplement of the same PMA is another submission; reporting it as
+                # `supplement_cited: false` would read as a citation of the original PMA.
                 continue
             quote = re.sub(r'\s+', ' ', text[max(0, m.start() - window): m.end() + window]).strip()
             found.append({'registry_field': path, 'quote': quote,

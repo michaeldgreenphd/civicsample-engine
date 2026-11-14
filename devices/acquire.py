@@ -375,6 +375,35 @@ def database_page_url(submission_number: str) -> tuple[str, dict[str, str]]:
     return f'{DATABASE_PAGES}/cfpmn/pmn.cfm', {'ID': sn}
 
 
+def _page_field(html: str, label: str) -> str | None:
+    """The value of one labelled row (<TH>label</TH><TD>value</TD>) on an FDA database page, upper
+    case without spaces; '' when the row is absent; None when the page gives it two different values."""
+    values = {re.sub(r'\s+', '', v).upper()
+              for v in re.findall(r'<TH[^>]*>\s*' + re.escape(label) + r'\s*</TH>\s*<TD[^>]*>([^<]*)', html, re.IGNORECASE)}
+    if len(values) > 1:
+        return None
+    return values.pop() if values else ''
+
+
+def page_names_the_submission(submission_number: str, html: str) -> bool:
+    """Whether a database page is the record of this very number.
+
+    A PMA page states its number in two rows, "PMA Number" (P140011) and "Supplement Number" (S008;
+    absent on an original PMA's page), so the base number alone also appears on the original's
+    page and on every other supplement's. A PMA number is confirmed from those rows: the PMA
+    Number must be the base and the Supplement Number must be the supplement asked for, or absent
+    for an original. Checked on 2026-11-14 against the 18 PMA pages fetched on 2026-11-13 (17
+    originals and P140011/S008), whose rows all read this way. 510(k) and De Novo pages are
+    confirmed by the number appearing on the page.
+    """
+    sn = submission_number.strip().upper()
+    base, _, supp = sn.partition('/')
+    if not base.startswith('P'):
+        return base in html
+    pma, supplement = _page_field(html, 'PMA Number'), _page_field(html, 'Supplement Number')
+    return pma == base and supplement == supp
+
+
 def parse_document_links(html: str) -> list[dict[str, str]]:
     """Every link on a database page that points under /cdrh_docs/, with FDA's label for it.
     http is rewritten to https (the pages still print http for the reviews directory)."""
@@ -403,7 +432,7 @@ def fetch_database_pages(submission_numbers: list[str], log: ResponseLog, pages_
             unanswered += 1
             continue
         html = body.decode('utf-8', 'replace')
-        names_it = sn.split('/')[0] in html
+        names_it = page_names_the_submission(sn, html)
         logged = status
         if status == 200 and not names_it:
             # A generic or error page served with 200, or another submission's page, does not say

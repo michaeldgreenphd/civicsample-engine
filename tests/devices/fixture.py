@@ -185,6 +185,12 @@ def stub_get(calls: list[str] | None = None, fail: set[str] | None = None) -> ac
                 return None, {}, b'', 'ConnectionError: stub'
             html = f'<html>{number}' + ''.join(f'<A HREF="http://www.accessdata.fda.gov/cdrh_docs/{p}" TITLE="x">{label}</A>'
                                               for p, label in listed) + '</html>'
+            pma = re.fullmatch(r'(P\d{6})(S\d{3})?', number)
+            if pma:
+                # A PMA page states its number in labelled rows, as FDA's pages do.
+                html = html.replace('</html>', f'<TR><TH Align="Left">PMA Number</TH><TD Align="Left">{pma.group(1)}</TD></TR>'
+                                    + (f'<TR><TH Align="Left">Supplement Number</TH><TD Align="Left">{pma.group(2)}</TD></TR>'
+                                       if pma.group(2) else '') + '</html>')
             return 200, {}, html.encode(), None
         if url.startswith(DOCS):
             name = url[len(DOCS) + 1:]
