@@ -2266,3 +2266,35 @@ def test_a_frozen_full_record_the_build_cannot_read_leaves_the_number_search_inc
                    'sponsorCollaboratorsModule': {'collaborators': [None]}}}}}
     out = registry.number_search_results(records, ['K990001'])['K990001']
     assert out['state'] == 'incomplete' and out['hits'] == [] and 'could not be read' in out['reason']
+
+
+def test_a_document_citation_is_a_new_evidence_record_when_its_quoted_sentence_changes() -> None:
+    """A review is keyed on the evidence record's id: a new version of the document that changes
+    the sentence around the NCT id is new evidence, so an old review is not carried onto it."""
+    doc = {'submission_number': 'K990001', 'scope': 'this_submission', 'document_type': '510k_summary',
+           'document_id': 'doc:K990001:x', 'sha256': 'a' * 64, 'retrieved_at': 't', 'source_last_modified': None,
+           'text': {'extraction_version': 'v'}}
+    study = {'nct_id': 'NCT99000001', 'start_date': None, 'primary_completion_date': None, 'completion_date': None}
+
+    def lid(sentence: str, sha: str = 'a' * 64) -> str:
+        ident = {'identifier': 'NCT99000001', 'page': 2, 'sentence': sentence, 'raw_match': 'NCT99000001'}
+        return links.from_document_citation({**doc, 'sha256': sha}, ident, 'resolves', study, '2026-01-01', {})['link_id']
+    base = lid('The pivotal study NCT99000001 enrolled 300 patients.')
+    assert lid('The pivotal  study\nNCT99000001 enrolled 300 patients.') == base       # spacing is not evidence
+    assert lid('The pivotal study NCT99000001 enrolled 300 patients.', sha='b' * 64) == base   # same words, new bytes
+    assert lid('A predicate study NCT99000001 is cited for background.') != base
+
+
+@pytest.mark.parametrize('field', [{'identificationModule': {'nctId': 'NCT99000001', 'briefTitle': {'bad': 1}}},
+                                   {'identificationModule': {'nctId': 'NCT99000001'},
+                                    'sponsorCollaboratorsModule': {'collaborators': [{'name': {'bad': 1}}]}},
+                                   {'identificationModule': {'nctId': 'NCT99000001'},
+                                    'sponsorCollaboratorsModule': {'leadSponsor': {'name': 7}}},
+                                   {'identificationModule': {'nctId': 'NCT99000001'},
+                                    'designModule': {'enrollmentInfo': {'count': '40'}}},
+                                   {'identificationModule': {'nctId': 'NCT99000001'},
+                                    'armsInterventionsModule': {'interventions': [{'name': 'X', 'otherNames': [3]}]}}])
+def test_a_study_whose_fields_have_the_wrong_type_is_no_answer(field: dict[str, Any]) -> None:
+    study = {'protocolSection': field}
+    assert not registry.study_answer(study)
+    assert not registry.search_answer({'totalCount': 1, 'studies': [study]})

@@ -119,10 +119,29 @@ def study_answer(body: Any) -> bool:
     if not (isinstance(nct, str) and NCT.match(nct)):
         return False
     try:
-        study_facts(body)
+        facts = study_facts(body)
     except (AttributeError, TypeError):
         return False
-    return True
+    return _facts_well_typed(facts)
+
+
+def _facts_well_typed(f: dict[str, Any]) -> bool:
+    """The values study_facts returns have the types the build reads them as: text is text (or
+    absent), lists hold text, a count is a whole number. An object where a title stands, say, would
+    pass study_facts and make name matching fail later."""
+    def text(v: Any) -> bool:
+        return v is None or isinstance(v, str)
+    texts = ('brief_title', 'official_title', 'lead_sponsor', 'lead_sponsor_class', 'start_date',
+             'primary_completion_date', 'completion_date', 'first_posted_date', 'last_update_posted_date',
+             'overall_status', 'study_type', 'enrollment_type')
+    count = f['enrollment_count']
+    return (all(text(f[k]) for k in texts)
+            and all(isinstance(c, str) for c in f['collaborators'])
+            and all(text(i['type']) and isinstance(i['name'], str) and isinstance(i['description'], str)
+                    and isinstance(i['other_names'], list) and all(isinstance(o, str) for o in i['other_names'])
+                    for i in f['interventions'])
+            and (count is None or (isinstance(count, int) and not isinstance(count, bool)))
+            and (f['has_results'] is None or isinstance(f['has_results'], bool)))
 
 
 def fetch_studies(nct_ids: list[str], log: A.ResponseLog, get: A.Get, throttle: A.Throttle) -> dict[str, int]:

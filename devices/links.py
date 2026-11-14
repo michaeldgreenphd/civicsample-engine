@@ -195,7 +195,11 @@ def from_document_citation(doc: dict[str, Any], identifier: dict[str, Any], stat
         reasons.append('a citation shows the document mentions the study; it does not show the study supported '
                        'this decision (it may be a predicate\'s study or background)')
     return _record(
-        lid=link_id('submission', sn, nct, method, doc['document_id'], identifier['page']),
+        # The quoted sentence is part of what the evidence is (as the quote is for a registry
+        # citation): a new version of the document that changes it is new evidence, and a review
+        # of the old sentence is reported orphaned rather than carried over.
+        lid=link_id('submission', sn, nct, method, doc['document_id'], identifier['page'],
+                    re.sub(r'\s+', ' ', identifier['sentence'] or '').strip()),
         level='submission' if own else 'family', source_type='submission', source_id=sn, nct_id=nct,
         relationship='study_cited_in_submission_document' if own else 'study_cited_in_parent_submission_document',
         method=method,
