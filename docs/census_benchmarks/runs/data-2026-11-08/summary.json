@@ -98,7 +98,7 @@
  "dimensions": {
   "race": {
    "reported": 18682,
-   "not_reported": 12076,
+   "not_reported": 12079,
    "pooled": 15775,
    "category_structure": {
     "matches_sex_table": 18256,
@@ -154,7 +154,7 @@
   },
   "ethnicity": {
    "reported": 13351,
-   "not_reported": 17407,
+   "not_reported": 17410,
    "pooled": 11361,
    "category_structure": {
     "matches_sex_table": 13035,
@@ -205,24 +205,25 @@
    }
   },
   "sex": {
-   "reported": 29772,
+   "reported": 29775,
    "not_reported": 986,
    "pooled": 22082,
    "category_structure": {
-    "no_other_table_to_check_against": 29772
+    "no_other_table_to_check_against": 29775
    },
    "category_cautions": {},
-   "classified_share_computed": 29696,
+   "classified_share_computed": 29699,
    "geography_sensitivity": {
     "False": 24755,
-    "None": 3888,
+    "None": 3891,
     "True": 1129
    },
    "not_pooled_reasons": {
     "single_sex_by_eligibility": 3844,
     "under_min_participants": 3623,
     "over_size_cap": 222,
-    "eligible_ages_unreadable": 1
+    "eligible_ages_unreadable": 1,
+    "no_benchmark_window": 3
    },
    "benchmark_available_by_level": {
     "zcta": 16995,
@@ -239,28 +240,34 @@
      "single_sex_by_eligibility": 2514,
      "no_eligible_residents_estimated": 1662,
      "resolved_place_is_outside_the_registered_state": 42,
-     "no_zip_in_registration": 246
+     "no_zip_in_registration": 246,
+     "no_benchmark_window": 3
     },
     "county": {
      "single_sex_by_eligibility": 3829,
      "resolved_place_is_outside_the_registered_state": 42,
-     "no_zcta_polygon_and_no_coordinates": 16
+     "no_zcta_polygon_and_no_coordinates": 16,
+     "no_benchmark_window": 3
     },
     "cbsa": {
      "single_sex_by_eligibility": 3827,
      "resolved_place_is_outside_the_registered_state": 42,
      "outside_any_metro_or_micro_area": 33,
      "no_zcta_polygon_and_no_coordinates": 16,
+     "no_benchmark_window": 3,
      "area_not_in_this_window_file": 1
     },
     "state": {
-     "single_sex_by_eligibility": 3844
+     "single_sex_by_eligibility": 3844,
+     "no_benchmark_window": 3
     },
     "region": {
-     "single_sex_by_eligibility": 3844
+     "single_sex_by_eligibility": 3844,
+     "no_benchmark_window": 3
     },
     "us": {
-     "single_sex_by_eligibility": 3844
+     "single_sex_by_eligibility": 3844,
+     "no_benchmark_window": 3
     }
    }
   }
