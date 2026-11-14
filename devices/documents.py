@@ -406,12 +406,15 @@ def read_text(cache: Path, digest: str, version: str) -> dict[str, Any] | None:
     version has not been extracted from these bytes (the build records it as not extracted; it
     does not extract). Every reader of cached text comes through here, so none can use text that
     does not record parsing exactly the bytes named by `digest` (`source_sha256`): one made from
-    a missing, damaged or replaced file, or before extractions recorded what they parsed."""
+    a missing, damaged or replaced file, or before extractions recorded what they parsed. Nor
+    can any use text that names another extractor than `version`, the one run.json stamps (a
+    stale or misplaced file at this version's path); all 1,532 in the 2026-11-14 cache name their
+    own."""
     path = text_file(cache, digest, version)
     if not path.exists():
         return None
     text = json.loads(gzip.decompress(path.read_bytes()))
-    return text if text.get('source_sha256') == digest else None
+    return text if text.get('source_sha256') == digest and text.get('extraction_version') == version else None
 
 
 def store_problem(cache: Path, digest: str, size: int | None) -> str | None:

@@ -2135,6 +2135,9 @@ def test_no_reader_uses_cached_text_not_bound_to_the_documents_bytes(tmp_path: P
     assert documents.read_text(a['cache'], summary['sha256'], version) is not None
     path = build_device_links.text_path(a['cache'], summary['sha256'], version)
     body = json.loads(gzip.decompress(path.read_bytes()))
+    # text at this version's path that names another extractor is not this version's text
+    path.write_bytes(gzip.compress(json.dumps({**body, 'extraction_version': 'pypdf-0.0.0-r0'}).encode(), mtime=0))
+    assert documents.read_text(a['cache'], summary['sha256'], version) is None
     body['source_sha256'] = acquire.sha256(b'another file')
     path.write_bytes(gzip.compress(json.dumps(body).encode(), mtime=0))
     assert documents.read_text(a['cache'], summary['sha256'], version) is None
