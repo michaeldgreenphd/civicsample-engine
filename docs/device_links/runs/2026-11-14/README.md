@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T06:07:34+00:00 by `scripts/build_device_links.py build` at engine commit `5f4f890465d2` (no uncommitted changes; producing-code digest `5bdf3e3aa742…`), run id `devices-2026-11-14-df1f38e7b8`, method `device-links-1` |
+| Built | 2026-11-14T06:15:06+00:00 by `scripts/build_device_links.py build` at engine commit `6cf47cc67356` (no uncommitted changes; producing-code digest `6b14e9be0781…`), run id `devices-2026-11-14-ebab207e47`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -138,4 +138,6 @@ It was rebuilt a seventeenth time after the sixteenth review round, at `f0fd834`
 
 It was rebuilt an eighteenth time after the seventeenth review round, at `cf2707f` (run `devices-2026-11-14-ead249edc3`). That round's two fixes (a malformed registry field path in a curated statement resolves to nothing; a registry search answered without a count is asked again) change no output of this run: all 3,086 cached search answers of HTTP 200 state a count, and the statements file has no rows. Every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a nineteenth time after the eighteenth review round, at the commit named above. That round's two fixes (the build refuses to replace an output directory that is not a device-linkage build; a registry search answer's studies must each state their id) change no output of this run: every one of the 23,222 studies in the cached search answers states its id. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a nineteenth time after the eighteenth review round, at `5f4f890` (run `devices-2026-11-14-df1f38e7b8`). That round's two fixes (the build refuses to replace an output directory that is not a device-linkage build; a registry search answer's studies must each state their id) change no output of this run: every one of the 23,222 studies in the cached search answers states its id. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a twentieth time after the nineteenth review round, at the commit named above. That round's two fixes (the build and the site export replace an existing directory only when it is empty or a complete device-linkage family; a study answer's id must be an NCT id) change no output of this run: all 23,240 study ids in the cached registry answers are NCT ids. Every output file is identical to the previous build apart from the run id.
