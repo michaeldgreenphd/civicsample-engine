@@ -451,6 +451,42 @@ def test_cli_fetches_for_different_id_lists_never_share_an_archive(tmp_path: Pat
     assert len(metas) == 2 and sorted(json.loads(m.read_text())['n_requested'] for m in metas) == [1, 2]
 
 
+def test_cli_a_repeated_fetch_keeps_its_own_record_even_when_the_bytes_are_the_same(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same day, same ids, same returned bytes; the second fetch ran later and failed for another
+    reason. Each build publishes the window and the failure reason of the fetch it ran."""
+    from outcomes import acquire
+    monkeypatch.setattr(build_results_structure, 'ROOT', tmp_path)
+    wanted = ['NCT99000001', 'NCT99000002']
+    ids = tmp_path / 'ids.txt'
+    ids.write_text('\n'.join(wanted) + '\n')
+    fetches = {'first': ('2026-11-14T01:00:00+00:00', 'HTTP 500 after 3 attempts'),
+               'second': ('2026-11-14T09:00:00+00:00', 'not returned by the registry for filter.ids')}
+    for name, (at, reason) in fetches.items():
+        rec = {'source': 'fictional', 'retrieved_at': at, 'retrieved_from': at, 'retrieved_to': at, 'n_records': 1,
+               'n_requested': 2, 'n_requests': 1, 'n_failed_requests': 0, 'not_retrieved': [{'nct_id': 'NCT99000002', 'reason': reason}]}
+        monkeypatch.setattr(B, 'fetch', lambda _ids, rec=rec: ({'NCT99000001': acquire.encode([F.study(1)])}, dict(rec)))
+        assert build_results_structure.main(['--fetch', '--nct-list', str(ids), '--out', str(tmp_path / name)]) == 0
+        run = json.loads((tmp_path / name / 'run.json').read_text())
+        assert run['retrieval_window'] == {'from': at, 'to': at}
+        missing = json.loads((tmp_path / name / 'records.json').read_text())['records']['NCT99000002']
+        assert missing['results_status'] == 'not_retrieved' and missing['retrieval']['reason'] == reason
+    cache = tmp_path / 'build' / 'results_structure_cache'
+    archives = sorted(cache.glob('*.jsonl.gz'))
+    assert len(archives) == 2 and archives[0].read_bytes() == archives[1].read_bytes(), 'two fetches, two archives, the same bytes'
+    assert {json.loads(p.with_name(p.name + '.meta.json').read_text())['retrieved_at'] for p in archives} == {at for at, _ in fetches.values()}
+    # a file already under this fetch's name whose metadata is not this fetch's is refused, not published
+    meta_path = archives[0].with_name(archives[0].name + '.meta.json')
+    edited = json.loads(meta_path.read_text())
+    edited['n_retries'] = 9
+    meta_path.write_text(json.dumps(edited))
+    at = edited['retrieved_at']
+    rec = {'source': 'fictional', 'retrieved_at': at, 'retrieved_from': at, 'retrieved_to': at, 'n_records': 1, 'n_requested': 2,
+           'n_requests': 1, 'n_failed_requests': 0, 'not_retrieved': edited['not_retrieved']}
+    monkeypatch.setattr(B, 'fetch', lambda _ids: ({'NCT99000001': acquire.encode([F.study(1)])}, dict(rec)))
+    assert build_results_structure.main(['--fetch', '--nct-list', str(ids), '--out', str(tmp_path / 'third')]) != 0
+    assert not (tmp_path / 'third').exists()
+
+
 def test_a_review_that_matches_nothing_is_reported_once_with_one_reason() -> None:
     row = {'decision': 'accepted', 'reviewed_on': '2026-11-14'}
     reviews = {'NCT99000001': {('sg-000000000000', 'sex'): row},      # posted results, but no such signal

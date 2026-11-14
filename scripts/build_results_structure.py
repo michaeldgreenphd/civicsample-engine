@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -91,17 +92,18 @@ def main(argv: list[str] | None = None) -> int:
                 ap.error('--fetch needs --nct-list')
             requested = B.read_nct_list(args.nct_list)
             lines, record = B.fetch(requested)
-            # Addressed by what was returned AND what was asked for: a later fetch never replaces
-            # the archive an earlier build recorded, and a fetch for other ids never borrows its
-            # metadata, even when both returned the same bytes (or both returned nothing).
-            sha = hashlib.sha256(b''.join(lines[n] for n in sorted(lines))).hexdigest()
-            asked = hashlib.sha256('\n'.join(sorted(requested)).encode()).hexdigest()
-            path = (ROOT / 'build' / 'results_structure_cache'
-                    / f"records-{record['retrieved_at'][:10]}-{sha[:12]}-{asked[:8]}.jsonl.gz")
+            # One archive per fetch, named by what was returned and by the fetch's own record
+            # (B.archive_name): a later fetch never replaces the archive an earlier build recorded
+            # and never borrows its metadata, even when both returned the same bytes.
+            path = ROOT / 'build' / 'results_structure_cache' / B.archive_name(lines, record, requested)
             if path.exists():
+                # Only a fetch with this very record has this name. Anything else in the file is
+                # not this fetch's metadata, so it is refused instead of published.
                 meta = B.read_archive_meta(path)
-                if meta.get('requested_ids_sha256') != asked:
-                    raise B.BuildError(f'{path.name} was written for a different list of ids; move it aside and fetch again')
+                expected = json.loads(json.dumps({**B.fetch_record(lines, record, requested), 'archive': path.name}))
+                if meta != expected:
+                    raise B.BuildError(f'{path.name} exists with metadata that is not the fetch that just ran; '
+                                       'move it aside and fetch again')
             else:
                 meta = B.write_archive(lines, path, record, requested)
             del lines

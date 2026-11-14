@@ -192,15 +192,33 @@ def fetch(ids: list[str], get: Callable[..., Any] | None = None, delay: float = 
     return lines, record
 
 
+def fetch_record(lines: dict[str, bytes], record: dict[str, Any], requested: list[str]) -> dict[str, Any]:
+    """Everything one fetch is recorded by, apart from the archive's file name: the retrieval record
+    (window, every request, retries, what was not retrieved and why), the ids asked for with their
+    digest, and the sha256 of the uncompressed archive bytes."""
+    raw = b''.join(lines[n] for n in sorted(lines))
+    return {**record, 'requested_ids': sorted(requested), 'requested_ids_sha256': sha256('\n'.join(sorted(requested)).encode()),
+            'sha256_uncompressed': sha256(raw)}
+
+
+def archive_name(lines: dict[str, bytes], record: dict[str, Any], requested: list[str]) -> str:
+    """The file name a fetch is frozen under: its date, the first hex digits of the sha256 of its
+    bytes, and a digest of its whole fetch record. Two fetches share a name only when they returned
+    the same bytes AND have the same record, so a repeated fetch (another retrieval window, retry
+    history or failure reason, even with identical bytes) never reuses an earlier fetch's metadata,
+    and never replaces the archive an earlier build recorded."""
+    rec = fetch_record(lines, record, requested)
+    return f"records-{str(record.get('retrieved_at') or '')[:10]}-{rec['sha256_uncompressed'][:12]}-{sha256(dump(rec))[:8]}.jsonl.gz"
+
+
 def write_archive(lines: dict[str, bytes], path: Path, record: dict[str, Any], requested: list[str]) -> dict[str, Any]:
     """Freeze fetched records: one sorted-key JSON object per line, by NCT id, gzip with mtime 0
-    so the same records give the same bytes. The metadata beside it holds the sha256 of the
-    uncompressed bytes, the requested ids and the retrieval record."""
+    so the same records give the same bytes. The metadata beside it is the fetch record
+    (fetch_record) and the archive's name."""
     raw = b''.join(lines[n] for n in sorted(lines))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(gzip.compress(raw, mtime=0))
-    meta = {**record, 'requested_ids': sorted(requested), 'requested_ids_sha256': sha256('\n'.join(sorted(requested)).encode()),
-            'sha256_uncompressed': sha256(raw), 'archive': path.name}
+    meta = {**fetch_record(lines, record, requested), 'archive': path.name}
     path.with_name(path.name + '.meta.json').write_text(json.dumps(meta, indent=1) + '\n')
     return meta
 
