@@ -1,10 +1,10 @@
 {
  "schema_version": 1,
- "run_id": "results-structure-2026-11-14-7fa864d4b8",
- "generated_at": "2026-11-14T01:34:28+00:00",
+ "run_id": "results-structure-2026-11-14-f24a809312",
+ "generated_at": "2026-11-14T01:43:11+00:00",
  "producer": {
   "repository": "civicsample-engine",
-  "commit": "5cc5e7d2e7d5ed89c0cecd457733bc322687050e",
+  "commit": "7e431f8a175fd2cf9d9cedf2b02454b0ca7dce43",
   "uncommitted_changes": false
  },
  "manual_run": true,
@@ -189,7 +189,7 @@
   "The registry record is read as retrieved on the stated date; registry records change."
  ],
  "files": {
-  "records.json": "e04ff4e377e1e42e7a9276de15eef7a0673f862195bde0e65d22d114aff0546d",
-  "summary.json": "dbd0dcbf2e41d7ad1a3acd840a298c930b02b56fb84f535fa8a1bf3923ba7057"
+  "records.json": "f43d86dc564d039a577689cdca17b09a9f6180c2b2d9bc90a93bde2efdc3bae1",
+  "summary.json": "26c0778fa2e01da202d4aead34b1f4365467c957333092c1b19e4d2e14948342"
  }
 }
