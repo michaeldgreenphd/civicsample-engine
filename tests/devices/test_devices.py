@@ -1231,3 +1231,54 @@ def test_the_disk_budget_counts_a_file_once_when_two_addresses_serve_it(tmp_path
                                      F.no_wait(), None, len(body) + 1)
     assert (counts['retrieved'], counts['skipped_disk_budget']) == (3, 0)
     assert len(list((tmp_path / 'store').glob('*.pdf'))) == 1
+
+
+def test_the_common_word_rule_follows_the_name_a_study_was_matched_on(acquired: dict[str, Any]) -> None:
+    """A family with two listed names. A sibling's name flooding the registry does not set aside a
+    study matched on the family's other, distinctive name."""
+    lumora = acquired['subs']['K990004']
+    records = dict(acquired['frozen']['registry'][0])
+    sibling = {**lumora, 'submission_number': 'K990099', 'device_names_as_listed': ['Contour']}
+    for q in registry.name_queries('Contour'):
+        records[q['key']] = {'status': 200, 'body': {'totalCount': 400, 'studies': []}, 'fetched_at': 't'}
+    found = registry.family_name_search([lumora, sibling], records, {})
+    assert found['tallies']['n_name_only'] == 1 and found['tallies']['n_name_only_common_word'] == 0
+    m = found['matches'][0]
+    assert m['common_word'] is False and m['name']['listed_name'] == 'Lumora'
+    assert not any('50 or more records' in f for f in m['flags'])
+    # the matched name itself flooding still sets the match aside
+    q = registry.name_queries('Lumora')[0]
+    records[q['key']] = {**records[q['key']], 'body': {**records[q['key']]['body'], 'totalCount': 400}}
+    assert registry.family_name_search([lumora, sibling], records, {})['tallies']['n_name_only_common_word'] == 1
+
+
+@pytest.mark.parametrize('path, expected', [
+    ('protocolSection.identificationModule.briefTitle', 'A fictional study'),
+    ('protocolSection.armsInterventionsModule.interventions[1].name', 'Second'),
+    ('protocolSection.designModule.enrollmentInfo.count', '200'),
+    ('protocolSection.identificationModule.nope', None),
+    ('protocolSection.armsInterventionsModule.interventions[5].name', None),
+    ('', None),
+])
+def test_a_registry_quote_is_read_from_the_named_field_only(path: str, expected: str | None) -> None:
+    record = {'protocolSection': {'identificationModule': {'briefTitle': 'A fictional study'},
+                                  'armsInterventionsModule': {'interventions': [{'name': 'First'}, {'name': 'Second'}]},
+                                  'designModule': {'enrollmentInfo': {'count': 200}}}}
+    assert artifacts.registry_field_text(record, path) == expected
+
+
+def test_a_registry_statement_quoted_from_another_field_is_not_validated(tmp_path: Path, acquired: dict[str, Any]) -> None:
+    """The quote stands in the record, but not in the field the row names."""
+    nct = 'NCT99000001'
+    body = acquired['frozen']['registry'][0][f'ctgov/study/{nct}']['body']
+    title = body['protocolSection']['identificationModule']['briefTitle']
+    curated = tmp_path / 'curated'
+    F.write_curated(curated, documentary_statements=[
+        ['DEN990005', nct, 'registry_record', nct, 'protocolSection.identificationModule.briefTitle', title,
+         'related_validation_study', '2026-11-13', 'the title is quoted from the named field'],
+        ['DEN990005', nct, 'registry_record', nct, 'protocolSection.descriptionModule.briefSummary', title,
+         'explicitly_cited_supporting_study', '2026-11-13', 'the same words, under a field that does not hold them']])
+    family = F.build_family(tmp_path, acquired, curated)
+    stated = {x['proposed_relationship']: x for x in family['links.json']['links'] if x['method'] == 'documentary_statement'}
+    assert stated['related_validation_study']['automated_validation'] == 'quote_confirmed_in_source'
+    assert stated['explicitly_cited_supporting_study']['automated_validation'] == 'not_validated'

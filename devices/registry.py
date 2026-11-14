@@ -453,8 +453,8 @@ def family_name_search(members: list[dict[str, Any]], records: dict[str, dict[st
     else is tallied and set aside, so that the dashboard can show it was seen:
 
       n_name_only_common_word    a match on a name that floods the registry (FLOOD or more records
-                                 for a name query), without organisation agreement: kept as a
-                                 record, rejected by rule
+                                 for one of that name's own queries), without organisation
+                                 agreement: kept as a record, rejected by rule
       n_organisation_only        sponsor agrees, device not named: NOT a candidate (shared
                                  sponsorship does not establish device identity)
       n_manufacturer_name_only   only the manufacturer's own name stands in a title/intervention
@@ -464,8 +464,16 @@ def family_name_search(members: list[dict[str, Any]], records: dict[str, dict[st
     queries = family_queries(members)
     state = search_state(records, queries)
     state['n_name_queries'] = sum(1 for q in queries if q['kind'] != 'sponsor')
-    flooded = any(d.get('total_count') and d['total_count'] >= FLOOD for d in state['queries']
-                  if d['kind'] != 'sponsor' and d.get('answered'))
+    # A listed name floods when one of its own name queries matched FLOOD or more records. The flag
+    # follows the name a study was matched on, never another name of the family: a distinctive
+    # model name is not set aside because a sibling's name is a common word.
+    flooded_names: dict[str, bool] = {}
+    for s in members:
+        for listed in s['device_names_as_listed']:
+            flooded_names[listed] = flooded_names.get(listed, False) or any(
+                isinstance(((answer(records, q) or {}).get('body') or {}).get('totalCount'), int)
+                and (answer(records, q) or {}).get('status') == 200
+                and answer(records, q)['body']['totalCount'] >= FLOOD for q in name_queries(listed))
     matches: list[dict[str, Any]] = []
     tallies = {'n_studies_returned': 0, 'n_name_and_organisation': 0, 'n_name_only': 0, 'n_name_only_common_word': 0,
                'n_organisation_only': 0,
@@ -481,8 +489,14 @@ def family_name_search(members: list[dict[str, Any]], records: dict[str, dict[st
                     org = o
                 for listed in s['device_names_as_listed']:
                     n = name_evidence(study, I.name_forms(listed, O.normalise(company)['normalised']))
-                    if n and (name is None or _NAME_RANK[n['strength']] > _NAME_RANK[name['strength']]):
-                        name = {**n, 'listed_name': listed, 'via_submission': s['submission_number']}
+                    # Strongest form first; between equally strong matches, a name that does not
+                    # flood the registry is the better evidence.
+                    rank = (_NAME_RANK[n['strength']], not flooded_names.get(listed, False)) if n else None
+                    if n and (name is None or rank > name['_rank']):
+                        name = {**n, 'listed_name': listed, 'via_submission': s['submission_number'], '_rank': rank}
+        if name:
+            name = {k: v for k, v in name.items() if k != '_rank'}
+        flooded = bool(name) and flooded_names.get(name['listed_name'], False)
         agrees = bool(org) and org['tier'] in ('normalised_exact', 'curated_alias')
         if name and name['strength'] in ('full', 'trimmed'):
             flags = []
@@ -490,7 +504,7 @@ def family_name_search(members: list[dict[str, Any]], records: dict[str, dict[st
                 flags.append('matched on a trimmed name form (trailing device-type words removed): may be a '
                              'sibling or earlier product of the same line')
             if flooded and not agrees:
-                flags.append(f'a name query for this family matched {FLOOD} or more records: the name is a common '
+                flags.append(f'a search for the matched name returned {FLOOD} or more records: the name is a common '
                              f'word or shared with other products')
             tallies['n_name_and_organisation' if agrees else
                     'n_name_only_common_word' if flooded else 'n_name_only'] += 1

@@ -199,7 +199,10 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
             version = {'document_sha256': d['sha256'], 'retrieved_at': d['retrieved_at']}
         elif row['source_kind'] == 'registry_record':
             rec = registry.get(f"ctgov/study_full/{row['source_id']}") or registry.get(f"ctgov/study/{row['source_id']}")
-            text = json.dumps((rec or {}).get('body') or {}, ensure_ascii=False) if rec else None
+            # The quote is checked only in the field the row names (a dotted path such as
+            # protocolSection.descriptionModule.briefSummary, with [i] for list items). A path that
+            # does not resolve gives no text, so the quote reads not validated.
+            text = registry_field_text((rec or {}).get('body'), row['page_or_field'].strip()) if rec else None
             version = {**registry_version, 'retrieved_at': (rec or {}).get('fetched_at')}
         state, facts = R.nct_state(registry, row['nct_id'])
         remember(row['nct_id'], facts, state, None)
@@ -326,6 +329,21 @@ def run_identity(files: dict[str, Any]) -> str:
     run = {k: v for k, v in files['run.json'].items() if k not in ('run_id', 'generated_at', 'files')}
     content = {name: sha256(dump({k: v for k, v in files[name].items() if k != 'run_id'})) for name in sorted(FILES)}
     return sha256(dump([run, content]))[:10]
+
+
+def registry_field_text(record: Any, path: str) -> str | None:
+    """The text at a dotted path in a registry record (`a.b[0].c`), or None when the path does not
+    resolve. A value that is not a string is given as its JSON, so a number or list can be quoted."""
+    import re
+    node = record
+    for part in re.findall(r'[^.\[\]]+|\[\d+\]', path or ''):
+        try:
+            node = node[int(part[1:-1])] if part.startswith('[') else node[part]
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+    if node is None or node is record:
+        return None
+    return node if isinstance(node, str) else json.dumps(node, ensure_ascii=False)
 
 
 def _slim_document(d: dict[str, Any]) -> dict[str, Any]:
