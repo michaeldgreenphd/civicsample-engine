@@ -285,17 +285,122 @@ _ETHNICITY_KEYWORDS = {
     "non hispanic",
 }
 
+# ── A race named beside an ethnicity term in one label ──────────────────────
+#
+# Registrants who post race and ethnicity as one classification often write
+# both in one label with no separator between them: "Non-Hispanic White",
+# "Black Non-Hispanic", "White (non-Hispanic)", "Hispanic Black". Each such
+# row names its participants' race.
+#
+# Method. The label is cleaned as every race label is. When it holds exactly
+# one ethnicity phrase (_ETHNICITY_PHRASE_RX: Hispanic, Latino/a/x/e, with an
+# optional non/not before it, alternatives joined by "/", "," or "or", and an
+# optional "origin" after it), the phrase is taken out. If what is left, with
+# brackets and separators at its ends removed and an optional final "only"
+# dropped, is exactly a key of RACE_MAPPINGS in any letter case, the row is a
+# race row of that key: it is not ethnicity-only, and it maps as the key
+# does, with the flag split_from_combined. The row keeps the posted label as
+# its "original" and carries the mapped part as "race_part", so "Hispanic
+# White" and "Non-Hispanic White" stay two source labels. Anything else is
+# left to the rules that were there before.
+#
+# The match on what is left is exact, never fuzzy, so text that only limits
+# or joins groups stays out: "Non-Black Hispanic" leaves "Non-Black",
+# "Hispanic (not African American)" leaves "not African American", "Hispanic
+# or African-American" leaves "or African-American", "Hispanic (regardless of
+# race)" leaves "regardless of race", "American Hispanic" leaves "American".
+# None is a race label, and each stays an ethnicity-only row, recorded in
+# skipped_ethnicity_rows.
+#
+# The ethnicity word does not change the race: "Hispanic White" and
+# "Non-Hispanic White" are both White. In the tables that post such rows they
+# sit side by side as one exclusive classification ("Hispanic Black" 16 /
+# "Hispanic White" 9 / "Hispanic Other" 27 / "Non-Hispanic Black" 16 /
+# "Non-Hispanic White" 24 / "Non-Hispanic Other" 5, of 97: NCT03150173), and
+# a plain row beside them holds the people the joined rows do not ("White"
+# 1,363 / "White Hispanic" 83 / "Black Hispanic" 2 / "Black" 110 / "Asian"
+# 23, of 1,581: NCT00360555).
+#
+# Why. The ethnicity-only test looked for a race term only in fragments that
+# held no ethnicity keyword, and split fragments only at "," ";" and "/". A
+# label with no separator was one fragment holding an ethnicity keyword, so
+# "Non-Hispanic White" was read as ethnicity alone and its participants were
+# in no race category: unknown_inferred when another row was counted, and no
+# race reported at all when every row was of this kind.
+#
+# Measured on the baseline modules of the 80,890 trials in the 2026-11-08
+# snapshot (CT.gov API v2, re-fetched 2026-11-14), against the extraction
+# without this rule: 1,292 rows (162 distinct labels) holding 1,242,690
+# participants become race rows, 981,350 of them White, 194,863 Black or
+# African American, 63,878 Other; one row that was an unmapped "other"
+# becomes White ("Non-Latine White", 96). unknown_inferred falls by 799,459
+# and 127 trials that reported no race now report it (46,565 to 46,692). The
+# counts of 691 race blocks change; in 327 more only the record of a row
+# that was already counted in the same category changes ("White" becomes the
+# posted "White, not Hispanic"; "White/Non-Hispanic" keeps its label and is
+# flagged split_from_combined where it was slash_normalized; each gains
+# race_part). No trial's counted table changes and no other block changes.
+# Three trials newly add up to more than their baseline population, by 1, 2
+# and 7 participants, from rows that do so as posted (NCT02841033,
+# NCT01049919, NCT04646616).
+#
+# Left as ethnicity-only by the exact match, with a race word in the label:
+# 119 rows in 92 trials (37,413 participants), mostly "Hispanic (regardless of
+# race)" and its variants, and a few plural or longer forms ("Non-Hispanic
+# Whites", "Non-Hispanic White or European American").
+# "Latin" alone is not an ethnicity word here: taking it out of "Native Latin
+# American" would leave "Native American", a different label.
+_ETHNICITY_WORD = r"(?:hispanic|latin(?:o|a|x|e))s?"
+_ETHNICITY_NEGATION = r"(?:(?:non|not)[\s\-]*(?:of\s+)?)"
+_ETHNICITY_PHRASE_RX = re.compile(
+    rf"(?<![a-z]){_ETHNICITY_NEGATION}?{_ETHNICITY_WORD}"
+    rf"(?:\s*(?:/|,|\bor\b)?\s*{_ETHNICITY_NEGATION}?{_ETHNICITY_WORD})*"
+    rf"(?:\s+origin)?(?![a-z])",
+    re.IGNORECASE)
+_JOINED_LABEL_EDGES = " \t:;,-–—/()[]"
+_RACE_KEYS_LOWER = {key.lower() for key in RACE_MAPPINGS}
+
+def _race_joined_to_ethnicity(label: str) -> Optional[Tuple[str, str]]:
+    """(race_part, ethnicity_part) when the label is one ethnicity phrase and,
+    beside it, exactly a known race label (block comment above); else None.
+
+      "Non-Hispanic White"               -> ("White", "Non-Hispanic")
+      "Black or African American (not Hispanic)"
+                                         -> ("Black or African American", "not Hispanic")
+      "Hispanic/Latino Black"            -> ("Black", "Hispanic/Latino")
+      "Non-Hispanic White only"          -> ("White", "Non-Hispanic")
+      "Non-Black Hispanic"               -> None
+      "Hispanic or Latino"               -> None
+    """
+    text = clean_demographic_label(label)
+    hits = list(_ETHNICITY_PHRASE_RX.finditer(text))
+    if len(hits) != 1:
+        return None
+    hit = hits[0]
+    rest = " ".join((text[:hit.start()] + " " + text[hit.end():]).split())
+    rest = rest.strip(_JOINED_LABEL_EDGES)
+    if rest.lower().endswith(" only"):
+        rest = rest[:-len(" only")].rstrip(_JOINED_LABEL_EDGES)
+    if rest.lower() not in _RACE_KEYS_LOWER:
+        return None
+    return rest, hit.group(0).strip()
+
 def _is_ethnicity_only_label(label: str) -> bool:
     """Return True if *label* is purely an ethnicity term with no race component.
 
     Labels like "Hispanic or Latino", "Not Hispanic", "Non-Hispanic" are
     ethnicity-only and must be routed exclusively to the ethnicity pipeline.
     Labels like "Caucasian/White, Hispanic" contain BOTH and are NOT
-    ethnicity-only — they need the split logic.
+    ethnicity-only — they need the split logic. Nor is a label that names a
+    race beside the ethnicity term without a separator ("Non-Hispanic White":
+    _race_joined_to_ethnicity).
     """
     label_lower = label.lower().strip()
     # Must contain at least one ethnicity keyword
     if not any(ek in label_lower for ek in _ETHNICITY_KEYWORDS):
+        return False
+    # A race label beside one ethnicity phrase is a race row.
+    if _race_joined_to_ethnicity(label) is not None:
         return False
     # Check whether any fragment also matches a known race key
     race_keys_lower = {k.lower() for k in RACE_MAPPINGS}
@@ -328,7 +433,17 @@ def _split_combined_label(label: str) -> Optional[Tuple[str, str]]:
       - "Caucasian/White, Hispanic"   -> ("White", "Hispanic")
       - "Unknown race, Hispanic"      -> ("Unknown race", "Hispanic")
       - "Black or African American, Not Hispanic or Latino"
+      - "Non-Hispanic White"          -> ("White", "Non-Hispanic"), with no
+        separator to split at (_race_joined_to_ethnicity, tried first: what
+        it returns is exactly a known race label)
     """
+    # Tried before the keyword test below: the joined reader has its own
+    # ethnicity vocabulary (_ETHNICITY_PHRASE_RX), which also knows forms the
+    # keyword list does not ("Latine White").
+    joined = _race_joined_to_ethnicity(label)
+    if joined is not None:
+        return joined
+
     label_lower = label.lower()
     # Check for ethnicity keyword presence
     if not any(kw in label_lower for kw in _ETHNICITY_KEYWORDS):
@@ -394,10 +509,27 @@ _MEASUREMENT_LABELS = {"count", "number", "n", "total", "value", "mean", "median
 def _map_race_label(label: str) -> Dict:
     """Map a single label to a race category.
 
-    Attempts direct mapping first, then tries combined-label splitting as
-    a fallback.  Each unmapped row is kept as an independent entity — labels
-    are never concatenated or merged.
+    A label that names a race beside one ethnicity phrase
+    (_race_joined_to_ethnicity) is mapped from that exact race part, before
+    anything else: the generic mapping below would split "Native
+    Hawaiian/Pacific Islander Hispanic" at the slash and keep only "Native
+    Hawaiian", or reach "Black or African American Latino" by fuzzy match.
+    Otherwise attempts direct mapping first, then tries combined-label
+    splitting as a fallback.  Each unmapped row is kept as an independent
+    entity — labels are never concatenated or merged.
     """
+    joined = _race_joined_to_ethnicity(label)
+    if joined is not None:
+        race_part, _eth_part = joined
+        mapping = map_race_category(race_part)
+        mapping["flags"].append("split_from_combined")
+        # A joined label keeps what was posted: "Non-Hispanic White" and
+        # "Hispanic White" stay two different source labels, with the part
+        # that was mapped beside them.
+        mapping["original"] = clean_demographic_label(label)
+        mapping["race_part"] = race_part
+        return mapping
+
     mapping = map_race_category(label)
 
     # Combined label splitting: if the whole label fails to map
@@ -564,22 +696,21 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # no such key, which is "not looked at", not "none".
 #
 # Measured on the baseline modules of the 80,890 trials in the 2026-11-08
-# snapshot (CT.gov API v2, re-fetched 2026-11-14): 3,929 trials record at
-# least one row (5,624 rows) and 3,850 carry the flag. In 3,270 the block is
+# snapshot (CT.gov API v2, re-fetched 2026-11-14): 3,779 trials record at
+# least one row (4,332 rows) and 3,693 carry the flag. In 3,239 the block is
 # reported and the race rows fall short of the population (unknown_inferred
-# above zero), in 334 the race rows cover everyone, in 73 every recorded row
-# is zero, and 252 end in all-zero rejection. In 15 of the reported ones the
+# above zero), in 335 the race rows cover everyone, in 80 every recorded row
+# is zero, and 125 end in all-zero rejection. In 15 of the reported ones the
 # table's title does not mention ethnicity ("Race" with a "Hispanic" row), so
-# the title flag cannot find them. No other value of any race block differs
-# from the extraction without the field.
+# the title flag cannot find them.
 #
-# A known limit of the label test, recorded here and not changed: it accepts
-# a label that joins a race word and an ethnicity word without a separator
-# ("Non-Hispanic White", "Black Non-Hispanic"), because it looks for a race
-# term only in fragments that hold no ethnicity keyword. Those rows were left
-# out of the race counts before this field existed and still are; they are
-# now listed as posted: 1,325 of the 5,624 rows, in 737 trials, name a race.
-# A reader must not take every recorded row for ethnicity alone.
+# A label that names a race beside the ethnicity term ("Non-Hispanic White")
+# is a race row and is not recorded here (_race_joined_to_ethnicity). Before
+# that rule such rows were skipped too, and the field listed 5,624 rows in
+# 3,929 trials. A label the rule's exact match leaves out can still name a
+# race ("Hispanic (regardless of race)", "Non-Hispanic Whites": 119 of the
+# 4,332 rows), so a reader must not take every recorded row for ethnicity
+# alone.
 
 def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
                            race_part: Optional[str] = None,
