@@ -1047,6 +1047,23 @@ def test_an_ethnicity_form_the_keyword_list_lacks_still_reaches_the_joined_reade
     assert "split_from_combined" in mapping["flags"] and "unmapped" not in mapping["flags"]
 
 
+@pytest.mark.parametrize("label, race_part, category, subcategory", [
+    # The generic mapping would split at the slash and keep "Native Hawaiian".
+    ("Native Hawaiian/Pacific Islander Hispanic", "Native Hawaiian/Pacific Islander",
+     "native_hawaiian_pacific_islander", None),
+    ("Caucasian/White, Hispanic", "Caucasian/White", "white", None),
+    ("Hispanic/Black", "Black", "black_african_american", None),
+    # The generic mapping would reach this one by fuzzy match, at medium confidence.
+    ("Black or African American Latino", "Black or African American", "black_african_american", None),
+])
+def test_a_joined_label_is_mapped_from_its_exact_race_part_first(label: str, race_part: str, category: str,
+                                                                subcategory: Optional[str]) -> None:
+    mapping = rx._map_race_label(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["confidence"]) == (category, subcategory, "high")
+    assert (mapping["original"], mapping["race_part"]) == (label, race_part)
+    assert mapping["flags"] == ["split_from_combined"]
+
+
 def test_non_hispanic_race_rows_are_counted_in_their_race() -> None:
     """One exclusive classification written with joined labels: the race rows
     are counted, the Hispanic row is still not race and is still recorded.
