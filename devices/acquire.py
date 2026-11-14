@@ -319,8 +319,18 @@ def openfda_answer(body: Any, request: dict[str, Any] | None = None) -> bool:
     writes it) or 'S' and digits (all 128 supplement numbers in the 2026-11-14 cache have three):
     a value of another type or form cannot match a supplement asked for, and would read as 'openFDA
     holds no record' rather than as no answer. An empty list is no answer either: openFDA reports no
-    match with a 404, and every check above holds vacuously over no entries."""
+    match with a 404, and every check above holds vacuously over no entries.
+    The answer must also be the whole of what matched: openFDA states the total in
+    meta.results.total, and a page holding fewer results than that (more matches than the
+    request's limit, or a partial page) is no answer, since a number missing from it would read as
+    'openFDA holds no record'. All 46 answers in the 2026-11-14 cache state a total equal to the
+    results they hold (at most 50)."""
     if not (isinstance(body, dict) and isinstance(body.get('results'), list) and body['results']):
+        return False
+    meta = body.get('meta')
+    stated = meta.get('results') if isinstance(meta, dict) else None
+    total = stated.get('total') if isinstance(stated, dict) else None
+    if isinstance(total, bool) or not isinstance(total, int) or total != len(body['results']):
         return False
     if request is None:
         return all(isinstance(r, dict) and any(isinstance(r.get(f), str) and r[f].strip()

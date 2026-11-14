@@ -80,6 +80,11 @@ TEXTS: dict[str, list[str]] = {
 }
 
 
+
+def openfda_body(results: list[Any]) -> dict[str, Any]:
+    """An openFDA answer as the API sends it: the results and their stated total."""
+    return {'meta': {'results': {'skip': 0, 'limit': max(1, len(results)), 'total': len(results)}}, 'results': results}
+
 def _study(nct: str, title: str, sponsor: str, interventions: list[str] | None = None, start: str = '2019-03-01',
            primary: str | None = '2020-01-15', description: str = '', collaborators: list[str] | None = None) -> dict[str, Any]:
     return {'protocolSection': {
@@ -177,7 +182,7 @@ def stub_get(calls: list[str] | None = None, fail: set[str] | None = None) -> ac
                 elif base in wanted and url.endswith('pma.json'):
                     out.append({'pma_number': base, 'supplement_number': supp, 'applicant': company,
                                 'decision_date': iso, 'product_code': code, 'trade_name': name})
-            return _json({'results': out}) if out else _json({'error': {'code': 'NOT_FOUND'}}, 404)
+            return _json(openfda_body(out)) if out else _json({'error': {'code': 'NOT_FOUND'}}, 404)
         if url.startswith(acquire.DATABASE_PAGES):
             number = params.get('ID') or params.get('id')
             listed = PAGES.get(number)

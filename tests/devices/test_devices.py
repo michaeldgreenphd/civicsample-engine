@@ -1667,8 +1667,8 @@ def test_an_answer_logged_for_other_parameters_is_not_this_requests_answer(tmp_p
     calls: list[Any] = []
     def get(url: str, params: dict[str, Any] | None) -> acquire.Response:
         calls.append(params)
-        return 200, {}, json.dumps({'results': [{'k_number': 'K990005'}]}).encode(), None
-    log.put({'key': old['key'], 'params': old['params'], 'status': 200, 'body': {'results': []}, 'fetched_at': 't'})
+        return 200, {}, json.dumps(F.openfda_body([{'k_number': 'K990005'}])).encode(), None
+    log.put({'key': old['key'], 'params': old['params'], 'status': 200, 'body': F.openfda_body([]), 'fetched_at': 't'})
     # the reader does not take the old batch's answer for the new batch
     stale = acquire.openfda_by_submission(log.records, ['K990001', 'K990005', 'K990009'])
     assert stale['K990005']['state'] == 'no_answer' and 'different request' in stale['K990005']['reason']
@@ -1842,13 +1842,13 @@ def test_each_registry_record_carries_the_version_stamp_of_its_own_snapshot(tmp_
 
 @pytest.mark.parametrize('results', [[{}], [{'k_number': ''}], [{'k_number': 'K990001'}, {'device_name': 'x'}], ['K990001']])
 def test_an_openfda_answer_with_an_entry_without_its_number_is_no_answer(tmp_path: Path, results: list[Any]) -> None:
-    assert not acquire.openfda_answer({'results': results})
+    assert not acquire.openfda_answer(F.openfda_body(results))
     log = acquire.ResponseLog(tmp_path / 'openfda.jsonl')
-    acquire.fetch_openfda(['K990001'], log, lambda u, p: (200, {}, json.dumps({'results': results}).encode(), None),
+    acquire.fetch_openfda(['K990001'], log, lambda u, p: (200, {}, json.dumps(F.openfda_body(results)).encode(), None),
                           F.no_wait())
     key = acquire.openfda_requests(['K990001'])[0]['key']
     assert log.get(key)['status'] == acquire.UNUSABLE_200 and log.settled(key) is None
-    assert acquire.openfda_answer({'results': [{'k_number': 'K990001'}, {'pma_number': 'P990007'}]})
+    assert acquire.openfda_answer(F.openfda_body([{'k_number': 'K990001'}, {'pma_number': 'P990007'}]))
 
 
 def test_a_retrieved_document_whose_stored_file_is_damaged_is_fetched_again(tmp_path: Path) -> None:
@@ -1871,16 +1871,16 @@ def test_a_retrieved_document_whose_stored_file_is_damaged_is_fetched_again(tmp_
 @pytest.mark.parametrize('results', [[{'pma_number': 'P990001'}], [{'k_number': 'error'}], [{'k_number': 'K990009'}]])
 def test_an_openfda_entry_must_carry_a_number_the_request_asked_for(tmp_path: Path, results: list[Any]) -> None:
     q = acquire.openfda_requests(['K990001', 'K990002'])[0]
-    assert not acquire.openfda_answer({'results': results}, q)
+    assert not acquire.openfda_answer(F.openfda_body(results), q)
     log = acquire.ResponseLog(tmp_path / 'openfda.jsonl')
-    acquire.fetch_openfda(['K990001', 'K990002'], log, lambda u, p: (200, {}, json.dumps({'results': results}).encode(), None),
+    acquire.fetch_openfda(['K990001', 'K990002'], log, lambda u, p: (200, {}, json.dumps(F.openfda_body(results)).encode(), None),
                           F.no_wait())
     assert log.get(q['key'])['status'] == acquire.UNUSABLE_200
     # the PMA endpoint answers under pma_number, for the base number of a supplement
     pma = acquire.openfda_requests(['P990007/S002'])[0]
-    assert acquire.openfda_answer({'results': [{'pma_number': 'P990007', 'supplement_number': 'S002'}]}, pma)
-    assert not acquire.openfda_answer({'results': [{'k_number': 'P990007'}]}, pma)
-    assert acquire.openfda_answer({'results': [{'k_number': 'K990002'}]}, q)
+    assert acquire.openfda_answer(F.openfda_body([{'pma_number': 'P990007', 'supplement_number': 'S002'}]), pma)
+    assert not acquire.openfda_answer(F.openfda_body([{'k_number': 'P990007'}]), pma)
+    assert acquire.openfda_answer(F.openfda_body([{'k_number': 'K990002'}]), q)
 
 
 @pytest.mark.parametrize('entry', [{'openfda': ['bad']}, {'openfda': 'bad'}, {'openfda': {'device_name': ['x']}},
@@ -1889,20 +1889,20 @@ def test_an_openfda_entry_must_carry_a_number_the_request_asked_for(tmp_path: Pa
 def test_an_openfda_entry_whose_metadata_is_malformed_is_no_answer(tmp_path: Path, entry: dict[str, Any]) -> None:
     results = [{'k_number': 'K990001', **entry}]
     q = acquire.openfda_requests(['K990001'])[0]
-    assert not acquire.openfda_answer({'results': results}, q) and not acquire.openfda_answer({'results': results})
+    assert not acquire.openfda_answer(F.openfda_body(results), q) and not acquire.openfda_answer(F.openfda_body(results))
     log = acquire.ResponseLog(tmp_path / 'openfda.jsonl')
-    acquire.fetch_openfda(['K990001'], log, lambda u, p: (200, {}, json.dumps({'results': results}).encode(), None),
+    acquire.fetch_openfda(['K990001'], log, lambda u, p: (200, {}, json.dumps(F.openfda_body(results)).encode(), None),
                           F.no_wait())
     assert log.get(q['key'])['status'] == acquire.UNUSABLE_200 and log.settled(q['key']) is None
     # an answer settled before the check (a cache frozen earlier) reads as an error, and the build does not fail
-    records = {q['key']: {'status': 200, 'params': q['params'], 'body': {'results': results}, 'fetched_at': '2026-11-14T00:00:00+00:00'}}
+    records = {q['key']: {'status': 200, 'params': q['params'], 'body': F.openfda_body(results), 'fetched_at': '2026-11-14T00:00:00+00:00'}}
     found = acquire.openfda_by_submission(records, ['K990001'])['K990001']
     assert found['state'] == 'error' and acquire.official_metadata(found)['available'] is False
     # null and absent fields are well formed, as is every field as a string
     ok = {'k_number': 'K990001', 'applicant': None, 'openfda': None}
-    assert acquire.openfda_answer({'results': [ok]}, q)
+    assert acquire.openfda_answer(F.openfda_body([ok]), q)
     full = {'k_number': 'K990001', 'openfda': {f: 'x' for f in acquire.OPENFDA_READ_NESTED}, **{f: 'x' for f in acquire.OPENFDA_READ_FIELDS}}
-    assert acquire.openfda_answer({'results': [full]}, q)
+    assert acquire.openfda_answer(F.openfda_body([full]), q)
     assert acquire.official_metadata({'record': full, 'fetched_at': 'now'})['available'] is True
 
 
@@ -2150,7 +2150,7 @@ def test_no_reader_uses_cached_text_not_bound_to_the_documents_bytes(tmp_path: P
 def test_a_pma_answer_needs_well_formed_supplement_numbers(supplement: Any, ok: bool) -> None:
     q = acquire.openfda_requests(['P990007/S019'])[0]
     entry = {'pma_number': 'P990007'} if supplement is None else {'pma_number': 'P990007', 'supplement_number': supplement}
-    body = {'results': [{'pma_number': 'P990007', 'supplement_number': ''}, entry]}
+    body = F.openfda_body([{'pma_number': 'P990007', 'supplement_number': ''}, entry])
     assert acquire.openfda_answer(body, q) is ok
     found = acquire.openfda_by_submission({q['key']: {'key': q['key'], 'status': 200, 'params': q['params'], 'body': body,
                                                      'fetched_at': 't'}}, ['P990007/S019'])['P990007/S019']
@@ -2183,13 +2183,36 @@ def test_the_build_applies_the_search_answer_check_to_frozen_answers() -> None:
     assert single['state'] == 'incomplete' and 'could not be read in full' in single['reason']
 
 
+@pytest.mark.parametrize('meta', [{'results': {'skip': 0, 'limit': 1000, 'total': 1001}}, {'results': {'total': 3}},
+                                  None, {}, {'results': {'total': '2'}}, {'results': {'total': True}}])
+def test_an_openfda_page_that_is_not_the_whole_answer_is_no_answer(tmp_path: Path, meta: Any) -> None:
+    """A page holding fewer results than openFDA's stated total (or stating none) could omit the
+    supplement asked for, which would then read as "openFDA holds no record"."""
+    q = acquire.openfda_requests(['P990007/S019'])[0]
+    body = {'results': [{'pma_number': 'P990007', 'supplement_number': ''}, {'pma_number': 'P990007', 'supplement_number': 'S001'}]}
+    if meta is not None:
+        body['meta'] = meta
+    assert not acquire.openfda_answer(body, q) and not acquire.openfda_answer(body)
+    log = acquire.ResponseLog(tmp_path / 'openfda.jsonl')
+    acquire.fetch_openfda(['P990007/S019'], log, lambda u, p: (200, {}, json.dumps(body).encode(), None), F.no_wait())
+    assert log.get(q['key'])['status'] == acquire.UNUSABLE_200 and log.settled(q['key']) is None
+    found = acquire.openfda_by_submission({q['key']: {'key': q['key'], 'status': 200, 'params': q['params'], 'body': body,
+                                                     'fetched_at': 't'}}, ['P990007/S019'])['P990007/S019']
+    assert found['state'] == 'error'                         # not "openFDA holds no record"
+    # the same page, stating the total it holds, is an answer, and the supplement reads as not held
+    whole = F.openfda_body(body['results'])
+    assert acquire.openfda_answer(whole, q)
+    assert acquire.openfda_by_submission({q['key']: {'key': q['key'], 'status': 200, 'params': q['params'], 'body': whole,
+                                                    'fetched_at': 't'}}, ['P990007/S019'])['P990007/S019']['state'] == 'no_record'
+
+
 def test_an_openfda_200_with_an_empty_result_list_is_no_answer(tmp_path: Path) -> None:
     """openFDA answers a search with no match with HTTP 404; a 200 listing nothing is malformed."""
     q = acquire.openfda_requests(['K990001'])[0]
-    assert acquire.openfda_answer({'results': []}, q) is False
-    assert acquire.openfda_answer({'results': []}) is False
+    assert acquire.openfda_answer(F.openfda_body([]), q) is False
+    assert acquire.openfda_answer(F.openfda_body([])) is False
     found = acquire.openfda_by_submission({q['key']: {'key': q['key'], 'status': 200, 'params': q['params'],
-                                                     'body': {'results': []}, 'fetched_at': 't'}}, ['K990001'])
+                                                     'body': F.openfda_body([]), 'fetched_at': 't'}}, ['K990001'])
     assert found['K990001']['state'] == 'error'          # not "openFDA holds no record"
     log = acquire.ResponseLog(tmp_path / 'log.jsonl')
     acquire.fetch_openfda(['K990001'], log, lambda u, p: (200, {}, b'{"results": []}', None), F.no_wait())
