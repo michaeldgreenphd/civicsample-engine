@@ -655,7 +655,10 @@ def test_a_disk_budget_stops_requests_and_the_skipped_documents_read_as_incomple
     plan = [{'document_id': acquire.document_id('K990001', f'{F.DOCS}/pdf99/{n}.pdf'), 'submission_number': n,
              'url': f'{F.DOCS}/pdf99/{n}.pdf', 'official_label': 'Summary', 'discovery': 'fda_database_page',
              'scope': 'this_submission'} for n in ('K990001', 'K990002')]
-    counts = acquire.fetch_documents(plan, manifest, tmp_path / 'store', F.stub_get(calls), F.no_wait(), None, 10)
+    # A budget of exactly the first file: it is stored, the store is then full, and the second
+    # document is not requested (a file that would cross the budget is never written).
+    first = len(F.stub_get()(plan[0]['url'], None)[2])
+    counts = acquire.fetch_documents(plan, manifest, tmp_path / 'store', F.stub_get(calls), F.no_wait(), None, first)
     assert (counts['retrieved'], counts['skipped_disk_budget'], len(calls)) == (1, 1, 1)
     skipped = manifest.latest()[plan[1]['document_id']]
     assert skipped['outcome'] == 'skipped_disk_budget' and 'budget' in skipped['error'] and not acquire.settled(skipped)
@@ -2346,3 +2349,48 @@ def test_a_registry_citation_is_new_evidence_when_its_quote_changes_past_the_fir
         return links.from_registry_citation('K990001', hit, '2026-01-01', {})[0]['link_id']
     assert lid(', and enrolled 40 patients.') != lid(', and was later withdrawn.')
     assert lid(', and enrolled 40 patients.') == lid(',  and enrolled\n40 patients.')
+
+
+def test_every_kind_of_evidence_record_is_new_when_its_quoted_text_changes() -> None:
+    """_record binds each id to the whole quoted evidence, so a review of old text is never carried
+    onto changed text, whatever the kind of evidence."""
+    study = {'nct_id': 'NCT99000001', 'brief_title': 'A study', 'start_date': None, 'primary_completion_date': None,
+             'completion_date': None}
+    # a registry hit that does not carry the number: its evidence is the brief title
+    def not_located(title: str) -> str:
+        hit = {'nct_id': 'NCT99000001', 'located': [], 'study': {**study, 'brief_title': title}, 'retrieved_at': 't'}
+        return links.from_registry_citation('K990001', hit, '2026-01-01', {})[0]['link_id']
+    assert not_located('A study of a scanner') != not_located('A study of a different scanner')
+    # a curated documentary statement, changed past its first 80 characters
+    row = {'submission_number': 'K990001', 'nct_id': 'NCT99000001', 'source_kind': 'fda_document', 'source_id': 'doc:x',
+           'page_or_field': '2', 'proposed_relationship': 'related_validation_study', 'recorded_on': '2026-11-13',
+           'note': 'n'}
+    head = 'The clinical validation study described here enrolled patients at two hospitals in the network'
+    def statement(tail: str) -> str:
+        quote = head + tail
+        return links.from_statement({**row, 'verbatim_quote': quote}, quote, {}, study, '2026-01-01')['link_id']
+    assert statement(' during 2019.') != statement(' during 2021.')
+    assert statement(' during 2019.') == links.from_statement(
+        {**row, 'verbatim_quote': head.replace(' ', '  ') + ' during 2019.'}, head + ' during 2019.', {}, study,
+        '2026-01-01')['link_id']                                                     # spacing is not evidence
+    # a name match whose registry text changed around the same matched form
+    family = {'family_id': 'family:candidate:x'}
+    def name(quote: str) -> str:
+        n = {'registry_field': 'protocolSection.identificationModule.briefTitle', 'matched_form': 'lumora',
+             'strength': 'full', 'quote': quote}
+        return links.from_name_match(family, study, n, None, {'K990001': '2020-07-07'}, {}, [])['link_id']
+    assert name('Lumora imaging in adults') != name('Lumora imaging in children')
+
+
+def test_the_disk_budget_is_a_limit_a_new_file_may_not_cross(tmp_path: Path) -> None:
+    manifest, store = acquire.Manifest(tmp_path / 'manifest.jsonl'), tmp_path / 'store'
+    urls = [f'{F.DOCS}/pdf99/K990001.pdf', f'{F.DOCS}/pdf99/K990002.pdf']
+    plan = [{'document_id': acquire.document_id(u.rsplit('/', 1)[1][:7], u), 'submission_number': u.rsplit('/', 1)[1][:7],
+             'url': u, 'official_label': None, 'discovery': 'url_pattern', 'scope': 'this_submission'} for u in urls]
+    def serve(url: str, params: Any) -> tuple[int, dict[str, Any], bytes, None]:
+        return 200, {}, b'%PDF-' + url[-11:-4].encode(), None          # two distinct 12-byte files
+    out = acquire.fetch_documents(plan, manifest, store, serve, F.no_wait(), store_budget_bytes=20)
+    assert (out['retrieved'], out['skipped_disk_budget']) == (1, 1)
+    assert acquire.store_bytes(store) == 12
+    skipped = manifest.latest()[plan[1]['document_id']]
+    assert skipped['http_status'] == 200 and 'past its budget' in skipped['error'] and not acquire.settled(skipped)

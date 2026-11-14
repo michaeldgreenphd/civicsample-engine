@@ -709,8 +709,10 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
     With a `store_budget_bytes`, acquisition stops requesting once the store holds that much:
     every remaining document gets a `skipped_disk_budget` line (not settled, so a later run with
     room fetches it) and its submission's coverage reads search incomplete, with that reason.
-    The repair of a recorded document's missing or damaged file is not stopped by the budget; if the
-    source now serves other bytes, that is a new version, and the budget applies to it.
+    The budget is a limit: a document whose bytes would take the store past it is not stored and
+    reads as skipped. The repair of a recorded document's missing or damaged file is not stopped
+    by the budget; if the source now serves other bytes, that is a new version, and the budget
+    applies to it.
     """
     latest = manifest.latest()
     # The last line that retrieved each document: a failed repair attempt becomes the latest line,
@@ -752,27 +754,35 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
             line['outcome'] = 'http_error'
         elif body[:5] != b'%PDF-':
             line['outcome'] = 'not_a_pdf'
-        elif full and recorded and sha256(body) != recorded['sha256']:
-            # The repair of a recorded file found the source serving other bytes: a new version,
-            # which is growth of the store, so the budget applies to it as to any new document.
-            skip = _budget_skip(item, store_budget_bytes)
-            skip.pop('http_status_absent_reason')
-            line = {**skip, 'http_status': status, 'attempts': attempts,
-                    'content_type': line['content_type'], 'last_modified': line['last_modified'], 'etag': line['etag'],
-                    'error': (f'the source now serves other bytes than the {recorded["sha256"][:12]}… recorded, a new '
-                              f'version, and the document store reached its budget of {store_budget_bytes} bytes')}
         else:
             digest = sha256(body)
             target = store / f'{digest}.pdf'
-            if store_problem(store, digest, len(body)):
-                # Absent, or held damaged (truncated, replaced): the fetched bytes are written.
-                # Only the bytes this adds to the store count against the budget: the store is
-                # addressed by content, so a second address serving a file held adds nothing, and
-                # a damaged file being replaced is already in the tally, so only the net change counts.
-                before = target.stat().st_size if target.is_file() else 0
-                write_atomic(target, body)
-                held += len(body) - before
-            line['outcome'], line['sha256'] = 'retrieved', digest
+            # Only the bytes a write adds to the store count against the budget: the store is
+            # addressed by content, so a second address serving a file held adds nothing, and a
+            # damaged file being replaced is already in the tally, so only the net change counts.
+            before = target.stat().st_size if target.is_file() else 0
+            writes = store_problem(store, digest, len(body)) is not None
+            restores_recorded = bool(recorded) and digest == recorded['sha256']
+            over = (store_budget_bytes is not None and writes and not restores_recorded
+                    and held + len(body) - before > store_budget_bytes)
+            if over:
+                # The budget is a limit on the store, not only a point at which requests stop: a
+                # file that would take the store past it is not written and reads as skipped. A
+                # repair restoring recorded bytes is exempt; a recorded document whose source now
+                # serves other bytes is a new version, and is not.
+                skip = _budget_skip(item, store_budget_bytes)
+                skip.pop('http_status_absent_reason')
+                why = (f'the source now serves other bytes than the {recorded["sha256"][:12]}… recorded, a new version, '
+                       if recorded else '')
+                line = {**skip, 'http_status': status, 'attempts': attempts, 'content_type': line['content_type'],
+                        'last_modified': line['last_modified'], 'etag': line['etag'],
+                        'error': f'{why}{len(body)} bytes would take the document store past its budget of '
+                                 f'{store_budget_bytes} bytes'}
+            else:
+                if writes:
+                    write_atomic(target, body)
+                    held += len(body) - before
+                line['outcome'], line['sha256'] = 'retrieved', digest
         manifest.append(line)
         latest[item['document_id']] = line
         counts[line['outcome']] += 1

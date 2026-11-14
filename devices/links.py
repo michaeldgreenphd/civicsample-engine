@@ -157,9 +157,21 @@ def timing_for(study: dict[str, Any] | None, decisions: dict[str, str | None]) -
 
 # ---------------------------------------------------------------- constructors
 
-def _record(*, lid: str, level: str, source_type: str, source_id: str, nct_id: str, relationship: str, method: str,
-            evidence: dict[str, Any], source_version: dict[str, Any], confidence: str, confidence_reasons: list[str],
-            validation: str, validation_reasons: list[str], timing: dict[str, Any]) -> dict[str, Any]:
+def _evidence_text(s: Any) -> str:
+    """The quoted evidence as it goes into an id: whitespace collapsed, nothing else changed."""
+    return re.sub(r'\s+', ' ', str(s or '')).strip()
+
+
+def _record(*, key: tuple[Any, ...], level: str, source_type: str, source_id: str, nct_id: str, relationship: str,
+            method: str, evidence: dict[str, Any], source_version: dict[str, Any], confidence: str,
+            confidence_reasons: list[str], validation: str, validation_reasons: list[str],
+            timing: dict[str, Any]) -> dict[str, Any]:
+    """One evidence record. Its id is the caller's key (entities, method, where the evidence
+    stands) and the whole quoted evidence: a review in devices/reviews.csv is keyed on the id, so
+    evidence whose text changes (a new version of a document, a later registry record, a corrected
+    statement) is a new record, and a review of the old text reads as orphaned instead of being
+    carried onto text nobody reviewed. Every kind of evidence gets this from here."""
+    lid = link_id(*key, _evidence_text(evidence.get('quote')))
     return {'link_id': lid, 'level': level, 'source': {'entity_type': source_type, 'id': source_id},
             'target': {'entity_type': 'registered_study', 'registry': 'ClinicalTrials.gov', 'id': nct_id},
             'proposed_relationship': relationship, 'method': method, 'evidence': evidence,
@@ -195,11 +207,8 @@ def from_document_citation(doc: dict[str, Any], identifier: dict[str, Any], stat
         reasons.append('a citation shows the document mentions the study; it does not show the study supported '
                        'this decision (it may be a predicate\'s study or background)')
     return _record(
-        # The quoted sentence is part of what the evidence is (as the quote is for a registry
-        # citation): a new version of the document that changes it is new evidence, and a review
-        # of the old sentence is reported orphaned rather than carried over.
-        lid=link_id('submission', sn, nct, method, doc['document_id'], identifier['page'],
-                    re.sub(r'\s+', ' ', identifier['sentence'] or '').strip()),
+        # _record adds the quoted sentence to the id: changed text in a new version is new evidence.
+        key=('submission', sn, nct, method, doc['document_id'], identifier['page']),
         level='submission' if own else 'family', source_type='submission', source_id=sn, nct_id=nct,
         relationship='study_cited_in_submission_document' if own else 'study_cited_in_parent_submission_document',
         method=method,
@@ -228,7 +237,7 @@ def from_registry_citation(submission_number: str, hit: dict[str, Any], decision
     method = 'submission_number_in_registry_record'
     if not hit['located']:
         return [_record(
-            lid=link_id('submission', submission_number, nct, method, 'not_located'), level='submission',
+            key=('submission', submission_number, nct, method, 'not_located'), level='submission',
             source_type='submission', source_id=submission_number, nct_id=nct,
             relationship='submission_cited_in_registry_record', method=method,
             evidence={'source_kind': 'registry_record', 'source_id': nct,
@@ -249,10 +258,8 @@ def from_registry_citation(submission_number: str, hit: dict[str, Any], decision
     for loc in by_field.values():
         exact = loc['supplement_cited'] is not False
         out.append(_record(
-            # The whole quote, whitespace normalised, is part of what the evidence is: a later record
-            # that changes the text around the number is new evidence, and an old review is orphaned.
-            lid=link_id('submission', submission_number, nct, method, loc['registry_field'],
-                        re.sub(r'\s+', ' ', loc['quote'] or '').strip()),
+            # _record adds the whole quote to the id: a later record changing the text is new evidence.
+            key=('submission', submission_number, nct, method, loc['registry_field']),
             level='submission' if exact else 'family', source_type='submission', source_id=submission_number,
             nct_id=nct, relationship='submission_cited_in_registry_record', method=method,
             evidence={'source_kind': 'registry_record', 'source_id': nct,
@@ -299,8 +306,8 @@ def from_name_match(family: dict[str, Any], study: dict[str, Any], name: dict[st
         # The id binds a review to the evidence reviewed: the method and the organisation that agrees
         # are part of it, so a curated alias or a later record that changes manufacturer agreement
         # makes new evidence, and a review of the old reads as orphaned rather than carried over.
-        lid=link_id('family', family['family_id'], study['nct_id'], method, name['registry_field'], name['matched_form'],
-                    f"{organisation['role']}:{organisation['registry_name']}" if agrees else ''),
+        key=('family', family['family_id'], study['nct_id'], method, name['registry_field'], name['matched_form'],
+             f"{organisation['role']}:{organisation['registry_name']}" if agrees else ''),
         level='family', source_type='family', source_id=family['family_id'], nct_id=study['nct_id'],
         relationship='name_and_organisation_candidate' if agrees else 'name_only_candidate', method=method,
         evidence={'source_kind': 'registry_record', 'source_id': study['nct_id'],
@@ -346,8 +353,8 @@ def from_statement(row: dict[str, str], source_text: str | None, source_version:
     located = source_text is not None and _squash(row['verbatim_quote']) in _squash(source_text)
     is_page = row['page_or_field'].strip().isdigit()
     return _record(
-        lid=link_id('submission', row['submission_number'], row['nct_id'], 'documentary_statement', row['source_id'],
-                    row['page_or_field'], _squash(row['verbatim_quote'])[:80]),
+        key=('submission', row['submission_number'], row['nct_id'], 'documentary_statement', row['source_id'],
+             row['page_or_field']),
         level='submission', source_type='submission', source_id=row['submission_number'], nct_id=row['nct_id'],
         relationship=row['proposed_relationship'], method='documentary_statement',
         evidence={'source_kind': row['source_kind'], 'source_id': row['source_id'],
