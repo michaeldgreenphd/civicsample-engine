@@ -397,13 +397,21 @@ def study_description_state(text_status: str | None, identifiers: list[dict[str,
 
 # ---------------------------------------------------------------- the registry
 
+def text_file(cache: Path, digest: str, version: str) -> Path:
+    return cache / 'text' / f'{digest}.{version}.json.gz'
+
+
 def read_text(cache: Path, digest: str, version: str) -> dict[str, Any] | None:
     """The cached extraction for one document version and extractor version, or None when that
-    version has not been extracted (the build records it as not extracted; it does not extract)."""
-    path = cache / 'text' / f'{digest}.{version}.json.gz'
+    version has not been extracted from these bytes (the build records it as not extracted; it
+    does not extract). Every reader of cached text comes through here, so none can use text that
+    does not record parsing exactly the bytes named by `digest` (`source_sha256`): one made from
+    a missing, damaged or replaced file, or before extractions recorded what they parsed."""
+    path = text_file(cache, digest, version)
     if not path.exists():
         return None
-    return json.loads(gzip.decompress(path.read_bytes()))
+    text = json.loads(gzip.decompress(path.read_bytes()))
+    return text if text.get('source_sha256') == digest else None
 
 
 def store_problem(cache: Path, digest: str, size: int | None) -> str | None:
@@ -464,11 +472,9 @@ def build(manifest_lines: list[dict[str, Any]], pathway_of: dict[str, str], cach
                 not_held.append(f"{did} ({cur['sha256'][:12]}…): {store_checked[cur['sha256']]}")
             by_digest.setdefault(cur['sha256'], []).append(did)
             text = read_text(cache, cur['sha256'], extraction_version)
-            unbound = text is not None and text.get('source_sha256') != cur['sha256']
-            if text is None or unbound:
-                # Text is used only when the extraction records that it parsed exactly these bytes;
-                # one made from a missing, damaged or replaced file, or before extractions recorded
-                # what they parsed, is not this document's text.
+            if text is None:
+                # read_text gives text only when the extraction records parsing exactly these bytes.
+                unbound = text_file(cache, cur['sha256'], extraction_version).exists()
                 doc['text'] = {'status': 'not_extracted', 'extraction_version': extraction_version, 'n_pages': None,
                                'n_pages_with_text': None,
                                'error': ('the cached extraction does not record that it parsed these bytes' if unbound

@@ -49,7 +49,7 @@ def load_inventory(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict
 
 
 def text_path(cache: Path, digest: str, version: str) -> Path:
-    return cache / 'text' / f'{digest}.{version}.json.gz'
+    return documents.text_file(cache, digest, version)
 
 
 def stage_local(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> None:

@@ -2037,3 +2037,31 @@ def test_the_text_stage_skips_a_damaged_file_and_redoes_text_not_bound_to_its_by
     target.write_bytes(gzip.compress(json.dumps(stale).encode(), mtime=0))
     build_device_links.stage_text(args, {})
     assert cached()['source_sha256'] == digest and cached()['n_pages'] == 1
+
+
+def test_no_reader_uses_cached_text_not_bound_to_the_documents_bytes(tmp_path: Path, acquired: dict[str, Any]) -> None:
+    """A documentary statement is checked against the document's cached text; text that does not
+    record parsing that document's bytes confirms nothing, and the document reads not extracted."""
+    import shutil
+    a = copy.deepcopy(acquired)
+    a['cache'] = tmp_path / 'cache'
+    shutil.copytree(acquired['cache'], a['cache'])
+    version = pdftext.extraction_version()
+    docs = documents.build(a['manifest'].lines, {sn: s['pathway'] for sn, s in a['subs'].items()}, a['cache'], version)
+    summary = next(d for d in docs if d['url'].endswith('reviews/DEN990005.pdf'))
+    quote = 'A retrospective study of 300 patients from two hospitals was conducted.'
+    curated = tmp_path / 'curated'
+    F.write_curated(curated, documentary_statements=[
+        ['DEN990005', 'NCT99000002', 'fda_document', summary['document_id'], '2', quote, 'related_validation_study',
+         '2026-11-13', 'the summary names the two hospitals of this registered study']])
+    assert documents.read_text(a['cache'], summary['sha256'], version) is not None
+    path = build_device_links.text_path(a['cache'], summary['sha256'], version)
+    body = json.loads(gzip.decompress(path.read_bytes()))
+    body['source_sha256'] = acquire.sha256(b'another file')
+    path.write_bytes(gzip.compress(json.dumps(body).encode(), mtime=0))
+    assert documents.read_text(a['cache'], summary['sha256'], version) is None
+    family = F.build_family(tmp_path / 'out', a, curated)
+    stated = next(x for x in family['links.json']['links'] if x['method'] == 'documentary_statement')
+    assert stated['automated_validation'] == 'not_validated'
+    held = next(d for d in family['documents.json']['documents'] if d['document_id'] == summary['document_id'])
+    assert held['text']['status'] == 'not_extracted'
