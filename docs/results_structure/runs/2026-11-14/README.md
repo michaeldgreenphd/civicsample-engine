@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Run | `results-structure-2026-11-14-d112af0f3f`, generated 2026-11-14T01:02:10+00:00 by `scripts/build_results_structure.py` at engine commit `e097d2226401` (no uncommitted changes) |
+| Run | `results-structure-2026-11-14-7fa864d4b8`, generated 2026-11-14T01:34:28+00:00 by `scripts/build_results_structure.py` at engine commit `5cc5e7d2e7d5` (no uncommitted changes) |
 | Method | `results-structure-1`: usable-content rules B1, F1, O1, A1; comparative classes C1, C2; analysis rule S1; subgroup rule SG2 |
 | Scope | Frame 648 registry records fetched; **598 trials in this build** (the eligible cohort of the Industry Outcomes beta, the rows of the site's `data/outcomes/index.json`, outcomes run `outcomes-2026-11-09-d41f32ec4d`); 50 frame records left out: excluded by the outcomes cohort's eligibility rules (see data/outcomes/index.json excluded). The lists are `frame_ids.txt` (sha256 `637bb40370bedcb8…`), `eligible_ids.txt` (`dcfc1e3fc8829b23…`) and `excluded_ids.txt` (`e7f7925eacf48b28…`) |
 | Registry records | 648 of 648 frame records retrieved from the ClinicalTrials.gov API v2, 2026-11-14T00:41:41+00:00 to 2026-11-14T00:41:57+00:00; API version 2.0.5, registry `dataTimestamp` 2026-11-13T10:00:06 |
@@ -136,3 +136,7 @@ That the build is reproducible and matches the audit scripts on the audit's cach
 (`docs/audits/outcomes_results_structure/port_check/`) is engineering validation. Whether the
 rules measure what a study of subgroup reporting needs, and how many subgroup results the text
 rule misses, are questions this run does not answer.
+
+## Rebuilt on the pull-request branch
+
+The build was first made on a working branch at commit `e097d22`. Those commits were replayed onto `main` for the pull request, which gave them new hashes, so the run was rebuilt from the same frozen archive at the commit named above. `summary.json` and `records.json` are identical to the earlier build apart from the run id, which includes the commit.
