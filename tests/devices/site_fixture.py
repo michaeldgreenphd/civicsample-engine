@@ -9,6 +9,10 @@ against the stub, freeze, build, the producer contract, then scripts/export_devi
 So the site's fixture is what the engine writes, not a hand copy of it. Every number, name and
 sentence in it is invented.
 
+OUT_DIR receives the seven exported files and SOURCE.json, which names this script, the engine
+commit and the run id, so a reader of the site repository can tell where the fixture came from.
+Other files in OUT_DIR are left alone.
+
 One review row is applied (an accepted link on K990001), so the site can be tested on a published
 human review as well as on unreviewed records; the real build has none. The clock is pinned, so
 running this twice gives the same bytes.
@@ -16,6 +20,9 @@ running this twice gives the same bytes.
 from __future__ import annotations
 
 import argparse
+import json
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -53,12 +60,43 @@ def build(tmp: Path) -> Path:
     return tmp / 'build'
 
 
+def _git(*args: str) -> str | None:
+    try:
+        return subprocess.run(['git', *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def source(manifest: dict[str, object]) -> dict[str, object]:
+    """What SOURCE.json says: how the fixture was made and from which engine revision. The
+    commit is absent (None), not guessed, when this is not a git checkout."""
+    status = _git('status', '--porcelain')
+    return {
+        'about': 'A fictional device-linkage family in site schema 1 (K99xxxx, DEN99xxxx, P99xxxx, NCT990000xx). '
+                 'No real device, company, study or sentence. One fictional review is applied so that a published '
+                 'human review can be tested; the real build has none.',
+        'written_by': 'civicsample-engine tests/devices/site_fixture.py',
+        'command': 'python3 tests/devices/site_fixture.py ../clinical-trial-populations/tests/fixtures/devices',
+        'path': 'tests/devices/fixture.py (stub acquisition) -> devices/artifacts.py build -> devices/contract.py -> '
+                'scripts/export_device_links_site.py',
+        'engine_commit': _git('rev-parse', 'HEAD'),
+        'engine_uncommitted_changes': bool(status) if status is not None else None,
+        'run_id': manifest['run_id'],
+        'do_not_edit': 'Regenerate with the command above; the files are checked against run.json by the site tests.',
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('out', type=Path)
     args = ap.parse_args(argv)
     with tempfile.TemporaryDirectory() as tmp:
-        manifest = site.export(build(Path(tmp)), args.out)
+        staged = Path(tmp) / 'site'
+        manifest = site.export(build(Path(tmp)), staged)
+        args.out.mkdir(parents=True, exist_ok=True)
+        for name in [*sorted(manifest['files']), 'run.json']:
+            shutil.copyfile(staged / name, args.out / name)
+    (args.out / 'SOURCE.json').write_text(json.dumps(source(manifest), indent=1) + '\n', encoding='utf-8')
     print(f"wrote {args.out} ({manifest['run_id']}): " + ', '.join(sorted(manifest['files'])))
     return 0
 
