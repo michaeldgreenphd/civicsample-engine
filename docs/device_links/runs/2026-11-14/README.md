@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T06:48:46+00:00 by `scripts/build_device_links.py build` at engine commit `1013cce8ee7d` (no uncommitted changes; producing-code digest `dd88afce8425…`), run id `devices-2026-11-14-17c61c62b2`, method `device-links-1` |
+| Built | 2026-11-14T13:00:47+00:00 by `scripts/build_device_links.py build` at engine commit `ba1d46e72cb9` (no uncommitted changes; producing-code digest `fb66b0ea78eb…`), run id `devices-2026-11-14-cbd7d89e0b`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -81,10 +81,10 @@ identifier, and 159 more say only that no clinical study was done.
 |---|---|
 | Verified link (identifier cited; what the citation means is not reviewed) | 11 |
 | Candidate link awaiting review | 282 |
-| No candidate found in the completed search scope | 1,059 |
+| No candidate found in the completed search scope | 763 |
 | Available document insufficient for the question | 36 |
-| Not searched (name made only of device-type words) | 23 |
-| Search incomplete or blocked | 18 |
+| Not searched (name made only of device-type words) | 17 |
+| Search incomplete or blocked | 320 |
 | Document unavailable | 1 |
 
 ## Demographic evidence
@@ -118,7 +118,7 @@ It was rebuilt a seventh time after the sixth review round, at `e76cdf9` (run `d
 
 It was rebuilt an eighth time after the seventh review round, at `0f54e7b` (run `devices-2026-11-14-8750e49382`). That round's two fixes (a registry record citing another supplement of the same PMA is not a citation of the supplement sought or of the original; a PMA database page is confirmed from its "PMA Number" and "Supplement Number" rows, not from the base number appearing anywhere on it) change no output of this run. Every output file is identical to the previous build apart from the run id. The build reads the page verdicts recorded at acquisition, so the new page check was also run over all 1,431 cached pages: it confirms each one (1,376 510(k), 37 De Novo and 18 PMA pages).
 
-It was rebuilt a ninth time after the eighth review round, at `d3a9c5b` (run `devices-2026-11-14-5433ca19c6`). That round's two fixes (a submission number is located in a registry field in any letter case; the acquisition stage for NCT ids also looks up the studies the curated statements name) change no output of this run: no searched number appears in lower or mixed case in the frozen registry records, and the statements file has no rows. Every output file is identical to the previous build apart from the run id. A third finding of that round, that a citation scan with pages it could not read should not read as a completed scope, changes the definition of a published state and was put to the investigator; this run keeps the documented rule.
+It was rebuilt a ninth time after the eighth review round, at `d3a9c5b` (run `devices-2026-11-14-5433ca19c6`). That round's two fixes (a submission number is located in a registry field in any letter case; the acquisition stage for NCT ids also looks up the studies the curated statements name) change no output of this run: no searched number appears in lower or mixed case in the frozen registry records, and the statements file has no rows. Every output file is identical to the previous build apart from the run id. A third finding of that round, that a citation scan with pages it could not read should not read as a completed scope, changes the definition of a published state and was put to the investigator; that run kept the documented rule. The investigator decided it on 2026-11-14 (see the twenty-fifth rebuild below).
 
 It was rebuilt a tenth time after the ninth review round, at `0d8923a` (run `devices-2026-11-14-ba872e874d`). That round's two fixes (510(k) and De Novo database pages are confirmed from their "510(k) Number" or "De Novo Number" row, as PMA pages are from theirs; an HTML page served in place of a document is asked again and leaves its route incomplete) change no output of this run. The new page check confirms all 1,431 cached pages, and no document in the manifest is `not_a_pdf`. Every output file is identical to the previous build apart from the run id.
 
@@ -148,4 +148,6 @@ It was rebuilt a twenty-second time after the twenty-first review round, at `5fa
 
 It was rebuilt a twenty-third time after the twenty-second review round, at `43ceab4` (run `devices-2026-11-14-94ea2d57b6`). That round's three fixes (an openFDA entry must carry a number its request asked for; a search count must cover the studies returned; repairing a stored file counts only its net size against a disk budget) change no output of this run: all 1,558 cached openFDA entries and all 3,086 cached search answers pass the checks, and no budget was set. Every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a twenty-fourth time after the twenty-third review round, at the commit named above. That round's fix (a settled answer must pass its caller's current shape check before acquisition reuses it) changes no output of this run, and no answer in the cache would be asked again: every cached answer passes the current checks. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a twenty-fourth time after the twenty-third review round, at `1013cce` (run `devices-2026-11-14-17c61c62b2`). That round's fix (a settled answer must pass its caller's current shape check before acquisition reuses it) changes no output of this run, and no answer in the cache would be asked again: every cached answer passes the current checks. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a twenty-fifth time, at the commit named above, to apply the investigator's decision on the question left open in the eighth review round. In the investigator's words: "I like your recommendation of b now and c as the follow-up". Option (b): a citation scan that found no identifier while some page of the documents held has no usable text layer now reads `search_incomplete_or_blocked`, not `no_candidate_in_completed_scope`, because an unread page could hold the identifier. Option (c), reading those pages by OCR, is a separate follow-up. This changes `coverage.json`, `submissions.json` and `summary.json`; every other output file is identical to the previous build apart from the run id. On the citation-scan route, 375 submissions move from no candidate in the completed scope to search incomplete (1,379 → 1,004 and 1 → 376 on the route as published). Overall, 302 submissions move: 296 from no candidate in the completed scope and 6 from not searched, all to search incomplete or blocked (1,059 → 763; 23 → 17; 18 → 320). The other 73 of the 375 keep their overall state: 69 have a name candidate awaiting review, which ranks higher, and 4 were already incomplete through the name search. The 6 had a name search that was not run and a citation scan that was completed scope; an incomplete scan ranks above not searched in the overall precedence (`devices/coverage.py`), so they now read incomplete. The measurement put to the investigator counted only the 296.

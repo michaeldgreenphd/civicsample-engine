@@ -261,6 +261,8 @@ Per record and per member submission. Identifier-confirmed citations in document
 
 Overall, over the three routes that can produce a link: verified link 11; candidate awaiting review 282; search incomplete 18; not searched 23 (names made only of device-type words); available document insufficient 36; document unavailable 1; no candidate in the completed scope 1,059.
 
+Changed after this run (investigator's decision, 2026-11-14): a citation scan with any unread page and no identifier found now reads search incomplete or blocked, not a completed scope. The counts above are this run's; the current counts are in `docs/device_links/runs/2026-11-14/README.md`.
+
 ## 7. Negative findings
 
 Kept apart from failures: these routes ran and found nothing, or found something that is not a link.
