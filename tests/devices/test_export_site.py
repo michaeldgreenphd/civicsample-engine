@@ -147,6 +147,9 @@ def test_a_row_keeps_every_spelling_its_duplicate_class_and_its_family_size(expo
     assert zorbex['family_n_submissions'] == 2 and zorbex['family_id'] == row(exported, 'K990002')['family_id']
     assert row(exported, 'DEN990005')['duplicate_class'] is None       # one row: no class, not "identical"
     assert row(exported, 'K990004')['conflicts'] == {'Primary Product Code': ['AAA', 'BBB']}
+    # "No difference" is only a finding where an official record was there to compare.
+    assert all(r['official_record_available'] is True and r['official_differs_from_list'] == {}
+               for r in exported['submissions.json']['submissions'])
 
 
 def test_coverage_cells_expand_to_the_builds_state_and_reason_for_every_route(build: Path, exported: dict[str, Any]) -> None:
@@ -154,7 +157,7 @@ def test_coverage_cells_expand_to_the_builds_state_and_reason_for_every_route(bu
     assert file['coverage_routes'] == exported['run.json']['vocabularies']['coverage_routes']
     for cov in load(build, 'coverage.json')['submissions']:
         r = row(exported, cov['submission_number'])
-        assert r['coverage_overall'] == cov['overall']['state']
+        assert (r['coverage_overall'], r['coverage_overall_routes']) == (cov['overall']['state'], cov['overall']['routes'])
         expanded = {route: (state, file['coverage_reasons'][i]) for route, (state, i) in zip(file['coverage_routes'], r['coverage'])}
         assert expanded == {c['route']: (c['state'], c['reason']) for c in cov['routes']}
 

@@ -317,7 +317,9 @@ def select(build: dict[str, Any]) -> dict[str, Any]:
             'family_id': fid, 'family_n_submissions': family_of[fid]['n_submissions'],
             'n_source_rows': s['n_source_rows'], 'source_row_numbers': [r['row_number'] for r in s['source_rows']],
             'duplicate_class': s['duplicate_class'], 'conflicts': s['conflicts'],
-            'coverage_overall': cov['overall']['state'],
+            # The overall state and the routes it was taken from (coverage.OVERALL_PRECEDENCE
+            # over the three routes that can produce a link).
+            'coverage_overall': cov['overall']['state'], 'coverage_overall_routes': cov['overall']['routes'],
             # One [state, reason index] per route, in the order of `coverage_routes` below.
             'coverage': [[cells[r]['state'], coverage_reasons.index(cells[r]['reason'])] for r in route_order],
             # Own records and the family's, each record once: a family-level candidate is counted
@@ -325,6 +327,8 @@ def select(build: dict[str, Any]) -> dict[str, Any]:
             'evidence_counts': _tally(own + of_family),
             'documents': {'n_held': len(held),
                           'n_population_type_readable': sum(1 for d in held if d['demographic_summary_candidate'])},
+            # An empty difference means "agrees" only when there was an official record to compare.
+            'official_record_available': bool(s['official'].get('available')),
             'official_differs_from_list': s['official_differs_from_list'],
         })
 
@@ -350,6 +354,8 @@ def select(build: dict[str, Any]) -> dict[str, Any]:
                              f'in summary.json ({metric_id})')
     if sum(totals) != summary['denominators']['evidence_records']['n']:
         raise ValueError('the evidence kinds do not add up to the build\'s number of evidence records')
+    if sum(1 for r in rows if r['official_record_available']) != _metric(summary, 'official_record_found'):
+        raise ValueError('official_record_available: the rows do not reproduce summary.json (official_record_found)')
     for metric_id, key in (('submissions_with_document', 'n_held'),
                            ('submissions_with_substantive_readable_document', 'n_population_type_readable')):
         if sum(1 for r in rows if r['documents'][key]) != _metric(summary, metric_id):
