@@ -76,3 +76,26 @@ def test_a_window_without_zcta_tables_says_so(tmp_path: Path, resolver: geograph
     r.zcta_published, r._memo = None, {}
     assert r.resolve('02114', None, 'Massachusetts')['zcta'] == {
         'geoid': None, 'reason': 'zcta_tables_not_published_for_this_window'}
+
+
+def test_a_cached_boundary_file_is_reused_only_when_its_bytes_are_the_recorded_ones(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+    import zipfile
+    calls = []
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w') as z:
+        z.writestr('a.txt', 'boundary')
+
+    class Reply:
+        content = buf.getvalue()
+
+        def raise_for_status(self) -> None:
+            return None
+
+    monkeypatch.setattr(geography.requests, 'get', lambda url, timeout: calls.append(url) or Reply())
+    first = geography.download('GENZ2099/shp/cb_2099_us_county_500k.zip', tmp_path)
+    assert geography.download('GENZ2099/shp/cb_2099_us_county_500k.zip', tmp_path) == first and len(calls) == 1
+    cached = tmp_path / 'GENZ2099__shp__cb_2099_us_county_500k.zip'
+    cached.write_bytes(cached.read_bytes() + b'tampered')
+    again = geography.download('GENZ2099/shp/cb_2099_us_county_500k.zip', tmp_path)
+    assert len(calls) == 2 and again['sha256'] == first['sha256'], 'altered bytes are fetched again, not trusted'

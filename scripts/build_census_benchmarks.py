@@ -135,9 +135,12 @@ def trial_row(rec: dict[str, Any], facts: dict[str, Any], referral: set[str]) ->
     return row
 
 
-def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[str, Any],
+def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[str, Any] | None,
                    levels: dict[str, acs.Level]) -> None:
-    """Observed shares, and the reference population at every level that resolved."""
+    """Observed shares, and the reference population at every level that resolved.
+
+    A trial with no benchmark window (no usable date) has no resolution: what its tables
+    report is kept in full, and only its benchmarks are marked unavailable, with the reason."""
     row['resolution'] = resolution
     elig = row['eligibility']
     row['dimensions'] = {}
@@ -168,6 +171,8 @@ def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[st
         reason = None
         if 'error' in elig:
             reason = 'eligible_ages_unreadable'
+        elif resolution is None:
+            reason = 'no_benchmark_window'                              # no usable date to match one
         elif not obs['structure']['usable_for_shares']:
             reason = 'table_rows_not_one_classification'             # see trials.category_structure
         elif dim == 'sex' and len(elig['sexes']) == 1:
@@ -180,7 +185,10 @@ def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[st
         if reason:
             d['not_pooled_reason'] = reason
         d['benchmarks'] = {}
-        if 'error' not in elig:
+        if resolution is None:
+            d['benchmarks'] = {lvl: {'available': False, 'reason': 'no_benchmark_window'} for lvl in LEVEL_ORDER}
+            d['geography_sensitivity'] = {'levels_compared': [], 'flag': None, 'reason': 'no_benchmark_window'}
+        elif 'error' not in elig:
             for lvl in LEVEL_ORDER:
                 where = resolution[lvl]
                 if not where.get('geoid'):
@@ -280,7 +288,8 @@ def main(argv: list[str] | None = None) -> int:
     reference_series: dict[str, dict[str, float]] = {}
     unmatched = [r for r in rows if r['benchmark_period']['vintage'] is None]
     for r in unmatched:
-        r['resolution'], r['dimensions'] = None, {}
+        r.pop('_point', None)
+        add_dimensions(r, recs[r['nct_id']], None, {})
     for vintage in sorted({r['benchmark_period']['vintage'] for r in rows} - {None}):
         mine = [r for r in rows if r['benchmark_period']['vintage'] == vintage]
         level_names = acs.LEVELS_BY_VINTAGE.get(vintage, LEVEL_ORDER)

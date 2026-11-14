@@ -22,8 +22,13 @@ import json
 import os
 import random
 import sys
+from pathlib import Path
 
 import requests
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from census.acs import redact  # noqa: E402
 
 # B01001 (all residents): male cells 003-025, female 027-049; 18 and over starts at 007 / 031.
 # B01001A-I (one race or origin group): male 003-016, female 018-031; 18 and over starts at 007 / 022.
@@ -41,8 +46,15 @@ def fetch(variables: list[str], state: str) -> float:
     for i in range(0, len(variables), 45):          # the API takes at most 50 variables a call
         r = requests.get('https://api.census.gov/data/2024/acs/acs5', timeout=120,
                          params={'get': ','.join(variables[i:i + 45]), 'for': f'state:{state}', 'key': os.environ['CENSUS_API_KEY']})
-        r.raise_for_status()
-        header, row = r.json()
+        # Never raise_for_status(): its message carries the request URL, which holds the key.
+        # Failures are reported with the key removed, as census/acs.py does. A missing key is
+        # answered with an HTML page and status 200, so a body that is not JSON is a failure too.
+        try:
+            header, row = r.json() if r.status_code == 200 else (None, None)
+        except ValueError:
+            header = None
+        if header is None:
+            raise RuntimeError(f'{redact(r.url)}: status {r.status_code}, no usable JSON')
         total += sum(float(v) for name, v in zip(header, row) if name != 'state')
     return total
 

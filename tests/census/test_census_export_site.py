@@ -51,3 +51,45 @@ def test_an_altered_build_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match='do not match the build manifest'):
         export_site.export(build, tmp_path / 'site')
     assert not (tmp_path / 'site').exists()
+
+
+def _load(name: str, rel: str):  # noqa: ANN202 - a module object
+    s = importlib.util.spec_from_file_location(name, ROOT / rel)
+    module = importlib.util.module_from_spec(s)
+    s.loader.exec_module(module)
+    return module
+
+
+def test_a_trial_with_no_usable_date_keeps_its_tables_and_loses_only_its_benchmarks() -> None:
+    build = _load('build_census_benchmarks', 'scripts/build_census_benchmarks.py')
+    rec = {'nct_id': 'NCT0', 'enrollment': 40, 'min_age': '18 Years', 'max_age': 'N/A', 'eligibility': {'sex': 'ALL'},
+           'study_sites': [{'country': 'United States', 'zip': '02114', 'state': 'Massachusetts'}],
+           'race': {'reported': True, 'omb_totals': {'white': 30, 'asian': 6, 'unknown_not_reported': 4}},
+           'sex': {'reported': True, 'totals': {'female': 20, 'male': 20}}}
+    row = build.trial_row(rec, {'found': True, 'n_locations_now': 1, 'text': ''}, set())
+    assert row['benchmark_period']['reason'] == 'no_usable_date'
+    row.pop('_point', None)
+    build.add_dimensions(row, rec, None, {})
+    race = row['dimensions']['race']
+    assert race['state'] == 'reported' and race['observed_counts']['white'] == 30 and race['denominators']['classified'] == 36
+    assert race['pooled'] is False and race['not_pooled_reason'] == 'no_benchmark_window'
+    assert race['benchmarks']['state'] == {'available': False, 'reason': 'no_benchmark_window'}
+    assert row['dimensions']['ethnicity'] == {'state': 'not_reported', 'reason': 'ethnicity_not_reported'}
+    assert row['resolution'] is None
+
+
+def test_the_api_check_never_puts_the_key_in_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    check = _load('check_against_api', 'scripts/census/check_against_api.py')
+
+    class Reply:
+        status_code = 429
+        url = 'https://api.census.gov/data/2024/acs/acs5?get=B01001_001E&for=state%3A06&key=SECRETKEY123'
+
+        def json(self) -> object:
+            raise ValueError('not json')
+
+    monkeypatch.setenv('CENSUS_API_KEY', 'SECRETKEY123')
+    monkeypatch.setattr(check.requests, 'get', lambda *a, **k: Reply())
+    with pytest.raises(RuntimeError) as err:
+        check.fetch(['B01001_001E'], '06')
+    assert 'SECRETKEY123' not in str(err.value) and 'key=REDACTED' in str(err.value) and '429' in str(err.value)

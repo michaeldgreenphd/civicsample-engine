@@ -67,7 +67,12 @@ def download(rel: str, cache: Path) -> dict[str, Any]:
     path = cache / rel.replace('/', '__')
     meta_path = path.with_suffix(path.suffix + '.meta.json')
     if path.exists() and meta_path.exists():
-        return json.loads(meta_path.read_text())
+        # Reused only when the cached bytes are the ones recorded at download: an altered or
+        # half-restored boundary file would move sites between counties while the manifest
+        # still vouched for the original. Anything else is fetched again.
+        meta = json.loads(meta_path.read_text())
+        if meta.get('sha256') == hashlib.sha256(path.read_bytes()).hexdigest():
+            return meta
     cache.mkdir(parents=True, exist_ok=True)
     r = requests.get(BASE + rel, timeout=900)
     r.raise_for_status()
