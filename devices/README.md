@@ -103,7 +103,11 @@ fetched for a supplement are `scope: parent_submission` and never support a supp
 Text is read from the text layer only and no OCR is run. A scan is `image_only`; a page whose text
 layer is unreadable (fonts without a character map: control characters or shifted letters) is
 counted as a page without text (`text.n_pages_garbled`); a PDF portfolio, of which only the cover
-is readable, is a `failed` extraction. The citation scan reports how many pages it could not read.
+is readable, is a `failed` extraction. The citation scan reports how many pages it could not read,
+and a scan with any such page and no identifier found is `search_incomplete_or_blocked`, not a
+completed scope: an unread page could hold the identifier. This was the investigator's decision on
+2026-11-14, in review of the pull request that added this build; reading those pages by OCR is the
+planned follow-up.
 
 ## Coverage
 

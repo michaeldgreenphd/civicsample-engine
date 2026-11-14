@@ -1842,6 +1842,26 @@ def test_a_settled_answer_logged_before_its_shape_check_is_asked_again(tmp_path:
     assert calls == []
 
 
+
+def test_a_citation_scan_with_unread_pages_is_not_a_completed_scope() -> None:
+    """Investigator's decision of 2026-11-14: an unread page could hold the identifier, so a scan
+    that found nothing on the pages it read, with pages it could not read, is incomplete."""
+    def doc(n_pages: int, with_text: int) -> dict[str, Any]:
+        return {'document_id': 'doc:K990001:x', 'origin': 'fda_fetch', 'scope': 'this_submission', 'availability': 'retrieved',
+                'url': f'{F.DOCS}/pdf99/K990001.pdf', 'http_status': 200, 'document_type': '510k_summary',
+                'demographic_summary_candidate': True, 'demographic_summary_reason': 'a 510(k) summary',
+                'text': {'status': 'partial' if with_text < n_pages else 'text', 'n_pages': n_pages,
+                         'n_pages_with_text': with_text}, 'identifiers': [], 'study_description': None}
+    partial = coverage.nct_citation_scan([doc(10, 9)], [])
+    assert partial['state'] == 'search_incomplete_or_blocked'
+    assert partial['detail']['n_pages_without_usable_text'] == 1 and 'did not cover every page' in partial['reason']
+    assert coverage.nct_citation_scan([doc(10, 10)], [])['state'] == 'no_candidate_in_completed_scope'
+    # a link found on the pages read still stands
+    link = {'automated_validation': 'identifier_confirmed', 'human_review': 'unreviewed', 'target': {'id': 'NCT99000001'},
+            'evidence': {'source_id': 'doc:K990001:x'}}
+    assert coverage.nct_citation_scan([doc(10, 9)], [link])['state'] == 'verified_link'
+
+
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])
 def test_a_200_without_a_usable_body_is_no_answer_and_is_asked_again(tmp_path: Path, body: bytes) -> None:
     """An empty, cut-off, non-JSON or null body under HTTP 200 is logged, not settled, and reads as

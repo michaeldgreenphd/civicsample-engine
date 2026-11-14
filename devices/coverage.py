@@ -15,7 +15,10 @@ therefore holds exactly one of seven states, with a reason in words:
   candidate_awaiting_review        the route produced a candidate link that no machine check
                                    confirms and no person has decided
   no_candidate_in_completed_scope  the route ran to completion on material able to answer, and
-                                   produced nothing. The scope is the route's, not the world's
+                                   produced nothing. The scope is the route's, not the world's.
+                                   For the citation scan, completion means every page of the
+                                   documents held was read: a page without a usable text layer
+                                   leaves the scan incomplete
   verified_link                    the route produced an identifier-confirmed link (links.py). This
                                    is the automated status; whether a person has reviewed it is
                                    reported beside it, never merged into it
@@ -168,7 +171,12 @@ def nct_citation_scan(docs: list[dict[str, Any]], links: list[dict[str, Any]]) -
     unread = sum(((d['text'] or {}).get('n_pages') or 0) - ((d['text'] or {}).get('n_pages_with_text') or 0) for d in held)
     cell['detail']['n_pages_without_usable_text'] = unread
     if unread and cell['state'] == 'no_candidate_in_completed_scope':
-        cell['reason'] += f'; {unread} page(s) of the documents held have no usable text layer and were not read'
+        # An unread page could hold the identifier, so a scan with pages it could not read is not a
+        # completed scope (investigator's decision, 2026-11-14): it reads incomplete until the pages
+        # are read (OCR is the planned follow-up). A link found on the pages read still stands.
+        cell['state'] = 'search_incomplete_or_blocked'
+        cell['reason'] += (f'; but {unread} page(s) of the documents held have no usable text layer and were not '
+                           'read (no OCR), so the scan did not cover every page')
     cell['detail']['n_documents_scanned'] = sum(1 for d in held if (d['text'] or {}).get('status') in ('text', 'partial'))
     cell['detail']['n_documents_without_text'] = sum(1 for d in held if (d['text'] or {}).get('status') == 'image_only')
     cell['detail']['n_nct_ids_found'] = len({i['identifier'] for d in held for i in d['identifiers'] if i['kind'] == 'nct'})
