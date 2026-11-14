@@ -431,3 +431,21 @@ def test_cli_fetches_for_different_id_lists_never_share_an_archive(tmp_path: Pat
         assert sorted(records) == wanted and all(r['results_status'] == 'not_retrieved' for r in records.values())
     metas = sorted((tmp_path / 'build' / 'results_structure_cache').glob('*.meta.json'))
     assert len(metas) == 2 and sorted(json.loads(m.read_text())['n_requested'] for m in metas) == [1, 2]
+
+
+def test_a_review_that_matches_nothing_is_reported_once_with_one_reason() -> None:
+    row = {'decision': 'accepted', 'reviewed_on': '2026-11-14'}
+    reviews = {'NCT99000001': {('sg-000000000000', 'sex'): row},      # posted results, but no such signal
+               'NCT99000002': {('sg-111111111111', 'age'): row},      # no posted results: nothing to review
+               'NCT99000003': {('sg-222222222222', 'age'): row}}      # requested, not in the archive
+    studies = [F.study(1), F.study(2, has_results=False)]
+    _, problems = B.build_records(studies, ['NCT99000001', 'NCT99000002', 'NCT99000003'], {}, reviews)
+    got = sorted((x['nct_id'], x['review'], x['reason']) for x in problems['reviews_not_matched'])
+    assert got == [('NCT99000001', 'sg-000000000000/sex', 'no such signal in the current record'),
+                   ('NCT99000002', 'sg-111111111111/age', 'the trial has no signals to review in this build'),
+                   ('NCT99000003', 'sg-222222222222/age', 'the trial has no signals to review in this build')]
+
+
+def test_the_archive_encoder_is_among_the_files_whose_uncommitted_changes_are_reported() -> None:
+    assert 'outcomes/acquire.py' in build_results_structure.PRODUCER_PATHS
+    assert all((ROOT / p).exists() for p in build_results_structure.PRODUCER_PATHS)

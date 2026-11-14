@@ -39,7 +39,10 @@ from outcomes import results_structure as RS  # noqa: E402
 from outcomes import results_structure_build as B  # noqa: E402
 
 DEFAULT_REVIEWS = ROOT / 'outcomes' / 'subgroup_reviews.csv'
-PRODUCER_PATHS = ('outcomes/results_structure.py', 'outcomes/results_structure_build.py',
+# Every file whose code or content shapes the artifacts. outcomes/acquire.py is here because a
+# fetch freezes its archive with acquire.encode: an uncommitted change there would otherwise
+# produce the input while the manifest said nothing was uncommitted.
+PRODUCER_PATHS = ('outcomes/results_structure.py', 'outcomes/results_structure_build.py', 'outcomes/acquire.py',
                   'outcomes/subgroup_reviews.csv', 'scripts/build_results_structure.py')
 
 

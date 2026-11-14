@@ -307,8 +307,12 @@ def build_records(studies: Iterable[Any], requested: list[str], not_retrieved: d
         elif n in records:
             raise BuildError(f'{n}: more than one record in the archive')
         else:
-            for key in RS.apply_reviews(rec, reviews.get(n)):
-                problems['reviews_not_matched'].append({'nct_id': n, 'review': key, 'reason': 'no such signal in the current record'})
+            unmatched = RS.apply_reviews(rec, reviews.get(n))
+            # A record with no signals at all (no posted results, or measures that could not be
+            # parsed) reports its reviews once, below, with that reason; not here as well.
+            if rec['subgroup']['signals'] is not None:
+                for key in unmatched:
+                    problems['reviews_not_matched'].append({'nct_id': n, 'review': key, 'reason': 'no such signal in the current record'})
             records[n] = rec
     for n in requested:
         if n not in records:

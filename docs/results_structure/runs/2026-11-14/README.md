@@ -142,3 +142,5 @@ rule misses, are questions this run does not answer.
 The build was first made on a working branch at commit `e097d22`. Those commits were replayed onto `main` for the pull request, which gave them new hashes, so the run was rebuilt from the same frozen archive at the commit named above. `summary.json` and `records.json` are identical to the earlier build apart from the run id, which includes the commit.
 
 It was rebuilt once more after the first review round, at the commit named above. No record changed: the review's three fixes guard the build's inputs and make signal ids independent of measure order, and no signal in this cohort depended on that order. Only the run id differs, because it includes the commit.
+
+Two fixes from the second review round came after this run and change none of its output, so it was not rebuilt: the list of files whose uncommitted changes the manifest reports now includes the archive encoder (this run read a frozen archive and fetched nothing), and a review row that matches no signal is reported once (this run has no review rows).
