@@ -2152,3 +2152,30 @@ def test_a_record_fetched_before_any_version_answer_is_not_stamped_with_a_later_
     assert {v.get('registry_version_absent_reason') for v in versions} == \
         {'no registry version answer was fetched at or before this record'}
     assert family['run.json']['sources']['registry']['registry_api_version']        # the run names the latest
+
+
+def test_a_text_worker_failure_is_extracted_again_on_the_next_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A timeout or crash of the isolated worker is cached as a failed extraction (the build reads
+    the document as failed) but is not the extractor's verdict on the file: the next run tries again."""
+    import argparse
+    import subprocess as sp
+    pdf = _blank_pdf()
+    line, digest = _held_document(tmp_path, pdf)
+    acquire.Manifest(tmp_path / 'documents' / 'manifest.jsonl').append(line)
+    target = build_device_links.text_path(tmp_path, digest, pdftext.extraction_version())
+    args = argparse.Namespace(cache=tmp_path, workers=1)
+    real_run = sp.run
+
+    def crash(*a: Any, **k: Any) -> Any:
+        raise sp.TimeoutExpired(cmd='pdftext', timeout=build_device_links.TEXT_TIMEOUT_SECONDS)
+    monkeypatch.setattr(build_device_links.subprocess, 'run', crash)
+    build_device_links.stage_text(args, {})
+    failed = json.loads(gzip.decompress(target.read_bytes()))
+    assert (failed['status'], failed['source_sha256']) == ('failed', digest)
+    doc = documents.build([line], {'K990001': '510k'}, tmp_path, pdftext.extraction_version())[0]
+    assert doc['text']['status'] == 'failed'                    # read as failed until it is tried again
+    monkeypatch.setattr(build_device_links.subprocess, 'run', real_run)
+    build_device_links.stage_text(args, {})
+    again = json.loads(gzip.decompress(target.read_bytes()))
+    assert again['n_pages'] == 1 and 'worker_failure' not in again
+    assert failed.get('worker_failure') is True

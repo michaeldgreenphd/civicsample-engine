@@ -108,13 +108,16 @@ def stage_documents(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -
 
 
 def text_bound_to(path: Path, digest: str) -> bool:
-    """True when a cached extraction exists and records that it parsed the bytes named `digest`."""
+    """True when a cached extraction exists, records that it parsed the bytes named `digest`, and is
+    not a worker failure (a timeout or a crash of the isolated worker says nothing lasting about the
+    file, so it is extracted again on the next run; the build reads it as failed until then)."""
     if not path.exists():
         return False
     try:
-        return json.loads(gzip.decompress(path.read_bytes())).get('source_sha256') == digest
+        cached = json.loads(gzip.decompress(path.read_bytes()))
     except (OSError, ValueError):
         return False
+    return cached.get('source_sha256') == digest and not cached.get('worker_failure')
 
 
 def stage_text(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> None:
@@ -145,11 +148,13 @@ def stage_text(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> Non
         except subprocess.TimeoutExpired:
             failure = f'timeout after {TEXT_TIMEOUT_SECONDS} s'
         if failure:
-            # The failure is itself cached, as a failed extraction with its reason; the bytes were
-            # checked against the digest just before the worker started.
+            # The failure is cached, as a failed extraction with its reason, so the build reads the
+            # document as failed (its routes incomplete); the bytes were checked against the digest
+            # just before the worker started. It is marked as a worker failure, not the extractor's
+            # verdict on the file, and is extracted again on the next run.
             pdftext_failure = {'extraction_version': version, 'status': 'failed', 'n_pages': None,
                                'n_pages_with_text': None, 'pages': [], 'page_errors': {}, 'error': failure,
-                               'source_sha256': digest}
+                               'source_sha256': digest, 'worker_failure': True}
             acquire.write_atomic(target, gzip.compress(json.dumps(pdftext_failure).encode(), mtime=0))
         elif not text_bound_to(target, digest):
             # The file changed between the check and the read: keep nothing; a later run tries again.
