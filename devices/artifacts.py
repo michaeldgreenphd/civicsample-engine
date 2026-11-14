@@ -209,10 +209,13 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
             own = ((((rec or {}).get('body') or {}).get('protocolSection') or {}).get('identificationModule') or {}).get('nctId')
             if rec and own and own != row['nct_id']:
                 raise ValueError(f"documentary_statements.csv: the record held for {row['source_id']} is study {own}")
-            # The quote is checked only in the field the row names (a dotted path such as
-            # protocolSection.descriptionModule.briefSummary, with [i] for list items). A path that
-            # does not resolve gives no text, so the quote reads not validated.
-            text = registry_field_text((rec or {}).get('body'), row['page_or_field'].strip()) if rec else None
+            # The quote is read only from a record answered 200 that names itself as the
+            # statement's study; a record without its own id has no established owner, so the
+            # quote reads not validated. It is checked only in the field the row names (a dotted
+            # path such as protocolSection.descriptionModule.briefSummary, with [i] for list
+            # items); a path that does not resolve gives no text, so the quote reads not validated.
+            owned = rec is not None and rec.get('status') == 200 and own == row['nct_id']
+            text = registry_field_text(rec['body'], row['page_or_field'].strip()) if owned else None
             version = {**registry_version, 'retrieved_at': (rec or {}).get('fetched_at')}
         state, facts = R.nct_state(registry, row['nct_id'])
         remember(row['nct_id'], facts, state, None)

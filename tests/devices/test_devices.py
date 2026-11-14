@@ -1486,6 +1486,34 @@ def test_a_registry_statement_quoted_from_another_field_is_not_validated(tmp_pat
     assert stated['explicitly_cited_supporting_study']['automated_validation'] == 'not_validated'
 
 
+
+def test_a_registry_statement_is_read_only_from_a_record_that_names_its_study(tmp_path: Path, acquired: dict[str, Any]) -> None:
+    """The quote stands in the field named, but the record held does not say which study it is."""
+    nct = 'NCT99000001'
+    a = copy.deepcopy(acquired)
+    records, _ = a['frozen']['registry']
+    body = copy.deepcopy(records[f'ctgov/study/{nct}']['body'])
+    title = body['protocolSection']['identificationModule']['briefTitle']
+    del body['protocolSection']['identificationModule']['nctId']
+    records[f'ctgov/study_full/{nct}'] = {**records[f'ctgov/study/{nct}'], 'key': f'ctgov/study_full/{nct}', 'body': body}
+    curated = tmp_path / 'curated'
+    F.write_curated(curated, documentary_statements=[
+        ['DEN990005', nct, 'registry_record', nct, 'protocolSection.identificationModule.briefTitle', title,
+         'related_validation_study', '2026-11-13', 'the record held carries no study id']])
+    family = F.build_family(tmp_path, a, curated)
+    stated = [x for x in family['links.json']['links'] if x['method'] == 'documentary_statement']
+    assert [x['automated_validation'] for x in stated] == ['not_validated']
+
+
+def test_a_link_found_by_a_partial_number_search_still_stands() -> None:
+    link = {'automated_validation': 'identifier_confirmed', 'human_review': 'unreviewed', 'target': {'id': 'NCT99000001'}}
+    partial = {'state': 'incomplete', 'reason': "full records not held for ['NCT99000002']", 'n_search_hits': 2,
+               'searched_at': '2026-11-13T00:00:00+00:00'}
+    cell = coverage.registry_submission_number_search(partial, [link])
+    assert cell['state'] == 'verified_link' and 'the search was not complete' in cell['reason']
+    assert coverage.registry_submission_number_search(partial, [])['state'] == 'search_incomplete_or_blocked'
+
+
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])
 def test_a_200_without_a_usable_body_is_no_answer_and_is_asked_again(tmp_path: Path, body: bytes) -> None:
     """An empty, cut-off, non-JSON or null body under HTTP 200 is logged, not settled, and reads as

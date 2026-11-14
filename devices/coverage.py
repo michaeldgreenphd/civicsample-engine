@@ -175,11 +175,15 @@ def registry_submission_number_search(result: dict[str, Any] | None, links: list
     route = 'registry_submission_number_search'
     if result is None:
         return _cell(route, 'not_searched', 'the registry was not searched for this number')
-    if result['state'] != 'completed':
-        return _cell(route, 'search_incomplete_or_blocked', result['reason'])
     state, why = _link_outcome(links)
-    detail = {'n_search_hits': result['n_search_hits'], 'searched_at': result.get('searched_at'),
+    detail = {'n_search_hits': result.get('n_search_hits'), 'searched_at': result.get('searched_at'),
               'n_hits_rejected_by_rule': sum(1 for x in links if x['automated_validation'] == 'rejected_by_rule')}
+    if result['state'] != 'completed':
+        # A link from the records that were read stands, as on the other routes; only an empty
+        # outcome is degraded to incomplete, since the unread records could hold a citation.
+        if state:
+            return _cell(route, state, f"{why}; the search was not complete: {result['reason']}", **detail)
+        return _cell(route, 'search_incomplete_or_blocked', result['reason'])
     if state:
         return _cell(route, state, why, **detail)
     if result['n_search_hits']:
