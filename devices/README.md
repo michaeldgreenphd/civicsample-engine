@@ -202,7 +202,7 @@ site repository.
   Repeated text (coverage reasons, confidence and validation reasons) is written once per file as
   a table the rows index; the script's docstring gives the layout.
 
-The 2026-11-14 build exports to 5.7 MB. `tests/devices/site_fixture.py` writes the fictional
+The 2026-11-14 build exports to 5.9 MB. `tests/devices/site_fixture.py` writes the fictional
 family the site's tests read, through the same build and export.
 
 ## Which checks are which

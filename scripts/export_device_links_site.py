@@ -25,7 +25,7 @@ Files written (site schema 1; each carries schema_version and run_id):
 
 Three things are written once per file instead of once per row, because the same text or the
 same key names would otherwise repeat thousands of times (the export is 8.5 MB without this and
-under 6 MB with it). Each file names the table it uses, so a reader needs no other file:
+about 6 MB with it). Each file names the table it uses, so a reader needs no other file:
 
   * a coverage cell is [state, index into the file's `coverage_reasons`], in the order of the
     file's `coverage_routes`;
@@ -201,9 +201,8 @@ def slim_evidence(link: dict[str, Any], study: dict[str, Any] | None, reasons: _
 
       * `target` loses its two constants (entity type, registry name); the NCT id stays;
       * `confidence_reasons` and `validation_reasons` are indexes into the file's `reasons`;
-      * `source_version` loses the registry version when it is the one every record of the
-        build shares (`registry_version`, written once in the file); a record with any other
-        version keeps its own in full;
+      * `source_version` loses the registry version when every record of the file carries the
+        same one (`registry_version`, written once in the file; see evidence_file);
       * `timing.by_submission` keeps the submission, the FDA decision date and the relation, and
         drops the day-gap ranges, which are arithmetic on the dates beside them;
       * `study` is added from studies.json: brief title, lead sponsor, overall status and the
@@ -251,11 +250,13 @@ def slim_document(d: dict[str, Any]) -> dict[str, Any]:
 
 def evidence_file(links: list[dict[str, Any]], study_of: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """One evidence file: the records, the reasons table they index and the shared registry
-    version. The version is shared only when every record that names a registry names the same
-    one; otherwise none is hoisted and each record keeps its own."""
-    named = {tuple(x['source_version'].get(k) for k in REGISTRY_VERSION_KEYS) for x in links
-             if 'registry' in x['source_version']}
-    registry_version = dict(zip(REGISTRY_VERSION_KEYS, named.pop())) if len(named) == 1 else None
+    version. The version is written once only when EVERY record of the file carries the same
+    one, so a reader may apply it to any record of the file without asking which records had
+    it. One record with another version, or with none (a documentary statement that quotes an
+    FDA document), and nothing is shared: each record keeps its own."""
+    versions = {tuple(x['source_version'].get(k) for k in REGISTRY_VERSION_KEYS) for x in links}
+    shared = versions.pop() if len(versions) == 1 else None
+    registry_version = dict(zip(REGISTRY_VERSION_KEYS, shared)) if shared and all(v is not None for v in shared) else None
     reasons = _Table()
     records = [slim_evidence(x, study_of.get(x['target']['id']), reasons, registry_version) for x in links]
     return {'registry_version': registry_version, 'reasons': reasons.values, 'records': records}

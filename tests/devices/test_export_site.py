@@ -207,11 +207,10 @@ def test_families_carry_name_reason_status_and_members(build: Path, exported: di
 # ---------------------------------------------------------------- evidence records
 
 def restore(file: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
-    """An exported record with its reasons and registry version written back in."""
-    version = {**(file['registry_version'] or {}), **record['source_version']} \
-        if file['registry_version'] and 'registry' not in record['source_version'] else record['source_version']
+    """An exported record with its reasons and the file's shared registry version written back in."""
     return {**record, 'confidence_reasons': [file['reasons'][i] for i in record['confidence_reasons']],
-            'validation_reasons': [file['reasons'][i] for i in record['validation_reasons']], 'source_version': version}
+            'validation_reasons': [file['reasons'][i] for i in record['validation_reasons']],
+            'source_version': {**(file['registry_version'] or {}), **record['source_version']}}
 
 
 def test_records_rejected_by_rule_are_in_their_own_file_and_nowhere_else(build: Path, exported: dict[str, Any]) -> None:
@@ -267,14 +266,22 @@ def test_a_study_the_registry_does_not_hold_has_absent_facts_not_empty_ones(expo
     assert x['study'] == {'brief_title': None, 'lead_sponsor': None, 'overall_status': None, 'registry_state': 'not_found'}
 
 
-def test_a_record_with_another_registry_version_keeps_its_own(build: Path) -> None:
+def test_a_registry_version_is_shared_only_when_every_record_carries_the_same_one(build: Path) -> None:
     built = load(build, 'links.json')['links']
-    built[0]['source_version'] = {**built[0]['source_version'], 'registry': 'ClinicalTrials.gov',
-                                  'registry_api_version': '9', 'registry_data_timestamp': 'later'}
-    file = site.evidence_file(built, {})
+    assert site.evidence_file(built, {})['registry_version'] is not None
+    other = [dict(x) for x in built]
+    other[0]['source_version'] = {**other[0]['source_version'], 'registry_api_version': '9'}
+    file = site.evidence_file(other, {})
     assert file['registry_version'] is None            # two versions among the records: none is shared
     assert file['records'][0]['source_version']['registry_api_version'] == '9'
     assert all('registry_data_timestamp' in r['source_version'] for r in file['records'])
+    # A record with no registry version at all (a statement quoting an FDA document): applying a
+    # shared version to it would invent one, so again none is shared.
+    without = [dict(x) for x in built]
+    without[0]['source_version'] = {'document_sha256': 'a' * 64, 'retrieved_at': 't'}
+    file = site.evidence_file(without, {})
+    assert file['registry_version'] is None and file['records'][0]['source_version'] == {'document_sha256': 'a' * 64, 'retrieved_at': 't'}
+    assert all('registry' in r['source_version'] for r in file['records'][1:])
 
 
 # ---------------------------------------------------------------- documents
