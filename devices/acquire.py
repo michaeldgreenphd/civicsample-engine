@@ -311,6 +311,10 @@ def openfda_answer(body: Any, request: dict[str, Any] | None = None) -> bool:
     no answer about any number it covers. Given the request, each entry must carry the endpoint's
     own field (k_number on device/510k.json, pma_number on device/pma.json) holding one of the
     numbers asked for: the search matches only those, so any other value is a malformed answer.
+    Every field official_metadata reads must be absent, null or a string, and `openfda` absent,
+    null or an object whose read fields are the same (all 1,558 entries in the 2026-11-14 cache
+    are so): an entry of another shape is a malformed answer, and settling it would make every
+    build against the cache fail when it reads the metadata.
     A PMA entry's supplement_number must be absent or empty (the original approval, as openFDA
     writes it) or 'S' and digits (all 128 supplement numbers in the 2026-11-14 cache have three):
     a value of another type or form cannot match a supplement asked for, and would read as 'openFDA
@@ -320,12 +324,30 @@ def openfda_answer(body: Any, request: dict[str, Any] | None = None) -> bool:
         return False
     if request is None:
         return all(isinstance(r, dict) and any(isinstance(r.get(f), str) and r[f].strip()
-                                               for f in ('k_number', 'pma_number')) for r in body['results'])
+                                               for f in ('k_number', 'pma_number')) and _metadata_well_formed(r)
+                   for r in body['results'])
     pma = request['url'].endswith('pma.json')
     field = 'pma_number' if pma else 'k_number'
     wanted = {n.split('/')[0] for n in request['numbers']}
-    return all(isinstance(r, dict) and r.get(field) in wanted and (not pma or _supplement_well_formed(r))
-               for r in body['results'])
+    return all(isinstance(r, dict) and r.get(field) in wanted and _metadata_well_formed(r)
+               and (not pma or _supplement_well_formed(r)) for r in body['results'])
+
+
+# The fields official_metadata reads from an openFDA entry, and from its `openfda` object.
+OPENFDA_READ_FIELDS = ('applicant', 'decision_date', 'date_received', 'decision_code', 'decision_description',
+                       'product_code', 'device_name', 'trade_name', 'generic_name', 'advisory_committee_description',
+                       'statement_or_summary', 'clearance_type', 'third_party_flag', 'supplement_type',
+                       'supplement_reason', 'ao_statement')
+OPENFDA_READ_NESTED = ('device_name', 'regulation_number', 'device_class')
+
+
+def _metadata_well_formed(entry: dict[str, Any]) -> bool:
+    """Each field official_metadata reads is absent, null or a string; `openfda` is absent, null or
+    an object whose read fields are the same."""
+    def strings(d: dict[str, Any], fields: tuple[str, ...]) -> bool:
+        return all(d.get(f) is None or isinstance(d[f], str) for f in fields)
+    o = entry.get('openfda')
+    return strings(entry, OPENFDA_READ_FIELDS) and (o is None or (isinstance(o, dict) and strings(o, OPENFDA_READ_NESTED)))
 
 
 def _supplement_well_formed(entry: dict[str, Any]) -> bool:

@@ -10,7 +10,9 @@ from __future__ import annotations
 import copy
 import csv
 import gzip
+import inspect
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -1837,6 +1839,35 @@ def test_an_openfda_entry_must_carry_a_number_the_request_asked_for(tmp_path: Pa
     assert acquire.openfda_answer({'results': [{'pma_number': 'P990007', 'supplement_number': 'S002'}]}, pma)
     assert not acquire.openfda_answer({'results': [{'k_number': 'P990007'}]}, pma)
     assert acquire.openfda_answer({'results': [{'k_number': 'K990002'}]}, q)
+
+
+@pytest.mark.parametrize('entry', [{'openfda': ['bad']}, {'openfda': 'bad'}, {'openfda': {'device_name': ['x']}},
+                                   {'openfda': {'device_class': 2}}, {'applicant': {'name': 'x'}}, {'decision_date': 20200101},
+                                   {'device_name': ['x']}, {'trade_name': 1}])
+def test_an_openfda_entry_whose_metadata_is_malformed_is_no_answer(tmp_path: Path, entry: dict[str, Any]) -> None:
+    results = [{'k_number': 'K990001', **entry}]
+    q = acquire.openfda_requests(['K990001'])[0]
+    assert not acquire.openfda_answer({'results': results}, q) and not acquire.openfda_answer({'results': results})
+    log = acquire.ResponseLog(tmp_path / 'openfda.jsonl')
+    acquire.fetch_openfda(['K990001'], log, lambda u, p: (200, {}, json.dumps({'results': results}).encode(), None),
+                          F.no_wait())
+    assert log.get(q['key'])['status'] == acquire.UNUSABLE_200 and log.settled(q['key']) is None
+    # an answer settled before the check (a cache frozen earlier) reads as an error, and the build does not fail
+    records = {q['key']: {'status': 200, 'params': q['params'], 'body': {'results': results}, 'fetched_at': '2026-11-14T00:00:00+00:00'}}
+    found = acquire.openfda_by_submission(records, ['K990001'])['K990001']
+    assert found['state'] == 'error' and acquire.official_metadata(found)['available'] is False
+    # null and absent fields are well formed, as is every field as a string
+    ok = {'k_number': 'K990001', 'applicant': None, 'openfda': None}
+    assert acquire.openfda_answer({'results': [ok]}, q)
+    full = {'k_number': 'K990001', 'openfda': {f: 'x' for f in acquire.OPENFDA_READ_NESTED}, **{f: 'x' for f in acquire.OPENFDA_READ_FIELDS}}
+    assert acquire.openfda_answer({'results': [full]}, q)
+    assert acquire.official_metadata({'record': full, 'fetched_at': 'now'})['available'] is True
+
+
+def test_the_openfda_shape_check_covers_every_field_official_metadata_reads() -> None:
+    src = inspect.getsource(acquire.official_metadata)
+    assert set(re.findall(r"\br\.get\('([a-z_]+)'\)", src)) - {'openfda'} == set(acquire.OPENFDA_READ_FIELDS)
+    assert set(re.findall(r"\bo\.get\('([a-z_]+)'\)", src)) == set(acquire.OPENFDA_READ_NESTED)
 
 
 @pytest.mark.parametrize('body', [{'totalCount': -1, 'studies': []}, {'totalCount': 0, 'studies': [
