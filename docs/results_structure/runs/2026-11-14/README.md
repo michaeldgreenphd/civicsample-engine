@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Run | `results-structure-2026-11-14-9a3fbcfe15`, generated 2026-11-14T02:15:11+00:00 by `scripts/build_results_structure.py` at engine commit `0887892035c3` (no uncommitted changes; producing-code digest `a8b83e5dfcb9…`) |
+| Run | `results-structure-2026-11-14-3599e78b61`, generated 2026-11-14T02:22:45+00:00 by `scripts/build_results_structure.py` at engine commit `095c91194637` (no uncommitted changes; producing-code digest `446ca371b52c…`) |
 | Method | `results-structure-1`: usable-content rules B1, F1, O1, A1; comparative classes C1, C2; analysis rule S1; subgroup rule SG2 |
 | Scope | Frame 648 registry records fetched; **598 trials in this build** (the eligible cohort of the Industry Outcomes beta, the rows of the site's `data/outcomes/index.json`, outcomes run `outcomes-2026-11-09-d41f32ec4d`); 50 frame records left out: excluded by the outcomes cohort's eligibility rules (see data/outcomes/index.json excluded). The lists are `frame_ids.txt` (sha256 `637bb40370bedcb8…`), `eligible_ids.txt` (`dcfc1e3fc8829b23…`) and `excluded_ids.txt` (`e7f7925eacf48b28…`) |
 | Registry records | 648 of 648 frame records retrieved from the ClinicalTrials.gov API v2, 2026-11-14T00:41:41+00:00 to 2026-11-14T00:41:57+00:00; API version 2.0.5, registry `dataTimestamp` 2026-11-13T10:00:06 |
@@ -102,7 +102,7 @@ Negative findings (each is a search that found nothing, with its scope in `summa
 
 ## Files not here
 
-`records.json` (sha256 `30abaf9b75197d04…`, 4.1 MB) is written to the site
+`records.json` (sha256 `2c641a36fe619e35…`, 4.1 MB) is written to the site
 repository at `data/results_structure/`. The archive of registry records (7.9 MB compressed) is
 under the gitignored `build/results_structure_cache/`; its sha256 is in `run.json`. Two
 consecutive builds of this run from the archive gave the same bytes for `summary.json` and
@@ -147,4 +147,6 @@ It was rebuilt again after the third review round, at `0a4a27d` (run `results-st
 
 It was rebuilt a fourth time after the fourth review round, at `5b0ae8c` (run `results-structure-2026-11-14-ede13e7b74`). The run id is now a digest of what the family publishes (the manifest apart from the id, the build time and the file checksums, and the content of `summary.json` and `records.json`) instead of a digest of a list of inputs. `summary.json` and `records.json` are identical to the previous build apart from the run id. The checksums quoted in this file are checked against `run.json` by `tests/outcomes/test_results_structure_build.py`.
 
-It was rebuilt a fifth time after the fifth review round, at the commit named above. The ids of the 76 level signals (those found in sibling class, category or group titles) changed, because such an id is now taken from the sorted set of titles carrying the dimension's levels and no longer from their posted order. The ids of the 364 cue signals are unchanged, no other field of any record changed, and `summary.json` is identical apart from the run id. No review rows exist, so nothing had to follow. The round's other fix (the archive metadata's list of requested ids is checked against its recorded digest and count) changes no output: this archive's metadata passes the check.
+It was rebuilt a fifth time after the fifth review round, at `0887892` (run `results-structure-2026-11-14-9a3fbcfe15`). The ids of the 76 level signals (those found in sibling class, category or group titles) changed, because such an id is now taken from the sorted set of titles carrying the dimension's levels and no longer from their posted order. The ids of the 364 cue signals are unchanged, no other field of any record changed, and `summary.json` is identical apart from the run id. No review rows exist, so nothing had to follow. The round's other fix (the archive metadata's list of requested ids is checked against its recorded digest and count) changes no output: this archive's metadata passes the check.
+
+It was rebuilt a sixth time after the sixth review round, at the commit named above. That round changed how a signal from an analysis's compared groups is labelled (with the dimensions those groups differ on, not every dimension the measure's groups carry). This cohort has no such signal, so `summary.json` and `records.json` are identical to the previous build apart from the run id, which changes because the producing code did.
