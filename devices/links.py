@@ -353,8 +353,10 @@ def from_statement(row: dict[str, str], source_text: str | None, source_version:
     located = source_text is not None and _squash(row['verbatim_quote']) in _squash(source_text)
     is_page = row['page_or_field'].strip().isdigit()
     return _record(
+        # The relationship is the curator's claim, so a changed claim is new evidence and a review
+        # of the old one is not carried over (the automated methods' relationship follows from the method).
         key=('submission', row['submission_number'], row['nct_id'], 'documentary_statement', row['source_id'],
-             row['page_or_field']),
+             row['page_or_field'], row['proposed_relationship']),
         level='submission', source_type='submission', source_id=row['submission_number'], nct_id=row['nct_id'],
         relationship=row['proposed_relationship'], method='documentary_statement',
         evidence={'source_kind': row['source_kind'], 'source_id': row['source_id'],

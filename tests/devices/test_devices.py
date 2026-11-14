@@ -2446,6 +2446,11 @@ def test_every_kind_of_evidence_record_is_new_when_its_quoted_text_changes() -> 
     assert statement(' during 2019.') == links.from_statement(
         {**row, 'verbatim_quote': head.replace(' ', '  ') + ' during 2019.'}, head + ' during 2019.', {}, study,
         '2026-01-01')['link_id']                                                     # spacing is not evidence
+    # the same statement with another proposed relationship is another claim
+    quote = head + ' during 2019.'
+    assert statement(' during 2019.') != links.from_statement(
+        {**row, 'verbatim_quote': quote, 'proposed_relationship': 'documented_postmarket_study'}, quote, {}, study,
+        '2026-01-01')['link_id']
     # a name match whose registry text changed around the same matched form
     family = {'family_id': 'family:candidate:x'}
     def name(quote: str) -> str:
