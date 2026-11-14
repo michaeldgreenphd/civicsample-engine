@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T13:51:39+00:00 by `scripts/build_device_links.py build` at engine commit `e2e443b5af3c` (no uncommitted changes; producing-code digest `853ff161eccf…`), run id `devices-2026-11-14-d9e9d30932`, method `device-links-1` |
+| Built | 2026-11-14T13:59:03+00:00 by `scripts/build_device_links.py build` at engine commit `f4aefa0776f0` (no uncommitted changes; producing-code digest `48f1d7c04999…`), run id `devices-2026-11-14-41f64d9e75`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -158,4 +158,6 @@ It was rebuilt a twenty-seventh time after the twenty-sixth review round, at `dd
 
 It was rebuilt a twenty-eighth time after the twenty-seventh review round, at `1485ed6` (run `devices-2026-11-14-803a9ff439`). That round's fix moves the text binding into the one function every reader of cached text uses, so documentary statements and the demographic quote locations enforce it too, not only the document records. It changes no output of this run: every cached extraction is bound to its document's bytes since the previous rebuild. Every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a twenty-ninth time after the twenty-eighth review round, at the commit named above. That round's two fixes (a PMA answer's supplement numbers must be absent, empty or `S` and digits; the build reads frozen search answers with the same check acquisition applies) change no output of this run: all 145 PMA entries in the cache carry an empty or three-digit supplement number, and every cached search answer passes the check. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a twenty-ninth time after the twenty-eighth review round, at `e2e443b` (run `devices-2026-11-14-d9e9d30932`). That round's two fixes (a PMA answer's supplement numbers must be absent, empty or `S` and digits; the build reads frozen search answers with the same check acquisition applies) change no output of this run: all 145 PMA entries in the cache carry an empty or three-digit supplement number, and every cached search answer passes the check. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a thirtieth time after the twenty-ninth review round, at the commit named above. That round's fix (an openFDA 200 must list at least one entry; openFDA reports no match with a 404) changes no output of this run: each of the 46 cached openFDA answers lists between 1 and 50 entries. Every output file is identical to the previous build apart from the run id.
