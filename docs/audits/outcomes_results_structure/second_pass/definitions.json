@@ -1,0 +1,911 @@
+{
+ "generated": "2026-11-13",
+ "interval": "Wilson 95% (z = 1.959964), sample treated as simple random; registry-wide counts carry no interval",
+ "subgroup_rule_regexes": {
+  "FEMALE": "\\b(females?|wom[ae]n|girls?)\\b",
+  "MALE": "\\b(males?|m[ae]n|boys?)\\b",
+  "RACE_EXCLUDE": "white blood|white cell|white matter|white coat|white light|white noise|black box|blackout|asian flu|non-?hodgkin",
+  "RACE_TOKENS": {
+   "white": "\\b(white|caucasian)s?\\b",
+   "black": "\\b(black|african[- ]americans?)\\b",
+   "asian": "\\basians?\\b",
+   "aian": "american indian|alaska native",
+   "nhpi": "native hawaiian|pacific islander",
+   "multi": "multiracial|more than one race|multiple races",
+   "nonwhite": "\\bnon[- ]?(white|caucasian)\\b",
+   "nonblack": "\\bnon[- ]?black\\b",
+   "nonasian": "\\bnon[- ]?asian\\b",
+   "other_race": "\\bother races?\\b"
+  },
+  "HISPANIC": "\\b(hispanic|latin[oax]s?|latine)\\b",
+  "ORIGIN": "\\b(japanese|chinese|korean|taiwanese|indian)\\b",
+  "NON_ORIGIN": "\\bnon[- ]?(japanese|chinese|korean|taiwanese|asian)\\b|\\brest of (the )?world\\b",
+  "AGE_BAND": "(?:[<>\u2264\u2265]\\s?=?\\s?\\d{1,3}(?:\\.\\d+)?\\s?(?:years?|yrs?|y\\.?o\\.?|months?|mos?)\\b)|(?:\\bage[ds]?\\b[^,;()]{0,25}?\\d{1,3})|(?:\\d{1,3}\\s?(?:-|\u2013|to|through)\\s?(?:<\\s?)?\\d{1,3}\\s?(?:years?|yrs?|months?)\\s?(?:of age|old)\\b)|(?:\\d{1,3}\\s?(?:years?|yrs?|months?)\\s?(?:of age|old)(?:\\s?(?:and|or)\\s?(?:older|younger|above|below|over|under))?)|(?:\\d{1,3}\\s?(?:-|\u2013|to)\\s?(?:<\\s?)?\\d{1,3}\\s?(?:years?|yrs?)\\b)",
+  "LIFE_STAGE": {
+   "infant": "\\b(infants?|neonates?|newborns?|toddlers?)\\b",
+   "child": "\\b(child|children|pediatrics?|paediatrics?)\\b",
+   "adolescent": "\\b(adolescents?|teens?|teenagers?)\\b",
+   "adult": "\\b(adults?)\\b",
+   "older": "\\b(elderly|older adults?|seniors?|geriatrics?)\\b"
+  },
+  "KEYWORD": "\\bsub-?\\s?(?:groups?|populations?|sets?|cohorts?)\\b|\\bsubpopulations?\\b|\\bsubsets?\\b",
+  "BY_DEMOG": "\\b(?:by|according to|per|stratified by|within|across|for each)\\s+(?:the\\s+)?(?:participant\\s+|patient\\s+|subject\\s+)?(?:sex|gender|race|racial|ethnic(?:ity)?(?: group)?|age(?: group| category| cohort| stratum| strata| range| band)?s?)\\b(?!\\s*(?:of|at)\\b)|\\b(?:sex|gender|race|ethnic|age)[- ](?:specific|stratified|based subgroups?)\\b",
+  "BY_DEMOG_EXCLUDE": "age[- ](?:appropriate|adjusted|matched|related|standardi[sz]ed|corrected|equivalent|at\\b|of\\b)|(?:adjusted|corrected|standardi[sz]ed|normali[sz]ed|matched) (?:for|by) (?:age|sex|gender)|for age\\b|sex[- ]hormone|gender[- ]affirm|sex(?:ual)? (?:partner|behavio|activity|function)",
+  "flags": "re.IGNORECASE",
+  "analysis_text_fields": [
+   "groupDescription",
+   "statisticalComment",
+   "otherAnalysisDescription",
+   "nonInferiorityComment",
+   "pValueComment",
+   "estimateComment",
+   "ciLowerLimitComment",
+   "ciUpperLimitComment",
+   "statisticalMethod"
+  ]
+ },
+ "definitions": {
+  "FR_frame": {
+   "rule": "Every ClinicalTrials.gov study returned by GET /api/v2/studies with filter.advanced = AREA[ResultsFirstPostDate]RANGE[2009-01-01,MAX] at pull time (2026-11-08), kept unless its extraction raised. No other filter.",
+   "numerator": "records in the release",
+   "denominator": "n/a (population)",
+   "value": {
+    "release_records": 80890,
+    "registry_count_same_range_on_2026-11-13": 80890
+   },
+   "source": "src/api_client.py:45-59,92-111; src/extract_all.py:342-346,400-418; .github/workflows/extract.yml:57"
+  },
+  "SAMPLE": {
+   "rule": "Strata = record study_type; 2,000 allocated proportionally by largest remainder; IDs sorted ascending per stratum; one random.Random(20261113), strata in name order, rng.sample(sorted_ids, n_h).",
+   "numerator": "2,000 sampled NCT IDs (sample_ids.txt)",
+   "denominator": "80,890 release records",
+   "value": {
+    "INTERVENTIONAL": 1883,
+    "OBSERVATIONAL": 117,
+    "seed": 20261113,
+    "sample_ids_sha256": "9bd0c403097b055faf01b505fbd0b98a6ca21611d965c8878751f11f1e0d525f"
+   },
+   "source": "scripts/verify_sample.py"
+  },
+  "POSTING_cell": {
+   "rule": "Count of registry studies matching <stratum> AND AREA[PrimaryCompletionDate]RANGE[Y-01-01,Y-12-31] that also match AREA[ResultsFirstPostDate]RANGE[MIN,MAX]; request countTotal=true&pageSize=1&fields=NCTId. Strata expressions in results_posting_counts.json.definition.strata.",
+   "numerator": "studies matching stratum, year and results condition",
+   "denominator": "studies matching stratum and year",
+   "value": {
+    "interventional_all": {
+     "with_results_2015_2023": 40704,
+     "all_2015_2023": 196860
+    },
+    "interventional_completed_or_terminated": {
+     "with_results_2015_2023": 39977,
+     "all_2015_2023": 146205
+    },
+    "interventional_phase3": {
+     "with_results_2015_2023": 6948,
+     "all_2015_2023": 17352
+    },
+    "interventional_industry_lead": {
+     "with_results_2015_2023": 17392,
+     "all_2015_2023": 43579
+    },
+    "interventional_phase3_industry_randomized": {
+     "with_results_2015_2023": 4125,
+     "all_2015_2023": 6477
+    },
+    "interventional_fda_regulated_drug_or_device": {
+     "with_results_2015_2023": 18439,
+     "all_2015_2023": 31650
+    },
+    "interventional_us_location": {
+     "with_results_2015_2023": 31756,
+     "all_2015_2023": 64883
+    },
+    "observational_all": {
+     "with_results_2015_2023": 2547,
+     "all_2015_2023": 65116
+    }
+   },
+   "source": "scripts/fetch_counts.py; results_posting_counts.json"
+  },
+  "PRESENT_<module>": {
+   "rule": "resultsSection.<module> exists and is a non-empty object.",
+   "numerator": "sampled trials with the module present",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "participantFlowModule": 2000,
+    "baselineCharacteristicsModule": 2000,
+    "outcomeMeasuresModule": 2000,
+    "adverseEventsModule": 1997,
+    "moreInfoModule": 2000,
+    "all_five_modules": 1997,
+    "four_substantive_modules_excluding_moreInfo": 1997,
+    "moreInfo_pointOfContact": 2000,
+    "moreInfo_certainAgreement": 2000,
+    "moreInfo_limitationsAndCaveats_text": 439,
+    "hasResults_true": 2000
+   },
+   "source": "scripts/usable.py"
+  },
+  "NUMERIC": {
+   "rule": "A registry value string that parses as a finite float after removing commas and surrounding whitespace. \"NA\", \"\", absent are not numeric and are never treated as zero.",
+   "numerator": "n/a",
+   "denominator": "n/a",
+   "value": null,
+   "source": "scripts/common.py:is_num"
+  },
+  "T_total_group": {
+   "rule": "Baseline Total group: if baselineCharacteristicsModule.groups has one entry, that group; else the group whose trimmed, case-folded title == \"total\"; else, if 3+ groups and the last group's Participants denominator equals the sum of all earlier groups' (and is > 0), the last group; else none.",
+   "numerator": "n/a",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "titled_total": 1378,
+    "single_group": 618,
+    "last_equals_sum_untitled_total": 4
+   },
+   "source": "scripts/usable.py:total_group"
+  },
+  "B1_baseline_usable": {
+   "rule": "At least one baselineCharacteristicsModule.measures[] entry M such that for the Total group (rule T) OR for every non-Total group: (a) at least one M.classes[].categories[].measurements[] with that groupId has a NUMERIC value, and (b) a NUMERIC count > 0 for that group exists in module denoms[].counts[], M.denoms[].counts[] or M.classes[].denoms[].counts[].",
+   "numerator": "sampled trials passing",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "numerator": 1991,
+    "denominator": 2000,
+    "text": "1,991/2,000 (99.5%; 95% CI 99.1-99.8)"
+   },
+   "source": "scripts/usable.py:baseline_usable"
+  },
+  "F1_flow_usable": {
+   "rule": "At least one participantFlowModule.periods[] entry with a milestone type == \"STARTED\" and a milestone type == \"COMPLETED\" that each have, for every group in participantFlowModule.groups[], an achievements[] entry with NUMERIC numSubjects; and STARTED > 0 for at least one group.",
+   "numerator": "sampled trials passing",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "numerator": 1995,
+    "denominator": 2000,
+    "text": "1,995/2,000 (99.8%; 95% CI 99.4-99.9)"
+   },
+   "source": "scripts/usable.py:flow_usable"
+  },
+  "O1_primary_outcome_usable": {
+   "rule": "At least one outcomeMeasures[] entry with type == \"PRIMARY\" that has: non-blank unitOfMeasure; >= 1 group; a NUMERIC number analysed for every group in groups[] taken from measure-level denoms[] (the row with units \"Participants\" if present, else the first row); number analysed > 0 for >= 1 group; and for every group with number analysed > 0 at least one classes[].categories[].measurements[] with NUMERIC value.",
+   "numerator": "sampled trials passing",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "numerator": 1905,
+    "denominator": 2000,
+    "text": "1,905/2,000 (95.2%; 95% CI 94.2-96.1)"
+   },
+   "source": "scripts/usable.py:measure_usable"
+  },
+  "O1_strict": {
+   "rule": "O1 with number analysed > 0 required for every group of the measure.",
+   "numerator": "sampled trials passing",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "numerator": 1872,
+    "denominator": 2000,
+    "text": "1,872/2,000 (93.6%; 95% CI 92.4-94.6)"
+   },
+   "source": "scripts/usable.py"
+  },
+  "A1_adverse_events_usable": {
+   "rule": "adverseEventsModule.eventGroups[] non-empty; every event group has NUMERIC seriousNumAtRisk and NUMERIC otherNumAtRisk; at least one group has either > 0; and EITHER >= 1 row in seriousEvents[] or otherEvents[] whose stats[] has a NUMERIC numAffected or numEvents, OR every event group has NUMERIC seriousNumAffected and otherNumAffected.",
+   "numerator": "sampled trials passing",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "numerator": 1932,
+    "denominator": 2000,
+    "text": "1,932/2,000 (96.6%; 95% CI 95.7-97.3)"
+   },
+   "source": "scripts/usable.py:ae_usable"
+  },
+  "S1_statistical_analysis_usable": {
+   "rule": "At least one analyses[] entry on a type == \"PRIMARY\" measure with non-empty groupIds all resolving to that measure's groups[].id, and EITHER pValue containing a digit OR NUMERIC paramValue with NUMERIC ciLowerLimit and NUMERIC ciUpperLimit.",
+   "numerator": "trials passing",
+   "denominator": "stated per use: 2,000 sampled, or C1/C2/C3",
+   "value": {
+    "all_sampled": {
+     "numerator": 612,
+     "denominator": 2000,
+     "text": "612/2,000 (30.6%; 95% CI 28.6-32.7)"
+    },
+    "C1": {
+     "numerator": 536,
+     "denominator": 1394,
+     "text": "536/1,394 (38.5%; 95% CI 35.9-41.0)"
+    },
+    "C2": {
+     "numerator": 491,
+     "denominator": 1134,
+     "text": "491/1,134 (43.3%; 95% CI 40.4-46.2)"
+    },
+    "C3": {
+     "numerator": 489,
+     "denominator": 1088,
+     "text": "489/1,088 (44.9%; 95% CI 42.0-47.9)"
+    },
+    "C2_phase3": {
+     "numerator": 156,
+     "denominator": 250,
+     "text": "156/250 (62.4%; 95% CI 56.3-68.2)"
+    }
+   },
+   "source": "scripts/usable.py:analysis_flags"
+  },
+  "S1_between": {
+   "rule": "S1 where the analysis names 2 or more groupIds. S1_between_p: such an analysis with a p-value. S1_between_est_ci: such an analysis with NUMERIC paramValue, ciLowerLimit and ciUpperLimit.",
+   "numerator": "trials passing",
+   "denominator": "stated per use",
+   "value": {
+    "all_sampled": {
+     "S1_between": {
+      "numerator": 520,
+      "denominator": 2000,
+      "text": "520/2,000 (26.0%; 95% CI 24.1-28.0)"
+     },
+     "S1_between_p": {
+      "numerator": 436,
+      "denominator": 2000,
+      "text": "436/2,000 (21.8%; 95% CI 20.0-23.7)"
+     },
+     "S1_between_est_ci": {
+      "numerator": 332,
+      "denominator": 2000,
+      "text": "332/2,000 (16.6%; 95% CI 15.0-18.3)"
+     }
+    },
+    "C1": {
+     "S1_between": {
+      "numerator": 509,
+      "denominator": 1394,
+      "text": "509/1,394 (36.5%; 95% CI 34.0-39.1)"
+     },
+     "S1_between_p": {
+      "numerator": 426,
+      "denominator": 1394,
+      "text": "426/1,394 (30.6%; 95% CI 28.2-33.0)"
+     },
+     "S1_between_est_ci": {
+      "numerator": 327,
+      "denominator": 1394,
+      "text": "327/1,394 (23.5%; 95% CI 21.3-25.8)"
+     }
+    },
+    "C2": {
+     "S1_between": {
+      "numerator": 473,
+      "denominator": 1134,
+      "text": "473/1,134 (41.7%; 95% CI 38.9-44.6)"
+     },
+     "S1_between_p": {
+      "numerator": 398,
+      "denominator": 1134,
+      "text": "398/1,134 (35.1%; 95% CI 32.4-37.9)"
+     },
+     "S1_between_est_ci": {
+      "numerator": 310,
+      "denominator": 1134,
+      "text": "310/1,134 (27.3%; 95% CI 24.8-30.0)"
+     }
+    },
+    "C3": {
+     "S1_between": {
+      "numerator": 471,
+      "denominator": 1088,
+      "text": "471/1,088 (43.3%; 95% CI 40.4-46.3)"
+     },
+     "S1_between_p": {
+      "numerator": 396,
+      "denominator": 1088,
+      "text": "396/1,088 (36.4%; 95% CI 33.6-39.3)"
+     },
+     "S1_between_est_ci": {
+      "numerator": 308,
+      "denominator": 1088,
+      "text": "308/1,088 (28.3%; 95% CI 25.7-31.1)"
+     }
+    },
+    "C2_phase3": {
+     "S1_between": {
+      "numerator": 153,
+      "denominator": 250,
+      "text": "153/250 (61.2%; 95% CI 55.0-67.0)"
+     },
+     "S1_between_p": {
+      "numerator": 129,
+      "denominator": 250,
+      "text": "129/250 (51.6%; 95% CI 45.4-57.7)"
+     },
+     "S1_between_est_ci": {
+      "numerator": 124,
+      "denominator": 250,
+      "text": "124/250 (49.6%; 95% CI 43.5-55.8)"
+     }
+    },
+    "C2_phase3_industry": {
+     "S1_between": {
+      "numerator": 138,
+      "denominator": 194,
+      "text": "138/194 (71.1%; 95% CI 64.4-77.1)"
+     },
+     "S1_between_p": {
+      "numerator": 116,
+      "denominator": 194,
+      "text": "116/194 (59.8%; 95% CI 52.8-66.4)"
+     },
+     "S1_between_est_ci": {
+      "numerator": 116,
+      "denominator": 194,
+      "text": "116/194 (59.8%; 95% CI 52.8-66.4)"
+     }
+    }
+   },
+   "source": "scripts/usable.py"
+  },
+  "FOUR_USABLE": {
+   "rule": "B1 and F1 and O1 and A1.",
+   "numerator": "sampled trials passing all four",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "numerator": 1852,
+    "denominator": 2000,
+    "text": "1,852/2,000 (92.6%; 95% CI 91.4-93.7)"
+   },
+   "source": "scripts/usable.py"
+  },
+  "C1_comparative": {
+   "rule": "protocolSection.designModule.studyType == \"INTERVENTIONAL\" and >= 1 PRIMARY outcome measure whose groups[] has >= 2 entries.",
+   "numerator": "sampled trials meeting it",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "numerator": 1394,
+    "denominator": 2000,
+    "text": "1,394/2,000 (69.7%; 95% CI 67.6-71.7)"
+   },
+   "source": "scripts/usable.py"
+  },
+  "C2_comparative_randomised": {
+   "rule": "C1 and protocolSection.designModule.designInfo.allocation == \"RANDOMIZED\".",
+   "numerator": "sampled trials meeting it",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "numerator": 1134,
+    "denominator": 2000,
+    "text": "1,134/2,000 (56.7%; 95% CI 54.5-58.9)"
+   },
+   "source": "scripts/usable.py"
+  },
+  "C2_phase3": {
+   "rule": "C2 and the release record's phase == \"PHASE3\" (exact string; \"PHASE2, PHASE3\" excluded). C2_phase3_industry additionally requires release sponsor_class == \"INDUSTRY\".",
+   "numerator": "sampled trials meeting it",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "C2_phase3": 250,
+    "C2_phase3_industry": 194
+   },
+   "source": "scripts/usable.py"
+  },
+  "C3_comparative_randomised_usable": {
+   "rule": "C2 and O1 passed by a PRIMARY measure that has >= 2 groups.",
+   "numerator": "sampled trials meeting it",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "numerator": 1088,
+    "denominator": 2000,
+    "text": "1,088/2,000 (54.4%; 95% CI 52.2-56.6)"
+   },
+   "source": "scripts/usable.py"
+  },
+  "RACE_REPORTED": {
+   "rule": "The release record's race.reported is true (likewise ethnicity.reported, sex.reported).",
+   "numerator": "trials with the flag true",
+   "denominator": "stated per use",
+   "value": {
+    "sample": {
+     "numerator": 1155,
+     "denominator": 2000,
+     "text": "1,155/2,000 (57.8%; 95% CI 55.6-59.9)"
+    },
+    "release": {
+     "numerator": 46564,
+     "denominator": 80890
+    }
+   },
+   "source": "release field"
+  },
+  "BT_baseline_total": {
+   "rule": "baselineCharacteristicsModule.denoms[] row with units \"Participants\" (else first row): counts[].value of the Total group by rule T; if rule T finds none, the sum over all groups. Never Total plus arms.",
+   "numerator": "n/a (one number per trial)",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "titled_total": 1378,
+    "single_group": 618,
+    "last_equals_sum_untitled_total": 4
+   },
+   "source": "scripts/denominators.py"
+  },
+  "FS_flow_started": {
+   "rule": "participantFlowModule.periods[0].milestones[] with type == \"STARTED\": sum of achievements[].numSubjects over participantFlowModule.groups[], excluding any group titled exactly \"Total\".",
+   "numerator": "n/a",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "ok": 2000
+   },
+   "source": "scripts/denominators.py"
+  },
+  "EN_enrolment": {
+   "rule": "protocolSection.designModule.enrollmentInfo.count and .type.",
+   "numerator": "n/a",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "ACTUAL": 2000
+   },
+   "source": "scripts/denominators.py"
+  },
+  "BT_FS_EN_comparisons": {
+   "rule": "Exact equality of the three numbers per trial.",
+   "numerator": "trials in each relation",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "BT_vs_FS": {
+     "equal": 1585,
+     "smaller": 371,
+     "larger": 44
+    },
+    "BT_vs_EN": {
+     "equal": 1448,
+     "smaller": 532,
+     "larger": 20
+    },
+    "FS_vs_EN": {
+     "equal": 1736,
+     "smaller": 237,
+     "larger": 27
+    },
+    "all_three_equal": 1405
+   },
+   "source": "scripts/denominators.py"
+  },
+  "FAMILY_<name>": {
+   "rule": "Release record whose primary_endpoint matches the family endpoint regex (re.search, IGNORECASE except (?-i:...)) AND whose gate field (primary_condition, or \"; \".join(conditions)) matches the gate regex. rp3 = gated AND allocation == \"RANDOMIZED\" AND phase == \"PHASE3\".",
+   "numerator": "release records matching",
+   "denominator": "80,890 release records",
+   "value": {
+    "overall_survival": {
+     "endpoint_regex": "\\boverall survival\\b|(?-i:\\bOS\\b)",
+     "gate_field": "primary_condition",
+     "gate_regex": "^Oncology$",
+     "matched": 840,
+     "gated": 793,
+     "rp3": 419,
+     "race_reported": 514,
+     "rp3_and_race_reported": 290
+    },
+    "progression_free_survival": {
+     "endpoint_regex": "\\bprogression[- ]free survival\\b|(?-i:\\bPFS\\b)",
+     "gate_field": "primary_condition",
+     "gate_regex": "^Oncology$",
+     "matched": 2106,
+     "gated": 2026,
+     "rp3": 538,
+     "race_reported": 1289,
+     "rp3_and_race_reported": 388
+    },
+    "objective_response_rate": {
+     "endpoint_regex": "\\b(?:objective|overall|best overall) (?:tumou?r )?response\\b|(?-i:\\bORR\\b)",
+     "gate_field": "primary_condition",
+     "gate_regex": "^Oncology$",
+     "matched": 2245,
+     "gated": 2061,
+     "rp3": 56,
+     "race_reported": 1425,
+     "rp3_and_race_reported": 46
+    },
+    "hba1c_change": {
+     "endpoint_regex": "\\bhb\\s?a1c\\b|\\ba1c\\b|\\bglyc(?:osyl)?ated ha?emoglobin\\b",
+     "gate_field": "conditions",
+     "gate_regex": "diabet",
+     "matched": 1043,
+     "gated": 1021,
+     "rp3": 507,
+     "race_reported": 571,
+     "rp3_and_race_reported": 288
+    },
+    "ldl_cholesterol": {
+     "endpoint_regex": "(?-i:\\bLDL\\b)|\\blow[- ]density lipoprotein\\b",
+     "gate_field": "conditions",
+     "gate_regex": "cholesterol|lipid|lipoprotein",
+     "matched": 280,
+     "gated": 237,
+     "rp3": 117,
+     "race_reported": 124,
+     "rp3_and_race_reported": 64
+    },
+    "systolic_blood_pressure": {
+     "endpoint_regex": "\\bsystolic\\b|(?-i:\\bSBP\\b)|\\bblood pressure\\b",
+     "gate_field": "conditions",
+     "gate_regex": "hypertens",
+     "matched": 686,
+     "gated": 446,
+     "rp3": 91,
+     "race_reported": 204,
+     "rp3_and_race_reported": 39
+    },
+    "fev1": {
+     "endpoint_regex": "\\bFEV\\s?-?1\\b|\\bforced expiratory volume\\b",
+     "gate_field": "conditions",
+     "gate_regex": "asthma|copd|chronic obstructive|cystic fibrosis",
+     "matched": 623,
+     "gated": 586,
+     "rp3": 256,
+     "race_reported": 310,
+     "rp3_and_race_reported": 140
+    },
+    "depression_scale": {
+     "endpoint_regex": "\\bHAM-?D\\b|\\bHDRS\\b|\\bhamilton\\b[^.;]{0,30}\\bdepression\\b|\\bMADRS\\b|\\bmontgomery[- ][a\u00e5]sberg\\b|\\bPHQ-?9\\b|\\bpatient health questionnaire\\b",
+     "gate_field": "conditions",
+     "gate_regex": "depress",
+     "matched": 623,
+     "gated": 564,
+     "rp3": 126,
+     "race_reported": 347,
+     "rp3_and_race_reported": 82
+    },
+    "pain_intensity": {
+     "endpoint_regex": "(?=.*\\bpain\\b)(?:.*\\b(?:intensity|VAS|visual analog(?:ue)? scale|NRS|NPRS|numeric(?:al)? (?:pain )?rating scale|pain scores?)\\b)",
+     "gate_field": "primary_condition",
+     "gate_regex": "^(?:Pain|Musculoskeletal)$",
+     "matched": 1605,
+     "gated": 987,
+     "rp3": 204,
+     "race_reported": 457,
+     "rp3_and_race_reported": 91
+    },
+    "acr20": {
+     "endpoint_regex": "\\bACR\\s?-?20\\b|\\bamerican college of rheumatology\\b[^.;]{0,25}\\b20\\b",
+     "gate_field": "conditions",
+     "gate_regex": "arthritis",
+     "matched": 222,
+     "gated": 221,
+     "rp3": 122,
+     "race_reported": 97,
+     "rp3_and_race_reported": 63
+    },
+    "pasi75": {
+     "endpoint_regex": "\\bPASI\\s?-?75\\b|\\bpsoriasis area (?:and|&) severity index\\b[^.;]{0,60}\\b75\\b|\\b75\\s?%[^.;]{0,60}\\bPASI\\b",
+     "gate_field": "conditions",
+     "gate_regex": "psoria",
+     "matched": 110,
+     "gated": 110,
+     "rp3": 48,
+     "race_reported": 64,
+     "rp3_and_race_reported": 24
+    },
+    "svr_or_viral_load": {
+     "endpoint_regex": "\\bsustained vir(?:ologic(?:al)?|al) response\\b|(?-i:\\bSVR\\s?\\d*\\b)|\\bviral load\\b|\\b(?:HIV|HCV)(?:-1)? RNA\\b|\\bHBV DNA\\b|\\bvirologic(?:al)? (?:response|suppression|failure|success)\\b",
+     "gate_field": "conditions",
+     "gate_regex": "\\bhiv\\b|human immunodeficiency|hepatitis|\\bhcv\\b|\\bhbv\\b",
+     "matched": 801,
+     "gated": 746,
+     "rp3": 192,
+     "race_reported": 375,
+     "rp3_and_race_reported": 108
+    },
+    "svr_hcv": {
+     "endpoint_regex": "\\bsustained vir(?:ologic(?:al)?|al) response\\b|(?-i:\\bSVR\\s?\\d*\\b)",
+     "gate_field": "conditions",
+     "gate_regex": "hepatitis c|\\bhcv\\b",
+     "matched": 405,
+     "gated": 387,
+     "rp3": 102,
+     "race_reported": 167,
+     "rp3_and_race_reported": 36
+    },
+    "hiv_rna": {
+     "endpoint_regex": "\\bHIV(?:-1)? RNA\\b|\\bviral load\\b|\\bvirologic(?:al)? (?:response|suppression|failure|success)\\b",
+     "gate_field": "conditions",
+     "gate_regex": "\\bhiv\\b|human immunodeficiency",
+     "matched": 695,
+     "gated": 282,
+     "rp3": 77,
+     "race_reported": 180,
+     "rp3_and_race_reported": 64
+    },
+    "body_weight_change": {
+     "endpoint_regex": "\\bbody weight\\b|\\bweight (?:loss|change|reduction)\\b|\\bchange in weight\\b|\\b(?:change|reduction|loss)\\b[^.;]{0,25}\\bweight\\b",
+     "gate_field": "conditions",
+     "gate_regex": "obes|overweight",
+     "matched": 494,
+     "gated": 307,
+     "rp3": 54,
+     "race_reported": 209,
+     "rp3_and_race_reported": 41
+    },
+    "seroconversion_or_titre": {
+     "endpoint_regex": "\\bsero(?:conver|protect|respon)\\w*|\\bantibody tit(?:er|re)s?\\b|\\bgeometric mean (?:tit(?:er|re)|concentration)s?\\b|(?-i:\\bGM[TC]s?\\b)|\\bha?emagglutination[- ]inhibit\\w*|\\bimmunogenicity\\b|\\bneutrali[sz]ing antibod\\w*",
+     "gate_field": null,
+     "gate_regex": null,
+     "matched": 818,
+     "gated": 818,
+     "rp3": 313,
+     "race_reported": 387,
+     "rp3_and_race_reported": 163
+    }
+   },
+   "source": "scripts/families.py"
+  },
+  "FAMILY_EXAMINED": {
+   "rule": "Per family: rp3 members in the 2,000 sample, plus (if fewer than 15) random.Random(20261113).sample(sorted(rp3 members not in sample), 40). Family measure = first PRIMARY outcome measure whose title matches the endpoint regex.",
+   "numerator": "examined trials with each attribute value",
+   "denominator": "examined trials with a family measure",
+   "value": {
+    "progression_free_survival": {
+     "examined": 50,
+     "from_sample": 10,
+     "drawn": 40,
+     "between_est_ci": 38
+    },
+    "overall_survival": {
+     "examined": 52,
+     "from_sample": 12,
+     "drawn": 40,
+     "between_est_ci": 28
+    },
+    "hba1c_change": {
+     "examined": 15,
+     "from_sample": 15,
+     "drawn": 0,
+     "between_est_ci": 12
+    },
+    "fev1": {
+     "examined": 42,
+     "from_sample": 2,
+     "drawn": 40,
+     "between_est_ci": 27
+    },
+    "acr20": {
+     "examined": 44,
+     "from_sample": 4,
+     "drawn": 40,
+     "between_est_ci": 29
+    },
+    "depression_scale": {
+     "examined": 43,
+     "from_sample": 3,
+     "drawn": 40,
+     "between_est_ci": 36
+    }
+   },
+   "source": "scripts/fetch_family.py; scripts/family_detail.py"
+  },
+  "NARROW_COHORT_<name>": {
+   "rule": "Family rp3 members meeting the extra text conditions in scripts/cohorts.py (condition regex on conditions, wording regex on primary_endpoint, time window on primary_outcome_time_frame parsed to weeks).",
+   "numerator": "release records matching",
+   "denominator": "80,890 release records",
+   "value": {
+    "T2DM: HbA1c change from baseline at 24-26 weeks": {
+     "family": "hba1c_change",
+     "n": 248,
+     "race_reported": 131,
+     "ethnicity_reported": 78,
+     "industry": 247,
+     "results_2017_or_later": 98,
+     "race_reported_results_2017_or_later": 68
+    },
+    "T2DM: HbA1c change from baseline, any time point": {
+     "family": "hba1c_change",
+     "n": 406,
+     "race_reported": 227,
+     "ethnicity_reported": 153,
+     "industry": 405,
+     "results_2017_or_later": 174,
+     "race_reported_results_2017_or_later": 132
+    },
+    "MDD (not bipolar/resistant): MADRS total change at 6-8 weeks": {
+     "family": "depression_scale",
+     "n": 31,
+     "race_reported": 22,
+     "ethnicity_reported": 19,
+     "industry": 29,
+     "results_2017_or_later": 13,
+     "race_reported_results_2017_or_later": 13
+    },
+    "Depression: MADRS total change, any time point": {
+     "family": "depression_scale",
+     "n": 82,
+     "race_reported": 59,
+     "ethnicity_reported": 43,
+     "industry": 80,
+     "results_2017_or_later": 44,
+     "race_reported_results_2017_or_later": 42
+    },
+    "Rheumatoid arthritis: ACR20 at week 24": {
+     "family": "acr20",
+     "n": 35,
+     "race_reported": 15,
+     "ethnicity_reported": 8,
+     "industry": 35,
+     "results_2017_or_later": 14,
+     "race_reported_results_2017_or_later": 8
+    },
+    "Rheumatoid arthritis: ACR20, any time point": {
+     "family": "acr20",
+     "n": 84,
+     "race_reported": 40,
+     "ethnicity_reported": 24,
+     "industry": 83,
+     "results_2017_or_later": 44,
+     "race_reported_results_2017_or_later": 33
+    },
+    "Psoriatic arthritis: ACR20 at weeks 12-24": {
+     "family": "acr20",
+     "n": 34,
+     "race_reported": 21,
+     "ethnicity_reported": 15,
+     "industry": 34,
+     "results_2017_or_later": 25,
+     "race_reported_results_2017_or_later": 20
+    },
+    "COPD: trough/pre-dose FEV1 at 12-24 weeks": {
+     "family": "fev1",
+     "n": 49,
+     "race_reported": 32,
+     "ethnicity_reported": 6,
+     "industry": 49,
+     "results_2017_or_later": 16,
+     "race_reported_results_2017_or_later": 12
+    },
+    "COPD: any FEV1 primary": {
+     "family": "fev1",
+     "n": 138,
+     "race_reported": 60,
+     "ethnicity_reported": 14,
+     "industry": 138,
+     "results_2017_or_later": 37,
+     "race_reported_results_2017_or_later": 27
+    },
+    "Asthma: any FEV1 primary": {
+     "family": "fev1",
+     "n": 91,
+     "race_reported": 61,
+     "ethnicity_reported": 34,
+     "industry": 86,
+     "results_2017_or_later": 41,
+     "race_reported_results_2017_or_later": 39
+    },
+    "Breast cancer: PFS": {
+     "family": "progression_free_survival",
+     "n": 87,
+     "race_reported": 58,
+     "ethnicity_reported": 43,
+     "industry": 76,
+     "results_2017_or_later": 57,
+     "race_reported_results_2017_or_later": 47
+    },
+    "Lung cancer: PFS": {
+     "family": "progression_free_survival",
+     "n": 112,
+     "race_reported": 87,
+     "ethnicity_reported": 65,
+     "industry": 103,
+     "results_2017_or_later": 82,
+     "race_reported_results_2017_or_later": 76
+    },
+    "Lung cancer: OS": {
+     "family": "overall_survival",
+     "n": 105,
+     "race_reported": 78,
+     "ethnicity_reported": 53,
+     "industry": 81,
+     "results_2017_or_later": 66,
+     "race_reported_results_2017_or_later": 58
+    },
+    "Multiple myeloma: PFS": {
+     "family": "progression_free_survival",
+     "n": 53,
+     "race_reported": 40,
+     "ethnicity_reported": 32,
+     "industry": 42,
+     "results_2017_or_later": 39,
+     "race_reported_results_2017_or_later": 30
+    },
+    "Oncology: PFS, all tumour types": {
+     "family": "progression_free_survival",
+     "n": 538,
+     "race_reported": 388,
+     "ethnicity_reported": 302,
+     "industry": 470,
+     "results_2017_or_later": 379,
+     "race_reported_results_2017_or_later": 325
+    },
+    "Oncology: OS, all tumour types": {
+     "family": "overall_survival",
+     "n": 419,
+     "race_reported": 290,
+     "ethnicity_reported": 194,
+     "industry": 300,
+     "results_2017_or_later": 283,
+     "race_reported_results_2017_or_later": 237
+    }
+   },
+   "source": "scripts/cohorts.py"
+  },
+  "SG2_subgroup_detected": {
+   "rule": "A sampled trial with >= 1 signal from scripts/subgroup_rule.py:detect_measure on any posted outcome measure: level rules on class titles, category titles, group titles, group descriptions; analysis groupIds referencing level-defined groups; cue rules (KEYWORD, BY_DEMOG) on title, description, populationDescription, class/category titles, nine analysis text fields and measurement comments. Regexes in report section 4.2 and in the module.",
+   "numerator": "sampled trials with a signal",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "detected": 136,
+    "judgements": {
+     "false_positive": 71,
+     "true_subgroup_result": 41,
+     "partial": 24
+    }
+   },
+   "source": "scripts/subgroup_rule.py; scripts/subgroup_detect.py"
+  },
+  "SG_judgement": {
+   "rule": "One reviewer (the auditing model). true_subgroup_result: outcome values posted separately for >= 2 levels of a participant characteristic under the same intervention. partial: one level only, levels confounded with dose/cohort, subgroup sizes only, model-derived values, or unidentifiable subgroup. false_positive: wording with another meaning, or announced analysis with no data. Negatives: missed_subgroup_result / partial / no_subgroup_result.",
+   "numerator": "detected trials with each judgement",
+   "denominator": "136 detected trials (or 2,000 sampled)",
+   "value": {
+    "true_any": "41/2,000 (2.0%; 95% CI 1.5-2.8)",
+    "true_demographic": "34/2,000 (1.7%; 95% CI 1.2-2.4)",
+    "true_race_or_ethnicity_ids": [
+     "NCT00261443",
+     "NCT02304406",
+     "NCT03098836",
+     "NCT04323137",
+     "NCT05009251",
+     "NCT05329194"
+    ],
+    "false_positive": "71/2,000 (3.5%; 95% CI 2.8-4.5)"
+   },
+   "source": "review/judgements_positives.tsv; subgroup_review.csv"
+  },
+  "SG_negative_samples": {
+   "rule": "From the 1,864 non-detected trials: random 60 = random.Random(20261113).sample(sorted(ids), 60); targeted 40 = highest likely-reporter scores among the rest (score in scripts/subgroup_detect.py docstring), ties by a random.Random(20261113) shuffle of sorted IDs.",
+   "numerator": "reviewed negatives judged to contain a missed subgroup result",
+   "denominator": "60 random; 40 targeted",
+   "value": {
+    "non_detected": 1864,
+    "random_n": 60,
+    "random_missed_demographic": 0,
+    "random_missed_non_demographic": 1,
+    "random_partial": 0,
+    "targeted_n": 40,
+    "targeted_missed_demographic": 1,
+    "targeted_missed_non_demographic": 3,
+    "targeted_partial": 1,
+    "targeted_cutoff_score": 6,
+    "n_rest_at_or_above_cutoff": 43,
+    "random_upper95_demographic": 0.060171853034227174
+   },
+   "source": "scripts/subgroup_detect.py; review/judgements_negatives.tsv"
+  },
+  "HISTORY_inputs": {
+   "rule": "registered_after_start: statusModule.studyFirstSubmitDate later than startDateStruct.date at the coarser precision of the two. protocol_posted / sap_posted: any documentSection.largeDocumentModule.largeDocs[] with hasProtocol / hasSap true.",
+   "numerator": "sampled trials with the property",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "registered_after_start": "649/2,000 (32.5%; 95% CI 30.4-34.5)",
+    "registered_after_primary_completion": "108/2,000 (5.4%; 95% CI 4.5-6.5)",
+    "updated_after_results_first_posted": "856/2,000 (42.8%; 95% CI 40.6-45.0)",
+    "protocol_posted": "1,057/2,000 (52.9%; 95% CI 50.7-55.0)",
+    "sap_posted": "1,035/2,000 (51.8%; 95% CI 49.6-53.9)"
+   },
+   "source": "scripts/history_evidence.py"
+  },
+  "MI_more_info": {
+   "rule": "moreInfoModule reported as presence only; pointOfContact and certainAgreement are administrative; limitationsAndCaveats.description is the one substantive free-text field. Not counted as a results module.",
+   "numerator": "sampled trials with limitationsAndCaveats text",
+   "denominator": "2,000 sampled trials",
+   "value": {
+    "numerator": 439,
+    "denominator": 2000,
+    "text": "439/2,000 (21.9%; 95% CI 20.2-23.8)"
+   },
+   "source": "scripts/usable.py"
+  }
+ }
+}

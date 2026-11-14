@@ -1,0 +1,1970 @@
+{
+ "progression_free_survival": {
+  "examined": 50,
+  "from_sample": 10,
+  "drawn": 40,
+  "not_retrieved": [],
+  "no_matching_posted_primary_measure": [],
+  "with_family_measure": 50,
+  "has_data": 46,
+  "construct": [
+   [
+    "independent/central review",
+    23
+   ],
+   [
+    "assessor not stated",
+    20
+   ],
+   [
+    "investigator",
+    7
+   ]
+  ],
+  "instrument": [
+   [
+    "RECIST 1.1",
+    20
+   ],
+   [
+    "none stated",
+    16
+   ],
+   [
+    "RECIST 1.0/unspecified",
+    8
+   ],
+   [
+    "IMWG (myeloma)",
+    3
+   ],
+   [
+    "lymphoma (Cheson/Lugano/IWG)",
+    2
+   ],
+   [
+    "iwCLL",
+    1
+   ]
+  ],
+  "unit": [
+   [
+    "months",
+    39
+   ],
+   [
+    "(none)",
+    3
+   ],
+   [
+    "days",
+    2
+   ],
+   [
+    "month",
+    2
+   ],
+   [
+    "percentage of participants",
+    2
+   ],
+   [
+    "proportion of patients",
+    1
+   ],
+   [
+    "participants",
+    1
+   ]
+  ],
+  "param": [
+   [
+    "MEDIAN",
+    42
+   ],
+   [
+    "NUMBER",
+    3
+   ],
+   [
+    "(none)",
+    3
+   ],
+   [
+    "MEAN",
+    1
+   ],
+   [
+    "COUNT_OF_PARTICIPANTS",
+    1
+   ]
+  ],
+  "dispersion": [
+   [
+    "95% Confidence Interval",
+    43
+   ],
+   [
+    "(none)",
+    4
+   ],
+   [
+    "Standard Error",
+    1
+   ],
+   [
+    "Inter-Quartile Range",
+    1
+   ],
+   [
+    "Full Range",
+    1
+   ]
+  ],
+  "time_kind": [
+   [
+    "event-driven/variable",
+    45
+   ],
+   [
+    "fixed",
+    5
+   ]
+  ],
+  "time_weeks_fixed": {
+   "n": 5,
+   "min": 26.0,
+   "median": 96.0,
+   "max": 208.0,
+   "distinct": 5,
+   "top": [
+    [
+     208.0,
+     1
+    ],
+    [
+     143.0,
+     1
+    ],
+    [
+     96.0,
+     1
+    ],
+    [
+     26.0,
+     1
+    ],
+    [
+     52.0,
+     1
+    ]
+   ]
+  },
+  "population": [
+   [
+    "ITT",
+    23
+   ],
+   [
+    "all randomized",
+    21
+   ],
+   [
+    "FAS",
+    10
+   ],
+   [
+    "other wording",
+    6
+   ],
+   [
+    "not stated",
+    3
+   ],
+   [
+    "evaluable/completers",
+    1
+   ]
+  ],
+  "effect_types": [
+   [
+    "hazard ratio",
+    38
+   ],
+   [
+    "(no estimate type)",
+    2
+   ]
+  ],
+  "no_between_analysis": 10,
+  "between_est_ci": 38,
+  "between_p": 36,
+  "control": [
+   [
+    "active-controlled",
+    30
+   ],
+   [
+    "placebo/sham-controlled",
+    11
+   ],
+   [
+    "experimental arms only / not typed",
+    6
+   ],
+   [
+    "placebo/sham-controlled + active comparator",
+    2
+   ],
+   [
+    "no-intervention control",
+    1
+   ]
+  ],
+  "condition_class": [
+   [
+    "breast",
+    12
+   ],
+   [
+    "lung",
+    11
+   ],
+   [
+    "lymphoma/leukaemia",
+    6
+   ],
+   [
+    "ovarian",
+    5
+   ],
+   [
+    "myeloma",
+    4
+   ],
+   [
+    "other / unspecified",
+    4
+   ],
+   [
+    "prostate",
+    2
+   ],
+   [
+    "melanoma",
+    2
+   ],
+   [
+    "colorectal",
+    2
+   ],
+   [
+    "urothelial",
+    1
+   ],
+   [
+    "renal",
+    1
+   ]
+  ],
+  "distinct_drug_or_biological_names": 96,
+  "n_groups": [
+   [
+    "2",
+    44
+   ],
+   [
+    "3",
+    3
+   ],
+   [
+    "4",
+    2
+   ],
+   [
+    "10",
+    1
+   ]
+  ],
+  "race_reported": 38,
+  "race_reported_and_between_est_ci": 30,
+  "industry": 42,
+  "multiple_primaries": 14,
+  "results_year": [
+   [
+    "2009",
+    1
+   ],
+   [
+    "2010",
+    3
+   ],
+   [
+    "2011",
+    6
+   ],
+   [
+    "2012",
+    1
+   ],
+   [
+    "2013",
+    1
+   ],
+   [
+    "2014",
+    3
+   ],
+   [
+    "2015",
+    3
+   ],
+   [
+    "2016",
+    2
+   ],
+   [
+    "2017",
+    1
+   ],
+   [
+    "2019",
+    5
+   ],
+   [
+    "2020",
+    5
+   ],
+   [
+    "2021",
+    2
+   ],
+   [
+    "2022",
+    3
+   ],
+   [
+    "2023",
+    2
+   ],
+   [
+    "2024",
+    4
+   ],
+   [
+    "2025",
+    6
+   ],
+   [
+    "2026",
+    2
+   ]
+  ]
+ },
+ "overall_survival": {
+  "examined": 52,
+  "from_sample": 12,
+  "drawn": 40,
+  "not_retrieved": [],
+  "no_matching_posted_primary_measure": [],
+  "with_family_measure": 52,
+  "has_data": 49,
+  "construct": [
+   [
+    "death from any cause",
+    34
+   ],
+   [
+    "death (cause wording absent)",
+    18
+   ]
+  ],
+  "instrument": [
+   [
+    "n/a",
+    52
+   ]
+  ],
+  "unit": [
+   [
+    "months",
+    36
+   ],
+   [
+    "percentage of participants",
+    6
+   ],
+   [
+    "(none)",
+    3
+   ],
+   [
+    "month",
+    2
+   ],
+   [
+    "weeks",
+    2
+   ],
+   [
+    "participants",
+    1
+   ],
+   [
+    "percentage of patients alive",
+    1
+   ],
+   [
+    "years",
+    1
+   ]
+  ],
+  "param": [
+   [
+    "MEDIAN",
+    41
+   ],
+   [
+    "NUMBER",
+    7
+   ],
+   [
+    "(none)",
+    3
+   ],
+   [
+    "COUNT_OF_PARTICIPANTS",
+    1
+   ]
+  ],
+  "dispersion": [
+   [
+    "95% Confidence Interval",
+    43
+   ],
+   [
+    "(none)",
+    7
+   ],
+   [
+    "Full Range",
+    1
+   ],
+   [
+    "90% Confidence Interval",
+    1
+   ]
+  ],
+  "time_kind": [
+   [
+    "event-driven/variable",
+    41
+   ],
+   [
+    "fixed",
+    11
+   ]
+  ],
+  "time_weeks_fixed": {
+   "n": 11,
+   "min": 4.0,
+   "median": 156.0,
+   "max": 416.0,
+   "distinct": 10,
+   "top": [
+    [
+     156.0,
+     2
+    ],
+    [
+     78.0,
+     1
+    ],
+    [
+     416.0,
+     1
+    ],
+    [
+     312.0,
+     1
+    ],
+    [
+     4.0,
+     1
+    ],
+    [
+     52.0,
+     1
+    ]
+   ]
+  },
+  "population": [
+   [
+    "all randomized",
+    19
+   ],
+   [
+    "ITT",
+    11
+   ],
+   [
+    "other wording",
+    10
+   ],
+   [
+    "not stated",
+    9
+   ],
+   [
+    "FAS",
+    9
+   ],
+   [
+    "evaluable/completers",
+    2
+   ],
+   [
+    "safety/treated",
+    1
+   ],
+   [
+    "per-protocol",
+    1
+   ]
+  ],
+  "effect_types": [
+   [
+    "hazard ratio",
+    28
+   ],
+   [
+    "(no estimate type)",
+    1
+   ]
+  ],
+  "no_between_analysis": 23,
+  "between_est_ci": 28,
+  "between_p": 27,
+  "control": [
+   [
+    "active-controlled",
+    30
+   ],
+   [
+    "experimental arms only / not typed",
+    10
+   ],
+   [
+    "placebo/sham-controlled",
+    7
+   ],
+   [
+    "no-intervention control",
+    3
+   ],
+   [
+    "placebo/sham-controlled + active comparator",
+    2
+   ]
+  ],
+  "condition_class": [
+   [
+    "lung",
+    9
+   ],
+   [
+    "other / unspecified",
+    6
+   ],
+   [
+    "pancreatic",
+    6
+   ],
+   [
+    "gastric/oesophageal",
+    5
+   ],
+   [
+    "lymphoma/leukaemia",
+    5
+   ],
+   [
+    "melanoma",
+    4
+   ],
+   [
+    "hepatocellular",
+    3
+   ],
+   [
+    "colorectal",
+    3
+   ],
+   [
+    "prostate",
+    3
+   ],
+   [
+    "brain",
+    2
+   ],
+   [
+    "ovarian",
+    2
+   ],
+   [
+    "head and neck",
+    1
+   ],
+   [
+    "breast",
+    1
+   ],
+   [
+    "myeloma",
+    1
+   ],
+   [
+    "urothelial",
+    1
+   ]
+  ],
+  "distinct_drug_or_biological_names": 116,
+  "n_groups": [
+   [
+    "2",
+    46
+   ],
+   [
+    "3",
+    3
+   ],
+   [
+    "4",
+    3
+   ]
+  ],
+  "race_reported": 32,
+  "race_reported_and_between_est_ci": 19,
+  "industry": 30,
+  "multiple_primaries": 10,
+  "results_year": [
+   [
+    "2010",
+    1
+   ],
+   [
+    "2011",
+    2
+   ],
+   [
+    "2012",
+    2
+   ],
+   [
+    "2013",
+    2
+   ],
+   [
+    "2014",
+    7
+   ],
+   [
+    "2015",
+    3
+   ],
+   [
+    "2016",
+    1
+   ],
+   [
+    "2017",
+    3
+   ],
+   [
+    "2018",
+    1
+   ],
+   [
+    "2019",
+    4
+   ],
+   [
+    "2020",
+    3
+   ],
+   [
+    "2022",
+    4
+   ],
+   [
+    "2023",
+    4
+   ],
+   [
+    "2024",
+    8
+   ],
+   [
+    "2025",
+    3
+   ],
+   [
+    "2026",
+    4
+   ]
+  ]
+ },
+ "hba1c_change": {
+  "examined": 15,
+  "from_sample": 15,
+  "drawn": 0,
+  "not_retrieved": [],
+  "no_matching_posted_primary_measure": [],
+  "with_family_measure": 15,
+  "has_data": 15,
+  "construct": [
+   [
+    "change from baseline",
+    15
+   ]
+  ],
+  "instrument": [
+   [
+    "laboratory HbA1c",
+    15
+   ]
+  ],
+  "unit": [
+   [
+    "percentage of glycosylated hemoglobin",
+    3
+   ],
+   [
+    "percentage",
+    3
+   ],
+   [
+    "percent",
+    2
+   ],
+   [
+    "percentage of glycosylated haemoglobin",
+    2
+   ],
+   [
+    "percent of glycosylated hemoglobin",
+    1
+   ],
+   [
+    "percent hba1c",
+    1
+   ],
+   [
+    "percentage %",
+    1
+   ],
+   [
+    "a1c percentage",
+    1
+   ],
+   [
+    "percentage of hba1c",
+    1
+   ]
+  ],
+  "param": [
+   [
+    "LEAST_SQUARES_MEAN",
+    11
+   ],
+   [
+    "MEAN",
+    4
+   ]
+  ],
+  "dispersion": [
+   [
+    "Standard Error",
+    8
+   ],
+   [
+    "95% Confidence Interval",
+    5
+   ],
+   [
+    "Standard Deviation",
+    2
+   ]
+  ],
+  "time_kind": [
+   [
+    "fixed",
+    14
+   ],
+   [
+    "event-driven/variable",
+    1
+   ]
+  ],
+  "time_weeks_fixed": {
+   "n": 14,
+   "min": 24.0,
+   "median": 26.0,
+   "max": 54.0,
+   "distinct": 4,
+   "top": [
+    [
+     24.0,
+     6
+    ],
+    [
+     26.0,
+     6
+    ],
+    [
+     54.0,
+     1
+    ],
+    [
+     40.0,
+     1
+    ]
+   ]
+  },
+  "population": [
+   [
+    "FAS",
+    8
+   ],
+   [
+    "all randomized",
+    8
+   ],
+   [
+    "safety/treated",
+    6
+   ],
+   [
+    "evaluable/completers",
+    2
+   ],
+   [
+    "ITT",
+    1
+   ],
+   [
+    "not stated",
+    1
+   ]
+  ],
+  "effect_types": [
+   [
+    "mean difference",
+    6
+   ],
+   [
+    "LS mean difference",
+    5
+   ],
+   [
+    "other: treatment contrast",
+    1
+   ],
+   [
+    "difference (unspecified)",
+    1
+   ]
+  ],
+  "no_between_analysis": 2,
+  "between_est_ci": 12,
+  "between_p": 10,
+  "control": [
+   [
+    "placebo/sham-controlled",
+    6
+   ],
+   [
+    "active-controlled",
+    5
+   ],
+   [
+    "placebo/sham-controlled + active comparator",
+    2
+   ],
+   [
+    "experimental arms only / not typed",
+    2
+   ]
+  ],
+  "condition_class": [
+   [
+    "type 2 diabetes",
+    12
+   ],
+   [
+    "type 1 diabetes",
+    2
+   ],
+   [
+    "other / unspecified",
+    1
+   ]
+  ],
+  "distinct_drug_or_biological_names": 35,
+  "n_groups": [
+   [
+    "2",
+    13
+   ],
+   [
+    "4",
+    2
+   ]
+  ],
+  "race_reported": 8,
+  "race_reported_and_between_est_ci": 7,
+  "industry": 14,
+  "multiple_primaries": 4,
+  "results_year": [
+   [
+    "2010",
+    4
+   ],
+   [
+    "2012",
+    2
+   ],
+   [
+    "2014",
+    1
+   ],
+   [
+    "2015",
+    2
+   ],
+   [
+    "2016",
+    1
+   ],
+   [
+    "2017",
+    1
+   ],
+   [
+    "2018",
+    2
+   ],
+   [
+    "2025",
+    2
+   ]
+  ]
+ },
+ "fev1": {
+  "examined": 42,
+  "from_sample": 2,
+  "drawn": 40,
+  "not_retrieved": [],
+  "no_matching_posted_primary_measure": [],
+  "with_family_measure": 42,
+  "has_data": 42,
+  "construct": [
+   [
+    "trough / pre-dose",
+    24
+   ],
+   [
+    "FEV1 (timing not stated)",
+    8
+   ],
+   [
+    "peak / post-dose",
+    5
+   ],
+   [
+    "AUC / serial",
+    5
+   ]
+  ],
+  "instrument": [
+   [
+    "absolute volume",
+    35
+   ],
+   [
+    "% predicted",
+    7
+   ]
+  ],
+  "unit": [
+   [
+    "liters",
+    17
+   ],
+   [
+    "litres",
+    4
+   ],
+   [
+    "liter",
+    4
+   ],
+   [
+    "ml",
+    3
+   ],
+   [
+    "percentage of predicted fev1",
+    3
+   ],
+   [
+    "percent predicted of fev1",
+    2
+   ],
+   [
+    "l",
+    2
+   ],
+   [
+    "percent change",
+    1
+   ],
+   [
+    "percent change from baseline",
+    1
+   ],
+   [
+    "change in percentage",
+    1
+   ],
+   [
+    "litre",
+    1
+   ],
+   [
+    "probability",
+    1
+   ],
+   [
+    "liters x hours",
+    1
+   ],
+   [
+    "milliliters ml",
+    1
+   ]
+  ],
+  "param": [
+   [
+    "LEAST_SQUARES_MEAN",
+    29
+   ],
+   [
+    "MEAN",
+    11
+   ],
+   [
+    "GEOMETRIC_MEAN",
+    1
+   ],
+   [
+    "NUMBER",
+    1
+   ]
+  ],
+  "dispersion": [
+   [
+    "Standard Error",
+    28
+   ],
+   [
+    "95% Confidence Interval",
+    8
+   ],
+   [
+    "Standard Deviation",
+    4
+   ],
+   [
+    "Geometric Coefficient of Variation",
+    1
+   ],
+   [
+    "(none)",
+    1
+   ]
+  ],
+  "time_kind": [
+   [
+    "fixed",
+    27
+   ],
+   [
+    "event-driven/variable",
+    15
+   ]
+  ],
+  "time_weeks_fixed": {
+   "n": 27,
+   "min": 4.1,
+   "median": 12.1,
+   "max": 52.0,
+   "distinct": 10,
+   "top": [
+    [
+     12.0,
+     10
+    ],
+    [
+     24.0,
+     7
+    ],
+    [
+     6.0,
+     2
+    ],
+    [
+     52.0,
+     2
+    ],
+    [
+     12.1,
+     1
+    ],
+    [
+     28.0,
+     1
+    ]
+   ]
+  },
+  "population": [
+   [
+    "all randomized",
+    24
+   ],
+   [
+    "safety/treated",
+    18
+   ],
+   [
+    "FAS",
+    14
+   ],
+   [
+    "ITT",
+    14
+   ],
+   [
+    "evaluable/completers",
+    9
+   ],
+   [
+    "mITT",
+    7
+   ],
+   [
+    "per-protocol",
+    4
+   ],
+   [
+    "other wording",
+    2
+   ],
+   [
+    "not stated",
+    1
+   ]
+  ],
+  "effect_types": [
+   [
+    "mean difference",
+    18
+   ],
+   [
+    "LS mean difference",
+    9
+   ],
+   [
+    "ratio of means",
+    2
+   ],
+   [
+    "(no estimate type)",
+    1
+   ]
+  ],
+  "no_between_analysis": 13,
+  "between_est_ci": 27,
+  "between_p": 26,
+  "control": [
+   [
+    "placebo/sham-controlled + active comparator",
+    12
+   ],
+   [
+    "placebo/sham-controlled",
+    12
+   ],
+   [
+    "experimental arms only / not typed",
+    10
+   ],
+   [
+    "active-controlled",
+    8
+   ]
+  ],
+  "condition_class": [
+   [
+    "COPD",
+    24
+   ],
+   [
+    "asthma",
+    13
+   ],
+   [
+    "cystic fibrosis",
+    5
+   ]
+  ],
+  "distinct_drug_or_biological_names": 88,
+  "n_groups": [
+   [
+    "2",
+    26
+   ],
+   [
+    "3",
+    8
+   ],
+   [
+    "4",
+    5
+   ],
+   [
+    "5",
+    2
+   ],
+   [
+    "6",
+    1
+   ]
+  ],
+  "race_reported": 20,
+  "race_reported_and_between_est_ci": 15,
+  "industry": 40,
+  "multiple_primaries": 16,
+  "results_year": [
+   [
+    "2009",
+    3
+   ],
+   [
+    "2010",
+    1
+   ],
+   [
+    "2011",
+    5
+   ],
+   [
+    "2012",
+    2
+   ],
+   [
+    "2013",
+    2
+   ],
+   [
+    "2014",
+    8
+   ],
+   [
+    "2015",
+    3
+   ],
+   [
+    "2016",
+    5
+   ],
+   [
+    "2017",
+    2
+   ],
+   [
+    "2018",
+    3
+   ],
+   [
+    "2019",
+    1
+   ],
+   [
+    "2020",
+    2
+   ],
+   [
+    "2021",
+    1
+   ],
+   [
+    "2023",
+    1
+   ],
+   [
+    "2025",
+    1
+   ],
+   [
+    "2026",
+    2
+   ]
+  ]
+ },
+ "acr20": {
+  "examined": 44,
+  "from_sample": 4,
+  "drawn": 40,
+  "not_retrieved": [],
+  "no_matching_posted_primary_measure": [],
+  "with_family_measure": 44,
+  "has_data": 44,
+  "construct": [
+   [
+    "ACR20 responder proportion",
+    44
+   ]
+  ],
+  "instrument": [
+   [
+    "ACR20 (ACR 1995 core set)",
+    44
+   ]
+  ],
+  "unit": [
+   [
+    "percentage of participants",
+    29
+   ],
+   [
+    "participants",
+    10
+   ],
+   [
+    "percentage of responders",
+    2
+   ],
+   [
+    "percentage",
+    1
+   ],
+   [
+    "percentage of patients",
+    1
+   ],
+   [
+    "percentage or participants",
+    1
+   ]
+  ],
+  "param": [
+   [
+    "NUMBER",
+    41
+   ],
+   [
+    "COUNT_OF_PARTICIPANTS",
+    3
+   ]
+  ],
+  "dispersion": [
+   [
+    "(none)",
+    33
+   ],
+   [
+    "95% Confidence Interval",
+    11
+   ]
+  ],
+  "time_kind": [
+   [
+    "fixed",
+    39
+   ],
+   [
+    "event-driven/variable",
+    5
+   ]
+  ],
+  "time_weeks_fixed": {
+   "n": 39,
+   "min": 12.0,
+   "median": 24.0,
+   "max": 48.0,
+   "distinct": 7,
+   "top": [
+    [
+     24.0,
+     18
+    ],
+    [
+     12.0,
+     8
+    ],
+    [
+     16.0,
+     7
+    ],
+    [
+     48.0,
+     2
+    ],
+    [
+     13.0,
+     2
+    ],
+    [
+     24.1,
+     1
+    ]
+   ]
+  },
+  "population": [
+   [
+    "FAS",
+    22
+   ],
+   [
+    "all randomized",
+    17
+   ],
+   [
+    "ITT",
+    16
+   ],
+   [
+    "safety/treated",
+    11
+   ],
+   [
+    "other wording",
+    2
+   ],
+   [
+    "evaluable/completers",
+    2
+   ],
+   [
+    "mITT",
+    2
+   ],
+   [
+    "not stated",
+    1
+   ]
+  ],
+  "effect_types": [
+   [
+    "risk difference",
+    11
+   ],
+   [
+    "difference (unspecified)",
+    10
+   ],
+   [
+    "(no estimate type)",
+    9
+   ],
+   [
+    "odds ratio",
+    6
+   ],
+   [
+    "mean difference",
+    2
+   ]
+  ],
+  "no_between_analysis": 7,
+  "between_est_ci": 29,
+  "between_p": 35,
+  "control": [
+   [
+    "placebo/sham-controlled",
+    26
+   ],
+   [
+    "placebo/sham-controlled + active comparator",
+    7
+   ],
+   [
+    "active-controlled",
+    6
+   ],
+   [
+    "experimental arms only / not typed",
+    5
+   ]
+  ],
+  "condition_class": [
+   [
+    "rheumatoid arthritis",
+    26
+   ],
+   [
+    "psoriatic arthritis",
+    18
+   ]
+  ],
+  "distinct_drug_or_biological_names": 55,
+  "n_groups": [
+   [
+    "3",
+    22
+   ],
+   [
+    "2",
+    15
+   ],
+   [
+    "4",
+    7
+   ]
+  ],
+  "race_reported": 21,
+  "race_reported_and_between_est_ci": 17,
+  "industry": 43,
+  "multiple_primaries": 10,
+  "results_year": [
+   [
+    "2009",
+    2
+   ],
+   [
+    "2010",
+    2
+   ],
+   [
+    "2011",
+    3
+   ],
+   [
+    "2012",
+    1
+   ],
+   [
+    "2013",
+    2
+   ],
+   [
+    "2014",
+    5
+   ],
+   [
+    "2016",
+    3
+   ],
+   [
+    "2017",
+    7
+   ],
+   [
+    "2018",
+    1
+   ],
+   [
+    "2019",
+    6
+   ],
+   [
+    "2020",
+    5
+   ],
+   [
+    "2021",
+    2
+   ],
+   [
+    "2022",
+    3
+   ],
+   [
+    "2024",
+    1
+   ],
+   [
+    "2025",
+    1
+   ]
+  ]
+ },
+ "depression_scale": {
+  "examined": 43,
+  "from_sample": 3,
+  "drawn": 40,
+  "not_retrieved": [],
+  "no_matching_posted_primary_measure": [],
+  "with_family_measure": 43,
+  "has_data": 43,
+  "construct": [
+   [
+    "change from baseline in total score",
+    39
+   ],
+   [
+    "response/remission proportion",
+    2
+   ],
+   [
+    "time to relapse/event",
+    1
+   ],
+   [
+    "score / other",
+    1
+   ]
+  ],
+  "instrument": [
+   [
+    "MADRS",
+    33
+   ],
+   [
+    "HAM-D 17",
+    6
+   ],
+   [
+    "HAM-D (version not stated)",
+    2
+   ],
+   [
+    "HAM-D 24",
+    2
+   ]
+  ],
+  "unit": [
+   [
+    "units on a scale",
+    17
+   ],
+   [
+    "score on a scale",
+    11
+   ],
+   [
+    "scores on a scale",
+    5
+   ],
+   [
+    "participants",
+    2
+   ],
+   [
+    "change in ham d score",
+    1
+   ],
+   [
+    "score in scale",
+    1
+   ],
+   [
+    "units on scale",
+    1
+   ],
+   [
+    "scores on scale",
+    1
+   ],
+   [
+    "percentage of patients who relapsed",
+    1
+   ],
+   [
+    "points on hamd 17 scale",
+    1
+   ],
+   [
+    "percentage of participants",
+    1
+   ],
+   [
+    "scores on a scale madrs10",
+    1
+   ]
+  ],
+  "param": [
+   [
+    "LEAST_SQUARES_MEAN",
+    26
+   ],
+   [
+    "MEAN",
+    13
+   ],
+   [
+    "NUMBER",
+    3
+   ],
+   [
+    "COUNT_OF_PARTICIPANTS",
+    1
+   ]
+  ],
+  "dispersion": [
+   [
+    "Standard Error",
+    31
+   ],
+   [
+    "Standard Deviation",
+    8
+   ],
+   [
+    "(none)",
+    4
+   ]
+  ],
+  "time_kind": [
+   [
+    "fixed",
+    37
+   ],
+   [
+    "event-driven/variable",
+    6
+   ]
+  ],
+  "time_weeks_fixed": {
+   "n": 37,
+   "min": 0.4,
+   "median": 8.0,
+   "max": 24.0,
+   "distinct": 12,
+   "top": [
+    [
+     8.0,
+     12
+    ],
+    [
+     6.0,
+     9
+    ],
+    [
+     14.0,
+     3
+    ],
+    [
+     1.0,
+     2
+    ],
+    [
+     12.0,
+     2
+    ],
+    [
+     16.0,
+     2
+    ]
+   ]
+  },
+  "population": [
+   [
+    "all randomized",
+    18
+   ],
+   [
+    "FAS",
+    16
+   ],
+   [
+    "safety/treated",
+    16
+   ],
+   [
+    "ITT",
+    10
+   ],
+   [
+    "not stated",
+    6
+   ],
+   [
+    "mITT",
+    6
+   ],
+   [
+    "evaluable/completers",
+    3
+   ],
+   [
+    "other wording",
+    2
+   ],
+   [
+    "per-protocol",
+    1
+   ]
+  ],
+  "effect_types": [
+   [
+    "LS mean difference",
+    18
+   ],
+   [
+    "mean difference",
+    15
+   ],
+   [
+    "difference (unspecified)",
+    3
+   ],
+   [
+    "(no estimate type)",
+    2
+   ],
+   [
+    "odds ratio",
+    1
+   ],
+   [
+    "hazard ratio",
+    1
+   ]
+  ],
+  "no_between_analysis": 5,
+  "between_est_ci": 36,
+  "between_p": 36,
+  "control": [
+   [
+    "placebo/sham-controlled",
+    29
+   ],
+   [
+    "active-controlled",
+    7
+   ],
+   [
+    "placebo/sham-controlled + active comparator",
+    4
+   ],
+   [
+    "experimental arms only / not typed",
+    3
+   ]
+  ],
+  "condition_class": [
+   [
+    "major depressive disorder",
+    33
+   ],
+   [
+    "bipolar depression",
+    5
+   ],
+   [
+    "treatment-resistant depression",
+    4
+   ],
+   [
+    "other / unspecified",
+    1
+   ]
+  ],
+  "distinct_drug_or_biological_names": 61,
+  "n_groups": [
+   [
+    "2",
+    24
+   ],
+   [
+    "3",
+    13
+   ],
+   [
+    "4",
+    5
+   ],
+   [
+    "5",
+    1
+   ]
+  ],
+  "race_reported": 29,
+  "race_reported_and_between_est_ci": 26,
+  "industry": 38,
+  "multiple_primaries": 7,
+  "results_year": [
+   [
+    "2009",
+    2
+   ],
+   [
+    "2010",
+    2
+   ],
+   [
+    "2012",
+    4
+   ],
+   [
+    "2013",
+    7
+   ],
+   [
+    "2014",
+    4
+   ],
+   [
+    "2015",
+    3
+   ],
+   [
+    "2016",
+    2
+   ],
+   [
+    "2017",
+    1
+   ],
+   [
+    "2018",
+    1
+   ],
+   [
+    "2019",
+    4
+   ],
+   [
+    "2020",
+    1
+   ],
+   [
+    "2021",
+    3
+   ],
+   [
+    "2022",
+    2
+   ],
+   [
+    "2023",
+    2
+   ],
+   [
+    "2024",
+    2
+   ],
+   [
+    "2025",
+    2
+   ],
+   [
+    "2026",
+    1
+   ]
+  ]
+ }
+}

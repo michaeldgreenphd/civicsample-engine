@@ -1,0 +1,597 @@
+{
+ "n": 2000,
+ "BT_method": {
+  "titled_total": 1378,
+  "single_group": 618,
+  "last_equals_sum_untitled_total": 4
+ },
+ "FS_method": {
+  "ok": 2000
+ },
+ "EN_type": {
+  "ACTUAL": 2000
+ },
+ "BT_vs_FS": {
+  "equal": 1585,
+  "smaller": 371,
+  "larger": 44
+ },
+ "BT_vs_EN": {
+  "equal": 1448,
+  "smaller": 532,
+  "larger": 20
+ },
+ "FS_vs_EN": {
+  "equal": 1736,
+  "smaller": 237,
+  "larger": 27
+ },
+ "pattern": {
+  "BT equal FS; BT equal EN; FS equal EN": 1405,
+  "BT smaller FS; BT smaller EN; FS equal EN": 324,
+  "BT equal FS; BT smaller EN; FS smaller EN": 173,
+  "BT smaller FS; BT smaller EN; FS smaller EN": 27,
+  "BT larger FS; BT equal EN; FS smaller EN": 26,
+  "BT smaller FS; BT equal EN; FS larger EN": 17,
+  "BT larger FS; BT smaller EN; FS smaller EN": 8,
+  "BT larger FS; BT larger EN; FS equal EN": 7,
+  "BT equal FS; BT larger EN; FS larger EN": 7,
+  "BT smaller FS; BT larger EN; FS larger EN": 3,
+  "BT larger FS; BT larger EN; FS smaller EN": 3
+ },
+ "all_three_equal": 1405,
+ "naive_rule_differs": [
+  [
+   "NCT00453973",
+   114.0,
+   228.0
+  ],
+  [
+   "NCT01262365",
+   786.0,
+   1572.0
+  ],
+  [
+   "NCT01506882",
+   71.0,
+   142.0
+  ],
+  [
+   "NCT03215277",
+   76.0,
+   152.0
+  ]
+ ],
+ "total_not_sum_of_arms": [
+  [
+   "NCT00066703",
+   5320.0,
+   2660.0
+  ],
+  [
+   "NCT02591537",
+   8.0,
+   16.0
+  ]
+ ],
+ "population_description_present": 669,
+ "population_description_present_when_BT_ne_FS": [
+  208,
+  415
+ ],
+ "multi_period": 272,
+ "second_unit_in_flow": 35,
+ "n_mismatch": 595,
+ "mismatch_allocation": {
+  "BT smaller FS; BT smaller EN; FS equal EN": [
+   6,
+   324
+  ],
+  "BT equal FS; BT smaller EN; FS smaller EN": [
+   4,
+   173
+  ],
+  "BT smaller FS; BT smaller EN; FS smaller EN": [
+   2,
+   27
+  ],
+  "BT larger FS; BT equal EN; FS smaller EN": [
+   1,
+   26
+  ],
+  "BT smaller FS; BT equal EN; FS larger EN": [
+   1,
+   17
+  ],
+  "BT larger FS; BT smaller EN; FS smaller EN": [
+   1,
+   8
+  ],
+  "BT equal FS; BT larger EN; FS larger EN": [
+   0,
+   7
+  ],
+  "BT larger FS; BT larger EN; FS equal EN": [
+   0,
+   7
+  ],
+  "BT larger FS; BT larger EN; FS smaller EN": [
+   0,
+   3
+  ],
+  "BT smaller FS; BT larger EN; FS larger EN": [
+   0,
+   3
+  ]
+ },
+ "representative_mismatches": [
+  {
+   "nct_id": "NCT01473524",
+   "BT": 216.0,
+   "BT_method": "titled_total",
+   "BT_naive": 216.0,
+   "BT_arms_sum": 216.0,
+   "FS": 217.0,
+   "FS_method": "ok",
+   "EN": 217,
+   "EN_type": "ACTUAL",
+   "n_periods": 2,
+   "first_period_title": "DB Phase",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": "Intent-to-treat Population: All participants who were randomized and received at least 1 dose of study drug.",
+   "baseline_groups": [
+    "DB OCA 5-10 mg",
+    "DB OCA 10 mg",
+    "DB Placebo",
+    "Total"
+   ],
+   "flow_groups": [
+    "DB OCA 5-10 mg",
+    "DB OCA 10 mg",
+    "DB Placebo",
+    "LTSE OCA (DB OCA 5-10 mg)",
+    "LTSE OCA (DB OCA 10 mg)",
+    "LTSE OCA (DB Placebo)"
+   ],
+   "pre_assignment": "Screening interim allowed for pre-randomization eligibility assessment of 1 to 8 weeks.\n\nA total of 217 participants were randomized into the double-blind phase of the study, however, 216 received treatment with study drug. One randomized participant discontinued prior to receiving any study drug.",
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "smaller",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "equal",
+   "pattern": "BT smaller FS; BT smaller EN; FS equal EN"
+  },
+  {
+   "nct_id": "NCT00145470",
+   "BT": 324.0,
+   "BT_method": "titled_total",
+   "BT_naive": 324.0,
+   "BT_arms_sum": 324.0,
+   "FS": 326.0,
+   "FS_method": "ok",
+   "EN": 326,
+   "EN_type": "ACTUAL",
+   "n_periods": 1,
+   "first_period_title": "Overall Study",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": "Includes all participants receiving study treatment.",
+   "baseline_groups": [
+    "Placebo",
+    "Asenapine",
+    "Total"
+   ],
+   "flow_groups": [
+    "Placebo",
+    "Asenapine"
+   ],
+   "pre_assignment": null,
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "smaller",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "equal",
+   "pattern": "BT smaller FS; BT smaller EN; FS equal EN"
+  },
+  {
+   "nct_id": "NCT01142791",
+   "BT": 115.0,
+   "BT_method": "single_group",
+   "BT_naive": 115.0,
+   "BT_arms_sum": 115.0,
+   "FS": 121.0,
+   "FS_method": "ok",
+   "EN": 121,
+   "EN_type": "ACTUAL",
+   "n_periods": 1,
+   "first_period_title": "Overall Study",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": "Baseline data is reported for the 115 participants who underwent the ExAblate treatment. Per protocol, 6 participants receiving only 1 sonication are included in the adverse events reporting only, not in the baseline or efficacy analyses..",
+   "baseline_groups": [
+    "ExAblate Treatment"
+   ],
+   "flow_groups": [
+    "ExAblate Treatment",
+    "Additional Safety Population Particpants"
+   ],
+   "pre_assignment": "The protocol defined the primary analysis to include participants receiving more than 1 sonication, i.e., 115 in this case. The safety population was defined in the protocol as participants receiving any sonications which is 121. 6 subjects receiving only 1 sonication were in the safety population but not in the baseline or primary analysis.",
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "smaller",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "equal",
+   "pattern": "BT smaller FS; BT smaller EN; FS equal EN"
+  },
+  {
+   "nct_id": "NCT02787681",
+   "BT": 69.0,
+   "BT_method": "single_group",
+   "BT_naive": 69.0,
+   "BT_arms_sum": 69.0,
+   "FS": 71.0,
+   "FS_method": "ok",
+   "EN": 71,
+   "EN_type": "ACTUAL",
+   "n_periods": 1,
+   "first_period_title": "Overall Study",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": null,
+   "baseline_groups": [
+    "NEMO Gauge"
+   ],
+   "flow_groups": [
+    "NEMO Gauge"
+   ],
+   "pre_assignment": null,
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "smaller",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "equal",
+   "pattern": "BT smaller FS; BT smaller EN; FS equal EN"
+  },
+  {
+   "nct_id": "NCT00095979",
+   "BT": 50.0,
+   "BT_method": "single_group",
+   "BT_naive": 50.0,
+   "BT_arms_sum": 50.0,
+   "FS": 52.0,
+   "FS_method": "ok",
+   "EN": 52,
+   "EN_type": "ACTUAL",
+   "n_periods": 1,
+   "first_period_title": "Overall Study",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": "Eligible and treated patients",
+   "baseline_groups": [
+    "Ixabepilone"
+   ],
+   "flow_groups": [
+    "Ixabepilone"
+   ],
+   "pre_assignment": null,
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "smaller",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "equal",
+   "pattern": "BT smaller FS; BT smaller EN; FS equal EN"
+  },
+  {
+   "nct_id": "NCT03566810",
+   "BT": 53.0,
+   "BT_method": "titled_total",
+   "BT_naive": 53.0,
+   "BT_arms_sum": 53.0,
+   "FS": 54.0,
+   "FS_method": "ok",
+   "EN": 54,
+   "EN_type": "ACTUAL",
+   "n_periods": 2,
+   "first_period_title": "Treatment Period 1 (Day 1-Day 3)",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": "Safety population included all participants who received at least 1 dose of investigational medicinal product (IMP).",
+   "baseline_groups": [
+    "First Test GXR (Fasting), Then Reference GXR (Fasting)",
+    "First Reference GXR (Fasting), Then Test GXR (Fasting)",
+    "First Test GXR (Fed), Then Reference GXR (Fed)",
+    "First Reference GXR (Fed), Then Test GXR (Fed)",
+    "Total"
+   ],
+   "flow_groups": [
+    "First Test GXR (Fasting), Then Reference GXR (Fasting)",
+    "First Reference GXR (Fasting), Then Test GXR (Fasting)",
+    "First Test GXR (Fed), Then Reference GXR (Fed)",
+    "First Reference GXR (Fed), Then Test GXR (Fed)"
+   ],
+   "pre_assignment": null,
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "smaller",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "equal",
+   "pattern": "BT smaller FS; BT smaller EN; FS equal EN"
+  },
+  {
+   "nct_id": "NCT00435188",
+   "BT": 398.0,
+   "BT_method": "titled_total",
+   "BT_naive": 398.0,
+   "BT_arms_sum": 398.0,
+   "FS": 398.0,
+   "FS_method": "ok",
+   "EN": 400,
+   "EN_type": "ACTUAL",
+   "n_periods": 1,
+   "first_period_title": "Overall Study",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": null,
+   "baseline_groups": [
+    "Arm 1",
+    "Arm 2",
+    "Total"
+   ],
+   "flow_groups": [
+    "Arm 1, Physical Activity Counseling",
+    "Arm 2, Usual Care"
+   ],
+   "pre_assignment": null,
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "equal",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "smaller",
+   "pattern": "BT equal FS; BT smaller EN; FS smaller EN"
+  },
+  {
+   "nct_id": "NCT03639948",
+   "BT": 115.0,
+   "BT_method": "single_group",
+   "BT_naive": 115.0,
+   "BT_arms_sum": 115.0,
+   "FS": 115.0,
+   "FS_method": "ok",
+   "EN": 120,
+   "EN_type": "ACTUAL",
+   "n_periods": 1,
+   "first_period_title": "Overall Study",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": "Intention-to-treat",
+   "baseline_groups": [
+    "Experimental: Carboplatin & Docetaxel Plus Pembroluzimab"
+   ],
+   "flow_groups": [
+    "Experimental: Carboplatin & Docetaxel Plus Pembrolizumab"
+   ],
+   "pre_assignment": "5 patients were found to be ineligible after enrollment and are not included in assessment for study outcomes.",
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "equal",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "smaller",
+   "pattern": "BT equal FS; BT smaller EN; FS smaller EN"
+  },
+  {
+   "nct_id": "NCT00677014",
+   "BT": 980.0,
+   "BT_method": "titled_total",
+   "BT_naive": 980.0,
+   "BT_arms_sum": 980.0,
+   "FS": 980.0,
+   "FS_method": "ok",
+   "EN": 1060,
+   "EN_type": "ACTUAL",
+   "n_periods": 1,
+   "first_period_title": "Overall Study",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": null,
+   "baseline_groups": [
+    "Fixed AV Delay",
+    "Echo Optimized AV Delay",
+    "Algorithm Optimized AV Delay",
+    "Total"
+   ],
+   "flow_groups": [
+    "Fixed AV Delay",
+    "Echo Optimized AV Delay",
+    "Algorithm Optimized AV Delay"
+   ],
+   "pre_assignment": "1060 patients were enrolled. 46 patients were not implanted with a CRT-D: screening failures (27), withdrawn by physician/sponsor (15) or withdrew consent (4). 34 implanted patients were not randomized: screening failures (13), withdrawn by physician/sponsor (14), withdrew consent (4), LTFU (2), death (1), not properly randomized (3)",
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "equal",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "smaller",
+   "pattern": "BT equal FS; BT smaller EN; FS smaller EN"
+  },
+  {
+   "nct_id": "NCT00589914",
+   "BT": 1214.0,
+   "BT_method": "titled_total",
+   "BT_naive": 1214.0,
+   "BT_arms_sum": 1214.0,
+   "FS": 1214.0,
+   "FS_method": "ok",
+   "EN": 1221,
+   "EN_type": "ACTUAL",
+   "n_periods": 1,
+   "first_period_title": "Overall Study",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": null,
+   "baseline_groups": [
+    "R092670",
+    "RISPERDAL CONSTA",
+    "Total"
+   ],
+   "flow_groups": [
+    "R092670",
+    "RISPERDAL CONSTA"
+   ],
+   "pre_assignment": "In this study 1221 patients were enrolled of which 1220 patients were randomized as 1 patient was enrolled twice. Only the first patient number was included in the all randomized patients, safety, and intent to treat analysis sets. Out of 1220 patients 1214 patients received at least 1 dose of study medication.",
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "equal",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "smaller",
+   "pattern": "BT equal FS; BT smaller EN; FS smaller EN"
+  },
+  {
+   "nct_id": "NCT00533897",
+   "BT": 157.0,
+   "BT_method": "titled_total",
+   "BT_naive": 157.0,
+   "BT_arms_sum": 157.0,
+   "FS": 167.0,
+   "FS_method": "ok",
+   "EN": 270,
+   "EN_type": "ACTUAL",
+   "n_periods": 4,
+   "first_period_title": "Lead-in (LI) Period 1",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": "All Period 1 Non-responders and Period 2 participants who received at least one dose of abatacept during the study were summarized.",
+   "baseline_groups": [
+    "Period 1 Non-Responders",
+    "Abatacept Received in Period 2",
+    "Placebo Received in Period 2",
+    "Total"
+   ],
+   "flow_groups": [
+    "Abatacept (ABA) [Lead-In (LI)]",
+    "Abatacept (ABA) Double-blind Withdrawal (DBW)",
+    "Placebo (PLA) Double Blind Withdrawal (DBW)",
+    "ABA With IV PLA Loading Dose in Re-introduction (RI) Period",
+    "PLA Switched to ABA With ABA IV Loading Dose in RI Period",
+    "PLA Switched to ABA With PLA IV Loading Dose in RI Period",
+    "Long Term Extension Abatacept for LI Period Non-responders",
+    "Long Term Extension (LTE) Abatacept for Short Term Completers"
+   ],
+   "pre_assignment": "270 participants enrolled; 167 were treated in the Short Term (ST) study. 103 were not treated (10 withdrew consent, 2 lost to follow-up, 91 no longer met study criteria). ST study included 3 Periods: Lead-In (LI), Doubleblind Withdrawal (DBW), and Reintroduction (RI).150 participants entered the LTE study.",
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "smaller",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "smaller",
+   "pattern": "BT smaller FS; BT smaller EN; FS smaller EN"
+  },
+  {
+   "nct_id": "NCT02656836",
+   "BT": 6.0,
+   "BT_method": "single_group",
+   "BT_naive": 6.0,
+   "BT_arms_sum": 6.0,
+   "FS": 9.0,
+   "FS_method": "ok",
+   "EN": 20,
+   "EN_type": "ACTUAL",
+   "n_periods": 1,
+   "first_period_title": "Overall Study",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": null,
+   "baseline_groups": [
+    "Home Tonometry Group"
+   ],
+   "flow_groups": [
+    "Home Tonometry Group"
+   ],
+   "pre_assignment": null,
+   "study_type": "OBSERVATIONAL",
+   "BT_vs_FS": "smaller",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "smaller",
+   "pattern": "BT smaller FS; BT smaller EN; FS smaller EN"
+  },
+  {
+   "nct_id": "NCT00245856",
+   "BT": 67.0,
+   "BT_method": "single_group",
+   "BT_naive": 67.0,
+   "BT_arms_sum": 67.0,
+   "FS": 28.0,
+   "FS_method": "ok",
+   "EN": 67,
+   "EN_type": "ACTUAL",
+   "n_periods": 2,
+   "first_period_title": "Period One",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": null,
+   "baseline_groups": [
+    "All DVT Treated Patients"
+   ],
+   "flow_groups": [
+    "Dalteparin + Warfarin",
+    "Dalteparin Only"
+   ],
+   "pre_assignment": "Consecutive patients, both inpatient and outpatient, who had objectively confirmed upper extremity DVT found on standardized comprehensive duplex imaging or venogram. Ineligibility : predefined ineligibility criteria including high risk of bleeding.",
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "larger",
+   "BT_vs_EN": "equal",
+   "FS_vs_EN": "smaller",
+   "pattern": "BT larger FS; BT equal EN; FS smaller EN"
+  },
+  {
+   "nct_id": "NCT01224626",
+   "BT": 41.0,
+   "BT_method": "single_group",
+   "BT_naive": 41.0,
+   "BT_arms_sum": 41.0,
+   "FS": 42.0,
+   "FS_method": "ok",
+   "EN": 41,
+   "EN_type": "ACTUAL",
+   "n_periods": 1,
+   "first_period_title": "Overall Study",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": null,
+   "baseline_groups": [
+    "Linezolid"
+   ],
+   "flow_groups": [
+    "Linezolid"
+   ],
+   "pre_assignment": null,
+   "study_type": "OBSERVATIONAL",
+   "BT_vs_FS": "smaller",
+   "BT_vs_EN": "equal",
+   "FS_vs_EN": "larger",
+   "pattern": "BT smaller FS; BT equal EN; FS larger EN"
+  },
+  {
+   "nct_id": "NCT02992925",
+   "BT": 365.0,
+   "BT_method": "titled_total",
+   "BT_naive": 365.0,
+   "BT_arms_sum": 365.0,
+   "FS": 30.0,
+   "FS_method": "ok",
+   "EN": 370,
+   "EN_type": "ACTUAL",
+   "n_periods": 2,
+   "first_period_title": "Cohort 1",
+   "flow_units": null,
+   "baseline_units": null,
+   "baseline_population": "\u3010cohort 2\\_Age,Sex/Gender\u3011 Excluding 5 subjects(BK1310: 1 subject, control: 4 subjects) whose all antibody titers could not be measured at Visit 4",
+   "baseline_groups": [
+    "BK1310-High",
+    "BK1310-Low",
+    "BK1310",
+    "ActHIB\u00ae and Tetrabik (Control)",
+    "Total"
+   ],
+   "flow_groups": [
+    "BK1310-High",
+    "BK1310-Low",
+    "BK1310",
+    "ActHIB\u00ae and Tetrabik (Control)"
+   ],
+   "pre_assignment": null,
+   "study_type": "INTERVENTIONAL",
+   "BT_vs_FS": "larger",
+   "BT_vs_EN": "smaller",
+   "FS_vs_EN": "smaller",
+   "pattern": "BT larger FS; BT smaller EN; FS smaller EN"
+  }
+ ]
+}

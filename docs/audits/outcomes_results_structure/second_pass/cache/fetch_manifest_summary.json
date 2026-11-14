@@ -1,0 +1,32 @@
+{
+ "requests": 243,
+ "by_purpose_and_status": {
+  "check|200": 36,
+  "count|200": 144,
+  "documents|200": 40,
+  "family|200": 11,
+  "frame|200": 11,
+  "version|200": 1
+ },
+ "failures": [],
+ "first_fetch": "2026-11-13T23:19:50Z",
+ "last_fetch": "2026-11-13T23:41:15Z",
+ "cache_files": {
+  "count_queries.jsonl.gz": {
+   "responses": 192,
+   "sha256": "b4b85dfef055d4f85f350c212e3e778ac40f60e83efa7e8fa14819bb7de9b928",
+   "bytes": 99276
+  },
+  "document_section.jsonl.gz": {
+   "responses": 40,
+   "sha256": "6a6259f8549de62d429f5a294c66677bd4fd1f6625620e5c78a58c3d1e7ebc6b",
+   "bytes": 77509
+  },
+  "family_studies.jsonl.gz": {
+   "responses": 11,
+   "sha256": "338110bcb686ad3f379217f70c54eb70e1c805f0df70a294f113e1bfa0c33e17",
+   "bytes": 2093849
+  }
+ },
+ "not_in_manifest": "12 exploratory count requests were made by hand at about 2026-11-13T23:18Z before ctgov.py existed; each was re-issued through the cache by fetch_counts.py and returned the same count. The first audit's 40 study requests and 1 version request are in its own cache/fetch_manifest.json."
+}
