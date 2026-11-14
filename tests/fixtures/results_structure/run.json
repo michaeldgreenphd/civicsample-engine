@@ -1,7 +1,5 @@
 {
  "schema_version": 1,
- "run_id": "results-structure-2026-11-14-98a887e3f9",
- "generated_at": "2026-11-14T12:00:00+00:00",
  "producer": {
   "repository": "civicsample-engine",
   "commit": "fixture"
@@ -132,8 +130,10 @@
   "Participant flow counts are for the first period only.",
   "The registry record is read as retrieved on the stated date; registry records change."
  ],
+ "run_id": "results-structure-2026-11-14-700cdfda9b",
+ "generated_at": "2026-11-14T12:00:00+00:00",
  "files": {
-  "records.json": "b635c323b42f76679d219fc1419a165d321c762c1c5ee1e3863a0ed618112ae2",
-  "summary.json": "79f914e2015da3afbddce6f6d414d5d0133e6dd1aca0f222052d17fc4eb37471"
+  "records.json": "b0ebe3634e4fd81fa6e621731f17c454c79784e9728d33163d19bc5563514f50",
+  "summary.json": "21204c3fad326852a7d9fbd6b585d9451c9db463feb60aa51f3df79bdf69a317"
  }
 }

@@ -526,6 +526,20 @@ LIMITATIONS = (
 )
 
 
+def run_identity(run: dict[str, Any], files: dict[str, Any]) -> str:
+    """The ten hex digits that end a run id: a digest of everything the family publishes except the
+    id itself, the time the build ran (`generated_at`) and the file checksums (which cover the id).
+
+    It is taken from the output, not from a list of inputs, so that two families that differ in any
+    published value cannot share an id. A list of inputs has to be kept complete by hand, and was
+    not: a trial the archive lacks takes its failure reason from the archive's metadata file, which
+    the archive's own sha256 does not cover. `run` is the manifest; `files` maps summary.json and
+    records.json to their objects, with or without `run_id` set."""
+    body = {k: v for k, v in run.items() if k not in ('run_id', 'generated_at', 'files')}
+    content = {name: sha256(dump({k: v for k, v in obj.items() if k != 'run_id'})) for name, obj in sorted(files.items())}
+    return sha256(dump([body, content]))[:10]
+
+
 def build(records: dict[str, Any], problems: dict[str, Any], acquisition: dict[str, Any], producer: dict[str, Any],
           reviews_file: dict[str, Any], parameters: dict[str, Any], scope: dict[str, Any],
           generated_at: str | None = None) -> dict[str, Any]:
@@ -533,22 +547,14 @@ def build(records: dict[str, Any], problems: dict[str, Any], acquisition: dict[s
     retrieved_at = str(acquisition.get('retrieved_at') or '')[:10]
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', retrieved_at):
         raise BuildError('the acquisition record has no retrieval date')
-    # The same archive can be built for different cohorts, so the scope is part of the run's identity.
-    # So is the producing code as it stood on disk (producer.source_sha256): the commit alone would
-    # give one id to a clean build and to a build made with uncommitted changes to that code.
-    run_id = 'results-structure-{}-{}'.format(retrieved_at, sha256(dump(
-        [acquisition.get('sha256_uncompressed'), reviews_file.get('sha256'), producer.get('commit'),
-         producer.get('source_sha256'), RS.METHOD_VERSION,
-         sorted(records), scope['excluded']['nct_ids'], scope['excluded']['reason']]))[:10])
     files: dict[str, Any] = {
         'summary.json': summarize(records, problems, scope),
         'records.json': {'records': records},
     }
     for obj in files.values():
-        obj.update(run_id=run_id, schema_version=SCHEMA_VERSION, method_version=RS.METHOD_VERSION)
-    run = {
-        'schema_version': SCHEMA_VERSION, 'run_id': run_id,
-        'generated_at': generated_at or _now(),
+        obj.update(schema_version=SCHEMA_VERSION, method_version=RS.METHOD_VERSION)
+    run: dict[str, Any] = {
+        'schema_version': SCHEMA_VERSION,
         'producer': producer, 'manual_run': True,
         'method': {'version': RS.METHOD_VERSION, 'subgroup_rule': RS.SUBGROUP_RULE,
                    'usable_content_rules': ['B1', 'F1', 'O1', 'A1'], 'comparative_classes': ['C1', 'C2'],
@@ -571,6 +577,13 @@ def build(records: dict[str, Any], problems: dict[str, Any], acquisition: dict[s
         'document_and_publication_review': RS.DOCUMENT_AND_PUBLICATION_REVIEW,
         'limitations': list(LIMITATIONS),
     }
+    # The id follows from what is published (run_identity): the archive, the reviews, the scope, the
+    # producing commit and the code as it stood on disk are all in the manifest, and the records and
+    # counts they gave are in the two files.
+    run_id = f'results-structure-{retrieved_at}-{run_identity(run, files)}'
+    for obj in files.values():
+        obj['run_id'] = run_id
+    run.update(run_id=run_id, generated_at=generated_at or _now())
     run['files'] = {p: sha256(dump(o)) for p, o in sorted(files.items())}
     return {'run.json': run, **files}
 
@@ -610,6 +623,8 @@ def check(files: dict[str, Any]) -> list[str]:
         if files[path].get('run_id') != run.get('run_id') or files[path].get('schema_version') != SCHEMA_VERSION \
                 or files[path].get('method_version') != RS.METHOD_VERSION:
             p.append(f'{path}: from another run, schema or method version')
+    if isinstance(run.get('run_id'), str) and run['run_id'][-10:] != run_identity(run, {k: files[k] for k in listed}):
+        p.append('run.json run_id does not follow from the content of the family')
     leaked = _walk_keys(files['records.json']) & PRIVATE_KEYS
     if leaked:
         p.append(f'review-file keys present in records.json: {sorted(leaked)}')

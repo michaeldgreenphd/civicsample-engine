@@ -451,6 +451,29 @@ def test_the_archive_encoder_is_among_the_files_whose_uncommitted_changes_are_re
     assert all((ROOT / p).exists() for p in build_results_structure.PRODUCER_PATHS)
 
 
+def test_two_builds_that_publish_different_content_never_share_a_run_id() -> None:
+    """Same archive bytes, same request, same code and reviews; the only difference is why a
+    requested trial is missing, which comes from the archive's metadata file and reaches records.json."""
+    def family(reason: str, generated_at: str = F.GENERATED_AT) -> dict[str, Any]:
+        records, problems = B.build_records([F.study(1)], ['NCT99000001', 'NCT99000002'], {'NCT99000002': reason}, {})
+        acq = {'retrieved_at': F.GENERATED_AT, 'sha256_uncompressed': 'a' * 64}
+        scope = B.build_scope(['NCT99000001', 'NCT99000002'], ['NCT99000001', 'NCT99000002'])
+        producer = {'repository': 'x', 'commit': 'c' * 40, 'uncommitted_changes': False, 'source_sha256': '1' * 64}
+        return B.build(records, problems, acq, producer, {'sha256': 'r' * 64}, {}, scope, generated_at=generated_at)
+    a, b = family('HTTP 500 after 3 attempts'), family('not returned by the registry for filter.ids')
+    assert a['records.json']['records']['NCT99000002'] != b['records.json']['records']['NCT99000002']
+    assert a['run.json']['run_id'] != b['run.json']['run_id']
+    # the same content gives the same id, whenever it is built
+    later = family('HTTP 500 after 3 attempts', generated_at='2030-01-01T00:00:00+00:00')
+    assert later['run.json']['run_id'] == a['run.json']['run_id'] and B.check(a) == [] and B.check(b) == []
+    # an id that does not follow from the content is refused, even with every checksum consistent
+    swapped = json.loads(json.dumps(b))
+    for name in ('run.json', 'summary.json', 'records.json'):
+        swapped[name]['run_id'] = a['run.json']['run_id']
+    swapped['run.json']['files'] = {n: B.sha256(B.dump(swapped[n])) for n in ('records.json', 'summary.json')}
+    assert B.check(swapped) == ['run.json run_id does not follow from the content of the family']
+
+
 def test_a_build_from_changed_code_does_not_share_a_run_id_with_a_clean_one(family: dict[str, Any], tmp_path: Path) -> None:
     def run_id(producer: dict[str, Any]) -> str:
         records, problems = B.build_records([F.study(1)], ['NCT99000001'], {}, {})
