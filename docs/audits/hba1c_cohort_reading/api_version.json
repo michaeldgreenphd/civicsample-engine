@@ -1,0 +1,13 @@
+{
+  "url": "https://clinicaltrials.gov/api/v2/version",
+  "retrieved_at_utc": "2026-11-14T01:20:38.339605Z",
+  "http_status": 200,
+  "sha256": "dea044878c7aea78177cd07e98ed31b379112d63ee5391c0d04810970baff87c",
+  "apiVersion": "2.0.5",
+  "dataTimestamp": "2026-11-13T10:00:06",
+  "raw_response": {
+    "apiVersion": "2.0.5",
+    "dataTimestamp": "2026-11-13T10:00:06"
+  },
+  "error": ""
+}
