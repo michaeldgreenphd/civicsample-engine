@@ -35,7 +35,7 @@ def _build(tmp: Path) -> Path:
 def test_the_export_keeps_one_site_basis_and_names_its_build(tmp_path: Path) -> None:
     out = tmp_path / 'site'
     manifest = export_site.export(_build(tmp_path), out)
-    assert manifest['run_id'] == 'census-data-2099-01-01-abcdef0123'
+    assert manifest['run_id'].startswith('census-data-2099-01-01-abcdef0123-') and len(manifest['run_id']) == 42
     race = json.loads((out / 'areas.race.json').read_text())
     assert race['run_id'] == manifest['run_id'] and len(race['areas']) == 1          # the other site basis stays with the build
     assert 'site_basis' not in race['areas'][0] and race['site_basis'] == 'one_listed_facility'
@@ -43,6 +43,21 @@ def test_the_export_keeps_one_site_basis_and_names_its_build(tmp_path: Path) -> 
     assert json.loads((out / 'summary.json').read_text())['run_id'] == manifest['run_id']
     assert set(manifest['files']) == {'areas.race.json', 'areas.ethnicity.json', 'areas.sex.json', 'summary.json'}
     assert 'sources' not in manifest and manifest['n_sources'] == 1                 # URLs stay with the build's manifest
+
+
+def test_two_builds_of_one_release_at_one_commit_get_different_ids(tmp_path: Path) -> None:
+    # the registry is read live, so the same code and release can give different files
+    for name in 'abc':
+        (tmp_path / name).mkdir()
+    first = export_site.export(_build(tmp_path / 'a'), tmp_path / 'a' / 'site')
+    build = _build(tmp_path / 'b')
+    (build / 'summary.json').write_text(json.dumps({'schema_version': 1, 'cohort_funnel': {'records': 10}}))
+    run = json.loads((build / 'run.json').read_text())
+    run['files']['summary.json'] = hashlib.sha256((build / 'summary.json').read_bytes()).hexdigest()
+    (build / 'run.json').write_text(json.dumps(run))
+    second = export_site.export(build, tmp_path / 'b' / 'site')
+    assert first['run_id'] != second['run_id'] and first['run_id'][:33] == second['run_id'][:33]
+    assert export_site.export(_build(tmp_path / 'c'), tmp_path / 'c' / 'site')['run_id'] == first['run_id']
 
 
 def test_an_altered_build_is_refused(tmp_path: Path) -> None:
@@ -93,3 +108,34 @@ def test_the_api_check_never_puts_the_key_in_an_error(monkeypatch: pytest.Monkey
     with pytest.raises(RuntimeError) as err:
         check.fetch(['B01001_001E'], '06')
     assert 'SECRETKEY123' not in str(err.value) and 'key=REDACTED' in str(err.value) and '429' in str(err.value)
+
+
+def test_unreadable_eligibility_ages_are_written_at_every_level() -> None:
+    build = _load('build_census_benchmarks', 'scripts/build_census_benchmarks.py')
+    rec = {'nct_id': 'NCT1', 'enrollment': 40, 'min_age': 'adult', 'max_age': 'N/A', 'eligibility': {'sex': 'ALL'},
+           'start_date': '2016-01-01', 'primary_completion_date': '2017-01-01',
+           'study_sites': [{'country': 'United States', 'zip': '02114', 'state': 'Massachusetts'}],
+           'race': {'reported': True, 'omb_totals': {'white': 30, 'asian': 10}}}
+    row = build.trial_row(rec, {'found': True, 'n_locations_now': 1, 'text': ''}, set())
+    assert 'error' in row['eligibility']
+    row.pop('_point', None)
+    resolution = {lvl: {'geoid': '1'} for lvl in build.LEVEL_ORDER}
+    build.add_dimensions(row, rec, resolution, {})
+    race = row['dimensions']['race']
+    assert race['pooled'] is False and race['not_pooled_reason'] == 'eligible_ages_unreadable'
+    assert race['benchmarks'] == {lvl: {'available': False, 'reason': 'eligible_ages_unreadable'} for lvl in build.LEVEL_ORDER}
+    assert race['geography_sensitivity'] == {'levels_compared': [], 'flag': None, 'reason': 'eligible_ages_unreadable'}
+
+
+def test_a_lone_facility_that_moved_is_not_treated_as_the_release_site() -> None:
+    build = _load('build_census_benchmarks', 'scripts/build_census_benchmarks.py')
+    site = {'country': 'United States', 'zip': '02114-1234', 'state': 'Massachusetts', 'city': 'Boston', 'facility': 'Old name'}
+    rec = {'nct_id': 'NCT2', 'study_sites': [site], 'min_age': '18 Years', 'max_age': 'N/A', 'eligibility': {'sex': 'ALL'}}
+    same = {'city': 'boston', 'state': 'Massachusetts', 'zip': '02114', 'country': 'United States'}
+    facts = {'found': True, 'n_locations_now': 1, 'text': 'A single-center study', 'point': (42.3, -71.1)}
+    kept = build.trial_row(rec, {**facts, 'place_now': same}, set())
+    assert kept['site_count']['tier'] == 'self_described_single_site' and kept['_point'] == (42.3, -71.1)
+    moved = build.trial_row(rec, {**facts, 'place_now': {**same, 'city': 'Worcester', 'zip': '01605'}}, set())
+    assert moved['site_count']['tier'] == 'listing_changed_since_release' and moved['_point'] is None
+    assert moved['site_count']['place_in_registry_now']['city'] == 'Worcester'
+    assert build.place_changed(site, None) is False          # no place recorded: no change can be shown

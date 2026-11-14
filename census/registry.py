@@ -67,7 +67,7 @@ def read_archive(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]
 
 def site_facts(study: dict[str, Any] | None) -> dict[str, Any]:
     """What the live registration adds for one trial: text for the tier, the city point, how
-    many locations it lists today, and the enrolment type."""
+    many locations it lists today and where the only one is, and the enrolment type."""
     p = (study or {}).get('protocolSection') or {}
     locs = (p.get('contactsLocationsModule') or {}).get('locations') or []
     d = p.get('descriptionModule') or {}
@@ -76,7 +76,10 @@ def site_facts(study: dict[str, Any] | None) -> dict[str, Any]:
                                    d.get('briefSummary'), d.get('detailedDescription')) if x)
     point = (locs[0].get('geoPoint') or {}) if len(locs) == 1 else {}
     enrol = (p.get('designModule') or {}).get('enrollmentInfo') or {}
-    return {'found': study is not None, 'text': text, 'n_locations_now': len(locs),
+    # Where the one listed facility is today, so the build can tell whether it is still the
+    # site the release recorded before it uses today's city point beside the release's ZIP.
+    place = {k: locs[0].get(k) for k in ('city', 'state', 'zip', 'country')} if len(locs) == 1 else None
+    return {'found': study is not None, 'text': text, 'n_locations_now': len(locs), 'place_now': place,
             'point': (point['lat'], point['lon']) if 'lat' in point and 'lon' in point else None,
             'location_status': locs[0].get('status') if len(locs) == 1 else None,
             'enrollment_type': enrol.get('type'), 'enrollment': enrol.get('count')}

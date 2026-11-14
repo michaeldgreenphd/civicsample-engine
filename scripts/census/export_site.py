@@ -37,7 +37,11 @@ def export(build: Path, out: Path) -> dict[str, Any]:
         if name != 'run.json' and sha256(build / name) != digest:
             raise ValueError(f'{name}: bytes do not match the build manifest')
     areas = json.loads((build / 'areas.json').read_text())['areas']
-    run_id = f"census-{run['source_release']['tag']}-{(run['producer']['commit'] or 'unknown')[:10]}"
+    # The id names the build's bytes, not only its code: the registry text and locations are
+    # read live, so the same release at the same commit can give different files on another
+    # day. The digest covers every build file the manifest lists (which is all but run.json).
+    digest = hashlib.sha256(json.dumps(sorted((k, v) for k, v in run['files'].items() if k != 'run.json')).encode()).hexdigest()
+    run_id = f"census-{run['source_release']['tag']}-{(run['producer']['commit'] or 'unknown')[:10]}-{digest[:8]}"
     stage = Path(tempfile.mkdtemp(prefix='census_site_', dir=out.parent))
     for dim in DIMENSIONS:
         rows = [{k: v for k, v in a.items() if k not in ('dimension', 'site_basis')}

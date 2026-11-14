@@ -225,6 +225,8 @@ def test_registry_facts_take_the_point_only_from_a_single_location() -> None:
                                'contactsLocationsModule': {'locations': [{'geoPoint': {'lat': 1.0, 'lon': 2.0}}]}}}
     two = {'protocolSection': {'contactsLocationsModule': {'locations': [{'geoPoint': {'lat': 1.0, 'lon': 2.0}}, {}]}}}
     assert registry.site_facts(one)['point'] == (1.0, 2.0) and 'single-center' in registry.site_facts(one)['text']
+    assert registry.site_facts(one)['place_now'] == {'city': None, 'state': None, 'zip': None, 'country': None}
+    assert registry.site_facts(two)['place_now'] is None
     assert registry.site_facts(two)['point'] is None and registry.site_facts(two)['n_locations_now'] == 2
     assert registry.site_facts(None)['found'] is False
 

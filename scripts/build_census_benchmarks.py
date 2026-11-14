@@ -98,6 +98,19 @@ def producer() -> dict[str, Any]:
             'uncommitted_changes': bool(run('status', '--porcelain', '--', 'census', 'scripts/build_census_benchmarks.py'))}
 
 
+def place_changed(release_site: dict[str, Any], place_now: dict[str, Any] | None) -> bool:
+    """Whether the single facility in today's record is somewhere other than the release's.
+
+    Compares city, state, country and five-digit ZIP, ignoring case and spacing. The facility
+    name is left out: institutions are renamed without moving. A record that carries no place
+    (an older archive, or a test double) cannot show a change and is not treated as one."""
+    if not place_now or not any(place_now.values()):
+        return False
+    norm = lambda v: ' '.join(str(v or '').casefold().split())  # noqa: E731
+    same_zip = norm(release_site.get('zip'))[:5] == norm(place_now.get('zip'))[:5]
+    return not same_zip or any(norm(release_site.get(k)) != norm(place_now.get(k)) for k in ('city', 'state', 'country'))
+
+
 def trial_row(rec: dict[str, Any], facts: dict[str, Any], referral: set[str]) -> dict[str, Any]:
     """Everything decided about one trial before any census data is read."""
     site = rec['study_sites'][0]
@@ -119,6 +132,13 @@ def trial_row(rec: dict[str, Any], facts: dict[str, Any], referral: set[str]) ->
     elif facts.get('n_locations_now') != 1:
         # the release and today's record disagree about the site list: not single-site today
         row['site_count']['tier'] = 'listing_changed_since_release'
+    elif place_changed(site, facts.get('place_now')):
+        # Still one facility, but not where the release recorded it. The ZIP comes from the
+        # release and the city point from today's record, so together they would describe two
+        # different sites: the point is dropped and the trial leaves both site bases.
+        row['site_count']['tier'] = 'listing_changed_since_release'
+        row['site_count']['place_in_registry_now'] = facts['place_now']
+        row['_point'] = None
     try:
         lo, hi = trials.eligible_ages(rec)
         row['eligibility'] = {'min_age': rec.get('min_age'), 'max_age': rec.get('max_age'), 'age_from': lo,
@@ -185,10 +205,14 @@ def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[st
         if reason:
             d['not_pooled_reason'] = reason
         d['benchmarks'] = {}
-        if resolution is None:
-            d['benchmarks'] = {lvl: {'available': False, 'reason': 'no_benchmark_window'} for lvl in LEVEL_ORDER}
-            d['geography_sensitivity'] = {'levels_compared': [], 'flag': None, 'reason': 'no_benchmark_window'}
-        elif 'error' not in elig:
+        # Two conditions leave no reference population at any level. Each is written at every
+        # level with its reason, so the count of benchmarks always equals the count of tables.
+        blocked = ('eligible_ages_unreadable' if 'error' in elig
+                   else 'no_benchmark_window' if resolution is None else None)
+        if blocked:
+            d['benchmarks'] = {lvl: {'available': False, 'reason': blocked} for lvl in LEVEL_ORDER}
+            d['geography_sensitivity'] = {'levels_compared': [], 'flag': None, 'reason': blocked}
+        else:
             for lvl in LEVEL_ORDER:
                 where = resolution[lvl]
                 if not where.get('geoid'):
