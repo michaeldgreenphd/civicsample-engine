@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T04:27:54+00:00 by `scripts/build_device_links.py build` at engine commit `e76cdf98ae0c` (no uncommitted changes; producing-code digest `e38686c646b7…`), run id `devices-2026-11-14-948d8c09ac`, method `device-links-1` |
+| Built | 2026-11-14T04:37:44+00:00 by `scripts/build_device_links.py build` at engine commit `0f54e7b87aa2` (no uncommitted changes; producing-code digest `6a35a051da37…`), run id `devices-2026-11-14-8750e49382`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -114,4 +114,6 @@ It was rebuilt a fifth time after the fourth review round, at `d8718fc` (run `de
 
 It was rebuilt a sixth time after the fifth review round, at `e44576a` (run `devices-2026-11-14-4e740bb9b3`). That round's two fixes (an NCT id in document text must not run into a letter; an original PMA number must stand alone, not as part of a supplement's number) change no output of this run. Every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a seventh time after the sixth review round, at the commit named above. That round's two fixes (an FDA database page that answers without naming the number asked for is logged as `not_the_record` and asked again, not taken as FDA's answer; a local file that is not a PDF is not copied into the document store and does not settle its address) change no output of this run: all 1,431 database pages in the frozen cache name their own number, and all 12 recovered local files are PDFs. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a seventh time after the sixth review round, at `e76cdf9` (run `devices-2026-11-14-948d8c09ac`). That round's two fixes (an FDA database page that answers without naming the number asked for is logged as `not_the_record` and asked again, not taken as FDA's answer; a local file that is not a PDF is not copied into the document store and does not settle its address) change no output of this run: all 1,431 database pages in the frozen cache name their own number, and all 12 recovered local files are PDFs. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt an eighth time after the seventh review round, at the commit named above. That round's two fixes (a registry record citing another supplement of the same PMA is not a citation of the supplement sought or of the original; a PMA database page is confirmed from its "PMA Number" and "Supplement Number" rows, not from the base number appearing anywhere on it) change no output of this run. Every output file is identical to the previous build apart from the run id. The build reads the page verdicts recorded at acquisition, so the new page check was also run over all 1,431 cached pages: it confirms each one (1,376 510(k), 37 De Novo and 18 PMA pages).
