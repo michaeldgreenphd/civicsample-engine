@@ -1,0 +1,547 @@
+{
+ "n_devices": 80,
+ "class_counts": {
+  "i": 11,
+  "iv-b": 3,
+  "iii": 41,
+  "ii-c": 1,
+  "iv-a": 20,
+  "ii": 4
+ },
+ "class_rollup": {
+  "i": 11,
+  "ii": 5,
+  "iii": 41,
+  "iv": 23
+ },
+ "class_rollup_wilson95_pct": {
+  "i": [
+   7.9,
+   23.0
+  ],
+  "ii": [
+   2.7,
+   13.8
+  ],
+  "iii": [
+   40.5,
+   61.9
+  ],
+  "iv": [
+   20.0,
+   39.5
+  ]
+ },
+ "class_by_stratum": {
+  "2016-2018": {
+   "i": 2,
+   "iv-b": 1,
+   "iii": 2,
+   "ii-c": 1
+  },
+  "2019": {
+   "iii": 3,
+   "i": 1,
+   "iv-b": 1
+  },
+  "2020": {
+   "iii": 4,
+   "iv-a": 1,
+   "i": 1
+  },
+  "2021": {
+   "iii": 3,
+   "i": 3,
+   "iv-a": 1
+  },
+  "2022": {
+   "iii": 3,
+   "iv-a": 3,
+   "ii": 3
+  },
+  "2023": {
+   "iii": 10,
+   "iv-b": 1,
+   "iv-a": 2
+  },
+  "2024": {
+   "ii": 1,
+   "iii": 9,
+   "iv-a": 2,
+   "i": 1
+  },
+  "2025": {
+   "iv-a": 10,
+   "i": 3,
+   "iii": 6
+  },
+  "<=2015": {
+   "iv-a": 1,
+   "iii": 1
+  }
+ },
+ "class_by_pathway": {
+  "510(k)": {
+   "i": 9,
+   "iii": 40,
+   "ii-c": 1,
+   "iv-b": 2,
+   "iv-a": 19,
+   "ii": 4
+  },
+  "De Novo": {
+   "iv-b": 1,
+   "i": 1,
+   "iv-a": 1
+  },
+  "PMA": {
+   "i": 1,
+   "iii": 1
+  }
+ },
+ "class_by_name_generic": {
+  "False": {
+   "i": 11,
+   "iv-b": 1,
+   "iii": 31,
+   "iv-a": 17,
+   "ii": 4
+  },
+  "True": {
+   "ii-c": 1,
+   "iii": 10,
+   "iv-b": 2,
+   "iv-a": 3
+  }
+ },
+ "hits_per_query": {
+  "n_intr_raw": {
+   "devices_queried": 80,
+   "zero_hits": 61,
+   "ge1": 19,
+   "gt10_truncated_at_page": 7,
+   "ge50_flood": 3,
+   "median": 0.0,
+   "max": 166
+  },
+  "n_term_raw": {
+   "devices_queried": 80,
+   "zero_hits": 65,
+   "ge1": 15,
+   "gt10_truncated_at_page": 3,
+   "ge50_flood": 2,
+   "median": 0.0,
+   "max": 8283
+  },
+  "n_intr_core": {
+   "devices_queried": 22,
+   "zero_hits": 11,
+   "ge1": 11,
+   "gt10_truncated_at_page": 4,
+   "ge50_flood": 1,
+   "median": 0.5,
+   "max": 299
+  },
+  "n_term_core": {
+   "devices_queried": 22,
+   "zero_hits": 17,
+   "ge1": 5,
+   "gt10_truncated_at_page": 3,
+   "ge50_flood": 2,
+   "median": 0.0,
+   "max": 66
+  },
+  "s_spons_l1": {
+   "devices_queried": 80,
+   "zero_hits": 31,
+   "ge1": 49,
+   "gt10_truncated_at_page": 6,
+   "ge50_flood": 1,
+   "median": 1.0,
+   "max": 60
+  },
+  "s_lead_l1": {
+   "devices_queried": 80,
+   "zero_hits": 52,
+   "ge1": 28,
+   "gt10_truncated_at_page": 4,
+   "ge50_flood": 1,
+   "median": 0.0,
+   "max": 55
+  },
+  "s_spons_brand": {
+   "devices_queried": 39,
+   "zero_hits": 10,
+   "ge1": 29,
+   "gt10_truncated_at_page": 17,
+   "ge50_flood": 12,
+   "median": 6,
+   "max": 394
+  },
+  "c_term_spons": {
+   "devices_queried": 80,
+   "zero_hits": 69,
+   "ge1": 11,
+   "gt10_truncated_at_page": 1,
+   "ge50_flood": 0,
+   "median": 0.0,
+   "max": 16
+  },
+  "c_intr_spons": {
+   "devices_queried": 80,
+   "zero_hits": 68,
+   "ge1": 12,
+   "gt10_truncated_at_page": 0,
+   "ge50_flood": 0,
+   "median": 0.0,
+   "max": 9
+  }
+ },
+ "devices_any_intr_hit": 30,
+ "devices_any_term_phrase_hit": 20,
+ "devices_any_name_hit": 30,
+ "devices_core_differs_from_raw": 22,
+ "devices_raw_zero_but_core_hits": 11,
+ "devices_any_sponsor_hit": 55,
+ "devices_sponsor_l1_hit": 49,
+ "devices_lead_l1_hit": 28,
+ "floods": [
+  {
+   "submission_number": "K161772",
+   "device": "FFRct",
+   "class": "i",
+   "counts": {
+    "n_intr_raw": 31,
+    "n_term_raw": 55
+   }
+  },
+  {
+   "submission_number": "K211118",
+   "device": "SIGNA 7.0T",
+   "class": "i",
+   "counts": {
+    "n_intr_raw": 0,
+    "n_term_raw": 0,
+    "n_intr_core": 31,
+    "n_term_core": 57
+   }
+  },
+  {
+   "submission_number": "K223811",
+   "device": "Lung-CAD",
+   "class": "iv-b",
+   "counts": {
+    "n_intr_raw": 93,
+    "n_term_raw": 1
+   }
+  },
+  {
+   "submission_number": "K232501",
+   "device": "AI Platform (AIP001)",
+   "class": "iii",
+   "counts": {
+    "n_intr_raw": 0,
+    "n_term_raw": 0,
+    "n_intr_core": 299,
+    "n_term_core": 66
+   }
+  },
+  {
+   "submission_number": "K223514",
+   "device": "Spectral Bone Marrow",
+   "class": "iii",
+   "counts": {
+    "n_intr_raw": 166,
+    "n_term_raw": 0
+   }
+  },
+  {
+   "submission_number": "K231355",
+   "device": "Aurora",
+   "class": "ii",
+   "counts": {
+    "n_intr_raw": 139,
+    "n_term_raw": 8283
+   }
+  }
+ ],
+ "generic_names_in_sample": 16,
+ "name_match_other_sponsor": [
+  {
+   "submission_number": "K161772",
+   "device": "FFRct",
+   "matched_form": [
+    "ffrct"
+   ],
+   "n_studies": 5,
+   "lead_sponsors": [
+    "Bjarne Linde Noergaard",
+    "Centro Cardiologico Monzino",
+    "Guiyang No.4 People's Hospital",
+    "Hemolens Diagnostics Sp. z o.o.",
+    "University Hospital Southampton NHS Foundation Trust"
+   ],
+   "intervention_types": [
+    "DEVICE",
+    "DIAGNOSTIC_TEST",
+    "DRUG",
+    "PROCEDURE",
+    "RADIATION"
+   ]
+  },
+  {
+   "submission_number": "K211118",
+   "device": "SIGNA 7.0T",
+   "matched_form": [
+    "signa"
+   ],
+   "n_studies": 1,
+   "lead_sponsors": [
+    "Orvida Pharma (formerly Kamari Pharma)"
+   ],
+   "intervention_types": [
+    "DIAGNOSTIC_TEST",
+    "DRUG",
+    "OTHER",
+    "PROCEDURE"
+   ]
+  },
+  {
+   "submission_number": "K220800",
+   "device": "Venue Go",
+   "matched_form": [
+    "venue",
+    "venue go"
+   ],
+   "n_studies": 2,
+   "lead_sponsors": [
+    "National Development and Research Institutes, Inc.",
+    "University of Siena"
+   ],
+   "intervention_types": [
+    "BEHAVIORAL",
+    "DIAGNOSTIC_TEST",
+    "OTHER"
+   ]
+  },
+  {
+   "submission_number": "K213409",
+   "device": "ZEUS System (Zio Watch)",
+   "matched_form": [
+    "zeus"
+   ],
+   "n_studies": 3,
+   "lead_sponsors": [
+    "Sidra Medicine",
+    "Sun Yat-sen University",
+    "be Medical"
+   ],
+   "intervention_types": [
+    "OTHER",
+    "PROCEDURE"
+   ]
+  },
+  {
+   "submission_number": "K213657",
+   "device": "DEEPVESSEL FFR",
+   "matched_form": [
+    "deepvessel ffr"
+   ],
+   "n_studies": 1,
+   "lead_sponsors": [
+    "Keya Medical"
+   ],
+   "intervention_types": [
+    "OTHER"
+   ]
+  },
+  {
+   "submission_number": "K231355",
+   "device": "Aurora",
+   "matched_form": [
+    "aurora"
+   ],
+   "n_studies": 7,
+   "lead_sponsors": [
+    "Beijing Tiantan Hospital",
+    "Eye & ENT Hospital of Fudan University",
+    "Kindai University",
+    "Massachusetts General Hospital",
+    "Mayo Clinic",
+    "Millennium Pharmaceuticals, Inc.",
+    "WV Health Right, Inc."
+   ],
+   "intervention_types": [
+    "BEHAVIORAL",
+    "DRUG",
+    "OTHER"
+   ]
+  },
+  {
+   "submission_number": "K250650",
+   "device": "SpotLight / SpotLight Duo with Low Dose Lung Cancer Screening Option",
+   "matched_form": [
+    "spotlight"
+   ],
+   "n_studies": 6,
+   "lead_sponsors": [
+    "Centre Hospitalier Intercommunal Creteil",
+    "Children's Mercy Hospital Kansas City",
+    "ISBRG Corp",
+    "Novartis Pharmaceuticals",
+    "Spotlight Medical",
+    "University of Colorado, Denver"
+   ],
+   "intervention_types": [
+    "BEHAVIORAL",
+    "DIAGNOSTIC_TEST",
+    "DRUG",
+    "OTHER"
+   ]
+  }
+ ],
+ "class_iii_best_sponsor_tier": {
+  "exact": 24,
+  "brand": 11,
+  "family_only": 6
+ },
+ "class_iii_with_name_in_intervention_description": 2,
+ "class_iii_with_company_only_name_in_intervention_or_title": 2,
+ "class_iii_name_generic": 10,
+ "class_iii_sponsor_role": {
+  "lead": 32,
+  "collaborator_only": 9
+ },
+ "class_iii_near_miss_shared_distinctive_token": 6,
+ "class_iii_near_miss_list": [
+  {
+   "submission_number": "K161068",
+   "device": "Ahead 300",
+   "nct_id": "NCT01430988",
+   "shared_tokens": [
+    "ahead"
+   ],
+   "interventions": [],
+   "brief_title": "Observational Study of the BrainScope\u00ae Ahead\u2122 M-100 in UK Emergency Department Patients With Head Injury"
+  },
+  {
+   "submission_number": "K211179",
+   "device": "InferRead CT Stroke.AI",
+   "nct_id": "NCT04119960",
+   "shared_tokens": [
+    "inferread"
+   ],
+   "interventions": [
+    "Aided read with InferRead Lung CT.AI"
+   ],
+   "brief_title": "Clinical Validation of InferRead Lung CT.AI"
+  },
+  {
+   "submission_number": "K233568",
+   "device": "Ceevra Reveal 3+",
+   "nct_id": "NCT03334344",
+   "shared_tokens": [
+    "reveal"
+   ],
+   "interventions": [
+    "Ceevra Reveal"
+   ],
+   "brief_title": "Using Virtual Reality (VR) Models for Preoperative Planning"
+  },
+  {
+   "submission_number": "K221868",
+   "device": "QOCA image Smart CXR Image Processing System",
+   "nct_id": "NCT04384211",
+   "shared_tokens": [
+    "qoca"
+   ],
+   "interventions": [
+    "Computer Assisted Detection Software For Vertebral Fractures"
+   ],
+   "brief_title": "QOCA\u00ae-Image Medical Platform - Smart VCF Risk Management System"
+  },
+  {
+   "submission_number": "K233666",
+   "device": "CorVista System with PH Add-On",
+   "nct_id": "NCT04031989",
+   "shared_tokens": [
+    "corvista"
+   ],
+   "interventions": [
+    "CorVista Capture"
+   ],
+   "brief_title": "Repository of Phase Signals for Pulmonary Hypertension Algorithm Development"
+  },
+  {
+   "submission_number": "K243331",
+   "device": "LVivo Seamless",
+   "nct_id": "NCT05563701",
+   "shared_tokens": [
+    "lvivo"
+   ],
+   "interventions": [],
+   "brief_title": "Evaluation of the LVivo Image Quality Scoring (IQS)"
+  }
+ ],
+ "class_i_devices": 11,
+ "class_i_study_pairs": 34,
+ "class_i_pairs_per_device": {
+  "K161772": 9,
+  "K183012": 3,
+  "K182798": 1,
+  "K200921": 1,
+  "K211118": 1,
+  "DEN200038": 1,
+  "P200003": 8,
+  "K240408": 2,
+  "K243268": 6,
+  "K242388": 1,
+  "K250650": 1
+ },
+ "class_i_found_by_query": {
+  "c_term_spons": 20,
+  "n_intr_raw": 11,
+  "c_intr_spons": 23,
+  "s_lead_l1": 25,
+  "s_spons_l1": 26,
+  "n_term_raw": 8,
+  "n_term_core": 8,
+  "n_intr_core": 8,
+  "s_spons_brand": 8
+ },
+ "class_i_found_only_by_sponsor_queries": 8,
+ "class_i_name_where": {
+  "intervention_name": 19,
+  "intervention_other_name": 1,
+  "brief_title": 11,
+  "official_title": 3
+ },
+ "class_i_name_strength": {
+  "full": 24,
+  "trimmed": 10
+ },
+ "class_i_sponsor_tier_role": {
+  "exact/lead": 26,
+  "exact/collaborator": 6,
+  "brand/collaborator": 2
+ },
+ "class_i_timing_pairs": {
+  "primary completion on/before decision": 15,
+  "started more than 1 year after decision": 10,
+  "started before decision, primary completion after (or missing)": 6,
+  "started within 1 year after decision": 3
+ },
+ "class_i_study_type_pairs": {
+  "INTERVENTIONAL": 13,
+  "OBSERVATIONAL": 21
+ },
+ "class_i_has_results_pairs": {
+  "True": 12,
+  "False": 22
+ },
+ "class_i_timing_devices": {
+  "has >=1 study completed on/before decision": 7,
+  "all class (i) studies started after decision": 3,
+  "none completed before; >=1 ongoing at decision": 1
+ }
+}

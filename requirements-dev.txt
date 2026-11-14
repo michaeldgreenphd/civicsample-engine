@@ -6,3 +6,5 @@ pytest>=8.0.0
 jsonschema>=4.0.0
 # The census benchmark's geography resolver (manual build; see census/README.md).
 -r scripts/census/requirements.txt
+# Text extraction for the device-linkage tests (manual build; see devices/README.md).
+-r devices/requirements.txt

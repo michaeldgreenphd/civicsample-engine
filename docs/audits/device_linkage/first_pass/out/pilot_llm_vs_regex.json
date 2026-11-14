@@ -1,0 +1,258 @@
+[
+ {
+  "submission_number": "DEN140025",
+  "device": "BrainScope Ahead 100",
+  "page_count": 6,
+  "models": {
+   "haiku_4_5": {
+    "model_id": "claude-haiku-4-5-20251001",
+    "call_succeeded": true,
+    "nct_ids_state": "field_absent_malformed_output",
+    "nct_ids_value": null,
+    "any_nct_pattern_in_raw_output": []
+   },
+   "sonnet_4_6": {
+    "model_id": "claude-sonnet-4-6",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "opus_4_7": {
+    "model_id": "claude-opus-4-7",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   }
+  },
+  "llm_union": [],
+  "regex_union": [],
+  "regex_pdf_document_class": "De Novo granting order letter only (no decision summary)",
+  "agree": true
+ },
+ {
+  "submission_number": "DEN160026",
+  "device": "23andMe Personal Genome Service (PGS) Genetic Health Risk Test for Hereditary Thrombophilia",
+  "page_count": 23,
+  "models": {
+   "haiku_4_5": {
+    "model_id": "claude-haiku-4-5-20251001",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "sonnet_4_6": {
+    "model_id": "claude-sonnet-4-6",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "opus_4_7": {
+    "model_id": "claude-opus-4-7",
+    "call_succeeded": true,
+    "nct_ids_state": "present_misnested:/data/data/cited_clinical_studies/nct_ids",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   }
+  },
+  "llm_union": [],
+  "regex_union": [],
+  "regex_pdf_document_class": "De Novo granting order letter only (no decision summary)",
+  "agree": true
+ },
+ {
+  "submission_number": "DEN160044",
+  "device": "Acumen Hypotension Prediction Index (HPI) Feature Software",
+  "page_count": 4,
+  "models": {
+   "haiku_4_5": {
+    "model_id": "claude-haiku-4-5-20251001",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "sonnet_4_6": {
+    "model_id": "claude-sonnet-4-6",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "opus_4_7": {
+    "model_id": "claude-opus-4-7",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   }
+  },
+  "llm_union": [],
+  "regex_union": [],
+  "regex_pdf_document_class": "De Novo granting order letter only (no decision summary)",
+  "agree": true
+ },
+ {
+  "submission_number": "DEN170022",
+  "device": "QuantX",
+  "page_count": 5,
+  "models": {
+   "haiku_4_5": {
+    "model_id": "claude-haiku-4-5-20251001",
+    "call_succeeded": true,
+    "nct_ids_state": "field_absent_malformed_output",
+    "nct_ids_value": null,
+    "any_nct_pattern_in_raw_output": []
+   },
+   "sonnet_4_6": {
+    "model_id": "claude-sonnet-4-6",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "opus_4_7": {
+    "model_id": "claude-opus-4-7",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   }
+  },
+  "llm_union": [],
+  "regex_union": [],
+  "regex_pdf_document_class": "De Novo granting order letter only (no decision summary)",
+  "agree": true
+ },
+ {
+  "submission_number": "DEN170043",
+  "device": "DreaMed Advisor Pro",
+  "page_count": 4,
+  "models": {
+   "haiku_4_5": {
+    "model_id": "claude-haiku-4-5-20251001",
+    "call_succeeded": true,
+    "nct_ids_state": "field_absent_malformed_output",
+    "nct_ids_value": null,
+    "any_nct_pattern_in_raw_output": []
+   },
+   "sonnet_4_6": {
+    "model_id": "claude-sonnet-4-6",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "opus_4_7": {
+    "model_id": "claude-opus-4-7",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   }
+  },
+  "llm_union": [],
+  "regex_union": [],
+  "regex_pdf_document_class": "De Novo granting order letter only (no decision summary)",
+  "agree": true
+ },
+ {
+  "submission_number": "DEN170073",
+  "device": "ContaCT",
+  "page_count": 5,
+  "models": {
+   "haiku_4_5": {
+    "model_id": "claude-haiku-4-5-20251001",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "sonnet_4_6": {
+    "model_id": "claude-sonnet-4-6",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "opus_4_7": {
+    "model_id": "claude-opus-4-7",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   }
+  },
+  "llm_union": [],
+  "regex_union": [],
+  "regex_pdf_document_class": "De Novo granting order letter only (no decision summary)",
+  "agree": true
+ },
+ {
+  "submission_number": "DEN170090",
+  "device": "MATRx plus",
+  "page_count": 4,
+  "models": {
+   "haiku_4_5": {
+    "model_id": "claude-haiku-4-5-20251001",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "sonnet_4_6": {
+    "model_id": "claude-sonnet-4-6",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "opus_4_7": {
+    "model_id": "claude-opus-4-7",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   }
+  },
+  "llm_union": [],
+  "regex_union": [],
+  "regex_pdf_document_class": "De Novo granting order letter only (no decision summary)",
+  "agree": true
+ },
+ {
+  "submission_number": "DEN170091",
+  "device": "EyeBOX",
+  "page_count": 5,
+  "models": {
+   "haiku_4_5": {
+    "model_id": "claude-haiku-4-5-20251001",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "sonnet_4_6": {
+    "model_id": "claude-sonnet-4-6",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   },
+   "opus_4_7": {
+    "model_id": "claude-opus-4-7",
+    "call_succeeded": true,
+    "nct_ids_state": "present_expected_path",
+    "nct_ids_value": [],
+    "any_nct_pattern_in_raw_output": []
+   }
+  },
+  "llm_union": [],
+  "regex_union": [],
+  "regex_pdf_document_class": "De Novo granting order letter only (no decision summary)",
+  "agree": true
+ }
+]

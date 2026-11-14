@@ -1,0 +1,16 @@
+pairs found by pdftotext scan 14
+pairs in the build from document citations 14
+in mine only []
+in build only []
+no-text files agree with build image_only: True 12
+K213357 510k_summary this_submission ['NCT04546763']
+K240712 510k_summary this_submission ['NCT01677572', 'NCT02477800', 'NCT02484547']
+P230022 pma_labeling this_submission ['NCT05201495', 'NCT05490459']
+K200667 510k_summary this_submission ['NCT03112005']
+K241676 510k_summary this_submission ['NCT04094818']
+K173821 510k_summary this_submission ['NCT01101958']
+DEN200055 de_novo_decision_summary this_submission ['NCT01694966', 'NCT04079478']
+K243812 510k_summary this_submission ['NCT04702451']
+K251221 510k_summary this_submission ['NCT06172699']
+P140011/S008 pma_ssed parent_submission ['NCT01373671']
+K241676 510k_decision_summary this_submission ['NCT04094818']

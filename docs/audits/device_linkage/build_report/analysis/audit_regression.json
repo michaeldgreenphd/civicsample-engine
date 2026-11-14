@@ -1,0 +1,905 @@
+{
+ "sample": {
+  "n": 80,
+  "frame": 1430,
+  "seed": 20261113,
+  "strata": {
+   "2016-2018": {
+    "frame": 110,
+    "drawn": 6
+   },
+   "2019": {
+    "frame": 80,
+    "drawn": 5
+   },
+   "2020": {
+    "frame": 114,
+    "drawn": 6
+   },
+   "2021": {
+    "frame": 130,
+    "drawn": 7
+   },
+   "2022": {
+    "frame": 162,
+    "drawn": 9
+   },
+   "2023": {
+    "frame": 226,
+    "drawn": 13
+   },
+   "2024": {
+    "frame": 235,
+    "drawn": 13
+   },
+   "2025": {
+    "frame": 331,
+    "drawn": 19
+   },
+   "<=2015": {
+    "frame": 42,
+    "drawn": 2
+   }
+  }
+ },
+ "audit_class_by_build_class": {
+  "i -> name_and_organisation_candidate": 9,
+  "i -> name_only_candidate": 1,
+  "i -> name_only_rejected_common_word": 1,
+  "ii -> name_only_candidate": 3,
+  "ii -> name_only_rejected_common_word": 1,
+  "ii -> none:no_candidate_in_completed_scope": 1,
+  "iii -> none:no_candidate_in_completed_scope": 35,
+  "iii -> none:not_searched": 6,
+  "iv -> none:no_candidate_in_completed_scope": 21,
+  "iv -> none:not_searched": 2
+ },
+ "audit_class_i_devices": 11,
+ "build_name_and_organisation_among_sample": 9,
+ "audit_class_i_pairs": 34,
+ "audit_class_i_unique_studies": 34,
+ "audit_class_i_pairs_in_build": {
+  "device_name_and_organisation_match": 32,
+  "device_name_match": 1,
+  "device_name_match:rejected_by_rule": 1
+ },
+ "build_pairs_for_sampled_families": 192,
+ "build_pairs_by_method": {
+  "device_name_and_organisation_match:not_validated": 33,
+  "device_name_match:rejected_by_rule": 139,
+  "device_name_match:not_validated": 20
+ },
+ "build_pairs_not_in_audit_class_i": 158,
+ "stratified_estimate_pct": {
+  "audit_class_i": 13.8,
+  "unweighted_audit_class_i": 13.8,
+  "build_rule_on_sample": 11.2
+ },
+ "build_rule_census": {
+  "n_submissions": 1430,
+  "by_class": {
+   "name_and_organisation_candidate": 169,
+   "name_only_candidate": 120,
+   "name_only_rejected_common_word": 40,
+   "none:no_candidate_in_completed_scope": 1070,
+   "none:not_searched": 23,
+   "none:search_incomplete_or_blocked": 8
+  },
+  "name_and_organisation_pct": 11.8
+ },
+ "submission_number_route": {
+  "audit": {
+   "DEN170073 NCT04608617": true,
+   "K202212 NCT06575179": false,
+   "K202404 NCT06442943": false,
+   "K240036 NCT07178080": true
+  },
+  "build": {
+   "DEN170073 NCT04608617": "identifier_confirmed",
+   "K202212 NCT06575179": "rejected_by_rule",
+   "K202404 NCT06442943": "rejected_by_rule",
+   "K240036 NCT07178080": "identifier_confirmed"
+  }
+ },
+ "per_device": [
+  {
+   "submission_number": "K161772",
+   "audit_class": "i",
+   "build": "name_and_organisation_candidate",
+   "device": "FFRct"
+  },
+  {
+   "submission_number": "DEN170022",
+   "audit_class": "iv-b",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "QuantX"
+  },
+  {
+   "submission_number": "K183012",
+   "audit_class": "i",
+   "build": "name_and_organisation_candidate",
+   "device": "vascuCAP"
+  },
+  {
+   "submission_number": "K161068",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Ahead 300"
+  },
+  {
+   "submission_number": "K171936",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Peerbridge Cor(TM) System"
+  },
+  {
+   "submission_number": "K181288",
+   "audit_class": "ii-c",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Athelas One"
+  },
+  {
+   "submission_number": "K181823",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "KardiaAI"
+  },
+  {
+   "submission_number": "K191493",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Ventripoint Medical System Plus (VMS+) 3.0"
+  },
+  {
+   "submission_number": "K182798",
+   "audit_class": "i",
+   "build": "name_and_organisation_candidate",
+   "device": "KIDScore D3"
+  },
+  {
+   "submission_number": "K192107",
+   "audit_class": "iv-b",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Clarius Ultrasound Scanner"
+  },
+  {
+   "submission_number": "K183204",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Bone VCAR (BVCAR)"
+  },
+  {
+   "submission_number": "K192437",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Arterys MICA"
+  },
+  {
+   "submission_number": "K192004",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Eko Analysis Software"
+  },
+  {
+   "submission_number": "K193417",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "FractureDetect (FX)"
+  },
+  {
+   "submission_number": "K200833",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "RX-1 Rhythm Express Remote Cardiac Monitoring System"
+  },
+  {
+   "submission_number": "K192601",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "uWS-MR"
+  },
+  {
+   "submission_number": "K200921",
+   "audit_class": "i",
+   "build": "name_only_candidate",
+   "device": "qER"
+  },
+  {
+   "submission_number": "K211179",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "InferRead CT Stroke.AI"
+  },
+  {
+   "submission_number": "K193271",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "uAI EasyTriage-Rib"
+  },
+  {
+   "submission_number": "K211118",
+   "audit_class": "i",
+   "build": "name_only_rejected_common_word",
+   "device": "SIGNA 7.0T"
+  },
+  {
+   "submission_number": "K213628",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "VBrain"
+  },
+  {
+   "submission_number": "DEN200038",
+   "audit_class": "i",
+   "build": "name_and_organisation_candidate",
+   "device": "Gili Pro BioSensor (also known as Gili BioSensor System)"
+  },
+  {
+   "submission_number": "K211161",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Critical Care Suite with Endotracheal Tube Positing AI algorithm"
+  },
+  {
+   "submission_number": "P200003",
+   "audit_class": "i",
+   "build": "name_and_organisation_candidate",
+   "device": "Imagio Breast Imaging System"
+  },
+  {
+   "submission_number": "K220961",
+   "audit_class": "iii",
+   "build": "none:not_searched",
+   "device": "Deep Learning Image Reconstruction"
+  },
+  {
+   "submission_number": "K213998",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "cvi42 Auto Imaging Software Application"
+  },
+  {
+   "submission_number": "K211841",
+   "audit_class": "iv-a",
+   "build": "none:not_searched",
+   "device": "MRI Planner"
+  },
+  {
+   "submission_number": "K221248",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Rapid LVO"
+  },
+  {
+   "submission_number": "K220800",
+   "audit_class": "ii",
+   "build": "name_only_candidate",
+   "device": "Venue Go"
+  },
+  {
+   "submission_number": "K220416",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "SwiftMR"
+  },
+  {
+   "submission_number": "K220013",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "X100HT with Slide Loader with Full Field Peripheral Blood Smear (PBS) Application"
+  },
+  {
+   "submission_number": "K213409",
+   "audit_class": "ii",
+   "build": "name_only_candidate",
+   "device": "ZEUS System (Zio Watch)"
+  },
+  {
+   "submission_number": "K213657",
+   "audit_class": "ii",
+   "build": "name_only_candidate",
+   "device": "DEEPVESSEL FFR"
+  },
+  {
+   "submission_number": "K233176",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "uOmnispace.MI"
+  },
+  {
+   "submission_number": "K233568",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Ceevra Reveal 3+"
+  },
+  {
+   "submission_number": "K221868",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "QOCA image Smart CXR Image Processing System"
+  },
+  {
+   "submission_number": "K223811",
+   "audit_class": "iv-b",
+   "build": "none:not_searched",
+   "device": "Lung-CAD"
+  },
+  {
+   "submission_number": "K230497",
+   "audit_class": "iii",
+   "build": "none:not_searched",
+   "device": "Bladder AI (AIBV01)"
+  },
+  {
+   "submission_number": "K232257",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Clarius Bladder AI"
+  },
+  {
+   "submission_number": "K232501",
+   "audit_class": "iii",
+   "build": "none:not_searched",
+   "device": "AI Platform (AIP001)"
+  },
+  {
+   "submission_number": "K230074",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Rapid Aneurysm Triage and Notification"
+  },
+  {
+   "submission_number": "K223514",
+   "audit_class": "iii",
+   "build": "none:not_searched",
+   "device": "Spectral Bone Marrow"
+  },
+  {
+   "submission_number": "K232494",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "MAGNETOM Avanto fit; MAGNETOM Skyra fit"
+  },
+  {
+   "submission_number": "K230082",
+   "audit_class": "iii",
+   "build": "none:not_searched",
+   "device": "Auto Segmentation"
+  },
+  {
+   "submission_number": "K223639",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "VisAble.IO"
+  },
+  {
+   "submission_number": "K230823",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "AusculThing ACC"
+  },
+  {
+   "submission_number": "K231355",
+   "audit_class": "ii",
+   "build": "name_only_rejected_common_word",
+   "device": "Aurora"
+  },
+  {
+   "submission_number": "K240680",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "CDM Insights"
+  },
+  {
+   "submission_number": "K240290",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "AiMIFY (1.x)"
+  },
+  {
+   "submission_number": "K241331",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "MuscleView"
+  },
+  {
+   "submission_number": "K241681",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Overjet Image Enhancement Assist"
+  },
+  {
+   "submission_number": "K240062",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "ARVIS Shoulder"
+  },
+  {
+   "submission_number": "K233968",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "CINA-iPE"
+  },
+  {
+   "submission_number": "K240744",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "uMR 680"
+  },
+  {
+   "submission_number": "K240408",
+   "audit_class": "i",
+   "build": "name_and_organisation_candidate",
+   "device": "REMI-AI Rapid Detection Module (REMI-AI RDM)"
+  },
+  {
+   "submission_number": "K232250",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "SurgiCount+ System"
+  },
+  {
+   "submission_number": "K233677",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Biograph VK10"
+  },
+  {
+   "submission_number": "K242359",
+   "audit_class": "iii",
+   "build": "none:not_searched",
+   "device": "Strain AI (SAI001)"
+  },
+  {
+   "submission_number": "K233666",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "CorVista System with PH Add-On"
+  },
+  {
+   "submission_number": "K241546",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "aiCockpit AI Viewer"
+  },
+  {
+   "submission_number": "DEN240047",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Allix5"
+  },
+  {
+   "submission_number": "K243268",
+   "audit_class": "i",
+   "build": "name_and_organisation_candidate",
+   "device": "TipTraQ (TTQ001)"
+  },
+  {
+   "submission_number": "K243331",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "LVivo Seamless"
+  },
+  {
+   "submission_number": "K242994",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "OncoStudio (OS-01)"
+  },
+  {
+   "submission_number": "K242388",
+   "audit_class": "i",
+   "build": "name_and_organisation_candidate",
+   "device": "LensHooke X12 PRO Semen Analysis System"
+  },
+  {
+   "submission_number": "K251342",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "EchoPAC Software Only / EchoPAC Plug-in"
+  },
+  {
+   "submission_number": "K250650",
+   "audit_class": "i",
+   "build": "name_and_organisation_candidate",
+   "device": "SpotLight / SpotLight Duo with Low Dose Lung Cancer Screening Option"
+  },
+  {
+   "submission_number": "K243229",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Bunkerhill AVC"
+  },
+  {
+   "submission_number": "K251532",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Acorn 3D Software (AC-SEG-4009); Acorn 3DP Model (AC-101-XX)"
+  },
+  {
+   "submission_number": "K243684",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "BrightHeart View Classifier"
+  },
+  {
+   "submission_number": "K250694",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Scaida BrainCT-ICH (v1.0)"
+  },
+  {
+   "submission_number": "K250237",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "InferOperate Suite"
+  },
+  {
+   "submission_number": "K243808",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Rayvolve PTX-PE"
+  },
+  {
+   "submission_number": "K243657",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "ClearPoint System (Software Version 3.0)"
+  },
+  {
+   "submission_number": "K250932",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "DeepRhythmAI"
+  },
+  {
+   "submission_number": "K250264",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "SugarBug (1.x)"
+  },
+  {
+   "submission_number": "K242600",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "Second Opinion Periapical Radiolucency Contours"
+  },
+  {
+   "submission_number": "K252214",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "AIAS Cephalon"
+  },
+  {
+   "submission_number": "K080595",
+   "audit_class": "iv-a",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "CELLAVISION DM96 WITH THE BODY FLUID APPLICATION"
+  },
+  {
+   "submission_number": "P000041",
+   "audit_class": "iii",
+   "build": "none:no_candidate_in_completed_scope",
+   "device": "RAPIDSCREEN RS-2000"
+  }
+ ],
+ "audit_class_i_pair_detail": [
+  {
+   "submission_number": "K161772",
+   "nct_id": "NCT01757678",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'ffrct' (full) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K161772",
+   "nct_id": "NCT03702244",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'ffrct' (full) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K161772",
+   "nct_id": "NCT05325112",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'ffrct' (full) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K161772",
+   "nct_id": "NCT06506448",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'ffrct' (full) in intervention_other_name",
+    "manufacturer agrees with the study's collaborator by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K161772",
+   "nct_id": "NCT01943903",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'ffrct' (full) in brief_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K161772",
+   "nct_id": "NCT02499679",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'ffrct' (full) in brief_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K161772",
+   "nct_id": "NCT02813473",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'ffrct' (full) in official_title",
+    "manufacturer agrees with the study's collaborator by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K161772",
+   "nct_id": "NCT03851276",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'ffrct' (full) in brief_title",
+    "manufacturer agrees with the study's collaborator by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K161772",
+   "nct_id": "NCT04142021",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'ffrct' (full) in brief_title",
+    "manufacturer agrees with the study's collaborator by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K183012",
+   "nct_id": "NCT04439643",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'vascucap' (full) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K183012",
+   "nct_id": "NCT04448353",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'vascucap' (full) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K183012",
+   "nct_id": "NCT02143102",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'vascucap' (full) in official_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K182798",
+   "nct_id": "NCT03740828",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'kidscore d3' (full) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K200921",
+   "nct_id": "NCT06027411",
+   "in_build_as": "device_name_match",
+   "build_reasons": [
+    "name form 'qer' (full) in intervention_name",
+    "no sponsor or collaborator agrees with the listed manufacturer by normalised name or curated alias (an investigator-led study, a renamed company, or a coincidence of names)"
+   ]
+  },
+  {
+   "submission_number": "K211118",
+   "nct_id": "NCT06630845",
+   "in_build_as": "device_name_match:rejected_by_rule",
+   "build_reasons": [
+    "name form 'signa' (full) in intervention_name",
+    "no sponsor or collaborator agrees with the listed manufacturer by normalised name or curated alias (an investigator-led study, a renamed company, or a coincidence of names)",
+    "a name query for this family matched 50 or more records: the name is a common word or shared with other products"
+   ]
+  },
+  {
+   "submission_number": "DEN200038",
+   "nct_id": "NCT04179279",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'gili pro biosensor' (full) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "P200003",
+   "nct_id": "NCT02364388",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'imagio' (trimmed) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact",
+    "matched on a trimmed name form (trailing device-type words removed): may be a sibling or earlier product of the same line"
+   ]
+  },
+  {
+   "submission_number": "P200003",
+   "nct_id": "NCT03032198",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'imagio' (trimmed) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact",
+    "matched on a trimmed name form (trailing device-type words removed): may be a sibling or earlier product of the same line"
+   ]
+  },
+  {
+   "submission_number": "P200003",
+   "nct_id": "NCT03708393",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'imagio' (trimmed) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact",
+    "matched on a trimmed name form (trailing device-type words removed): may be a sibling or earlier product of the same line"
+   ]
+  },
+  {
+   "submission_number": "P200003",
+   "nct_id": "NCT04030104",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'imagio' (trimmed) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact",
+    "matched on a trimmed name form (trailing device-type words removed): may be a sibling or earlier product of the same line"
+   ]
+  },
+  {
+   "submission_number": "P200003",
+   "nct_id": "NCT05022602",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'imagio' (trimmed) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact",
+    "matched on a trimmed name form (trailing device-type words removed): may be a sibling or earlier product of the same line"
+   ]
+  },
+  {
+   "submission_number": "P200003",
+   "nct_id": "NCT05084729",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'imagio' (trimmed) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact",
+    "matched on a trimmed name form (trailing device-type words removed): may be a sibling or earlier product of the same line"
+   ]
+  },
+  {
+   "submission_number": "P200003",
+   "nct_id": "NCT05337280",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'imagio' (trimmed) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact",
+    "matched on a trimmed name form (trailing device-type words removed): may be a sibling or earlier product of the same line"
+   ]
+  },
+  {
+   "submission_number": "P200003",
+   "nct_id": "NCT01943916",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'imagio breast imaging system' (full) in brief_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K240408",
+   "nct_id": "NCT05818930",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'remi' (trimmed) in intervention_name",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact",
+    "matched on a trimmed name form (trailing device-type words removed): may be a sibling or earlier product of the same line"
+   ]
+  },
+  {
+   "submission_number": "K240408",
+   "nct_id": "NCT06027749",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'remi' (trimmed) in official_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact",
+    "matched on a trimmed name form (trailing device-type words removed): may be a sibling or earlier product of the same line"
+   ]
+  },
+  {
+   "submission_number": "K243268",
+   "nct_id": "NCT06351878",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'tiptraq' (full) in brief_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K243268",
+   "nct_id": "NCT06474351",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'tiptraq' (full) in brief_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K243268",
+   "nct_id": "NCT06474390",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'tiptraq' (full) in brief_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K243268",
+   "nct_id": "NCT06633887",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'tiptraq' (full) in brief_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K243268",
+   "nct_id": "NCT06634693",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'tiptraq' (full) in brief_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K243268",
+   "nct_id": "NCT07744854",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'tiptraq' (full) in brief_title",
+    "manufacturer agrees with the study's lead_sponsor by normalised_exact"
+   ]
+  },
+  {
+   "submission_number": "K242388",
+   "nct_id": "NCT07621991",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'lenshooke x12' (trimmed) in intervention_name",
+    "manufacturer agrees with the study's collaborator by normalised_exact",
+    "matched on a trimmed name form (trailing device-type words removed): may be a sibling or earlier product of the same line"
+   ]
+  },
+  {
+   "submission_number": "K250650",
+   "nct_id": "NCT02616939",
+   "in_build_as": "device_name_and_organisation_match",
+   "build_reasons": [
+    "name form 'spotlight' (full) in intervention_name",
+    "manufacturer agrees with the study's collaborator by normalised_exact"
+   ]
+  }
+ ]
+}

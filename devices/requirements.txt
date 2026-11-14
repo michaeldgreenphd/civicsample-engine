@@ -1,0 +1,2 @@
+# Text extraction for the manual device-linkage build (devices/pdftext.py). Not needed by the weekly pipeline.
+pypdf>=5.0.0
