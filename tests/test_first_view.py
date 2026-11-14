@@ -307,6 +307,34 @@ def test_the_race_distribution_carries_the_ethnicity_rows_part_of_unknown(tmp_pa
     assert dist["unknown_ethnicity_only"] == sum(r["race"].get("unknown_ethnicity_only", 0) for r in reporting) == 10
     assert dist["unknown_not_reported"] == sum(r["race"]["omb_totals"].get("unknown_not_reported") or 0 for r in reporting)
     assert dist["unknown_ethnicity_only"] <= dist["unknown_not_reported"]
+def test_summary_rows_carry_the_ethnicity_rows_part_of_race_unknown(tmp_path: pathlib.Path) -> None:
+    """A recent-study row's race block carries race.unknown_ethnicity_only
+    when the record has it, so the site's phone pop-up can split unknown; an
+    older record's row has no such key, and a row not reporting race has
+    only reported False."""
+    records = [r for r in _records(40) if isinstance(r.get("race"), dict)
+               and isinstance(r["race"].get("omb_totals"), dict)][:6]
+    for i, r in enumerate(records):
+        r["race"] = dict(r["race"], reported=True)
+        if i < 2:
+            r["race"]["unknown_ethnicity_only"] = 4 - i
+        else:
+            r["race"].pop("unknown_ethnicity_only", None)
+        r["results_date"] = f"2024-0{i + 1}-15"       # every one inside the recent list
+    records[5]["race"]["reported"] = False
+    _, summary_file = _case(tmp_path, records)
+    rows = {row["nct_id"]: row["race"] for row in json.loads(summary_file.read_text())["recentStudies"]}
+    by_id = {r["nct_id"]: r for r in records}
+    for nct, race in rows.items():
+        src = by_id[nct]["race"]
+        if not src.get("reported"):
+            assert race == {"reported": False}
+        elif "unknown_ethnicity_only" in src:
+            assert race == {"reported": True, "omb_totals": src["omb_totals"],
+                            "unknown_ethnicity_only": src["unknown_ethnicity_only"]}
+        else:
+            assert race == {"reported": True, "omb_totals": src["omb_totals"]}
+    assert sum("unknown_ethnicity_only" in r for r in rows.values()) == 2
 
 
 def test_the_generator_stops_on_a_results_date_the_site_cannot_read(tmp_path: pathlib.Path) -> None:
