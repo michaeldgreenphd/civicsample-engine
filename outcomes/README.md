@@ -52,3 +52,132 @@ preview. Scheduled publication is not enabled.
 New files only: `outcomes/`, three scripts, `tests/outcomes/`, `tests/fixtures/outcomes/`. No
 existing module, workflow, published file or cohort definition changes. `sponsors/` and
 `scripts/generate_industry_sponsors.py` are imported read-only.
+
+## Results structure and subgroup-reporting states (manual)
+
+A second manual build in this package. It reads the posted results section of each listed trial
+and writes, per trial, what the section contains and one subgroup-reporting state per dimension.
+No workflow calls it. It does not change the outcomes beta build above or any weekly file.
+
+### What it computes
+
+`results_structure.py` holds pure functions over one ClinicalTrials.gov API v2 study record. The
+rules are ported from the audit scripts under
+`docs/audits/outcomes_results_structure/second_pass/scripts/`, and their definitions are in
+`docs/audits/outcomes_results_structure/second_pass/definitions.json`. One rule departs from the
+audit's script: a signal from an analysis's compared groups is labelled with the dimensions those
+groups differ on, not with every dimension the measure's groups carry
+(`docs/audits/outcomes_results_structure/port_check/README.md`).
+
+| Fact | Rule and source |
+|---|---|
+| Results status | `hasResults`: posted, or no posted results. A record without a boolean `hasResults`, or with results announced and no results section, is a parsing failure (`unknown`). |
+| Module presence | The four substantive modules: baseline, participant flow, outcome measures, adverse events. The "more information" module is administrative and is not counted. |
+| Usable content | B1 (baseline), F1 (participant flow), O1 (primary outcome), A1 (adverse events), each with the reason when it fails. A rule that could not be evaluated is `null` with `not_evaluated_parse_failure`, not `false`. |
+| Registered and posted outcomes | Registered outcomes by type (count, titles, time frames). Posted measures by type: how many carry data, units, parameter types, number of groups, how many state their number analysed in participants. |
+| Comparative class | C1: interventional with two or more groups on a posted primary measure. C2: C1 and registered as randomised. |
+| Between-arm analysis | Rule S1 on primary measures: the estimate type, whether both confidence limits are numeric, and whether the p-value is a plain number or a bound such as `<0.001`. |
+| Participant flow | Started and completed per arm, first period only; the record says so and gives the number of periods. |
+| Baseline population | Baseline total (rule T: the Total group is never added to its arms), number started, registered enrolment with its type, and the population description when posted. Each number names the field it came from. |
+| Adverse events | Whether serious and other event rows are posted, numbers at risk per group, the frequency threshold. |
+| Subgroup signals | Rule SG2 over 18 structured fields of every posted outcome measure: field path, measure index, type and title, the matched text verbatim, and the dimension (age, sex, race, ethnicity, other). |
+
+Every record carries `method_version` (`results-structure-1`) and
+`document_and_publication_review: "not_reviewed"`.
+
+### Subgroup states
+
+One state per study and one per dimension (age, sex, race, ethnicity):
+
+| Value | Meaning |
+|---|---|
+| `not_applicable_no_posted_results` | The registry holds no posted results. This describes the registry, not this method. |
+| `not_yet_processed` | The trial was requested and its record was not retrieved, so its results were not read. The site shows the same label for a trial absent from the file. |
+| `processing_failed_or_indeterminate` | The record or its outcome measures could not be parsed, or the rule fired and no human review has settled it. |
+| `no_explicit_subgroup_results_detected_in_reviewed_structured_fields` | The listed fields were read and the rule found nothing, or a human review rejected every signal. |
+| `explicit_subgroup_results_detected` | At least one signal accepted by a human review record. |
+
+A signal whose dimension is `other` (the word "subgroup" with no named characteristic, or
+national-origin levels) leaves all four dimensions indeterminate until a person settles it.
+
+Human reviews are read from `subgroup_reviews.csv` (columns `nct_id, dimension, signal_id,
+decision, reviewer, reviewed_on, note`; decision is `accepted`, `rejected` or `unresolved`).
+`load_reviews` raises on a wrong header, an empty note or reviewer, a `reviewed_on` that is not a
+calendar date, and on two rows for the same signal and dimension. The file ships with a header and no rows, so no trial is in the detected
+state; that is intended. The audit's labels
+(`docs/audits/outcomes_results_structure/second_pass/subgroup_review.csv`) were made by one
+automated reader and are not human reviews; the loader refuses that file. The reviewer's name and
+note stay in the review file and are not written to the artifacts.
+
+### What it does not do
+
+- It does not read posted protocols, statistical analysis plans, study reports or publications.
+- It does not infer a result for a subgroup from a trial's overall result and baseline proportions.
+- It does not assess outcome switching.
+- It does not judge whether a table's content is correct or complete, or whether two groups are
+  two randomised arms.
+- Its subgroup figures are subgroup reporting detected by the current method, not a prevalence.
+
+### Artifacts (schema version 1)
+
+`run.json`, `summary.json`, `records.json`; see the docstring of `results_structure_build.py`.
+`run.json` records the run id, producer commit, method version, the archive's sha256, the
+retrieval window, the registry API version and `dataTimestamp`, the parameters, the fields
+inspected and not inspected, and the sha256 of the other two files. `summary.json` gives every
+count with its numerator, denominator and definition, and keeps retrieval failures, parsing
+failures, missing data and negative findings in four separate tables. `records.json` holds one
+record per requested NCT id, including trials that were not retrieved. The browser computes no
+aggregate.
+
+The run id ends in a digest of what the family publishes: the manifest apart from the id, the
+build time and the file checksums, and the content of `summary.json` and `records.json`
+(`run_identity`). Two builds that publish different content never share an id, the same content
+gives the same id whenever it is built, and the producer-side check refuses a family whose id does
+not follow from its content.
+
+### Running it
+
+```bash
+python scripts/build_results_structure.py --fetch --nct-list ids.txt \
+    --out ../clinical-trial-populations/data/results_structure
+python scripts/build_results_structure.py --archive build/results_structure_cache/NAME.jsonl.gz \
+    --out build/results_structure
+python scripts/build_results_structure_fixture.py   # after a rule or record change: regenerates tests/fixtures/results_structure/
+python docs/audits/outcomes_results_structure/port_check/port_check.py   # the port against the audit's 2,000 cached records
+python -m pytest tests/outcomes -q
+```
+
+`--fetch` asks the registry for the full record of each listed id (no key; one request at a
+time, at least 0.5 s apart) and freezes them under `build/results_structure_cache/` as a sorted,
+byte-stable `jsonl.gz` with its sha256. `--archive` reuses one. Run records are kept under
+`docs/results_structure/runs/`.
+
+A build can cover fewer trials than the archive holds, for example the eligible cohort of a
+frame that was fetched whole:
+
+```bash
+python scripts/build_results_structure.py --archive build/results_structure_cache/NAME.jsonl.gz \
+    --nct-list eligible_ids.txt --exclude-list excluded_ids.txt \
+    --exclude-reason "excluded by the outcomes cohort's eligibility rules (see data/outcomes/index.json excluded)" \
+    --out ../clinical-trial-populations/data/results_structure
+```
+
+Every id the archive was fetched for must be in one list or the other, or the build stops. That holds
+without an exclude list too: an `--nct-list` that leaves out a fetched id is refused, so no fetched
+record leaves a build without a stated reason. An archive's file name carries a digest of the fetch's
+whole record (the ids asked for, the retrieval window, every request and each failure) as well as of
+its bytes, so every fetch has its own archive and metadata, even one that returned the same bytes as
+an earlier fetch. `--archive` checks the metadata beside an archive against that name and refuses an
+archive whose metadata is another fetch's, or was edited.
+`run.json` (`scope`) and `summary.json` (`scope`) state the frame size, the number of trials
+included, and the number excluded with the reason; excluded records have no record in
+`records.json` and are in no count. A listed trial that the archive does not hold gets a
+`not_yet_processed` record with the reason, never an empty result.
+
+### Compatibility
+
+New files only: `results_structure.py`, `results_structure_build.py`, `subgroup_reviews.csv`,
+two scripts, `tests/outcomes/test_results_structure.py`, `tests/outcomes/rs_fixture.py`,
+`tests/fixtures/results_structure/`. `acquire.encode` is imported read-only. The site reads
+`data/results_structure/` when it is present and shows every trial as not yet processed when it
+is absent.

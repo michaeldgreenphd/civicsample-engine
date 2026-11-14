@@ -1,0 +1,196 @@
+{
+ "schema_version": 1,
+ "producer": {
+  "repository": "civicsample-engine",
+  "commit": "b723aa4fc34beab6a40347ff1fb49a5e924a15c6",
+  "uncommitted_changes": false,
+  "source_sha256": "38953813f713683f5811cdddafb3c295b2083820c6d0654d7d3c4423800c855c"
+ },
+ "manual_run": true,
+ "method": {
+  "version": "results-structure-1",
+  "subgroup_rule": "SG2",
+  "usable_content_rules": [
+   "B1",
+   "F1",
+   "O1",
+   "A1"
+  ],
+  "comparative_classes": [
+   "C1",
+   "C2"
+  ],
+  "statistical_analysis_rule": "S1",
+  "source": "docs/audits/outcomes_results_structure/second_pass/definitions.json"
+ },
+ "acquisition": {
+  "source": "clinicaltrials.gov API v2",
+  "endpoint": "https://clinicaltrials.gov/api/v2/studies",
+  "request": "filter.ids in batches of 25, no fields parameter (full record), format=json",
+  "retrieved_from": "2026-11-14T00:41:41+00:00",
+  "retrieved_to": "2026-11-14T00:41:57+00:00",
+  "retrieved_at": "2026-11-14T00:41:41+00:00",
+  "api_version": "2.0.5",
+  "data_timestamp": "2026-11-13T10:00:06",
+  "n_requested": 648,
+  "n_records": 648,
+  "n_requests": 27,
+  "n_studies_requests": 26,
+  "n_retries": 0,
+  "n_failed_requests": 0,
+  "min_seconds_between_requests": 0.5,
+  "requested_ids_sha256": "b504f64e2371f35fd4dde94184a48eef7d3afb2cdc1d037ce524ef177ba69aba",
+  "sha256_uncompressed": "cc8e86b9b06ddc0b5cf229a5d2c6af1430ecc5d0fc1554fd090a8085c1ede39e",
+  "archive": "records-2026-11-14-cc8e86b9b06d-dcec4894.jsonl.gz"
+ },
+ "retrieval_window": {
+  "from": "2026-11-14T00:41:41+00:00",
+  "to": "2026-11-14T00:41:57+00:00"
+ },
+ "registry": {
+  "api_version": "2.0.5",
+  "data_timestamp": "2026-11-13T10:00:06"
+ },
+ "parameters": {
+  "source": "archive",
+  "nct_list": "eligible_ids.txt",
+  "nct_list_sha256": "dcfc1e3fc8829b23f02ec3a05b3c491c69d55b46c47f7734a3a105f091412d1f",
+  "n_requested": 598,
+  "exclude_list": "excluded_ids.txt",
+  "exclude_list_sha256": "e7f7925eacf48b28072fb9e35cc410af1a6c2d24f703401ff3b8466ca172f7de",
+  "exclude_reason": "excluded by the outcomes cohort's eligibility rules (see data/outcomes/index.json excluded)",
+  "batch_size": 25,
+  "min_seconds_between_requests": 0.5
+ },
+ "scope": {
+  "frame": {
+   "n": 648,
+   "definition": "Registry records the archive was fetched for."
+  },
+  "included": {
+   "n": 598,
+   "definition": "Trials this build covers: the requested list, one record each in records.json."
+  },
+  "excluded": {
+   "n": 50,
+   "reason": "excluded by the outcomes cohort's eligibility rules (see data/outcomes/index.json excluded)",
+   "nct_ids": [
+    "NCT02064881",
+    "NCT02183727",
+    "NCT02490488",
+    "NCT02565511",
+    "NCT02606461",
+    "NCT02746796",
+    "NCT02859961",
+    "NCT03008616",
+    "NCT03019185",
+    "NCT03039686",
+    "NCT03098030",
+    "NCT03131453",
+    "NCT03176771",
+    "NCT03226522",
+    "NCT03231878",
+    "NCT03288870",
+    "NCT03299166",
+    "NCT03315221",
+    "NCT03410693",
+    "NCT03469050",
+    "NCT03482635",
+    "NCT03556956",
+    "NCT03562208",
+    "NCT03614663",
+    "NCT03732807",
+    "NCT03742518",
+    "NCT03758014",
+    "NCT03790865",
+    "NCT03919578",
+    "NCT03920228",
+    "NCT04051463",
+    "NCT04082832",
+    "NCT04147650",
+    "NCT04150068",
+    "NCT04315298",
+    "NCT04324021",
+    "NCT04343287",
+    "NCT04354389",
+    "NCT04374032",
+    "NCT04380519",
+    "NCT04382924",
+    "NCT04395170",
+    "NCT04434248",
+    "NCT04441398",
+    "NCT04452474",
+    "NCT04463264",
+    "NCT04505683",
+    "NCT04753710",
+    "NCT04794803",
+    "NCT04806529"
+   ],
+   "definition": "Frame records left out of this build. They have no record in records.json and are in no count."
+  }
+ },
+ "reviews": {
+  "file": "subgroup_reviews.csv",
+  "sha256": "173e1437b0922e3e98e88739664a8684cee142bce5d9d2cc0a5652737890a1ad",
+  "n_rows": 0
+ },
+ "n_records": 598,
+ "fields_inspected": [
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].title",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].description",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].populationDescription",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].title",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].title",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].groups[].title",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].groups[].description",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].groupIds",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].groupDescription",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].statisticalComment",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].otherAnalysisDescription",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].nonInferiorityComment",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].pValueComment",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].estimateComment",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].ciLowerLimitComment",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].ciUpperLimitComment",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].statisticalMethod",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].comment"
+ ],
+ "fields_not_inspected": [
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].timeFrame",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].unitOfMeasure",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].paramType",
+  "resultsSection.baselineCharacteristicsModule (all fields)",
+  "resultsSection.participantFlowModule (all fields)",
+  "resultsSection.adverseEventsModule (all fields)",
+  "resultsSection.moreInfoModule (all fields)",
+  "protocolSection (all free text, including eligibility criteria and registered outcome descriptions)",
+  "documentSection: posted protocol, statistical analysis plan and consent documents",
+  "publications and clinical study reports",
+  "historical versions of the registry record"
+ ],
+ "subgroup_states": [
+  "not_yet_processed",
+  "processing_failed_or_indeterminate",
+  "no_explicit_subgroup_results_detected_in_reviewed_structured_fields",
+  "explicit_subgroup_results_detected",
+  "not_applicable_no_posted_results"
+ ],
+ "document_and_publication_review": "not_reviewed",
+ "limitations": [
+  "Subgroup figures are subgroup reporting detected by the current method: a text rule over 18 structured fields of posted outcome measures. They are not a prevalence.",
+  "A signal is wording that looks like subgroup reporting. Only a human review record can accept or reject it; with no review records, no trial is in the detected state.",
+  "Posted protocols, statistical analysis plans, study reports and publications are not read. Absence in the structured fields is not absence everywhere.",
+  "No result is inferred for a subgroup from a trial's overall result and its baseline proportions.",
+  "Outcome switching is not assessed: a current record does not show how the registered outcomes changed over time.",
+  "Usable-content rules test whether a table can be read, not whether its content is correct, complete or analysed appropriately.",
+  "Two or more groups on a primary measure (C1, C2) is the structure of the record; dose cohorts, periods and disease cohorts also appear as groups.",
+  "Participant flow counts are for the first period only.",
+  "The registry record is read as retrieved on the stated date; registry records change."
+ ],
+ "run_id": "results-structure-2026-11-14-685f8baf6c",
+ "generated_at": "2026-11-14T03:18:54+00:00",
+ "files": {
+  "records.json": "2de9cf65e041d68c2332e63f7b533b2c23fdcb7fd74088329dd472ec91f4e290",
+  "summary.json": "ad4eb7f19e62bbee7e76f005352a35e2de52528e35d964835527824efc61c145"
+ }
+}

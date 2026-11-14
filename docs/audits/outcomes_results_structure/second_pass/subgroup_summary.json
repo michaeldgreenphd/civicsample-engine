@@ -1,0 +1,279 @@
+{
+ "n": 2000,
+ "detected": 136,
+ "detected_text": "136/2,000 (6.8%; 95% CI 5.8-8.0)",
+ "judgement_counts": {
+  "false_positive": 71,
+  "true_subgroup_result": 41,
+  "partial": 24
+ },
+ "true_any": "41/2,000 (2.0%; 95% CI 1.5-2.8)",
+ "true_demographic": "34/2,000 (1.7%; 95% CI 1.2-2.4)",
+ "true_demographic_ids": [
+  "NCT00119067",
+  "NCT00261443",
+  "NCT00423046",
+  "NCT00461305",
+  "NCT00666276",
+  "NCT00964158",
+  "NCT00980005",
+  "NCT01053663",
+  "NCT01068262",
+  "NCT01183468",
+  "NCT01256658",
+  "NCT01651949",
+  "NCT01669642",
+  "NCT01790828",
+  "NCT01917916",
+  "NCT02246439",
+  "NCT02304406",
+  "NCT02415244",
+  "NCT02688764",
+  "NCT03098836",
+  "NCT03207867",
+  "NCT03722810",
+  "NCT03993119",
+  "NCT04024228",
+  "NCT04105244",
+  "NCT04259762",
+  "NCT04323137",
+  "NCT04354155",
+  "NCT04587167",
+  "NCT04907253",
+  "NCT05009251",
+  "NCT05093829",
+  "NCT05329194",
+  "NCT06815562"
+ ],
+ "true_non_demographic_only": "7/2,000 (0.3%; 95% CI 0.2-0.7)",
+ "true_non_demographic_ids": [
+  "NCT00348309",
+  "NCT00502801",
+  "NCT01557959",
+  "NCT02542293",
+  "NCT02593825",
+  "NCT03100058",
+  "NCT05985304"
+ ],
+ "partial": "24/2,000 (1.2%; 95% CI 0.8-1.8)",
+ "false_positive": "71/2,000 (3.5%; 95% CI 2.8-4.5)",
+ "precision_true_over_detected": "41/136 (30.1%; 95% CI 23.1-38.3)",
+ "precision_true_or_partial_over_detected": "65/136 (47.8%; 95% CI 39.6-56.1)",
+ "true_by_dimension": {
+  "sex": [
+   "NCT00119067",
+   "NCT00261443",
+   "NCT00666276",
+   "NCT01068262",
+   "NCT01651949",
+   "NCT02304406",
+   "NCT03722810",
+   "NCT03993119",
+   "NCT04105244",
+   "NCT04259762",
+   "NCT04323137",
+   "NCT04587167",
+   "NCT04907253",
+   "NCT05009251"
+  ],
+  "race": [
+   "NCT00261443",
+   "NCT02304406",
+   "NCT03098836",
+   "NCT04323137",
+   "NCT05009251",
+   "NCT05329194"
+  ],
+  "ethnicity": [
+   "NCT04323137",
+   "NCT05009251"
+  ],
+  "origin": [
+   "NCT01917916",
+   "NCT03207867"
+  ],
+  "age": [
+   "NCT00261443",
+   "NCT00423046",
+   "NCT00461305",
+   "NCT00964158",
+   "NCT00980005",
+   "NCT01053663",
+   "NCT01183468",
+   "NCT01256658",
+   "NCT01669642",
+   "NCT01790828",
+   "NCT02246439",
+   "NCT02415244",
+   "NCT02688764",
+   "NCT03993119",
+   "NCT04024228",
+   "NCT04354155",
+   "NCT05093829",
+   "NCT05329194",
+   "NCT06815562"
+  ]
+ },
+ "true_race_or_ethnicity": [
+  "NCT00261443",
+  "NCT02304406",
+  "NCT03098836",
+  "NCT04323137",
+  "NCT05009251",
+  "NCT05329194"
+ ],
+ "true_demographic_on_primary_measure": [
+  "NCT00119067",
+  "NCT00666276",
+  "NCT01053663",
+  "NCT01068262",
+  "NCT01183468",
+  "NCT01651949",
+  "NCT01669642",
+  "NCT02246439",
+  "NCT02415244",
+  "NCT03098836",
+  "NCT03993119",
+  "NCT04024228",
+  "NCT04105244",
+  "NCT04259762",
+  "NCT04907253",
+  "NCT05093829",
+  "NCT06815562"
+ ],
+ "true_demographic_race_reported_in_release": 18,
+ "by_field": {
+  "analysis_groupIds": {
+   "trials": 6,
+   "true": 4,
+   "true_demographic": 3,
+   "partial": 1,
+   "false_positive": 1
+  },
+  "analysis_text": {
+   "trials": 7,
+   "true": 2,
+   "true_demographic": 1,
+   "partial": 2,
+   "false_positive": 3
+  },
+  "category_titles": {
+   "trials": 3,
+   "true": 2,
+   "true_demographic": 2,
+   "partial": 1,
+   "false_positive": 0
+  },
+  "class_title_cue": {
+   "trials": 2,
+   "true": 0,
+   "true_demographic": 0,
+   "partial": 1,
+   "false_positive": 1
+  },
+  "class_titles": {
+   "trials": 20,
+   "true": 15,
+   "true_demographic": 15,
+   "partial": 4,
+   "false_positive": 1
+  },
+  "group_descriptions": {
+   "trials": 15,
+   "true": 3,
+   "true_demographic": 2,
+   "partial": 4,
+   "false_positive": 8
+  },
+  "group_titles": {
+   "trials": 17,
+   "true": 14,
+   "true_demographic": 14,
+   "partial": 3,
+   "false_positive": 0
+  },
+  "measure_description": {
+   "trials": 54,
+   "true": 12,
+   "true_demographic": 8,
+   "partial": 10,
+   "false_positive": 32
+  },
+  "measure_title": {
+   "trials": 30,
+   "true": 14,
+   "true_demographic": 12,
+   "partial": 9,
+   "false_positive": 7
+  },
+  "population_description": {
+   "trials": 40,
+   "true": 5,
+   "true_demographic": 2,
+   "partial": 7,
+   "false_positive": 28
+  }
+ },
+ "true_found_only_through_fields_added_in_v2": [
+  "NCT00119067",
+  "NCT00348309",
+  "NCT00423046",
+  "NCT00502801",
+  "NCT00666276",
+  "NCT00964158",
+  "NCT01053663",
+  "NCT01068262",
+  "NCT01183468",
+  "NCT01651949",
+  "NCT01669642",
+  "NCT02415244",
+  "NCT02542293",
+  "NCT02593825",
+  "NCT03098836",
+  "NCT03207867",
+  "NCT03722810",
+  "NCT04354155",
+  "NCT05093829",
+  "NCT05985304",
+  "NCT06815562"
+ ],
+ "true_demographic_found_only_through_fields_added_in_v2": [
+  "NCT00119067",
+  "NCT00423046",
+  "NCT00666276",
+  "NCT00964158",
+  "NCT01053663",
+  "NCT01068262",
+  "NCT01183468",
+  "NCT01651949",
+  "NCT01669642",
+  "NCT02415244",
+  "NCT03098836",
+  "NCT03207867",
+  "NCT03722810",
+  "NCT04354155",
+  "NCT05093829",
+  "NCT06815562"
+ ],
+ "keyword_only_trials": {
+  "n": 75,
+  "false_positive": 57
+ },
+ "v1_flagged_measure_trials": 23,
+ "v1_flagged_not_detected_by_v2": [],
+ "v1_tier1_trials": 20,
+ "negatives": {
+  "non_detected": 1864,
+  "random_n": 60,
+  "random_missed_demographic": 0,
+  "random_missed_non_demographic": 1,
+  "random_partial": 0,
+  "targeted_n": 40,
+  "targeted_missed_demographic": 1,
+  "targeted_missed_non_demographic": 3,
+  "targeted_partial": 1,
+  "targeted_cutoff_score": 6,
+  "n_rest_at_or_above_cutoff": 43,
+  "random_upper95_demographic": 0.060171853034227174
+ }
+}

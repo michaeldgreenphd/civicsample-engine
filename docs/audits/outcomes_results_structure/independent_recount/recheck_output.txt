@@ -1,0 +1,19 @@
+all_five_modules                    1997  99.8%
+four_substantive_modules            1997  99.8%
+hasResults                          2000  100.0%
+has_adverseEventsModule             1997  99.8%
+has_baselineCharacteristicsModule   2000  100.0%
+has_moreInfoModule                  2000  100.0%
+has_outcomeMeasuresModule           2000  100.0%
+has_participantFlowModule           2000  100.0%
+n                                   2000  100.0%
+primary_2plus_groups                1448  72.4%
+primary_analysis                     621  31.1%
+primary_analysis_among_multi         557  27.9%
+primary_estimate_with_ci             366  18.3%
+primary_posted                      2000  100.0%
+primary_pvalue                       511  25.6%
+primary_with_value                  1913  95.7%
+race_reported                       1155  57.8%
+2x2 (race reported, primary analysis): {(False, True): 239, (True, False): 773, (False, False): 606, (True, True): 382}
+among 2+ group primary: 557 / 1448
