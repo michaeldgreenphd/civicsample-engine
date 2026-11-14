@@ -2103,3 +2103,16 @@ def test_the_build_applies_the_search_answer_check_to_frozen_answers() -> None:
     assert out['state'] == 'incomplete' and 'could not be read in full' in out['reason']
     single = _number_search({'totalCount': 1, 'studies': [{'protocolSection': {}}]})
     assert single['state'] == 'incomplete' and 'could not be read in full' in single['reason']
+
+
+def test_an_openfda_200_with_an_empty_result_list_is_no_answer(tmp_path: Path) -> None:
+    """openFDA answers a search with no match with HTTP 404; a 200 listing nothing is malformed."""
+    q = acquire.openfda_requests(['K990001'])[0]
+    assert acquire.openfda_answer({'results': []}, q) is False
+    assert acquire.openfda_answer({'results': []}) is False
+    found = acquire.openfda_by_submission({q['key']: {'key': q['key'], 'status': 200, 'params': q['params'],
+                                                     'body': {'results': []}, 'fetched_at': 't'}}, ['K990001'])
+    assert found['K990001']['state'] == 'error'          # not "openFDA holds no record"
+    log = acquire.ResponseLog(tmp_path / 'log.jsonl')
+    acquire.fetch_openfda(['K990001'], log, lambda u, p: (200, {}, b'{"results": []}', None), F.no_wait())
+    assert log.get(q['key'])['status'] == acquire.UNUSABLE_200 and log.settled(q['key']) is None

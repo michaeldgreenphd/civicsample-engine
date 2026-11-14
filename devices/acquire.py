@@ -314,8 +314,9 @@ def openfda_answer(body: Any, request: dict[str, Any] | None = None) -> bool:
     A PMA entry's supplement_number must be absent or empty (the original approval, as openFDA
     writes it) or 'S' and digits (all 128 supplement numbers in the 2026-11-14 cache have three):
     a value of another type or form cannot match a supplement asked for, and would read as 'openFDA
-    holds no record' rather than as no answer."""
-    if not (isinstance(body, dict) and isinstance(body.get('results'), list)):
+    holds no record' rather than as no answer. An empty list is no answer either: openFDA reports no
+    match with a 404, and every check above holds vacuously over no entries."""
+    if not (isinstance(body, dict) and isinstance(body.get('results'), list) and body['results']):
         return False
     if request is None:
         return all(isinstance(r, dict) and any(isinstance(r.get(f), str) and r[f].strip()
