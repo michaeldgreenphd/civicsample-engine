@@ -99,27 +99,32 @@
   "race": {
    "reported": 18682,
    "not_reported": 12079,
-   "pooled": 15775,
+   "pooled": 14371,
    "category_structure": {
-    "matches_sex_table": 18256,
-    "no_other_table_to_check_against": 189,
+    "matches_sex_table": 16799,
+    "race_table_has_ethnicity_rows": 1578,
     "table_total_exceeds_sex_table": 96,
-    "table_total_below_sex_table": 64,
-    "race_table_has_ethnicity_rows": 77
+    "table_total_below_sex_table": 55,
+    "no_other_table_to_check_against": 154
    },
    "category_cautions": {
-    "title_names_ethnicity_rows_are_race_only": 3326
+    "title_names_ethnicity_rows_are_race_only": 1707,
+    "ethnicity_rows_beside_race_rows_that_cover_everyone": 118
    },
-   "classified_share_computed": 18314,
+   "classified_share_computed": 16833,
+   "classified_share_not_computed_reasons": {
+    "rows_not_one_classification": 1674,
+    "nobody_classified": 175
+   },
    "geography_sensitivity": {
     "True": 15542,
     "False": 3100,
     "None": 40
    },
    "not_pooled_reasons": {
-    "table_rows_not_one_classification": 173,
-    "under_min_participants": 2569,
-    "over_size_cap": 164,
+    "table_rows_not_one_classification": 1674,
+    "under_min_participants": 2524,
+    "over_size_cap": 112,
     "eligible_ages_unreadable": 1
    },
    "benchmark_available_by_level": {
@@ -172,7 +177,12 @@
     "table_total_exceeds_sex_table": 123
    },
    "category_cautions": {},
-   "classified_share_computed": 12919,
+   "classified_share_computed": 11542,
+   "classified_share_not_computed_reasons": {
+    "table_reports_one_ethnicity_category_only": 1380,
+    "nobody_classified": 306,
+    "rows_not_one_classification": 123
+   },
    "geography_sensitivity": {
     "False": 7238,
     "True": 6082,
@@ -222,6 +232,9 @@
    },
    "category_cautions": {},
    "classified_share_computed": 29699,
+   "classified_share_not_computed_reasons": {
+    "nobody_classified": 76
+   },
    "geography_sensitivity": {
     "False": 24755,
     "None": 3891,
@@ -350,7 +363,7 @@
    "site_basis": "one_listed_facility",
    "variant": "with_referral_zips",
    "display_rule": "show",
-   "n": 58
+   "n": 57
   },
   {
    "level": "cbsa",
@@ -358,7 +371,7 @@
    "site_basis": "one_listed_facility",
    "variant": "with_referral_zips",
    "display_rule": "withheld",
-   "n": 189
+   "n": 185
   },
   {
    "level": "cbsa",
@@ -366,7 +379,7 @@
    "site_basis": "one_listed_facility",
    "variant": "without_referral_zips",
    "display_rule": "show",
-   "n": 52
+   "n": 51
   },
   {
    "level": "cbsa",
@@ -374,7 +387,7 @@
    "site_basis": "one_listed_facility",
    "variant": "without_referral_zips",
    "display_rule": "withheld",
-   "n": 195
+   "n": 191
   },
   {
    "level": "cbsa",
@@ -390,7 +403,7 @@
    "site_basis": "self_described_single_site",
    "variant": "with_referral_zips",
    "display_rule": "withheld",
-   "n": 96
+   "n": 94
   },
   {
    "level": "cbsa",
@@ -398,7 +411,7 @@
    "site_basis": "self_described_single_site",
    "variant": "without_referral_zips",
    "display_rule": "withheld",
-   "n": 98
+   "n": 96
   },
   {
    "level": "cbsa",
@@ -526,7 +539,7 @@
    "site_basis": "one_listed_facility",
    "variant": "with_referral_zips",
    "display_rule": "show",
-   "n": 65
+   "n": 63
   },
   {
    "level": "county",
@@ -534,7 +547,7 @@
    "site_basis": "one_listed_facility",
    "variant": "with_referral_zips",
    "display_rule": "withheld",
-   "n": 333
+   "n": 318
   },
   {
    "level": "county",
@@ -542,7 +555,7 @@
    "site_basis": "one_listed_facility",
    "variant": "without_referral_zips",
    "display_rule": "show",
-   "n": 56
+   "n": 54
   },
   {
    "level": "county",
@@ -550,7 +563,7 @@
    "site_basis": "one_listed_facility",
    "variant": "without_referral_zips",
    "display_rule": "withheld",
-   "n": 341
+   "n": 326
   },
   {
    "level": "county",
@@ -566,7 +579,7 @@
    "site_basis": "self_described_single_site",
    "variant": "with_referral_zips",
    "display_rule": "withheld",
-   "n": 139
+   "n": 136
   },
   {
    "level": "county",
@@ -574,7 +587,7 @@
    "site_basis": "self_described_single_site",
    "variant": "without_referral_zips",
    "display_rule": "withheld",
-   "n": 138
+   "n": 135
   },
   {
    "level": "county",
@@ -838,7 +851,7 @@
    "site_basis": "self_described_single_site",
    "variant": "with_referral_zips",
    "display_rule": "withheld",
-   "n": 36
+   "n": 35
   },
   {
    "level": "state",
@@ -854,7 +867,7 @@
    "site_basis": "self_described_single_site",
    "variant": "without_referral_zips",
    "display_rule": "withheld",
-   "n": 41
+   "n": 40
   },
   {
    "level": "state",
@@ -1070,7 +1083,7 @@
    "site_basis": "one_listed_facility",
    "variant": "with_referral_zips",
    "display_rule": "show",
-   "n": 39
+   "n": 38
   },
   {
    "level": "zcta",
@@ -1078,7 +1091,7 @@
    "site_basis": "one_listed_facility",
    "variant": "with_referral_zips",
    "display_rule": "withheld",
-   "n": 1362
+   "n": 1258
   },
   {
    "level": "zcta",
@@ -1086,7 +1099,7 @@
    "site_basis": "one_listed_facility",
    "variant": "without_referral_zips",
    "display_rule": "show",
-   "n": 16
+   "n": 15
   },
   {
    "level": "zcta",
@@ -1094,7 +1107,7 @@
    "site_basis": "one_listed_facility",
    "variant": "without_referral_zips",
    "display_rule": "withheld",
-   "n": 1362
+   "n": 1258
   },
   {
    "level": "zcta",
@@ -1102,7 +1115,7 @@
    "site_basis": "self_described_single_site",
    "variant": "with_referral_zips",
    "display_rule": "withheld",
-   "n": 293
+   "n": 281
   },
   {
    "level": "zcta",
@@ -1110,7 +1123,7 @@
    "site_basis": "self_described_single_site",
    "variant": "without_referral_zips",
    "display_rule": "withheld",
-   "n": 270
+   "n": 258
   },
   {
    "level": "zcta",

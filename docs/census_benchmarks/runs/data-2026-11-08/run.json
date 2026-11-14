@@ -1,11 +1,11 @@
 {
  "schema_version": 1,
  "method_version": "census-benchmarks-1",
- "generated_at": "2026-11-14T00:53:58+00:00",
+ "generated_at": "2026-11-14T01:17:17+00:00",
  "manual_run": true,
  "producer": {
   "repository": "civicsample-engine",
-  "commit": "0295a6fe444579fe15ca514ff6d7735f66a4f474",
+  "commit": "cc15b60c9808144171a12c912fc9a0a8cd0f10d6",
   "uncommitted_changes": false
  },
  "source_release": {
@@ -22,6 +22,15 @@
   "sha256_uncompressed": "75a2fec8613e2174a10fae6cbbd6839cbdc6f045bd31446843a75696666c1f42",
   "retrieved_at": "2026-11-13T22:40:25+00:00",
   "archive": "registry_data-2026-11-08.jsonl.gz"
+ },
+ "registry_baseline_archive": {
+  "source": "clinicaltrials.gov API v2",
+  "fields": "NCTId,BaselineCharacteristicsModule",
+  "n_requested": 3489,
+  "n_records": 3489,
+  "sha256_uncompressed": "87c92cc03d42211407b1966882e1e3d9d00e1755f115ce51e8366df21331b3a0",
+  "retrieved_at": "2026-11-14T01:09:04+00:00",
+  "archive": "registry_baseline_data-2026-11-08.jsonl.gz"
  },
  "parameters": {
   "floor_trials_per_area": 50,
@@ -2838,8 +2847,8 @@
   }
  ],
  "files": {
-  "areas.json": "4a6b74161db0747d0ad4bad861adee8b6e567e572f7ad4490ae70b5cf9e92b7c",
-  "summary.json": "f5060ce7aee9ea7af1d481d91b8851cc862c93752d2ecfea49c98c12871e7c11",
-  "trials.jsonl.gz": "ef827e9321cc3f222572d5121ce9347d08f4d0d7d42c3c8dcf46be7ffdf85556"
+  "areas.json": "867cec48e2011829de3bc6a72298b35641d77f4c2d47240fef203e39b79b297e",
+  "summary.json": "909512d2dc71edbf5df36443ac597c85fdd8c36c0ceba86e3a7021946fc196f2",
+  "trials.jsonl.gz": "c7964ccffb6bdec4378f421e1e53cf263dd642240a0577e1cd84a9f32613802f"
  }
 }
