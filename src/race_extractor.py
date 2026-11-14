@@ -768,17 +768,25 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # nothing is moved.
 
 _ETHNICITY_TERM_RX = re.compile(r"hispanic|latin(?:o|a|x|e)", re.IGNORECASE)
-_NEGATION_RX = re.compile(r"\b(?:non|not|no|neither|nor)\b|\bnon(?=[a-z])", re.IGNORECASE)
+_NEGATION_RX = re.compile(r"\b(?:non|not|no|neither|nor)\b|\bnon(?=[a-z])|\bother\s+than\b", re.IGNORECASE)
+# A bare answer after the last ethnicity term: "Hispanic or Latino: No",
+# "Hispanic or Latino ethnicity - No". Anything longer ("Hispanic (not
+# African American)", "Hispanic: No retinopathy") qualifies something else.
+_NEGATED_ANSWER_RX = re.compile(
+    r"^[\W_]*(?:(?:ethnicity|origin|descent)[\W_]*)?(?:no|not|none)[\W_]*$", re.IGNORECASE)
 
 def _negates_ethnicity(label: str) -> bool:
     """True when a recorded ethnicity row says its participants are NOT of the
-    ethnicity: a negation ("non", "not", "no", "neither", "nor", or "non"
-    joined to the next word) stands before the first ethnicity term.
+    ethnicity: a negation ("non", "not", "no", "neither", "nor", "other than",
+    or "non" joined to the next word) stands before the first ethnicity term,
+    or the label ends in a bare negative answer after the last one.
 
       "Not Hispanic or Latino", "Non-Hispanic", "Nonhispanic"   -> True
       "Not of Hispanic, Latino/a, or Spanish origin"           -> True
+      "Other than Hispanic or Latino"                          -> True
+      "Hispanic or Latino: No", "Hispanic ethnicity - No"      -> True
       "Hispanic", "Hispanic (not African American)"            -> False
-      "Latino, non-Black"                                      -> False
+      "Latino, non-Black", "Hispanic: No retinopathy"          -> False
 
     A negation before the term that belongs to another word ("Non-Black
     Hispanic", "Prefer not to answer (Hispanic)") also reads as True. That
@@ -786,10 +794,12 @@ def _negates_ethnicity(label: str) -> bool:
     ethnicity term at all reads as True for the same reason.
     """
     text = clean_demographic_label(label)
-    term = _ETHNICITY_TERM_RX.search(text)
-    if term is None:
+    terms = list(_ETHNICITY_TERM_RX.finditer(text))
+    if not terms:
         return True
-    return _NEGATION_RX.search(text[:term.start()]) is not None
+    if _NEGATION_RX.search(text[:terms[0].start()]) is not None:
+        return True
+    return _NEGATED_ANSWER_RX.match(text[terms[-1].end():]) is not None
 
 def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
                            race_part: Optional[str] = None,

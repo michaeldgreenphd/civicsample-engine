@@ -1183,6 +1183,14 @@ def test_joined_labels_crossed_with_sex_are_a_race_by_sex_table() -> None:
     ("Hispanic (regardless of race)", False),
     ("Hispanic (not African American)", False),
     ("Latino, non-Black", False),
+    # Negated outside the prefix: a phrase before the term, or a bare answer after it.
+    ("Other than Hispanic or Latino", True),
+    ("Hispanic or Latino: No", True),
+    ("Hispanic or Latino ethnicity - No", True),
+    ("Hispanic/Latino (none)", True),
+    ("Hispanic or Latino: Yes", False),
+    ("Hispanic: No retinopathy", False),
+    ("Hispanic, not otherwise specified", False),
     # A negation before the term reads as negating it, whatever it belongs
     # to: the shortfall then stays in unknown_inferred.
     ("Non-Black Hispanic", True),
@@ -1209,6 +1217,8 @@ def test_an_exact_shortfall_is_the_ethnicity_rows_part_of_unknown() -> None:
      "a row that negates the ethnicity has participants"),
     ([("White", 30), ("Black", 12), ("Not Hispanic or Latino", 8)], 50, "only a negating row matches the shortfall"),
     ([("White", 30), ("Black", 12), ("Non-Black Hispanic", 8)], 50, "the label reads as negating"),
+    ([("White", 30), ("Black", 12), ("Hispanic or Latino: No", 8)], 50, "a bare negative answer"),
+    ([("White", 30), ("Black", 12), ("Other than Hispanic or Latino", 8)], 50, "negated by a phrase"),
     ([("White", 30), ("Black", 12)], 50, "no ethnicity row at all"),
 ])
 def test_a_shortfall_the_rows_do_not_account_for_exactly_stays_inferred(
