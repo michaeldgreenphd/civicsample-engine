@@ -168,3 +168,30 @@ def test_identical_halves_described_as_different_people_are_parts() -> None:
     sex = extract_sex_data(_study("NCT99000312", [mothers, infants], participants=40))
     assert sex["totals"] == {"female": 24, "male": 16, "unknown": 0}
     assert "sex_tables_partitioned" in sex["flags"]
+    assert "sex_tables_partitioned_by_description" in sex["flags"]
+
+
+def test_reworded_repost_is_summed_but_flagged() -> None:
+    """A reviewer's case the description test cannot tell from the one above:
+    one subset posted twice under reworded descriptions. It is summed as two
+    parts (a description is free text, and NCT03711370 shows identical counts
+    can be different people), and flagged so the sum can be audited."""
+    first = _category_table("Sex: Female, Male", [("Female", 12), ("Male", 8)], analyzed=20)
+    first["populationDescription"] = "Participants with available data"
+    again = _class_table("Sex/Gender, Customized", [("Female", 12), ("Male", 8)], analyzed=20)
+    again["populationDescription"] = "Available-data participants"
+    sex = extract_sex_data(_study("NCT99000313", [first, again], participants=40))
+    assert sex["totals"] == {"female": 24, "male": 16, "unknown": 0}
+    assert "sex_tables_partitioned" in sex["flags"]
+    assert "sex_tables_partitioned_by_description" in sex["flags"]
+
+
+def test_parts_with_different_counts_are_not_flagged_by_description() -> None:
+    """Parts whose counts differ are shown disjoint by their numbers alone;
+    the description flag is not added."""
+    first = _category_table("Sex: Female, Male", [("Female", 12), ("Male", 8)], analyzed=20)
+    second = _category_table("Sex: Female, Male", [("Female", 15), ("Male", 25)], analyzed=40)
+    sex = extract_sex_data(_study("NCT99000314", [first, second], participants=60))
+    assert sex["totals"] == {"female": 27, "male": 33, "unknown": 0}
+    assert "sex_tables_partitioned" in sex["flags"]
+    assert "sex_tables_partitioned_by_description" not in sex["flags"]

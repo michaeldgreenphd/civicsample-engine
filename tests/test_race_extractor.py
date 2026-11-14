@@ -505,6 +505,23 @@ def test_tables_for_disjoint_parts_are_summed(analyzed_on: str) -> None:
     assert "race_tables_partitioned" in race["flags"]
     assert "race_table_superseded" not in race["flags"]
     assert race["unknown_inferred"] == 0
+    assert "race_tables_partitioned_by_description" not in race["flags"]
+
+
+def test_parts_told_apart_only_by_description_are_flagged() -> None:
+    """The NCT03711370 pattern: identical race counts for mothers and for
+    infants, each analyzed on half the trial. Summed as parts, and flagged
+    race_tables_partitioned_by_description because only the free-text
+    population description separates them."""
+    rows = [("Asian", 2), ("White", 16), ("Black or African American", 2)]
+    mothers = _category_table("Race (NIH/OMB)", rows, analyzed=20)
+    mothers["populationDescription"] = "Data are for mothers only (n = 20)"
+    infants = _category_table("Race (NIH/OMB)", rows, analyzed=20)
+    infants["populationDescription"] = "Data are for infants only (n = 20)"
+    race = extract_race_data(_study("NCT99000091", [mothers, infants], participants=40))
+    assert _nonzero(race) == {"asian": 4, "white": 32, "black_african_american": 4}
+    assert "race_tables_partitioned" in race["flags"]
+    assert "race_tables_partitioned_by_description" in race["flags"]
 
 
 @pytest.mark.parametrize("first_n, second_n, first_rows", [

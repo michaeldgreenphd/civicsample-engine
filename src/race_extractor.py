@@ -630,6 +630,9 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 # "race_by_sex_table" and "race_from_sex_titled_table" when the counted table
 # is one; "race_table_superseded" when a table was left out by the rules above;
 # "race_tables_partitioned" when rule 3 summed disjoint parts;
+# "race_tables_partitioned_by_description" as well when two of those parts
+# are told apart only by their population description
+# (table_selection.parted_by_description);
 # "multiple_race_by_sex_tables" when more than one race-by-sex table exists
 # (joint_sex_counts then describes one of them, as above).
 
@@ -882,6 +885,8 @@ def extract_race_data(study: dict) -> Dict:
         result["flags"].append("race_table_superseded")
     if partitioned:
         result["flags"].append("race_tables_partitioned")
+        if table_selection.parted_by_description(counted, "omb_category"):
+            result["flags"].append("race_tables_partitioned_by_description")
 
     for table in counted:
         result["reported"] = True

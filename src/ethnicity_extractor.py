@@ -255,7 +255,10 @@ def extract_ethnicity_from_measure(measure: dict, overall_group_id=None,
 # counts anyone as Hispanic or Not Hispanic; disjoint parts are summed only
 # when their own Number Analyzed make up exactly the baseline total. Tables
 # left out are flagged ethnicity_table_superseded; summed parts,
-# ethnicity_tables_partitioned. Denominator balancing below is unchanged.
+# ethnicity_tables_partitioned, and ethnicity_tables_partitioned_by_description
+# too when two parts differ only in their population description
+# (table_selection.parted_by_description). Denominator balancing below is
+# unchanged.
 _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 
 def extract_ethnicity_data(study: dict) -> Dict:
@@ -311,6 +314,8 @@ def extract_ethnicity_data(study: dict) -> Dict:
         result["flags"].append("ethnicity_table_superseded")
     if partitioned:
         result["flags"].append("ethnicity_tables_partitioned")
+        if table_selection.parted_by_description(counted, "omb_category"):
+            result["flags"].append("ethnicity_tables_partitioned_by_description")
 
     for table in counted:
         categories = table["categories"]
