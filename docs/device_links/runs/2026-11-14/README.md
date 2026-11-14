@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T16:32:09+00:00 by `scripts/build_device_links.py build` at engine commit `efb4ef0e7b11` (no uncommitted changes; producing-code digest `f95e8288ba9a…`), run id `devices-2026-11-14-3c21849a48`, method `device-links-1` |
+| Built | 2026-11-14T17:54:38+00:00 by `scripts/build_device_links.py build` at engine commit `3a427d8cfb2a` (no uncommitted changes; producing-code digest `0b7c9b805ab9…`), run id `devices-2026-11-14-80c50bf3cb`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -82,9 +82,9 @@ identifier, and 159 more say only that no clinical study was done.
 | Verified link (identifier cited; what the citation means is not reviewed) | 11 |
 | Candidate link awaiting review | 282 |
 | No candidate found in the completed search scope | 763 |
-| Available document insufficient for the question | 36 |
+| Available document insufficient for the question | 8 |
 | Not searched (name made only of device-type words) | 17 |
-| Search incomplete or blocked | 320 |
+| Search incomplete or blocked | 348 |
 | Document unavailable | 1 |
 
 ## Demographic evidence
@@ -192,4 +192,12 @@ It was rebuilt a forty-fourth time after the forty-third review round, at `543b0
 
 It was rebuilt again for that round's second fix, at `07a39bb` (run `devices-2026-11-14-ce2564e543`): cached text whose payload names another extractor version than the one asked for is not read, so the text a build uses always matches the extraction version `run.json` stamps. All 1,532 cached extractions name their own version, and every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a forty-fifth time after the forty-fourth review round, at the commit named above. That round's fix: the text stage counts a cached extraction as done only under the conditions the build reads it under, the same bytes and the same extractor version, so a file naming another version is extracted again rather than left to read as not extracted. All 1,532 cached extractions name the current version, and every output file is identical to the previous build apart from the run id.
+It was rebuilt a forty-fifth time after the forty-fourth review round, at `efb4ef0` (run `devices-2026-11-14-3c21849a48`). That round's fix: the text stage counts a cached extraction as done only under the conditions the build reads it under, the same bytes and the same extractor version, so a file naming another version is extracted again rather than left to read as not extracted. All 1,532 cached extractions name the current version, and every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a forty-sixth time, at `0c4a994` (run `devices-2026-11-14-63b371dc69`), to apply the investigator's decisions of 2026-11-14 on the questions still open. In the investigator's words: "D1. 2 D2 follow up PR D3. copy then delete D4. review merge the source archive. D5 finish then mergeD6. open it after 61". D1 is the image-only question from the thirty-third review round, and option 2 was chosen: a citation scan whose held documents cannot answer reads `search_incomplete_or_blocked`, not `available_document_insufficient`, when an unread page belongs to a document that could cite a study (a summary, an SSED, a decision summary, labeling, or a file whose type is not known). A clearance or granting letter, an approval order or a 510(k) Statement cannot cite a study, so its unread pages leave the scan insufficient. (As first applied, labeling was counted with the letters; review of the follow-up pull request corrected that, below.) This changes `coverage.json`, `submissions.json` and `summary.json`; every other output file is identical to the previous build apart from the run id. On the citation-scan route, 30 submissions move from document insufficient to search incomplete (40 → 10 and 376 → 406 on the route): 23 whose FDA-labelled 510(k) summary has text only on its letter page, 2 image-only 510(k) summaries, 1 PMA whose SSED is image-only, and 4 image-only files with no FDA label. The 3 whose unread document cannot cite a study (2 clearance letters, 1 510(k) Statement) stay insufficient. Overall, 28 submissions move from document insufficient to search incomplete (36 → 8 and 320 → 348); the other 2 of the 30 already read candidate awaiting review, which outranks both. No other state changes. The thread's estimate was "about 29" and "about 7"; these are the measured counts. D2 (registry snapshot provenance and the same-day version refresh) is left to the follow-up pull request with OCR, as decided. D5 ("finish then merge"): no further review rounds are requested on this pull request, and the two round-45 findings about archives frozen before validation existed are carried to the same follow-up.
+
+Pull request #61 was merged at `45d25f3`, before that rebuild was pushed, so the D1 change is carried by a follow-up pull request. It was rebuilt once more at `cf7aefe` (run `devices-2026-11-14-2b2c868bd0`), after `main` was merged into the branch; every output file was identical to the D1 rebuild apart from the run id.
+
+It was rebuilt again at the commit named above, after review of the follow-up pull request: whether a document could cite a study is now its own rule rather than the flag for whether it could hold a demographic table, so labeling (one of the 16 labeling files held cites NCT ids) counts as a document that could cite a study; the letters and the 510(k) Statement, none of which cites an NCT id in this run, do not. No coverage state changes. One reason changes: P000041's citation scan, already incomplete because its SSED is unread, now also counts its unread labeling (2 documents and 21 pages, not 1 and 12). Every other output file is identical apart from the run id.
+
+The review of the follow-up pull request also asked whether the letters' exception should apply to decision (b), so that a completed scan whose only unread pages are in a letter or a 510(k) Statement would not be held incomplete. In this run that would have moved one submission, P110014 (unread pages only in a PMA approval order), from search incomplete to no candidate in the completed scope. The investigator decided on 2026-11-14, in their words: "D7 1": decision (b) stands as worded, and any unread page leaves a scan that found no identifier incomplete. Nothing in the build or its outputs changes.

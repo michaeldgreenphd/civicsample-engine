@@ -10,8 +10,10 @@ therefore holds exactly one of seven states, with a reason in words:
   document_unavailable             the source answered and holds no document (or record) for this
                                    submission
   available_document_insufficient  something was retrieved, but it cannot answer the question: a
-                                   granting letter, a Statement, a scan without text, or a metadata
-                                   record that carries no study identifier
+                                   granting letter, a Statement, or a metadata record that carries
+                                   no study identifier. A summary (or a file of unknown type)
+                                   whose pages could not be read is not this: the citation scan of
+                                   it is search_incomplete_or_blocked until the pages are read
   candidate_awaiting_review        the route produced a candidate link that no machine check
                                    confirms and no person has decided
   no_candidate_in_completed_scope  the route ran to completion on material able to answer, and
@@ -172,6 +174,27 @@ def openfda_metadata(found: dict[str, Any] | None) -> dict[str, Any]:
     return _cell('openfda_metadata', 'search_incomplete_or_blocked', found['reason'])
 
 
+# Types that cannot cite a study whatever their pages hold: a letter states the decision and its
+# conditions, and a 510(k) Statement promises information on request and contains none. In the
+# 2026-11-14 run none of the 60 letters or the one Statement held cites an NCT id. Every other type
+# could: summaries, SSEDs, decision summaries, labeling (one of the 16 labeling files held cites
+# NCT ids), and files whose type is not known. This is a citation rule, separate from whether a
+# document could hold a demographic table (documents.DOCUMENT_TYPES).
+CANNOT_CITE_TYPES = ('510k_clearance_letter', 'de_novo_granting_letter', 'pma_approval_order', '510k_statement')
+
+
+def _pages_unread(d: dict[str, Any]) -> int:
+    """Pages of a held document with no usable text layer."""
+    t = d['text'] or {}
+    return (t.get('n_pages') or 0) - (t.get('n_pages_with_text') or 0)
+
+
+def _type_could_answer(doc_type: str | None) -> bool:
+    """Whether a document of this type could cite the study: any type but a letter or a 510(k)
+    Statement, including one not known."""
+    return doc_type not in CANNOT_CITE_TYPES
+
+
 def nct_citation_scan(docs: list[dict[str, Any]], links: list[dict[str, Any]]) -> dict[str, Any]:
     own = [d for d in docs if d['scope'] == 'this_submission']
     cell = _documents_cell('nct_citation_scan', own, links,
@@ -186,6 +209,17 @@ def nct_citation_scan(docs: list[dict[str, Any]], links: list[dict[str, Any]]) -
         cell['state'] = 'search_incomplete_or_blocked'
         cell['reason'] += (f'; but {unread} page(s) of the documents held have no usable text layer and were not '
                            'read (no OCR), so the scan did not cover every page')
+    # A scan whose documents cannot answer reads "available document insufficient"; but where the
+    # unread pages belong to a document that could carry the citation (a summary, an SSED, labeling,
+    # or a file whose type is not known), the scan is incomplete, not insufficient (investigator's
+    # decision, 2026-11-14, "D1. 2"). A letter or a 510(k) Statement cannot cite a study
+    # (CANNOT_CITE_TYPES), and its unread pages leave the scan insufficient.
+    could_answer = [d for d in held if _pages_unread(d) and _type_could_answer(d['document_type'])]
+    if could_answer and cell['state'] == 'available_document_insufficient':
+        cell['state'] = 'search_incomplete_or_blocked'
+        cell['reason'] += (f'; but {len(could_answer)} document(s) of a type that could cite a study have '
+                           f'{sum(_pages_unread(d) for d in could_answer)} page(s) without a usable text layer, '
+                           'not read (no OCR), so the scan did not cover them')
     cell['detail']['n_documents_scanned'] = sum(1 for d in held if (d['text'] or {}).get('status') in ('text', 'partial'))
     cell['detail']['n_documents_without_text'] = sum(1 for d in held if (d['text'] or {}).get('status') == 'image_only')
     cell['detail']['n_nct_ids_found'] = len({i['identifier'] for d in held for i in d['identifiers'] if i['kind'] == 'nct'})
