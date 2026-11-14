@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T04:15:25+00:00 by `scripts/build_device_links.py build` at engine commit `e44576acf1ff` (no uncommitted changes; producing-code digest `299a6ba640fd…`), run id `devices-2026-11-14-4e740bb9b3`, method `device-links-1` |
+| Built | 2026-11-14T04:27:54+00:00 by `scripts/build_device_links.py build` at engine commit `e76cdf98ae0c` (no uncommitted changes; producing-code digest `e38686c646b7…`), run id `devices-2026-11-14-948d8c09ac`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -112,4 +112,6 @@ It was rebuilt a fourth time after the third review round, at `498da39` (run `de
 
 It was rebuilt a fifth time after the fourth review round, at `d8718fc` (run `devices-2026-11-14-df7f71255b`). That round's two fixes (a submission number must end where the record's token ends; a documentary statement may not cite a parent PMA's document) change no output of this run: the five identifier-confirmed registry citations each stand as an exact token, and the statements file has no rows. Every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a sixth time after the fifth review round, at the commit named above. That round's two fixes (an NCT id in document text must not run into a letter; an original PMA number must stand alone, not as part of a supplement's number) change no output of this run. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a sixth time after the fifth review round, at `e44576a` (run `devices-2026-11-14-4e740bb9b3`). That round's two fixes (an NCT id in document text must not run into a letter; an original PMA number must stand alone, not as part of a supplement's number) change no output of this run. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a seventh time after the sixth review round, at the commit named above. That round's two fixes (an FDA database page that answers without naming the number asked for is logged as `not_the_record` and asked again, not taken as FDA's answer; a local file that is not a PDF is not copied into the document store and does not settle its address) change no output of this run: all 1,431 database pages in the frozen cache name their own number, and all 12 recovered local files are PDFs. Every output file is identical to the previous build apart from the run id.
