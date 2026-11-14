@@ -194,7 +194,7 @@ def locate_identifier(study: dict[str, Any], submission_number: str, window: int
     path and the verbatim text around it.
 
     Exact means the whole number as a token: not preceded by a letter or digit, and the whole number
-    (with its supplement, when one is cited) not followed by a letter or digit, so "K990001ABC" and
+    (with its supplement, when one is cited) not followed by a letter or digit, in any letter case, so "K990001ABC" and
     "P140011/S0089" are not "K990001" and "P140011/S008". For a PMA supplement the base number must be followed by its supplement ("P140011/S008",
     "P140011 S008", "P140011S008"); a record citing only the original PMA is reported with
     `supplement_cited: false` and is not a citation of the supplement. A record citing another
@@ -202,7 +202,8 @@ def locate_identifier(study: dict[str, Any], submission_number: str, window: int
     original PMA the number must stand alone: "P140011/S008" is the supplement, not P140011.
     """
     base, _, supp = submission_number.partition('/')
-    pattern = re.compile(r'(?<![A-Za-z0-9])' + re.escape(base) + r'(?:\s*/?\s*(S\d{3}))?(?![A-Za-z0-9])')
+    # Case is ignored: a record may write the number in lower or mixed case ("k990001").
+    pattern = re.compile(r'(?<![A-Za-z0-9])' + re.escape(base) + r'(?:\s*/?\s*(S\d{3}))?(?![A-Za-z0-9])', re.IGNORECASE)
     found = []
     for path, text in _walk(study):
         for m in pattern.finditer(text):
@@ -216,7 +217,7 @@ def locate_identifier(study: dict[str, Any], submission_number: str, window: int
                 continue
             quote = re.sub(r'\s+', ' ', text[max(0, m.start() - window): m.end() + window]).strip()
             found.append({'registry_field': path, 'quote': quote,
-                          'supplement_cited': (m.group(1) == supp) if supp else None})
+                          'supplement_cited': ((m.group(1) or '').upper() == supp.upper()) if supp else None})
     return found
 
 

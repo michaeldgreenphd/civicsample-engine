@@ -183,15 +183,27 @@ def archive_path(cache: Path, name: str) -> Path:
     return (cache / ARCHIVES[name][0]).with_name('responses.frozen.jsonl.gz')
 
 
+def statement_study_ids(path: Path) -> set[str]:
+    """The registry records the curated statements need: each row's study, and the record a
+    registry-record statement quotes (the build checks the quote against that record, so it must be
+    held, not merely returned by some other search)."""
+    rows = links.read_statements(path)
+    return {r['nct_id'] for r in rows} | {r['source_id'] for r in rows if r['source_kind'] == 'registry_record'}
+
+
 def stage_nct(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> None:
-    """Look up every NCT id the document scan found. Runs after `text`."""
+    """Look up every NCT id the document scan found, and every study the curated statements name.
+    Runs after `text`."""
     manifest = acquire.Manifest(args.cache / 'documents' / 'manifest.jsonl')
     docs = documents.build(manifest.lines, {sn: s['pathway'] for sn, s in subs.items()}, args.cache,
                            pdftext.extraction_version())
-    ids = sorted({i['identifier'] for d in docs for i in d['identifiers'] if i['kind'] == 'nct'})
+    cited = {i['identifier'] for d in docs for i in d['identifiers'] if i['kind'] == 'nct'}
+    stated = statement_study_ids(ROOT / 'devices' / 'documentary_statements.csv')
+    ids = sorted(cited | stated)
     get, throttle, rlog = acquire.requests_get(), acquire.Throttle(), registry_log(args)
     registry.fetch_version(rlog, get, throttle, acquire.now()[:10])
-    log(f'nct: {len(ids)} distinct ids cited in documents; {registry.fetch_studies(ids, rlog, get, throttle)}')
+    log(f'nct: {len(cited)} distinct ids cited in documents, {len(stated - cited)} more named by curated statements; '
+        f'{registry.fetch_studies(ids, rlog, get, throttle)}')
 
 
 def stage_freeze(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> None:

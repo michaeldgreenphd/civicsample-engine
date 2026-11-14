@@ -651,11 +651,31 @@ def test_nct_validation_states(acquired: dict[str, Any]) -> None:
     # an original PMA is cited only by its number standing alone
     ('approved as P990007/S002 and as P990007', 'P990007', 1, None),
     ('approved as P990007/S0029 and as P990007/S002', 'P990007/S002', 2, False),
+    # letter case is ignored, with the same boundaries and supplement checks
+    ('cleared as k990001', 'K990001', 1, None), ('De Novo den990005 granted', 'DEN990005', 1, None),
+    ('approved as p990007/s002', 'P990007/S002', 1, True), ('approved as p990007', 'P990007/S002', 1, False),
+    ('model k990001abc and K990001', 'K990001', 1, None),
 ])
 def test_a_submission_number_must_stand_exactly_in_a_named_field(text: str, number: str, n: int, supplement: Any) -> None:
     found = registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}}, number)
     assert len(found) == n and found[0]['supplement_cited'] is supplement
     assert found[0]['registry_field'] == 'protocolSection.descriptionModule.briefSummary' and found[0]['quote'] == text
+
+
+def test_acquisition_looks_up_the_studies_curated_statements_name(tmp_path: Path) -> None:
+    path = tmp_path / 'documentary_statements.csv'
+    with path.open('w', encoding='utf-8', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=links.STATEMENT_COLUMNS)
+        w.writeheader()
+        base = {'page_or_field': 'p. 4', 'verbatim_quote': 'the pivotal study', 'recorded_on': '2026-11-14', 'note': 'n',
+                'proposed_relationship': links.STATEMENT_RELATIONSHIPS[0]}
+        w.writerow({**base, 'submission_number': 'K990001', 'nct_id': 'NCT99000001', 'source_kind': 'fda_document',
+                    'source_id': 'doc:K990001:abc'})
+        w.writerow({**base, 'submission_number': 'K990002', 'nct_id': 'NCT99000002', 'source_kind': 'registry_record',
+                    'source_id': 'NCT99000002', 'page_or_field': 'protocolSection.descriptionModule.briefSummary'})
+    assert build_device_links.statement_study_ids(path) == {'NCT99000001', 'NCT99000002'}
+    # the committed file is read the same way (it has no rows yet)
+    assert build_device_links.statement_study_ids(build_device_links.ROOT / 'devices' / 'documentary_statements.csv') == set()
 
 
 @pytest.mark.parametrize('text', ['approved as P990007/S005', 'approved as P990007 S005', 'approved as P990007s005'])
