@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T03:58:02+00:00 by `scripts/build_device_links.py build` at engine commit `498da3942677` (no uncommitted changes; producing-code digest `d26f6f47880f…`), run id `devices-2026-11-14-8049f7e796`, method `device-links-1` |
+| Built | 2026-11-14T04:07:06+00:00 by `scripts/build_device_links.py build` at engine commit `d8718fc23779` (no uncommitted changes; producing-code digest `709fec5c1a62…`), run id `devices-2026-11-14-df7f71255b`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -108,4 +108,6 @@ It was rebuilt again after the first review round, at `c415897` (run `devices-20
 
 It was rebuilt a third time after the second review round, at `a887a8b` (run `devices-2026-11-14-23c855dee1`). That round made the common-word rule follow the name a study was matched on (it had been set for a whole family when any of the family's names flooded the registry) and made a registry quote be checked only in the field its row names. Every count and every record's classification is unchanged: each of the 1,647 matches set aside was matched on the name whose own search flooded. The reason text on those 1,647 records now reads "a search for the matched name returned 50 or more records"; nothing else in `links.json` changed, and every other output file is identical apart from the run id.
 
-It was rebuilt a fourth time after the third review round, at the commit named above. That round's two fixes (an HTTP 200 answer without a usable body is logged as no answer; a registry-record statement must quote its own study) change no output of this run: every 200 answer in the frozen caches has a parsed body, and the statements file has no rows. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a fourth time after the third review round, at `498da39` (run `devices-2026-11-14-8049f7e796`). That round's two fixes (an HTTP 200 answer without a usable body is logged as no answer; a registry-record statement must quote its own study) change no output of this run: every 200 answer in the frozen caches has a parsed body, and the statements file has no rows. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a fifth time after the fourth review round, at the commit named above. That round's two fixes (a submission number must end where the record's token ends; a documentary statement may not cite a parent PMA's document) change no output of this run: the five identifier-confirmed registry citations each stand as an exact token, and the statements file has no rows. Every output file is identical to the previous build apart from the run id.
