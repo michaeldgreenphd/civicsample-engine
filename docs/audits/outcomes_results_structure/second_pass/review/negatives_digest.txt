@@ -1,0 +1,498 @@
+
+### NCT00081653 [random] PHASE4 | n=719 | Musculoskeletal | measures=6
+  groups(2): ['Ibandronate 100 mg', 'Ibandronate 150 mg']
+  classes(27): ['Baseline (n=345,348)', 'Month 12 (n=347,346)', 'Change from Baseline at Month 12 (n=344,345)', 'Month 24 (n=322,336)', 'Change from Baseline at Month 24 (n=319,335)', 'Month 36 (n=301,321)', 'Change from Baseline at Month 36 (n=298,320)', 'Baseline (n= 56,68)', 'Month 6 Postdose (n=56,68)', 'Change from Baseline at Month 6 Postdose (n=5…', 'Month 12 (n=57,67)', 'Change from Baseline at Month 12 (n=56,67)', 'Month 24 (n=54,65)', 'Change from Baseline at Month 24 (n=53,65)']
+
+### NCT00095199 [random] PHASE3 | n=939 | Oncology | measures=8
+  groups(5): ['Cetuximab & Pemetrexed', 'Pemetrexed', 'Cetuximab & Docetaxel', 'Docetaxel', 'Cetuximab + Docetaxel']
+    ~ an.statisticalComment: plan-Meier method estimated median PFS time. HR was calculated with unstratified Cox proportional hazards model. HR\<1 favours Cetuximab arm
+    ~ an.pValueComment: The 2-sided unstratified log-rank test was employed at the 5% significance level.
+    ~ an.statisticalComment: aplan-Meier method estimated median OS time. HR was calculated with unstratified Cox proportional hazards model. HR\<1 favors Cetuximab arm
+    ~ an.pValueComment: The 2-sided unstratified Mantel Haenszel test was employed at the 5% significance level.
+    ~ an.statisticalComment: estimated time to symptomatic progression. HR was calculated using unstratified Cox proportional hazards model. HR\<1 favors Cetuximab arm
+    ~ an.statisticalComment: eier method estimated duration of response. HR was calculated using unstratified Cox proportional hazards model. HR\<1 favors Cetuximab arm
+
+### NCT00114244 [random] PHASE2 | n=52 | Oncology | measures=3
+  groups(2): ['Arm I (Sorafenib Tosylate)', 'Arm II (Sorafenib Tosylate, Gemcitabine …']
+  by/stratified titles(1): ['Objective Response (OR = CR or PR) as Determined by the RECIST Criteria']
+
+### NCT00225784 [random] PHASE2 | n=37 | Oncology | measures=7
+  groups(2): ['Cetuximab, Gemcitabine, Radiotherapy', 'Cetuximab, Gemcitabine, Radiotherapy in …']
+  classes(7): ['partial response', 'stable disease', 'progressive disease', 'number of participants with local recurrence …', 'number of ppts. with local and distant recurr…', 'number of ppts. with distant disease recurren…', 'number of ppts. without recurrence or unknown']
+  by/stratified titles(1): ['Objective Response of Tumor by RECIST 1.0 Criteria']
+
+### NCT00340379 [random] PHASE2, PHASE3 | n=72 | Other | measures=3
+  groups(2): ['Ziprasidone', 'Sertraline/Haloperidol']
+
+### NCT00353938 [random] PHASE2 | n=14 | Mental Health | measures=2
+  groups(2): ['Full Dose MDMA-assisted Therapy (125 mg)', 'Active Placebo MDMA-assisted Therapy (25…']
+
+### NCT00369590 [random] PHASE2 | n=58 | Oncology | measures=6
+  groups(2): ['Arm I - Anaplastic Glioma', 'Arm 2 - Glioblastoma']
+  classes(2): ['Complete Response', 'Partial Response']
+
+### NCT00430183 [random] PHASE3 | n=788 | Oncology | measures=8
+  groups(2): ['Arm A: Docetaxel + LHRH Agonist + Surgic…', 'Arm B: Surgical Intervention']
+
+### NCT00465361 [random] NA | n=7 | Other | measures=1
+  groups(1): ['Intervention']
+
+### NCT00566696 [random] PHASE2 | n=73 | Oncology | measures=7
+  groups(1): ['High-Risk Hematologic Malignancies']
+  classes(9): ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'The Cumulative Incidence of Relapse at five y…', 'Estimate±SE', 'Rate of Overall Grade III-IV Acute AVHD', 'Rate of limited grade Chronic GVHD']
+
+### NCT00627978 [random] PHASE2 | n=15 | Oncology | measures=1
+  groups(2): ['Ixabepilone', 'Control']
+  classes(4): ['Axons grade 0 (normal) or 1 morphology baseli…', 'Axons grade 0 (normal) or 1 morphology Cycle …', 'Axons grade 3 or 4 morphology baseline', 'Axons grade 3 or 4 morphology Cycle 7']
+
+### NCT00708162 [random] PHASE3 | n=724 | Infectious Disease | measures=18
+  groups(2): ['Elvitegravir', 'Raltegravir']
+
+### NCT00714051 [random] PHASE1, PHASE2 | n=55 | Oncology | measures=1
+  groups(2): ['Falls Prevention Training', 'Attention Control']
+
+### NCT00724971 [random] PHASE1 | n=10 | Oncology | measures=12
+  groups(1): ['CMC-544 1.8 mg/m^2 + Rituximab 375 mg/m^…']
+  classes(15): ['Complete response (CR)', 'Complete response unconfirmed (CRu)', 'Partial response (PR)', 'Objective Response (CR+CRu+PR)', 'CMC-544: Cycle 1', 'CMC-544: Cycle 2', 'CMC-544: Cycle 3', 'Total Calicheamicin: Cycle 1', 'Total Calicheamicin: Cycle 2', 'Total Calicheamicin: Cycle 3', 'G544: Cycle 1', 'G544: Cycle 2', 'G544: Cycle 3', 'Screening']
+
+### NCT00856908 [random] PHASE2 | n=20 | Endocrine and Metabolic | measures=13
+  groups(2): ['Experimental', 'Placebo Comparator']
+
+### NCT00940589 [random] PHASE2 | n=73 | Neurology | measures=3
+  groups(2): ['Circadin', 'Placebo']
+    ~ desc: is a brief assessment instrument used to assess cognitive function in elderly patients. The MMSE can be used to screen for cognitive impairment and as a measurement of
+
+### NCT01263938 [random] PHASE4 | n=5 | Neurology | measures=4
+  groups(1): ['Atorvastatin']
+  classes(3): ['Total CD14+CD16+ monocytes', 'CD14+CD163+ monocytes', 'CD14+CCR2+ monocytes']
+
+### NCT01289210 [random] PHASE1, PHASE2 | n=2 | Oncology | measures=2
+  groups(1): ['VTX-2337 Plus Radiation']
+
+### NCT01375491 [random] PHASE4 | n=39 | Endocrine and Metabolic | measures=4
+  groups(3): ['Doxycycline', 'Placebo', 'Control Arm']
+
+### NCT01475734 [random] PHASE2 | n=44 | Endocrine and Metabolic | measures=11
+  groups(2): ['Albiglutide 50 mg', 'Placebo']
+  classes(37): ['0 hr, n=20, 21', '1 hr, n=20, 21', '1 hr 15 min, n=20, 21', '1 hr 45 min, n=20, 21', '2 hr, n=20, 20', '2 hr 45 min, n=20, 21', '3 hr, n=20, 21', '3 hr 30 min, n=20, 21', '3 hr 45 min, n=20, 21', '4 hr 15 min, n=20, 21', '4 hr 30 min, n=20, 21', '4 hr 45 min, n=20, 21', '5 hr, n=20, 21', '5 hr 15 min, n=20, 21']
+  by/stratified titles(1): ['Insulin Secretion Rate (Measured by Mathematical Analysis of C-peptide Concentrations) During the Glucose Clamp Period']
+
+### NCT01489111 [random] PHASE3 | n=36 | Reproductive and Sexual Health | measures=12
+  groups(1): ['NNC 0129-0000-1003 (Turoctocog Alfa Pego…']
+  classes(5): ['Excellent', 'Good', 'Moderate', 'None', 'Missing']
+  by/stratified titles(1): ['Haemostatic Effect During Surgery Evaluated by the Four-point Scale, Assessed by the Investigator/Surgeon at the Day of …']
+
+### NCT01490788 [random] PHASE1 | n=30 | Other | measures=2
+  groups(3): ['Treatment A', 'Treatment B', 'Treatment C']
+  classes(3): ['Subjects with Treatment-Emergent Adverse Even…', 'Subjects with Serious Adverse Events', 'Subjects discontinued due to adverse event']
+
+### NCT01546636 [random] NA | n=70 | Autoimmune and Inflammatory | measures=3
+  groups(2): ['Hypocapnic Group', 'Normocapnic Group']
+
+### NCT01620944 [random] PHASE3 | n=3 | Infectious Disease | measures=6
+  groups(2): ['Arm A', 'Arm B']
+  classes(8): ['HIV-1 RNA < 40 c/mL', 'HIV-1 RNA < 400 c/mL', 'Serious Adverse Events (SAEs)', 'Adverse Events (AEs) leading to discontinuati…', 'eGFR', 'Bone Mineral Density', 'Newly Emergent Genotypic Substitutions', 'Phenotypic Resistance']
+
+### NCT01768000 [random] NA | n=40 | Mental Health | measures=4
+  groups(4): ['Family Cognitive Adaptation Training - C…', 'Control Group - Caregivers', 'Family Cognitive Adaptation Training - F…', 'Control Group - Family Members']
+  classes(13): ['Total', 'Health', 'Adaptation', 'Social Skills', 'Behaviour', 'Social Relationships', 'Employment/Work', 'Social & Present Life', 'Living Situation', 'Tension', 'Supervision', 'Worrying', 'Urging']
+
+### NCT01794000 [random] PHASE3 | n=341 | Hematology | measures=13
+  groups(2): ['Prasugrel', 'Placebo']
+  classes(2): ['Time from Randomization to the First VOC', 'Time from Randomization to the Second VOC']
+    ~ an.groupDescription: ce estimate was used, with treatment, hydroxyurea use at baseline and age group included as factors in the model.
+    ~ pop: All randomized participants who are 7 years or older and have both baseline and at least one post-baseline monthly outcome measure in any mont
+    ~ an.pValueComment: t, baseline value of the pain-diary outcome measure, hydroxyurea use, age group, time and treatment-by-time interaction.
+    ~ an.statisticalComment: ce estimate was used, with treatment, hydroxyurea use at baseline and age group included as factors in the model.
+    ~ pop: All randomized participants who are 4 years or older and have baseline and at least one post-baseline monthly outcome measure in any month. Di
+    ~ an.pValueComment: tment, the baseline value of the pain-diary measure, hydroxyurea use, age group, time and treatment-by-time interaction.
+    ~ pop: All Randomized participants who are 4 years or older and have both baseline and at least one post-baseline quarterly outcome measure in any qu
+    ~ (+2 more loose mentions)
+
+### NCT01927068 [random] NA | n=499 | Autoimmune and Inflammatory | measures=3
+  groups(2): ['Global Cohort 1', 'Global ISR Cohort 2']
+
+### NCT01940497 [random] PHASE3 | n=240 | Oncology | measures=11
+  groups(8): ['Trastuzumab (Vial): Adjuvant', 'Trastuzumab (Vial): Neoadjuvant', 'Trastuzumab (SID): Adjuvant', 'Trastuzumab (SID): Neoadjuvant', 'Trastuzumab (Vial)', 'Trastuzumab (SID)', 'HCPs: Trastuzumab (Vial)', 'HCPs: Trastuzumab (SID)']
+  classes(83): ['Comfortable: Unknown', 'Comfortable: Strongly Disagree', 'Comfortable: Disagree', 'Comfortable: Unsure', 'Comfortable: Agree', 'Comfortable: Strongly Agree', 'Convenient: Unknown', 'Convenient: Strongly Disagree', 'Convenient: Disagree', 'Convenient: Unsure', 'Convenient: Agree', 'Convenient: Strongly Agree', 'Confident: Unknown', 'Confident: Strongly Disagree']
+  by/stratified titles(2): ['Percentage of Participants by Response to Patient Satisfaction Questionnaire (PSQ)', 'Percentage of Health Care Professionals (HCPs) by Response to Health Care Professional Questionnaire (HCPQ)']
+
+### NCT01944644 [random] NA | n=66 | Mental Health | measures=4
+  groups(2): ['Active Low Field Magnetic Stimulation', 'Sham Low Field Magnetic Stimulation']
+
+### NCT02178722 [random] PHASE1, PHASE2 | n=444 | Oncology | measures=8
+  groups(6): ['Phase 1: Epacadostat 25 mg BID', 'Phase 1: Epacadostat 50 mg BID', 'Phase 1: Epacadostat 100 mg BID', 'Phase 1: Epacadostat 300 mg BID', 'Epacadostat 100 mg BID+ Pembrolizumab 20…', 'Phase 2: Epacadostat 100 mg BID']
+  classes(34): ['SAE', 'TEAS', 'Triple negative breast cancer', 'Microsatellite-instability high colorectal ca…', 'Gastric cancer', 'Hepatocellular carcinoma', 'Melanoma - immune checkpoint-naïve', 'Non-small cell lung cancer (NSCLC) (tumor pro…', 'NSCLC programmed cell death ligand (PD-L1) lo…', 'Ovarian cancer', 'Renal cell carcinoma', 'Squamous cell carcinoma of the head and neck', 'Transitional carcinoma of the genitourinary (…', 'Diffuse large B-cell lymphoma']
+  categories(6): ['Complete Response - Score 1', 'Very Good Response - Score 2', 'Minor Response - Score 3', 'Stable Disease - Score 4', 'Progressive Disease - Score 5', 'Unable to Evaluable']
+
+### NCT02303574 [random] PHASE1 | n=89 | Other | measures=40
+  groups(21): ['Part 1a (Fasted State) - Single Ascendin…', 'Part 1b (Fed State) - SAD', 'Part 2 - Multiple Ascending Dose (MAD)', 'Placebo - Part 1a (Fasted State)- SAD', 'Placebo - Part 1b (Fed State) - SAD', 'Placebo - Part 2 - MAD', 'AZD7986 5mg - Part 1a (Fasted State) - S…', 'AZD7986 15mg - Part 1a (Fasted State) - …']
+  classes(15): ['Any AE', 'Any AE with outcome = death', 'Any serious adverse event (SAE) (including de…', 'Any AE leading to discontinuation of AZD7986', 'Day 16', 'Day 21', 'Day 25', 'Day 28', 'Day 32', 'Day 38', 'Day 41', 'Day 52', 'Day 12, Pre-dose', 'Day 12, 6 h']
+  by/stratified titles(38): ['Safety and Tolerability of AZD7986 by Assessment of the Number of Adverse Events (AEs) Following Administration of Oral …', 'Rate and Extent of Absorption AZD7986 by Assessment of the Area Under the Plasma Concentration Versus Time Curve, From T…', 'Rate and Extent of Absorption of AZD7986 by Assessment of the Area Under the Plasma Concentration Versus Time Curve, Fro…', 'Rate and Extent of Absorption AZD7986 by Assessment of the Area Under Plasma Concentration-time Curve From Zero Extrapol…']
+    ~ an.nonInferiorityComment: OVA model with fixed effects of dose level, day and dose-level-by-day interaction.
+
+### NCT02431364 [random] PHASE1 | n=33 | Other | measures=15
+  groups(5): ['Placebo', 'Verdinexor 5 mg', 'Verdinexor 10 mg', 'Verdinexor 20 mg', 'Verdinexor 40 mg']
+  classes(4): ['Participants with TEAEs', 'Participants with TESAEs', 'Day 1', 'Day 3']
+
+### NCT02453711 [random] PHASE2 | n=957 | Other | measures=37
+  groups(9): ['Semaglutide 0.05 mg', 'Semaglutide 0.1 mg', 'Semaglutide 0.2 mg', 'Semaglutide 0.3 mg', 'Semaglutide 0.4 mg', 'Semaglutide 0.3 mg (Fast Escalation)', 'Semaglutide 0.4 mg (Fast Escalation)', 'Liraglutide 3.0 mg']
+  classes(101): ['Total cholesterol', 'LDL cholesterol', 'HDL cholesterol', 'VLDL cholesterol', 'Triglycerides', 'Bodily pain', 'General health', 'Mental health', 'Physical functioning', 'Role-emotional', 'Role-physical', 'Social functioning', 'Vitality', 'Physical component summary']
+  categories(3): ['Normal', 'Abnormal, NCS', 'Abnormal, CS']
+  by/stratified titles(4): ['Number of New and Ongoing Nausea, Vomiting, Diarrhoea, and Constipation Events by Week', 'Nausea: Individual Scores of Nausea Questionnaire and Severity by NRS Score', 'Change in Mental Health Assessed by C-SSRS', 'Change in Mental Health Assessed by PHQ-9']
+    ~ desc: ysed using an analysis of covariance model with treatment, region and sex as factors and baseline body weight as covariate. In-trial observation period was defined
+    ~ an.groupDescription: ysed using an analysis of covariance model with treatment, region and sex as factors and baseline body weight as covariate. Dunnett's method was used to adjust for
+    ~ desc: d using a binary logistic regression model with treatment, region and sex as factors and baseline body weight as covariate. In-trial observation period was defined
+    ~ desc: xed model for repeated measurements (MMRM) with treatment, region and sex as factors and baseline pulse as covariate, all nested within visit. Results are based on
+    ~ pop: Overall number of participants analyzed = number of female participants in the SAS with available data. SAS included all participants receiving at l
+
+### NCT02513485 [random] PHASE4 | n=57 | Mental Health | measures=15
+  groups(2): ['Sinemet/Placebo', 'Placebo/Sinemet']
+  classes(39): ['Visit 1 resting corticostriatal connectivity …', 'Visit 2 resting corticostriatal connectivity …', 'Visit 1 task (reward anticipation) corticostr…', 'Visit 2 task (reward anticipation) corticostr…', 'CRP mg/L and Visit 1 resting connectivity res…', 'CRP mg/L and Visit 2 resting connectivity res…', 'CRP mg/L and Visit 1 resting connectivity pos…', 'CRP mg/L and Visit 2 resting connectivity pos…', 'CRP mg/L and Visit 1 task (reward anticipatio…', 'CRP mg/L and Visit 2 task (reward anticipatio…', 'CRP > vs. < 2 mg/ and Visit 1 resting connect…', 'CRP > vs. < 2 mg/L and Visit 2 resting connec…', 'CRP > vs. < 2 mg/L and Visit 1 resting connec…', 'CRP > vs. < 2 mg/L and Visit 1 task (reward a…']
+    ~ desc: at assess loss of pleasure, loss of interest, loss of energy, loss of sex drive. The total score of the anhedonia subscale ranges from 0 to 12 where higher scores
+
+### NCT02528318 [random] PHASE2 | n=48 | Respiratory | measures=9
+  groups(5): ['50 mg/kg', '75 mg/kg', '100 mg/kg', '150 mg/kg', 'nCPAP Alone']
+  classes(28): ['Bradycardia', 'Desaturation', 'Gagging/regurgitation', 'Apnea', 'Pallor', 'BPD', 'Alive and Without BPD', 'Baseline (Randomization)', '60 Minutes Post Randomization - Observed', '60 Minutes Post Randomizati - Change from Bas…', '3 Hours Post Randomization - Observed', '3 Hours Post Randomizaiton - Change from Base…', '12 Hours Post Randomization - Observed', '12 Hours Post Randomization - Change from Bas…']
+
+### NCT02576249 [random] PHASE4 | n=29 | Musculoskeletal | measures=3
+  groups(2): ['Ropivacaine and Methylprednisolone', 'Saline and Methylprednisolone']
+  classes(11): ['Pre-injection Activity', 'Pre-injection Rest', 'Immediately Post-injection Activity', 'Immediately Post-injection Rest', '2 Weeks Activity', '2 Weeks Rest', '3 Months Activity', '3 Months Rest', 'baseline (pre-injection)', '2 weeks', '3 months']
+
+### NCT02634346 [random] PHASE3 | n=403 | Mental Health | measures=3
+  groups(3): ['ALKS 3831', 'Olanzapine', 'Placebo']
+
+### NCT02829983 [random] NA | n=40 | Hematology | measures=2
+  groups(2): ['Clarithromycin Group', 'Placebo Group']
+
+### NCT03123354 [random] NA | n=44 | Other | measures=1
+  groups(1): ['O3 Regional Oximeter Sensors (Test Group…']
+  by/stratified titles(1): ['Accuracy of Sensor by Arms Calculation of Percent rSO2']
+
+### NCT03338673 [random] NA | n=12 | Mental Health | measures=2
+  groups(2): ['Dual Therapy First', 'Mono Therapy First']
+
+### NCT03468218 [random] PHASE2 | n=36 | Oncology | measures=2
+  groups(1): ['Treatment (Pembrolizumab, Cabozantinib)']
+
+### NCT03649217 [random] NA | n=23 | Neurology | measures=5
+  groups(1): ['Wearing the iStride Device']
+
+### NCT03669250 [random] PHASE1 | n=22 | Mental Health | measures=2
+  groups(4): ['Placebo', '15mg CVN058', '75mg CVN058', '150 mg CVN058']
+  classes(2): ['Any TEAE', 'Any SAE']
+  by/stratified titles(1): ['Mean Amplitude of Duration of Auditory Mismatch Negativity (MMN) by Dose Level']
+
+### NCT03676257 [random]  | n=20033 | Oncology | measures=3
+  groups(4): ['Women With a Diagnosis of HR+ /HER2- Met…', 'Women With a Diagnosis of HR- /HER2- Met…', 'Women With a Diagnosis of HR+ /HER2+ Met…', 'Women With a Diagnosis of HR- /HER2+ Met…']
+  classes(6): ['Chemotherapy (exclusive)', 'Endocrine therapy (exclusive)', 'Combination of endocrine therapy and chemothe…', 'Chemotherapy and targeted treatment', 'Combination of endocrine therapy and targeted…', 'Combination of chemotherapy, endocrine therap…']
+    ~ pop: the combinbation of treatments (defined by the row) was provided to 0 woman of the population (defined by the column).
+    ~ gtitle: Women With a Diagnosis of HR+ /HER2- Metastatic Breast Cancer (mBC)
+    ~ gtitle: Women With a Diagnosis of HR- /HER2- Metastatic Breast Cancer (mBC)
+    ~ gtitle: Women With a Diagnosis of HR+ /HER2+ Metastatic Breast Cancer (mBC)
+    ~ gtitle: Women With a Diagnosis of HR- /HER2+ Metastatic Breast Cancer (mBC)
+    ~ gdesc: Women with a diagnosis of HR+ /HER2- metastatic breast cancer (mBC) and satisfying eligibility
+    ~ gdesc: Women with a diagnosis of HR- /HER2- metastatic breast cancer (mBC) and satisfying eligibility
+    ~ (+2 more loose mentions)
+
+### NCT03755414 [random] PHASE1 | n=55 | Oncology | measures=5
+  groups(3): ['Pilot Study: Itacitinib', 'Expansion Phase: Itacitinib', 'Donors']
+  classes(2): ['Grade 1 or above', 'Grade 2 or above']
+
+### NCT04029480 [random] PHASE3 | n=166 | Endocrine and Metabolic | measures=10
+  groups(4): ['Combined Ertugliflozin', 'Placebo', 'Dose-Optimized Ertugliflozin', '5 mg Ertuglifozin']
+    ~ an.groupDescription: ent, time, age (10 to 14 years/15 to 17 years), insulin use (yes/no), interaction of time by treatment with the constraint that the model estimated a single baseline mean
+
+### NCT04176133 [random] PHASE2 | n=61 | Other | measures=10
+  groups(4): ['Entolimod 1 mcg', 'Entolimod 3 mcg', 'Entolimod 10 mcg', 'Placebo']
+
+### NCT04234997 [random] PHASE2 | n=14 | Substance Use Disorders | measures=36
+  groups(2): ['Suvorexant 20 mg', 'Suvorexant 0mg']
+  by/stratified titles(36): ['Stress as Assessed by a Visual Analog Scale (VAS) for Stress', 'Stress as Assessed by a Visual Analog Scale (VAS) for Stress', 'Change in Stress Reactivity as Assessed by Heart Rate During the Cold Pressor Test (CPT)', 'Change in Stress Reactivity as Assessed by Heart Rate During the Cold Pressor Test (CPT)']
+
+### NCT04333147 [random] PHASE3 | n=2916 | Autoimmune and Inflammatory | measures=42
+  groups(2): ['Otilimab 90 mg', 'Otilimab 150 mg']
+  classes(67): ['Participants with AEs', 'Participants with SAEs', 'Participants with AESI', 'Neutrophils', 'Lymphocytes', 'Monocytes', 'Eosinophils', 'Basophils', 'Total WBC', 'Aspartate Aminotransferase (AST)', 'Alanine Aminotransferase (ALT)', 'Alkaline Phosphatase (AP)', 'Gamma Glutamyl Transferase (GGT)', 'Creatine Kinase (CPK)']
+
+### NCT04548349 [random] PHASE4 | n=25 | Other | measures=1
+  groups(2): ['Altreno Group', 'Control Group']
+  classes(3): ['Baseline', '+90 days from baseline', '+120 days from baseline']
+
+### NCT04629196 [random] PHASE4 | n=12 | Autoimmune and Inflammatory | measures=5
+  groups(2): ['IV Weight-Based Induction Dose', 'Standard Subcutaenous Dose']
+
+### NCT04663737 [random] PHASE2 | n=20 | Infectious Disease | measures=19
+  groups(2): ['Group A', 'Group B']
+  classes(15): ['Viral Clearance Day 8', 'Viral Clearance Day 14 (EOT)', 'Day 1', 'Day 14', 'Best Case Scenario', 'Worst Case Scenario', 'Baseline to Visit 7 (Day 28)', 'Baseline to Visit 8 (Day 45), LOCF', 'Visit 4 (Day 8) - Visit 2 (Day 1)', 'Visit 6 (Day 14, EOT) - Visit 2 (Day 1)', 'Visit 7 (Day 28, F1), LOCF - Visit 2 (Day 1)', 'Adjusted Visit 3 (Day 4) - Baseline', 'Adjusted Visit 4 (Day 8) - Baseline', 'Adjusted Visit 5 (Day 11) - Baseline']
+  categories(7): ['Negative', 'Positive', 'Inconclusive', 'Not Evaluated', 'Improvement', 'Progression', 'Else']
+  by/stratified titles(1): ['Clinical Benefit of CX-4945 i.e. Number of Days to Normalization of Oxygen Saturation Level Measured by Pulse Oximeter a…']
+
+### NCT04717323 [random] NA | n=10 | Neurology | measures=7
+  groups(2): ['Patients', 'Controls']
+
+### NCT05014919 [random] PHASE3 | n=35 | Mental Health | measures=7
+  groups(2): ['Double-Blind Relapse Prevention: Vortiox…', 'Double-Blind Relapse Prevention: Placebo']
+
+### NCT05205941 [random] PHASE1 | n=9 | Infectious Disease | measures=7
+  groups(3): ['MMV533 (20 mg).', 'MMV 533 (35 mg)', 'MMV533 (100 mg)']
+
+### NCT05348993 [random] PHASE2 | n=622 | Other | measures=22
+  groups(7): ['Cohort 1: 50 mg G03-52-01 Lot 1', 'Cohort 1: 50 mg G03-52-01 Lot 2', 'Cohort 2: 100 mg G03-52-01 Lot 1', 'Cohort 2: 100 mg G03-52-01 Lot 2', 'Cohort 3: Placebo', 'Cohort 4: 100 mg G03-52-01', 'Cohort 4: Placebo']
+  classes(70): ['AEs', 'SAEs', 'Participants with NAC > 0.02 U/mL against BoN…', 'Participants with NAC > 0.03 U/mL against BoN…', 'Serotype BoNT/A after dose 1', 'Serotype BoNT/A after dose 2', 'Serotype BoNT/B after dose 1', 'Serotype BoNT/B after dose 2', 'Serotype BoNT/A', 'Serotype BoNT/B', 'ADA to NX01 at Baseline', 'ADA to NX01 at Day 15', 'ADA to NX01 at Day 45', 'ADA to NX01 at Day 60']
+  categories(3): ['Detected', 'Not detected', 'NRR']
+
+### NCT05384834 [random] NA | n=60 | Cardiovascular | measures=13
+  groups(1): ['AYA Participants']
+  classes(23): ['Baseline', 'Three (3) months post-enrollment', 'Fruits at Baseline', 'Fruits at 3 months post-enrollment', 'Vegetables at Baseline', 'Vegetables at 3 months post-enrollment', 'Red meats at baseline', 'Red meats at 3 months post-enrollment', 'Processed Meats at Baseline', 'Processed Meats at 3 months post-enrollment', 'Three months post-enrollment', '3 months post-intervention', '3 months post-enrollment', 'Intense Physical Activity at Baseline']
+  categories(3): ['Never Smoke', 'Used to Smoke', 'Current Smoker']
+
+### NCT05735249 [random] PHASE1 | n=94 | Other | measures=9
+  groups(33): ['Cohort 1 (30mg, Fed)', 'Cohort 2 (100mg, Fed)', 'Cohort 3 (300mg, Fed)', 'Cohort 3 (300mg, Fasted)', 'Cohort 4 (600mg, Fed)', 'Cohort 5 (1200mg, Fed)', 'Cohort 6 (2000mg, Fed)', 'Part 1-SAD: Cohort 1 (30mg, Fed)']
+  classes(8): ['AUC 0-t', 'AUC 0-∞', 'Cmax (day 1)', 'Cmax (day 10)', 'Tmax0-10h (day 1)', 'Tmax0-10h (day 10)', 'AUC0-10h (day 1)', 'AUC0-10h (day 10)']
+
+### NCT05964465 [random] PHASE4 | n=60 | Other | measures=7
+  groups(1): ['Treatment']
+  classes(2): ['Baseline', 'Week 12']
+
+### NCT06361875 [random] PHASE1, PHASE2 | n=908 | Other | measures=18
+  groups(10): ['QIV mRNA LNP 1: 30 mcg', 'QIV mRNA LNP 1: 96 mcg', 'QIV mRNA LNP 1: 132 mcg', 'QIV mRNA LNP 1: 192 mcg', 'QIV mRNA LNP 2: 96 mcg', 'QIV mRNA LNP 2: 192 mcg', 'QIV mRNA LNP 3: 192 mcg', 'QIV-SD']
+  classes(30): ['Any SAE', 'Any AESI', 'Hemoglobin', 'White blood cell', 'Neutrophils', 'Eosinophils', 'Basophils', 'Lymphocytes', 'Monocytes', 'Platelets', 'Erythrocytes', 'Creatinine', 'C-reactive protein', 'Aspartate aminotransferase']
+
+### NCT02886728 [targeted] PHASE3 | n=1252 | Autoimmune and Inflammatory | measures=43 | score=10 ['phase3', 'n>=500', 'n>=1000', 'classes>=6', 'groups>=4', 'title:by/stratified', 'analysis:interaction/stratif']
+  groups(4): ['Filgotinib 200 mg + MTX', 'Filgotinib 100 mg + MTX', 'Filgotinib 200 mg Monotherapy', 'MTX Monotherapy']
+  classes(44): ['Baseline', 'Change at Week 24', 'Change at Week 52', 'Week 2', 'Week 4', 'Week 12', 'Week 36', 'Week 52', 'Week 24', 'Change at Week 2', 'Change at Week 4', 'Change at Week 12', 'Change at Week 36', 'Week 24: Change in mTSS ≤ 0.5']
+  categories(8): ['Good Response', 'Moderate Response', 'No Response', 'No Problems', 'Slight Problems', 'Moderate Problems', 'Severe Problems', 'Extreme Problems']
+  by/stratified titles(1): ['Number of Participants by European Quality of Life 5 Dimensions (EQ-5D) Health Profile Categories at Weeks 4, 12, 24, 36…']
+    ~ an.pValueComment: was calculated from the logistic regression with treatment groups and stratification factors in the model.
+    ~ an.pValueComment: MMRM model included treatment, visit, treatment by visit, stratification factors, and baseline value as fixed effects, and participants being the random effect.
+    ~ an.pValueComment: as calculated from the logistic regression with treatment groups, and stratification factors in the model.
+    ~ an.pValueComment: ue was calculated from the logistic regression with treatment groups, stratification factors and campaign groups in the model.
+
+### NCT03932682 [targeted] PHASE3 | n=5723 | Infectious Disease | measures=15 | score=9 ['phase3', 'n>=500', 'n>=1000', 'classes>=6', 'groups>=4', 'title:by/stratified']
+  groups(12): ['QIVc', 'Comparator', 'QIVc (Season 1)', 'Comparator (Season 1)', 'QIVc (Season 2)', 'Comparator (Season 2)', 'QIVc (Season 3)', 'Comparator (Season 3)']
+  classes(43): ['A/H1N1 Day 1 HI GMT', 'A/H1N1 Day 29/57 HI GMT', 'A/H3N2 Day 1 HI GMT', 'A/H3N2 Day 29/57 HI GMT', 'B/Yamagata Day 1 HI GMT', 'B/Yamagata Day 29/57 HI GMT', 'B/Victoria Day 1 HI GMT', 'B/Victoria Day 29/57 HI GMT', 'A/H1N1 SCR HI Titer', 'A/H3N2 SCR HI Titer', 'B/Yamagata SCR HI Titer', 'B/Victoria SCR HI Titer', 'A/H1N1 GMR HI Titer', 'A/H3N2 GMR HI Titer']
+  by/stratified titles(2): ['Efficacy Endpoint: First Occurrence of Culture Confirmed Influenza, Due to Influenza Type A and/or B Virus Antigenically…', 'Efficacy Endpoint: First Occurrence of Culture Confirmed Influenza Caused by Influenza Virus Strains Antigenically Dissi…']
+    ~ desc: e AEs was Day 1 through Study Completion as indicated below. Subjects aged 6 months through 11 months at enrollment in countries without NeisVac-C vaccine marketing a
+
+### NCT01240863 [targeted] PHASE3 | n=391 | Pain | measures=26 | score=9 ['phase3', 'classes>=6', 'groups>=4', 'title:by/stratified', 'loose-mention', 'analysis:interaction/stratif']
+  groups(4): ['Placebo (Double-blind Treatment Period)', 'Hydrocodone ER (Double-blind Treatment P…', 'Open-Label Titration: Opioid Naive', 'Open-Label Titration: Opioid Experienced']
+  classes(132): ['Total withdrawn from study period', 'Lack of efficacy', 'Adverse event', 'Consent withdrawn', 'Lost to follow-up', 'Protocol violation', 'Noncompliance to study procedures', 'Noncompliance to study drug admin', 'Other', 'Week 1', 'Week 2', 'Week 4', 'Week 8', 'Week 12']
+  by/stratified titles(1): ['Percentage of Participants Withdrawn From the Study During the Double-Blind Treatment Period By Reason']
+    ~ an.statisticalComment: Treatment and stratification (opioid naïve/opioid experienced) factors as the fixed effects; screening and baseline AP
+    ~ desc: exercise * ability to participate in social events * ability to have sex * ability to enjoy life
+    ~ class: Sex: Very much worsened
+    ~ class: Sex: Much worsened
+    ~ class: Sex: Slightly worsened
+    ~ class: Sex: Unchanged
+    ~ class: Sex: Slightly improved
+    ~ (+2 more loose mentions)
+
+### NCT03304379 [targeted] PHASE3 | n=1650 | Musculoskeletal | measures=18 | score=9 ['phase3', 'n>=500', 'n>=1000', 'classes>=6', 'title:by/stratified', 'analysis:interaction/stratif']
+  groups(4): ['Placebo', 'Fasinumab 1 mg', 'NSAIDs', 'Pooled Placebo']
+  classes(11): ['FAS', 'mFAS', 'Week 0', 'Week 4', 'Week 8', 'Week 16', 'Week 24', 'Week 44', 'Pre-Existing Immunoreactivity', 'Treated-Boosted Response', 'Treatment-Emergent Response']
+  by/stratified titles(1): ['Change From Baseline in Weekly Average Walking Index Joint Pain Score up to Week 24 by Using the Numeric Rating Scale (N…']
+    ~ an.groupDescription: ndomization strata, baseline, treatment, visit and treatment by-visit interaction.
+
+### NCT01174446 [targeted] PHASE3 | n=86 | Hematology | measures=50 | score=8 ['phase3', 'classes>=6', 'groups>=4', 'title:by/stratified', 'loose-mention']
+  groups(36): ['BAX326', 'BeneFIX', 'Study Part 1: BAX326', 'Study Part 1: BeneFIX', 'Study Part 3: BAX326', 'Part 1 or Part 2, ED 1', 'Part 2: Week 5', 'Part 2: Week 13']
+  classes(37): ['Joint bleeding episode', 'Non-Joint bleeding episode', 'Spontaneous bleeding episode', 'Bleeding episode caused by injury', 'Unknown cause of bleeding episode', 'All bleeding episodes', '1 infusion', '2 infusions', '3 or more infusions', 'Excellent', 'Good', 'Fair', 'None', 'Not Reported']
+  by/stratified titles(3): ['Bleeding Episodes Treated With 1, 2 or ≥3 Infusions of BAX326 by Bleeding Site and Cause', 'Hemostatic Efficacy at Resolution of All Bleeding Episodes (BEs) Treated With BAX326 by Bleeding Site and Cause', 'Total Weight-adjusted Dose Per Bleeding Episode (BEs) of All BEs Treated With BAX326 by Bleeding Site and Cause']
+
+### NCT02125461 [targeted] PHASE3 | n=713 | Oncology | measures=13 | score=8 ['phase3', 'n>=500', 'classes>=6', 'loose-mention', 'analysis:interaction/stratif']
+  groups(2): ['Durvalumab (MEDI4736)', 'Placebo']
+  classes(17): ['Dyspnea', 'Cough', 'Hemoptysis', 'Chest pain', 'Week 0: peak concentration', 'Week 8: trough concentration', 'Week 24: trough concentration', 'Week 24: peak concentration', 'Week 48: trough concentration', 'ADA positive at any visit', 'ADA positive post-baseline only', 'Treatment-boosted ADA positive', 'ADA positive at baseline and post-baseline', 'ADA positive at baseline only']
+    ~ an.groupDescription: Analysis performed using a stratified log rank test adjusting for age at randomization (\<65 vs ≥65), sex (male vs female), and
+    ~ an.groupDescription: The hazard ratio and CI were estimated from a stratified Cox proportional hazards model with the Breslow method to control for ties, the stratific
+    ~ an.pValueComment: Analysis performed using a stratified log rank test adjusting for age at randomization (\<65 vs ≥65), sex (male vs female), and
+    ~ an.groupDescription: comparison for dyspnea. The hazard ratio and CI were estimated from a stratified Cox proportional hazards model with the Breslow method to control for ties, the stratific
+    ~ an.groupDescription: t comparison for cough. The hazard ratio and CI were estimated from a stratified Cox proportional hazards model with the Breslow method to control for ties, the stratific
+    ~ an.groupDescription: parison for hemoptysis. The hazard ratio and CI were estimated from a stratified Cox proportional hazards model with the Breslow method to control for ties, the stratific
+    ~ an.groupDescription: parison for chest pain. The hazard ratio and CI were estimated from a stratified Cox proportional hazards model with the Breslow method to control for ties, the stratific
+
+### NCT03131453 [targeted] PHASE2, PHASE3 | n=1145 | Neurology | measures=15 | score=8 ['phase3', 'n>=500', 'n>=1000', 'classes>=6', 'title:by/stratified']
+  groups(3): ['CNP520 50 mg', 'CNP520 15 mg', 'Placebo']
+  classes(61): ['Week 26 n=232,123,250', 'Week 52 n=52,24,57', 'Week 78 n=6,2,2', 'Week 26 n=160,79,162', 'Last on-treatment n=269,144,275', 'Last off-treatment n=255,124,260', 'Week 26 n=160,78,160', 'Last on-treatment n=265,144,267', 'Last off-treatment n=254,117,256', 'Total Week 26 n=162,81,162', 'Total Last on-treatment n=356,183,353', 'Total Last off-treatment n=259,125,265', 'Immediate memory - Week 26 n=162,81,162', 'Immediate memory - Last on-treatment n=347,18…']
+  by/stratified titles(2): ['Change in Neurofibrillary Tangle Burden as Measured by Standardized Uptake Ratio (SUVR) of PET Scans With Tau Radiotrace…', 'Change in Amyloid Deposition as Measured by Standardized Uptake Ratio (SUVR) of Positron Emission Tomography (PET) Scan …']
+
+### NCT00954447 [targeted] PHASE3 | n=1263 | Endocrine and Metabolic | measures=16 | score=8 ['phase3', 'n>=500', 'n>=1000', 'classes>=6', 'title:by/stratified']
+  groups(2): ['Placebo', 'Linagliptin 5 mg']
+  classes(12): ['after 24 weeks of treatment', 'after 52 weeks of treatment', 'after 6 weeks of treatment', 'after 12 weeks of treatment (N=556, N=590)', 'after 18 weeks of treatment (N=533, N=567)', 'after 24 weeks of treatment (N=499, N=533)', 'after 32 weeks of treatment (N=436, N=491)', 'after 40 weeks of treatment (N=357, N=429)', 'after 52 weeks of treatment (N=25, N=15)', 'post-breakfast incremental glucose', 'post-lunch incremental glucose (N=34, N=41)', 'post-dinner incremental glucose (N=46, N=57)']
+  by/stratified titles(7): ['Number of Patients Lowering HbA1c by at Least 0.5 Percent', 'Change From Baseline in HbA1c by Visit at Week 6', 'Change From Baseline in HbA1c by Visit at Week 12', 'Change From Baseline in HbA1c by Visit at Week 18']
+
+### NCT01122927 [targeted] PHASE3 | n=524 | Mental Health | measures=23 | score=8 ['phase3', 'n>=500', 'classes>=6', 'groups>=4', 'title:by/stratified']
+  groups(6): ['Open-label Treatment Phase', 'Tanner Score at Baseline of 1', 'Tanner Score at Baseline of 2', 'Tanner Score at Baseline of 3', 'Tanner Score at Baseline of 4', 'Tanner Score at Baseline of 5']
+  classes(102): ['Participants with TEAEs', 'Participants with serious TEAEs', 'Participants with severe TEAEs', 'Discontinued due to AEs', 'Chemistry-Alanine transaminase', 'Chemistry-Aspartate transaminase', 'Chemistry-Bilirubin, total', 'Chemistry-Calcium', 'Chemistry-Chloride', 'Chemistry-Cholesterol, total, fasting', 'Chemistry-Creatine phosphokinase, total', 'Chemistry-Glutamyl transferase', 'Chemistry-HDL cholesterol, fasting', 'Chemistry-LDL cholesterol, calculation,']
+  by/stratified titles(3): ['Mean Change From Baseline by Week in Abnormal Involuntary Movement Scale (AIMS)', 'Mean Change From Baseline by Week in Simpson-Angus Scale (SAS) Total Score', 'Mean Change From Baseline by Week in Barnes Akathisia Rating Scale (BARS) Score']
+    ~ desc: populations (ages 12 to 17), but could have been utilized with other age groups, as appropriate.
+    ~ desc: measuring psychological, social, and school functioning for children aged 6 to 17. It was adapted from the Adults Global Assessment Scale. The Global Assessment Scal
+
+### NCT01421147 [targeted] PHASE3 | n=536 | Endocrine and Metabolic | measures=13 | score=7 ['phase3', 'n>=500', 'classes>=6', 'title:by/stratified']
+  groups(2): ['LY2963016 + Insulin Lispro', 'Lantus + Insulin Lispro']
+  classes(91): ['Change at 6 weeks (n=31, 38)', 'Change at 12 weeks (n=27, 36)', 'Change at Endpoint, up to 24 weeks (n=37, 47)', 'Change at Endpoint, up to 52 weeks (n=40, 47)', 'Change at 6 weeks (n=265, 265)', 'Change at 12 weeks (n=261, 262)', 'Change at 24 weeks (n=256, 258)', 'Change at 36 weeks (n=253, 254)', 'Change at 52 weeks (n=248, 246)', 'Change at Endpoint, up to 52 weeks (n=267, 26…', 'Baseline-AM Pre-Meal (n=266, 264)', 'Baseline-AM 2 hrs PP (n=263, 262)', 'Baseline-MD Pre-Meal (n=266, 265)', 'Baseline-MD 2 hrs PP (n=264, 264)']
+  by/stratified titles(2): ['Insulin Dose Per Body Weight (U/kg) (Total and by Component [Basal and Bolus (Lispro)])', 'Insulin Dose - Units [Total and by Component [Basal and Bolus (Lispro)])']
+
+### NCT00251719 [targeted] PHASE3 | n=2054 | Gastrointestinal | measures=6 | score=7 ['phase3', 'n>=500', 'n>=1000', 'title:by/stratified']
+  groups(3): ['Dexlansoprazole MR 60 mg QD', 'Dexlansoprazole MR 90 mg QD', 'Lansoprazole 30 mg QD']
+  by/stratified titles(6): ['Percentage of Subjects With Complete Healing of Erosive Esophagitis by Week 8 as Assessed by Endoscopy - Crude Rate Anal…', 'Percentage of Subjects With Baseline Erosive Esophagitis Grade C or D Combined Who Have Complete Healing of Erosive Esop…', 'Percentage of Subjects With Baseline Erosive Esophagitis Grade C or D Combined Who Have Complete Healing of Erosive Esop…', 'Percentage of Subjects With Complete Healing of Erosive Esophagitis by Week 8 as Assessed by Endoscopy - Life Table Meth…']
+
+### NCT03714672 [targeted] PHASE3 | n=1151 | Pain | measures=10 | score=7 ['phase3', 'n>=500', 'n>=1000', 'classes>=6', 'groups>=4']
+  groups(4): ['Tramadol/Diclofenac 50/50', 'Tramadol/Diclofenac 25/25', 'Tramadol 50', 'Diclofenac 50']
+  classes(16): ['4 Hours', '6 Hours', '8 Hours', '24 Hours', '8-Hours', '24-Hours', 'TEAE', 'Severe TEAE', 'TEAE related to IMP or rescue medication', 'Serious TEAE', 'TEAE with outcome of death', 'Selected TEAE', 'TEAE leading to dose reduction', 'TEAE leading to dose interruption']
+  categories(5): ['Poor', 'Fair', 'Good', 'Very Good', 'Excellent']
+
+### NCT00114777 [targeted] PHASE3 | n=595 | Kidney and Urological | measures=23 | score=7 ['phase3', 'n>=500', 'classes>=6', 'title:by/stratified']
+  groups(3): ['Belatacept More Intensive (MI) Regimen', 'Belatacept Less Intensive (LI) Regimen', 'Cyclosporin A (CsA)']
+  classes(150): ['Measured GFR <60 mL/min/1.73 m^2 (Month 12)', 'GFR ≥ 10 mL/min/1.73 m^2 (Month 3 to Month 12…', 'Month 12 (n = 154,151,154)', 'Month 24 (n = 136,139,136)', 'Month 24', 'Month 36', 'Month 6 (n = 161,152,153)', 'Month 12 (n = 159,154,154)', 'Month 24 (n = 152,158,154)', 'Month 36 (n = 152,154,143)', 'Month 84 (n = 69,79,51)', 'Month 24 (n = 146,154,149)', 'Month 36 (n = 146,150,139)', 'Month 84 (n = 67,76,49)']
+  by/stratified titles(4): ['Measured Glomerular Filtration Rate (GFR) by Month 12 and 24', 'Percentage of Participants Who Have an Acute Rejection by Months 6, 12, 24, 36 and 84', 'Number of Participants Using Lymphocyte Depleting Therapy and Steroid-Resistant for Acute Rejection by Months 6, 12, 24,…', 'Number of Participants Based on Severity of Acute Rejection Based on Banff Grade Level by Months 6, 12, 24, 36 and 84']
+
+### NCT00493870 [targeted] PHASE3 | n=1961 | Oncology | measures=7 | score=7 ['phase3', 'n>=500', 'n>=1000', 'title:by/stratified']
+  groups(5): ['TC Arm', 'TAC Arm', 'Amplification', 'Deletion', 'Normal']
+  classes(6): ['3-year DFS-DCIS', '3-year OS', '3-year RFI', 'Amplification', 'Deletion', 'Normal']
+  by/stratified titles(3): ['Number and Frequency of Participants by TOP2A Status by Study Treatment', '3-year DFS Stratified by TOP2A Among TC Arm', '3-year DFS Stratified by TOP2A Among TAC Arm']
+    ~ title: 3-year DFS Stratified by TOP2A Among TC Arm
+    ~ title: 3-year DFS Stratified by TOP2A Among TAC Arm
+
+### NCT01391793 [targeted] PHASE3 | n=546 | Infectious Disease | measures=3 | score=7 ['phase3', 'n>=500', 'loose-mention', 'analysis:interaction/stratif']
+  groups(2): ['Adjuvant Dexamethasone', 'Placebo']
+  classes(4): ['With scarring', 'Without scarring', 'With severe scarring', 'Without severe scarring']
+    ~ an.statisticalComment: The p-value is adjusted for the stratification variable, duration of fever, and for age at baseline (\<24 months, \>=24 months).
+
+### NCT04321460 [targeted] PHASE3 | n=520 | Reproductive and Sexual Health | measures=14 | score=7 ['phase3', 'n>=500', 'classes>=6', 'title:by/stratified']
+  groups(2): ['LRG-002', 'Placebo']
+  classes(18): ['Day 2 Change in the stool consistency as comp…', 'Day 3 Change in the stool consistency as comp…', 'Day 4 Change in the stool consistency as comp…', 'Day 5 Change in the stool consistency as comp…', 'Day 6 Change in the stool consistency as comp…', 'Day 7 Change in the stool consistency as comp…', 'Day 8 Change in the stool consistency as comp…', 'Day 9 Change in the stool consistency as comp…', 'Day 10 Change in the stool consistency as com…', 'Day 11 Change in the stool consistency as com…', 'Day 12 Change in the stool consistency as com…', 'Day 13 Change in the stool consistency as com…', 'Day 14 Change in the stool consistency as com…', 'Abdominal pain, severity']
+  categories(9): ['improved', 'unchanged', 'worsened', 'no data available', '0. No manifestations', '1. Mild manifestations', '2. Moderate manifestations', '3. Severe manifestations']
+  by/stratified titles(1): ['Number of Gastrointestinal Symptoms by Severity']
+
+### NCT01041404 [targeted] PHASE3 | n=584 | Oncology | measures=19 | score=7 ['phase3', 'n>=500', 'classes>=6', 'title:by/stratified']
+  groups(4): ['Fluoropyrimidine/Cisplatin (FP)', 'Trastuzumab + Fluoropyrimidine/Cisplatin…', 'Fluoropyrimidine, Cisplatin', 'Trastuzumab, Fluoropyrimidine, Cisplatin']
+  classes(1255): ['Global Health Status: BL (n=274,287)', 'Global Health Status: Week 4 (n=235,249)', 'Global Health Status: Week 7 (n=180,220)', 'Global Health Status: Week 10 (n=176,202)', 'Global Health Status: Week 13 (n=152,182)', 'Global Health Status: Week 16 (n=121,165)', 'Global Health Status: Week 19 (n=114,143)', 'Global Health Status: Week 22 (n=78,143)', 'Global Health Status: Week 25 (n=64,124)', 'Global Health Status: Week 28 (n=47,111)', 'Global Health Status: Week 31 (n=45,95)', 'Global Health Status: Week 34 (n=36,87)', 'Global Health Status: Week 37 (n=29,64)', 'Global Health Status: Week 40 (n=23,55)']
+  by/stratified titles(3): ['Percentage of Participants With Confirmed Complete Response (CR) or Partial Response (PR) Determined by Response Evaluat…', 'Pain Intensity Scores as Assessed By Visual Analog Scale (VAS)', 'Percentage of Participants With Change From Baseline in Body Weight by Percentage Change in Weight']
+
+### NCT03221426 [targeted] PHASE3 | n=1007 | Oncology | measures=10 | score=7 ['phase3', 'n>=500', 'n>=1000', 'groups>=4', 'analysis:interaction/stratif']
+  groups(7): ['Pembrolizumab + XP/FP', 'Placebo + XP/FP', 'Pembrolizumab + FLOT Cohort', 'Placebo + FLOT Cohort', 'Pembrolizumab + XP/FP and Pembrolizumab …', 'Placebo + XP/FP and Placebo + FLOT Cohor…', 'Placebo+ XP/FP and Placebo + FLOT Cohort…']
+    ~ an.pValueComment: One-sided p-value based on log-rank test stratified by geographic region (Asia vs. Non-Asia) and tumor staging (II vs. III vs. IVa)
+    ~ an.estimateComment: del with Efron's method of tie handling with treatment as a covariate stratified by geographic region (Asia vs. Non-Asia) and tumor staging (II vs. III vs. IVa)
+    ~ an.statisticalComment: Based on Miettinen \& Nurminen method stratified by geographic region (Asia vs. Non-Asia) and tumor staging (II vs. III vs. IVa)
+    ~ an.pValueComment: One-sided p-value based on log-rank test with stratification
+    ~ an.estimateComment: ith Efron's method of tie handling with treatment as a covariate with stratification
+
+### NCT04908202 [targeted] PHASE3 | n=670 | Autoimmune and Inflammatory | measures=59 | score=7 ['phase3', 'n>=500', 'classes>=6', 'title:by/stratified']
+  groups(2): ['Placebo-Controlled Period - Deucravaciti…', 'Placebo-Controlled Period - Placebo']
+  classes(26): ['Week 2', 'Week 4', 'Week 8', 'Week 12', 'Week 16', 'Week 2 (n=324, 323)', 'Week 4 (n=325, 326)', 'Week 8 (n=327, 326)', 'Week 12 (n= 326, 327)', 'Week 16 (n=326, 327)', 'WPAI Absenteeism', 'WPAI Presenteeism', 'Work Productivity', 'WPAI Activity Impairment']
+  by/stratified titles(3): ['Percentage of Participants Meeting Enthesitis Resolution (Score of 0) Among Participants With Enthesitis at Baseline by …', 'Percentage of Participants Meeting Enthesitis Resolution (Score of 0) Among Participants With Enthesitis at Baseline by …', 'Percentage of Participants Meeting Enthesitis Resolution (Score of 0) Among Participants With Enthesitis at Baseline by …']
+
+### NCT03080935 [targeted] PHASE3 | n=1600 | Endocrine and Metabolic | measures=3 | score=6 ['phase3', 'n>=500', 'n>=1000', 'classes>=6']
+  groups(2): ['Placebo Once Every 2 Weeks (Q2W) or Once…', 'Evolocumab Once Every 2 Weeks (Q2W) or O…']
+  classes(12): ['Week 12', 'Week 24', 'Week 48', 'Week 72', 'Week 96', 'Week 120', 'Week 144', 'Week 168', 'Week 192', 'Week 216', 'Week 260', 'Baseline in parent study']
+
+### NCT02914600 [targeted] PHASE3 | n=1188 | Autoimmune and Inflammatory | measures=4 | score=6 ['phase3', 'n>=500', 'n>=1000', 'classes>=6']
+  groups(3): ['Filgotinib 200 mg', 'Filgotinib 100 mg', 'Placebo']
+  classes(9): ['Baseline', 'Change at Week 12', 'Change at Week 24', 'Change at Week 48', 'Change at Week 96', 'Change at Week 156', 'Change at Week 216', 'Change at Week 264', 'Change at Week 300']
+    ~ gdesc: t response or remission criteria, with the exception of US and Korean males who were not considered dual-biologic refractory, received filgotinib 200 mg open-label i
+    ~ gdesc: arent study, participants continued open-label on filgotinib 100 mg. Male participants from the US \& Korea who were not considered dual biologic refractory, and w
+
+### NCT01871727 [targeted] PHASE3 | n=112 | Dermatology | measures=29 | score=6 ['phase3', 'classes>=6', 'groups>=4', 'title:by/stratified']
+  groups(7): ['Lead-In Part: E7777 6 mcg/kg', 'Lead-In Part: E7777 9 mcg/kg', 'Lead-In Part: E7777 12 mcg/kg', 'Lead-In Part: E7777 15 mcg/kg', 'Lead-In Part: E7777', 'Main Study Part: E7777 9 mcg/kg', 'Lead-In Part and Main Study Part: E7777 …']
+  classes(13): ['TEAEs', 'SAEs', 'Cycle 1 Day 1', 'Cycle 3 Day 1', 'Cycle 5 Day 1', 'Cycle 1 Day 1 (Anti-E7777 Antibodies)', 'Cycle 2 Day 1 (Anti-E7777 Antibodies)', 'Cycle 3 Day 1 (Anti-E7777 Antibodies)', 'Cycle 5 Day 1 (Anti-E7777 Antibodies)', 'Cycle 1 Day 1 (Anti-IL-2 Antibodies)', 'Cycle 2 Day 1 (Anti-IL-2 Antibodies)', 'Cycle 3 Day 1 (Anti-IL-2 Antibodies)', 'Cycle 5 Day 1 (Anti-IL-2 Antibodies)']
+  by/stratified titles(1): ['Main Study Part: Objective Response Rate (ORR) by Independent Review Committee (IRC) Based on Olsen 2011 Criteria']
+
+### NCT00005044 [targeted] PHASE3 | n=1579 | Oncology | measures=7 | score=6 ['phase3', 'n>=500', 'n>=1000', 'classes>=6']
+  groups(2): ['TAS x 8 Weeks', 'TAS x 28 Weeks']
+  classes(14): ['Locoregional progression', 'Distant metastasis', 'Protocol definition', 'Phoenix definition', 'Acute RT and Hormone Toxicity: Grade 1', 'Acute RT and Hormone Toxicity: Grade 2', 'Acute RT and Hormone Toxicity: Grade 3', 'Acute RT and Hormone Toxicity: Grade 4', 'Acute RT and Hormone Toxicity: Grade 5', 'Late RT Toxicity: Grade 1', 'Late RT Toxicity: Grade 2', 'Late RT Toxicity: Grade 3', 'Late RT Toxicity: Grade 4', 'Late RT Toxicity: Grade 5']
+
+### NCT00086580 [targeted] PHASE3 | n=335 | Oncology | measures=20 | score=6 ['phase3', 'classes>=6', 'title:by/stratified', 'analysis:interaction/stratif']
+  groups(2): ['Combination Arm (FluCAM)', 'Fludarabine Alone']
+  classes(17): ['Overall Response (CR+PR)', 'Complete Response (CR)', 'Partial Response (PR)', 'Progressive Disease (PD)', 'Stable Disease (SD)', 'Not Evaluable (NE)', 'At least 1 treatment emergent AE', 'At least 1 related treatment emergent AE', 'At least 1 treatment-emergent infection', 'At least 1 drug-related infection', 'At least 1 serious AE', 'At least 1 related serious AE', 'Discontinuation of study drug due to AE', 'Discontinuation of study drug due to related …']
+  by/stratified titles(3): ['Participant Best Response to Treatment Assessed by the Independent Response Review Panel (IRRP)', 'Kaplan Meier Estimates for Time to Disease Progression Assessed by the Independent Response Review Panel (IRRP)', 'Kaplan-Meier Estimates for Duration of Response Assessed by the Independent Response Review Panel (IRRP)']
+    ~ an.statisticalComment: Cox proportional hazards model was stratified by Rai Stage Group
+    ~ an.statisticalComment: re test for a difference in overall response rates between treatments stratified by Rai Stage Group.
+    ~ an.statisticalComment: e test for a difference in complete response rates between treatments stratified by Rai Stage Group.
+    ~ an.statisticalComment: Cox proportional hazards model stratified by Rai Stage Group
+    ~ an.statisticalComment: Cox regression model stratified by Rai Stage Group.
+    ~ an.statisticalComment: chi-square test for a difference in response rates between treatments stratified by Rai Stage Group.
+
+### NCT04534491 [targeted] PHASE3 | n=855 | Kidney and Urological | measures=6 | score=6 ['phase3', 'n>=500', 'title:by/stratified']
+  groups(1): ['Oxybutynin (Oxytrol, BAY839380)']
+  classes(8): ['Pre-mitigation', 'Post-mitigation', 'Pre-Mitigation', 'Post-Mitigation', 'All Subjects Pre-Mitigation', 'All Subjects Post-Mitigation', 'Total Subjects Pre-Mitigation', 'Total Subjects Post-Mitigation']
+  categories(3): ['Medical risk (subjects)', 'Possible medical risk (subject…', 'Minimal/insignificant medical …']
+  by/stratified titles(1): ['The Median Time Taken to Discontinue Oxytrol Use by Verified Users Who Did Not Experience Improvement in Their Symptoms …']
+
+### NCT00346073 [targeted] PHASE3 | n=2337 | Other | measures=15 | score=6 ['phase3', 'n>=500', 'n>=1000', 'classes>=6']
+  groups(2): ['Boostrix Group', 'Adacel Group']
+  classes(23): ['Anti-D', 'Anti-T', 'Anti-PT', 'Anti-FHA', 'Anti-PRN', 'Pain, Any', 'Pain, Grade 3', 'Redness, Any', 'Redness, ≥ 50 mm', 'Swelling, Any', 'Swelling, ≥ 50 mm', 'Fatigue, Any', 'Fatigue, Grade 3', 'Fatigue, Related']
+    ~ gdesc: Subjects, male or female, between, and including, 19 and 64 years of age received a single dose of Boost
+
+### NCT02655016 [targeted] PHASE3 | n=733 | Oncology | measures=15 | score=6 ['phase3', 'n>=500', 'classes>=6', 'analysis:interaction/stratif']
+  groups(2): ['Placebo', 'Niraparib']
+  classes(24): ['Physical Functioning, n=244,479', 'Role Functioning, n=244,479', 'Emotional Functioning, n=243,478', 'Cognitive Functioning, n=243,478', 'Social Functioning, n=243,478', 'Fatigue, n=243,479', 'Nausea/Vomiting, n=244,479', 'Pain, n=244,480', 'Dyspnea, n=244,479', 'Insomnia, n=244,479', 'Appetite Loss, n=8,30', 'Constipation, n=244,478', 'Diarrhea, n=8,30', 'Financial Difficulties, n=243,475']
+    ~ an.pValueComment: p-value was calculated based on stratified log-rank test using randomization stratification factors: administration of neoadjuvant c
+
+### NCT04421027 [targeted] PHASE3 | n=1525 | Infectious Disease | measures=21 | score=6 ['phase3', 'n>=500', 'n>=1000', 'classes>=6']
+  groups(2): ['Placebo + SOC', 'Baricitinib + SOC']
+  classes(36): ['Day 4 NIAID-OS 1', 'Day 4 NIAID-OS 2', 'Day 4 NIAID-OS 3', 'Day 4 NIAID-OS 4', 'Day 4 NIAID-OS 5', 'Day 4 NIAID-OS 6', 'Day 4 NIAID-OS 7', 'Day 4 NIAID-OS 8', 'Day 7 NIAID-OS 1', 'Day 7 NIAID-OS 2', 'Day 7 NIAID-OS 3', 'Day 7 NIAID-OS 4', 'Day 7 NIAID-OS 5', 'Day 7 NIAID-OS 6']
+
+### NCT02502266 [targeted] PHASE2, PHASE3 | n=582 | Oncology | measures=10 | score=6 ['phase3', 'n>=500', 'groups>=4', 'analysis:interaction/stratif']
+  groups(8): ['Arm I (Reference Regimen)', 'Arm II (Cediranib Maleate, Olaparib)', 'Arm III (Cediranib Maleate)', 'Arm IV (Olaparib) (Phase II Only)', 'Arm V: (Arm 1 Regimen: JP Patients Enrol…', 'Arm VI: (Arm II Regimen: JP Patients Enr…', 'Arm VII: (Arm III Regimen: JP Patients E…', 'Arm V: (Arm I Regimen: JP Patients Enrol…']
+    ~ pop: for this arm. The primary endpoint analysis also did not include 20 Japanese patients who were enrolled after the primary Phase III endpoint was reached.
+    ~ an.pValueComment: The log rank test was stratified by the factors provided at randomization
+    ~ an.statisticalComment: The log rank test was stratified by the factors provided at randomization.
+    ~ pop: No further analyses were performed or reported for this arm. Twenty Japanese patients who were enrolled after the primary Phase III endpoint was reached were not incl
+    ~ desc: als will be depicted with a forest plot, and assessed for qualitative interaction(s).
+
+### NCT00010803 [targeted] PHASE3 | n=3069 | Neurology | measures=3 | score=6 ['phase3', 'n>=500', 'n>=1000', 'classes>=6']
+  groups(2): ['Ginkgo Biloba', 'Placebo']
+  classes(16): ['Total Mortality', 'Atherosclerotic CHD Mortality', 'Incident MI', 'Incident Angina', 'Incident CHD (MI &/or angina)', 'Incident CHF', 'Incident Stroke', 'Incident TIA', 'Incident CVD (stroke &/or TIA)', 'Total CHD and CVD', 'Global Cognition (mean Z-score of 5 domains)', 'Memory (mean Z-score of 2 memory tests)', 'Attention (mean Z-score of 2 attention tests)', 'Visuospatial Abilities (mean Z-score of 2 tes…']
+
+### NCT01696643 [targeted] PHASE3 | n=1407 | Substance Use Disorders | measures=6 | score=6 ['phase3', 'n>=500', 'n>=1000', 'classes>=6']
+  groups(2): ['CB-5945', 'Placebo']
+  classes(12): ['Had at least 1 TEAE', 'Had at least 1 drug-related TEAE', 'Discontinued treatment due to a TEAE', 'Week 4 (n=615)', 'Week 12 (n=522)', 'Week 24 (n=419)', 'Week 36 (n=288)', 'Week 52 (n=203)', 'Overall (n=631)', 'CV event', 'GI event', 'Central OW event']
+
+### NCT01152554 [targeted] PHASE3 | n=813 | Mental Health | measures=9 | score=6 ['phase3', 'n>=500', 'title:by/stratified']
+  groups(2): ['TC-5214', 'Placebo']
+  classes(2): ['EQ-5D index score', 'EQ-5D VAS score']
+  by/stratified titles(3): ['Change in the Clinician-rated Global Outcome of Severity as Measured by the Clinical Global Impression-Severity (CGI-S) …', 'Change in Functional Impairment From Randomization (Week 0) to End of Treatment (Week 52) as Measured by the Sheehan Dis…', 'Change in Overall Quality of Life and Satisfaction From Randomization (Week 0) to End of Treatment (Week 52) by Assessin…']
+
+### NCT02437318 [targeted] PHASE3 | n=572 | Oncology | measures=14 | score=6 ['phase3', 'n>=500', 'classes>=6', 'groups>=4']
+  groups(9): ['PIK3CA Mutant Cohort by Tumor Tissue: Al…', 'PIK3CA Mutant Cohort by Tumor Tissue: Pl…', 'PIK3CA Non-mutant Cohort by Tumor Tissue…', 'Alpelisib + Fulvestrant', 'Placebo + Fulvestrant', 'PIK3CA Mutant Determined by ctDNA: Alpel…', 'PIK3CA Mutant Determined by ctDNA: Place…', 'PIK3CA Non-mutant Determined by ctDNA: A…']
+  classes(23): ['Week 8', 'Week 16', 'Week 24', 'Week 32', 'Week 40', 'Week 48', 'Week 56', 'Week 64', 'Week 72', 'Week 84', 'Week 96', 'Week 108', 'Week 120', 'Cycle 1 Day 8']
+
+### NCT02325791 [targeted] PHASE3 | n=1177 | Respiratory | measures=6 | score=6 ['phase3', 'n>=500', 'n>=1000', 'classes>=6']
+  groups(5): ['Part A: Suptavumab 30 mg/kg - 1 Dose', 'Part B: Placebo Matched to Suptavumab', 'Part B: Suptavumab 30 mg/kg- 1 Dose', 'Part B: Suptavumab 30 mg/kg - 2 Doses', 'Part A: Suptavumab 30 mg/kg']
+  classes(17): ['Day 2', 'Day 8', 'Day 15', 'Day 22', 'Day 29', 'Day 57', 'Day 85', 'Day 150', 'Any TEAE', 'Any Grade 3/Serious TEAE', 'Day 113', 'Negative/Pre-Existing', 'Treatment Boosted', 'Treatment-Emergent']
+
+### NCT01152996 [targeted] PHASE3 | n=1075 | Mental Health | measures=10 | score=6 ['phase3', 'n>=500', 'n>=1000', 'classes>=6']
+  groups(1): ['Vortioxetine']
+  classes(35): ['Nausea', 'Diarrhea', 'Vomiting', 'Constipation', 'Nasopharyngitis', 'Viral upper respiratory tract infection', 'Upper respiratory tract infection', 'Weight increased', 'Headache', 'Insomnia', 'Week 1 (n=1043)', 'Week 2 (n=1043)', 'Week 4 (n=1004)', 'Week 8 (n=936)']
+
+### NCT01029353 [targeted] NA | n=529 | Other | measures=40 | score=6 ['n>=500', 'groups>=4', 'title:by/stratified', 'analysis:interaction/stratif']
+  groups(4): ['Randomized Trial: Initial Laparotomy', 'Randomized Trial: Initial Peritoneal Dra…', 'Preference Cohort: Laparotomy', 'Preference Cohort: Initial Peritoneal Dr…']
+  classes(2): ['IP', 'NEC']
+  categories(2): ['No', 'Yes']
+  by/stratified titles(20): ['Death or NDI Stratified by Pre-operative Diagnosis', 'Death Stratified by Pre-operative Diagnosis', 'Survival With Neurodevelopmental Impairment (NDI) Stratified by Pre-operative Diagnosis', 'Death or Moderate to Severe Cerebral Palsy Stratified by Pre-operative Diagnosis']
+    ~ an.groupDescription: g link and center as repeated measure, and effect coding, test for an interaction between treatment (Initial Laparotomy/Initial Peritoneal Drain) and pre-operative diagno…
+    ~ an.otherAnalysisDescription: diagnosis parameters = Normal(mean=0, variance=1), treatment and the interaction term = Normal(mean=0, variance=0.31416), random effect standard deviation = Half-Normal(m
+    ~ title: Death or NDI Stratified by Pre-operative Diagnosis
+    ~ desc: Death or NDI at 18-22 months corrected age. Stratification variable is pre-operative diagnosis: Necrotizing Enterocolitis (NEC) or Isolated Intestin
+    ~ title: Death Stratified by Pre-operative Diagnosis
+    ~ desc: Death within 18-22 months corrected age. Stratification variable is pre-operative diagnosis: Necrotizing Enterocolitis (NEC) or Isolated Intestin
+    ~ title: Survival With Neurodevelopmental Impairment (NDI) Stratified by Pre-operative Diagnosis
+    ~ (+35 more loose mentions)
+
+### NCT03381742 [targeted] PHASE2, PHASE3 | n=3043 | Cardiovascular | measures=6 | score=6 ['phase3', 'n>=500', 'n>=1000', 'groups>=4']
+  groups(4): ['Clopidogrel 75mg Qdpo.', 'Ticagrelor 90mg Bidpo.', 'Ticagrelor 45mg Bidpo.', 'Ticagrelor 90mg Qdpo.']
+  categories(11): ['Minor bleeding', 'Major bleeding', 'No bleeding', 'HTPR', 'Non-HTPR', 'Participants with cardiovascul…', 'Participants without cardiovas…', 'Participants with new-onset my…']
+
+### NCT00820027 [targeted] PHASE3 | n=776 | Pain | measures=9 | score=6 ['phase3', 'n>=500', 'groups>=4', 'analysis:interaction/stratif']
+  groups(4): ['Etoricoxib 90 mg', 'Etoricoxib 120 mg', 'Placebo', 'Ibuprofen 1800 mg']
+    ~ desc: ere), type of anesthesia (spinal or general), treatment, day, and the interaction of day by treatment.
+    ~ an.statisticalComment: for baseline pain intensity, type of anesthesia, treatment, day, and interaction of day by treatment.
+    ~ desc: severe),type of anesthesia (spinal, general), treatment, day, and the interaction of day by treatment.
+    ~ an.nonInferiorityComment: for baseline pain intensity, type of anesthesia, treatment, day, and interaction of day by treatment.
+
+### NCT00296504 [targeted] PHASE3 | n=753 | Infectious Disease | measures=21 | score=6 ['phase3', 'n>=500', 'classes>=6', 'groups>=4']
+  groups(9): ['FPV Population (APV30001)', 'NFV Population (APV30001)', 'FPV Population (APV30002)', 'NFV Population (APV30002)', 'FPV/RTV QD Population (APV30003)', 'FPV/RTV BID Population (APV30003)', 'PI-Naïve Population (Other Studies)', 'PI-Experienced Population (Other Studies…']
+  classes(237): ['Tri.; W 48, n=54, 14, 159, 38, 61, 65, 77, 59', 'Tri.; W 96, n=92, 13, 132 36, 47, 52, 67, 44', 'Tri.; W 120, n=84, 14, 137, 33, 45, 49, 61, 4…', 'Tri.; W 132, n=82, 12, 128, 32, 40, 44, 61, 4…', 'Tri.; W 168, n=71, 14, 123, 31, 31, 40, 20, 3…', 'Tri.; W 180, n=73, 12, 114, 30, 33, 38, 61, 4…', 'Tri.; W 204, n=73, 12, 113, 23, 20, 26, 61, 4…', 'Tri.; W 216, n=76, 0, 111, 2, 5, 11, 61, 40', 'Chol.; W 48, n=54, 14, 159, 38, 61, 65, 77, 5…', 'Chol.; W 96, n=92, 13, 132, 36, 47, 52, 67, 4…', 'Chol.; W 120, n=84, 14, 137, 33, 45, 49, 61, …', 'Chol.; W 132, n=82, 13, 128, 32, 40, 44, 61, …', 'Chol.; W 168, n=71, 14, 123, 31, 31, 40, 20, …', 'Chol.; W 180, n=73, 12, 114, 30, 33, 38, 61, …']
+
+### NCT02227446 [targeted] PHASE3 | n=1036 | Infectious Disease | measures=3 | score=6 ['phase3', 'n>=500', 'n>=1000', 'classes>=6']
+  groups(2): ['Vancomycin Antibotic Powder', 'Standard of Care']
+  classes(15): ['Total deep Surgical Site Infections', 'Culture negative deep SSI', 'Gram positive deep SSI', 'Gram negative deep SSI', 'Anerobe/fungal deep SSI', 'Contaminated sample', 'Gram positive cocci (GPC)', 'Gram positive rods (GPR)', 'Gram negative rods (GNR)', 'Anaerobes', 'Fungi', 'Methicillin resistant Staphylococus aureus (M…', 'Methicillin susceptible Staphylococcus aureus…', 'Vancomycin resistant enterococcus (VRE) infec…']

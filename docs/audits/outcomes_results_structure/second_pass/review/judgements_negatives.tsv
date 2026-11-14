@@ -1,0 +1,7 @@
+nct_id	judgement	kind	reason
+NCT02178722	missed_subgroup_result	non-demographic: tumour type / PD-L1 level	Phase 2 ORR, DOR and PFS are posted in class rows per tumour-type cohort, with NSCLC split into PD-L1 high and low/negative; no "subgroup" wording, so no signal
+NCT02502266	missed_subgroup_result	demographic: origin	PRIMARY PFS and OS are posted separately for Japanese patients enrolled after the phase 3 cutoff (Arms V-VII, n=5/8/7); the titles say "JP Patients", which the origin lexicon does not contain
+NCT00493870	missed_subgroup_result	non-demographic: TOP2A status	"3-year DFS Stratified by TOP2A" posted for Amplification / Deletion / Normal groups within each arm; "stratified by <non-demographic>" is excluded from the cue rule
+NCT02437318	missed_subgroup_result	non-demographic: PIK3CA status	PFS and other outcomes posted separately for PIK3CA-mutant and non-mutant cohorts (by tissue and by ctDNA); cohort wording, no "subgroup" keyword
+NCT01029353	missed_subgroup_result	non-demographic: pre-operative diagnosis	20 measures titled "... Stratified by Pre-operative Diagnosis" (NEC vs isolated perforation) with treatment-by-diagnosis interaction tests; excluded "stratified by <non-demographic>" wording
+NCT00251719	partial	non-demographic	healing rate posted for one baseline-severity level only (erosive esophagitis grade C or D combined)

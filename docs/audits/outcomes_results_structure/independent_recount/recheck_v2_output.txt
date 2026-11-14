@@ -1,0 +1,9 @@
+C1                     1394
+C2                     1134
+C2_between             473
+C2_est_ci              310
+C2_phase3              250
+C2_phase3_between      153
+C2_phase3_est_ci       124
+C2_race_and_est_ci     206
+n                      2000

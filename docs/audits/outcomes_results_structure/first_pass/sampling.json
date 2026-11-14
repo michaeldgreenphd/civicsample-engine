@@ -1,0 +1,21 @@
+{
+ "exact_quota": {
+  "INTERVENTIONAL": 1882.878,
+  "OBSERVATIONAL": 117.122
+ },
+ "extracted_at": "2026-11-08T13:07:45.318831+00:00",
+ "pipeline_commit": "f6a2e7b74790c6f11982376441fb90c80d2c611e",
+ "population_by_study_type": {
+  "INTERVENTIONAL": 76153,
+  "OBSERVATIONAL": 4737
+ },
+ "population_n": 80890,
+ "sample_by_study_type": {
+  "INTERVENTIONAL": 1883,
+  "OBSERVATIONAL": 117
+ },
+ "sample_ids_sha256": "9bd0c403097b055faf01b505fbd0b98a6ca21611d965c8878751f11f1e0d525f",
+ "sample_n": 2000,
+ "seed": 20261113,
+ "source_sha256": "2168d258dd26d1c824f4a090b07df7f1dc8ad58d71a6a15598e5115c258c7fa2"
+}
