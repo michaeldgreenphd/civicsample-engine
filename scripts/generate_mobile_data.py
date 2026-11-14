@@ -347,6 +347,14 @@ def main(argv: list[str] | None = None) -> None:
         if r.get("reported"):
             for k, v in (r.get("omb_totals") or {}).items():
                 race_dist[k] += v or 0
+            # The part of unknown_not_reported that is the Hispanic rows of an
+            # exact combined race and ethnicity classification
+            # (race_extractor, "A shortfall that the ethnicity rows account
+            # for"). A PART of unknown_not_reported, not a further category:
+            # the site draws it as its own row and takes it out of "Unknown".
+            # Records extracted before the field existed add 0, so their
+            # unknown stays whole.
+            race_dist["unknown_ethnicity_only"] += r.get("unknown_ethnicity_only") or 0
             for k, v in (r.get("subcategory_totals") or {}).items():
                 race_subcats[k] += v or 0
 
