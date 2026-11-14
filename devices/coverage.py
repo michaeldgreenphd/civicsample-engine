@@ -30,6 +30,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from devices.acquire import database_page_answered
+
 STATES = ('not_searched', 'search_incomplete_or_blocked', 'document_unavailable',
           'available_document_insufficient', 'candidate_awaiting_review', 'no_candidate_in_completed_scope',
           'verified_link')
@@ -135,14 +137,16 @@ def fda_document_fetch(page: dict[str, Any] | None, docs: list[dict[str, Any]],
     tried by pattern that return 404 do not show that no document exists, so the route is
     incomplete unless a document was nevertheless retrieved and yielded a link."""
     fetched = [d for d in docs if d['origin'] == 'fda_fetch']
-    page_ok = page is not None and page.get('status') == 200
+    page_ok = database_page_answered(page)
     if page is None and not fetched:
         return _cell('fda_document_fetch', 'not_searched', 'neither the database page nor any document was requested')
     cell = _documents_cell('fda_document_fetch', fetched, links,
                            ('document_unavailable', 'the database page lists no document and no address was tried'))
     if not page_ok and cell['state'] not in ('verified_link', 'candidate_awaiting_review'):
         cell['state'] = 'search_incomplete_or_blocked'
-        how = ('answered with a page that does not name it' if (page or {}).get('status') == 'not_the_record'
+        status = (page or {}).get('status')
+        how = ('answered with a page that does not name it' if status == 'not_the_record'
+               else 'answered with a page not confirmed to name it' if status == 200
                else 'not answered')
         cell['reason'] = (f'the FDA database page for this number was {how}, so the documents FDA lists are '
                           'not known; ' + cell['reason'])

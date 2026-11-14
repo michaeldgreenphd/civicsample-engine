@@ -77,7 +77,9 @@ the confidence.
 ## Documents
 
 Discovered from FDA's release-database page for each number, which lists the documents FDA
-publishes with FDA's own label; URL patterns are a recorded fallback. Each record has a stable id,
+publishes with FDA's own label; URL patterns are a recorded fallback. A page is used only when its
+labelled number rows confirm it is the number's own page; any other answer, including one logged
+before that check existed, is asked again and leaves the route incomplete. Each record has a stable id,
 sha256, size, retrieval time, HTTP status, the server's Last-Modified, text status and extractor
 version, page count, a type with the rule and the words that decided it, and
 `demographic_summary_candidate` with its reason.

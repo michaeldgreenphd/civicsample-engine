@@ -481,7 +481,7 @@ def test_an_html_error_page_served_with_status_200_is_not_stored_as_a_document(t
 def test_a_route_holding_a_non_pdf_answer_is_incomplete() -> None:
     doc = {'document_id': 'doc:x', 'origin': 'fda_fetch', 'scope': 'this_submission', 'availability': 'not_a_pdf',
            'url': f'{F.DOCS}/pdf99/K990001.pdf', 'http_status': 200, 'document_type': None, 'text': None}
-    page = {'status': 200, 'body': {'document_links': [{'url': doc['url'], 'official_label': 'Summary'}]}}
+    page = _page([{'url': doc['url'], 'official_label': 'Summary'}])
     cell = coverage.fda_document_fetch(page, [doc], [])
     assert cell['state'] == 'search_incomplete_or_blocked'
     assert cell['detail']['not_retrieved'] == [{'url': doc['url'], 'outcome': 'not_a_pdf', 'http_status': 200}]
@@ -500,7 +500,7 @@ def test_local_documents_are_recovered_once_and_then_not_fetched(tmp_path: Path)
     assert (line['origin'], line['retrieved_at'], line['http_status']) == ('local_recovered', '2026-04-16', None)
     assert line['http_status_absent_reason']
     calls: list[str] = []
-    plan = acquire.document_plan('K990001', {'body': {'document_links': [{'url': url, 'official_label': 'Summary'}]}})
+    plan = acquire.document_plan('K990001', _page([{'url': url, 'official_label': 'Summary'}]))
     assert acquire.fetch_documents(plan, manifest, tmp_path / 'store', F.stub_get(calls), F.no_wait())['already_settled'] == 1
     assert calls == []
 
@@ -519,7 +519,7 @@ def test_a_local_file_that_is_not_a_pdf_is_not_stored_and_does_not_settle_the_ad
     assert not acquire.settled(line)
     assert acquire.recover_local(local, {'K990001': url}, manifest, store) == 0     # registered once
     calls: list[str] = []
-    plan = acquire.document_plan('K990001', {'body': {'document_links': [{'url': url, 'official_label': 'Summary'}]}})
+    plan = acquire.document_plan('K990001', _page([{'url': url, 'official_label': 'Summary'}]))
     assert acquire.fetch_documents(plan, manifest, store, F.stub_get(calls), F.no_wait())['retrieved'] == 1
     assert len(calls) == 1 and manifest.latest()[line['document_id']]['origin'] == 'fda_fetch'
 
@@ -531,15 +531,15 @@ def test_document_directory_by_receipt_year(number: str, directory: str) -> None
 
 
 def test_document_plan_prefers_fda_page_links_and_marks_parent_documents() -> None:
-    page = {'body': {'document_links': [{'url': f'{F.DOCS}/pdf12/K124067.pdf', 'official_label': 'Classification Order'},
-                                        {'url': f'{F.DOCS}/reviews/K124067.pdf', 'official_label': 'Decision Summary'}]}}
+    page = _page([{'url': f'{F.DOCS}/pdf12/K124067.pdf', 'official_label': 'Classification Order'},
+                                        {'url': f'{F.DOCS}/reviews/K124067.pdf', 'official_label': 'Decision Summary'}])
     plan = acquire.document_plan('DEN130013', page)
     assert [p['discovery'] for p in plan] == ['fda_database_page'] * 2 + ['url_pattern'] * 2
     assert plan[1]['url'].endswith('reviews/K124067.pdf')      # an early De Novo filed under a K number
     assert [p['url'].rsplit('/', 2)[-2:] for p in acquire.document_plan('K203042', None)] == \
         [['pdf20', 'K203042.pdf'], ['reviews', 'K203042.pdf']]
-    supp = acquire.document_plan('P990007/S002', {'body': {'document_links': []}},
-                                 {'body': {'document_links': [{'url': f'{F.DOCS}/pdf99/P990007B.pdf', 'official_label': 'SSED'}]}})
+    supp = acquire.document_plan('P990007/S002', _page([]),
+                                 _page([{'url': f'{F.DOCS}/pdf99/P990007B.pdf', 'official_label': 'SSED'}]))
     assert supp[-1]['scope'] == 'parent_submission' and all(p['scope'] == 'this_submission' for p in supp[:-1])
 
 
@@ -576,9 +576,39 @@ def test_a_database_page_that_does_not_name_the_number_is_not_an_answer(tmp_path
     # Guessed addresses that 404 do not turn into "FDA holds no document" on the strength of it.
     cell = coverage.fda_document_fetch(rec, [], [])
     assert cell['state'] == 'search_incomplete_or_blocked' and 'does not name it' in cell['reason']
-    assert coverage.fda_document_fetch({**rec, 'status': 200}, [], [])['state'] == 'document_unavailable'
+    assert coverage.fda_document_fetch({**rec, 'status': 200, 'page_names_the_submission': True}, [], [])['state'] == \
+        'document_unavailable'
     acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
     assert acquire.ResponseLog(tmp_path / 'log.jsonl').settled('fda_page/K990001')['status'] == 200
+
+@pytest.mark.parametrize('marker', [None, False])
+def test_a_cached_page_answer_not_confirmed_to_name_the_number_is_not_trusted(tmp_path: Path, marker: bool | None) -> None:
+    """A 200 logged before the page-identity check existed (no marker), or logged as not naming
+    the number, is asked again, and until then its links are not read and it is not FDA's list."""
+    url = f'{F.DOCS}/pdf99/K990002.pdf'
+    old = {'key': 'fda_page/K990001', 'url': 'u', 'params': {}, 'status': 200, 'http_status': 200,
+           'body': {'document_links': [{'url': url, 'official_label': 'Summary'}]}}
+    if marker is not None:
+        old['page_names_the_submission'] = marker
+    log = acquire.ResponseLog(tmp_path / 'log.jsonl')
+    log.put(old)
+    assert acquire.document_plan('K990001', old)[0]['discovery'] == 'url_pattern'
+    cell = coverage.fda_document_fetch(old, [], [])
+    assert cell['state'] == 'search_incomplete_or_blocked' and 'not confirmed to name it' in cell['reason']
+    calls: list[str] = []
+
+    def get(u: str, p: Any) -> tuple[int, dict[str, Any], bytes, None]:
+        calls.append(u)
+        return 200, {}, _record_page('510(k) Number', 'K990001').encode(), None
+    acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
+    rec = acquire.ResponseLog(tmp_path / 'log.jsonl').get('fda_page/K990001')
+    assert len(calls) == 1 and rec['page_names_the_submission'] is True and acquire.database_page_answered(rec)
+    acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
+    assert len(calls) == 1      # a confirmed page, and a 404, settle the number
+    log.put({**rec, 'status': 404, 'http_status': 404, 'page_names_the_submission': False})
+    acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
+    assert len(calls) == 1
+
 
 def test_openfda_records_map_to_submissions_and_absence_is_stated(acquired: dict[str, Any]) -> None:
     found = acquire.openfda_by_submission(acquired['frozen']['openfda'][0], list(acquired['subs']))
@@ -806,9 +836,14 @@ def test_a_field_that_names_the_number_twice_is_one_citation() -> None:
 def test_a_document_over_the_size_limit_leaves_the_route_blocked() -> None:
     doc = {'document_id': 'doc:x', 'origin': 'fda_fetch', 'scope': 'this_submission', 'availability': 'too_large',
            'url': f'{F.DOCS}/pdf99/K990001.pdf', 'http_status': 200, 'document_type': None, 'text': None}
-    page = {'status': 200, 'body': {'document_links': [{'url': doc['url'], 'official_label': 'Summary'}]}}
+    page = _page([{'url': doc['url'], 'official_label': 'Summary'}])
     for cell in (coverage.fda_document_fetch(page, [doc], []), coverage.nct_citation_scan([doc], [])):
         assert cell['state'] == 'search_incomplete_or_blocked' and 'over the size limit' in cell['reason']
+
+
+def _page(links: list[dict[str, str]]) -> dict[str, Any]:
+    """A logged database-page answer confirmed to name the number asked for."""
+    return {'status': 200, 'page_names_the_submission': True, 'body': {'document_links': links}}
 
 
 def _record_page(label: str, number: str) -> str:

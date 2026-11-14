@@ -452,6 +452,14 @@ def page_names_the_submission(submission_number: str, html: str) -> bool:
     return pma == base and supplement == supp
 
 
+def database_page_answered(page: dict[str, Any] | None) -> bool:
+    """True when a logged database-page answer is the page of the number asked for: HTTP 200 and
+    confirmed to name the number. A 200 logged without that confirmation (for instance before the
+    check existed) is not trusted: acquisition asks for it again, and the build neither reads its
+    links nor counts it as FDA's list of documents."""
+    return page is not None and page.get('status') == 200 and page.get('page_names_the_submission') is True
+
+
 def parse_document_links(html: str) -> list[dict[str, str]]:
     """Every link on a database page that points under /cdrh_docs/, with FDA's label for it.
     http is rewritten to https (the pages still print http for the reviews directory)."""
@@ -471,7 +479,9 @@ def fetch_database_pages(submission_numbers: list[str], log: ResponseLog, pages_
     answered = unanswered = 0
     for sn in submission_numbers:
         key = f'fda_page/{sn}'
-        if log.settled(key) is not None:
+        held = log.settled(key)
+        # A 404 settles the number; a 200 settles it only when it was confirmed to name the number.
+        if held is not None and (held.get('status') == 404 or database_page_answered(held)):
             answered += 1
             continue
         url, params = database_page_url(sn)
@@ -557,13 +567,15 @@ def document_plan(submission_number: str, page: dict[str, Any] | None,
             seen.add(url.lower())
             plan.append({'document_id': document_id(submission_number, url), 'submission_number': submission_number,
                          'url': url, 'official_label': label or None, 'discovery': discovery, 'scope': scope})
-    links = ((page or {}).get('body') or {}).get('document_links') or []
+    links = ((page or {}).get('body') or {}).get('document_links') or [] if database_page_answered(page) else []
     for link in links:
         add(link['url'], link['official_label'], 'fda_database_page', 'this_submission')
     if not links or submission_number.upper().startswith(('DEN', 'P')):
         for p in pattern_urls(submission_number):
             add(p['url'], p['official_label'], 'url_pattern', 'this_submission')
-    for link in ((parent_page or {}).get('body') or {}).get('document_links') or []:
+    parent_links = ((parent_page or {}).get('body') or {}).get('document_links') or [] \
+        if database_page_answered(parent_page) else []
+    for link in parent_links:
         add(link['url'], link['official_label'], 'fda_database_page_of_original_pma', 'parent_submission')
     return plan
 
