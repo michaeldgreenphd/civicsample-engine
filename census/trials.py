@@ -187,16 +187,37 @@ def _table_total(record: dict[str, Any], dimension: str) -> int | None:
     return sum(v for v in totals.values() if isinstance(v, (int, float)))
 
 
-def category_structure(record: dict[str, Any], dimension: str, total: int) -> dict[str, Any]:
+def race_table_titled_with_ethnicity(record: dict[str, Any]) -> bool:
+    """The weekly extractor's flag for a counted race table whose title mentions ethnicity
+    ("Race/Ethnicity, Customized"). It is a statement about the title, not about the rows."""
+    block = record.get('race') or {}
+    return 'combined_race_ethnicity' in ({str(f) for f in (block.get('flags') or [])}
+                                         | {str(f) for c in (block.get('raw_categories') or []) for f in (c.get('flags') or [])})
+
+
+def category_structure(record: dict[str, Any], dimension: str, total: int,
+                       registry_ethnicity_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Whether the table's rows can be read as each participant counted once, in one
     classification that the survey's tables match.
 
-    A share needs both. Three checks, all from data the engine already holds:
+    A share needs both. The checks, in order:
       * a race table that carries an ethnicity row ("Hispanic", "White/Non-Hispanic") is a
         combined classification: its race rows leave Hispanic participants out, which the
-        survey's race tables do not. It is not compared. (The parser flags a table whose
-        *title* mentions ethnicity; most of those have race rows only, 3,410 of 3,489 in the
-        2026-11-08 cohort, and are compared with the flag recorded as a caution.)
+        survey's race tables do not. It is not compared. Two ways it shows:
+          - a label that names race and ethnicity together survives into the release;
+          - a purely ethnicity row was dropped by the weekly extractor, which leaves no label
+            behind. The table is then recognisable only by its title flag, and its Hispanic
+            participants arrive as an inferred "unknown" (rows adding up to fewer than the
+            table's population). For a title-flagged table with such a shortfall the registry's
+            own table is consulted (registry_ethnicity_rows): a non-zero ethnicity row there
+            means the shortfall is those participants, and the table is not compared. If the
+            registry table was not retrieved, the table is not compared either, and says so.
+        A title-flagged table whose race rows cover everyone is compared, with a caution: any
+        ethnicity rows beside them describe the same people again and take nobody out. In the
+        764 cohort trials that an independent sample of full registry records covers, 73 race
+        tables carry the title flag: 25 have a dropped ethnicity row and a shortfall, 3 have
+        ethnicity rows beside race rows that cover everyone, 2 have ethnicity rows of zero, and
+        43 have none; none of the 387 unflagged tables has an ethnicity row.
       * the sex table counts each participant once, so a race or ethnicity table adding up to
         more than it has counted someone twice;
       * a table adding up to less describes a subset, which the recorded totals make visible.
@@ -209,13 +230,25 @@ def category_structure(record: dict[str, Any], dimension: str, total: int) -> di
     labels += [str(q.get('original') if isinstance(q, dict) else q) for q in (block.get('quarantined_labels') or [])]
     other = None if dimension == 'sex' else _table_total(record, 'sex')
     out: dict[str, Any] = {'parser_flags': flags, 'sex_table_total': other}
+    caution: list[str] = []
     if dimension == 'race':
         mixed = [x for x in labels if _ETHNICITY_LABEL.search(x)]
         if mixed:
-            return {**out, 'usable_for_shares': False, 'check': 'race_table_has_ethnicity_rows', 'labels': mixed[:5]}
+            return {**out, 'usable_for_shares': False, 'check': 'race_table_has_ethnicity_rows', 'labels': mixed[:5],
+                    'evidence': 'label_in_release'}
+        if race_table_titled_with_ethnicity(record):
+            shortfall = (block.get('unknown_inferred') or 0) > 0     # rows add up to fewer than the population
+            nonzero = [r for r in (registry_ethnicity_rows or []) if (r.get('largest_count') or 0) > 0]
+            out['registry_table_checked'] = registry_ethnicity_rows is not None
+            if shortfall and registry_ethnicity_rows is None:
+                return {**out, 'usable_for_shares': False, 'check': 'combined_table_not_checked_against_registry'}
+            if shortfall and nonzero:
+                return {**out, 'usable_for_shares': False, 'check': 'race_table_has_ethnicity_rows',
+                        'labels': [r['label'] for r in nonzero][:5], 'evidence': 'row_in_registry_table_dropped_by_extractor'}
+            caution = ['ethnicity_rows_beside_race_rows_that_cover_everyone' if nonzero and not shortfall
+                       else 'title_names_ethnicity_rows_are_race_only']
     if other and total > other + max(1, 0.01 * other):
         return {**out, 'usable_for_shares': False, 'check': 'table_total_exceeds_sex_table'}
-    caution = ['title_names_ethnicity_rows_are_race_only'] if 'combined_race_ethnicity' in flags else []
     if other and total < other - max(1, 0.01 * other):
         check = 'table_total_below_sex_table'
     else:
@@ -223,7 +256,8 @@ def category_structure(record: dict[str, Any], dimension: str, total: int) -> di
     return {**out, 'usable_for_shares': True, 'check': check, **({'cautions': caution} if caution else {})}
 
 
-def observed(record: dict[str, Any], dimension: str) -> dict[str, Any]:
+def observed(record: dict[str, Any], dimension: str,
+             registry_ethnicity_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Counts as the registry table gives them, with unknown kept as its own row.
 
     'reported': the table exists. Absence is recorded as a reason, never as zeros. Two
@@ -246,7 +280,7 @@ def observed(record: dict[str, Any], dimension: str) -> dict[str, Any]:
     out: dict[str, Any] = {'reported': True, 'counts': counts, 'n_in_table': total,
                            'n_unknown': unknown, 'n_unmapped': sum(extra.values()),
                            'n_classified': total - unknown - sum(extra.values()),
-                           'structure': category_structure(record, dimension, total),
+                           'structure': category_structure(record, dimension, total, registry_ethnicity_rows),
                            'original_categories': [{'original': c.get('original'), 'count': c.get('count')}
                                                    for c in (block.get('raw_categories') or [])][:40]}
     if extra:   # a category this module does not harmonise stays in denominator A and is named

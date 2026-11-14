@@ -67,8 +67,17 @@ read as each participant counted once, in a classification the survey's tables m
 table that carries an ethnicity row ("Hispanic", "White/Non-Hispanic") is a combined
 classification and is not compared; a table adding up to more than the trial's sex table has
 counted someone twice. Either is kept in the per-trial file with the reason and left out of
-every pooled figure. A table whose title mentions ethnicity but whose rows are race only is
-compared, with that caution recorded.
+every pooled figure.
+
+The weekly extractor leaves a purely ethnicity row to the ethnicity pipeline, so the release
+carries no label for it: a table that classified people as White / Black / Hispanic arrives
+looking like a race table whose Hispanic participants are "unknown". For every race table whose
+title mentions ethnicity, the build therefore fetches the registry's own baseline table
+(`registry.ethnicity_rows_in_race_tables`, a second frozen archive with its sha256). Where the
+race rows fall short of the table's population and the registry table has a non-zero ethnicity
+row, the table is not compared. Where the race rows cover everyone, it is compared with a
+caution, whether or not ethnicity rows stand beside them. A flagged table with a shortfall whose
+registry table could not be retrieved is not compared and says so.
 
 The trial side is the registry's baseline characteristics table: the baseline analysis
 population with all arms combined. It can differ from enrolment; the ratio is recorded.

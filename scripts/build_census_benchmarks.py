@@ -180,7 +180,7 @@ def trial_row(rec: dict[str, Any], facts: dict[str, Any], referral: set[str]) ->
 
 
 def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[str, Any] | None,
-                   levels: dict[str, acs.Level]) -> None:
+                   levels: dict[str, acs.Level], registry_ethnicity_rows: list[dict[str, Any]] | None = None) -> None:
     """Observed shares, and the reference population at every level that resolved.
 
     A trial with no benchmark window (no usable date) has no resolution: what its tables
@@ -189,7 +189,7 @@ def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[st
     elig = row['eligibility']
     row['dimensions'] = {}
     for dim in ('race', 'ethnicity', 'sex'):
-        obs = trials.observed(rec, dim)
+        obs = trials.observed(rec, dim, registry_ethnicity_rows if dim == 'race' else None)
         if not obs['reported']:
             row['dimensions'][dim] = {'state': 'not_reported', 'reason': obs['reason']}
             continue
@@ -326,6 +326,18 @@ def main(argv: list[str] | None = None) -> int:
         registry.write_archive(registry.fetch([r['nct_id'] for r in cohort]), reg_path, len(cohort))
     studies, reg_meta = registry.read_archive(reg_path)
 
+    # Race tables titled with ethnicity: the registry's own table shows whether an ethnicity row
+    # stood among the race rows, which the release cannot (trials.category_structure).
+    titled = [r['nct_id'] for r in cohort if (r.get('race') or {}).get('reported')
+              and trials.race_table_titled_with_ethnicity(r)]
+    base_path = args.cache / f'registry_baseline_{args.release_tag}.jsonl.gz'
+    if titled and not base_path.exists():
+        log(f'fetching posted baseline tables for {len(titled)} race tables titled with ethnicity...')
+        registry.write_archive(registry.fetch(titled, fields=registry.BASELINE_FIELDS), base_path, len(titled),
+                               fields=registry.BASELINE_FIELDS)
+    baseline, base_meta = (registry.read_archive(base_path, fields=registry.BASELINE_FIELDS) if titled else ({}, None))
+    ethnicity_rows = {n: registry.ethnicity_rows_in_race_tables(baseline.get(n)) for n in titled}
+
     by_zip = collections.Counter((r['study_sites'][0].get('zip') or '').strip()[:5] for r in cohort)
     referral = {z for z, c in by_zip.items() if z and c >= PARAMETERS['referral_zip_min_trials']}
     rows = [trial_row(r, registry.site_facts(studies.get(r['nct_id'])), referral) for r in cohort]
@@ -337,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
     unmatched = [r for r in rows if r['benchmark_period']['vintage'] is None]
     for r in unmatched:
         r.pop('_point', None)
-        add_dimensions(r, recs[r['nct_id']], None, {})
+        add_dimensions(r, recs[r['nct_id']], None, {}, ethnicity_rows.get(r['nct_id']))
     for vintage in sorted({r['benchmark_period']['vintage'] for r in rows} - {None}):
         mine = [r for r in rows if r['benchmark_period']['vintage'] == vintage]
         level_names = acs.LEVELS_BY_VINTAGE.get(vintage, LEVEL_ORDER)
@@ -358,7 +370,8 @@ def main(argv: list[str] | None = None) -> int:
         resolver = geography.Resolver(vintage, args.cache / 'boundaries', {r['site']['zip5'] for r in mine if r['site']['zip5']},
                                       set(levels['zcta'].index) if 'zcta' in levels else None)
         for r in mine:
-            add_dimensions(r, recs[r['nct_id']], resolver.resolve(r['site']['zip5'], r.pop('_point'), r['site']['state']), levels)
+            add_dimensions(r, recs[r['nct_id']], resolver.resolve(r['site']['zip5'], r.pop('_point'), r['site']['state']), levels,
+                           ethnicity_rows.get(r['nct_id']))
         del levels, resolver
     for r in rows:
         r.pop('_point', None)
@@ -380,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
         'producer': producer(),
         'source_release': {'tag': args.release_tag, 'extracted_at': release.get('extracted_at'),
                            'pipeline_commit': release.get('pipeline_commit'), 'sha256': sha256_file(args.release)},
-        'registry_archive': reg_meta, 'parameters': PARAMETERS,
+        'registry_archive': reg_meta, 'registry_baseline_archive': base_meta, 'parameters': PARAMETERS,
         'windows': [f'{a}-{b}' for a, b in trials.WINDOWS], 'product': 'ACS 5-year estimates (90% margins of error)',
         'product_choice': acs.__doc__.split('\n\n')[1], 'population_basis': trials.POPULATION_BASIS,
         'comparison_label': 'site-area population benchmark', 'default_level': DEFAULT_LEVEL,

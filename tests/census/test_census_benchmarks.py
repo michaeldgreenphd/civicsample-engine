@@ -344,3 +344,54 @@ def test_a_cached_table_is_reused_only_when_its_bytes_are_the_recorded_ones(tmp_
     (tmp_path / 'acs5_2024_B01001_us.meta.json').write_text(json.dumps(meta))
     acs.fetch(2024, 'B01001', 'us', tmp_path, Session())
     assert len(calls) == 6
+
+
+# --- combined race and ethnicity tables ----------------------------------------------------------
+
+def _measure(title: str, rows: list[tuple[str, list[str]]]) -> dict:
+    return {'title': title, 'classes': [{'title': label, 'categories': [{'measurements': [{'value': v} for v in values]}]}
+                                        for label, values in rows]}
+
+
+def _posted(*measures: dict) -> dict:
+    return {'resultsSection': {'baselineCharacteristicsModule': {'measures': list(measures)}}}
+
+
+def test_the_registry_table_shows_the_ethnicity_row_the_extractor_drops() -> None:
+    combined = _measure('Race/Ethnicity, Customized', [('Caucasian', ['20', '19', '39']), ('African-American', ['6', '4', '10']),
+                                                      ('Hispanic', ['1', '1', '2']), ('Unknown', ['2', '0', '2'])])
+    rows = registry.ethnicity_rows_in_race_tables(_posted(combined))
+    assert rows == [{'measure_title': 'Race/Ethnicity, Customized', 'label': 'Hispanic', 'largest_count': 2.0}]
+    # a table whose rows are all ethnicity is an ethnicity table under a race title, not a mixed one
+    only = _measure('Race/Ethnicity, Customized', [('Hispanic or Latino', ['3']), ('Not Hispanic or Latino', ['7'])])
+    assert registry.ethnicity_rows_in_race_tables(_posted(only)) == []
+    # an ethnicity-titled table is not a race table at all
+    assert registry.ethnicity_rows_in_race_tables(_posted(_measure('Ethnicity (NIH/OMB)', [('Hispanic or Latino', ['3'])]))) == []
+    assert registry.ethnicity_rows_in_race_tables(None) is None            # not retrieved: not looked at
+
+
+def test_a_title_flagged_race_table_is_compared_only_when_its_race_rows_cover_everyone() -> None:
+    def rec(inferred: int) -> dict:
+        return {'sex': {'reported': True, 'totals': {'female': 30, 'male': 23}},
+                'race': {'reported': True, 'flags': ['combined_race_ethnicity'], 'unknown_inferred': inferred,
+                         'omb_totals': {'white': 39, 'black_african_american': 10, 'unknown_not_reported': 4},
+                         'raw_categories': [{'original': 'Caucasian', 'count': 39, 'flags': ['combined_race_ethnicity']}]}}
+    hispanic = [{'measure_title': 'Race/Ethnicity, Customized', 'label': 'Hispanic', 'largest_count': 2.0}]
+    # the rows fall short of the population and the registry table has a Hispanic row: a combined classification
+    out = trials.category_structure(rec(2), 'race', 53, hispanic)
+    assert out['usable_for_shares'] is False and out['check'] == 'race_table_has_ethnicity_rows'
+    assert out['labels'] == ['Hispanic'] and out['evidence'] == 'row_in_registry_table_dropped_by_extractor'
+    # the same shortfall with no registry table to look at: not compared, and it says why
+    out = trials.category_structure(rec(2), 'race', 53, None)
+    assert out['usable_for_shares'] is False and out['check'] == 'combined_table_not_checked_against_registry'
+    # ethnicity rows beside race rows that cover everyone take nobody out of the race rows
+    out = trials.category_structure(rec(0), 'race', 53, hispanic)
+    assert out['usable_for_shares'] is True and out['cautions'] == ['ethnicity_rows_beside_race_rows_that_cover_everyone']
+    # a shortfall with no ethnicity row in the registry table is ordinary missing data
+    out = trials.category_structure(rec(2), 'race', 53, [])
+    assert out['usable_for_shares'] is True and out['cautions'] == ['title_names_ethnicity_rows_are_race_only']
+    assert out['registry_table_checked'] is True
+    # an ethnicity row of zero took nobody out
+    zero = [{'measure_title': 't', 'label': 'Hispanic', 'largest_count': 0.0}]
+    assert trials.category_structure(rec(2), 'race', 53, zero)['usable_for_shares'] is True
+    assert trials.observed(rec(2), 'race', hispanic)['structure']['usable_for_shares'] is False
