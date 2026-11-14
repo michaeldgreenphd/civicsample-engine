@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T06:42:32+00:00 by `scripts/build_device_links.py build` at engine commit `43ceab4d6b55` (no uncommitted changes; producing-code digest `25fd38b6af63…`), run id `devices-2026-11-14-94ea2d57b6`, method `device-links-1` |
+| Built | 2026-11-14T06:48:46+00:00 by `scripts/build_device_links.py build` at engine commit `1013cce8ee7d` (no uncommitted changes; producing-code digest `dd88afce8425…`), run id `devices-2026-11-14-17c61c62b2`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -146,4 +146,6 @@ It was rebuilt a twenty-first time after the twentieth review round, at `b1194ca
 
 It was rebuilt a twenty-second time after the twenty-first review round, at `5fa7786` (run `devices-2026-11-14-6e036ec166`). That round's three fixes (each registry record carries the version stamp of the snapshot current when it was fetched; an openFDA answer must carry the submission number on every entry; a retrieved document whose stored file is missing or damaged is fetched again) change no output of this run: both cached version answers carry the same stamp, all 1,558 cached openFDA entries carry their number, and all stored files check. Every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a twenty-third time after the twenty-second review round, at the commit named above. That round's three fixes (an openFDA entry must carry a number its request asked for; a search count must cover the studies returned; repairing a stored file counts only its net size against a disk budget) change no output of this run: all 1,558 cached openFDA entries and all 3,086 cached search answers pass the checks, and no budget was set. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a twenty-third time after the twenty-second review round, at `43ceab4` (run `devices-2026-11-14-94ea2d57b6`). That round's three fixes (an openFDA entry must carry a number its request asked for; a search count must cover the studies returned; repairing a stored file counts only its net size against a disk budget) change no output of this run: all 1,558 cached openFDA entries and all 3,086 cached search answers pass the checks, and no budget was set. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a twenty-fourth time after the twenty-third review round, at the commit named above. That round's fix (a settled answer must pass its caller's current shape check before acquisition reuses it) changes no output of this run, and no answer in the cache would be asked again: every cached answer passes the current checks. Every output file is identical to the previous build apart from the run id.
