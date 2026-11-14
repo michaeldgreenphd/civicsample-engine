@@ -1,0 +1,1142 @@
+"""Device linkage: inventory, organisations, documents, acquisition, registry evidence, links,
+coverage, reviews, demographics, artifacts and the contract.
+
+Fictional records only (tests/devices/fixture.py); no network. These are ENGINEERING tests: they
+establish that the rules are applied as written. None of them establishes that a real link is
+right.
+"""
+from __future__ import annotations
+
+import copy
+import csv
+import gzip
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import fixture as F  # noqa: E402
+from devices import (acquire, artifacts, contract, coverage, demographics, documents, inventory, links,  # noqa: E402
+                     organizations, pdftext, registry)
+
+sys.path.insert(0, str(ROOT / 'scripts'))
+import build_device_links  # noqa: E402
+
+
+@pytest.fixture(scope='module')
+def acquired(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    return F.acquire_all(tmp_path_factory.mktemp('devices'))
+
+
+@pytest.fixture(scope='module')
+def family(tmp_path_factory: pytest.TempPathFactory, acquired: dict[str, Any]) -> dict[str, Any]:
+    tmp = tmp_path_factory.mktemp('family')
+    return F.build_family(tmp, acquired, extractions=F.pilot_extractions(tmp / 'pilot.json'))
+
+
+def rows(*values: tuple[str, ...]) -> list[dict[str, Any]]:
+    return [{'row_number': i, 'values': dict(zip(inventory.LIST_COLUMNS, v))} for i, v in enumerate(values, start=1)]
+
+
+def by_id(family: dict[str, Any], sn: str) -> dict[str, Any]:
+    return next(s for s in family['submissions.json']['submissions'] if s['submission_number'] == sn)
+
+
+def cell(family: dict[str, Any], sn: str, route: str) -> dict[str, Any]:
+    cov = next(c for c in family['coverage.json']['submissions'] if c['submission_number'] == sn)
+    return next(c for c in cov['routes'] if c['route'] == route)
+
+
+# ---------------------------------------------------------------- inventory
+
+def test_rows_fold_on_the_submission_number_and_every_row_is_kept(family: dict[str, Any]) -> None:
+    rec = family['submissions.json']['reconciliation']
+    assert (rec['n_rows'], rec['n_submissions'], rec['n_extra_rows'], rec['n_duplicated_numbers']) == (11, 8, 3, 3)
+    assert rec['duplicated_numbers_by_class'] == {'identical': ['K990001'], 'alias_only': ['K990003'],
+                                                  'substantive_conflict': ['K990004']}
+    assert [r['row_number'] for r in by_id(family, 'K990001')['source_rows']] == [1, 2]
+
+
+@pytest.mark.parametrize('second, expected, fields', [
+    (('1/5/22', 'K990003', 'Auto Segmentation', 'Pearl Co', 'Radiology', 'LLZ'), 'identical', []),
+    (('1/5/22', 'K990003', 'Auto Segmentation', 'PEARL, CO.', 'Radiology', 'LLZ'), 'alias_only', ['Company']),
+    (('1/5/22', 'K990003', 'Auto-Segmentation', 'Pearl Co', 'Radiology', 'LLZ'), 'alias_only', ['Device']),
+    (('1/5/22', 'K990003', 'Auto Segmentation', 'Pearl Therapeutics', 'Radiology', 'LLZ'), 'substantive_conflict', ['Company']),
+    (('1/6/22', 'K990003', 'Auto Segmentation', 'Pearl Co', 'Radiology', 'LLZ'), 'substantive_conflict',
+     ['Date of Final Decision']),
+    (('1/5/22', 'K990003', 'Auto Segmentation', 'Pearl Co', 'Radiology', 'QIH'), 'substantive_conflict',
+     ['Primary Product Code']),
+])
+def test_duplicate_rows_are_classified_by_what_differs(second: tuple[str, ...], expected: str, fields: list[str]) -> None:
+    first = ('1/5/22', 'K990003', 'Auto Segmentation', 'Pearl Co', 'Radiology', 'LLZ')
+    cls, conflicts = inventory.classify_duplicate(rows(first, second), inventory.LIST_COLUMNS)
+    assert cls == expected and sorted(conflicts) == sorted(fields)
+    if fields:
+        assert conflicts[fields[0]] == [first[inventory.LIST_COLUMNS.index(fields[0])],
+                                        second[inventory.LIST_COLUMNS.index(fields[0])]]
+
+
+def test_conflicting_rows_keep_every_value_and_a_disputed_date_is_absent_not_chosen() -> None:
+    subs = inventory.submissions(rows(('1/5/22', 'K990003', 'A-Scan', 'Pearl Co', 'Radiology', 'LLZ'),
+                                      ('2/5/22', 'K990003', 'A-Scan', 'Pearl Co', 'Radiology', 'LLZ')),
+                                 inventory.LIST_COLUMNS)
+    s = subs['K990003']
+    assert s['decision_date'] is None and s['decision_date_absent_reason'] == 'rows_disagree'
+    assert s['decision_date_as_listed'] == ['1/5/22', '2/5/22'] and s['n_source_rows'] == 2
+
+
+def test_a_row_without_a_recognisable_number_stops_the_build() -> None:
+    with pytest.raises(ValueError, match='not a recognised FDA submission number'):
+        inventory.submissions(rows(('1/5/22', 'X123', 'A', 'B', 'C', 'D')), inventory.LIST_COLUMNS)
+
+
+@pytest.mark.parametrize('number, expected', [('K203042', '510k'), ('DEN170073', 'de_novo'), ('P200003', 'pma'),
+                                              ('P140011/S008', 'pma_supplement')])
+def test_pathway_is_read_from_the_prefix(number: str, expected: str) -> None:
+    assert inventory.pathway(number) == expected
+
+
+@pytest.mark.parametrize('cell_, expected', [('12/30/25', '2025-12-30'), ('9/29/95', '1995-09-29'), ('2/30/21', None),
+                                             ('soon', None)])
+def test_decision_dates_parse_or_are_none(cell_: str, expected: str | None) -> None:
+    d = inventory.parse_decision_date(cell_)
+    assert (d.isoformat() if d else None) == expected
+
+
+@pytest.mark.parametrize('name, core', [('ART-Plan+ (v3.1.0)', 'ART-Plan+'), ('IB NEURO, VERSION 1.0', 'IB NEURO'),
+                                        ('VersaViewer', 'VersaViewer'), ('qER 2.0', 'qER')])
+def test_core_name_drops_parentheses_and_a_trailing_version_only(name: str, core: str) -> None:
+    assert inventory.name_forms(name)['core'] == core
+
+
+def test_a_comma_inside_parentheses_does_not_split_models() -> None:
+    forms = inventory.name_forms('Aplio i900 Diagnostic Ultrasound System, Software V7.0 (TUS-AI900, TUS-AI800)')
+    assert forms['segments'] == ['Aplio i900 Diagnostic Ultrasound System', 'Software']
+
+
+def test_name_forms_separate_trimmed_from_manufacturer_only_and_flag_generic_names() -> None:
+    assert inventory.name_forms('SKOUT system')['trimmed'] == ['skout']
+    assert inventory.name_forms('Athelas One', 'athelas')['company_only'] == ['athelas']
+    assert inventory.name_forms('Deep Learning Image Reconstruction')['generic'] is True
+
+
+def _families(*items: tuple[str, str, str], curated: dict[str, dict[str, str]] | None = None) -> dict[str, dict[str, Any]]:
+    subs = inventory.submissions(rows(*[('1/5/22', sn, name, company, 'Radiology', 'LLZ') for sn, name, company in items]),
+                                 inventory.LIST_COLUMNS)
+    org_of = {sn: organizations.organization_id(organizations.normalise(s['companies_as_listed'][0])['normalised'])
+              for sn, s in subs.items()}
+    return inventory.families(subs, org_of, curated or {})
+
+
+def test_family_grouping_needs_the_same_organisation_and_the_same_whole_core_name() -> None:
+    fams = _families(('K990001', 'Zorbex Scan (v2.1)', 'Fictional Imaging, Inc.'),
+                     ('K990002', 'Zorbex Scan', 'Fictional Imaging Inc'),
+                     ('K990011', 'Zorbex Scan', 'Another Maker LLC'),          # same name, other organisation
+                     ('K990012', 'Zorbex Triage', 'Fictional Imaging Inc'),     # shares a word only
+                     ('K990013', 'Rapid ICH', 'Fictional Imaging Inc'),
+                     ('K990014', 'Rapid LVO', 'Fictional Imaging Inc'))
+    groups = sorted(sorted(f['submission_numbers']) for f in fams.values())
+    assert groups == [['K990001', 'K990002'], ['K990011'], ['K990012'], ['K990013'], ['K990014']]
+    assert all(f['status'] == 'candidate' for f in fams.values())
+
+
+def test_a_name_made_only_of_device_type_words_never_groups_even_within_one_organisation() -> None:
+    fams = _families(('K990021', 'Ultrasound System', 'Fictional Imaging Inc'),
+                     ('K990022', 'Ultrasound System', 'Fictional Imaging Inc'))
+    assert len(fams) == 2
+    assert {f['grouping_reason'] for f in fams.values()} == {'generic_name_not_grouped'}
+
+
+def test_only_the_curated_file_makes_a_curated_family_or_joins_differently_named_products() -> None:
+    curated = {sn: {'family_id': 'zorbex', 'submission_number': sn, 'family_name': 'Zorbex', 'source': 'labeling',
+                    'note': 'same product line per the manufacturer'} for sn in ('K990001', 'K990012')}
+    fams = _families(('K990001', 'Zorbex Scan', 'Fictional Imaging Inc'), ('K990012', 'Zorbex Triage', 'Fictional Imaging Inc'),
+                     ('K990002', 'Zorbex Scan', 'Fictional Imaging Inc'), curated=curated)
+    assert fams['family:curated:zorbex']['submission_numbers'] == ['K990001', 'K990012']
+    assert fams['family:curated:zorbex']['status'] == 'curated'
+    assert sum(f['status'] == 'candidate' for f in fams.values()) == 1
+
+
+def test_curated_families_file_is_validated(tmp_path: Path) -> None:
+    F.write_curated(tmp_path, families=[['f1', 'K990001', 'X', 'src', 'why'], ['f2', 'K990001', 'X', 'src', 'why']])
+    with pytest.raises(ValueError, match='assigned to two families'):
+        inventory.read_curated_families(tmp_path / 'families.csv')
+    with pytest.raises(ValueError, match='not in the inventory'):
+        _families(('K990001', 'A-Scan', 'B Co'), curated={'K999999': {'family_id': 'f', 'submission_number': 'K999999',
+                                                                    'family_name': '', 'source': '', 'note': 'n'}})
+
+
+# ---------------------------------------------------------------- organisations
+
+@pytest.mark.parametrize('a, b, same', [
+    ('Pearl Inc.', 'Pearl, Inc.', True), ('RaySearch Laboratories AB (PUBL)', 'RaySearch Laboratories AB (publ)', True),
+    ('Peek Health, S.A.', 'PEEK HEALTH SA', True), ('Vitrolife A/S', 'Vitrolife', True),
+    ('MRIguidance B.V', 'MRIguidance BV', True), ('Q Bio, Inc.', 'Bio Inc', False), ('X-Nav Technologies, LLC', 'Nav Technologies', False),
+    ('Nobel Biocare C/O Medicim NV', 'Nobel Biocare', True), ('Siemens Medical Solutions USA, Inc.', 'Siemens Healthcare GmbH', False),
+    ('Pearl Inc.', 'Pearl Therapeutics', False), ('Viz.Al, Inc.', 'Viz.ai, Inc.', False), ('Exo Inc', 'EXO Biologics S.A.', False),
+])
+def test_normalisation_joins_spellings_and_nothing_else(a: str, b: str, same: bool) -> None:
+    assert (organizations.normalise(a)['normalised'] == organizations.normalise(b)['normalised']) is same
+
+
+def test_raw_name_is_preserved_and_what_was_removed_is_recorded() -> None:
+    n = organizations.normalise('Acme Imaging GmbH (Siemens) d/b/a Acme')
+    assert n['raw'] == 'Acme Imaging GmbH (Siemens) d/b/a Acme' and n['normalised'] == 'acme imaging'
+    assert n['legal_form_tokens'] == ['gmbh'] and n['parenthesised'] == ['Siemens'] and n['dba'] == 'Acme'
+    assert organizations.normalise('Nobel Biocare C/O Medicim NV')['care_of'] == 'Medicim NV'
+
+
+def test_two_differently_named_organisations_merge_only_through_the_alias_file(tmp_path: Path) -> None:
+    names = ['Bay Labs, Inc.', 'Caption Health, Inc.', 'Caption Health Inc']
+    apart = organizations.build(names, {})
+    assert len(apart) == 2 and apart['org:caption-health']['merge_basis'] == 'normalisation_rules'
+    F.write_curated(tmp_path, aliases=[['bay labs', 'caption health', 'Caption Health', '', '2020-01-01', 'press release',
+                                        'renamed in 2020']])
+    aliases = organizations.read_aliases(tmp_path / 'organization_aliases.csv')
+    joined = organizations.build(names, aliases)
+    assert list(joined) == ['org:caption-health']
+    org = joined['org:caption-health']
+    assert org['merge_basis'] == 'curated_alias' and org['raw_names'] == sorted(names)
+    assert org['aliases_applied'][0]['note'] == 'renamed in 2020'
+    assert organizations.match_tier('Bay Labs, Inc.', 'Caption Health', aliases) == 'curated_alias'
+    assert organizations.match_tier('Bay Labs, Inc.', 'Caption Health', {}) is None
+
+
+def test_agreement_only_after_different_legal_forms_is_its_own_weaker_tier() -> None:
+    assert organizations.match_tier('Metamorphosis GmbH', 'Metamorphosis LTD', {}) == 'normalised_legal_form_differs'
+    assert organizations.match_tier('HeartFlow, Inc.', 'HeartFlow', {}) == 'normalised_exact'
+
+
+@pytest.mark.parametrize('row, message', [
+    (['bay labs', 'caption health', '', '', '', 'src', ''], 'required'),
+    (['Bay Labs, Inc.', 'caption health', '', '', '', 'src', 'n'], 'already be normalised'),
+    (['bay labs', 'bay labs', '', '', '', 'src', 'n'], 'point at itself'),
+])
+def test_alias_file_rows_are_refused_when_they_would_resolve_silently(tmp_path: Path, row: list[str], message: str) -> None:
+    F.write_curated(tmp_path, aliases=[row])
+    with pytest.raises(ValueError, match=message):
+        organizations.read_aliases(tmp_path / 'organization_aliases.csv')
+
+
+def test_alias_chains_and_repeats_are_refused(tmp_path: Path) -> None:
+    F.write_curated(tmp_path, aliases=[['a labs', 'b labs', '', '', '', 's', 'n'], ['b labs', 'c labs', '', '', '', 's', 'n']])
+    with pytest.raises(ValueError, match='chains'):
+        organizations.read_aliases(tmp_path / 'organization_aliases.csv')
+    F.write_curated(tmp_path, aliases=[['a labs', 'b labs', '', '', '', 's', 'n'], ['a labs', 'c labs', '', '', '', 's', 'n']])
+    with pytest.raises(ValueError, match='listed twice'):
+        organizations.read_aliases(tmp_path / 'organization_aliases.csv')
+
+
+# ---------------------------------------------------------------- documents
+
+LETTER = 'Re: K990001\nDear Sir:\nWe have reviewed your Section 510(k) premarket notification of intent to market.'
+
+
+@pytest.mark.parametrize('pathway, pages, label, expected, candidate', [
+    ('de_novo', F.TEXTS['pdf99/DEN990005.pdf'], 'Classification Order', 'de_novo_granting_letter', False),
+    ('de_novo', F.TEXTS['reviews/DEN990005.pdf'], 'Decision Summary', 'de_novo_decision_summary', True),
+    ('de_novo', ['DE NOVO CLASSIFICATION REQUEST FOR QUANTA TRIAGE\nREGULATORY INFORMATION'], None,
+     'de_novo_decision_summary', True),
+    ('510k', F.TEXTS['pdf99/K990001.pdf'], 'Summary', '510k_summary', True),
+    ('510k', [LETTER, 'K990001\n5 1 0 ( k )   S U M M A R Y'.replace('5 1 0 ( k )   S U M M A R Y', '510(k)\nSummary')], None,
+     '510k_summary', True),
+    ('510k', F.TEXTS['pdf99/K990003.pdf'], 'Statement', '510k_statement', False),
+    ('510k', [LETTER, 'Indications for Use\nFor review of images.'], 'Summary', '510k_clearance_letter', False),
+    ('510k', ['510(k) SUBSTANTIAL EQUIVALENCE DETERMINATION DECISION SUMMARY\nA. 510(k) Number: K990001'], 'Decision Summary',
+     '510k_decision_summary', True),
+    ('pma', F.TEXTS['pdf99/P990006A.pdf'], 'Approval Order', 'pma_approval_order', False),
+    ('pma', F.TEXTS['pdf99/P990007B.pdf'], 'Summary of Safety and Effectiveness', 'pma_ssed', True),
+    ('pma', F.TEXTS['pdf99/P990006C.pdf'], 'Labeling', 'pma_labeling', False),
+    ('510k', ['Minutes of a meeting about nothing in particular, with enough words.'], None, 'other', False),
+])
+def test_document_type_comes_from_the_text_with_the_words_that_decided_it(
+        pathway: str, pages: list[str], label: str | None, expected: str, candidate: bool) -> None:
+    c = documents.classify(pages, pathway, label)
+    assert c['document_type'] == expected and c['basis'] == 'text'
+    if expected != 'other':
+        assert c['matched_phrase'] and c['page'] >= 1 and c['rule']
+    assert documents.demographic_summary_candidate(expected, 'text', 'this_submission')[0] is candidate
+
+
+def test_a_letter_filed_under_another_label_is_reported_as_disagreeing_with_fda() -> None:
+    # FDA posts the clearance letter alone under the "Statement" link; the text decides.
+    c = documents.classify([LETTER, 'Indications for Use\nFor review of images by trained readers.'], '510k', 'Statement')
+    assert c['document_type'] == '510k_clearance_letter' and c['agrees_with_official_label'] is False
+    assert c['basis'] == 'text'
+
+
+@pytest.mark.parametrize('page, phrase', [
+    ('K 0X773\n1 5 10(k) Summary\nSubmitter: Fictional AB', '5 10(k) Summar'),        # OCR spacing of an old scan
+    ('K990001\n510(k) Summar\nFictional Health, Inc. 510(k) Owner Name', '510(k) Summar'),   # heading lost its last letter
+    ('This summary is submitted in accordance with 21 CFR 807.92.', '21 CFR 807.92'),   # heading is an image
+    ('8. Summary of Technological Characteristics Comparison\nTable 1 shows', 'Summary of Technological Characteristics'),
+])
+def test_a_510k_summary_is_recognised_without_a_clean_heading(page: str, phrase: str) -> None:
+    c = documents.classify([LETTER, page], '510k', 'Summary')
+    assert c['document_type'] == '510k_summary' and c['matched_phrase'] == phrase and c['page'] == 2
+
+
+def test_a_summary_on_pages_without_text_is_typed_by_fda_label_and_not_treated_as_read() -> None:
+    c = documents.classify([LETTER, 'Indications for Use form with enough words on it.', '', '', ''], '510k', 'Summary')
+    assert (c['document_type'], c['basis'], c['text_read_is'], c['n_pages_without_text']) == \
+        ('510k_summary', 'official_label_unread_pages', '510k_clearance_letter', 3)
+    ok, why = documents.demographic_summary_candidate('510k_summary', 'partial', 'this_submission', c['basis'])
+    assert ok is False and 'OCR' in why
+    # With every page read and no summary found, the letter is a letter whatever the label says.
+    assert documents.classify([LETTER], '510k', 'Summary')['document_type'] == '510k_clearance_letter'
+
+
+def test_text_that_matches_no_rule_takes_fda_label_and_says_so() -> None:
+    c = documents.classify(['Fictional AED\nQuickstart Guide\nIFU-00132 Rev A, with enough words.'], 'pma', 'Labeling Part 2')
+    assert (c['document_type'], c['basis'], c['matched_phrase']) == ('pma_labeling', 'official_label_text_unmatched', None)
+    memo = documents.classify(['SPECIAL 510(k): Device Modification\nOIR Review Memorandum\nTo: THE FILE'], '510k',
+                              'Decision Summary')
+    assert memo['document_type'] == '510k_decision_summary' and memo['basis'] == 'text'
+
+
+def test_a_summary_body_without_any_heading_is_recognised_by_its_section_markers() -> None:
+    body = ('K990001 Applicant Name: Fictional, Inc\nPredicate Device: Fictional Aid (K980111)\n'
+            'Device Description\nThe software reads radiographs.')
+    c = documents.classify([LETTER, body], '510k', 'Summary')
+    assert c['document_type'] == '510k_summary' and c['basis'] == 'text' and c['page'] == 2
+    assert c['matched_phrase'] == 'Applicant Name | Predicate Device | Device Description'
+    # The clearance letter's own wording ("predicate devices", "substantially equivalent") is not enough.
+    letter = LETTER + ' The device is substantially equivalent to legally marketed predicate devices.'
+    assert documents.classify([letter], '510k', 'Summary')['document_type'] == '510k_clearance_letter'
+
+
+def test_a_garbled_text_layer_counts_as_no_text() -> None:
+    readable = 'The device is intended for use by trained readers in the review of images. ' * 4
+    shifted = ''.join(chr(ord(c) - 29) if c.isalpha() else '\x03' for c in readable)     # fonts without a character map
+    symbols = 'Ã+-@#DK9 ;KÃ1 #8ÃK1 Ã#;+ N9#;ÃG DQ3 GÃ bÃS bÃ wÃ ' + ' '.join(['qzx', 'vkj', 'wpf', 'ghb'] * 12)
+    table = ' '.join(f'{n} {n * 3} {n * 7}' for n in range(100, 160))
+    assert documents.garbled(shifted) and documents.garbled(symbols)
+    assert not documents.garbled(readable) and not documents.garbled(table) and not documents.garbled('Short page.')
+
+
+def test_a_pdf_portfolio_cover_is_a_parsing_failure_not_a_document_that_says_nothing() -> None:
+    cover = ['For the best experience, open this PDF portfolio in\nAcrobat X or Adobe Reader X, or later.']
+    c = documents.classify(cover, '510k', 'Summary')
+    assert (c['document_type'], c['basis']) == ('510k_summary', 'official_label_only')
+
+
+def test_without_text_the_label_gives_the_type_and_says_the_content_was_not_read() -> None:
+    c = documents.classify([], 'pma', 'Summary of Safety and Effectiveness')
+    assert (c['document_type'], c['basis'], c['matched_phrase']) == ('pma_ssed', 'official_label_only', None)
+    ok, why = documents.demographic_summary_candidate('pma_ssed', 'image_only', 'this_submission')
+    assert ok is False and 'OCR' in why
+    assert documents.classify(['', ' '], '510k', None)['document_type'] == 'unclassified_no_text'
+
+
+def test_a_granting_letter_is_never_a_demographic_summary_and_a_parent_document_is_not_the_supplements() -> None:
+    for t in ('de_novo_granting_letter', '510k_clearance_letter', 'pma_approval_order', '510k_statement', 'pma_labeling'):
+        ok, why = documents.demographic_summary_candidate(t, 'text', 'this_submission')
+        assert ok is False and why
+    assert documents.demographic_summary_candidate('pma_ssed', 'text', 'parent_submission')[0] is False
+
+
+@pytest.mark.parametrize('text, expected', [
+    ('registered as NCT01234567.', ['NCT01234567']), ('(ClinicalTrials.gov NCT 01234567)', ['NCT01234567']),
+    ('NCT#0123\n4567 and nct-07654321', ['NCT01234567', 'NCT07654321']), ('N C T 0 1 2 3 4 5 6 7', ['NCT01234567']),
+    ('NCT012345678', []), ('NCT0123456', []), ('distinct 12345678', []), ('XNCT01234567', []),
+])
+def test_nct_pattern(text: str, expected: list[str]) -> None:
+    found = documents.scan_identifiers([text])
+    assert [i['identifier'] for i in found if i['kind'] == 'nct'] == expected
+
+
+def test_identifier_scan_gives_page_and_sentence_and_keeps_other_identifiers_apart() -> None:
+    pages = ['Cover page.', 'Background. The pivotal study (NCT01234567) enrolled 300 patients under IDE G190123. '
+                            'See ISRCTN12345678 and predicate K123456. Own number K990001.']
+    found = {i['kind']: i for i in documents.scan_identifiers(pages, 'K990001')}
+    assert found['nct']['page'] == 2
+    assert found['nct']['sentence'] == 'The pivotal study (NCT01234567) enrolled 300 patients under IDE G190123.'
+    assert found['ide']['identifier'] == 'G190123' and found['isrctn']['identifier'] == 'ISRCTN12345678'
+    assert found['submission_number']['identifier'] == 'K123456'      # the document's own number is not listed
+
+
+def test_study_language_separates_a_described_study_from_a_statement_that_none_was_done() -> None:
+    lang = documents.study_language(F.TEXTS['reviews/DEN990005.pdf'])
+    assert lang['human_subject_study']['n_sentences'] == 1 and lang['states_no_clinical_study']['n_sentences'] == 0
+    assert lang['human_subject_study']['examples'][0]['page'] == 2
+    assert lang['demographic_terms']['sex_or_gender']['n_mentions'] == 1
+    none = documents.study_language(['510(k) Summary. No clinical studies were required to support equivalence.'])
+    assert none['states_no_clinical_study']['n_sentences'] == 1 and none['human_subject_study']['n_sentences'] == 0
+    assert documents.study_description_state('text', [], lang) == 'describes_study_no_registry_identifier'
+    assert documents.study_description_state('text', [], none) == 'states_no_clinical_study_only'
+    assert documents.study_description_state('image_only', [], None) == 'not_assessable_no_text'
+    assert documents.study_description_state('text', [{'kind': 'nct'}], lang) == 'cites_registry_identifier'
+
+
+def test_document_registry_records_hash_status_type_and_failures(family: dict[str, Any]) -> None:
+    docs = {d['url'].rsplit('cdrh_docs/', 1)[1]: d for d in family['documents.json']['documents']}
+    held = docs['reviews/DEN990005.pdf']
+    assert held['availability'] == 'retrieved' and len(held['sha256']) == 64 and held['http_status'] == 200
+    assert held['text']['extraction_version'] == pdftext.extraction_version() and held['text']['n_pages'] == 2
+    assert held['official_label'] == 'Decision Summary' and held['classification']['agrees_with_official_label'] is True
+    assert held['document_id'] == acquire.document_id('DEN990005', held['url'])
+    scan = docs['pdf99/P990006B.pdf']
+    assert scan['text']['status'] == 'image_only' and scan['classification']['basis'] == 'official_label_only'
+    assert scan['demographic_summary_candidate'] is False and scan['study_description'] == 'not_assessable_no_text'
+    missing = docs['reviews/K990004.pdf']
+    assert (missing['availability'], missing['http_status'], missing['sha256'], missing['document_type']) == \
+        ('not_found', 404, None, None)
+    parent = docs['pdf99/P990007B.pdf']
+    assert parent['scope'] == 'parent_submission' and parent['demographic_summary_candidate'] is False
+
+
+def test_page_text_status() -> None:
+    words = 'twenty letters or digits at least here'
+    assert pdftext.status_of([words, words]) == 'text'
+    assert pdftext.status_of([words, '']) == 'partial'
+    assert pdftext.status_of(['', ' \n']) == 'image_only' and pdftext.status_of([]) == 'image_only'
+
+
+# ---------------------------------------------------------------- acquisition
+
+def test_throttle_spaces_requests_per_host_only() -> None:
+    clock, slept = [0.0], []
+
+    def sleep(s: float) -> None:
+        slept.append(round(s, 2))
+        clock[0] += s
+    t = acquire.Throttle(0.55, sleep=sleep, clock=lambda: clock[0])
+    for url in ('https://a.example/x', 'https://a.example/y', 'https://b.example/z', 'https://a.example/w'):
+        t.wait(url)
+    assert slept == [0.55, 0.55]          # a second and third request to host a; none for host b
+    assert acquire.MIN_INTERVAL_SECONDS >= 0.5   # at most two requests a second
+
+
+def test_retries_on_server_errors_and_never_on_a_404() -> None:
+    answers = iter([(503, {}, b'', None), (None, {}, b'', 'ConnectionError'), (200, {}, b'ok', None)])
+    waits: list[float] = []
+    throttle = acquire.Throttle(0.0, sleep=waits.append)
+    resp, attempts = acquire.polite_get(lambda u, p: next(answers), throttle, 'https://a.example/x')
+    assert (resp[0], attempts, waits) == (200, 3, [2.0, 4.0])
+    calls: list[str] = []
+
+    def not_found(url: str, params: Any) -> acquire.Response:
+        calls.append(url)
+        return 404, {}, b'', None
+    assert acquire.polite_get(not_found, throttle, 'https://a.example/x')[1] == 1 and len(calls) == 1
+    always_down = acquire.polite_get(lambda u, p: (None, {}, b'', 'ConnectionError'), throttle, 'https://a.example/x')
+    assert always_down[1] == acquire.MAX_ATTEMPTS and always_down[0][0] is None
+
+
+def test_acquisition_is_resumable_and_never_downloads_a_recorded_hash_again(tmp_path: Path) -> None:
+    calls: list[str] = []
+    first = F.acquire_all(tmp_path, F.stub_get(calls))
+    n_first, n_lines = len(calls), len(first['manifest'].lines)
+    assert n_first > 0
+    calls.clear()
+    F.acquire_all(tmp_path, F.stub_get(calls))
+    # Only what never got an answer is asked again: the database page whose request failed.
+    assert all('K990008' in c for c in calls) and len(calls) < n_first
+    assert len(acquire.Manifest(tmp_path / 'cache' / 'documents' / 'manifest.jsonl').lines) == n_lines
+
+
+def test_a_missing_document_is_a_recorded_finding_and_a_failed_request_is_retried_later(tmp_path: Path) -> None:
+    manifest = acquire.Manifest(tmp_path / 'manifest.jsonl')
+    plan = [{'document_id': acquire.document_id('K990001', f'{F.DOCS}/{name}'), 'submission_number': 'K990001',
+             'url': f'{F.DOCS}/{name}', 'official_label': None, 'discovery': 'url_pattern', 'scope': 'this_submission'}
+            for name in ('pdf99/K990001.pdf', 'pdf99/nothing.pdf')]
+    counts = acquire.fetch_documents(plan, manifest, tmp_path / 'store', F.stub_get(fail={'K990001.pdf'}), F.no_wait())
+    assert (counts['network_error'], counts['not_found']) == (1, 1)
+    again = acquire.fetch_documents(plan, manifest, tmp_path / 'store', F.stub_get(), F.no_wait())
+    assert (again['retrieved'], again['already_settled']) == (1, 1)
+    line = manifest.latest()[plan[0]['document_id']]
+    assert (tmp_path / 'store' / f"{line['sha256']}.pdf").read_bytes().startswith(b'%PDF-')
+    assert line['last_modified'] and line['http_status'] == 200
+    assert len(manifest.lines) == 3          # the failure stays in the history
+
+
+def test_an_html_error_page_served_with_status_200_is_not_stored_as_a_document(tmp_path: Path) -> None:
+    manifest = acquire.Manifest(tmp_path / 'manifest.jsonl')
+    plan = [{'document_id': 'doc:x', 'submission_number': 'K990001', 'url': f'{F.DOCS}/pdf99/K990001.pdf',
+             'official_label': None, 'discovery': 'url_pattern', 'scope': 'this_submission'}]
+    counts = acquire.fetch_documents(plan, manifest, tmp_path / 'store', lambda u, p: (200, {}, b'<html>', None), F.no_wait())
+    assert counts['not_a_pdf'] == 1 and manifest.lines[0]['sha256'] is None and not (tmp_path / 'store').exists()
+
+
+def test_local_documents_are_recovered_once_and_then_not_fetched(tmp_path: Path) -> None:
+    local = tmp_path / 'local'
+    local.mkdir()
+    (local / '2026-04-16_K990001.pdf').write_bytes(b'%PDF-1.4 local copy')
+    (local / 'notes.pdf').write_bytes(b'%PDF-1.4 unrelated')
+    url = f'{F.DOCS}/pdf99/K990001.pdf'
+    manifest = acquire.Manifest(tmp_path / 'manifest.jsonl')
+    assert acquire.recover_local(local, {'K990001': url}, manifest, tmp_path / 'store') == 1
+    assert acquire.recover_local(local, {'K990001': url}, manifest, tmp_path / 'store') == 0
+    line = manifest.lines[0]
+    assert (line['origin'], line['retrieved_at'], line['http_status']) == ('local_recovered', '2026-04-16', None)
+    assert line['http_status_absent_reason']
+    calls: list[str] = []
+    plan = acquire.document_plan('K990001', {'body': {'document_links': [{'url': url, 'official_label': 'Summary'}]}})
+    assert acquire.fetch_documents(plan, manifest, tmp_path / 'store', F.stub_get(calls), F.no_wait())['already_settled'] == 1
+    assert calls == []
+
+
+@pytest.mark.parametrize('number, directory', [('K955841', 'pdf'), ('K003301', 'pdf'), ('K033840', 'pdf3'),
+                                               ('K092967', 'pdf9'), ('K203042', 'pdf20'), ('DEN170073', 'pdf17'),
+                                               ('P140011/S008', 'pdf14')])
+def test_document_directory_by_receipt_year(number: str, directory: str) -> None:
+    assert acquire.cdrh_docs_dir(number) == directory
+
+
+def test_document_plan_prefers_fda_page_links_and_marks_parent_documents() -> None:
+    page = {'body': {'document_links': [{'url': f'{F.DOCS}/pdf12/K124067.pdf', 'official_label': 'Classification Order'},
+                                        {'url': f'{F.DOCS}/reviews/K124067.pdf', 'official_label': 'Decision Summary'}]}}
+    plan = acquire.document_plan('DEN130013', page)
+    assert [p['discovery'] for p in plan] == ['fda_database_page'] * 2 + ['url_pattern'] * 2
+    assert plan[1]['url'].endswith('reviews/K124067.pdf')      # an early De Novo filed under a K number
+    assert [p['url'].rsplit('/', 2)[-2:] for p in acquire.document_plan('K203042', None)] == \
+        [['pdf20', 'K203042.pdf'], ['reviews', 'K203042.pdf']]
+    supp = acquire.document_plan('P990007/S002', {'body': {'document_links': []}},
+                                 {'body': {'document_links': [{'url': f'{F.DOCS}/pdf99/P990007B.pdf', 'official_label': 'SSED'}]}})
+    assert supp[-1]['scope'] == 'parent_submission' and all(p['scope'] == 'this_submission' for p in supp[:-1])
+
+
+def test_database_page_links_are_parsed_with_fda_labels() -> None:
+    html = ('<A HREF="https://www.accessdata.fda.gov/cdrh_docs/pdf9/K092967.pdf" TITLE="x"  style="y">Summary</A>'
+            '<a href="http://www.accessdata.fda.gov/cdrh_docs/reviews/K092967.pdf" title="z">Decision Summary</a>'
+            '<a href="/scripts/cdrh/cfdocs/cfpmn/pmn.cfm">New Search</a>')
+    assert acquire.parse_document_links(html) == [
+        {'url': f'{F.DOCS}/pdf9/K092967.pdf', 'official_label': 'Summary'},
+        {'url': f'{F.DOCS}/reviews/K092967.pdf', 'official_label': 'Decision Summary'}]
+
+
+def test_a_non_final_answer_is_logged_and_asked_again(tmp_path: Path) -> None:
+    log = acquire.ResponseLog(tmp_path / 'log.jsonl')
+    answers = iter([(400, {}, b'', None), (200, {}, b'<html>K990001</html>', None)])
+    get = lambda u, p: next(answers)  # noqa: E731
+    acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
+    assert log.get('fda_page/K990001')['status'] == 400 and log.settled('fda_page/K990001') is None
+    acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
+    assert acquire.ResponseLog(tmp_path / 'log.jsonl').settled('fda_page/K990001')['status'] == 200
+
+
+def test_openfda_records_map_to_submissions_and_absence_is_stated(acquired: dict[str, Any]) -> None:
+    found = acquire.openfda_by_submission(acquired['frozen']['openfda'][0], list(acquired['subs']))
+    meta = acquire.official_metadata(found['K990003'])
+    assert meta['statement_or_summary'] == 'Statement' and meta['applicant'] == 'Pearl Co'
+    assert meta['predicate'] is None and meta['predicate_absent_reason'] == 'not_exposed_by_openfda'
+    assert found['P990007/S002']['record']['supplement_number'] == 'S002'
+    assert 'registration_number' not in found['K990001']['record']['openfda']
+    # A number nobody asked openFDA about has no answer; it is not reported as "no record".
+    assert acquire.openfda_by_submission({}, ['K999999'])['K999999']['state'] == 'no_answer'
+    key = acquire.openfda_requests(['K999999'])[0]['key']
+    absent = acquire.openfda_by_submission({key: {'status': 404, 'body': {'error': {}}, 'fetched_at': 't'}}, ['K999999'])
+    assert absent['K999999']['state'] == 'no_record'
+    assert acquire.official_metadata({'record': None, 'reason': 'none held'}) == {'available': False, 'reason': 'none held'}
+
+
+def test_frozen_archive_is_byte_stable_and_refuses_changed_bytes(tmp_path: Path) -> None:
+    log = acquire.ResponseLog(tmp_path / 'a.jsonl')
+    for key in ('b', 'a'):
+        log.put({'key': key, 'fetched_at': '2026-11-13T00:00:00+00:00', 'status': 200, 'body': {'k': key}})
+    archive = tmp_path / 'a.frozen.jsonl.gz'
+    meta = acquire.freeze(log, archive, 'test')
+    records, read_meta = acquire.read_archive(archive)
+    assert list(records) == ['a', 'b'] and read_meta['sha256_uncompressed'] == meta['sha256_uncompressed']
+    assert acquire.encode_archive(reversed(list(log.records.values()))) == gzip.decompress(archive.read_bytes())
+    archive.write_bytes(gzip.compress(gzip.decompress(archive.read_bytes()).replace(b'"k":"a"', b'"k":"z"'), mtime=0))
+    with pytest.raises(ValueError, match='do not match the recorded sha256'):
+        acquire.read_archive(archive)
+
+
+def test_an_interrupted_final_line_is_dropped_and_asked_again(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / 'log.jsonl'
+    path.write_text('{"key": "a", "status": 200}\n{"key": "b", "sta')        # the process was killed mid-append
+    log = acquire.ResponseLog(path)
+    assert list(log.records) == ['a'] and 'dropped an interrupted final line' in capsys.readouterr().out
+    assert path.read_text() == '{"key": "a", "status": 200}\n'
+    acquire.write_atomic(tmp_path / 'store' / 'x.pdf', b'%PDF-1.4')
+    assert [p.name for p in (tmp_path / 'store').iterdir()] == ['x.pdf']         # no partial file left behind
+
+
+def test_a_disk_budget_stops_requests_and_the_skipped_documents_read_as_incomplete(tmp_path: Path) -> None:
+    manifest, calls = acquire.Manifest(tmp_path / 'manifest.jsonl'), []
+    plan = [{'document_id': acquire.document_id('K990001', f'{F.DOCS}/pdf99/{n}.pdf'), 'submission_number': n,
+             'url': f'{F.DOCS}/pdf99/{n}.pdf', 'official_label': 'Summary', 'discovery': 'fda_database_page',
+             'scope': 'this_submission'} for n in ('K990001', 'K990002')]
+    counts = acquire.fetch_documents(plan, manifest, tmp_path / 'store', F.stub_get(calls), F.no_wait(), None, 10)
+    assert (counts['retrieved'], counts['skipped_disk_budget'], len(calls)) == (1, 1, 1)
+    skipped = manifest.latest()[plan[1]['document_id']]
+    assert skipped['outcome'] == 'skipped_disk_budget' and 'budget' in skipped['error'] and not acquire.settled(skipped)
+    doc = {'document_id': 'd', 'origin': 'fda_fetch', 'scope': 'this_submission', 'url': 'u', 'http_status': None,
+           'availability': 'skipped_disk_budget', 'document_type': None, 'demographic_summary_candidate': False,
+           'demographic_summary_reason': 'not retrieved', 'text': None, 'identifiers': [], 'study_description': None}
+    scan = coverage.nct_citation_scan([doc], [])
+    assert scan['state'] == 'search_incomplete_or_blocked' and 'disk budget' in scan['reason']
+    # With room again, the skipped document is fetched; the one already held is not.
+    again = acquire.fetch_documents(plan, manifest, tmp_path / 'store', F.stub_get(calls), F.no_wait())
+    assert (again['retrieved'], again['already_settled'], len(calls)) == (1, 1, 2)
+
+
+# ---------------------------------------------------------------- registry evidence
+
+def test_nct_validation_states(acquired: dict[str, Any]) -> None:
+    records = dict(acquired['frozen']['registry'][0])
+    assert registry.nct_state(records, 'NCT99000001')[0] == 'resolves'
+    assert registry.nct_state(records, 'NCT99009999') == ('not_found', None)
+    assert registry.nct_state(records, 'NCT99000042') == ('not_looked_up', None)
+    records['ctgov/study/NCT99000050'] = {'status': 500, 'body': None}
+    assert registry.nct_state(records, 'NCT99000050')[0] == 'lookup_failed'
+    records['ctgov/study/NCT99000051'] = {'status': 200, 'body': F.STUDIES[0]}      # the registry answered with another id
+    assert registry.nct_state(records, 'NCT99000051')[0] == 'resolved_to_different_id'
+    with pytest.raises(ValueError):
+        registry.fetch_studies(['K990001'], acquire.ResponseLog(Path('/nonexistent/x')), F.stub_get(), F.no_wait())
+
+
+@pytest.mark.parametrize('text, number, n, supplement', [
+    ('Device: Viz LVO (De Novo Number DEN990005)', 'DEN990005', 1, None),
+    ('cleared under 510(k) (K990001), see K9900012 and XK990001', 'K990001', 1, None),
+    ('approved as P990007/S002', 'P990007/S002', 1, True), ('approved as P990007 S002', 'P990007/S002', 1, True),
+    ('approved as P990007', 'P990007/S002', 1, False), ('approved as P990007/S005', 'P990007/S002', 1, False),
+])
+def test_a_submission_number_must_stand_exactly_in_a_named_field(text: str, number: str, n: int, supplement: Any) -> None:
+    found = registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}}, number)
+    assert len(found) == n and found[0]['supplement_cited'] is supplement
+    assert found[0]['registry_field'] == 'protocolSection.descriptionModule.briefSummary' and found[0]['quote'] == text
+
+
+def test_a_search_hit_without_the_number_in_the_record_is_reported_as_such(acquired: dict[str, Any]) -> None:
+    results = registry.number_search_results(acquired['frozen']['registry'][0], list(acquired['subs']))
+    assert results['K990003']['n_search_hits'] == 1 and results['K990003']['hits'][0]['located'] == []
+    assert results['DEN990005']['hits'][0]['located'][0]['registry_field'].endswith('interventions[].name')
+    assert results['K990001']['state'] == 'completed' and results['K990001']['hits'] == []
+    assert registry.number_search_results({}, ['K990001'])['K990001']['state'] == 'incomplete'
+
+
+def test_name_evidence_needs_whole_tokens_in_a_title_or_intervention_name() -> None:
+    study = registry.study_facts(F._study('NCT99000090', 'A study of KardiaAI in clinics', 'X', ['Zorbex Scanner'],
+                                          description='uses Lumora'))
+    study['interventions'][0]['description'] = 'The Lumora lamp'
+    assert registry.name_evidence(study, inventory.name_forms('Kardia AI'))['registry_field'] == 'brief_title'
+    assert registry.name_evidence(study, inventory.name_forms('Zorbex Scan')) is None       # 'scan' is not 'scanner'
+    assert registry.name_evidence(study, inventory.name_forms('Lumora'))['strength'] == 'description_only'
+    only = registry.name_evidence(registry.study_facts(F._study('NCT99000091', 'Athelas Home study', 'X')),
+                                  inventory.name_forms('Athelas One', 'athelas'))
+    assert only['strength'] == 'company_only'
+
+
+def test_generic_names_get_no_name_query_and_unbalanced_brackets_never_reach_the_api() -> None:
+    assert registry.name_queries('Deep Learning Image Reconstruction') == []
+    strings = {q['string'] for q in registry.name_queries('Aplio i900, Software V7.0 (TUS-AI900, TUS-AI800')}
+    assert 'Aplio i900' in strings and not any('(' in s or ')' in s for s in strings)
+    assert len(registry.name_queries('EPIQ Series; Affiniti Series; Third Series')) == 4     # first two models only
+
+
+def test_a_cut_off_search_is_followed_once_and_a_flood_is_reported_as_cut_off(tmp_path: Path) -> None:
+    q = registry.sponsor_query('pearl')
+    log = acquire.ResponseLog(tmp_path / 'r.jsonl')
+    asked: list[str] = []
+
+    def get(url: str, params: Any) -> acquire.Response:
+        asked.append(params['pageSize'])
+        n = int(params['pageSize'])
+        return 200, {}, json.dumps({'totalCount': 150, 'studies': F.STUDIES[:1] * min(n, 150)}).encode(), None
+    out = registry.fetch_searches([q], log, get, F.no_wait())
+    assert asked == ['100', '1000'] and out['follow_ups_answered'] == 1
+    assert registry.search_state(log.records, [q])['n_truncated'] == 0
+    flood = acquire.ResponseLog(tmp_path / 'f.jsonl')
+    registry.fetch_searches([q], flood, lambda u, p: (200, {}, json.dumps(
+        {'totalCount': 5000, 'studies': F.STUDIES[:1]}).encode(), None), F.no_wait())
+    assert registry.search_state(flood.records, [q])['n_truncated'] == 1
+
+
+# ---------------------------------------------------------------- links
+
+def links_of(family: dict[str, Any], **where: str) -> list[dict[str, Any]]:
+    return [x for x in family['links.json']['links'] if all(x[k] == v for k, v in where.items())]
+
+
+def test_every_record_carries_the_fields_the_requirements_list(family: dict[str, Any]) -> None:
+    for x in family['links.json']['links']:
+        assert {'source', 'target', 'level', 'proposed_relationship', 'method', 'evidence', 'source_version', 'confidence',
+                'confidence_reasons', 'automated_validation', 'validation_reasons', 'human_review', 'timing'} <= set(x)
+        assert x['evidence']['quote'] and (x['evidence']['location'].get('page') or x['evidence']['location'].get('registry_field'))
+        assert links.problems(x) == []
+
+
+def test_a_cited_nct_id_that_resolves_is_identifier_confirmed_at_submission_level(family: dict[str, Any]) -> None:
+    (x,) = links_of(family, method='nct_id_in_submission_document', automated_validation='identifier_confirmed')
+    assert (x['source']['id'], x['target']['id'], x['level']) == ('K990001', 'NCT99000001', 'submission')
+    assert x['proposed_relationship'] == 'study_cited_in_submission_document'       # "cited", not "supporting"
+    assert 'NCT99000001' in x['evidence']['quote'] and x['evidence']['location'] == {'page': 3}
+    assert len(x['source_version']['document_sha256']) == 64 and x['source_version']['registry_data_timestamp']
+    assert x['human_review'] == 'unreviewed' and x['reviewed_relationship'] is None
+
+
+def test_a_cited_id_the_registry_does_not_hold_is_unresolved_not_confirmed(family: dict[str, Any]) -> None:
+    (x,) = links_of(family, automated_validation='identifier_not_resolved')
+    assert (x['source']['id'], x['target']['id'], x['confidence']) == ('K990002', 'NCT99009999', 'low')
+    assert cell(family, 'K990002', 'nct_citation_scan')['state'] == 'candidate_awaiting_review'
+
+
+def test_a_registry_record_citing_the_number_is_confirmed_and_a_bare_hit_is_rejected_by_rule(family: dict[str, Any]) -> None:
+    (ok,) = links_of(family, method='submission_number_in_registry_record', automated_validation='identifier_confirmed')
+    assert ok['source']['id'] == 'DEN990005' and 'DEN990005' in ok['evidence']['quote']
+    assert ok['evidence']['location']['registry_field'].endswith('interventions[].name')
+    (bad,) = links_of(family, automated_validation='rejected_by_rule')
+    assert bad['source']['id'] == 'K990003' and bad['target']['id'] == 'NCT99000004'
+
+
+def test_a_parent_pma_document_cannot_confirm_a_link_for_the_supplement(family: dict[str, Any]) -> None:
+    (x,) = links_of(family, method='nct_id_in_parent_submission_document')
+    assert (x['level'], x['automated_validation'], x['source']['id']) == ('family', 'not_validated', 'P990007/S002')
+
+
+def test_name_matches_are_family_level_candidates_and_never_validated(family: dict[str, Any]) -> None:
+    named = [x for x in family['links.json']['links'] if x['method'] in links.HEURISTIC_METHODS]
+    assert len(named) == 5
+    assert {(x['level'], x['automated_validation'], x['source']['entity_type']) for x in named} == \
+        {('family', 'not_validated', 'family')}
+    assert {x['confidence'] for x in named} <= {'moderate', 'low'}
+    zorbex = next(x for x in named if x['target']['id'] == 'NCT99000001')
+    # One family, two submissions: the study is set against both decision dates, and cannot be
+    # attached to either submission by its name.
+    assert [t['submission_number'] for t in zorbex['timing']['by_submission']] == ['K990001', 'K990002']
+    assert zorbex['evidence']['organisation']['tier'] == 'normalised_exact'
+
+
+def test_manufacturer_agreement_is_recorded_but_not_required_and_never_sufficient(family: dict[str, Any]) -> None:
+    lumora = [x for x in family['links.json']['links'] if x['target']['id'] == 'NCT99000005']
+    assert len(lumora) == 2 and {x['proposed_relationship'] for x in lumora} == {'name_only_candidate'}
+    assert all(x['evidence']['organisation'] is None for x in lumora)
+    # A different legal form after the same name is not agreement.
+    weak = next(x for x in family['links.json']['links'] if x['target']['id'] == 'NCT99000007')
+    assert weak['method'] == 'device_name_match' and weak['evidence']['organisation']['tier'] == 'normalised_legal_form_differs'
+    # Shared sponsorship without the device's name gives no record at all, only a tally.
+    assert not [x for x in family['links.json']['links'] if x['target']['id'] == 'NCT99000006']
+    pearl = cell(family, 'K990003', 'registry_name_organisation_search')
+    assert pearl['detail']['n_organisation_only'] == 1 and pearl['state'] == 'not_searched'
+
+
+def test_a_common_word_name_without_organisation_agreement_is_rejected_by_rule_and_kept(acquired: dict[str, Any]) -> None:
+    lumora = acquired['subs']['K990004']
+    records = dict(acquired['frozen']['registry'][0])
+    found = registry.family_name_search([lumora], records, {})
+    assert found['tallies']['n_name_only'] == 1 and found['matches'][0]['common_word'] is False
+    # The same name, now matching hundreds of records: an ordinary word.
+    q = registry.name_queries('Lumora')[0]
+    records[q['key']] = {**records[q['key']], 'body': {**records[q['key']]['body'], 'totalCount': 400}}
+    flooded = registry.family_name_search([lumora], records, {})
+    assert flooded['tallies']['n_name_only_common_word'] == 1 and flooded['matches'][0]['common_word'] is True
+    m = flooded['matches'][0]
+    family = {'family_id': 'family:candidate:x'}
+    x = links.from_name_match(family, m['study'], m['name'], m['organisation'], {'K990004': '2020-07-07'}, {}, m['flags'], True)
+    assert (x['automated_validation'], x['level'], x['confidence']) == ('rejected_by_rule', 'family', 'low')
+    assert links.problems(x) == []
+    cell_ = coverage.registry_name_organisation_search(
+        {**flooded['search'], 'n_truncated': 0}, [x], flooded['tallies'])
+    assert cell_['state'] == 'no_candidate_in_completed_scope' and cell_['detail']['n_matches_rejected_by_rule'] == 1
+    # Organisation agreement keeps a common-word match in front of a reviewer.
+    agreeing = {'tier': 'normalised_exact', 'role': 'lead_sponsor', 'registry_name': 'Bright Optics', 'listed_name': 'Bright Optics LLC'}
+    y = links.from_name_match(family, m['study'], m['name'], agreeing, {'K990004': '2020-07-07'}, {}, [], True)
+    assert (y['automated_validation'], y['method']) == ('not_validated', 'device_name_and_organisation_match')
+
+
+@pytest.mark.parametrize('change, message', [
+    ({'level': 'submission'}, 'name similarity can only reach a family'),
+    ({'automated_validation': 'identifier_confirmed'}, 'must stay not_validated'),
+    ({'automated_validation': 'quote_confirmed_in_source'}, 'must stay not_validated'),
+    ({'confidence': 'identifier'}, 'cannot carry identifier'),
+    ({'proposed_relationship': 'explicitly_cited_supporting_study'}, 'only by a documentary statement'),
+    ({'human_review': 'accepted'}, 'without a row in reviews.csv'),
+    ({'proposed_relationship': 'completed_before_decision'}, 'not in the vocabulary'),
+])
+def test_name_evidence_cannot_be_promoted(family: dict[str, Any], change: dict[str, str], message: str) -> None:
+    x = copy.deepcopy(next(x for x in family['links.json']['links'] if x['method'] == 'device_name_and_organisation_match'))
+    x.update(change)
+    assert any(message in p for p in links.problems(x))
+
+
+@pytest.mark.parametrize('mutate, message', [
+    (lambda x: x['evidence'].update(quote=' '), 'no verbatim evidence'),
+    (lambda x: x['evidence'].update(location={}), 'neither a document page nor a registry field'),
+    (lambda x: x['evidence'].update(quote='A clinical study enrolled 412 patients.'), 'identifier is not in the quoted evidence'),
+    (lambda x: x.update(level='family'), 'identifier method at submission level'),
+    (lambda x: x.pop('timing'), 'timing must be recorded as its own object'),
+    (lambda x: x.update(confidence_reasons=[]), 'need a reason'),
+])
+def test_an_identifier_confirmed_record_must_show_its_identifier(family: dict[str, Any], mutate: Any, message: str) -> None:
+    x = copy.deepcopy(links_of(family, method='nct_id_in_submission_document', automated_validation='identifier_confirmed')[0])
+    mutate(x)
+    assert any(message in p for p in links.problems(x))
+
+
+@pytest.mark.parametrize('start, primary, decision, expected', [
+    ('2019-03-01', '2020-01-15', '2021-03-02', 'primary_completion_on_or_before_decision'),
+    ('2019-03-01', '2022-01-15', '2021-03-02', 'started_on_or_before_decision_not_complete'),
+    ('2019-03-01', None, '2021-03-02', 'started_on_or_before_decision_not_complete'),
+    ('2021-06-01', '2022-01-15', '2021-03-02', 'started_within_365_days_after_decision'),
+    ('2023-06-01', None, '2021-03-02', 'started_more_than_365_days_after_decision'),
+    ('2021-03', '2022-01', '2021-03-15', 'indeterminate_at_recorded_precision'),      # the month straddles the decision
+    ('2021-02', '2021-03', '2021-03-15', 'indeterminate_at_recorded_precision'),
+    ('2021-05', '2022-01', '2021-03-15', 'started_within_365_days_after_decision'),
+    (None, '2020-01-15', '2021-03-02', 'start_date_absent'), ('2019-03-01', '2020-01-15', None, 'decision_date_absent'),
+])
+def test_timing_is_described_per_decision_and_never_guessed(start: Any, primary: Any, decision: Any, expected: str) -> None:
+    t = links.timing_for({'start_date': start, 'primary_completion_date': primary}, {'K990001': decision})
+    assert t['by_submission'][0]['relation'] == expected
+    assert t['study_start_date'] == start                      # the registry's own string, unaltered
+
+
+def test_timing_does_not_change_the_relationship_validation_or_confidence(family: dict[str, Any]) -> None:
+    x = links_of(family, method='nct_id_in_submission_document', automated_validation='identifier_confirmed')[0]
+    assert x['timing']['by_submission'][0]['relation'] == 'primary_completion_on_or_before_decision'
+    after = links.from_registry_citation('DEN990005', {'nct_id': 'NCT99000003', 'retrieved_at': None, 'located': [
+        {'registry_field': 'f', 'quote': 'De Novo Number DEN990005', 'supplement_cited': None}],
+        'study': {'start_date': '2030-01-01', 'brief_title': 't'}}, '2018-02-13', {})[0]
+    assert after['timing']['by_submission'][0]['relation'] == 'started_more_than_365_days_after_decision'
+    assert (after['automated_validation'], after['proposed_relationship']) == \
+        ('identifier_confirmed', 'submission_cited_in_registry_record')
+    assert not any(word in r for r in links.PROPOSED_RELATIONSHIPS[:5] for word in ('before', 'after', 'premarket', 'postmarket'))
+
+
+def test_a_documentary_statement_gives_a_submission_link_without_an_identifier(tmp_path: Path, acquired: dict[str, Any]) -> None:
+    docs = documents.build(acquired['manifest'].lines, {sn: s['pathway'] for sn, s in acquired['subs'].items()},
+                           acquired['cache'], pdftext.extraction_version())
+    summary = next(d for d in docs if d['url'].endswith('reviews/DEN990005.pdf'))
+    quote = 'A retrospective study of 300 patients from two hospitals was conducted.'
+    curated = tmp_path / 'curated'
+    F.write_curated(curated, documentary_statements=[
+        ['DEN990005', 'NCT99000002', 'fda_document', summary['document_id'], '2', quote, 'related_validation_study',
+         '2026-11-13', 'the summary names the two hospitals of this registered study'],
+        ['DEN990005', 'NCT99000001', 'fda_document', summary['document_id'], '2', 'words that are not in the document',
+         'explicitly_cited_supporting_study', '2026-11-13', 'misquoted on purpose']])
+    family = F.build_family(tmp_path, acquired, curated)
+    stated = {x['target']['id']: x for x in family['links.json']['links'] if x['method'] == 'documentary_statement'}
+    ok, bad = stated['NCT99000002'], stated['NCT99000001']
+    assert (ok['level'], ok['automated_validation'], ok['confidence']) == ('submission', 'quote_confirmed_in_source', 'documentary')
+    assert ok['proposed_relationship'] == 'related_validation_study' and ok['human_review'] == 'unreviewed'
+    assert bad['automated_validation'] == 'not_validated'
+    assert contract.check(family) == []
+
+
+# ---------------------------------------------------------------- human review
+
+def test_reviews_are_applied_from_the_file_and_change_nothing_else(tmp_path: Path, acquired: dict[str, Any],
+                                                                    family: dict[str, Any]) -> None:
+    confirmed = links_of(family, method='nct_id_in_submission_document', automated_validation='identifier_confirmed')[0]
+    named = next(x for x in family['links.json']['links'] if x['target']['id'] == 'NCT99000005')
+    curated = tmp_path / 'curated'
+    F.write_curated(curated, reviews=[
+        [confirmed['link_id'], 'accepted', 'explicitly_cited_supporting_study', '2026-11-14', 'summary section 7 names it'],
+        [named['link_id'], 'rejected', 'not_related', '2026-11-14', 'a light-therapy lamp, not the device'],
+        ['link:0000000000000000', 'unresolved', '', '2026-11-14', 'evidence has since changed']])
+    reviewed = F.build_family(tmp_path, acquired, curated)
+    after = {x['link_id']: x for x in reviewed['links.json']['links']}
+    a, r = after[confirmed['link_id']], after[named['link_id']]
+    assert (a['human_review'], a['reviewed_relationship']) == ('accepted', 'explicitly_cited_supporting_study')
+    assert a['review'] == {'reviewed_on': '2026-11-14', 'note': 'summary section 7 names it'}
+    # The machine's findings are untouched by the review, in both directions.
+    assert (a['automated_validation'], a['proposed_relationship']) == ('identifier_confirmed', 'study_cited_in_submission_document')
+    assert (r['human_review'], r['automated_validation'], r['level']) == ('rejected', 'not_validated', 'family')
+    assert reviewed['links.json']['orphaned_reviews'] == ['link:0000000000000000']
+    assert reviewed['run.json']['reviews'] == {'n_rows': 3, 'n_applied': 2, 'orphaned_link_ids': ['link:0000000000000000']}
+    assert sum(x['human_review'] != 'unreviewed' for x in after.values()) == 2
+    assert contract.check(reviewed) == []
+    # A rejected candidate no longer holds the route in "awaiting review".
+    lumora = next(s for s in reviewed['submissions.json']['submissions'] if s['submission_number'] == 'K990004')
+    assert cell(reviewed, lumora['submission_number'], 'registry_name_organisation_search')['state'] != 'candidate_awaiting_review'
+    assert cell(family, 'K990004', 'registry_name_organisation_search')['state'] == 'candidate_awaiting_review'
+
+
+@pytest.mark.parametrize('row, message', [
+    (['link:1', 'verified', '', '2026-11-14', 'n'], 'human_review must be one of'),
+    (['link:1', 'accepted', '', '2026-11-14', 'n'], 'which relationship was accepted'),
+    (['link:1', 'accepted', 'pivotal', '2026-11-14', 'n'], 'unknown reviewed_relationship'),
+    (['link:1', 'rejected', 'not_related', '', 'n'], 'reviewed_on'),
+    (['link:1', 'rejected', 'not_related', '2026-11-14', ''], 'note are required'),
+])
+def test_review_rows_are_refused_rather_than_guessed(tmp_path: Path, row: list[str], message: str) -> None:
+    F.write_curated(tmp_path, reviews=[row])
+    with pytest.raises(ValueError, match=message):
+        links.read_reviews(tmp_path / 'reviews.csv')
+
+
+def test_the_tracked_curated_files_start_with_only_their_headers() -> None:
+    expected = {'organization_aliases.csv': organizations.ALIAS_COLUMNS, 'families.csv': inventory.FAMILY_COLUMNS,
+                'reviews.csv': links.REVIEW_COLUMNS, 'documentary_statements.csv': links.STATEMENT_COLUMNS}
+    for name, columns in expected.items():
+        with (ROOT / 'devices' / name).open(encoding='utf-8', newline='') as f:
+            assert next(csv.reader(f)) == columns
+
+
+# ---------------------------------------------------------------- coverage
+
+def test_every_submission_has_every_route_in_one_of_seven_states_with_a_reason(family: dict[str, Any]) -> None:
+    assert len(coverage.STATES) == 7
+    for cov in family['coverage.json']['submissions']:
+        assert [c['route'] for c in cov['routes']] == list(coverage.ROUTES)
+        assert all(c['state'] in coverage.STATES and c['reason'] and c['source'] for c in cov['routes'])
+
+
+@pytest.mark.parametrize('sn, route, state', [
+    ('K990001', 'nct_citation_scan', 'verified_link'),
+    ('K990001', 'fda_document_fetch', 'verified_link'),
+    ('K990001', 'local_document', 'document_unavailable'),
+    ('K990001', 'openfda_metadata', 'available_document_insufficient'),
+    ('K990001', 'registry_submission_number_search', 'no_candidate_in_completed_scope'),
+    ('K990001', 'registry_name_organisation_search', 'candidate_awaiting_review'),
+    ('K990001', 'demographic_extraction', 'not_searched'),
+    ('K990003', 'nct_citation_scan', 'available_document_insufficient'),        # only a Statement is held
+    ('K990003', 'registry_name_organisation_search', 'not_searched'),           # generic name: no name query possible
+    ('K990003', 'registry_submission_number_search', 'no_candidate_in_completed_scope'),   # the one hit was rejected by rule
+    ('K990004', 'fda_document_fetch', 'document_unavailable'),                  # page answered, lists nothing, patterns 404
+    ('K990004', 'nct_citation_scan', 'document_unavailable'),
+    ('DEN990005', 'nct_citation_scan', 'no_candidate_in_completed_scope'),      # decision summary read, no NCT id
+    ('DEN990005', 'registry_submission_number_search', 'verified_link'),
+    ('DEN990005', 'demographic_extraction', 'available_document_insufficient'), # the pilot read the granting letter
+    ('P990006', 'nct_citation_scan', 'available_document_insufficient'),        # SSED is a scan; letter and labeling only
+    ('K990008', 'fda_document_fetch', 'search_incomplete_or_blocked'),          # the database page never answered
+    ('P990007/S002', 'nct_citation_scan', 'document_unavailable'),              # nothing of its own; parent's is not its own
+])
+def test_coverage_states(family: dict[str, Any], sn: str, route: str, state: str) -> None:
+    assert cell(family, sn, route)['state'] == state
+
+
+def test_not_knowing_is_never_reported_as_no_candidate() -> None:
+    doc = {'document_id': 'd', 'origin': 'fda_fetch', 'scope': 'this_submission', 'url': 'u', 'http_status': None,
+           'availability': 'network_error', 'document_type': None, 'demographic_summary_candidate': False,
+           'demographic_summary_reason': 'not retrieved', 'text': None, 'identifiers': [], 'study_description': None}
+    assert coverage.nct_citation_scan([doc], [])['state'] == 'search_incomplete_or_blocked'
+    assert coverage.nct_citation_scan([], [])['state'] == 'not_searched'
+    assert coverage.openfda_metadata(None)['state'] == 'not_searched'
+    assert coverage.openfda_metadata({'state': 'no_answer', 'reason': 'not answered'})['state'] == 'search_incomplete_or_blocked'
+    assert coverage.openfda_metadata({'state': 'no_record', 'reason': 'none'})['state'] == 'document_unavailable'
+    assert coverage.registry_submission_number_search(None, [])['state'] == 'not_searched'
+    assert coverage.registry_submission_number_search({'state': 'incomplete', 'reason': 'x'}, [])['state'] == \
+        'search_incomplete_or_blocked'
+    search = {'n_queries': 3, 'n_name_queries': 2, 'n_missing': 0, 'n_failed': 0, 'n_truncated': 1, 'queries': []}
+    assert coverage.registry_name_organisation_search(search, [])['state'] == 'search_incomplete_or_blocked'
+    assert coverage.registry_name_organisation_search({**search, 'n_truncated': 0}, [])['state'] == \
+        'no_candidate_in_completed_scope'
+    assert coverage.registry_name_organisation_search({**search, 'n_missing': 1}, [])['state'] == 'search_incomplete_or_blocked'
+    unread = {**doc, 'availability': 'retrieved', 'text': {'status': 'not_extracted'}}
+    assert coverage.nct_citation_scan([unread], [])['state'] == 'search_incomplete_or_blocked'
+
+
+def test_overall_status_shows_a_positive_and_claims_no_candidate_only_when_nothing_is_unknown(family: dict[str, Any]) -> None:
+    states = {c['submission_number']: c['overall']['state'] for c in family['coverage.json']['submissions']}
+    assert states['K990001'] == 'verified_link' and states['K990002'] == 'candidate_awaiting_review'
+    # The overall status is over the three routes that can produce a link. openFDA (which carries
+    # no study identifier) and a file missing from local disk do not hold it back.
+    assert coverage.LINKAGE_ROUTES == ('nct_citation_scan', 'registry_submission_number_search',
+                                       'registry_name_organisation_search')
+    cells = [{'route': r, 'state': 'no_candidate_in_completed_scope'} for r in coverage.LINKAGE_ROUTES]
+    cells += [{'route': 'openfda_metadata', 'state': 'available_document_insufficient'},
+              {'route': 'local_document', 'state': 'document_unavailable'}]
+    assert coverage.overall(cells)['state'] == 'no_candidate_in_completed_scope'
+    cells[0] = {'route': cells[0]['route'], 'state': 'document_unavailable'}
+    assert coverage.overall(cells)['state'] == 'document_unavailable'
+    cells[1] = {'route': cells[1]['route'], 'state': 'search_incomplete_or_blocked'}
+    assert coverage.overall(cells)['state'] == 'search_incomplete_or_blocked'
+
+
+# ---------------------------------------------------------------- demographics
+
+def test_pilot_extractions_are_attached_to_their_document_and_never_made_addable(family: dict[str, Any]) -> None:
+    obs = family['demographics.json']['observations']
+    assert len(obs) == 3 and {o['submission_number'] for o in obs} == {'DEN990005'}
+    letter = next(d for d in family['documents.json']['documents'] if d['document_id'] == obs[0]['document_id'])
+    assert letter['document_type'] == 'de_novo_granting_letter' and obs[0]['document_sha256'] == letter['sha256']
+    for o in obs:
+        assert o['may_be_added_to_registry_counts'] is False
+        assert o['population']['population_identity'] == 'unresolved'
+        assert o['population']['relation_to_registry_population'] == 'undetermined' and o['population']['registered_study'] is None
+    assert family['demographics.json']['source']['sha256']
+
+
+def test_not_reported_is_absence_with_a_reason_and_malformed_output_is_a_parsing_failure(family: dict[str, Any]) -> None:
+    by_model = {o['extraction']['model_id']: o for o in family['demographics.json']['observations']}
+    good, nested, bad = by_model['fictional-model-a'], by_model['fictional-model-b'], by_model['fictional-model-c']
+    assert good['extraction']['parse_state'] == 'parsed' and good['n_demographic_fields'] == 7
+    assert good['n_demographic_fields_reported'] == 0
+    assert good['demographic_fields']['sex.female'] == {'reported': False, 'value': None, 'exact_quote': None,
+                                                         'absent_reason': 'extraction_returned_not_reported',
+                                                         'page_number': None, 'quote_located': 'not_checked'}
+    assert nested['extraction']['parse_state'] == 'parsed_nested_too_deep' and nested['n_demographic_fields'] == 7
+    assert bad['extraction']['parse_state'] == 'malformed' and 'sex' in bad['extraction']['sections_missing']
+    # The indicated-use population is kept apart from study participants, with its quote checked.
+    assert good['intended_use_population']['age_range'] == 'adults'
+    assert demographics.quote_located('classification of the Quanta Triage', 1, F.TEXTS['pdf99/DEN990005.pdf']) == 'on_stated_page'
+    assert demographics.quote_located('not in the letter', 1, F.TEXTS['pdf99/DEN990005.pdf']) == 'not_found'
+
+
+def test_an_extraction_whose_document_is_not_held_stops_the_build(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match='not in the document registry'):
+        demographics.observations(F.pilot_extractions(tmp_path / 'p.json'), {}, {})
+
+
+# ---------------------------------------------------------------- artifacts and contract
+
+def test_fixture_family_passes_the_contract_and_is_byte_reproducible(tmp_path: Path, acquired: dict[str, Any],
+                                                                     family: dict[str, Any]) -> None:
+    assert contract.check(family) == []
+    again = F.build_family(tmp_path, acquired, extractions=F.pilot_extractions(tmp_path / 'pilot.json'))
+    assert {k: artifacts.dump(v) for k, v in again.items()} == {k: artifacts.dump(v) for k, v in family.items()}
+    artifacts.write(family, tmp_path / 'out')
+    assert contract.check(contract.load_dir(tmp_path / 'out')) == []
+    assert sorted(p.name for p in (tmp_path / 'out').iterdir()) == sorted(list(artifacts.FILES) + ['run.json'])
+
+
+def test_counts_name_their_unit_and_denominator(family: dict[str, Any]) -> None:
+    summary, run = family['summary.json'], family['run.json']
+    assert {'source_row', 'submission', 'family', 'pair', 'study', 'evidence_record'} <= set(run['counting_units'])
+    den = summary['denominators']
+    assert (den['source_rows']['n'], den['submissions']['n'], den['families']['n']) == (11, 8, 7)
+    metric = {m['id']: m for m in summary['metrics']}
+    assert all(m['definition'] and m['denominator'] in den for m in metric.values())
+    # Records, pairs and studies are three different counts of the same links.
+    assert (den['evidence_records']['n'], den['pairs']['n'], den['studies']['n']) == (10, 10, 7)
+    assert metric['pairs_submission_specific']['numerator'] == 2 and metric['pairs_family_only']['numerator'] == 5
+    assert metric['evidence_records_rejected_by_rule']['numerator'] == 1
+    assert metric['evidence_records_identifier_not_resolved']['numerator'] == 1
+    assert metric['substantive_documents_describing_study_without_registry_id']['numerator'] == 1
+    assert run['scheduled'] is False and run['sources']['text_extraction']['ocr'] is False
+
+
+def test_official_metadata_stands_beside_the_list_and_differences_are_recorded(family: dict[str, Any]) -> None:
+    s = by_id(family, 'K990004')
+    assert s['conflicts'] == {'Primary Product Code': ['AAA', 'BBB']} and s['product_code'] == 'AAA'
+    assert s['official']['available'] is True and s['official_differs_from_list'] == {}
+    assert by_id(family, 'K990001')['official']['statement_or_summary'] == 'Summary'
+
+
+def test_review_queue_puts_identifier_confirmed_first_and_documents_without_demographics_third(family: dict[str, Any]) -> None:
+    tiers = family['review_queue.json']['tiers']
+    assert [r['entity'] for r in tiers['1_identifier_confirmed']] == ['DEN990005', 'K990001']
+    assert len(tiers['2_name_and_organisation']) == 2
+    third = tiers['3_documents_without_demographic_evidence']
+    assert [r['entity'] for r in third][0] == 'K990001' and third[0]['text_mentions_race_or_ethnicity'] is True
+    assert 'P990006' not in [r['entity'] for r in third]        # its only summary is a scan: nothing readable yet
+
+
+def _mutated(family: dict[str, Any], mutate: Any) -> list[str]:
+    files = copy.deepcopy(family)
+    mutate(files)
+    # Re-stamp the hashes so that only the invariant under test can fail.
+    files['run.json']['files'] = {name: artifacts.sha256(artifacts.dump(files[name])) for name in artifacts.FILES}
+    return contract.check(files)
+
+
+def _link(files: dict[str, Any], method: str) -> dict[str, Any]:
+    return next(x for x in files['links.json']['links'] if x['method'] == method)
+
+
+@pytest.mark.parametrize('mutate, message', [
+    (lambda f: _link(f, 'device_name_match').update(automated_validation='identifier_confirmed'), 'must stay not_validated'),
+    (lambda f: _link(f, 'device_name_and_organisation_match').update(level='submission'), 'can only reach a family'),
+    (lambda f: _link(f, 'nct_id_in_submission_document')['evidence'].update(quote=''), 'no verbatim evidence'),
+    (lambda f: _link(f, 'nct_id_in_submission_document')['evidence'].update(location={'page': 0}), 'neither a document page'),
+    (lambda f: _link(f, 'device_name_match').update(human_review='accepted', review={'reviewed_on': 'x', 'note': 'y'}),
+     'differs from the reviews applied'),
+    (lambda f: f['studies.json']['studies'][0].update(registry_state='not_found'), 'does not resolve on the registry'),
+    (lambda f: _link(f, 'device_name_match')['target'].update(id='NCT99000099'), 'not in studies.json'),
+    (lambda f: f['submissions.json']['reconciliation'].update(n_rows=10), 'rows do not reconcile'),
+    (lambda f: f['submissions.json']['submissions'][0]['source_rows'].pop(), 'does not carry all of its source rows'),
+    (lambda f: f['submissions.json']['reconciliation']['duplicated_numbers_by_class']['identical'].clear(),
+     'exactly one duplicate class'),
+    (lambda f: f['families.json']['families'][0]['submission_numbers'].append('K990004'), 'exactly one family'),
+    (lambda f: f['families.json']['families'][0].update(status='curated'), 'only a family listed in families.csv'),
+    (lambda f: f['organizations.json']['organizations'][0]['normalised_keys'].append('another name'),
+     'merged without an alias row'),
+    (lambda f: next(d for d in f['documents.json']['documents'] if d['document_type'] == 'de_novo_granting_letter')
+     .update(demographic_summary_candidate=True), 'treated as a demographic summary'),
+    (lambda f: next(d for d in f['documents.json']['documents'] if d['availability'] == 'not_found')
+     .update(document_type='510k_summary'), 'not retrieved, yet carries'),
+    (lambda f: next(d for d in f['documents.json']['documents'] if d['document_type'] == '510k_summary')['classification']
+     .update(matched_phrase=None), 'without the matched phrase'),
+    (lambda f: f['coverage.json']['submissions'][0]['routes'][0].update(state='searched'), 'outside the seven'),
+    (lambda f: f['coverage.json']['submissions'][0]['routes'][0].update(reason=''), 'no reason'),
+    (lambda f: next(c for c in f['coverage.json']['submissions'] if c['submission_number'] == 'K990004')['routes'][3]
+     .update(state='verified_link'), 'verified_link without an identifier-confirmed record'),
+    (lambda f: f['coverage.json']['submissions'][0]['routes'].pop(), 'each route once'),
+    (lambda f: f['summary.json']['metrics'][0].update(numerator=10 ** 6), 'numerator outside'),
+    (lambda f: f['summary.json']['metrics'][0].update(definition=''), 'no definition'),
+    (lambda f: f['summary.json']['metrics'][0].update(denominator='devices'), 'unknown denominator'),
+    (lambda f: f['summary.json']['denominators']['submissions'].update(n=11), 'denominator submissions differs'),
+    (lambda f: f['demographics.json']['observations'][0].update(may_be_added_to_registry_counts=True),
+     'must not be addable to registry counts'),
+    (lambda f: f['demographics.json']['observations'][0]['population'].update(relation_to_registry_population='same_participants'),
+     'unresolved population cannot have a determined relation'),
+    (lambda f: f['demographics.json']['observations'][0]['population'].update(population_identity='same_as_registered_study'),
+     'needs the study and the reason'),
+    (lambda f: f['demographics.json']['observations'][0]['demographic_fields']['sex.female'].update(value=0),
+     'must be absent with a reason, not a value'),
+    (lambda f: f['demographics.json']['observations'][0].update(document_sha256='0' * 64), 'not attached to a held document'),
+    (lambda f: f['run.json'].update(scheduled=True), 'scheduled: false'),
+    (lambda f: f['links.json']['pairs'].pop(), 'pairs do not partition'),
+])
+def test_contract_refuses(family: dict[str, Any], mutate: Any, message: str) -> None:
+    problems = _mutated(family, mutate)
+    assert any(message in p for p in problems), problems[:5]
+
+
+def test_contract_refuses_a_changed_file_and_a_missing_one(family: dict[str, Any]) -> None:
+    files = copy.deepcopy(family)
+    files['links.json']['links'][0]['confidence_reasons'].append('edited after the build')
+    assert any('sha256 does not match run.json' in p for p in contract.check(files))
+    files = copy.deepcopy(family)
+    del files['coverage.json']
+    assert any('coverage.json' in p for p in contract.check(files))
+    assert contract.check({}) == ['run.json is missing']
+
+
+# ---------------------------------------------------------------- the build script
+
+def test_build_script_reads_only_the_frozen_cache_and_writes_only_a_passing_family(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    a = F.acquire_all(tmp_path)
+    curated = tmp_path / 'repo' / 'devices'
+    F.write_curated(curated)
+    monkeypatch.setattr(build_device_links, 'ROOT', tmp_path / 'repo')
+
+    def no_network(*args: Any, **kw: Any) -> None:
+        raise AssertionError('the build must not open a connection')
+    monkeypatch.setattr(acquire, 'requests_get', no_network)
+    argv = ['build', '--cache', str(a['cache']), '--inventory', str(a['inventory']), '--source-list', str(tmp_path / 'none.csv'),
+            '--out', str(tmp_path / 'out'), '--generated-at', F.GENERATED_AT]
+    assert build_device_links.main(argv) == 0
+    out = contract.load_dir(tmp_path / 'out')
+    assert contract.check(out) == [] and out['run.json']['inputs']['inventory']['n_rows'] == 11
+    assert '11 rows -> 8 submissions -> 7 families' in capsys.readouterr().out
+    # A curated file that breaks its own rules refuses the build and leaves the last output alone.
+    before = (tmp_path / 'out' / 'run.json').read_bytes()
+    F.write_curated(curated, reviews=[['link:1', 'verified', '', '2026-11-14', 'n']])
+    assert build_device_links.main(argv) == 1 and (tmp_path / 'out' / 'run.json').read_bytes() == before
+    assert 'refused' in capsys.readouterr().err
+
+
+def test_nothing_schedules_this_build() -> None:
+    workflows = ROOT / '.github' / 'workflows'
+    if not workflows.exists():
+        pytest.skip('no workflows directory beside this package (staging copy)')
+    for path in workflows.glob('*.y*ml'):
+        text = path.read_text()
+        assert 'build_device_links' not in text and 'devices/' not in text, path.name
+
+
+def test_garbled_summary_pages_leave_the_document_unread_in_the_registry(tmp_path: Path) -> None:
+    readable = 'The device is intended for use by trained readers in the review of images. ' * 4
+    shifted = ''.join(chr(ord(c) - 29) if c.isalpha() else '\x03' for c in readable)
+    F.write_text(tmp_path, 'a' * 64, [LETTER, shifted, shifted])
+    line = {'document_id': 'doc:K990001:x', 'submission_number': 'K990001', 'url': f'{F.DOCS}/pdf99/K990001.pdf',
+            'official_label': 'Summary', 'discovery': 'fda_database_page', 'scope': 'this_submission', 'origin': 'fda_fetch',
+            'retrieved_at': 't', 'http_status': 200, 'bytes': 10, 'sha256': 'a' * 64, 'outcome': 'retrieved', 'attempts': 1}
+    (doc,) = documents.build([line], {'K990001': '510k'}, tmp_path, pdftext.extraction_version())
+    assert doc['text']['extractor_status'] == 'text' and doc['text']['status'] == 'partial'
+    assert (doc['text']['n_pages_garbled'], doc['text']['n_pages_with_text']) == (2, 1)
+    assert doc['document_type'] == '510k_summary' and doc['classification']['basis'] == 'official_label_unread_pages'
+    assert doc['demographic_summary_candidate'] is False and 'OCR' in doc['demographic_summary_reason']
+    scan = coverage.nct_citation_scan([doc], [])
+    assert scan['state'] == 'available_document_insufficient' and scan['detail']['n_pages_without_usable_text'] == 2

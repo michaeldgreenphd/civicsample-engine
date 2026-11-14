@@ -39,6 +39,7 @@ than assuming the instruction hierarchy is unchanged.
 | Industry Outcomes beta (manual, not scheduled) | [outcomes/README.md](outcomes/README.md), [scripts/build_outcomes_beta.py](scripts/build_outcomes_beta.py), [scripts/check_outcomes_contract.py](scripts/check_outcomes_contract.py) |
 | Census benchmarks for single-site US trials (manual, not scheduled) | [census/README.md](census/README.md), [scripts/build_census_benchmarks.py](scripts/build_census_benchmarks.py); needs `CENSUS_API_KEY` in the environment, never in a file |
 | Results structure and subgroup-reporting states (manual, not scheduled) | [outcomes/README.md](outcomes/README.md), [outcomes/results_structure.py](outcomes/results_structure.py), [scripts/build_results_structure.py](scripts/build_results_structure.py), human reviews in [outcomes/subgroup_reviews.csv](outcomes/subgroup_reviews.csv) |
+| AI/ML device linkage to registered studies (manual, not scheduled) | [devices/README.md](devices/README.md), [scripts/build_device_links.py](scripts/build_device_links.py), [scripts/check_device_links_contract.py](scripts/check_device_links_contract.py); the four curated CSVs in `devices/` are the only place a family, an organisation alias, a documentary statement or a human review is recorded |
 | Setup, architecture, checks | [README.md](README.md), [CLAUDE.md](CLAUDE.md), [verify.md](verify.md), [.github/workflows/ci.yml](.github/workflows/ci.yml) |
 
 The repositories communicate through generated files, not a running backend
