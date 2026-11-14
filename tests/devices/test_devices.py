@@ -1548,6 +1548,27 @@ def test_a_link_found_by_a_partial_number_search_still_stands() -> None:
     assert coverage.registry_submission_number_search(partial, [])['state'] == 'search_incomplete_or_blocked'
 
 
+def test_an_openfda_200_without_a_list_of_results_is_no_answer(tmp_path: Path) -> None:
+    log = acquire.ResponseLog(tmp_path / 'openfda.jsonl')
+    envelope = json.dumps({'error': {'code': 'SERVER_ERROR', 'message': 'try again'}}).encode()
+    calls: list[str] = []
+    def get(url: str, params: dict[str, Any] | None) -> acquire.Response:
+        calls.append(url)
+        return 200, {'content-type': 'application/json'}, envelope, None
+    acquire.fetch_openfda(['K990001', 'K990002'], log, get, F.no_wait())
+    req = acquire.openfda_requests(['K990001', 'K990002'])[0]
+    rec = log.get(req['key'])
+    assert (rec['status'], rec['http_status']) == (acquire.UNUSABLE_200, 200) and log.settled(req['key']) is None
+    found = acquire.openfda_by_submission({req['key']: rec}, ['K990001', 'K990002'])
+    assert {v['state'] for v in found.values()} == {'error'}              # not "no record"
+    # asked again on the next run
+    acquire.fetch_openfda(['K990001', 'K990002'], log, get, F.no_wait())
+    assert len(calls) == 2
+    # an answer logged as 200 before answers were checked for shape is still no answer
+    legacy = {req['key']: {**rec, 'status': 200, 'body': {'meta': {}}}}
+    assert {v['state'] for v in acquire.openfda_by_submission(legacy, ['K990001', 'K990002']).values()} == {'error'}
+
+
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])
 def test_a_200_without_a_usable_body_is_no_answer_and_is_asked_again(tmp_path: Path, body: bytes) -> None:
     """An empty, cut-off, non-JSON or null body under HTTP 200 is logged, not settled, and reads as

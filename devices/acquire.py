@@ -226,9 +226,11 @@ def read_archive(archive: Path) -> tuple[dict[str, dict[str, Any]], dict[str, An
 
 def logged_json(log: ResponseLog, get: Get, throttle: Throttle, key: str, url: str,
                 params: dict[str, Any] | None = None, tag: dict[str, Any] | None = None,
-                transform: Callable[[Any], Any] | None = None) -> dict[str, Any] | None:
+                transform: Callable[[Any], Any] | None = None,
+                valid: Callable[[Any], bool] | None = None) -> dict[str, Any] | None:
     """The logged answer to a JSON request, fetching it once if it is not logged yet. None when no
-    answer arrived (the caller records the route as incomplete)."""
+    answer arrived (the caller records the route as incomplete). `valid`, when given, says whether
+    a parsed 200 body has the shape an answer must have; one that does not is no answer."""
     rec = log.settled(key)
     if rec is not None:
         return rec
@@ -248,6 +250,10 @@ def logged_json(log: ResponseLog, get: Get, throttle: Throttle, key: str, url: s
         # It is logged under its own status, which no reader takes for 200 and which is not final,
         # so the route reads incomplete and the next run asks again. The HTTP status is kept.
         status, error = UNUSABLE_200, error or 'empty response body'
+    elif status == 200 and valid is not None and not valid(parsed):
+        # A 200 that parses but lacks the shape of an answer (an error envelope, say) is no answer
+        # either, for the same reason.
+        status, error = UNUSABLE_200, error or 'response lacks the structure of an answer'
     rec = {'key': key, 'url': url, 'params': params or {}, 'tag': tag or {}, 'fetched_at': now(), 'status': status,
            'http_status': 200 if status == UNUSABLE_200 else status,
            'attempts': attempts, 'body': parsed, 'error': error}
@@ -286,11 +292,17 @@ def openfda_requests(submission_numbers: list[str]) -> list[dict[str, Any]]:
     return reqs
 
 
+def openfda_answer(body: Any) -> bool:
+    """A 200 from openFDA answers only with a list of results; no match is a 404, so a 200 without
+    the list (an error envelope) is no answer about any number it covers."""
+    return isinstance(body, dict) and isinstance(body.get('results'), list)
+
+
 def fetch_openfda(submission_numbers: list[str], log: ResponseLog, get: Get, throttle: Throttle) -> dict[str, int]:
     done = failed = 0
     for q in openfda_requests(submission_numbers):
         rec = logged_json(log, get, throttle, q['key'], q['url'], q['params'], tag={'numbers': q['numbers']},
-                          transform=_strip_openfda)
+                          transform=_strip_openfda, valid=openfda_answer)
         done, failed = done + (rec is not None), failed + (rec is None)
     return {'requests_answered': done, 'requests_without_answer': failed}
 
@@ -314,6 +326,11 @@ def openfda_by_submission(records: dict[str, dict[str, Any]], submission_numbers
             # openFDA answers a search with no matches with HTTP 404 and an error body.
             if rec['status'] not in (200, 404):
                 out[sn] = {'state': 'error', 'reason': f"openFDA answered HTTP {rec['status']}", 'record': None}
+                continue
+            if rec['status'] == 200 and not openfda_answer(rec.get('body')):
+                # Logged before answers were checked for shape: still no answer about this number.
+                out[sn] = {'state': 'error', 'reason': 'openFDA answered HTTP 200 without a list of results',
+                           'record': None}
                 continue
             if sn.startswith('P'):
                 base, _, supp = sn.partition('/')
