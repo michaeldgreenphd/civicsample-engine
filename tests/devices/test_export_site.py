@@ -367,6 +367,33 @@ def test_a_directory_holding_anything_else_is_never_replaced(build: Path, tmp_pa
     assert [p.name for p in data.iterdir()] == ['demographics.part1.json.gz']
 
 
+def test_a_directory_borrowing_this_familys_names_is_never_replaced(build: Path, tmp_path: Path) -> None:
+    """Names alone are not enough: only a complete export, naming a device-linkage run, is replaced."""
+    only_summary = tmp_path / 'a'
+    only_summary.mkdir()
+    (only_summary / 'summary.json').write_text('{"mine": true}')
+    nested = tmp_path / 'b'
+    (nested / 'run.json').mkdir(parents=True)
+    (nested / 'run.json' / 'keep.txt').write_text('keep me')
+    for out in (only_summary, nested):
+        with pytest.raises(ValueError, match='refusing to replace it'):
+            site.export(build, out)
+    assert (only_summary / 'summary.json').read_text() == '{"mine": true}'
+    assert (nested / 'run.json' / 'keep.txt').read_text() == 'keep me'
+    # a complete set of names whose run.json names some other run is refused too
+    other = tmp_path / 'c'
+    site.export(build, other)
+    (other / 'run.json').write_text('{"run_id": "census-2026"}')
+    with pytest.raises(ValueError, match='does not name a device-linkage run'):
+        site.export(build, other)
+    # an empty directory and a real export are replaced
+    empty = tmp_path / 'd'
+    empty.mkdir()
+    site.export(build, empty)
+    site.export(build, empty)
+    assert sorted(p.name for p in empty.iterdir()) == sorted(set(site.SITE_FILES) | {'run.json'})
+
+
 def test_a_failure_while_writing_leaves_the_previous_export_in_place(
         build: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     out = tmp_path / 'site' / 'devices'

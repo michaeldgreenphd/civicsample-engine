@@ -401,20 +401,47 @@ def select(build: dict[str, Any]) -> dict[str, Any]:
     return files
 
 
+def replace_refusal(out: Path, names: set[str]) -> str | None:
+    """Why an existing `out` may not be replaced by a device-linkage family, or None when it may.
+
+    It may when it does not exist, is an empty directory, or is a complete family already: only
+    regular files, exactly the family's names, and a run.json naming a device-linkage run. Names
+    alone are not enough, since an unrelated directory can hold a file called summary.json."""
+    if not out.exists() and not out.is_symlink():
+        return None
+    if out.is_symlink() or not out.is_dir():
+        return f'{out} is not a directory'
+    entries = list(out.iterdir())
+    if not entries:
+        return None
+    odd = sorted(p.name for p in entries if p.is_symlink() or not p.is_file() or p.name not in names)
+    if odd:
+        return f"{out} holds entries that are not this family's files ({odd[:5]})"
+    missing = sorted(names - {p.name for p in entries})
+    if missing:
+        return f'{out} lacks {missing[:5]}, so it is not a complete device-linkage family'
+    try:
+        run = json.loads((out / 'run.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return f'{out}/run.json is not readable JSON'
+    run_id = run.get('run_id') if isinstance(run, dict) else None
+    if not (isinstance(run_id, str) and run_id.startswith('devices-')):
+        return f'{out}/run.json does not name a device-linkage run'
+    return None
+
+
 def export(build: Path, out: Path) -> dict[str, Any]:
     """Verify the build, select the site files and replace `out` with them as a whole.
 
     The files are staged in a temporary directory beside `out` and moved into place only when
     all of them are written, so a failure leaves `out` as it was. An existing `out` that holds
-    anything but this family's files is refused: the directory is replaced, and a mistyped path
-    must not delete another dataset.
+    anything but a complete export of this family is refused (replace_refusal): the directory
+    is replaced, and a mistyped path must not delete another dataset.
     """
     files = select(read_build(build))
-    names = set(SITE_FILES) | {'run.json'}
-    if out.exists():
-        strangers = sorted(p.name for p in out.iterdir() if p.name not in names)
-        if not out.is_dir() or strangers:
-            raise ValueError(f'{out} holds files that are not this export\'s ({strangers[:5]}); refusing to replace it')
+    refusal = replace_refusal(out, set(SITE_FILES) | {'run.json'})
+    if refusal:
+        raise ValueError(f'{refusal}; refusing to replace it')
     out.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=out.name + '.staging.', dir=out.parent))
     try:

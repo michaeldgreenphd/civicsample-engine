@@ -104,7 +104,7 @@ def study_answer(body: Any) -> bool:
     error envelope or an object without the id is no answer, and is asked again."""
     nct = ((((body or {}).get('protocolSection') or {}).get('identificationModule') or {}).get('nctId')
            if isinstance(body, dict) else None)
-    return isinstance(nct, str) and bool(nct)
+    return isinstance(nct, str) and bool(NCT.match(nct))
 
 
 def fetch_studies(nct_ids: list[str], log: A.ResponseLog, get: A.Get, throttle: A.Throttle) -> dict[str, int]:

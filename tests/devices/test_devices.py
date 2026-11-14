@@ -1663,6 +1663,35 @@ def test_a_build_does_not_replace_a_directory_that_is_not_a_device_build(tmp_pat
     assert sorted(p.name for p in tmp_path.iterdir()) == ['a-file', 'build', 'build.staging', 'not-a-build']
 
 
+def test_a_build_does_not_replace_a_directory_that_only_borrows_its_names(tmp_path: Path, family: dict[str, Any]) -> None:
+    only_summary = tmp_path / 'a'
+    only_summary.mkdir()
+    (only_summary / 'summary.json').write_text('{"mine": true}')
+    nested = tmp_path / 'b'
+    (nested / 'run.json').mkdir(parents=True)
+    (nested / 'run.json' / 'keep.txt').write_text('keep me')
+    for out in (only_summary, nested):
+        with pytest.raises(ValueError, match='refusing to replace it'):
+            artifacts.write(family, out)
+    assert (only_summary / 'summary.json').read_text() == '{"mine": true}'
+    assert (nested / 'run.json' / 'keep.txt').read_text() == 'keep me'
+    other = tmp_path / 'c'
+    artifacts.write(family, other)
+    (other / 'run.json').write_text('{"run_id": "census-2026"}')
+    with pytest.raises(ValueError, match='does not name a device-linkage run'):
+        artifacts.write(family, other)
+    empty = tmp_path / 'd'
+    empty.mkdir()
+    artifacts.write(family, empty)
+    assert sorted(p.name for p in empty.iterdir()) == sorted(family)
+
+
+@pytest.mark.parametrize('nct', ['error', 'NCT123', 'nct99000001', 'NCT99000001x', ''])
+def test_a_study_answer_needs_an_nct_shaped_id(nct: str) -> None:
+    assert not registry.study_answer({'protocolSection': {'identificationModule': {'nctId': nct}}})
+    assert registry.study_answer({'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'}}})
+
+
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])
 def test_a_200_without_a_usable_body_is_no_answer_and_is_asked_again(tmp_path: Path, body: bytes) -> None:
     """An empty, cut-off, non-JSON or null body under HTTP 200 is logged, not settled, and reads as

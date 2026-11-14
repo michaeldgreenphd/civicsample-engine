@@ -652,23 +652,48 @@ def summarise(rows: list[dict[str, Any]], subs: dict[str, dict[str, Any]], fams:
     return {'denominators': den, 'metrics': metrics, 'tables': tables}
 
 
+def replace_refusal(out: Path, names: set[str]) -> str | None:
+    """Why an existing `out` may not be replaced by a device-linkage family, or None when it may.
+
+    It may when it does not exist, is an empty directory, or is a complete family already: only
+    regular files, exactly the family's names, and a run.json naming a device-linkage run. Names
+    alone are not enough, since an unrelated directory can hold a file called summary.json."""
+    if not out.exists() and not out.is_symlink():
+        return None
+    if out.is_symlink() or not out.is_dir():
+        return f'{out} is not a directory'
+    entries = list(out.iterdir())
+    if not entries:
+        return None
+    odd = sorted(p.name for p in entries if p.is_symlink() or not p.is_file() or p.name not in names)
+    if odd:
+        return f"{out} holds entries that are not this family's files ({odd[:5]})"
+    missing = sorted(names - {p.name for p in entries})
+    if missing:
+        return f'{out} lacks {missing[:5]}, so it is not a complete device-linkage family'
+    try:
+        run = json.loads((out / 'run.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return f'{out}/run.json is not readable JSON'
+    run_id = run.get('run_id') if isinstance(run, dict) else None
+    if not (isinstance(run_id, str) and run_id.startswith('devices-')):
+        return f'{out}/run.json does not name a device-linkage run'
+    return None
+
+
 def write(files: dict[str, Any], out: Path) -> None:
     """Replace the family in `out` as a whole: staged in a new directory beside it, then moved
     into place, so a failure leaves `out` as it was.
 
-    `out` is replaced, so an existing `out` that is not a directory, or that holds anything but
-    this family's files, is refused (ValueError): a mistyped path must not delete another
+    `out` is replaced, so an existing `out` is refused (ValueError) unless it is empty or a
+    complete device-linkage build (replace_refusal): a mistyped path must not delete another
     dataset. The staging and set-aside directories are new ones made for this write, never an
     existing path.
     """
     import tempfile
-    names = set(FILES) | {'run.json'}
-    if out.exists():
-        strangers = sorted(p.name for p in out.iterdir()) if out.is_dir() else [out.name]
-        strangers = [n for n in strangers if n not in names] if out.is_dir() else strangers
-        if strangers:
-            raise ValueError(f'{out} holds files that are not a device-linkage build ({strangers[:5]}); '
-                             'refusing to replace it')
+    refusal = replace_refusal(out, set(FILES) | {'run.json'})
+    if refusal:
+        raise ValueError(f'{refusal}; refusing to replace it')
     out.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=out.name + '.staging.', dir=out.parent))
     try:
