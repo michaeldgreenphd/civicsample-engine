@@ -247,6 +247,18 @@ def category_structure(record: dict[str, Any], dimension: str, total: int,
                         'labels': [r['label'] for r in nonzero][:5], 'evidence': 'row_in_registry_table_dropped_by_extractor'}
             caution = ['ethnicity_rows_beside_race_rows_that_cover_everyone' if nonzero and not shortfall
                        else 'title_names_ethnicity_rows_are_race_only']
+    if dimension == 'ethnicity':
+        # The mirror of the combined table above. From a table that classified people as
+        # White / Black / Hispanic, the ethnicity pipeline receives one row, "Hispanic", and
+        # everyone else arrives as unknown, although the table knew they were not Hispanic.
+        # The share of everyone (denominator A) is still right as a floor. The share of those
+        # "with a reported category" (B) is not: it divides Hispanic participants by
+        # themselves. A table that carries a row for only one of the two categories, with
+        # unknowns beside it, therefore gets no B.
+        rows = {c.get('omb_category') for c in (block.get('raw_categories') or [])}
+        unknown = ((block.get('omb_totals') or {}).get('unknown_not_reported') or 0) > 0
+        if unknown and len(rows & {'hispanic_latino', 'not_hispanic_latino'}) == 1:
+            out.update(classified_share_usable=False, classified_share_reason='table_reports_one_ethnicity_category_only')
     if other and total > other + max(1, 0.01 * other):
         return {**out, 'usable_for_shares': False, 'check': 'table_total_exceeds_sex_table'}
     if other and total < other - max(1, 0.01 * other):

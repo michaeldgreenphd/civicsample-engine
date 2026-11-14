@@ -209,7 +209,8 @@ def add_dimensions(row: dict[str, Any], rec: dict[str, Any], resolution: dict[st
         # can be read as one classification of each person; never a correction for missing data.
         d['observed_pct_of_classified'] = (
             {k: round(100 * v / known_n, 3) for k, v in obs['counts'].items() if not k.startswith('unknown')}
-            if known_n > 0 and obs['structure']['usable_for_shares'] else None)
+            if known_n > 0 and obs['structure']['usable_for_shares']
+            and obs['structure'].get('classified_share_usable', True) else None)
         if 'unharmonised_counts' in obs:
             d['unharmonised_counts'] = obs['unharmonised_counts']
         reason = None
@@ -429,6 +430,9 @@ def summarise(rows: list[dict[str, Any]], funnel: dict[str, int], areas: list[di
                      'category_structure': dict(c(d['structure']['check'] for d in ds if d.get('structure'))),
                      'category_cautions': dict(c(x for d in ds for x in (d.get('structure') or {}).get('cautions', []))),
                      'classified_share_computed': sum(d.get('observed_pct_of_classified') is not None for d in ds),
+                     'classified_share_not_computed_reasons': dict(c(
+                         d['structure'].get('classified_share_reason') or ('rows_not_one_classification' if not d['structure']['usable_for_shares'] else 'nobody_classified')
+                         for d in ds if d.get('structure') and d.get('observed_pct_of_classified') is None)),
                      'geography_sensitivity': dict(c(str((d.get('geography_sensitivity') or {}).get('flag')) for d in ds
                                                      if d.get('state') == 'reported')),
                      'not_pooled_reasons': dict(c(d['not_pooled_reason'] for d in ds if d.get('not_pooled_reason'))),

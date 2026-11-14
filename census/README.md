@@ -79,6 +79,12 @@ row, the table is not compared. Where the race rows cover everyone, it is compar
 caution, whether or not ethnicity rows stand beside them. A flagged table with a shortfall whose
 registry table could not be retrieved is not compared and says so.
 
+The same tables reach the ethnicity pipeline as one row, "Hispanic", with everyone else
+recorded as unknown. Their share of everyone (A) stands as a floor. Their share of participants
+with a reported category (B) would divide Hispanic participants by themselves, so an ethnicity
+table that carries a row for only one of its two categories, with unknowns beside it, gets no B
+(`classified_share_reason: table_reports_one_ethnicity_category_only`).
+
 The trial side is the registry's baseline characteristics table: the baseline analysis
 population with all arms combined. It can differ from enrolment; the ratio is recorded.
 

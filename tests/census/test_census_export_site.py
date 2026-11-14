@@ -149,3 +149,17 @@ def test_a_lone_facility_that_moved_is_not_treated_as_the_release_site() -> None
     assert 'place_fields_not_comparable' not in kept['site_count']
     # a missing field does not hide a contradiction in another one
     assert build.place_changed(site, {**same, 'zip': None, 'state': 'Maine'}) is True
+
+
+def test_the_build_computes_no_known_category_share_for_a_one_sided_ethnicity_table() -> None:
+    build = _load('build_census_benchmarks', 'scripts/build_census_benchmarks.py')
+    rec = {'nct_id': 'NCT3', 'enrollment': 53, 'min_age': '18 Years', 'max_age': 'N/A', 'eligibility': {'sex': 'ALL'},
+           'study_sites': [{'country': 'United States', 'zip': '02114', 'state': 'Massachusetts'}],
+           'ethnicity': {'reported': True, 'omb_totals': {'hispanic_latino': 2, 'not_hispanic_latino': 0, 'unknown_not_reported': 51},
+                         'raw_categories': [{'omb_category': 'hispanic_latino', 'original': 'Hispanic', 'count': 2}]}}
+    row = build.trial_row(rec, {'found': True, 'n_locations_now': 1, 'text': ''}, set())
+    row.pop('_point', None)
+    build.add_dimensions(row, rec, None, {})
+    eth = row['dimensions']['ethnicity']
+    assert eth['observed_pct']['hispanic_latino'] == pytest.approx(3.774, abs=0.001)      # 2 of 53: the floor stands
+    assert eth['observed_pct_of_classified'] is None                                       # not 100%

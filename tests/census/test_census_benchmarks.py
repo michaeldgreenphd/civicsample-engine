@@ -395,3 +395,16 @@ def test_a_title_flagged_race_table_is_compared_only_when_its_race_rows_cover_ev
     zero = [{'measure_title': 't', 'label': 'Hispanic', 'largest_count': 0.0}]
     assert trials.category_structure(rec(2), 'race', 53, zero)['usable_for_shares'] is True
     assert trials.observed(rec(2), 'race', hispanic)['structure']['usable_for_shares'] is False
+
+
+def test_an_ethnicity_table_with_one_category_and_unknowns_gets_no_known_category_share() -> None:
+    def rec(rows: list[str], unknown: int) -> dict:
+        return {'ethnicity': {'reported': True, 'omb_totals': {'hispanic_latino': 2, 'not_hispanic_latino': 0, 'unknown_not_reported': unknown},
+                              'raw_categories': [{'omb_category': r, 'original': r, 'count': 1} for r in rows]}}
+    one = trials.category_structure(rec(['hispanic_latino', 'unknown_not_reported'], 51), 'ethnicity', 53)
+    assert one['usable_for_shares'] is True                      # the share of everyone is still a valid floor
+    assert one['classified_share_usable'] is False and one['classified_share_reason'] == 'table_reports_one_ethnicity_category_only'
+    both = trials.category_structure(rec(['hispanic_latino', 'not_hispanic_latino'], 51), 'ethnicity', 53)
+    assert 'classified_share_usable' not in both
+    # one row and nobody unknown: the table classified everyone, so B is the same as A
+    assert 'classified_share_usable' not in trials.category_structure(rec(['hispanic_latino'], 0), 'ethnicity', 2)
