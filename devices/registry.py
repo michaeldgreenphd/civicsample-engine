@@ -297,6 +297,11 @@ def number_search_results(records: dict[str, dict[str, Any]], submission_numbers
             out[sn] = {'state': 'incomplete', 'reason': 'the batch search did not state how many records it found',
                        'n_search_hits': None, 'hits': [], 'searched_at': batch['fetched_at']}
             continue
+        if not search_answer(batch['body']):
+            out[sn] = {'state': 'incomplete', 'reason': 'the batch search answer could not be read in full (an '
+                       'impossible count, or a study without its own id)',
+                       'n_search_hits': None, 'hits': [], 'searched_at': batch['fetched_at']}
+            continue
         if batch_total == 0:
             out[sn] = {'state': 'completed', 'reason': 'full-text search over the batch returned no record',
                        'n_search_hits': 0, 'hits': [], 'searched_at': batch['fetched_at']}
@@ -317,6 +322,11 @@ def number_search_results(records: dict[str, dict[str, Any]], submission_numbers
                        'reason': (f'the search found {total} records and the page read holds {len(returned)}; the rest were not read'
                                   if counted else 'the search did not state how many records it found'),
                        'n_search_hits': total if counted else None, 'hits': [], 'searched_at': one['fetched_at']}
+            continue
+        if not search_answer(one['body']):
+            out[sn] = {'state': 'incomplete', 'reason': 'the single-number search answer could not be read in full '
+                       '(an impossible count, or a study without its own id)',
+                       'n_search_hits': None, 'hits': [], 'searched_at': one['fetched_at']}
             continue
         for st in returned:
             nct = st['protocolSection']['identificationModule']['nctId']
@@ -390,7 +400,8 @@ def answer(records: dict[str, dict[str, Any]], q: dict[str, Any]) -> dict[str, A
     """The answer to read for a search: the full-page follow-up when one was made and answered
     200, otherwise the first answer."""
     full = records.get(full_variant(q)['key'])
-    return full if full is not None and full.get('status') == 200 else records.get(q['key'])
+    usable = full is not None and full.get('status') == 200 and search_answer(full.get('body'))
+    return full if usable else records.get(q['key'])
 
 
 def fetch_searches(queries: list[dict[str, Any]], log: A.ResponseLog, get: A.Get, throttle: A.Throttle,
@@ -469,8 +480,10 @@ def search_state(records: dict[str, dict[str, Any]], queries: list[dict[str, Any
     """Whether a set of searches was answered, and whether any answer was cut off by the page
     size (more records matched than were returned and read). A 200 that does not state how many
     records matched is counted apart (`n_uncounted`): it is no answer, since nothing shows that
-    the page read was all there was."""
-    detail, missing, failed, truncated, uncounted = [], 0, 0, 0, 0
+    the page read was all there was. So is a counted 200 that search_answer() rejects (`n_unusable`:
+    an impossible count, or a study without its own id that studies_from() could not read): the
+    frozen archive is read as it was logged, so the build applies the same check acquisition does."""
+    detail, missing, failed, truncated, uncounted, unusable = [], 0, 0, 0, 0, 0
     for q in queries:
         rec = answer(records, q)
         if rec is None:
@@ -483,13 +496,15 @@ def search_state(records: dict[str, dict[str, Any]], queries: list[dict[str, Any
         failed += not ok
         counted = isinstance(total, int) and not isinstance(total, bool)
         uncounted += ok and not counted
-        cut = bool(ok and counted and total > returned)
+        bad = bool(ok and counted and not search_answer(body))
+        unusable += bad
+        cut = bool(ok and counted and not bad and total > returned)
         truncated += cut
         detail.append({'kind': q['kind'], 'string': q['string'], 'answered': True, 'http_status': rec['status'],
                        'total_count': total, 'n_returned': returned, 'truncated': cut,
                        'searched_at': rec['fetched_at']})
     return {'n_queries': len(queries), 'n_missing': missing, 'n_failed': failed, 'n_truncated': truncated,
-            'n_uncounted': uncounted, 'queries': detail}
+            'n_uncounted': uncounted, 'n_unusable': unusable, 'queries': detail}
 
 
 def studies_from(records: dict[str, dict[str, Any]], queries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -497,7 +512,7 @@ def studies_from(records: dict[str, dict[str, Any]], queries: list[dict[str, Any
     out: dict[str, dict[str, Any]] = {}
     for q in queries:
         rec = answer(records, q)
-        if rec is None or rec['status'] != 200:
+        if rec is None or rec['status'] != 200 or not search_answer(rec.get('body')):
             continue
         for st in (rec.get('body') or {}).get('studies') or []:
             facts = study_facts(st)

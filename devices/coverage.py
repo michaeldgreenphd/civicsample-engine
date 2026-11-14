@@ -224,10 +224,13 @@ def registry_name_organisation_search(search: dict[str, Any] | None, links: list
         return _cell(route, state, why + ' (family level: shared by every submission of the family)', **detail)
     set_aside = sum(1 for x in links if x['automated_validation'] == 'rejected_by_rule')
     detail['n_matches_rejected_by_rule'] = set_aside
-    if search['n_missing'] or search['n_failed'] or search.get('n_uncounted'):
+    if search['n_missing'] or search['n_failed'] or search.get('n_uncounted') or search.get('n_unusable'):
         reason = f"{search['n_missing']} query(ies) without an answer, {search['n_failed']} answered with an error"
         if search.get('n_uncounted'):
             reason += f", {search['n_uncounted']} answered without stating how many records matched"
+        if search.get('n_unusable'):
+            reason += (f", {search['n_unusable']} answered with an impossible count or a study without its own "
+                       'id, so the studies returned could not all be read')
         return _cell(route, 'search_incomplete_or_blocked', reason, **detail)
     if search.get('n_name_queries') == 0:
         return _cell(route, 'not_searched',

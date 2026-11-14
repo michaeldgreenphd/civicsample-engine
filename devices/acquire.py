@@ -310,15 +310,26 @@ def openfda_answer(body: Any, request: dict[str, Any] | None = None) -> bool:
     no match is a 404, so a 200 without the list, or with an entry no number can be read from, is
     no answer about any number it covers. Given the request, each entry must carry the endpoint's
     own field (k_number on device/510k.json, pma_number on device/pma.json) holding one of the
-    numbers asked for: the search matches only those, so any other value is a malformed answer."""
+    numbers asked for: the search matches only those, so any other value is a malformed answer.
+    A PMA entry's supplement_number must be absent or empty (the original approval, as openFDA
+    writes it) or 'S' and digits (all 128 supplement numbers in the 2026-11-14 cache have three):
+    a value of another type or form cannot match a supplement asked for, and would read as 'openFDA
+    holds no record' rather than as no answer."""
     if not (isinstance(body, dict) and isinstance(body.get('results'), list)):
         return False
     if request is None:
         return all(isinstance(r, dict) and any(isinstance(r.get(f), str) and r[f].strip()
                                                for f in ('k_number', 'pma_number')) for r in body['results'])
-    field = 'pma_number' if request['url'].endswith('pma.json') else 'k_number'
+    pma = request['url'].endswith('pma.json')
+    field = 'pma_number' if pma else 'k_number'
     wanted = {n.split('/')[0] for n in request['numbers']}
-    return all(isinstance(r, dict) and r.get(field) in wanted for r in body['results'])
+    return all(isinstance(r, dict) and r.get(field) in wanted and (not pma or _supplement_well_formed(r))
+               for r in body['results'])
+
+
+def _supplement_well_formed(entry: dict[str, Any]) -> bool:
+    s = entry.get('supplement_number')
+    return s is None or s == '' or (isinstance(s, str) and re.fullmatch(r'S\d{3,}', s) is not None)
 
 
 def fetch_openfda(submission_numbers: list[str], log: ResponseLog, get: Get, throttle: Throttle) -> dict[str, int]:

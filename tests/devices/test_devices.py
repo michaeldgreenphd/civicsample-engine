@@ -2065,3 +2065,41 @@ def test_no_reader_uses_cached_text_not_bound_to_the_documents_bytes(tmp_path: P
     assert stated['automated_validation'] == 'not_validated'
     held = next(d for d in family['documents.json']['documents'] if d['document_id'] == summary['document_id'])
     assert held['text']['status'] == 'not_extracted'
+
+
+@pytest.mark.parametrize('supplement, ok', [(None, True), ('', True), ('S019', True), ('S1000', True),
+                                            (True, False), (19, False), ('19', False), ('S19', False), ('s019', False)])
+def test_a_pma_answer_needs_well_formed_supplement_numbers(supplement: Any, ok: bool) -> None:
+    q = acquire.openfda_requests(['P990007/S019'])[0]
+    entry = {'pma_number': 'P990007'} if supplement is None else {'pma_number': 'P990007', 'supplement_number': supplement}
+    body = {'results': [{'pma_number': 'P990007', 'supplement_number': ''}, entry]}
+    assert acquire.openfda_answer(body, q) is ok
+    found = acquire.openfda_by_submission({q['key']: {'key': q['key'], 'status': 200, 'params': q['params'], 'body': body,
+                                                     'fetched_at': 't'}}, ['P990007/S019'])['P990007/S019']
+    # A malformed answer is no answer ("error"), never "openFDA holds no record".
+    assert found['state'] == ('found' if supplement == 'S019' else 'no_record' if ok else 'error')
+
+
+def test_the_build_applies_the_search_answer_check_to_frozen_answers() -> None:
+    """Archives frozen before search answers were checked are read with the same check."""
+    q = {'kind': 'name', 'string': 'Quanta', 'key': 'ctgov/name/x', 'params': {}}
+    unreadable = {'totalCount': 1, 'studies': [{}]}
+    records = {'ctgov/name/x': {'status': 200, 'body': unreadable, 'fetched_at': 't'}}
+    state = registry.search_state(records, [q])
+    assert (state['n_unusable'], state['n_uncounted'], state['n_truncated']) == (1, 0, 0)
+    assert registry.studies_from(records, [q]) == {}
+    cell = coverage.registry_name_organisation_search({**state, 'n_name_queries': 1}, [])
+    assert cell['state'] == 'search_incomplete_or_blocked' and 'study without its own id' in cell['reason']
+    # a full-page follow-up that cannot be read is not preferred to the first answer
+    good = {'totalCount': 0, 'studies': []}
+    both = {'ctgov/name/x': {'status': 200, 'body': good, 'fetched_at': 't'},
+            registry.full_variant(q)['key']: {'status': 200, 'body': unreadable, 'fetched_at': 't'}}
+    assert registry.answer(both, q)['body'] == good
+    # the number searches: a batch or a single-number answer that cannot be read is incomplete
+    chunk = registry.number_batches(['K990001'])[0]
+    batch_key = registry._key('ctgov/number_batch', registry._batch_params(chunk))
+    out = registry.number_search_results({batch_key: {'status': 200, 'body': {'totalCount': 1, 'studies': [{}]},
+                                                      'fetched_at': 't'}}, ['K990001'])['K990001']
+    assert out['state'] == 'incomplete' and 'could not be read in full' in out['reason']
+    single = _number_search({'totalCount': 1, 'studies': [{'protocolSection': {}}]})
+    assert single['state'] == 'incomplete' and 'could not be read in full' in single['reason']
