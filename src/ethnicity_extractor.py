@@ -3,7 +3,7 @@ Ethnicity Data Extractor
 
 Extracts ethnicity data from baseline characteristics.
 """
-from typing import Dict, List
+from typing import Dict, List, Optional
 from rapidfuzz import fuzz, process
 from src.utils import clean_demographic_label
 from src import table_selection
@@ -261,6 +261,89 @@ def extract_ethnicity_from_measure(measure: dict, overall_group_id=None,
 # unchanged.
 _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 
+# ── Race rows of a combined classification ──────────────────────────────────
+#
+# Some registrants post race and ethnicity as one classification in one
+# table, each participant in exactly one row: "Race/Ethnicity, Customized"
+# with Caucasian 39 / African-American 10 / Hispanic 2 / Unknown 2, of 53
+# (NCT00416078). This extractor reads that table too: "Hispanic" maps to
+# hispanic_latino, "Unknown" to unknown_not_reported, and the race rows are
+# dropped as unmapped. Denominator balancing then filed the 49 participants of
+# the race rows as unknown ethnicity, although the table had put them outside
+# its Hispanic row. The block read as one-sided: some Hispanic participants
+# and everyone else unknown.
+#
+# Method. The race rows' participants are counted as not Hispanic or Latino
+# when all of these hold:
+#   - the race extractor finds the trial's one counted race table to be an
+#     exact combined classification (race_extractor.combined_classification:
+#     race rows + the table's unknown rows + its Hispanic rows add up to
+#     exactly the baseline population, and no row negating the ethnicity has
+#     participants);
+#   - this block counted exactly one table, and it is that same measure;
+#   - the table gives this block no "Not Hispanic" count of its own;
+#   - this block's Hispanic count equals the race extractor's Hispanic rows,
+#     its unknown count equals the race extractor's unknown rows, and the
+#     baseline population minus both equals the race rows exactly.
+# The participants of the race rows that place them outside the Hispanic row
+# go to omb_totals["not_hispanic_latino"] and are recorded as
+# not_hispanic_from_race_rows, with the flag not_hispanic_from_combined_table.
+# Two kinds of race row are left out of that count
+# (race_extractor.combined_classification): a row that also names an unknown
+# ("Other/Unknown", "Other/No response"), since an unknown participant of a
+# combined classification may be Hispanic; and a row that states the
+# ethnicity ("Hispanic White", "Black Latino"), whose participants are
+# Hispanic. Denominator balancing then files both as unknown, as before: this
+# block does not count the second kind as Hispanic, because it does not read
+# those labels.
+# In every other case not_hispanic_from_race_rows is 0 and nothing changes.
+# raw_categories still lists the posted rows only: the race rows are not
+# ethnicity labels.
+#
+# Why under these conditions only. In an exclusive classification the table
+# placed each participant in one row, so the people in "Caucasian" are not
+# among those in "Hispanic". Where the counts do not add up exactly, some race
+# rows may hold Hispanic participants too ("White" beside "Hispanic" in a
+# table where people could be in both), and the counts cannot show which.
+#
+# A record extracted before this field existed has no
+# not_hispanic_from_race_rows key: "not looked at", not 0.
+#
+# Measured on the baseline modules of the 80,890 trials in the 2026-11-08
+# snapshot (CT.gov API v2, re-fetched 2026-11-14): 2,228 trials, 4,434,745
+# participants move from unknown_not_reported to not_hispanic_latino. One
+# trial is 45% of that (NCT02958995, 2,006,280 of 2,738,161 participants) and
+# ten are 77%. In 113 of the trials, 88,793 participants of race rows that
+# name an unknown or state the ethnicity stay unknown. Of the 2,688 trials whose race block
+# carries shortfall_is_ethnicity_rows, 460 move nothing: 176 report no
+# ethnicity, 198 count a separate table with a Not Hispanic count of its own,
+# 45 count a different number of Hispanic participants from the race reading
+# ("American Hispanic", which this extractor does not map), and 41 count
+# another table or a different unknown. Ethnicity blocks reporting one
+# category beside unknown (Hispanic only, Not Hispanic 0) fall from 2,938 to
+# 710 of the 32,072 reported. No other value of any block changes.
+
+def _race_rows_not_hispanic(study: dict, counted: List[Dict], omb_totals: Dict,
+                            total_participants: Optional[int]) -> int:
+    """Participants of a combined classification's race rows that this block
+    counts as not Hispanic, or 0 (block comment above). omb_totals is the
+    block's row sums before denominator balancing."""
+    if total_participants is None or len(counted) != 1:
+        return 0
+    from src.race_extractor import combined_classification   # imported here: race reads no ethnicity
+    combined = combined_classification(study)
+    if combined is None or counted[0]["index"] != combined["index"]:
+        return 0
+    if omb_totals["not_hispanic_latino"] != 0:
+        return 0
+    if (omb_totals["hispanic_latino"] != combined["ethnicity_rows"]
+            or omb_totals["unknown_not_reported"] != combined["unknown_rows"]):
+        return 0
+    race_rows = total_participants - omb_totals["hispanic_latino"] - omb_totals["unknown_not_reported"]
+    if race_rows <= 0 or race_rows != combined["race_rows"]:
+        return 0
+    return combined["race_rows_named"]
+
 def extract_ethnicity_data(study: dict) -> Dict:
     """Extract all ethnicity data from a study."""
     from src.utils import get_baseline_measures, get_overall_group_id, get_total_baseline_participants
@@ -276,13 +359,17 @@ def extract_ethnicity_data(study: dict) -> Dict:
             "not_hispanic_latino": 0,
             "unknown_not_reported": 0
         },
+        # Participants of a combined classification's race rows counted in
+        # not_hispanic_latino (block comment "Race rows of a combined
+        # classification"); 0 when there are none.
+        "not_hispanic_from_race_rows": 0,
         "subcategory_totals": {},
         "raw_categories": [],
         "flags": []
     }
 
     tables: List[Dict] = []
-    for measure in measures:
+    for index, measure in enumerate(measures):
         title = measure.get("title", "")
 
         if not is_ethnicity_table(title):
@@ -302,7 +389,7 @@ def extract_ethnicity_data(study: dict) -> Dict:
         if "race" in title.lower():
             categories = [c for c in categories if c.get("confidence") != "low"]
 
-        tables.append({"title": title,
+        tables.append({"title": title, "index": index,
                        "analyzed": table_selection.number_analyzed(measure, overall_group_id),
                        "population": table_selection.population_of(measure),
                        "categories": categories})
@@ -334,12 +421,24 @@ def extract_ethnicity_data(study: dict) -> Dict:
     if ethnicity_tables_found > 1:
         result["flags"].append(f"multiple_ethnicity_tables_{ethnicity_tables_found}")
 
+    # The race rows of an exact combined classification are not Hispanic
+    # (block comment "Race rows of a combined classification"). Before
+    # balancing, which then finds no shortfall.
+    if result["reported"]:
+        not_hispanic = _race_rows_not_hispanic(study, counted, result["omb_totals"], total_participants)
+        if not_hispanic:
+            result["omb_totals"]["not_hispanic_latino"] += not_hispanic
+            result["not_hispanic_from_race_rows"] = not_hispanic
+            result["flags"].append("not_hispanic_from_combined_table")
+
     # Denominator balancing: ensure category counts sum to total participants.
     # For combined Race/Ethnicity tables (e.g. LatinX listed alongside
     # White, Black), the ethnicity total will be less than enrollment because
     # only ethnicity-specific rows (like LatinX) are routed here.  The
     # remaining participants' ethnicity is genuinely unknown, so the
-    # difference should be added to unknown_not_reported.
+    # difference should be added to unknown_not_reported — except for an
+    # exact combined classification, whose race rows were counted as not
+    # Hispanic just above.
     # Only balance when at least some non-zero data was extracted.
     if result["reported"] and total_participants is not None:
         extracted_sum = sum(result["omb_totals"].values())
