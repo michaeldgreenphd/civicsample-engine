@@ -118,7 +118,9 @@ only because its pages were not read: a scan that would otherwise read
 document that could cite a study (a summary, an SSED, a decision summary, labeling, or a file whose
 type is not known). A clearance or granting letter, an approval order or a 510(k) Statement cannot
 cite a study whatever its pages hold, so its unread pages leave the scan insufficient (the
-investigator's decision of the same day, "D1. 2").
+investigator's decision of the same day, "D1. 2"). The exception applies only there: a scan that read
+every page it could and found no identifier is incomplete if any page of any document held is
+unread, a letter's included (decision (b) as worded, kept by the investigator's decision "D7 1").
 
 ## Coverage
 
