@@ -471,6 +471,20 @@ def test_an_html_error_page_served_with_status_200_is_not_stored_as_a_document(t
              'official_label': None, 'discovery': 'url_pattern', 'scope': 'this_submission'}]
     counts = acquire.fetch_documents(plan, manifest, tmp_path / 'store', lambda u, p: (200, {}, b'<html>', None), F.no_wait())
     assert counts['not_a_pdf'] == 1 and manifest.lines[0]['sha256'] is None and not (tmp_path / 'store').exists()
+    # An HTML page in place of the file is no answer about the file: not settled, asked again.
+    assert not acquire.settled(manifest.lines[0])
+    calls: list[str] = []
+    again = acquire.fetch_documents(plan, manifest, tmp_path / 'store', F.stub_get(calls), F.no_wait())
+    assert again['retrieved'] == 1 and len(calls) == 1
+
+
+def test_a_route_holding_a_non_pdf_answer_is_incomplete() -> None:
+    doc = {'document_id': 'doc:x', 'origin': 'fda_fetch', 'scope': 'this_submission', 'availability': 'not_a_pdf',
+           'url': f'{F.DOCS}/pdf99/K990001.pdf', 'http_status': 200, 'document_type': None, 'text': None}
+    page = {'status': 200, 'body': {'document_links': [{'url': doc['url'], 'official_label': 'Summary'}]}}
+    cell = coverage.fda_document_fetch(page, [doc], [])
+    assert cell['state'] == 'search_incomplete_or_blocked'
+    assert cell['detail']['not_retrieved'] == [{'url': doc['url'], 'outcome': 'not_a_pdf', 'http_status': 200}]
 
 
 def test_local_documents_are_recovered_once_and_then_not_fetched(tmp_path: Path) -> None:
@@ -540,7 +554,7 @@ def test_database_page_links_are_parsed_with_fda_labels() -> None:
 
 def test_a_non_final_answer_is_logged_and_asked_again(tmp_path: Path) -> None:
     log = acquire.ResponseLog(tmp_path / 'log.jsonl')
-    answers = iter([(400, {}, b'', None), (200, {}, b'<html>K990001</html>', None)])
+    answers = iter([(400, {}, b'', None), (200, {}, _record_page('510(k) Number', 'K990001').encode(), None)])
     get = lambda u, p: next(answers)  # noqa: E731
     acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
     assert log.get('fda_page/K990001')['status'] == 400 and log.settled('fda_page/K990001') is None
@@ -553,7 +567,7 @@ def test_a_database_page_that_does_not_name_the_number_is_not_an_answer(tmp_path
     log = acquire.ResponseLog(tmp_path / 'log.jsonl')
     other = (b'<html>K990002 <a href="https://www.accessdata.fda.gov/cdrh_docs/pdf99/K990002.pdf">'
              b'Summary</a></html>')
-    answers = iter([(200, {}, other, None), (200, {}, b'<html>K990001</html>', None)])
+    answers = iter([(200, {}, other, None), (200, {}, _record_page('510(k) Number', 'K990001').encode(), None)])
     get = lambda u, p: next(answers)
     acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
     rec = log.get('fda_page/K990001')
@@ -684,6 +698,10 @@ def test_another_supplement_of_the_pma_is_not_a_citation_of_the_supplement_or_th
                                       'P990007/S002') == []
 
 
+def _record_page(label: str, number: str) -> str:
+    return f'<html><TABLE><TR><TH Align="Left">{label}</TH><TD Align="Left">{number}</TD></TR></TABLE></html>'
+
+
 def _pma_page(pma: str, supplement: str | None = None) -> str:
     rows = f'<TR><TH Align="Left">PMA Number</TH><TD Align="Left">{pma}</TD></TR>'
     if supplement:
@@ -699,10 +717,14 @@ def _pma_page(pma: str, supplement: str | None = None) -> str:
     ('P990007', _pma_page('P990007', 'S002'), False),              # a supplement's page for the original
     ('P990007', _pma_page('P990008'), False),
     ('P990007', '<html>P990007 is not found</html>', False),       # the number is printed, but no record rows
-    ('K990001', '<html>510(k) Number K990001</html>', True),
-    ('K990001', '<html>510(k) Number K990002</html>', False),
+    ('K990001', _record_page('510(k) Number', 'K990001'), True),
+    ('K990001', _record_page('510(k) Number', 'K990002'), False),
+    ('K990001', '<html>K990001 is not found</html>', False),     # an error page that echoes the request
+    ('DEN990005', _record_page('De Novo Number', 'DEN990005'), True),
+    ('DEN990005', '<html>De Novo DEN990005: no record</html>', False),
+    ('DEN990005', _record_page('510(k) Number', 'DEN990005'), False),   # the number in another record's row
 ])
-def test_a_pma_page_is_confirmed_from_its_number_rows(number: str, page: str, names_it: bool) -> None:
+def test_a_database_page_is_confirmed_from_its_number_rows(number: str, page: str, names_it: bool) -> None:
     assert acquire.page_names_the_submission(number, page) is names_it
 
 

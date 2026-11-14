@@ -185,12 +185,14 @@ def stub_get(calls: list[str] | None = None, fail: set[str] | None = None) -> ac
                 return None, {}, b'', 'ConnectionError: stub'
             html = f'<html>{number}' + ''.join(f'<A HREF="http://www.accessdata.fda.gov/cdrh_docs/{p}" TITLE="x">{label}</A>'
                                               for p, label in listed) + '</html>'
+            # A record page states its number in labelled rows, as FDA's pages do.
+            row = '<TR><TH Align="Left">{}</TH><TD Align="Left">{}</TD></TR>'.format
             pma = re.fullmatch(r'(P\d{6})(S\d{3})?', number)
             if pma:
-                # A PMA page states its number in labelled rows, as FDA's pages do.
-                html = html.replace('</html>', f'<TR><TH Align="Left">PMA Number</TH><TD Align="Left">{pma.group(1)}</TD></TR>'
-                                    + (f'<TR><TH Align="Left">Supplement Number</TH><TD Align="Left">{pma.group(2)}</TD></TR>'
-                                       if pma.group(2) else '') + '</html>')
+                rows = row('PMA Number', pma.group(1)) + (row('Supplement Number', pma.group(2)) if pma.group(2) else '')
+            else:
+                rows = row('De Novo Number' if number.startswith('DEN') else '510(k) Number', number)
+            html = html.replace('</html>', rows + '</html>')
             return 200, {}, html.encode(), None
         if url.startswith(DOCS):
             name = url[len(DOCS) + 1:]

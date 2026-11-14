@@ -386,20 +386,23 @@ def _page_field(html: str, label: str) -> str | None:
 
 
 def page_names_the_submission(submission_number: str, html: str) -> bool:
-    """Whether a database page is the record of this very number.
+    """Whether a database page is the record of this very number, read from the labelled row in
+    which FDA's record pages state it; the number appearing elsewhere (an error page that echoes
+    the request, a link to another record) does not count.
 
-    A PMA page states its number in two rows, "PMA Number" (P140011) and "Supplement Number" (S008;
-    absent on an original PMA's page), so the base number alone also appears on the original's
-    page and on every other supplement's. A PMA number is confirmed from those rows: the PMA
-    Number must be the base and the Supplement Number must be the supplement asked for, or absent
-    for an original. Checked on 2026-11-14 against the 18 PMA pages fetched on 2026-11-13 (17
-    originals and P140011/S008), whose rows all read this way. 510(k) and De Novo pages are
-    confirmed by the number appearing on the page.
+    510(k) pages state it in a "510(k) Number" row and De Novo pages in a "De Novo Number" row. A
+    PMA page uses two rows, "PMA Number" (P140011) and "Supplement Number" (S008; absent on an
+    original PMA's page), so the base number alone also appears on the original's page and on
+    every other supplement's: the PMA Number must be the base and the Supplement Number must be
+    the supplement asked for, or absent for an original. Checked on 2026-11-14 against all 1,431
+    pages fetched on 2026-11-13 (1,376 510(k), 37 De Novo, 18 PMA), whose rows all read this way.
     """
     sn = submission_number.strip().upper()
     base, _, supp = sn.partition('/')
+    if base.startswith('DEN'):
+        return _page_field(html, 'De Novo Number') == base
     if not base.startswith('P'):
-        return base in html
+        return _page_field(html, '510(k) Number') == base
     pma, supplement = _page_field(html, 'PMA Number'), _page_field(html, 'Supplement Number')
     return pma == base and supplement == supp
 
@@ -540,12 +543,11 @@ class Manifest:
 
 def settled(line: dict[str, Any] | None) -> bool:
     """True when a document need not be requested again: its bytes are held under a recorded
-    hash, or the host answered that it has no such file. Transient failures are not settled, and
-    neither is a non-PDF file left on disk by an earlier fetch: it says nothing about what the
-    host serves now, so the address is still asked."""
-    if not line or (line['outcome'] == 'not_a_pdf' and line.get('origin') == 'local_recovered'):
-        return False
-    return line['outcome'] in ('retrieved', 'not_found', 'not_a_pdf', 'too_large')
+    hash, the host answered that it has no such file, or the file is over the size limit.
+    Transient failures are not settled, and neither is `not_a_pdf`: an HTML page served with 200
+    in place of the file (an error or proxy page), or such a page left on disk by an earlier
+    fetch, says nothing lasting about the file, so the address is asked again."""
+    return bool(line) and line['outcome'] in ('retrieved', 'not_found', 'too_large')
 
 
 def recover_local(local_dir: Path, url_of: dict[str, str], manifest: Manifest, store: Path) -> int:

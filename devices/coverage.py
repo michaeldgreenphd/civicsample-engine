@@ -50,7 +50,9 @@ ROUTES: dict[str, str] = {
 OVERALL_PRECEDENCE = ('verified_link', 'candidate_awaiting_review', 'search_incomplete_or_blocked', 'not_searched',
                       'available_document_insufficient', 'document_unavailable', 'no_candidate_in_completed_scope')
 LINKAGE_ROUTES = ('nct_citation_scan', 'registry_submission_number_search', 'registry_name_organisation_search')
-TRANSIENT = ('http_error', 'network_error', 'skipped_disk_budget')
+# Outcomes that are no answer about the document: asked again on the next acquisition, and a
+# route holding one is incomplete. `not_a_pdf` is an HTML page served in place of the file.
+TRANSIENT = ('http_error', 'network_error', 'not_a_pdf', 'skipped_disk_budget')
 
 
 def _cell(route: str, state: str, reason: str, **detail: Any) -> dict[str, Any]:
