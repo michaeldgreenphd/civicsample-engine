@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Built | 2026-11-14T05:27:06+00:00 by `scripts/build_device_links.py build` at engine commit `eaf16e90b2eb` (no uncommitted changes; producing-code digest `e47f9dd0693a…`), run id `devices-2026-11-14-70dbf70112`, method `device-links-1` |
+| Built | 2026-11-14T05:35:58+00:00 by `scripts/build_device_links.py build` at engine commit `7f7ebb7242ef` (no uncommitted changes; producing-code digest `b453aab0fc21…`), run id `devices-2026-11-14-2841178b3d`, method `device-links-1` |
 | Inventory | FDA's AI/ML-enabled device list of 2026-03-05 as enriched in `data/ai-ml-enabled-devices-enriched.csv`, sha256 `930b79b8deb1df79…`, 1,451 rows |
 | FDA documents | 1,566 addresses tried 2026-11-13 to 2026-11-14; manifest sha256 `f6b047f76cd65dc4…` |
 | Registry | ClinicalTrials.gov API 2.0.5, data timestamp 2026-11-13T10:00:06; 3,113 responses, sha256 `aeacdb4ffbb13579…` |
@@ -128,4 +128,6 @@ It was rebuilt a twelfth time after the eleventh review round, at `a11cd03` (run
 
 It was rebuilt a thirteenth time after the twelfth review round, at `475747b` (run `devices-2026-11-14-5b2f2c7363`). That round's two fixes (a number-search hit is read only from a full record whose own id is the hit's; a JSON true/false is not a count) change no output of this run: the 4 full records held for number-search hits each carry their own id, and every cached search answer states an integer count. Every output file is identical to the previous build apart from the run id.
 
-It was rebuilt a fourteenth time after the thirteenth review round, at the commit named above. That round's two fixes (a link found by a number search that could not read every hit still stands; a registry-record statement is read only from a record that names its own study) change no output of this run: every number search in the run is completed, and the statements file has no rows. Every output file is identical to the previous build apart from the run id.
+It was rebuilt a fourteenth time after the thirteenth review round, at `eaf16e9` (run `devices-2026-11-14-70dbf70112`). That round's two fixes (a link found by a number search that could not read every hit still stands; a registry-record statement is read only from a record that names its own study) change no output of this run: every number search in the run is completed, and the statements file has no rows. Every output file is identical to the previous build apart from the run id.
+
+It was rebuilt a fifteenth time after the fourteenth review round, at the commit named above. That round's three fixes (one evidence record per registry field; an original PMA is not located before a malformed supplement suffix; a document over the size limit leaves its route blocked) change no output of this run: no registry field holds two citations of one number, none of the 5 identifier-confirmed citations is a PMA or sits before a slash, and no document is over the size limit. Every output file is identical to the previous build apart from the run id.
