@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Run | `results-structure-2026-11-14-e5480bd529`, generated 2026-11-14T02:53:44+00:00 by `scripts/build_results_structure.py` at engine commit `13c9ee11309d` (no uncommitted changes; producing-code digest `d2b908d9dba6…`) |
+| Run | `results-structure-2026-11-14-3037691319`, generated 2026-11-14T02:59:54+00:00 by `scripts/build_results_structure.py` at engine commit `27515b167f65` (no uncommitted changes; producing-code digest `395a81013952…`) |
 | Method | `results-structure-1`: usable-content rules B1, F1, O1, A1; comparative classes C1, C2; analysis rule S1; subgroup rule SG2 |
 | Scope | Frame 648 registry records fetched; **598 trials in this build** (the eligible cohort of the Industry Outcomes beta, the rows of the site's `data/outcomes/index.json`, outcomes run `outcomes-2026-11-09-d41f32ec4d`); 50 frame records left out: excluded by the outcomes cohort's eligibility rules (see data/outcomes/index.json excluded). The lists are `frame_ids.txt` (sha256 `637bb40370bedcb8…`), `eligible_ids.txt` (`dcfc1e3fc8829b23…`) and `excluded_ids.txt` (`e7f7925eacf48b28…`) |
 | Registry records | 648 of 648 frame records retrieved from the ClinicalTrials.gov API v2, 2026-11-14T00:41:41+00:00 to 2026-11-14T00:41:57+00:00; API version 2.0.5, registry `dataTimestamp` 2026-11-13T10:00:06 |
@@ -102,7 +102,7 @@ Negative findings (each is a search that found nothing, with its scope in `summa
 
 ## Files not here
 
-`records.json` (sha256 `3f3508c9ebbe2cb9…`, 4.1 MB) is written to the site
+`records.json` (sha256 `830dc7792925b418…`, 4.1 MB) is written to the site
 repository at `data/results_structure/`. The archive of registry records (7.9 MB compressed) is
 under the gitignored `build/results_structure_cache/`; its sha256 is in `run.json`. Two
 consecutive builds of this run from the archive gave the same bytes for `summary.json` and
@@ -157,4 +157,6 @@ It was rebuilt an eighth time after the eighth review round, at `b3c9986` (run `
 
 It was rebuilt a ninth time after the ninth review round, at `3eebfdd` (run `results-structure-2026-11-14-225412bce9`). That round made the number started missing, not zero, for a record with a STARTED milestone and no flow group to sum over. This cohort has no such record, so `records.json` is identical to the previous build apart from the run id, and `summary.json` differs only in the run id and in the definition sentence of "Number started cannot be formed", which now names that case.
 
-It was rebuilt a tenth time after the tenth review round, at the commit named above. That round changed what an analysis signal shows and is keyed on (the compared groups' descriptions as well as their titles). This cohort has no such signal, so `summary.json` and `records.json` are identical to the previous build apart from the run id.
+It was rebuilt a tenth time after the tenth review round, at `13c9ee1` (run `results-structure-2026-11-14-e5480bd529`). That round changed what an analysis signal shows and is keyed on (the compared groups' descriptions as well as their titles). This cohort has no such signal, so `summary.json` and `records.json` are identical to the previous build apart from the run id.
+
+It was rebuilt an eleventh time after the eleventh review round, at the commit named above. That round refused an empty id list for a fetch and counted an analysis that repeats one group id as naming one group. Neither case occurs in this cohort, so `summary.json` and `records.json` are identical to the previous build apart from the run id.
