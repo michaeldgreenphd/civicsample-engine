@@ -118,7 +118,7 @@ planned follow-up.
 
 `coverage.json` holds, per submission, one cell per route and source (local document, FDA document
 fetch, openFDA metadata, NCT-id citation scan, submission-number registry search,
-name/organisation registry search, demographic extraction), each in exactly one of seven states
+name/organisation registry search, documentary statements, demographic extraction), each in exactly one of seven states
 with its reason: `not_searched`, `search_incomplete_or_blocked`, `document_unavailable`,
 `available_document_insufficient`, `candidate_awaiting_review`,
 `no_candidate_in_completed_scope`, `verified_link`. Only `no_candidate_in_completed_scope` is a
@@ -126,7 +126,10 @@ negative finding; `verified_link` is the automated status and human review is re
 A submission's `overall` status is taken over the three routes that can produce a link (citation
 scan, submission-number search, name/organisation search), by the precedence in
 `coverage.OVERALL_PRECEDENCE`; the acquisition routes feed the citation scan and are not counted
-twice.
+twice. A documentary statement (`documentary_statements.csv`) is a person's reading, not a search:
+its route counts towards the overall status only when it holds a statement no person has rejected
+(a candidate awaiting review, since a statement carries no identifier). With none entered the
+route reads `not_searched` and does not hold the submission there.
 
 ## Demographic evidence
 

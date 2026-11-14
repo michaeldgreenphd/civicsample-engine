@@ -42,6 +42,7 @@ ROUTES: dict[str, str] = {
     'nct_citation_scan': 'text of every document held for the submission, scanned for NCT ids',
     'registry_submission_number_search': 'ClinicalTrials.gov full-text search for the submission number',
     'registry_name_organisation_search': 'ClinicalTrials.gov intervention, phrase and sponsor searches',
+    'documentary_statement': 'statements a person entered in devices/documentary_statements.csv, each with its verbatim quote and place',
     'demographic_extraction': 'pilot LLM extraction of demographic fields from a document',
 }
 # Overall status of a submission: the first of these that any ANSWERING route reached. A positive
@@ -52,6 +53,10 @@ ROUTES: dict[str, str] = {
 # second time: a document missing from local disk but fetched from FDA is not "unavailable", and
 # openFDA, which carries no study identifier, would otherwise hold every submission at
 # "insufficient". demographic_extraction is not a linkage route at all.
+# documentary_statement is a person's reading, not a search: it counts towards the overall status
+# only when it holds a link a person has not rejected, so a submission nobody has written a
+# statement for is not held at "not searched" by it, and a statement is never hidden behind
+# "no candidate" on the searches.
 OVERALL_PRECEDENCE = ('verified_link', 'candidate_awaiting_review', 'search_incomplete_or_blocked', 'not_searched',
                       'available_document_insufficient', 'document_unavailable', 'no_candidate_in_completed_scope')
 LINKAGE_ROUTES = ('nct_citation_scan', 'registry_submission_number_search', 'registry_name_organisation_search')
@@ -210,6 +215,23 @@ def registry_submission_number_search(result: dict[str, Any] | None, links: list
     return _cell(route, 'no_candidate_in_completed_scope', 'full-text search for the number returned no record', **detail)
 
 
+def documentary_statement(links: list[dict[str, Any]]) -> dict[str, Any]:
+    """The submission's documentary statements. A statement carries no identifier, so a live one is
+    a candidate awaiting review; none entered is not a finding, and reads not_searched (which the
+    overall status does not count from this route)."""
+    route = 'documentary_statement'
+    if not links:
+        return _cell(route, 'not_searched', 'no documentary statement has been entered for this submission; '
+                                            'statements are entered by a person, and none is not a finding')
+    state, why = _link_outcome(links)
+    detail = {'n_statements': len(links),
+              'n_quote_confirmed': sum(1 for x in links if x['automated_validation'] == 'quote_confirmed_in_source')}
+    if state:
+        return _cell(route, state, why, **detail)
+    return _cell(route, 'no_candidate_in_completed_scope',
+                 f'every documentary statement entered for this submission ({len(links)}) was rejected by a person', **detail)
+
+
 def registry_name_organisation_search(search: dict[str, Any] | None, links: list[dict[str, Any]],
                                       tallies: dict[str, int] | None = None) -> dict[str, Any]:
     """`search` is registry.search_state() over the family's queries plus `n_name_queries`;
@@ -274,7 +296,8 @@ def demographic_extraction(observations: list[dict[str, Any]], docs: list[dict[s
 def overall(cells: list[dict[str, Any]]) -> dict[str, Any]:
     """One status per submission over the linkage routes, by OVERALL_PRECEDENCE, with the routes
     that put it there."""
-    linkage = [c for c in cells if c['route'] in LINKAGE_ROUTES]
+    linkage = [c for c in cells if c['route'] in LINKAGE_ROUTES
+               or (c['route'] == 'documentary_statement' and c['state'] in ('verified_link', 'candidate_awaiting_review'))]
     for state in OVERALL_PRECEDENCE:
         routes = [c['route'] for c in linkage if c['state'] == state]
         if routes:

@@ -277,6 +277,7 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
                 found['search'] if found else None,
                 [x for x in fam_links[family_of[sn]] if x['method'] in L.HEURISTIC_METHODS],
                 found['tallies'] if found else None),
+            C.documentary_statement([x for x in mine if x['method'] == 'documentary_statement']),
             C.demographic_extraction(obs_of.get(sn, []), own_docs),
         ]
         coverage[sn] = {'submission_number': sn, 'overall': C.overall(cells), 'routes': cells}

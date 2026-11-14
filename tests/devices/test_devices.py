@@ -1107,6 +1107,48 @@ def test_a_documentary_statement_gives_a_submission_link_without_an_identifier(t
     assert contract.check(family) == []
 
 
+def test_a_documentary_statement_counts_in_the_overall_coverage_status(tmp_path: Path, acquired: dict[str, Any],
+                                                                      family: dict[str, Any]) -> None:
+    # The case as stated: every search completed with no candidate, and a live statement.
+    searches = [{'route': r, 'state': 'no_candidate_in_completed_scope'} for r in coverage.LINKAGE_ROUTES]
+    for state in ('candidate_awaiting_review', 'verified_link'):
+        assert coverage.overall(searches + [{'route': 'documentary_statement', 'state': state}]) == \
+            {'state': state, 'routes': ['documentary_statement']}
+    # No statement entered, or every one rejected, leaves the searches' status.
+    for state in ('not_searched', 'no_candidate_in_completed_scope'):
+        assert coverage.overall(searches + [{'route': 'documentary_statement', 'state': state}])['state'] == \
+            'no_candidate_in_completed_scope'
+    subs = {s['submission_number']: s for s in family['submissions.json']['submissions']}
+    docs = family['documents.json']['documents']
+    below = coverage.OVERALL_PRECEDENCE[coverage.OVERALL_PRECEDENCE.index('candidate_awaiting_review') + 1:]
+    sn = next(s for s, row in sorted(subs.items()) if row['coverage_overall'] in below
+              and any(d['submission_number'] == s and d['scope'] == 'this_submission' for d in docs))
+    doc = next(d for d in docs if d['submission_number'] == sn and d['scope'] == 'this_submission')
+    before = subs[sn]['coverage_overall']
+    # With no statement entered, the route reads not searched and the overall status is the searches' own.
+    assert all(cell(family, s, 'documentary_statement')['state'] == 'not_searched' for s in subs)
+    assert 'documentary_statement' in family['run.json']['vocabularies']['coverage_routes']
+    curated = tmp_path / 'curated'
+    row = [sn, 'NCT99000002', 'fda_document', doc['document_id'], '1', 'words a person read on the page',
+           'related_validation_study', '2026-11-14', 'the page names the registered study']
+    F.write_curated(curated, documentary_statements=[row])
+    stated = F.build_family(tmp_path, acquired, curated)
+    after = next(s for s in stated['submissions.json']['submissions'] if s['submission_number'] == sn)
+    assert after['coverage_overall'] == 'candidate_awaiting_review'
+    cov = next(c for c in stated['coverage.json']['submissions'] if c['submission_number'] == sn)
+    assert cov['overall'] == {'state': 'candidate_awaiting_review', 'routes': ['documentary_statement']}
+    assert cell(stated, sn, 'documentary_statement')['detail'] == {'n_statements': 1, 'n_quote_confirmed': 0}
+    assert contract.check(stated) == []
+    # A statement a person rejected no longer counts, and the searches' status returns.
+    link_id = next(x['link_id'] for x in stated['links.json']['links'] if x['method'] == 'documentary_statement')
+    F.write_curated(curated, documentary_statements=[row],
+                    reviews=[[link_id, 'rejected', 'not_related', '2026-11-14', 'the page is about another study']])
+    rejected = F.build_family(tmp_path, acquired, curated)
+    assert next(s for s in rejected['submissions.json']['submissions'] if s['submission_number'] == sn)['coverage_overall'] == before
+    assert cell(rejected, sn, 'documentary_statement')['state'] == 'no_candidate_in_completed_scope'
+    assert contract.check(rejected) == []
+
+
 # ---------------------------------------------------------------- human review
 
 def test_reviews_are_applied_from_the_file_and_change_nothing_else(tmp_path: Path, acquired: dict[str, Any],
