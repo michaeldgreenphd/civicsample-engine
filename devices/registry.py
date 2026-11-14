@@ -193,13 +193,14 @@ def locate_identifier(study: dict[str, Any], submission_number: str, window: int
     """Every place the EXACT submission number stands in a returned record: the registry field
     path and the verbatim text around it.
 
-    Exact means the whole number as a token: not preceded by a letter or digit, not followed by a
-    digit. For a PMA supplement the base number must be followed by its supplement ("P140011/S008",
+    Exact means the whole number as a token: not preceded by a letter or digit, and the whole number
+    (with its supplement, when one is cited) not followed by a letter or digit, so "K990001ABC" and
+    "P140011/S0089" are not "K990001" and "P140011/S008". For a PMA supplement the base number must be followed by its supplement ("P140011/S008",
     "P140011 S008", "P140011S008"); a record citing only the original PMA is reported with
     `supplement_cited: false` and is not a citation of the supplement.
     """
     base, _, supp = submission_number.partition('/')
-    pattern = re.compile(r'(?<![A-Za-z0-9])' + re.escape(base) + r'(?![0-9])(?:\s*/?\s*(S\d{3}))?')
+    pattern = re.compile(r'(?<![A-Za-z0-9])' + re.escape(base) + r'(?:\s*/?\s*(S\d{3}))?(?![A-Za-z0-9])')
     found = []
     for path, text in _walk(study):
         for m in pattern.finditer(text):

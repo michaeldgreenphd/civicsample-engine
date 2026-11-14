@@ -606,6 +606,9 @@ def test_nct_validation_states(acquired: dict[str, Any]) -> None:
     ('cleared under 510(k) (K990001), see K9900012 and XK990001', 'K990001', 1, None),
     ('approved as P990007/S002', 'P990007/S002', 1, True), ('approved as P990007 S002', 'P990007/S002', 1, True),
     ('approved as P990007', 'P990007/S002', 1, False), ('approved as P990007/S005', 'P990007/S002', 1, False),
+    # a longer identifier that begins with the number is not the number
+    ('model K990001ABC and K990001', 'K990001', 1, None),
+    ('approved as P990007/S0029 and as P990007/S002', 'P990007/S002', 2, False),
 ])
 def test_a_submission_number_must_stand_exactly_in_a_named_field(text: str, number: str, n: int, supplement: Any) -> None:
     found = registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}}, number)
@@ -1214,7 +1217,7 @@ def test_a_documentary_statement_must_come_from_the_submissions_own_document(tmp
     F.write_curated(curated, documentary_statements=[
         ['DEN990005', 'NCT99000002', 'fda_document', other['document_id'], '1', 'any words', 'related_validation_study',
          '2026-11-13', 'the document id belongs to another submission']])
-    with pytest.raises(ValueError, match=f"is a document of {other['submission_number']}, not of DEN990005"):
+    with pytest.raises(ValueError, match=rf"is a document of {other['submission_number']} \(this_submission\), not of DEN990005 itself"):
         F.build_family(tmp_path, acquired, curated)
 
 
@@ -1313,4 +1316,31 @@ def test_a_registry_statement_must_quote_the_study_it_names(tmp_path: Path, acqu
         ['DEN990005', 'NCT99000001', 'registry_record', 'NCT99000002', 'protocolSection.identificationModule.briefTitle',
          title, 'related_validation_study', '2026-11-13', 'the record cited is another study']])
     with pytest.raises(ValueError, match=r'the registry record cited \(NCT99000002\) is not the statement.s study \(NCT99000001\)'):
+        F.build_family(tmp_path, acquired, curated)
+
+
+def test_a_longer_identifier_that_begins_with_the_number_is_not_located() -> None:
+    def where(text: str, number: str) -> list[Any]:
+        return registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}}, number)
+    assert where('model K990001ABC', 'K990001') == []
+    assert where('model K9900012', 'K990001') == []
+    # a supplement number with a fourth digit is not the supplement; the base still stands, uncited
+    assert [f['supplement_cited'] for f in where('approved as P990007/S0029', 'P990007/S002')] == [False]
+    assert [f['supplement_cited'] for f in where('approved as P990007/S002.', 'P990007/S002')] == [True]
+
+
+def test_a_documentary_statement_may_not_cite_a_parent_pma_document(tmp_path: Path, acquired: dict[str, Any]) -> None:
+    """A document of the original PMA, filed under the supplement it was planned for, supports
+    family-level evidence only; a statement about the supplement cannot cite it."""
+    docs = documents.build(acquired['manifest'].lines, {sn: s['pathway'] for sn, s in acquired['subs'].items()},
+                           acquired['cache'], pdftext.extraction_version())
+    parents = [d for d in docs if d.get('scope') == 'parent_submission']
+    if not parents:
+        pytest.skip('the fixture plans no parent PMA document')
+    parent = parents[0]
+    curated = tmp_path / 'curated'
+    F.write_curated(curated, documentary_statements=[
+        [parent['submission_number'], 'NCT99000002', 'fda_document', parent['document_id'], '1', 'any words',
+         'related_validation_study', '2026-11-13', 'cites the original approval document']])
+    with pytest.raises(ValueError, match=r'\(parent_submission\), not of .* itself'):
         F.build_family(tmp_path, acquired, curated)
