@@ -1739,6 +1739,50 @@ def test_the_build_stamps_records_from_the_latest_answered_version(tmp_path: Pat
     assert stamped == {good['body']['apiVersion']}
 
 
+
+def test_each_registry_record_carries_the_version_stamp_of_its_own_snapshot(tmp_path: Path, acquired: dict[str, Any]) -> None:
+    """Acquisition resumed after the registry's daily refresh: records keep the stamp current
+    when they were fetched, and the run as a whole names the latest."""
+    a = copy.deepcopy(acquired)
+    records, _ = a['frozen']['registry']
+    good = next(r for k, r in records.items() if k.startswith('ctgov/version/'))
+    later = {'apiVersion': '9.9.9', 'dataTimestamp': '2099-01-01T00:00:00'}
+    records['ctgov/version/2099-01-01'] = {**good, 'key': 'ctgov/version/2099-01-01',
+                                           'fetched_at': '2099-01-01T00:00:00+00:00', 'body': later}
+    family = F.build_family(tmp_path, a)
+    stamped = {(x['source_version'].get('registry_api_version'), x['source_version'].get('registry_data_timestamp'))
+               for x in family['links.json']['links'] if x['evidence']['source_kind'] == 'registry_record'}
+    assert stamped == {(good['body']['apiVersion'], good['body']['dataTimestamp'])}
+    assert family['run.json']['sources']['registry']['registry_api_version'] == '9.9.9'
+
+
+@pytest.mark.parametrize('results', [[{}], [{'k_number': ''}], [{'k_number': 'K990001'}, {'device_name': 'x'}], ['K990001']])
+def test_an_openfda_answer_with_an_entry_without_its_number_is_no_answer(tmp_path: Path, results: list[Any]) -> None:
+    assert not acquire.openfda_answer({'results': results})
+    log = acquire.ResponseLog(tmp_path / 'openfda.jsonl')
+    acquire.fetch_openfda(['K990001'], log, lambda u, p: (200, {}, json.dumps({'results': results}).encode(), None),
+                          F.no_wait())
+    key = acquire.openfda_requests(['K990001'])[0]['key']
+    assert log.get(key)['status'] == acquire.UNUSABLE_200 and log.settled(key) is None
+    assert acquire.openfda_answer({'results': [{'k_number': 'K990001'}, {'pma_number': 'P990007'}]})
+
+
+def test_a_retrieved_document_whose_stored_file_is_damaged_is_fetched_again(tmp_path: Path) -> None:
+    manifest, store = acquire.Manifest(tmp_path / 'manifest.jsonl'), tmp_path / 'store'
+    plan = [{'document_id': acquire.document_id('K990001', f'{F.DOCS}/pdf99/K990001.pdf'), 'submission_number': 'K990001',
+             'url': f'{F.DOCS}/pdf99/K990001.pdf', 'official_label': None, 'discovery': 'url_pattern', 'scope': 'this_submission'}]
+    calls: list[str] = []
+    assert acquire.fetch_documents(plan, manifest, store, F.stub_get(calls), F.no_wait())['retrieved'] == 1
+    line = manifest.latest()[plan[0]['document_id']]
+    stored = store / f"{line['sha256']}.pdf"
+    assert acquire.fetch_documents(plan, manifest, store, F.stub_get(calls), F.no_wait())['already_settled'] == 1
+    for damage in (lambda: stored.write_bytes(stored.read_bytes()[:-1]), stored.unlink):
+        damage()
+        assert acquire.fetch_documents(plan, manifest, store, F.stub_get(calls), F.no_wait())['retrieved'] == 1
+        assert acquire.store_problem(store, line['sha256'], line['bytes']) is None
+    assert len(calls) == 3
+
+
 @pytest.mark.parametrize('body', [b'', b'<html>proxy error</html>', b'{"studies": [', b'null'])
 def test_a_200_without_a_usable_body_is_no_answer_and_is_asked_again(tmp_path: Path, body: bytes) -> None:
     """An empty, cut-off, non-JSON or null body under HTTP 200 is logged, not settled, and reads as

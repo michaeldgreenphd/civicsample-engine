@@ -407,19 +407,10 @@ def read_text(cache: Path, digest: str, version: str) -> dict[str, Any] | None:
 
 
 def store_problem(cache: Path, digest: str, size: int | None) -> str | None:
-    """Why the bytes recorded for a retrieved document are not held as recorded, or None: the
-    content-addressed file must exist, have the recorded size and hash to its name."""
-    import hashlib
-    path = cache / 'documents' / 'store' / f'{digest}.pdf'
-    if not path.is_file():
-        return 'not in the document store'
-    if size is not None and path.stat().st_size != size:
-        return f'held with {path.stat().st_size} bytes, {size} recorded'
-    h = hashlib.sha256()
-    with path.open('rb') as f:
-        for chunk in iter(lambda: f.read(1 << 20), b''):
-            h.update(chunk)
-    return None if h.hexdigest() == digest else 'the bytes held do not hash to the recorded digest'
+    """Why the bytes recorded for a retrieved document are not held as recorded, or None
+    (acquire.store_problem, on this cache's document store)."""
+    from devices import acquire
+    return acquire.store_problem(cache / 'documents' / 'store', digest, size)
 
 
 def build(manifest_lines: list[dict[str, Any]], pathway_of: dict[str, str], cache: Path,

@@ -136,9 +136,23 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
     # were checked for shape) would publish no provenance on every record.
     versions = sorted((r for k, r in registry.items() if k.startswith('ctgov/version/') and r.get('status') == 200
                        and R.version_answer(r.get('body'))), key=lambda r: r['fetched_at'])
-    api = (versions[-1].get('body') or {}) if versions else {}
-    registry_version = {'registry': 'ClinicalTrials.gov', 'registry_api_version': api.get('apiVersion'),
-                        'registry_data_timestamp': api.get('dataTimestamp')}
+
+    def stamp(fetched_at: str | None) -> dict[str, Any]:
+        """The registry's version stamp for a record fetched at `fetched_at`: the latest version
+        answer fetched at or before it (the snapshot current when the record was asked for); the
+        earliest when none came before; the latest for the run as a whole (fetched_at None). An
+        acquisition resumed across the registry's daily refresh holds records of more than one
+        snapshot, and each is stamped with its own."""
+        chosen = versions[-1] if versions and fetched_at is None else None
+        for v in versions if fetched_at is not None else []:
+            if v['fetched_at'] <= fetched_at:
+                chosen = v
+        if chosen is None and versions:
+            chosen = versions[0]
+        api = (chosen or {}).get('body') or {}
+        return {'registry': 'ClinicalTrials.gov', 'registry_api_version': api.get('apiVersion'),
+                'registry_data_timestamp': api.get('dataTimestamp')}
+    registry_version = stamp(None)
 
     # ---- evidence records
     links: list[dict[str, Any]] = []
@@ -159,7 +173,8 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
             rec = registry.get(f"ctgov/study/{ident['identifier']}")
             remember(ident['identifier'], facts, state, (rec or {}).get('fetched_at'))
             link = L.from_document_citation(d, ident, state, facts, subs[d['submission_number']]['decision_date'],
-                                            {**registry_version, 'registry_retrieved_at': (rec or {}).get('fetched_at')})
+                                            {**stamp((rec or {}).get('fetched_at')),
+                                             'registry_retrieved_at': (rec or {}).get('fetched_at')})
             link['evidence']['other_pages'] = sorted({i['page'] for i in d['identifiers'] if i['kind'] == 'nct'
                                                       and i['identifier'] == ident['identifier']} - {ident['page']})
             links.append(link)
@@ -168,7 +183,7 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
     for sn, result in number_results.items():
         for hit in result['hits']:
             remember(hit['nct_id'], hit['study'], 'resolves', hit.get('retrieved_at'))
-            links += L.from_registry_citation(sn, hit, subs[sn]['decision_date'], registry_version)
+            links += L.from_registry_citation(sn, hit, subs[sn]['decision_date'], stamp(hit.get('retrieved_at')))
     # route: name and organisation (family level)
     name_search: dict[str, dict[str, Any]] = {}
     for fid, f in fams.items():
@@ -180,8 +195,8 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
         decisions = {m['submission_number']: m['decision_date'] for m in members}
         for m in found['matches']:
             remember(m['study']['nct_id'], m['study'], 'resolves', m['study'].get('retrieved_at'))
-            links.append(L.from_name_match(f, m['study'], m['name'], m['organisation'], decisions, registry_version,
-                                           m['flags'], m['common_word']))
+            links.append(L.from_name_match(f, m['study'], m['name'], m['organisation'], decisions,
+                                           stamp(m['study'].get('retrieved_at')), m['flags'], m['common_word']))
     # route: documentary statements entered by a person
     doc_by_id = {d['document_id']: d for d in docs}
     for row in statements:
@@ -219,7 +234,7 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
             # items); a path that does not resolve gives no text, so the quote reads not validated.
             owned = rec is not None and rec.get('status') == 200 and own == row['nct_id']
             text = registry_field_text(rec['body'], row['page_or_field'].strip()) if owned else None
-            version = {**registry_version, 'retrieved_at': (rec or {}).get('fetched_at')}
+            version = {**stamp((rec or {}).get('fetched_at')), 'retrieved_at': (rec or {}).get('fetched_at')}
         state, facts = R.nct_state(registry, row['nct_id'])
         remember(row['nct_id'], facts, state, None)
         links.append(L.from_statement(row, text, version or {'unavailable': 'source not held'}, facts,

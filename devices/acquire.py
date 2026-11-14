@@ -269,9 +269,12 @@ def logged_json(log: ResponseLog, get: Get, throttle: Throttle, key: str, url: s
 # ---------------------------------------------------------------- openFDA metadata
 
 def _strip_openfda(body: Any) -> Any:
-    for r in (body or {}).get('results') or []:
-        for k in OPENFDA_DROPPED:
-            (r.get('openfda') or {}).pop(k, None)
+    """Drop the fields not kept; an entry of another shape is left for openfda_answer to refuse."""
+    results = body.get('results') if isinstance(body, dict) else None
+    for r in results if isinstance(results, list) else []:
+        if isinstance(r, dict) and isinstance(r.get('openfda'), dict):
+            for k in OPENFDA_DROPPED:
+                r['openfda'].pop(k, None)
     return body
 
 
@@ -298,9 +301,14 @@ def openfda_requests(submission_numbers: list[str]) -> list[dict[str, Any]]:
 
 
 def openfda_answer(body: Any) -> bool:
-    """A 200 from openFDA answers only with a list of results; no match is a 404, so a 200 without
-    the list (an error envelope) is no answer about any number it covers."""
-    return isinstance(body, dict) and isinstance(body.get('results'), list)
+    """A 200 from openFDA answers only with a list of results, each carrying its submission number
+    (k_number on the 510(k) endpoint, pma_number on the PMA one); no match is a 404, so a 200
+    without the list, or with an entry no number can be read from, is no answer about any number
+    it covers."""
+    if not (isinstance(body, dict) and isinstance(body.get('results'), list)):
+        return False
+    return all(isinstance(r, dict) and any(isinstance(r.get(f), str) and r[f].strip() for f in ('k_number', 'pma_number'))
+               for r in body['results'])
 
 
 def fetch_openfda(submission_numbers: list[str], log: ResponseLog, get: Get, throttle: Throttle) -> dict[str, int]:
@@ -568,6 +576,21 @@ class Manifest:
         self.lines.append(line)
 
 
+def store_problem(store: Path, digest: str, size: int | None) -> str | None:
+    """Why the bytes recorded for a retrieved document are not held as recorded in `store`, or
+    None: the content-addressed file must exist, have the recorded size and hash to its name."""
+    path = store / f'{digest}.pdf'
+    if not path.is_file():
+        return 'not in the document store'
+    if size is not None and path.stat().st_size != size:
+        return f'held with {path.stat().st_size} bytes, {size} recorded'
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+    return None if h.hexdigest() == digest else 'the bytes held do not hash to the recorded digest'
+
+
 def settled(line: dict[str, Any] | None) -> bool:
     """True when a document need not be requested again: its bytes are held under a recorded
     hash, the host answered that it has no such file, or the file is over the size limit.
@@ -633,9 +656,13 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
     counts['already_settled'] = 0
     held = store_bytes(store) if store_budget_bytes is not None else 0
     for item in plan:
-        if settled(latest.get(item['document_id'])):
+        line = latest.get(item['document_id'])
+        if settled(line) and not (line['outcome'] == 'retrieved'
+                                  and store_problem(store, line['sha256'], line.get('bytes'))):
             counts['already_settled'] += 1
             continue
+        # A "retrieved" document whose stored file is missing or damaged is fetched again, so a
+        # store the build refuses can be repaired by rerunning acquisition.
         if store_budget_bytes is not None and held >= store_budget_bytes:
             if (latest.get(item['document_id']) or {}).get('outcome') != 'skipped_disk_budget':
                 manifest.append({**item, 'origin': 'fda_fetch', 'retrieved_at': now(), 'retrieved_at_precision': 'second',
@@ -664,7 +691,8 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
         else:
             digest = sha256(body)
             target = store / f'{digest}.pdf'
-            if not target.exists():
+            if store_problem(store, digest, len(body)):
+                # Absent, or held damaged (truncated, replaced): the fetched bytes are written.
                 write_atomic(target, body)
                 # Only bytes newly stored count against the budget: the store is addressed by
                 # content, so a second address serving the same file adds nothing to it.
