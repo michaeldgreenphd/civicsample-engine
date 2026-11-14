@@ -1963,3 +1963,77 @@ def test_an_original_pma_is_not_located_in_a_supplement_number() -> None:
     assert where('approved as P990007/S002') == []
     assert where('approved as P990007 S002') == []
     assert [f['supplement_cited'] for f in where('approved as P990007.')] == [None]
+
+
+def _blank_pdf() -> bytes:
+    import io
+
+    import pypdf
+    writer = pypdf.PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def test_an_extraction_records_the_sha256_of_the_bytes_it_parsed(tmp_path: Path) -> None:
+    pdf = tmp_path / 'a.pdf'
+    pdf.write_bytes(_blank_pdf())
+    out = pdftext.extract(pdf)
+    assert out['source_sha256'] == acquire.sha256(pdf.read_bytes()) and out['n_pages'] == 1
+    gone = pdftext.extract(tmp_path / 'missing.pdf')
+    assert (gone['status'], gone['source_sha256']) == ('failed', None)
+
+
+def _held_document(tmp_path: Path, pdf: bytes) -> tuple[dict[str, Any], str]:
+    digest = acquire.sha256(pdf)
+    store = tmp_path / 'documents' / 'store'
+    store.mkdir(parents=True, exist_ok=True)
+    (store / f'{digest}.pdf').write_bytes(pdf)
+    line = {'document_id': 'doc:K990001:x', 'submission_number': 'K990001', 'url': f'{F.DOCS}/pdf99/K990001.pdf',
+            'official_label': 'Summary', 'discovery': 'fda_database_page', 'scope': 'this_submission', 'origin': 'fda_fetch',
+            'retrieved_at': 't', 'http_status': 200, 'bytes': len(pdf), 'sha256': digest, 'outcome': 'retrieved', 'attempts': 1}
+    return line, digest
+
+
+@pytest.mark.parametrize('bound_to', ['this', None, 'another'])
+def test_text_not_recorded_as_parsed_from_the_documents_bytes_is_not_used(tmp_path: Path, bound_to: str | None) -> None:
+    line, digest = _held_document(tmp_path, b'%PDF-1.4 a summary')
+    F.write_text(tmp_path, digest, ['510(k) Summary. The study NCT99000001 enrolled 40 patients at 3 sites.'])
+    path = build_device_links.text_path(tmp_path, digest, pdftext.extraction_version())
+    body = json.loads(gzip.decompress(path.read_bytes()))
+    if bound_to is None:
+        body.pop('source_sha256')
+    elif bound_to == 'another':
+        body['source_sha256'] = acquire.sha256(b'another file')
+    path.write_bytes(gzip.compress(json.dumps(body).encode(), mtime=0))
+    doc = documents.build([line], {'K990001': '510k'}, tmp_path, pdftext.extraction_version())[0]
+    if bound_to == 'this':
+        assert doc['text']['status'] == 'text' and [i['identifier'] for i in doc['identifiers']] == ['NCT99000001']
+    else:
+        assert doc['text']['status'] == 'not_extracted' and doc['identifiers'] == []
+        assert 'does not record that it parsed these bytes' in doc['text']['error']
+
+
+def test_the_text_stage_skips_a_damaged_file_and_redoes_text_not_bound_to_its_bytes(tmp_path: Path) -> None:
+    import argparse
+    pdf = _blank_pdf()
+    line, digest = _held_document(tmp_path, pdf)
+    acquire.Manifest(tmp_path / 'documents' / 'manifest.jsonl').append(line)
+    stored = tmp_path / 'documents' / 'store' / f'{digest}.pdf'
+    target = build_device_links.text_path(tmp_path, digest, pdftext.extraction_version())
+    args = argparse.Namespace(cache=tmp_path, workers=1)
+
+    def cached() -> dict[str, Any]:
+        return json.loads(gzip.decompress(target.read_bytes()))
+    stored.write_bytes(pdf[:-5])                    # damaged: nothing is extracted or cached
+    build_device_links.stage_text(args, {})
+    assert not target.exists()
+    stored.write_bytes(pdf)                         # repaired: extracted from these bytes
+    build_device_links.stage_text(args, {})
+    assert cached()['source_sha256'] == digest and cached()['n_pages'] == 1
+    stale = {**cached(), 'n_pages': 99}
+    stale.pop('source_sha256')                      # made before extractions recorded their bytes
+    target.write_bytes(gzip.compress(json.dumps(stale).encode(), mtime=0))
+    build_device_links.stage_text(args, {})
+    assert cached()['source_sha256'] == digest and cached()['n_pages'] == 1

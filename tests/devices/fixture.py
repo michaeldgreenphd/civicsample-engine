@@ -223,7 +223,8 @@ def write_text(cache: Path, digest: str, pages: list[str]) -> None:
     version = pdftext.extraction_version()
     with_text = sum(1 for p in pages if len(re.findall(r'[A-Za-z0-9]', p)) >= pdftext.MIN_ALNUM_PER_PAGE)
     body = {'extraction_version': version, 'status': pdftext.status_of(pages), 'n_pages': len(pages),
-            'n_pages_with_text': with_text, 'pages': pages, 'page_errors': {}, 'error': None}
+            'n_pages_with_text': with_text, 'pages': pages, 'page_errors': {}, 'error': None,
+            'source_sha256': digest}
     path = cache / 'text' / f'{digest}.{version}.json.gz'
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(gzip.compress(json.dumps(body).encode(), mtime=0))

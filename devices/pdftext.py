@@ -8,6 +8,8 @@ once per extractor version and a changed extractor never silently reuses old tex
 from __future__ import annotations
 
 import gzip
+import hashlib
+import io
 import json
 import re
 import sys
@@ -38,12 +40,19 @@ def status_of(pages: list[str]) -> str:
 
 def extract(pdf: Path) -> dict[str, Any]:
     """Text of every page, in order. A page that raises is recorded as empty with its error; a
-    file that cannot be opened is status 'failed' with the reason. Nothing is guessed."""
+    file that cannot be opened is status 'failed' with the reason. Nothing is guessed.
+
+    `source_sha256` is the sha256 of the bytes parsed, read once and parsed from memory, so the
+    text is bound to exactly those bytes: the cache is keyed by a digest, and a stored file that
+    was missing, damaged or replaced when it was read must not leave text under another digest."""
     out: dict[str, Any] = {'extraction_version': extraction_version(), 'status': 'failed', 'n_pages': None,
-                           'n_pages_with_text': None, 'pages': [], 'page_errors': {}, 'error': None}
+                           'n_pages_with_text': None, 'pages': [], 'page_errors': {}, 'error': None,
+                           'source_sha256': None}
     try:
         import pypdf
-        reader = pypdf.PdfReader(str(pdf))
+        raw = pdf.read_bytes()
+        out['source_sha256'] = hashlib.sha256(raw).hexdigest()
+        reader = pypdf.PdfReader(io.BytesIO(raw))
         if reader.is_encrypted:
             reader.decrypt('')
         pages: list[str] = []

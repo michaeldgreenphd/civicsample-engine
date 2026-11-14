@@ -107,34 +107,62 @@ def stage_documents(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -
     log(f'documents: {len(plan)} planned; {out}')
 
 
+def text_bound_to(path: Path, digest: str) -> bool:
+    """True when a cached extraction exists and records that it parsed the bytes named `digest`."""
+    if not path.exists():
+        return False
+    try:
+        return json.loads(gzip.decompress(path.read_bytes())).get('source_sha256') == digest
+    except (OSError, ValueError):
+        return False
+
+
 def stage_text(args: argparse.Namespace, subs: dict[str, dict[str, Any]]) -> None:
+    """Extract text from each retrieved document version not yet extracted from its own bytes.
+    The stored file is checked against its digest first and skipped if it is missing or damaged
+    (the documents stage repairs it). A cached extraction that does not record parsing exactly
+    those bytes, including one made before extractions recorded it, is made again."""
     manifest = acquire.Manifest(args.cache / 'documents' / 'manifest.jsonl')
+    store = args.cache / 'documents' / 'store'
     version = pdftext.extraction_version()
-    digests = sorted({line['sha256'] for line in manifest.latest().values() if line['outcome'] == 'retrieved'})
-    todo = [d for d in digests if not text_path(args.cache, d, version).exists()]
+    size_of = {line['sha256']: line.get('bytes') for line in manifest.latest().values() if line['outcome'] == 'retrieved'}
+    digests = sorted(size_of)
+    todo = [d for d in digests if not text_bound_to(text_path(args.cache, d, version), d)]
     log(f'text: {len(digests)} document versions, {len(todo)} to extract with {version}')
+    skipped: list[str] = []
 
     def one(digest: str) -> str:
         target = text_path(args.cache, digest, version)
+        problem = acquire.store_problem(store, digest, size_of[digest])
+        if problem:
+            skipped.append(f'{digest[:12]}…: {problem}')
+            return digest
         # Isolated mode (-I): the PDF is untrusted input, and the worker imports nothing local.
-        cmd = [sys.executable, '-I', str(ROOT / 'devices' / 'pdftext.py'),
-               str(args.cache / 'documents' / 'store' / f'{digest}.pdf'), str(target)]
+        cmd = [sys.executable, '-I', str(ROOT / 'devices' / 'pdftext.py'), str(store / f'{digest}.pdf'), str(target)]
         try:
             proc = subprocess.run(cmd, capture_output=True, timeout=TEXT_TIMEOUT_SECONDS)
             failure = None if proc.returncode == 0 and target.exists() else f'exit {proc.returncode}'
         except subprocess.TimeoutExpired:
             failure = f'timeout after {TEXT_TIMEOUT_SECONDS} s'
         if failure:
-            # The failure is itself cached, as a failed extraction with its reason.
+            # The failure is itself cached, as a failed extraction with its reason; the bytes were
+            # checked against the digest just before the worker started.
             pdftext_failure = {'extraction_version': version, 'status': 'failed', 'n_pages': None,
-                               'n_pages_with_text': None, 'pages': [], 'page_errors': {}, 'error': failure}
+                               'n_pages_with_text': None, 'pages': [], 'page_errors': {}, 'error': failure,
+                               'source_sha256': digest}
             acquire.write_atomic(target, gzip.compress(json.dumps(pdftext_failure).encode(), mtime=0))
+        elif not text_bound_to(target, digest):
+            # The file changed between the check and the read: keep nothing; a later run tries again.
+            target.unlink()
+            skipped.append(f'{digest[:12]}…: the bytes parsed do not hash to the digest')
         return digest
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         for i, _ in enumerate(pool.map(one, todo), start=1):
             if i % 100 == 0:
                 log(f'text: {i} of {len(todo)} extracted')
-    log('text: done')
+    for line in skipped:
+        log(f'text: not extracted, {line}')
+    log(f'text: done; {len(skipped)} not extracted because the stored file is not held as recorded')
 
 
 def registry_log(args: argparse.Namespace) -> acquire.ResponseLog:

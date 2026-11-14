@@ -464,9 +464,15 @@ def build(manifest_lines: list[dict[str, Any]], pathway_of: dict[str, str], cach
                 not_held.append(f"{did} ({cur['sha256'][:12]}…): {store_checked[cur['sha256']]}")
             by_digest.setdefault(cur['sha256'], []).append(did)
             text = read_text(cache, cur['sha256'], extraction_version)
-            if text is None:
+            unbound = text is not None and text.get('source_sha256') != cur['sha256']
+            if text is None or unbound:
+                # Text is used only when the extraction records that it parsed exactly these bytes;
+                # one made from a missing, damaged or replaced file, or before extractions recorded
+                # what they parsed, is not this document's text.
                 doc['text'] = {'status': 'not_extracted', 'extraction_version': extraction_version, 'n_pages': None,
-                               'n_pages_with_text': None, 'error': 'no cached extraction for this version'}
+                               'n_pages_with_text': None,
+                               'error': ('the cached extraction does not record that it parsed these bytes' if unbound
+                                         else 'no cached extraction for this version')}
                 doc['demographic_summary_reason'] = 'text not extracted yet'
             else:
                 # Garbled pages are blanked before anything reads them: they count as pages without
