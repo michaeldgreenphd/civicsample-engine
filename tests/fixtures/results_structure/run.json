@@ -74,7 +74,7 @@
  },
  "reviews": {
   "file": "fictional review rows",
-  "sha256": "f59da4d0240c11b7db077e446454d0807b83728606554c37efe63e56237144d3",
+  "sha256": "d55e7ecabd508c5fb4326876ea091904176320e0e39c024609a69b1d228bead7",
   "n_rows": 2
  },
  "n_records": 7,
@@ -130,10 +130,10 @@
   "Participant flow counts are for the first period only.",
   "The registry record is read as retrieved on the stated date; registry records change."
  ],
- "run_id": "results-structure-2026-11-14-700cdfda9b",
+ "run_id": "results-structure-2026-11-14-1bf5f21f72",
  "generated_at": "2026-11-14T12:00:00+00:00",
  "files": {
-  "records.json": "b0ebe3634e4fd81fa6e621731f17c454c79784e9728d33163d19bc5563514f50",
-  "summary.json": "21204c3fad326852a7d9fbd6b585d9451c9db463feb60aa51f3df79bdf69a317"
+  "records.json": "948c1be00a30ceb36a854ca884260b522974bb729ff53d846a0083d044b44fd8",
+  "summary.json": "28da0bcabd5fcfc5c3de7e40bd834fc0f4002d0d08c96cac87b4fa04e081dbb6"
  }
 }

@@ -654,10 +654,61 @@ def age_token(t: str) -> str | None:
     return None
 
 
+def _level_matches(titles: list[str], dims: tuple[str, ...]) -> dict[str, tuple[list[str], ...]]:
+    """Every sibling title that carries a level, for each dimension the level rule fires on (the
+    conditions are in level_dimensions). Titles are in the order given; sex is two lists (female
+    titles, male titles), every other dimension one. Whether a dimension fires, and which titles
+    belong to it, depend on the set of titles only, never on their order."""
+    titles = list(dict.fromkeys(t.strip() for t in titles if t and t.strip()))
+    out: dict[str, tuple[list[str], ...]] = {}
+    if len(titles) < 2:
+        return out
+    if 'sex' in dims:
+        f = [t for t in titles if FEMALE.search(t) and not MALE.search(t)]
+        m = [t for t in titles if MALE.search(t) and not FEMALE.search(t)]
+        if f and m:
+            out['sex'] = (f, m)
+    if 'race' in dims:
+        tok = {t: race_tokens(t) for t in titles}
+        distinct = set().union(*tok.values()) if tok else set()
+        carriers = [t for t in titles if tok[t]]
+        if len(distinct) >= 2 and len(carriers) >= 2:
+            out['race'] = (carriers,)
+    if 'ethnicity' in dims:
+        h = [t for t in titles if HISPANIC.search(t)]
+        if h:
+            out['ethnicity'] = (h,)
+    if 'origin' in dims:
+        o = [t for t in titles if ORIGIN.search(t) or NON_ORIGIN.search(t)]
+        toks = {'non' if NON_ORIGIN.search(t) else ORIGIN.search(t).group(0).lower() for t in o}
+        if len(o) >= 2 and len(toks) >= 2:
+            out['origin'] = (o,)
+    if 'age' in dims:
+        atok = {t: age_token(t) for t in titles}
+        carriers = [t for t in titles if atok[t]]
+        if len({atok[t] for t in carriers}) >= 2:
+            out['age'] = (carriers,)
+    return out
+
+
+# How many matching titles a level signal displays, per list (the audit's display cut).
+_LEVEL_SHOWN = {'sex': 2, 'race': 4, 'ethnicity': 3, 'origin': 4, 'age': 4}
+
+
+def level_identity(titles: list[str],
+                   dims: tuple[str, ...] = ('sex', 'race', 'ethnicity', 'origin', 'age')) -> dict[str, list[str]]:
+    """{rule dimension: every title carrying one of its levels, sorted}. This is what a level signal's
+    id is taken from. Sibling rows are an unordered set to the rule, so the registry listing them in
+    another order must not change the id; and the displayed titles (level_dimensions) are the first
+    few in posted order, which a reordering would change."""
+    return {d: sorted(t for g in groups for t in g) for d, groups in _level_matches(titles, dims).items()}
+
+
 def level_dimensions(titles: list[str],
                      dims: tuple[str, ...] = ('sex', 'race', 'ethnicity', 'origin', 'age')) -> dict[str, list[str]]:
     """Level rule: the dimensions for which sibling titles of ONE measure show two or more levels.
-    Returns {rule dimension: the titles that matched}.
+    Returns {rule dimension: the titles that matched}, in posted order, cut to the first two female
+    and two male titles for sex, the first three for ethnicity and the first four otherwise.
 
       sex        one title matches FEMALE and not MALE, and another MALE and not FEMALE
       race       two titles carry race tokens and at least two different tokens appear
@@ -665,36 +716,7 @@ def level_dimensions(titles: list[str],
       origin     two titles match ORIGIN / NON_ORIGIN with at least two different tokens
       age        two titles carry different age tokens
     Titles are trimmed and de-duplicated first; fewer than two distinct titles fire nothing."""
-    titles = list(dict.fromkeys(t.strip() for t in titles if t and t.strip()))
-    out: dict[str, list[str]] = {}
-    if len(titles) < 2:
-        return out
-    if 'sex' in dims:
-        f = [t for t in titles if FEMALE.search(t) and not MALE.search(t)]
-        m = [t for t in titles if MALE.search(t) and not FEMALE.search(t)]
-        if f and m:
-            out['sex'] = f[:2] + m[:2]
-    if 'race' in dims:
-        tok = {t: race_tokens(t) for t in titles}
-        distinct = set().union(*tok.values()) if tok else set()
-        carriers = [t for t in titles if tok[t]]
-        if len(distinct) >= 2 and len(carriers) >= 2:
-            out['race'] = carriers[:4]
-    if 'ethnicity' in dims:
-        h = [t for t in titles if HISPANIC.search(t)]
-        if h:
-            out['ethnicity'] = h[:3]
-    if 'origin' in dims:
-        o = [t for t in titles if ORIGIN.search(t) or NON_ORIGIN.search(t)]
-        toks = {'non' if NON_ORIGIN.search(t) else ORIGIN.search(t).group(0).lower() for t in o}
-        if len(o) >= 2 and len(toks) >= 2:
-            out['origin'] = o[:4]
-    if 'age' in dims:
-        atok = {t: age_token(t) for t in titles}
-        carriers = [t for t in titles if atok[t]]
-        if len({atok[t] for t in carriers}) >= 2:
-            out['age'] = carriers[:4]
-    return out
+    return {d: [t for g in groups for t in g[:_LEVEL_SHOWN[d]]] for d, groups in _level_matches(titles, dims).items()}
 
 
 def cue(text: Any) -> tuple[str, str, str] | None:
@@ -722,9 +744,10 @@ def detect_measure(m: dict[str, Any]) -> list[dict[str, Any]]:
     """Every SG2 signal of one outcome measure, in the audit's order.
 
     Each signal carries the audit's three keys (`field`, `dimension`, `text`, where `text` is the
-    audit's display string with its truncation) and two this port adds without changing what
-    fires: `matched` (the matched titles or substring, verbatim and untruncated) and `path` (the
-    field's path inside the measure). The port check compares the first three with the audit.
+    audit's display string with its truncation) and three this port adds without changing what
+    fires: `matched` (the matched titles or substring, verbatim and untruncated), `path` (the
+    field's path inside the measure) and, on level signals only, `ident` (the titles the signal's
+    id is taken from, sorted so their posted order does not matter; see level_identity). The port check compares the first three with the audit.
 
     Level rules run on the set of class titles, the set of category titles and the set of group
     titles; then on group descriptions (sex and age only) for dimensions the group titles did not
@@ -742,16 +765,18 @@ def detect_measure(m: dict[str, Any]) -> list[dict[str, Any]]:
     for field, titles, path in (('class_titles', class_titles, 'classes[].title'),
                                 ('category_titles', cat_titles, 'classes[].categories[].title'),
                                 ('group_titles', gt, 'groups[].title')):
+        ident = level_identity(titles)
         for dim, hits in level_dimensions(titles).items():
             sig.append({'field': field, 'dimension': dim, 'text': ' | '.join(h[:70] for h in hits),
-                        'matched': hits, 'path': path})
+                        'matched': hits, 'path': path, 'ident': ident[dim]})
     group_level = {s['dimension'] for s in sig if s['field'] == 'group_titles'}
     gd = [g.get('description') or '' for g in groups]
+    gd_ident = level_identity(gd, dims=('sex', 'age'))
     for dim, hits in level_dimensions(gd, dims=('sex', 'age')).items():
         if dim not in group_level:
             sig.append({'field': 'group_descriptions', 'dimension': dim,
                         'text': ' | '.join(h[:110] for h in hits[:2]), 'matched': hits[:2],
-                        'path': 'groups[].description'})
+                        'path': 'groups[].description', 'ident': gd_ident[dim]})
     lvl_dims = {s['dimension'] for s in sig if s['field'] in ('group_titles', 'group_descriptions')}
     if lvl_dims:
         by_id = {g['id']: (g.get('title') or '') + ' ' + (g.get('description') or '') for g in groups}
@@ -762,7 +787,9 @@ def detect_measure(m: dict[str, Any]) -> list[dict[str, Any]]:
             if len(ref) >= 2 and level_dimensions(ref, dims=tuple(lvl_dims)):
                 sig.append({'field': 'analysis_groupIds', 'dimension': '+'.join(sorted(lvl_dims)),
                             'text': 'analysis compares level-defined groups: ' + ' vs '.join(r[:40] for r in ref[:3]),
-                            'matched': [title_of.get(i, '') for i in ids], 'path': f'analyses[{j}].groupIds'})
+                            'matched': [title_of.get(i, '') for i in ids], 'path': f'analyses[{j}].groupIds',
+                            # the compared groups are a set: their titles, sorted
+                            'ident': sorted(title_of.get(i, '') for i in ids)})
                 break
     for field, key in (('measure_title', 'title'), ('measure_description', 'description'),
                        ('population_description', 'populationDescription')):
@@ -832,7 +859,11 @@ def subgroup_signals(nct_id: str, measures: list[dict[str, Any]]) -> list[dict[s
     One entry per signal and dimension, with the field path, the measure's index, type and title,
     the matched text verbatim, and for cue rules the surrounding context. `signal_id` identifies
     the signal for a human review row: a digest of the NCT id, measure type and title, field, rule
-    dimension, dimension, matched text and the text around the match. It does not include the
+    dimension, dimension and the signal's own words. For a cue those words are the matched text and
+    the text around it. For a level signal they are every sibling title carrying one of the
+    dimension's levels, sorted: sibling rows are an unordered set, so the registry listing them in
+    another order gives the same id, while renaming, adding or removing a level gives a new one.
+    The id does not include the
     measure index, the method version or anything else in the measure, so a review still attaches
     after measures are reordered, the rules are re-versioned, or the registrant changes a unit or
     a value elsewhere in the measure, as long as the words the review was about are unchanged.
@@ -849,8 +880,9 @@ def subgroup_signals(nct_id: str, measures: list[dict[str, Any]]) -> list[dict[s
         for s in detect_measure(m):
             matched = [t[:_MAX_MATCHED] for t in s['matched']]
             for dim in signal_dimensions(s['dimension'], s['matched']):
-                key = json.dumps([nct_id, m.get('type'), m.get('title'), s['field'], s['dimension'], dim, s['matched'],
-                                  s['text']], ensure_ascii=False)
+                words = [s['ident']] if 'ident' in s else [s['matched'], s['text']]
+                key = json.dumps([nct_id, m.get('type'), m.get('title'), s['field'], s['dimension'], dim, *words],
+                                 ensure_ascii=False)
                 seen[key] += 1
                 digest = hashlib.sha256(f'{key}#{seen[key]}'.encode()).hexdigest()[:12]
                 entry = {'signal_id': f'sg-{digest}', 'dimension': dim, 'rule_dimension': s['dimension'],

@@ -568,3 +568,27 @@ def test_the_review_loader_refuses_another_header_such_as_the_audit_label_table(
 def test_the_same_signal_may_be_reviewed_for_two_dimensions_without_conflict(tmp_path: Path) -> None:
     rows = [GOOD.replace(',sex,', ',other,'), GOOD.replace(',sex,', ',race,').replace('accepted', 'rejected')]
     assert len(reviews_from(tmp_path, rows)['NCT99000001']) == 2
+
+
+def test_a_level_signal_keeps_its_id_when_the_registry_reorders_the_sibling_rows() -> None:
+    """Sibling class titles are an unordered set to the level rule. Their posted order, and which of
+    them the display cut keeps, must not move the id a human review is keyed on."""
+    def ids(titles: tuple[str, ...]) -> dict[str, str]:
+        signals = RS.subgroup_signals('NCT99000001', [F.measure('Fictional responder rate', 'SECONDARY', class_titles=titles)])
+        return {s['dimension']: s['signal_id'] for s in signals if s['field'] == 'class_titles'}
+    race = ('White', 'Black or African American', 'Asian')
+    assert ids(race) == ids(tuple(reversed(race))) and set(ids(race)) == {'race'}
+    # three female rows and one male: the display keeps the first two female titles, the id keeps all
+    sex = ('Female, premenopausal', 'Female, postmenopausal', 'Female, status unknown', 'Male')
+    shown = [s['matched_text'] for s in RS.subgroup_signals('NCT99000001', [F.measure(class_titles=sex)]) if s['dimension'] == 'sex']
+    assert shown == [['Female, premenopausal', 'Female, postmenopausal', 'Male']]
+    assert ids(sex) == ids((sex[3], sex[2], sex[0], sex[1]))
+    # the level set itself changing is a different signal: a renamed, added or removed level
+    assert ids(race)['race'] != ids(('White', 'Black', 'Asian'))['race']
+    assert ids(race)['race'] != ids(race + ('American Indian or Alaska Native',))['race']
+    assert ids(race)['race'] != ids(race[:2])['race']
+    # a sibling row that carries no level is not part of the signal
+    assert ids(race)['race'] == ids(race + ('Total',))['race']
+    # the function the ids are taken from, directly
+    assert RS.level_identity(list(reversed(race))) == {'race': sorted(race)}
+    assert RS.level_dimensions(list(race)) == {'race': list(race)}

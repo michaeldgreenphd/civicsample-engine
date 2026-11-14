@@ -218,7 +218,25 @@ def test_the_archive_is_byte_stable_and_refuses_changed_bytes(tmp_path: Path) ->
     a.write_bytes(gzip.compress(gzip.decompress(a.read_bytes()).replace(b'zorbatinib', b'zorbatinob'), mtime=0))
     with pytest.raises(B.BuildError, match='do not match the recorded sha256'):
         B.read_archive_meta(a)
-    (tmp_path / 'b.jsonl.gz.meta.json').unlink()
+    # The metadata's list of requested ids decides the frame of an archive-only build, so it is
+    # checked against its own digest and count: an edited or left-over metadata file is refused.
+    meta_path = tmp_path / 'b.jsonl.gz.meta.json'
+    good = json.loads(meta_path.read_text())
+    assert B.read_archive_meta(b)['requested_ids'] == sorted(F.REQUESTED)
+    for change, message in (
+            (lambda m: m['requested_ids'].append('NCT99009999'), 'do not match their recorded sha256'),
+            (lambda m: m['requested_ids'].pop(), 'do not match their recorded sha256'),
+            (lambda m: m.update(requested_ids_sha256='0' * 64), 'do not match their recorded sha256'),
+            (lambda m: m.update(n_requested=6), 'number of requested ids does not match'),
+            (lambda m: m['requested_ids'].append(m['requested_ids'][0]), 'each once'),
+            (lambda m: m.update(requested_ids=['not an id']), 'each once'),
+            (lambda m: m.pop('requested_ids'), 'each once')):
+        edited = copy.deepcopy(good)
+        change(edited)
+        meta_path.write_text(json.dumps(edited))
+        with pytest.raises(B.BuildError, match=message):
+            B.read_archive_meta(b)
+    meta_path.unlink()
     with pytest.raises(B.BuildError, match='no metadata file'):
         B.read_archive_meta(b)
 

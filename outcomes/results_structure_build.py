@@ -221,6 +221,17 @@ def read_archive_meta(path: Path) -> dict[str, Any]:
         raise BuildError(f'{path.name}: bytes do not match the recorded sha256')
     if n != meta.get('n_records'):
         raise BuildError(f'{path.name}: record count does not match the metadata')
+    # The list of ids the archive was fetched for decides the frame of an archive-only build and
+    # which trials read "not retrieved", so it is checked against its own recorded digest and count
+    # the same way the bytes are. A metadata file edited or left over from another fetch is refused.
+    ids = meta.get('requested_ids')
+    if not isinstance(ids, list) or not all(isinstance(i, str) and NCT.match(i) for i in ids) \
+            or len(set(ids)) != len(ids):
+        raise BuildError(f'{path.name}: the metadata does not list the requested NCT ids, each once')
+    if sha256('\n'.join(sorted(ids)).encode()) != meta.get('requested_ids_sha256'):
+        raise BuildError(f'{path.name}: the requested ids do not match their recorded sha256')
+    if len(ids) != meta.get('n_requested'):
+        raise BuildError(f'{path.name}: the number of requested ids does not match the metadata')
     return meta
 
 
