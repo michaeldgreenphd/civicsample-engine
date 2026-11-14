@@ -321,22 +321,20 @@ def main(argv: list[str] | None = None) -> int:
         cohort = cohort[:args.limit]
     log(f'cohort: {len(cohort)} trials with one listed US facility')
 
-    reg_path = args.registry or args.cache / f'registry_{args.release_tag}.jsonl.gz'
-    if not reg_path.exists():
-        log('fetching registry text and locations...')
-        registry.write_archive(registry.fetch([r['nct_id'] for r in cohort]), reg_path, len(cohort))
-    studies, reg_meta = registry.read_archive(reg_path)
+    # A quick run on the first N trials keeps its own archives, and any cached archive is reused
+    # only if it was written for exactly the trials asked for now (registry.covers).
+    suffix = f'_limit{args.limit}' if args.limit else ''
+    ids = [r['nct_id'] for r in cohort]
+    reg_path = args.registry or args.cache / f'registry_{args.release_tag}{suffix}.jsonl.gz'
+    studies, reg_meta = registry.cached_or_fetched(reg_path, ids, may_fetch=args.registry is None, log=log)
 
     # Race tables titled with ethnicity: the registry's own table shows whether an ethnicity row
     # stood among the race rows, which the release cannot (trials.category_structure).
     titled = [r['nct_id'] for r in cohort if (r.get('race') or {}).get('reported')
               and trials.race_table_titled_with_ethnicity(r)]
-    base_path = args.cache / f'registry_baseline_{args.release_tag}.jsonl.gz'
-    if titled and not base_path.exists():
-        log(f'fetching posted baseline tables for {len(titled)} race tables titled with ethnicity...')
-        registry.write_archive(registry.fetch(titled, fields=registry.BASELINE_FIELDS), base_path, len(titled),
-                               fields=registry.BASELINE_FIELDS)
-    baseline, base_meta = (registry.read_archive(base_path, fields=registry.BASELINE_FIELDS) if titled else ({}, None))
+    base_path = args.cache / f'registry_baseline_{args.release_tag}{suffix}.jsonl.gz'
+    baseline, base_meta = (registry.cached_or_fetched(base_path, titled, registry.BASELINE_FIELDS, log=log)
+                           if titled else ({}, None))
     ethnicity_rows = {n: registry.ethnicity_rows_in_race_tables(baseline.get(n)) for n in titled}
 
     by_zip = collections.Counter((r['study_sites'][0].get('zip') or '').strip()[:5] for r in cohort)

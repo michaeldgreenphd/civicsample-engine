@@ -43,6 +43,8 @@ Two later checks change no output of this run and it was not rebuilt for them: a
 facility at a different place in today's registration than in the release (0 of 30,761), and
 a place field present in one record and missing from the other (0 of 30,761).
 
+A commit after this run (registry archives are reused only when written for the same trials) changes no output: both of this run's registry archives hold every trial asked for and are accepted as they stand.
+
 `check_against_api.txt` was rerun against this build.
 
 ## What this record does not establish

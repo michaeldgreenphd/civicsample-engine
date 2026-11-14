@@ -47,7 +47,13 @@ def _nct(study: dict[str, Any]) -> str:
     return ((study.get('protocolSection') or {}).get('identificationModule') or {}).get('nctId') or ''
 
 
-def write_archive(studies: list[dict[str, Any]], path: Path, requested: int, fields: str = FIELDS) -> dict[str, Any]:
+def ids_digest(ids: list[str]) -> str:
+    """One value naming exactly which trials were asked for, whatever their order."""
+    return hashlib.sha256('\n'.join(sorted(set(ids))).encode()).hexdigest()
+
+
+def write_archive(studies: list[dict[str, Any]], path: Path, requested: int, fields: str = FIELDS,
+                  requested_ids: list[str] | None = None) -> dict[str, Any]:
     raw = b''.join(json.dumps(s, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode() + b'\n'
                    for s in sorted(studies, key=_nct))
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,6 +61,8 @@ def write_archive(studies: list[dict[str, Any]], path: Path, requested: int, fie
     meta = {'source': 'clinicaltrials.gov API v2', 'fields': fields, 'n_requested': requested,
             'n_records': len(studies), 'sha256_uncompressed': hashlib.sha256(raw).hexdigest(),
             'retrieved_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'archive': path.name}
+    if requested_ids is not None:       # lets a later build tell whether this archive answers its own request
+        meta['requested_ids_sha256'] = ids_digest(requested_ids)
     path.with_name(path.name + '.meta.json').write_text(json.dumps(meta, indent=1) + '\n')
     return meta
 
@@ -126,3 +134,39 @@ def ethnicity_rows_in_race_tables(study: dict[str, Any] | None) -> list[dict[str
         if ethnic and len(ethnic) < len(rows):
             found += [{'measure_title': measure.get('title'), 'label': label, 'largest_count': n} for label, n in ethnic]
     return found
+
+
+def covers(studies: dict[str, dict[str, Any]], meta: dict[str, Any], ids: list[str]) -> bool:
+    """Whether a cached archive answers a request for exactly these trials.
+
+    An archive written for a different request must not be reused: a quick run on the first N
+    trials leaves an archive that a full run would otherwise read as "the registry returned
+    nothing" for every other trial. Where the archive records what was asked for, that must
+    equal this request. An archive written before that was recorded is accepted only if it
+    holds every trial asked for; a missing trial there could mean "not asked", so it is not
+    accepted."""
+    recorded = meta.get('requested_ids_sha256')
+    if recorded is not None:
+        return recorded == ids_digest(ids)
+    return all(i in studies for i in ids)
+
+
+def cached_or_fetched(path: Path, ids: list[str], fields: str = FIELDS, *, may_fetch: bool = True,
+                      log: Any = None) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """The archive at `path` if it covers `ids`; otherwise a fresh fetch written over it.
+
+    With may_fetch False (an archive the caller named explicitly), an archive that does not
+    cover the request is an error, never a silent refetch over the caller's file."""
+    if path.exists():
+        studies, meta = read_archive(path, fields)
+        if covers(studies, meta, ids):
+            return studies, meta
+        if not may_fetch:
+            raise ValueError(f'{path.name} was not written for this set of {len(ids)} trials; '
+                             'name an archive that covers them or let the build fetch one')
+        if log:
+            log(f'{path.name} was written for a different set of trials; fetching again')
+    elif not may_fetch:
+        raise FileNotFoundError(path)
+    write_archive(fetch(ids, fields=fields), path, len(ids), fields, requested_ids=ids)
+    return read_archive(path, fields)

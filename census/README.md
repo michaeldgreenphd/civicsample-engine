@@ -150,7 +150,10 @@ python -m pytest tests/census -q
 
 `CENSUS_API_KEY` must be in the environment. It is read only by `acs.py`, removed from every
 recorded URL, and never written to an artifact. Downloads are cached under `build/census_cache/`
-(gitignored); nothing is written to `--out` unless the whole build succeeds.
+(gitignored); nothing is written to `--out` unless the whole build succeeds. A cached registry archive
+is reused only if it was written for exactly the trials the build now asks for; otherwise it is
+fetched again. A `--limit` run keeps its own archives, so a quick check cannot leave a partial
+archive for a full run to read.
 
 ## Not done here
 

@@ -408,3 +408,40 @@ def test_an_ethnicity_table_with_one_category_and_unknowns_gets_no_known_categor
     assert 'classified_share_usable' not in both
     # one row and nobody unknown: the table classified everyone, so B is the same as A
     assert 'classified_share_usable' not in trials.category_structure(rec(['hispanic_latino'], 0), 'ethnicity', 2)
+
+
+# --- a cached registry archive must answer the request it is reused for ---------------------------
+
+def _study(nct: str) -> dict:
+    return {'protocolSection': {'identificationModule': {'nctId': nct}}}
+
+
+def test_an_archive_from_a_smaller_run_is_not_reused_for_a_full_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_fetch(ids: list[str], delay: float = 0.25, fields: str = registry.FIELDS) -> list[dict]:
+        calls.append(list(ids))
+        return [_study(i) for i in ids]
+
+    monkeypatch.setattr(registry, 'fetch', fake_fetch)
+    path = tmp_path / 'registry_x.jsonl.gz'
+    first, _ = registry.cached_or_fetched(path, ['NCT1', 'NCT2'])
+    assert set(first) == {'NCT1', 'NCT2'} and len(calls) == 1
+    again, _ = registry.cached_or_fetched(path, ['NCT2', 'NCT1'])               # the same request, any order
+    assert set(again) == {'NCT1', 'NCT2'} and len(calls) == 1
+    full, meta = registry.cached_or_fetched(path, ['NCT1', 'NCT2', 'NCT3'])     # a wider request: fetched again
+    assert set(full) == {'NCT1', 'NCT2', 'NCT3'} and len(calls) == 2
+    assert meta['requested_ids_sha256'] == registry.ids_digest(['NCT3', 'NCT1', 'NCT2'])
+    # an archive the caller named is never overwritten: a mismatch is an error
+    with pytest.raises(ValueError, match='not written for this set'):
+        registry.cached_or_fetched(path, ['NCT1'], may_fetch=False)
+    assert len(calls) == 2
+
+
+def test_an_older_archive_without_a_request_record_is_reused_only_if_it_holds_every_trial(tmp_path: Path) -> None:
+    path = tmp_path / 'registry_old.jsonl.gz'
+    registry.write_archive([_study('NCT1'), _study('NCT2')], path, 2)           # written before the record existed
+    studies, meta = registry.read_archive(path)
+    assert 'requested_ids_sha256' not in meta
+    assert registry.covers(studies, meta, ['NCT1', 'NCT2']) is True
+    assert registry.covers(studies, meta, ['NCT1', 'NCT2', 'NCT3']) is False    # NCT3: not asked, or not returned?
