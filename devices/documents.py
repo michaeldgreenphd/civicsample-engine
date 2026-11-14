@@ -242,8 +242,10 @@ def demographic_summary_candidate(doc_type: str, text_status: str | None, scope:
 # NCT + eight digits, tolerating what a text layer or a typist puts between: single spaces between
 # the letters ("N C T", letter-spaced text), a space, hyphen, number sign, colon or dot after them,
 # and single spaces or line breaks inside the digits. The letters must not follow a letter or
-# digit, so a word that merely ends in "nct" before a number is not read as an identifier.
-_NCT = re.compile(r'(?<![A-Za-z0-9])N\s?C\s?T[\s\-#:.]{0,3}((?:\d\s?){8})(?!\d)', re.I)
+# digit, so a word that merely ends in "nct" before a number is not read as an identifier, and the
+# eighth digit must not be followed by a letter or digit, so a longer token that begins with an
+# NCT id ("NCT01234567ABC") is not read as that id.
+_NCT = re.compile(r'(?<![A-Za-z0-9])N\s?C\s?T[\s\-#:.]{0,3}((?:\d\s?){7}\d)(?![A-Za-z0-9])', re.I)
 _OTHER_IDS: dict[str, re.Pattern[str]] = {
     'isrctn': re.compile(r'\bISRCTN\s?\d{8}\b'),
     'eudract': re.compile(r'\b20\d{2}-\d{6}-\d{2}\b'),

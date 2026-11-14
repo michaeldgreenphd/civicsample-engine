@@ -352,6 +352,8 @@ def test_a_granting_letter_is_never_a_demographic_summary_and_a_parent_document_
     ('registered as NCT01234567.', ['NCT01234567']), ('(ClinicalTrials.gov NCT 01234567)', ['NCT01234567']),
     ('NCT#0123\n4567 and nct-07654321', ['NCT01234567', 'NCT07654321']), ('N C T 0 1 2 3 4 5 6 7', ['NCT01234567']),
     ('NCT012345678', []), ('NCT0123456', []), ('distinct 12345678', []), ('XNCT01234567', []),
+    # a longer token that begins with an NCT id is not that id; a space or punctuation still ends it
+    ('NCT01234567ABC', []), ('NCT01234567x', []), ('NCT01234567 and', ['NCT01234567']), ('(NCT01234567)', ['NCT01234567']),
 ])
 def test_nct_pattern(text: str, expected: list[str]) -> None:
     found = documents.scan_identifiers([text])
@@ -608,6 +610,8 @@ def test_nct_validation_states(acquired: dict[str, Any]) -> None:
     ('approved as P990007', 'P990007/S002', 1, False), ('approved as P990007/S005', 'P990007/S002', 1, False),
     # a longer identifier that begins with the number is not the number
     ('model K990001ABC and K990001', 'K990001', 1, None),
+    # an original PMA is cited only by its number standing alone
+    ('approved as P990007/S002 and as P990007', 'P990007', 1, None),
     ('approved as P990007/S0029 and as P990007/S002', 'P990007/S002', 2, False),
 ])
 def test_a_submission_number_must_stand_exactly_in_a_named_field(text: str, number: str, n: int, supplement: Any) -> None:
@@ -1344,3 +1348,11 @@ def test_a_documentary_statement_may_not_cite_a_parent_pma_document(tmp_path: Pa
          'related_validation_study', '2026-11-13', 'cites the original approval document']])
     with pytest.raises(ValueError, match=r'\(parent_submission\), not of .* itself'):
         F.build_family(tmp_path, acquired, curated)
+
+
+def test_an_original_pma_is_not_located_in_a_supplement_number() -> None:
+    def where(text: str) -> list[Any]:
+        return registry.locate_identifier({'protocolSection': {'descriptionModule': {'briefSummary': text}}}, 'P990007')
+    assert where('approved as P990007/S002') == []
+    assert where('approved as P990007 S002') == []
+    assert [f['supplement_cited'] for f in where('approved as P990007.')] == [None]
