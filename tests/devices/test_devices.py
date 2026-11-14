@@ -21,7 +21,14 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import fixture as F  # noqa: E402
+# Loaded by path under its own name: tests/outcomes has a fixture.py too, and in one pytest run
+# a plain `import fixture` gives whichever directory was imported first to both packages.
+import importlib.util  # noqa: E402
+
+_spec = importlib.util.spec_from_file_location('devices_fixture', Path(__file__).resolve().parent / 'fixture.py')
+F = sys.modules.setdefault('devices_fixture', importlib.util.module_from_spec(_spec))
+if not hasattr(F, 'ROWS'):
+    _spec.loader.exec_module(F)
 from devices import (acquire, artifacts, contract, coverage, demographics, documents, inventory, links,  # noqa: E402
                      organizations, pdftext, registry)
 

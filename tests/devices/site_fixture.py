@@ -33,7 +33,13 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import export_device_links_site as site  # noqa: E402
-import fixture as F  # noqa: E402
+# The fictional records, loaded by path under their own name (tests/outcomes has a fixture.py too).
+import importlib.util  # noqa: E402
+
+_spec = importlib.util.spec_from_file_location('devices_fixture', Path(__file__).resolve().parent / 'fixture.py')
+F = sys.modules.setdefault('devices_fixture', importlib.util.module_from_spec(_spec))
+if not hasattr(F, 'ROWS'):
+    _spec.loader.exec_module(F)
 from devices import acquire, artifacts, contract  # noqa: E402
 
 REVIEW_NOTE = 'Fictional review: the summary names this study as the clinical study of the device.'
