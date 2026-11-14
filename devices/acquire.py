@@ -674,6 +674,15 @@ def store_bytes(store: Path) -> int:
     return sum(p.stat().st_size for p in store.glob('*.pdf')) if store.exists() else 0
 
 
+def _budget_skip(item: dict[str, Any], budget: int | None) -> dict[str, Any]:
+    """The manifest line for a document not stored because the store reached its budget."""
+    return {**item, 'origin': 'fda_fetch', 'retrieved_at': now(), 'retrieved_at_precision': 'second',
+            'http_status': None, 'http_status_absent_reason': 'not_requested', 'bytes': None,
+            'sha256': None, 'content_type': None, 'last_modified': None, 'etag': None,
+            'attempts': 0, 'outcome': 'skipped_disk_budget',
+            'error': f'document store reached its budget of {budget} bytes'}
+
+
 def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path, get: Get, throttle: Throttle,
                     progress: Callable[[dict[str, Any]], None] | None = None,
                     store_budget_bytes: int | None = None) -> dict[str, int]:
@@ -684,7 +693,8 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
     With a `store_budget_bytes`, acquisition stops requesting once the store holds that much:
     every remaining document gets a `skipped_disk_budget` line (not settled, so a later run with
     room fetches it) and its submission's coverage reads search incomplete, with that reason.
-    The repair of a recorded document's missing or damaged file is never stopped by the budget.
+    The repair of a recorded document's missing or damaged file is not stopped by the budget; if the
+    source now serves other bytes, that is a new version, and the budget applies to it.
     """
     latest = manifest.latest()
     counts = {k: 0 for k in DOCUMENT_OUTCOMES}
@@ -700,14 +710,11 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
         # store the build refuses can be repaired by rerunning acquisition. A repair restores a file
         # the manifest already records, not growth of the store, so the budget does not stop it:
         # otherwise a store at its budget could never be repaired and the build would refuse it.
-        repair = bool(line) and line['outcome'] == 'retrieved'
-        if store_budget_bytes is not None and held >= store_budget_bytes and not repair:
+        recorded = line if line and line['outcome'] == 'retrieved' else None
+        full = store_budget_bytes is not None and held >= store_budget_bytes
+        if full and not recorded:
             if (latest.get(item['document_id']) or {}).get('outcome') != 'skipped_disk_budget':
-                manifest.append({**item, 'origin': 'fda_fetch', 'retrieved_at': now(), 'retrieved_at_precision': 'second',
-                                 'http_status': None, 'http_status_absent_reason': 'not_requested', 'bytes': None,
-                                 'sha256': None, 'content_type': None, 'last_modified': None, 'etag': None,
-                                 'attempts': 0, 'outcome': 'skipped_disk_budget',
-                                 'error': f'document store reached its budget of {store_budget_bytes} bytes'})
+                manifest.append(_budget_skip(item, store_budget_bytes))
             counts['skipped_disk_budget'] += 1
             continue
         (status, headers, body, error), attempts = polite_get(get, throttle, item['url'])
@@ -726,6 +733,15 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
             line['outcome'] = 'http_error'
         elif body[:5] != b'%PDF-':
             line['outcome'] = 'not_a_pdf'
+        elif full and recorded and sha256(body) != recorded['sha256']:
+            # The repair of a recorded file found the source serving other bytes: a new version,
+            # which is growth of the store, so the budget applies to it as to any new document.
+            skip = _budget_skip(item, store_budget_bytes)
+            skip.pop('http_status_absent_reason')
+            line = {**skip, 'http_status': status, 'attempts': attempts,
+                    'content_type': line['content_type'], 'last_modified': line['last_modified'], 'etag': line['etag'],
+                    'error': (f'the source now serves other bytes than the {recorded["sha256"][:12]}… recorded, a new '
+                              f'version, and the document store reached its budget of {store_budget_bytes} bytes')}
         else:
             digest = sha256(body)
             target = store / f'{digest}.pdf'

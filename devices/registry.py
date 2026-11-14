@@ -109,11 +109,20 @@ def search_answer(body: Any) -> bool:
 
 
 def study_answer(body: Any) -> bool:
-    """A 200 from /studies/{id} answers only with a study record that states its own id; an
-    error envelope or an object without the id is no answer, and is asked again."""
+    """A 200 from /studies/{id} answers only with a study record that states its own id and whose
+    fields study_facts() can read; an error envelope, an object without the id, or a record with a
+    malformed field the build reads (a list of collaborators holding null, say) is no answer, and
+    is asked again. Search answers check each study with this too."""
     nct = ((((body or {}).get('protocolSection') or {}).get('identificationModule') or {}).get('nctId')
-           if isinstance(body, dict) else None)
-    return isinstance(nct, str) and bool(NCT.match(nct))
+           if isinstance(body, dict) and isinstance(body.get('protocolSection'), dict)
+           and isinstance(body['protocolSection'].get('identificationModule'), dict) else None)
+    if not (isinstance(nct, str) and NCT.match(nct)):
+        return False
+    try:
+        study_facts(body)
+    except (AttributeError, TypeError):
+        return False
+    return True
 
 
 def fetch_studies(nct_ids: list[str], log: A.ResponseLog, get: A.Get, throttle: A.Throttle) -> dict[str, int]:

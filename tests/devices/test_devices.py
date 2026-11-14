@@ -2195,3 +2195,43 @@ def test_a_store_at_its_budget_still_repairs_a_damaged_recorded_file(tmp_path: P
     out = acquire.fetch_documents(plan, manifest, store, F.stub_get(calls), F.no_wait(), store_budget_bytes=len(good))
     assert (out['retrieved'], out['skipped_disk_budget'], len(calls)) == (1, 0, 1)
     assert stored.read_bytes() == good and acquire.store_problem(store, line['sha256'], line['bytes']) is None
+
+
+def test_a_repair_that_finds_a_new_version_is_held_to_the_budget(tmp_path: Path) -> None:
+    manifest, store = acquire.Manifest(tmp_path / 'manifest.jsonl'), tmp_path / 'store'
+    u = f'{F.DOCS}/pdf99/K990001.pdf'
+    plan = [{'document_id': acquire.document_id('K990001', u), 'submission_number': 'K990001', 'url': u,
+             'official_label': None, 'discovery': 'url_pattern', 'scope': 'this_submission'}]
+    acquire.fetch_documents(plan, manifest, store, F.stub_get(), F.no_wait())
+    line = manifest.latest()[plan[0]['document_id']]
+    stored = store / f"{line['sha256']}.pdf"
+    stored.write_bytes(b'X' * line['bytes'])          # damaged; the store is exactly at its budget
+    new = b'%PDF-1.4 a revised summary, other bytes'
+
+    def serves_new(url: str, params: Any) -> tuple[int, dict[str, Any], bytes, None]:
+        return 200, {}, new, None
+    out = acquire.fetch_documents(plan, manifest, store, serves_new, F.no_wait(), store_budget_bytes=line['bytes'])
+    assert (out['retrieved'], out['skipped_disk_budget']) == (0, 1)
+    assert not (store / f'{acquire.sha256(new)}.pdf').exists()
+    skipped = manifest.latest()[plan[0]['document_id']]
+    assert skipped['outcome'] == 'skipped_disk_budget' and skipped['http_status'] == 200 and 'new version' in skipped['error']
+    # with room, the new version is stored
+    out = acquire.fetch_documents(plan, manifest, store, serves_new, F.no_wait())
+    assert out['retrieved'] == 1 and (store / f'{acquire.sha256(new)}.pdf').exists()
+
+
+@pytest.mark.parametrize('module', [{'sponsorCollaboratorsModule': {'collaborators': [None]}},
+                                    {'sponsorCollaboratorsModule': {'leadSponsor': 'Acme'}},
+                                    {'armsInterventionsModule': {'interventions': ['a drug']}},
+                                    {'statusModule': {'startDateStruct': '2020-01'}}])
+def test_a_study_with_a_field_the_build_cannot_read_is_no_answer(module: dict[str, Any]) -> None:
+    study = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'}, **module}}
+    assert not registry.study_answer(study)
+    assert not registry.search_answer({'totalCount': 1, 'studies': [study]})
+    # the build reads such a frozen answer as incomplete rather than crashing on it
+    q = {'kind': 'name', 'string': 'Quanta', 'key': 'ctgov/name/x', 'params': {}}
+    records = {'ctgov/name/x': {'status': 200, 'body': {'totalCount': 1, 'studies': [study]}, 'fetched_at': 't'}}
+    assert registry.search_state(records, [q])['n_unusable'] == 1 and registry.studies_from(records, [q]) == {}
+    good = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'},
+                                'sponsorCollaboratorsModule': {'collaborators': [{'name': 'Acme'}]}}}
+    assert registry.study_answer(good)
