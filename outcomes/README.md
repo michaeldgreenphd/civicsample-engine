@@ -153,7 +153,10 @@ python scripts/build_results_structure.py --archive build/results_structure_cach
     --out ../clinical-trial-populations/data/results_structure
 ```
 
-Every id the archive was fetched for must then be in one list or the other, or the build stops.
+Every id the archive was fetched for must be in one list or the other, or the build stops. That holds
+without an exclude list too: an `--nct-list` that leaves out a fetched id is refused, so no fetched
+record leaves a build without a stated reason. An archive's file name carries a digest of the ids it was
+fetched for as well as of its bytes, so two fetches for different lists never share one.
 `run.json` (`scope`) and `summary.json` (`scope`) state the frame size, the number of trials
 included, and the number excluded with the reason; excluded records have no record in
 `records.json` and are in no count. A listed trial that the archive does not hold gets a

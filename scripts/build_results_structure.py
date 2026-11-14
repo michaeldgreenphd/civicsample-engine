@@ -76,10 +76,19 @@ def main(argv: list[str] | None = None) -> int:
                 ap.error('--fetch needs --nct-list')
             requested = B.read_nct_list(args.nct_list)
             lines, record = B.fetch(requested)
-            # Content-addressed: a later fetch never replaces the archive an earlier build recorded.
+            # Addressed by what was returned AND what was asked for: a later fetch never replaces
+            # the archive an earlier build recorded, and a fetch for other ids never borrows its
+            # metadata, even when both returned the same bytes (or both returned nothing).
             sha = hashlib.sha256(b''.join(lines[n] for n in sorted(lines))).hexdigest()
-            path = ROOT / 'build' / 'results_structure_cache' / f"records-{record['retrieved_at'][:10]}-{sha[:12]}.jsonl.gz"
-            meta = B.read_archive_meta(path) if path.exists() else B.write_archive(lines, path, record, requested)
+            asked = hashlib.sha256('\n'.join(sorted(requested)).encode()).hexdigest()
+            path = (ROOT / 'build' / 'results_structure_cache'
+                    / f"records-{record['retrieved_at'][:10]}-{sha[:12]}-{asked[:8]}.jsonl.gz")
+            if path.exists():
+                meta = B.read_archive_meta(path)
+                if meta.get('requested_ids_sha256') != asked:
+                    raise B.BuildError(f'{path.name} was written for a different list of ids; move it aside and fetch again')
+            else:
+                meta = B.write_archive(lines, path, record, requested)
             del lines
             print(f"fetched {meta['n_records']} of {meta['n_requested']} records in {meta['n_requests']} requests "
                   f"({meta['n_failed_requests']} failed) -> {path.relative_to(ROOT)}")

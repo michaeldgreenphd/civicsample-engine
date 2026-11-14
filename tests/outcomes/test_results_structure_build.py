@@ -397,3 +397,37 @@ def test_the_nct_list_reader_refuses_repeats_and_other_text(tmp_path: Path) -> N
     path.write_text('nct99000001\n')
     with pytest.raises(B.BuildError, match='not NCT ids'):
         B.read_nct_list(path)
+
+
+def test_a_frame_record_cannot_be_left_out_without_a_stated_reason() -> None:
+    # the archive was fetched for two ids, the build asks for one, and no exclude list says why
+    with pytest.raises(B.BuildError, match='not requested and no exclude list states why'):
+        B.build_scope(['NCT99000001', 'NCT99000002'], ['NCT99000001'])
+    whole = B.build_scope(['NCT99000001', 'NCT99000002'], ['NCT99000002', 'NCT99000001'])
+    assert whole['frame']['n'] == 2 and whole['included']['n'] == 2 and whole['excluded']['n'] == 0
+    # a requested id outside the frame is still allowed: it gets a not_yet_processed record
+    assert B.build_scope(['NCT99000001'], ['NCT99000001', 'NCT99000009'])['included']['n'] == 2
+    named = B.build_scope(['NCT99000001', 'NCT99000002'], ['NCT99000001'], ['NCT99000002'], 'outside the cohort')
+    assert named['excluded'] == {**named['excluded'], 'n': 1, 'reason': 'outside the cohort', 'nct_ids': ['NCT99000002']}
+
+
+def test_cli_fetches_for_different_id_lists_never_share_an_archive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # both fetches return nothing, so their bytes are identical; what was asked for still differs
+    monkeypatch.setattr(build_results_structure, 'ROOT', tmp_path)
+
+    def nothing(ids: list[str]) -> tuple[dict[str, bytes], dict[str, object]]:
+        return {}, {'source': 'fictional', 'retrieved_at': F.GENERATED_AT, 'retrieved_from': F.GENERATED_AT,
+                    'retrieved_to': F.GENERATED_AT, 'n_records': 0, 'n_requested': len(ids), 'n_requests': 1,
+                    'n_failed_requests': 1, 'not_retrieved': [{'nct_id': i, 'reason': 'request failed'} for i in ids]}
+
+    monkeypatch.setattr(B, 'fetch', nothing)
+    for name, wanted in (('a', ['NCT99000001']), ('b', ['NCT99000001', 'NCT99000002'])):
+        ids = tmp_path / f'{name}.txt'
+        ids.write_text('\n'.join(wanted) + '\n')
+        assert build_results_structure.main(['--fetch', '--nct-list', str(ids), '--out', str(tmp_path / name)]) == 0
+        run = json.loads((tmp_path / name / 'run.json').read_text())
+        assert run['parameters']['n_requested'] == len(wanted)
+        records = json.loads((tmp_path / name / 'records.json').read_text())['records']
+        assert sorted(records) == wanted and all(r['results_status'] == 'not_retrieved' for r in records.values())
+    metas = sorted((tmp_path / 'build' / 'results_structure_cache').glob('*.meta.json'))
+    assert len(metas) == 2 and sorted(json.loads(m.read_text())['n_requested'] for m in metas) == [1, 2]

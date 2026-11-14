@@ -333,6 +333,16 @@ def test_signal_ids_are_stable_distinct_and_do_not_depend_on_measure_order() -> 
     assert RS.subgroup_signals('NCT99000002', [a])[0]['signal_id'] != ids[0]
 
 
+def test_look_alike_signals_keep_their_ids_when_the_registry_reorders_the_measures() -> None:
+    # same type, same title, the same matched word in the same field, in two different sentences
+    a = F.measure('Response', description='Reported for the subgroup of participants who completed week 12.')
+    b = F.measure('Response', description='A subgroup with baseline scores above 20 was analysed separately.')
+    by_context = lambda *ms: {s['context']: s['signal_id'] for s in signals_of(*ms)}   # noqa: E731
+    first, swapped = by_context(a, b), by_context(b, a)
+    assert len(first) == 2 and len(set(first.values())) == 2
+    assert first == swapped, 'a review of one sentence must not move to the other when the order changes'
+
+
 def test_the_rule_reads_exactly_eighteen_fields_and_lists_what_it_does_not() -> None:
     assert len(RS.FIELDS_INSPECTED) == 18 and len(set(RS.FIELDS_INSPECTED)) == 18
     assert any('documentSection' in f for f in RS.FIELDS_NOT_INSPECTED)

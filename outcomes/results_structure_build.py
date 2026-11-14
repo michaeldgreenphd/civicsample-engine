@@ -248,8 +248,11 @@ def build_scope(frame: list[str], requested: list[str], excluded: list[str] | No
     both, an excluded id must be in the frame, and the reason must be stated; anything else raises,
     so no fetched record leaves the build without a recorded reason. A requested id that is not in
     the frame is allowed: it has no record in the archive, and build_records gives it a
-    not_yet_processed record with that reason. Without an exclude list nothing is excluded, and an
-    archive record outside the requested list is reported by build_records as unrequested."""
+    not_yet_processed record with that reason.
+
+    Without an exclude list nothing may be left out: a frame id that is not requested would have
+    no record and no stated reason while the scope said that nothing was excluded, so that
+    raises too. The build then covers the whole frame or names what it leaves out and why."""
     frame_set, want, out = set(frame), set(requested), sorted(excluded or [])
     if excluded is not None:
         if not (reason or '').strip():
@@ -263,6 +266,10 @@ def build_scope(frame: list[str], requested: list[str], excluded: list[str] | No
         left = frame_set - want - set(out)
         if left:
             raise BuildError(f'{len(left)} frame records are neither requested nor excluded: {sorted(left)[:5]}')
+    elif frame_set - want:
+        left = frame_set - want
+        raise BuildError(f'{len(left)} frame records are not requested and no exclude list states why: '
+                         f'{sorted(left)[:5]}; give --exclude-list and --exclude-reason')
     return {'frame': {'n': len(frame_set), 'definition': 'Registry records the archive was fetched for.'},
             'included': {'n': len(want), 'definition': 'Trials this build covers: the requested list, one record each in records.json.'},
             'excluded': {'n': len(out), 'reason': reason.strip() if out and reason else None, 'nct_ids': out,
