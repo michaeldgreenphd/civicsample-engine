@@ -24,11 +24,16 @@ Tests:
      (fictional study)
  12. NCT99000108 — The same people in a "Sex/Gender, Customized" and a
      "Sex: Female, Male" table (fictional study)
+ 13. NCT99000109 — A combined race and ethnicity classification, one row per
+     participant: Caucasian / African-American / Hispanic / Unknown
+     (fictional study, the table shape of NCT00416078)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
 (check_race_rows_in_sex_table), study 11 its ethnicity totals and flags
 (EXPECTED_ETHNICITY), and study 12 its sex totals and flags (EXPECTED_SEX).
+Studies 1, 2 and 13 assert the ethnicity rows the race block records without
+counting them (EXPECTED_SKIPPED_ETHNICITY).
 A mismatch stops the harness.
 """
 import json
@@ -431,6 +436,44 @@ MOCK_NCT99000108 = _make_study(
     total_participants=60,
 )
 
+# ---------- NCT99000109 (fictional): combined race and ethnicity classification ----------
+# 50 participants, each in exactly one row. The race rows hold 44; the 6 in
+# the Hispanic row are not counted as race and arrive as unknown_inferred.
+# The race block records that row, so the gap can be told from race the table
+# did not report.
+MOCK_NCT99000109 = _make_study(
+    "NCT99000109",
+    "NCT99000109 - Combined race and ethnicity classification (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("Caucasian", 30),
+                _make_category("African-American", 12),
+                _make_category("Hispanic", 6),
+                _make_category("Unknown", 2),
+            ])
+        ]),
+    ],
+    total_participants=50,
+)
+
+# Expected skipped_ethnicity_rows (label, count), the race block's non-zero
+# OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
+# race rows that cover everyone (nothing inferred); study 13 is one exclusive
+# classification (the Hispanic row's 6 are the inferred unknown). The rows
+# are recorded either way and enter no total.
+EXPECTED_SKIPPED_ETHNICITY = {
+    "NCT02766335": {"rows": [("Hispanic", 2), ("Not Hispanic or Latino", 72)],
+                    "omb": {"white": 40, "black_african_american": 25, "asian": 7, "unknown_not_reported": 2},
+                    "unknown_inferred": 0},
+    "NCT01221441": {"rows": [("Hispanic", 4), ("Not Hispanic or Latino", 98)],
+                    "omb": {"white": 82, "black_african_american": 16, "asian": 2, "unknown_not_reported": 2},
+                    "unknown_inferred": 0},
+    "NCT99000109": {"rows": [("Hispanic", 6)],
+                    "omb": {"white": 30, "black_african_american": 12, "unknown_not_reported": 8},
+                    "unknown_inferred": 6},
+}
+
 # Expected sex results for the legacy table-selection study.
 EXPECTED_SEX = {
     "NCT99000108": {"totals": {"female": 34, "male": 26, "unknown": 0},
@@ -470,6 +513,22 @@ def check_expected(nct_id: str, race: dict, breakdown: Optional[dict]) -> None:
     assert race["flags"] == expected["flags"], f"{nct_id} flags: {race['flags']}"
     assert counts == expected["breakdown"], f"{nct_id} raceBreakdown: {counts}"
     print(f"\n  {nct_id}: expected race block and raceBreakdown — OK")
+
+
+def check_skipped_ethnicity(nct_id: str, race: dict) -> None:
+    """Assert the ethnicity rows a race block records, and that they are in
+    none of its totals."""
+    expected = EXPECTED_SKIPPED_ETHNICITY[nct_id]
+    rows = [(r["original"], r["count"]) for r in race["skipped_ethnicity_rows"]]
+    nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+    assert rows == expected["rows"], f"{nct_id} skipped_ethnicity_rows: {rows}"
+    assert "ethnicity_rows_skipped" in race["flags"], f"{nct_id} flags: {race['flags']}"
+    assert nonzero == expected["omb"], f"{nct_id} omb_totals: {nonzero}"
+    assert race["unknown_inferred"] == expected["unknown_inferred"], \
+        f"{nct_id} unknown_inferred: {race['unknown_inferred']}"
+    assert not any(c["original"] in dict(rows) for c in race["raw_categories"]), \
+        f"{nct_id}: an ethnicity row is among the counted rows"
+    print(f"\n  {nct_id}: ethnicity rows recorded, not counted — OK")
 
 
 def check_race_rows_in_sex_table(race: dict, sex: dict) -> None:
@@ -514,6 +573,8 @@ def validate_study(study: dict, nct_id: str) -> None:
             print(f"      - \"{q['original']}\" (count={q['count']}, reason={q['reason']})")
     else:
         print(f"    quarantined_labels: []")
+    print(f"    skipped_ethnicity_rows: "
+          f"{json.dumps([[r['original'], r['count']] for r in race['skipped_ethnicity_rows']])}")
     print(f"    flags: {race['flags']}")
     if race.get("raw_categories"):
         print(f"    raw_categories ({len(race['raw_categories'])}):")
@@ -552,6 +613,8 @@ def validate_study(study: dict, nct_id: str) -> None:
 
     if nct_id in EXPECTED_RACE:
         check_expected(nct_id, race, breakdown)
+    if nct_id in EXPECTED_SKIPPED_ETHNICITY:
+        check_skipped_ethnicity(nct_id, race)
     if nct_id in EXPECTED_SEX:
         expected = EXPECTED_SEX[nct_id]
         assert sex["totals"] == expected["totals"], f"{nct_id} sex: {sex['totals']}"
@@ -580,6 +643,7 @@ def main() -> None:
         (MOCK_NCT99000106, "NCT99000106"),
         (MOCK_NCT99000107, "NCT99000107"),
         (MOCK_NCT99000108, "NCT99000108"),
+        (MOCK_NCT99000109, "NCT99000109"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

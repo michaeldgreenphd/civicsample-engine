@@ -508,6 +508,95 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
             results.append(mapping)
     return results
 
+# ── Ethnicity rows inside a race table ──────────────────────────────────────
+#
+# Some registrants post race and ethnicity as one classification in one table:
+# "Race/Ethnicity, Customized" with rows Caucasian / African-American /
+# Hispanic / Unknown, each participant in exactly one row (NCT00416078).
+# Others list ethnicity beside a complete race breakdown in the same table,
+# or post an ethnicity table under a race title.
+#
+# Method. A row whose label _is_ethnicity_only_label accepts ("Hispanic",
+# "Not Hispanic or Latino") is never counted as race: _map_plain_row returns
+# None for it and the ethnicity pipeline reads the same measure on its own.
+# Each such row of a table that is counted is recorded on the race block in
+# skipped_ethnicity_rows, in source order, as
+#   {"original":     the posted label, cleaned as every race label is
+#                    (clean_demographic_label); for a race-by-sex row the whole
+#                    posted label ("Hispanic/Latino- Male"), with "race_part"
+#                    and "sex" beside it as on a counted race-by-sex row,
+#    "count":        the row's count, read exactly as a counted row's is,
+#    "source_table": the title of the table the row was posted in,
+#    "flags":        "pct_to_count" when the count was converted from a
+#                    percentage, "race_by_sex" for a race-by-sex row}.
+# The block carries the flag "ethnicity_rows_skipped" exactly when at least
+# one recorded row has a count above zero.
+#
+# Why. Before this, the row left no trace on the race block: not in
+# raw_categories, quarantined_labels or flags. In a combined classification
+# the published White total is then non-Hispanic White only, and the Hispanic
+# participants appear only as unknown_inferred through denominator balancing,
+# which a reader could not tell from participants whose race the table did not
+# report. The title flag combined_race_ethnicity does not separate the two: it
+# is set from the word "ethnicity" in the title, also on tables whose rows are
+# race only.
+#
+# What it does not do. Nothing is reclassified: omb_totals, unknown_explicit,
+# unknown_inferred, raw_categories and the table selection are computed
+# exactly as before, and the recorded rows are in none of them. The record is
+# the posted rows, not a verdict on the table: whether the rows form one
+# exclusive classification (race rows short of the population by about the
+# recorded counts) or repeat people already in the race rows (race rows cover
+# everyone) is for the reader to work out from the counts.
+#
+# Scope. Only tables counted for the totals are recorded, as raw_categories
+# lists only their rows; a superseded table's rows (race_table_superseded) are
+# not. A sex/gender-titled table with an ethnicity-only row is not read as a
+# race table at all (_sex_titled_race_table), so it records nothing. The
+# record survives all-zero rejection, as quarantined_labels does, and so does
+# its flag: a race-titled table whose every row is ethnicity ("Hispanic or
+# Latino" / "Not Hispanic or Latino") ends as reported False with flags
+# ["all_zero_rejection", "ethnicity_rows_skipped"] and its rows listed, which
+# says why a posted "race" table produced no race counts.
+#
+# skipped_ethnicity_rows is present on every race block: [] means no counted
+# race table had such a row. A record extracted before the field existed has
+# no such key, which is "not looked at", not "none".
+#
+# Measured on the baseline modules of the 80,890 trials in the 2026-11-08
+# snapshot (CT.gov API v2, re-fetched 2026-11-14): 3,929 trials record at
+# least one row (5,624 rows) and 3,850 carry the flag. In 3,270 the block is
+# reported and the race rows fall short of the population (unknown_inferred
+# above zero), in 334 the race rows cover everyone, in 73 every recorded row
+# is zero, and 252 end in all-zero rejection. In 15 of the reported ones the
+# table's title does not mention ethnicity ("Race" with a "Hispanic" row), so
+# the title flag cannot find them. No other value of any race block differs
+# from the extraction without the field.
+#
+# A known limit of the label test, recorded here and not changed: it accepts
+# a label that joins a race word and an ethnicity word without a separator
+# ("Non-Hispanic White", "Black Non-Hispanic"), because it looks for a race
+# term only in fragments that hold no ethnicity keyword. Those rows were left
+# out of the race counts before this field existed and still are; they are
+# now listed as posted: 1,325 of the 5,624 rows, in 737 trials, name a race.
+# A reader must not take every recorded row for ethnicity alone.
+
+def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
+                           race_part: Optional[str] = None,
+                           sex: Optional[str] = None) -> Dict:
+    """The record of one ethnicity-only row left out of the race counts (block
+    comment above). The table title is added when the table is counted."""
+    row: Dict = {"original": clean_demographic_label(label), "count": count}
+    flags: List[str] = []
+    if race_part is not None:
+        row["race_part"] = race_part
+        row["sex"] = sex
+        flags.append("race_by_sex")
+    if pct_converted:
+        flags.append("pct_to_count")
+    row["flags"] = flags
+    return row
+
 # ── Race-by-sex tables ──────────────────────────────────────────────────────
 #
 # Some registrants post race crossed with sex in one table, one row per
@@ -678,8 +767,9 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
     """Read one baseline measure as a race table.
 
     Returns {"title", "index", "analyzed", "sex_titled", "race_by_sex",
-    "categories", "quarantined"}: the table's own Number Analyzed (or None),
-    the counted category records and the quarantined labels.
+    "categories", "quarantined", "skipped_ethnicity"}: the table's own Number
+    Analyzed (or None), the counted category records, the quarantined labels
+    and the ethnicity-only rows left out of the counts (_skipped_ethnicity_row).
     A race-titled measure always returns a table (plain rows unless it passes
     the race-by-sex test). A sex/gender-titled measure returns None unless
     every row maps to a race-specific category (see the block comment above).
@@ -691,13 +781,13 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
 
     categories: List[Dict] = []
     quarantined: List[Dict] = []
-    skipped = 0
+    skipped: List[Dict] = []
     race_by_sex = False
     if by_sex_rows:
         for (label, count), (race_part, sex) in zip(rows, splits):
             mapping = _map_plain_row(race_part, count, pct_converted)
             if mapping is None:
-                skipped += 1
+                skipped.append(_skipped_ethnicity_row(label, count, pct_converted, race_part, sex))
                 continue
             # Quarantine is decided on the race part, as for a plain row; the
             # record then carries the posted label so the source stays visible.
@@ -715,11 +805,11 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
     if not race_by_sex:
         # Plain table, or sex words that are not a race-by-sex crossing:
         # every row mapped whole, as before.
-        categories, quarantined, skipped = [], [], 0
+        categories, quarantined, skipped = [], [], []
         for label, count in rows:
             mapping = _map_plain_row(label, count, pct_converted)
             if mapping is None:
-                skipped += 1
+                skipped.append(_skipped_ethnicity_row(label, count, pct_converted))
                 continue
             if _should_quarantine(mapping):
                 quarantined.append(mapping)
@@ -746,6 +836,7 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         "race_by_sex": race_by_sex,
         "categories": categories,
         "quarantined": quarantined,
+        "skipped_ethnicity": skipped,
     }
 
 def _sex_titled_race_table(measure: dict, index: int, overall_group_id: Optional[str],
@@ -825,6 +916,9 @@ def extract_race_data(study: dict) -> Dict:
         - raw_categories: List of all extracted categories
         - joint_sex_counts: posted race-by-sex counts, or None (see the
           race-by-sex block comment above)
+        - skipped_ethnicity_rows: the ethnicity-only rows of the counted
+          tables, which are in none of the totals (see the block comment
+          "Ethnicity rows inside a race table")
         - flags: List of any issues
     """
     from src.utils import get_baseline_measures, get_overall_group_id, get_total_baseline_participants
@@ -856,6 +950,7 @@ def extract_race_data(study: dict) -> Dict:
         "raw_categories": [],
         "quarantined_labels": [],
         "joint_sex_counts": None,
+        "skipped_ethnicity_rows": [],
         "flags": []
     }
 
@@ -917,6 +1012,17 @@ def extract_race_data(study: dict) -> Dict:
             })
             result["flags"].append("quarantined_label")
 
+        # Ethnicity-only rows of this table: recorded, never counted (block
+        # comment "Ethnicity rows inside a race table").
+        for row in table["skipped_ethnicity"]:
+            result["skipped_ethnicity_rows"].append({
+                "original": row["original"],
+                "count": row["count"],
+                "source_table": table["title"],
+                **{k: row[k] for k in ("race_part", "sex") if k in row},
+                "flags": row["flags"],
+            })
+
         for cat in categories:
             result["raw_categories"].append(cat)
 
@@ -949,7 +1055,9 @@ def extract_race_data(study: dict) -> Dict:
     # routed to the ethnicity pipeline, so the race total will be less than
     # enrollment.  The remaining participants' race is genuinely unknown
     # (they were categorized by ethnicity only), so the difference should
-    # be added to unknown_not_reported.
+    # be added to unknown_not_reported.  The rows themselves are listed in
+    # skipped_ethnicity_rows, so a reader can tell this gap from participants
+    # the table did not classify at all; the balancing does not read them.
     # Only balance when at least some non-zero data was extracted — if every
     # count is zero, the study has no real data and all-zero rejection should
     # take precedence. joint_sex_counts is never balanced: it holds posted
@@ -978,6 +1086,13 @@ def extract_race_data(study: dict) -> Dict:
         result["subcategory_totals"] = {}
         result["joint_sex_counts"] = None
         result["flags"] = ["all_zero_rejection"]
+
+    # After all-zero rejection, so the flag and the rows it describes stay
+    # together on a rejected block too (quarantined_labels is kept there the
+    # same way). The flag means "a counted table posted participants in an
+    # ethnicity-only row"; rows of zero are recorded without it.
+    if any(row["count"] > 0 for row in result["skipped_ethnicity_rows"]):
+        result["flags"].append("ethnicity_rows_skipped")
 
     # Dedupe flags
     # sorted() so identical extractions serialize identically across runs
