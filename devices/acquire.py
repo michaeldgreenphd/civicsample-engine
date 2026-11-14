@@ -584,8 +584,10 @@ def fetch_documents(plan: list[dict[str, Any]], manifest: Manifest, store: Path,
             target = store / f'{digest}.pdf'
             if not target.exists():
                 write_atomic(target, body)
+                # Only bytes newly stored count against the budget: the store is addressed by
+                # content, so a second address serving the same file adds nothing to it.
+                held += len(body)
             line['outcome'], line['sha256'] = 'retrieved', digest
-            held += len(body)
         manifest.append(line)
         latest[item['document_id']] = line
         counts[line['outcome']] += 1

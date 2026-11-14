@@ -1185,3 +1185,49 @@ def test_the_code_digest_covers_every_producing_file(tmp_path: Path) -> None:
     assert before == build_device_links.source_digest(ROOT)
     (tmp_path / 'devices' / 'reviews.csv').write_bytes((tmp_path / 'devices' / 'reviews.csv').read_bytes() + b'\n')
     assert build_device_links.source_digest(tmp_path) != before
+
+
+def test_a_number_search_that_found_more_than_it_read_is_incomplete() -> None:
+    """One page of up to 100 records is read per number. A search reporting more records than the
+    page holds, or no count at all, cannot support a "no candidate" finding."""
+    number = registry.searchable_number('K990001')
+    batch_key = registry._key('ctgov/number_batch', registry._batch_params(registry.number_batches(['K990001'])[0]))
+    one_key = registry._key('ctgov/number', registry._single_params(number))
+    hit = {'protocolSection': {'identificationModule': {'nctId': 'NCT99000001'}}}
+    def result(body: dict[str, Any]) -> dict[str, Any]:
+        records = {batch_key: {'status': 200, 'body': {'totalCount': 1}, 'fetched_at': 't'},
+                   one_key: {'status': 200, 'body': body, 'fetched_at': 't'},
+                   'ctgov/study_full/NCT99000001': {'status': 200, 'body': hit, 'fetched_at': 't'}}
+        return registry.number_search_results(records, ['K990001'])['K990001']
+    assert result({'totalCount': 1, 'studies': [hit]})['state'] == 'completed'
+    more = result({'totalCount': 250, 'studies': [hit]})
+    assert more['state'] == 'incomplete' and 'found 250 records and the page read holds 1' in more['reason']
+    assert more['n_search_hits'] == 250 and more['hits'] == []
+    assert result({'studies': [hit]})['state'] == 'incomplete'
+
+
+def test_a_documentary_statement_must_come_from_the_submissions_own_document(tmp_path: Path, acquired: dict[str, Any]) -> None:
+    docs = documents.build(acquired['manifest'].lines, {sn: s['pathway'] for sn, s in acquired['subs'].items()},
+                           acquired['cache'], pdftext.extraction_version())
+    other = next(d for d in docs if d['submission_number'] != 'DEN990005' and d['sha256'])
+    curated = tmp_path / 'curated'
+    F.write_curated(curated, documentary_statements=[
+        ['DEN990005', 'NCT99000002', 'fda_document', other['document_id'], '1', 'any words', 'related_validation_study',
+         '2026-11-13', 'the document id belongs to another submission']])
+    with pytest.raises(ValueError, match=f"is a document of {other['submission_number']}, not of DEN990005"):
+        F.build_family(tmp_path, acquired, curated)
+
+
+def test_the_disk_budget_counts_a_file_once_when_two_addresses_serve_it(tmp_path: Path) -> None:
+    """Two planned addresses return the same bytes. The content-addressed store holds one file, and
+    the budget counts it once, so a third document still fits."""
+    body = b'%PDF-1.4 the same fictional file'
+    def get(url: str, params: dict[str, Any] | None = None) -> acquire.Response:
+        return (200, {'content-type': 'application/pdf'}, body, None)
+    plan = [{'document_id': acquire.document_id(n, f'{F.DOCS}/pdf99/{n}.pdf'), 'submission_number': n,
+             'url': f'{F.DOCS}/pdf99/{n}.pdf', 'official_label': 'Summary', 'discovery': 'fda_database_page',
+             'scope': 'this_submission'} for n in ('K990001', 'K990002', 'K990003')]
+    counts = acquire.fetch_documents(plan, acquire.Manifest(tmp_path / 'manifest.jsonl'), tmp_path / 'store', get,
+                                     F.no_wait(), None, len(body) + 1)
+    assert (counts['retrieved'], counts['skipped_disk_budget']) == (3, 0)
+    assert len(list((tmp_path / 'store').glob('*.pdf'))) == 1

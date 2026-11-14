@@ -236,7 +236,17 @@ def number_search_results(records: dict[str, dict[str, Any]], submission_numbers
                        'n_search_hits': None, 'hits': []}
             continue
         hits, missing = [], []
-        for st in (one['body'] or {}).get('studies') or []:
+        returned = (one['body'] or {}).get('studies') or []
+        total = (one['body'] or {}).get('totalCount')
+        if not isinstance(total, int) or total > len(returned):
+            # One page of up to 100 records is asked for. A search that found more, or did not say
+            # how many it found, was not read in full, so it cannot support "no candidate".
+            out[sn] = {'state': 'incomplete',
+                       'reason': (f'the search found {total} records and the page read holds {len(returned)}; the rest were not read'
+                                  if isinstance(total, int) else 'the search did not state how many records it found'),
+                       'n_search_hits': total, 'hits': [], 'searched_at': one['fetched_at']}
+            continue
+        for st in returned:
             nct = st['protocolSection']['identificationModule']['nctId']
             full = records.get(f'ctgov/study_full/{nct}')
             if full is None or full['status'] != 200:

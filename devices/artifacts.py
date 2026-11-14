@@ -187,6 +187,11 @@ def build(*, rows: list[dict[str, Any]], inventory_meta: dict[str, Any], aliases
         text, version = None, {}
         if row['source_kind'] == 'fda_document' and row['source_id'] in doc_by_id:
             d = doc_by_id[row['source_id']]
+            if d['submission_number'] != row['submission_number']:
+                # A statement must be read from the submission's own document; another
+                # submission's would attribute its evidence to the wrong device.
+                raise ValueError(f"documentary_statements.csv: {row['source_id']} is a document of "
+                                 f"{d['submission_number']}, not of {row['submission_number']}")
             cached = D.read_text(cache, d['sha256'], extraction_version) if d['sha256'] else None
             page = int(row['page_or_field']) if row['page_or_field'].strip().isdigit() else 0
             if cached and 1 <= page <= len(cached['pages']):
