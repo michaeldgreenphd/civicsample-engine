@@ -1133,6 +1133,13 @@ def extract_race_data(study: dict) -> Dict:
           "Ethnicity rows inside a race table")
         - flags: List of any issues
     """
+    return _extract_race(study)[0]
+
+
+def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
+    """extract_race_data's block, and the tables it counted (each as
+    _parse_race_table returns it). The tables are for combined_classification;
+    they are not part of the published block."""
     from src.utils import get_baseline_measures, get_overall_group_id, get_total_baseline_participants
 
     measures = get_baseline_measures(study)
@@ -1328,4 +1335,48 @@ def extract_race_data(study: dict) -> Dict:
     # data diffs noisy for no reason)
     result["flags"] = sorted(set(result["flags"]))
 
-    return result
+    return result, counted
+
+
+def combined_classification(study: dict) -> Optional[Dict]:
+    """The one counted race table of a trial when it is an exact combined race
+    and ethnicity classification, else None.
+
+    Exact means what the flag shortfall_is_ethnicity_rows means (block comment
+    "A shortfall that the ethnicity rows account for"): race rows, the table's
+    own unknown rows and its rows stating the ethnicity add up to exactly the
+    baseline population, and no row negating the ethnicity has participants.
+    Summed parts (race_tables_partitioned) are not one classification and
+    give None.
+
+    Returns {"index": the measure's position among the baseline measures,
+    "title", "race_rows": participants in the counted rows other than
+    unknown (the race-specific categories and "other"), "race_rows_named":
+    the part of race_rows in rows whose label names no unknown term,
+    "ethnicity_rows": unknown_ethnicity_only, "unknown_rows":
+    unknown_explicit}. The ethnicity extractor reads it to count the
+    participants of race_rows_named as not Hispanic (ethnicity_extractor,
+    "Race rows of a combined classification").
+
+    A row such as "Other/Unknown" or "Other/multiple/unknown" maps to race
+    "other" (by its first fragment), but some of its participants are
+    unknown, and an unknown participant of a combined classification may be
+    Hispanic. Such a row is in race_rows and not in race_rows_named.
+    """
+    race, counted = _extract_race(study)
+    if "shortfall_is_ethnicity_rows" not in race["flags"] or len(counted) != 1:
+        return None
+    table = counted[0]
+    race_cats = [c for c in table["categories"] if c["omb_category"] != "unknown_not_reported"]
+    named = [c for c in race_cats if not _UNKNOWN_TERM_RX.search(c["original"])]
+    return {"index": table["index"], "title": table["title"],
+            "race_rows": sum(c["count"] for c in race_cats),
+            "race_rows_named": sum(c["count"] for c in named),
+            "ethnicity_rows": race["unknown_ethnicity_only"], "unknown_rows": race["unknown_explicit"]}
+
+
+# Words that put a row's participants, or some of them, among the unknown.
+_UNKNOWN_TERM_RX = re.compile(
+    r"\b(?:unknown|not\s+(?:reported|known|available|specified|stated|collected)|missing|unspecified"
+    r"|declined?|refused|prefer(?:red)?\s+not|undisclosed|not\s+disclosed|n/?a)\b",
+    re.IGNORECASE)

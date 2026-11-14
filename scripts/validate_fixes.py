@@ -36,7 +36,8 @@ Studies 7-9 also assert their expected race block and raceBreakdown
 (check_race_rows_in_sex_table), study 11 its ethnicity totals and flags
 (EXPECTED_ETHNICITY), and study 12 its sex totals and flags (EXPECTED_SEX).
 Studies 1, 2 and 13 assert the ethnicity rows the race block records without
-counting them (EXPECTED_SKIPPED_ETHNICITY). Study 14 asserts that a label
+counting them (EXPECTED_SKIPPED_ETHNICITY); study 13 also asserts that its
+race rows are counted as not Hispanic (EXPECTED_ETHNICITY). Study 14 asserts that a label
 naming a race beside an ethnicity term is counted in that race
 (check_joined_labels).
 A mismatch stops the harness.
@@ -514,6 +515,10 @@ EXPECTED_SEX = {
 EXPECTED_ETHNICITY = {
     "NCT99000107": {"omb": {"hispanic_latino": 9, "not_hispanic_latino": 68, "unknown_not_reported": 3},
                     "flags": ["ethnicity_table_superseded", "multiple_ethnicity_tables_2"]},
+    # One exact combined classification: its 42 participants in race rows are
+    # not Hispanic; its "Unknown" row stays unknown.
+    "NCT99000109": {"omb": {"hispanic_latino": 6, "not_hispanic_latino": 42, "unknown_not_reported": 2},
+                    "flags": ["not_hispanic_from_combined_table"]},
 }
 
 

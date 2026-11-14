@@ -1264,3 +1264,37 @@ def test_the_three_parts_of_unknown_always_add_up(rows: list[tuple[str, int]], p
     assert sum(_unknown_parts(race)) == race["omb_totals"]["unknown_not_reported"]
     assert (race["unknown_ethnicity_only"] > 0) is (SPLIT_FLAG in race["flags"])
     assert not (race["unknown_ethnicity_only"] and race["unknown_inferred"])
+
+
+
+# ── the combined classification the ethnicity extractor reads ──────────────
+
+def test_combined_classification_describes_an_exact_table() -> None:
+    table = _class_table(COMBINED_TITLE, [("Caucasian", 39), ("African-American", 10), ("Other/Unknown", 3),
+                                          ("Hispanic", 2), ("Unknown", 2)])
+    study = _study("NCT99000530", [SEX_TABLE, table], participants=56)
+    assert rx.combined_classification(study) == {
+        "index": 1, "title": COMBINED_TITLE,
+        "race_rows": 52,            # Caucasian, African-American and Other/Unknown (race "other")
+        "race_rows_named": 49,      # without the row that also names an unknown
+        "ethnicity_rows": 2, "unknown_rows": 2}
+
+
+@pytest.mark.parametrize("measures, participants", [
+    ([_class_table(COMBINED_TITLE, [("White", 30), ("Black", 12), ("Hispanic", 6)])], 50),   # not exact
+    ([_class_table(COMBINED_TITLE, [("White", 30), ("Black", 20)])], 50),                    # no Hispanic row
+    ([_category_table("Race, Adults", [("White", 20), ("Hispanic", 10)], analyzed=30),
+      _category_table("Race, Children", [("Asian", 15), ("Hispanic or Latino", 5)], analyzed=20)], 50),  # parts
+    ([SEX_TABLE], 40),                                                                        # no race table
+])
+def test_combined_classification_is_none_otherwise(measures: list[dict[str, Any]], participants: int) -> None:
+    assert rx.combined_classification(_study("NCT99000531", measures, participants=participants)) is None
+
+
+@pytest.mark.parametrize("label, unknown", [
+    ("Other/Unknown", True), ("Other/multiple/unknown", True), ("Other-Unspecified", True),
+    ("Declined To Provide", True), ("Prefer not to answer", True), ("Missing", True), ("N/A", True),
+    ("Other", False), ("Other or Multiple", False), ("White", False), ("Native American", False),
+])
+def test_unknown_terms_in_a_race_rows_label(label: str, unknown: bool) -> None:
+    assert bool(rx._UNKNOWN_TERM_RX.search(label)) is unknown
