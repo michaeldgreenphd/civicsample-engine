@@ -46,12 +46,24 @@ PRODUCER_PATHS = ('outcomes/results_structure.py', 'outcomes/results_structure_b
                   'outcomes/subgroup_reviews.csv', 'scripts/build_results_structure.py')
 
 
+def source_digest(root: Path = ROOT) -> str:
+    """One sha256 over the producing files as they stand on disk, path by path. A clean checkout
+    of a commit always gives the same value; any uncommitted change to those files gives another,
+    so two builds whose code differed cannot share a run id."""
+    h = hashlib.sha256()
+    for rel in sorted(PRODUCER_PATHS):
+        h.update(rel.encode() + b'\0' + (root / rel).read_bytes() + b'\0')
+    return h.hexdigest()
+
+
 def producer() -> dict[str, object]:
-    """The commit that produced the build, and whether the producing files differ from it."""
+    """The commit that produced the build, whether the producing files differ from it, and a
+    digest of those files as they were."""
     commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True).stdout.strip() or None
     dirty = bool(subprocess.run(['git', 'status', '--porcelain', '--', *PRODUCER_PATHS], cwd=ROOT,
                                 capture_output=True, text=True).stdout.strip())
-    return {'repository': 'civicsample-engine', 'commit': commit, 'uncommitted_changes': dirty}
+    return {'repository': 'civicsample-engine', 'commit': commit, 'uncommitted_changes': dirty,
+            'source_sha256': source_digest()}
 
 
 def main(argv: list[str] | None = None) -> int:

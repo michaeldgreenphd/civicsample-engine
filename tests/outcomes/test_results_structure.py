@@ -341,6 +341,15 @@ def test_look_alike_signals_keep_their_ids_when_the_registry_reorders_the_measur
     first, swapped = by_context(a, b), by_context(b, a)
     assert len(first) == 2 and len(set(first.values())) == 2
     assert first == swapped, 'a review of one sentence must not move to the other when the order changes'
+    # an edit somewhere else in one of the measures moves no id either
+    edited = copy.deepcopy(b)
+    edited['unitOfMeasure'] = 'points on a different scale'
+    edited['timeFrame'] = 'Week 24'
+    assert by_context(a, edited) == first and by_context(edited, a) == first
+    # the id follows the sentence: change the sentence and that signal, and only that one, is a new signal
+    reworded = F.measure('Response', description='A subgroup with baseline scores above 30 was analysed separately.')
+    after = by_context(a, reworded)
+    assert set(after.values()) & set(first.values()) == {first[next(c for c in first if 'completed week 12' in c)]}
 
 
 def test_the_rule_reads_exactly_eighteen_fields_and_lists_what_it_does_not() -> None:

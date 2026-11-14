@@ -534,8 +534,11 @@ def build(records: dict[str, Any], problems: dict[str, Any], acquisition: dict[s
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', retrieved_at):
         raise BuildError('the acquisition record has no retrieval date')
     # The same archive can be built for different cohorts, so the scope is part of the run's identity.
+    # So is the producing code as it stood on disk (producer.source_sha256): the commit alone would
+    # give one id to a clean build and to a build made with uncommitted changes to that code.
     run_id = 'results-structure-{}-{}'.format(retrieved_at, sha256(dump(
-        [acquisition.get('sha256_uncompressed'), reviews_file.get('sha256'), producer.get('commit'), RS.METHOD_VERSION,
+        [acquisition.get('sha256_uncompressed'), reviews_file.get('sha256'), producer.get('commit'),
+         producer.get('source_sha256'), RS.METHOD_VERSION,
          sorted(records), scope['excluded']['nct_ids'], scope['excluded']['reason']]))[:10])
     files: dict[str, Any] = {
         'summary.json': summarize(records, problems, scope),

@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "run_id": "results-structure-2026-11-14-66f2b1f495",
+ "run_id": "results-structure-2026-11-14-98a887e3f9",
  "generated_at": "2026-11-14T12:00:00+00:00",
  "producer": {
   "repository": "civicsample-engine",
@@ -76,7 +76,7 @@
  },
  "reviews": {
   "file": "fictional review rows",
-  "sha256": "d55e7ecabd508c5fb4326876ea091904176320e0e39c024609a69b1d228bead7",
+  "sha256": "f59da4d0240c11b7db077e446454d0807b83728606554c37efe63e56237144d3",
   "n_rows": 2
  },
  "n_records": 7,
@@ -133,7 +133,7 @@
   "The registry record is read as retrieved on the stated date; registry records change."
  ],
  "files": {
-  "records.json": "d5e147f85790ba8efc79bf68feecfbcb28b45fe37ce79fe1b3db2ac04a88c78c",
-  "summary.json": "3161690aa647df9911b25a5789ac9362b0316c80dd72790533dac3b207b46dcc"
+  "records.json": "b635c323b42f76679d219fc1419a165d321c762c1c5ee1e3863a0ed618112ae2",
+  "summary.json": "79f914e2015da3afbddce6f6d414d5d0133e6dd1aca0f222052d17fc4eb37471"
  }
 }

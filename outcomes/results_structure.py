@@ -832,26 +832,28 @@ def subgroup_signals(nct_id: str, measures: list[dict[str, Any]]) -> list[dict[s
     One entry per signal and dimension, with the field path, the measure's index, type and title,
     the matched text verbatim, and for cue rules the surrounding context. `signal_id` identifies
     the signal for a human review row: a digest of the NCT id, measure type and title, field, rule
-    dimension, dimension and matched text. It does not include the measure index or the method
-    version, so a review still attaches after measures are reordered or the rules are
-    re-versioned, as long as the registrant's text is unchanged.
+    dimension, dimension, matched text and the text around the match. It does not include the
+    measure index, the method version or anything else in the measure, so a review still attaches
+    after measures are reordered, the rules are re-versioned, or the registrant changes a unit or
+    a value elsewhere in the measure, as long as the words the review was about are unchanged.
 
-    Two signals can share all of that: two measures with one title that both say "subgroup" in
-    their description, in different sentences. They are told apart by a number, and the number
-    must not come from the order the registry lists the measures in, or a reordering would hand
-    one signal's review to the other. It is the signal's rank among its look-alikes by a digest
-    of the measure's whole content and the place in it. Only signals whose measures are
-    identical in every field share a digest; those are interchangeable, so their order cannot
-    matter."""
-    found: list[tuple[str, str, int, dict[str, Any]]] = []
+    Two measures with one title that both say "subgroup" in their description, in different
+    sentences, therefore get different ids from their own sentences, not from their order or
+    from unrelated fields. Signals that agree in every one of those texts are numbered in the
+    order they stand. Nothing a reviewer is shown tells such signals apart, so there is no
+    stable text to number them by; a reordering can exchange their numbers, and a review of
+    one should be read as a review of that wording wherever it stands in the trial."""
+    out: list[dict[str, Any]] = []
+    seen: dict[str, int] = defaultdict(int)
     for i, m in enumerate(measures):
-        content = hashlib.sha256(json.dumps(m, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         for s in detect_measure(m):
             matched = [t[:_MAX_MATCHED] for t in s['matched']]
             for dim in signal_dimensions(s['dimension'], s['matched']):
-                key = json.dumps([nct_id, m.get('type'), m.get('title'), s['field'], s['dimension'], dim, s['matched']],
-                                 ensure_ascii=False)
-                entry = {'signal_id': None, 'dimension': dim, 'rule_dimension': s['dimension'],
+                key = json.dumps([nct_id, m.get('type'), m.get('title'), s['field'], s['dimension'], dim, s['matched'],
+                                  s['text']], ensure_ascii=False)
+                seen[key] += 1
+                digest = hashlib.sha256(f'{key}#{seen[key]}'.encode()).hexdigest()[:12]
+                entry = {'signal_id': f'sg-{digest}', 'dimension': dim, 'rule_dimension': s['dimension'],
                          'field': s['field'],
                          'field_path': f"resultsSection.outcomeMeasuresModule.outcomeMeasures[{i}].{s['path']}",
                          'measure_index': i, 'measure_type': m.get('type'), 'measure_title': m.get('title'),
@@ -860,12 +862,8 @@ def subgroup_signals(nct_id: str, measures: list[dict[str, Any]]) -> list[dict[s
                          # For a cue: the match with up to 90 characters before and 110 after, as posted.
                          'context': s['text'] if s['dimension'] in ('keyword', 'by_demographic') else None,
                          'review': []}
-                found.append((key, f"{content}|{s['path']}", len(found), entry))
-    rank: dict[str, int] = defaultdict(int)
-    for key, _, _, entry in sorted(found, key=lambda f: (f[0], f[1], f[2])):
-        rank[key] += 1
-        entry['signal_id'] = 'sg-' + hashlib.sha256(f'{key}#{rank[key]}'.encode()).hexdigest()[:12]
-    return [entry for _, _, _, entry in found]
+                out.append(entry)
+    return out
 
 
 # ---------------------------------------------------------------- human reviews

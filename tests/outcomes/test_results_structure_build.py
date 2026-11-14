@@ -449,3 +449,22 @@ def test_a_review_that_matches_nothing_is_reported_once_with_one_reason() -> Non
 def test_the_archive_encoder_is_among_the_files_whose_uncommitted_changes_are_reported() -> None:
     assert 'outcomes/acquire.py' in build_results_structure.PRODUCER_PATHS
     assert all((ROOT / p).exists() for p in build_results_structure.PRODUCER_PATHS)
+
+
+def test_a_build_from_changed_code_does_not_share_a_run_id_with_a_clean_one(family: dict[str, Any], tmp_path: Path) -> None:
+    def run_id(producer: dict[str, Any]) -> str:
+        records, problems = B.build_records([F.study(1)], ['NCT99000001'], {}, {})
+        acq = {'retrieved_at': F.GENERATED_AT, 'sha256_uncompressed': 'a' * 64}
+        scope = B.build_scope(['NCT99000001'], ['NCT99000001'])
+        return B.build(records, problems, acq, producer, {'sha256': 'r' * 64}, {}, scope, generated_at=F.GENERATED_AT)['run.json']['run_id']
+    clean = {'repository': 'x', 'commit': 'c' * 40, 'uncommitted_changes': False, 'source_sha256': '1' * 64}
+    dirty = {**clean, 'uncommitted_changes': True, 'source_sha256': '2' * 64}
+    assert run_id(clean) == run_id(dict(clean)) and run_id(clean) != run_id(dirty)
+    # the digest covers every producing file, as it stands on disk
+    for rel in build_results_structure.PRODUCER_PATHS:
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes((ROOT / rel).read_bytes())
+    same = build_results_structure.source_digest(tmp_path)
+    assert same == build_results_structure.source_digest()
+    (tmp_path / 'outcomes/acquire.py').write_text((ROOT / 'outcomes/acquire.py').read_text() + '\n# an uncommitted change\n')
+    assert build_results_structure.source_digest(tmp_path) != same
