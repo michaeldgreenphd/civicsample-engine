@@ -139,8 +139,8 @@ rule misses, are questions this run does not answer.
 
 ## Rebuilt on the pull-request branch
 
-The build was first made on a working branch at commit `e097d22`. Those commits were replayed onto `main` for the pull request, which gave them new hashes, so the run was rebuilt from the same frozen archive at the commit named above. `summary.json` and `records.json` are identical to the earlier build apart from the run id, which includes the commit.
+The build was first made on a working branch at commit `e097d22`. Those commits were replayed onto `main` for the pull request, which gave them new hashes, so the run was rebuilt from the same frozen archive at `5cc5e7d`. `summary.json` and `records.json` are identical to the earlier build apart from the run id, which includes the commit.
 
-It was rebuilt once more after the first review round, at the commit named above. No record changed: the review's three fixes guard the build's inputs and make signal ids independent of measure order, and no signal in this cohort depended on that order. Only the run id differs, because it includes the commit.
+It was rebuilt once more after the first review round, at `7e431f8`. No record changed: the review's three fixes guard the build's inputs and make signal ids independent of measure order, and no signal in this cohort depended on that order. Only the run id differs, because it includes the commit.
 
 It was rebuilt again after the third review round, at the commit named above. Every signal id changed, because an id is now derived from the text around the match as well as the matched text; no review rows exist, so nothing had to follow. No other field of any record changed, and `summary.json` is identical apart from the run id. The run id now also reflects a digest of the producing code. The second round's two fixes (the archive encoder in the list of producing files; an unmatched review reported once) change no output of this run.
