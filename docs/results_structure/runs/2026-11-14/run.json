@@ -2,9 +2,9 @@
  "schema_version": 1,
  "producer": {
   "repository": "civicsample-engine",
-  "commit": "dd6b711092a6bd8373891a19e84e8f69eb445840",
+  "commit": "1dee5f42aad7fa078c6c97deeb4b8d8409a5a70f",
   "uncommitted_changes": false,
-  "source_sha256": "d0152fdbcc624fb355adb265508f3b927d451c7b0da3ae705777a1ca3bed8df1"
+  "source_sha256": "b8a0e77b5fb821a25ae63e544302b3cd6982407733dcfe6d427fbb4399b078bd"
  },
  "manual_run": true,
  "method": {
@@ -187,10 +187,10 @@
   "Participant flow counts are for the first period only.",
   "The registry record is read as retrieved on the stated date; registry records change."
  ],
- "run_id": "results-structure-2026-11-14-48f73f42a7",
- "generated_at": "2026-11-14T03:06:14+00:00",
+ "run_id": "results-structure-2026-11-14-73053686b7",
+ "generated_at": "2026-11-14T03:13:16+00:00",
  "files": {
-  "records.json": "fae4350a36da001fc913ab1b5a06864195a13bd2c4b254890855882c5bbcba14",
-  "summary.json": "5d1e31ad6bafcfbbc41a88a6860a678fa866b366924350ed782b0273c8150010"
+  "records.json": "7ea0ab11c7a56e1c44c83e6d0f1acb40312db5566400e102ab95a69b2f786a1a",
+  "summary.json": "1ebe5436fe3d3a2acb240ac0fe89ccb9f621a1f58f0717616e62d7bb0cbc0e4f"
  }
 }

@@ -4,7 +4,7 @@ The record of one manual build, kept so its counts can be checked without rerunn
 
 | | |
 |---|---|
-| Run | `results-structure-2026-11-14-48f73f42a7`, generated 2026-11-14T03:06:14+00:00 by `scripts/build_results_structure.py` at engine commit `dd6b711092a6` (no uncommitted changes; producing-code digest `d0152fdbcc62…`) |
+| Run | `results-structure-2026-11-14-73053686b7`, generated 2026-11-14T03:13:16+00:00 by `scripts/build_results_structure.py` at engine commit `1dee5f42aad7` (no uncommitted changes; producing-code digest `b8a0e77b5fb8…`) |
 | Method | `results-structure-1`: usable-content rules B1, F1, O1, A1; comparative classes C1, C2; analysis rule S1; subgroup rule SG2 |
 | Scope | Frame 648 registry records fetched; **598 trials in this build** (the eligible cohort of the Industry Outcomes beta, the rows of the site's `data/outcomes/index.json`, outcomes run `outcomes-2026-11-09-d41f32ec4d`); 50 frame records left out: excluded by the outcomes cohort's eligibility rules (see data/outcomes/index.json excluded). The lists are `frame_ids.txt` (sha256 `637bb40370bedcb8…`), `eligible_ids.txt` (`dcfc1e3fc8829b23…`) and `excluded_ids.txt` (`e7f7925eacf48b28…`) |
 | Registry records | 648 of 648 frame records retrieved from the ClinicalTrials.gov API v2, 2026-11-14T00:41:41+00:00 to 2026-11-14T00:41:57+00:00; API version 2.0.5, registry `dataTimestamp` 2026-11-13T10:00:06 |
@@ -102,7 +102,7 @@ Negative findings (each is a search that found nothing, with its scope in `summa
 
 ## Files not here
 
-`records.json` (sha256 `fae4350a36da001f…`, 4.1 MB) is written to the site
+`records.json` (sha256 `7ea0ab11c7a56e1c…`, 4.1 MB) is written to the site
 repository at `data/results_structure/`. The archive of registry records (7.9 MB compressed) is
 under the gitignored `build/results_structure_cache/`; its sha256 is in `run.json`. Two
 consecutive builds of this run from the archive gave the same bytes for `summary.json` and
@@ -161,4 +161,6 @@ It was rebuilt a tenth time after the tenth review round, at `13c9ee1` (run `res
 
 It was rebuilt an eleventh time after the eleventh review round, at `27515b1` (run `results-structure-2026-11-14-3037691319`). That round refused an empty id list for a fetch and counted an analysis that repeats one group id as naming one group. Neither case occurs in this cohort, so `summary.json` and `records.json` are identical to the previous build apart from the run id.
 
-It was rebuilt a twelfth time after the twelfth review round, at the commit named above. That round made an analysis signal count a repeated group once. This cohort has no analysis signal, so `summary.json` and `records.json` are identical to the previous build apart from the run id.
+It was rebuilt a twelfth time after the twelfth review round, at `dd6b711` (run `results-structure-2026-11-14-48f73f42a7`). That round made an analysis signal count a repeated group once. This cohort has no analysis signal, so `summary.json` and `records.json` are identical to the previous build apart from the run id.
+
+It was rebuilt a thirteenth time after the thirteenth review round, at the commit named above. That round made a fetch stop when the registry's version request fails. This run was built from the existing archive, whose metadata carries both values, so `summary.json` and `records.json` are identical to the previous build apart from the run id.
