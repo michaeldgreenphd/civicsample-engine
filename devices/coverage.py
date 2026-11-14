@@ -129,7 +129,9 @@ def fda_document_fetch(page: dict[str, Any] | None, docs: list[dict[str, Any]],
                            ('document_unavailable', 'the database page lists no document and no address was tried'))
     if not page_ok and cell['state'] not in ('verified_link', 'candidate_awaiting_review'):
         cell['state'] = 'search_incomplete_or_blocked'
-        cell['reason'] = ('the FDA database page for this number was not answered, so the documents FDA lists are '
+        how = ('answered with a page that does not name it' if (page or {}).get('status') == 'not_the_record'
+               else 'not answered')
+        cell['reason'] = (f'the FDA database page for this number was {how}, so the documents FDA lists are '
                           'not known; ' + cell['reason'])
     cell['detail']['database_page_status'] = (page or {}).get('status')
     cell['detail']['database_page_links'] = len(((page or {}).get('body') or {}).get('document_links') or [])

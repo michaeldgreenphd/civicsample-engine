@@ -491,6 +491,24 @@ def test_local_documents_are_recovered_once_and_then_not_fetched(tmp_path: Path)
     assert calls == []
 
 
+
+def test_a_local_file_that_is_not_a_pdf_is_not_stored_and_does_not_settle_the_address(tmp_path: Path) -> None:
+    local = tmp_path / 'local'
+    local.mkdir()
+    (local / '2026-04-16_K990001.pdf').write_bytes(b'<html>Service unavailable</html>')
+    url = f'{F.DOCS}/pdf99/K990001.pdf'
+    manifest, store = acquire.Manifest(tmp_path / 'manifest.jsonl'), tmp_path / 'store'
+    assert acquire.recover_local(local, {'K990001': url}, manifest, store) == 1
+    line = manifest.lines[0]
+    assert (line['outcome'], line['bytes'], line['sha256']) == ('not_a_pdf', None, None)
+    assert not store.exists() or not any(store.iterdir())     # no junk in the store, nothing against its budget
+    assert not acquire.settled(line)
+    assert acquire.recover_local(local, {'K990001': url}, manifest, store) == 0     # registered once
+    calls: list[str] = []
+    plan = acquire.document_plan('K990001', {'body': {'document_links': [{'url': url, 'official_label': 'Summary'}]}})
+    assert acquire.fetch_documents(plan, manifest, store, F.stub_get(calls), F.no_wait())['retrieved'] == 1
+    assert len(calls) == 1 and manifest.latest()[line['document_id']]['origin'] == 'fda_fetch'
+
 @pytest.mark.parametrize('number, directory', [('K955841', 'pdf'), ('K003301', 'pdf'), ('K033840', 'pdf3'),
                                                ('K092967', 'pdf9'), ('K203042', 'pdf20'), ('DEN170073', 'pdf17'),
                                                ('P140011/S008', 'pdf14')])
@@ -529,6 +547,24 @@ def test_a_non_final_answer_is_logged_and_asked_again(tmp_path: Path) -> None:
     acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
     assert acquire.ResponseLog(tmp_path / 'log.jsonl').settled('fda_page/K990001')['status'] == 200
 
+
+
+def test_a_database_page_that_does_not_name_the_number_is_not_an_answer(tmp_path: Path) -> None:
+    log = acquire.ResponseLog(tmp_path / 'log.jsonl')
+    other = (b'<html>K990002 <a href="https://www.accessdata.fda.gov/cdrh_docs/pdf99/K990002.pdf">'
+             b'Summary</a></html>')
+    answers = iter([(200, {}, other, None), (200, {}, b'<html>K990001</html>', None)])
+    get = lambda u, p: next(answers)
+    acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
+    rec = log.get('fda_page/K990001')
+    assert (rec['status'], rec['http_status'], rec['body']['document_links']) == ('not_the_record', 200, [])
+    assert log.settled('fda_page/K990001') is None
+    # Guessed addresses that 404 do not turn into "FDA holds no document" on the strength of it.
+    cell = coverage.fda_document_fetch(rec, [], [])
+    assert cell['state'] == 'search_incomplete_or_blocked' and 'does not name it' in cell['reason']
+    assert coverage.fda_document_fetch({**rec, 'status': 200}, [], [])['state'] == 'document_unavailable'
+    acquire.fetch_database_pages(['K990001'], log, tmp_path / 'html', get, F.no_wait())
+    assert acquire.ResponseLog(tmp_path / 'log.jsonl').settled('fda_page/K990001')['status'] == 200
 
 def test_openfda_records_map_to_submissions_and_absence_is_stated(acquired: dict[str, Any]) -> None:
     found = acquire.openfda_by_submission(acquired['frozen']['openfda'][0], list(acquired['subs']))

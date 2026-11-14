@@ -155,6 +155,7 @@ def write_atomic(path: Path, data: bytes) -> None:
 # answered four of 1,431 requests with a bare HTTP 400 and served the same pages minutes later.
 FINAL_STATUSES = frozenset({200, 404})
 UNUSABLE_200 = 'unusable_200'   # HTTP 200 with an empty or unparsable body: logged, not final, not an answer
+NOT_THE_RECORD = 'not_the_record'   # HTTP 200 from a database page that does not name the number asked for
 
 
 class ResponseLog:
@@ -403,11 +404,18 @@ def fetch_database_pages(submission_numbers: list[str], log: ResponseLog, pages_
             continue
         html = body.decode('utf-8', 'replace')
         names_it = sn.split('/')[0] in html
+        logged = status
+        if status == 200 and not names_it:
+            # A generic or error page served with 200, or another submission's page, does not say
+            # which documents FDA holds for this number. It is logged under its own status, which
+            # is not final, so the next run asks again and coverage reads the search incomplete
+            # rather than taking 404s on guessed addresses for "FDA holds no document".
+            logged, error = NOT_THE_RECORD, error or 'the page does not name the submission number requested'
         write_atomic(pages_dir / (sn.replace('/', '_') + '.html.gz'), gzip.compress(body, mtime=0))
-        log.put({'key': key, 'url': url, 'params': params, 'fetched_at': now(), 'status': status, 'attempts': attempts,
-                 'error': error, 'sha256': sha256(body), 'bytes': len(body),
+        log.put({'key': key, 'url': url, 'params': params, 'fetched_at': now(), 'status': logged, 'http_status': status,
+                 'attempts': attempts, 'error': error, 'sha256': sha256(body), 'bytes': len(body),
                  'page_names_the_submission': names_it,
-                 'body': {'document_links': parse_document_links(html) if status == 200 and names_it else []}})
+                 'body': {'document_links': parse_document_links(html) if logged == 200 else []}})
         answered += 1
         if progress:
             progress(sn)
@@ -503,8 +511,12 @@ class Manifest:
 
 def settled(line: dict[str, Any] | None) -> bool:
     """True when a document need not be requested again: its bytes are held under a recorded
-    hash, or the host answered that it has no such file. Transient failures are not settled."""
-    return bool(line) and line['outcome'] in ('retrieved', 'not_found', 'not_a_pdf', 'too_large')
+    hash, or the host answered that it has no such file. Transient failures are not settled, and
+    neither is a non-PDF file left on disk by an earlier fetch: it says nothing about what the
+    host serves now, so the address is still asked."""
+    if not line or (line['outcome'] == 'not_a_pdf' and line.get('origin') == 'local_recovered'):
+        return False
+    return line['outcome'] in ('retrieved', 'not_found', 'not_a_pdf', 'too_large')
 
 
 def recover_local(local_dir: Path, url_of: dict[str, str], manifest: Manifest, store: Path) -> int:
@@ -513,25 +525,30 @@ def recover_local(local_dir: Path, url_of: dict[str, str], manifest: Manifest, s
 
     Assumption, from the script that made them: each file was fetched from that row's pdf_url on
     the date in its name. The HTTP status of that fetch was not recorded and is stored as absent.
+    A file that is not a PDF (an error page saved under a .pdf name) is recorded as `not_a_pdf`
+    with no size or hash and is not copied into the store; each file is registered once.
     """
     latest, n = manifest.latest(), 0
+    registered = {(line['document_id'], line.get('local_source')) for line in manifest.lines
+                  if line.get('origin') == 'local_recovered'}
     for path in sorted(local_dir.glob('*.pdf')):
         m = re.fullmatch(r'(\d{4}-\d{2}-\d{2})_([A-Z]+\d{6})\.pdf', path.name)
         if not m or m.group(2) not in url_of:
             continue
         sn, url = m.group(2), url_of[m.group(2)]
         did = document_id(sn, url)
-        if settled(latest.get(did)):
+        if settled(latest.get(did)) or (did, path.name) in registered:
             continue
         raw = path.read_bytes()
-        digest = sha256(raw)
-        if not (store / f'{digest}.pdf').exists():
+        is_pdf = raw[:5] == b'%PDF-'
+        digest = sha256(raw) if is_pdf else None
+        if is_pdf and not (store / f'{digest}.pdf').exists():
             write_atomic(store / f'{digest}.pdf', raw)
         manifest.append({'document_id': did, 'submission_number': sn, 'url': url, 'official_label': None,
                          'discovery': 'inventory_pdf_url', 'scope': 'this_submission', 'origin': 'local_recovered',
                          'local_source': path.name, 'retrieved_at': m.group(1), 'retrieved_at_precision': 'date',
                          'http_status': None, 'http_status_absent_reason': 'not_recorded_by_the_earlier_fetch',
-                         'outcome': 'retrieved' if raw[:5] == b'%PDF-' else 'not_a_pdf', 'bytes': len(raw),
+                         'outcome': 'retrieved' if is_pdf else 'not_a_pdf', 'bytes': len(raw) if is_pdf else None,
                          'sha256': digest, 'content_type': None, 'last_modified': None, 'etag': None, 'attempts': 0,
                          'error': None})
         n += 1
