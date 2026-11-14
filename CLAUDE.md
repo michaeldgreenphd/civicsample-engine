@@ -1,7 +1,7 @@
 # System Architecture & Development Guidelines
 
 The source of truth for code generation (Claude Code) and pull request review
-(Codex, Copilot) in this repository. `AGENTS.md` holds the review rules
+(Codex) in this repository. `AGENTS.md` holds the review rules
 themselves and the places this repository most easily causes harm; this file
 describes the system those rules are applied to. Read both. Consult
 [verify.md](verify.md), the canonical setup and verification guide, when
@@ -52,10 +52,10 @@ here.
   pull request it requests the Codex review as the pull request workflow in
   `AGENTS.md` requires, subscribes to the PR's activity so that review wakes
   the session, and keeps a fallback check-in until the PR is merged or closed.
-* **Reviewers (Codex, Copilot):** audit for security, data loss and
-  correctness; check that a change to attribution or extraction logic moves
-  the counts deliberately and visibly. Do not report formatting or lint nits,
-  and do not report a stylistic preference as a finding unless it violates a
+* **Reviewer (Codex):** audits for security, data loss and
+  correctness; checks that a change to attribution or extraction logic moves
+  the counts deliberately and visibly. It does not report formatting or lint nits,
+  and does not report a stylistic preference as a finding unless it violates a
   constraint stated in this file or in `AGENTS.md`.
 
 ## 3. Strict Coding Constraints
