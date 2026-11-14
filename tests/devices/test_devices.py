@@ -1981,6 +1981,9 @@ def test_a_citation_scan_with_unread_pages_is_not_a_completed_scope() -> None:
     ('510k_summary', 'partial', 8, 2, 'search_incomplete_or_blocked'),               # only its letter has text
     ('pma_ssed', 'image_only', 40, 0, 'search_incomplete_or_blocked'),
     ('unclassified_no_text', 'image_only', 3, 0, 'search_incomplete_or_blocked'),    # type not known
+    ('pma_labeling', 'image_only', 12, 0, 'search_incomplete_or_blocked'),           # labeling can cite a study
+    ('pma_approval_order', 'image_only', 2, 0, 'available_document_insufficient'),
+    ('de_novo_granting_letter', 'partial', 4, 3, 'available_document_insufficient'),
     ('510k_clearance_letter', 'partial', 3, 2, 'available_document_insufficient'),   # cannot cite a study
     ('510k_statement', 'partial', 2, 1, 'available_document_insufficient'),
     ('510k_clearance_letter', 'text', 2, 2, 'available_document_insufficient'),      # nothing unread
@@ -1989,8 +1992,8 @@ def test_an_unread_document_that_could_cite_a_study_leaves_the_scan_incomplete(
         doc_type: str, status: str, n_pages: int, with_text: int, expected: str) -> None:
     """Investigator's decision of 2026-11-14 ("D1. 2"): a scan whose held documents cannot answer is
     insufficient, unless an unread page belongs to a document that could cite a study (a summary, an
-    SSED, or a file whose type is not known); then it is incomplete. A letter, approval order,
-    labeling or 510(k) Statement cannot, and its unread pages leave the scan insufficient."""
+    SSED, labeling, or a file whose type is not known); then it is incomplete. A letter or a 510(k)
+    Statement cannot, and its unread pages leave the scan insufficient."""
     ok, why = (False, 'needs OCR first') if documents.DOCUMENT_TYPES[doc_type][1] else (False, documents.DOCUMENT_TYPES[doc_type][2])
     d = {'document_id': 'doc:K990001:x', 'origin': 'fda_fetch', 'scope': 'this_submission', 'availability': 'retrieved',
          'url': f'{F.DOCS}/pdf99/K990001.pdf', 'http_status': 200, 'document_type': doc_type,

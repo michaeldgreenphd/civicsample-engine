@@ -10,8 +10,8 @@ therefore holds exactly one of seven states, with a reason in words:
   document_unavailable             the source answered and holds no document (or record) for this
                                    submission
   available_document_insufficient  something was retrieved, but it cannot answer the question: a
-                                   granting letter, a Statement, labeling, or a metadata record that
-                                   carries no study identifier. A summary (or a file of unknown type)
+                                   granting letter, a Statement, or a metadata record that carries
+                                   no study identifier. A summary (or a file of unknown type)
                                    whose pages could not be read is not this: the citation scan of
                                    it is search_incomplete_or_blocked until the pages are read
   candidate_awaiting_review        the route produced a candidate link that no machine check
@@ -33,7 +33,6 @@ from __future__ import annotations
 from typing import Any
 
 from devices.acquire import database_page_answered
-from devices.documents import DOCUMENT_TYPES
 
 STATES = ('not_searched', 'search_incomplete_or_blocked', 'document_unavailable',
           'available_document_insufficient', 'candidate_awaiting_review', 'no_candidate_in_completed_scope',
@@ -175,9 +174,13 @@ def openfda_metadata(found: dict[str, Any] | None) -> dict[str, Any]:
     return _cell('openfda_metadata', 'search_incomplete_or_blocked', found['reason'])
 
 
-# Types whose nature is not known: a file with no text and no FDA label, or text that matches no
-# known type. An unread one could be a summary.
-UNKNOWN_TYPES = ('unclassified_no_text', 'other')
+# Types that cannot cite a study whatever their pages hold: a letter states the decision and its
+# conditions, and a 510(k) Statement promises information on request and contains none. In the
+# 2026-11-14 run none of the 60 letters or the one Statement held cites an NCT id. Every other type
+# could: summaries, SSEDs, decision summaries, labeling (one of the 16 labeling files held cites
+# NCT ids), and files whose type is not known. This is a citation rule, separate from whether a
+# document could hold a demographic table (documents.DOCUMENT_TYPES).
+CANNOT_CITE_TYPES = ('510k_clearance_letter', 'de_novo_granting_letter', 'pma_approval_order', '510k_statement')
 
 
 def _pages_unread(d: dict[str, Any]) -> int:
@@ -187,9 +190,9 @@ def _pages_unread(d: dict[str, Any]) -> int:
 
 
 def _type_could_answer(doc_type: str | None) -> bool:
-    """Whether a document of this type could cite the study: a type that can describe one, or a type
-    not known."""
-    return doc_type in UNKNOWN_TYPES or bool(DOCUMENT_TYPES.get(doc_type or '', ('', False, ''))[1])
+    """Whether a document of this type could cite the study: any type but a letter or a 510(k)
+    Statement, including one not known."""
+    return doc_type not in CANNOT_CITE_TYPES
 
 
 def nct_citation_scan(docs: list[dict[str, Any]], links: list[dict[str, Any]]) -> dict[str, Any]:
@@ -207,10 +210,10 @@ def nct_citation_scan(docs: list[dict[str, Any]], links: list[dict[str, Any]]) -
         cell['reason'] += (f'; but {unread} page(s) of the documents held have no usable text layer and were not '
                            'read (no OCR), so the scan did not cover every page')
     # A scan whose documents cannot answer reads "available document insufficient"; but where the
-    # unread pages belong to a document that could carry the citation (a summary, an SSED, or a file
-    # whose type is not known), the scan is incomplete, not insufficient (investigator's decision,
-    # 2026-11-14, "D1. 2"). A document whose type is known and cannot describe a study (a clearance
-    # or granting letter, an approval order, labeling, a 510(k) Statement) stays insufficient.
+    # unread pages belong to a document that could carry the citation (a summary, an SSED, labeling,
+    # or a file whose type is not known), the scan is incomplete, not insufficient (investigator's
+    # decision, 2026-11-14, "D1. 2"). A letter or a 510(k) Statement cannot cite a study
+    # (CANNOT_CITE_TYPES), and its unread pages leave the scan insufficient.
     could_answer = [d for d in held if _pages_unread(d) and _type_could_answer(d['document_type'])]
     if could_answer and cell['state'] == 'available_document_insufficient':
         cell['state'] = 'search_incomplete_or_blocked'

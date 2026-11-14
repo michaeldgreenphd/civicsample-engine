@@ -115,8 +115,8 @@ completed scope: an unread page could hold the identifier. This was the investig
 planned follow-up. The same holds where every document held is one that cannot answer by itself
 only because its pages were not read: a scan that would otherwise read
 `available_document_insufficient` is `search_incomplete_or_blocked` when an unread page belongs to a
-document that could cite a study (a summary, an SSED, a decision summary, or a file whose type is
-not known). A clearance or granting letter, an approval order, labeling or a 510(k) Statement cannot
+document that could cite a study (a summary, an SSED, a decision summary, labeling, or a file whose
+type is not known). A clearance or granting letter, an approval order or a 510(k) Statement cannot
 cite a study whatever its pages hold, so its unread pages leave the scan insufficient (the
 investigator's decision of the same day, "D1. 2").
 
