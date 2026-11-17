@@ -39,8 +39,12 @@ SCHEMA_VERSION = 1
 SHARDS = 8
 EXPORT_FORMAT = 'civicsample-outcomes-assessment-export/1'
 DISPLAY_MODES = ('evidence_only', 'provisional_preview')
+# Method A's eight trial states, plus NO_DECISION_RULE: the primary outcome was estimated, not tested against a
+# prespecified criterion. Only a person's review records it; method A never assigns it (the private repository's
+# REVIEW_TRIAL_STATES, investigator's decision of 2026-11-17), so a machine assessment carrying it is refused.
 TRIAL_STATES = ('MET', 'NOT_MET', 'INSUFFICIENT_EVIDENCE', 'NOT_APPLICABLE', 'PENDING', 'UNREPORTED',
-                'CONFLICTING', 'ROLL_UP_NOT_SUPPORTED')
+                'CONFLICTING', 'ROLL_UP_NOT_SUPPORTED', 'NO_DECISION_RULE')
+REVIEWED_ONLY_STATES = ('NO_DECISION_RULE',)
 ASSESSMENT_KINDS = ('human_reviewed', 'machine_provisional')
 # Keys an imported assessment may carry (the private export's allowlist); any other key refuses
 # the build, so a widened export cannot pass private material through this repository.
@@ -200,6 +204,11 @@ def read_export(raw: bytes) -> dict[str, Any]:
             raise BuildError(f"{a.get('nct_id')}: non-allowlisted keys {sorted(extra)} in the export")
         if a.get('assessment_kind') not in ASSESSMENT_KINDS or a.get('trial_state') not in TRIAL_STATES:
             raise BuildError(f"{a.get('nct_id')}: unknown assessment kind or trial state")
+        reviewed_only = a['trial_state'] in REVIEWED_ONLY_STATES or any(
+            isinstance(u, dict) and u.get('state') in REVIEWED_ONLY_STATES for u in a.get('units') or [])
+        if reviewed_only and a['assessment_kind'] != 'human_reviewed':
+            raise BuildError(f"{a['nct_id']}: NO_DECISION_RULE is recorded only by a person's review; a machine "
+                             'assessment cannot carry it')
         if doc['display_mode'] == 'evidence_only' and a['assessment_kind'] != 'human_reviewed':
             raise BuildError(f"{a['nct_id']}: an evidence_only export carries a machine assessment")
         if (a['assessment_kind'] == 'human_reviewed') != ((a.get('review') or {}).get('status') == 'human_reviewed'):

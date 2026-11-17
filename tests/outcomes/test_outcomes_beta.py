@@ -281,10 +281,39 @@ def test_contract_catches_tampering_leaks_and_cross_file_drift(public: dict[str,
     assert any('private keys' in p for p in contract.check(bad))
     bad = copy.deepcopy(public)
     bad['summary.json']['assessment_states']['by_kind']['human_reviewed'].pop('CONFLICTING')
-    assert any('eight trial states' in p for p in contract.check(bad))
+    assert any('all 9 trial states' in p for p in contract.check(bad))
     bad = copy.deepcopy(public)
     del bad['records/r07.json']
     assert any('NCT99000007' in p or 'r07' in p for p in contract.check(bad))
+
+
+def test_no_decision_rule_is_a_reviewed_state(public: dict[str, Any]) -> None:
+    # Investigator's decision, 2026-11-17: estimation only (NO_DECISION_RULE) is recorded only by a person's review.
+    assert artifacts.TRIAL_STATES[:8] == ('MET', 'NOT_MET', 'INSUFFICIENT_EVIDENCE', 'NOT_APPLICABLE', 'PENDING',
+                                          'UNREPORTED', 'CONFLICTING', 'ROLL_UP_NOT_SUPPORTED')
+    assert artifacts.TRIAL_STATES[8:] == ('NO_DECISION_RULE',)
+    # A reviewed trial with an estimation-only unit is read and counted.
+    exp = F.export('evidence_only')
+    a = exp['assessments'][0]
+    a.update(trial_state='NO_DECISION_RULE', trial_sub_reason='ESTIMATION_ONLY')
+    a['units'][0].update(state='NO_DECISION_RULE', sub_reason='ESTIMATION_ONLY', decision_rule=None)
+    assert artifacts.read_export(json.dumps(exp).encode())['assessments'][0]['trial_state'] == 'NO_DECISION_RULE'
+    # On a machine assessment, as a trial or a unit state, it is refused when read.
+    for where in ('trial', 'unit'):
+        exp = F.export('provisional_preview')
+        m = next(x for x in exp['assessments'] if x['assessment_kind'] == 'machine_provisional' and x['units'])
+        if where == 'trial':
+            m.update(trial_state='NO_DECISION_RULE', trial_sub_reason='ESTIMATION_ONLY')
+        else:
+            m['units'][0].update(state='NO_DECISION_RULE', sub_reason='ESTIMATION_ONLY')
+        with pytest.raises(artifacts.BuildError, match='recorded only by a person'):
+            artifacts.read_export(json.dumps(exp).encode())
+    # The contract catches it in a built family as well.
+    bad = copy.deepcopy(public)
+    rec = bad['records/r01.json']['records']['NCT99000001']['assessment']
+    rec['units'][0]['state'] = 'NO_DECISION_RULE'
+    rec['assessment_kind'] = 'machine_provisional'
+    assert any('NO_DECISION_RULE on an assessment no person reviewed' in p for p in contract.check(bad))
 
 
 def test_export_is_checked_before_use() -> None:
