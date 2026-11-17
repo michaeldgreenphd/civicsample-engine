@@ -287,7 +287,7 @@ def test_contract_catches_tampering_leaks_and_cross_file_drift(public: dict[str,
     assert any('NCT99000007' in p or 'r07' in p for p in contract.check(bad))
 
 
-def test_no_decision_rule_is_a_reviewed_state(public: dict[str, Any]) -> None:
+def test_no_decision_rule_is_a_reviewed_state(public: dict[str, Any], preview: dict[str, Any]) -> None:
     # Investigator's decision, 2026-11-17: estimation only (NO_DECISION_RULE) is recorded only by a person's review.
     assert artifacts.TRIAL_STATES[:8] == ('MET', 'NOT_MET', 'INSUFFICIENT_EVIDENCE', 'NOT_APPLICABLE', 'PENDING',
                                           'UNREPORTED', 'CONFLICTING', 'ROLL_UP_NOT_SUPPORTED')
@@ -308,6 +308,19 @@ def test_no_decision_rule_is_a_reviewed_state(public: dict[str, Any]) -> None:
             m['units'][0].update(state='NO_DECISION_RULE', sub_reason='ESTIMATION_ONLY')
         with pytest.raises(artifacts.BuildError, match='recorded only by a person'):
             artifacts.read_export(json.dumps(exp).encode())
+    # Regression (Codex, PR 66, P2): review.machine_trial_state is method A's state, never NO_DECISION_RULE, even on
+    # a reviewed assessment; the read and the contract both refuse it.
+    exp = F.export('evidence_only')
+    exp['assessments'][0]['review']['machine_trial_state'] = 'NO_DECISION_RULE'
+    with pytest.raises(artifacts.BuildError, match="machine_trial_state is method A's state"):
+        artifacts.read_export(json.dumps(exp).encode())
+    bad = copy.deepcopy(public)
+    bad['records/r01.json']['records']['NCT99000001']['assessment']['review']['machine_trial_state'] = 'NO_DECISION_RULE'
+    assert any("machine_trial_state is method A's state" in p for p in contract.check(bad))
+    # A machine count for it in summary.json is refused as well.
+    prev = copy.deepcopy(preview)
+    prev['summary.json']['assessment_states']['by_kind']['machine_provisional']['NO_DECISION_RULE'] = 1
+    assert any("machine_provisional counts NO_DECISION_RULE" in p for p in contract.check(prev))
     # The contract catches it in a built family as well.
     bad = copy.deepcopy(public)
     rec = bad['records/r01.json']['records']['NCT99000001']['assessment']

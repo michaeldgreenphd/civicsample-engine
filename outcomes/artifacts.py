@@ -209,6 +209,11 @@ def read_export(raw: bytes) -> dict[str, Any]:
         if reviewed_only and a['assessment_kind'] != 'human_reviewed':
             raise BuildError(f"{a['nct_id']}: NO_DECISION_RULE is recorded only by a person's review; a machine "
                              'assessment cannot carry it')
+        # review.machine_trial_state records method A's own state, which is never a reviewed-only one, whatever
+        # the assessment's kind (Codex, PR 66).
+        if (a.get('review') or {}).get('machine_trial_state') in REVIEWED_ONLY_STATES:
+            raise BuildError(f"{a['nct_id']}: review.machine_trial_state is method A's state, and method A never "
+                             'assigns NO_DECISION_RULE')
         if doc['display_mode'] == 'evidence_only' and a['assessment_kind'] != 'human_reviewed':
             raise BuildError(f"{a['nct_id']}: an evidence_only export carries a machine assessment")
         if (a['assessment_kind'] == 'human_reviewed') != ((a.get('review') or {}).get('status') == 'human_reviewed'):
