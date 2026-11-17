@@ -7,14 +7,18 @@
   },
   "started_at": "2026-11-14T01:21:51Z",
   "continuation_started_at": "2026-11-14T13:42:19Z",
-  "ended_at": "2026-11-14T20:42:00Z",
+  "ended_at": "2026-11-17T14:02:56Z",
   "completion_status": {
+    "in_scope_trials": 402,
     "primary_pass_trials_completed": "348 / 402",
+    "primary_pass_trials_partly_done": "0 / 402",
+    "primary_pass_trials_not_started": "54 / 402",
     "second_pass_trials_completed": "40 / 40",
     "paired_second_pass_trials": "40 / 40",
     "download_failures": "0 / 678",
     "clinicaltrials_gov_rate_limits": 0,
-    "continuation_hard_cap_usd": 150.0,
+    "total_census_hard_cap_usd": 150.0,
+    "batch_launch_stop_threshold_usd": 140.0,
     "stopped_by_cost_cap": true
   },
   "workers": {
@@ -24,21 +28,21 @@
       "model": "Gemini 4 Carbon (High)",
       "model_id": "gemini-4-carbon-high",
       "first_step_at": "2026-11-14T01:21:51Z",
-      "last_step_at": "2026-11-14T20:38:01Z",
+      "last_step_at": "2026-11-17T14:02:56Z",
       "wave1_usd_1_25": 3.3485,
       "wave1_usd_2_00": 4.9156,
-      "further_turns": 138,
-      "further_uncached_input_tokens": 3612597,
-      "further_cache_read_tokens": 16944520,
-      "further_output_tokens": 148718,
-      "further_usd_1_25": 11.4715,
-      "further_usd_2_00": 17.6866,
-      "total_turns": 202,
-      "total_uncached_input_tokens": 4452616,
-      "total_cache_read_tokens": 21900178,
-      "total_output_tokens": 254035,
-      "total_usd_1_25": 14.82,
-      "total_usd_2_00": 22.6022
+      "further_turns": 196,
+      "further_uncached_input_tokens": 4203844,
+      "further_cache_read_tokens": 23395228,
+      "further_output_tokens": 202882,
+      "further_usd_1_25": 14.4523,
+      "further_usd_2_00": 22.2214,
+      "total_turns": 260,
+      "total_uncached_input_tokens": 5043863,
+      "total_cache_read_tokens": 28350886,
+      "total_output_tokens": 308199,
+      "total_usd_1_25": 17.8008,
+      "total_usd_2_00": 27.137
     },
     "monitor": {
       "conversation_id": "00ec51d6-f1b9-490b-bbca-e37626429ff3",
@@ -60,7 +64,8 @@
       "total_cache_read_tokens": 34036840,
       "total_output_tokens": 39698,
       "total_usd_1_25": 6.0724,
-      "total_usd_2_00": 9.5571
+      "total_usd_2_00": 9.5571,
+      "total_usd_claude_sonnet_3_00": 14.2165
     },
     "shard-01": {
       "conversation_id": "88a51dc6-ea49-4d7c-bec2-6f75602da9ac",
@@ -547,6 +552,7 @@
   ],
   "token_usage_and_cost": {
     "currency": "USD",
+    "measurement_method": "token_counts_times_price (exact per-turn input_tokens, cache_read_tokens, and output_tokens from each agent's transcript.jsonl multiplied by published tiered per-token API rates; Antigravity executes on plan quota and exposes no USD billing page in the workspace)",
     "billing_mechanism": "Antigravity executes on plan quota (visible in the Antigravity IDE Model Selector / Settings quota indicator and swarm{action:'models'}); API-equivalent USD spend is computed from exact logged tokens in transcript.jsonl.",
     "wave1_totals": {
       "planner_turns": 485,
@@ -556,33 +562,29 @@
       "usd_schedule_1_25": 26.6772,
       "usd_schedule_2_00": 38.4867
     },
-    "further_work_totals_against_150_cap": {
-      "planner_turns": 1922,
-      "uncached_input_tokens": 20728929,
-      "cache_read_tokens": 205949981,
-      "output_tokens": 3062178,
-      "le_200k": {
-        "turns": 1628,
-        "uncached_input_tokens": 14826643,
-        "cache_read_tokens": 145027711,
-        "output_tokens": 2157333
-      },
-      "gt_200k": {
-        "turns": 294,
-        "uncached_input_tokens": 5902286,
-        "cache_read_tokens": 60922270,
-        "output_tokens": 904845
-      },
-      "usd_schedule_1_25": 101.7941,
-      "usd_schedule_2_00": 148.8121
+    "further_work_since_2026_11_14T13_42_19Z": {
+      "planner_turns": 1980,
+      "uncached_input_tokens": 21320176,
+      "cache_read_tokens": 212400689,
+      "output_tokens": 3116342,
+      "usd_schedule_1_25": 104.7748,
+      "usd_schedule_2_00": 153.3468
     },
     "cumulative_all_waves_totals": {
-      "planner_turns": 2407,
-      "uncached_input_tokens": 27517163,
-      "cache_read_tokens": 245272939,
-      "output_tokens": 3977661,
-      "usd_schedule_1_25": 128.4712,
-      "usd_schedule_2_00": 187.2988
+      "from": "2026-11-14T01:21:51Z",
+      "through": "2026-11-17T14:02:56Z",
+      "planner_turns": 2465,
+      "uncached_input_tokens": 28108410,
+      "cache_read_tokens": 251723647,
+      "output_tokens": 4031825,
+      "usd_model_matched_standard": 139.5962,
+      "usd_schedule_1_25": 131.4521,
+      "usd_schedule_2_00": 191.8336,
+      "measured_per_completed_primary_trial_348": {
+        "usd_model_matched_standard": 0.4011,
+        "usd_schedule_1_25": 0.3777,
+        "usd_schedule_2_00": 0.5512
+      }
     }
   },
   "shard_assignment": {
@@ -1257,8 +1259,10 @@
     "worker_records_modified_by_coordinator": 0
   },
   "deviations_from_instructions": [
-    "Wave 1 halted at 62 / 402 primary trials under the initial $18/$20 cap; work resumed per follow-up user instructions under a $150.00 USD hard cap for all further work in order: (1) remaining 32 primary-pass trials of the 40-trial sample, (2) all 40 independent second-pass trials, (3) remaining primary-pass trials of shard-04..shard-20 skipping trials done in step 1.",
-    "Downloaded PDFs were stored locally at rule-census-20261114/pdfs/{NCT_ID}/{filename} to prevent filename collisions across trials and added to .gitignore prior to commit/push per follow-up instructions, while retaining the exact ClinicalTrials.gov filename in documents.jsonl and locations.jsonl.",
+    "Wave 1 (2026-11-14T01:21:51Z to 2026-11-14T03:13:29Z) halted at 62 / 402 primary trials under the initial $18/$20 cap ($26.68 uniform-$1.25 / $38.49 conservative-$2.00). Work resumed at 2026-11-14T13:42:19Z under follow-up instructions specifying a $150.00 hard cap for all further work in order: (1) remaining 32 / 40 sample primary trials, (2) all 40 / 40 independent second-pass trials, (3) shard-04..shard-20 skipping sample trials, stopping after shard-17 at 2026-11-14T20:38:01Z when further-work conservative-$2.00 spend reached $148.81 ($101.79 uniform-$1.25). On 2026-11-17, under delivery instructions specifying a $150.00 total-census cap counting everything already spent and a $140.00 batch-launch stop threshold, cumulative spend from 2026-11-14T01:21:51Z through 2026-11-17T14:02:56Z stood at $139.60 USD (model-matched standard API rates), $131.45 USD (uniform Gemini $1.25 schedule, where 18-trial shard-18 plus merge overhead would exceed $140.00), and $191.83 USD (conservative $2.00 schedule); therefore no new batch was launched and 54 / 402 primary trials (shard-18, shard-19, shard-20) remain unstarted.",
+    "Added rule-census-20261114/STATUS.md on 2026-11-17 per the delivery-task instructions (whereas the original census prompt specified four output files only). On 2026-11-14, commit 03359fbb88fec30839f686357c51cb6ccd9d8263 also updated .gitignore to ignore pdfs/ per the 2026-11-14 continuation instructions; .gitignore was not modified on 2026-11-17.",
+    "Downloaded PDFs were stored locally at rule-census-20261114/pdfs/{NCT_ID}/{filename} to prevent filename collisions across trials and excluded from git commit/push per instructions, while retaining the exact ClinicalTrials.gov filename in documents.jsonl and locations.jsonl.",
     "Standalone Informed Consent Form (ICF) PDFs in largeDocs with both hasProtocol=false and hasSap=false were excluded because doc_type is strictly protocol|sap|combined."
-  ]
+  ],
+  "status_reported_at": "2026-11-17T14:02:56Z"
 }

@@ -2,12 +2,12 @@
 
 ## Run Status & Budget Summary
 
-Execution completed **348 / 402 (86.6%)** in-scope primary-pass trials and **40 / 40 (100.0%)** independent second-pass trials under the **\$150.00 USD** continuation hard cap (stopping before launching any wave whose Wave 1 per-trial estimate plus running total would exceed \$150.00).
+Execution completed **348 / 402 (86.6%)** in-scope primary-pass trials (**0 / 402 (0.0%)** partly done; **54 / 402 (13.4%)** not started) and **40 / 40 (100.0%)** independent second-pass trials under the **\$150.00 USD** census cap (**\$140.00 USD** batch-launch stop threshold).
 
 - **In-scope trial count check:** 402 / 598 (67.2%) rows in `index.json` had `(protocol == true or sap == true) and in_audit == false` (matched expected 402; 0 `in_audit == true` trials queried or recorded).
 - **Download failure check:** 0 / 678 (0.0%) posted protocol/SAP PDF downloads failed.
 - **ClinicalTrials.gov rate-limit check:** 0 HTTP 429 rate-limit responses observed.
-- **Continuation spend (hard cap \$150.00 USD):** `1922` planner turns (`20,728,929` uncached input tokens, `205,949,981` cached context tokens, `3,062,178` output tokens) = **\$101.79 USD** on the standard Gemini Pro \$1.25 / \$0.125 / \$10.00 (<=200k) & \$2.50 / \$0.25 / \$15.00 (>200k) schedule (**\$148.81 USD** on the conservative \$2.00 / \$0.20 / \$12.00 & \$4.00 / \$0.40 / \$18.00 schedule). Cumulative spend including Wave 1 (\$26.68 / \$38.49): **\$128.47 USD** (standard) / **\$187.30 USD** (conservative).
+- **Total spend since run start (`2026-11-14T01:21:51Z` through `2026-11-17T14:02:56Z`, measured via `token counts × price` from `transcript.jsonl` across all 23 agents):** `2,465` planner turns (`28,108,410` uncached input tokens, `251,723,647` cached context tokens, `4,031,825` output tokens) = **\$139.60 USD** at model-matched standard API rates (Gemini Pro \$1.25 / \$0.125 / \$10.00 `<=200k`, \$2.50 / \$0.25 / \$15.00 `>200k`; Claude Sonnet 4.6 \$3.00 / \$0.30 / \$15.00 for `monitor`), **\$131.45 USD** at uniform Gemini Pro \$1.25 rates, and **\$191.83 USD** at conservative \$2.00 / \$0.20 / \$12.00 (`<=200k`) & \$4.00 / \$0.40 / \$18.00 (`>200k`) rates.
 
 ---
 
@@ -20,7 +20,8 @@ Execution completed **348 / 402 (86.6%)** in-scope primary-pass trials and **40 
 | Total rows in `civicsample.com/data/outcomes/index.json` | 598 / 598 (100.0%) |
 | In-scope trials (`(protocol or sap) and not in_audit`) | 402 / 598 (67.2%) |
 | Primary pass — completed trials | 348 / 402 (86.6%) |
-| Primary pass — unstarted trials | 54 / 402 (13.4%) |
+| Primary pass — partly done trials | 0 / 402 (0.0%) |
+| Primary pass — not started trials | 54 / 402 (13.4%) |
 | Completed primary-pass trials with >=1 downloaded protocol/SAP PDF | 348 / 348 (100.0%) |
 | Completed primary-pass trials with 0 downloaded protocol/SAP PDFs (`NO_DOCUMENT`) | 0 / 348 (0.0%) |
 | Fixed 40 / 402 (10.0%) sample — primary pass completed | 40 / 40 (100.0%) |
