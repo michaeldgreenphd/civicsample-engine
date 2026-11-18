@@ -565,7 +565,7 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
     """
     from src.utils import sum_measurements, is_percentage_measure
 
-    measure, total_only = table_selection.total_class_view(measure)
+    measure, total_only = table_selection.total_class_view(measure, overall_group_id)
     is_pct = is_percentage_measure(measure)
     # Percentages convert against the measure's own Number Analyzed, else a
     # class-level one that every class repeats, else the study's baseline

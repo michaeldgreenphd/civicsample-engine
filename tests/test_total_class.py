@@ -162,7 +162,7 @@ def test_a_subgroup_may_leave_out_a_row() -> None:
 def test_the_title_is_matched_trimmed_and_case_insensitively(title: str) -> None:
     measure = _measure("Sex: Female, Male", [_class("Arm 1", [("Female", 3), ("Male", 2)]),
                                               _class(title, [("Female", 3), ("Male", 2)])])
-    assert table_selection.total_class_view(measure)[1] is True
+    assert table_selection.total_class_view(measure, None)[1] is True
 
 
 def test_a_subgroup_row_the_total_lacks_leaves_the_measure_as_before() -> None:
@@ -171,7 +171,7 @@ def test_a_subgroup_row_the_total_lacks_leaves_the_measure_as_before() -> None:
     before, and no row carries the flag."""
     measure = _measure("Sex: Female, Male", [_class("Part 1", [("Female", 3), ("Male", 2), ("Unknown", 1)]),
                                               _class("Total", [("Female", 3), ("Male", 2)])])
-    view, total_only = table_selection.total_class_view(measure)
+    view, total_only = table_selection.total_class_view(measure, None)
     assert total_only is False and view is measure
     sex = extract_sex_data(_study("NCT99000117", [measure], 6))
     assert sex["totals"] == {"female": 6, "male": 4, "unknown": 1}
@@ -183,7 +183,7 @@ def test_a_class_titled_total_holding_a_count_is_a_row_not_a_total_class() -> No
     Total is then a row named Total, and nothing is a breakdown of it."""
     measure = _measure("Race (NIH/OMB)", [_class("White", [("Count", 30)]), _class("Black", [("Count", 10)]),
                                           _class("Total", [("Count", 40)])])
-    assert table_selection.total_class_view(measure)[1] is False
+    assert table_selection.total_class_view(measure, None)[1] is False
 
 
 @pytest.mark.parametrize("classes", [
@@ -193,7 +193,7 @@ def test_a_class_titled_total_holding_a_count_is_a_row_not_a_total_class() -> No
     [_class("Arm 1", [("Count", 5)]), _class("Total", [("Female", 3), ("Male", 2)])],    # unlabelled subgroup
 ])
 def test_other_shapes_are_read_as_before(classes: list[dict[str, Any]]) -> None:
-    assert table_selection.total_class_view(_measure("Sex: Female, Male", classes))[1] is False
+    assert table_selection.total_class_view(_measure("Sex: Female, Male", classes), None)[1] is False
 
 
 def test_percentages_convert_against_the_total_class() -> None:
@@ -223,7 +223,7 @@ def test_a_total_row_without_a_value_leaves_the_measure_as_before(empty_row: dic
     total["categories"].append(empty_row)
     measure = _measure("Sex: Female, Male", [_class("Site A", [("Female", 3), ("Male", 4)]),
                                               _class("Site B", [("Female", 2), ("Male", 1)]), total])
-    view, total_only = table_selection.total_class_view(measure)
+    view, total_only = table_selection.total_class_view(measure, None)
     assert total_only is False and view is measure
     sex = extract_sex_data(_study("NCT99000119", [measure], 10))
     assert sex["totals"]["male"] == 5
@@ -238,7 +238,7 @@ def test_a_one_row_total_class_converts_percentages_as_any_one_row_table() -> No
     classes = [_class("Site A", [("White", 50.0)], 30), _class("Site B", [("White", 10.0)], 50),
                _class("Total", [("White", 25.0)], 80)]
     measure = _measure("Race (NIH/OMB)", classes, pct=True)
-    view, total_only = table_selection.total_class_view(measure)
+    view, total_only = table_selection.total_class_view(measure, None)
     assert total_only is True
     assert table_selection.number_analyzed(measure, None) == 80
     assert table_selection.percentage_denominator(view, None, 100) == 100
@@ -262,7 +262,7 @@ def test_two_whole_population_classes_leave_the_measure_as_before() -> None:
     measure = _measure("Sex: Female, Male", [_class("Arm 1", [("Female", 3), ("Male", 2)]),
                                               _class("Overall", [("Female", 3), ("Male", 2)]),
                                               _class("Total", [("Female", 3), ("Male", 2)])])
-    assert table_selection.total_class_view(measure)[1] is False
+    assert table_selection.total_class_view(measure, None)[1] is False
 
 
 def test_a_class_titled_all_is_not_a_whole_population_class() -> None:
@@ -271,4 +271,45 @@ def test_a_class_titled_all_is_not_a_whole_population_class() -> None:
     a class titled "All" leaves the measure as before."""
     measure = _measure("Sex: Female, Male", [_class("Arm 1", [("Female", 3), ("Male", 2)]),
                                               _class("All", [("Female", 3), ("Male", 2)])])
-    assert table_selection.total_class_view(measure)[1] is False
+    assert table_selection.total_class_view(measure, None)[1] is False
+
+
+def _two_group_class(title: str, rows: list[tuple[str, Any, Any]]) -> dict[str, Any]:
+    """A class in a two-group study: BG000 is the arm, BG001 the Overall group."""
+    return {"title": title, "categories": [
+        {"title": label, "measurements": [{"groupId": "BG000", "value": arm}, {"groupId": "BG001", "value": overall}]}
+        for label, arm, overall in rows]}
+
+
+def test_the_total_row_must_hold_a_number_for_the_overall_group() -> None:
+    """A two-group study (an arm and the Overall group BG001): the Total row
+    "Male" posts the arm's value but a null Overall value, which
+    sum_measurements reads as 0 for BG001. The measure is read as before
+    (main's reading): the rule does not repair a measure whose Total class
+    cannot be read, it only declines to drop the subgroup rows that hold the
+    count. Female, which the Total posts, is still summed with the subgroups
+    there, as on main."""
+    measure = _measure("Sex: Female, Male", [
+        _two_group_class("Site A", [("Female", "3", "3"), ("Male", "4", "4")]),
+        _two_group_class("Site B", [("Female", "2", "2"), ("Male", "1", "1")]),
+        _two_group_class("Total", [("Female", "5", "5"), ("Male", "5", None)])])
+    assert table_selection.total_class_view(measure, "BG001")[1] is False
+    study = _study("NCT99000121", [measure], 10)
+    study["resultsSection"]["baselineCharacteristicsModule"]["groups"] = [
+        {"groupId": "BG000", "title": "Arm"}, {"groupId": "BG001", "title": "Total"}]
+    study["resultsSection"]["baselineCharacteristicsModule"]["denoms"] = [
+        {"units": "Participants", "counts": [{"groupId": "BG000", "value": "10"}, {"groupId": "BG001", "value": "10"}]}]
+    sex = extract_sex_data(study)
+    assert sex["totals"]["male"] == 5          # 4 + 1 from the subgroups, the Total's null read as 0
+    assert sex["totals"]["female"] == 10       # 3 + 2 + Total 5: main's double count, unchanged
+    assert FLAG not in sex["flags"]
+    # With the Overall value posted, the Total class is read.
+    measure["classes"][2]["categories"][1]["measurements"][1]["value"] = "5"
+    assert table_selection.total_class_view(measure, "BG001")[1] is True
+
+
+def test_a_total_row_that_is_not_a_number_leaves_the_measure_as_before() -> None:
+    measure = _measure("Sex: Female, Male", [_class("Site A", [("Female", 3), ("Male", 4)]),
+                                              _class("Site B", [("Female", 2), ("Male", 1)]),
+                                              _class("Total", [("Female", 5), ("Male", "NA")])])
+    assert table_selection.total_class_view(measure, None)[1] is False
