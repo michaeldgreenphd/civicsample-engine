@@ -37,7 +37,13 @@ Tests:
  16. NCT99000112 — A race classification titled "Race/Ethnicity,
      Customized": race rows and the race classification's unknown row, no
      ethnicity row (fictional study, the table shape of NCT02787551)
- 17. NCT99000113 — Age-band classes beside a "Total" class that repeats
+ 17. NCT99000113 — A combined race and ethnicity classification whose
+     Hispanic row is posted as "Hispanic American" (fictional study, the
+     table shape of NCT00090233)
+ 18. NCT99000114 — Race crossed with ethnicity as "White, not of Hispanic
+     origin" / "White, of Hispanic origin" (fictional study, the table shape
+     of NCT00756652)
+ 19. NCT99000130 — Age-band classes beside a "Total" class that repeats
      their rows, in a "Race/Ethnicity, Customized" and a "Sex: Female, Male"
      measure (fictional study, the labels and counts of NCT04911296)
 
@@ -50,9 +56,9 @@ counting them (EXPECTED_SKIPPED_ETHNICITY); study 13 also asserts that its
 race rows are counted as not Hispanic (EXPECTED_ETHNICITY). Study 14 asserts that a label
 naming a race beside an ethnicity term is counted in that race
 (check_joined_labels), and its ethnicity totals and flags, read from the same
-joined labels (EXPECTED_ETHNICITY). Studies 15 and 16 assert their ethnicity
+joined labels (EXPECTED_ETHNICITY). Studies 15 to 18 assert their ethnicity
 totals and flags (EXPECTED_ETHNICITY); study 15 also asserts its race block,
-whose rows are prefixed "Race: " (EXPECTED_SKIPPED_ETHNICITY). Study 17
+whose rows are prefixed "Race: " (EXPECTED_SKIPPED_ETHNICITY). Study 19
 asserts its ethnicity totals and flags (EXPECTED_ETHNICITY) and its sex totals
 and flags (EXPECTED_SEX): the Total class is counted once, the age bands not
 again.
@@ -541,19 +547,56 @@ MOCK_NCT99000112 = _make_study(
     total_participants=514,
 )
 
-# ---------- NCT99000113 (fictional): subgroup classes beside a Total class ----------
+# ---------- NCT99000113 (fictional): "Hispanic American" in a combined classification ----------
+# 50 participants, one row each: White 30 / Hispanic American 8 / Black 12.
+# "Hispanic American" is now in the ethnicity vocabulary (block comment
+# "Plain vocabulary gaps"), so both extractors count 8 Hispanic and the race
+# rows are counted as not Hispanic. Before, the ethnicity block ended in
+# all-zero rejection, flagged ethnicity_rows_unread.
+MOCK_NCT99000113 = _make_study(
+    "NCT99000113",
+    "NCT99000113 - Hispanic American in a combined classification (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("White", 30), ("Hispanic American", 8), ("Black", 12)]
+        ]),
+    ],
+    total_participants=50,
+)
+
+# ---------- NCT99000114 (fictional): "of Hispanic origin" and "not of Hispanic origin" ----------
+# 75 participants. Both wordings are in the vocabulary, read through the
+# comma split: Not Hispanic 50 + 10, Hispanic 8, and the Asian and Missing
+# rows balanced into unknown. Before, nothing was read and all 75 were
+# balanced into unknown; with "not of Hispanic origin" alone the block
+# would read 60 Not Hispanic and no Hispanic participant.
+MOCK_NCT99000114 = _make_study(
+    "NCT99000114",
+    "NCT99000114 - Of / not of Hispanic origin (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("White, not of Hispanic origin", 50), ("White, of Hispanic origin", 8),
+                             ("Black, not of Hispanic origin", 10), ("Asian", 5), ("Missing", 2)]
+        ]),
+    ],
+    total_participants=75,
+)
+
+# ---------- NCT99000130 (fictional): subgroup classes beside a Total class ----------
 # 150 participants; every measure posts three age bands and a Total class with
 # the same rows. Before, every class was summed: Hispanic 168 of 150, female
 # 170. The Total class is now read alone
 # (table_selection, "A Total class beside subgroup classes").
-_NCT99000113_RACE_LABELS = ["Black - Non-Hispanic", "American Indian/Alaskan Native", "Hispanic",
+_NCT99000130_RACE_LABELS = ["Black - Non-Hispanic", "American Indian/Alaskan Native", "Hispanic",
                             "Asian/Pacific Islander", "White - Non-Hispanic"]
-MOCK_NCT99000113 = _make_study(
-    "NCT99000113",
-    "NCT99000113 - Age-band classes beside a Total class (fictional mock)",
+MOCK_NCT99000130 = _make_study(
+    "NCT99000130",
+    "NCT99000130 - Age-band classes beside a Total class (fictional mock)",
     [
         _make_measure("Race/Ethnicity, Customized", [
-            _make_class(band, [_make_category(label, v) for label, v in zip(_NCT99000113_RACE_LABELS, values)])
+            _make_class(band, [_make_category(label, v) for label, v in zip(_NCT99000130_RACE_LABELS, values)])
             for band, values in [("21 - 50 years", [6, 1, 32, 0, 11]), ("51 - 65 years", [5, 1, 28, 0, 16]),
                                  ("66 - 75 years", [7, 0, 24, 2, 17]), ("Total", [18, 2, 84, 2, 44])]
         ]),
@@ -593,7 +636,7 @@ EXPECTED_SKIPPED_ETHNICITY = {
 EXPECTED_SEX = {
     "NCT99000108": {"totals": {"female": 34, "male": 26, "unknown": 0},
                     "flags": ["from_combined_table", "sex_table_superseded"]},
-    "NCT99000113": {"totals": {"female": 85, "male": 65, "unknown": 0},
+    "NCT99000130": {"totals": {"female": 85, "male": 65, "unknown": 0},
                     "flags": ["total_class_only"]},
 }
 
@@ -614,10 +657,14 @@ EXPECTED_ETHNICITY = {
                     "flags": ["dimension_wording_stripped"]},
     "NCT99000112": {"omb": {"hispanic_latino": 0, "not_hispanic_latino": 0, "unknown_not_reported": 0},
                     "flags": ["race_only_table_skipped"]},
+    "NCT99000113": {"omb": {"hispanic_latino": 8, "not_hispanic_latino": 42, "unknown_not_reported": 0},
+                    "flags": ["not_hispanic_from_combined_table"]},
+    "NCT99000114": {"omb": {"hispanic_latino": 8, "not_hispanic_latino": 60, "unknown_not_reported": 7},
+                    "flags": ["denominator_balanced", "split_from_combined"]},
     # The Total class alone: Hispanic 84, Not Hispanic 18 + 44 from the
     # "- Non-Hispanic" rows, the 4 American Indian and Asian participants
     # balanced into unknown.
-    "NCT99000113": {"omb": {"hispanic_latino": 84, "not_hispanic_latino": 62, "unknown_not_reported": 4},
+    "NCT99000130": {"omb": {"hispanic_latino": 84, "not_hispanic_latino": 62, "unknown_not_reported": 4},
                     "flags": ["denominator_balanced", "race_joined_label", "total_class_only"]},
 }
 
@@ -810,6 +857,8 @@ def main() -> None:
         (MOCK_NCT99000111, "NCT99000111"),
         (MOCK_NCT99000112, "NCT99000112"),
         (MOCK_NCT99000113, "NCT99000113"),
+        (MOCK_NCT99000114, "NCT99000114"),
+        (MOCK_NCT99000130, "NCT99000130"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
