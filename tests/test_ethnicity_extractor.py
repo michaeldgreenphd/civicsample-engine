@@ -576,6 +576,15 @@ VOCABULARY_GAPS = [
     # Latino negated alone
     ("non-Latino", "not_hispanic_latino"),
     ("Non-Latino", "not_hispanic_latino"),
+    # counterparts posted beside the entries above
+    ("Latino American", "hispanic_latino"),
+    ("of Hispanic origin", "hispanic_latino"),
+    ("Not Hispanic ethnicity", "not_hispanic_latino"),
+    ("Not Hispanic Ethnicity", "not_hispanic_latino"),
+    ("Non-Hispanic ethnicity", "not_hispanic_latino"),
+    ("Non-Hispanic Ethnicity", "not_hispanic_latino"),
+    ("Not Latino or Hispanic", "not_hispanic_latino"),
+    ("Non American Hispanic", "not_hispanic_latino"),
 ]
 
 
@@ -638,3 +647,20 @@ def test_vocabulary_gap_entries_are_never_fuzzy_targets() -> None:
     assert list(ee._FUZZY_KEYS) == [k for k in ee.ETHNICITY_MAPPINGS if k not in ee._EXACT_ONLY_KEYS]
     mapping = ee.map_ethnicity_category("Non-Hispanic and Latino")
     assert mapping["omb_category"] == "unknown_not_reported" and "unmapped" in mapping["flags"]
+
+
+@pytest.mark.parametrize("hispanic, not_hispanic", [
+    ("Hispanic Ethnicity", "Not Hispanic Ethnicity"),
+    ("Hispanic Ethnicity", "Non-Hispanic Ethnicity"),
+    ("Latino or Hispanic", "Not Latino or Hispanic"),
+    ("Ethnicity: American hispanic", "Ethnicity: Non American hispanic"),
+    ("White, of Hispanic origin", "White, not of Hispanic origin"),
+])
+def test_both_sides_of_a_posted_pair_are_read(hispanic: str, not_hispanic: str) -> None:
+    """A table posting a wording and its opposite (block comment "Plain
+    vocabulary gaps", "Counterparts"): reading one side alone would make the
+    block all Hispanic, or all not Hispanic, among those it classifies."""
+    table = _table(COMBINED, [("White", 40), ("Black", 10), (hispanic, 9), (not_hispanic, 41)])
+    eth = extract_ethnicity_data(_study("NCT99000804", [table], participants=50))
+    assert eth["omb_totals"] == {"hispanic_latino": 9, "not_hispanic_latino": 41, "unknown_not_reported": 0}
+    assert "ethnicity_rows_unread" not in eth["flags"]

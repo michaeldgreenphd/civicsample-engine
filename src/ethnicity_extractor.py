@@ -46,6 +46,10 @@ ETHNICITY_MAPPINGS = {
     "Latino or Hispanic": ("hispanic_latino", None),    # "Hispanic or Latino" reversed
     "Hispanic, Latinx": ("hispanic_latino", None),      # both terms, comma-joined: one category
     "Hispanic ethnicity": ("hispanic_latino", None),    # the category named with its dimension; "Hispanic Ethnicity" too
+    # Positive counterparts posted in the same tables as the entries above
+    # and below (same block comment, "Counterparts").
+    "Latino American": ("hispanic_latino", None),       # beside "American Hispanic" (NCT00628745)
+    "of Hispanic origin": ("hispanic_latino", None),    # "White, of Hispanic origin" beside "White, not of Hispanic origin"
 
     # Not Hispanic or Latino
     "Not Hispanic or Latino": ("not_hispanic_latino", None),
@@ -62,6 +66,12 @@ ETHNICITY_MAPPINGS = {
     "Non-Hispanic, Non-Latino": ("not_hispanic_latino", None),          # both terms negated, comma
     "Non-Hispanic or Non-Latino": ("not_hispanic_latino", None),        # both terms negated, "or"
     "non-Latino": ("not_hispanic_latino", None),                        # Latino negated; "Non-Latino" too
+    # Negative counterparts posted in the same tables as the Hispanic entries
+    # above (same block comment, "Counterparts").
+    "Not Hispanic ethnicity": ("not_hispanic_latino", None),            # beside "Hispanic Ethnicity"
+    "Non-Hispanic ethnicity": ("not_hispanic_latino", None),            # beside "Hispanic Ethnicity"
+    "Not Latino or Hispanic": ("not_hispanic_latino", None),            # beside "Latino or Hispanic"
+    "Non American Hispanic": ("not_hispanic_latino", None),             # beside "American hispanic" (NCT01900899)
 
     # Unknown / Not Reported  (including slash-separated variants)
     "Unknown": ("unknown_not_reported", None),
@@ -119,6 +129,19 @@ ETHNICITY_MAPPINGS = {
 # describe the same people as "Hispanic", and "non-Latino" the same people as
 # "Not Hispanic". None names a subgroup, so the subcategory is None.
 #
+# Counterparts. A table that posts one of these wordings often posts its
+# opposite beside it: "Hispanic Ethnicity" 106 / "Not Hispanic Ethnicity" 387
+# (NCT02774850), "Latino or Hispanic" / "Not Latino or Hispanic", "White, not
+# of Hispanic origin" / "White, of Hispanic origin" (NCT00756652). Reading one
+# side alone would turn a block that was all unknown, or not reported, into
+# one that is all Hispanic, or all not Hispanic, among the participants whose
+# ethnicity it gives. The opposites posted beside the entries in the measured
+# snapshot are entries too ("Counterparts" in the vocabulary). Two blocks
+# changed by this vocabulary still read one side only, because the opposite
+# row mixes categories: "non-Latino, Hispanic" (NCT00151775) and "White
+# (non-latino or unknown ethnicity)" (NCT02297815). Both keep the flag
+# ethnicity_rows_unread.
+#
 # Combined classifications. "American Hispanic" was a Hispanic row to the race
 # extractor but not to this one, so the two readings of an exact combined
 # classification disagreed on the Hispanic count and no race rows were counted
@@ -128,25 +151,29 @@ ETHNICITY_MAPPINGS = {
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18; the commit that published
 # the snapshot reproduced 80,986 of its ethnicity blocks, the other two having
-# changed in the registry since). 77 distinct labels (274 rows) change: 76
+# changed in the registry since). 85 distinct labels (284 rows) change: 84
 # from unmapped to a category, and "White, Hispanic/Latinx" from a fuzzy to an
-# exact match of the same category. 222 blocks change: 111 from all-zero
-# rejection to reported, 106 reported with moved counts, 5 in flags or rows
-# only. Hispanic +101,110, Not Hispanic +186,209, unknown -131,409: the net
-# +155,910 are the participants of the newly reported blocks (155,908) and 2
-# of NCT02094872, whose posted rows add up to more than its 49 participants
-# (Hispanic 6, "Black, not of Hispanic Origin" 2, "White, not of Hispanic
-# Origin" 43; with the race rows, 55); 217 of the
-# blocks change through race-titled tables, 5 through ethnicity-only tables
-# (Not Hispanic +558, unknown -558). not_hispanic_from_race_rows rises in 90
-# trials by 110,286 (68 newly set). One trial is 76% of the Hispanic change
-# (NCT03666026: "Hispanic Ethnicity" 46.9% of 164,205). Blocks flagged
-# ethnicity_rows_unread fall from 500 (231 not reported) to 299 (120).
+# exact match of the same category; no label moves from one category to
+# another. 223 blocks change: 112 from all-zero rejection to reported, 106
+# reported with moved counts, 5 in flags or rows only. Hispanic +105,842, Not
+# Hispanic +191,791, unknown -141,630: the net +156,003 are the participants
+# of the newly reported blocks (156,001) and 2 of NCT02094872, whose posted
+# rows add up to more than its 49 participants (Hispanic 6, "Black, not of
+# Hispanic Origin" 2, "White, not of Hispanic Origin" 43; with the race rows,
+# 55). 218 of the blocks change through race-titled tables, 5 through
+# ethnicity-only tables (Not Hispanic +558, unknown -558).
+# not_hispanic_from_race_rows rises in 92 trials by 114,557 (70 newly set).
+# One trial is 73% of the Hispanic change (NCT03666026: "Hispanic Ethnicity"
+# 46.9% of 164,205). Blocks flagged ethnicity_rows_unread fall from 500 (231
+# not reported) to 290 (119).
 _EXACT_ONLY_KEYS = frozenset({
     "American Hispanic", "Hispanic American", "Hispanic-American", "Latino, Hispanic",
     "Latino or Hispanic", "Hispanic, Latinx", "Hispanic ethnicity",
     "not of Hispanic origin", "not of Hispanic-American Origin", "Non-Hispanic and Non-Latino",
     "Non-Hispanic, Non-Latino", "Non-Hispanic or Non-Latino", "non-Latino",
+    # counterparts
+    "Latino American", "of Hispanic origin", "Not Hispanic ethnicity", "Non-Hispanic ethnicity",
+    "Not Latino or Hispanic", "Non American Hispanic",
 })
 # The keys a fuzzy match may return, in the vocabulary's order.
 _FUZZY_KEYS = tuple(key for key in ETHNICITY_MAPPINGS if key not in _EXACT_ONLY_KEYS)
