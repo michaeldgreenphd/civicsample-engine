@@ -595,6 +595,76 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
                                                  is_pct=is_pct, denom=denom)))
     return rows, bool(is_pct and denom)
 
+# ── Race dimension named in the row label ──────────────────────────────────
+#
+# A combined table often names the dimension in every row: "Race: Caucasian/
+# White" / "Race: Black" / "Race: Asian/Oriental" / "Race: Other" beside
+# "Ethnicity: Hispanic" / "Ethnicity: Non Hispanic" (NCT00707031, 634
+# participants in each classification). The prefix stopped most of these rows
+# from matching: "Race: Black" and "Race: Asian/Oriental" were counted as
+# other, so the block read Black 0 and Asian 0 although the table posts 18 and
+# 7; "Race - Black or African American" reached Black only by fuzzy match. A
+# prefixed joined label ("Race and Ethnicity : White Non-Hispanic",
+# NCT04523714) was worse off: _is_ethnicity_only_label saw an ethnicity term
+# and no race key beside it, so the row was taken for an ethnicity row and
+# left out of the race block altogether.
+#
+# Method. One leading race dimension name followed by a separator (":", "-",
+# "–", "—" or "_"; the names are "Race" and "Race and/&// Ethnicity") is
+# removed before the row is routed and mapped, so the rest goes through
+# exactly the path the same text takes as a row of its own:
+# _is_ethnicity_only_label first ("Race : Hispanic" is an ethnicity row, as
+# before), then _map_race_label. The mapping keeps the posted label as
+# "original" and carries the flag dimension_wording_stripped. A separator is
+# required: "Race unknown" and "Race not reported" are vocabulary entries and
+# match as posted. A doubled separator ("Race: : White", 879 participants in
+# one trial) is removed whole.
+#
+# A consequence of mapping the rest as its own row: "RACE - OTHER/ NOT
+# REPORTED" now maps as "OTHER/ NOT REPORTED" does, to other by its first
+# slash fragment, where the prefixed label reached unknown through its second
+# fragment only because the first ("RACE - OTHER") matched nothing; likewise
+# "Race: Mixed/Unknown" now maps to more than one race, as "Mixed/Unknown"
+# does.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced all
+# 80,988 published race blocks). 136 race blocks change, none in reported:
+# 41,089 participants leave other (White +34,198, Asian +4,831, Black
+# +3,926, more than one race +166, American Indian +31, Native Hawaiian +3)
+# and unknown falls by 2,066. Of that, 2,049 are NCT04523714, whose joined
+# rows are now counted instead of inferred as unknown (its Hispanic row then
+# accounts for the remaining shortfall, unknown_ethnicity_only 77); 116 are
+# the two slash labels above; and 99 participants move into unknown from rows
+# such as "Race: Not Reported" and "Race : Missing" that were counted as
+# other. 11 more blocks change only in their flags. No ethnicity block
+# changes.
+#
+# What it does not do. A row prefixed with the ethnicity dimension
+# ("Ethnicity-Unknown or Not Reported", "Ethnicity-Not Japanese") is not
+# changed here: it is not ethnicity-only by _is_ethnicity_only_label unless it
+# names Hispanic, so it is still mapped as race and usually counted as other.
+# That is a separate defect, left for its own change.
+_RACE_DIMENSION_PREFIX_RX = re.compile(
+    r"^(?:race\s*(?:and|&|/)\s*ethnicity|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
+
+
+def _strip_race_dimension(label: str) -> Optional[str]:
+    """The cleaned label without a leading race dimension name, or None when
+    it has none (block comment above).
+
+      "Race: Black"                             -> "Black"
+      "Race and Ethnicity : White Non-Hispanic" -> "White Non-Hispanic"
+      "Race unknown"                            -> None
+      "Ethnicity: Hispanic"                     -> None
+    """
+    text = clean_demographic_label(label)
+    prefix = _RACE_DIMENSION_PREFIX_RX.match(text)
+    if prefix is None:
+        return None
+    return text[prefix.end():].strip() or None
+
+
 def _map_plain_row(label: str, count: int, pct_converted: bool) -> Optional[Dict]:
     """Map one row the way every plain race row is mapped.
 
@@ -603,10 +673,17 @@ def _map_plain_row(label: str, count: int, pct_converted: bool) -> Optional[Dict
     _map_race_label (direct, slash-fragment, fuzzy, then race/ethnicity split)
     with the row's count. A race-by-sex row's race part goes through exactly
     this function, so it lands where the same text would land on its own row.
+    A leading race dimension name is removed first (block comment "Race
+    dimension named in the row label").
     """
-    if _is_ethnicity_only_label(label):
+    stripped = _strip_race_dimension(label)
+    text = stripped if stripped is not None else label
+    if _is_ethnicity_only_label(text):
         return None
-    mapping = _map_race_label(label)
+    mapping = _map_race_label(text)
+    if stripped is not None:
+        mapping["original"] = clean_demographic_label(label)
+        mapping["flags"].append("dimension_wording_stripped")
     mapping["count"] = count
     if pct_converted:
         mapping["flags"].append("pct_to_count")
