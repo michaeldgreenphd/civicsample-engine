@@ -512,6 +512,10 @@ def extract_ethnicity_from_measure(measure: dict, overall_group_id: Optional[str
     """
     from src.utils import sum_measurements, is_percentage_measure
 
+    # Subgroup classes beside a Total class: read the Total class alone
+    # (table_selection block comment "A Total class beside subgroup classes").
+    measure, total_only = table_selection.total_class_view(measure, overall_group_id)
+
     # Detect percentage measures and get denominator for conversion
     is_pct = is_percentage_measure(measure)
     # Percentages convert against the measure's own Number Analyzed, else a
@@ -545,6 +549,8 @@ def extract_ethnicity_from_measure(measure: dict, overall_group_id: Optional[str
                 mapping["count"] = count
                 if is_pct and denom:
                     mapping["flags"].append("pct_to_count")
+                if total_only:
+                    mapping["flags"].append(table_selection.TOTAL_CLASS_FLAG)
                 results.append(mapping)
         else:
             # Fallback: class itself carries measurements with no categories

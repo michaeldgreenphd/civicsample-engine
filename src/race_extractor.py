@@ -555,13 +555,16 @@ def _map_race_label(label: str, guard_negation: bool = False) -> Dict:
     return mapping
 
 def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
-                  fallback_denom: Optional[int] = None) -> Tuple[List[Tuple[str, int]], bool]:
+                  fallback_denom: Optional[int] = None) -> Tuple[List[Tuple[str, int]], bool, bool]:
     """Return one measure's labelled rows as (label, count), in source order,
-    and whether percentages were converted to counts.
+    whether percentages were converted to counts, and whether the measure was
+    read from its Total class alone.
 
     A row is a category, or a class that carries measurements directly. When a
     category title is a measurement label (e.g. "Count") the row's label is its
-    parent class title. Unlabelled rows are dropped.
+    parent class title. Unlabelled rows are dropped. Subgroup classes beside a
+    Total class that repeats their rows are not read: the Total class is
+    (table_selection block comment "A Total class beside subgroup classes").
 
     Percentage-aware: if the measure reports percentages (detected via
     unitOfMeasure/paramType), values are converted to estimated counts using
@@ -572,6 +575,7 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
     """
     from src.utils import sum_measurements, is_percentage_measure
 
+    measure, total_only = table_selection.total_class_view(measure, overall_group_id)
     is_pct = is_percentage_measure(measure)
     # Percentages convert against the measure's own Number Analyzed, else a
     # class-level one that every class repeats, else the study's baseline
@@ -603,7 +607,7 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
                 continue
             rows.append((label, sum_measurements(cls.get("measurements", []), overall_group_id,
                                                  is_pct=is_pct, denom=denom)))
-    return rows, bool(is_pct and denom)
+    return rows, bool(is_pct and denom), total_only
 
 # ── Race dimension named in the row label ──────────────────────────────────
 #
@@ -700,7 +704,8 @@ def _strip_race_dimension(label: str) -> Optional[str]:
     return text[prefix.end():].strip() or None
 
 
-def _map_plain_row(label: str, count: int, pct_converted: bool) -> Optional[Dict]:
+def _map_plain_row(label: str, count: int, pct_converted: bool,
+                   total_only: bool = False) -> Optional[Dict]:
     """Map one row the way every plain race row is mapped.
 
     Returns None for a purely ethnicity label (e.g. "Hispanic or Latino"), which
@@ -722,6 +727,8 @@ def _map_plain_row(label: str, count: int, pct_converted: bool) -> Optional[Dict
     mapping["count"] = count
     if pct_converted:
         mapping["flags"].append("pct_to_count")
+    if total_only:
+        mapping["flags"].append(table_selection.TOTAL_CLASS_FLAG)
     return mapping
 
 def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = None,
@@ -744,10 +751,10 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
     Returns list of category records with counts. Race-by-sex tables are not
     split here; extract_race_data reads them through _parse_race_table.
     """
-    rows, pct_converted = _measure_rows(measure, overall_group_id, fallback_denom)
+    rows, pct_converted, total_only = _measure_rows(measure, overall_group_id, fallback_denom)
     results = []
     for label, count in rows:
-        mapping = _map_plain_row(label, count, pct_converted)
+        mapping = _map_plain_row(label, count, pct_converted, total_only)
         if mapping is not None:
             results.append(mapping)
     return results
@@ -915,7 +922,7 @@ def _negates_ethnicity(label: str) -> bool:
 
 def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
                            race_part: Optional[str] = None,
-                           sex: Optional[str] = None) -> Dict:
+                           sex: Optional[str] = None, total_only: bool = False) -> Dict:
     """The record of one ethnicity-only row left out of the race counts (block
     comment above). The table title is added when the table is counted."""
     row: Dict = {"original": clean_demographic_label(label), "count": count}
@@ -926,6 +933,8 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
         flags.append("race_by_sex")
     if pct_converted:
         flags.append("pct_to_count")
+    if total_only:
+        flags.append(table_selection.TOTAL_CLASS_FLAG)
     row["flags"] = flags
     return row
 
@@ -1107,7 +1116,7 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
     every row maps to a race-specific category (see the block comment above).
     """
     title = measure.get("title", "")
-    rows, pct_converted = _measure_rows(measure, overall_group_id, fallback_denom)
+    rows, pct_converted, total_only = _measure_rows(measure, overall_group_id, fallback_denom)
     splits = [split_race_by_sex_label(label) for label, _count in rows]
     by_sex_rows = bool(rows) and all(sp is not None for sp in splits)
 
@@ -1117,9 +1126,10 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
     race_by_sex = False
     if by_sex_rows:
         for (label, count), (race_part, sex) in zip(rows, splits):
-            mapping = _map_plain_row(race_part, count, pct_converted)
+            mapping = _map_plain_row(race_part, count, pct_converted, total_only)
             if mapping is None:
-                skipped.append(_skipped_ethnicity_row(label, count, pct_converted, race_part, sex))
+                skipped.append(_skipped_ethnicity_row(label, count, pct_converted, race_part, sex,
+                                                      total_only))
                 continue
             # Quarantine is decided on the race part, as for a plain row; the
             # record then carries the posted label so the source stays visible.
@@ -1139,9 +1149,10 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         # every row mapped whole, as before.
         categories, quarantined, skipped = [], [], []
         for label, count in rows:
-            mapping = _map_plain_row(label, count, pct_converted)
+            mapping = _map_plain_row(label, count, pct_converted, total_only)
             if mapping is None:
-                skipped.append(_skipped_ethnicity_row(label, count, pct_converted))
+                skipped.append(_skipped_ethnicity_row(label, count, pct_converted,
+                                                      total_only=total_only))
                 continue
             if _should_quarantine(mapping):
                 quarantined.append(mapping)
