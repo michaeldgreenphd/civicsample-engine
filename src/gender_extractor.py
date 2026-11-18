@@ -141,8 +141,8 @@ def map_gender_label(label: str) -> Optional[Dict]:
     return {"category": "unknown", "confidence": "low", "original": label_clean, "flags": ["unmapped"]}
 
 
-def _extract_rows_from_measure(measure: dict, overall_group_id=None,
-                               fallback_denom: int = None) -> List[Dict]:
+def _extract_rows_from_measure(measure: dict, overall_group_id: Optional[str] = None,
+                               fallback_denom: Optional[int] = None) -> List[Dict]:
     """Low-level row extraction: yields (label, count) pairs.
 
     Percentage-aware: if the measure reports percentages, values are
@@ -151,6 +151,9 @@ def _extract_rows_from_measure(measure: dict, overall_group_id=None,
     """
     from src.utils import sum_measurements, is_percentage_measure
 
+    # Subgroup classes beside a Total class: read the Total class alone
+    # (table_selection block comment "A Total class beside subgroup classes").
+    measure, total_only = table_selection.total_class_view(measure)
     is_pct = is_percentage_measure(measure)
     denom = None
     if is_pct:
@@ -176,19 +179,19 @@ def _extract_rows_from_measure(measure: dict, overall_group_id=None,
                     continue
                 count = sum_measurements(cat.get("measurements", []), overall_group_id,
                                          is_pct=is_pct, denom=denom)
-                rows.append({"label": label, "count": count})
+                rows.append({"label": label, "count": count, "total_only": total_only})
         else:
             label = cls.get("title", "").strip()
             if not label:
                 continue
             count = sum_measurements(cls.get("measurements", []), overall_group_id,
                                      is_pct=is_pct, denom=denom)
-            rows.append({"label": label, "count": count})
+            rows.append({"label": label, "count": count, "total_only": total_only})
     return rows
 
 
-def extract_gender_from_measure(measure: dict, overall_group_id=None,
-                                fallback_denom: int = None) -> List[Dict]:
+def extract_gender_from_measure(measure: dict, overall_group_id: Optional[str] = None,
+                                fallback_denom: Optional[int] = None) -> List[Dict]:
     """Extract gender data from a standard gender table (Context B).
 
     All rows are routed to gender.  Sex-only labels are mapped to unknown.
@@ -201,6 +204,8 @@ def extract_gender_from_measure(measure: dict, overall_group_id=None,
             mapping = {"category": "unknown", "confidence": "low",
                        "original": row["label"], "flags": ["sex_label_in_gender_table"]}
         mapping["count"] = row["count"]
+        if row["total_only"]:
+            mapping["flags"].append(table_selection.TOTAL_CLASS_FLAG)
         results.append(mapping)
     return results
 

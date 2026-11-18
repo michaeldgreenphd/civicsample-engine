@@ -45,6 +45,128 @@ after counts of each extractor's adoption are in its own block comment.
 """
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
+# ── A Total class beside subgroup classes ───────────────────────────────────
+#
+# Some registrants post one baseline measure as a cross-tabulation: subgroup
+# classes (age bands, sites, study parts) that each hold the measure's rows,
+# plus a class titled "Total" that holds the same rows again for everyone.
+# NCT04911296 (150 participants, one baseline group) posts
+# "Race/Ethnicity, Customized" with the classes "21 - 50 years",
+# "51 - 65 years", "66 - 75 years" and "Total", each with the rows
+# Black - Non-Hispanic / American Indian/Alaskan Native / Hispanic /
+# Asian/Pacific Islander / White - Non-Hispanic; Hispanic is 32, 28, 24 and
+# Total 84. The extractors read every row of every class, so each participant
+# was counted twice: Hispanic 168 of 150. Its "Sex: Female, Male" measure has
+# the same shape (Female 29 + 28 + 28 + Total 85).
+#
+# This is separate from the undocumented fact that the baseline Total is the
+# highest-numbered BG *group* (utils.get_overall_group_id), which picks one
+# measurement per row. A Total *class* is a set of rows inside one measure,
+# and choosing a group does not remove it.
+#
+# Method (total_class_view). A measure is read from its Total class alone
+# when all of these hold:
+#   - exactly one class is titled "Total" (trimmed, case-insensitive), and
+#     there is at least one other class;
+#   - the Total class holds at least one labelled row: a category whose title
+#     is not a measurement label. A class titled "Total" whose only category
+#     is "Count" is a row named Total, not a Total class;
+#   - every other class holds at least one labelled row, and each of its row
+#     labels is one of the Total class's row labels (exact text, trimmed). A
+#     subgroup may leave a row out (a band with no Asian participants may
+#     post no Asian row); it may not add one.
+# The measure is then read as if the Total class were its only class: the
+# same row-label rules and the same overall group, with its percentage
+# denominator and its Number Analyzed taken from the Total class, not from
+# the subgroup classes. Otherwise the measure is read exactly as before.
+#
+# Why the Total class rather than the subgroups. When the subgroup rows add
+# up to the Total rows, the two readings give the same counts, so the choice
+# matters only when they do not. Then the Total is what the registrant states
+# for the whole population, while the subgroups are a breakdown whose classes
+# may overlap or leave people out (NCT03284307 below). Reading the subgroups
+# only when they add up to the Total needs a fallback when they do not, and
+# the only fallback that counts no one twice is the Total class, so that rule
+# gives the same counts as this one with an extra sum check. Reading the Total
+# class also keeps a percentage measure's denominator: the subgroups' class-level
+# Number Analyzed differ from one another, so percentage_denominator would
+# otherwise fall back to the baseline total.
+#
+# What it does not do. If a subgroup class has a row label the Total class
+# lacks, the measure is read as before (every class summed): the classes are
+# then not one breakdown of the Total's rows, and the labels alone cannot
+# show which reading is right. Other whole-population class titles
+# ("Overall", "All participants") are not treated as Total. The breakdowns
+# of utils.extract_demographic_breakdown (raceBreakdown, ethnicityBreakdown,
+# sexBreakdown), which already sum every table of a type and which the site
+# does not read, are not changed; neither is the vendored sex/gender parser,
+# which reads only the first class of such a measure
+# (flag_multiclass_timepoint): the Total when it is posted first, a single
+# subgroup otherwise (NCT04911296: Female 29, Male 21, the first age band).
+#
+# The race, ethnicity and legacy sex and gender extractors read every
+# measure through total_class_view. Each row read from a Total class carries
+# the row flag "total_class_only" (TOTAL_CLASS_FLAG), and each block that
+# counts such a row carries it in its own flags.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
+# 80,987 of their published race and legacy sex blocks). Race, ethnicity or
+# sex measures with a Total class beside other classes: 8 trials. In 7 the
+# subgroups repeat the Total's rows and the rule applies; in the eighth
+# (NCT01696435) the class titled "Total" is a row, already quarantined by race
+# and dropped by ethnicity. Of the 7, the subgroups add up to the Total in 5,
+# overlap in 1 (NCT03284307, a crossover: 56 subgroup places for 27
+# participants) and are off by one participant in 1 (NCT06027593). Blocks
+# changed: race 6, ethnicity 4, legacy sex 7, legacy gender 0; none changes
+# reported. Every changed block now sums to its baseline total. Trials whose
+# block summed above the baseline total: race 397 -> 392, ethnicity
+# 135 -> 131, legacy sex 279 -> 272. Classes titled "Overall" or
+# "All participants" with the same shape remain in 12 trials (race 8,
+# ethnicity 8, sex 12).
+TOTAL_CLASS_FLAG = "total_class_only"
+
+# Category titles that are measurement labels, not row labels: the row's label
+# is then its class title (the same set each extractor keeps as
+# _MEASUREMENT_LABELS).
+_MEASUREMENT_LABELS = frozenset({"count", "number", "n", "total", "value", "mean", "median"})
+
+
+def _row_labels(cls: dict) -> List[str]:
+    """A class's labelled rows: category titles that are not measurement
+    labels, trimmed."""
+    labels = []
+    for cat in cls.get("categories") or []:
+        if not isinstance(cat, dict):
+            continue
+        title = (cat.get("title") or "").strip()
+        if title and title.lower() not in _MEASUREMENT_LABELS:
+            labels.append(title)
+    return labels
+
+
+def total_class_view(measure: dict) -> Tuple[dict, bool]:
+    """The measure to read, and whether it was reduced to its Total class
+    (block comment above). The input is never modified; when the rule
+    applies, a shallow copy whose "classes" holds the Total class alone is
+    returned."""
+    classes = [cls for cls in measure.get("classes") or [] if isinstance(cls, dict)]
+    if len(classes) < 2:
+        return measure, False
+    totals = [cls for cls in classes if (cls.get("title") or "").strip().lower() == "total"]
+    if len(totals) != 1:
+        return measure, False
+    total_labels = set(_row_labels(totals[0]))
+    if not total_labels:
+        return measure, False
+    for cls in classes:
+        if cls is totals[0]:
+            continue
+        labels = _row_labels(cls)
+        if not labels or not set(labels) <= total_labels:
+            return measure, False
+    return {**measure, "classes": [totals[0]]}, True
+
 
 def number_analyzed(measure: dict, overall_group_id: Optional[str]) -> Optional[int]:
     """A table's own Number Analyzed, in participants, or None if it posts none.
@@ -61,6 +183,9 @@ def number_analyzed(measure: dict, overall_group_id: Optional[str]) -> Optional[
     """
     from src.utils import get_measure_denom
 
+    # A measure read from its Total class alone is analyzed on that class's
+    # people (block comment "A Total class beside subgroup classes").
+    measure, _total_only = total_class_view(measure)
     n = get_measure_denom(measure, overall_group_id)
     if n is not None:
         return n

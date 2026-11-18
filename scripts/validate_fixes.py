@@ -37,6 +37,9 @@ Tests:
  16. NCT99000112 — A race classification titled "Race/Ethnicity,
      Customized": race rows and the race classification's unknown row, no
      ethnicity row (fictional study, the table shape of NCT02787551)
+ 17. NCT99000113 — Age-band classes beside a "Total" class that repeats
+     their rows, in a "Race/Ethnicity, Customized" and a "Sex: Female, Male"
+     measure (fictional study, the labels and counts of NCT04911296)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -48,7 +51,9 @@ race rows are counted as not Hispanic (EXPECTED_ETHNICITY). Study 14 asserts tha
 naming a race beside an ethnicity term is counted in that race
 (check_joined_labels), and its ethnicity totals and flags, read from the same
 joined labels (EXPECTED_ETHNICITY). Studies 15 and 16 assert their ethnicity
-totals and flags (EXPECTED_ETHNICITY).
+totals and flags (EXPECTED_ETHNICITY). Study 17 asserts its ethnicity totals
+and flags (EXPECTED_ETHNICITY) and its sex totals and flags (EXPECTED_SEX):
+the Total class is counted once, the age bands not again.
 A mismatch stops the harness.
 """
 import json
@@ -534,6 +539,31 @@ MOCK_NCT99000112 = _make_study(
     total_participants=514,
 )
 
+# ---------- NCT99000113 (fictional): subgroup classes beside a Total class ----------
+# 150 participants; every measure posts three age bands and a Total class with
+# the same rows. Before, every class was summed: Hispanic 168 of 150, female
+# 170. The Total class is now read alone
+# (table_selection, "A Total class beside subgroup classes").
+_NCT99000113_RACE_LABELS = ["Black - Non-Hispanic", "American Indian/Alaskan Native", "Hispanic",
+                            "Asian/Pacific Islander", "White - Non-Hispanic"]
+MOCK_NCT99000113 = _make_study(
+    "NCT99000113",
+    "NCT99000113 - Age-band classes beside a Total class (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(band, [_make_category(label, v) for label, v in zip(_NCT99000113_RACE_LABELS, values)])
+            for band, values in [("21 - 50 years", [6, 1, 32, 0, 11]), ("51 - 65 years", [5, 1, 28, 0, 16]),
+                                 ("66 - 75 years", [7, 0, 24, 2, 17]), ("Total", [18, 2, 84, 2, 44])]
+        ]),
+        _make_measure("Sex: Female, Male", [
+            _make_class(band, [_make_category("Female", f), _make_category("Male", m)])
+            for band, (f, m) in [("21 - 50 years", (29, 21)), ("51 - 65 years", (28, 22)),
+                                 ("66 - 75 years", (28, 22)), ("Total", (85, 65))]
+        ]),
+    ],
+    total_participants=150,
+)
+
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
 # OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
@@ -555,6 +585,8 @@ EXPECTED_SKIPPED_ETHNICITY = {
 EXPECTED_SEX = {
     "NCT99000108": {"totals": {"female": 34, "male": 26, "unknown": 0},
                     "flags": ["from_combined_table", "sex_table_superseded"]},
+    "NCT99000113": {"totals": {"female": 85, "male": 65, "unknown": 0},
+                    "flags": ["total_class_only"]},
 }
 
 # Expected ethnicity results for the table-selection and combined-table studies.
@@ -574,6 +606,11 @@ EXPECTED_ETHNICITY = {
                     "flags": ["dimension_wording_stripped"]},
     "NCT99000112": {"omb": {"hispanic_latino": 0, "not_hispanic_latino": 0, "unknown_not_reported": 0},
                     "flags": ["race_only_table_skipped"]},
+    # The Total class alone: Hispanic 84, Not Hispanic 18 + 44 from the
+    # "- Non-Hispanic" rows, the 4 American Indian and Asian participants
+    # balanced into unknown.
+    "NCT99000113": {"omb": {"hispanic_latino": 84, "not_hispanic_latino": 62, "unknown_not_reported": 4},
+                    "flags": ["denominator_balanced", "race_joined_label", "total_class_only"]},
 }
 
 
@@ -764,6 +801,7 @@ def main() -> None:
         (MOCK_NCT99000110, "NCT99000110"),
         (MOCK_NCT99000111, "NCT99000111"),
         (MOCK_NCT99000112, "NCT99000112"),
+        (MOCK_NCT99000113, "NCT99000113"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
