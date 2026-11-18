@@ -30,6 +30,13 @@ Tests:
  14. NCT99000110 — Race crossed with ethnicity in joined labels:
      "Non-Hispanic White", "Hispanic White", ... (fictional study, the table
      shape of NCT03709602)
+ 15. NCT99000111 — A race and an ethnicity classification of the same
+     participants in one "Race/Ethnicity, Customized" table, every row
+     prefixed "Race: " or "Ethnicity: " (fictional study, the table shape of
+     NCT00707031)
+ 16. NCT99000112 — A race classification titled "Race/Ethnicity,
+     Customized": race rows and the race classification's unknown row, no
+     ethnicity row (fictional study, the table shape of NCT02787551)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -39,7 +46,9 @@ Studies 1, 2 and 13 assert the ethnicity rows the race block records without
 counting them (EXPECTED_SKIPPED_ETHNICITY); study 13 also asserts that its
 race rows are counted as not Hispanic (EXPECTED_ETHNICITY). Study 14 asserts that a label
 naming a race beside an ethnicity term is counted in that race
-(check_joined_labels).
+(check_joined_labels), and its ethnicity totals and flags, read from the same
+joined labels (EXPECTED_ETHNICITY). Studies 15 and 16 assert their ethnicity
+totals and flags (EXPECTED_ETHNICITY).
 A mismatch stops the harness.
 """
 import json
@@ -395,8 +404,9 @@ MOCK_NCT99000106 = _make_study(
 
 # ---------- NCT99000107 (fictional): a race table posted under an ethnicity title ----------
 # 80 participants. The ethnicity table counts everyone; the "Race/Ethnicity,
-# Customized" table is a race table whose race rows are dropped for ethnicity
-# but whose "Unknown" row maps to ethnicity unknown: counted once, 80, not 86.
+# Customized" table is a race table (race rows and an "Unknown" row, no
+# Hispanic or Not Hispanic row), skipped for ethnicity as race_only_table_skipped:
+# counted once, 80, not 86.
 MOCK_NCT99000107 = _make_study(
     "NCT99000107",
     "NCT99000107 - Ethnicity plus race table (fictional mock)",
@@ -488,6 +498,42 @@ MOCK_NCT99000110 = _make_study(
     total_participants=300,
 )
 
+# ---------- NCT99000111 (fictional): two prefixed classifications in one table ----------
+# 634 participants, classified twice: by race in the "Race: " rows and by
+# ethnicity in the "Ethnicity: " rows, as the registry returns labels on the
+# classes. The prefixed ethnicity rows are read; before, they matched nothing,
+# were dropped with the race rows, and the block ended in all-zero rejection.
+MOCK_NCT99000111 = _make_study(
+    "NCT99000111",
+    "NCT99000111 - Prefixed race and ethnicity classifications (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("Race: Caucasian/White", 588), ("Race: Black", 18), ("Race: Asian/Oriental", 7),
+                             ("Race: Other", 21), ("Ethnicity: Hispanic", 170), ("Ethnicity: Non Hispanic", 464)]
+        ]),
+    ],
+    total_participants=634,
+)
+
+# ---------- NCT99000112 (fictional): a race table under a race-and-ethnicity title ----------
+# 514 participants in race rows plus the race classification's unknown row,
+# no ethnicity row. Not an ethnicity report: before, the unknown row was
+# counted as ethnicity unknown and 512 more were balanced into it.
+MOCK_NCT99000112 = _make_study(
+    "NCT99000112",
+    "NCT99000112 - Race table titled Race/Ethnicity (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("American Indian or Alaska Native", 0), ("Asian/Oriental", 7), ("Black", 19),
+                             ("Native Hawaiian or Other Pacific Islander", 1), ("White", 485),
+                             ("Unknown or Not Reported'", 2)]
+        ]),
+    ],
+    total_participants=514,
+)
+
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
 # OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
@@ -511,14 +557,23 @@ EXPECTED_SEX = {
                     "flags": ["from_combined_table", "sex_table_superseded"]},
 }
 
-# Expected ethnicity results for the table-selection study.
+# Expected ethnicity results for the table-selection and combined-table studies.
 EXPECTED_ETHNICITY = {
     "NCT99000107": {"omb": {"hispanic_latino": 9, "not_hispanic_latino": 68, "unknown_not_reported": 3},
-                    "flags": ["ethnicity_table_superseded", "multiple_ethnicity_tables_2"]},
+                    "flags": ["race_only_table_skipped"]},
     # One exact combined classification: its 42 participants in race rows are
     # not Hispanic; its "Unknown" row stays unknown.
     "NCT99000109": {"omb": {"hispanic_latino": 6, "not_hispanic_latino": 42, "unknown_not_reported": 2},
                     "flags": ["not_hispanic_from_combined_table"]},
+    # Joined labels read for their ethnicity: Hispanic White 5 + Hispanic
+    # Other 14 + Hispanic (regardless of race) 8; Non-Hispanic 98 + 145;
+    # Unknown 18 and the 12 Asian balanced into unknown.
+    "NCT99000110": {"omb": {"hispanic_latino": 27, "not_hispanic_latino": 243, "unknown_not_reported": 30},
+                    "flags": ["denominator_balanced", "dimension_wording_stripped", "race_joined_label"]},
+    "NCT99000111": {"omb": {"hispanic_latino": 170, "not_hispanic_latino": 464, "unknown_not_reported": 0},
+                    "flags": ["dimension_wording_stripped"]},
+    "NCT99000112": {"omb": {"hispanic_latino": 0, "not_hispanic_latino": 0, "unknown_not_reported": 0},
+                    "flags": ["race_only_table_skipped"]},
 }
 
 
@@ -707,6 +762,8 @@ def main() -> None:
         (MOCK_NCT99000108, "NCT99000108"),
         (MOCK_NCT99000109, "NCT99000109"),
         (MOCK_NCT99000110, "NCT99000110"),
+        (MOCK_NCT99000111, "NCT99000111"),
+        (MOCK_NCT99000112, "NCT99000112"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
