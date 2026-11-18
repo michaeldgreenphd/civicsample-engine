@@ -3,6 +3,7 @@ Ethnicity Data Extractor
 
 Extracts ethnicity data from baseline characteristics.
 """
+import re
 from typing import Dict, List, Optional
 from rapidfuzz import fuzz, process
 from src.utils import clean_demographic_label
@@ -75,6 +76,121 @@ _ETHNICITY_KEYWORDS = {
     "non hispanic",
 }
 
+# ── Dimension wording around an ethnicity label ─────────────────────────────
+#
+# A combined race and ethnicity table often names the dimension in every row:
+# "Race: Caucasian/White" ... "Ethnicity: Hispanic" / "Ethnicity: Non
+# Hispanic" (NCT00707031, one "Race/Ethnicity, Customized" table holding a
+# race classification and an ethnicity classification, 634 participants in
+# each). Some rows instead say that the Hispanic row takes any race:
+# "Hispanic (regardless of race)", "Hispanic (any race)".
+#
+# Method. When the posted label matches the vocabulary neither exactly nor
+# case-insensitively, one leading dimension name followed by a separator
+# (":", "-", "–", "—" or "_"; the names are "Ethnicity", "Ethnic group" and
+# "Race and/&// Ethnicity", and "Race" when what follows names Hispanic or
+# Latino) is removed, then one trailing race-neutral qualifier in parentheses
+# ("regardless of race", "any race", "of any race", "all races"); the rest is
+# matched exactly, case-insensitively, then fuzzily, as before. The category
+# records the posted label as "original" and carries the flag
+# dimension_wording_stripped.
+#
+# "Race" alone is removed only before a Hispanic or Latino term ("Race :
+# Hispanic", posted as a category of an exclusive classification) because
+# "Race: Unknown", "Race - Not Reported" and "Race: Missing" are the race
+# classification's own unknown rows: read as ethnicity they would put people
+# whose race is unknown into ethnicity unknown. Such a label is returned
+# unmapped at once, flagged race_dimension_label, without the fuzzy match:
+# before, "Race-Unknown or Not Reported" scored 90 against "Unknown or Not
+# Reported" and was counted as ethnicity unknown (NCT04459715: 77 participants
+# beside an ethnicity classification of all 730).
+#
+# A fuzzy match of a stripped label is kept only when the label and the
+# vocabulary entry agree on negating Hispanic (_negates_hispanic). The ratio
+# is case-sensitive, so "non-Hispanic/Latino" scores 88 against
+# "Hispanic/Latino" and below the threshold against "Not Hispanic/Latino". The
+# race-joined reading below applies the same check. A label that matches as
+# posted is fuzzily matched as before, without the check.
+#
+# Why. Neither piece says anything about ethnicity: "Ethnicity: Hispanic" is
+# the row "Hispanic" of the table's ethnicity classification. Before this the
+# label matched nothing, the row was dropped with the race rows of a
+# race-titled table, and a block with no other row ended in all-zero
+# rejection: reported False although the table counted every participant's
+# ethnicity.
+#
+# What it does not do. A separator is required, so "Ethnicity unknown" and
+# "Ethnicity not reported" are matched as posted. A label that is not
+# ethnicity once stripped ("Race: Black") stays unmapped and is dropped from a
+# race-titled table, as before. Other qualifiers ("Hispanic (not African
+# American)") are not removed.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
+# 80,987 of their published ethnicity blocks). 166 trials change with the
+# flag dimension_wording_stripped on a counted row, 128 of them from all-zero
+# rejection to reported: Hispanic +11,164, Not Hispanic +56,548, unknown
+# -13,592. The race_dimension_label rule alone changes 10 trials, unknown -153.
+_DIMENSION_PREFIX_RX = re.compile(
+    r"^(?P<name>race\s*(?:and|&|/)\s*ethnicity|ethnic\s+group|ethnicity|race)\s*[:\-–—_]\s*(?=\S)",
+    re.IGNORECASE)
+_RACE_NEUTRAL_QUALIFIER_RX = re.compile(
+    r"\s*\(\s*(?:regardless\s+of\s+race|(?:of\s+)?any\s+race|all\s+races)\s*\)$",
+    re.IGNORECASE)
+# "Spanish" counts as a Hispanic term: the vocabulary maps "Spanish origin"
+# to hispanic_latino, so a "Spanish" row is ethnicity evidence.
+_HISPANIC_TERM_RX = re.compile(r"hispanic|latin[oaxe]|spanish", re.IGNORECASE)
+_NEGATED_HISPANIC_RX = re.compile(
+    r"(?<![a-z])(?:non|not|no|neither)[\s\-]*(?:of\s+)?(?:hispanic|latin[oaxe])", re.IGNORECASE)
+
+
+def _strip_dimension_wording(label: str) -> str:
+    """The label without a leading dimension name or a trailing race-neutral
+    qualifier (block comment above); the label itself when it has neither.
+
+      "Ethnicity: Hispanic"                -> "Hispanic"
+      "Ethnicity - Not Hispanic or Latino" -> "Not Hispanic or Latino"
+      "Race : Hispanic"                    -> "Hispanic"
+      "Race: Unknown"                      -> "Race: Unknown"
+      "Hispanic (Regardless of Race)"      -> "Hispanic"
+      "Ethnicity unknown"                  -> "Ethnicity unknown"
+    """
+    text = label
+    prefix = _DIMENSION_PREFIX_RX.match(text)
+    if prefix is not None:
+        rest = text[prefix.end():]
+        if prefix.group("name").lower() != "race" or _HISPANIC_TERM_RX.search(rest):
+            text = rest
+    text = _RACE_NEUTRAL_QUALIFIER_RX.sub("", text)
+    return text.strip() or label
+
+
+def _is_race_dimension_label(label: str) -> bool:
+    """True for a label naming the race dimension before a value that is not
+    Hispanic or Latino ("Race: Unknown", "Race - Not Reported"): a row of the
+    race classification (block comment above)."""
+    prefix = _DIMENSION_PREFIX_RX.match(label)
+    return (prefix is not None and prefix.group("name").lower() == "race"
+            and not _HISPANIC_TERM_RX.search(label[prefix.end():]))
+
+
+def _negates_hispanic(text: str) -> bool:
+    """True when the text negates Hispanic or Latino ("Non-Hispanic", "not of
+    Hispanic origin", "Nonhispanic", "Neither Hispanic nor Latino")."""
+    return bool(_NEGATED_HISPANIC_RX.search(text))
+
+
+def _match_vocabulary(label: str) -> Optional[tuple[str, Optional[str]]]:
+    """(omb_category, subcategory) for an exact or case-insensitive match of
+    the vocabulary, else None."""
+    if label in ETHNICITY_MAPPINGS:
+        return ETHNICITY_MAPPINGS[label]
+    for key, value in ETHNICITY_MAPPINGS.items():
+        if key.lower() == label.lower():
+            return value
+    return None
+
+
 def _split_combined_for_ethnicity(label: str) -> str | None:
     """Extract the ethnicity fragment from a combined "Race, Ethnicity" label.
 
@@ -103,14 +219,40 @@ def is_ethnicity_table(title: str) -> bool:
 
     return any(kw in title_lower for kw in ETHNICITY_TABLE_KEYWORDS)
 
-def map_ethnicity_category(label: str, fuzzy_threshold: int = 85) -> Dict:
-    """Map an ethnicity category label to NIH/OMB standard."""
+def map_ethnicity_category(label: str, fuzzy_threshold: int = 85, *,
+                           guard_negation: bool = False) -> Dict:
+    """Map an ethnicity category label to NIH/OMB standard.
+
+    guard_negation applies the negation check of the block comment
+    "Dimension wording around an ethnicity label" to the fuzzy match, as it
+    always applies to a label whose dimension wording was removed."""
     label_clean = clean_demographic_label(label)
     flags = []
 
-    # Exact match
-    if label_clean in ETHNICITY_MAPPINGS:
-        omb, subcat = ETHNICITY_MAPPINGS[label_clean]
+    # Exact, then case-insensitive match of the posted label; then of the
+    # label without its dimension wording (block comment "Dimension wording
+    # around an ethnicity label"), which also feeds the fuzzy match below.
+    matched = _match_vocabulary(label_clean)
+    match_text = label_clean
+    if matched is None:
+        if _is_race_dimension_label(label_clean):
+            # A row of the race classification ("Race: Unknown"): not read as
+            # ethnicity, not even fuzzily (same block comment).
+            return {
+                "omb_category": "unknown_not_reported",
+                "subcategory": None,
+                "confidence": "low",
+                "original": label_clean,
+                "flags": ["race_dimension_label", "unmapped"]
+            }
+        stripped = _strip_dimension_wording(label_clean)
+        if stripped != label_clean:
+            match_text = stripped
+            flags.append("dimension_wording_stripped")
+            guard_negation = True
+            matched = _match_vocabulary(stripped)
+    if matched is not None:
+        omb, subcat = matched
         return {
             "omb_category": omb,
             "subcategory": subcat,
@@ -119,20 +261,10 @@ def map_ethnicity_category(label: str, fuzzy_threshold: int = 85) -> Dict:
             "flags": flags
         }
 
-    # Case-insensitive match
-    for key, (omb, subcat) in ETHNICITY_MAPPINGS.items():
-        if key.lower() == label_clean.lower():
-            return {
-                "omb_category": omb,
-                "subcategory": subcat,
-                "confidence": "high",
-                "original": label_clean,
-                "flags": flags
-            }
-
     # Fuzzy match
-    match = process.extractOne(label_clean, ETHNICITY_MAPPINGS.keys(), scorer=fuzz.ratio)
-    if match and match[1] >= fuzzy_threshold:
+    match = process.extractOne(match_text, ETHNICITY_MAPPINGS.keys(), scorer=fuzz.ratio)
+    if (match and match[1] >= fuzzy_threshold
+            and not (guard_negation and _negates_hispanic(match_text) != _negates_hispanic(match[0]))):
         omb, subcat = ETHNICITY_MAPPINGS[match[0]]
         flags.append(f"fuzzy_match_{match[1]}")
         return {
@@ -152,8 +284,85 @@ def map_ethnicity_category(label: str, fuzzy_threshold: int = 85) -> Dict:
         "flags": flags
     }
 
-def extract_ethnicity_from_measure(measure: dict, overall_group_id=None,
-                                   fallback_denom: int = None) -> List[Dict]:
+# ── Race joined to ethnicity in one label ──────────────────────────────────
+#
+# A combined table can cross race with ethnicity in its row labels:
+# "Non-Hispanic White", "Non-Hispanic Black", "Hispanic", "Other"; or "White
+# (non-Hispanic)", "Black non-Hispanic", "Hispanic White". The race extractor
+# reads such a label as a race row and counts its race part
+# (race_extractor._race_joined_to_ethnicity: exactly one ethnicity phrase
+# beside exactly a known race label). Here the whole label matched no
+# ethnicity term, the row was dropped with the race rows of a race-titled
+# table, and its participants were balanced into unknown, or, with no other
+# row, the block ended in all-zero rejection.
+#
+# Method. A label that the vocabulary, the dimension wording rule and the
+# comma/semicolon/slash split all leave unmapped is passed, without its
+# dimension wording ("Race and Ethnicity : White Non-Hispanic", NCT04523714),
+# to that same race extractor function. When it returns (race_part, ethnicity_part) and the
+# ethnicity part maps to a category (exactly, case-insensitively, or fuzzily
+# with the negation check of "Dimension wording around an ethnicity label"),
+# the row is counted in that category: "Non-Hispanic White" as
+# not_hispanic_latino, "Hispanic White" as hispanic_latino. The category keeps
+# the posted label as "original" and carries the flag race_joined_label.
+#
+# Why the race extractor's function. The two blocks then split the same rows
+# by the same rule: a row the race block counts as White because it reads
+# "Non-Hispanic White" is the row this block counts as Not Hispanic. A label
+# the function does not accept ("Non-Hispanic and Latino", "Non-Black
+# Hispanic") is left unmapped here too.
+#
+# A row of a race-titled table that names Hispanic or Latino and is still
+# unmapped ("American Hispanic", "not of Hispanic origin") is dropped as
+# before; the block records the flag ethnicity_rows_unread when such a row has
+# participants in a counted table, and the flag survives all-zero rejection,
+# so a block with no counts says why.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
+# 80,987 of their published ethnicity blocks). 650 trials change with the
+# flag race_joined_label, 199 of them from all-zero rejection to reported:
+# Hispanic +107,941, Not Hispanic +596,294, unknown -410,643. In 347 trials the
+# Not Hispanic participants that the combined-classification rule moved from
+# race rows (533,163) are now read from the labels (4,288 still moved). 500
+# blocks carry ethnicity_rows_unread, 231 of them not reported.
+
+def _map_row_label(label: str) -> Dict:
+    """map_ethnicity_category for one row's label, then the two readings of a
+    label that joins race and ethnicity: the comma/semicolon/slash split, then
+    the race extractor's joined-label rule (block comment above)."""
+    mapping = map_ethnicity_category(label)
+    if mapping.get("confidence") == "low" and "unmapped" in mapping.get("flags", []):
+        eth_part = _split_combined_for_ethnicity(label)
+        if eth_part:
+            mapping = map_ethnicity_category(eth_part)
+            mapping["flags"].append("split_from_combined")
+    if mapping.get("confidence") == "low" and "unmapped" in mapping.get("flags", []):
+        # imported here, as combined_classification below: race reads no ethnicity
+        from src.race_extractor import _race_joined_to_ethnicity
+        # The joined reading sees the label without its dimension wording, so
+        # "Race: Non-Hispanic White" is read as "Non-Hispanic White".
+        posted = clean_demographic_label(label)
+        stripped = _strip_dimension_wording(posted)
+        joined = _race_joined_to_ethnicity(stripped)
+        if joined is not None:
+            joined_mapping = map_ethnicity_category(joined[1], guard_negation=True)
+            if joined_mapping["confidence"] != "low":
+                joined_mapping["original"] = posted
+                if stripped != posted and "dimension_wording_stripped" not in joined_mapping["flags"]:
+                    joined_mapping["flags"].append("dimension_wording_stripped")
+                joined_mapping["flags"].append("race_joined_label")
+                mapping = joined_mapping
+    return mapping
+
+
+def _names_hispanic(category: Dict) -> bool:
+    """True when a dropped row's label names Hispanic or Latino."""
+    return bool(_HISPANIC_TERM_RX.search(category.get("original") or ""))
+
+
+def extract_ethnicity_from_measure(measure: dict, overall_group_id: Optional[str] = None,
+                                   fallback_denom: Optional[int] = None) -> List[Dict]:
     """Extract ethnicity data from a single baseline measure.
 
     Percentage-aware: if the measure reports percentages, values are converted
@@ -199,16 +408,7 @@ def extract_ethnicity_from_measure(measure: dict, overall_group_id=None,
                 count = sum_measurements(cat.get("measurements", []), overall_group_id,
                                          is_pct=is_pct, denom=denom)
 
-                mapping = map_ethnicity_category(label)
-
-                # Combined label splitting: if the whole label doesn't map
-                # but contains an ethnicity fragment, re-map with that fragment
-                if mapping.get("confidence") == "low" and "unmapped" in mapping.get("flags", []):
-                    eth_part = _split_combined_for_ethnicity(label)
-                    if eth_part:
-                        mapping = map_ethnicity_category(eth_part)
-                        mapping["flags"].append("split_from_combined")
-
+                mapping = _map_row_label(label)
                 mapping["count"] = count
                 if is_pct and denom:
                     mapping["flags"].append("pct_to_count")
@@ -222,14 +422,7 @@ def extract_ethnicity_from_measure(measure: dict, overall_group_id=None,
             count = sum_measurements(cls.get("measurements", []), overall_group_id,
                                      is_pct=is_pct, denom=denom)
 
-            mapping = map_ethnicity_category(label)
-
-            if mapping.get("confidence") == "low" and "unmapped" in mapping.get("flags", []):
-                eth_part = _split_combined_for_ethnicity(label)
-                if eth_part:
-                    mapping = map_ethnicity_category(eth_part)
-                    mapping["flags"].append("split_from_combined")
-
+            mapping = _map_row_label(label)
             mapping["count"] = count
             if is_pct and denom:
                 mapping["flags"].append("pct_to_count")
@@ -293,9 +486,12 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 # ("Other/Unknown", "Other/No response"), since an unknown participant of a
 # combined classification may be Hispanic; and a row that states the
 # ethnicity ("Hispanic White", "Black Latino"), whose participants are
-# Hispanic. Denominator balancing then files both as unknown, as before: this
-# block does not count the second kind as Hispanic, because it does not read
-# those labels.
+# Hispanic. Denominator balancing files the first kind as unknown. The second
+# kind is now read here for its ethnicity (block comment "Race joined to
+# ethnicity in one label"): "Hispanic White" counts as Hispanic and
+# "Non-Hispanic White" as Not Hispanic on its own label. A table whose rows
+# this block reads as Not Hispanic gives a Not Hispanic count of its own, so
+# no race rows are moved for it.
 # In every other case not_hispanic_from_race_rows is 0 and nothing changes.
 # raw_categories still lists the posted rows only: the race rows are not
 # ethnicity labels.
@@ -322,6 +518,86 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 # another table or a different unknown. Ethnicity blocks reporting one
 # category beside unknown (Hispanic only, Not Hispanic 0) fall from 2,938 to
 # 710 of the 32,072 reported. No other value of any block changes.
+
+# ── A race table under a race-and-ethnicity title ──────────────────────────
+#
+# is_ethnicity_table accepts every title naming ethnicity, so a race
+# classification posted as "Race/Ethnicity, Customized" is read here too:
+# American Indian 0 / Asian 7 / Black 19 / Native Hawaiian 1 / White 485 /
+# "Unknown or Not Reported'" 2, of 514 (NCT02787551). Its race rows are
+# dropped below as unmapped, its unknown row maps to ethnicity unknown, and
+# denominator balancing then filed the other 512 as unknown too: a block
+# reported as 514 participants of unknown ethnicity, from a table that
+# classifies no one's ethnicity.
+#
+# Method. A race-titled table (race_extractor.is_race_table: the word race,
+# races or racial in the title, not the letters inside "Contraception") is not
+# counted for ethnicity when all of these hold:
+#   - none of its rows maps to hispanic_latino or not_hispanic_latino, at any
+#     count, and none of its mapped rows begins with the ethnicity dimension
+#     ("Ethnicity: Unknown" beside "Race: White" is the table's own ethnicity
+#     classification, all unknown);
+#   - none of the rows dropped as unmapped names Hispanic, Latino or Spanish, or
+#     begins with the ethnicity dimension ("Ethnicity: Not Collected",
+#     "Ethnicity - Other"): such a row is an ethnicity row the vocabulary
+#     cannot read, and the table is not a race table;
+#   - at least one dropped row has participants (the race rows).
+# The dropped rows need not be race: in 33 trials of the measured snapshot they
+# are labels the race vocabulary cannot read ("White - Caucasian / European
+# Heritage", "American Indian Only") or another classification altogether
+# (nationality "Qatar" / "Egypt", "Yoruba" / "Igbo", "Majority language"). What
+# the rule establishes is that the table classifies participants by something
+# other than Hispanic ethnicity and gives no Hispanic or Not Hispanic row, so
+# its unknown row is not an ethnicity count. The flag keeps its name for the
+# common case.
+# The block records the flag race_only_table_skipped for each such table. When
+# no other table is counted, the block is reported False with that flag and
+# no counts, as for a trial that posted no ethnicity table, and does not reach
+# all-zero rejection: the flag says why.
+#
+# Why. The unknown row of a race classification is unknown race. Without a
+# Hispanic or Not Hispanic row the table says nothing about ethnicity, and the
+# participants it does classify are not of unknown ethnicity; they were not
+# asked, or not reported, in this table.
+#
+# What it does not do. A race-titled table holding only an unknown row, with no
+# race rows ("Race/Ethnicity, Customized": Unknown 25), is counted as before:
+# it may be the whole population's unknown race and ethnicity, and the table
+# selection keeps it only when no table counts anyone as Hispanic or Not
+# Hispanic. A table with a Hispanic or Not Hispanic row is read as before, also
+# when that row is 0.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
+# 80,987 of their published ethnicity blocks). 909 trials go from reported to
+# not reported, taking 8,121,192 participants out of unknown_not_reported,
+# most of them added by denominator balancing; ten trials hold 89% of that
+# (NCT04053075: 2,905,455). 9,826 blocks carry the flag; in most the race table
+# had already lost the table selection to an ethnicity table, or the block
+# ended in all-zero rejection, and only the flags change
+# (ethnicity_table_superseded and multiple_ethnicity_tables_N no longer count
+# the race table; all_zero_rejection gives way to race_only_table_skipped).
+
+_ETHNICITY_DIMENSION_RX = re.compile(r"^\s*ethnic(?:ity|\s+group)(?![a-z])", re.IGNORECASE)
+
+
+def _names_ethnicity_dimension(category: Dict) -> bool:
+    """True when a row's label names the ethnicity dimension itself
+    ("Ethnicity: Not Collected", "Ethnicity: Unknown"): a row of an ethnicity
+    classification, not a race row (block comment above)."""
+    return bool(_ETHNICITY_DIMENSION_RX.match(category.get("original") or ""))
+
+
+def _is_race_only_table(kept: List[Dict], dropped: List[Dict]) -> bool:
+    """True when a race-titled table is a race classification and not an
+    ethnicity report (block comment above). kept are its mapped rows, dropped
+    those dropped as unmapped."""
+    if any(c["omb_category"] in _ETHNICITY_SPECIFIC or _names_ethnicity_dimension(c) for c in kept):
+        return False
+    if any(_names_hispanic(c) or _names_ethnicity_dimension(c) for c in dropped):
+        return False
+    return any((c.get("count") or 0) > 0 for c in dropped)
+
 
 def _race_rows_not_hispanic(study: dict, counted: List[Dict], omb_totals: Dict,
                             total_participants: Optional[int]) -> int:
@@ -375,8 +651,6 @@ def extract_ethnicity_data(study: dict) -> Dict:
         if not is_ethnicity_table(title):
             continue
 
-        result["reported"] = True
-
         categories = extract_ethnicity_from_measure(measure, overall_group_id,
                                                     fallback_denom=total_participants)
 
@@ -386,13 +660,28 @@ def extract_ethnicity_data(study: dict) -> Dict:
         # ethnicity totals — drop them.  Genuine ethnicity labels
         # (Hispanic, Not Hispanic, Unknown) map with high confidence and
         # are kept.
+        unread = 0
         if "race" in title.lower():
+            dropped = [c for c in categories if c.get("confidence") == "low"]
             categories = [c for c in categories if c.get("confidence") != "low"]
+            # A race classification under an ethnicity title is not an
+            # ethnicity report (block comment "A race table under a
+            # race-and-ethnicity title").
+            # Only when "race" is a word of the title (race_extractor.is_race_table):
+            # "Ethnicity by Contraception" holds the letters, not the word.
+            from src.race_extractor import is_race_table
+            if is_race_table(title) and _is_race_only_table(categories, dropped):
+                result["flags"].append("race_only_table_skipped")
+                continue
+            # Rows naming Hispanic or Latino that no rule could read (block
+            # comment "Race joined to ethnicity in one label").
+            unread = sum(c.get("count") or 0 for c in dropped if _names_hispanic(c))
 
+        result["reported"] = True
         tables.append({"title": title, "index": index,
                        "analyzed": table_selection.number_analyzed(measure, overall_group_id),
                        "population": table_selection.population_of(measure),
-                       "categories": categories})
+                       "categories": categories, "unread": unread})
 
     ethnicity_tables_found = len(tables)
     counted, partitioned = table_selection.select_tables(
@@ -403,6 +692,9 @@ def extract_ethnicity_data(study: dict) -> Dict:
         result["flags"].append("ethnicity_tables_partitioned")
         if table_selection.parted_by_description(counted, "omb_category"):
             result["flags"].append("ethnicity_tables_partitioned_by_description")
+
+    if any(table["unread"] > 0 for table in counted):
+        result["flags"].append("ethnicity_rows_unread")
 
     for table in counted:
         categories = table["categories"]
@@ -454,7 +746,9 @@ def extract_ethnicity_data(study: dict) -> Dict:
         result["omb_totals"] = {k: 0 for k in result["omb_totals"]}
         result["raw_categories"] = []
         result["subcategory_totals"] = {}
-        result["flags"] = ["all_zero_rejection"]
+        # ethnicity_rows_unread survives: it says why a posted table gave no
+        # counts (block comment "Race joined to ethnicity in one label").
+        result["flags"] = ["all_zero_rejection"] + [f for f in result["flags"] if f == "ethnicity_rows_unread"]
 
     # sorted() so identical extractions serialize identically across runs
     # (set iteration order varies per process and made week-over-week
