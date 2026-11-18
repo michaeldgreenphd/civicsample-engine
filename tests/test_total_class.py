@@ -300,3 +300,29 @@ def test_the_total_row_must_post_the_overall_groups_own_number(
         _two_group_class("Total", [("Female", "5", "5"), ("Male", "5", "5")])])
     measure["classes"][2]["categories"][1]["measurements"] = overall_measurements
     assert table_selection.total_class_view(measure, "BG001")[1] is False
+
+
+@pytest.mark.parametrize("total_counts", [
+    [{"groupId": "BG001", "value": None}, {"groupId": "BG000", "value": "80"}],   # Overall null, an arm last
+    [{"groupId": "BG000", "value": "80"}],                                         # no Overall count
+])
+def test_the_total_classs_number_analyzed_must_give_the_overall_count(
+        total_counts: list[dict[str, Any]]) -> None:
+    """A two-group percentage measure whose Total class lists a null (or no)
+    Overall count before an arm's 80: get_measure_denom would fall back to
+    the arm's 80, while read with every class the differing class numbers
+    (30, 50) fall back to the baseline 100. The measure is read as before."""
+    def cls(title: str, female: str, male: str, counts: list[dict[str, Any]]) -> dict[str, Any]:
+        return {"title": title, "denoms": [{"units": "Participants", "counts": counts}], "categories": [
+            {"title": "Female", "measurements": [{"groupId": "BG000", "value": female}, {"groupId": "BG001", "value": female}]},
+            {"title": "Male", "measurements": [{"groupId": "BG000", "value": male}, {"groupId": "BG001", "value": male}]}]}
+    measure = _measure("Sex: Female, Male", [
+        cls("Site A", "50", "50", [{"groupId": "BG000", "value": "30"}, {"groupId": "BG001", "value": "30"}]),
+        cls("Site B", "40", "60", [{"groupId": "BG000", "value": "50"}, {"groupId": "BG001", "value": "50"}]),
+        cls("Total", "25", "75", total_counts)], pct=True)
+    assert table_selection.total_class_view(measure, "BG001")[1] is False
+    assert table_selection.percentage_denominator(measure, "BG001", 100) == 100
+    # With the Overall count posted, the Total class is read against it.
+    measure["classes"][2]["denoms"][0]["counts"] = [{"groupId": "BG000", "value": "80"}, {"groupId": "BG001", "value": "80"}]
+    view, total_only = table_selection.total_class_view(measure, "BG001")
+    assert total_only is True and table_selection.percentage_denominator(view, "BG001", 100) == 80
