@@ -127,10 +127,10 @@ _ETHNICITY_KEYWORDS = {
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
-# 80,987 of their published ethnicity blocks). 165 trials change with the
-# flag dimension_wording_stripped on a counted row, 127 of them from all-zero
+# 80,987 of their published ethnicity blocks). 166 trials change with the
+# flag dimension_wording_stripped on a counted row, 128 of them from all-zero
 # rejection to reported: Hispanic +11,164, Not Hispanic +56,548, unknown
-# -13,614. The race_dimension_label rule alone changes 10 trials, unknown -153.
+# -13,592. The race_dimension_label rule alone changes 10 trials, unknown -153.
 _DIMENSION_PREFIX_RX = re.compile(
     r"^(?P<name>race\s*(?:and|&|/)\s*ethnicity|ethnic\s+group|ethnicity|race)\s*[:\-–—_]\s*(?=\S)",
     re.IGNORECASE)
@@ -531,7 +531,9 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 # Method. A race-titled table is not counted for ethnicity when all of these
 # hold:
 #   - none of its rows maps to hispanic_latino or not_hispanic_latino, at any
-#     count;
+#     count, and none of its mapped rows begins with the ethnicity dimension
+#     ("Ethnicity: Unknown" beside "Race: White" is the table's own ethnicity
+#     classification, all unknown);
 #   - none of the rows dropped as unmapped names Hispanic or Latino, or
 #     begins with the ethnicity dimension ("Ethnicity: Not Collected",
 #     "Ethnicity - Other"): such a row is an ethnicity row the vocabulary
@@ -559,7 +561,7 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 # 80,987 of their published ethnicity blocks). 909 trials go from reported to
 # not reported, taking 8,121,192 participants out of unknown_not_reported,
 # most of them added by denominator balancing; ten trials hold 89% of that
-# (NCT04053075: 2,905,455). 9,829 blocks carry the flag; in most the race table
+# (NCT04053075: 2,905,455). 9,828 blocks carry the flag; in most the race table
 # had already lost the table selection to an ethnicity table, or the block
 # ended in all-zero rejection, and only the flags change
 # (ethnicity_table_superseded and multiple_ethnicity_tables_N no longer count
@@ -569,8 +571,8 @@ _ETHNICITY_DIMENSION_RX = re.compile(r"^\s*ethnic(?:ity|\s+group)(?![a-z])", re.
 
 
 def _names_ethnicity_dimension(category: Dict) -> bool:
-    """True when a dropped row's label names the ethnicity dimension itself
-    ("Ethnicity: Not Collected", "Ethnicity - Other"): a row of an ethnicity
+    """True when a row's label names the ethnicity dimension itself
+    ("Ethnicity: Not Collected", "Ethnicity: Unknown"): a row of an ethnicity
     classification, not a race row (block comment above)."""
     return bool(_ETHNICITY_DIMENSION_RX.match(category.get("original") or ""))
 
@@ -579,7 +581,7 @@ def _is_race_only_table(kept: List[Dict], dropped: List[Dict]) -> bool:
     """True when a race-titled table is a race classification and not an
     ethnicity report (block comment above). kept are its mapped rows, dropped
     those dropped as unmapped."""
-    if any(c["omb_category"] in _ETHNICITY_SPECIFIC for c in kept):
+    if any(c["omb_category"] in _ETHNICITY_SPECIFIC or _names_ethnicity_dimension(c) for c in kept):
         return False
     if any(_names_hispanic(c) or _names_ethnicity_dimension(c) for c in dropped):
         return False

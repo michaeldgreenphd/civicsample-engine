@@ -431,6 +431,15 @@ def test_an_unread_row_of_the_ethnicity_dimension_keeps_the_table_an_ethnicity_r
     assert eth["omb_totals"]["unknown_not_reported"] == 50
 
 
+def test_a_mapped_row_of_the_ethnicity_dimension_keeps_the_table_an_ethnicity_report() -> None:
+    """"Ethnicity: Unknown" maps to unknown and is kept; beside "Race: White"
+    it is the table's own ethnicity classification (a review finding)."""
+    table = _class_rows(COMBINED, [("Race: White", 40), ("Ethnicity: Unknown", 40)])
+    eth = extract_ethnicity_data(_study("NCT99000711", [table], participants=40))
+    assert eth["reported"] is True and "race_only_table_skipped" not in eth["flags"]
+    assert eth["omb_totals"] == {"hispanic_latino": 0, "not_hispanic_latino": 0, "unknown_not_reported": 40}
+
+
 def test_a_zero_hispanic_row_keeps_the_table_an_ethnicity_report() -> None:
     """A posted Hispanic row says how many were Hispanic, even when that is 0."""
     table = _table(COMBINED, [("White", 40), ("Black", 8), ("Hispanic", 0), ("Unknown", 2)])
