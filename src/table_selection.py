@@ -73,10 +73,14 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 #   - the Total class holds at least one labelled row: a category whose title
 #     is not a measurement label. A class titled "Total" whose only category
 #     is "Count" is a row named Total, not a Total class;
-#   - every labelled row of the Total class posts a number in the
-#     measurement the extractors read: the Overall group's, else the single
-#     or last measurement (utils.measurement_number, the value
-#     utils.sum_measurements counts). The registry posts rows with no
+#   - every labelled row of the Total class posts a number for the group
+#     the extractors read: when an Overall group is identified, a number in
+#     that group's own measurement; otherwise the single or last
+#     measurement (utils.measurement_number, the value
+#     utils.sum_measurements counts). This is stricter than the read itself:
+#     when the Overall group's value is null, _get_measurement_value falls
+#     back to the last measurement, which may be an arm's, and that is not
+#     the Total. The registry posts rows with no
 #     measurements (template rows, an empty class), null values, and values
 #     that are not numbers; in a multi-arm study one arm may post a value
 #     while the Overall group's is null. sum_measurements reads each of those
@@ -189,14 +193,21 @@ def _row_labels(cls: dict) -> List[str]:
 
 
 def _posts_a_number(row: dict, overall_group_id: Optional[str]) -> bool:
-    """Whether the measurement the extractors read from this row holds a
-    number (utils.measurement_number), as opposed to nothing, a null or a
-    value that sum_measurements would count as 0 for want of a number."""
+    """Whether this row posts a number for the group the extractors read
+    (block comment above). With an Overall group, only that group's own
+    measurement counts: a null there is no number, even though
+    sum_measurements would fall back to another group's value. Without one,
+    the single or last measurement, as sum_measurements reads it."""
     from src.utils import measurement_number
 
     measurements = row.get("measurements")
     if not isinstance(measurements, list):
         return False
+    if overall_group_id is not None:
+        measurements = [m for m in measurements
+                        if isinstance(m, dict) and m.get("groupId") == overall_group_id]
+        if not measurements:
+            return False
     return measurement_number(measurements, overall_group_id) is not None
 
 
