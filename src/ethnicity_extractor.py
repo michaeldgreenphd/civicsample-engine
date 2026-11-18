@@ -532,9 +532,10 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 # hold:
 #   - none of its rows maps to hispanic_latino or not_hispanic_latino, at any
 #     count;
-#   - none of the rows dropped as unmapped names Hispanic or Latino (such a
-#     row is an ethnicity row the vocabulary cannot read, and the table is not
-#     a race table);
+#   - none of the rows dropped as unmapped names Hispanic or Latino, or
+#     begins with the ethnicity dimension ("Ethnicity: Not Collected",
+#     "Ethnicity - Other"): such a row is an ethnicity row the vocabulary
+#     cannot read, and the table is not a race table;
 #   - at least one dropped row has participants (the race rows).
 # The block records the flag race_only_table_skipped for each such table. When
 # no other table is counted, the block is reported False with that flag and
@@ -555,14 +556,24 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
-# 80,987 of their published ethnicity blocks). 910 trials go from reported to
-# not reported, taking 8,121,912 participants out of unknown_not_reported,
+# 80,987 of their published ethnicity blocks). 909 trials go from reported to
+# not reported, taking 8,121,192 participants out of unknown_not_reported,
 # most of them added by denominator balancing; ten trials hold 89% of that
-# (NCT04053075: 2,905,455). 9,839 blocks carry the flag; in most the race table
+# (NCT04053075: 2,905,455). 9,829 blocks carry the flag; in most the race table
 # had already lost the table selection to an ethnicity table, or the block
 # ended in all-zero rejection, and only the flags change
 # (ethnicity_table_superseded and multiple_ethnicity_tables_N no longer count
 # the race table; all_zero_rejection gives way to race_only_table_skipped).
+
+_ETHNICITY_DIMENSION_RX = re.compile(r"^\s*ethnic(?:ity|\s+group)(?![a-z])", re.IGNORECASE)
+
+
+def _names_ethnicity_dimension(category: Dict) -> bool:
+    """True when a dropped row's label names the ethnicity dimension itself
+    ("Ethnicity: Not Collected", "Ethnicity - Other"): a row of an ethnicity
+    classification, not a race row (block comment above)."""
+    return bool(_ETHNICITY_DIMENSION_RX.match(category.get("original") or ""))
+
 
 def _is_race_only_table(kept: List[Dict], dropped: List[Dict]) -> bool:
     """True when a race-titled table is a race classification and not an
@@ -570,7 +581,7 @@ def _is_race_only_table(kept: List[Dict], dropped: List[Dict]) -> bool:
     those dropped as unmapped."""
     if any(c["omb_category"] in _ETHNICITY_SPECIFIC for c in kept):
         return False
-    if any(_names_hispanic(c) for c in dropped):
+    if any(_names_hispanic(c) or _names_ethnicity_dimension(c) for c in dropped):
         return False
     return any((c.get("count") or 0) > 0 for c in dropped)
 

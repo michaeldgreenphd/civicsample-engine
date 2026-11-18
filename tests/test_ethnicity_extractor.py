@@ -421,6 +421,16 @@ def test_a_race_table_under_an_ethnicity_title_is_not_an_ethnicity_report() -> N
     assert eth["raw_categories"] == [] and eth["flags"] == ["race_only_table_skipped"]
 
 
+@pytest.mark.parametrize("label", ["Ethnicity: Not Collected", "Ethnicity - Other", "Ethnic group: declined"])
+def test_an_unread_row_of_the_ethnicity_dimension_keeps_the_table_an_ethnicity_report(label: str) -> None:
+    """A dropped row that names the ethnicity dimension is not a race row, so
+    the table is read as before (a review finding on the race-only rule)."""
+    table = _table(COMBINED, [("Unknown", 5), (label, 45)])
+    eth = extract_ethnicity_data(_study("NCT99000710", [table], participants=50))
+    assert eth["reported"] is True and "race_only_table_skipped" not in eth["flags"]
+    assert eth["omb_totals"]["unknown_not_reported"] == 50
+
+
 def test_a_zero_hispanic_row_keeps_the_table_an_ethnicity_report() -> None:
     """A posted Hispanic row says how many were Hispanic, even when that is 0."""
     table = _table(COMBINED, [("White", 40), ("Black", 8), ("Hispanic", 0), ("Unknown", 2)])
