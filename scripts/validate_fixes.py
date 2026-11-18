@@ -37,6 +37,9 @@ Tests:
  16. NCT99000112 — A race classification titled "Race/Ethnicity,
      Customized": race rows and the race classification's unknown row, no
      ethnicity row (fictional study, the table shape of NCT02787551)
+ 17. NCT99000113 — A combined race and ethnicity classification whose
+     Hispanic row is posted as "Hispanic American" (fictional study, the
+     table shape of NCT00090233)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -47,7 +50,7 @@ counting them (EXPECTED_SKIPPED_ETHNICITY); study 13 also asserts that its
 race rows are counted as not Hispanic (EXPECTED_ETHNICITY). Study 14 asserts that a label
 naming a race beside an ethnicity term is counted in that race
 (check_joined_labels), and its ethnicity totals and flags, read from the same
-joined labels (EXPECTED_ETHNICITY). Studies 15 and 16 assert their ethnicity
+joined labels (EXPECTED_ETHNICITY). Studies 15 to 17 assert their ethnicity
 totals and flags (EXPECTED_ETHNICITY).
 A mismatch stops the harness.
 """
@@ -534,6 +537,24 @@ MOCK_NCT99000112 = _make_study(
     total_participants=514,
 )
 
+# ---------- NCT99000113 (fictional): "Hispanic American" in a combined classification ----------
+# 50 participants, one row each: White 30 / Hispanic American 8 / Black 12.
+# "Hispanic American" is now in the ethnicity vocabulary (block comment
+# "Plain vocabulary gaps"), so both extractors count 8 Hispanic and the race
+# rows are counted as not Hispanic. Before, the ethnicity block ended in
+# all-zero rejection, flagged ethnicity_rows_unread.
+MOCK_NCT99000113 = _make_study(
+    "NCT99000113",
+    "NCT99000113 - Hispanic American in a combined classification (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("White", 30), ("Hispanic American", 8), ("Black", 12)]
+        ]),
+    ],
+    total_participants=50,
+)
+
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
 # OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
@@ -574,6 +595,8 @@ EXPECTED_ETHNICITY = {
                     "flags": ["dimension_wording_stripped"]},
     "NCT99000112": {"omb": {"hispanic_latino": 0, "not_hispanic_latino": 0, "unknown_not_reported": 0},
                     "flags": ["race_only_table_skipped"]},
+    "NCT99000113": {"omb": {"hispanic_latino": 8, "not_hispanic_latino": 42, "unknown_not_reported": 0},
+                    "flags": ["not_hispanic_from_combined_table"]},
 }
 
 
@@ -764,6 +787,7 @@ def main() -> None:
         (MOCK_NCT99000110, "NCT99000110"),
         (MOCK_NCT99000111, "NCT99000111"),
         (MOCK_NCT99000112, "NCT99000112"),
+        (MOCK_NCT99000113, "NCT99000113"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

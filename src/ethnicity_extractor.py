@@ -35,6 +35,17 @@ ETHNICITY_MAPPINGS = {
     "Ecuadorian": ("hispanic_latino", "south_american_ecuadorian"),
     "Argentine": ("hispanic_latino", "south_american_argentine"),
     "Chilean": ("hispanic_latino", "south_american_chilean"),
+    # Posted wordings of Hispanic or Latino that matched nothing (block
+    # comment "Plain vocabulary gaps" below; matched as posted only, never as
+    # a fuzzy target). Each names Hispanic or Latino and nothing else.
+    # "American Hispanic" also covers its letter-case variants, as every key does.
+    "American Hispanic": ("hispanic_latino", None),     # US-resident Hispanic; not a subgroup
+    "Hispanic American": ("hispanic_latino", None),     # the same words in the other order
+    "Hispanic-American": ("hispanic_latino", None),     # hyphenated form of the above
+    "Latino, Hispanic": ("hispanic_latino", None),      # both terms, comma-joined: one category
+    "Latino or Hispanic": ("hispanic_latino", None),    # "Hispanic or Latino" reversed
+    "Hispanic, Latinx": ("hispanic_latino", None),      # both terms, comma-joined: one category
+    "Hispanic ethnicity": ("hispanic_latino", None),    # the category named with its dimension; "Hispanic Ethnicity" too
 
     # Not Hispanic or Latino
     "Not Hispanic or Latino": ("not_hispanic_latino", None),
@@ -42,6 +53,15 @@ ETHNICITY_MAPPINGS = {
     "Non-Hispanic": ("not_hispanic_latino", None),
     "Non Hispanic": ("not_hispanic_latino", None),
     "Not Hispanic": ("not_hispanic_latino", None),
+    # Posted wordings of not Hispanic or Latino that matched nothing (block
+    # comment "Plain vocabulary gaps" below; matched as posted only). Each
+    # negates every Hispanic or Latino term it names.
+    "not of Hispanic origin": ("not_hispanic_latino", None),            # "Not Hispanic" with "of ... origin"; "Origin" too
+    "not of Hispanic-American Origin": ("not_hispanic_latino", None),   # the same, naming Hispanic-American
+    "Non-Hispanic and Non-Latino": ("not_hispanic_latino", None),       # both terms negated, "and"
+    "Non-Hispanic, Non-Latino": ("not_hispanic_latino", None),          # both terms negated, comma
+    "Non-Hispanic or Non-Latino": ("not_hispanic_latino", None),        # both terms negated, "or"
+    "non-Latino": ("not_hispanic_latino", None),                        # Latino negated; "Non-Latino" too
 
     # Unknown / Not Reported  (including slash-separated variants)
     "Unknown": ("unknown_not_reported", None),
@@ -59,6 +79,77 @@ ETHNICITY_MAPPINGS = {
     "Declined": ("unknown_not_reported", None),
     "Missing": ("unknown_not_reported", None),
 }
+
+# ── Plain vocabulary gaps ────────────────────────────────────────────────────
+#
+# Registrants post Hispanic and not Hispanic in wordings the vocabulary did not
+# hold: "American Hispanic", "Latino, Hispanic", "Hispanic ethnicity", "not of
+# Hispanic origin", "Non-Hispanic and Non-Latino", "non-Latino". Each matched
+# nothing exactly, case-insensitively or fuzzily (best ratios 57-84, under the
+# threshold of 85). In a race-titled table such a row was dropped and the block
+# flagged ethnicity_rows_unread; with no other row the block ended in all-zero
+# rejection. In an ethnicity-only table the row was kept as unmapped and its
+# participants counted in unknown_not_reported.
+#
+# Method. The entries above marked "Plain vocabulary gaps" are matched as
+# posted, exactly or in any letter case, like every key. They are left out of
+# the fuzzy match (_EXACT_ONLY_KEYS): as fuzzy targets they would also read
+# labels that are not theirs. On the measured snapshot they would read
+# "Non-Hispanic and Latino" (15 rows; ratio 92 against "Non-Hispanic and
+# Non-Latino", and both negate Hispanic, so the negation check does not refuse
+# it) as not Hispanic, and "Not Hispanic Ethnicity" (2 rows; ratio 85 against
+# "Hispanic ethnicity") as Hispanic. Left out of the fuzzy match, the entries
+# change only rows whose label, or the part of it that an existing rule reads,
+# is one of them: "Latino/Hispanic" through the comma/semicolon/slash split
+# ("Latino, Hispanic"), "White, not of Hispanic origin" through the same split,
+# "Non-Latino White" through the joined reading ("non-Latino").
+#
+# Left unmapped by this change, pending a decision on what each means:
+# "Non-Hispanic and Latino" (names both categories; in the tables measured it
+# sits beside a "Hispanic or Latino" row), "Not meeting definition for Hispanic
+# or Latino" (in the tables measured it sits beside Hispanic subgroup rows),
+# "Caucasian (White, including Hispanic)", read through the split as "including
+# Hispanic)" (a race row holding Hispanic and other participants), and
+# "Another Hispanic, Latino/a, or Spanish Origin", read through the split as
+# "Another Hispanic, Latino" (the census wording of the remaining Hispanic
+# subgroups, posted beside Mexican, Puerto Rican and Cuban rows).
+#
+# Why. Each entry names Hispanic or Latino and nothing else, or negates every
+# Hispanic or Latino term it names: "American Hispanic" and "Hispanic American"
+# describe the same people as "Hispanic", and "non-Latino" the same people as
+# "Not Hispanic". None names a subgroup, so the subcategory is None.
+#
+# Combined classifications. "American Hispanic" was a Hispanic row to the race
+# extractor but not to this one, so the two readings of an exact combined
+# classification disagreed on the Hispanic count and no race rows were counted
+# as not Hispanic ("Race rows of a combined classification" below). They now
+# agree in such tables, and not_hispanic_from_race_rows is set for them.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18; the commit that published
+# the snapshot reproduced 80,986 of its ethnicity blocks, the other two having
+# changed in the registry since). 77 distinct labels (274 rows) change: 76
+# from unmapped to a category, and "White, Hispanic/Latinx" from a fuzzy to an
+# exact match of the same category. 222 blocks change: 111 from all-zero
+# rejection to reported, 106 reported with moved counts, 5 in flags or rows
+# only. Hispanic +101,110, Not Hispanic +186,209, unknown -131,409: the net
+# +155,910 are the participants of the newly reported blocks (155,908) and 2
+# of NCT02094872, whose posted rows add up to more than its 49 participants
+# (Hispanic 6, "Black, not of Hispanic Origin" 2, "White, not of Hispanic
+# Origin" 43; with the race rows, 55); 217 of the
+# blocks change through race-titled tables, 5 through ethnicity-only tables
+# (Not Hispanic +558, unknown -558). not_hispanic_from_race_rows rises in 90
+# trials by 110,286 (68 newly set). One trial is 76% of the Hispanic change
+# (NCT03666026: "Hispanic Ethnicity" 46.9% of 164,205). Blocks flagged
+# ethnicity_rows_unread fall from 500 (231 not reported) to 299 (120).
+_EXACT_ONLY_KEYS = frozenset({
+    "American Hispanic", "Hispanic American", "Hispanic-American", "Latino, Hispanic",
+    "Latino or Hispanic", "Hispanic, Latinx", "Hispanic ethnicity",
+    "not of Hispanic origin", "not of Hispanic-American Origin", "Non-Hispanic and Non-Latino",
+    "Non-Hispanic, Non-Latino", "Non-Hispanic or Non-Latino", "non-Latino",
+})
+# The keys a fuzzy match may return, in the vocabulary's order.
+_FUZZY_KEYS = tuple(key for key in ETHNICITY_MAPPINGS if key not in _EXACT_ONLY_KEYS)
 
 ETHNICITY_TABLE_KEYWORDS = ["ethnicity", "ethnic", "hispanic", "latino"]
 
@@ -261,8 +352,9 @@ def map_ethnicity_category(label: str, fuzzy_threshold: int = 85, *,
             "flags": flags
         }
 
-    # Fuzzy match
-    match = process.extractOne(match_text, ETHNICITY_MAPPINGS.keys(), scorer=fuzz.ratio)
+    # Fuzzy match, never to a key matched as posted only (block comment
+    # "Plain vocabulary gaps").
+    match = process.extractOne(match_text, _FUZZY_KEYS, scorer=fuzz.ratio)
     if (match and match[1] >= fuzzy_threshold
             and not (guard_negation and _negates_hispanic(match_text) != _negates_hispanic(match[0]))):
         omb, subcat = ETHNICITY_MAPPINGS[match[0]]
