@@ -1391,3 +1391,76 @@ def test_a_prefixed_joined_label_is_a_race_row() -> None:
 def test_labels_without_a_race_prefix_are_mapped_as_posted(label: str) -> None:
     """A separator is required, and only the race dimension is removed here."""
     assert rx._strip_race_dimension(label) is None
+
+
+# ── the negation check on a stripped label, and other prefixed shapes ──────
+#
+# src/race_extractor.py, "Race dimension named in the row label", paragraph
+# "Negation check": a fuzzy match of a label whose prefix was removed must
+# agree with its key on negation.
+
+def test_a_fuzzy_match_that_drops_a_negation_is_not_kept() -> None:
+    """"Non-African American" scores 88.9 against "African American"; with
+    the prefix removed it would otherwise be counted as Black."""
+    mapping = rx._map_plain_row("Race: Non-African American", 9, False)
+    assert mapping is not None
+    assert (mapping["omb_category"], mapping["confidence"]) == ("other", "low")
+    assert "unmapped" in mapping["flags"] and "dimension_wording_stripped" in mapping["flags"]
+    # The guard stops it, not the score: unguarded, the bare text matches.
+    assert rx.map_race_category("Non-African American")["omb_category"] == "black_african_american"
+
+
+@pytest.mark.parametrize("label", ["Race: Not reportd", "Race - Unknown or Not reportd", "Race: Not Reported."])
+def test_a_fuzzy_match_that_keeps_the_negation_is_kept(label: str) -> None:
+    mapping = rx._map_plain_row(label, 2, False)
+    assert mapping is not None
+    assert (mapping["omb_category"], mapping["confidence"]) == ("unknown_not_reported", "medium")
+
+
+@pytest.mark.parametrize("label", ["Non-African American", "White", "Black/African American"])
+def test_an_unprefixed_label_is_matched_without_the_check(label: str) -> None:
+    assert rx._map_plain_row(label, 3, False) == {**rx._map_race_label(label), "count": 3}
+
+
+@pytest.mark.parametrize("text, negates", [
+    ("Not Reported", True), ("Non-White", True), ("Nonwhite", True), ("No race given", True),
+    ("Unknown or Not Reported", True), ("African American", False), ("Unknown", False),
+    ("Native American", False), ("Another Race", False),
+])
+def test_negates_race(text: str, negates: bool) -> None:
+    assert rx._negates_race(text) is negates
+
+
+def test_prefixed_rows_of_one_exclusive_classification() -> None:
+    """Race: White 30 / Race: Black 12 / Race: Hispanic 6 / Race: Unknown 2,
+    of 50: the stripped Hispanic row is still skipped, and it accounts for
+    the shortfall exactly."""
+    table = _class_table(COMBINED_TITLE, [("Race: White", 30), ("Race: Black", 12),
+                                          ("Race: Hispanic", 6), ("Race: Unknown", 2)])
+    study = _study("NCT99000550", [table], participants=50)
+    race = extract_race_data(study)
+    assert _nonzero(race) == {"white": 30, "black_african_american": 12, "unknown_not_reported": 8}
+    assert _skipped(race) == [("Race: Hispanic", 6)]
+    assert _unknown_parts(race) == (2, 6, 0) and SPLIT_FLAG in race["flags"]
+    assert rx.combined_classification(study) == {
+        "index": 0, "title": COMBINED_TITLE, "race_rows": 42, "race_rows_named": 42,
+        "ethnicity_rows": 6, "unknown_rows": 2}
+
+
+def test_prefixed_race_by_sex_rows_split_and_map() -> None:
+    table = _class_table("Race by Sex", [("Race: White : Female", 10), ("Race: White : Male", 12),
+                                         ("Race: Black : Female", 5), ("Race: Black : Male", 3)])
+    race = extract_race_data(_study("NCT99000551", [table], participants=30))
+    assert _nonzero(race) == {"white": 22, "black_african_american": 8}
+    assert "race_by_sex_table" in race["flags"]
+    assert race["joint_sex_counts"]["counts"] == {"white": {"female": 10, "male": 12},
+                                                  "black_african_american": {"female": 5, "male": 3}}
+    assert all({"dimension_wording_stripped", "race_by_sex"} <= set(c["flags"]) for c in race["raw_categories"])
+    assert race["raw_categories"][0]["original"] == "Race: White : Female"
+
+
+def test_prefixed_race_rows_under_a_sex_title_are_read_as_race() -> None:
+    """Every row maps to a race-specific category once the prefix is
+    removed, so the sex/gender-titled table passes the gate."""
+    table = _class_table("Sex/Gender, Customized", [("Race: White", 20), ("Race: Black", 10)])
+    assert rx.is_sex_titled_race_table(table) is True

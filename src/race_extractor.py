@@ -200,9 +200,15 @@ def is_race_table(title: Optional[str]) -> bool:
     """
     return any(word.lower() in RACE_TITLE_WORDS for word in title_words(title))
 
-def map_race_category(label: str, fuzzy_threshold: int = 85) -> Dict:
+def map_race_category(label: str, fuzzy_threshold: int = 85, *,
+                      guard_negation: bool = False) -> Dict:
     """
     Map a race category label to NIH/OMB standard.
+
+    guard_negation keeps a fuzzy match only when the label and the matched
+    key agree on negation (_negates_race); _map_plain_row sets it for a label
+    whose race dimension name was removed (block comment "Race dimension
+    named in the row label").
 
     Returns dict with:
         - omb_category: NIH/OMB standard category
@@ -258,7 +264,8 @@ def map_race_category(label: str, fuzzy_threshold: int = 85) -> Dict:
 
     # Fuzzy match
     match = process.extractOne(label_clean, RACE_MAPPINGS.keys(), scorer=fuzz.ratio)
-    if match and match[1] >= fuzzy_threshold:
+    if (match and match[1] >= fuzzy_threshold
+            and not (guard_negation and _negates_race(label_clean) != _negates_race(match[0]))):
         omb, subcat = RACE_MAPPINGS[match[0]]
         flags.append(f"fuzzy_match_{match[1]}")
         return {
@@ -506,8 +513,11 @@ def _should_quarantine(mapping: Dict) -> bool:
 # When a category has one of these titles the actual label is on its parent class.
 _MEASUREMENT_LABELS = {"count", "number", "n", "total", "value", "mean", "median"}
 
-def _map_race_label(label: str) -> Dict:
+def _map_race_label(label: str, guard_negation: bool = False) -> Dict:
     """Map a single label to a race category.
+
+    guard_negation is passed to every map_race_category call that can reach
+    the fuzzy match (block comment "Race dimension named in the row label").
 
     A label that names a race beside one ethnicity phrase
     (_race_joined_to_ethnicity) is mapped from that exact race part, before
@@ -530,7 +540,7 @@ def _map_race_label(label: str) -> Dict:
         mapping["race_part"] = race_part
         return mapping
 
-    mapping = map_race_category(label)
+    mapping = map_race_category(label, guard_negation=guard_negation)
 
     # Combined label splitting: if the whole label fails to map
     # but contains both race and ethnicity fragments, re-map
@@ -539,7 +549,7 @@ def _map_race_label(label: str) -> Dict:
         split = _split_combined_label(label)
         if split:
             race_part, _eth_part = split
-            mapping = map_race_category(race_part)
+            mapping = map_race_category(race_part, guard_negation=guard_negation)
             mapping["flags"].append("split_from_combined")
 
     return mapping
@@ -645,8 +655,33 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # changed here: it is not ethnicity-only by _is_ethnicity_only_label unless it
 # names Hispanic, so it is still mapped as race and usually counted as other.
 # That is a separate defect, left for its own change.
+#
+# Negation check. A fuzzy match of a label whose prefix was removed is kept
+# only when the label and the matched key agree on negation (_negates_race),
+# as on the ethnicity side (ethnicity_extractor, "Dimension wording around an
+# ethnicity label"). fuzz.ratio scores characters, not meaning: "Non-African
+# American" scores 88.9 against "African American". Posted with the prefix,
+# "Race: Non-African American" scored 76 and stayed other; with the prefix
+# removed it would be counted as Black without this check. A negation on both
+# sides ("Race: Not reportd" against "Not Reported") is kept. A label with no
+# prefix is fuzzily matched as before, without the check. On the re-fetched
+# 2026-11-15 snapshot the check stops no match: no race block changes. It
+# guards the stripped labels against a registrant's next negated row.
 _RACE_DIMENSION_PREFIX_RX = re.compile(
     r"^(?:race\s*(?:and|&|/)\s*ethnicity|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
+
+
+# Negation as a word ("Not Reported", "Non-White", "No race") or "non" joined
+# to the next word ("Nonwhite"): the negation check above.
+_RACE_NEGATION_RX = re.compile(r"(?<![a-z])(?:non|not|no)(?![a-z])|(?<![a-z])non(?=[a-z])",
+                               re.IGNORECASE)
+
+
+def _negates_race(text: str) -> bool:
+    """True when the text holds a negation ("Not Reported", "Non-African
+    American", "Nonwhite"); a fuzzy match of a stripped label must agree with
+    its key on this (block comment above)."""
+    return _RACE_NEGATION_RX.search(text) is not None
 
 
 def _strip_race_dimension(label: str) -> Optional[str]:
@@ -680,7 +715,7 @@ def _map_plain_row(label: str, count: int, pct_converted: bool) -> Optional[Dict
     text = stripped if stripped is not None else label
     if _is_ethnicity_only_label(text):
         return None
-    mapping = _map_race_label(text)
+    mapping = _map_race_label(text, guard_negation=stripped is not None)
     if stripped is not None:
         mapping["original"] = clean_demographic_label(label)
         mapping["flags"].append("dimension_wording_stripped")
