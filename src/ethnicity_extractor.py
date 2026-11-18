@@ -129,8 +129,8 @@ _ETHNICITY_KEYWORDS = {
 # snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
 # 80,987 of their published ethnicity blocks). 165 trials change with the
 # flag dimension_wording_stripped on a counted row, 127 of them from all-zero
-# rejection to reported: Hispanic +11,164, Not Hispanic +54,499, unknown
-# -11,565. The race_dimension_label rule alone changes 10 trials, unknown -153.
+# rejection to reported: Hispanic +11,164, Not Hispanic +56,548, unknown
+# -13,614. The race_dimension_label rule alone changes 10 trials, unknown -153.
 _DIMENSION_PREFIX_RX = re.compile(
     r"^(?P<name>race\s*(?:and|&|/)\s*ethnicity|ethnic\s+group|ethnicity|race)\s*[:\-–—_]\s*(?=\S)",
     re.IGNORECASE)
@@ -295,8 +295,9 @@ def map_ethnicity_category(label: str, fuzzy_threshold: int = 85, *,
 # row, the block ended in all-zero rejection.
 #
 # Method. A label that the vocabulary, the dimension wording rule and the
-# comma/semicolon/slash split all leave unmapped is passed to that same race
-# extractor function. When it returns (race_part, ethnicity_part) and the
+# comma/semicolon/slash split all leave unmapped is passed, without its
+# dimension wording ("Race and Ethnicity : White Non-Hispanic", NCT04523714),
+# to that same race extractor function. When it returns (race_part, ethnicity_part) and the
 # ethnicity part maps to a category (exactly, case-insensitively, or fuzzily
 # with the negation check of "Dimension wording around an ethnicity label"),
 # the row is counted in that category: "Non-Hispanic White" as
@@ -317,11 +318,11 @@ def map_ethnicity_category(label: str, fuzzy_threshold: int = 85, *,
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
-# 80,987 of their published ethnicity blocks). 649 trials change with the
+# 80,987 of their published ethnicity blocks). 650 trials change with the
 # flag race_joined_label, 199 of them from all-zero rejection to reported:
-# Hispanic +107,864, Not Hispanic +594,245, unknown -408,517. In 347 trials the
+# Hispanic +107,941, Not Hispanic +596,294, unknown -410,643. In 347 trials the
 # Not Hispanic participants that the combined-classification rule moved from
-# race rows (533,163) are now read from the labels (4,288 still moved). 497
+# race rows (533,163) are now read from the labels (4,288 still moved). 496
 # blocks carry ethnicity_rows_unread, 229 of them not reported.
 
 def _map_row_label(label: str) -> Dict:
@@ -337,11 +338,17 @@ def _map_row_label(label: str) -> Dict:
     if mapping.get("confidence") == "low" and "unmapped" in mapping.get("flags", []):
         # imported here, as combined_classification below: race reads no ethnicity
         from src.race_extractor import _race_joined_to_ethnicity
-        joined = _race_joined_to_ethnicity(label)
+        # The joined reading sees the label without its dimension wording, so
+        # "Race: Non-Hispanic White" is read as "Non-Hispanic White".
+        posted = clean_demographic_label(label)
+        stripped = _strip_dimension_wording(posted)
+        joined = _race_joined_to_ethnicity(stripped)
         if joined is not None:
             joined_mapping = map_ethnicity_category(joined[1], guard_negation=True)
             if joined_mapping["confidence"] != "low":
-                joined_mapping["original"] = clean_demographic_label(label)
+                joined_mapping["original"] = posted
+                if stripped != posted and "dimension_wording_stripped" not in joined_mapping["flags"]:
+                    joined_mapping["flags"].append("dimension_wording_stripped")
                 joined_mapping["flags"].append("race_joined_label")
                 mapping = joined_mapping
     return mapping

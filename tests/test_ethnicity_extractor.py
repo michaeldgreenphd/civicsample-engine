@@ -450,6 +450,22 @@ def test_a_label_joining_race_and_ethnicity_is_read_for_its_ethnicity(label: str
     assert "race_joined_label" in eth["raw_categories"][0]["flags"]
 
 
+@pytest.mark.parametrize("label, category", [
+    ("Race: Non-Hispanic White", "not_hispanic_latino"),
+    ("Ethnicity: Hispanic White", "hispanic_latino"),
+    ("Ethnicity - Non-Hispanic Black", "not_hispanic_latino"),
+])
+def test_a_prefixed_joined_label_is_read_for_its_ethnicity(label: str, category: str) -> None:
+    """Both forms in one label: the dimension wording is removed before the
+    joined reading (a review finding on the first version of this rule)."""
+    table = _table(COMBINED, [(label, 30), ("Asian", 20)])
+    eth = extract_ethnicity_data(_study("NCT99000709", [table], participants=50))
+    assert eth["omb_totals"][category] == 30
+    flags = eth["raw_categories"][0]["flags"]
+    assert eth["raw_categories"][0]["original"] == label
+    assert {"race_joined_label", "dimension_wording_stripped"} <= set(flags)
+
+
 def test_a_fuzzy_match_that_drops_the_negation_is_refused() -> None:
     """"non-Hispanic/Latino" scores 88 against "Hispanic/Latino" (the ratio is
     case-sensitive): the joined reading must not count these as Hispanic."""
