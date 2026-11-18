@@ -283,3 +283,20 @@ def test_a_total_row_that_is_not_a_number_leaves_the_measure_as_before() -> None
                                               _class("Site B", [("Female", 2), ("Male", 1)]),
                                               _class("Total", [("Female", 5), ("Male", "NA")])])
     assert table_selection.total_class_view(measure, None)[1] is False
+
+
+@pytest.mark.parametrize("overall_measurements", [
+    [{"groupId": "BG001", "value": None}, {"groupId": "BG000", "value": "5"}],   # Overall null, an arm last
+    [{"groupId": "BG000", "value": "5"}],                                         # no Overall measurement
+])
+def test_the_total_row_must_post_the_overall_groups_own_number(
+        overall_measurements: list[dict[str, Any]]) -> None:
+    """sum_measurements falls back to the last measurement when the Overall
+    group's value is null or absent, which may be an arm's value. That is
+    not the Total, so the Total class is not used."""
+    measure = _measure("Sex: Female, Male", [
+        _two_group_class("Site A", [("Female", "3", "3"), ("Male", "4", "4")]),
+        _two_group_class("Site B", [("Female", "2", "2"), ("Male", "1", "1")]),
+        _two_group_class("Total", [("Female", "5", "5"), ("Male", "5", "5")])])
+    measure["classes"][2]["categories"][1]["measurements"] = overall_measurements
+    assert table_selection.total_class_view(measure, "BG001")[1] is False
