@@ -71,14 +71,23 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 #   - the Total class holds at least one labelled row: a category whose title
 #     is not a measurement label. A class titled "Total" whose only category
 #     is "Count" is a row named Total, not a Total class;
+#   - every labelled row of the Total class posts a value (a measurement
+#     whose value is not null). The registry posts rows with no
+#     measurements (template rows, an empty class); a Total row without a
+#     value would read as 0 while the subgroup rows that hold the count were
+#     discarded, so such a measure is read as before;
 #   - every other class holds at least one labelled row, and each of its row
 #     labels is one of the Total class's row labels (exact text, trimmed). A
 #     subgroup may leave a row out (a band with no Asian participants may
 #     post no Asian row); it may not add one.
 # The measure is then read as if the Total class were its only class: the
-# same row-label rules and the same overall group, with its percentage
-# denominator and its Number Analyzed taken from the Total class, not from
-# the subgroup classes. Otherwise the measure is read exactly as before.
+# same row-label rules and the same overall group, and number_analyzed and
+# percentage_denominator see the Total class alone, never the subgroup
+# classes. percentage_denominator keeps its own rules there: the Total
+# class's Number Analyzed when that class holds two or more rows, the
+# baseline total for a one-row Total class, as for any one-row table (a
+# lone row's class number is as likely its own count as a denominator).
+# Otherwise the measure is read exactly as before.
 #
 # Why the Total class rather than the subgroups. When the subgroup rows add
 # up to the Total rows, the two readings give the same counts, so the choice
@@ -88,9 +97,10 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 # only when they add up to the Total needs a fallback when they do not, and
 # the only fallback that counts no one twice is the Total class, so that rule
 # gives the same counts as this one with an extra sum check. Reading the Total
-# class also keeps a percentage measure's denominator: the subgroups' class-level
-# Number Analyzed differ from one another, so percentage_denominator would
-# otherwise fall back to the baseline total.
+# class also keeps the denominator of a percentage measure with two or more
+# rows: the subgroups' class-level Number Analyzed differ from one another, so
+# percentage_denominator would otherwise fall back to the baseline total. (No
+# measure the rule applies to in the measured snapshot reports percentages.)
 #
 # What it does not do. If a subgroup class has a row label the Total class
 # lacks, the measure is read as before (every class summed): the classes are
@@ -132,17 +142,29 @@ TOTAL_CLASS_FLAG = "total_class_only"
 _MEASUREMENT_LABELS = frozenset({"count", "number", "n", "total", "value", "mean", "median"})
 
 
-def _row_labels(cls: dict) -> List[str]:
-    """A class's labelled rows: category titles that are not measurement
-    labels, trimmed."""
-    labels = []
+def _labelled_rows(cls: dict) -> List[dict]:
+    """A class's labelled rows: categories whose trimmed title is not a
+    measurement label."""
+    rows = []
     for cat in cls.get("categories") or []:
         if not isinstance(cat, dict):
             continue
         title = (cat.get("title") or "").strip()
         if title and title.lower() not in _MEASUREMENT_LABELS:
-            labels.append(title)
-    return labels
+            rows.append(cat)
+    return rows
+
+
+def _row_labels(cls: dict) -> List[str]:
+    """A class's labelled row titles, trimmed."""
+    return [(cat.get("title") or "").strip() for cat in _labelled_rows(cls)]
+
+
+def _posts_a_value(row: dict) -> bool:
+    """Whether a row has at least one measurement whose value is not null."""
+    measurements = row.get("measurements")
+    return isinstance(measurements, list) and any(
+        isinstance(m, dict) and m.get("value") is not None for m in measurements)
 
 
 def total_class_view(measure: dict) -> Tuple[dict, bool]:
@@ -156,9 +178,10 @@ def total_class_view(measure: dict) -> Tuple[dict, bool]:
     totals = [cls for cls in classes if (cls.get("title") or "").strip().lower() == "total"]
     if len(totals) != 1:
         return measure, False
-    total_labels = set(_row_labels(totals[0]))
-    if not total_labels:
+    total_rows = _labelled_rows(totals[0])
+    if not total_rows or not all(_posts_a_value(row) for row in total_rows):
         return measure, False
+    total_labels = set(_row_labels(totals[0]))
     for cls in classes:
         if cls is totals[0]:
             continue

@@ -208,3 +208,37 @@ def test_percentages_convert_against_the_total_class() -> None:
     sex = extract_sex_data(_study("NCT99000118", [measure], 100))
     assert sex["totals"]["female"] == 20 and sex["totals"]["male"] == 60
     assert sex["unknown_inferred"] == 20
+
+
+@pytest.mark.parametrize("empty_row", [
+    {"title": "Male"},                                                   # no measurements key
+    {"title": "Male", "measurements": []},                               # empty list
+    {"title": "Male", "measurements": [{"groupId": "BG000", "value": None}]},  # a null value
+])
+def test_a_total_row_without_a_value_leaves_the_measure_as_before(empty_row: dict[str, Any]) -> None:
+    """A Total class whose row posts no value would read as 0 while the
+    subgroup rows that hold the count were discarded: the measure is read
+    as before, every class summed, and nothing is flagged."""
+    total = _class("Total", [("Female", 5)])
+    total["categories"].append(empty_row)
+    measure = _measure("Sex: Female, Male", [_class("Site A", [("Female", 3), ("Male", 4)]),
+                                              _class("Site B", [("Female", 2), ("Male", 1)]), total])
+    view, total_only = table_selection.total_class_view(measure)
+    assert total_only is False and view is measure
+    sex = extract_sex_data(_study("NCT99000119", [measure], 10))
+    assert sex["totals"]["male"] == 5
+    assert FLAG not in sex["flags"]
+
+
+def test_a_one_row_total_class_converts_percentages_as_any_one_row_table() -> None:
+    """percentage_denominator keeps its own rules on the Total class: a lone
+    row's class number is as likely its own count as a denominator, so a
+    one-row Total converts against the baseline (100), as main does for this
+    measure, while number_analyzed reports the Total class's 80."""
+    classes = [_class("Site A", [("White", 50.0)], 30), _class("Site B", [("White", 10.0)], 50),
+               _class("Total", [("White", 25.0)], 80)]
+    measure = _measure("Race (NIH/OMB)", classes, pct=True)
+    view, total_only = table_selection.total_class_view(measure)
+    assert total_only is True
+    assert table_selection.number_analyzed(measure, None) == 80
+    assert table_selection.percentage_denominator(view, None, 100) == 100
