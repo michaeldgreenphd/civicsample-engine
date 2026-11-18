@@ -207,8 +207,8 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
 
     guard_negation keeps a fuzzy match only when the label and the matched
     key agree on negation (_negates_race); _map_plain_row sets it for a label
-    whose dimension wording was removed (block comment "Dimension wording
-    before a race label").
+    whose race dimension name was removed (block comment "Race dimension
+    named in the row label").
 
     Returns dict with:
         - omb_category: NIH/OMB standard category
@@ -517,7 +517,7 @@ def _map_race_label(label: str, guard_negation: bool = False) -> Dict:
     """Map a single label to a race category.
 
     guard_negation is passed to every map_race_category call that can reach
-    the fuzzy match (block comment "Dimension wording before a race label").
+    the fuzzy match (block comment "Race dimension named in the row label").
 
     A label that names a race beside one ethnicity phrase
     (_race_joined_to_ethnicity) is mapped from that exact race part, before
@@ -605,136 +605,119 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
                                                  is_pct=is_pct, denom=denom)))
     return rows, bool(is_pct and denom)
 
-# ── Dimension wording before a race label ───────────────────────────────────
+# ── Race dimension named in the row label ──────────────────────────────────
 #
-# A combined race and ethnicity table often names the dimension in every row:
-# "Race: Caucasian/White" 588 / "Race: Black" 18 / "Race: Asian/Oriental" 7 /
-# "Race: Other" 21 / "Ethnicity: Hispanic" 170 / "Ethnicity: Non Hispanic"
-# 464 (NCT00707031, one "Race/Ethnicity, Customized" table classifying the
-# same 634 participants twice). Other shapes: "Race-White", "Race : African
-# American", "Race-Unknown or Not Reported", "Race and Ethnicity : White
-# Non-Hispanic".
+# A combined table often names the dimension in every row: "Race: Caucasian/
+# White" / "Race: Black" / "Race: Asian/Oriental" / "Race: Other" beside
+# "Ethnicity: Hispanic" / "Ethnicity: Non Hispanic" (NCT00707031, 634
+# participants in each classification). The prefix stopped most of these rows
+# from matching: "Race: Black" and "Race: Asian/Oriental" were counted as
+# other, so the block read Black 0 and Asian 0 although the table posts 18 and
+# 7; "Race - Black or African American" reached Black only by fuzzy match. A
+# prefixed joined label ("Race and Ethnicity : White Non-Hispanic",
+# NCT04523714) was worse off: _is_ethnicity_only_label saw an ethnicity term
+# and no race key beside it, so the row was taken for an ethnicity row and
+# left out of the race block altogether.
 #
-# Method. Before a row is mapped (_map_plain_row, which every plain row and
-# every race-by-sex race part goes through), its label is cleaned
-# (clean_demographic_label) and one leading race dimension name followed by a
-# separator is removed: "Race", or "Race and Ethnicity" / "Race & Ethnicity"
-# / "Race/Ethnicity", in any case, then ":", "-", "–", "—" or "_", with or
-# without spaces around it, once or repeated ("Race: : White", NCT01367665)
-# (_RACE_DIMENSION_PREFIX_RX). What is left goes through the rules every
-# label goes through: the ethnicity-only test
-# ("Race: Hispanic" and "Race and Ethnicity - Not Hispanic" are still left to
-# the ethnicity pipeline and recorded in skipped_ethnicity_rows), then exact,
-# case-insensitive, slash-fragment and fuzzy matching, and the
-# race/ethnicity split. The row keeps the posted label as "original" and
-# carries the flag dimension_wording_stripped. No key of RACE_MAPPINGS
-# begins with a dimension name and a separator, so a label the vocabulary
-# matches as posted is matched the same way.
+# Method. One leading race dimension name followed by a separator (":", "-",
+# "–", "—" or "_"; the names are "Race" and "Race and/&// Ethnicity") is
+# removed before the row is routed and mapped, so the rest goes through
+# exactly the path the same text takes as a row of its own:
+# _is_ethnicity_only_label first ("Race : Hispanic" is an ethnicity row, as
+# before), then _map_race_label. The mapping keeps the posted label as
+# "original" and carries the flag dimension_wording_stripped. A separator is
+# required: "Race unknown" and "Race not reported" are vocabulary entries and
+# match as posted. A doubled separator ("Race: : White", 879 participants in
+# one trial) is removed whole.
 #
-# A fuzzy match of a stripped label is kept only when the label and the key
-# agree on negation (_negates_race), as on the ethnicity side
-# (ethnicity_extractor, "Dimension wording around an ethnicity label").
-# fuzz.ratio is case-sensitive and blind to meaning: "Non-African American"
-# scores 88.9 against "African American". With the prefix the label scored
-# 76 and fell to "other"; without it, the guard keeps it there instead of
-# counting it as Black. A label with no prefix is fuzzily matched as before.
-#
-# "Ethnicity" and "Ethnic group" are not removed here. A row named for the
-# ethnicity dimension is a row of the ethnicity classification and belongs to
-# the ethnicity pipeline: "Ethnicity: Hispanic" is skipped by the
-# ethnicity-only test, with or without this rule. "Ethnicity: Unknown" or
-# "Ethnicity: Not reported", with no Hispanic term, is still counted here as
-# an unmapped race "other", as before this rule; this change does not move it.
-#
-# Why. Without the rule the prefix defeated every exact match. A label
-# survived only when a slash fragment matched ("Race: Caucasian/White" ->
-# "White", because "White" is a key) or the fuzzy score stayed above 85 ("Race-
-# Unknown or Not Reported", 90.2); the rest ("Race: Black", "Race: Asian/
-# Oriental", "Race-White") were unmapped and counted as race "other", so
-# NCT00707031 published Black 0 and Asian 0. "Race and Ethnicity : White
-# Non-Hispanic" read as ethnicity alone (the whole label was one fragment
-# holding an ethnicity keyword) and its participants were in no race.
+# A consequence of mapping the rest as its own row: "RACE - OTHER/ NOT
+# REPORTED" now maps as "OTHER/ NOT REPORTED" does, to other by its first
+# slash fragment, where the prefixed label reached unknown through its second
+# fragment only because the first ("RACE - OTHER") matched nothing; likewise
+# "Race: Mixed/Unknown" now maps to more than one race, as "Mixed/Unknown"
+# does.
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
-# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
-# 80,987 of their published race blocks). 147 race blocks carry the flag on a
-# counted row; the OMB totals of 136 change, and no block changes reported:
-# White +34,198, Asian +4,831, Black or African American +3,926, More than
-# one race +166, American Indian or Alaska Native +31, Native Hawaiian or
-# Pacific Islander +3, unknown -2,066 (unknown_inferred -2,126,
-# unknown_ethnicity_only +77, unknown_explicit -17), other -41,089. Most of the
-# unknown change is NCT04523714, whose 2,049 participants in "Race and
-# Ethnicity : White Non-Hispanic" and "Race and Ethnicity : Black or African
-# American Non-Hispanic" were skipped as ethnicity and balanced into
-# unknown_inferred. Three labels that main matched by a slash fragment now
-# match as they would without the prefix, where the first matching fragment
-# wins: "RACE - OTHER/ NOT REPORTED" 109 and "Race: Mixed/Unknown" 7 leave
-# unknown for other and more than one race, "Race: Black/White" 1 leaves White
-# for Black. No ethnicity block and no legacy sex block changes;
-# combined_classification changes for one trial (NCT04523714, from None),
-# whose ethnicity block already counts Not Hispanic from its own rows. The
-# negation check stopped no match in the snapshot. Still unmapped after the
-# prefix is removed: 26 labels, 13,902 participants, most of them "Race -
-# Black African" (12,979, NCT04311671), which the vocabulary does not hold
-# without the prefix either. Rows named for the ethnicity dimension with a
-# separator and counted as race "other" are unchanged: 80 rows, 5,636
-# participants, 45 trials.
+# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced all
+# 80,988 published race blocks). 136 race blocks change, none in reported:
+# 41,089 participants leave other (White +34,198, Asian +4,831, Black
+# +3,926, more than one race +166, American Indian +31, Native Hawaiian +3)
+# and unknown falls by 2,066. Of that, 2,049 are NCT04523714, whose joined
+# rows are now counted instead of inferred as unknown (its Hispanic row then
+# accounts for the remaining shortfall, unknown_ethnicity_only 77); 116 are
+# the two slash labels above; and 99 participants move into unknown from rows
+# such as "Race: Not Reported" and "Race : Missing" that were counted as
+# other. 11 more blocks change only in their flags. No ethnicity block
+# changes.
+#
+# What it does not do. A row prefixed with the ethnicity dimension
+# ("Ethnicity-Unknown or Not Reported", "Ethnicity-Not Japanese") is not
+# changed here: it is not ethnicity-only by _is_ethnicity_only_label unless it
+# names Hispanic, so it is still mapped as race and usually counted as other.
+# That is a separate defect, left for its own change.
+#
+# Negation check. A fuzzy match of a label whose prefix was removed is kept
+# only when the label and the matched key agree on negation (_negates_race),
+# as on the ethnicity side (ethnicity_extractor, "Dimension wording around an
+# ethnicity label"). fuzz.ratio scores characters, not meaning: "Non-African
+# American" scores 88.9 against "African American". Posted with the prefix,
+# "Race: Non-African American" scored 76 and stayed other; with the prefix
+# removed it would be counted as Black without this check. A negation on both
+# sides ("Race: Not reportd" against "Not Reported") is kept. A label with no
+# prefix is fuzzily matched as before, without the check. On the re-fetched
+# 2026-11-15 snapshot the check stops no match: no race block changes. It
+# guards the stripped labels against a registrant's next negated row.
 _RACE_DIMENSION_PREFIX_RX = re.compile(
-    r"^(?:race\s*(?:and|&|/)\s*ethnicity|race)(?:\s*[:\-–—_])+\s*(?=\S)", re.IGNORECASE)
+    r"^(?:race\s*(?:and|&|/)\s*ethnicity|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
+
+
 # Negation as a word ("Not Reported", "Non-White", "No race") or "non" joined
-# to the next word ("Nonwhite").
+# to the next word ("Nonwhite"): the negation check above.
 _RACE_NEGATION_RX = re.compile(r"(?<![a-z])(?:non|not|no)(?![a-z])|(?<![a-z])non(?=[a-z])",
                                re.IGNORECASE)
 
 
-def _strip_race_dimension(label: str) -> str:
-    """The label without a leading race dimension name and its separator
-    (block comment above); the label itself when it has none.
-
-      "Race: Black"                             -> "Black"
-      "Race-Unknown or Not Reported"            -> "Unknown or Not Reported"
-      "Race and Ethnicity : White Non-Hispanic" -> "White Non-Hispanic"
-      "Race/Ethnicity - Asian"                  -> "Asian"
-      "Race: : White"                           -> "White"
-      "Ethnicity: Hispanic"                     -> "Ethnicity: Hispanic"
-      "Race unknown"                            -> "Race unknown"
-    """
-    prefix = _RACE_DIMENSION_PREFIX_RX.match(label)
-    if prefix is None:
-        return label
-    return label[prefix.end():].strip() or label
-
-
 def _negates_race(text: str) -> bool:
     """True when the text holds a negation ("Not Reported", "Non-African
-    American", "Nonwhite"): the check that a fuzzy match of a stripped label
-    must pass (block comment above)."""
+    American", "Nonwhite"); a fuzzy match of a stripped label must agree with
+    its key on this (block comment above)."""
     return _RACE_NEGATION_RX.search(text) is not None
+
+
+def _strip_race_dimension(label: str) -> Optional[str]:
+    """The cleaned label without a leading race dimension name, or None when
+    it has none (block comment above).
+
+      "Race: Black"                             -> "Black"
+      "Race and Ethnicity : White Non-Hispanic" -> "White Non-Hispanic"
+      "Race unknown"                            -> None
+      "Ethnicity: Hispanic"                     -> None
+    """
+    text = clean_demographic_label(label)
+    prefix = _RACE_DIMENSION_PREFIX_RX.match(text)
+    if prefix is None:
+        return None
+    return text[prefix.end():].strip() or None
 
 
 def _map_plain_row(label: str, count: int, pct_converted: bool) -> Optional[Dict]:
     """Map one row the way every plain race row is mapped.
 
-    A leading race dimension name ("Race: ", "Race and Ethnicity - ") is
-    removed first (block comment "Dimension wording before a race label").
-    Returns None for a purely ethnicity label (e.g. "Hispanic or Latino",
-    "Race: Hispanic"), which is left to the ethnicity pipeline. Otherwise the
-    mapping of _map_race_label (direct, slash-fragment, fuzzy, then
-    race/ethnicity split) with the row's count. A race-by-sex row's race part
-    goes through exactly this function, so it lands where the same text would
-    land on its own row.
+    Returns None for a purely ethnicity label (e.g. "Hispanic or Latino"), which
+    is left to the ethnicity pipeline. Otherwise the mapping of
+    _map_race_label (direct, slash-fragment, fuzzy, then race/ethnicity split)
+    with the row's count. A race-by-sex row's race part goes through exactly
+    this function, so it lands where the same text would land on its own row.
+    A leading race dimension name is removed first (block comment "Race
+    dimension named in the row label").
     """
-    posted = clean_demographic_label(label)
-    stripped = _strip_race_dimension(posted)
-    was_stripped = stripped != posted
-    # An unprefixed label is passed on exactly as before (uncleaned), so this
-    # rule changes nothing for it.
-    text = stripped if was_stripped else label
+    stripped = _strip_race_dimension(label)
+    text = stripped if stripped is not None else label
     if _is_ethnicity_only_label(text):
         return None
-    mapping = _map_race_label(text, guard_negation=was_stripped)
-    if was_stripped:
-        mapping["original"] = posted
+    mapping = _map_race_label(text, guard_negation=stripped is not None)
+    if stripped is not None:
+        mapping["original"] = clean_demographic_label(label)
         mapping["flags"].append("dimension_wording_stripped")
     mapping["count"] = count
     if pct_converted:

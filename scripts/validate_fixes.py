@@ -42,14 +42,14 @@ Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
 (check_race_rows_in_sex_table), study 11 its ethnicity totals and flags
 (EXPECTED_ETHNICITY), and study 12 its sex totals and flags (EXPECTED_SEX).
-Studies 1, 2, 13 and 15 assert the ethnicity rows the race block records without
+Studies 1, 2 and 13 assert the ethnicity rows the race block records without
 counting them (EXPECTED_SKIPPED_ETHNICITY); study 13 also asserts that its
 race rows are counted as not Hispanic (EXPECTED_ETHNICITY). Study 14 asserts that a label
 naming a race beside an ethnicity term is counted in that race
 (check_joined_labels), and its ethnicity totals and flags, read from the same
 joined labels (EXPECTED_ETHNICITY). Studies 15 and 16 assert their ethnicity
-totals and flags (EXPECTED_ETHNICITY); study 15 also asserts that its "Race: "
-rows are counted in their race under the posted labels (check_prefixed_labels).
+totals and flags (EXPECTED_ETHNICITY); study 15 also asserts its race block,
+whose rows are prefixed "Race: " (EXPECTED_SKIPPED_ETHNICITY).
 A mismatch stops the harness.
 """
 import json
@@ -504,9 +504,6 @@ MOCK_NCT99000110 = _make_study(
 # ethnicity in the "Ethnicity: " rows, as the registry returns labels on the
 # classes. The prefixed ethnicity rows are read; before, they matched nothing,
 # were dropped with the race rows, and the block ended in all-zero rejection.
-# The race block counts the "Race: " rows in their race; before the race
-# extractor removed the prefix, only "Race: Caucasian/White" mapped (by its
-# slash fragment) and Black, Asian and Other were 46 participants of "other".
 MOCK_NCT99000111 = _make_study(
     "NCT99000111",
     "NCT99000111 - Prefixed race and ethnicity classifications (fictional mock)",
@@ -553,7 +550,9 @@ EXPECTED_SKIPPED_ETHNICITY = {
     "NCT99000109": {"rows": [("Hispanic", 6)],
                     "omb": {"white": 30, "black_african_american": 12, "unknown_not_reported": 8},
                     "unknown_ethnicity_only": 6, "unknown_inferred": 0},
-    # Two classifications of everyone: the race rows cover all 634.
+    # Prefixed race rows map as their bare labels (race_extractor, "Race
+    # dimension named in the row label"): before, Black 18, Asian 7 and
+    # Other 21 were all counted as other.
     "NCT99000111": {"rows": [("Ethnicity: Hispanic", 170), ("Ethnicity: Non Hispanic", 464)],
                     "omb": {"white": 588, "black_african_american": 18, "asian": 7, "other": 21},
                     "unknown_inferred": 0},
@@ -654,16 +653,6 @@ def check_joined_labels(race: dict) -> None:
     print("\n  NCT99000110: joined race and ethnicity labels counted in their race — OK")
 
 
-def check_prefixed_labels(race: dict) -> None:
-    """NCT99000111: a row prefixed "Race: " is counted in its race under the
-    posted label; the "Ethnicity: " rows are left to the ethnicity pipeline."""
-    rows = [(c["original"], c["omb_category"], c["count"]) for c in race["raw_categories"]]
-    assert rows == [("Race: Caucasian/White", "white", 588), ("Race: Black", "black_african_american", 18),
-                    ("Race: Asian/Oriental", "asian", 7), ("Race: Other", "other", 21)], rows
-    assert all("dimension_wording_stripped" in c["flags"] for c in race["raw_categories"]), race["raw_categories"]
-    print("\n  NCT99000111: prefixed race rows counted in their race — OK")
-
-
 def check_race_rows_in_sex_table(race: dict, sex: dict) -> None:
     """NCT99000106: rows race reads from a sex/gender-titled table are never
     also sex unknown."""
@@ -762,8 +751,6 @@ def validate_study(study: dict, nct_id: str) -> None:
         check_race_rows_in_sex_table(race, sex)
     if nct_id == "NCT99000110":
         check_joined_labels(race)
-    if nct_id == "NCT99000111":
-        check_prefixed_labels(race)
 
 
 def main() -> None:
