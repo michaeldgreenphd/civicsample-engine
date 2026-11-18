@@ -22,7 +22,8 @@ A purely ethnicity row inside a counted race table ("Hispanic" beside
 "Caucasian") is never counted; the block records it in
 skipped_ethnicity_rows and flags ethnicity_rows_skipped. A label that names a
 race beside the ethnicity term ("Non-Hispanic White") is a race row of that
-race (last two sections).
+race. A leading race dimension name ("Race: Black", "Race and Ethnicity :
+White Non-Hispanic") is removed before a row is mapped (last section).
 
 Which measures are race tables at all is the title word rule
 (race_extractor.is_race_table): titles that only contain the letters "race"
@@ -1333,3 +1334,163 @@ def test_race_rows_that_state_the_ethnicity_are_not_counted_as_not_hispanic() ->
     combined = rx.combined_classification(_study("NCT99000532", [table], participants=50))
     assert combined is not None
     assert (combined["race_rows"], combined["race_rows_named"]) == (47, 42)
+
+
+# ── dimension wording before a race label ──────────────────────────────────
+#
+# A combined table that names the dimension in every row (src/race_extractor.py,
+# "Dimension wording before a race label"). The rows below are the
+# NCT00707031 table as posted: a race classification and an ethnicity
+# classification of the same 634 participants.
+
+PREFIXED_ROWS = [("Race: Caucasian/White", 588), ("Race: Black", 18), ("Race: Asian/Oriental", 7),
+                 ("Race: Other", 21), ("Ethnicity: Hispanic", 170), ("Ethnicity: Non Hispanic", 464)]
+STRIPPED_FLAG = "dimension_wording_stripped"
+
+
+def test_prefixed_race_rows_are_counted_in_their_race() -> None:
+    """Before the rule: White 588 (by the slash fragment) and the other 46 in
+    "other", so Black 0 and Asian 0."""
+    race = extract_race_data(_study("NCT99000540", [_class_table(COMBINED_TITLE, PREFIXED_ROWS)], participants=634))
+    assert race["reported"] is True
+    assert _nonzero(race) == {"white": 588, "black_african_american": 18, "asian": 7, "other": 21}
+    assert [(c["original"], c["omb_category"]) for c in race["raw_categories"]] == [
+        ("Race: Caucasian/White", "white"), ("Race: Black", "black_african_american"),
+        ("Race: Asian/Oriental", "asian"), ("Race: Other", "other")]
+    assert all(STRIPPED_FLAG in c["flags"] and c["confidence"] == "high" for c in race["raw_categories"])
+    # The ethnicity rows are left to the ethnicity pipeline, under their posted labels.
+    assert _skipped(race) == [("Ethnicity: Hispanic", 170), ("Ethnicity: Non Hispanic", 464)]
+    assert _unknown_parts(race) == (0, 0, 0)
+    assert STRIPPED_FLAG in race["flags"]
+
+
+def test_two_classifications_of_everyone_are_not_one_combined_classification() -> None:
+    """The race rows cover all 634, so there is no shortfall for the
+    Hispanic row to account for; the ethnicity extractor reads its own rows."""
+    study = _study("NCT99000541", [_class_table(COMBINED_TITLE, PREFIXED_ROWS)], participants=634)
+    assert rx.combined_classification(study) is None
+
+
+@pytest.mark.parametrize("label, expected", [
+    ("Race: Black", "Black"),
+    ("Race-Unknown or Not Reported", "Unknown or Not Reported"),
+    ("Race : African American", "African American"),
+    ("Race and Ethnicity : White Non-Hispanic", "White Non-Hispanic"),
+    ("Race/Ethnicity - Asian", "Asian"),
+    ("Race & Ethnicity: White", "White"),
+    ("Race – More than one race", "More than one race"),
+    ("Race_Native Hawaiian", "Native Hawaiian"),
+    ("Race: : White", "White"),
+    ("RACE: BLACK", "BLACK"),
+    # Not removed: no separator, the ethnicity dimension, nothing after it.
+    ("Race unknown", "Race unknown"),
+    ("Race not reported", "Race not reported"),
+    ("Racial minority", "Racial minority"),
+    ("Ethnicity: Hispanic", "Ethnicity: Hispanic"),
+    ("Ethnic group - White", "Ethnic group - White"),
+    ("Race:", "Race:"),
+])
+def test_strip_race_dimension(label: str, expected: str) -> None:
+    assert rx._strip_race_dimension(label) == expected
+
+
+@pytest.mark.parametrize("label, category, subcategory", [
+    ("Race-White", "white", None),
+    ("Race : African American", "black_african_american", "african_american"),
+    ("Race-Unknown or Not Reported", "unknown_not_reported", None),
+    ("Race/Ethnicity - Asian", "asian", None),
+    ("Race & Ethnicity: White", "white", None),
+    ("Race – More than one race", "more_than_one_race", None),
+    ("Race_Native Hawaiian", "native_hawaiian_pacific_islander", "native_hawaiian"),
+    ("Race: : White", "white", None),
+    ("RACE: BLACK", "black_african_american", None),
+])
+def test_a_prefixed_label_maps_as_its_race(label: str, category: str, subcategory: Optional[str]) -> None:
+    mapping = rx._map_plain_row(label, 5, False)
+    assert mapping is not None
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["confidence"]) == (category, subcategory, "high")
+    assert mapping["original"] == label and STRIPPED_FLAG in mapping["flags"]
+
+
+def test_a_prefixed_joined_label_is_a_race_row() -> None:
+    """NCT04523714: read whole, the label was one fragment holding an
+    ethnicity keyword, so it was skipped as ethnicity and in no race."""
+    mapping = rx._map_plain_row("Race and Ethnicity : White Non-Hispanic", 1699, False)
+    assert mapping is not None
+    assert (mapping["omb_category"], mapping["race_part"]) == ("white", "White")
+    assert mapping["original"] == "Race and Ethnicity : White Non-Hispanic"
+    assert {"split_from_combined", STRIPPED_FLAG} <= set(mapping["flags"])
+
+
+@pytest.mark.parametrize("label", ["Race: Hispanic", "Race : Hispanic or Latino",
+                                   "Race and Ethnicity - Not Hispanic or Latino", "Ethnicity: Hispanic",
+                                   "Ethnicity: Non Hispanic"])
+def test_a_prefixed_ethnicity_label_is_still_left_to_the_ethnicity_pipeline(label: str) -> None:
+    assert rx._map_plain_row(label, 5, False) is None
+
+
+def test_a_row_of_the_ethnicity_dimension_is_not_stripped() -> None:
+    """"Ethnicity: " is the ethnicity pipeline's to remove; here the label is
+    read as posted, exactly as before the rule."""
+    mapping = rx._map_plain_row("Ethnicity: Unknown", 4, False)
+    assert mapping is not None
+    assert mapping["original"] == "Ethnicity: Unknown" and STRIPPED_FLAG not in mapping["flags"]
+    assert mapping == {**rx._map_race_label("Ethnicity: Unknown"), "count": 4}
+
+
+@pytest.mark.parametrize("label", ["White", "Race unknown", "Black/African American", "Non-Hispanic White"])
+def test_an_unprefixed_label_maps_exactly_as_before(label: str) -> None:
+    assert rx._map_plain_row(label, 3, False) == {**rx._map_race_label(label), "count": 3}
+
+
+def test_a_fuzzy_match_that_drops_a_negation_is_not_kept() -> None:
+    """"Non-African American" scores 88.9 against "African American"; with
+    the prefix removed it would be counted as Black."""
+    mapping = rx._map_plain_row("Race: Non-African American", 9, False)
+    assert mapping is not None
+    assert (mapping["omb_category"], mapping["confidence"]) == ("other", "low")
+    assert "unmapped" in mapping["flags"]
+    # The check is the guard, not the score: unguarded, the stripped text matches.
+    assert rx.map_race_category("Non-African American")["omb_category"] == "black_african_american"
+
+
+@pytest.mark.parametrize("label", ["Race: Not reportd", "Race - Unknown or Not reportd", "Race: Not Reported."])
+def test_a_fuzzy_match_that_keeps_the_negation_is_kept(label: str) -> None:
+    mapping = rx._map_plain_row(label, 2, False)
+    assert mapping is not None
+    assert (mapping["omb_category"], mapping["confidence"]) == ("unknown_not_reported", "medium")
+
+
+def test_prefixed_rows_of_one_exclusive_classification() -> None:
+    """Race: White 30 / Race: Black 12 / Race: Hispanic 6 / Race: Unknown 2,
+    of 50: the stripped Hispanic row is still skipped, and it accounts for
+    the shortfall exactly."""
+    table = _class_table(COMBINED_TITLE, [("Race: White", 30), ("Race: Black", 12),
+                                          ("Race: Hispanic", 6), ("Race: Unknown", 2)])
+    study = _study("NCT99000542", [table], participants=50)
+    race = extract_race_data(study)
+    assert _nonzero(race) == {"white": 30, "black_african_american": 12, "unknown_not_reported": 8}
+    assert _skipped(race) == [("Race: Hispanic", 6)]
+    assert _unknown_parts(race) == (2, 6, 0) and SPLIT_FLAG in race["flags"]
+    assert rx.combined_classification(study) == {
+        "index": 0, "title": COMBINED_TITLE, "race_rows": 42, "race_rows_named": 42,
+        "ethnicity_rows": 6, "unknown_rows": 2}
+
+
+def test_prefixed_race_by_sex_rows_split_and_map() -> None:
+    table = _class_table("Race by Sex", [("Race: White : Female", 10), ("Race: White : Male", 12),
+                                         ("Race: Black : Female", 5), ("Race: Black : Male", 3)])
+    race = extract_race_data(_study("NCT99000543", [table], participants=30))
+    assert _nonzero(race) == {"white": 22, "black_african_american": 8}
+    assert "race_by_sex_table" in race["flags"]
+    assert race["joint_sex_counts"]["counts"] == {"white": {"female": 10, "male": 12},
+                                                  "black_african_american": {"female": 5, "male": 3}}
+    assert all(STRIPPED_FLAG in c["flags"] and "race_by_sex" in c["flags"] for c in race["raw_categories"])
+    assert [c["original"] for c in race["raw_categories"]][0] == "Race: White : Female"
+
+
+def test_prefixed_race_rows_under_a_sex_title_are_read_as_race() -> None:
+    """Every row maps to a race-specific category once the prefix is
+    removed, so the sex/gender-titled table passes the gate."""
+    table = _class_table("Sex/Gender, Customized", [("Race: White", 20), ("Race: Black", 10)])
+    assert rx.is_sex_titled_race_table(table) is True
