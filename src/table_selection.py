@@ -88,6 +88,15 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 #     subgroup rows that hold the count were discarded. Such a measure is
 #     read as before: the rule does not repair a measure whose Total class
 #     cannot be read, it only declines to drop the rows that hold the count;
+#   - with an identified Overall group, the Total class's own Number
+#     Analyzed (a class-level "Participants" denominator that lists counts),
+#     when it posts one, gives a number for that group. get_measure_denom
+#     falls back to the last count when the Overall count is null, as
+#     _get_measurement_value does for values; for the Total class alone that
+#     may be an arm's count, which number_analyzed and percentage_denominator
+#     would then take for the table's. Read with every class, differing class
+#     numbers make percentage_denominator fall back to the baseline total
+#     instead, so such a measure is read as before;
 #   - every other class holds at least one labelled row, and each of its row
 #     labels is one of the Total class's row labels (exact text, trimmed). A
 #     subgroup may leave a row out (a band with no Asian participants may
@@ -211,6 +220,30 @@ def _posts_a_number(row: dict, overall_group_id: Optional[str]) -> bool:
     return measurement_number(measurements, overall_group_id) is not None
 
 
+def _denom_gives_overall(cls: dict, overall_group_id: Optional[str]) -> bool:
+    """False when, with an Overall group identified, the class posts a
+    "Participants" Number Analyzed whose Overall count is missing or not a
+    number, so that get_measure_denom would fall back to another group's
+    count (block comment above). True when no Overall group is identified or
+    the class posts no such denominator."""
+    if not overall_group_id:
+        return True
+    for denom in cls.get("denoms") or []:
+        if not isinstance(denom, dict) or (denom.get("units") or "").lower() != "participants":
+            continue
+        counts = denom.get("counts") or []
+        if not counts:
+            continue
+        own = [c for c in counts if isinstance(c, dict) and c.get("groupId") == overall_group_id]
+        if not own:
+            return False
+        try:
+            int(float(str(own[0].get("value")).replace(",", "")))
+        except (ValueError, TypeError):
+            return False
+    return True
+
+
 def total_class_view(measure: dict, overall_group_id: Optional[str]) -> Tuple[dict, bool]:
     """The measure to read, and whether it was reduced to its Total class
     (block comment above). overall_group_id is the group the extractors read
@@ -226,6 +259,8 @@ def total_class_view(measure: dict, overall_group_id: Optional[str]) -> Tuple[di
         return measure, False
     total_rows = _labelled_rows(totals[0])
     if not total_rows or not all(_posts_a_number(row, overall_group_id) for row in total_rows):
+        return measure, False
+    if not _denom_gives_overall(totals[0], overall_group_id):
         return measure, False
     total_labels = set(_row_labels(totals[0]))
     for cls in classes:
