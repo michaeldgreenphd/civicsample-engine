@@ -71,7 +71,11 @@ ETHNICITY_MAPPINGS = {
     "Not Hispanic ethnicity": ("not_hispanic_latino", None),            # beside "Hispanic Ethnicity"
     "Non-Hispanic ethnicity": ("not_hispanic_latino", None),            # beside "Hispanic Ethnicity"
     "Not Latino or Hispanic": ("not_hispanic_latino", None),            # beside "Latino or Hispanic"
-    "Non American Hispanic": ("not_hispanic_latino", None),             # beside "American hispanic" (NCT01900899)
+    # Not a negation of Hispanic: "Non" modifies "American". Mapped from its
+    # posted pair alone (block comment "Plain vocabulary gaps", "Why"): in
+    # NCT01900899 (Finland) "Ethnicity: American hispanic" 1 and "Ethnicity:
+    # Non American hispanic" 183 are the whole ethnicity classification of 184.
+    "Non American Hispanic": ("not_hispanic_latino", None),
 
     # Unknown / Not Reported  (including slash-separated variants)
     "Unknown": ("unknown_not_reported", None),
@@ -128,6 +132,16 @@ ETHNICITY_MAPPINGS = {
 # Hispanic or Latino term it names: "American Hispanic" and "Hispanic American"
 # describe the same people as "Hispanic", and "non-Latino" the same people as
 # "Not Hispanic". None names a subgroup, so the subcategory is None.
+#
+# One exception: "Non American Hispanic" does not negate Hispanic, since "Non"
+# modifies "American", and read alone it could describe Hispanic people who
+# are not American. It is mapped to not_hispanic_latino from its posted pair:
+# the one trial that posts it (NCT01900899, healthy children in Finland, 182
+# of 184 White-Caucasian) gives "American hispanic" 1 and "Non American
+# hispanic" 183, the whole classification, so the row is the complement of
+# the Hispanic row. That is an inference from one table, not a reading of the
+# wording: it does not carry over to other "Non <X> Hispanic" labels, which
+# stay unmapped unless their own tables show the same.
 #
 # Counterparts. A table that posts one of these wordings often posts its
 # opposite beside it: "Hispanic Ethnicity" 106 / "Not Hispanic Ethnicity" 387
