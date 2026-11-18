@@ -48,7 +48,8 @@ race rows are counted as not Hispanic (EXPECTED_ETHNICITY). Study 14 asserts tha
 naming a race beside an ethnicity term is counted in that race
 (check_joined_labels), and its ethnicity totals and flags, read from the same
 joined labels (EXPECTED_ETHNICITY). Studies 15 and 16 assert their ethnicity
-totals and flags (EXPECTED_ETHNICITY).
+totals and flags (EXPECTED_ETHNICITY); study 15 also asserts its race block,
+whose rows are prefixed "Race: " (EXPECTED_SKIPPED_ETHNICITY).
 A mismatch stops the harness.
 """
 import json
@@ -549,6 +550,12 @@ EXPECTED_SKIPPED_ETHNICITY = {
     "NCT99000109": {"rows": [("Hispanic", 6)],
                     "omb": {"white": 30, "black_african_american": 12, "unknown_not_reported": 8},
                     "unknown_ethnicity_only": 6, "unknown_inferred": 0},
+    # Prefixed race rows map as their bare labels (race_extractor, "Race
+    # dimension named in the row label"): before, Black 18, Asian 7 and
+    # Other 21 were all counted as other.
+    "NCT99000111": {"rows": [("Ethnicity: Hispanic", 170), ("Ethnicity: Non Hispanic", 464)],
+                    "omb": {"white": 588, "black_african_american": 18, "asian": 7, "other": 21},
+                    "unknown_inferred": 0},
 }
 
 # Expected sex results for the legacy table-selection study.
