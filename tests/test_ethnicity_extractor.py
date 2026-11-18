@@ -457,6 +457,14 @@ def test_a_table_classifying_by_something_other_than_ethnicity_is_skipped() -> N
     assert eth["reported"] is False and eth["flags"] == ["race_only_table_skipped"]
 
 
+def test_race_inside_another_word_of_the_title_is_not_a_race_table() -> None:
+    """"Contraception" holds the letters "race", not the word: the race-only
+    rule does not apply (a review finding)."""
+    table = _table("Ethnicity by Contraception", [("Unknown", 5), ("Not Collected", 45)])
+    eth = extract_ethnicity_data(_study("NCT99000714", [table], participants=50))
+    assert eth["reported"] is True and "race_only_table_skipped" not in eth["flags"]
+
+
 def test_a_zero_hispanic_row_keeps_the_table_an_ethnicity_report() -> None:
     """A posted Hispanic row says how many were Hispanic, even when that is 0."""
     table = _table(COMBINED, [("White", 40), ("Black", 8), ("Hispanic", 0), ("Unknown", 2)])

@@ -530,8 +530,9 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 # reported as 514 participants of unknown ethnicity, from a table that
 # classifies no one's ethnicity.
 #
-# Method. A race-titled table is not counted for ethnicity when all of these
-# hold:
+# Method. A race-titled table (race_extractor.is_race_table: the word race,
+# races or racial in the title, not the letters inside "Contraception") is not
+# counted for ethnicity when all of these hold:
 #   - none of its rows maps to hispanic_latino or not_hispanic_latino, at any
 #     count, and none of its mapped rows begins with the ethnicity dimension
 #     ("Ethnicity: Unknown" beside "Race: White" is the table's own ethnicity
@@ -666,7 +667,10 @@ def extract_ethnicity_data(study: dict) -> Dict:
             # A race classification under an ethnicity title is not an
             # ethnicity report (block comment "A race table under a
             # race-and-ethnicity title").
-            if _is_race_only_table(categories, dropped):
+            # Only when "race" is a word of the title (race_extractor.is_race_table):
+            # "Ethnicity by Contraception" holds the letters, not the word.
+            from src.race_extractor import is_race_table
+            if is_race_table(title) and _is_race_only_table(categories, dropped):
                 result["flags"].append("race_only_table_skipped")
                 continue
             # Rows naming Hispanic or Latino that no rule could read (block
