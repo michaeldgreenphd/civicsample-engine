@@ -1333,3 +1333,61 @@ def test_race_rows_that_state_the_ethnicity_are_not_counted_as_not_hispanic() ->
     combined = rx.combined_classification(_study("NCT99000532", [table], participants=50))
     assert combined is not None
     assert (combined["race_rows"], combined["race_rows_named"]) == (47, 42)
+
+
+# ── a race dimension named in the row label ───────────────────────────────
+#
+# src/race_extractor.py, block comment "Race dimension named in the row
+# label". The prefix is removed before routing and mapping, so the rest lands
+# where the same text lands as a row of its own.
+
+@pytest.mark.parametrize("posted, bare", [
+    ("Race: Black", "Black"),
+    ("Race : Asian/Oriental", "Asian/Oriental"),
+    ("Race - Black or African American", "Black or African American"),
+    ("Race-White", "White"),
+    ("Race_Asian", "Asian"),
+    ("Race: : White", "White"),
+    ("Race/Ethnicity : White", "White"),
+    ("Race & Ethnicity : White", "White"),
+    ("Race: Not Reported", "Not Reported"),
+    ("Race: Mixed/Unknown", "Mixed/Unknown"),
+])
+def test_a_prefixed_row_maps_as_its_bare_label(posted: str, bare: str) -> None:
+    prefixed = rx._map_plain_row(posted, 5, False)
+    plain = rx._map_plain_row(bare, 5, False)
+    assert prefixed is not None and plain is not None
+    assert (prefixed["omb_category"], prefixed["confidence"]) == (plain["omb_category"], plain["confidence"])
+    assert prefixed["original"] == posted and "dimension_wording_stripped" in prefixed["flags"]
+
+
+def test_the_prefixed_classifications_of_one_table() -> None:
+    """The NCT00707031 shape: a race and an ethnicity classification of the
+    same 634, every row prefixed. Before: White 588 (by slash fragment) and
+    Black 18, Asian 7 and Other 21 all counted as other."""
+    table = _class_table(COMBINED_TITLE, [("Race: Caucasian/White", 588), ("Race: Black", 18),
+                                          ("Race: Asian/Oriental", 7), ("Race: Other", 21),
+                                          ("Ethnicity: Hispanic", 170), ("Ethnicity: Non Hispanic", 464)])
+    race = extract_race_data(_study("NCT99000540", [table], participants=634))
+    assert _nonzero(race) == {"white": 588, "black_african_american": 18, "asian": 7, "other": 21}
+    assert [(r["original"], r["count"]) for r in race["skipped_ethnicity_rows"]] == [
+        ("Ethnicity: Hispanic", 170), ("Ethnicity: Non Hispanic", 464)]
+
+
+def test_a_prefixed_joined_label_is_a_race_row() -> None:
+    """The NCT04523714 shape: "Race and Ethnicity : White Non-Hispanic" was
+    taken for an ethnicity-only row and left out of the race block; it is a
+    White row, as "White Non-Hispanic" is."""
+    table = _class_table(COMBINED_TITLE, [("Race and Ethnicity : White Non-Hispanic", 60),
+                                          ("Race and Ethnicity : Black or African American Non-Hispanic", 30),
+                                          ("Race and Ethnicity : Hispanic", 10)])
+    race = extract_race_data(_study("NCT99000541", [table], participants=100))
+    assert _nonzero(race) == {"white": 60, "black_african_american": 30, "unknown_not_reported": 10}
+    assert race["unknown_ethnicity_only"] == 10 and race["unknown_inferred"] == 0
+    assert [r["original"] for r in race["skipped_ethnicity_rows"]] == ["Race and Ethnicity : Hispanic"]
+
+
+@pytest.mark.parametrize("label", ["Race unknown", "Race not reported", "Racial background", "Ethnicity: Unknown"])
+def test_labels_without_a_race_prefix_are_mapped_as_posted(label: str) -> None:
+    """A separator is required, and only the race dimension is removed here."""
+    assert rx._strip_race_dimension(label) is None
