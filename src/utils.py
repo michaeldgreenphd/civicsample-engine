@@ -254,8 +254,33 @@ def get_measure_denom(measure: dict, overall_group_id: str = None) -> Optional[i
 _SD_NOTATION_RE = re.compile(r'\s*\(.*?\)\s*')
 
 
-def sum_measurements(measurements: list, overall_group_id: str = None,
-                     is_pct: bool = False, denom: int = None) -> int:
+def measurement_number(measurements: list, overall_group_id: Optional[str] = None) -> Optional[float]:
+    """The number sum_measurements reads from a row's measurements, or None
+    when there is none to read: no measurement, a null value, or a value
+    that does not parse as a number ("NA"). sum_measurements counts each of
+    those as 0; table_selection.total_class_view needs to tell them apart
+    from a posted 0.
+
+    The value is the Overall group's, else the single or last measurement
+    (_get_measurement_value), with thousands separators, "%" and a
+    "Mean (SD)" parenthetical stripped.
+    """
+    val = _get_measurement_value(measurements, overall_group_id)
+    if val is None:
+        return None
+    try:
+        val_str = str(val).replace(",", "").replace("%", "").strip()
+        # Strip Mean (SD) / CI notation: "50.3 (33.8)" → "50.3"
+        val_str = _SD_NOTATION_RE.sub('', val_str).strip()
+        if not val_str:
+            return None
+        return float(val_str)
+    except (ValueError, TypeError):
+        return None
+
+
+def sum_measurements(measurements: list, overall_group_id: Optional[str] = None,
+                     is_pct: bool = False, denom: Optional[int] = None) -> int:
     """Parse a measurement value from the API, optionally converting percentages.
 
     Handles values in "Mean (SD)" format by stripping the parenthetical part.
@@ -266,17 +291,8 @@ def sum_measurements(measurements: list, overall_group_id: str = None,
         is_pct: True if the parent measure reports percentage values
         denom: Number of participants (denominator) for percentage → count conversion
     """
-    val = _get_measurement_value(measurements, overall_group_id)
-    if val is None:
-        return 0
-    try:
-        val_str = str(val).replace(",", "").replace("%", "").strip()
-        # Strip Mean (SD) / CI notation: "50.3 (33.8)" → "50.3"
-        val_str = _SD_NOTATION_RE.sub('', val_str).strip()
-        if not val_str:
-            return 0
-        num = float(val_str)
-    except (ValueError, TypeError):
+    num = measurement_number(measurements, overall_group_id)
+    if num is None:
         return 0
 
     # Percentage → count conversion

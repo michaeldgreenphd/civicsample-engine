@@ -71,11 +71,17 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 #   - the Total class holds at least one labelled row: a category whose title
 #     is not a measurement label. A class titled "Total" whose only category
 #     is "Count" is a row named Total, not a Total class;
-#   - every labelled row of the Total class posts a value (a measurement
-#     whose value is not null). The registry posts rows with no
-#     measurements (template rows, an empty class); a Total row without a
-#     value would read as 0 while the subgroup rows that hold the count were
-#     discarded, so such a measure is read as before;
+#   - every labelled row of the Total class posts a number in the
+#     measurement the extractors read: the Overall group's, else the single
+#     or last measurement (utils.measurement_number, the value
+#     utils.sum_measurements counts). The registry posts rows with no
+#     measurements (template rows, an empty class), null values, and values
+#     that are not numbers; in a multi-arm study one arm may post a value
+#     while the Overall group's is null. sum_measurements reads each of those
+#     as 0, so a Total row without a number would read as 0 while the
+#     subgroup rows that hold the count were discarded. Such a measure is
+#     read as before: the rule does not repair a measure whose Total class
+#     cannot be read, it only declines to drop the rows that hold the count;
 #   - every other class holds at least one labelled row, and each of its row
 #     labels is one of the Total class's row labels (exact text, trimmed). A
 #     subgroup may leave a row out (a band with no Asian participants may
@@ -160,16 +166,22 @@ def _row_labels(cls: dict) -> List[str]:
     return [(cat.get("title") or "").strip() for cat in _labelled_rows(cls)]
 
 
-def _posts_a_value(row: dict) -> bool:
-    """Whether a row has at least one measurement whose value is not null."""
+def _posts_a_number(row: dict, overall_group_id: Optional[str]) -> bool:
+    """Whether the measurement the extractors read from this row holds a
+    number (utils.measurement_number), as opposed to nothing, a null or a
+    value that sum_measurements would count as 0 for want of a number."""
+    from src.utils import measurement_number
+
     measurements = row.get("measurements")
-    return isinstance(measurements, list) and any(
-        isinstance(m, dict) and m.get("value") is not None for m in measurements)
+    if not isinstance(measurements, list):
+        return False
+    return measurement_number(measurements, overall_group_id) is not None
 
 
-def total_class_view(measure: dict) -> Tuple[dict, bool]:
+def total_class_view(measure: dict, overall_group_id: Optional[str]) -> Tuple[dict, bool]:
     """The measure to read, and whether it was reduced to its Total class
-    (block comment above). The input is never modified; when the rule
+    (block comment above). overall_group_id is the group the extractors read
+    (utils.get_overall_group_id). The input is never modified; when the rule
     applies, a shallow copy whose "classes" holds the Total class alone is
     returned."""
     classes = [cls for cls in measure.get("classes") or [] if isinstance(cls, dict)]
@@ -179,7 +191,7 @@ def total_class_view(measure: dict) -> Tuple[dict, bool]:
     if len(totals) != 1:
         return measure, False
     total_rows = _labelled_rows(totals[0])
-    if not total_rows or not all(_posts_a_value(row) for row in total_rows):
+    if not total_rows or not all(_posts_a_number(row, overall_group_id) for row in total_rows):
         return measure, False
     total_labels = set(_row_labels(totals[0]))
     for cls in classes:
@@ -208,7 +220,7 @@ def number_analyzed(measure: dict, overall_group_id: Optional[str]) -> Optional[
 
     # A measure read from its Total class alone is analyzed on that class's
     # people (block comment "A Total class beside subgroup classes").
-    measure, _total_only = total_class_view(measure)
+    measure, _total_only = total_class_view(measure, overall_group_id)
     n = get_measure_denom(measure, overall_group_id)
     if n is not None:
         return n

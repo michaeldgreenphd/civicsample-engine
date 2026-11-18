@@ -153,7 +153,7 @@ def _extract_rows_from_measure(measure: dict, overall_group_id: Optional[str] = 
 
     # Subgroup classes beside a Total class: read the Total class alone
     # (table_selection block comment "A Total class beside subgroup classes").
-    measure, total_only = table_selection.total_class_view(measure)
+    measure, total_only = table_selection.total_class_view(measure, overall_group_id)
     is_pct = is_percentage_measure(measure)
     denom = None
     if is_pct:
