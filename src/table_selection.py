@@ -142,8 +142,8 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 # counts such a row carries it in its own flags.
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
-# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
-# 80,987 of their published race and legacy sex blocks). Race, ethnicity or
+# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main at ad97014
+# reproduced 80,987 of their published race and legacy sex blocks). Race, ethnicity or
 # sex measures with a Total class beside other classes: 8 trials. In 7 the
 # subgroups repeat the Total's rows and the rule applies; in the eighth
 # (NCT01696435) the class titled "Total" is a row, already quarantined by race
@@ -152,8 +152,11 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 # participants) and are off by one participant in 1 (NCT06027593). Blocks
 # changed: race 6, ethnicity 4, legacy sex 7, legacy gender 0; none changes
 # reported. Every changed block now sums to its baseline total. Trials whose
-# block summed above the baseline total: race 397 -> 392, ethnicity
-# 135 -> 131, legacy sex 279 -> 272.
+# block summed above the baseline total, against engine main at 2e45cbf:
+# race 397 -> 392, ethnicity 136 -> 132, legacy sex 279 -> 272. (Against
+# ad97014, before main's own ethnicity changes in #65 and #70 moved one
+# trial this rule does not touch, ethnicity was 135 -> 131; the changed
+# trials and every totals delta are the same against both.)
 #
 # "Overall" and "All participants" were added to the titles after that, on
 # the same inputs. 12 trials have a race, ethnicity or sex measure with such
@@ -169,8 +172,8 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 # its "Race/Ethnicity, Customized" table is a race-only table), legacy sex 12,
 # legacy gender 0; none changes reported, and each now sums to its baseline
 # total. Trials whose block summed above the baseline total, from the
-# "Total"-only rule to all three titles: race 392 -> 384, ethnicity
-# 131 -> 124, legacy sex 272 -> 260.
+# "Total"-only rule to all three titles, on engine main at 2e45cbf:
+# race 392 -> 384, ethnicity 132 -> 125, legacy sex 272 -> 260.
 TOTAL_CLASS_FLAG = "total_class_only"
 
 # Class titles that name the whole baseline population of a measure (block
