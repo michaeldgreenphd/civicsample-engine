@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from outcomes.artifacts import ASSESSMENT_KINDS, DISPLAY_MODES, SCHEMA_VERSION, TRIAL_STATES, dump
+from outcomes.artifacts import ASSESSMENT_KINDS, DISPLAY_MODES, REVIEWED_ONLY_STATES, SCHEMA_VERSION, TRIAL_STATES, dump
 from outcomes.evidence import RESULTS_STATES
 
 RUN_ID = re.compile(r'^outcomes-\d{4}-\d{2}-\d{2}-[0-9a-f]{10}$')
@@ -94,6 +94,12 @@ def check(files: dict[str, Any], publishable: bool = False) -> list[str]:
             p.append(f'{n}: machine assessment in an evidence_only build')
         if a is not None and a.get('trial_state') not in TRIAL_STATES:
             p.append(f'{n}: unknown trial state')
+        if a is not None and a.get('assessment_kind') != 'human_reviewed' and (
+                a.get('trial_state') in REVIEWED_ONLY_STATES
+                or any(isinstance(u, dict) and u.get('state') in REVIEWED_ONLY_STATES for u in a.get('units') or [])):
+            p.append(f'{n}: NO_DECISION_RULE on an assessment no person reviewed')
+        if a is not None and (a.get('review') or {}).get('machine_trial_state') in REVIEWED_ONLY_STATES:
+            p.append(f"{n}: review.machine_trial_state is method A's state, and method A never assigns NO_DECISION_RULE")
         if (r.get('review_status') == 'human_reviewed') != (kind == 'human_reviewed'):
             p.append(f'{n}: review status and assessment kind disagree')
         if kind is not None and not r.get('in_audit'):
@@ -116,7 +122,11 @@ def check(files: dict[str, Any], publishable: bool = False) -> list[str]:
         by_kind = by_kind if isinstance(by_kind, dict) else {}
     for kind, states in by_kind.items():
         if set(states) != set(TRIAL_STATES) or not all(isinstance(v, int) and v >= 0 for v in states.values()):
-            p.append(f'assessment_states.{kind} must count all eight trial states, none dropped or merged')
+            p.append(f'assessment_states.{kind} must count all {len(TRIAL_STATES)} trial states, none dropped or merged')
+    # A reviewed-only state has no machine assessments to count (the site reader refuses a nonzero count too).
+    for s in REVIEWED_ONLY_STATES:
+        if isinstance(by_kind.get('machine_provisional'), dict) and by_kind['machine_provisional'].get(s, 0) != 0:
+            p.append(f'assessment_states.machine_provisional counts {s}, which only a person\'s review records')
     if mode != 'provisional_preview' and 'machine_provisional' in by_kind:
         p.append('machine assessment counts in an evidence_only build')
     return p
