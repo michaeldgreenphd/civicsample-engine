@@ -440,6 +440,23 @@ def test_a_mapped_row_of_the_ethnicity_dimension_keeps_the_table_an_ethnicity_re
     assert eth["omb_totals"] == {"hispanic_latino": 0, "not_hispanic_latino": 0, "unknown_not_reported": 40}
 
 
+def test_a_spanish_row_keeps_the_table_an_ethnicity_report() -> None:
+    """"Spanish" is Hispanic evidence ("Spanish origin" is in the vocabulary):
+    not a race row, so the table is not skipped (a review finding)."""
+    eth = extract_ethnicity_data(_study("NCT99000712", [_table(COMBINED, [("Unknown", 5), ("Spanish", 45)])],
+                                        participants=50))
+    assert eth["reported"] is True and "race_only_table_skipped" not in eth["flags"]
+    assert "ethnicity_rows_unread" in eth["flags"]
+
+
+def test_a_table_classifying_by_something_other_than_ethnicity_is_skipped() -> None:
+    """Nationality rows beside an unknown row (the NCT02123329 shape): no
+    Hispanic or Not Hispanic row, so the unknown row is not an ethnicity count."""
+    eth = extract_ethnicity_data(_study("NCT99000713", [_table(COMBINED, [("Qatar", 61), ("Egypt", 90),
+                                                                          ("Unknown", 3)])], participants=154))
+    assert eth["reported"] is False and eth["flags"] == ["race_only_table_skipped"]
+
+
 def test_a_zero_hispanic_row_keeps_the_table_an_ethnicity_report() -> None:
     """A posted Hispanic row says how many were Hispanic, even when that is 0."""
     table = _table(COMBINED, [("White", 40), ("Black", 8), ("Hispanic", 0), ("Unknown", 2)])

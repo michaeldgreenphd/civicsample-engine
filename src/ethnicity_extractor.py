@@ -137,7 +137,9 @@ _DIMENSION_PREFIX_RX = re.compile(
 _RACE_NEUTRAL_QUALIFIER_RX = re.compile(
     r"\s*\(\s*(?:regardless\s+of\s+race|(?:of\s+)?any\s+race|all\s+races)\s*\)$",
     re.IGNORECASE)
-_HISPANIC_TERM_RX = re.compile(r"hispanic|latin[oaxe]", re.IGNORECASE)
+# "Spanish" counts as a Hispanic term: the vocabulary maps "Spanish origin"
+# to hispanic_latino, so a "Spanish" row is ethnicity evidence.
+_HISPANIC_TERM_RX = re.compile(r"hispanic|latin[oaxe]|spanish", re.IGNORECASE)
 _NEGATED_HISPANIC_RX = re.compile(
     r"(?<![a-z])(?:non|not|no|neither)[\s\-]*(?:of\s+)?(?:hispanic|latin[oaxe])", re.IGNORECASE)
 
@@ -322,8 +324,8 @@ def map_ethnicity_category(label: str, fuzzy_threshold: int = 85, *,
 # flag race_joined_label, 199 of them from all-zero rejection to reported:
 # Hispanic +107,941, Not Hispanic +596,294, unknown -410,643. In 347 trials the
 # Not Hispanic participants that the combined-classification rule moved from
-# race rows (533,163) are now read from the labels (4,288 still moved). 496
-# blocks carry ethnicity_rows_unread, 229 of them not reported.
+# race rows (533,163) are now read from the labels (4,288 still moved). 500
+# blocks carry ethnicity_rows_unread, 231 of them not reported.
 
 def _map_row_label(label: str) -> Dict:
     """map_ethnicity_category for one row's label, then the two readings of a
@@ -534,11 +536,19 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 #     count, and none of its mapped rows begins with the ethnicity dimension
 #     ("Ethnicity: Unknown" beside "Race: White" is the table's own ethnicity
 #     classification, all unknown);
-#   - none of the rows dropped as unmapped names Hispanic or Latino, or
+#   - none of the rows dropped as unmapped names Hispanic, Latino or Spanish, or
 #     begins with the ethnicity dimension ("Ethnicity: Not Collected",
 #     "Ethnicity - Other"): such a row is an ethnicity row the vocabulary
 #     cannot read, and the table is not a race table;
 #   - at least one dropped row has participants (the race rows).
+# The dropped rows need not be race: in 33 trials of the measured snapshot they
+# are labels the race vocabulary cannot read ("White - Caucasian / European
+# Heritage", "American Indian Only") or another classification altogether
+# (nationality "Qatar" / "Egypt", "Yoruba" / "Igbo", "Majority language"). What
+# the rule establishes is that the table classifies participants by something
+# other than Hispanic ethnicity and gives no Hispanic or Not Hispanic row, so
+# its unknown row is not an ethnicity count. The flag keeps its name for the
+# common case.
 # The block records the flag race_only_table_skipped for each such table. When
 # no other table is counted, the block is reported False with that flag and
 # no counts, as for a trial that posted no ethnicity table, and does not reach
@@ -561,7 +571,7 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 # 80,987 of their published ethnicity blocks). 909 trials go from reported to
 # not reported, taking 8,121,192 participants out of unknown_not_reported,
 # most of them added by denominator balancing; ten trials hold 89% of that
-# (NCT04053075: 2,905,455). 9,828 blocks carry the flag; in most the race table
+# (NCT04053075: 2,905,455). 9,826 blocks carry the flag; in most the race table
 # had already lost the table selection to an ethnicity table, or the block
 # ended in all-zero rejection, and only the flags change
 # (ethnicity_table_superseded and multiple_ethnicity_tables_N no longer count
