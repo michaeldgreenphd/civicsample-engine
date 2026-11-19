@@ -1796,3 +1796,66 @@ def test_a_heritage_template_table_counts_no_row_as_other() -> None:
     assert _nonzero(race) == {"white": 126, "asian": 51, "black_african_american": 15, "more_than_one_race": 3}
     assert race["quarantined_labels"] == [] and race["mena_in_white"] == 6
     assert race["subcategory_totals"]["asian_japanese"] == 9
+
+
+# ── Rows naming two or more races ──────────────────────────────────────────
+#
+# src/race_extractor.py, block comment "Rows naming two or more races".
+
+@pytest.mark.parametrize("label", [
+    "American Indian or Alaska Native & White",  # was American Indian
+    "Black or African American & White",  # was Black
+    "Asian and White",
+    "White + Asian",
+    "Black/African American and White/Caucasian",  # was Black, by its first slash fragment
+    "American Indian/Alaska Native and Asian and White",
+    "Asian & Native Hawaiian or Other Pacific Islander",  # 1997 categories joined, not the 1977 grouping
+    "Black & Middle Eastern/North African",
+    "Multiple-Black or African American and White",
+    "Multiple - Asian, White",
+    "Mixed (Black/White)",
+    "Mixed: Black/Indian",  # was Asian
+    "Multiracial: black/white/native",  # an unread part beside two races
+    "More Than One Race (Black/African American, White and American Indian/Alaska Native)",
+    "MULTIPLE-ASIAN & BLACK OR AFRICAN AMERICAN",
+    "Caucasian, Black, and Asian",  # a list with a joiner
+    "American Indian and Alaska Native and White",  # a category name holding "and", then a joiner
+    "African-American/Black, Hispanic, and Caucasian/White",  # an ethnicity part passed over
+])
+def test_a_label_naming_two_or_more_races_is_more_than_one_race(label: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert mapping["omb_category"] == "more_than_one_race" and "multirace_label" in mapping["flags"]
+
+
+@pytest.mark.parametrize("label", [
+    "Asian and Pacific Islander",  # the 1977 grouped category
+    "Asian & Other Pacific Islander",
+    "Black and African American",  # one race
+    "Asian and Asian American",
+    "American Indian and Alaska Native",  # a part that is not read as a race
+    "White and Hispanic",  # an ethnicity, not a race
+    "White and Other",
+    "Black and Unknown",
+    "White, Asian",  # a comma alone may join one grouped category
+    "Asian, Pacific Islander",
+    "White or Black",  # either race
+    "Black/White",
+    "Multiple - child",  # a prefix naming no race
+    "Mixed Asian",  # a prefix naming one race
+    "Mixed - Any other mixed background",
+    "Asian, Indigenous, Native Hawaiian and Pacific Islander, non-Hispanic",  # NCT03360539: a grouping
+    "Native Hawaiian and Other Pacific Islander",  # one category holding "and"
+])
+def test_a_label_not_naming_two_races_is_not_read_as_more_than_one_race(label: str) -> None:
+    assert "multirace_label" not in rx.map_race_category(label)["flags"]
+
+
+def test_a_multiracial_breakdown_adds_to_the_table_population() -> None:
+    """The NCT00609674 shape: single-race rows and combination rows add up
+    to the population, so the combinations are counted as more than one race
+    rather than as their first race or as other."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White", 60), ("Black or African American", 20), ("Asian", 10),
+        ("American Indian or Alaska Native & White", 6), ("Asian and White", 4)])
+    race = extract_race_data(_study("NCT99000565", [table], participants=100))
+    assert _nonzero(race) == {"white": 60, "black_african_american": 20, "asian": 10, "more_than_one_race": 10}

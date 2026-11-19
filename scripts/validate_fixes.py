@@ -56,6 +56,10 @@ Tests:
  22. NCT99000142 — Heritage-template rows: "White - Caucasian / European
      Heritage", "Asian - East Asian Heritage", "Japanese Heritage" and
      "African American/African Heritage & White" (fictional study)
+ 23. NCT99000143 — Rows naming two races without a heritage word:
+     "American Indian or Alaska Native & White", "Asian and White",
+     "Multiple-Black or African American and White", beside "Asian and
+     Pacific Islander" (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -75,7 +79,8 @@ again. Study 20 asserts its race block and the rows it records without
 counting them, among them a row naming the ethnicity dimension
 (EXPECTED_SKIPPED_ETHNICITY). Study 21 asserts its race totals and mena_in_white
 (EXPECTED_MENA). Study 22 asserts its race totals and that no row is
-quarantined (EXPECTED_HERITAGE).
+quarantined (EXPECTED_HERITAGE). Study 23 asserts its race totals
+(EXPECTED_MULTIRACE).
 A mismatch stops the harness.
 """
 import json
@@ -703,6 +708,34 @@ EXPECTED_HERITAGE = {
     "NCT99000142": {"white": 110, "asian": 42, "black_african_american": 24, "more_than_one_race": 4},
 }
 
+# ---------- NCT99000143 (fictional): rows naming two races ----------
+# 200 participants (race_extractor, "Rows naming two or more races"). Before,
+# "American Indian or Alaska Native & White" was American Indian and the other
+# two combinations were other; "Asian and Pacific Islander" is the 1977
+# grouped category and stays as it was.
+MOCK_NCT99000143 = _make_study(
+    "NCT99000143",
+    "NCT99000143 - Rows naming two races (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 120),
+                _make_category("Black or African American", 40),
+                _make_category("American Indian or Alaska Native & White", 15),
+                _make_category("Asian and White", 8),
+                _make_category("Multiple-Black or African American and White", 5),
+                _make_category("Asian and Pacific Islander", 12),
+            ])
+        ]),
+    ],
+    total_participants=200,
+)
+
+# Expected non-zero race totals of the study of rows naming two races.
+EXPECTED_MULTIRACE = {
+    "NCT99000143": {"white": 120, "black_african_american": 40, "more_than_one_race": 28, "other": 12},
+}
+
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
 # OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
@@ -939,6 +972,10 @@ def validate_study(study: dict, nct_id: str) -> None:
         assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
         assert race["mena_in_white"] == expected["mena_in_white"], f"{nct_id} mena_in_white: {race['mena_in_white']}"
         print(f"\n  {nct_id}: expected race totals and mena_in_white — OK")
+    if nct_id in EXPECTED_MULTIRACE:
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == EXPECTED_MULTIRACE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
+        print(f"\n  {nct_id}: rows naming two races read as more than one race — OK")
     if nct_id in EXPECTED_HERITAGE:
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
         assert nonzero == EXPECTED_HERITAGE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
@@ -972,6 +1009,7 @@ def main() -> None:
         (MOCK_NCT99000140, "NCT99000140"),
         (MOCK_NCT99000141, "NCT99000141"),
         (MOCK_NCT99000142, "NCT99000142"),
+        (MOCK_NCT99000143, "NCT99000143"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
