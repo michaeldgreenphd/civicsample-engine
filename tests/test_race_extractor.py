@@ -1747,6 +1747,9 @@ def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
     "Mixed-Heritage Unknown",
     "Multiple-Heritage Refused",  # a tail that reads as no race
     "Multiple-Heritage N/A",
+    "Multiple-White-Refused Heritage",  # a qualified tail group read whole
+    "White - Refused Heritage",  # a non-answer after a qualifier
+    "White - N/A Heritage",
     "Non-European heritage",
     "Asian - East Asian",  # no heritage word: outside this rule
 ])

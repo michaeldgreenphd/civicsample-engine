@@ -354,8 +354,9 @@ def mena_subcategory(label: str) -> Optional[str]:
 # "n (%)", and reading "of" after a race as a comma ("Black of African"):
 #   - combinations (_heritage_combination, before the slash fragments): a
 #     label starting "Multiple" or "Mixed" with a separator when every group
-#     after it reads as a race (not "Mixed-Heritage or Other", "Multiple-
-#     Heritage Refused"), or whose parts
+#     after it reads as a race, every word of it (not "Mixed-Heritage or
+#     Other", "Multiple-Heritage Refused", "Multiple-White-Refused
+#     Heritage"), or whose parts
 #     joined by "&" or "and" each read as one race (below) and name two or
 #     more races, is more than one race;
 #   - one race (_heritage_race, after the fuzzy match, for a label nothing else
@@ -371,7 +372,10 @@ def mena_subcategory(label: str) -> Optional[str]:
 #     qualifier must name the same one. Without a qualifier, a group that
 #     maps to nothing is allowed only when the rest as a whole maps to that
 #     race as one text (exact or fuzzy), not through one of its slash
-#     fragments: "Af Amer/White Heritage" is not read as White. A direction
+#     fragments: "Af Amer/White Heritage" is not read as White. With or
+#     without a qualifier, a group that maps to nothing and reads as a
+#     non-answer ("Refused", "Prefer not to say", a lone letter of "N/A")
+#     fails the rule: "White - Refused Heritage" is not White. A direction
 #     word left by a shared ending ("East" of "East/South East Asian") is
 #     allowed; a group mapping to other or unknown ("Mixed Heritage or
 #     Other") fails the rule. The
@@ -424,6 +428,11 @@ _HERITAGE_QUALIFIER_RX = re.compile(
     r"^(?P<race>white|wh|wt|w|asian|black|african\s+american)\s*[\-:;–—,]\s*(?=\S)", re.IGNORECASE)
 _HERITAGE_PART_SPLIT_RX = re.compile(r"\s*(?:&|\band\b)\s*", re.IGNORECASE)
 _HERITAGE_GROUP_SPLIT_RX = re.compile(r"\s*(?:/|&|\bor\b|\band\b)\s*|\s+[\-–—]\s*|\s*[\-–—]\s+", re.IGNORECASE)
+# Non-answers the vocabulary does not hold, and lone letters ("N" and "A" of
+# "N/A"): an unread group like these is not a subgroup name.
+_HERITAGE_NON_ANSWER_RX = re.compile(
+    r"(?<![a-z])(?:refus\w*|declin\w*|prefer\w*|unknown|unspecified|unavailable|withheld|missing|"
+    r"none|not)(?![a-z])|^[a-z]$", re.IGNORECASE)
 _HERITAGE_DIRECTIONS = frozenset({"east", "south", "central", "west", "north", "south east",
                                   "southeast", "south-east"})
 # Abbreviations the template's own spellings use for a race or a group in it.
@@ -487,9 +496,11 @@ def _heritage_group(group: str, atomic: bool = False) -> Optional[Tuple[str, Opt
     return mapping["omb_category"], mapping["subcategory"], mapping["confidence"]
 
 
-def _heritage_race(text: str) -> Optional[Tuple[str, Optional[str], str]]:
+def _heritage_race(text: str, strict: bool = False) -> Optional[Tuple[str, Optional[str], str]]:
     """(omb_category, subcategory, confidence) when the heritage text names
-    one race, else None (block comment "Heritage-template labels")."""
+    one race, else None (block comment "Heritage-template labels").
+    strict=True requires every group to map, also after a qualifier: a group
+    of a "Multiple-" tail is read whole ("White-Refused" is not White)."""
     races: set[str] = set()
     subcategories: set[Optional[str]] = set()
     confidence = "high"
@@ -508,6 +519,11 @@ def _heritage_race(text: str) -> Optional[Tuple[str, Optional[str], str]]:
             continue
         reading = _heritage_group(group)
         if reading is None:
+            # A group that maps to nothing may be a subgroup name the
+            # vocabulary lacks ("Caucasian European" after "White -"), but not
+            # a non-answer the vocabulary lacks ("White - Refused Heritage").
+            if strict or _HERITAGE_NON_ANSWER_RX.search(group) is not None:
+                return None
             unmapped += 1
             continue
         omb, subcat, conf = reading
@@ -558,7 +574,7 @@ def _heritage_combination(label: str) -> bool:
             group = group.strip(" -–—:,")
             if not group:
                 continue
-            reading = _heritage_group(group) or _heritage_race(group)
+            reading = _heritage_group(group) or _heritage_race(group, strict=True)
             if reading is None or reading[0] not in _RACE_SPECIFIC:
                 return False
         return True
