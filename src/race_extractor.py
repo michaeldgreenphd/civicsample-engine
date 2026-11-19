@@ -1103,28 +1103,39 @@ _RACE_SPECIFIC = frozenset({
 # or Race: White", "Ethnicity Race Unknown" are left as they were)
 # (_names_ethnicity_dimension). The decision is made for each plain race
 # table, from its rows as _map_plain_row reads them:
-#   - When some row that is NOT named for the ethnicity dimension is mapped as
-#     race (counted or quarantined), the table has its own race rows, and the
-#     named rows are the table's ethnicity classification. Each named row is
-#     left out of the race counts and recorded in skipped_ethnicity_rows like
-#     an ethnicity-only row, with the flag ethnicity_dimension_row.
-#   - When every row mapped as race is named for the ethnicity dimension, the
-#     name is the table's word for what it classifies. The name and its
-#     separator (":", "-", "–", "—", "_" or ",") are removed from each named
-#     row (_strip_ethnicity_dimension) and the rest is mapped by _map_plain_row
+#   - When some row that is NOT named for the ethnicity dimension maps to a
+#     race-specific category without the "unmapped" flag, or is itself named
+#     for the race dimension (its cleaned label begins with the word race,
+#     races or racial: "Race - Undisclosed", "Race,Asian", a bare "Race"),
+#     the table has race rows of its own, and the named rows are the table's
+#     ethnicity classification. A bare residual row ("Unknown", "Other") or
+#     an unmapped one does not establish a race classification: beside
+#     "Ethnicity: White" / "Ethnicity: Black", a bare "Unknown" is that
+#     classification's own unknown, and taking it for race rows would leave
+#     every named race row out and balance the cohort into unknown. A row
+#     named for race does, mapped or not: "Race,Asian" 279 beside "Ethnicity,
+#     Chinese" 279 (NCT01256177) classifies the same 279 twice, and reading
+#     "Chinese" as race would count them twice. Each named row is left out
+#     of the race counts and recorded in skipped_ethnicity_rows like an
+#     ethnicity-only row, with the flag ethnicity_dimension_row.
+#   - Otherwise (no unnamed row is in a race-specific category), the name is
+#     the table's word for what it classifies. The name and its separator
+#     (":", "-", "–", "—", "_" or ",") are removed from each named row
+#     (_strip_ethnicity_dimension) and the rest is mapped by _map_plain_row
 #     like any race row: "Ethnicity : Caucasian" is White, "Ethnicity:
-#     Hispanic" is still an ethnicity-only row. As for a removed race name, a
-#     fuzzy match of the rest is kept only when it agrees with its key on
-#     negation ("Race dimension named in the row label", "Negation check"):
+#     Hispanic" is still an ethnicity-only row. Unnamed rows (a bare
+#     "Unknown") are read as they are. As for a removed race name, a fuzzy
+#     match of the rest is kept only when it agrees with its key on negation
+#     ("Race dimension named in the row label", "Negation check"):
 #     "Ethnicity: Non-African American" stays unmapped other rather than
 #     Black. The row keeps the posted label and carries the flag
-#     ethnicity_dimension_as_race. This reading is kept
-#     only when at least one row then maps to a race-specific category
-#     without the "unmapped" flag. Otherwise the rows are read as they were
-#     before this rule: "Ethnicity: White British" 1,008 / "Ethnicity: Other
-#     ethnic group" 54 (NCT01452191) name no category the vocabulary holds,
-#     and leaving them out would end the block in all-zero rejection, a
-#     trial that posted a race classification reporting none.
+#     ethnicity_dimension_as_race. This reading is kept only when at least
+#     one row then maps to a race-specific category without the "unmapped"
+#     flag. Otherwise the rows are read as they were before this rule:
+#     "Ethnicity: White British" 1,008 / "Ethnicity: Other ethnic group" 54
+#     (NCT01452191) name no category the vocabulary holds, and leaving them
+#     out would end the block in all-zero rejection, a trial that posted a
+#     race classification reporting none.
 # A row without a separator ("Ethnicity Not Reported") is named for the
 # dimension, so the first branch leaves it out; the second maps it as posted,
 # since there is no name to remove.
@@ -1179,6 +1190,19 @@ def _names_ethnicity_dimension(label: str) -> bool:
     return _ETHNICITY_DIMENSION_RX.match(clean_demographic_label(label)) is not None
 
 
+_RACE_DIMENSION_NAME_RX = re.compile(r"^\s*rac(?:e|es|ial)(?![a-z])", re.IGNORECASE)
+
+
+def _names_race_dimension(label: str) -> bool:
+    """True when the cleaned label begins with the word race, races or
+    racial ("Race - Undisclosed", "Race,Asian", "Race", "Race unknown"): a
+    row of a race classification (block comment above).
+
+      "Racecourse", "Black"  -> False
+    """
+    return _RACE_DIMENSION_NAME_RX.match(clean_demographic_label(label)) is not None
+
+
 def _strip_ethnicity_dimension(label: str) -> Optional[str]:
     """The cleaned label without its leading ethnicity dimension name and
     separator, or None when it has no separator to remove (block comment
@@ -1209,7 +1233,15 @@ def _read_ethnicity_dimension_rows(rows: List[Tuple[str, int]],
     named = [_names_ethnicity_dimension(label) for label, _count in rows]
     if not any(nm and m is not None for nm, m in zip(named, mappings)):
         return mappings, [False] * len(rows)
-    own_race_rows = any(m is not None and not nm for nm, m in zip(named, mappings))
+    # Race rows of its own: an unnamed row in a race-specific category, or
+    # one named for the race dimension. A bare residual row ("Unknown",
+    # "Other") or an unmapped one is not a race classification by itself
+    # (block comment above).
+    own_race_rows = any(
+        m is not None and not nm
+        and ((m["omb_category"] in _RACE_SPECIFIC and "unmapped" not in m["flags"])
+             or _names_race_dimension(label))
+        for (label, _count), nm, m in zip(rows, named, mappings))
     if not own_race_rows:
         as_race: List[Optional[Dict]] = []
         for (label, count), nm, mapping in zip(rows, named, mappings):

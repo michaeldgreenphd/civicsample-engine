@@ -1620,3 +1620,49 @@ def test_a_label_naming_both_dimensions_beside_race_rows_stays_counted() -> None
     race = extract_race_data(_study("NCT99000568", [table], participants=30))
     assert race["skipped_ethnicity_rows"] == []
     assert sum(race["omb_totals"].values()) == 30
+
+
+@pytest.mark.parametrize("residual, category", [("Unknown", "unknown_not_reported"), ("Other", "other")])
+def test_a_residual_unnamed_row_does_not_make_named_race_rows_an_ethnicity_classification(
+        residual: str, category: str) -> None:
+    """"Ethnicity: White" 50 / "Ethnicity: Black" 30 / a bare residual 5, of
+    85: the residual is not a race classification of its own, so the named
+    rows are read as race; leaving them out would balance 80 into unknown."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: White", 50), ("Ethnicity: Black", 30), (residual, 5)])
+    race = extract_race_data(_study("NCT99000569", [table], participants=85))
+    assert _nonzero(race) == {"white": 50, "black_african_american": 30, category: 5}
+    assert race["skipped_ethnicity_rows"] == []
+    assert [AS_RACE_FLAG in c["flags"] for c in race["raw_categories"]] == [True, True, False]
+
+
+def test_an_unmapped_unnamed_row_does_not_make_named_race_rows_an_ethnicity_classification() -> None:
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: White", 50), ("Ethnicity: Asian", 10),
+                                          ("Prefer to self-describe", 4)])
+    race = extract_race_data(_study("NCT99000570", [table], participants=64))
+    assert {"white": 50, "asian": 10} == {k: v for k, v in _nonzero(race).items() if k in ("white", "asian")}
+    assert race["skipped_ethnicity_rows"] == []
+
+
+@pytest.mark.parametrize("rows, participants", [
+    ([("Race,Asian", 279), ("Ethnicity, Chinese", 279)], 279),                  # NCT01256177
+    ([("Race - Undisclosed", 13), ("Ethnicity - Undisclosed", 13)], 13),        # NCT03406507
+    ([("Race", 13), ("Ethnicity", 12)], 13),                                    # NCT01606215
+])
+def test_an_unmapped_row_named_for_race_is_the_tables_race_classification(
+        rows: list[tuple[str, int]], participants: int) -> None:
+    """The race row maps to no race-specific category, but its label names
+    the race dimension: the named ethnicity row is the second classification
+    of the same people and is left out, never read as race beside it."""
+    table = _class_table(COMBINED_TITLE, rows)
+    race = extract_race_data(_study("NCT99000571", [table], participants=participants))
+    assert sum(race["omb_totals"].values()) == participants
+    assert [r["original"] for r in race["skipped_ethnicity_rows"]] == [rows[1][0]]
+    assert DIMENSION_ROW_FLAG in race["skipped_ethnicity_rows"][0]["flags"]
+
+
+@pytest.mark.parametrize("label, named", [
+    ("Race - Undisclosed", True), ("Race,Asian", True), ("Race", True), ("Race unknown", True),
+    ("Racial group: Other", True), ("Racecourse", False), ("Black", False), ("Ethnicity: White", False),
+])
+def test_names_race_dimension(label: str, named: bool) -> None:
+    assert rx._names_race_dimension(label) is named
