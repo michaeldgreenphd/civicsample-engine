@@ -387,8 +387,9 @@ def mena_subcategory(label: str) -> Optional[str]:
 # ("African Amer/African Heritage/Amer Ind or Alaska N") are not read: the
 # row may name either race or both. "Asian and Pacific Islander" (or "&",
 # "Other Pacific Islander") is not read as a combination: it is the grouped
-# category of the 1977 standard. Only that wording: "Asian Heritage and Native
-# Hawaiian Heritage" names two races (a review finding).
+# category of the 1977 standard. Only that wording, with at most one heritage
+# word at its end: "Asian Heritage and Native Hawaiian Heritage" and "Asian
+# Heritage and Pacific Islander Heritage" name two races (review findings).
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main: rows
@@ -406,13 +407,17 @@ def mena_subcategory(label: str) -> Optional[str]:
 # participants in 14 trials, the forms above ("African Amer/African Heritage/
 # Amer Ind or Alaska N" 55, "American/African Heritage" 34) and wordings the
 # vocabulary lacks ("Central Asian Heritage", "Japanese East Asian Heritage").
-_HERITAGE_WORD_RX = re.compile(
-    r"(?<![a-z])(?:heritage|heritag|herit|hertage|heri|her|hrtg|h)\.?(?![a-z])", re.IGNORECASE)
+_HERITAGE_WORDS = r"(?:heritage|heritag|herit|hertage|heri|her|hrtg|h)\.?"
+_HERITAGE_WORD_RX = re.compile(r"(?<![a-z])" + _HERITAGE_WORDS + r"(?![a-z])", re.IGNORECASE)
 _HERITAGE_GLOSS_RX = re.compile(r"\(\s*[a-z]{1,4}\.?(?:\s*[/ ]\s*[a-z]{1,4}\.?)*\s*\)", re.IGNORECASE)
 _HERITAGE_COUNT_SUFFIX_RX = re.compile(r",?\s*n\s*\(\s*%\s*\)\s*$", re.IGNORECASE)
 _HERITAGE_MULTIPLE_RX = re.compile(r"^(?:multiple|mixed)\s*[\-:–—]\s*", re.IGNORECASE)
-_HERITAGE_GROUPED_API_RX = re.compile(r"asian\s*(?:&|and)\s*(?:other\s+)?pacific\s+islanders?",
-                                      re.IGNORECASE)
+# The grouped wording with at most one heritage word, at its end: "Asian and
+# Pacific Islander Heritage", not "Asian Heritage and Pacific Islander
+# Heritage".
+_HERITAGE_GROUPED_API_RX = re.compile(
+    r"asian\s*(?:&|and)\s*(?:other\s+)?pacific\s+islanders?(?:\s*" + _HERITAGE_WORDS + r")?",
+    re.IGNORECASE)
 _HERITAGE_QUALIFIER_RX = re.compile(
     r"^(?P<race>white|wh|wt|w|asian|black|african\s+american)\s*[\-:;–—,]\s*(?=\S)", re.IGNORECASE)
 _HERITAGE_PART_SPLIT_RX = re.compile(r"\s*(?:&|\band\b)\s*", re.IGNORECASE)
@@ -549,8 +554,12 @@ def _heritage_combination(label: str) -> bool:
         return True
     # "Asian and Pacific Islander" is the grouped category of the 1977
     # standard, one group rather than a combination: not read. Only that
-    # wording: "Asian Heritage and Native Hawaiian Heritage" names two races.
-    if _HERITAGE_GROUPED_API_RX.fullmatch(text) is not None:
+    # wording, matched on the label with its glosses and "n (%)" removed but
+    # its heritage words kept: "Asian Heritage and Native Hawaiian Heritage"
+    # and "Asian Heritage and Pacific Islander Heritage" name two races
+    # (review findings).
+    grouped = _HERITAGE_GLOSS_RX.sub(" ", _HERITAGE_COUNT_SUFFIX_RX.sub("", clean_demographic_label(label)))
+    if _HERITAGE_GROUPED_API_RX.fullmatch(re.sub(r"\s+", " ", grouped).strip(" -–—:,/")) is not None:
         return False
     parts = [p for p in _HERITAGE_PART_SPLIT_RX.split(text) if p.strip()]
     if len(parts) < 2:
