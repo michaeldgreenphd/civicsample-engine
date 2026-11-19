@@ -292,11 +292,12 @@ def test_a_combined_table_without_ethnicity_in_its_title_is_not_read_here() -> N
 
 
 def test_counts_that_disagree_between_the_two_readings_are_left_alone() -> None:
-    """"Another Hispanic, Latino" is a Hispanic row to the race extractor, but
-    this extractor leaves it unmapped on purpose (block comment "Plain
-    vocabulary gaps"), so its Hispanic count differs: nothing moves. Before
-    the vocabulary gaps were filled this test used "American Hispanic"."""
-    study = _combined([("White", 30), ("Black", 12), ("Another Hispanic, Latino", 8)], 50)
+    """"Latina/Hispanic" is a Hispanic row to the race extractor, but this
+    extractor does not map it, so its Hispanic count differs: nothing moves.
+    The label is a stand-in for any row the race extractor reads as Hispanic
+    and this vocabulary does not; earlier versions of this test used
+    "American Hispanic" and "Another Hispanic, Latino"."""
+    study = _combined([("White", 30), ("Black", 12), ("Latina/Hispanic", 8)], 50)
     combined = race_extractor.combined_classification(study)
     assert combined is not None and combined["ethnicity_rows"] == 8
     eth = extract_ethnicity_data(study)
@@ -535,10 +536,11 @@ def test_a_fuzzy_match_that_drops_the_negation_is_refused() -> None:
 
 
 def test_an_unread_ethnicity_row_survives_all_zero_rejection() -> None:
-    """"Non-Hispanic and Latino" is left unmapped on purpose: no counts, but
-    the block says why, and the table is not taken for a race table. Before
-    the vocabulary gaps were filled this test used "American Hispanic"."""
-    table = _table(COMBINED, [("White", 30), ("Black", 12), ("Non-Hispanic and Latino", 8)])
+    """"Hispanic or Latino origin" is not in the vocabulary: no counts, but
+    the block says why, and the table is not taken for a race table. Earlier
+    versions of this test used "American Hispanic" and "Non-Hispanic and
+    Latino", both now entries."""
+    table = _table(COMBINED, [("White", 30), ("Black", 12), ("Hispanic or Latino origin", 8)])
     eth = extract_ethnicity_data(_study("NCT99000708", [table], participants=50))
     assert eth["reported"] is False
     assert eth["flags"] == ["all_zero_rejection", "ethnicity_rows_unread"]
@@ -585,6 +587,19 @@ VOCABULARY_GAPS = [
     ("Non-Hispanic Ethnicity", "not_hispanic_latino"),
     ("Not Latino or Hispanic", "not_hispanic_latino"),
     ("Non American Hispanic", "not_hispanic_latino"),
+    # follow-up wordings: the census "Another Hispanic" origin, in each spelling posted
+    ("Another Hispanic, Latino, or Spanish origin", "hispanic_latino"),
+    ("Another Hispanic, Latino/a, or Spanish Origin", "hispanic_latino"),
+    ("Another Hispanic, Latino/a, or Spanish origin", "hispanic_latino"),
+    ("Another Hispanic, Latino/a or Spanish Origin", "hispanic_latino"),
+    ("Another Hispanic, Latino, or Spanish origin (e.g. Savadorian, Dominican, Columbian, Guatemalan, etc)",
+     "hispanic_latino"),
+    # follow-up wordings: not meeting the OMB definition
+    ("Not meeting definition for Hispanic or Latino", "not_hispanic_latino"),
+    ("Not meeting the definition for Hispanic or Latino", "not_hispanic_latino"),
+    ("A person not meeting definition of Hispanic/Latino", "not_hispanic_latino"),
+    # follow-up wordings: the complement of "Hispanic or Latino" in its tables
+    ("Non-Hispanic and Latino", "not_hispanic_latino"),
 ]
 
 
@@ -618,34 +633,39 @@ def test_a_vocabulary_gap_row_of_an_ethnicity_table_leaves_unknown(label: str, c
 
 
 @pytest.mark.parametrize("label", [
-    "Non-Hispanic and Latino",
-    "Not meeting definition for Hispanic or Latino",
+    "Caucasian (White, including Hispanic)",
     "including Hispanic)",
-    "Another Hispanic, Latino",
+    "non-Latino, Hispanic",
+    "White (non-latino or unknown ethnicity)",
 ])
 def test_an_ambiguous_label_stays_unmapped(label: str) -> None:
-    """Left unmapped pending a decision on its meaning (block comment "Plain
-    vocabulary gaps"). In a race-titled table it is dropped and the block
-    says so."""
+    """A row whose participants the table does not divide by ethnicity
+    (block comment "Plain vocabulary gaps"). In a race-titled table it is
+    dropped and the block says so."""
     from src.ethnicity_extractor import map_ethnicity_category
     mapping = map_ethnicity_category(label)
     assert mapping["confidence"] == "low" and "unmapped" in mapping["flags"]
+    # 50 rows of 60 participants: not an exact combined classification, so no
+    # race rows are counted as not Hispanic and only the label's reading shows.
     table = _table(COMBINED, [("White", 30), ("Hispanic", 5), (label, 15)])
-    eth = extract_ethnicity_data(_study("NCT99000803", [table], participants=50))
+    eth = extract_ethnicity_data(_study("NCT99000803", [table], participants=60))
     assert eth["omb_totals"]["hispanic_latino"] == 5
     assert eth["omb_totals"]["not_hispanic_latino"] == 0
     assert "ethnicity_rows_unread" in eth["flags"]
 
 
 def test_vocabulary_gap_entries_are_never_fuzzy_targets() -> None:
-    """As a fuzzy target "Non-Hispanic and Non-Latino" would read "Non-Hispanic
-    and Latino" (ratio 92) as not Hispanic. The exact-only keys are all in the
-    vocabulary and none is offered to the fuzzy match."""
+    """As a fuzzy target "Non-Hispanic and Non-Latino" read "Non-Hispanic and
+    Latino" (ratio 92) as not Hispanic before its tables had been looked at.
+    The exact-only keys are all in the vocabulary and none is offered to the
+    fuzzy match: "Hispanic Americans" scores 97 against the exact-only
+    "Hispanic American" and at most 71 against the rest, so it stays
+    unmapped."""
     from src import ethnicity_extractor as ee
     assert ee._EXACT_ONLY_KEYS <= set(ee.ETHNICITY_MAPPINGS)
     assert not ee._EXACT_ONLY_KEYS & set(ee._FUZZY_KEYS)
     assert list(ee._FUZZY_KEYS) == [k for k in ee.ETHNICITY_MAPPINGS if k not in ee._EXACT_ONLY_KEYS]
-    mapping = ee.map_ethnicity_category("Non-Hispanic and Latino")
+    mapping = ee.map_ethnicity_category("Hispanic Americans")
     assert mapping["omb_category"] == "unknown_not_reported" and "unmapped" in mapping["flags"]
 
 
