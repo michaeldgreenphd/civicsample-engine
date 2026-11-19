@@ -117,6 +117,8 @@
   "resultsSection.outcomeMeasuresModule.outcomeMeasures[].unitOfMeasure",
   "resultsSection.outcomeMeasuresModule.outcomeMeasures[].paramType",
   "resultsSection.outcomeMeasuresModule.outcomeMeasures[].populationDescription",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].dispersionType",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].reportingStatus",
   "resultsSection.outcomeMeasuresModule.outcomeMeasures[].groups[].id",
   "resultsSection.outcomeMeasuresModule.outcomeMeasures[].groups[].title",
   "resultsSection.outcomeMeasuresModule.outcomeMeasures[].denoms[].units",
@@ -131,7 +133,18 @@
   "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].ciUpperLimit",
   "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].pValue",
   "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].statisticalMethod",
-  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].nonInferiorityType"
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].nonInferiorityType",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].title",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].denoms[].units",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].denoms[].counts[].groupId",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].denoms[].counts[].value",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].title",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].groupId",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].value",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].spread",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].lowerLimit",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].upperLimit",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].comment"
  ],
  "subgroup_states": [
   "not_yet_processed",
@@ -152,10 +165,10 @@
   "Participant flow counts are for the first period only.",
   "The registry record is read as retrieved on the stated date; registry records change."
  ],
- "run_id": "results-structure-2026-11-14-553976d184",
+ "run_id": "results-structure-2026-11-14-fe82d1238a",
  "generated_at": "2026-11-14T12:00:00+00:00",
  "files": {
-  "records.json": "ade24609c83e43c3d8fb5527bbde00d96ec3cfc769f0b623c1270ab2f39ce236",
-  "summary.json": "4f0d954f5609a3a0f67616dd32cff0c48504bc9a7561f7d18f67a5976cf28453"
+  "records.json": "a55157e8847430ddb86b004b9124cf24da8821a200f333ee019e2a6661e65b8f",
+  "summary.json": "397eb8f07ef61a849c5026edb624289fb65f199a9e791991458c6ac8341f2ffa"
  }
 }

@@ -219,13 +219,40 @@ def test_reported_facts_are_copied_verbatim_from_their_paths() -> None:
     one_sided = m['analyses'][1]
     assert (one_sided['ci_lower_limit'], one_sided['p_value'], one_sided['estimate_value']) == (None, None, 'NA')
     assert (one_sided['estimate_value_numeric'], one_sided['both_confidence_limits']) == (False, False)
+    # The value each group reports, in the registry's nesting, every field copied as posted.
+    for key, field in RS.REPORTED_MEASURE_FIELDS.items():
+        assert m[key] == src.get(field), key
+    assert [c['title'] for c in m['classes']] == [c.get('title') for c in src['classes']]
+    for c, csrc in zip(m['classes'], src['classes']):
+        for cat, catsrc in zip(c['categories'], csrc['categories']):
+            assert cat['title'] == catsrc.get('title')
+            assert cat['measurements'] == [{k: x.get(f) for k, f in RS.REPORTED_MEASUREMENT_FIELDS.items()}
+                                           for x in catsrc['measurements']]
+    # Spread, limits, a class's own denominators and a comment beside 'NA' are kept as posted.
+    timed = F.measure('Fictional score by visit', class_titles=('Week 4', 'Week 12'), values=('-4.20', 'NA'),
+                      dispersionType='Standard Deviation')
+    timed['classes'][0]['categories'][0]['measurements'][0]['spread'] = '1.30'
+    timed['classes'][1]['categories'][0]['measurements'][1]['comment'] = 'Not estimable: fewer than 5 participants.'
+    timed['classes'][1]['denoms'] = [{'units': 'Participants', 'counts': F.counts(('90', '4'), 'OG')}]
+    [t] = record(F.study(1, results=F.results_section(outcomeMeasuresModule={'outcomeMeasures': [timed]})))['primary_measures']
+    assert t['dispersion_type'] == 'Standard Deviation'
+    assert [c['title'] for c in t['classes']] == ['Week 4', 'Week 12']
+    assert t['classes'][0]['categories'][0]['measurements'][0] == {
+        'group_id': 'OG000', 'value': '-4.20', 'spread': '1.30', 'lower_limit': None, 'upper_limit': None, 'comment': None}
+    assert t['classes'][1]['categories'][0]['measurements'][1] == {
+        'group_id': 'OG001', 'value': 'NA', 'spread': None, 'lower_limit': None, 'upper_limit': None,
+        'comment': 'Not estimable: fewer than 5 participants.'}
+    assert t['classes'][1]['denominators'] == [{'units': 'Participants', 'counts': [
+        {'group_id': 'OG000', 'value': '90'}, {'group_id': 'OG001', 'value': '4'}]}]
+    assert t['classes'][0]['denominators'] == []
     # A measure with no population, groups, denominators or analyses posted says so.
     [bare] = record(F.study(1, results=F.results_section(outcomeMeasuresModule={'outcomeMeasures': [
         {'type': 'PRIMARY', 'title': 'Fictional bare measure'}]})))['primary_measures']
-    assert (bare['population'], bare['groups'], bare['denominators'], bare['analyses']) == (None, [], [], [])
+    assert (bare['population'], bare['groups'], bare['denominators'], bare['analyses'], bare['classes']) == (None, [], [], [], [])
     # The copied fields are listed for run.json, by registry path, and none is a rule's output.
     assert 'resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].paramValue' in RS.FIELDS_COPIED
     assert 'resultsSection.outcomeMeasuresModule.outcomeMeasures[].populationDescription' in RS.FIELDS_COPIED
+    assert 'resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].spread' in RS.FIELDS_COPIED
 
 
 def test_an_analysis_needs_named_groups_two_of_them_and_a_p_value_or_both_limits() -> None:

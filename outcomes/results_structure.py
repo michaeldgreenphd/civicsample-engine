@@ -88,7 +88,13 @@ FIELDS_INSPECTED = tuple(f'{_OM}.{f}' for f in (
 # measure or analysis it came from. No state, no rule and no inference is drawn from these values; rule S1's
 # flags above are computed from the same fields and are unchanged. Record key -> registry field.
 REPORTED_MEASURE_FIELDS = {'title': 'title', 'time_frame': 'timeFrame', 'unit': 'unitOfMeasure',
-                           'param_type': 'paramType', 'population': 'populationDescription'}
+                           'param_type': 'paramType', 'population': 'populationDescription',
+                           'dispersion_type': 'dispersionType', 'reporting_status': 'reportingStatus'}
+# The value each group reports (its mean, count, rate and so on), as `classes[].categories[].measurements[]`:
+# record key -> registry field. `spread` and the limits are what `dispersionType` names (a standard
+# deviation, a 95% confidence interval and so on); nothing is computed from them here.
+REPORTED_MEASUREMENT_FIELDS = {'group_id': 'groupId', 'value': 'value', 'spread': 'spread',
+                               'lower_limit': 'lowerLimit', 'upper_limit': 'upperLimit', 'comment': 'comment'}
 REPORTED_ANALYSIS_FIELDS = {'estimate_type': 'paramType', 'estimate_value': 'paramValue',
                             'ci_percent': 'ciPctValue', 'ci_sides': 'ciNumSides',
                             'ci_lower_limit': 'ciLowerLimit', 'ci_upper_limit': 'ciUpperLimit',
@@ -101,7 +107,10 @@ FIELDS_COPIED = tuple(
     [f'{_OM}.{f}' for f in REPORTED_MEASURE_FIELDS.values()]
     + [f'{_OM}.groups[].id', f'{_OM}.groups[].title', f'{_OM}.denoms[].units', f'{_OM}.denoms[].counts[].groupId',
        f'{_OM}.denoms[].counts[].value']
-    + [f'{_OM}.analyses[].groupIds'] + [f'{_OM}.analyses[].{f}' for f in REPORTED_ANALYSIS_FIELDS.values()])
+    + [f'{_OM}.analyses[].groupIds'] + [f'{_OM}.analyses[].{f}' for f in REPORTED_ANALYSIS_FIELDS.values()]
+    + [f'{_OM}.classes[].title', f'{_OM}.classes[].denoms[].units', f'{_OM}.classes[].denoms[].counts[].groupId',
+       f'{_OM}.classes[].denoms[].counts[].value', f'{_OM}.classes[].categories[].title']
+    + [f'{_OM}.classes[].categories[].measurements[].{f}' for f in REPORTED_MEASUREMENT_FIELDS.values()])
 FIELDS_NOT_INSPECTED = (
     f'{_OM}.timeFrame', f'{_OM}.unitOfMeasure', f'{_OM}.paramType',
     'resultsSection.baselineCharacteristicsModule (all fields)',
@@ -446,6 +455,13 @@ def posted_outcomes(measures: list[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
+def _denominators(denoms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Denominator rows as posted: each row's units and the count per group, strings kept."""
+    return [{'units': d.get('units'),
+             'counts': [{'group_id': c.get('groupId'), 'value': c.get('value')} for c in d.get('counts') or []]}
+            for d in denoms]
+
+
 def primary_measures(measures: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """One entry per posted PRIMARY measure: its position in `outcomeMeasures[]` (the registry
     gives measures no identifier, so the index and title are the locator), rule O1 with its
@@ -454,7 +470,12 @@ def primary_measures(measures: list[dict[str, Any]]) -> list[dict[str, Any]]:
     It also carries what the registry reports for the measure (layer B), copied verbatim:
     `population` (`populationDescription`, stated once per measure and so shared by all its
     analyses), `groups` (id and title) and `denominators` (every `denoms[]` row with its units and
-    the count per group, as strings). An absent field is None, or an empty list, never a zero."""
+    the count per group, as strings). An absent field is None, or an empty list, never a zero.
+
+    `classes` holds the value each group reports, in the registry's own nesting: each class (a
+    time point, a subgroup or a row; its `title` is None when the measure has one untitled class),
+    its own denominator rows where the registry posts them, and its categories, each with one entry
+    per group (REPORTED_MEASUREMENT_FIELDS). A value such as 'NA' stays 'NA', with its comment."""
     out = []
     for i, m in enumerate(measures):
         if m.get('type') != 'PRIMARY':
@@ -465,10 +486,14 @@ def primary_measures(measures: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     'unit': m.get('unitOfMeasure'), 'param_type': m.get('paramType'),
                     'population': m.get('populationDescription'),
                     'groups': [{'id': g.get('id'), 'title': g.get('title')} for g in m.get('groups') or []],
-                    'denominators': [{'units': d.get('units'),
-                                      'counts': [{'group_id': c.get('groupId'), 'value': c.get('value')}
-                                                 for c in d.get('counts') or []]}
-                                     for d in m.get('denoms') or []],
+                    'denominators': _denominators(m.get('denoms') or []),
+                    'dispersion_type': m.get('dispersionType'), 'reporting_status': m.get('reportingStatus'),
+                    'classes': [{'title': c.get('title'), 'denominators': _denominators(c.get('denoms') or []),
+                                 'categories': [{'title': cat.get('title'),
+                                                 'measurements': [{k: x.get(f) for k, f in REPORTED_MEASUREMENT_FIELDS.items()}
+                                                                  for x in cat.get('measurements') or []]}
+                                                for cat in c.get('categories') or []]}
+                                for c in m.get('classes') or []],
                     'n_groups': len(m.get('groups') or []), 'usable': usable, 'usable_strict': strict,
                     'reason': reason, 'analyses': analysis_facts(m, i)})
     return out
