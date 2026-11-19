@@ -1350,6 +1350,11 @@ def test_race_rows_that_state_the_ethnicity_are_not_counted_as_not_hispanic() ->
     ("Race: : White", "White"),
     ("Race/Ethnicity : White", "White"),
     ("Race & Ethnicity : White", "White"),
+    ("Race or Ethnicity: White", "White"),
+    ("Race and/or Ethnic group - Asian", "Asian"),
+    ("Ethnicity/Race: Black", "Black"),
+    ("Ethnicity or Race: White", "White"),
+    ("Ethnicity and/or Race: Asian", "Asian"),
     ("Race: Not Reported", "Not Reported"),
     ("Race: Mixed/Unknown", "Mixed/Unknown"),
 ])
@@ -1526,10 +1531,22 @@ def test_a_table_whose_every_row_names_ethnicity_is_read_as_race() -> None:
 @pytest.mark.parametrize("label, names", [
     ("Ethnicity Not Reported", True), ("Ethnicity-Unknown or Not Reported", True), ("Ethnic group - Other", True),
     ("Ethnicity/Race Unknown", False), ("Ethnicity and Race: White", False), ("Ethnicities", False),
-    ("White", False), ("Race: Unknown", False),
+    ("Ethnicity or Race: White", False), ("Ethnicity and/or Race: White", False),
+    ("Ethnic group or race - Asian", False), ("White", False), ("Race: Unknown", False),
 ])
 def test_which_labels_name_the_ethnicity_dimension(label: str, names: bool) -> None:
     assert rx._names_ethnicity_dimension(label) is names
+
+
+def test_rows_prefixed_with_a_combined_name_joined_by_or_are_read_as_race() -> None:
+    """"Ethnicity or Race: White" names the one combined classification, not
+    the ethnicity dimension (a review finding): the rows are read as race,
+    not recorded as ethnicity rows, so the table publishes its race counts."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity or Race: White", 30), ("Ethnicity or Race: Black", 20)])
+    race = extract_race_data(_study("NCT99000560", [table], participants=50))
+    assert race["reported"] is True
+    assert _nonzero(race) == {"white": 30, "black_african_american": 20}
+    assert race["skipped_ethnicity_rows"] == []
 
 
 def test_a_combined_dimension_name_stays_a_row_of_the_classification() -> None:

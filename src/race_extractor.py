@@ -624,8 +624,10 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # left out of the race block altogether.
 #
 # Method. One leading race dimension name followed by a separator (":", "-",
-# "–", "—" or "_"; the names are "Race" and "Race and/&// Ethnicity") is
-# removed before the row is routed and mapped, so the rest goes through
+# "–", "—" or "_"; the names are "Race" and a combined name, "Race" and
+# "Ethnicity" or "Ethnic group" in either order joined by "/", "&", "and",
+# "or" or "and/or": "Race and Ethnicity", "Ethnicity or Race",
+# _COMBINED_DIMENSION) is removed before the row is routed and mapped, so the rest goes through
 # exactly the path the same text takes as a row of its own:
 # _is_ethnicity_only_label first ("Race : Hispanic" is an ethnicity row, as
 # before), then _map_race_label. The mapping keeps the posted label as
@@ -669,8 +671,19 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # prefix is fuzzily matched as before, without the check. On the re-fetched
 # 2026-11-15 snapshot the check stops no match: no race block changes. It
 # guards the stripped labels against a registrant's next negated row.
+#
+# Combined names. A combined name starting with the ethnicity dimension, or
+# joined by "or" or "and/or" ("Ethnicity or Race: White"), was not removed
+# and the row was counted as other (a review finding on the ethnicity
+# dimension rule below). It is now removed as "Race and Ethnicity" is. On the
+# re-fetched 2026-11-15 inputs no row label carries such a prefix before a
+# value (the combined names posted there are bare titles, as "Ethnicity/Race",
+# "Race or Ethnic Group"), so no race block changes.
+_DIMENSION_JOIN = r"(?:/|&|and\s*/\s*or\b|and\b|or\b)"
+_COMBINED_DIMENSION = (r"(?:race\s*" + _DIMENSION_JOIN + r"\s*(?:ethnicity|ethnic\s+group)"
+                       r"|(?:ethnicity|ethnic\s+group)\s*" + _DIMENSION_JOIN + r"\s*race)")
 _RACE_DIMENSION_PREFIX_RX = re.compile(
-    r"^(?:race\s*(?:and|&|/)\s*ethnicity|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
+    r"^(?:" + _COMBINED_DIMENSION + r"|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
 
 
 # Negation as a word ("Not Reported", "Non-White", "No race") or "non" joined
@@ -692,6 +705,7 @@ def _strip_race_dimension(label: str) -> Optional[str]:
 
       "Race: Black"                             -> "Black"
       "Race and Ethnicity : White Non-Hispanic" -> "White Non-Hispanic"
+      "Ethnicity or Race: White"                -> "White"
       "Race unknown"                            -> None
       "Ethnicity: Hispanic"                     -> None
     """
@@ -937,8 +951,10 @@ def _negates_ethnicity(label: str) -> bool:
 #
 # Method. A row names the ethnicity dimension when its cleaned label begins
 # with "Ethnicity" or "Ethnic group" as a word ("Ethnicities" does not), not
-# followed by "/ Race", "and Race" or "& Race" (a combined name, as "Race/
-# Ethnicity", whose rows belong to the one classification). Then, by table:
+# followed by "/ Race", "& Race", "and Race", "or Race" or "and/or Race" (a
+# combined name, as "Race/Ethnicity", whose rows belong to the one
+# classification; its prefix is removed by the race dimension rule above, so
+# "Ethnicity or Race: White" is read as White). Then, by table:
 #   - every row of the table names it and at least one row, without the
 #     prefix, names a race category itself (White, Black, Asian, American
 #     Indian, Native Hawaiian or Pacific Islander, more than one race: a
@@ -999,7 +1015,7 @@ def _negates_ethnicity(label: str) -> bool:
 # ethnicity block changes.
 
 _ETHNICITY_DIMENSION_RX = re.compile(
-    r"^\s*ethnic(?:ity|\s+group)(?![a-z])(?!\s*(?:/|and\b|&)\s*race)", re.IGNORECASE)
+    r"^\s*ethnic(?:ity|\s+group)(?![a-z])(?!\s*" + _DIMENSION_JOIN + r"\s*race)", re.IGNORECASE)
 _ETHNICITY_DIMENSION_PREFIX_RX = re.compile(
     r"^\s*(?:ethnicity|ethnic\s+group)\s*[:\-–—_,](?:\s*[:\-–—_,])*\s*(?=\S)", re.IGNORECASE)
 
