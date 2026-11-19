@@ -386,7 +386,11 @@ def mena_subcategory(label: str) -> Optional[str]:
 #     allowed; a group mapping to other or unknown ("Mixed Heritage or
 #     Other") fails the rule. The
 #     subcategory is the one subcategory every mapped group shares, else none.
-# A label naming a negation ("Non-European heritage") is not read. The row is
+# A label naming a negation ("Non-European heritage") is not read, nor one
+# with a parenthesised non-answer ("White - (N/A) Heritage"). A heritage label
+# holding a non-answer is not fuzzily matched by the vocabulary step before
+# this rule either ("American Indian or Alaska Native-NA H"); without a
+# heritage word such a label keeps that fuzzy match, as before. The row is
 # flagged heritage_label.
 #
 # What it does not do. A heritage label the vocabulary already reads as one
@@ -476,6 +480,17 @@ _HERITAGE_QUALIFIER_RACE = {
 }
 
 
+def _heritage_holds_non_answer(text: str) -> bool:
+    """True when the text holds a non-answer: a word of _HERITAGE_NON_ANSWER_RX,
+    or a compact one ("NA", "N/A", "Unk") as a word or as the whole text with
+    its punctuation removed."""
+    if _HERITAGE_NON_ANSWER_RX.search(text) is not None:
+        return True
+    words = [w for w in re.split(r"[\s.\-–—/()]+", text.lower()) if w]
+    return (any(w in _HERITAGE_COMPACT_NON_ANSWERS for w in words)
+            or re.sub(r"[^a-z]", "", text.lower()) in _HERITAGE_COMPACT_NON_ANSWERS)
+
+
 def _heritage_text(label: str) -> Optional[str]:
     """The label without glosses, heritage words, "of" and a final "n (%)",
     or None when it holds no heritage word or names a negation (block comment
@@ -484,6 +499,11 @@ def _heritage_text(label: str) -> Optional[str]:
     if _HERITAGE_WORD_RX.search(text) is None or _negates_race(text):
         return None
     text = _HERITAGE_COUNT_SUFFIX_RX.sub("", text)
+    # A gloss is removed as an abbreviation ("(Af Am)"), but a parenthesised
+    # non-answer ("(N/A)", "(Unk)") is not one: the label is not read (a
+    # review finding).
+    if any(_heritage_holds_non_answer(gloss.group(0)) for gloss in _HERITAGE_GLOSS_RX.finditer(text)):
+        return None
     text = _HERITAGE_GLOSS_RX.sub(" ", text)
     text = _HERITAGE_WORD_RX.sub(" ", text)
     # "Black, of African" and "Black of African": "of" separates the race
@@ -726,10 +746,15 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
                         "flags": flags
                     }
 
-    # Fuzzy match
+    # Fuzzy match. A heritage-template label holding a non-answer is not
+    # matched fuzzily: "American Indian or Alaska Native-NA H" scores 93
+    # against "American Indian or Alaska Native" (block comment
+    # "Heritage-template labels"; a review finding).
     match = process.extractOne(label_clean, RACE_MAPPINGS.keys(), scorer=fuzz.ratio)
     if (match and match[1] >= fuzzy_threshold
-            and not (guard_negation and _negates_race(label_clean) != _negates_race(match[0]))):
+            and not (guard_negation and _negates_race(label_clean) != _negates_race(match[0]))
+            and not (heritage and _HERITAGE_WORD_RX.search(label_clean) is not None
+                     and _heritage_holds_non_answer(_HERITAGE_WORD_RX.sub(" ", label_clean)))):
         omb, subcat = RACE_MAPPINGS[match[0]]
         flags.append(f"fuzzy_match_{match[1]}")
         return {
