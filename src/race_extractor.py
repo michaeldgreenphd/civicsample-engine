@@ -1097,8 +1097,10 @@ _RACE_SPECIFIC = frozenset({
 #
 # Method. A row is named for the ethnicity dimension when its cleaned label
 # begins with the word "Ethnicity" or "Ethnic group", with or without a
-# separator after it, and does not go on to name race as well ("Ethnicity/Race
-# Unknown", "Ethnicity and Race: White" are left as they were)
+# separator after it, and does not go on to name race as well: the word race,
+# races or racial right after it, alone or after "/", "&", ",", a dash, "and"
+# or "or" ("Ethnicity/Race Unknown", "Ethnicity and Race: White", "Ethnicity
+# or Race: White", "Ethnicity Race Unknown" are left as they were)
 # (_names_ethnicity_dimension). The decision is made for each plain race
 # table, from its rows as _map_plain_row reads them:
 #   - When some row that is NOT named for the ethnicity dimension is mapped as
@@ -1157,7 +1159,8 @@ _RACE_SPECIFIC = frozenset({
 # two rows of NCT01452191 above are the only named rows still counted as
 # race.
 _ETHNICITY_DIMENSION_RX = re.compile(
-    r"^\s*ethnic(?:ity|\s+group)(?![a-z])(?!\s*(?:/|&|\band\b)\s*rac(?:e|ial))", re.IGNORECASE)
+    r"^\s*ethnic(?:ity|\s+group)(?![a-z])"
+    r"(?!\s*(?:[/&,\-–—]|\band\b|\bor\b)?\s*rac(?:e|es|ial)(?![a-z]))", re.IGNORECASE)
 _ETHNICITY_DIMENSION_PREFIX_RX = re.compile(
     r"^\s*ethnic(?:ity|\s+group)(?:\s*[:\-–—_,])+\s*(?=\S)", re.IGNORECASE)
 ETHNICITY_DIMENSION_ROW_FLAG = "ethnicity_dimension_row"
@@ -1170,7 +1173,8 @@ def _names_ethnicity_dimension(label: str) -> bool:
 
       "Ethnicity-Not Japanese", "Ethnicity Not Reported"  -> True
       "Ethnic group: White British"                       -> True
-      "Ethnicity/Race Unknown", "Ethnic minority"         -> False
+      "Ethnicity/Race Unknown", "Ethnicity or Race: White" -> False
+      "Ethnic minority"                                   -> False
     """
     return _ETHNICITY_DIMENSION_RX.match(clean_demographic_label(label)) is not None
 

@@ -1482,6 +1482,8 @@ AS_RACE_FLAG = "ethnicity_dimension_as_race"
     ("ETHNICITY - NOT REPORTED", True), ("Ethnicity, Chinese", True), ("Ethnic group: White British", True),
     ("Ethnicity", True),
     ("Ethnicity/Race Unknown", False), ("Ethnicity and Race: White", False), ("Ethnicity & Racial group", False),
+    ("Ethnicity or Race: White", False), ("Ethnicity, Race: Asian", False), ("Ethnicity - Race Unknown", False),
+    ("Ethnicity Race Unknown", False), ("Ethnicity/Races: Other", False), ("Ethnicity: Racecourse staff", True),
     ("Ethnic minority", False), ("Ethnically diverse", False), ("Race: Black", False), ("White", False),
 ])
 def test_names_ethnicity_dimension(label: str, named: bool) -> None:
@@ -1609,3 +1611,12 @@ def test_a_stripped_ethnicity_name_keeps_the_negation_check() -> None:
     negated = race["raw_categories"][1]
     assert negated["original"] == "Ethnicity: Non-African American"
     assert {"unmapped", AS_RACE_FLAG} <= set(negated["flags"])
+
+
+def test_a_label_naming_both_dimensions_beside_race_rows_stays_counted() -> None:
+    """"Ethnicity or Race: White" names race too: it is a race row, not the
+    table's ethnicity classification, and is not left out."""
+    table = _class_table(COMBINED_TITLE, [("Black", 10), ("Ethnicity or Race: White", 20)])
+    race = extract_race_data(_study("NCT99000568", [table], participants=30))
+    assert race["skipped_ethnicity_rows"] == []
+    assert sum(race["omb_totals"].values()) == 30
