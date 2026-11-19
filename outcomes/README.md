@@ -81,6 +81,7 @@ groups differ on, not with every dimension the measure's groups carry
 | Baseline population | Baseline total (rule T: the Total group is never added to its arms), number started, registered enrolment with its type, and the population description when posted. Each number names the field it came from. |
 | Adverse events | Whether serious and other event rows are posted, numbers at risk per group, the frequency threshold. |
 | Subgroup signals | Rule SG2 over 18 structured fields of every posted outcome measure: field path, measure index, type and title, the matched text verbatim, and the dimension (age, sex, race, ethnicity, other). |
+| Reported primary results (layer B) | For each posted PRIMARY measure, copied verbatim with the JSON path of the measure or analysis: the analysis population (`populationDescription`, stated once per measure), the groups (id and title), every denominator row with its own units and the count per group, and for each analysis the compared groups, estimate type and value, confidence level, sides and limits, p-value, statistical method and non-inferiority type. Strings stay as the registry returns them; nothing is cast, rounded, relabelled or judged, and an absent field is null. `run.json` lists these fields as `fields_copied`. |
 
 Every record carries `method_version` (`results-structure-1`) and
 `document_and_publication_review: "not_reviewed"`.

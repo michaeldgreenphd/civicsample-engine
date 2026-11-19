@@ -176,6 +176,58 @@ def test_between_arm_analysis_with_a_bound_p_value_and_both_limits() -> None:
         ('<0.001', 'bound', True, 'Hazard Ratio (HR)')
 
 
+def _at(obj: Any, path: str) -> Any:
+    """The value at a JSON path such as resultsSection.outcomeMeasuresModule.outcomeMeasures[0].analyses[1]."""
+    for part in path.split('.'):
+        name, _, idx = part.partition('[')
+        obj = obj[name]
+        if idx:
+            obj = obj[int(idx.rstrip(']'))]
+    return obj
+
+
+def test_reported_facts_are_copied_verbatim_from_their_paths() -> None:
+    # Layer B: what the registry reports for each primary measure, copied as the API returns it (strings are
+    # not cast: '0.710' stays '0.710'), with the path it came from; every denominator row keeps its own units.
+    eyes = {'units': 'Eyes', 'counts': F.counts(('190', '188'), 'OG')}
+    prim = F.measure(analyses=[
+        F.analysis(paramType='Hazard Ratio (HR)', paramValue='0.710', ciPctValue='95', ciNumSides='TWO_SIDED',
+                   ciLowerLimit='0.60', ciUpperLimit='0.84', pValue='<0.001', statisticalMethod='Cox',
+                   nonInferiorityType='SUPERIORITY'),
+        F.analysis(paramType='Mean Difference', paramValue='NA', ciNumSides='ONE_SIDED', ciUpperLimit='1.2')],
+        populationDescription='All randomised participants (intention to treat).')
+    prim['denoms'].append(eyes)
+    study = F.study(1, results=F.results_section(outcomeMeasuresModule={'outcomeMeasures': [
+        F.measure('Other', 'SECONDARY', analyses=[F.analysis(pValue='0.5')]), prim]}))
+    [m] = record(study)['primary_measures']
+    assert m['source_path'] == 'resultsSection.outcomeMeasuresModule.outcomeMeasures[1]'
+    src = _at(study, m['source_path'])
+    for key, field in RS.REPORTED_MEASURE_FIELDS.items():
+        assert m[key] == src.get(field), key
+    assert m['groups'] == [{'id': 'OG000', 'title': 'Zorbatinib'}, {'id': 'OG001', 'title': 'Placebo'}]
+    assert m['denominators'] == [
+        {'units': 'Participants', 'counts': [{'group_id': 'OG000', 'value': '98'}, {'group_id': 'OG001', 'value': '97'}]},
+        {'units': 'Eyes', 'counts': [{'group_id': 'OG000', 'value': '190'}, {'group_id': 'OG001', 'value': '188'}]}]
+    assert len(m['analyses']) == 2
+    for a in m['analyses']:
+        asrc = _at(study, a['source_path'])
+        for key, field in RS.REPORTED_ANALYSIS_FIELDS.items():
+            assert a[key] == asrc.get(field), (a['source_path'], key)
+        assert a['group_ids'] == asrc['groupIds']
+    assert m['analyses'][0]['estimate_value'] == '0.710'
+    # Absent is None, never zero or an empty string; S1's flags are computed as before.
+    one_sided = m['analyses'][1]
+    assert (one_sided['ci_lower_limit'], one_sided['p_value'], one_sided['estimate_value']) == (None, None, 'NA')
+    assert (one_sided['estimate_value_numeric'], one_sided['both_confidence_limits']) == (False, False)
+    # A measure with no population, groups, denominators or analyses posted says so.
+    [bare] = record(F.study(1, results=F.results_section(outcomeMeasuresModule={'outcomeMeasures': [
+        {'type': 'PRIMARY', 'title': 'Fictional bare measure'}]})))['primary_measures']
+    assert (bare['population'], bare['groups'], bare['denominators'], bare['analyses']) == (None, [], [], [])
+    # The copied fields are listed for run.json, by registry path, and none is a rule's output.
+    assert 'resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].paramValue' in RS.FIELDS_COPIED
+    assert 'resultsSection.outcomeMeasuresModule.outcomeMeasures[].populationDescription' in RS.FIELDS_COPIED
+
+
 def test_an_analysis_needs_named_groups_two_of_them_and_a_p_value_or_both_limits() -> None:
     one_group = analysed(F.analysis(('OG000',), pValue='0.03'))
     assert (one_group['between_arm_analysis']['any_usable_analysis'], one_group['between_arm_analysis']['posted']) == (True, False)
