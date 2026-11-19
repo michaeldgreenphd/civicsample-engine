@@ -439,6 +439,10 @@ _HERITAGE_ABBREVIATIONS = {
     "ai": "american_indian_alaska_native", "an": "american_indian_alaska_native",
     "af": "black_african_american", "afr": "black_african_american",
     "nat hawaiian": "native_hawaiian_pacific_islander",
+    # The second half of the category's own name, posted as a group of its
+    # own ("Asian Heritage and Other Pacific Islander Heritage").
+    "other pacific islander": "native_hawaiian_pacific_islander",
+    "other pacific islanders": "native_hawaiian_pacific_islander",
     "asi": "asian", "east a": "asian", "east asi": "asian", "south a": "asian",
     "south east a": "asian", "southeast a": "asian", "sea": "asian",
 }

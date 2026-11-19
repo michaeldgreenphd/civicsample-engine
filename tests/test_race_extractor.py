@@ -1728,6 +1728,7 @@ def test_a_heritage_template_label_maps_to_its_race(label: str, category: str, s
     "Af Am/Af Her & White",
     "Asian Heritage and Native Hawaiian Heritage",  # two races, not the 1977 grouping
     "Asian Heritage and Pacific Islander Heritage",  # each side its own heritage
+    "Asian Heritage and Other Pacific Islander Heritage",
 ])
 def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
     mapping = rx.map_race_category(label)
