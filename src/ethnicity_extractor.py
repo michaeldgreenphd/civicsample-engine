@@ -57,6 +57,24 @@ ETHNICITY_MAPPINGS = {
     "Another Hispanic, Latino/a or Spanish Origin": ("hispanic_latino", None),
     "Another Hispanic, Latino, or Spanish origin (e.g. Savadorian, Dominican, Columbian, Guatemalan, etc)":
         ("hispanic_latino", None),                      # posted with its examples, misspellings included
+    # Rows posted beside those wordings (same block comment, "Follow-up
+    # wordings", "Siblings"). The census Mexican origin, as "Mexican" and
+    # "Chicano" are mapped:
+    "Mexican, Mexican American, Chicano": ("hispanic_latino", "mexican"),
+    "Mexican, Mexican American, Chicano/a": ("hispanic_latino", "mexican"),
+    # The OMB definition of Hispanic or Latino ("a person of Mexican, Puerto
+    # Rican, Cuban, South or Central American, or other Spanish culture or
+    # origin") spelled out as a row, in each spelling posted. It names several
+    # origins, so no subcategory.
+    "Mexican, Puerto Rican, Cuban, Central or So. Amer.": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Cuban, Central or So Amer.": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Cuban, Central/So American": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Cuban, Central/So. American": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Cuban, Central or South Am.": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Cuban Central or So. Americ": ("hispanic_latino", None),
+    "Mexican, Cuban, Puerto Rican, Central/So. American": ("hispanic_latino", None),
+    "Mexican,Puerto Rican,Cuban,Central or So. Amer/Oth": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Central or So. Amer. or Oth": ("hispanic_latino", None),
 
     # Not Hispanic or Latino
     "Not Hispanic or Latino": ("not_hispanic_latino", None),
@@ -191,9 +209,31 @@ ETHNICITY_MAPPINGS = {
 #     Hispanic row. Not Hispanic. NCT02381288 posts it alone (17 of 17) and
 #     NCT02430870 posts "NA"; as with "Non American Hispanic", the reading is
 #     an inference from these tables and does not carry over to other labels.
-# Measured with these entries alone: 26 blocks change, 7 from all-zero
-# rejection to reported; Hispanic +70, Not Hispanic +1,477, unknown -1,433;
-# ethnicity_rows_unread falls from 290 blocks (119 not reported) to 264 (112).
+# Siblings. With those entries alone, the 8 "Not meeting definition" blocks
+# read every participant they classify as not Hispanic, because the row
+# beside it, the OMB definition spelled out, matched nothing and names no
+# Hispanic term, so not even ethnicity_rows_unread said so (NCT01557517: Not
+# Hispanic 34, Hispanic 0, the definition row 6 balanced into unknown). That
+# row is an entry too, in the nine spellings posted, including three in
+# tables beside a plain "Not Hispanic" row (NCT01519817, NCT01675141,
+# NCT01468311), whose blocks also read Hispanic 0. So is "Mexican, Mexican
+# American, Chicano" (and "Chicano/a"), posted beside "Another Hispanic",
+# with the subcategory the vocabulary gives "Mexican" and "Chicano".
+#
+# Measured on the same inputs as below, against engine main at the time
+# (with the Total-class rule): 20 labels (42 rows) change, every one from
+# unmapped to a category. 29 blocks change, 7 from all-zero rejection to
+# reported: Hispanic +117, Not Hispanic +1,477, unknown -1,478. The net +116
+# are the participants of the newly reported blocks (114) and 1 each in
+# NCT01553188 and NCT01557517: each table holds a race classification and an
+# ethnicity classification, and the race classification's "Unknown" row (1)
+# is read as ethnicity unknown beside an ethnicity classification that is
+# whole, as it was before; balancing had hidden it. The sibling rows alone
+# change 13 of the 29 (Hispanic +47). ethnicity_rows_unread falls from 290
+# blocks (119 not reported) to 264 (112). Three changed blocks read one
+# category only because their tables post one: NCT02504892 ("A person not
+# meeting definition" 3 of 3), NCT02381288 ("Non-Hispanic and Latino" 17 of
+# 17), NCT05958888 (Hispanic origins only, 63 of 63).
 #
 # Combined classifications. "American Hispanic" was a Hispanic row to the race
 # extractor but not to this one, so the two readings of an exact combined
@@ -233,6 +273,13 @@ _EXACT_ONLY_KEYS = frozenset({
     "Another Hispanic, Latino, or Spanish origin (e.g. Savadorian, Dominican, Columbian, Guatemalan, etc)",
     "Not meeting definition for Hispanic or Latino", "Not meeting the definition for Hispanic or Latino",
     "A person not meeting definition of Hispanic/Latino", "Non-Hispanic and Latino",
+    # their siblings
+    "Mexican, Mexican American, Chicano", "Mexican, Mexican American, Chicano/a",
+    "Mexican, Puerto Rican, Cuban, Central or So. Amer.", "Mexican, Puerto Rican, Cuban, Central or So Amer.",
+    "Mexican, Puerto Rican, Cuban, Central/So American", "Mexican, Puerto Rican, Cuban, Central/So. American",
+    "Mexican, Puerto Rican, Cuban, Central or South Am.", "Mexican, Puerto Rican, Cuban Central or So. Americ",
+    "Mexican, Cuban, Puerto Rican, Central/So. American", "Mexican,Puerto Rican,Cuban,Central or So. Amer/Oth",
+    "Mexican, Puerto Rican, Central or So. Amer. or Oth",
 })
 # The keys a fuzzy match may return, in the vocabulary's order.
 _FUZZY_KEYS = tuple(key for key in ETHNICITY_MAPPINGS if key not in _EXACT_ONLY_KEYS)

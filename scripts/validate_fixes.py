@@ -46,6 +46,10 @@ Tests:
  19. NCT99000130 — Age-band classes beside a "Total" class that repeats
      their rows, in a "Race/Ethnicity, Customized" and a "Sex: Female, Male"
      measure (fictional study, the labels and counts of NCT04911296)
+ 20. NCT99000115 — Race rows beside the OMB definition of Hispanic spelled
+     out ("Mexican, Puerto Rican, Central or So. Amer. or Oth") and "Not
+     meeting definition for Hispanic or Latino" (fictional study, the table
+     shape of NCT02153918)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -61,7 +65,7 @@ totals and flags (EXPECTED_ETHNICITY); study 15 also asserts its race block,
 whose rows are prefixed "Race: " (EXPECTED_SKIPPED_ETHNICITY). Study 19
 asserts its ethnicity totals and flags (EXPECTED_ETHNICITY) and its sex totals
 and flags (EXPECTED_SEX): the Total class is counted once, the age bands not
-again.
+again. Study 20 asserts its ethnicity totals and flags (EXPECTED_ETHNICITY).
 A mismatch stops the harness.
 """
 import json
@@ -609,6 +613,27 @@ MOCK_NCT99000130 = _make_study(
     total_participants=150,
 )
 
+# ---------- NCT99000115 (fictional): "Not meeting definition for Hispanic or Latino" ----------
+# 27 participants classified twice in one table: by race (Black 3, White 23,
+# Multi-racial 1) and by ethnicity (the OMB definition of Hispanic spelled
+# out 2, "Not meeting definition for Hispanic or Latino" 25). Both ethnicity
+# rows are read; before, neither was, and the block ended in all-zero
+# rejection. With the "not meeting" row alone it would read 25 Not Hispanic
+# and no Hispanic participant.
+MOCK_NCT99000115 = _make_study(
+    "NCT99000115",
+    "NCT99000115 - Not meeting the definition of Hispanic (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("Black or African American", 3), ("White", 23),
+                             ("Mexican, Puerto Rican, Central or So. Amer. or Oth", 2),
+                             ("Not meeting definition for Hispanic or Latino", 25), ("Multi-racial", 1)]
+        ]),
+    ],
+    total_participants=27,
+)
+
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
 # OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
@@ -666,6 +691,10 @@ EXPECTED_ETHNICITY = {
     # balanced into unknown.
     "NCT99000130": {"omb": {"hispanic_latino": 84, "not_hispanic_latino": 62, "unknown_not_reported": 4},
                     "flags": ["denominator_balanced", "race_joined_label", "total_class_only"]},
+    # Both rows of the ethnicity classification: the OMB definition spelled
+    # out 2, "Not meeting definition for Hispanic or Latino" 25.
+    "NCT99000115": {"omb": {"hispanic_latino": 2, "not_hispanic_latino": 25, "unknown_not_reported": 0},
+                    "flags": []},
 }
 
 
@@ -859,6 +888,7 @@ def main() -> None:
         (MOCK_NCT99000113, "NCT99000113"),
         (MOCK_NCT99000114, "NCT99000114"),
         (MOCK_NCT99000130, "NCT99000130"),
+        (MOCK_NCT99000115, "NCT99000115"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

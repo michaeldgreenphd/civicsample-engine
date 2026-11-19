@@ -600,7 +600,28 @@ VOCABULARY_GAPS = [
     ("A person not meeting definition of Hispanic/Latino", "not_hispanic_latino"),
     # follow-up wordings: the complement of "Hispanic or Latino" in its tables
     ("Non-Hispanic and Latino", "not_hispanic_latino"),
+    # siblings: the OMB definition of Hispanic or Latino spelled out, in each spelling posted
+    ("Mexican, Puerto Rican, Cuban, Central or So. Amer.", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Cuban, Central or So Amer.", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Cuban, Central/So American", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Cuban, Central/So. American", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Cuban, Central or South Am.", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Cuban Central or So. Americ", "hispanic_latino"),
+    ("Mexican, Cuban, Puerto Rican, Central/So. American", "hispanic_latino"),
+    ("Mexican,Puerto Rican,Cuban,Central or So. Amer/Oth", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Central or So. Amer. or Oth", "hispanic_latino"),
 ]
+
+
+@pytest.mark.parametrize("label", ["Mexican, Mexican American, Chicano", "Mexican, Mexican American, Chicano/a"])
+def test_the_census_mexican_row_is_hispanic_mexican(label: str) -> None:
+    """Posted beside "Another Hispanic, Latino, or Spanish origin": Hispanic,
+    with the subcategory "Mexican" and "Chicano" map to."""
+    table = _table(COMBINED, [(label, 24), ("Puerto Rican", 5),
+                              ("Another Hispanic, Latino, or Spanish origin", 34)])
+    eth = extract_ethnicity_data(_study("NCT99000805", [table], participants=63))
+    assert eth["omb_totals"] == {"hispanic_latino": 63, "not_hispanic_latino": 0, "unknown_not_reported": 0}
+    assert eth["subcategory_totals"]["hispanic_latino_mexican"] == 24
 
 
 @pytest.mark.parametrize("label, category", VOCABULARY_GAPS)
@@ -675,6 +696,9 @@ def test_vocabulary_gap_entries_are_never_fuzzy_targets() -> None:
     ("Latino or Hispanic", "Not Latino or Hispanic"),
     ("Ethnicity: American hispanic", "Ethnicity: Non American hispanic"),
     ("White, of Hispanic origin", "White, not of Hispanic origin"),
+    ("Mexican, Puerto Rican, Cuban, Central or So. Amer.", "Not meeting definition for Hispanic or Latino"),
+    ("Another Hispanic, Latino/a, or Spanish Origin", "Not of Hispanic, Latino/a, or Spanish Origin"),
+    ("Hispanic or Latino", "Non-Hispanic and Latino"),
 ])
 def test_both_sides_of_a_posted_pair_are_read(hispanic: str, not_hispanic: str) -> None:
     """A table posting a wording and its opposite (block comment "Plain
