@@ -1574,3 +1574,31 @@ def test_an_all_prefixed_ethnicity_classification_publishes_no_race() -> None:
     assert [r["original"] for r in race["skipped_ethnicity_rows"]] == [
         "Ethnicity: Hispanic", "Ethnicity: Not Hispanic", "Ethnicity: Unknown"]
     assert "ethnicity_dimension_row" in race["skipped_ethnicity_rows"][2]["flags"]
+
+
+def test_an_origin_group_row_is_not_evidence_that_an_all_prefixed_table_is_race() -> None:
+    """"Japanese" is in the race vocabulary (Asian, subcategory japanese), but
+    "Ethnicity: Japanese" / "Ethnicity: Not Japanese" classifies one
+    ethnicity, not race (a review finding): no row names a race category
+    itself, so neither row is counted as race and both are recorded."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: Japanese", 40), ("Ethnicity: Not Japanese", 60)])
+    race = extract_race_data(_study("NCT99000558", [table], participants=100))
+    assert race["reported"] is False
+    assert race["omb_totals"]["asian"] == 0
+    assert [r["original"] for r in race["skipped_ethnicity_rows"]] == [
+        "Ethnicity: Japanese", "Ethnicity: Not Japanese"]
+    assert all("ethnicity_dimension_row" in r["flags"] for r in race["skipped_ethnicity_rows"])
+
+
+def test_an_origin_group_row_is_read_as_race_when_another_row_names_a_race() -> None:
+    """The NCT01151215 shape: "Ethnicity: Native American" names a race
+    category itself, so the table is a race classification and its
+    "Ethnicity: Japanese" and "Ethnicity: Chinese" rows are read as Asian."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: Native American", 5), ("Ethnicity: Japanese", 30),
+                                          ("Ethnicity: Chinese", 25), ("Ethnicity: Other", 40)])
+    race = extract_race_data(_study("NCT99000559", [table], participants=100))
+    assert race["reported"] is True
+    assert race["omb_totals"]["american_indian_alaska_native"] == 5
+    assert race["omb_totals"]["asian"] == 55
+    assert race["omb_totals"]["other"] == 40
+    assert race["skipped_ethnicity_rows"] == []

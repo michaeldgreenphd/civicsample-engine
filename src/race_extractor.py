@@ -940,12 +940,21 @@ def _negates_ethnicity(label: str) -> bool:
 # followed by "/ Race", "and Race" or "& Race" (a combined name, as "Race/
 # Ethnicity", whose rows belong to the one classification). Then, by table:
 #   - every row of the table names it and at least one row, without the
-#     prefix, maps to a named race (White, Black, Asian, American Indian,
-#     Native Hawaiian, more than one race; _ethnicity_dimension_is_the_table):
-#     the registrant used "Ethnicity" for the one classification the table
-#     posts, a race classification by its rows (NCT03476187: "Ethnicity : Caucasian"
-#     154 / "Ethnicity : Black or African American" 62 / "Ethnicity : Hispanic
-#     or Latin" 16 ...). The dimension name and its separator(s) (":", "-",
+#     prefix, names a race category itself (White, Black, Asian, American
+#     Indian, Native Hawaiian or Pacific Islander, more than one race: a
+#     mapping to one of them with no subcategory;
+#     _ethnicity_dimension_is_the_table): the registrant used "Ethnicity" for
+#     the one classification the table posts, a race classification by its
+#     rows (NCT03476187: "Ethnicity : Caucasian" 154 / "Ethnicity : Black or
+#     African American" 62 / "Ethnicity : Hispanic or Latin" 16 ...). A row
+#     naming an origin group that the vocabulary files under a race with a
+#     subcategory ("Japanese", "Chinese", "Arab", "African", "Native
+#     Hawaiian") is not that evidence: such a name is as much an ethnicity as
+#     a race, and "Ethnicity: Japanese" / "Ethnicity: Not Japanese" classifies
+#     one ethnicity, not race (a review finding). In the 2026-11-15 inputs,
+#     all five all-prefixed tables that pass the test have a row naming a race
+#     category itself, so this requirement changes no output there. The
+#     dimension name and its separator(s) (":", "-",
 #     "–", "—", "_", ",") are removed and the rest is read exactly as the bare
 #     label, flagged dimension_wording_stripped, as a "Race:" prefix is (block
 #     comment "Race dimension named in the row label"). A row of such a table
@@ -1014,18 +1023,23 @@ def _strip_ethnicity_dimension(label: str) -> Optional[str]:
 
 def _ethnicity_dimension_is_the_table(labels: List[str]) -> bool:
     """True when every row of a table names the ethnicity dimension and at
-    least one of them, without the prefix, is a race: the registrant's name
-    for the race classification the table posts. An all-prefixed table with
-    no race row ("Ethnicity: Hispanic" / "Ethnicity: Not Hispanic" /
-    "Ethnicity: Unknown") is an ethnicity classification (block comment
-    "Ethnicity dimension named in the row label")."""
+    least one of them, without the prefix, names a race category itself: the
+    registrant's name for the race classification the table posts. A row
+    naming an origin group the vocabulary files under a race with a
+    subcategory ("Japanese", "Arab", "African") is not that evidence, since
+    such a name is as much an ethnicity as a race. An all-prefixed table with
+    no such row ("Ethnicity: Hispanic" / "Ethnicity: Not Hispanic" /
+    "Ethnicity: Unknown"; "Ethnicity: Japanese" / "Ethnicity: Not Japanese")
+    is an ethnicity classification (block comment "Ethnicity dimension named
+    in the row label")."""
     if not labels or not all(_names_ethnicity_dimension(label) for label in labels):
         return False
     for label in labels:
         stripped = _strip_ethnicity_dimension(label)
         mapping = _map_plain_row(stripped, 0, False) if stripped is not None else None
         if (mapping is not None and mapping.get("confidence") != "low"
-                and mapping.get("omb_category") in _RACE_SPECIFIC):
+                and mapping.get("omb_category") in _RACE_SPECIFIC
+                and not mapping.get("subcategory")):
             return True
     return False
 
