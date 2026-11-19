@@ -1725,6 +1725,7 @@ def test_a_heritage_template_label_maps_to_its_race(label: str, category: str, s
     "Asian - East Asian and White Heritage",
     "AA/African Heritage and AI or AN and White",
     "Af Am/Af Her & White",
+    "Asian Heritage and Native Hawaiian Heritage",  # two races, not the 1977 grouping
 ])
 def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
     mapping = rx.map_race_category(label)
@@ -1736,6 +1737,7 @@ def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
     "African - White / Caucasian Heritage",
     "Mixed Heritage or Other",
     "Asian and Pacific Islander Heritage",  # the 1977 grouped category, not a combination
+    "Asian & Other Pacific Islander Heritage",
     "Non-European heritage",
     "Asian - East Asian",  # no heritage word: outside this rule
 ])

@@ -381,9 +381,10 @@ def mena_subcategory(label: str) -> Optional[str]:
 # african_american). A label without a heritage word ("Asian - East Asian")
 # is not read here. Two races joined by "/" or "or" without "Multiple"
 # ("African Amer/African Heritage/Amer Ind or Alaska N") are not read: the
-# row may name either race or both. Asian joined to Pacific Islander by "and"
-# is not read as a combination: "Asian and Pacific Islander" is the grouped
-# category of the 1977 standard.
+# row may name either race or both. "Asian and Pacific Islander" (or "&",
+# "Other Pacific Islander") is not read as a combination: it is the grouped
+# category of the 1977 standard. Only that wording: "Asian Heritage and Native
+# Hawaiian Heritage" names two races (a review finding).
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main: rows
@@ -405,6 +406,8 @@ _HERITAGE_WORD_RX = re.compile(
 _HERITAGE_GLOSS_RX = re.compile(r"\(\s*[a-z]{1,4}\.?(?:\s*[/ ]\s*[a-z]{1,4}\.?)*\s*\)", re.IGNORECASE)
 _HERITAGE_COUNT_SUFFIX_RX = re.compile(r",?\s*n\s*\(\s*%\s*\)\s*$", re.IGNORECASE)
 _HERITAGE_MULTIPLE_RX = re.compile(r"^(?:multiple|mixed)\s*[\-:–—]\s*", re.IGNORECASE)
+_HERITAGE_GROUPED_API_RX = re.compile(r"asian\s*(?:&|and)\s*(?:other\s+)?pacific\s+islanders?",
+                                      re.IGNORECASE)
 _HERITAGE_QUALIFIER_RX = re.compile(
     r"^(?P<race>white|wh|wt|w|asian|black|african\s+american)\s*[\-:;–—,]\s*(?=\S)", re.IGNORECASE)
 _HERITAGE_PART_SPLIT_RX = re.compile(r"\s*(?:&|\band\b)\s*", re.IGNORECASE)
@@ -523,6 +526,11 @@ def _heritage_combination(label: str) -> bool:
         return False
     if _HERITAGE_MULTIPLE_RX.match(text) is not None:
         return True
+    # "Asian and Pacific Islander" is the grouped category of the 1977
+    # standard, one group rather than a combination: not read. Only that
+    # wording: "Asian Heritage and Native Hawaiian Heritage" names two races.
+    if _HERITAGE_GROUPED_API_RX.fullmatch(text) is not None:
+        return False
     parts = [p for p in _HERITAGE_PART_SPLIT_RX.split(text) if p.strip()]
     if len(parts) < 2:
         return False
@@ -532,10 +540,6 @@ def _heritage_combination(label: str) -> bool:
         if reading is None:
             return False
         races.add(reading[0])
-    # "Asian and Pacific Islander" is the grouped category of the 1977
-    # standard, one group rather than a combination: not read.
-    if races == {"asian", "native_hawaiian_pacific_islander"}:
-        return False
     return len(races) >= 2
 
 def map_race_category(label: str, fuzzy_threshold: int = 85, *,
