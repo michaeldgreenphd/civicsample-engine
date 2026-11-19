@@ -400,6 +400,12 @@ def test_a_race_unknown_row_beside_an_ethnicity_classification_is_not_ethnicity(
     ("Ethnicity - Not Hispanic or Latino", "not_hispanic_latino"),
     ("Ethnic group - Hispanic or Latino", "hispanic_latino"),
     ("Race and Ethnicity : Hispanic", "hispanic_latino"),
+    ("Ethnicity/Race: Hispanic", "hispanic_latino"),
+    ("Ethnicity or Race: Hispanic", "hispanic_latino"),
+    ("Race or Ethnicity: Not Hispanic", "not_hispanic_latino"),
+    ("Ethnicity and/or Race: Hispanic or Latino", "hispanic_latino"),
+    ("Race or Ethnic Group: Hispanic", "hispanic_latino"),
+    ("Ethnic group/Race - Not Hispanic", "not_hispanic_latino"),
     ("Hispanic (Regardless of Race)", "hispanic_latino"),
     ("Hispanic or Latino (any race)", "hispanic_latino"),
 ])
@@ -708,3 +714,26 @@ def test_both_sides_of_a_posted_pair_are_read(hispanic: str, not_hispanic: str) 
     eth = extract_ethnicity_data(_study("NCT99000804", [table], participants=50))
     assert eth["omb_totals"] == {"hispanic_latino": 9, "not_hispanic_latino": 41, "unknown_not_reported": 0}
     assert "ethnicity_rows_unread" not in eth["flags"]
+
+
+@pytest.mark.parametrize("label, value", [
+    ("Race/Ethnicity: White", "White"), ("Race and Ethnicity : Hispanic", "Hispanic"),
+    ("Ethnicity/Race: Asian", "Asian"), ("Ethnicity or Race: Not Hispanic", "Not Hispanic"),
+    ("Race and/or Ethnic group - Black", "Black"), ("Ethnic group or race: Hispanic or Latino", "Hispanic or Latino"),
+])
+def test_both_extractors_remove_the_same_combined_names(label: str, value: str) -> None:
+    """One definition of a combined race and ethnicity name (utils,
+    "Combined race and ethnicity dimension names") serves both extractors."""
+    from src.ethnicity_extractor import _strip_dimension_wording
+    assert race_extractor._strip_race_dimension(label) == value
+    assert _strip_dimension_wording(label) == value
+
+
+def test_race_rows_under_a_combined_name_keep_a_race_table_race_only() -> None:
+    """"Ethnicity/Race: White" names the combined classification, not the
+    ethnicity dimension, so a table of race rows posted that way is still a
+    race classification on the ethnicity side, as "Race/Ethnicity: White" is."""
+    for prefix in ("Race/Ethnicity", "Ethnicity/Race", "Ethnicity or Race"):
+        table = _table(COMBINED, [(f"{prefix}: White", 40), (f"{prefix}: Black", 10)])
+        eth = extract_ethnicity_data(_study("NCT99000720", [table], participants=50))
+        assert eth["reported"] is False and eth["flags"] == ["race_only_table_skipped"], prefix

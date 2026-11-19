@@ -316,6 +316,9 @@ def test_summary_rows_carry_the_ethnicity_rows_part_of_race_unknown(tmp_path: pa
                and isinstance(r["race"].get("omb_totals"), dict)][:6]
     for i, r in enumerate(records):
         r["race"] = dict(r["race"], reported=True)
+        # This test is about unknown_ethnicity_only alone; mena_in_white rides
+        # the same way (test_summary_rows_carry_the_mena_part_of_white).
+        r["race"].pop("mena_in_white", None)
         if i < 2:
             r["race"]["unknown_ethnicity_only"] = 4 - i
         else:
@@ -335,6 +338,55 @@ def test_summary_rows_carry_the_ethnicity_rows_part_of_race_unknown(tmp_path: pa
         else:
             assert race == {"reported": True, "omb_totals": src["omb_totals"]}
     assert sum("unknown_ethnicity_only" in r for r in rows.values()) == 2
+
+
+def test_the_race_distribution_carries_the_mena_part_of_white(tmp_path: pathlib.Path) -> None:
+    """raceDistribution.mena_in_white sums race.mena_in_white over the trials
+    that report race. It is a part of white, which keeps its whole sum; a
+    record without the field adds 0."""
+    records = [r for r in _records(40) if isinstance(r.get("race"), dict)
+               and isinstance(r["race"].get("omb_totals"), dict)][:10]
+    assert len(records) == 10
+    parts = [4, 0, 9, 0, 6, 0, 0, 1, 0, 0]
+    for r, part in zip(records, parts):
+        r["race"] = dict(r["race"], omb_totals=dict(r["race"]["omb_totals"]), reported=True)
+        if part:
+            r["race"]["mena_in_white"] = part
+            r["race"]["omb_totals"]["white"] = (r["race"]["omb_totals"].get("white") or 0) + part
+        else:
+            r["race"].pop("mena_in_white", None)
+    records[4]["race"]["reported"] = False            # a trial that does not report race adds nothing
+    _, summary_file = _case(tmp_path, records)
+    dist = json.loads(summary_file.read_text())["raceDistribution"]
+    reporting = [r for r in records if r["race"].get("reported")]
+    assert dist["mena_in_white"] == sum(r["race"].get("mena_in_white", 0) for r in reporting) == 14
+    assert dist["white"] == sum(r["race"]["omb_totals"].get("white") or 0 for r in reporting)
+    assert dist["mena_in_white"] <= dist["white"]
+
+
+def test_summary_rows_carry_the_mena_part_of_white(tmp_path: pathlib.Path) -> None:
+    """A recent-study row's race block carries race.mena_in_white when the
+    record has it; an older record's row has no such key."""
+    records = [r for r in _records(40) if isinstance(r.get("race"), dict)
+               and isinstance(r["race"].get("omb_totals"), dict)][:4]
+    for i, r in enumerate(records):
+        r["race"] = dict(r["race"], reported=True)
+        r["race"].pop("unknown_ethnicity_only", None)
+        if i < 2:
+            r["race"]["mena_in_white"] = i
+        else:
+            r["race"].pop("mena_in_white", None)
+        r["results_date"] = f"2024-0{i + 1}-15"
+    _, summary_file = _case(tmp_path, records)
+    rows = {row["nct_id"]: row["race"] for row in json.loads(summary_file.read_text())["recentStudies"]}
+    by_id = {r["nct_id"]: r for r in records}
+    for nct, race in rows.items():
+        src = by_id[nct]["race"]
+        if "mena_in_white" in src:
+            assert race["mena_in_white"] == src["mena_in_white"]
+        else:
+            assert "mena_in_white" not in race
+    assert sum("mena_in_white" in r for r in rows.values()) == 2
 
 
 def test_the_generator_stops_on_a_results_date_the_site_cannot_read(tmp_path: pathlib.Path) -> None:
