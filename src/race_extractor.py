@@ -7,7 +7,7 @@ with granular subcategories preserved.
 import re
 from typing import Dict, List, Tuple, Optional
 from rapidfuzz import fuzz, process
-from src.utils import clean_demographic_label
+from src.utils import clean_demographic_label, COMBINED_DIMENSION, DIMENSION_JOIN
 # The manuscript parser's sex/gender measure selection (/sex|gender/i), reused
 # to find race rows posted under a sex/gender title. Imported, not copied, so
 # the two selections cannot drift; the vendored parser is not modified.
@@ -769,7 +769,7 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # "–", "—" or "_"; the names are "Race" and a combined name, "Race" and
 # "Ethnicity" or "Ethnic group" in either order joined by "/", "&", "and",
 # "or" or "and/or": "Race and Ethnicity", "Ethnicity or Race",
-# _COMBINED_DIMENSION) is removed before the row is routed and mapped, so the rest goes through
+# utils.COMBINED_DIMENSION) is removed before the row is routed and mapped, so the rest goes through
 # exactly the path the same text takes as a row of its own:
 # _is_ethnicity_only_label first ("Race : Hispanic" is an ethnicity row, as
 # before), then _map_race_label. The mapping keeps the posted label as
@@ -821,11 +821,8 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # re-fetched 2026-11-15 inputs no row label carries such a prefix before a
 # value (the combined names posted there are bare titles, as "Ethnicity/Race",
 # "Race or Ethnic Group"), so no race block changes.
-_DIMENSION_JOIN = r"(?:/|&|and\s*/\s*or\b|and\b|or\b)"
-_COMBINED_DIMENSION = (r"(?:race\s*" + _DIMENSION_JOIN + r"\s*(?:ethnicity|ethnic\s+group)"
-                       r"|(?:ethnicity|ethnic\s+group)\s*" + _DIMENSION_JOIN + r"\s*race)")
 _RACE_DIMENSION_PREFIX_RX = re.compile(
-    r"^(?:" + _COMBINED_DIMENSION + r"|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
+    r"^(?:" + COMBINED_DIMENSION + r"|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
 
 
 # Negation as a word ("Not Reported", "Non-White", "No race") or "non" joined
@@ -1157,7 +1154,7 @@ def _negates_ethnicity(label: str) -> bool:
 # ethnicity block changes.
 
 _ETHNICITY_DIMENSION_RX = re.compile(
-    r"^\s*ethnic(?:ity|\s+group)(?![a-z])(?!\s*" + _DIMENSION_JOIN + r"\s*race)", re.IGNORECASE)
+    r"^\s*ethnic(?:ity|\s+group)(?![a-z])(?!\s*" + DIMENSION_JOIN + r"\s*race)", re.IGNORECASE)
 _ETHNICITY_DIMENSION_PREFIX_RX = re.compile(
     r"^\s*(?:ethnicity|ethnic\s+group)\s*[:\-–—_,](?:\s*[:\-–—_,])*\s*(?=\S)", re.IGNORECASE)
 
