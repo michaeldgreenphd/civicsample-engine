@@ -1597,3 +1597,15 @@ def test_a_race_table_without_named_rows_is_unchanged() -> None:
     mappings = [rx._map_plain_row(label, count, False) for label, count in rows]
     read, left_out = rx._read_ethnicity_dimension_rows(rows, mappings, False, False)
     assert read is mappings and left_out == [False] * 4
+
+
+def test_a_stripped_ethnicity_name_keeps_the_negation_check() -> None:
+    """Read as race, "Ethnicity: Non-African American" becomes "Non-African
+    American", 88.9 against "African American": without the check it would
+    be counted as Black."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: White", 40), ("Ethnicity: Non-African American", 9)])
+    race = extract_race_data(_study("NCT99000567", [table], participants=49))
+    assert _nonzero(race) == {"white": 40, "other": 9}
+    negated = race["raw_categories"][1]
+    assert negated["original"] == "Ethnicity: Non-African American"
+    assert {"unmapped", AS_RACE_FLAG} <= set(negated["flags"])

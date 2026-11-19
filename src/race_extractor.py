@@ -704,7 +704,7 @@ def _strip_race_dimension(label: str) -> Optional[str]:
 
 
 def _map_plain_row(label: str, count: int, pct_converted: bool,
-                   total_only: bool = False) -> Optional[Dict]:
+                   total_only: bool = False, guard_negation: bool = False) -> Optional[Dict]:
     """Map one row the way every plain race row is mapped.
 
     Returns None for a purely ethnicity label (e.g. "Hispanic or Latino"), which
@@ -713,13 +713,16 @@ def _map_plain_row(label: str, count: int, pct_converted: bool,
     with the row's count. A race-by-sex row's race part goes through exactly
     this function, so it lands where the same text would land on its own row.
     A leading race dimension name is removed first (block comment "Race
-    dimension named in the row label").
+    dimension named in the row label"). guard_negation applies that
+    comment's negation check to the fuzzy match even when no race name is
+    removed: the caller passes it for text whose ethnicity dimension name
+    it removed (block comment "Rows named for the ethnicity dimension").
     """
     stripped = _strip_race_dimension(label)
     text = stripped if stripped is not None else label
     if _is_ethnicity_only_label(text):
         return None
-    mapping = _map_race_label(text, guard_negation=stripped is not None)
+    mapping = _map_race_label(text, guard_negation=guard_negation or stripped is not None)
     if stripped is not None:
         mapping["original"] = clean_demographic_label(label)
         mapping["flags"].append("dimension_wording_stripped")
@@ -1108,8 +1111,12 @@ _RACE_SPECIFIC = frozenset({
 #     separator (":", "-", "–", "—", "_" or ",") are removed from each named
 #     row (_strip_ethnicity_dimension) and the rest is mapped by _map_plain_row
 #     like any race row: "Ethnicity : Caucasian" is White, "Ethnicity:
-#     Hispanic" is still an ethnicity-only row. The row keeps the posted label
-#     and carries the flag ethnicity_dimension_as_race. This reading is kept
+#     Hispanic" is still an ethnicity-only row. As for a removed race name, a
+#     fuzzy match of the rest is kept only when it agrees with its key on
+#     negation ("Race dimension named in the row label", "Negation check"):
+#     "Ethnicity: Non-African American" stays unmapped other rather than
+#     Black. The row keeps the posted label and carries the flag
+#     ethnicity_dimension_as_race. This reading is kept
 #     only when at least one row then maps to a race-specific category
 #     without the "unmapped" flag. Otherwise the rows are read as they were
 #     before this rule: "Ethnicity: White British" 1,008 / "Ethnicity: Other
@@ -1206,7 +1213,9 @@ def _read_ethnicity_dimension_rows(rows: List[Tuple[str, int]],
             if stripped is None:
                 as_race.append(mapping)
                 continue
-            remapped = _map_plain_row(stripped, count, pct_converted, total_only)
+            # The name was removed: a fuzzy match must agree with its key on
+            # negation, as for a removed race name (block comment above).
+            remapped = _map_plain_row(stripped, count, pct_converted, total_only, guard_negation=True)
             if remapped is not None:
                 remapped["original"] = clean_demographic_label(label)
                 remapped["flags"].append(ETHNICITY_DIMENSION_AS_RACE_FLAG)
