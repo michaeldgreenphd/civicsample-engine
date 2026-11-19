@@ -354,8 +354,9 @@ def mena_subcategory(label: str) -> Optional[str]:
 # "n (%)", and reading "of" after a race as a comma ("Black of African"):
 #   - combinations (_heritage_combination, before the slash fragments): a
 #     label starting "Multiple" or "Mixed" with a separator when every group
-#     after it reads as a race, every word of it (not "Mixed-Heritage or
-#     Other", "Multiple-Heritage Refused", "Multiple-White-Refused
+#     after it reads as a race, every word of it and not by a fuzzy match
+#     (not "Mixed-Heritage or Other", "Multiple-Heritage Refused",
+#     "Multiple-White-Refused Heritage", "Multiple-African American-NA
 #     Heritage"), or whose parts
 #     joined by "&" or "and" each read as one race (below) and name two or
 #     more races, is more than one race;
@@ -507,8 +508,9 @@ def _heritage_group(group: str, atomic: bool = False) -> Optional[Tuple[str, Opt
 def _heritage_race(text: str, strict: bool = False) -> Optional[Tuple[str, Optional[str], str]]:
     """(omb_category, subcategory, confidence) when the heritage text names
     one race, else None (block comment "Heritage-template labels").
-    strict=True requires every group to map, also after a qualifier: a group
-    of a "Multiple-" tail is read whole ("White-Refused" is not White)."""
+    strict=True requires every group to map, not fuzzily, also after a
+    qualifier: a group of a "Multiple-" tail is read whole ("White-Refused"
+    is not White)."""
     races: set[str] = set()
     subcategories: set[Optional[str]] = set()
     confidence = "high"
@@ -538,7 +540,7 @@ def _heritage_race(text: str, strict: bool = False) -> Optional[Tuple[str, Optio
             unmapped += 1
             continue
         omb, subcat, conf = reading
-        if omb not in _RACE_SPECIFIC or conf == "low":
+        if omb not in _RACE_SPECIFIC or conf == "low" or (strict and conf != "high"):
             return None
         races.add(omb)
         subcategories.add(subcat)
@@ -587,7 +589,12 @@ def _heritage_combination(label: str) -> bool:
             group = group.strip(" -–—:,")
             if not group:
                 continue
-            reading = _heritage_group(group) or _heritage_race(group, strict=True)
+            # Only a reading that is not fuzzy counts directly: "African
+            # American-NA" is close to "African American" but holds "NA"
+            # (a review finding); such a group is read whole instead.
+            reading = _heritage_group(group)
+            if reading is None or reading[2] != "high":
+                reading = _heritage_race(group, strict=True)
             if reading is None or reading[0] not in _RACE_SPECIFIC:
                 return False
         return True
