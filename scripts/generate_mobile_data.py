@@ -355,6 +355,12 @@ def main(argv: list[str] | None = None) -> None:
             # Records extracted before the field existed add 0, so their
             # unknown stays whole.
             race_dist["unknown_ethnicity_only"] += r.get("unknown_ethnicity_only") or 0
+            # The part of white that the rows name Middle Eastern or North
+            # African (race_extractor, "Middle Eastern or North African within
+            # White"). A PART of white, not a further category: the site can
+            # draw it apart and take it out of "White". Records extracted
+            # before the field existed add 0, so their White stays whole.
+            race_dist["mena_in_white"] += r.get("mena_in_white") or 0
             for k, v in (r.get("subcategory_totals") or {}).items():
                 race_subcats[k] += v or 0
 
@@ -603,6 +609,11 @@ def main(argv: list[str] | None = None) -> None:
         row = _demo(obj, "omb_totals")
         if row["reported"] and "unknown_ethnicity_only" in obj:
             row["unknown_ethnicity_only"] = obj.get("unknown_ethnicity_only") or 0
+        # Likewise the Middle Eastern or North African part of white
+        # (race_extractor, "Middle Eastern or North African within White"),
+        # only when the record carries it.
+        if row["reported"] and "mena_in_white" in obj:
+            row["mena_in_white"] = obj.get("mena_in_white") or 0
         return row
 
     _COMPACT_SG = ("sex_report_status", "reported_sex", "reported_gender", "reported_both",

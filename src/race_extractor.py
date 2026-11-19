@@ -200,6 +200,134 @@ def is_race_table(title: Optional[str]) -> bool:
     """
     return any(word.lower() in RACE_TITLE_WORDS for word in title_words(title))
 
+# ── Middle Eastern or North African labels ─────────────────────────────────
+#
+# The race categories here are the 1997 OMB minimum categories, the ones the
+# registry's "Race (NIH/OMB)" template offers, under which Middle Eastern and
+# North African people are White. The vocabulary already filed "Middle
+# Eastern", "North African", "Arab", "Persian" and "Iranian" as White with a
+# subcategory. Other wordings of the same groups matched nothing and were
+# counted as other: "Middle Eastern or North African" (the term of OMB's March
+# 2024 revision of SPD 15, which makes it a minimum category of its own) and
+# the "White - Arabic/North African Heritage" family, posted in some thirty
+# spellings ("White-Arabic/North African heritage", "WHITE (W) ARABIC/NORTH
+# AFRICAN HER", "Wh - Arabic/North African H"). Some ("Arabic", "Arabian",
+# "MENA") were even quarantined as labels that are not race, which left their
+# participants to denominator balancing as unknown.
+#
+# Method. mena_subcategory reads a cleaned label as, in order:
+#   - an optional White qualifier: "White", "Wh", "White (W)", "White (Wt)",
+#     followed by "-", ":", "(", a dash or a space. A slash does not qualify:
+#     "White/Middle Eastern" is one row for two groups;
+#   - one or more group terms: Middle East(ern), Mid East, North Africa(n),
+#     Maghreb, Arab / Arabic / Arabian, Arab American, Arabian Peninsula,
+#     Persian, Iranian, MENA (each may carry "White" before it), joined by
+#     "/", "//", ",", "&", ":", "(", "or", "and", "and/or" or a space;
+#   - an optional "(MENA)" or ")" and an optional suffix: heritage (also
+#     "Hertage", "HER", "H", "H.", "(NA) H"), descent, origin(s), ancestry,
+#     ethnicity, ", n(%)".
+# Nothing else may be in the label. Such a label maps to White with a
+# subcategory: middle_eastern_arab when every term is Arab, Arabic or
+# Arabian; middle_eastern_persian when every term is Persian or Iranian;
+# middle_eastern or north_african when every term is that one; middle_eastern
+# for several Middle Eastern groups ("Arab/Middle Eastern"); else, for North
+# African beside another group or MENA, middle_eastern_north_african. The row is flagged mena_label. The rule runs
+# after the exact and case-insensitive vocabulary match (so "Arab" keeps its
+# entry) and before the slash fragments, which read "Arabic/North African" as
+# North African alone and "Middle Eastern/North African" as Middle Eastern
+# alone; those now get the subcategory that names both.
+#
+# What it does not do. A label naming another group beside these ("White/
+# Middle Eastern", "Arab or West Asian", "Chinese, Middle Eastern, or Other
+# Ethnic Group", "Middle Eastern or North African/Mediterranean", "Other:
+# Arabic") is mapped as before: its participants cannot be told apart. The
+# vocabulary's "Turkish" (middle_eastern_turkish) is not changed, and is not in
+# MENA_SUBCATEGORIES below: whether the 2024 definition takes it in was not
+# checked against the standard's text.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main (the
+# same before and after the ethnicity-dimension rule): 376 race blocks change
+# their totals, 414 their totals or subcategories, 421 any field (7 only in
+# flags); none changes reported. White +7,436: 6,894 participants from
+# other (rows that matched nothing) and 542 from unknown (rows quarantined as
+# not race, NCT02304406's "Arabic" 389 the largest). Their rows, with the
+# 9,743 participants already White with a Middle Eastern or North African
+# subcategory, make mena_in_white: 17,179 participants in 559 trials, 0.067%
+# of White. Five ethnicity blocks change: with the quarantined rows counted,
+# their race table adds up exactly, and the ethnicity extractor counts its
+# race rows as not Hispanic (ethnicity_extractor, "Race rows of a combined
+# classification"; NCT00617851, NCT01875367, NCT03395314, NCT04926779,
+# NCT05208359: Not Hispanic +401, unknown -401).
+_MENA_TERM = (r"(?:white\s+)?(?:(?:middle|mid)[\s\-]*e{1,2}ast(?:ern)?|north[\s\-]*afric(?:a|an)|maghreb|"
+              r"arabian\s+peninsula|arab(?:ic|ian)?(?:[\s\-]+american)?|persian|iranian|mena)")
+_MENA_JOIN = r"(?:\s*(?:/{1,2}|,|&|:|\()\s*|\s+(?:or|and/or|and)\s+|\s*,\s*(?:or|and)\s+|\s+)"
+_MENA_LABEL_RX = re.compile(
+    rf"^(?:(?:white|wh)(?:\s*\((?:w|wt)\))?\s*(?:[\-:–—(]\s*|\s+))?"
+    rf"(?P<terms>{_MENA_TERM}(?:{_MENA_JOIN}{_MENA_TERM})*)"
+    r"\s*(?:\(\s*mena\s*\)|\))?"
+    r"(?:[\s\-]*(?:\(na\)\s*)?(?:heritage|hertage|her|h\.?|descent|origins?|ancestry|ethnicity))?"
+    r"(?:\s*,?\s*n\s*\(%\))?\s*$",
+    re.IGNORECASE)
+_MENA_TERM_RX = re.compile(_MENA_TERM, re.IGNORECASE)
+
+# ── Middle Eastern or North African within White ───────────────────────────
+#
+# Every race block carries mena_in_white: the participants of its counted
+# rows filed as White with one of MENA_SUBCATEGORIES, a part of
+# omb_totals["white"], never more than it. It lets a reader see White as the
+# 1997 standard counts it and as the 2024 revision would, with Middle Eastern
+# or North African apart, from the same rows and the same denominator: White
+# without them is omb_totals["white"] - mena_in_white.
+#
+# It is what the rows name, not an estimate. Most trials post the registry's
+# "Race (NIH/OMB)" template, which has no such category, so their Middle
+# Eastern and North African participants are in White and in no row of their
+# own; mena_in_white is 0 for them. On the 2026-11-15 snapshot, no
+# "Race (NIH/OMB)" table posts a Middle Eastern or North African row; every
+# one is in a customized table. A row naming these groups beside another
+# ("White/Middle Eastern") is not in it.
+#
+# A record extracted before the field existed has no mena_in_white key: "not
+# looked at", not 0.
+MENA_SUBCATEGORIES = frozenset({
+    "middle_eastern", "north_african", "middle_eastern_arab", "middle_eastern_persian",
+    "middle_eastern_north_african"})
+
+
+def mena_subcategory(label: str) -> Optional[str]:
+    """The White subcategory of a label naming Middle Eastern or North
+    African groups only, else None (block comment above).
+
+      "White - Arabic/North African Heritage" -> "middle_eastern_north_african"
+      "Middle Eastern or North African"       -> "middle_eastern_north_african"
+      "Arab ethnicity"                        -> "middle_eastern_arab"
+      "White/Middle Eastern"                  -> None
+    """
+    match = _MENA_LABEL_RX.match(clean_demographic_label(label))
+    if match is None:
+        return None
+    kinds = set()
+    for term in _MENA_TERM_RX.findall(match.group("terms")):
+        word = re.sub(r"^white\s+", "", term.lower())
+        if word.startswith("arab"):
+            kinds.add("middle_eastern_arab")
+        elif word in ("persian", "iranian"):
+            kinds.add("middle_eastern_persian")
+        elif word.startswith(("middle", "mid")):
+            kinds.add("middle_eastern")
+        elif word.startswith("north") or word == "maghreb":
+            kinds.add("north_african")
+        else:
+            kinds.add("middle_eastern_north_african")
+    if len(kinds) == 1:
+        return kinds.pop()
+    # Several Middle Eastern groups ("Arab/Middle Eastern", "Arab/ Persian")
+    # are Middle Eastern; any mix with North African, or MENA, names both.
+    if kinds <= {"middle_eastern", "middle_eastern_arab", "middle_eastern_persian"}:
+        return "middle_eastern"
+    return "middle_eastern_north_african"
+
 def map_race_category(label: str, fuzzy_threshold: int = 85, *,
                       guard_negation: bool = False) -> Dict:
     """
@@ -243,6 +371,20 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
                 "original": label_clean,
                 "flags": flags
             }
+
+    # A label naming Middle Eastern or North African groups only (block
+    # comment "Middle Eastern or North African labels"), before the slash
+    # fragments, which would keep one group of "Arabic/North African".
+    mena = mena_subcategory(label_clean)
+    if mena is not None:
+        flags.append("mena_label")
+        return {
+            "omb_category": "white",
+            "subcategory": mena,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
 
     # Slash-compound normalization: try each "/" fragment individually
     # so "Caucasian/White" resolves even without a dedicated mapping entry
@@ -1471,6 +1613,10 @@ def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
         "unknown_explicit": 0,
         "unknown_ethnicity_only": 0,
         "unknown_inferred": 0,
+        # The part of omb_totals["white"] in Middle Eastern or North African
+        # rows (block comment "Middle Eastern or North African within
+        # White"); 0 when there are none.
+        "mena_in_white": 0,
         "subcategory_totals": {},
         "raw_categories": [],
         "quarantined_labels": [],
@@ -1632,6 +1778,13 @@ def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
     # ethnicity-only row"; rows of zero are recorded without it.
     if any(row["count"] > 0 for row in result["skipped_ethnicity_rows"]):
         result["flags"].append("ethnicity_rows_skipped")
+
+    # The MENA part of White, from the counted rows' subcategories (block
+    # comment "Middle Eastern or North African within White"). After
+    # all-zero rejection, which empties subcategory_totals: a rejected block
+    # holds 0.
+    result["mena_in_white"] = sum(result["subcategory_totals"].get(f"white_{sub}", 0)
+                                  for sub in MENA_SUBCATEGORIES)
 
     # Dedupe flags
     # sorted() so identical extractions serialize identically across runs
