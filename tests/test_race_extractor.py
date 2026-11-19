@@ -1464,3 +1464,63 @@ def test_prefixed_race_rows_under_a_sex_title_are_read_as_race() -> None:
     removed, so the sex/gender-titled table passes the gate."""
     table = _class_table("Sex/Gender, Customized", [("Race: White", 20), ("Race: Black", 10)])
     assert rx.is_sex_titled_race_table(table) is True
+
+
+# ── Middle Eastern or North African labels ─────────────────────────────────
+#
+# src/race_extractor.py, block comments "Middle Eastern or North African
+# labels" and "Middle Eastern or North African within White".
+
+@pytest.mark.parametrize("label, subcategory", [
+    ("Middle Eastern or North African", "middle_eastern_north_african"),
+    ("White - Arabic/North African Heritage", "middle_eastern_north_african"),
+    ("White - Arabic / North African heritage", "middle_eastern_north_african"),
+    ("WHITE (W) ARABIC/NORTH AFRICAN HER", "middle_eastern_north_african"),
+    ("Wh - Arabic/North African H", "middle_eastern_north_african"),
+    ("White (Middle Eastern or North African)", "middle_eastern_north_african"),
+    ("MENA: Middle Eastern North African", "middle_eastern_north_african"),
+    ("Middle Eastern/North African", "middle_eastern_north_african"),
+    ("White: Arabic", "middle_eastern_arab"),
+    ("Arab ethnicity", "middle_eastern_arab"),
+    ("North African descent", "north_african"),
+    ("Iranian/Persian", "middle_eastern_persian"),
+    ("Arab/Middle Eastern", "middle_eastern"),
+    ("Middle Eastern (Arab)", "middle_eastern"),
+])
+def test_a_label_naming_only_mena_groups_is_white_with_a_mena_subcategory(label: str, subcategory: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["confidence"]) == ("white", subcategory, "high")
+    assert subcategory in rx.MENA_SUBCATEGORIES
+
+
+@pytest.mark.parametrize("label", [
+    "White/Middle Eastern", "Arab or West Asian", "Other: Arabic", "Native Arab",
+    "Chinese, Middle Eastern, or Other Ethnic Group", "Middle Eastern or North African/Mediterranean",
+    "North African (Morocco)", "Caucasian and North African", "Midwest", "White", "Turkish",
+])
+def test_a_label_naming_another_group_is_not_read_by_the_mena_rule(label: str) -> None:
+    assert rx.mena_subcategory(label) is None
+
+
+def test_the_vocabularys_own_entries_keep_their_subcategories() -> None:
+    assert rx.map_race_category("Arab")["subcategory"] == "middle_eastern_arab"
+    assert rx.map_race_category("Middle Eastern")["subcategory"] == "middle_eastern"
+    assert "middle_eastern_turkish" not in rx.MENA_SUBCATEGORIES
+
+
+def test_mena_in_white_is_the_mena_part_of_white() -> None:
+    """The GSK heritage shape: before, its MENA row was counted as other."""
+    table = _category_table("Race/Ethnicity, Customized", [
+        ("White", 120), ("White - Arabic/North African Heritage", 14),
+        ("Black or African American", 10), ("White/Middle Eastern", 6)])
+    race = extract_race_data(_study("NCT99000560", [table], participants=150))
+    assert race["omb_totals"]["white"] == 140 and race["omb_totals"]["other"] == 0
+    assert race["mena_in_white"] == 14            # "White/Middle Eastern" names two groups: not in it
+    assert race["subcategory_totals"]["white_middle_eastern_north_african"] == 14
+
+
+def test_every_block_carries_mena_in_white() -> None:
+    plain = extract_race_data(_study("NCT99000561", [_category_table("Race (NIH/OMB)", [("White", 30), ("Asian", 5)])], 35))
+    assert plain["mena_in_white"] == 0
+    none = extract_race_data(_study("NCT99000562", [], 35))
+    assert none["reported"] is False and none["mena_in_white"] == 0

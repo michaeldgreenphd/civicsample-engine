@@ -46,6 +46,10 @@ Tests:
  19. NCT99000130 — Age-band classes beside a "Total" class that repeats
      their rows, in a "Race/Ethnicity, Customized" and a "Sex: Female, Male"
      measure (fictional study, the labels and counts of NCT04911296)
+ 20. NCT99000141 — Middle Eastern or North African rows in the wordings the
+     vocabulary did not read: "Middle Eastern or North African" and "White -
+     Arabic/North African Heritage", beside "White/Middle Eastern" (fictional
+     study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -61,7 +65,7 @@ totals and flags (EXPECTED_ETHNICITY); study 15 also asserts its race block,
 whose rows are prefixed "Race: " (EXPECTED_SKIPPED_ETHNICITY). Study 19
 asserts its ethnicity totals and flags (EXPECTED_ETHNICITY) and its sex totals
 and flags (EXPECTED_SEX): the Total class is counted once, the age bands not
-again.
+again. Study 20 asserts its race totals and mena_in_white (EXPECTED_MENA).
 A mismatch stops the harness.
 """
 import json
@@ -609,6 +613,33 @@ MOCK_NCT99000130 = _make_study(
     total_participants=150,
 )
 
+# ---------- NCT99000141 (fictional): Middle Eastern or North African wordings ----------
+# 200 participants. Both MENA wordings are White with a MENA subcategory and
+# make up mena_in_white (race_extractor, "Middle Eastern or North African
+# labels"); before, both were counted as other. "White/Middle Eastern" names
+# two groups: White, outside mena_in_white.
+MOCK_NCT99000141 = _make_study(
+    "NCT99000141",
+    "NCT99000141 - Middle Eastern or North African wordings (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 140),
+                _make_category("Middle Eastern or North African", 22),
+                _make_category("White - Arabic/North African Heritage", 13),
+                _make_category("White/Middle Eastern", 5),
+                _make_category("Black or African American", 20),
+            ])
+        ]),
+    ],
+    total_participants=200,
+)
+
+# Expected race totals and mena_in_white for the MENA study.
+EXPECTED_MENA = {
+    "NCT99000141": {"omb": {"white": 180, "black_african_american": 20}, "mena_in_white": 35},
+}
+
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
 # OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
@@ -834,6 +865,12 @@ def validate_study(study: dict, nct_id: str) -> None:
         print(f"\n  {nct_id}: expected ethnicity totals and flags — OK")
     if nct_id == "NCT99000106":
         check_race_rows_in_sex_table(race, sex)
+    if nct_id in EXPECTED_MENA:
+        expected = EXPECTED_MENA[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
+        assert race["mena_in_white"] == expected["mena_in_white"], f"{nct_id} mena_in_white: {race['mena_in_white']}"
+        print(f"\n  {nct_id}: expected race totals and mena_in_white — OK")
     if nct_id == "NCT99000110":
         check_joined_labels(race)
 
@@ -859,6 +896,7 @@ def main() -> None:
         (MOCK_NCT99000113, "NCT99000113"),
         (MOCK_NCT99000114, "NCT99000114"),
         (MOCK_NCT99000130, "NCT99000130"),
+        (MOCK_NCT99000141, "NCT99000141"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
