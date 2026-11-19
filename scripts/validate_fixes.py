@@ -46,6 +46,12 @@ Tests:
  19. NCT99000130 — Age-band classes beside a "Total" class that repeats
      their rows, in a "Race/Ethnicity, Customized" and a "Sex: Female, Male"
      measure (fictional study, the labels and counts of NCT04911296)
+ 20. NCT99000115 — Rows named for the ethnicity dimension ("Ethnicity-Not
+     Japanese") beside race rows that hold everyone (fictional study, the
+     table shape of NCT04783935)
+ 21. NCT99000116 — A race classification whose every row is named for the
+     ethnicity dimension ("Ethnicity : Caucasian") (fictional study, the
+     table shape of NCT03476187)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -61,7 +67,10 @@ totals and flags (EXPECTED_ETHNICITY); study 15 also asserts its race block,
 whose rows are prefixed "Race: " (EXPECTED_SKIPPED_ETHNICITY). Study 19
 asserts its ethnicity totals and flags (EXPECTED_ETHNICITY) and its sex totals
 and flags (EXPECTED_SEX): the Total class is counted once, the age bands not
-again.
+again. Study 20 asserts that its rows named for the ethnicity dimension are
+recorded and not counted as race (EXPECTED_SKIPPED_ETHNICITY,
+check_ethnicity_dimension_rows); study 21 asserts its race block and
+raceBreakdown, read as race (EXPECTED_RACE).
 A mismatch stops the harness.
 """
 import json
@@ -614,6 +623,43 @@ MOCK_NCT99000130 = _make_study(
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
 # classification (the Hispanic row's 6 are the inferred unknown). The rows
 # are recorded either way and enter no total.
+# ---------- NCT99000115 (fictional): ethnicity-dimension rows beside race rows ----------
+# 219 participants, classified by race in the "Race-" rows (all 219) and by
+# Japanese ethnicity in the "Ethnicity-" rows. Before, the 219 "Ethnicity-"
+# participants were counted again as race "other": a block of 438 for 219.
+MOCK_NCT99000115 = _make_study(
+    "NCT99000115",
+    "NCT99000115 - Ethnicity-dimension rows beside race rows (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("Ethnicity-Japanese", 0), ("Ethnicity-Not Japanese", 204),
+                             ("Ethnicity-Unknown or Not Reported", 15), ("Race-Asian", 2),
+                             ("Race-Black or African American", 1), ("Race-Other", 6),
+                             ("Race-Unknown or Not Reported", 26), ("Race-White", 184)]
+        ]),
+    ],
+    total_participants=219,
+)
+
+# ---------- NCT99000116 (fictional): a race classification named "Ethnicity" ----------
+# 244 participants, one row each; the rows are races under the name
+# "Ethnicity". Before, the 228 race-row participants were all race "other".
+MOCK_NCT99000116 = _make_study(
+    "NCT99000116",
+    "NCT99000116 - Race classification named Ethnicity (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("Ethnicity : Caucasian", 154), ("Ethnicity : Black or African American", 62),
+                             ("Ethnicity : Other", 5), ("Ethnicity : American Indian or Alaskan Native", 2),
+                             ("Ethnicity : Asian", 1), ("Ethnicity : Hispanic or Latino", 16),
+                             ("Ethnicity: Multiple Ethnicities", 4)]
+        ]),
+    ],
+    total_participants=244,
+)
+
 EXPECTED_SKIPPED_ETHNICITY = {
     "NCT02766335": {"rows": [("Hispanic", 2), ("Not Hispanic or Latino", 72)],
                     "omb": {"white": 40, "black_african_american": 25, "asian": 7, "unknown_not_reported": 2},
@@ -624,6 +670,13 @@ EXPECTED_SKIPPED_ETHNICITY = {
     "NCT99000109": {"rows": [("Hispanic", 6)],
                     "omb": {"white": 30, "black_african_american": 12, "unknown_not_reported": 8},
                     "unknown_ethnicity_only": 6, "unknown_inferred": 0},
+    # Rows named for the ethnicity dimension beside race rows that hold all
+    # 219 (race_extractor, "Rows named for the ethnicity dimension").
+    "NCT99000115": {"rows": [("Ethnicity-Japanese", 0), ("Ethnicity-Not Japanese", 204),
+                             ("Ethnicity-Unknown or Not Reported", 15)],
+                    "omb": {"white": 184, "asian": 2, "black_african_american": 1, "other": 6,
+                            "unknown_not_reported": 26},
+                    "unknown_inferred": 0},
     # Prefixed race rows map as their bare labels (race_extractor, "Race
     # dimension named in the row label"): before, Black 18, Asian 7 and
     # Other 21 were all counted as other.
@@ -682,6 +735,18 @@ EXPECTED_RACE = {
                               "race_table_superseded", "slash_normalized"],
                     "breakdown": {"Hispanic or Latino": 4, "Not Hispanic or Latino": 36,
                                   "White": 30, "Black/African American": 8, "Other": 2}},
+    # Every row named for the ethnicity dimension: read as race, the
+    # Hispanic row still an ethnicity row (its 16 are the shortfall).
+    "NCT99000116": {"reported": True,
+                    "omb": {"white": 154, "black_african_american": 62, "american_indian_alaska_native": 2,
+                            "asian": 1, "other": 9, "unknown_not_reported": 16},
+                    "flags": ["combined_race_ethnicity", "customized_table", "denominator_balanced",
+                              "ethnicity_dimension_as_race", "ethnicity_rows_skipped",
+                              "shortfall_is_ethnicity_rows", "unmapped"],
+                    "breakdown": {"Ethnicity : Caucasian": 154, "Ethnicity : Black or African American": 62,
+                                  "Ethnicity : Other": 5, "Ethnicity : American Indian or Alaskan Native": 2,
+                                  "Ethnicity : Asian": 1, "Ethnicity : Hispanic or Latino": 16,
+                                  "Ethnicity: Multiple Ethnicities": 4}},
 }
 
 
@@ -751,6 +816,16 @@ def check_race_rows_in_sex_table(race: dict, sex: dict) -> None:
         "East Asian/South East Asian": "race_label_in_sex_table",
     }, sex["quarantined_labels"]
     print("\n  NCT99000106: race rows counted once, as race (sex unknown 0) — OK")
+
+
+def check_ethnicity_dimension_rows(race: dict) -> None:
+    """NCT99000115: every row named for the ethnicity dimension is recorded
+    with the ethnicity_dimension_row flag, and the race block adds up to the
+    population, not to it twice."""
+    assert all("ethnicity_dimension_row" in r["flags"] for r in race["skipped_ethnicity_rows"]), \
+        race["skipped_ethnicity_rows"]
+    assert sum(race["omb_totals"].values()) == 219, race["omb_totals"]
+    print("\n  NCT99000115: ethnicity-dimension rows recorded, not counted as race — OK")
 
 
 def validate_study(study: dict, nct_id: str) -> None:
@@ -836,6 +911,8 @@ def validate_study(study: dict, nct_id: str) -> None:
         check_race_rows_in_sex_table(race, sex)
     if nct_id == "NCT99000110":
         check_joined_labels(race)
+    if nct_id == "NCT99000115":
+        check_ethnicity_dimension_rows(race)
 
 
 def main() -> None:
@@ -859,6 +936,8 @@ def main() -> None:
         (MOCK_NCT99000113, "NCT99000113"),
         (MOCK_NCT99000114, "NCT99000114"),
         (MOCK_NCT99000130, "NCT99000130"),
+        (MOCK_NCT99000115, "NCT99000115"),
+        (MOCK_NCT99000116, "NCT99000116"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

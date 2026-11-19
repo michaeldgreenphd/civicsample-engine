@@ -654,11 +654,10 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # other. 11 more blocks change only in their flags. No ethnicity block
 # changes.
 #
-# What it does not do. A row prefixed with the ethnicity dimension
+# What it does not do. A row named for the ethnicity dimension
 # ("Ethnicity-Unknown or Not Reported", "Ethnicity-Not Japanese") is not
-# changed here: it is not ethnicity-only by _is_ethnicity_only_label unless it
-# names Hispanic, so it is still mapped as race and usually counted as other.
-# That is a separate defect, left for its own change.
+# changed here; _parse_race_table decides it for the whole table (block
+# comment "Rows named for the ethnicity dimension").
 #
 # Negation check. A fuzzy match of a label whose prefix was removed is kept
 # only when the label and the matched key agree on negation (_negates_race),
@@ -1078,6 +1077,150 @@ _RACE_SPECIFIC = frozenset({
     "native_hawaiian_pacific_islander", "white", "more_than_one_race",
 })
 
+# ── Rows named for the ethnicity dimension ─────────────────────────────────
+#
+# A race table can hold rows whose label names the ethnicity dimension:
+# "Ethnicity-Not Japanese" 204 / "Ethnicity-Japanese" 0 / "Ethnicity-Unknown
+# or Not Reported" 15 beside "Race-White" 184 / "Race-Asian" 2 / ... of 219
+# (NCT04783935), or "Ethnicity Not Reported" 3 beside a full race
+# classification (NCT03927703). Unless such a row names Hispanic or Latino,
+# _is_ethnicity_only_label does not route it to the ethnicity pipeline, and
+# the vocabulary maps nothing in it: the row was counted as race "other", in
+# most tables on top of race rows that already held every participant.
+# Elsewhere the dimension name is the table's own word for race: every row of
+# "Race/Ethnicity, Customized" reads "Ethnicity : Caucasian" 154 / "Ethnicity :
+# Black or African American" 62 / ... (NCT03476187), and all of them were
+# counted as "other" too.
+#
+# Method. A row is named for the ethnicity dimension when its cleaned label
+# begins with the word "Ethnicity" or "Ethnic group", with or without a
+# separator after it, and does not go on to name race as well ("Ethnicity/Race
+# Unknown", "Ethnicity and Race: White" are left as they were)
+# (_names_ethnicity_dimension). The decision is made for each plain race
+# table, from its rows as _map_plain_row reads them:
+#   - When some row that is NOT named for the ethnicity dimension is mapped as
+#     race (counted or quarantined), the table has its own race rows, and the
+#     named rows are the table's ethnicity classification. Each named row is
+#     left out of the race counts and recorded in skipped_ethnicity_rows like
+#     an ethnicity-only row, with the flag ethnicity_dimension_row.
+#   - When every row mapped as race is named for the ethnicity dimension, the
+#     name is the table's word for what it classifies. The name and its
+#     separator (":", "-", "–", "—", "_" or ",") are removed from each named
+#     row (_strip_ethnicity_dimension) and the rest is mapped by _map_plain_row
+#     like any race row: "Ethnicity : Caucasian" is White, "Ethnicity:
+#     Hispanic" is still an ethnicity-only row. The row keeps the posted label
+#     and carries the flag ethnicity_dimension_as_race. This reading is kept
+#     only when at least one row then maps to a race-specific category
+#     without the "unmapped" flag. Otherwise the rows are read as they were
+#     before this rule: "Ethnicity: White British" 1,008 / "Ethnicity: Other
+#     ethnic group" 54 (NCT01452191) name no category the vocabulary holds,
+#     and leaving them out would end the block in all-zero rejection, a
+#     trial that posted a race classification reporting none.
+# A row without a separator ("Ethnicity Not Reported") is named for the
+# dimension, so the first branch leaves it out; the second maps it as posted,
+# since there is no name to remove.
+#
+# Why. In the first case the named row describes people who are already in
+# the table's race rows: NCT04783935's 204 "Not Japanese" participants are
+# among its 219, and counting them again as race "other" put the block at 453
+# participants for a population of 219. In the second case the rows are the
+# race classification, and the posted name hid the category.
+#
+# The recorded rows enter no total, as for any row in skipped_ethnicity_rows.
+# None names Hispanic, so _negates_ethnicity reads each as not stating the
+# ethnicity: a recorded row with participants keeps a shortfall in
+# unknown_inferred rather than unknown_ethnicity_only (block comment "A
+# shortfall that the ethnicity rows account for"). Race-by-sex tables and
+# sex/gender-titled tables are not changed.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main at
+# 1a1d5f8. 71 counted race tables held 106 named rows (14,779 participants),
+# almost all counted as other. 69 race blocks change, 63 in their totals; no
+# block changes reported. 87 named rows (13,163 participants) in 66 trials
+# are left out; 16 rows (552 participants) in three trials (NCT04711460,
+# NCT03476187, NCT03178669) are read as race. other -13,680, White +414,
+# Black or African American +84, American Indian or Alaska Native +19, Asian
+# +14, unknown +287 (unknown_inferred +301, unknown_explicit -14: a named
+# row such as "Ethnicity Unknown/Not Reported" that mapped to unknown is
+# left out, and where it left a gap the gap is inferred). Of the changed
+# blocks, 58 added up to more than their baseline population, by 12,877
+# participants; 4 do now, by 15, from race rows that do so as posted. No
+# ethnicity block, legacy sex block or combined_classification changes. The
+# two rows of NCT01452191 above are the only named rows still counted as
+# race.
+_ETHNICITY_DIMENSION_RX = re.compile(
+    r"^\s*ethnic(?:ity|\s+group)(?![a-z])(?!\s*(?:/|&|\band\b)\s*rac(?:e|ial))", re.IGNORECASE)
+_ETHNICITY_DIMENSION_PREFIX_RX = re.compile(
+    r"^\s*ethnic(?:ity|\s+group)(?:\s*[:\-–—_,])+\s*(?=\S)", re.IGNORECASE)
+ETHNICITY_DIMENSION_ROW_FLAG = "ethnicity_dimension_row"
+ETHNICITY_DIMENSION_AS_RACE_FLAG = "ethnicity_dimension_as_race"
+
+
+def _names_ethnicity_dimension(label: str) -> bool:
+    """True when the cleaned label begins with the ethnicity dimension's name
+    and does not also name race (block comment above).
+
+      "Ethnicity-Not Japanese", "Ethnicity Not Reported"  -> True
+      "Ethnic group: White British"                       -> True
+      "Ethnicity/Race Unknown", "Ethnic minority"         -> False
+    """
+    return _ETHNICITY_DIMENSION_RX.match(clean_demographic_label(label)) is not None
+
+
+def _strip_ethnicity_dimension(label: str) -> Optional[str]:
+    """The cleaned label without its leading ethnicity dimension name and
+    separator, or None when it has no separator to remove (block comment
+    above).
+
+      "Ethnicity : Caucasian"  -> "Caucasian"
+      "Ethnicity, Chinese"     -> "Chinese"
+      "Ethnicity Not Reported" -> None
+    """
+    text = clean_demographic_label(label)
+    prefix = _ETHNICITY_DIMENSION_PREFIX_RX.match(text)
+    if prefix is None:
+        return None
+    return text[prefix.end():].strip() or None
+
+
+def _read_ethnicity_dimension_rows(rows: List[Tuple[str, int]],
+                                   mappings: List[Optional[Dict]], pct_converted: bool,
+                                   total_only: bool) -> Tuple[List[Optional[Dict]], List[bool]]:
+    """Apply the rule of the block comment above to one plain table.
+
+    rows are the table's (label, count) and mappings what _map_plain_row
+    returned for each (None for an ethnicity-only row). Returns the mapping
+    each row is read with (None: left out of the race counts) and, for each
+    row, whether it is left out as a row named for the ethnicity dimension.
+    A table with no named row mapped as race is returned unchanged.
+    """
+    named = [_names_ethnicity_dimension(label) for label, _count in rows]
+    if not any(nm and m is not None for nm, m in zip(named, mappings)):
+        return mappings, [False] * len(rows)
+    own_race_rows = any(m is not None and not nm for nm, m in zip(named, mappings))
+    if not own_race_rows:
+        as_race: List[Optional[Dict]] = []
+        for (label, count), nm, mapping in zip(rows, named, mappings):
+            stripped = _strip_ethnicity_dimension(label) if nm else None
+            if stripped is None:
+                as_race.append(mapping)
+                continue
+            remapped = _map_plain_row(stripped, count, pct_converted, total_only)
+            if remapped is not None:
+                remapped["original"] = clean_demographic_label(label)
+                remapped["flags"].append(ETHNICITY_DIMENSION_AS_RACE_FLAG)
+            as_race.append(remapped)
+        if any(m is not None and m["omb_category"] in _RACE_SPECIFIC and "unmapped" not in m["flags"]
+               for m in as_race):
+            return as_race, [False] * len(rows)
+        # No race category under the name: read the rows as before (block
+        # comment above).
+        return mappings, [False] * len(rows)
+    left_out = [nm and m is not None for nm, m in zip(named, mappings)]
+    return [None if out else m for out, m in zip(left_out, mappings)], left_out
+
+
 def split_race_by_sex_label(label: str) -> Optional[Tuple[str, str]]:
     """Split a race-by-sex label into (race_part, sex).
 
@@ -1148,11 +1291,16 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         # Plain table, or sex words that are not a race-by-sex crossing:
         # every row mapped whole, as before.
         categories, quarantined, skipped = [], [], []
-        for label, count in rows:
-            mapping = _map_plain_row(label, count, pct_converted, total_only)
+        mappings = [_map_plain_row(label, count, pct_converted, total_only) for label, count in rows]
+        # Rows named for the ethnicity dimension (block comment of that name).
+        mappings, dimension_rows = _read_ethnicity_dimension_rows(rows, mappings, pct_converted,
+                                                                  total_only)
+        for (label, count), mapping, dimension_row in zip(rows, mappings, dimension_rows):
             if mapping is None:
-                skipped.append(_skipped_ethnicity_row(label, count, pct_converted,
-                                                      total_only=total_only))
+                record = _skipped_ethnicity_row(label, count, pct_converted, total_only=total_only)
+                if dimension_row:
+                    record["flags"].append(ETHNICITY_DIMENSION_ROW_FLAG)
+                skipped.append(record)
                 continue
             if _should_quarantine(mapping):
                 quarantined.append(mapping)
