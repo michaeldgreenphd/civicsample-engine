@@ -627,6 +627,7 @@ def build(records: dict[str, Any], problems: dict[str, Any], acquisition: dict[s
         'n_records': len(records),
         'fields_inspected': list(RS.FIELDS_INSPECTED),
         'fields_not_inspected': list(RS.FIELDS_NOT_INSPECTED),
+        'fields_copied': list(RS.FIELDS_COPIED),
         'subgroup_states': list(RS.ALL_SUBGROUP_STATES),
         'document_and_publication_review': RS.DOCUMENT_AND_PUBLICATION_REVIEW,
         'limitations': list(LIMITATIONS),
