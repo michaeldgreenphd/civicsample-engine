@@ -365,12 +365,15 @@ def mena_subcategory(label: str) -> Optional[str]:
 #     ("African - White") into groups, each mapped
 #     through the vocabulary (exact, slash or fuzzy, never this rule) or a
 #     template abbreviation (_HERITAGE_ABBREVIATIONS: "Wt", "AA", "Af",
-#     "Amer Ind", "AI", "AN", "Nat Hawaiian").
+#     "Amer Ind", "AI", "AN", "Nat Hawaiian", "East A", "SEA").
 #     A group that maps must name a race, and every such group and the
-#     qualifier must name the same one. Without a qualifier, the rest as a
-#     whole must also map to that race. A direction word left by a shared
-#     ending ("East" of "East/South East Asian") is allowed; a group mapping to
-#     other or unknown ("Mixed Heritage or Other") fails the rule. The
+#     qualifier must name the same one. Without a qualifier, a group that
+#     maps to nothing is allowed only when the rest as a whole maps to that
+#     race as one text (exact or fuzzy), not through one of its slash
+#     fragments: "Af Amer/White Heritage" is not read as White. A direction
+#     word left by a shared ending ("East" of "East/South East Asian") is
+#     allowed; a group mapping to other or unknown ("Mixed Heritage or
+#     Other") fails the rule. The
 #     subcategory is the one subcategory every mapped group shares, else none.
 # A label naming a negation ("Non-European heritage") is not read. The row is
 # flagged heritage_label.
@@ -389,19 +392,20 @@ def mena_subcategory(label: str) -> Optional[str]:
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main: rows
-# flagged heritage_label hold 263,865 participants in 768 trials, and 766
-# race blocks change their totals. Other falls by 263,426: White +152,091,
+# flagged heritage_label hold 263,831 participants in 768 trials, and 766
+# race blocks change their totals. Other falls by 263,392: White +152,091,
 # Asian +105,659 (east_asian +44,039, southeast_asian +23,699, japanese
-# +14,117, chinese +13,479), Black +5,471, more than one race +500 (66 of them
+# +14,101, chinese +13,479), Black +5,437, more than one race +500 (66 of them
 # had been counted as Black or White through a combination's first race),
 # American Indian +78. Unknown falls by 350: quarantined rows ("Japanese
 # Heritage", "Multiple-Afr Amer/Afr Her/Amer Ind or Al N") are now counted,
 # where denominator balancing had put their participants in unknown. One
 # block becomes reported: NCT00540423, whose only row, "Japanese Heritage" 23,
 # had been quarantined. No ethnicity block changes; the 338 race blocks over
-# their population stay 338, none larger. Heritage rows left unread: 76
-# participants in 13 trials, the forms above and wordings the vocabulary
-# lacks ("Central Asian Heritage", "Japanese East Asian Heritage").
+# their population stay 338, none larger. Heritage rows left unread: 110
+# participants in 14 trials, the forms above ("African Amer/African Heritage/
+# Amer Ind or Alaska N" 55, "American/African Heritage" 34) and wordings the
+# vocabulary lacks ("Central Asian Heritage", "Japanese East Asian Heritage").
 _HERITAGE_WORD_RX = re.compile(
     r"(?<![a-z])(?:heritage|heritag|herit|hertage|heri|her|hrtg|h)\.?(?![a-z])", re.IGNORECASE)
 _HERITAGE_GLOSS_RX = re.compile(r"\(\s*[a-z]{1,4}\.?(?:\s*[/ ]\s*[a-z]{1,4}\.?)*\s*\)", re.IGNORECASE)
@@ -420,7 +424,7 @@ _HERITAGE_ABBREVIATIONS = {
     "w": "white", "wh": "white", "wt": "white", "eu": "white", "eur": "white",
     "aa": "black_african_american", "afr amer": "black_african_american",
     "af am": "black_african_american", "afam": "black_african_american",
-    "african amer": "black_african_american",
+    "african amer": "black_african_american", "african amc": "black_african_american",
     "amer ind": "american_indian_alaska_native", "am ind": "american_indian_alaska_native",
     "al n": "american_indian_alaska_native", "alaska n": "american_indian_alaska_native",
     "alaskan n": "american_indian_alaska_native",
@@ -430,6 +434,8 @@ _HERITAGE_ABBREVIATIONS = {
     "ai": "american_indian_alaska_native", "an": "american_indian_alaska_native",
     "af": "black_african_american", "afr": "black_african_american",
     "nat hawaiian": "native_hawaiian_pacific_islander",
+    "asi": "asian", "east a": "asian", "east asi": "asian", "south a": "asian",
+    "south east a": "asian", "southeast a": "asian", "sea": "asian",
 }
 _HERITAGE_QUALIFIER_RACE = {
     "white": "white", "wh": "white", "wt": "white", "w": "white", "asian": "asian",
@@ -455,15 +461,17 @@ def _heritage_text(label: str) -> Optional[str]:
     return text or None
 
 
-def _heritage_group(group: str) -> Optional[Tuple[str, Optional[str], str]]:
+def _heritage_group(group: str, atomic: bool = False) -> Optional[Tuple[str, Optional[str], str]]:
     """(omb_category, subcategory, confidence) of one heritage group through
     the vocabulary or a template abbreviation, or None when it maps to
-    nothing. Never applies the heritage rule itself."""
+    nothing. Never applies the heritage rule itself. atomic=True refuses a
+    mapping made from one slash fragment of the text, so a whole text is read
+    only as a whole ("Af Amer/White" is not White by its "White")."""
     key = re.sub(r"[.\s]+", " ", group.lower()).strip()
     if key in _HERITAGE_ABBREVIATIONS:
         return _HERITAGE_ABBREVIATIONS[key], None, "high"
     mapping = map_race_category(group, heritage=False)
-    if "unmapped" in mapping["flags"]:
+    if "unmapped" in mapping["flags"] or (atomic and "slash_normalized" in mapping["flags"]):
         return None
     return mapping["omb_category"], mapping["subcategory"], mapping["confidence"]
 
@@ -501,8 +509,10 @@ def _heritage_race(text: str) -> Optional[Tuple[str, Optional[str], str]]:
             confidence = "medium"
     if qualifier is None:
         # No qualifier names the race: every group must map, or the rest as
-        # a whole must ("American Indian/Alaska native" by its fuzzy match).
-        whole = _heritage_group(rest) if unmapped else None
+        # a whole must ("American Indian/Alaska native" by its fuzzy match),
+        # never through one of its slash fragments, which would drop the
+        # unmapped group ("Af Amer/White", a review finding).
+        whole = _heritage_group(rest, atomic=True) if unmapped else None
         if unmapped and (whole is None or whole[0] not in _RACE_SPECIFIC or whole[2] == "low"):
             return None
         if whole is not None:

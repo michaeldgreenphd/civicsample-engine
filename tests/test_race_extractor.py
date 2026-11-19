@@ -1701,6 +1701,7 @@ def test_every_block_carries_mena_in_white() -> None:
     ("East/South East Asian heritage", "asian", None),
     ("Japanese H./East Asian H./SouthEast Asian H.", "asian", None),
     ("Japanese Heritage", "asian", "japanese"),
+    ("JAPANESE HERITAGE(H)/EAST A H/SOUTH EAST A H", "asian", None),
     ("Black, of African Heritage", "black_african_american", "african"),
     ("Black of African heritage", "black_african_american", "african"),
     ("Asian; South East Asian Heritage", "asian", "southeast_asian"),
@@ -1738,6 +1739,8 @@ def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
     "Mixed Heritage or Other",
     "Asian and Pacific Islander Heritage",  # the 1977 grouped category, not a combination
     "Asian & Other Pacific Islander Heritage",
+    "Af Amer/White Heritage",  # an unread group beside a race: either race or both
+    "American/African Heritage",
     "Mixed-Heritage or Other",  # the "Mixed-" prefix does not override an other row
     "Mixed-Heritage Unknown",
     "Non-European heritage",
