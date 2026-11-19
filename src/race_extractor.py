@@ -954,7 +954,9 @@ def _negates_ethnicity(label: str) -> bool:
 #     ethnicity-only rows (block comment "Ethnicity rows inside a race table").
 # An ethnicity-only row ("Ethnicity: Hispanic") is recorded as before, without
 # the new flag. _map_table_row holds the rule, for _parse_race_table and
-# extract_race_from_measure alike.
+# extract_race_from_measure alike; in a table crossing race with sex
+# ("Ethnicity-Not Reported Female") it is applied to the race parts, and a
+# recorded row keeps its race_part and sex.
 #
 # The recorded rows enter the shortfall test (block comment "A shortfall that
 # the ethnicity rows account for") as every recorded row does. A row with no
@@ -1008,22 +1010,29 @@ def _ethnicity_dimension_is_the_table(labels: List[str]) -> bool:
 
 
 def _map_table_row(label: str, count: int, pct_converted: bool, total_only: bool,
-                   whole_table: bool) -> Tuple[Optional[Dict], Optional[Dict]]:
+                   whole_table: bool, race_part: Optional[str] = None,
+                   sex: Optional[str] = None) -> Tuple[Optional[Dict], Optional[Dict]]:
     """(mapping, None) for a row counted as race, (None, record) for a row left
     out of the race counts (_skipped_ethnicity_row): an ethnicity-only row,
     or a row naming the ethnicity dimension in a table where other rows do
     not (block comment "Ethnicity dimension named in the row label").
-    whole_table is _ethnicity_dimension_is_the_table for the row's table."""
-    stripped = _strip_ethnicity_dimension(label) if whole_table else None
-    mapping = _map_plain_row(stripped if stripped is not None else label, count,
+    whole_table is _ethnicity_dimension_is_the_table for the row's table, over
+    the race parts when the table crosses race with sex. For a race-by-sex row
+    the race part is what is read, and the record keeps race_part and sex
+    beside the posted label."""
+    text = race_part if race_part is not None else label
+    stripped = _strip_ethnicity_dimension(text) if whole_table else None
+    mapping = _map_plain_row(stripped if stripped is not None else text, count,
                              pct_converted, total_only)
-    if mapping is None or (stripped is None and _names_ethnicity_dimension(label)):
-        row = _skipped_ethnicity_row(label, count, pct_converted, total_only=total_only)
+    if mapping is None or (stripped is None and _names_ethnicity_dimension(text)):
+        row = _skipped_ethnicity_row(label, count, pct_converted, race_part, sex, total_only)
         if mapping is not None:
             row["flags"].append("ethnicity_dimension_row")
         return None, row
     if stripped is not None:
-        mapping["original"] = clean_demographic_label(label)
+        # The text read, prefix included: the posted label for a plain row
+        # (a race-by-sex caller then records the whole posted label itself).
+        mapping["original"] = clean_demographic_label(text)
         mapping["flags"].append("dimension_wording_stripped")
     return mapping, None
 
@@ -1233,11 +1242,14 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
     skipped: List[Dict] = []
     race_by_sex = False
     if by_sex_rows:
+        # The same ethnicity-dimension routing as a plain table, on the race
+        # parts (block comment "Ethnicity dimension named in the row label").
+        whole_by_sex = _ethnicity_dimension_is_the_table([race_part for race_part, _sex in splits])
         for (label, count), (race_part, sex) in zip(rows, splits):
-            mapping = _map_plain_row(race_part, count, pct_converted, total_only)
-            if mapping is None:
-                skipped.append(_skipped_ethnicity_row(label, count, pct_converted, race_part, sex,
-                                                      total_only))
+            mapping, skipped_row = _map_table_row(label, count, pct_converted, total_only,
+                                                  whole_by_sex, race_part, sex)
+            if skipped_row is not None:
+                skipped.append(skipped_row)
                 continue
             # Quarantine is decided on the race part, as for a plain row; the
             # record then carries the posted label so the source stays visible.

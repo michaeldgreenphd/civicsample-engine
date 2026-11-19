@@ -1538,3 +1538,26 @@ def test_a_combined_dimension_name_stays_a_row_of_the_classification() -> None:
     table = _class_table(COMBINED_TITLE, [("Black", 18), ("White", 11), ("Hispanic", 3), ("Ethnicity/Race Unknown", 2)])
     race = extract_race_data(_study("NCT99000554", [table], participants=34))
     assert race["unknown_explicit"] == 2 and race["unknown_ethnicity_only"] == 3
+
+
+def test_ethnicity_rows_crossed_with_sex_are_not_counted_as_race() -> None:
+    """A race-by-sex table whose ethnicity rows are crossed with sex too (a
+    review finding): the race parts are routed as a plain table's rows are,
+    and a recorded row keeps its race part and sex."""
+    table = _class_table(COMBINED_TITLE, [("White Female", 30), ("White Male", 20),
+                                          ("Ethnicity-Not Reported Female", 30), ("Ethnicity-Not Reported Male", 20)])
+    race = extract_race_data(_study("NCT99000555", [table], participants=50))
+    assert _nonzero(race) == {"white": 50}
+    recorded = race["skipped_ethnicity_rows"]
+    assert [(r["original"], r["race_part"], r["sex"], r["count"]) for r in recorded] == [
+        ("Ethnicity-Not Reported Female", "Ethnicity-Not Reported", "female", 30),
+        ("Ethnicity-Not Reported Male", "Ethnicity-Not Reported", "male", 20)]
+    assert all({"race_by_sex", "ethnicity_dimension_row"} <= set(r["flags"]) for r in recorded)
+
+
+def test_a_race_by_sex_table_whose_race_parts_all_name_ethnicity_is_read_as_race() -> None:
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: White Female", 30), ("Ethnicity: White Male", 20),
+                                          ("Ethnicity: Asian Female", 6), ("Ethnicity: Asian Male", 4)])
+    race = extract_race_data(_study("NCT99000556", [table], participants=60))
+    assert _nonzero(race) == {"white": 50, "asian": 10}
+    assert race["joint_sex_counts"] is not None
