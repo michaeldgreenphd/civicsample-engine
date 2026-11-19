@@ -6,7 +6,7 @@ Extracts ethnicity data from baseline characteristics.
 import re
 from typing import Dict, List, Optional
 from rapidfuzz import fuzz, process
-from src.utils import clean_demographic_label
+from src.utils import clean_demographic_label, COMBINED_DIMENSION, DIMENSION_JOIN
 from src import table_selection
 
 ETHNICITY_MAPPINGS = {
@@ -219,9 +219,11 @@ _ETHNICITY_KEYWORDS = {
 #
 # Method. When the posted label matches the vocabulary neither exactly nor
 # case-insensitively, one leading dimension name followed by a separator
-# (":", "-", "–", "—" or "_"; the names are "Ethnicity", "Ethnic group" and
-# "Race and/&// Ethnicity", and "Race" when what follows names Hispanic or
-# Latino) is removed, then one trailing race-neutral qualifier in parentheses
+# (":", "-", "–", "—" or "_"; the names are "Ethnicity", "Ethnic group", a
+# combined name of race and ethnicity (utils.COMBINED_DIMENSION: "Race" and
+# "Ethnicity" or "Ethnic group" in either order, joined by "/", "&", "and",
+# "or" or "and/or"), and "Race" when what follows names Hispanic or Latino) is
+# removed, then one trailing race-neutral qualifier in parentheses
 # ("regardless of race", "any race", "of any race", "all races"); the rest is
 # matched exactly, case-insensitively, then fuzzily, as before. The category
 # records the posted label as "original" and carries the flag
@@ -263,8 +265,16 @@ _ETHNICITY_KEYWORDS = {
 # flag dimension_wording_stripped on a counted row, 128 of them from all-zero
 # rejection to reported: Hispanic +11,164, Not Hispanic +56,548, unknown
 # -13,592. The race_dimension_label rule alone changes 10 trials, unknown -153.
+#
+# Combined names. The combined name was "Race and/&// Ethnicity" only:
+# "Ethnicity/Race: Hispanic", "Race or Ethnicity: Not Hispanic" and "Ethnicity
+# and/or Race: Hispanic or Latino" kept their prefix, matched nothing and were
+# dropped (a review finding on the race side, where the same names were not
+# removed either). The combined names now come from one definition shared with
+# the race extractor. On the re-fetched 2026-11-15 inputs no row label carries
+# one of the added forms before a value, so no ethnicity block changes.
 _DIMENSION_PREFIX_RX = re.compile(
-    r"^(?P<name>race\s*(?:and|&|/)\s*ethnicity|ethnic\s+group|ethnicity|race)\s*[:\-–—_]\s*(?=\S)",
+    r"^(?P<name>" + COMBINED_DIMENSION + r"|ethnic\s+group|ethnicity|race)\s*[:\-–—_]\s*(?=\S)",
     re.IGNORECASE)
 _RACE_NEUTRAL_QUALIFIER_RX = re.compile(
     r"\s*\(\s*(?:regardless\s+of\s+race|(?:of\s+)?any\s+race|all\s+races)\s*\)$",
@@ -283,6 +293,7 @@ def _strip_dimension_wording(label: str) -> str:
       "Ethnicity: Hispanic"                -> "Hispanic"
       "Ethnicity - Not Hispanic or Latino" -> "Not Hispanic or Latino"
       "Race : Hispanic"                    -> "Hispanic"
+      "Ethnicity or Race: Hispanic"        -> "Hispanic"
       "Race: Unknown"                      -> "Race: Unknown"
       "Hispanic (Regardless of Race)"      -> "Hispanic"
       "Ethnicity unknown"                  -> "Ethnicity unknown"
@@ -717,13 +728,19 @@ _ETHNICITY_SPECIFIC = frozenset({"hispanic_latino", "not_hispanic_latino"})
 # (ethnicity_table_superseded and multiple_ethnicity_tables_N no longer count
 # the race table; all_zero_rejection gives way to race_only_table_skipped).
 
-_ETHNICITY_DIMENSION_RX = re.compile(r"^\s*ethnic(?:ity|\s+group)(?![a-z])", re.IGNORECASE)
+# A combined name ("Ethnicity/Race: White", "Ethnicity or Race: Asian") names
+# the one classification of race and ethnicity, not the ethnicity dimension,
+# as on the race side (race_extractor, "Ethnicity dimension named in the row
+# label"); utils.DIMENSION_JOIN is the shared joiner.
+_ETHNICITY_DIMENSION_RX = re.compile(
+    r"^\s*ethnic(?:ity|\s+group)(?![a-z])(?!\s*" + DIMENSION_JOIN + r"\s*race)", re.IGNORECASE)
 
 
 def _names_ethnicity_dimension(category: Dict) -> bool:
     """True when a row's label names the ethnicity dimension itself
     ("Ethnicity: Not Collected", "Ethnicity: Unknown"): a row of an ethnicity
-    classification, not a race row (block comment above)."""
+    classification, not a race row (block comment above). A combined name
+    ("Ethnicity/Race: White") does not."""
     return bool(_ETHNICITY_DIMENSION_RX.match(category.get("original") or ""))
 
 

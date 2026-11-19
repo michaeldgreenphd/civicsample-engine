@@ -84,6 +84,25 @@ def is_sex_qualified_identity_label(label: str) -> bool:
     return bool(_SEX_QUALIFIED_IDENTITY_RE.search(label))
 
 
+# ── Combined race and ethnicity dimension names ────────────────────────────
+#
+# A row label can name the one classification a combined table posts, race
+# and ethnicity together, before its value: "Race/Ethnicity: White", "Race and
+# Ethnicity : White Non-Hispanic", "Ethnicity or Race: Hispanic". The race
+# extractor removes such a prefix and keeps such a row out of its
+# ethnicity-dimension routing (race_extractor, "Race dimension named in the
+# row label" and "Ethnicity dimension named in the row label"); the ethnicity
+# extractor removes it before the vocabulary match and does not take it for
+# the ethnicity dimension (ethnicity_extractor, "Dimension wording around an
+# ethnicity label"). One definition serves both, so the two extractors read
+# the same labels as combined names: "Race" and "Ethnicity" or "Ethnic group",
+# in either order, joined by "/", "&", "and", "or" or "and/or". These are
+# pattern fragments, used inside case-insensitive patterns.
+DIMENSION_JOIN = r"(?:/|&|and\s*/\s*or\b|and\b|or\b)"
+COMBINED_DIMENSION = (r"(?:race\s*" + DIMENSION_JOIN + r"\s*(?:ethnicity|ethnic\s+group)"
+                      r"|(?:ethnicity|ethnic\s+group)\s*" + DIMENSION_JOIN + r"\s*race)")
+
+
 def clean_demographic_label(label: str) -> str:
     """Strip measurement suffixes and wrapper text from demographic labels.
 
