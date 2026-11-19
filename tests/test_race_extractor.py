@@ -1561,3 +1561,16 @@ def test_a_race_by_sex_table_whose_race_parts_all_name_ethnicity_is_read_as_race
     race = extract_race_data(_study("NCT99000556", [table], participants=60))
     assert _nonzero(race) == {"white": 50, "asian": 10}
     assert race["joint_sex_counts"] is not None
+
+
+def test_an_all_prefixed_ethnicity_classification_publishes_no_race() -> None:
+    """Every row names "Ethnicity" and none is a race (a review finding): the
+    table is an ethnicity classification, so its "Unknown" is not race
+    unknown and nothing is counted as race."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: Hispanic", 10), ("Ethnicity: Not Hispanic", 35),
+                                          ("Ethnicity: Unknown", 5)])
+    race = extract_race_data(_study("NCT99000557", [table], participants=50))
+    assert race["reported"] is False
+    assert [r["original"] for r in race["skipped_ethnicity_rows"]] == [
+        "Ethnicity: Hispanic", "Ethnicity: Not Hispanic", "Ethnicity: Unknown"]
+    assert "ethnicity_dimension_row" in race["skipped_ethnicity_rows"][2]["flags"]

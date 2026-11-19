@@ -939,15 +939,20 @@ def _negates_ethnicity(label: str) -> bool:
 # with "Ethnicity" or "Ethnic group" as a word ("Ethnicities" does not), not
 # followed by "/ Race", "and Race" or "& Race" (a combined name, as "Race/
 # Ethnicity", whose rows belong to the one classification). Then, by table:
-#   - every row of the table names it (_ethnicity_dimension_is_the_table): the
-#     registrant used "Ethnicity" for the one classification the table posts,
-#     a race classification by its rows (NCT03476187: "Ethnicity : Caucasian"
+#   - every row of the table names it and at least one row, without the
+#     prefix, maps to a named race (White, Black, Asian, American Indian,
+#     Native Hawaiian, more than one race; _ethnicity_dimension_is_the_table):
+#     the registrant used "Ethnicity" for the one classification the table
+#     posts, a race classification by its rows (NCT03476187: "Ethnicity : Caucasian"
 #     154 / "Ethnicity : Black or African American" 62 / "Ethnicity : Hispanic
 #     or Latin" 16 ...). The dimension name and its separator(s) (":", "-",
 #     "–", "—", "_", ",") are removed and the rest is read exactly as the bare
 #     label, flagged dimension_wording_stripped, as a "Race:" prefix is (block
 #     comment "Race dimension named in the row label"). A row of such a table
-#     with no separator ("Ethnicity" alone) is recorded as below;
+#     with no separator ("Ethnicity" alone) is recorded as below. An
+#     all-prefixed table with no race row ("Ethnicity: Hispanic" / "Ethnicity:
+#     Not Hispanic" / "Ethnicity: Unknown") is an ethnicity classification, read
+#     as below: its "Unknown" is not a race count;
 #   - otherwise the row is a row of the table's ethnicity classification, not
 #     a race row: it is left out of the race counts and recorded in
 #     skipped_ethnicity_rows with the flag ethnicity_dimension_row, beside the
@@ -972,13 +977,17 @@ def _negates_ethnicity(label: str) -> bool:
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced its
-# race blocks): 63 race blocks change, none in reported. Other falls by
-# 13,680; White +414, Black +84, American Indian +19, Asian +14 (three
-# all-"Ethnicity" tables read as race: NCT03476187, NCT04711460,
-# NCT03178669); unknown +287. 66 trials record 13,163 participants in
-# ethnicity_dimension_row rows. Race blocks whose counts add up to more than
-# the baseline population fall from 392 to 338, their excess by 12,862; none
-# rises. No ethnicity block changes.
+# race blocks): 64 race blocks change. Other falls by 14,742; White +414,
+# Black +84, American Indian +19, Asian +14 (three all-"Ethnicity" tables
+# read as race: NCT03476187, NCT04711460, NCT03178669); unknown +237. One
+# block goes from reported to not reported: NCT01452191 posts only
+# "Ethnicity: White British" 1,008 and "Ethnicity: Other ethnic group" 54,
+# neither a race the vocabulary reads, so no row shows the table to be a race
+# classification and it is read as an ethnicity one (before: other 1,062).
+# 67 trials record rows flagged ethnicity_dimension_row, 14,225
+# participants. Race blocks whose counts add up to more than the baseline
+# population fall from 392 to 338, their excess by 12,862; none rises. No
+# ethnicity block changes.
 
 _ETHNICITY_DIMENSION_RX = re.compile(
     r"^\s*ethnic(?:ity|\s+group)(?![a-z])(?!\s*(?:/|and\b|&)\s*race)", re.IGNORECASE)
@@ -1004,9 +1013,21 @@ def _strip_ethnicity_dimension(label: str) -> Optional[str]:
 
 
 def _ethnicity_dimension_is_the_table(labels: List[str]) -> bool:
-    """True when every row of a table names the ethnicity dimension: the
-    registrant's name for the one classification the table posts."""
-    return bool(labels) and all(_names_ethnicity_dimension(label) for label in labels)
+    """True when every row of a table names the ethnicity dimension and at
+    least one of them, without the prefix, is a race: the registrant's name
+    for the race classification the table posts. An all-prefixed table with
+    no race row ("Ethnicity: Hispanic" / "Ethnicity: Not Hispanic" /
+    "Ethnicity: Unknown") is an ethnicity classification (block comment
+    "Ethnicity dimension named in the row label")."""
+    if not labels or not all(_names_ethnicity_dimension(label) for label in labels):
+        return False
+    for label in labels:
+        stripped = _strip_ethnicity_dimension(label)
+        mapping = _map_plain_row(stripped, 0, False) if stripped is not None else None
+        if (mapping is not None and mapping.get("confidence") != "low"
+                and mapping.get("omb_category") in _RACE_SPECIFIC):
+            return True
+    return False
 
 
 def _map_table_row(label: str, count: int, pct_converted: bool, total_only: bool,
