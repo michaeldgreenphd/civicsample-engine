@@ -1745,6 +1745,8 @@ def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
     "American/African Heritage",
     "Mixed-Heritage or Other",  # the "Mixed-" prefix does not override an other row
     "Mixed-Heritage Unknown",
+    "Multiple-Heritage Refused",  # a tail that reads as no race
+    "Multiple-Heritage N/A",
     "Non-European heritage",
     "Asian - East Asian",  # no heritage word: outside this rule
 ])

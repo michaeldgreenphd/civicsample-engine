@@ -353,8 +353,9 @@ def mena_subcategory(label: str) -> Optional[str]:
 # Am)", "(EAH)", "(Ca.)", "(AA/AHER)"), the heritage words and a final
 # "n (%)", and reading "of" after a race as a comma ("Black of African"):
 #   - combinations (_heritage_combination, before the slash fragments): a
-#     label starting "Multiple" or "Mixed" with a separator, unless a group
-#     after it maps to other or unknown ("Mixed-Heritage or Other"), or whose parts
+#     label starting "Multiple" or "Mixed" with a separator when every group
+#     after it reads as a race (not "Mixed-Heritage or Other", "Multiple-
+#     Heritage Refused"), or whose parts
 #     joined by "&" or "and" each read as one race (below) and name two or
 #     more races, is more than one race;
 #   - one race (_heritage_race, after the fuzzy match, for a label nothing else
@@ -393,20 +394,21 @@ def mena_subcategory(label: str) -> Optional[str]:
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main: rows
-# flagged heritage_label hold 263,831 participants in 768 trials, and 766
-# race blocks change their totals. Other falls by 263,392: White +152,091,
+# flagged heritage_label hold 263,829 participants in 768 trials, and 766
+# race blocks change their totals. Other falls by 263,392: White +152,092,
 # Asian +105,659 (east_asian +44,039, southeast_asian +23,699, japanese
-# +14,101, chinese +13,479), Black +5,437, more than one race +500 (66 of them
+# +14,101, chinese +13,479), Black +5,437, more than one race +498 (65 of them
 # had been counted as Black or White through a combination's first race),
-# American Indian +78. Unknown falls by 350: quarantined rows ("Japanese
+# American Indian +78. Unknown falls by 349: quarantined rows ("Japanese
 # Heritage", "Multiple-Afr Amer/Afr Her/Amer Ind or Al N") are now counted,
 # where denominator balancing had put their participants in unknown. One
 # block becomes reported: NCT00540423, whose only row, "Japanese Heritage" 23,
 # had been quarantined. No ethnicity block changes; the 338 race blocks over
-# their population stay 338, none larger. Heritage rows left unread: 110
-# participants in 14 trials, the forms above ("African Amer/African Heritage/
+# their population stay 338, none larger. Heritage rows left unread: 111
+# participants in 15 trials, the forms above ("African Amer/African Heritage/
 # Amer Ind or Alaska N" 55, "American/African Heritage" 34) and wordings the
-# vocabulary lacks ("Central Asian Heritage", "Japanese East Asian Heritage").
+# vocabulary lacks ("Central Asian Heritage", "Japanese East Asian Heritage",
+# "Multiple-Amer Ind or Al N/A-Central/South A Her" 1).
 _HERITAGE_WORDS = r"(?:heritage|heritag|herit|hertage|heri|her|hrtg|h)\.?"
 _HERITAGE_WORD_RX = re.compile(r"(?<![a-z])" + _HERITAGE_WORDS + r"(?![a-z])", re.IGNORECASE)
 _HERITAGE_GLOSS_RX = re.compile(r"\(\s*[a-z]{1,4}\.?(?:\s*[/ ]\s*[a-z]{1,4}\.?)*\s*\)", re.IGNORECASE)
@@ -426,7 +428,7 @@ _HERITAGE_DIRECTIONS = frozenset({"east", "south", "central", "west", "north", "
                                   "southeast", "south-east"})
 # Abbreviations the template's own spellings use for a race or a group in it.
 _HERITAGE_ABBREVIATIONS = {
-    "w": "white", "wh": "white", "wt": "white", "eu": "white", "eur": "white",
+    "w": "white", "wh": "white", "wt": "white", "eu": "white", "eur": "white", "cau": "white",
     "aa": "black_african_american", "afr amer": "black_african_american",
     "af am": "black_african_american", "afam": "black_african_american",
     "african amer": "black_african_american", "african amc": "black_african_american",
@@ -546,14 +548,18 @@ def _heritage_combination(label: str) -> bool:
         return False
     multiple = _HERITAGE_MULTIPLE_RX.match(text)
     if multiple is not None:
-        # "Multiple-" or "Mixed-" names more than one race unless a group after
-        # it is other or unknown ("Mixed-Heritage or Other", a review finding).
-        # Groups that map to nothing, mostly the template's abbreviations
-        # ("Amer Ind or Al N"), do not stop it.
+        # "Multiple-" or "Mixed-" names more than one race only when every
+        # group after it reads as a race: through the vocabulary or a template
+        # abbreviation ("Amer Ind or Al N"), or with a race qualifier of its
+        # own ("Asian-Japanese", "W-W"). A group that is other or unknown
+        # ("Mixed-Heritage or Other") or reads as nothing ("Multiple-Heritage
+        # Refused", "N/A") stops it (review findings).
         for group in _HERITAGE_GROUP_SPLIT_RX.split(text[multiple.end():]):
             group = group.strip(" -–—:,")
-            reading = _heritage_group(group) if group else None
-            if reading is not None and reading[0] not in _RACE_SPECIFIC:
+            if not group:
+                continue
+            reading = _heritage_group(group) or _heritage_race(group)
+            if reading is None or reading[0] not in _RACE_SPECIFIC:
                 return False
         return True
     # "Asian and Pacific Islander" is the grouped category of the 1977
