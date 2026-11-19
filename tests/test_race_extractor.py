@@ -1738,6 +1738,8 @@ def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
     "Mixed Heritage or Other",
     "Asian and Pacific Islander Heritage",  # the 1977 grouped category, not a combination
     "Asian & Other Pacific Islander Heritage",
+    "Mixed-Heritage or Other",  # the "Mixed-" prefix does not override an other row
+    "Mixed-Heritage Unknown",
     "Non-European heritage",
     "Asian - East Asian",  # no heritage word: outside this rule
 ])

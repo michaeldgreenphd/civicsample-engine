@@ -353,7 +353,8 @@ def mena_subcategory(label: str) -> Optional[str]:
 # Am)", "(EAH)", "(Ca.)", "(AA/AHER)"), the heritage words and a final
 # "n (%)", and reading "of" after a race as a comma ("Black of African"):
 #   - combinations (_heritage_combination, before the slash fragments): a
-#     label starting "Multiple" or "Mixed" with a separator, or whose parts
+#     label starting "Multiple" or "Mixed" with a separator, unless a group
+#     after it maps to other or unknown ("Mixed-Heritage or Other"), or whose parts
 #     joined by "&" or "and" each read as one race (below) and name two or
 #     more races, is more than one race;
 #   - one race (_heritage_race, after the fuzzy match, for a label nothing else
@@ -524,7 +525,17 @@ def _heritage_combination(label: str) -> bool:
     text = _heritage_text(label)
     if text is None:
         return False
-    if _HERITAGE_MULTIPLE_RX.match(text) is not None:
+    multiple = _HERITAGE_MULTIPLE_RX.match(text)
+    if multiple is not None:
+        # "Multiple-" or "Mixed-" names more than one race unless a group after
+        # it is other or unknown ("Mixed-Heritage or Other", a review finding).
+        # Groups that map to nothing, mostly the template's abbreviations
+        # ("Amer Ind or Al N"), do not stop it.
+        for group in _HERITAGE_GROUP_SPLIT_RX.split(text[multiple.end():]):
+            group = group.strip(" -–—:,")
+            reading = _heritage_group(group) if group else None
+            if reading is not None and reading[0] not in _RACE_SPECIFIC:
+                return False
         return True
     # "Asian and Pacific Islander" is the grouped category of the 1977
     # standard, one group rather than a combination: not read. Only that
