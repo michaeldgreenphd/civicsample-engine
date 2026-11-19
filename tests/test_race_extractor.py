@@ -1679,3 +1679,120 @@ def test_every_block_carries_mena_in_white() -> None:
     assert plain["mena_in_white"] == 0
     none = extract_race_data(_study("NCT99000562", [], 35))
     assert none["reported"] is False and none["mena_in_white"] == 0
+
+
+# ── Heritage-template labels ───────────────────────────────────────────────
+#
+# src/race_extractor.py, block comment "Heritage-template labels".
+
+@pytest.mark.parametrize("label, category, subcategory", [
+    ("White - Caucasian / European Heritage", "white", None),
+    ("White-Caucasian/ European heritage, n (%)", "white", None),
+    ("Wt-Wt/Caucasian (Ca.)/European (Eu.) H.", "white", None),
+    ("White(Wh)-Wh/Caucasian(Ca)/European(Eu)Heritage(H)", "white", None),
+    ("White, European Heritage", "white", "european"),
+    ("White Heritage", "white", None),
+    ("Asian - East Asian Heritage", "asian", "east_asian"),
+    ("Asian-East Asian H", "asian", "east_asian"),
+    ("Asian - South East Asian Heritage", "asian", "southeast_asian"),
+    ("Asian - Japanese Heritage", "asian", "japanese"),
+    ("Asian - Chinese Heritage", "asian", "chinese"),
+    ("Asian - Central/South Asian Heritage", "asian", None),
+    ("East/South East Asian heritage", "asian", None),
+    ("Japanese H./East Asian H./SouthEast Asian H.", "asian", None),
+    ("Japanese Heritage", "asian", "japanese"),
+    ("White-Arabic/NA H and white/caucasia/European H", "white", None),  # NA: North African
+    ("JAPANESE HERITAGE(H)/EAST A H/SOUTH EAST A H", "asian", None),
+    ("Black, of African Heritage", "black_african_american", "african"),
+    ("Black of African heritage", "black_african_american", "african"),
+    ("Asian; South East Asian Heritage", "asian", "southeast_asian"),
+    ("Asian-South East Asian Heritag", "asian", "southeast_asian"),
+    ("Black or African Heritage", "black_african_american", None),
+    ("African American (Af Am)/African Heritage (Af Ht)", "black_african_american", None),
+    ("American Indian/ Alaska native Heritage", "american_indian_alaska_native", None),
+    ("Mixed Heritage", "more_than_one_race", None),
+])
+def test_a_heritage_template_label_maps_to_its_race(label: str, category: str, subcategory: Optional[str]) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"]) == (category, subcategory)
+    assert mapping["confidence"] in ("high", "medium") and "heritage_label" in mapping["flags"]
+
+
+@pytest.mark.parametrize("label", [
+    "African American/African Heritage & White",
+    "African American/ African and White Heritage",
+    "American Indian/Alaskan Native and White Heritage",
+    "Multiple-Afr Amer/Afr Her/Amer Ind or Al N",
+    "Multiple-Black/AA and White/Caucasian/EU H",
+    "Asian - East Asian and White Heritage",
+    "AA/African Heritage and AI or AN and White",
+    "Af Am/Af Her & White",
+    "Asian Heritage and Native Hawaiian Heritage",  # two races, not the 1977 grouping
+    "Asian Heritage and Pacific Islander Heritage",  # each side its own heritage
+    "Asian Heritage and Other Pacific Islander Heritage",
+])
+def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert mapping["omb_category"] == "more_than_one_race" and "heritage_label" in mapping["flags"]
+
+
+@pytest.mark.parametrize("label", [
+    "African Amer/African Heritage/Amer Ind or Alaska N",  # two races joined by "/": either or both
+    "African - White / Caucasian Heritage",
+    "Mixed Heritage or Other",
+    "Asian and Pacific Islander Heritage",  # the 1977 grouped category, not a combination
+    "Asian & Other Pacific Islander Heritage",
+    "Af Amer/White Heritage",  # an unread group beside a race: either race or both
+    "American/African Heritage",
+    "Mixed-Heritage or Other",  # the "Mixed-" prefix does not override an other row
+    "Mixed-Heritage Unknown",
+    "Multiple-Heritage Refused",  # a tail that reads as no race
+    "Multiple-Heritage N/A",
+    "Multiple-White-Refused Heritage",  # a qualified tail group read whole
+    "Multiple-African American-NA Heritage",  # not by a fuzzy match
+    "American Indian or Alaska Native-NA Heritage",  # the whole text not fuzzily either
+    "White - Caucasian-NA Heritage",  # a compact non-answer inside a group
+    "White - (N/A) Heritage",  # a parenthesised non-answer is not a gloss
+    "Asian - (Unk) Heritage",
+    "Multiple-White-(N/A) Heritage",
+    "American Indian or Alaska Native-NA H",  # not fuzzily matched before the rule
+    "African American-NA H",
+    "Native Hawaiian or Other Pacific Islander-Unk H",
+    "White - Refused Heritage",  # a non-answer after a qualifier
+    "White - N/A Heritage",
+    "White - NA Heritage",  # a compact non-answer with no group beside it
+    "Asian - Unk Heritage",
+    "Non-European heritage",
+    "Asian - East Asian",  # no heritage word: outside this rule
+])
+def test_a_heritage_label_naming_no_single_race_is_not_read(label: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert mapping["omb_category"] == "other" and "heritage_label" not in mapping["flags"]
+
+
+@pytest.mark.parametrize("label, category, subcategory, flag", [
+    ("White - White/Caucasian/European Heritage", "white", None, "slash_normalized"),
+    ("African American/African Heritage", "black_african_american", "african_american", "slash_normalized"),
+    ("Japanese/East Asian HER/South East Asian HER", "asian", "japanese", "slash_normalized"),
+    ("White - Arabic/North African Heritage", "white", "middle_eastern_north_african", "mena_label"),
+])
+def test_a_heritage_label_the_vocabulary_already_reads_keeps_its_reading(
+        label: str, category: str, subcategory: Optional[str], flag: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"]) == (category, subcategory)
+    assert flag in mapping["flags"] and "heritage_label" not in mapping["flags"]
+
+
+def test_a_heritage_template_table_counts_no_row_as_other() -> None:
+    """The template's rows, as one trial posts them: before, East Asian,
+    South East Asian, the European row and the combination were other or
+    the wrong race, and "Japanese Heritage" was quarantined as not race."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White - Caucasian / European Heritage", 120), ("White - Arabic/North African Heritage", 6),
+        ("Asian - East Asian Heritage", 30), ("Asian - South East Asian Heritage", 12),
+        ("Japanese Heritage", 9), ("African American/African Heritage", 15),
+        ("African American/African Heritage & White", 3)])
+    race = extract_race_data(_study("NCT99000564", [table], participants=195))
+    assert _nonzero(race) == {"white": 126, "asian": 51, "black_african_american": 15, "more_than_one_race": 3}
+    assert race["quarantined_labels"] == [] and race["mena_in_white"] == 6
+    assert race["subcategory_totals"]["asian_japanese"] == 9

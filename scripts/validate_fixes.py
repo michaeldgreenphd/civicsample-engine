@@ -53,6 +53,9 @@ Tests:
      vocabulary did not read: "Middle Eastern or North African" and "White -
      Arabic/North African Heritage", beside "White/Middle Eastern" (fictional
      study)
+ 22. NCT99000142 — Heritage-template rows: "White - Caucasian / European
+     Heritage", "Asian - East Asian Heritage", "Japanese Heritage" and
+     "African American/African Heritage & White" (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -71,7 +74,8 @@ and flags (EXPECTED_SEX): the Total class is counted once, the age bands not
 again. Study 20 asserts its race block and the rows it records without
 counting them, among them a row naming the ethnicity dimension
 (EXPECTED_SKIPPED_ETHNICITY). Study 21 asserts its race totals and mena_in_white
-(EXPECTED_MENA).
+(EXPECTED_MENA). Study 22 asserts its race totals and that no row is
+quarantined (EXPECTED_HERITAGE).
 A mismatch stops the harness.
 """
 import json
@@ -672,6 +676,33 @@ EXPECTED_MENA = {
     "NCT99000141": {"omb": {"white": 180, "black_african_american": 20}, "mena_in_white": 35},
 }
 
+# ---------- NCT99000142 (fictional): heritage-template rows ----------
+# 180 participants in the template's rows (race_extractor, "Heritage-template
+# labels"). Before, "White - Caucasian / European Heritage" and "Asian - East
+# Asian Heritage" were counted as other, "Japanese Heritage" was quarantined
+# as not race, and "African American/African Heritage & White" was Black.
+MOCK_NCT99000142 = _make_study(
+    "NCT99000142",
+    "NCT99000142 - Heritage-template rows (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White - Caucasian / European Heritage", 110),
+                _make_category("Asian - East Asian Heritage", 30),
+                _make_category("Japanese Heritage", 12),
+                _make_category("African American/African Heritage", 24),
+                _make_category("African American/African Heritage & White", 4),
+            ])
+        ]),
+    ],
+    total_participants=180,
+)
+
+# Expected non-zero race totals of the heritage-template study.
+EXPECTED_HERITAGE = {
+    "NCT99000142": {"white": 110, "asian": 42, "black_african_american": 24, "more_than_one_race": 4},
+}
+
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
 # OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
@@ -908,6 +939,11 @@ def validate_study(study: dict, nct_id: str) -> None:
         assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
         assert race["mena_in_white"] == expected["mena_in_white"], f"{nct_id} mena_in_white: {race['mena_in_white']}"
         print(f"\n  {nct_id}: expected race totals and mena_in_white — OK")
+    if nct_id in EXPECTED_HERITAGE:
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == EXPECTED_HERITAGE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
+        assert race["quarantined_labels"] == [], f"{nct_id} quarantined: {race['quarantined_labels']}"
+        print(f"\n  {nct_id}: heritage-template rows read as their race — OK")
     if nct_id == "NCT99000110":
         check_joined_labels(race)
 
@@ -935,6 +971,7 @@ def main() -> None:
         (MOCK_NCT99000130, "NCT99000130"),
         (MOCK_NCT99000140, "NCT99000140"),
         (MOCK_NCT99000141, "NCT99000141"),
+        (MOCK_NCT99000142, "NCT99000142"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
