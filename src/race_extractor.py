@@ -375,7 +375,10 @@ def mena_subcategory(label: str) -> Optional[str]:
 #     fragments: "Af Amer/White Heritage" is not read as White. With or
 #     without a qualifier, a group that maps to nothing and reads as a
 #     non-answer ("Refused", "Prefer not to say", a lone letter of "N/A")
-#     fails the rule: "White - Refused Heritage" is not White. A direction
+#     fails the rule: "White - Refused Heritage" is not White. A compact one
+#     ("NA", "NR", "Unk") fails it when no other group maps ("White - NA
+#     Heritage"); "NA" is also the template's North African ("White-Arabic/NA
+#     H"), read beside groups that map. A direction
 #     word left by a shared ending ("East" of "East/South East Asian") is
 #     allowed; a group mapping to other or unknown ("Mixed Heritage or
 #     Other") fails the rule. The
@@ -433,6 +436,11 @@ _HERITAGE_GROUP_SPLIT_RX = re.compile(r"\s*(?:/|&|\bor\b|\band\b)\s*|\s+[\-–�
 _HERITAGE_NON_ANSWER_RX = re.compile(
     r"(?<![a-z])(?:refus\w*|declin\w*|prefer\w*|unknown|unspecified|unavailable|withheld|missing|"
     r"none|not)(?![a-z])|^[a-z]$", re.IGNORECASE)
+# Compact non-answers ("NA", "N.A.", "NR", "NK", "DK", "Unk"). "NA" is also the
+# template's own abbreviation of North African ("White-Arabic/NA H"), so these
+# fail the rule only when no other group maps: when the qualifier alone would
+# give the race ("White - NA Heritage").
+_HERITAGE_COMPACT_NON_ANSWERS = frozenset({"na", "nr", "nk", "dk", "unk"})
 _HERITAGE_DIRECTIONS = frozenset({"east", "south", "central", "west", "north", "south east",
                                   "southeast", "south-east"})
 # Abbreviations the template's own spellings use for a race or a group in it.
@@ -510,6 +518,7 @@ def _heritage_race(text: str, strict: bool = False) -> Optional[Tuple[str, Optio
         races.add(_HERITAGE_QUALIFIER_RACE[re.sub(r"\s+", " ", qualifier.group("race").lower())])
         rest = text[qualifier.end():]
     mapped = unmapped = 0
+    compact_non_answer = False
     for group in _HERITAGE_GROUP_SPLIT_RX.split(rest):
         group = group.strip(" -–—:,")
         if not group:
@@ -524,6 +533,8 @@ def _heritage_race(text: str, strict: bool = False) -> Optional[Tuple[str, Optio
             # a non-answer the vocabulary lacks ("White - Refused Heritage").
             if strict or _HERITAGE_NON_ANSWER_RX.search(group) is not None:
                 return None
+            if re.sub(r"[.\s]+", "", group.lower()) in _HERITAGE_COMPACT_NON_ANSWERS:
+                compact_non_answer = True
             unmapped += 1
             continue
         omb, subcat, conf = reading
@@ -549,6 +560,8 @@ def _heritage_race(text: str, strict: bool = False) -> Optional[Tuple[str, Optio
                 confidence = "medium"
         if not mapped and whole is None:
             return None
+    if compact_non_answer and not mapped:
+        return None
     if len(races) != 1:
         return None
     subcategory = subcategories.pop() if len(subcategories) == 1 else None

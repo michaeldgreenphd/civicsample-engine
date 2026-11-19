@@ -1701,6 +1701,7 @@ def test_every_block_carries_mena_in_white() -> None:
     ("East/South East Asian heritage", "asian", None),
     ("Japanese H./East Asian H./SouthEast Asian H.", "asian", None),
     ("Japanese Heritage", "asian", "japanese"),
+    ("White-Arabic/NA H and white/caucasia/European H", "white", None),  # NA: North African
     ("JAPANESE HERITAGE(H)/EAST A H/SOUTH EAST A H", "asian", None),
     ("Black, of African Heritage", "black_african_american", "african"),
     ("Black of African heritage", "black_african_american", "african"),
@@ -1750,6 +1751,8 @@ def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
     "Multiple-White-Refused Heritage",  # a qualified tail group read whole
     "White - Refused Heritage",  # a non-answer after a qualifier
     "White - N/A Heritage",
+    "White - NA Heritage",  # a compact non-answer with no group beside it
+    "Asian - Unk Heritage",
     "Non-European heritage",
     "Asian - East Asian",  # no heritage word: outside this rule
 ])
