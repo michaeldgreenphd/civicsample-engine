@@ -38,7 +38,7 @@
   "n_failed_requests": 0,
   "min_seconds_between_requests": 0.5,
   "requested_ids_sha256": "66ae80d295390a13378ec7acdb4ce5be65880a8a7cdfd815a38883280085bc81",
-  "sha256_uncompressed": "7555554b288ea9c990073b3fd86ebcdd2d2cd4cddf15fd02fcd3210647f15b9d",
+  "sha256_uncompressed": "a9ac472ba31bf2eaecfe53fd919726632651038cd29316274760d047ed0eceab",
   "archive": null
  },
  "retrieval_window": {
@@ -111,6 +111,41 @@
   "publications and clinical study reports",
   "historical versions of the registry record"
  ],
+ "fields_copied": [
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].title",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].timeFrame",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].unitOfMeasure",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].paramType",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].populationDescription",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].dispersionType",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].reportingStatus",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].groups[].id",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].groups[].title",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].denoms[].units",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].denoms[].counts[].groupId",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].denoms[].counts[].value",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].groupIds",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].paramType",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].paramValue",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].ciPctValue",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].ciNumSides",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].ciLowerLimit",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].ciUpperLimit",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].pValue",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].statisticalMethod",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].analyses[].nonInferiorityType",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].title",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].denoms[].units",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].denoms[].counts[].groupId",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].denoms[].counts[].value",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].title",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].groupId",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].value",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].spread",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].lowerLimit",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].upperLimit",
+  "resultsSection.outcomeMeasuresModule.outcomeMeasures[].classes[].categories[].measurements[].comment"
+ ],
  "subgroup_states": [
   "not_yet_processed",
   "processing_failed_or_indeterminate",
@@ -130,10 +165,10 @@
   "Participant flow counts are for the first period only.",
   "The registry record is read as retrieved on the stated date; registry records change."
  ],
- "run_id": "results-structure-2026-11-14-e9bbc10ef2",
+ "run_id": "results-structure-2026-11-14-fe82d1238a",
  "generated_at": "2026-11-14T12:00:00+00:00",
  "files": {
-  "records.json": "671ab13104bd1c6f159d418b562078127341ae3a1317ddfe68d5592adec80794",
-  "summary.json": "ec80f8be2c287d2b8ecc00c34546255e57ffa932614586416dec69bd0a909d41"
+  "records.json": "a55157e8847430ddb86b004b9124cf24da8821a200f333ee019e2a6661e65b8f",
+  "summary.json": "397eb8f07ef61a849c5026edb624289fb65f199a9e791991458c6ac8341f2ffa"
  }
 }

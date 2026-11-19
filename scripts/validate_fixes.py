@@ -46,7 +46,10 @@ Tests:
  19. NCT99000130 — Age-band classes beside a "Total" class that repeats
      their rows, in a "Race/Ethnicity, Customized" and a "Sex: Female, Male"
      measure (fictional study, the labels and counts of NCT04911296)
- 20. NCT99000141 — Middle Eastern or North African rows in the wordings the
+ 20. NCT99000140 — Race rows that hold every participant, Hispanic rows, and
+     "Ethnicity not reported" of nearly the same participants in one table
+     (fictional study, the table shape of NCT00452530)
+ 21. NCT99000141 — Middle Eastern or North African rows in the wordings the
      vocabulary did not read: "Middle Eastern or North African" and "White -
      Arabic/North African Heritage", beside "White/Middle Eastern" (fictional
      study)
@@ -65,7 +68,10 @@ totals and flags (EXPECTED_ETHNICITY); study 15 also asserts its race block,
 whose rows are prefixed "Race: " (EXPECTED_SKIPPED_ETHNICITY). Study 19
 asserts its ethnicity totals and flags (EXPECTED_ETHNICITY) and its sex totals
 and flags (EXPECTED_SEX): the Total class is counted once, the age bands not
-again. Study 20 asserts its race totals and mena_in_white (EXPECTED_MENA).
+again. Study 20 asserts its race block and the rows it records without
+counting them, among them a row naming the ethnicity dimension
+(EXPECTED_SKIPPED_ETHNICITY). Study 21 asserts its race totals and mena_in_white
+(EXPECTED_MENA).
 A mismatch stops the harness.
 """
 import json
@@ -613,6 +619,32 @@ MOCK_NCT99000130 = _make_study(
     total_participants=150,
 )
 
+# ---------- NCT99000140 (fictional): an ethnicity classification's unknown row beside race rows ----------
+# 3,057 participants, every one in a race row. "Ethnicity not reported" names
+# the ethnicity dimension: a row of the table's ethnicity classification, left
+# out of the race counts and recorded (race_extractor, "Ethnicity dimension
+# named in the row label"). Before, its 2,946 were added to other, and the race
+# block added up to 6,003.
+MOCK_NCT99000140 = _make_study(
+    "NCT99000140",
+    "NCT99000140 - Ethnicity row beside a complete race classification (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 2427),
+                _make_category("Black/African American", 31),
+                _make_category("Asian", 506),
+                _make_category("Native Hawaiian/Other Pacific Islander", 2),
+                _make_category("Other [Not specified]", 91),
+                _make_category("Hispanic/Latino", 1),
+                _make_category("Not Hispanic/Latino", 110),
+                _make_category("Ethnicity not reported", 2946),
+            ])
+        ]),
+    ],
+    total_participants=3057,
+)
+
 # ---------- NCT99000141 (fictional): Middle Eastern or North African wordings ----------
 # 200 participants. Both MENA wordings are White with a MENA subcategory and
 # make up mena_in_white (race_extractor, "Middle Eastern or North African
@@ -658,6 +690,11 @@ EXPECTED_SKIPPED_ETHNICITY = {
     # Prefixed race rows map as their bare labels (race_extractor, "Race
     # dimension named in the row label"): before, Black 18, Asian 7 and
     # Other 21 were all counted as other.
+    "NCT99000140": {"rows": [("Hispanic/Latino", 1), ("Not Hispanic/Latino", 110),
+                             ("Ethnicity not reported", 2946)],
+                    "omb": {"white": 2427, "black_african_american": 31, "asian": 506,
+                            "native_hawaiian_pacific_islander": 2, "other": 91},
+                    "unknown_inferred": 0},
     "NCT99000111": {"rows": [("Ethnicity: Hispanic", 170), ("Ethnicity: Non Hispanic", 464)],
                     "omb": {"white": 588, "black_african_american": 18, "asian": 7, "other": 21},
                     "unknown_inferred": 0},
@@ -896,6 +933,7 @@ def main() -> None:
         (MOCK_NCT99000113, "NCT99000113"),
         (MOCK_NCT99000114, "NCT99000114"),
         (MOCK_NCT99000130, "NCT99000130"),
+        (MOCK_NCT99000140, "NCT99000140"),
         (MOCK_NCT99000141, "NCT99000141"),
     ]
     for study, nct_id in studies:

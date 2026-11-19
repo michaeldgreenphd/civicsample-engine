@@ -83,6 +83,34 @@ FIELDS_INSPECTED = tuple(f'{_OM}.{f}' for f in (
     'groups[].title', 'groups[].description', 'analyses[].groupIds',
     *(f'analyses[].{k}' for k in ANALYSIS_TEXT_FIELDS),
     'classes[].categories[].measurements[].comment'))
+# Layer B of the Industry Outcomes roadmap: what the registry reports for each PRIMARY measure, copied
+# verbatim (strings as the API returns them, never cast, rounded or relabelled) with the JSON path of the
+# measure or analysis it came from. No state, no rule and no inference is drawn from these values; rule S1's
+# flags above are computed from the same fields and are unchanged. Record key -> registry field.
+REPORTED_MEASURE_FIELDS = {'title': 'title', 'time_frame': 'timeFrame', 'unit': 'unitOfMeasure',
+                           'param_type': 'paramType', 'population': 'populationDescription',
+                           'dispersion_type': 'dispersionType', 'reporting_status': 'reportingStatus'}
+# The value each group reports (its mean, count, rate and so on), as `classes[].categories[].measurements[]`:
+# record key -> registry field. `spread` and the limits are what `dispersionType` names (a standard
+# deviation, a 95% confidence interval and so on); nothing is computed from them here.
+REPORTED_MEASUREMENT_FIELDS = {'group_id': 'groupId', 'value': 'value', 'spread': 'spread',
+                               'lower_limit': 'lowerLimit', 'upper_limit': 'upperLimit', 'comment': 'comment'}
+REPORTED_ANALYSIS_FIELDS = {'estimate_type': 'paramType', 'estimate_value': 'paramValue',
+                            'ci_percent': 'ciPctValue', 'ci_sides': 'ciNumSides',
+                            'ci_lower_limit': 'ciLowerLimit', 'ci_upper_limit': 'ciUpperLimit',
+                            'p_value': 'pValue', 'statistical_method': 'statisticalMethod',
+                            'non_inferiority_type': 'nonInferiorityType'}
+# The fields copied into records.json, as run.json lists them. Groups and denominators are copied whole for
+# PRIMARY measures: every denominator row with its own units (a row in eyes or lesions is not a participant
+# count, so no row is chosen or relabelled here).
+FIELDS_COPIED = tuple(
+    [f'{_OM}.{f}' for f in REPORTED_MEASURE_FIELDS.values()]
+    + [f'{_OM}.groups[].id', f'{_OM}.groups[].title', f'{_OM}.denoms[].units', f'{_OM}.denoms[].counts[].groupId',
+       f'{_OM}.denoms[].counts[].value']
+    + [f'{_OM}.analyses[].groupIds'] + [f'{_OM}.analyses[].{f}' for f in REPORTED_ANALYSIS_FIELDS.values()]
+    + [f'{_OM}.classes[].title', f'{_OM}.classes[].denoms[].units', f'{_OM}.classes[].denoms[].counts[].groupId',
+       f'{_OM}.classes[].denoms[].counts[].value', f'{_OM}.classes[].categories[].title']
+    + [f'{_OM}.classes[].categories[].measurements[].{f}' for f in REPORTED_MEASUREMENT_FIELDS.values()])
 FIELDS_NOT_INSPECTED = (
     f'{_OM}.timeFrame', f'{_OM}.unitOfMeasure', f'{_OM}.paramType',
     'resultsSection.baselineCharacteristicsModule (all fields)',
@@ -361,13 +389,18 @@ def analysis_facts(m: dict[str, Any], measure_index: int) -> list[dict[str, Any]
         ec = is_num(a.get('paramValue')) and lo and hi
         usable = named and (p or ec)
         out.append({
-            'measure_index': measure_index, 'analysis_index': j, 'group_ids': list(ref),
+            'measure_index': measure_index, 'analysis_index': j,
+            'source_path': f'resultsSection.outcomeMeasuresModule.outcomeMeasures[{measure_index}].analyses[{j}]',
+            'group_ids': list(ref),
             'names_measure_groups': named, 'usable': usable, 'between_arm': usable and len(set(ref)) >= 2,
             'estimate_type': a.get('paramType'), 'estimate_value_numeric': is_num(a.get('paramValue')),
             'ci_lower_limit_numeric': lo, 'ci_upper_limit_numeric': hi, 'both_confidence_limits': lo and hi,
             'estimate_with_both_limits': ec, 'ci_percent': a.get('ciPctValue'), 'ci_sides': a.get('ciNumSides'),
             'p_value': a.get('pValue'), 'p_value_posted': p, 'p_value_form': form,
-            'statistical_method': a.get('statisticalMethod'), 'non_inferiority_type': a.get('nonInferiorityType')})
+            'statistical_method': a.get('statisticalMethod'), 'non_inferiority_type': a.get('nonInferiorityType'),
+            # Layer B: the posted estimate and limits as the registry states them (REPORTED_ANALYSIS_FIELDS).
+            'estimate_value': a.get('paramValue'), 'ci_lower_limit': a.get('ciLowerLimit'),
+            'ci_upper_limit': a.get('ciUpperLimit')})
     return out
 
 
@@ -422,17 +455,45 @@ def posted_outcomes(measures: list[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
+def _denominators(denoms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Denominator rows as posted: each row's units and the count per group, strings kept."""
+    return [{'units': d.get('units'),
+             'counts': [{'group_id': c.get('groupId'), 'value': c.get('value')} for c in d.get('counts') or []]}
+            for d in denoms]
+
+
 def primary_measures(measures: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """One entry per posted PRIMARY measure: its position in `outcomeMeasures[]` (the registry
     gives measures no identifier, so the index and title are the locator), rule O1 with its
-    reason, and its analyses."""
+    reason, and its analyses.
+
+    It also carries what the registry reports for the measure (layer B), copied verbatim:
+    `population` (`populationDescription`, stated once per measure and so shared by all its
+    analyses), `groups` (id and title) and `denominators` (every `denoms[]` row with its units and
+    the count per group, as strings). An absent field is None, or an empty list, never a zero.
+
+    `classes` holds the value each group reports, in the registry's own nesting: each class (a
+    time point, a subgroup or a row; its `title` is None when the measure has one untitled class),
+    its own denominator rows where the registry posts them, and its categories, each with one entry
+    per group (REPORTED_MEASUREMENT_FIELDS). A value such as 'NA' stays 'NA', with its comment."""
     out = []
     for i, m in enumerate(measures):
         if m.get('type') != 'PRIMARY':
             continue
         usable, strict, reason = measure_usable(m)
-        out.append({'measure_index': i, 'title': m.get('title'), 'time_frame': m.get('timeFrame'),
+        out.append({'measure_index': i, 'source_path': f'resultsSection.outcomeMeasuresModule.outcomeMeasures[{i}]',
+                    'title': m.get('title'), 'time_frame': m.get('timeFrame'),
                     'unit': m.get('unitOfMeasure'), 'param_type': m.get('paramType'),
+                    'population': m.get('populationDescription'),
+                    'groups': [{'id': g.get('id'), 'title': g.get('title')} for g in m.get('groups') or []],
+                    'denominators': _denominators(m.get('denoms') or []),
+                    'dispersion_type': m.get('dispersionType'), 'reporting_status': m.get('reportingStatus'),
+                    'classes': [{'title': c.get('title'), 'denominators': _denominators(c.get('denoms') or []),
+                                 'categories': [{'title': cat.get('title'),
+                                                 'measurements': [{k: x.get(f) for k, f in REPORTED_MEASUREMENT_FIELDS.items()}
+                                                                  for x in cat.get('measurements') or []]}
+                                                for cat in c.get('categories') or []]}
+                                for c in m.get('classes') or []],
                     'n_groups': len(m.get('groups') or []), 'usable': usable, 'usable_strict': strict,
                     'reason': reason, 'analyses': analysis_facts(m, i)})
     return out
