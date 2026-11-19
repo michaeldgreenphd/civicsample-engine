@@ -1750,6 +1750,8 @@ def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
     "Multiple-Heritage N/A",
     "Multiple-White-Refused Heritage",  # a qualified tail group read whole
     "Multiple-African American-NA Heritage",  # not by a fuzzy match
+    "American Indian or Alaska Native-NA Heritage",  # the whole text not fuzzily either
+    "White - Caucasian-NA Heritage",  # a compact non-answer inside a group
     "White - Refused Heritage",  # a non-answer after a qualifier
     "White - N/A Heritage",
     "White - NA Heritage",  # a compact non-answer with no group beside it

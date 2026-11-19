@@ -371,15 +371,17 @@ def mena_subcategory(label: str) -> Optional[str]:
 #     "Amer Ind", "AI", "AN", "Nat Hawaiian", "East A", "SEA").
 #     A group that maps must name a race, and every such group and the
 #     qualifier must name the same one. Without a qualifier, a group that
-#     maps to nothing is allowed only when the rest as a whole maps to that
-#     race as one text (exact or fuzzy), not through one of its slash
-#     fragments: "Af Amer/White Heritage" is not read as White. With or
+#     maps to nothing is allowed only when the rest as a whole matches the
+#     vocabulary exactly (any letter case), not fuzzily and not through one
+#     of its slash fragments: "Af Amer/White Heritage" is not read as White,
+#     nor "American Indian or Alaska Native-NA Heritage" as American Indian. With or
 #     without a qualifier, a group that maps to nothing and reads as a
 #     non-answer ("Refused", "Prefer not to say", a lone letter of "N/A")
 #     fails the rule: "White - Refused Heritage" is not White. A compact one
 #     ("NA", "NR", "Unk") fails it when no other group maps ("White - NA
-#     Heritage"); "NA" is also the template's North African ("White-Arabic/NA
-#     H"), read beside groups that map. A direction
+#     Heritage", "White - Caucasian-NA Heritage"); "NA" is also the
+#     template's North African ("White-Arabic/NA H"), read beside groups that
+#     map. A direction
 #     word left by a shared ending ("East" of "East/South East Asian") is
 #     allowed; a group mapping to other or unknown ("Mixed Heritage or
 #     Other") fails the rule. The
@@ -436,7 +438,8 @@ _HERITAGE_GROUP_SPLIT_RX = re.compile(r"\s*(?:/|&|\bor\b|\band\b)\s*|\s+[\-–�
 # "N/A"): an unread group like these is not a subgroup name.
 _HERITAGE_NON_ANSWER_RX = re.compile(
     r"(?<![a-z])(?:refus\w*|declin\w*|prefer\w*|unknown|unspecified|unavailable|withheld|missing|"
-    r"none|not)(?![a-z])|^[a-z]$", re.IGNORECASE)
+    r"none|not)(?![a-z])", re.IGNORECASE)
+_HERITAGE_LONE_LETTER_RX = re.compile(r"[a-z]", re.IGNORECASE)
 # Compact non-answers ("NA", "N.A.", "NR", "NK", "DK", "Unk"). "NA" is also the
 # template's own abbreviation of North African ("White-Arabic/NA H"), so these
 # fail the rule only when no other group maps: when the qualifier alone would
@@ -450,6 +453,7 @@ _HERITAGE_ABBREVIATIONS = {
     "aa": "black_african_american", "afr amer": "black_african_american",
     "af am": "black_african_american", "afam": "black_african_american",
     "african amer": "black_african_american", "african amc": "black_african_american",
+    "american indian": "american_indian_alaska_native",
     "amer ind": "american_indian_alaska_native", "am ind": "american_indian_alaska_native",
     "al n": "american_indian_alaska_native", "alaska n": "american_indian_alaska_native",
     "alaskan n": "american_indian_alaska_native",
@@ -528,12 +532,21 @@ def _heritage_race(text: str, strict: bool = False) -> Optional[Tuple[str, Optio
         if re.sub(r"\s+", " ", group.lower()) in _HERITAGE_DIRECTIONS:
             subcategories.add(None)
             continue
+        # A non-answer in any group fails the rule before the group is
+        # mapped, so a fuzzy match cannot absorb it: "Refused", or a compact
+        # one attached to other words ("Caucasian-NA", "Alaska Native-NA").
+        words = [w for w in re.split(r"[\s.\-–—]+", group.lower()) if w]
+        if (_HERITAGE_NON_ANSWER_RX.search(group) is not None
+                or (len(words) > 1 and any(w in _HERITAGE_COMPACT_NON_ANSWERS for w in words))):
+            return None
         reading = _heritage_group(group)
         if reading is None:
             # A group that maps to nothing may be a subgroup name the
             # vocabulary lacks ("Caucasian European" after "White -"), but not
-            # a non-answer the vocabulary lacks ("White - Refused Heritage").
-            if strict or _HERITAGE_NON_ANSWER_RX.search(group) is not None:
+            # a lone letter ("N" and "A" of "N/A"). A compact non-answer
+            # standing alone ("NA") is noted: also the template's North
+            # African, it is read only beside groups that map.
+            if strict or _HERITAGE_LONE_LETTER_RX.fullmatch(group) is not None:
                 return None
             if re.sub(r"[.\s]+", "", group.lower()) in _HERITAGE_COMPACT_NON_ANSWERS:
                 compact_non_answer = True
@@ -549,11 +562,13 @@ def _heritage_race(text: str, strict: bool = False) -> Optional[Tuple[str, Optio
             confidence = "medium"
     if qualifier is None:
         # No qualifier names the race: every group must map, or the rest as
-        # a whole must ("American Indian/Alaska native" by its fuzzy match),
-        # never through one of its slash fragments, which would drop the
-        # unmapped group ("Af Amer/White", a review finding).
+        # a whole must match the vocabulary exactly ("American Indian/Alaska
+        # native", in any letter case), never by a fuzzy match, which would
+        # absorb an unread suffix ("American Indian or Alaska Native-NA"),
+        # nor through one of its slash fragments, which would drop the
+        # unmapped group ("Af Amer/White"; review findings).
         whole = _heritage_group(rest, atomic=True) if unmapped else None
-        if unmapped and (whole is None or whole[0] not in _RACE_SPECIFIC or whole[2] == "low"):
+        if unmapped and (whole is None or whole[0] not in _RACE_SPECIFIC or whole[2] != "high"):
             return None
         if whole is not None:
             races.add(whole[0])
