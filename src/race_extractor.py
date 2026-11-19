@@ -328,8 +328,218 @@ def mena_subcategory(label: str) -> Optional[str]:
         return "middle_eastern"
     return "middle_eastern_north_african"
 
+# ── Heritage-template labels ───────────────────────────────────────────────
+#
+# A family of customized race tables posts its rows as a race followed by the
+# heritage groups it covers: "White - White/Caucasian/European Heritage",
+# "Asian - East Asian Heritage", "Asian - Japanese Heritage", "Asian - South
+# East Asian Heritage", "Asian - Central/South Asian Heritage", "African
+# American/African Heritage", "White - Arabic/North African Heritage", and
+# combinations ("African American/African Heritage & White",
+# "Multiple-Afr Amer/Afr Her/Amer Ind or Al N"). It is posted in hundreds of
+# spellings: "White - Caucasian / European heritage", "Asian-East Asian H",
+# "Wt-Wt/Caucasian (Ca.)/European (Eu.) H.", "Black, of African Heritage",
+# "Japanese H./East Asian H./SouthEast Asian H.". The vocabulary read only the
+# spellings whose slash fragments happened to be keys ("White - White/
+# Caucasian/European Heritage" through "Caucasian"); the rest matched nothing
+# and were counted as other, and "Japanese Heritage" was quarantined as not
+# race. Combinations were read through their first fragment: "African
+# American/African Heritage & White" as Black.
+#
+# Method. A label is read by this rule only when it holds a heritage word:
+# "heritage" or one of its abbreviations ("Herit", "Hertage", "Heri", "Her",
+# "Hrtg", "H", the truncated "Heritag"), as a word of its own. Then, after
+# removing short parenthesised glosses whose words are 1-4 letters each ("(Af
+# Am)", "(EAH)", "(Ca.)", "(AA/AHER)"), the heritage words and a final
+# "n (%)", and reading "of" after a race as a comma ("Black of African"):
+#   - combinations (_heritage_combination, before the slash fragments): a
+#     label starting "Multiple" or "Mixed" with a separator, or whose parts
+#     joined by "&" or "and" each read as one race (below) and name two or
+#     more races, is more than one race;
+#   - one race (_heritage_race, after the fuzzy match, for a label nothing else
+#     reads): a leading race qualifier ("White", "Wh", "Wt", "W", "Asian",
+#     "Black", "African American") followed by "-", ":", ";" or "," names
+#     the race;
+#     the rest is split at "/", "or", "and", "&" and a dash beside a space
+#     ("African - White") into groups, each mapped
+#     through the vocabulary (exact, slash or fuzzy, never this rule) or a
+#     template abbreviation (_HERITAGE_ABBREVIATIONS: "Wt", "AA", "Af",
+#     "Amer Ind", "AI", "AN", "Nat Hawaiian").
+#     A group that maps must name a race, and every such group and the
+#     qualifier must name the same one. Without a qualifier, the rest as a
+#     whole must also map to that race. A direction word left by a shared
+#     ending ("East" of "East/South East Asian") is allowed; a group mapping to
+#     other or unknown ("Mixed Heritage or Other") fails the rule. The
+#     subcategory is the one subcategory every mapped group shares, else none.
+# A label naming a negation ("Non-European heritage") is not read. The row is
+# flagged heritage_label.
+#
+# What it does not do. A heritage label the vocabulary already reads as one
+# race keeps that reading and its subcategory, including the first-fragment
+# subcategory of a grouped row ("Japanese/East Asian/South East Asian
+# Heritage" is Asian, japanese; "African American/African Heritage" is Black,
+# african_american). A label without a heritage word ("Asian - East Asian")
+# is not read here. Two races joined by "/" or "or" without "Multiple"
+# ("African Amer/African Heritage/Amer Ind or Alaska N") are not read: the
+# row may name either race or both. Asian joined to Pacific Islander by "and"
+# is not read as a combination: "Asian and Pacific Islander" is the grouped
+# category of the 1977 standard.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main: rows
+# flagged heritage_label hold 263,865 participants in 768 trials, and 766
+# race blocks change their totals. Other falls by 263,426: White +152,091,
+# Asian +105,659 (east_asian +44,039, southeast_asian +23,699, japanese
+# +14,117, chinese +13,479), Black +5,471, more than one race +500 (66 of them
+# had been counted as Black or White through a combination's first race),
+# American Indian +78. Unknown falls by 350: quarantined rows ("Japanese
+# Heritage", "Multiple-Afr Amer/Afr Her/Amer Ind or Al N") are now counted,
+# where denominator balancing had put their participants in unknown. One
+# block becomes reported: NCT00540423, whose only row, "Japanese Heritage" 23,
+# had been quarantined. No ethnicity block changes; the 338 race blocks over
+# their population stay 338, none larger. Heritage rows left unread: 76
+# participants in 13 trials, the forms above and wordings the vocabulary
+# lacks ("Central Asian Heritage", "Japanese East Asian Heritage").
+_HERITAGE_WORD_RX = re.compile(
+    r"(?<![a-z])(?:heritage|heritag|herit|hertage|heri|her|hrtg|h)\.?(?![a-z])", re.IGNORECASE)
+_HERITAGE_GLOSS_RX = re.compile(r"\(\s*[a-z]{1,4}\.?(?:\s*[/ ]\s*[a-z]{1,4}\.?)*\s*\)", re.IGNORECASE)
+_HERITAGE_COUNT_SUFFIX_RX = re.compile(r",?\s*n\s*\(\s*%\s*\)\s*$", re.IGNORECASE)
+_HERITAGE_MULTIPLE_RX = re.compile(r"^(?:multiple|mixed)\s*[\-:–—]\s*", re.IGNORECASE)
+_HERITAGE_QUALIFIER_RX = re.compile(
+    r"^(?P<race>white|wh|wt|w|asian|black|african\s+american)\s*[\-:;–—,]\s*(?=\S)", re.IGNORECASE)
+_HERITAGE_PART_SPLIT_RX = re.compile(r"\s*(?:&|\band\b)\s*", re.IGNORECASE)
+_HERITAGE_GROUP_SPLIT_RX = re.compile(r"\s*(?:/|&|\bor\b|\band\b)\s*|\s+[\-–—]\s*|\s*[\-–—]\s+", re.IGNORECASE)
+_HERITAGE_DIRECTIONS = frozenset({"east", "south", "central", "west", "north", "south east",
+                                  "southeast", "south-east"})
+# Abbreviations the template's own spellings use for a race or a group in it.
+_HERITAGE_ABBREVIATIONS = {
+    "w": "white", "wh": "white", "wt": "white", "eu": "white", "eur": "white",
+    "aa": "black_african_american", "afr amer": "black_african_american",
+    "af am": "black_african_american", "afam": "black_african_american",
+    "african amer": "black_african_american",
+    "amer ind": "american_indian_alaska_native", "am ind": "american_indian_alaska_native",
+    "al n": "american_indian_alaska_native", "alaska n": "american_indian_alaska_native",
+    "alaskan n": "american_indian_alaska_native",
+    "alaska native": "american_indian_alaska_native",
+    "alaskan native": "american_indian_alaska_native",
+    "ala native": "american_indian_alaska_native",
+    "ai": "american_indian_alaska_native", "an": "american_indian_alaska_native",
+    "af": "black_african_american", "afr": "black_african_american",
+    "nat hawaiian": "native_hawaiian_pacific_islander",
+}
+_HERITAGE_QUALIFIER_RACE = {
+    "white": "white", "wh": "white", "wt": "white", "w": "white", "asian": "asian",
+    "black": "black_african_american", "african american": "black_african_american",
+}
+
+
+def _heritage_text(label: str) -> Optional[str]:
+    """The label without glosses, heritage words, "of" and a final "n (%)",
+    or None when it holds no heritage word or names a negation (block comment
+    "Heritage-template labels")."""
+    text = clean_demographic_label(label)
+    if _HERITAGE_WORD_RX.search(text) is None or _negates_race(text):
+        return None
+    text = _HERITAGE_COUNT_SUFFIX_RX.sub("", text)
+    text = _HERITAGE_GLOSS_RX.sub(" ", text)
+    text = _HERITAGE_WORD_RX.sub(" ", text)
+    # "Black, of African" and "Black of African": "of" separates the race
+    # from its groups, as a comma does.
+    text = re.sub(r"(?:\s*,\s*|\s+)of\s+", ", ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*/\s*", "/", text)
+    text = re.sub(r"\s+", " ", text).strip(" -–—:,/")
+    return text or None
+
+
+def _heritage_group(group: str) -> Optional[Tuple[str, Optional[str], str]]:
+    """(omb_category, subcategory, confidence) of one heritage group through
+    the vocabulary or a template abbreviation, or None when it maps to
+    nothing. Never applies the heritage rule itself."""
+    key = re.sub(r"[.\s]+", " ", group.lower()).strip()
+    if key in _HERITAGE_ABBREVIATIONS:
+        return _HERITAGE_ABBREVIATIONS[key], None, "high"
+    mapping = map_race_category(group, heritage=False)
+    if "unmapped" in mapping["flags"]:
+        return None
+    return mapping["omb_category"], mapping["subcategory"], mapping["confidence"]
+
+
+def _heritage_race(text: str) -> Optional[Tuple[str, Optional[str], str]]:
+    """(omb_category, subcategory, confidence) when the heritage text names
+    one race, else None (block comment "Heritage-template labels")."""
+    races: set[str] = set()
+    subcategories: set[Optional[str]] = set()
+    confidence = "high"
+    qualifier = _HERITAGE_QUALIFIER_RX.match(text)
+    rest = text
+    if qualifier is not None:
+        races.add(_HERITAGE_QUALIFIER_RACE[re.sub(r"\s+", " ", qualifier.group("race").lower())])
+        rest = text[qualifier.end():]
+    mapped = unmapped = 0
+    for group in _HERITAGE_GROUP_SPLIT_RX.split(rest):
+        group = group.strip(" -–—:,")
+        if not group:
+            continue
+        if re.sub(r"\s+", " ", group.lower()) in _HERITAGE_DIRECTIONS:
+            subcategories.add(None)
+            continue
+        reading = _heritage_group(group)
+        if reading is None:
+            unmapped += 1
+            continue
+        omb, subcat, conf = reading
+        if omb not in _RACE_SPECIFIC or conf == "low":
+            return None
+        races.add(omb)
+        subcategories.add(subcat)
+        mapped += 1
+        if conf != "high":
+            confidence = "medium"
+    if qualifier is None:
+        # No qualifier names the race: every group must map, or the rest as
+        # a whole must ("American Indian/Alaska native" by its fuzzy match).
+        whole = _heritage_group(rest) if unmapped else None
+        if unmapped and (whole is None or whole[0] not in _RACE_SPECIFIC or whole[2] == "low"):
+            return None
+        if whole is not None:
+            races.add(whole[0])
+            subcategories.add(whole[1])
+            if whole[2] != "high":
+                confidence = "medium"
+        if not mapped and whole is None:
+            return None
+    if len(races) != 1:
+        return None
+    subcategory = subcategories.pop() if len(subcategories) == 1 else None
+    return races.pop(), subcategory, confidence
+
+
+def _heritage_combination(label: str) -> bool:
+    """True when a heritage label names more than one race: "Multiple-" or
+    "Mixed-" before it, or parts joined by "&" or "and" that each read as one
+    race and name two or more (block comment "Heritage-template labels")."""
+    text = _heritage_text(label)
+    if text is None:
+        return False
+    if _HERITAGE_MULTIPLE_RX.match(text) is not None:
+        return True
+    parts = [p for p in _HERITAGE_PART_SPLIT_RX.split(text) if p.strip()]
+    if len(parts) < 2:
+        return False
+    races: set[str] = set()
+    for part in parts:
+        reading = _heritage_race(part.strip(" -–—:,"))
+        if reading is None:
+            return False
+        races.add(reading[0])
+    # "Asian and Pacific Islander" is the grouped category of the 1977
+    # standard, one group rather than a combination: not read.
+    if races == {"asian", "native_hawaiian_pacific_islander"}:
+        return False
+    return len(races) >= 2
+
 def map_race_category(label: str, fuzzy_threshold: int = 85, *,
-                      guard_negation: bool = False) -> Dict:
+                      guard_negation: bool = False, heritage: bool = True) -> Dict:
     """
     Map a race category label to NIH/OMB standard.
 
@@ -337,6 +547,10 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
     key agree on negation (_negates_race); _map_plain_row sets it for a label
     whose race dimension name was removed (block comment "Race dimension
     named in the row label").
+
+    heritage=False leaves out the heritage-template rule (block comment
+    "Heritage-template labels"), which maps the groups of a heritage label
+    through this function.
 
     Returns dict with:
         - omb_category: NIH/OMB standard category
@@ -386,6 +600,19 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
             "flags": flags
         }
 
+    # A heritage-template label naming two or more races (block comment
+    # "Heritage-template labels"), before the slash fragments, which would
+    # keep the first race of "African American/African Heritage & White".
+    if heritage and _heritage_combination(label_clean):
+        flags.append("heritage_label")
+        return {
+            "omb_category": "more_than_one_race",
+            "subcategory": None,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
     # Slash-compound normalization: try each "/" fragment individually
     # so "Caucasian/White" resolves even without a dedicated mapping entry
     if "/" in label_clean:
@@ -414,6 +641,20 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
             "omb_category": omb,
             "subcategory": subcat,
             "confidence": "medium",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A heritage-template label naming one race that nothing above read
+    # (block comment "Heritage-template labels").
+    heritage_text = _heritage_text(label_clean) if heritage else None
+    reading = _heritage_race(heritage_text) if heritage_text is not None else None
+    if reading is not None:
+        flags.append("heritage_label")
+        return {
+            "omb_category": reading[0],
+            "subcategory": reading[1],
+            "confidence": reading[2],
             "original": label_clean,
             "flags": flags
         }
