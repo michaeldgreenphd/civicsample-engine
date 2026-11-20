@@ -1783,7 +1783,9 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
 # whole is not one either. A comma list maps to more than one race, flagged
 # multirace_comma_list, when the same table has another row, not itself a
 # comma list, read as one of the races named through a reading that is not
-# fuzzy (confidence high, not unmapped). A grouped category stands in the
+# fuzzy (confidence high, not unmapped) and, for a row holding "/", whose
+# fragments agree as a part's must ("Asian/Black" is no evidence of an Asian
+# row; a review finding). A grouped category stands in the
 # table for its races, so no row of the table names any of them alone: in
 # every table of the inputs holding a comma list with no such row, the row is
 # a grouped category ("Asian, Pacific Islander" in 31 trials; "American
@@ -1853,17 +1855,22 @@ def _comma_list_races(text: str) -> Optional[FrozenSet[str]]:
     return frozenset(races) if len(races) >= 2 else None
 
 
+def _slash_fragments_agree(text: str, race: str) -> bool:
+    """False when text holds "/" and a fragment reads as a race other than
+    race (_named_race): "Asian/Black" may name either race and
+    "Asian/Pacific Islander" is the 1977 grouping, while "Black/African
+    American" and "White/Cau" ("Cau" reads as nothing) name one race."""
+    if "/" not in text:
+        return True
+    return ({_named_race(fragment) for fragment in text.split("/")} - {None}) <= {race}
+
+
 def _comma_list_part_race(part: str) -> Optional[str]:
-    """The one race a part of a comma list names (_named_race), or None. A
-    part holding "/" names one race only when every fragment read as a race
-    reads as that race: "Black/African American" and "White/Cau" do, but
-    "Asian/Black" may name either race and "Asian/Pacific Islander" is the
-    1977 grouping (a review finding)."""
+    """The one race a part of a comma list names (_named_race), or None when
+    it names none or its slash fragments disagree (_slash_fragments_agree; a
+    review finding)."""
     race = _named_race(part)
-    if race is None or "/" not in part:
-        return race
-    fragments = {_named_race(fragment) for fragment in part.split("/")} - {None}
-    return race if fragments <= {race} else None
+    return race if race is not None and _slash_fragments_agree(part, race) else None
 
 
 def _row_text_read(text: str, whole_table: bool) -> str:
@@ -1883,11 +1890,12 @@ def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[i
     mappings[i] its mapping, or None for a row left out of the race counts."""
     lists = [_comma_list_races(text) if mapping is not None else None
              for text, mapping in zip(texts, mappings)]
-    alone = {mapping["omb_category"] for races, mapping in zip(lists, mappings)
+    alone = {mapping["omb_category"] for text, races, mapping in zip(texts, lists, mappings)
              if races is None and mapping is not None
              and mapping["confidence"] == "high" and "unmapped" not in mapping["flags"]
              and mapping["omb_category"] in _RACE_SPECIFIC
-             and mapping["omb_category"] != "more_than_one_race"}
+             and mapping["omb_category"] != "more_than_one_race"
+             and _slash_fragments_agree(text, mapping["omb_category"])}
     return [i for i, races in enumerate(lists) if races is not None and races & alone]
 
 

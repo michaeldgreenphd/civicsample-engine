@@ -2000,3 +2000,17 @@ def test_a_comma_list_part_naming_either_of_two_races_leaves_the_row_as_it_was()
     readings = {c["original"]: c["flags"] for c in race["raw_categories"]}
     assert "multirace_comma_list" not in readings["White, Asian/Black"]
     assert "multirace_comma_list" in readings["White, Black/African American"]
+
+
+def test_a_slash_row_naming_either_of_two_races_is_no_evidence_of_a_race_alone() -> None:
+    """A review finding: "Asian/Black" was read as Asian (its first slash
+    fragment), so it counted as an Asian row and "White, Asian" became more
+    than one race. A slash row whose fragments agree still counts."""
+    either = _category_table(COMBINED_TITLE, [("Asian/Black", 5), ("White, Asian", 2), ("Other", 3)])
+    race = extract_race_data(_study("NCT99000573", [either], participants=10))
+    readings = {c["original"]: c["flags"] for c in race["raw_categories"]}
+    assert "multirace_comma_list" not in readings["White, Asian"]
+    agree = _category_table(COMBINED_TITLE, [("Black/African American", 5), ("White, Black", 2), ("Other", 3)])
+    race = extract_race_data(_study("NCT99000574", [agree], participants=10))
+    readings = {c["original"]: c["flags"] for c in race["raw_categories"]}
+    assert "multirace_comma_list" in readings["White, Black"]
