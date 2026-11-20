@@ -1774,22 +1774,26 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
 # prefix such as "Multiple" or "Mixed" and no "&", "+" or "and", and splits at
 # "," and ";" into parts each naming one race through a reading that is not
 # fuzzy (_named_race), passing over a part that is only an ethnicity term
-# ("Hispanic"), with two or more different races named. A part holding "/"
-# names one race only when every fragment read without a fuzzy match reads
-# as that race, other and unknown included, and it holds no non-answer
-# ("Black/African American", "White/Cau"); "Asian/Black" may name either
-# race, "Asian/Other" Asian or another and "Asian/Refused" Asian or no
-# answer, so the row is not a comma list (_slash_fragments_agree). A part
-# starting with "or" ("White, Asian, or Hispanic", NCT03506724) offers
-# alternatives: the row is not a comma list. A label the vocabulary holds
-# whole is not one either. A comma list maps to more than one race, flagged
-# multirace_comma_list, when the same table has another row, not itself a
-# comma list, read as one of the races named through a reading that is not
-# fuzzy (confidence high, not unmapped) and, for a row holding "/", passing
-# the same test as a part ("Asian/Black", "Asian/Other" and "Asian/Refused"
-# are no evidence of an Asian row; review findings). A grouped category
-# stands in the table for its races, so no row of the table names any of
-# them alone: in
+# ("Hispanic"), with two or more different races named. A part read through
+# one of its slash fragments (flag slash_normalized: the first fragment the
+# vocabulary holds decides) names one race only when every other fragment
+# names that race too, through a reading that is not fuzzy, a known
+# abbreviation ("Cau") or a race part beside an ethnicity phrase, or is only
+# an ethnicity term ("Black/African American", "White/Cau",
+# "White/Hispanic"). Any other fragment may be an alternative, so the row is
+# not a comma list: another race ("Asian/Black"), a residual category
+# ("Asian/Other"), a non-answer ("Asian/Refused", "Asian/Not Applicable") or
+# text the vocabulary does not hold ("Asian/Oriental");
+# _slash_reading_names_one_race, review findings. A part starting with "or"
+# ("White, Asian, or Hispanic", NCT03506724) offers alternatives: the row
+# is not a comma list. A label the vocabulary holds whole is not one either.
+# A comma list maps to more than one race, flagged multirace_comma_list,
+# when the same table has another row, not itself a comma list, read as one
+# of the races named through a reading that is not fuzzy (confidence high,
+# not unmapped) and, when read through a slash fragment, passing the same
+# test as a part ("Asian/Black" or "Asian/Not Applicable" is no evidence of
+# an Asian row). A grouped category stands in the table for its races, so
+# no row of the table names any of them alone: in
 # every table of the inputs holding a comma list with no such row, the row is
 # a grouped category ("Asian, Pacific Islander" in 31 trials; "American
 # Indian or Alaska Native, Asian" in NCT03596450; "Native American, Native
@@ -1861,9 +1865,7 @@ def _comma_list_races(text: str) -> Optional[FrozenSet[str]]:
 def _slash_fragment_category(fragment: str) -> Optional[str]:
     """The category a slash fragment reads as without a fuzzy match (exact
     or case-insensitive vocabulary match, or the Middle Eastern or North
-    African rule), whatever the category: other, unknown and more than one
-    race included. None for text read as nothing ("Cau") and for an
-    ethnicity term ("Hispanic"), which map as unmapped."""
+    African rule), whatever the category, or None."""
     fragment = fragment.strip(" -–—:,;()/.")
     if not fragment:
         return None
@@ -1873,36 +1875,55 @@ def _slash_fragment_category(fragment: str) -> Optional[str]:
     return mapping["omb_category"]
 
 
-def _slash_fragments_agree(text: str, race: str) -> bool:
-    """False when text holds "/" and a fragment reads as a category other
-    than race (_slash_fragment_category), or the text holds a non-answer:
-    "Asian/Black" may name either race, "Asian/Other" Asian or another race,
-    "Asian/Refused" Asian or no answer (review findings), and
-    "Asian/Pacific Islander" is the 1977 grouping, while "Black/African
-    American" and "White/Cau" ("Cau" reads as nothing) name one race.
-
-    A non-answer is a term of _UNKNOWN_TERM_RX searched in the whole text,
-    since "N/A" is split by its own slash, or a fragment that is a compact
-    non-answer once its punctuation is removed ("NK", "DK", "None";
-    _HERITAGE_COMPACT_NON_ANSWERS)."""
-    if "/" not in text:
+def _fragment_names_race(fragment: str, race: str) -> bool:
+    """True when a slash fragment names race: it reads as race without a
+    fuzzy match (_slash_fragment_category), is an abbreviation of race the
+    module knows (_HERITAGE_ABBREVIATIONS: "Cau"), or is race joined to an
+    ethnicity phrase whose race part does ("African American, non-Hispanic";
+    _race_joined_to_ethnicity)."""
+    if (_slash_fragment_category(fragment) == race
+            or _HERITAGE_ABBREVIATIONS.get(fragment.strip(" -–—:,;()/.").lower()) == race):
         return True
-    if _UNKNOWN_TERM_RX.search(text) is not None:
+    joined = _race_joined_to_ethnicity(fragment)
+    return joined is not None and _slash_fragment_category(joined[0]) == race
+
+
+def _slash_reading_names_one_race(text: str, race: str) -> bool:
+    """For a text read as race through one of its slash fragments (flag
+    slash_normalized): True only when every other fragment names race too
+    (_fragment_names_race) or is only an ethnicity term ("White/Hispanic").
+    Any other fragment may be an alternative: another race ("Asian/Black"),
+    a residual category ("Asian/Other"), a non-answer ("Asian/Refused",
+    "Asian/N/A", "Asian/Not Applicable") or text the vocabulary does not
+    hold ("Asian/Oriental"); review findings. "Black/African American" and
+    "White/Cau" name one race."""
+    for fragment in text.split("/"):
+        if (not fragment.strip(" -–—:,;()/.") or _is_ethnicity_only_label(fragment)
+                or _fragment_names_race(fragment, race)):
+            continue
         return False
-    fragments = text.split("/")
-    if any(re.sub(r"[^a-z]", "", fragment.lower()) in _HERITAGE_COMPACT_NON_ANSWERS | {"none"}
-           for fragment in fragments):
-        return False
-    categories = {_slash_fragment_category(fragment) for fragment in fragments}
-    return categories - {None} <= {race}
+    return True
+
+
+def _read_through_slash(text: str) -> bool:
+    """True when map_race_category reads text through one of its slash
+    fragments (flag slash_normalized), not as a whole: "Black/African
+    American" is, "American Indian/Alaska Native" (a vocabulary entry) and
+    "Middle Eastern/North African" (the Middle Eastern or North African
+    rule) are not."""
+    text = text.strip(" -–—:,;()/.")
+    return ("/" in text and "slash_normalized"
+            in map_race_category(text, heritage=False, multirace=False)["flags"])
 
 
 def _comma_list_part_race(part: str) -> Optional[str]:
     """The one race a part of a comma list names (_named_race), or None when
-    it names none or its slash fragments disagree (_slash_fragments_agree; a
-    review finding)."""
+    it names none, or names one only through a slash fragment that the other
+    fragments do not confirm (_slash_reading_names_one_race)."""
     race = _named_race(part)
-    return race if race is not None and _slash_fragments_agree(part, race) else None
+    if race is None or not _read_through_slash(part):
+        return race
+    return race if _slash_reading_names_one_race(part.strip(" -–—:,;()/."), race) else None
 
 
 def _row_text_read(text: str, whole_table: bool) -> str:
@@ -1927,7 +1948,8 @@ def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[i
              and mapping["confidence"] == "high" and "unmapped" not in mapping["flags"]
              and mapping["omb_category"] in _RACE_SPECIFIC
              and mapping["omb_category"] != "more_than_one_race"
-             and _slash_fragments_agree(text, mapping["omb_category"])}
+             and ("slash_normalized" not in mapping["flags"]
+                  or _slash_reading_names_one_race(text, mapping["omb_category"]))}
     return [i for i, races in enumerate(lists) if races is not None and races & alone]
 
 

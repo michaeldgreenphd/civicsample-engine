@@ -1892,6 +1892,7 @@ def test_a_comma_list_names_its_races(label: str, races: set[str]) -> None:
     "White, Asian/Other",  # Asian or another race (a review finding)
     "White, Asian/Refused",  # Asian or no answer (a review finding)
     "White, Asian/N/A",
+    "White, Asian/Not Applicable",
     "Asian/Pacific Islander, White",  # the 1977 grouping, with a slash
     "More than one race, White",
     "Multiple - Asian, White",  # the prefix rule reads it (block comment "Rows naming two or more races")
@@ -2021,8 +2022,11 @@ def test_a_slash_row_naming_either_of_two_races_is_no_evidence_of_a_race_alone()
 
 @pytest.mark.parametrize("evidence", [
     "Asian/Other", "Asian/Unknown", "Asian/Multiracial",
-    # Non-answers the vocabulary does not hold (a review finding).
+    # Non-answers the vocabulary does not hold (review findings).
     "Asian/Refused", "Asian/N/A", "Asian/Not Available", "Asian/Unk", "Asian/NK", "Asian/None",
+    "Asian/Not Applicable", "Asian/Not Listed", "Asian/Unavailable",
+    # Text the vocabulary does not hold: possibly an alternative.
+    "Asian/Oriental",
 ])
 def test_a_slash_row_with_a_residual_alternative_is_no_evidence_of_a_race_alone(evidence: str) -> None:
     """Review findings: "Other" reads as a category, not as nothing, so
@@ -2035,12 +2039,14 @@ def test_a_slash_row_with_a_residual_alternative_is_no_evidence_of_a_race_alone(
     assert "multirace_comma_list" not in readings["Asian, Pacific Islander"]
 
 
-def test_a_slash_row_with_an_ethnicity_or_unread_fragment_is_still_evidence() -> None:
-    """"White/Hispanic" and "Asian/Oriental" name one race: an ethnicity term
-    and a fragment read as nothing are not alternatives."""
-    table = _category_table(COMBINED_TITLE, [
-        ("White/Hispanic", 4), ("Asian/Oriental", 3), ("White, Black", 1), ("Asian, Black", 1)])
-    race = extract_race_data(_study("NCT99000576", [table], participants=9))
-    readings = {c["original"]: c["flags"] for c in race["raw_categories"]}
-    assert "multirace_comma_list" in readings["White, Black"]
-    assert "multirace_comma_list" in readings["Asian, Black"]
+def test_a_slash_row_whose_fragments_all_name_the_race_is_still_evidence() -> None:
+    """"White/Cau" (a known abbreviation), "White/Hispanic" (an ethnicity
+    term) and "Black/African American, non-Hispanic" (a race part beside an
+    ethnicity phrase) each name one race."""
+    for nct_id, evidence, combo in [("NCT99000576", "White/Cau", "White, Asian"),
+                                    ("NCT99000577", "White/Hispanic", "White, Asian"),
+                                    ("NCT99000578", "Black/African American, non-Hispanic", "Black, Asian")]:
+        table = _category_table(COMBINED_TITLE, [(evidence, 4), (combo, 1), ("Other", 2)])
+        race = extract_race_data(_study(nct_id, [table], participants=7))
+        readings = {c["original"]: c["flags"] for c in race["raw_categories"]}
+        assert "multirace_comma_list" in readings[combo], evidence
