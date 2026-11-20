@@ -5,7 +5,7 @@ Extracts race data from baseline characteristics and maps to NIH/OMB categories
 with granular subcategories preserved.
 """
 import re
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, FrozenSet, List, Tuple, Optional
 from rapidfuzz import fuzz, process
 from src.utils import clean_demographic_label, COMBINED_DIMENSION, DIMENSION_JOIN
 # The manuscript parser's sex/gender measure selection (/sex|gender/i), reused
@@ -327,6 +327,164 @@ def mena_subcategory(label: str) -> Optional[str]:
     if kinds <= {"middle_eastern", "middle_eastern_arab", "middle_eastern_persian"}:
         return "middle_eastern"
     return "middle_eastern_north_african"
+
+# ── American Indian or Alaska Native labels ────────────────────────────────
+#
+# OMB's 2024 revision of SPD 15 (Federal Register document 2024-06469, March
+# 29, 2024) defines American Indian or Alaska Native by origins in any of the
+# original peoples of North, Central and South America, with Navajo Nation,
+# Blackfeet, Aztec and Maya among its examples; the 1997 standard covered the
+# original peoples of North and South America (including Central America)
+# and also required tribal affiliation or community attachment. (Read from
+# the notice's search summary; the notice itself could not be fetched here.)
+# The vocabulary held the standard spellings ("American Indian or Alaska
+# Native", "Native American", "First Nations", "Indigenous"); other wordings
+# of the same category matched nothing and were counted as other: "American
+# Indian" alone (6,113 participants in 114 trials of the 2026-11-15 inputs),
+# "North American Native" (4,257 in 4), "Alaska Native" (2,031 in 5), "Native
+# American or Alaskan Native" (1,211 in 11), "Indigenous Mayan" (706),
+# "American Indian (Amer. Ind.) or Alaska Native" (518). Tribal names were
+# quarantined as not race, leaving their participants to denominator
+# balancing as unknown: NCT00121108 posts "Navajo" (1,725), "San Carlos
+# Apache", "Hopi" and "Zuni" (quarantined) beside "White Mountain Apache"
+# (other).
+#
+# Method (aian_label; after the Middle Eastern or North African rule and
+# before the heritage, multirace and slash-fragment rules). A cleaned label
+# (lower case, "é" as "e", a hyphen between letters as a space, "." and "'"
+# removed, a bracketed template abbreviation such as "(Amer)" or "(N)"
+# removed) maps to American Indian or Alaska Native, flagged aian_label, when
+# it is made only of these terms, joined by "/", ",", ";", "&", "(", ")",
+# ":", " - ", "or", "and" or "and/or":
+#   - names: American Indian, Am/Amer/Amc Indian, Amer Ind, Alaska(n) Native,
+#     Native Alaskan, Native American, North/South/Central American Indian,
+#     First Nation(s), Inuit, Metis, Amerindian, Eskimo, and the tribal and
+#     national names posted in the inputs or given as the standard's
+#     examples (Navajo, Apache, White Mountain Apache, San Carlos Apache, Hopi,
+#     Zuni, Yup'ik, Inupiat, Blackfeet, Maya(n), Aztec, Quechua, Aymara,
+#     Guarani, Xavante, Kaingang);
+#   - "Indigenous", "Aboriginal" or "Aborigine" beside a place of the Americas
+#     (the Americas, North/South/Central/Latin America(n), American, Canada,
+#     Alaska, Brazil, Mexico, Guatemala, Peru, Bolivia, Ecuador, Chile,
+#     Colombia): "Indigenous (Brazil)", "Canadian Aboriginal", "Aboriginal
+#     Peoples of North America";
+#   - "Native" beside a continent only ("North American Native", "Native
+#     South American"): "Native Mexican" may mean born in Mexico;
+#   - with a name only, the template's abbreviations ("(Amer. Ind.)", "(AI)",
+#     "(AN)", "(N)", "(Al)", "Alaska" alone); with a name or a continent,
+#     "North", "South" and "Central" ("North, South or Central American
+#     Native");
+#   - with a name only, a tribal suffix: Nation(s), Tribe(s), Tribal, Band(s),
+#     Member(s), Community ("Navajo Nation", "Blackfeet Tribe"; a review
+#     finding), so "Tribal members" alone is not read;
+#   - fillers: people(s), person(s), only, e.g., i.e., from, of, non-status,
+#     ethnicity, descent, origin(s), ancestry.
+# At least one name, or an Indigenous word with a place, must be present.
+# A label the vocabulary holds whole keeps its entry (the exact match runs
+# first). Labels already read through the fuzzy match ("American
+# Indian/Alaskan Native", 98) keep their category and are now read without
+# it.
+#
+# What it does not do. A label naming an Indigenous people outside the
+# Americas stays as it was ("Indigenous African", "Aboriginal Australian",
+# "Torres Strait Islander", "Maori", "Indigenous swede"). An unqualified
+# "Indigenous", "Aboriginal", "Aborigine", "Native" or "Tribal members" stays
+# as it was: it names Indigenous people of the trial's own country, which the
+# label does not give ("Aboriginal" is posted by Canadian and by Australian
+# trials; "Indigenous", a vocabulary entry read as American Indian, is posted
+# by one Australia and New Zealand trial). A label naming another group
+# beside these ("Native American or Pacific Islander", "American Indian and
+# White", "Other (including American Indian or Alaska Native)") is not read
+# by this rule; a combination is read by the multirace rules, which now find
+# "American Indian" a race. A row crossing race with another variable
+# ("Native American or Alaskan Native - Usual Care", "Adult Native
+# American") is not read.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against the comma-list
+# rule: American Indian +21,327 (19,515 from other, 1,815 from rows
+# quarantined as not race, less 3 now in combinations), more than one race
+# +272 (combinations naming American Indian, now readable: "American Indian
+# and White" 205 in NCT04839978), other -19,782, unknown -1,815 (all
+# unknown_inferred), White -1, Asian -1; 112 labels in 263 trials. A further
+# 9,441 participants in 324 trials were American Indian already, through the
+# fuzzy match (8,244) or a slash fragment (1,197), and are now read by this
+# rule. No block changes reported, no ethnicity or sex block changes, no
+# sex/gender-titled measure changes the gate, and the 338 race blocks over
+# their population stay 338, none larger. "Aboriginal or American Indian"
+# (NCT03954314, 20 participants, sites in Canada and New Zealand among
+# others) is read as American Indian: it names American Indian, and
+# "Aboriginal" beside a name is taken with it.
+_AIAN_NAME = (
+    r"american\s+indians?|am(?:er|c)?\s+indians?|amer\s+ind|alaskan?\s*natives?|native\s+alaskans?|"
+    r"native\s+americans?|(?:north|south|central)\s+american\s+indians?|first\s+nations?|inuits?|"
+    r"metis|amerindians?|eskimos?|(?:white\s+mountain\s+|san\s+carlos\s+)?apaches?|navajos?|hopis?|"
+    r"zunis?|yupik|inupiat|blackfeet|mayans?|mayas?|aztecs?|quechuas?|aymaras?|guaranis?|xavante|"
+    r"kaingang|kaigang")
+_AIAN_CONTINENT = r"(?:north|south|central|latin)\s+americ(?:a|an|ans)|the\s+americas|americas|americ(?:an|ans)"
+_AIAN_COUNTRY = (r"canad(?:a|ian|ians)|alaskan?|brazil(?:ian|ians)?|mexic(?:o|an|ans)|guatemal(?:a|an|ans)|"
+                 r"peru(?:vian|vians)?|bolivi(?:a|an|ans)|ecuador(?:ian|ians)?|chile(?:an|ans)?|colombi(?:a|an|ans)")
+_AIAN_INDIGENOUS = r"indigenous|aboriginals?|aborigines?"
+_AIAN_ABBREV = r"amer|am|amc|ind|al|alk|n|nat|ai|an|amin|alaska"
+# A tribal suffix ("Navajo Nation", "Blackfeet Tribe"; a review finding).
+_AIAN_TRIBE = r"nations?|tribes?|tribal|bands?|members?|communit(?:y|ies)"
+_AIAN_FILLER = (r"peoples?|persons?|only|e\s*g|i\s*e|from|of|non\s+status|ethnicity|descent|origins?|"
+                r"ancestry")
+# A bracketed template abbreviation, removed before the label is read.
+_AIAN_GLOSS_RX = re.compile(rf"\s*\(\s*(?:{_AIAN_ABBREV}|alk\s+n|amer\s+ind)\s*\)\s*", re.IGNORECASE)
+# Words end at a non-letter; a punctuation join may be followed by anything.
+_AIAN_TOKEN_RX = re.compile(
+    rf"(?:(?P<name>{_AIAN_NAME})|(?P<indigenous>{_AIAN_INDIGENOUS})|(?P<native>natives?)|"
+    rf"(?P<continent>{_AIAN_CONTINENT})|(?P<country>{_AIAN_COUNTRY})|"
+    rf"(?P<direction>north|south|central)|(?P<abbrev>{_AIAN_ABBREV})|(?P<tribe>{_AIAN_TRIBE})|"
+    rf"(?P<filler>{_AIAN_FILLER})|(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
+    re.IGNORECASE)
+
+
+def aian_label(label: str) -> bool:
+    """True when a label names American Indian or Alaska Native peoples
+    only, by the terms of the block comment above.
+
+      "American Indian"                                -> True
+      "North American Native"                          -> True
+      "American (Amer) Indian (Ind) or Alaska Native (N)" -> True
+      "Navajo"                                         -> True
+      "Indigenous Mayan"                               -> True
+      "Aboriginal"                                     -> False (no place)
+      "Indigenous African"                             -> False
+      "Native American or Pacific Islander"            -> False
+    """
+    text = clean_demographic_label(label).lower().replace("é", "e")
+    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
+    text = re.sub(r"[.'’]", "", text)
+    # A gloss inside a name ("American (Amer) Indian (Ind) or Alaska (Al)
+    # Native (N)") would split it: removed, so the name reads whole.
+    text = _AIAN_GLOSS_RX.sub(" ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    kinds = set()
+    position = 0
+    while position < len(text):
+        match = _AIAN_TOKEN_RX.match(text, position)
+        if match is None or match.end() == position:
+            return False
+        kinds.add(match.lastgroup)
+        position = match.end()
+        while position < len(text) and text[position].isspace():
+            position += 1
+    named = "name" in kinds
+    # "Native" takes a continent only: "Native Mexican" may mean born in Mexico.
+    placed = ("indigenous" in kinds and ("continent" in kinds or "country" in kinds)
+              or "native" in kinds and "continent" in kinds)
+    if not (named or placed):
+        return False
+    # A template abbreviation or a tribal suffix ("Tribal members") names
+    # nothing without a name beside it; a direction ("North, South or
+    # Central American Native") needs a name or a continent.
+    if ("abbrev" in kinds or "tribe" in kinds) and not named:
+        return False
+    if "direction" in kinds and not (named or "continent" in kinds):
+        return False
+    return True
 
 # ── Heritage-template labels ───────────────────────────────────────────────
 #
@@ -692,11 +850,13 @@ def _heritage_combination(label: str) -> bool:
 # row maps to more than one race, flagged multirace_label.
 #
 # What it does not do. Parts joined only by "," or ";" without a prefix are
-# not read: a comma joins the names of one grouped category as often as it
-# joins a combination ("Asian, Pacific Islander" beside "American Indian,
-# Alaskan Native" in NCT00851799, but "White, Black or African American" in
-# NCT03492281). Two races joined by "/" or "or" without a prefix are not read
-# either: the row may name either race.
+# not read by this rule: a comma joins the names of one grouped category as
+# often as it joins a combination ("Asian, Pacific Islander" beside "American
+# Indian, Alaskan Native" in NCT00851799, but "White, Black or African
+# American" in NCT03492281), and only the rest of the table tells the two
+# apart (block comment "Comma lists naming two or more races"). Two races
+# joined by "/" or "or" without a prefix are not read either: the row may
+# name either race.
 #
 # These rows add to the table's population, not to a "More than one race" row
 # beside them: of the tables holding them in the 2026-11-15 inputs, those with
@@ -711,9 +871,8 @@ def _heritage_combination(label: str) -> bool:
 # mena_in_white falls by 2 ("Black & Middle Eastern/North African" and "Asian
 # & Middle Eastern/North African", White through a slash fragment before). No
 # block changes reported, no ethnicity block changes, and the 338 race blocks
-# over their population stay 338, none larger. Comma lists left unread: 1,150
-# participants in 78 trials, 1,027 of them in grouped categories ("Asian,
-# Pacific Islander" 978 in 32 trials).
+# over their population stay 338, none larger. Comma lists are measured in
+# block comment "Comma lists naming two or more races".
 _MULTIRACE_PREFIX_RX = re.compile(
     r"^(?:multiple(?:\s+races?)?|multi[\s\-]?racial|mixed(?:\s+races?)?|bi[\s\-]?racial|"
     r"more\s+than\s+one\s+races?|two\s+or\s+more\s+races)\s*(?:[\-:–—(]\s*|\s+(?=\S))",
@@ -835,6 +994,19 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
         return {
             "omb_category": "white",
             "subcategory": mena,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A label naming American Indian or Alaska Native peoples only (block
+    # comment "American Indian or Alaska Native labels"), before the slash
+    # fragments and the fuzzy match.
+    if aian_label(label_clean):
+        flags.append("aian_label")
+        return {
+            "omb_category": "american_indian_alaska_native",
+            "subcategory": None,
             "confidence": "high",
             "original": label_clean,
             "flags": flags
@@ -1356,7 +1528,7 @@ def _strip_race_dimension(label: str) -> Optional[str]:
 
 
 def _map_plain_row(label: str, count: int, pct_converted: bool,
-                   total_only: bool = False) -> Optional[Dict]:
+                   total_only: bool = False, reading: Optional[Dict] = None) -> Optional[Dict]:
     """Map one row the way every plain race row is mapped.
 
     Returns None for a purely ethnicity label (e.g. "Hispanic or Latino"), which
@@ -1366,12 +1538,20 @@ def _map_plain_row(label: str, count: int, pct_converted: bool,
     this function, so it lands where the same text would land on its own row.
     A leading race dimension name is removed first (block comment "Race
     dimension named in the row label").
+
+    reading, when given, is used in place of _map_race_label's mapping (a
+    copy is taken): the comma-list rule, which needs the rest of the table,
+    passes its reading here so the row gets every row-level step as any
+    other row does (block comment "Comma lists naming two or more races").
     """
     stripped = _strip_race_dimension(label)
     text = stripped if stripped is not None else label
     if _is_ethnicity_only_label(text):
         return None
-    mapping = _map_race_label(text, guard_negation=stripped is not None)
+    if reading is not None:
+        mapping = {**reading, "flags": list(reading["flags"])}
+    else:
+        mapping = _map_race_label(text, guard_negation=stripped is not None)
     if stripped is not None:
         mapping["original"] = clean_demographic_label(label)
         mapping["flags"].append("dimension_wording_stripped")
@@ -1404,12 +1584,9 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
     """
     rows, pct_converted, total_only = _measure_rows(measure, overall_group_id, fallback_denom)
     whole_table = _ethnicity_dimension_is_the_table([label for label, _count in rows])
-    results = []
-    for label, count in rows:
-        mapping, _skipped = _map_table_row(label, count, pct_converted, total_only, whole_table)
-        if mapping is not None:
-            results.append(mapping)
-    return results
+    return [mapping for mapping, _skipped in
+            _map_table_rows(rows, pct_converted, total_only, whole_table)
+            if mapping is not None]
 
 # ── Ethnicity rows inside a race table ──────────────────────────────────────
 #
@@ -1701,7 +1878,8 @@ def _ethnicity_dimension_is_the_table(labels: List[str]) -> bool:
 
 def _map_table_row(label: str, count: int, pct_converted: bool, total_only: bool,
                    whole_table: bool, race_part: Optional[str] = None,
-                   sex: Optional[str] = None) -> Tuple[Optional[Dict], Optional[Dict]]:
+                   sex: Optional[str] = None,
+                   reading: Optional[Dict] = None) -> Tuple[Optional[Dict], Optional[Dict]]:
     """(mapping, None) for a row counted as race, (None, record) for a row left
     out of the race counts (_skipped_ethnicity_row): an ethnicity-only row,
     or a row naming the ethnicity dimension in a table where other rows do
@@ -1709,11 +1887,12 @@ def _map_table_row(label: str, count: int, pct_converted: bool, total_only: bool
     whole_table is _ethnicity_dimension_is_the_table for the row's table, over
     the race parts when the table crosses race with sex. For a race-by-sex row
     the race part is what is read, and the record keeps race_part and sex
-    beside the posted label."""
+    beside the posted label. reading is passed to _map_plain_row (the
+    comma-list rule; _map_table_rows)."""
     text = race_part if race_part is not None else label
     stripped = _strip_ethnicity_dimension(text) if whole_table else None
     mapping = _map_plain_row(stripped if stripped is not None else text, count,
-                             pct_converted, total_only)
+                             pct_converted, total_only, reading)
     if mapping is None or (stripped is None and _names_ethnicity_dimension(text)):
         row = _skipped_ethnicity_row(label, count, pct_converted, race_part, sex, total_only)
         if mapping is not None:
@@ -1744,6 +1923,259 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
         flags.append(table_selection.TOTAL_CLASS_FLAG)
     row["flags"] = flags
     return row
+
+# ── Comma lists naming two or more races ───────────────────────────────────
+#
+# A row listing races with "," or ";" only, with no prefix and no "&", "+" or
+# "and" (block comment "Rows naming two or more races"), is posted for two
+# different things. It is a combination, the participants who reported each
+# race named, in "Asian / Black or African American / Native Hawaiian or
+# Other Pacific Islander / White / White, American Indian or Alaska Native /
+# White, Black or African American / White, Native Hawaiian or Other Pacific
+# Islander" (NCT05064449). It is a grouped category,
+# participants who reported any one of the races named, in "White
+# Non-Hispanic / Black Non-Hispanic / Hispanic (Regardless of Race) / Asian,
+# Pacific Islander" (NCT01403051): the 1977 Asian or Pacific Islander group.
+# The row alone cannot tell the two apart; the rest of its table can.
+#
+# Method (_comma_list_rows, over the rows of one table after each is mapped).
+# A row is a comma list when its label, read as every row is (dimension
+# wording removed, _row_text_read; category names holding "and" kept whole,
+# as in the rule for rows naming two or more races), has no heritage word, no
+# prefix such as "Multiple" or "Mixed" and no "&", "+" or "and", and splits at
+# "," and ";" into parts each naming one race through a reading that is not
+# fuzzy (_named_race), passing over a part that is only an ethnicity term
+# ("Hispanic"), with two or more different races named. A part read through
+# one of its slash fragments (flag slash_normalized: the first fragment the
+# vocabulary holds decides) names one race only when every other fragment
+# names that race too, through a reading that is not fuzzy, a known
+# abbreviation ("Cau") or a race part beside an ethnicity phrase, or is only
+# an ethnicity term ("Black/African American", "White/Cau",
+# "White/Hispanic"). Any other fragment may be an alternative, so the row is
+# not a comma list: another race ("Asian/Black"), a residual category
+# ("Asian/Other"), a non-answer ("Asian/Refused", "Asian/Not Applicable") or
+# text the vocabulary does not hold ("Asian/Oriental");
+# _slash_reading_names_one_race, review findings. A part starting with "or"
+# ("White, Asian, or Hispanic", NCT03506724) offers alternatives: the row
+# is not a comma list. A label the vocabulary holds whole is not one either.
+# A comma list maps to more than one race, flagged multirace_comma_list,
+# when the same table has another row, not itself a comma list, read as one
+# of the races named through a reading that is not fuzzy (confidence high,
+# not unmapped) and, when read through a slash fragment, passing the same
+# test as a part ("Asian/Black" or "Asian/Not Applicable" is no evidence of
+# an Asian row). A part read by the Middle Eastern or North African rule is
+# matched only by a row read by that rule, not by a "White" row
+# (_comma_list_key): a table listing it apart from White does not count it as
+# White ("White" beside "Metis, Black, Latino/Latina/Latinx, Middle Eastern"
+# in NCT05997901, a grouping of the others); two races are still counted in
+# the 1997 categories, so "White, Middle Eastern" names one. (Added with the
+# rule for American Indian or Alaska Native labels, which made "Metis" a
+# race.) A grouped category stands in the table for its races, so
+# no row of the table names any of them alone: in
+# every table of the inputs holding a comma list with no such row, the row is
+# a grouped category ("Asian, Pacific Islander" in 31 trials; "American
+# Indian or Alaska Native, Asian" in NCT03596450; "Native American, Native
+# Hawaiian, Pacific Islander" in NCT05299983). One race named alone is
+# enough, not every race: a table posts only the categories someone
+# reported, and "White, American Indian or Alaska Native" is a combination in
+# NCT05064449, whose table has a White row and no American Indian row.
+#
+# What it does not do. A comma list in a table naming none of its races
+# alone keeps the reading it had: "Asian, Pacific Islander" stays other, and
+# "American Indian or Alaska Native, Asian" stays American Indian through
+# the fuzzy match, which is the earlier reading, not a verdict. A part that
+# is not a race ("Asian, Black or African American, Other") leaves the row
+# as it was, as in the rule for rows naming two or more races. ("American
+# Indian, White or Caucasian" in NCT01401842 was such a row until "American
+# Indian" was read as a race: block comment "American Indian or Alaska
+# Native labels".) The rule reads the posted rows of one
+# table; it does not compare a row's count with the counts of the rows
+# beside it. A comma list it reads is race-specific, so a sex/gender-titled
+# measure holding one can now pass the gate above _sex_titled_race_table.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against the rule for rows
+# naming two or more races: rows flagged multirace_comma_list in 38 trials,
+# 27 labels; more than one race +82, from other 40, Black 21 ("White, Black
+# or African American" 15 in 6 trials, "Black or African American, White" 6
+# in 6), American Indian 19, Native Hawaiian 1, Asian 1. "Asian, Pacific
+# Islander" is read as a combination in one trial (NCT01401842, 1
+# participant), whose table lists Asian and Pacific Islander alone beside 12
+# other rows joining labels with commas. No block changes reported, no ethnicity or sex block
+# changes, no sex/gender-titled measure changes the gate, and the 338 race
+# blocks over their population stay 338, none larger. Comma lists left as
+# they were, in tables naming none of their races alone: 1,050 participants
+# in 37 trials, every one a grouped category ("Asian, Pacific Islander" 977
+# in 31 trials; "American Indian or Alaska Native, Asian" 43 in NCT03596450).
+_COMMA_LIST_SPLIT_RX = re.compile(r"\s*[,;]\s*")
+_COMMA_LIST_ALTERNATIVE_RX = re.compile(r"^or\b", re.IGNORECASE)
+_COMMA_LIST_FLAG = "multirace_comma_list"
+
+
+# A part read by the Middle Eastern or North African rule is White under the
+# 1997 categories, but a table that lists it apart from a "White" row does not
+# count it as White: for the evidence of a race named alone it is its own key,
+# matched only by a row read by that rule ("White" beside "Metis, Black,
+# Latino/Latina/Latinx, Middle Eastern" in NCT05997901 is a grouping of the
+# others, not their combination). Two races are still counted in the 1997
+# categories, so "White, Middle Eastern" names one.
+_COMMA_LIST_MENA_KEY = "white_middle_eastern_north_african"
+
+
+def _comma_list_key(category: str, subcategory: Optional[str]) -> str:
+    """The key a race named in a comma list, or a row of its table, is
+    matched on: the category, or _COMMA_LIST_MENA_KEY for White with a
+    Middle Eastern or North African subcategory."""
+    if category == "white" and subcategory in MENA_SUBCATEGORIES:
+        return _COMMA_LIST_MENA_KEY
+    return category
+
+
+def _comma_list_races(text: str) -> Optional[FrozenSet[str]]:
+    """The keys (_comma_list_key) of the races a comma list names, or None
+    when the text is not a comma list (block comment "Comma lists naming two
+    or more races")."""
+    text = clean_demographic_label(text)
+    if any(key.lower() == text.lower() for key in RACE_MAPPINGS):
+        return None
+    for name_rx, name in _MULTIRACE_ONE_CATEGORY:
+        text = name_rx.sub(name, text)
+    if (_HERITAGE_WORD_RX.search(text) is not None
+            or _MULTIRACE_PREFIX_RX.match(text) is not None
+            or len(_MULTIRACE_JOIN_SPLIT_RX.split(text)) >= 2):
+        return None
+    parts = _COMMA_LIST_SPLIT_RX.split(text)
+    if len(parts) < 2:
+        return None
+    races = set()
+    for part in parts:
+        # Before the ethnicity test: "or Hispanic" offers an alternative.
+        if _COMMA_LIST_ALTERNATIVE_RX.match(part):
+            return None
+        if not part.strip(" -–—:,;()/.") or _is_ethnicity_only_label(part):
+            continue
+        race = _comma_list_part_race(part)
+        if race is None or race == "more_than_one_race":
+            return None
+        races.add(_comma_list_key(race, mena_subcategory(part)))
+    named = {"white" if key == _COMMA_LIST_MENA_KEY else key for key in races}
+    return frozenset(races) if len(named) >= 2 else None
+
+
+def _slash_fragment_category(fragment: str) -> Optional[str]:
+    """The category a slash fragment reads as without a fuzzy match (exact
+    or case-insensitive vocabulary match, or the Middle Eastern or North
+    African rule), whatever the category, or None."""
+    fragment = fragment.strip(" -–—:,;()/.")
+    if not fragment:
+        return None
+    mapping = map_race_category(fragment, heritage=False, multirace=False)
+    if mapping["confidence"] != "high" or "unmapped" in mapping["flags"]:
+        return None
+    return mapping["omb_category"]
+
+
+def _fragment_names_race(fragment: str, race: str) -> bool:
+    """True when a slash fragment names race: it reads as race without a
+    fuzzy match (_slash_fragment_category), is an abbreviation of race the
+    module knows (_HERITAGE_ABBREVIATIONS: "Cau"), or is race joined to an
+    ethnicity phrase whose race part does ("African American, non-Hispanic";
+    _race_joined_to_ethnicity)."""
+    if (_slash_fragment_category(fragment) == race
+            or _HERITAGE_ABBREVIATIONS.get(fragment.strip(" -–—:,;()/.").lower()) == race):
+        return True
+    joined = _race_joined_to_ethnicity(fragment)
+    return joined is not None and _slash_fragment_category(joined[0]) == race
+
+
+def _slash_reading_names_one_race(text: str, race: str) -> bool:
+    """For a text read as race through one of its slash fragments (flag
+    slash_normalized): True only when every other fragment names race too
+    (_fragment_names_race) or is only an ethnicity term ("White/Hispanic").
+    Any other fragment may be an alternative: another race ("Asian/Black"),
+    a residual category ("Asian/Other"), a non-answer ("Asian/Refused",
+    "Asian/N/A", "Asian/Not Applicable") or text the vocabulary does not
+    hold ("Asian/Oriental"); review findings. "Black/African American" and
+    "White/Cau" name one race."""
+    for fragment in text.split("/"):
+        if (not fragment.strip(" -–—:,;()/.") or _is_ethnicity_only_label(fragment)
+                or _fragment_names_race(fragment, race)):
+            continue
+        return False
+    return True
+
+
+def _read_through_slash(text: str) -> bool:
+    """True when map_race_category reads text through one of its slash
+    fragments (flag slash_normalized), not as a whole: "Black/African
+    American" is, "American Indian/Alaska Native" (a vocabulary entry) and
+    "Middle Eastern/North African" (the Middle Eastern or North African
+    rule) are not."""
+    text = text.strip(" -–—:,;()/.")
+    return ("/" in text and "slash_normalized"
+            in map_race_category(text, heritage=False, multirace=False)["flags"])
+
+
+def _comma_list_part_race(part: str) -> Optional[str]:
+    """The one race a part of a comma list names (_named_race), or None when
+    it names none, or names one only through a slash fragment that the other
+    fragments do not confirm (_slash_reading_names_one_race)."""
+    race = _named_race(part)
+    if race is None or not _read_through_slash(part):
+        return race
+    return race if _slash_reading_names_one_race(part.strip(" -–—:,;()/."), race) else None
+
+
+def _row_text_read(text: str, whole_table: bool) -> str:
+    """The text _map_race_label reads for a row (or race part): ethnicity
+    dimension wording removed when the table is that dimension, as
+    _map_table_row does, then race dimension wording, as _map_plain_row
+    does."""
+    stripped = _strip_ethnicity_dimension(text) if whole_table else None
+    text = stripped if stripped is not None else text
+    stripped = _strip_race_dimension(text)
+    return stripped if stripped is not None else text
+
+
+def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[int]:
+    """Indices of the rows of one table read as more than one race by the
+    comma-list rule. texts[i] is the text read for row i (_row_text_read),
+    mappings[i] its mapping, or None for a row left out of the race counts."""
+    lists = [_comma_list_races(text) if mapping is not None else None
+             for text, mapping in zip(texts, mappings)]
+    alone = {_comma_list_key(mapping["omb_category"], mapping.get("subcategory"))
+             for text, races, mapping in zip(texts, lists, mappings)
+             if races is None and mapping is not None
+             and mapping["confidence"] == "high" and "unmapped" not in mapping["flags"]
+             and mapping["omb_category"] in _RACE_SPECIFIC
+             and mapping["omb_category"] != "more_than_one_race"
+             and ("slash_normalized" not in mapping["flags"]
+                  or _slash_reading_names_one_race(text, mapping["omb_category"]))}
+    return [i for i, races in enumerate(lists) if races is not None and races & alone]
+
+
+def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only: bool,
+                    whole_table: bool,
+                    splits: Optional[List[Tuple[str, str]]] = None,
+                    ) -> List[Tuple[Optional[Dict], Optional[Dict]]]:
+    """_map_table_row for every row of one table, then the comma-list rule
+    (block comment "Comma lists naming two or more races"). splits holds the
+    (race part, sex) of each row of a race-by-sex table, else None."""
+    parts: List[Tuple[Optional[str], Optional[str]]] = (
+        list(splits) if splits is not None else [(None, None)] * len(rows))
+    results = [_map_table_row(label, count, pct_converted, total_only, whole_table,
+                              race_part, sex)
+               for (label, count), (race_part, sex) in zip(rows, parts)]
+    texts = [_row_text_read(race_part if race_part is not None else label, whole_table)
+             for (label, _count), (race_part, _sex) in zip(rows, parts)]
+    for i in _comma_list_rows(texts, [mapping for mapping, _skipped in results]):
+        (label, count), (race_part, sex) = rows[i], parts[i]
+        reading = {"omb_category": "more_than_one_race", "subcategory": None,
+                   "confidence": "high", "original": clean_demographic_label(texts[i]),
+                   "flags": [_COMMA_LIST_FLAG]}
+        results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
+                                    race_part, sex, reading)
+    return results
 
 # ── Race-by-sex tables ──────────────────────────────────────────────────────
 #
@@ -1935,9 +2367,8 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         # The same ethnicity-dimension routing as a plain table, on the race
         # parts (block comment "Ethnicity dimension named in the row label").
         whole_by_sex = _ethnicity_dimension_is_the_table([race_part for race_part, _sex in splits])
-        for (label, count), (race_part, sex) in zip(rows, splits):
-            mapping, skipped_row = _map_table_row(label, count, pct_converted, total_only,
-                                                  whole_by_sex, race_part, sex)
+        mapped = _map_table_rows(rows, pct_converted, total_only, whole_by_sex, splits)
+        for (label, _count), (race_part, sex), (mapping, skipped_row) in zip(rows, splits, mapped):
             if skipped_row is not None:
                 skipped.append(skipped_row)
                 continue
@@ -1959,8 +2390,7 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         # every row mapped whole, as before.
         categories, quarantined, skipped = [], [], []
         whole_table = _ethnicity_dimension_is_the_table([label for label, _count in rows])
-        for label, count in rows:
-            mapping, skipped_row = _map_table_row(label, count, pct_converted, total_only, whole_table)
+        for mapping, skipped_row in _map_table_rows(rows, pct_converted, total_only, whole_table):
             if skipped_row is not None:
                 skipped.append(skipped_row)
                 continue
