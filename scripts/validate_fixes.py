@@ -67,7 +67,11 @@ Tests:
  25. NCT99000145 — American Indian or Alaska Native wordings: "American
      Indian", "Alaska Native" and "Navajo", beside "Aboriginal Australian",
      which stays other (fictional study)
- 26. NCT99000146 — A race classification named "Ethnicity" ("Ethnicity:
+ 26. NCT99000115 — Race rows beside the OMB definition of Hispanic spelled
+     out ("Mexican, Puerto Rican, Central or So. Amer. or Oth") and "Not
+     meeting definition for Hispanic or Latino" (fictional study, the table
+     shape of NCT02153918)
+ 27. NCT99000146 — A race classification named "Ethnicity" ("Ethnicity:
      White" / "Ethnicity: Black") beside a bare residual "Unknown" row
      (fictional study)
 
@@ -91,8 +95,9 @@ counting them, among them a row naming the ethnicity dimension
 (EXPECTED_MENA). Study 22 asserts its race totals and that no row is
 quarantined (EXPECTED_HERITAGE). Studies 23 and 24 assert their race totals
 (EXPECTED_MULTIRACE). Study 25 asserts its race totals and that no row is
-quarantined (EXPECTED_AIAN).
-Study 26 asserts its race block and raceBreakdown (EXPECTED_RACE): the bare
+quarantined (EXPECTED_AIAN). Study 26 asserts its
+ethnicity totals and flags (EXPECTED_ETHNICITY).
+Study 27 asserts its race block and raceBreakdown (EXPECTED_RACE): the bare
 "Unknown" does not make the named rows an ethnicity classification.
 A mismatch stops the harness.
 """
@@ -817,6 +822,27 @@ EXPECTED_MULTIRACE = {
     "NCT99000144": {"white": 90, "black_african_american": 30, "more_than_one_race": 10, "other": 10},
 }
 
+# ---------- NCT99000115 (fictional): "Not meeting definition for Hispanic or Latino" ----------
+# 27 participants classified twice in one table: by race (Black 3, White 23,
+# Multi-racial 1) and by ethnicity (the OMB definition of Hispanic spelled
+# out 2, "Not meeting definition for Hispanic or Latino" 25). Both ethnicity
+# rows are read; before, neither was, and the block ended in all-zero
+# rejection. With the "not meeting" row alone it would read 25 Not Hispanic
+# and no Hispanic participant.
+MOCK_NCT99000115 = _make_study(
+    "NCT99000115",
+    "NCT99000115 - Not meeting the definition of Hispanic (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("Black or African American", 3), ("White", 23),
+                             ("Mexican, Puerto Rican, Central or So. Amer. or Oth", 2),
+                             ("Not meeting definition for Hispanic or Latino", 25), ("Multi-racial", 1)]
+        ]),
+    ],
+    total_participants=27,
+)
+
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
 # OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
@@ -879,6 +905,10 @@ EXPECTED_ETHNICITY = {
     # balanced into unknown.
     "NCT99000130": {"omb": {"hispanic_latino": 84, "not_hispanic_latino": 62, "unknown_not_reported": 4},
                     "flags": ["denominator_balanced", "race_joined_label", "total_class_only"]},
+    # Both rows of the ethnicity classification: the OMB definition spelled
+    # out 2, "Not meeting definition for Hispanic or Latino" 25.
+    "NCT99000115": {"omb": {"hispanic_latino": 2, "not_hispanic_latino": 25, "unknown_not_reported": 0},
+                    "flags": []},
 }
 
 
@@ -1104,6 +1134,7 @@ def main() -> None:
         (MOCK_NCT99000143, "NCT99000143"),
         (MOCK_NCT99000144, "NCT99000144"),
         (MOCK_NCT99000145, "NCT99000145"),
+        (MOCK_NCT99000115, "NCT99000115"),
         (MOCK_NCT99000146, "NCT99000146"),
     ]
     for study, nct_id in studies:
