@@ -1890,6 +1890,8 @@ def test_a_comma_list_names_its_races(label: str, races: set[str]) -> None:
     "Asian, Black or African American, Other",  # a part that is not a race
     "White, Asian/Black",  # a part that may name either race (a review finding)
     "White, Asian/Other",  # Asian or another race (a review finding)
+    "White, Asian/Refused",  # Asian or no answer (a review finding)
+    "White, Asian/N/A",
     "Asian/Pacific Islander, White",  # the 1977 grouping, with a slash
     "More than one race, White",
     "Multiple - Asian, White",  # the prefix rule reads it (block comment "Rows naming two or more races")
@@ -2017,11 +2019,16 @@ def test_a_slash_row_naming_either_of_two_races_is_no_evidence_of_a_race_alone()
     assert "multirace_comma_list" in readings["White, Black"]
 
 
-@pytest.mark.parametrize("evidence", ["Asian/Other", "Asian/Unknown", "Asian/Multiracial"])
+@pytest.mark.parametrize("evidence", [
+    "Asian/Other", "Asian/Unknown", "Asian/Multiracial",
+    # Non-answers the vocabulary does not hold (a review finding).
+    "Asian/Refused", "Asian/N/A", "Asian/Not Available", "Asian/Unk", "Asian/NK", "Asian/None",
+])
 def test_a_slash_row_with_a_residual_alternative_is_no_evidence_of_a_race_alone(evidence: str) -> None:
-    """A review finding: "Other" reads as a category, not as nothing, so
-    "Asian/Other" may name Asian or another race and is no Asian row; the
-    grouped "Asian, Pacific Islander" beside it keeps its reading."""
+    """Review findings: "Other" reads as a category, not as nothing, so
+    "Asian/Other" may name Asian or another race and is no Asian row, nor is
+    "Asian/Refused", Asian or no answer; the grouped "Asian, Pacific
+    Islander" beside it keeps its reading."""
     table = _category_table(COMBINED_TITLE, [(evidence, 5), ("Asian, Pacific Islander", 3), ("Black", 2)])
     race = extract_race_data(_study("NCT99000575", [table], participants=10))
     readings = {c["original"]: c["flags"] for c in race["raw_categories"]}

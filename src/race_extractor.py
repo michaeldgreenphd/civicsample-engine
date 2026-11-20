@@ -1776,18 +1776,20 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
 # fuzzy (_named_race), passing over a part that is only an ethnicity term
 # ("Hispanic"), with two or more different races named. A part holding "/"
 # names one race only when every fragment read without a fuzzy match reads
-# as that race, other and unknown included ("Black/African American",
-# "White/Cau"); "Asian/Black" may name either race and "Asian/Other" Asian
-# or another, so the row is not a comma list (_slash_fragments_agree). A part
+# as that race, other and unknown included, and it holds no non-answer
+# ("Black/African American", "White/Cau"); "Asian/Black" may name either
+# race, "Asian/Other" Asian or another and "Asian/Refused" Asian or no
+# answer, so the row is not a comma list (_slash_fragments_agree). A part
 # starting with "or" ("White, Asian, or Hispanic", NCT03506724) offers
 # alternatives: the row is not a comma list. A label the vocabulary holds
 # whole is not one either. A comma list maps to more than one race, flagged
 # multirace_comma_list, when the same table has another row, not itself a
 # comma list, read as one of the races named through a reading that is not
-# fuzzy (confidence high, not unmapped) and, for a row holding "/", whose
-# fragments agree as a part's must ("Asian/Black" and "Asian/Other" are no
-# evidence of an Asian row; review findings). A grouped category stands in the
-# table for its races, so no row of the table names any of them alone: in
+# fuzzy (confidence high, not unmapped) and, for a row holding "/", passing
+# the same test as a part ("Asian/Black", "Asian/Other" and "Asian/Refused"
+# are no evidence of an Asian row; review findings). A grouped category
+# stands in the table for its races, so no row of the table names any of
+# them alone: in
 # every table of the inputs holding a comma list with no such row, the row is
 # a grouped category ("Asian, Pacific Islander" in 31 trials; "American
 # Indian or Alaska Native, Asian" in NCT03596450; "Native American, Native
@@ -1873,13 +1875,25 @@ def _slash_fragment_category(fragment: str) -> Optional[str]:
 
 def _slash_fragments_agree(text: str, race: str) -> bool:
     """False when text holds "/" and a fragment reads as a category other
-    than race (_slash_fragment_category): "Asian/Black" may name either race,
-    "Asian/Other" Asian or another race (review findings), and
+    than race (_slash_fragment_category), or the text holds a non-answer:
+    "Asian/Black" may name either race, "Asian/Other" Asian or another race,
+    "Asian/Refused" Asian or no answer (review findings), and
     "Asian/Pacific Islander" is the 1977 grouping, while "Black/African
-    American" and "White/Cau" ("Cau" reads as nothing) name one race."""
+    American" and "White/Cau" ("Cau" reads as nothing) name one race.
+
+    A non-answer is a term of _UNKNOWN_TERM_RX searched in the whole text,
+    since "N/A" is split by its own slash, or a fragment that is a compact
+    non-answer once its punctuation is removed ("NK", "DK", "None";
+    _HERITAGE_COMPACT_NON_ANSWERS)."""
     if "/" not in text:
         return True
-    categories = {_slash_fragment_category(fragment) for fragment in text.split("/")}
+    if _UNKNOWN_TERM_RX.search(text) is not None:
+        return False
+    fragments = text.split("/")
+    if any(re.sub(r"[^a-z]", "", fragment.lower()) in _HERITAGE_COMPACT_NON_ANSWERS | {"none"}
+           for fragment in fragments):
+        return False
+    categories = {_slash_fragment_category(fragment) for fragment in fragments}
     return categories - {None} <= {race}
 
 
