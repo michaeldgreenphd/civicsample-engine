@@ -71,6 +71,9 @@ Tests:
      out ("Mexican, Puerto Rican, Central or So. Amer. or Oth") and "Not
      meeting definition for Hispanic or Latino" (fictional study, the table
      shape of NCT02153918)
+ 27. NCT99000146 — A race classification named "Ethnicity" ("Ethnicity:
+     White" / "Ethnicity: Black") beside a bare residual "Unknown" row
+     (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -94,6 +97,8 @@ quarantined (EXPECTED_HERITAGE). Studies 23 and 24 assert their race totals
 (EXPECTED_MULTIRACE). Study 25 asserts its race totals and that no row is
 quarantined (EXPECTED_AIAN). Study 26 asserts its
 ethnicity totals and flags (EXPECTED_ETHNICITY).
+Study 27 asserts its race block and raceBreakdown (EXPECTED_RACE): the bare
+"Unknown" does not make the named rows an ethnicity classification.
 A mismatch stops the harness.
 """
 import json
@@ -726,6 +731,23 @@ EXPECTED_HERITAGE = {
 # "American Indian or Alaska Native & White" was American Indian and the other
 # two combinations were other; "Asian and Pacific Islander" is the 1977
 # grouped category and stays as it was.
+# ---------- NCT99000146 (fictional): named race rows beside a bare residual ----------
+# 85 participants, one row each. "Ethnicity" is the table's word for race; the
+# bare "Unknown" is that classification's residual. Read as an ethnicity
+# classification because one row did not name the dimension, the two race
+# rows were left out and all 85 were balanced into unknown.
+MOCK_NCT99000146 = _make_study(
+    "NCT99000146",
+    "NCT99000146 - Race classification named Ethnicity beside a residual (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("Ethnicity: White", 50), ("Ethnicity: Black", 30), ("Unknown", 5)]
+        ]),
+    ],
+    total_participants=85,
+)
+
 MOCK_NCT99000143 = _make_study(
     "NCT99000143",
     "NCT99000143 - Rows naming two races (fictional mock)",
@@ -893,6 +915,12 @@ EXPECTED_ETHNICITY = {
 # Expected race results for the title-rule studies: reported, the non-zero
 # OMB totals, top-level flags, and the raceBreakdown counts (None = no table).
 EXPECTED_RACE = {
+    # A bare residual beside rows named "Ethnicity:" (race_extractor, "Ethnicity
+    # dimension named in the row label"): the named rows are read as race.
+    "NCT99000146": {"reported": True,
+                    "omb": {"white": 50, "black_african_american": 30, "unknown_not_reported": 5},
+                    "flags": ["combined_race_ethnicity", "customized_table", "dimension_wording_stripped"],
+                    "breakdown": {"Ethnicity: White": 50, "Ethnicity: Black": 30}},
     "NCT99000103": {"reported": False, "omb": {}, "flags": [], "breakdown": None},
     "NCT99000104": {"reported": True, "omb": {"unknown_not_reported": 50},
                     "flags": ["denominator_balanced"],
@@ -1107,6 +1135,7 @@ def main() -> None:
         (MOCK_NCT99000144, "NCT99000144"),
         (MOCK_NCT99000145, "NCT99000145"),
         (MOCK_NCT99000115, "NCT99000115"),
+        (MOCK_NCT99000146, "NCT99000146"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
