@@ -213,12 +213,19 @@ def get_overall_group_id(study: dict) -> Optional[str]:
         return None          # single group — every measurement IS the overall
 
     for group in groups:
-        title_lower = group.get("title", "").lower().strip()
-        if ("overall" in title_lower or
-            title_lower in {"total", "all participants", "all subjects", "all patients"}):
+        if is_overall_group_title(group.get("title", "")):
             return group.get("groupId")
 
     return None
+
+def is_overall_group_title(title: str) -> bool:
+    """True for a baseline group title that names the whole population: one
+    containing "overall", or exactly "total", "all participants", "all
+    subjects" or "all patients" (trimmed, case-insensitive). The test
+    get_overall_group_id applies to each group."""
+    title_lower = (title or "").lower().strip()
+    return ("overall" in title_lower or
+            title_lower in {"total", "all participants", "all subjects", "all patients"})
 
 def is_percentage_measure(measure: dict) -> bool:
     """Check if a baseline measure reports percentage values.

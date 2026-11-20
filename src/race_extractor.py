@@ -7,7 +7,8 @@ with granular subcategories preserved.
 import re
 from typing import Dict, FrozenSet, List, Tuple, Optional
 from rapidfuzz import fuzz, process
-from src.utils import clean_demographic_label, COMBINED_DIMENSION, DIMENSION_JOIN
+from src.utils import (clean_demographic_label, COMBINED_DIMENSION, DIMENSION_JOIN,
+                       is_overall_group_title, measurement_number)
 # The manuscript parser's sex/gender measure selection (/sex|gender/i), reused
 # to find race rows posted under a sex/gender title. Imported, not copied, so
 # the two selections cannot drift; the vendored parser is not modified.
@@ -1398,7 +1399,18 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
     denom = (table_selection.percentage_denominator(measure, overall_group_id, fallback_denom)
              if is_pct else None)
 
-    rows: List[Tuple[str, int]] = []
+    rows: List[Tuple[str, int]] = [
+        (label, sum_measurements(measurements, overall_group_id, is_pct=is_pct, denom=denom))
+        for label, measurements in _labelled_measurements(measure)]
+    return rows, bool(is_pct and denom), total_only
+
+
+def _labelled_measurements(measure: dict) -> List[Tuple[str, list]]:
+    """Each labelled row of a measure as (label, measurements), in source
+    order: the rows _measure_rows counts, before a count is read from them.
+    _race_by_group_splits reads the same rows' measurements column by column,
+    so both go through this one walk."""
+    rows: List[Tuple[str, list]] = []
     for cls in measure.get("classes", []):
         categories = cls.get("categories", [])
         if categories:
@@ -1412,16 +1424,14 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
                     label = cat_title or cls.get("title", "").strip()
                 if not label:
                     continue
-                rows.append((label, sum_measurements(cat.get("measurements", []), overall_group_id,
-                                                     is_pct=is_pct, denom=denom)))
+                rows.append((label, cat.get("measurements", [])))
         else:
             # Fallback: class itself carries measurements with no categories
             label = cls.get("title", "").strip()
             if not label:
                 continue
-            rows.append((label, sum_measurements(cls.get("measurements", []), overall_group_id,
-                                                 is_pct=is_pct, denom=denom)))
-    return rows, bool(is_pct and denom), total_only
+            rows.append((label, cls.get("measurements", [])))
+    return rows
 
 # ── Race dimension named in the row label ──────────────────────────────────
 #
@@ -1629,11 +1639,13 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 #   {"original":     the posted label, cleaned as every race label is
 #                    (clean_demographic_label); for a race-by-sex row the whole
 #                    posted label ("Hispanic/Latino- Male"), with "race_part"
-#                    and "sex" beside it as on a counted race-by-sex row,
+#                    and "sex" beside it as on a counted race-by-sex row (for
+#                    a race-by-group row, "race_part" and "group"),
 #    "count":        the row's count, read exactly as a counted row's is,
 #    "source_table": the title of the table the row was posted in,
 #    "flags":        "pct_to_count" when the count was converted from a
 #                    percentage, "race_by_sex" for a race-by-sex row,
+#                    "race_by_group" for a race-by-group row,
 #                    "ethnicity_dimension_row" for a row naming the ethnicity
 #                    dimension that is not ethnicity-only (block comment
 #                    "Ethnicity dimension named in the row label")}.
@@ -1961,10 +1973,11 @@ def _map_table_row(label: str, count: int, pct_converted: bool, total_only: bool
     or a row naming the ethnicity dimension in a table where other rows do
     not (block comment "Ethnicity dimension named in the row label").
     whole_table is _ethnicity_dimension_is_the_table for the row's table, over
-    the race parts when the table crosses race with sex. For a race-by-sex row
-    the race part is what is read, and the record keeps race_part and sex
-    beside the posted label. reading is passed to _map_plain_row (the
-    comma-list rule; _map_table_rows)."""
+    the race parts when the table crosses race with sex or with baseline
+    group. For a crossed row the race part is what is read, and a skipped
+    record keeps race_part (and sex, for a race-by-sex row) beside the posted
+    label. reading is passed to _map_plain_row (the comma-list rule;
+    _map_table_rows)."""
     text = race_part if race_part is not None else label
     stripped = _strip_ethnicity_dimension(text) if whole_table else None
     mapping = _map_plain_row(stripped if stripped is not None else text, count,
@@ -1987,11 +2000,15 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
                            race_part: Optional[str] = None,
                            sex: Optional[str] = None, total_only: bool = False) -> Dict:
     """The record of one ethnicity-only row left out of the race counts (block
-    comment above). The table title is added when the table is counted."""
+    comment above). The table title is added when the table is counted. A
+    row of a crossed table keeps its race_part; a race-by-sex row also its
+    sex and the race_by_sex flag (a race-by-group row's group and flag are
+    added by _parse_race_table)."""
     row: Dict = {"original": clean_demographic_label(label), "count": count}
     flags: List[str] = []
     if race_part is not None:
         row["race_part"] = race_part
+    if sex is not None:
         row["sex"] = sex
         flags.append("race_by_sex")
     if pct_converted:
@@ -2233,7 +2250,7 @@ def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[i
 
 def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only: bool,
                     whole_table: bool,
-                    splits: Optional[List[Tuple[str, str]]] = None,
+                    splits: Optional[List[Tuple[str, Optional[str]]]] = None,
                     indigenous_region: Optional[str] = None,
                     ) -> List[Tuple[Optional[Dict], Optional[Dict]]]:
     """_map_table_row for every row of one table, then the rule for
@@ -2241,7 +2258,9 @@ def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only
     (indigenous_region, from _trial_site_region; block comment "Unqualified
     Indigenous labels, read by the trial's sites"), then the comma-list rule
     (block comment "Comma lists naming two or more races"). splits holds the
-    (race part, sex) of each row of a race-by-sex table, else None."""
+    (race part, sex) of each row of a race-by-sex table, (race part, None)
+    for a race-by-group table (block comment "Race crossed with baseline
+    group"), else None."""
     parts: List[Tuple[Optional[str], Optional[str]]] = (
         list(splits) if splits is not None else [(None, None)] * len(rows))
     results = [_map_table_row(label, count, pct_converted, total_only, whole_table,
@@ -2495,7 +2514,10 @@ def _trial_site_region(study: dict) -> str:
 # Flags added: "race_by_sex" on each crossed row (which also carries
 # race_part and sex, with original kept as the posted label);
 # "race_by_sex_table" and "race_from_sex_titled_table" when the counted table
-# is one; "race_table_superseded" when a table was left out by the rules above;
+# is one; "race_by_group" on each row of a race-by-group table (block comment
+# "Race crossed with baseline group"; the row carries race_part and group)
+# and "race_by_group_table" when the counted table is one;
+# "race_table_superseded" when a table was left out by the rules above;
 # "race_tables_partitioned" when rule 3 summed disjoint parts;
 # "race_tables_partitioned_by_description" as well when two of those parts
 # are told apart only by their population description
@@ -2540,18 +2562,175 @@ def split_race_by_sex_label(label: str) -> Optional[Tuple[str, str]]:
         return None
     return race_part, sex
 
+# ── Race crossed with baseline group ───────────────────────────────────────
+#
+# A registrant can post a study's groups as rows of the race table instead of
+# as its columns. NCT02675777 (484,047 participants; baseline groups
+# "Quality Improvement (SPARC) Intervention Period", "Usual Care Period" and
+# "Total") posts "Race/Ethnicity, Customized" with one row per race and
+# period: "Asian - SPARC", "Asian - Usual Care", ..., "White - SPARC"
+# (160,764), "White - Usual Care" (184,654), 16 rows. Each row's count is in
+# its own period's column and in the Total column, nowhere else. Every row
+# was mapped whole: "Black or African American - SPARC" reached Black by
+# fuzzy match and the other 15 rows were counted as other, so the trial read
+# other 471,522 of 484,047 and White 0.
+#
+# Method (_race_by_group_splits). A race-titled table is read as race crossed
+# with baseline group when all of these hold:
+#   - every row's label, cleaned (clean_demographic_label), splits at its
+#     last spaced dash (" - ", " – " or " — ") into a race part and a group
+#     reference, and the reference names exactly one group column: its words
+#     (runs of letters and digits, case-insensitive) are all words of that
+#     column's title and not all words of any other's
+#     (split_race_by_group_label). "SPARC" names "Quality Improvement (SPARC)
+#     Intervention Period"; "Usual Care" names "Usual Care Period". The
+#     columns are the baseline groups other than the whole-population one,
+#     the single group whose title utils.is_overall_group_title accepts
+#     ("Total", "Overall", "All participants" ...). With none or more than one
+#     such title every group is a column, so a Total column holding the row's
+#     count again fails the next test (_baseline_group_columns);
+#   - every row's count is posted in its named column alone: no other column
+#     holds a number other than 0, and the count the row is read at (the
+#     value utils.sum_measurements reads) is the number in that column, or 0
+#     when that column holds none. This is what makes the rows disjoint, so
+#     they can be added: each participant is counted in one group's row;
+#   - the rows name at least two columns;
+#   - the counts are posted as counts, not converted from percentages, and
+#     the table is not read from a Total class (table_selection block comment
+#     "A Total class beside subgroup classes").
+# Then each row's race part is read as a row of its own would be
+# (_map_table_rows over the race parts: the ethnicity-dimension routing, the
+# unqualified-Indigenous rule and the comma-list rule, as for a race-by-sex
+# table). Each record keeps the posted label as "original" and carries
+# "race_part", "group" (the column's title as posted) and the flag
+# "race_by_group"; an ethnicity row left out of the counts carries the same.
+# When no race part maps, the table is read as plain rows, as a race-by-sex
+# table is. Other separators and the reverse order ("SPARC - White") are not
+# read: no table in the 2026-11-15 snapshot posts them.
+#
+# Why both tests. A label of the same shape can name something that is not
+# a group of people counted once: NCT04346628 (135 participants) posts every
+# race twice, "White - smITT Analysis Set" and "White - mITT Analysis Set";
+# the smITT rows add up to 135 and the mITT rows to another 116, so summing
+# them would count 251 of 135. Its suffixes name no baseline group and its
+# counts sit in both arm columns, so it fails both tests and stays plain
+# rows. The posting alone is not enough either: in 142 race-titled tables of
+# the snapshot every row's count sits in one group's column, mostly because
+# the groups were defined by race ("White Adults" / "Black Adults") or a race
+# has a few participants in one arm; those rows name races only and stay
+# plain rows. NCT02675777's is the only one of the 142 whose labels name a
+# group, and all 16 of its rows do.
+#
+# A race-by-sex reading is tried first and kept when it applies, so no
+# race-by-sex table changes. Which tables are counted is decided as before
+# (block comment on table selection below): a race-by-group table is a
+# race-titled table whose rows are read differently, and nothing else.
+
+_GROUP_REFERENCE_SPLIT_RE = re.compile(r"\s+[-–—]\s+")
+_GROUP_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def _group_words(text: str) -> FrozenSet[str]:
+    """The words of a group title or reference: runs of letters and digits,
+    lowercased (block comment above)."""
+    return frozenset(_GROUP_WORD_RE.findall(text.lower()))
+
+
+def _baseline_group_columns(study: dict) -> List[Tuple[str, str]]:
+    """(group id, title) of each baseline group column, in source order: every
+    baseline group except the whole-population one, when exactly one title
+    names the whole population (block comment above). The id is the group's
+    "id" (the registry's key) or "groupId" (the key the test fixtures use)."""
+    groups = ((study.get("resultsSection") or {})
+              .get("baselineCharacteristicsModule", {})
+              .get("groups") or [])
+    pairs: List[Tuple[str, str]] = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        group_id = group.get("id") or group.get("groupId")
+        if group_id:
+            pairs.append((group_id, (group.get("title") or "").strip()))
+    whole = [i for i, (_gid, title) in enumerate(pairs) if is_overall_group_title(title)]
+    if len(whole) == 1:
+        del pairs[whole[0]]
+    return pairs
+
+
+def split_race_by_group_label(label: str,
+                              columns: List[Tuple[str, str]]) -> Optional[Tuple[str, str]]:
+    """Split a race-by-group label into (race_part, group id), or None.
+
+    The cleaned label is split at its last spaced dash; the part after it must
+    name exactly one of columns, (group id, title) pairs (block comment
+    above). With columns [("BG000", "Quality Improvement (SPARC) Intervention
+    Period"), ("BG001", "Usual Care Period")]:
+      "White - SPARC"       -> ("White", "BG000")
+      "Asian - Usual Care"  -> ("Asian", "BG001")
+      "White - Period"      -> None (names both)
+      "White/Caucasian"     -> None (no spaced dash)
+    """
+    text = clean_demographic_label(label)
+    dashes = list(_GROUP_REFERENCE_SPLIT_RE.finditer(text))
+    if not dashes:
+        return None
+    race_part = text[:dashes[-1].start()].strip()
+    reference = _group_words(text[dashes[-1].end():])
+    if not race_part or not reference:
+        return None
+    named = [group_id for group_id, title in columns if reference <= _group_words(title)]
+    if len(named) != 1:
+        return None
+    return race_part, named[0]
+
+
+def _race_by_group_splits(measure: dict, rows: List[Tuple[str, int]], pct_converted: bool,
+                          total_only: bool, columns: List[Tuple[str, str]]
+                          ) -> Optional[List[Tuple[str, str]]]:
+    """(race_part, group id) for each row, in order, when the table is race
+    crossed with baseline group; else None (block comment above). rows are
+    the measure's rows as _measure_rows read them, with pct_converted and
+    total_only; columns from _baseline_group_columns."""
+    if pct_converted or total_only or len(columns) < 2 or not rows:
+        return None
+    splits = [split_race_by_group_label(label, columns) for label, _count in rows]
+    if any(split is None for split in splits):
+        return None
+    named = [split for split in splits if split is not None]
+    if len({group_id for _race_part, group_id in named}) < 2:
+        return None
+    sources = _labelled_measurements(measure)
+    if [label for label, _m in sources] != [label for label, _c in rows]:
+        return None
+    column_ids = {group_id for group_id, _title in columns}
+    for (_label, count), (_race_part, group_id), (_same, measurements) in zip(rows, named, sources):
+        posted: Dict[str, float] = {}
+        for measurement in measurements:
+            column = measurement.get("groupId") if isinstance(measurement, dict) else None
+            if column in column_ids:
+                number = measurement_number([measurement])
+                if number:
+                    posted[column] = number
+        if set(posted) - {group_id} or count != posted.get(group_id, 0):
+            return None
+    return named
+
 def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str],
                       fallback_denom: Optional[int], sex_titled: bool,
-                      indigenous_region: Optional[str] = None) -> Optional[Dict]:
+                      indigenous_region: Optional[str] = None,
+                      group_columns: Optional[List[Tuple[str, str]]] = None) -> Optional[Dict]:
     """Read one baseline measure as a race table.
 
     Returns {"title", "index", "analyzed", "sex_titled", "race_by_sex",
-    "categories", "quarantined", "skipped_ethnicity"}: the table's own Number
-    Analyzed (or None), the counted category records, the quarantined labels
-    and the ethnicity-only rows left out of the counts (_skipped_ethnicity_row).
-    A race-titled measure always returns a table (plain rows unless it passes
-    the race-by-sex test). A sex/gender-titled measure returns None unless
-    every row maps to a race-specific category (see the block comment above).
+    "race_by_group", "categories", "quarantined", "skipped_ethnicity"}: the
+    table's own Number Analyzed (or None), the counted category records, the
+    quarantined labels and the ethnicity-only rows left out of the counts
+    (_skipped_ethnicity_row). A race-titled measure always returns a table
+    (plain rows unless it passes the race-by-sex test or, given the study's
+    group_columns from _baseline_group_columns, the race-by-group test: block
+    comment "Race crossed with baseline group"). A sex/gender-titled measure
+    returns None unless every row maps to a race-specific category (see the
+    block comment above).
     """
     title = measure.get("title", "")
     rows, pct_converted, total_only = _measure_rows(measure, overall_group_id, fallback_denom)
@@ -2585,8 +2764,40 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
                 categories.append(mapping)
         race_by_sex = any("unmapped" not in c["flags"] for c in categories)
 
-    if not race_by_sex:
-        # Plain table, or sex words that are not a race-by-sex crossing:
+    race_by_group = False
+    group_splits = (_race_by_group_splits(measure, rows, pct_converted, total_only, group_columns)
+                    if not race_by_sex and group_columns else None)
+    if group_splits is not None:
+        # Race crossed with baseline group (block comment "Race crossed with
+        # baseline group"): the race parts are read as a race-by-sex table's
+        # are, and each record names its group column.
+        categories, quarantined, skipped = [], [], []
+        group_titles = dict(group_columns or [])
+        whole_by_group = _ethnicity_dimension_is_the_table(
+            [race_part for race_part, _group_id in group_splits])
+        mapped = _map_table_rows(rows, pct_converted, total_only, whole_by_group,
+                                 [(race_part, None) for race_part, _group_id in group_splits],
+                                 indigenous_region=indigenous_region)
+        for (label, _count), (race_part, group_id), (mapping, skipped_row) in zip(
+                rows, group_splits, mapped):
+            if skipped_row is not None:
+                skipped_row["group"] = group_titles[group_id]
+                skipped_row["flags"].append("race_by_group")
+                skipped.append(skipped_row)
+                continue
+            is_quarantined = _should_quarantine(mapping)
+            mapping["original"] = clean_demographic_label(label)
+            mapping["race_part"] = race_part
+            mapping["group"] = group_titles[group_id]
+            mapping["flags"].append("race_by_group")
+            if is_quarantined:
+                quarantined.append(mapping)
+            else:
+                categories.append(mapping)
+        race_by_group = any("unmapped" not in c["flags"] for c in categories)
+
+    if not race_by_sex and not race_by_group:
+        # Plain table, or sex words or group names that are not a crossing:
         # every row mapped whole, as before.
         categories, quarantined, skipped = [], [], []
         whole_table = _ethnicity_dimension_is_the_table([label for label, _count in rows])
@@ -2618,6 +2829,7 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         "population": table_selection.population_of(measure),
         "sex_titled": sex_titled,
         "race_by_sex": race_by_sex,
+        "race_by_group": race_by_group,
         "categories": categories,
         "quarantined": quarantined,
         "skipped_ethnicity": skipped,
@@ -2762,7 +2974,8 @@ def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
         if is_race_table(title):
             typed.append(_parse_race_table(measure, index, overall_group_id,
                                            total_participants, sex_titled=False,
-                                           indigenous_region=_trial_site_region(study)))
+                                           indigenous_region=_trial_site_region(study),
+                                           group_columns=_baseline_group_columns(study)))
         else:
             table = _sex_titled_race_table(measure, index, overall_group_id, total_participants)
             if table is not None:
@@ -2800,6 +3013,8 @@ def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
                     cat["flags"].append("customized_table")
         if table["race_by_sex"]:
             result["flags"].append("race_by_sex_table")
+        if table["race_by_group"]:
+            result["flags"].append("race_by_group_table")
         if table["sex_titled"]:
             result["flags"].append("race_from_sex_titled_table")
 
@@ -2819,7 +3034,7 @@ def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
                 "original": row["original"],
                 "count": row["count"],
                 "source_table": table["title"],
-                **{k: row[k] for k in ("race_part", "sex") if k in row},
+                **{k: row[k] for k in ("race_part", "sex", "group") if k in row},
                 "flags": row["flags"],
             })
 
