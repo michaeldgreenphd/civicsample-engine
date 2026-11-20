@@ -64,6 +64,9 @@ Tests:
      "White, American Indian or Alaska Native" in a table with a White row,
      beside "Asian, Pacific Islander" in the same table, which has no Asian
      or Pacific Islander row (fictional study)
+ 25. NCT99000145 — American Indian or Alaska Native wordings: "American
+     Indian", "Alaska Native" and "Navajo", beside "Aboriginal Australian",
+     which stays other (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -84,7 +87,8 @@ counting them, among them a row naming the ethnicity dimension
 (EXPECTED_SKIPPED_ETHNICITY). Study 21 asserts its race totals and mena_in_white
 (EXPECTED_MENA). Study 22 asserts its race totals and that no row is
 quarantined (EXPECTED_HERITAGE). Studies 23 and 24 assert their race totals
-(EXPECTED_MULTIRACE).
+(EXPECTED_MULTIRACE). Study 25 asserts its race totals and that no row is
+quarantined (EXPECTED_AIAN).
 A mismatch stops the harness.
 """
 import json
@@ -758,6 +762,33 @@ MOCK_NCT99000144 = _make_study(
     total_participants=140,
 )
 
+# ---------- NCT99000145 (fictional): American Indian or Alaska Native ----------
+# 138 participants (race_extractor, "American Indian or Alaska Native labels").
+# Before, "American Indian" and "Alaska Native" were other and "Navajo" was
+# quarantined as not race; "Aboriginal Australian" names an Indigenous people
+# outside the Americas and stays other.
+MOCK_NCT99000145 = _make_study(
+    "NCT99000145",
+    "NCT99000145 - American Indian or Alaska Native wordings (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 100),
+                _make_category("American Indian", 20),
+                _make_category("Navajo", 10),
+                _make_category("Alaska Native", 5),
+                _make_category("Aboriginal Australian", 3),
+            ])
+        ]),
+    ],
+    total_participants=138,
+)
+
+# Expected non-zero race totals of the American Indian or Alaska Native study.
+EXPECTED_AIAN = {
+    "NCT99000145": {"white": 100, "american_indian_alaska_native": 35, "other": 3},
+}
+
 # Expected non-zero race totals of the studies of rows naming two races.
 EXPECTED_MULTIRACE = {
     "NCT99000143": {"white": 120, "black_african_american": 40, "more_than_one_race": 28, "other": 12},
@@ -1004,6 +1035,11 @@ def validate_study(study: dict, nct_id: str) -> None:
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
         assert nonzero == EXPECTED_MULTIRACE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
         print(f"\n  {nct_id}: rows naming two races read as more than one race — OK")
+    if nct_id in EXPECTED_AIAN:
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == EXPECTED_AIAN[nct_id], f"{nct_id} race omb_totals: {nonzero}"
+        assert race["quarantined_labels"] == [], f"{nct_id} quarantined: {race['quarantined_labels']}"
+        print(f"\n  {nct_id}: American Indian or Alaska Native wordings read as such — OK")
     if nct_id in EXPECTED_HERITAGE:
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
         assert nonzero == EXPECTED_HERITAGE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
@@ -1039,6 +1075,7 @@ def main() -> None:
         (MOCK_NCT99000142, "NCT99000142"),
         (MOCK_NCT99000143, "NCT99000143"),
         (MOCK_NCT99000144, "NCT99000144"),
+        (MOCK_NCT99000145, "NCT99000145"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

@@ -2050,3 +2050,122 @@ def test_a_slash_row_whose_fragments_all_name_the_race_is_still_evidence() -> No
         race = extract_race_data(_study(nct_id, [table], participants=7))
         readings = {c["original"]: c["flags"] for c in race["raw_categories"]}
         assert "multirace_comma_list" in readings[combo], evidence
+
+
+# ── American Indian or Alaska Native labels ────────────────────────────────
+#
+# src/race_extractor.py, block comment "American Indian or Alaska Native labels".
+
+@pytest.mark.parametrize("label", [
+    "American Indian",  # 6,113 participants in 114 trials were other
+    "American indian",
+    "American Indian Only",
+    "Am Indian",
+    "Alaska Native",
+    "Alaskan Native",
+    "North American Native",  # 4,257 in 4 US trials
+    "Native American or Alaskan Native",
+    "Native-American/Alaskan Native",
+    "Alaskan Native or American Indian",
+    "Native American, American Indian, or Alaskan Native",
+    "American Indian (Amer. Ind.) or Alaska Native",
+    "American (Amer) Indian (Ind) or Alaska Native (N)",
+    "American(Amer) Indian(Ind) or Alaska(Al) Native(N)",
+    "American Indian/Alaskan Native",  # was read by the fuzzy match
+    "North, South or Central American Native",
+    "Native South American",
+    "Central American Indian",
+    "North American Aboriginal (e.g., First Nations, Inuit, Metis)",
+    "Indigenous (First Nations, Métis, non-status)",
+    "Canadian Aboriginal",
+    "Indigenous Mayan",
+    "Indigenous (Brazil)",
+    "Navajo",  # quarantined as not race before
+    "Navajo Nation",  # a tribal suffix (a review finding)
+    "Blackfeet Tribe",
+    "American Indian tribal member",
+    "White Mountain Apache",
+    "Alaskan Native, Yup'ik",
+    "Quechua",
+    "Amerindian",
+])
+def test_a_label_naming_american_indian_or_alaska_native_peoples_maps_there(label: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert mapping["omb_category"] == "american_indian_alaska_native"
+    assert mapping["confidence"] == "high" and "aian_label" in mapping["flags"]
+
+
+@pytest.mark.parametrize("label", [
+    # Indigenous peoples outside the Americas stay as they were.
+    "Indigenous African", "Aboriginal Australian", "Australian Aboriginal",
+    "Torres Strait Islander", "Aboriginal and/or Torres Strait Islander", "Maori", "Indigenous swede",
+    # An unqualified word names the trial country's Indigenous people.
+    "Aboriginal", "Aborigine", "Native", "Native Indian", "Tribal members", "Native/Aboriginal",
+    # A tribal suffix without a name.
+    "Nation", "Tribe",
+    # "Native" with a country may mean born there.
+    "Native Mexican", "Native Canadian",
+    # Another group beside, or a crossing with another variable.
+    "Native American or Pacific Islander", "Other (including American Indian or Alaska Native)",
+    "Native American or Alaskan Native - Usual Care", "Adult Native American",
+    # Not American Indian.
+    "Indian American", "American", "Latin American", "Maya ethnicity/language preference",
+])
+def test_a_label_not_naming_only_american_indian_peoples_is_not_read_by_the_rule(label: str) -> None:
+    assert not rx.aian_label(label)
+    assert "aian_label" not in rx.map_race_category(label)["flags"]
+
+
+def test_the_vocabulary_entry_indigenous_is_unchanged() -> None:
+    """"Indigenous" keeps its vocabulary entry (exact match first)."""
+    mapping = rx.map_race_category("Indigenous")
+    assert mapping["omb_category"] == "american_indian_alaska_native"
+    assert "aian_label" not in mapping["flags"]
+
+
+def test_a_table_of_tribal_names_is_counted_as_american_indian() -> None:
+    """The NCT00121108 shape: tribal names were quarantined as not race (or
+    other), leaving the participants to denominator balancing."""
+    table = _category_table(COMBINED_TITLE, [
+        ("Navajo", 60), ("White Mountain Apache", 15), ("San Carlos Apache", 5),
+        ("Hopi", 3), ("Zuni", 1), ("Other - Not specified", 2)])
+    race = extract_race_data(_study("NCT99000579", [table], participants=86))
+    assert _nonzero(race) == {"american_indian_alaska_native": 84, "other": 2}
+    assert race["quarantined_labels"] == [] and race["unknown_inferred"] == 0
+
+
+def test_a_combination_naming_american_indian_is_now_more_than_one_race() -> None:
+    """With "American Indian" read as a race, the multirace rules read the
+    combinations that name it (NCT04839978, NCT03692078)."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White", 50), ("Black", 20), ("American Indian Only", 6),
+        ("American Indian and White", 3), ("American Indian, Black, White", 1)])
+    race = extract_race_data(_study("NCT99000580", [table], participants=80))
+    assert _nonzero(race) == {"white": 50, "black_african_american": 20,
+                              "american_indian_alaska_native": 6, "more_than_one_race": 4}
+
+
+def test_a_middle_eastern_part_is_not_matched_by_a_white_row() -> None:
+    """The NCT05997901 shape: "White" beside "Metis, Black, Latino/Latina/
+    Latinx, Middle Eastern", a grouping of the others. "Middle Eastern" is
+    White in the 1997 categories, but the table lists it apart from White, so
+    the White row is no evidence of a race of the list named alone."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White", 34), ("Métis, Black, Latino/Latina/Latinx, Middle Eastern", 6)])
+    race = extract_race_data(_study("NCT99000581", [table], participants=40))
+    assert race["omb_totals"]["more_than_one_race"] == 0
+    assert not any("multirace_comma_list" in c["flags"] for c in race["raw_categories"])
+    # The same without the American Indian part: before the Middle Eastern
+    # part had its own key, the White row made this a combination.
+    table = _category_table(COMBINED_TITLE, [("White", 34), ("Black, Middle Eastern", 6)])
+    race = extract_race_data(_study("NCT99000583", [table], participants=40))
+    assert not any("multirace_comma_list" in c["flags"] for c in race["raw_categories"])
+    # A Middle Eastern row alone is evidence for a Middle Eastern part.
+    table = _category_table(COMBINED_TITLE, [
+        ("Arab", 5), ("Arab, African", 1), ("Other", 2)])
+    race = extract_race_data(_study("NCT99000582", [table], participants=8))
+    assert race["omb_totals"]["more_than_one_race"] == 1
+
+
+def test_white_and_middle_eastern_name_one_race_in_a_comma_list() -> None:
+    assert rx._comma_list_races("White, Middle Eastern") is None
