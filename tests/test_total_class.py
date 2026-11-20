@@ -244,6 +244,36 @@ def test_a_one_row_total_class_converts_percentages_as_any_one_row_table() -> No
     assert table_selection.percentage_denominator(view, None, 100) == 100
 
 
+@pytest.mark.parametrize("title", ["Overall", "All Participants", " all participants ", "OVERALL"])
+def test_overall_and_all_participants_classes_are_read_like_a_total(title: str) -> None:
+    """The shape of NCT04268004 and NCT03621280: a whole-population class
+    titled "Overall" or "All Participants" beside classes that repeat its
+    rows, here a subset ("Completers") that would add 40 people again."""
+    classes = [_class(title, [("Hispanic or Latino", 6), ("Not Hispanic or Latino", 45)], 51),
+               _class("Completers", [("Hispanic or Latino", 5), ("Not Hispanic or Latino", 35)], 40)]
+    eth = extract_ethnicity_data(_study("NCT99000120", [_measure("Ethnicity (NIH/OMB)", classes)], 51))
+    assert eth["omb_totals"] == {"hispanic_latino": 6, "not_hispanic_latino": 45, "unknown_not_reported": 0}
+    assert FLAG in eth["flags"]
+
+
+def test_two_whole_population_classes_leave_the_measure_as_before() -> None:
+    """A "Total" and an "Overall" class in one measure: which one is the whole
+    cannot be told, so nothing is reduced."""
+    measure = _measure("Sex: Female, Male", [_class("Arm 1", [("Female", 3), ("Male", 2)]),
+                                              _class("Overall", [("Female", 3), ("Male", 2)]),
+                                              _class("Total", [("Female", 3), ("Male", 2)])])
+    assert table_selection.total_class_view(measure, None)[1] is False
+
+
+def test_a_class_titled_all_is_not_a_whole_population_class() -> None:
+    """"All" is not one of the titles: NCT05216835 posts it as a row of its
+    own beside Female and Male. Even in a shape that would otherwise qualify,
+    a class titled "All" leaves the measure as before."""
+    measure = _measure("Sex: Female, Male", [_class("Arm 1", [("Female", 3), ("Male", 2)]),
+                                              _class("All", [("Female", 3), ("Male", 2)])])
+    assert table_selection.total_class_view(measure, None)[1] is False
+
+
 def _two_group_class(title: str, rows: list[tuple[str, Any, Any]]) -> dict[str, Any]:
     """A class in a two-group study: BG000 is the arm, BG001 the Overall group."""
     return {"title": title, "categories": [
