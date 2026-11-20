@@ -328,6 +328,159 @@ def mena_subcategory(label: str) -> Optional[str]:
         return "middle_eastern"
     return "middle_eastern_north_african"
 
+# ── American Indian or Alaska Native labels ────────────────────────────────
+#
+# OMB's 2024 revision of SPD 15 (Federal Register document 2024-06469, March
+# 29, 2024) defines American Indian or Alaska Native by origins in any of the
+# original peoples of North, Central and South America, with Navajo Nation,
+# Blackfeet, Aztec and Maya among its examples; the 1997 standard covered the
+# original peoples of North and South America (including Central America)
+# and also required tribal affiliation or community attachment. (Read from
+# the notice's search summary; the notice itself could not be fetched here.)
+# The vocabulary held the standard spellings ("American Indian or Alaska
+# Native", "Native American", "First Nations", "Indigenous"); other wordings
+# of the same category matched nothing and were counted as other: "American
+# Indian" alone (6,113 participants in 114 trials of the 2026-11-15 inputs),
+# "North American Native" (4,257 in 4), "Alaska Native" (2,031 in 5), "Native
+# American or Alaskan Native" (1,211 in 11), "Indigenous Mayan" (706),
+# "American Indian (Amer. Ind.) or Alaska Native" (518). Tribal names were
+# quarantined as not race, leaving their participants to denominator
+# balancing as unknown: NCT00121108 posts "Navajo" (1,725), "San Carlos
+# Apache", "Hopi" and "Zuni" (quarantined) beside "White Mountain Apache"
+# (other).
+#
+# Method (aian_label; after the Middle Eastern or North African rule and
+# before the heritage, multirace and slash-fragment rules). A cleaned label
+# (lower case, "é" as "e", a hyphen between letters as a space, "." and "'"
+# removed, a bracketed template abbreviation such as "(Amer)" or "(N)"
+# removed) maps to American Indian or Alaska Native, flagged aian_label, when
+# it is made only of these terms, joined by "/", ",", ";", "&", "(", ")",
+# ":", " - ", "or", "and" or "and/or":
+#   - names: American Indian, Am/Amer/Amc Indian, Amer Ind, Alaska(n) Native,
+#     Native Alaskan, Native American, North/South/Central American Indian,
+#     First Nation(s), Inuit, Metis, Amerindian, Eskimo, and the tribal and
+#     national names posted in the inputs or given as the standard's
+#     examples (Navajo, Apache, White Mountain Apache, San Carlos Apache, Hopi,
+#     Zuni, Yup'ik, Inupiat, Blackfeet, Maya(n), Aztec, Quechua, Aymara,
+#     Guarani, Xavante, Kaingang);
+#   - "Indigenous", "Aboriginal" or "Aborigine" beside a place of the Americas
+#     (the Americas, North/South/Central/Latin America(n), American, Canada,
+#     Alaska, Brazil, Mexico, Guatemala, Peru, Bolivia, Ecuador, Chile,
+#     Colombia): "Indigenous (Brazil)", "Canadian Aboriginal", "Aboriginal
+#     Peoples of North America";
+#   - "Native" beside a continent only ("North American Native", "Native
+#     South American"): "Native Mexican" may mean born in Mexico;
+#   - with a name only, the template's abbreviations ("(Amer. Ind.)", "(AI)",
+#     "(AN)", "(N)", "(Al)", "Alaska" alone); with a name or a continent,
+#     "North", "South" and "Central" ("North, South or Central American
+#     Native");
+#   - fillers: people(s), person(s), only, e.g., i.e., from, of, non-status,
+#     ethnicity, descent, origin(s), ancestry.
+# At least one name, or an Indigenous word with a place, must be present.
+# A label the vocabulary holds whole keeps its entry (the exact match runs
+# first). Labels already read through the fuzzy match ("American
+# Indian/Alaskan Native", 98) keep their category and are now read without
+# it.
+#
+# What it does not do. A label naming an Indigenous people outside the
+# Americas stays as it was ("Indigenous African", "Aboriginal Australian",
+# "Torres Strait Islander", "Maori", "Indigenous swede"). An unqualified
+# "Indigenous", "Aboriginal", "Aborigine", "Native" or "Tribal members" stays
+# as it was: it names Indigenous people of the trial's own country, which the
+# label does not give ("Aboriginal" is posted by Canadian and by Australian
+# trials; "Indigenous", a vocabulary entry read as American Indian, is posted
+# by one Australia and New Zealand trial). A label naming another group
+# beside these ("Native American or Pacific Islander", "American Indian and
+# White", "Other (including American Indian or Alaska Native)") is not read
+# by this rule; a combination is read by the multirace rules, which now find
+# "American Indian" a race. A row crossing race with another variable
+# ("Native American or Alaskan Native - Usual Care", "Adult Native
+# American") is not read.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against the comma-list
+# rule: American Indian +21,327 (19,515 from other, 1,815 from rows
+# quarantined as not race, less 3 now in combinations), more than one race
+# +272 (combinations naming American Indian, now readable: "American Indian
+# and White" 205 in NCT04839978), other -19,782, unknown -1,815 (all
+# unknown_inferred), White -1, Asian -1; 112 labels in 263 trials. A further
+# 9,441 participants in 324 trials were American Indian already, through the
+# fuzzy match (8,244) or a slash fragment (1,197), and are now read by this
+# rule. No block changes reported, no ethnicity or sex block changes, no
+# sex/gender-titled measure changes the gate, and the 338 race blocks over
+# their population stay 338, none larger. "Aboriginal or American Indian"
+# (NCT03954314, 20 participants, sites in Canada and New Zealand among
+# others) is read as American Indian: it names American Indian, and
+# "Aboriginal" beside a name is taken with it.
+_AIAN_NAME = (
+    r"american\s+indians?|am(?:er|c)?\s+indians?|amer\s+ind|alaskan?\s*natives?|native\s+alaskans?|"
+    r"native\s+americans?|(?:north|south|central)\s+american\s+indians?|first\s+nations?|inuits?|"
+    r"metis|amerindians?|eskimos?|(?:white\s+mountain\s+|san\s+carlos\s+)?apaches?|navajos?|hopis?|"
+    r"zunis?|yupik|inupiat|blackfeet|mayans?|mayas?|aztecs?|quechuas?|aymaras?|guaranis?|xavante|"
+    r"kaingang|kaigang")
+_AIAN_CONTINENT = r"(?:north|south|central|latin)\s+americ(?:a|an|ans)|the\s+americas|americas|americ(?:an|ans)"
+_AIAN_COUNTRY = (r"canad(?:a|ian|ians)|alaskan?|brazil(?:ian|ians)?|mexic(?:o|an|ans)|guatemal(?:a|an|ans)|"
+                 r"peru(?:vian|vians)?|bolivi(?:a|an|ans)|ecuador(?:ian|ians)?|chile(?:an|ans)?|colombi(?:a|an|ans)")
+_AIAN_INDIGENOUS = r"indigenous|aboriginals?|aborigines?"
+_AIAN_ABBREV = r"amer|am|amc|ind|al|alk|n|nat|ai|an|amin|alaska"
+_AIAN_FILLER = (r"peoples?|persons?|only|e\s*g|i\s*e|from|of|non\s+status|ethnicity|descent|origins?|"
+                r"ancestry")
+# A bracketed template abbreviation, removed before the label is read.
+_AIAN_GLOSS_RX = re.compile(rf"\s*\(\s*(?:{_AIAN_ABBREV}|alk\s+n|amer\s+ind)\s*\)\s*", re.IGNORECASE)
+# Words end at a non-letter; a punctuation join may be followed by anything.
+_AIAN_TOKEN_RX = re.compile(
+    rf"(?:(?P<name>{_AIAN_NAME})|(?P<indigenous>{_AIAN_INDIGENOUS})|(?P<native>natives?)|"
+    rf"(?P<continent>{_AIAN_CONTINENT})|(?P<country>{_AIAN_COUNTRY})|"
+    rf"(?P<direction>north|south|central)|(?P<abbrev>{_AIAN_ABBREV})|"
+    rf"(?P<filler>{_AIAN_FILLER})|(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
+    re.IGNORECASE)
+
+
+def aian_label(label: str) -> bool:
+    """True when a label names American Indian or Alaska Native peoples
+    only, by the terms of the block comment above.
+
+      "American Indian"                                -> True
+      "North American Native"                          -> True
+      "American (Amer) Indian (Ind) or Alaska Native (N)" -> True
+      "Navajo"                                         -> True
+      "Indigenous Mayan"                               -> True
+      "Aboriginal"                                     -> False (no place)
+      "Indigenous African"                             -> False
+      "Native American or Pacific Islander"            -> False
+    """
+    text = clean_demographic_label(label).lower().replace("é", "e")
+    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
+    text = re.sub(r"[.'’]", "", text)
+    # A gloss inside a name ("American (Amer) Indian (Ind) or Alaska (Al)
+    # Native (N)") would split it: removed, so the name reads whole.
+    text = _AIAN_GLOSS_RX.sub(" ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    kinds = set()
+    position = 0
+    while position < len(text):
+        match = _AIAN_TOKEN_RX.match(text, position)
+        if match is None or match.end() == position:
+            return False
+        kinds.add(match.lastgroup)
+        position = match.end()
+        while position < len(text) and text[position].isspace():
+            position += 1
+    named = "name" in kinds
+    # "Native" takes a continent only: "Native Mexican" may mean born in Mexico.
+    placed = ("indigenous" in kinds and ("continent" in kinds or "country" in kinds)
+              or "native" in kinds and "continent" in kinds)
+    if not (named or placed):
+        return False
+    # A template abbreviation names nothing without a name beside it; a
+    # direction ("North, South or Central American Native") needs a name or
+    # a continent.
+    if "abbrev" in kinds and not named:
+        return False
+    if "direction" in kinds and not (named or "continent" in kinds):
+        return False
+    return True
+
 # ── Heritage-template labels ───────────────────────────────────────────────
 #
 # A family of customized race tables posts its rows as a race followed by the
@@ -836,6 +989,19 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
         return {
             "omb_category": "white",
             "subcategory": mena,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A label naming American Indian or Alaska Native peoples only (block
+    # comment "American Indian or Alaska Native labels"), before the slash
+    # fragments and the fuzzy match.
+    if aian_label(label_clean):
+        flags.append("aian_label")
+        return {
+            "omb_category": "american_indian_alaska_native",
+            "subcategory": None,
             "confidence": "high",
             "original": label_clean,
             "flags": flags
@@ -1792,7 +1958,14 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
 # of the races named through a reading that is not fuzzy (confidence high,
 # not unmapped) and, when read through a slash fragment, passing the same
 # test as a part ("Asian/Black" or "Asian/Not Applicable" is no evidence of
-# an Asian row). A grouped category stands in the table for its races, so
+# an Asian row). A part read by the Middle Eastern or North African rule is
+# matched only by a row read by that rule, not by a "White" row
+# (_comma_list_key): a table listing it apart from White does not count it as
+# White ("White" beside "Metis, Black, Latino/Latina/Latinx, Middle Eastern"
+# in NCT05997901, a grouping of the others); two races are still counted in
+# the 1997 categories, so "White, Middle Eastern" names one. (Added with the
+# rule for American Indian or Alaska Native labels, which made "Metis" a
+# race.) A grouped category stands in the table for its races, so
 # no row of the table names any of them alone: in
 # every table of the inputs holding a comma list with no such row, the row is
 # a grouped category ("Asian, Pacific Islander" in 31 trials; "American
@@ -1807,9 +1980,10 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
 # "American Indian or Alaska Native, Asian" stays American Indian through
 # the fuzzy match, which is the earlier reading, not a verdict. A part that
 # is not a race ("Asian, Black or African American, Other") leaves the row
-# as it was, as in the rule for rows naming two or more races; "American
-# Indian" alone is not in the vocabulary, so "American Indian, White or
-# Caucasian" (NCT01401842) is not read. The rule reads the posted rows of one
+# as it was, as in the rule for rows naming two or more races. ("American
+# Indian, White or Caucasian" in NCT01401842 was such a row until "American
+# Indian" was read as a race: block comment "American Indian or Alaska
+# Native labels".) The rule reads the posted rows of one
 # table; it does not compare a row's count with the counts of the rows
 # beside it. A comma list it reads is race-specific, so a sex/gender-titled
 # measure holding one can now pass the gate above _sex_titled_race_table.
@@ -1833,9 +2007,29 @@ _COMMA_LIST_ALTERNATIVE_RX = re.compile(r"^or\b", re.IGNORECASE)
 _COMMA_LIST_FLAG = "multirace_comma_list"
 
 
+# A part read by the Middle Eastern or North African rule is White under the
+# 1997 categories, but a table that lists it apart from a "White" row does not
+# count it as White: for the evidence of a race named alone it is its own key,
+# matched only by a row read by that rule ("White" beside "Metis, Black,
+# Latino/Latina/Latinx, Middle Eastern" in NCT05997901 is a grouping of the
+# others, not their combination). Two races are still counted in the 1997
+# categories, so "White, Middle Eastern" names one.
+_COMMA_LIST_MENA_KEY = "white_middle_eastern_north_african"
+
+
+def _comma_list_key(category: str, subcategory: Optional[str]) -> str:
+    """The key a race named in a comma list, or a row of its table, is
+    matched on: the category, or _COMMA_LIST_MENA_KEY for White with a
+    Middle Eastern or North African subcategory."""
+    if category == "white" and subcategory in MENA_SUBCATEGORIES:
+        return _COMMA_LIST_MENA_KEY
+    return category
+
+
 def _comma_list_races(text: str) -> Optional[FrozenSet[str]]:
-    """The races a comma list names, or None when the text is not a comma
-    list (block comment "Comma lists naming two or more races")."""
+    """The keys (_comma_list_key) of the races a comma list names, or None
+    when the text is not a comma list (block comment "Comma lists naming two
+    or more races")."""
     text = clean_demographic_label(text)
     if any(key.lower() == text.lower() for key in RACE_MAPPINGS):
         return None
@@ -1858,8 +2052,9 @@ def _comma_list_races(text: str) -> Optional[FrozenSet[str]]:
         race = _comma_list_part_race(part)
         if race is None or race == "more_than_one_race":
             return None
-        races.add(race)
-    return frozenset(races) if len(races) >= 2 else None
+        races.add(_comma_list_key(race, mena_subcategory(part)))
+    named = {"white" if key == _COMMA_LIST_MENA_KEY else key for key in races}
+    return frozenset(races) if len(named) >= 2 else None
 
 
 def _slash_fragment_category(fragment: str) -> Optional[str]:
@@ -1943,7 +2138,8 @@ def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[i
     mappings[i] its mapping, or None for a row left out of the race counts."""
     lists = [_comma_list_races(text) if mapping is not None else None
              for text, mapping in zip(texts, mappings)]
-    alone = {mapping["omb_category"] for text, races, mapping in zip(texts, lists, mappings)
+    alone = {_comma_list_key(mapping["omb_category"], mapping.get("subcategory"))
+             for text, races, mapping in zip(texts, lists, mappings)
              if races is None and mapping is not None
              and mapping["confidence"] == "high" and "unmapped" not in mapping["flags"]
              and mapping["omb_category"] in _RACE_SPECIFIC
