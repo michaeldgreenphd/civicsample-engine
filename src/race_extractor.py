@@ -523,7 +523,7 @@ def _heritage_group(group: str, atomic: bool = False) -> Optional[Tuple[str, Opt
     key = re.sub(r"[.\s]+", " ", group.lower()).strip()
     if key in _HERITAGE_ABBREVIATIONS:
         return _HERITAGE_ABBREVIATIONS[key], None, "high"
-    mapping = map_race_category(group, heritage=False)
+    mapping = map_race_category(group, heritage=False, multirace=False)
     if "unmapped" in mapping["flags"] or (atomic and "slash_normalized" in mapping["flags"]):
         return None
     return mapping["omb_category"], mapping["subcategory"], mapping["confidence"]
@@ -653,8 +653,131 @@ def _heritage_combination(label: str) -> bool:
         races.add(reading[0])
     return len(races) >= 2
 
+# ── Rows naming two or more races ──────────────────────────────────────────
+#
+# Customized race tables often break participants who report more than one
+# race into the combinations they reported, one row per combination:
+# "American Indian or Alaska Native & White", "Asian and White", "Black or
+# African American and White", "Multiple-Asian and White", "Mixed (Black/
+# White)", "Multiracial (Asian, White)". Without a heritage word (block comment
+# "Heritage-template labels") these were counted as other, or as their first
+# race through a slash fragment or a fuzzy match: "American Indian or Alaska
+# Native & White" as American Indian, "Black or African American & White" as
+# Black, "Mixed: Black/Indian" as Asian.
+#
+# Method (_multirace_label, after the heritage combinations and before the
+# slash fragments). Only readings that are not fuzzy count: an exact or
+# case-insensitive vocabulary match, its slash fragments, or the Middle
+# Eastern or North African rule, each naming a race (not other or unknown).
+#   - A label starting with "Multiple", "Multiracial", "Mixed", "Biracial",
+#     "More than one race" or "Two or more races" names more than one race
+#     when the rest names two or more different races. The rest is split at
+#     ",", ";", "&", "+" and "and", and each part also at "/"; parts read as
+#     nothing are passed over, since the prefix already says more than one
+#     race and the two races named confirm the row is about race ("Multiple
+#     - child" names none). "Mixed Asian" names one race: not read.
+#   - Without such a prefix, a label joining parts by "&", "+" or "and" (and
+#     then also split at "," and ";": "Caucasian, Black, and Asian") names
+#     more than one race when every part reads as one race, passing over a
+#     part that is only an ethnicity term ("Hispanic"), and the parts name
+#     two or more. "Black and African American" names one; "American Indian
+#     and Alaska Native" and "White and Other" have a part that is not a race;
+#     "White and Hispanic" names one race; none is read. "Asian and Pacific
+#     Islander" (and "&", "Other") is the grouped category of the 1977
+#     standard, one group: not read.
+# A category name holding "and" ("Native Hawaiian and Pacific Islander",
+# "American Indian and Alaska Native") is read as one part, so its "and"
+# joins no list: "Asian, Indigenous, Native Hawaiian and Pacific Islander,
+# non-Hispanic" (NCT03360539) is a grouped category, not a combination. The
+# row maps to more than one race, flagged multirace_label.
+#
+# What it does not do. Parts joined only by "," or ";" without a prefix are
+# not read: a comma joins the names of one grouped category as often as it
+# joins a combination ("Asian, Pacific Islander" beside "American Indian,
+# Alaskan Native" in NCT00851799, but "White, Black or African American" in
+# NCT03492281). Two races joined by "/" or "or" without a prefix are not read
+# either: the row may name either race.
+#
+# These rows add to the table's population, not to a "More than one race" row
+# beside them: of the tables holding them in the 2026-11-15 inputs, those with
+# such a row add up exactly to their population (NCT01641809 243, NCT00609674
+# 315), and the rows sit in blocks over their population for 2 participants.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main: rows
+# flagged multirace_label in 129 trials, 99 labels; more than one race +829,
+# from American Indian 520 ("American Indian or Alaska Native & White" 413 in
+# 16 trials), other 260, Black 22, Native Hawaiian 14, Asian 8, White 5.
+# mena_in_white falls by 2 ("Black & Middle Eastern/North African" and "Asian
+# & Middle Eastern/North African", White through a slash fragment before). No
+# block changes reported, no ethnicity block changes, and the 338 race blocks
+# over their population stay 338, none larger. Comma lists left unread: 1,150
+# participants in 78 trials, 1,027 of them in grouped categories ("Asian,
+# Pacific Islander" 978 in 32 trials).
+_MULTIRACE_PREFIX_RX = re.compile(
+    r"^(?:multiple(?:\s+races?)?|multi[\s\-]?racial|mixed(?:\s+races?)?|bi[\s\-]?racial|"
+    r"more\s+than\s+one\s+races?|two\s+or\s+more\s+races)\s*(?:[\-:–—(]\s*|\s+(?=\S))",
+    re.IGNORECASE)
+_MULTIRACE_PART_SPLIT_RX = re.compile(r"\s*(?:,|;|&|\+|\band\b)\s*", re.IGNORECASE)
+_MULTIRACE_JOIN_SPLIT_RX = re.compile(r"\s*(?:&|\+|\band\b)\s*", re.IGNORECASE)
+# Category names holding "and", read as one part: their "and" joins no list.
+_MULTIRACE_ONE_CATEGORY = (
+    (re.compile(r"native\s+hawaiians?\s+and\s+(?:other\s+)?pacific\s+islanders?", re.IGNORECASE),
+     "Native Hawaiian or Other Pacific Islander"),
+    (re.compile(r"american\s+indians?\s+and\s+alaskan?\s+natives?", re.IGNORECASE),
+     "American Indian or Alaska Native"),
+)
+
+
+def _named_race(text: str) -> Optional[str]:
+    """The race a text names through a reading that is not fuzzy (exact or
+    case-insensitive vocabulary match, slash fragment, or the Middle Eastern
+    or North African rule), else None; never other or unknown."""
+    text = text.strip(" -–—:,;()/.")
+    if not text:
+        return None
+    mapping = map_race_category(text, heritage=False, multirace=False)
+    if (mapping["confidence"] != "high" or "unmapped" in mapping["flags"]
+            or mapping["omb_category"] not in _RACE_SPECIFIC):
+        return None
+    return mapping["omb_category"]
+
+
+def _multirace_label(label: str) -> bool:
+    """True when a label without a heritage word names two or more races
+    (block comment "Rows naming two or more races")."""
+    text = clean_demographic_label(label)
+    for name_rx, name in _MULTIRACE_ONE_CATEGORY:
+        text = name_rx.sub(name, text)
+    prefix = _MULTIRACE_PREFIX_RX.match(text)
+    if prefix is not None:
+        races = set()
+        for part in _MULTIRACE_PART_SPLIT_RX.split(text[prefix.end():].rstrip(") ")):
+            for piece in [part] + part.split("/"):
+                race = _named_race(piece)
+                if race is not None and race != "more_than_one_race":
+                    races.add(race)
+        return len(races) >= 2
+    if _HERITAGE_GROUPED_API_RX.fullmatch(text) is not None:
+        return False
+    if len(_MULTIRACE_JOIN_SPLIT_RX.split(text)) < 2:
+        return False
+    # A list with a joiner is split at its commas too ("Caucasian, Black,
+    # and Asian"); a part that is only an ethnicity term is passed over
+    # ("African-American/Black, Hispanic, and Caucasian/White").
+    races = set()
+    for part in _MULTIRACE_PART_SPLIT_RX.split(text):
+        if not part.strip(" -–—:,;()/.") or _is_ethnicity_only_label(part):
+            continue
+        race = _named_race(part)
+        if race is None:
+            return False
+        races.add(race)
+    return len(races) >= 2
+
 def map_race_category(label: str, fuzzy_threshold: int = 85, *,
-                      guard_negation: bool = False, heritage: bool = True) -> Dict:
+                      guard_negation: bool = False, heritage: bool = True,
+                      multirace: bool = True) -> Dict:
     """
     Map a race category label to NIH/OMB standard.
 
@@ -665,7 +788,9 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
 
     heritage=False leaves out the heritage-template rule (block comment
     "Heritage-template labels"), which maps the groups of a heritage label
-    through this function.
+    through this function. multirace=False leaves out the rule for rows
+    naming two or more races (block comment "Rows naming two or more races"),
+    which reads the parts of a label through this function.
 
     Returns dict with:
         - omb_category: NIH/OMB standard category
@@ -720,6 +845,20 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
     # keep the first race of "African American/African Heritage & White".
     if heritage and _heritage_combination(label_clean):
         flags.append("heritage_label")
+        return {
+            "omb_category": "more_than_one_race",
+            "subcategory": None,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A label naming two or more races without a heritage word (block
+    # comment "Rows naming two or more races"), before the slash fragments,
+    # which would keep the first race of "Black/African American and White".
+    if (multirace and _HERITAGE_WORD_RX.search(label_clean) is None
+            and _multirace_label(label_clean)):
+        flags.append("multirace_label")
         return {
             "omb_category": "more_than_one_race",
             "subcategory": None,
