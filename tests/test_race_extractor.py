@@ -2285,3 +2285,90 @@ def test_a_middle_eastern_part_is_not_matched_by_a_white_row() -> None:
 
 def test_white_and_middle_eastern_name_one_race_in_a_comma_list() -> None:
     assert rx._comma_list_races("White, Middle Eastern") is None
+
+
+# ── Unqualified Indigenous labels, read by the trial's sites ───────────────
+#
+# src/race_extractor.py, block comment of that name.
+
+def _study_at(nct_id: str, measures: list[dict[str, Any]], participants: int,
+              countries: list[str]) -> dict[str, Any]:
+    """_study with site locations in the given countries."""
+    study = _study(nct_id, measures, participants)
+    study["protocolSection"]["contactsLocationsModule"] = {"locations": [{"country": c} for c in countries]}
+    return study
+
+
+@pytest.mark.parametrize("label, unqualified", [
+    ("Indigenous", True), ("Aboriginal", True), ("Aborigine", True), ("Aborigines", True),
+    ("Native/Aboriginal", True), ("Native or Aboriginal", True), ("Aboriginal/Native Persons", True),
+    ("Indigenous Person", True), ("Indigenous peoples", True), ("Indigenous/Aboriginal", True),
+    ("Native", False), ("Natives", False), ("Tribal members", False), ("Native American", False),
+    ("Indigenous Mayan", False), ("Aboriginal Australian", False), ("Indigenous African", False),
+    ("North American Aboriginal", False), ("White", False),
+])
+def test_unqualified_indigenous(label: str, unqualified: bool) -> None:
+    assert rx._unqualified_indigenous(label) is unqualified
+
+
+@pytest.mark.parametrize("countries, region", [
+    (["Canada"], "americas"), (["United States", "Puerto Rico"], "americas"), (["Brazil", "Chile"], "americas"),
+    (["Australia", "New Zealand"], "outside_americas"), (["Guam"], "outside_americas"),
+    (["Canada", "Spain", "United States"], "mixed"), (["United States", "American Samoa"], "mixed"),
+    ([], "unknown"),
+])
+def test_trial_site_region(countries: list[str], region: str) -> None:
+    study = _study_at("NCT99000584", [], 1, countries)
+    assert rx._trial_site_region(study) == region
+
+
+def test_a_trial_without_locations_has_an_unknown_region() -> None:
+    assert rx._trial_site_region(_study("NCT99000585", [], 1)) == "unknown"
+
+
+INDIGENOUS_TABLE = [("White", 60), ("Black", 10), ("Aboriginal", 8), ("Other", 2)]
+
+
+@pytest.mark.parametrize("countries, category, flag", [
+    (["Canada"], "american_indian_alaska_native", "indigenous_sites_americas"),
+    (["Australia"], "other", "indigenous_sites_outside_americas"),
+    (["Canada", "Australia"], "other", "indigenous_sites_mixed"),
+    ([], "other", "indigenous_sites_unknown"),
+])
+def test_an_unqualified_indigenous_row_is_read_by_the_trial_sites(
+        countries: list[str], category: str, flag: str) -> None:
+    """"Aboriginal" in a Canadian trial is the First Nations, Inuit and
+    Metis; elsewhere, or where the sites do not place the trial, it is other
+    with the reason flagged, not "unmapped"."""
+    table = _category_table(COMBINED_TITLE, INDIGENOUS_TABLE)
+    race = extract_race_data(_study_at("NCT99000586", [table], 80, countries))
+    row = next(c for c in race["raw_categories"] if c["original"] == "Aboriginal")
+    assert row["omb_category"] == category and flag in row["flags"]
+    assert "unmapped" not in row["flags"]
+    assert race["omb_totals"][category] >= 8
+
+
+def test_the_vocabulary_entry_indigenous_is_read_by_the_trial_sites_too() -> None:
+    """"Indigenous" was American Indian wherever posted, also in an
+    Australia and New Zealand trial (NCT05610176)."""
+    table = _category_table(COMBINED_TITLE, [("White", 40), ("Indigenous", 5), ("Asian", 5)])
+    outside = extract_race_data(_study_at("NCT99000587", [table], 50, ["Australia", "New Zealand"]))
+    assert outside["omb_totals"]["american_indian_alaska_native"] == 0
+    assert outside["omb_totals"]["other"] == 5
+    inside = extract_race_data(_study_at("NCT99000587", [table], 50, ["Canada"]))
+    assert inside["omb_totals"]["american_indian_alaska_native"] == 5
+
+
+def test_a_race_by_sex_indigenous_row_is_read_by_the_trial_sites() -> None:
+    table = _category_table(COMBINED_TITLE, [("White - Female", 30), ("White - Male", 25),
+                                             ("Aboriginal - Female", 3), ("Aboriginal - Male", 2)])
+    race = extract_race_data(_study_at("NCT99000588", [table], 60, ["Canada"]))
+    assert _nonzero(race) == {"white": 55, "american_indian_alaska_native": 5}
+
+
+def test_rows_read_without_the_study_are_unchanged() -> None:
+    """extract_race_from_measure has no study, so no sites: "Aboriginal" is
+    read as before."""
+    table = _category_table(COMBINED_TITLE, INDIGENOUS_TABLE)
+    row = next(m for m in rx.extract_race_from_measure(table) if m["original"] == "Aboriginal")
+    assert row["omb_category"] == "other" and "unmapped" in row["flags"]
