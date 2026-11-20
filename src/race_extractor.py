@@ -1775,17 +1775,18 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
 # "," and ";" into parts each naming one race through a reading that is not
 # fuzzy (_named_race), passing over a part that is only an ethnicity term
 # ("Hispanic"), with two or more different races named. A part holding "/"
-# names one race only when every fragment read as a race reads as that race
-# ("Black/African American", "White/Cau"); "Asian/Black" may name either
-# race, so the row is not a comma list (_comma_list_part_race). A part
+# names one race only when every fragment read without a fuzzy match reads
+# as that race, other and unknown included ("Black/African American",
+# "White/Cau"); "Asian/Black" may name either race and "Asian/Other" Asian
+# or another, so the row is not a comma list (_slash_fragments_agree). A part
 # starting with "or" ("White, Asian, or Hispanic", NCT03506724) offers
 # alternatives: the row is not a comma list. A label the vocabulary holds
 # whole is not one either. A comma list maps to more than one race, flagged
 # multirace_comma_list, when the same table has another row, not itself a
 # comma list, read as one of the races named through a reading that is not
 # fuzzy (confidence high, not unmapped) and, for a row holding "/", whose
-# fragments agree as a part's must ("Asian/Black" is no evidence of an Asian
-# row; a review finding). A grouped category stands in the
+# fragments agree as a part's must ("Asian/Black" and "Asian/Other" are no
+# evidence of an Asian row; review findings). A grouped category stands in the
 # table for its races, so no row of the table names any of them alone: in
 # every table of the inputs holding a comma list with no such row, the row is
 # a grouped category ("Asian, Pacific Islander" in 31 trials; "American
@@ -1855,14 +1856,31 @@ def _comma_list_races(text: str) -> Optional[FrozenSet[str]]:
     return frozenset(races) if len(races) >= 2 else None
 
 
+def _slash_fragment_category(fragment: str) -> Optional[str]:
+    """The category a slash fragment reads as without a fuzzy match (exact
+    or case-insensitive vocabulary match, or the Middle Eastern or North
+    African rule), whatever the category: other, unknown and more than one
+    race included. None for text read as nothing ("Cau") and for an
+    ethnicity term ("Hispanic"), which map as unmapped."""
+    fragment = fragment.strip(" -–—:,;()/.")
+    if not fragment:
+        return None
+    mapping = map_race_category(fragment, heritage=False, multirace=False)
+    if mapping["confidence"] != "high" or "unmapped" in mapping["flags"]:
+        return None
+    return mapping["omb_category"]
+
+
 def _slash_fragments_agree(text: str, race: str) -> bool:
-    """False when text holds "/" and a fragment reads as a race other than
-    race (_named_race): "Asian/Black" may name either race and
+    """False when text holds "/" and a fragment reads as a category other
+    than race (_slash_fragment_category): "Asian/Black" may name either race,
+    "Asian/Other" Asian or another race (review findings), and
     "Asian/Pacific Islander" is the 1977 grouping, while "Black/African
     American" and "White/Cau" ("Cau" reads as nothing) name one race."""
     if "/" not in text:
         return True
-    return ({_named_race(fragment) for fragment in text.split("/")} - {None}) <= {race}
+    categories = {_slash_fragment_category(fragment) for fragment in text.split("/")}
+    return categories - {None} <= {race}
 
 
 def _comma_list_part_race(part: str) -> Optional[str]:

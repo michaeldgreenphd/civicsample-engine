@@ -1889,6 +1889,7 @@ def test_a_comma_list_names_its_races(label: str, races: set[str]) -> None:
     "White, Asian, or Black",
     "Asian, Black or African American, Other",  # a part that is not a race
     "White, Asian/Black",  # a part that may name either race (a review finding)
+    "White, Asian/Other",  # Asian or another race (a review finding)
     "Asian/Pacific Islander, White",  # the 1977 grouping, with a slash
     "More than one race, White",
     "Multiple - Asian, White",  # the prefix rule reads it (block comment "Rows naming two or more races")
@@ -2014,3 +2015,25 @@ def test_a_slash_row_naming_either_of_two_races_is_no_evidence_of_a_race_alone()
     race = extract_race_data(_study("NCT99000574", [agree], participants=10))
     readings = {c["original"]: c["flags"] for c in race["raw_categories"]}
     assert "multirace_comma_list" in readings["White, Black"]
+
+
+@pytest.mark.parametrize("evidence", ["Asian/Other", "Asian/Unknown", "Asian/Multiracial"])
+def test_a_slash_row_with_a_residual_alternative_is_no_evidence_of_a_race_alone(evidence: str) -> None:
+    """A review finding: "Other" reads as a category, not as nothing, so
+    "Asian/Other" may name Asian or another race and is no Asian row; the
+    grouped "Asian, Pacific Islander" beside it keeps its reading."""
+    table = _category_table(COMBINED_TITLE, [(evidence, 5), ("Asian, Pacific Islander", 3), ("Black", 2)])
+    race = extract_race_data(_study("NCT99000575", [table], participants=10))
+    readings = {c["original"]: c["flags"] for c in race["raw_categories"]}
+    assert "multirace_comma_list" not in readings["Asian, Pacific Islander"]
+
+
+def test_a_slash_row_with_an_ethnicity_or_unread_fragment_is_still_evidence() -> None:
+    """"White/Hispanic" and "Asian/Oriental" name one race: an ethnicity term
+    and a fragment read as nothing are not alternatives."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White/Hispanic", 4), ("Asian/Oriental", 3), ("White, Black", 1), ("Asian, Black", 1)])
+    race = extract_race_data(_study("NCT99000576", [table], participants=9))
+    readings = {c["original"]: c["flags"] for c in race["raw_categories"]}
+    assert "multirace_comma_list" in readings["White, Black"]
+    assert "multirace_comma_list" in readings["Asian, Black"]
