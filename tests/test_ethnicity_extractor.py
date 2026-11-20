@@ -292,11 +292,12 @@ def test_a_combined_table_without_ethnicity_in_its_title_is_not_read_here() -> N
 
 
 def test_counts_that_disagree_between_the_two_readings_are_left_alone() -> None:
-    """"Another Hispanic, Latino" is a Hispanic row to the race extractor, but
-    this extractor leaves it unmapped on purpose (block comment "Plain
-    vocabulary gaps"), so its Hispanic count differs: nothing moves. Before
-    the vocabulary gaps were filled this test used "American Hispanic"."""
-    study = _combined([("White", 30), ("Black", 12), ("Another Hispanic, Latino", 8)], 50)
+    """"Latina/Hispanic" is a Hispanic row to the race extractor, but this
+    extractor does not map it, so its Hispanic count differs: nothing moves.
+    The label is a stand-in for any row the race extractor reads as Hispanic
+    and this vocabulary does not; earlier versions of this test used
+    "American Hispanic" and "Another Hispanic, Latino"."""
+    study = _combined([("White", 30), ("Black", 12), ("Latina/Hispanic", 8)], 50)
     combined = race_extractor.combined_classification(study)
     assert combined is not None and combined["ethnicity_rows"] == 8
     eth = extract_ethnicity_data(study)
@@ -541,10 +542,11 @@ def test_a_fuzzy_match_that_drops_the_negation_is_refused() -> None:
 
 
 def test_an_unread_ethnicity_row_survives_all_zero_rejection() -> None:
-    """"Non-Hispanic and Latino" is left unmapped on purpose: no counts, but
-    the block says why, and the table is not taken for a race table. Before
-    the vocabulary gaps were filled this test used "American Hispanic"."""
-    table = _table(COMBINED, [("White", 30), ("Black", 12), ("Non-Hispanic and Latino", 8)])
+    """"Hispanic or Latino origin" is not in the vocabulary: no counts, but
+    the block says why, and the table is not taken for a race table. Earlier
+    versions of this test used "American Hispanic" and "Non-Hispanic and
+    Latino", both now entries."""
+    table = _table(COMBINED, [("White", 30), ("Black", 12), ("Hispanic or Latino origin", 8)])
     eth = extract_ethnicity_data(_study("NCT99000708", [table], participants=50))
     assert eth["reported"] is False
     assert eth["flags"] == ["all_zero_rejection", "ethnicity_rows_unread"]
@@ -591,7 +593,41 @@ VOCABULARY_GAPS = [
     ("Non-Hispanic Ethnicity", "not_hispanic_latino"),
     ("Not Latino or Hispanic", "not_hispanic_latino"),
     ("Non American Hispanic", "not_hispanic_latino"),
+    # follow-up wordings: the census "Another Hispanic" origin, in each spelling posted
+    ("Another Hispanic, Latino, or Spanish origin", "hispanic_latino"),
+    ("Another Hispanic, Latino/a, or Spanish Origin", "hispanic_latino"),
+    ("Another Hispanic, Latino/a, or Spanish origin", "hispanic_latino"),
+    ("Another Hispanic, Latino/a or Spanish Origin", "hispanic_latino"),
+    ("Another Hispanic, Latino, or Spanish origin (e.g. Savadorian, Dominican, Columbian, Guatemalan, etc)",
+     "hispanic_latino"),
+    # follow-up wordings: not meeting the OMB definition
+    ("Not meeting definition for Hispanic or Latino", "not_hispanic_latino"),
+    ("Not meeting the definition for Hispanic or Latino", "not_hispanic_latino"),
+    ("A person not meeting definition of Hispanic/Latino", "not_hispanic_latino"),
+    # follow-up wordings: the complement of "Hispanic or Latino" in its tables
+    ("Non-Hispanic and Latino", "not_hispanic_latino"),
+    # siblings: the OMB definition of Hispanic or Latino spelled out, in each spelling posted
+    ("Mexican, Puerto Rican, Cuban, Central or So. Amer.", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Cuban, Central or So Amer.", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Cuban, Central/So American", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Cuban, Central/So. American", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Cuban, Central or South Am.", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Cuban Central or So. Americ", "hispanic_latino"),
+    ("Mexican, Cuban, Puerto Rican, Central/So. American", "hispanic_latino"),
+    ("Mexican,Puerto Rican,Cuban,Central or So. Amer/Oth", "hispanic_latino"),
+    ("Mexican, Puerto Rican, Central or So. Amer. or Oth", "hispanic_latino"),
 ]
+
+
+@pytest.mark.parametrize("label", ["Mexican, Mexican American, Chicano", "Mexican, Mexican American, Chicano/a"])
+def test_the_census_mexican_row_is_hispanic_mexican(label: str) -> None:
+    """Posted beside "Another Hispanic, Latino, or Spanish origin": Hispanic,
+    with the subcategory "Mexican" and "Chicano" map to."""
+    table = _table(COMBINED, [(label, 24), ("Puerto Rican", 5),
+                              ("Another Hispanic, Latino, or Spanish origin", 34)])
+    eth = extract_ethnicity_data(_study("NCT99000805", [table], participants=63))
+    assert eth["omb_totals"] == {"hispanic_latino": 63, "not_hispanic_latino": 0, "unknown_not_reported": 0}
+    assert eth["subcategory_totals"]["hispanic_latino_mexican"] == 24
 
 
 @pytest.mark.parametrize("label, category", VOCABULARY_GAPS)
@@ -624,34 +660,39 @@ def test_a_vocabulary_gap_row_of_an_ethnicity_table_leaves_unknown(label: str, c
 
 
 @pytest.mark.parametrize("label", [
-    "Non-Hispanic and Latino",
-    "Not meeting definition for Hispanic or Latino",
+    "Caucasian (White, including Hispanic)",
     "including Hispanic)",
-    "Another Hispanic, Latino",
+    "non-Latino, Hispanic",
+    "White (non-latino or unknown ethnicity)",
 ])
 def test_an_ambiguous_label_stays_unmapped(label: str) -> None:
-    """Left unmapped pending a decision on its meaning (block comment "Plain
-    vocabulary gaps"). In a race-titled table it is dropped and the block
-    says so."""
+    """A row whose participants the table does not divide by ethnicity
+    (block comment "Plain vocabulary gaps"). In a race-titled table it is
+    dropped and the block says so."""
     from src.ethnicity_extractor import map_ethnicity_category
     mapping = map_ethnicity_category(label)
     assert mapping["confidence"] == "low" and "unmapped" in mapping["flags"]
+    # 50 rows of 60 participants: not an exact combined classification, so no
+    # race rows are counted as not Hispanic and only the label's reading shows.
     table = _table(COMBINED, [("White", 30), ("Hispanic", 5), (label, 15)])
-    eth = extract_ethnicity_data(_study("NCT99000803", [table], participants=50))
+    eth = extract_ethnicity_data(_study("NCT99000803", [table], participants=60))
     assert eth["omb_totals"]["hispanic_latino"] == 5
     assert eth["omb_totals"]["not_hispanic_latino"] == 0
     assert "ethnicity_rows_unread" in eth["flags"]
 
 
 def test_vocabulary_gap_entries_are_never_fuzzy_targets() -> None:
-    """As a fuzzy target "Non-Hispanic and Non-Latino" would read "Non-Hispanic
-    and Latino" (ratio 92) as not Hispanic. The exact-only keys are all in the
-    vocabulary and none is offered to the fuzzy match."""
+    """As a fuzzy target "Non-Hispanic and Non-Latino" read "Non-Hispanic and
+    Latino" (ratio 92) as not Hispanic before its tables had been looked at.
+    The exact-only keys are all in the vocabulary and none is offered to the
+    fuzzy match: "Hispanic Americans" scores 97 against the exact-only
+    "Hispanic American" and at most 71 against the rest, so it stays
+    unmapped."""
     from src import ethnicity_extractor as ee
     assert ee._EXACT_ONLY_KEYS <= set(ee.ETHNICITY_MAPPINGS)
     assert not ee._EXACT_ONLY_KEYS & set(ee._FUZZY_KEYS)
     assert list(ee._FUZZY_KEYS) == [k for k in ee.ETHNICITY_MAPPINGS if k not in ee._EXACT_ONLY_KEYS]
-    mapping = ee.map_ethnicity_category("Non-Hispanic and Latino")
+    mapping = ee.map_ethnicity_category("Hispanic Americans")
     assert mapping["omb_category"] == "unknown_not_reported" and "unmapped" in mapping["flags"]
 
 
@@ -661,6 +702,9 @@ def test_vocabulary_gap_entries_are_never_fuzzy_targets() -> None:
     ("Latino or Hispanic", "Not Latino or Hispanic"),
     ("Ethnicity: American hispanic", "Ethnicity: Non American hispanic"),
     ("White, of Hispanic origin", "White, not of Hispanic origin"),
+    ("Mexican, Puerto Rican, Cuban, Central or So. Amer.", "Not meeting definition for Hispanic or Latino"),
+    ("Another Hispanic, Latino/a, or Spanish Origin", "Not of Hispanic, Latino/a, or Spanish Origin"),
+    ("Hispanic or Latino", "Non-Hispanic and Latino"),
 ])
 def test_both_sides_of_a_posted_pair_are_read(hispanic: str, not_hispanic: str) -> None:
     """A table posting a wording and its opposite (block comment "Plain
@@ -693,3 +737,66 @@ def test_race_rows_under_a_combined_name_keep_a_race_table_race_only() -> None:
         table = _table(COMBINED, [(f"{prefix}: White", 40), (f"{prefix}: Black", 10)])
         eth = extract_ethnicity_data(_study("NCT99000720", [table], participants=50))
         assert eth["reported"] is False and eth["flags"] == ["race_only_table_skipped"], prefix
+
+
+# ── A race classification's unknown row beside a complete ethnicity ────────
+#    classification
+#
+# src/ethnicity_extractor.py, block comment of that name (a review finding).
+
+def test_a_race_unknown_row_is_not_counted_beside_a_complete_ethnicity_classification() -> None:
+    """The NCT01557517 shape: the definition row 6 and "Not meeting
+    definition for Hispanic or Latino" 34 hold all 40 participants, so the
+    race classification's "Unknown" 1 is not unknown ethnicity: the block is
+    40 of 40, not 41 of 40."""
+    table = _table(COMBINED, [
+        ("White", 30), ("Black or African American", 9), ("Unknown", 1),
+        ("Mexican, Puerto Rican, Cuban, Central or So. Amer.", 6),
+        ("Not meeting definition for Hispanic or Latino", 34)])
+    eth = extract_ethnicity_data(_study("NCT99000901", [table], participants=40))
+    assert eth["omb_totals"] == {"hispanic_latino": 6, "not_hispanic_latino": 34, "unknown_not_reported": 0}
+    assert "race_unknown_rows_not_counted" in eth["flags"]
+    assert not any(c["omb_category"] == "unknown_not_reported" for c in eth["raw_categories"])
+
+
+def test_an_unknown_row_is_counted_when_the_ethnicity_rows_fall_short() -> None:
+    """Hispanic and Not Hispanic hold 36 of 40: the unknown row may be the
+    ethnicity classification's own, and is counted as before."""
+    table = _table(COMBINED, [("White", 30), ("Black", 10), ("Hispanic", 6), ("Not Hispanic", 30), ("Unknown", 4)])
+    eth = extract_ethnicity_data(_study("NCT99000902", [table], participants=40))
+    assert eth["omb_totals"] == {"hispanic_latino": 6, "not_hispanic_latino": 30, "unknown_not_reported": 4}
+    assert "race_unknown_rows_not_counted" not in eth["flags"]
+
+
+def test_an_unknown_row_naming_the_ethnicity_dimension_is_counted_as_before() -> None:
+    """"Ethnicity: Unknown" says it is an ethnicity row; a table whose rows
+    then exceed its population is not read by guess."""
+    table = _table(COMBINED, [("White", 30), ("Black", 10), ("Hispanic", 6), ("Not Hispanic", 34),
+                              ("Ethnicity: Unknown", 2)])
+    eth = extract_ethnicity_data(_study("NCT99000903", [table], participants=40))
+    assert eth["omb_totals"]["unknown_not_reported"] == 2
+    assert "race_unknown_rows_not_counted" not in eth["flags"]
+
+
+def test_an_ethnicity_titled_table_is_read_as_before() -> None:
+    """The rule is for race-titled tables, where a race classification sits
+    beside the ethnicity rows; an ethnicity table's unknown row is its own."""
+    table = _table("Ethnicity (NIH/OMB)", [("Hispanic or Latino", 6), ("Not Hispanic or Latino", 34),
+                                           ("Unknown or Not Reported", 1)])
+    eth = extract_ethnicity_data(_study("NCT99000904", [table], participants=40))
+    assert eth["omb_totals"]["unknown_not_reported"] == 1
+
+
+def test_parts_whose_race_unknown_row_hid_a_complete_classification_are_summed() -> None:
+    """The NCT01224106 shape: two parts of the population (797 + 154). The
+    second part's race "Unknown" pushed it over its Number Analyzed, so the
+    parts could not be summed and its participants were balanced into unknown.
+    Without it, the parts add up to the population."""
+    part_a = _table(COMBINED, [("Non-Hispanic", 648), ("Hispanic", 127), ("White", 700), ("Black", 75),
+                               ("Not Available", 22)], analyzed=797)
+    part_b = _table(COMBINED, [("Non-Hispanic", 127), ("Hispanic", 27), ("White", 140), ("Asian", 10),
+                               ("Unknown", 4)], analyzed=154)
+    eth = extract_ethnicity_data(_study("NCT99000905", [part_a, part_b], participants=951))
+    assert eth["omb_totals"]["hispanic_latino"] == 154
+    assert eth["omb_totals"]["not_hispanic_latino"] == 775
+    assert "ethnicity_tables_partitioned" in eth["flags"]

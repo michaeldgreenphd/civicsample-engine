@@ -50,6 +50,31 @@ ETHNICITY_MAPPINGS = {
     # and below (same block comment, "Counterparts").
     "Latino American": ("hispanic_latino", None),       # beside "American Hispanic" (NCT00628745)
     "of Hispanic origin": ("hispanic_latino", None),    # "White, of Hispanic origin" beside "White, not of Hispanic origin"
+    # The census wording of the Hispanic origins it does not list by name
+    # (same block comment, "Follow-up wordings"), in each spelling posted.
+    "Another Hispanic, Latino, or Spanish origin": ("hispanic_latino", None),
+    "Another Hispanic, Latino/a, or Spanish Origin": ("hispanic_latino", None),
+    "Another Hispanic, Latino/a or Spanish Origin": ("hispanic_latino", None),
+    "Another Hispanic, Latino, or Spanish origin (e.g. Savadorian, Dominican, Columbian, Guatemalan, etc)":
+        ("hispanic_latino", None),                      # posted with its examples, misspellings included
+    # Rows posted beside those wordings (same block comment, "Follow-up
+    # wordings", "Siblings"). The census Mexican origin, as "Mexican" and
+    # "Chicano" are mapped:
+    "Mexican, Mexican American, Chicano": ("hispanic_latino", "mexican"),
+    "Mexican, Mexican American, Chicano/a": ("hispanic_latino", "mexican"),
+    # The OMB definition of Hispanic or Latino ("a person of Mexican, Puerto
+    # Rican, Cuban, South or Central American, or other Spanish culture or
+    # origin") spelled out as a row, in each spelling posted. It names several
+    # origins, so no subcategory.
+    "Mexican, Puerto Rican, Cuban, Central or So. Amer.": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Cuban, Central or So Amer.": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Cuban, Central/So American": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Cuban, Central/So. American": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Cuban, Central or South Am.": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Cuban Central or So. Americ": ("hispanic_latino", None),
+    "Mexican, Cuban, Puerto Rican, Central/So. American": ("hispanic_latino", None),
+    "Mexican,Puerto Rican,Cuban,Central or So. Amer/Oth": ("hispanic_latino", None),
+    "Mexican, Puerto Rican, Central or So. Amer. or Oth": ("hispanic_latino", None),
 
     # Not Hispanic or Latino
     "Not Hispanic or Latino": ("not_hispanic_latino", None),
@@ -76,6 +101,16 @@ ETHNICITY_MAPPINGS = {
     # NCT01900899 (Finland) "Ethnicity: American hispanic" 1 and "Ethnicity:
     # Non American hispanic" 183 are the whole ethnicity classification of 184.
     "Non American Hispanic": ("not_hispanic_latino", None),
+    # Not meeting the OMB definition of Hispanic or Latino, posted beside a row
+    # that spells that definition out ("Mexican, Puerto Rican, Cuban, Central or
+    # So. Amer."); same block comment, "Follow-up wordings".
+    "Not meeting definition for Hispanic or Latino": ("not_hispanic_latino", None),
+    "Not meeting the definition for Hispanic or Latino": ("not_hispanic_latino", None),
+    "A person not meeting definition of Hispanic/Latino": ("not_hispanic_latino", None),
+    # Not a reading of the wording, which names both categories: mapped from
+    # its tables, where it is the complement of a "Hispanic or Latino" row
+    # (same block comment, "Follow-up wordings").
+    "Non-Hispanic and Latino": ("not_hispanic_latino", None),
 
     # Unknown / Not Reported  (including slash-separated variants)
     "Unknown": ("unknown_not_reported", None),
@@ -108,25 +143,21 @@ ETHNICITY_MAPPINGS = {
 # Method. The entries above marked "Plain vocabulary gaps" are matched as
 # posted, exactly or in any letter case, like every key. They are left out of
 # the fuzzy match (_EXACT_ONLY_KEYS): as fuzzy targets they would also read
-# labels that are not theirs. On the measured snapshot they would read
-# "Non-Hispanic and Latino" (15 rows; ratio 92 against "Non-Hispanic and
-# Non-Latino", and both negate Hispanic, so the negation check does not refuse
-# it) as not Hispanic, and "Not Hispanic Ethnicity" (2 rows; ratio 85 against
+# labels that are not theirs. On the snapshot measured when the first of them
+# were added, they would have read "Non-Hispanic and Latino" (15 rows; ratio
+# 92 against "Non-Hispanic and Non-Latino", and both negate Hispanic, so the
+# negation check does not refuse it) as not Hispanic before its tables had
+# been looked at, and "Not Hispanic Ethnicity" (2 rows; ratio 85 against
 # "Hispanic ethnicity") as Hispanic. Left out of the fuzzy match, the entries
 # change only rows whose label, or the part of it that an existing rule reads,
 # is one of them: "Latino/Hispanic" through the comma/semicolon/slash split
 # ("Latino, Hispanic"), "White, not of Hispanic origin" through the same split,
 # "Non-Latino White" through the joined reading ("non-Latino").
 #
-# Left unmapped by this change, pending a decision on what each means:
-# "Non-Hispanic and Latino" (names both categories; in the tables measured it
-# sits beside a "Hispanic or Latino" row), "Not meeting definition for Hispanic
-# or Latino" (in the tables measured it sits beside Hispanic subgroup rows),
-# "Caucasian (White, including Hispanic)", read through the split as "including
-# Hispanic)" (a race row holding Hispanic and other participants), and
-# "Another Hispanic, Latino/a, or Spanish Origin", read through the split as
-# "Another Hispanic, Latino" (the census wording of the remaining Hispanic
-# subgroups, posted beside Mexican, Puerto Rican and Cuban rows).
+# Left unmapped: "Caucasian (White, including Hispanic)", read through the
+# split as "including Hispanic)", a race row holding Hispanic and other
+# participants, whose ethnicity the table does not divide. Three labels first
+# left unmapped are now entries ("Follow-up wordings" below).
 #
 # Why. Each entry names Hispanic or Latino and nothing else, or negates every
 # Hispanic or Latino term it names: "American Hispanic" and "Hispanic American"
@@ -155,6 +186,54 @@ ETHNICITY_MAPPINGS = {
 # row mixes categories: "non-Latino, Hispanic" (NCT00151775) and "White
 # (non-latino or unknown ethnicity)" (NCT02297815). Both keep the flag
 # ethnicity_rows_unread.
+#
+# Follow-up wordings. Three labels were left unmapped when the entries above
+# were added, and their tables were then read one by one (the 2026-11-15
+# snapshot below; every table that posts them, by NCT ID):
+#   - "Another Hispanic, Latino, or Spanish origin", in four spellings (5
+#     tables): the census wording for the Hispanic origins the form does not
+#     list by name, posted beside "Mexican, Mexican American, Chicano",
+#     "Puerto Rican" and "Cuban", and beside "Not of Hispanic, Latino/a, or
+#     Spanish Origin" or "No Hispanic, Latino, or Spanish origin". Hispanic.
+#   - "Not meeting definition for Hispanic or Latino", in three spellings (8
+#     tables): posted beside a row that spells out the OMB definition of
+#     Hispanic or Latino ("Mexican, Puerto Rican, Cuban, Central or So.
+#     Amer."), the two adding up exactly to the baseline population in all
+#     7 such tables (NCT01557517: 6 + 34 = 40). Not Hispanic. NCT02504892
+#     posts it alone, 3 of 3.
+#   - "Non-Hispanic and Latino" (14 trials): read alone it names both
+#     categories. Mapped from its tables, not its wording: in each of the 12
+#     that post counts beside a "Hispanic or Latino" row, the two and the
+#     table's unknown rows add up exactly to the baseline population
+#     (NCT02477020: 20 + 144 = 164), so the row is the complement of the
+#     Hispanic row. Not Hispanic. NCT02381288 posts it alone (17 of 17) and
+#     NCT02430870 posts "NA"; as with "Non American Hispanic", the reading is
+#     an inference from these tables and does not carry over to other labels.
+# Siblings. With those entries alone, the 8 "Not meeting definition" blocks
+# read every participant they classify as not Hispanic, because the row
+# beside it, the OMB definition spelled out, matched nothing and names no
+# Hispanic term, so not even ethnicity_rows_unread said so (NCT01557517: Not
+# Hispanic 34, Hispanic 0, the definition row 6 balanced into unknown). That
+# row is an entry too, in the nine spellings posted, including three in
+# tables beside a plain "Not Hispanic" row (NCT01519817, NCT01675141,
+# NCT01468311), whose blocks also read Hispanic 0. So is "Mexican, Mexican
+# American, Chicano" (and "Chicano/a"), posted beside "Another Hispanic",
+# with the subcategory the vocabulary gives "Mexican" and "Chicano".
+#
+# Measured on the same inputs as below, against engine main at the time
+# (with the Total-class rule): 20 labels (42 rows) change, every one from
+# unmapped to a category. 29 blocks change, 7 from all-zero rejection to
+# reported: Hispanic +117, Not Hispanic +1,477, unknown -1,478. The net +116
+# are the participants of the newly reported blocks (114) and 1 each in
+# NCT01553188 and NCT01557517: each table holds a race classification and an
+# ethnicity classification, and the race classification's "Unknown" row (1)
+# is read as ethnicity unknown beside an ethnicity classification that is
+# whole, as it was before; balancing had hidden it. The sibling rows alone
+# change 13 of the 29 (Hispanic +47). ethnicity_rows_unread falls from 290
+# blocks (119 not reported) to 264 (112). Three changed blocks read one
+# category only because their tables post one: NCT02504892 ("A person not
+# meeting definition" 3 of 3), NCT02381288 ("Non-Hispanic and Latino" 17 of
+# 17), NCT05958888 (Hispanic origins only, 63 of 63).
 #
 # Combined classifications. "American Hispanic" was a Hispanic row to the race
 # extractor but not to this one, so the two readings of an exact combined
@@ -188,6 +267,19 @@ _EXACT_ONLY_KEYS = frozenset({
     # counterparts
     "Latino American", "of Hispanic origin", "Not Hispanic ethnicity", "Non-Hispanic ethnicity",
     "Not Latino or Hispanic", "Non American Hispanic",
+    # follow-up wordings
+    "Another Hispanic, Latino, or Spanish origin", "Another Hispanic, Latino/a, or Spanish Origin",
+    "Another Hispanic, Latino/a or Spanish Origin",
+    "Another Hispanic, Latino, or Spanish origin (e.g. Savadorian, Dominican, Columbian, Guatemalan, etc)",
+    "Not meeting definition for Hispanic or Latino", "Not meeting the definition for Hispanic or Latino",
+    "A person not meeting definition of Hispanic/Latino", "Non-Hispanic and Latino",
+    # their siblings
+    "Mexican, Mexican American, Chicano", "Mexican, Mexican American, Chicano/a",
+    "Mexican, Puerto Rican, Cuban, Central or So. Amer.", "Mexican, Puerto Rican, Cuban, Central or So Amer.",
+    "Mexican, Puerto Rican, Cuban, Central/So American", "Mexican, Puerto Rican, Cuban, Central/So. American",
+    "Mexican, Puerto Rican, Cuban, Central or South Am.", "Mexican, Puerto Rican, Cuban Central or So. Americ",
+    "Mexican, Cuban, Puerto Rican, Central/So. American", "Mexican,Puerto Rican,Cuban,Central or So. Amer/Oth",
+    "Mexican, Puerto Rican, Central or So. Amer. or Oth",
 })
 # The keys a fuzzy match may return, in the vocabulary's order.
 _FUZZY_KEYS = tuple(key for key in ETHNICITY_MAPPINGS if key not in _EXACT_ONLY_KEYS)
@@ -755,6 +847,48 @@ def _is_race_only_table(kept: List[Dict], dropped: List[Dict]) -> bool:
     return any((c.get("count") or 0) > 0 for c in dropped)
 
 
+# ── A race classification's unknown row beside a complete ethnicity ────────
+#    classification
+#
+# Some race-titled tables post a race classification and an ethnicity
+# classification of the same participants in one table: race rows (White,
+# Black, ..., "Unknown") and ethnicity rows (Hispanic, Not Hispanic). The race
+# rows are dropped here as unmapped, but the race classification's "Unknown"
+# row maps to unknown in the ethnicity vocabulary and was counted as unknown
+# ethnicity, beside an ethnicity classification that already holds everyone:
+# NCT01557517 posts the OMB definition of Hispanic 6 and "Not meeting
+# definition for Hispanic or Latino" 34 for a population of 40, and its race
+# "Unknown" 1 made the block 41 of 40 (a review finding).
+#
+# Method (_race_unknown_rows). In a race-titled table (is_race_table) whose
+# Hispanic and Not Hispanic rows add up exactly to the table's population
+# (its own Number Analyzed, else the baseline population), a row mapped to
+# unknown with a count above zero is not counted for ethnicity: the
+# ethnicity classification is complete, so the row is not part of it. A row
+# naming the ethnicity dimension ("Ethnicity: Unknown") is counted as before:
+# it says it is an ethnicity row, and such a table is not read by guess. The
+# block carries the flag race_unknown_rows_not_counted when a counted table
+# had such a row; its participants stay in the race block, where the row is
+# read as unknown race.
+#
+# What it does not do. A table whose Hispanic and Not Hispanic rows fall
+# short of its population is read as before: its unknown row may be the
+# ethnicity classification's own. A table without a Hispanic or Not Hispanic
+# row is the rule above's ("A race table under a race-and-ethnicity title").
+def _race_unknown_rows(categories: List[Dict], population: Optional[int]) -> List[Dict]:
+    """The unknown rows of a race-titled table not counted for ethnicity,
+    because its Hispanic and Not Hispanic rows already hold the whole
+    population (block comment above); [] otherwise."""
+    if not population:
+        return []
+    classified = sum(c.get("count") or 0 for c in categories if c["omb_category"] in _ETHNICITY_SPECIFIC)
+    if classified != population:
+        return []
+    return [c for c in categories
+            if c["omb_category"] == "unknown_not_reported" and (c.get("count") or 0) > 0
+            and not _names_ethnicity_dimension(c)]
+
+
 def _race_rows_not_hispanic(study: dict, counted: List[Dict], omb_totals: Dict,
                             total_participants: Optional[int]) -> int:
     """Participants of a combined classification's race rows that this block
@@ -833,11 +967,23 @@ def extract_ethnicity_data(study: dict) -> Dict:
             # comment "Race joined to ethnicity in one label").
             unread = sum(c.get("count") or 0 for c in dropped if _names_hispanic(c))
 
+        analyzed = table_selection.number_analyzed(measure, overall_group_id)
+        # A race classification's unknown row beside a complete ethnicity
+        # classification is not counted (block comment above
+        # _race_unknown_rows).
+        left_out: List[Dict] = []
+        if "race" in title.lower():
+            from src.race_extractor import is_race_table
+            if is_race_table(title):
+                left_out = _race_unknown_rows(
+                    categories, analyzed if analyzed is not None else total_participants)
+                categories = [c for c in categories if not any(c is row for row in left_out)]
+
         result["reported"] = True
         tables.append({"title": title, "index": index,
-                       "analyzed": table_selection.number_analyzed(measure, overall_group_id),
+                       "analyzed": analyzed,
                        "population": table_selection.population_of(measure),
-                       "categories": categories, "unread": unread})
+                       "categories": categories, "unread": unread, "left_out": bool(left_out)})
 
     ethnicity_tables_found = len(tables)
     counted, partitioned = table_selection.select_tables(
@@ -851,6 +997,8 @@ def extract_ethnicity_data(study: dict) -> Dict:
 
     if any(table["unread"] > 0 for table in counted):
         result["flags"].append("ethnicity_rows_unread")
+    if any(table["left_out"] for table in counted):
+        result["flags"].append("race_unknown_rows_not_counted")
 
     for table in counted:
         categories = table["categories"]
