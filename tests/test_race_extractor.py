@@ -25,8 +25,9 @@ race beside the ethnicity term ("Non-Hispanic White") is a race row of that
 race (last two sections).
 
 A race table that posts a study's groups as rows ("White - Usual Care", each
-row's count in its own group's column only) is read by its race parts (last
-section of the file).
+row's count in its own group's column only) is read by its race parts (its own
+section). Native Hawaiian or Pacific Islander wordings, and the rows they
+meet in a table, are the last section.
 
 Which measures are race tables at all is the title word rule
 (race_extractor.is_race_table): titles that only contain the letters "race"
@@ -2554,12 +2555,152 @@ def test_an_ethnicity_row_of_a_race_by_group_table_is_recorded_with_its_group() 
 
 def test_a_race_by_group_table_whose_race_parts_do_not_map_is_read_as_plain_rows() -> None:
     """As for a race-by-sex table: when no race part maps, the rows are read
-    whole. (This wording is not yet in the vocabulary; NCT02675777 posts it.)"""
-    rows = [_period_row("Hawaiian or Pacific Islander - ALPHA", "BG000", 60),
-            _period_row("Hawaiian or Pacific Islander - Usual Care", "BG001", 40)]
+    whole. "Native Hawaiian or Other" pools Native Hawaiian with other races
+    and maps to no race (block comment "Native Hawaiian or Pacific Islander
+    labels")."""
+    rows = [_period_row("Native Hawaiian or Other - ALPHA", "BG000", 60),
+            _period_row("Native Hawaiian or Other - Usual Care", "BG001", 40)]
     race = extract_race_data(_grouped_study("NCT99000596", [_grouped_table(rows)]))
     assert race["omb_totals"]["other"] == 100
     assert "race_by_group_table" not in race["flags"]
     assert [c["original"] for c in race["raw_categories"]] == [
-        "Hawaiian or Pacific Islander - ALPHA", "Hawaiian or Pacific Islander - Usual Care"]
+        "Native Hawaiian or Other - ALPHA", "Native Hawaiian or Other - Usual Care"]
     assert all("group" not in c and "race_part" not in c for c in race["raw_categories"])
+
+
+# ── Native Hawaiian or Pacific Islander labels ─────────────────────────────
+# Wordings naming only Native Hawaiian or Pacific Islander peoples
+# (race_extractor block comment "Native Hawaiian or Pacific Islander
+# labels"). Before, "Hawaiian or Pacific Islander" and "Hawaiian-Pacific" were
+# counted as other, and "Marshallese", "Maori" and "Polynesian" quarantined as
+# not race; "Tonga" was read as Tongan by fuzzy match.
+
+@pytest.mark.parametrize("label, subcategory", [
+    ("Hawaiian or Pacific Islander", None),
+    ("Hawaiian-Pacific", None),
+    ("Hawaiian Native or Pacific Islander", None),
+    ("Native Hawaiian or other Pacific", None),          # a label cut short
+    ("Other Pacific Islander", None),
+    ("Other-Pacific Islander", None),
+    ("South Pacific Islander", None),
+    ("Pacific Peoples", None),
+    ("Pacific Island Native", None),
+    ("Hawaiian or Pacific Islander only", None),
+    ("Native Hawaiian or other Pacific ethnicity", None),
+    ("Native Hawaiin/ PI", None),                        # posted misspelling, abbreviation
+    ("Native Hawaiian (NH) or other Pacific Islander", None),
+    ("Native Hawaiian or Other Paciﬁc Islander", None),  # "fi" ligature
+    ("Marshallese", None),
+    ("Maori", None),
+    ("Māori", None),
+    ("Maori/Polynesian", None),
+    ("Micronesian", None),
+    ("Tahitian", None),
+    ("Native Hawaiians", "native_hawaiian"),
+    ("Samoans", "samoan"),
+    ("Guamanian or Chamorro", "guamanian_chamorro"),
+    ("Samoan/Tongan", None),
+])
+def test_a_label_naming_pacific_peoples_only_is_native_hawaiian_or_pacific_islander(
+        label: str, subcategory: Optional[str]) -> None:
+    assert rx.nhpi_label(label) == (True, subcategory)
+    mapping = rx.map_race_category(label)
+    assert mapping["omb_category"] == "native_hawaiian_pacific_islander"
+    assert mapping["subcategory"] == subcategory
+
+
+@pytest.mark.parametrize("label", [
+    "Native Hawaiian or Other",              # pools other races
+    "Native Hawaiian or Some other race(s)",
+    "Asian or Pacific Islander",             # the 1977 grouped category
+    "Asian and/or Pacific Islander",
+    "Native American or Pacific Islander",
+    "Pacific Islander-White",
+    "Adolescent Native Hawaiian or Pacific Islander",
+    "Torres Strait Islander",                # kept with Aboriginal Australian
+    "Islander",
+    "Pacific",
+    "Native",
+    "Other: Maori",
+    "Indian (Fiji)",
+    "Tonga",
+    "/or Pacific Islander",                  # a piece of a longer label
+    "Native Hawaiian or",
+])
+def test_a_label_naming_more_or_less_than_pacific_peoples_is_not_read_by_the_rule(label: str) -> None:
+    assert rx.nhpi_label(label) == (False, None)
+
+
+def test_the_vocabulary_entries_keep_their_subcategory() -> None:
+    assert rx.map_race_category("Native Hawaiian")["subcategory"] == "native_hawaiian"
+    assert rx.map_race_category("Samoan")["flags"] == []
+
+
+def test_a_slash_label_naming_hawaiian_and_pacific_islander_has_no_single_subcategory() -> None:
+    """Before, the slash fragment "Hawaiian" made it Native Hawaiian."""
+    mapping = rx.map_race_category("Hawaiian/Pacific Islander")
+    assert (mapping["omb_category"], mapping["subcategory"]) == ("native_hawaiian_pacific_islander", None)
+    assert mapping["flags"] == ["nhpi_label"]
+
+
+def test_tonga_is_not_read_as_tongan_and_is_not_quarantined() -> None:
+    """The Tonga of Zambia and Zimbabwe (NCT01241318: 34,653 participants at
+    Zambian sites) were read as Tongan by fuzzy match."""
+    mapping = rx.map_race_category("Tonga")
+    assert mapping["omb_category"] == "other"
+    assert "fuzzy_match_withheld" in mapping["flags"] and "unmapped" in mapping["flags"]
+    assert not rx._should_quarantine(mapping)
+    table = _category_table(COMBINED_TITLE, [("Tonga", 90), ("Other", 10)])
+    race = extract_race_data(_study_at("NCT99000605", [table], 100, ["Zambia"]))
+    assert _nonzero(race) == {"other": 100}
+    assert race["quarantined_labels"] == []
+
+
+def test_pacific_rows_of_a_table_are_counted() -> None:
+    table = _category_table(COMBINED_TITLE, [
+        ("White", 50), ("Hawaiian or Pacific Islander", 20), ("Maori", 12), ("Marshallese", 8),
+        ("Torres Strait Islander", 4), ("Asian", 6)])
+    race = extract_race_data(_study("NCT99000606", [table], 100))
+    assert _nonzero(race) == {"white": 50, "native_hawaiian_pacific_islander": 40, "asian": 6,
+                              "unknown_not_reported": 4}
+    # Torres Strait Islander is quarantined as before; its 4 are balanced to unknown.
+    assert [q["original"] for q in race["quarantined_labels"]] == ["Torres Strait Islander"]
+
+
+def test_asian_joined_to_pacific_islander_is_the_grouped_category_without_asian_alone() -> None:
+    """NCT01912287's table: no Asian or Pacific row besides the joined one."""
+    table = _category_table(COMBINED_TITLE, [
+        ("American Indian or Alaska Native", 2), ("Asian and Native Hawaiian or Pacific Islander", 21),
+        ("Black or African American", 11), ("White", 66)])
+    race = extract_race_data(_study("NCT99000607", [table], 100))
+    assert race["omb_totals"]["other"] == 21 and race["omb_totals"]["more_than_one_race"] == 0
+    row = next(c for c in race["raw_categories"] if c["original"].startswith("Asian and"))
+    assert "asian_pacific_grouped" in row["flags"]
+
+
+@pytest.mark.parametrize("asian_row", [
+    "Asian", "Japanese/East Asian Heritage (AH)/South East AH", "Native Hawaiian or Pacific Islander"])
+def test_asian_joined_to_pacific_islander_is_a_combination_beside_either_race_alone(asian_row: str) -> None:
+    table = _category_table(COMBINED_TITLE, [
+        (asian_row, 20), ("Asian & Native Hawaiian or Other Pacific Islander", 2),
+        ("Asian and White", 3), ("White", 75)])
+    race = extract_race_data(_study("NCT99000608", [table], 100))
+    assert race["omb_totals"]["more_than_one_race"] == 5
+    assert not any("asian_pacific_grouped" in c["flags"] for c in race["raw_categories"])
+
+
+def test_a_slash_row_naming_asian_and_pacific_islander_is_not_evidence_of_asian_alone() -> None:
+    """"Asian/Pacific Islander" is read as Asian through a slash fragment, but it
+    names the grouped category too: no evidence."""
+    table = _category_table(COMBINED_TITLE, [
+        ("Asian/Pacific Islander", 10), ("Asian and Native Hawaiian or Pacific Islander", 5), ("White", 85)])
+    race = extract_race_data(_study("NCT99000609", [table], 100))
+    assert race["omb_totals"]["more_than_one_race"] == 0
+    assert race["omb_totals"]["other"] == 5
+
+
+def test_a_combination_naming_pacific_islander_and_white_is_more_than_one_race() -> None:
+    """Before, the fuzzy match read it as Native Hawaiian or Pacific Islander
+    (NCT02712047)."""
+    mapping = rx.map_race_category("Native Hawaiin or other Pacific Islander and White")
+    assert mapping["omb_category"] == "more_than_one_race"
