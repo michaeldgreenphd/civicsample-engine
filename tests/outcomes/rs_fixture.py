@@ -127,7 +127,8 @@ def studies() -> list[dict[str, Any]]:
         study(1, results=results_section(outcomeMeasuresModule={'outcomeMeasures': [
             measure(analyses=[analysis(pValue='<0.001', paramType='Mean Difference (Final Values)', paramValue='-3.1',
                                        ciPctValue='95', ciNumSides='TWO_SIDED', ciLowerLimit='-4.5', ciUpperLimit='-1.7',
-                                       statisticalMethod='ANCOVA')]),
+                                       statisticalMethod='ANCOVA')],
+                    populationDescription='Fictional: all randomised participants with a week 12 score.'),
             measure('Fictional responder rate', 'SECONDARY', class_titles=('Female', 'Male')),
             measure('Fictional responder rate, older and younger participants', 'SECONDARY',
                     class_titles=('Age 18 to 64 years', 'Age 65 years and older'))]},

@@ -7,7 +7,7 @@ with granular subcategories preserved.
 import re
 from typing import Dict, List, Tuple, Optional
 from rapidfuzz import fuzz, process
-from src.utils import clean_demographic_label
+from src.utils import clean_demographic_label, COMBINED_DIMENSION, DIMENSION_JOIN
 # The manuscript parser's sex/gender measure selection (/sex|gender/i), reused
 # to find race rows posted under a sex/gender title. Imported, not copied, so
 # the two selections cannot drift; the vendored parser is not modified.
@@ -200,8 +200,584 @@ def is_race_table(title: Optional[str]) -> bool:
     """
     return any(word.lower() in RACE_TITLE_WORDS for word in title_words(title))
 
+# ── Middle Eastern or North African labels ─────────────────────────────────
+#
+# The race categories here are the 1997 OMB minimum categories, the ones the
+# registry's "Race (NIH/OMB)" template offers, under which Middle Eastern and
+# North African people are White. The vocabulary already filed "Middle
+# Eastern", "North African", "Arab", "Persian" and "Iranian" as White with a
+# subcategory. Other wordings of the same groups matched nothing and were
+# counted as other: "Middle Eastern or North African" (the term of OMB's March
+# 2024 revision of SPD 15, which makes it a minimum category of its own) and
+# the "White - Arabic/North African Heritage" family, posted in some thirty
+# spellings ("White-Arabic/North African heritage", "WHITE (W) ARABIC/NORTH
+# AFRICAN HER", "Wh - Arabic/North African H"). Some ("Arabic", "Arabian",
+# "MENA") were even quarantined as labels that are not race, which left their
+# participants to denominator balancing as unknown.
+#
+# Method. mena_subcategory reads a cleaned label as, in order:
+#   - an optional White qualifier: "White", "Wh", "White (W)", "White (Wt)",
+#     followed by "-", ":", "(", a dash or a space. A slash does not qualify:
+#     "White/Middle Eastern" is one row for two groups;
+#   - one or more group terms: Middle East(ern), Mid East, North Africa(n),
+#     Maghreb, Arab / Arabic / Arabian, Arab American, Arabian Peninsula,
+#     Persian, Iranian, MENA (each may carry "White" before it), joined by
+#     "/", "//", ",", "&", ":", "(", "or", "and", "and/or" or a space;
+#   - an optional "(MENA)" or ")" and an optional suffix: heritage (also
+#     "Hertage", "HER", "H", "H.", "(NA) H"), descent, origin(s), ancestry,
+#     ethnicity, ", n(%)".
+# Nothing else may be in the label. Such a label maps to White with a
+# subcategory: middle_eastern_arab when every term is Arab, Arabic or
+# Arabian; middle_eastern_persian when every term is Persian or Iranian;
+# middle_eastern or north_african when every term is that one; middle_eastern
+# for several Middle Eastern groups ("Arab/Middle Eastern"); else, for North
+# African beside another group or MENA, middle_eastern_north_african. The row is flagged mena_label. The rule runs
+# after the exact and case-insensitive vocabulary match (so "Arab" keeps its
+# entry) and before the slash fragments, which read "Arabic/North African" as
+# North African alone and "Middle Eastern/North African" as Middle Eastern
+# alone; those now get the subcategory that names both.
+#
+# What it does not do. A label naming another group beside these ("White/
+# Middle Eastern", "Arab or West Asian", "Chinese, Middle Eastern, or Other
+# Ethnic Group", "Middle Eastern or North African/Mediterranean", "Other:
+# Arabic") is mapped as before: its participants cannot be told apart. The
+# vocabulary's "Turkish" (middle_eastern_turkish) is not changed, and is not in
+# MENA_SUBCATEGORIES below: whether the 2024 definition takes it in was not
+# checked against the standard's text.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main (the
+# same before and after the ethnicity-dimension rule): 376 race blocks change
+# their totals, 414 their totals or subcategories, 421 any field (7 only in
+# flags); none changes reported. White +7,436: 6,894 participants from
+# other (rows that matched nothing) and 542 from unknown (rows quarantined as
+# not race, NCT02304406's "Arabic" 389 the largest). Their rows, with the
+# 9,743 participants already White with a Middle Eastern or North African
+# subcategory, make mena_in_white: 17,179 participants in 559 trials, 0.067%
+# of White. Five ethnicity blocks change: with the quarantined rows counted,
+# their race table adds up exactly, and the ethnicity extractor counts its
+# race rows as not Hispanic (ethnicity_extractor, "Race rows of a combined
+# classification"; NCT00617851, NCT01875367, NCT03395314, NCT04926779,
+# NCT05208359: Not Hispanic +401, unknown -401).
+_MENA_TERM = (r"(?:white\s+)?(?:(?:middle|mid)[\s\-]*e{1,2}ast(?:ern)?|north[\s\-]*afric(?:a|an)|maghreb|"
+              r"arabian\s+peninsula|arab(?:ic|ian)?(?:[\s\-]+american)?|persian|iranian|mena)")
+_MENA_JOIN = r"(?:\s*(?:/{1,2}|,|&|:|\()\s*|\s+(?:or|and/or|and)\s+|\s*,\s*(?:or|and)\s+|\s+)"
+_MENA_LABEL_RX = re.compile(
+    rf"^(?:(?:white|wh)(?:\s*\((?:w|wt)\))?\s*(?:[\-:–—(]\s*|\s+))?"
+    rf"(?P<terms>{_MENA_TERM}(?:{_MENA_JOIN}{_MENA_TERM})*)"
+    r"\s*(?:\(\s*mena\s*\)|\))?"
+    r"(?:[\s\-]*(?:\(na\)\s*)?(?:heritage|hertage|her|h\.?|descent|origins?|ancestry|ethnicity))?"
+    r"(?:\s*,?\s*n\s*\(%\))?\s*$",
+    re.IGNORECASE)
+_MENA_TERM_RX = re.compile(_MENA_TERM, re.IGNORECASE)
+
+# ── Middle Eastern or North African within White ───────────────────────────
+#
+# Every race block carries mena_in_white: the participants of its counted
+# rows filed as White with one of MENA_SUBCATEGORIES, a part of
+# omb_totals["white"], never more than it. It lets a reader see White as the
+# 1997 standard counts it and as the 2024 revision would, with Middle Eastern
+# or North African apart, from the same rows and the same denominator: White
+# without them is omb_totals["white"] - mena_in_white.
+#
+# It is what the rows name, not an estimate. Most trials post the registry's
+# "Race (NIH/OMB)" template, which has no such category, so their Middle
+# Eastern and North African participants are in White and in no row of their
+# own; mena_in_white is 0 for them. On the 2026-11-15 snapshot, no
+# "Race (NIH/OMB)" table posts a Middle Eastern or North African row; every
+# one is in a customized table. A row naming these groups beside another
+# ("White/Middle Eastern") is not in it.
+#
+# A record extracted before the field existed has no mena_in_white key: "not
+# looked at", not 0.
+MENA_SUBCATEGORIES = frozenset({
+    "middle_eastern", "north_african", "middle_eastern_arab", "middle_eastern_persian",
+    "middle_eastern_north_african"})
+
+
+def mena_subcategory(label: str) -> Optional[str]:
+    """The White subcategory of a label naming Middle Eastern or North
+    African groups only, else None (block comment above).
+
+      "White - Arabic/North African Heritage" -> "middle_eastern_north_african"
+      "Middle Eastern or North African"       -> "middle_eastern_north_african"
+      "Arab ethnicity"                        -> "middle_eastern_arab"
+      "White/Middle Eastern"                  -> None
+    """
+    match = _MENA_LABEL_RX.match(clean_demographic_label(label))
+    if match is None:
+        return None
+    kinds = set()
+    for term in _MENA_TERM_RX.findall(match.group("terms")):
+        word = re.sub(r"^white\s+", "", term.lower())
+        if word.startswith("arab"):
+            kinds.add("middle_eastern_arab")
+        elif word in ("persian", "iranian"):
+            kinds.add("middle_eastern_persian")
+        elif word.startswith(("middle", "mid")):
+            kinds.add("middle_eastern")
+        elif word.startswith("north") or word == "maghreb":
+            kinds.add("north_african")
+        else:
+            kinds.add("middle_eastern_north_african")
+    if len(kinds) == 1:
+        return kinds.pop()
+    # Several Middle Eastern groups ("Arab/Middle Eastern", "Arab/ Persian")
+    # are Middle Eastern; any mix with North African, or MENA, names both.
+    if kinds <= {"middle_eastern", "middle_eastern_arab", "middle_eastern_persian"}:
+        return "middle_eastern"
+    return "middle_eastern_north_african"
+
+# ── Heritage-template labels ───────────────────────────────────────────────
+#
+# A family of customized race tables posts its rows as a race followed by the
+# heritage groups it covers: "White - White/Caucasian/European Heritage",
+# "Asian - East Asian Heritage", "Asian - Japanese Heritage", "Asian - South
+# East Asian Heritage", "Asian - Central/South Asian Heritage", "African
+# American/African Heritage", "White - Arabic/North African Heritage", and
+# combinations ("African American/African Heritage & White",
+# "Multiple-Afr Amer/Afr Her/Amer Ind or Al N"). It is posted in hundreds of
+# spellings: "White - Caucasian / European heritage", "Asian-East Asian H",
+# "Wt-Wt/Caucasian (Ca.)/European (Eu.) H.", "Black, of African Heritage",
+# "Japanese H./East Asian H./SouthEast Asian H.". The vocabulary read only the
+# spellings whose slash fragments happened to be keys ("White - White/
+# Caucasian/European Heritage" through "Caucasian"); the rest matched nothing
+# and were counted as other, and "Japanese Heritage" was quarantined as not
+# race. Combinations were read through their first fragment: "African
+# American/African Heritage & White" as Black.
+#
+# Method. A label is read by this rule only when it holds a heritage word:
+# "heritage" or one of its abbreviations ("Herit", "Hertage", "Heri", "Her",
+# "Hrtg", "H", the truncated "Heritag"), as a word of its own. Then, after
+# removing short parenthesised glosses whose words are 1-4 letters each ("(Af
+# Am)", "(EAH)", "(Ca.)", "(AA/AHER)"), the heritage words and a final
+# "n (%)", and reading "of" after a race as a comma ("Black of African"):
+#   - combinations (_heritage_combination, before the slash fragments): a
+#     label starting "Multiple" or "Mixed" with a separator when every group
+#     after it reads as a race, every word of it and not by a fuzzy match
+#     (not "Mixed-Heritage or Other", "Multiple-Heritage Refused",
+#     "Multiple-White-Refused Heritage", "Multiple-African American-NA
+#     Heritage"), or whose parts
+#     joined by "&" or "and" each read as one race (below) and name two or
+#     more races, is more than one race;
+#   - one race (_heritage_race, after the fuzzy match, for a label nothing else
+#     reads): a leading race qualifier ("White", "Wh", "Wt", "W", "Asian",
+#     "Black", "African American") followed by "-", ":", ";" or "," names
+#     the race;
+#     the rest is split at "/", "or", "and", "&" and a dash beside a space
+#     ("African - White") into groups, each mapped
+#     through the vocabulary (exact, slash or fuzzy, never this rule) or a
+#     template abbreviation (_HERITAGE_ABBREVIATIONS: "Wt", "AA", "Af",
+#     "Amer Ind", "AI", "AN", "Nat Hawaiian", "East A", "SEA").
+#     A group that maps must name a race, and every such group and the
+#     qualifier must name the same one. Without a qualifier, a group that
+#     maps to nothing is allowed only when the rest as a whole matches the
+#     vocabulary exactly (any letter case), not fuzzily and not through one
+#     of its slash fragments: "Af Amer/White Heritage" is not read as White,
+#     nor "American Indian or Alaska Native-NA Heritage" as American Indian. With or
+#     without a qualifier, a group that maps to nothing and reads as a
+#     non-answer ("Refused", "Prefer not to say", a lone letter of "N/A")
+#     fails the rule: "White - Refused Heritage" is not White. A compact one
+#     ("NA", "NR", "Unk") fails it when no other group maps ("White - NA
+#     Heritage", "White - Caucasian-NA Heritage"); "NA" is also the
+#     template's North African ("White-Arabic/NA H"), read beside groups that
+#     map. A direction
+#     word left by a shared ending ("East" of "East/South East Asian") is
+#     allowed; a group mapping to other or unknown ("Mixed Heritage or
+#     Other") fails the rule. The
+#     subcategory is the one subcategory every mapped group shares, else none.
+# A label naming a negation ("Non-European heritage") is not read, nor one
+# with a parenthesised non-answer ("White - (N/A) Heritage"). A heritage label
+# holding a non-answer is not fuzzily matched by the vocabulary step before
+# this rule either ("American Indian or Alaska Native-NA H"); without a
+# heritage word such a label keeps that fuzzy match, as before. The row is
+# flagged heritage_label.
+#
+# What it does not do. A heritage label the vocabulary already reads as one
+# race keeps that reading and its subcategory, including the first-fragment
+# subcategory of a grouped row ("Japanese/East Asian/South East Asian
+# Heritage" is Asian, japanese; "African American/African Heritage" is Black,
+# african_american). A label without a heritage word ("Asian - East Asian")
+# is not read here. Two races joined by "/" or "or" without "Multiple"
+# ("African Amer/African Heritage/Amer Ind or Alaska N") are not read: the
+# row may name either race or both. "Asian and Pacific Islander" (or "&",
+# "Other Pacific Islander") is not read as a combination: it is the grouped
+# category of the 1977 standard. Only that wording, with at most one heritage
+# word at its end: "Asian Heritage and Native Hawaiian Heritage" and "Asian
+# Heritage and Pacific Islander Heritage" name two races (review findings).
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main: rows
+# flagged heritage_label hold 263,829 participants in 768 trials, and 766
+# race blocks change their totals. Other falls by 263,392: White +152,092,
+# Asian +105,659 (east_asian +44,039, southeast_asian +23,699, japanese
+# +14,101, chinese +13,479), Black +5,437, more than one race +498 (65 of them
+# had been counted as Black or White through a combination's first race),
+# American Indian +78. Unknown falls by 349: quarantined rows ("Japanese
+# Heritage", "Multiple-Afr Amer/Afr Her/Amer Ind or Al N") are now counted,
+# where denominator balancing had put their participants in unknown. One
+# block becomes reported: NCT00540423, whose only row, "Japanese Heritage" 23,
+# had been quarantined. No ethnicity block changes; the 338 race blocks over
+# their population stay 338, none larger. Heritage rows left unread: 111
+# participants in 15 trials, the forms above ("African Amer/African Heritage/
+# Amer Ind or Alaska N" 55, "American/African Heritage" 34) and wordings the
+# vocabulary lacks ("Central Asian Heritage", "Japanese East Asian Heritage",
+# "Multiple-Amer Ind or Al N/A-Central/South A Her" 1).
+_HERITAGE_WORDS = r"(?:heritage|heritag|herit|hertage|heri|her|hrtg|h)\.?"
+_HERITAGE_WORD_RX = re.compile(r"(?<![a-z])" + _HERITAGE_WORDS + r"(?![a-z])", re.IGNORECASE)
+_HERITAGE_GLOSS_RX = re.compile(r"\(\s*[a-z]{1,4}\.?(?:\s*[/ ]\s*[a-z]{1,4}\.?)*\s*\)", re.IGNORECASE)
+_HERITAGE_COUNT_SUFFIX_RX = re.compile(r",?\s*n\s*\(\s*%\s*\)\s*$", re.IGNORECASE)
+_HERITAGE_MULTIPLE_RX = re.compile(r"^(?:multiple|mixed)\s*[\-:–—]\s*", re.IGNORECASE)
+# The grouped wording with at most one heritage word, at its end: "Asian and
+# Pacific Islander Heritage", not "Asian Heritage and Pacific Islander
+# Heritage".
+_HERITAGE_GROUPED_API_RX = re.compile(
+    r"asian\s*(?:&|and)\s*(?:other\s+)?pacific\s+islanders?(?:\s*" + _HERITAGE_WORDS + r")?",
+    re.IGNORECASE)
+_HERITAGE_QUALIFIER_RX = re.compile(
+    r"^(?P<race>white|wh|wt|w|asian|black|african\s+american)\s*[\-:;–—,]\s*(?=\S)", re.IGNORECASE)
+_HERITAGE_PART_SPLIT_RX = re.compile(r"\s*(?:&|\band\b)\s*", re.IGNORECASE)
+_HERITAGE_GROUP_SPLIT_RX = re.compile(r"\s*(?:/|&|\bor\b|\band\b)\s*|\s+[\-–—]\s*|\s*[\-–—]\s+", re.IGNORECASE)
+# Non-answers the vocabulary does not hold, and lone letters ("N" and "A" of
+# "N/A"): an unread group like these is not a subgroup name.
+_HERITAGE_NON_ANSWER_RX = re.compile(
+    r"(?<![a-z])(?:refus\w*|declin\w*|prefer\w*|unknown|unspecified|unavailable|withheld|missing|"
+    r"none|not)(?![a-z])", re.IGNORECASE)
+_HERITAGE_LONE_LETTER_RX = re.compile(r"[a-z]", re.IGNORECASE)
+# Compact non-answers ("NA", "N.A.", "NR", "NK", "DK", "Unk"). "NA" is also the
+# template's own abbreviation of North African ("White-Arabic/NA H"), so these
+# fail the rule only when no other group maps: when the qualifier alone would
+# give the race ("White - NA Heritage").
+_HERITAGE_COMPACT_NON_ANSWERS = frozenset({"na", "nr", "nk", "dk", "unk"})
+_HERITAGE_DIRECTIONS = frozenset({"east", "south", "central", "west", "north", "south east",
+                                  "southeast", "south-east"})
+# Abbreviations the template's own spellings use for a race or a group in it.
+_HERITAGE_ABBREVIATIONS = {
+    "w": "white", "wh": "white", "wt": "white", "eu": "white", "eur": "white", "cau": "white",
+    "aa": "black_african_american", "afr amer": "black_african_american",
+    "af am": "black_african_american", "afam": "black_african_american",
+    "african amer": "black_african_american", "african amc": "black_african_american",
+    "american indian": "american_indian_alaska_native",
+    "amer ind": "american_indian_alaska_native", "am ind": "american_indian_alaska_native",
+    "al n": "american_indian_alaska_native", "alaska n": "american_indian_alaska_native",
+    "alaskan n": "american_indian_alaska_native",
+    "alaska native": "american_indian_alaska_native",
+    "alaskan native": "american_indian_alaska_native",
+    "ala native": "american_indian_alaska_native",
+    "ai": "american_indian_alaska_native", "an": "american_indian_alaska_native",
+    "af": "black_african_american", "afr": "black_african_american",
+    "nat hawaiian": "native_hawaiian_pacific_islander",
+    # The second half of the category's own name, posted as a group of its
+    # own ("Asian Heritage and Other Pacific Islander Heritage").
+    "other pacific islander": "native_hawaiian_pacific_islander",
+    "other pacific islanders": "native_hawaiian_pacific_islander",
+    "asi": "asian", "east a": "asian", "east asi": "asian", "south a": "asian",
+    "south east a": "asian", "southeast a": "asian", "sea": "asian",
+}
+_HERITAGE_QUALIFIER_RACE = {
+    "white": "white", "wh": "white", "wt": "white", "w": "white", "asian": "asian",
+    "black": "black_african_american", "african american": "black_african_american",
+}
+
+
+def _heritage_holds_non_answer(text: str) -> bool:
+    """True when the text holds a non-answer: a word of _HERITAGE_NON_ANSWER_RX,
+    or a compact one ("NA", "N/A", "Unk") as a word or as the whole text with
+    its punctuation removed."""
+    if _HERITAGE_NON_ANSWER_RX.search(text) is not None:
+        return True
+    words = [w for w in re.split(r"[\s.\-–—/()]+", text.lower()) if w]
+    return (any(w in _HERITAGE_COMPACT_NON_ANSWERS for w in words)
+            or re.sub(r"[^a-z]", "", text.lower()) in _HERITAGE_COMPACT_NON_ANSWERS)
+
+
+def _heritage_text(label: str) -> Optional[str]:
+    """The label without glosses, heritage words, "of" and a final "n (%)",
+    or None when it holds no heritage word or names a negation (block comment
+    "Heritage-template labels")."""
+    text = clean_demographic_label(label)
+    if _HERITAGE_WORD_RX.search(text) is None or _negates_race(text):
+        return None
+    text = _HERITAGE_COUNT_SUFFIX_RX.sub("", text)
+    # A gloss is removed as an abbreviation ("(Af Am)"), but a parenthesised
+    # non-answer ("(N/A)", "(Unk)") is not one: the label is not read (a
+    # review finding).
+    if any(_heritage_holds_non_answer(gloss.group(0)) for gloss in _HERITAGE_GLOSS_RX.finditer(text)):
+        return None
+    text = _HERITAGE_GLOSS_RX.sub(" ", text)
+    text = _HERITAGE_WORD_RX.sub(" ", text)
+    # "Black, of African" and "Black of African": "of" separates the race
+    # from its groups, as a comma does.
+    text = re.sub(r"(?:\s*,\s*|\s+)of\s+", ", ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*/\s*", "/", text)
+    text = re.sub(r"\s+", " ", text).strip(" -–—:,/")
+    return text or None
+
+
+def _heritage_group(group: str, atomic: bool = False) -> Optional[Tuple[str, Optional[str], str]]:
+    """(omb_category, subcategory, confidence) of one heritage group through
+    the vocabulary or a template abbreviation, or None when it maps to
+    nothing. Never applies the heritage rule itself. atomic=True refuses a
+    mapping made from one slash fragment of the text, so a whole text is read
+    only as a whole ("Af Amer/White" is not White by its "White")."""
+    key = re.sub(r"[.\s]+", " ", group.lower()).strip()
+    if key in _HERITAGE_ABBREVIATIONS:
+        return _HERITAGE_ABBREVIATIONS[key], None, "high"
+    mapping = map_race_category(group, heritage=False, multirace=False)
+    if "unmapped" in mapping["flags"] or (atomic and "slash_normalized" in mapping["flags"]):
+        return None
+    return mapping["omb_category"], mapping["subcategory"], mapping["confidence"]
+
+
+def _heritage_race(text: str, strict: bool = False) -> Optional[Tuple[str, Optional[str], str]]:
+    """(omb_category, subcategory, confidence) when the heritage text names
+    one race, else None (block comment "Heritage-template labels").
+    strict=True requires every group to map, not fuzzily, also after a
+    qualifier: a group of a "Multiple-" tail is read whole ("White-Refused"
+    is not White)."""
+    races: set[str] = set()
+    subcategories: set[Optional[str]] = set()
+    confidence = "high"
+    qualifier = _HERITAGE_QUALIFIER_RX.match(text)
+    rest = text
+    if qualifier is not None:
+        races.add(_HERITAGE_QUALIFIER_RACE[re.sub(r"\s+", " ", qualifier.group("race").lower())])
+        rest = text[qualifier.end():]
+    mapped = unmapped = 0
+    compact_non_answer = False
+    for group in _HERITAGE_GROUP_SPLIT_RX.split(rest):
+        group = group.strip(" -–—:,")
+        if not group:
+            continue
+        if re.sub(r"\s+", " ", group.lower()) in _HERITAGE_DIRECTIONS:
+            subcategories.add(None)
+            continue
+        # A non-answer in any group fails the rule before the group is
+        # mapped, so a fuzzy match cannot absorb it: "Refused", or a compact
+        # one attached to other words ("Caucasian-NA", "Alaska Native-NA").
+        words = [w for w in re.split(r"[\s.\-–—]+", group.lower()) if w]
+        if (_HERITAGE_NON_ANSWER_RX.search(group) is not None
+                or (len(words) > 1 and any(w in _HERITAGE_COMPACT_NON_ANSWERS for w in words))):
+            return None
+        reading = _heritage_group(group)
+        if reading is None:
+            # A group that maps to nothing may be a subgroup name the
+            # vocabulary lacks ("Caucasian European" after "White -"), but not
+            # a lone letter ("N" and "A" of "N/A"). A compact non-answer
+            # standing alone ("NA") is noted: also the template's North
+            # African, it is read only beside groups that map.
+            if strict or _HERITAGE_LONE_LETTER_RX.fullmatch(group) is not None:
+                return None
+            if re.sub(r"[.\s]+", "", group.lower()) in _HERITAGE_COMPACT_NON_ANSWERS:
+                compact_non_answer = True
+            unmapped += 1
+            continue
+        omb, subcat, conf = reading
+        if omb not in _RACE_SPECIFIC or conf == "low" or (strict and conf != "high"):
+            return None
+        races.add(omb)
+        subcategories.add(subcat)
+        mapped += 1
+        if conf != "high":
+            confidence = "medium"
+    if qualifier is None:
+        # No qualifier names the race: every group must map, or the rest as
+        # a whole must match the vocabulary exactly ("American Indian/Alaska
+        # native", in any letter case), never by a fuzzy match, which would
+        # absorb an unread suffix ("American Indian or Alaska Native-NA"),
+        # nor through one of its slash fragments, which would drop the
+        # unmapped group ("Af Amer/White"; review findings).
+        whole = _heritage_group(rest, atomic=True) if unmapped else None
+        if unmapped and (whole is None or whole[0] not in _RACE_SPECIFIC or whole[2] != "high"):
+            return None
+        if whole is not None:
+            races.add(whole[0])
+            subcategories.add(whole[1])
+            if whole[2] != "high":
+                confidence = "medium"
+        if not mapped and whole is None:
+            return None
+    if compact_non_answer and not mapped:
+        return None
+    if len(races) != 1:
+        return None
+    subcategory = subcategories.pop() if len(subcategories) == 1 else None
+    return races.pop(), subcategory, confidence
+
+
+def _heritage_combination(label: str) -> bool:
+    """True when a heritage label names more than one race: "Multiple-" or
+    "Mixed-" before it, or parts joined by "&" or "and" that each read as one
+    race and name two or more (block comment "Heritage-template labels")."""
+    text = _heritage_text(label)
+    if text is None:
+        return False
+    multiple = _HERITAGE_MULTIPLE_RX.match(text)
+    if multiple is not None:
+        # "Multiple-" or "Mixed-" names more than one race only when every
+        # group after it reads as a race: through the vocabulary or a template
+        # abbreviation ("Amer Ind or Al N"), or with a race qualifier of its
+        # own ("Asian-Japanese", "W-W"). A group that is other or unknown
+        # ("Mixed-Heritage or Other") or reads as nothing ("Multiple-Heritage
+        # Refused", "N/A") stops it (review findings).
+        for group in _HERITAGE_GROUP_SPLIT_RX.split(text[multiple.end():]):
+            group = group.strip(" -–—:,")
+            if not group:
+                continue
+            # Only a reading that is not fuzzy counts directly: "African
+            # American-NA" is close to "African American" but holds "NA"
+            # (a review finding); such a group is read whole instead.
+            reading = _heritage_group(group)
+            if reading is None or reading[2] != "high":
+                reading = _heritage_race(group, strict=True)
+            if reading is None or reading[0] not in _RACE_SPECIFIC:
+                return False
+        return True
+    # "Asian and Pacific Islander" is the grouped category of the 1977
+    # standard, one group rather than a combination: not read. Only that
+    # wording, matched on the label with its glosses and "n (%)" removed but
+    # its heritage words kept: "Asian Heritage and Native Hawaiian Heritage"
+    # and "Asian Heritage and Pacific Islander Heritage" name two races
+    # (review findings).
+    grouped = _HERITAGE_GLOSS_RX.sub(" ", _HERITAGE_COUNT_SUFFIX_RX.sub("", clean_demographic_label(label)))
+    if _HERITAGE_GROUPED_API_RX.fullmatch(re.sub(r"\s+", " ", grouped).strip(" -–—:,/")) is not None:
+        return False
+    parts = [p for p in _HERITAGE_PART_SPLIT_RX.split(text) if p.strip()]
+    if len(parts) < 2:
+        return False
+    races: set[str] = set()
+    for part in parts:
+        reading = _heritage_race(part.strip(" -–—:,"))
+        if reading is None:
+            return False
+        races.add(reading[0])
+    return len(races) >= 2
+
+# ── Rows naming two or more races ──────────────────────────────────────────
+#
+# Customized race tables often break participants who report more than one
+# race into the combinations they reported, one row per combination:
+# "American Indian or Alaska Native & White", "Asian and White", "Black or
+# African American and White", "Multiple-Asian and White", "Mixed (Black/
+# White)", "Multiracial (Asian, White)". Without a heritage word (block comment
+# "Heritage-template labels") these were counted as other, or as their first
+# race through a slash fragment or a fuzzy match: "American Indian or Alaska
+# Native & White" as American Indian, "Black or African American & White" as
+# Black, "Mixed: Black/Indian" as Asian.
+#
+# Method (_multirace_label, after the heritage combinations and before the
+# slash fragments). Only readings that are not fuzzy count: an exact or
+# case-insensitive vocabulary match, its slash fragments, or the Middle
+# Eastern or North African rule, each naming a race (not other or unknown).
+#   - A label starting with "Multiple", "Multiracial", "Mixed", "Biracial",
+#     "More than one race" or "Two or more races" names more than one race
+#     when the rest names two or more different races. The rest is split at
+#     ",", ";", "&", "+" and "and", and each part also at "/"; parts read as
+#     nothing are passed over, since the prefix already says more than one
+#     race and the two races named confirm the row is about race ("Multiple
+#     - child" names none). "Mixed Asian" names one race: not read.
+#   - Without such a prefix, a label joining parts by "&", "+" or "and" (and
+#     then also split at "," and ";": "Caucasian, Black, and Asian") names
+#     more than one race when every part reads as one race, passing over a
+#     part that is only an ethnicity term ("Hispanic"), and the parts name
+#     two or more. "Black and African American" names one; "American Indian
+#     and Alaska Native" and "White and Other" have a part that is not a race;
+#     "White and Hispanic" names one race; none is read. "Asian and Pacific
+#     Islander" (and "&", "Other") is the grouped category of the 1977
+#     standard, one group: not read.
+# A category name holding "and" ("Native Hawaiian and Pacific Islander",
+# "American Indian and Alaska Native") is read as one part, so its "and"
+# joins no list: "Asian, Indigenous, Native Hawaiian and Pacific Islander,
+# non-Hispanic" (NCT03360539) is a grouped category, not a combination. The
+# row maps to more than one race, flagged multirace_label.
+#
+# What it does not do. Parts joined only by "," or ";" without a prefix are
+# not read: a comma joins the names of one grouped category as often as it
+# joins a combination ("Asian, Pacific Islander" beside "American Indian,
+# Alaskan Native" in NCT00851799, but "White, Black or African American" in
+# NCT03492281). Two races joined by "/" or "or" without a prefix are not read
+# either: the row may name either race.
+#
+# These rows add to the table's population, not to a "More than one race" row
+# beside them: of the tables holding them in the 2026-11-15 inputs, those with
+# such a row add up exactly to their population (NCT01641809 243, NCT00609674
+# 315), and the rows sit in blocks over their population for 2 participants.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main: rows
+# flagged multirace_label in 129 trials, 99 labels; more than one race +829,
+# from American Indian 520 ("American Indian or Alaska Native & White" 413 in
+# 16 trials), other 260, Black 22, Native Hawaiian 14, Asian 8, White 5.
+# mena_in_white falls by 2 ("Black & Middle Eastern/North African" and "Asian
+# & Middle Eastern/North African", White through a slash fragment before). No
+# block changes reported, no ethnicity block changes, and the 338 race blocks
+# over their population stay 338, none larger. Comma lists left unread: 1,150
+# participants in 78 trials, 1,027 of them in grouped categories ("Asian,
+# Pacific Islander" 978 in 32 trials).
+_MULTIRACE_PREFIX_RX = re.compile(
+    r"^(?:multiple(?:\s+races?)?|multi[\s\-]?racial|mixed(?:\s+races?)?|bi[\s\-]?racial|"
+    r"more\s+than\s+one\s+races?|two\s+or\s+more\s+races)\s*(?:[\-:–—(]\s*|\s+(?=\S))",
+    re.IGNORECASE)
+_MULTIRACE_PART_SPLIT_RX = re.compile(r"\s*(?:,|;|&|\+|\band\b)\s*", re.IGNORECASE)
+_MULTIRACE_JOIN_SPLIT_RX = re.compile(r"\s*(?:&|\+|\band\b)\s*", re.IGNORECASE)
+# Category names holding "and", read as one part: their "and" joins no list.
+_MULTIRACE_ONE_CATEGORY = (
+    (re.compile(r"native\s+hawaiians?\s+and\s+(?:other\s+)?pacific\s+islanders?", re.IGNORECASE),
+     "Native Hawaiian or Other Pacific Islander"),
+    (re.compile(r"american\s+indians?\s+and\s+alaskan?\s+natives?", re.IGNORECASE),
+     "American Indian or Alaska Native"),
+)
+
+
+def _named_race(text: str) -> Optional[str]:
+    """The race a text names through a reading that is not fuzzy (exact or
+    case-insensitive vocabulary match, slash fragment, or the Middle Eastern
+    or North African rule), else None; never other or unknown."""
+    text = text.strip(" -–—:,;()/.")
+    if not text:
+        return None
+    mapping = map_race_category(text, heritage=False, multirace=False)
+    if (mapping["confidence"] != "high" or "unmapped" in mapping["flags"]
+            or mapping["omb_category"] not in _RACE_SPECIFIC):
+        return None
+    return mapping["omb_category"]
+
+
+def _multirace_label(label: str) -> bool:
+    """True when a label without a heritage word names two or more races
+    (block comment "Rows naming two or more races")."""
+    text = clean_demographic_label(label)
+    for name_rx, name in _MULTIRACE_ONE_CATEGORY:
+        text = name_rx.sub(name, text)
+    prefix = _MULTIRACE_PREFIX_RX.match(text)
+    if prefix is not None:
+        races = set()
+        for part in _MULTIRACE_PART_SPLIT_RX.split(text[prefix.end():].rstrip(") ")):
+            for piece in [part] + part.split("/"):
+                race = _named_race(piece)
+                if race is not None and race != "more_than_one_race":
+                    races.add(race)
+        return len(races) >= 2
+    if _HERITAGE_GROUPED_API_RX.fullmatch(text) is not None:
+        return False
+    if len(_MULTIRACE_JOIN_SPLIT_RX.split(text)) < 2:
+        return False
+    # A list with a joiner is split at its commas too ("Caucasian, Black,
+    # and Asian"); a part that is only an ethnicity term is passed over
+    # ("African-American/Black, Hispanic, and Caucasian/White").
+    races = set()
+    for part in _MULTIRACE_PART_SPLIT_RX.split(text):
+        if not part.strip(" -–—:,;()/.") or _is_ethnicity_only_label(part):
+            continue
+        race = _named_race(part)
+        if race is None:
+            return False
+        races.add(race)
+    return len(races) >= 2
+
 def map_race_category(label: str, fuzzy_threshold: int = 85, *,
-                      guard_negation: bool = False) -> Dict:
+                      guard_negation: bool = False, heritage: bool = True,
+                      multirace: bool = True) -> Dict:
     """
     Map a race category label to NIH/OMB standard.
 
@@ -209,6 +785,12 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
     key agree on negation (_negates_race); _map_plain_row sets it for a label
     whose race dimension name was removed (block comment "Race dimension
     named in the row label").
+
+    heritage=False leaves out the heritage-template rule (block comment
+    "Heritage-template labels"), which maps the groups of a heritage label
+    through this function. multirace=False leaves out the rule for rows
+    naming two or more races (block comment "Rows naming two or more races"),
+    which reads the parts of a label through this function.
 
     Returns dict with:
         - omb_category: NIH/OMB standard category
@@ -244,6 +826,47 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
                 "flags": flags
             }
 
+    # A label naming Middle Eastern or North African groups only (block
+    # comment "Middle Eastern or North African labels"), before the slash
+    # fragments, which would keep one group of "Arabic/North African".
+    mena = mena_subcategory(label_clean)
+    if mena is not None:
+        flags.append("mena_label")
+        return {
+            "omb_category": "white",
+            "subcategory": mena,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A heritage-template label naming two or more races (block comment
+    # "Heritage-template labels"), before the slash fragments, which would
+    # keep the first race of "African American/African Heritage & White".
+    if heritage and _heritage_combination(label_clean):
+        flags.append("heritage_label")
+        return {
+            "omb_category": "more_than_one_race",
+            "subcategory": None,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A label naming two or more races without a heritage word (block
+    # comment "Rows naming two or more races"), before the slash fragments,
+    # which would keep the first race of "Black/African American and White".
+    if (multirace and _HERITAGE_WORD_RX.search(label_clean) is None
+            and _multirace_label(label_clean)):
+        flags.append("multirace_label")
+        return {
+            "omb_category": "more_than_one_race",
+            "subcategory": None,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
     # Slash-compound normalization: try each "/" fragment individually
     # so "Caucasian/White" resolves even without a dedicated mapping entry
     if "/" in label_clean:
@@ -262,16 +885,35 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
                         "flags": flags
                     }
 
-    # Fuzzy match
+    # Fuzzy match. A heritage-template label holding a non-answer is not
+    # matched fuzzily: "American Indian or Alaska Native-NA H" scores 93
+    # against "American Indian or Alaska Native" (block comment
+    # "Heritage-template labels"; a review finding).
     match = process.extractOne(label_clean, RACE_MAPPINGS.keys(), scorer=fuzz.ratio)
     if (match and match[1] >= fuzzy_threshold
-            and not (guard_negation and _negates_race(label_clean) != _negates_race(match[0]))):
+            and not (guard_negation and _negates_race(label_clean) != _negates_race(match[0]))
+            and not (heritage and _HERITAGE_WORD_RX.search(label_clean) is not None
+                     and _heritage_holds_non_answer(_HERITAGE_WORD_RX.sub(" ", label_clean)))):
         omb, subcat = RACE_MAPPINGS[match[0]]
         flags.append(f"fuzzy_match_{match[1]}")
         return {
             "omb_category": omb,
             "subcategory": subcat,
             "confidence": "medium",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A heritage-template label naming one race that nothing above read
+    # (block comment "Heritage-template labels").
+    heritage_text = _heritage_text(label_clean) if heritage else None
+    reading = _heritage_race(heritage_text) if heritage_text is not None else None
+    if reading is not None:
+        flags.append("heritage_label")
+        return {
+            "omb_category": reading[0],
+            "subcategory": reading[1],
+            "confidence": reading[2],
             "original": label_clean,
             "flags": flags
         }
@@ -624,8 +1266,10 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # left out of the race block altogether.
 #
 # Method. One leading race dimension name followed by a separator (":", "-",
-# "–", "—" or "_"; the names are "Race" and "Race and/&// Ethnicity") is
-# removed before the row is routed and mapped, so the rest goes through
+# "–", "—" or "_"; the names are "Race" and a combined name, "Race" and
+# "Ethnicity" or "Ethnic group" in either order joined by "/", "&", "and",
+# "or" or "and/or": "Race and Ethnicity", "Ethnicity or Race",
+# utils.COMBINED_DIMENSION) is removed before the row is routed and mapped, so the rest goes through
 # exactly the path the same text takes as a row of its own:
 # _is_ethnicity_only_label first ("Race : Hispanic" is an ethnicity row, as
 # before), then _map_race_label. The mapping keeps the posted label as
@@ -654,10 +1298,9 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # other. 11 more blocks change only in their flags. No ethnicity block
 # changes.
 #
-# What it does not do. A row named for the ethnicity dimension
-# ("Ethnicity-Unknown or Not Reported", "Ethnicity-Not Japanese") is not
-# changed here; _parse_race_table decides it for the whole table (block
-# comment "Rows named for the ethnicity dimension").
+# A row prefixed with the ethnicity dimension ("Ethnicity-Unknown or Not
+# Reported", "Ethnicity-Not Japanese") is not read by this rule: block comment
+# "Ethnicity dimension named in the row label".
 #
 # Negation check. A fuzzy match of a label whose prefix was removed is kept
 # only when the label and the matched key agree on negation (_negates_race),
@@ -670,8 +1313,16 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # prefix is fuzzily matched as before, without the check. On the re-fetched
 # 2026-11-15 snapshot the check stops no match: no race block changes. It
 # guards the stripped labels against a registrant's next negated row.
+#
+# Combined names. A combined name starting with the ethnicity dimension, or
+# joined by "or" or "and/or" ("Ethnicity or Race: White"), was not removed
+# and the row was counted as other (a review finding on the ethnicity
+# dimension rule below). It is now removed as "Race and Ethnicity" is. On the
+# re-fetched 2026-11-15 inputs no row label carries such a prefix before a
+# value (the combined names posted there are bare titles, as "Ethnicity/Race",
+# "Race or Ethnic Group"), so no race block changes.
 _RACE_DIMENSION_PREFIX_RX = re.compile(
-    r"^(?:race\s*(?:and|&|/)\s*ethnicity|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
+    r"^(?:" + COMBINED_DIMENSION + r"|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
 
 
 # Negation as a word ("Not Reported", "Non-White", "No race") or "non" joined
@@ -693,6 +1344,7 @@ def _strip_race_dimension(label: str) -> Optional[str]:
 
       "Race: Black"                             -> "Black"
       "Race and Ethnicity : White Non-Hispanic" -> "White Non-Hispanic"
+      "Ethnicity or Race: White"                -> "White"
       "Race unknown"                            -> None
       "Ethnicity: Hispanic"                     -> None
     """
@@ -715,8 +1367,8 @@ def _map_plain_row(label: str, count: int, pct_converted: bool,
     A leading race dimension name is removed first (block comment "Race
     dimension named in the row label"). guard_negation applies that
     comment's negation check to the fuzzy match even when no race name is
-    removed: the caller passes it for text whose ethnicity dimension name
-    it removed (block comment "Rows named for the ethnicity dimension").
+    removed: a caller passes it for text whose ethnicity dimension name it
+    removed (block comment "Ethnicity dimension named in the row label").
     """
     stripped = _strip_race_dimension(label)
     text = stripped if stripped is not None else label
@@ -754,9 +1406,10 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
     split here; extract_race_data reads them through _parse_race_table.
     """
     rows, pct_converted, total_only = _measure_rows(measure, overall_group_id, fallback_denom)
+    whole_table = _ethnicity_dimension_is_the_table([label for label, _count in rows])
     results = []
     for label, count in rows:
-        mapping = _map_plain_row(label, count, pct_converted, total_only)
+        mapping, _skipped = _map_table_row(label, count, pct_converted, total_only, whole_table)
         if mapping is not None:
             results.append(mapping)
     return results
@@ -781,7 +1434,10 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
 #    "count":        the row's count, read exactly as a counted row's is,
 #    "source_table": the title of the table the row was posted in,
 #    "flags":        "pct_to_count" when the count was converted from a
-#                    percentage, "race_by_sex" for a race-by-sex row}.
+#                    percentage, "race_by_sex" for a race-by-sex row,
+#                    "ethnicity_dimension_row" for a row naming the ethnicity
+#                    dimension that is not ethnicity-only (block comment
+#                    "Ethnicity dimension named in the row label")}.
 # The block carries the flag "ethnicity_rows_skipped" exactly when at least
 # one recorded row has a count above zero.
 #
@@ -921,6 +1577,205 @@ def _negates_ethnicity(label: str) -> bool:
     if _NEGATION_RX.search(text[:terms[0].start()]) is not None:
         return True
     return _NEGATED_ANSWER_RX.match(text[terms[-1].end():]) is not None
+
+# ── Ethnicity dimension named in the row label ─────────────────────────────
+#
+# A combined race and ethnicity table can carry rows that name the ethnicity
+# dimension: "Ethnicity Not Reported", "Ethnicity-Unknown or Not Reported",
+# "Ethnicity-Mandinka" / "Ethnicity-Wolof", "Ethnicity-Not Japanese",
+# "Ethnicity: White British". Unless such a row named Hispanic
+# (_is_ethnicity_only_label), it was mapped as race and, matching nothing,
+# counted as other. Where the table's race rows already hold everyone, that
+# counted the same people twice: NCT00452530 posts White 2,427 / Black 31 /
+# Asian 506 / Native Hawaiian 2 / Other 91 of 3,057, and "Ethnicity not
+# reported" 2,946 was added to other (3,037); NCT03197376 posts Race-African
+# 2,249 of 2,250 and its eight ethnic groups were added to other (2,250).
+#
+# Method. A row names the ethnicity dimension when its cleaned label begins
+# with "Ethnicity" or "Ethnic group" as a word ("Ethnicities" does not), not
+# followed by the word race, races or racial, either directly ("Ethnicity Race
+# Unknown") or after "/", "&", "and", "or", "and/or", "," or a dash (a
+# combined name, as "Race/Ethnicity", whose rows belong to the one
+# classification; its prefix is removed by the race dimension rule above, so
+# "Ethnicity or Race: White" is read as White, and a form that rule does not
+# remove, "Ethnicity, Race: White", is read as posted, never left out). Then,
+# by table:
+#   - some row names it, no other row is a race row of the table's own
+#     (_is_own_race_row: a row in a race-specific category without
+#     "unmapped", or one named for the race dimension, "Race - Undisclosed",
+#     "Race,Asian", a bare "Race"), and at least one named row, without the
+#     prefix, names a race category itself (White, Black, Asian, American
+#     Indian, Native Hawaiian or Pacific Islander, more than one race: a
+#     mapping to one of them with no subcategory;
+#     _ethnicity_dimension_is_the_table): the registrant used "Ethnicity" for
+#     the one classification the table posts, a race classification by its
+#     rows (NCT03476187: "Ethnicity : Caucasian" 154 / "Ethnicity : Black or
+#     African American" 62 / "Ethnicity : Hispanic or Latin" 16 ...). A row
+#     naming an origin group that the vocabulary files under a race with a
+#     subcategory ("Japanese", "Chinese", "Arab", "African", "Native
+#     Hawaiian") is not that evidence: such a name is as much an ethnicity as
+#     a race, and "Ethnicity: Japanese" / "Ethnicity: Not Japanese" classifies
+#     one ethnicity, not race (a review finding). In the 2026-11-15 inputs,
+#     all five all-prefixed tables that pass the test have a row naming a race
+#     category itself, so this requirement changes no output there. The
+#     dimension name and its separator(s) (":", "-",
+#     "–", "—", "_", ",") are removed and the rest is read exactly as the bare
+#     label, flagged dimension_wording_stripped, as a "Race:" prefix is (block
+#     comment "Race dimension named in the row label"), including its
+#     negation check: "Ethnicity: Non-African American" is unmapped other,
+#     not Black, though "Non-African American" alone scores 88.9 against
+#     "African American". A row not naming the dimension beside them, a bare
+#     "Unknown" or "Other", is read as posted: it is that classification's
+#     own residual, not a race classification, and taking it for one would
+#     leave every named race row out and balance the cohort into unknown
+#     ("Ethnicity: White" 50 / "Ethnicity: Black" 30 / "Unknown" 5 read as
+#     unknown 85; a review finding). A row named for race does count as one,
+#     mapped or not: NCT01256177 posts "Race,Asian" 279 beside "Ethnicity,
+#     Chinese" 279, the same 279 classified twice. In the 2026-11-15 inputs
+#     no table has a residual row beside named race rows, a negated named
+#     row or a "," / dash / bare joiner before race, so these three
+#     refinements change no output there. A row of such a table
+#     with no separator ("Ethnicity" alone) is recorded as below. An
+#     all-prefixed table with no race row ("Ethnicity: Hispanic" / "Ethnicity:
+#     Not Hispanic" / "Ethnicity: Unknown") is an ethnicity classification, read
+#     as below: its "Unknown" is not a race count;
+#   - otherwise the row is a row of the table's ethnicity classification, not
+#     a race row: it is left out of the race counts and recorded in
+#     skipped_ethnicity_rows with the flag ethnicity_dimension_row, beside the
+#     ethnicity-only rows (block comment "Ethnicity rows inside a race table").
+# An ethnicity-only row ("Ethnicity: Hispanic") is recorded as before, without
+# the new flag. _map_table_row holds the rule, for _parse_race_table and
+# extract_race_from_measure alike; in a table crossing race with sex
+# ("Ethnicity-Not Reported Female") it is applied to the race parts, and a
+# recorded row keeps its race_part and sex.
+#
+# The recorded rows enter the shortfall test (block comment "A shortfall that
+# the ethnicity rows account for") as every recorded row does. A row with no
+# Hispanic term reads there as negating the ethnicity, so where such a row has
+# participants the shortfall stays in unknown_inferred. That is the intended
+# reading: the table classifies ethnicity by more than the Hispanic row, so it
+# is not one exclusive classification whose Hispanic row is the shortfall.
+#
+# Where the race rows do not hold everyone, the participants of a recorded row
+# now count in unknown_inferred instead of other: NCT01022268 posts race rows
+# and "Declined" 77 beside "Ethnicity not available" 291, of 902, and those 291
+# were given no race by the table.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced its
+# race blocks): 64 race blocks change. Other falls by 14,742; White +414,
+# Black +84, American Indian +19, Asian +14 (three all-"Ethnicity" tables
+# read as race: NCT03476187, NCT04711460, NCT03178669); unknown +237. One
+# block goes from reported to not reported: NCT01452191 posts only
+# "Ethnicity: White British" 1,008 and "Ethnicity: Other ethnic group" 54,
+# neither a race the vocabulary reads, so no row shows the table to be a race
+# classification and it is read as an ethnicity one (before: other 1,062).
+# 67 trials record rows flagged ethnicity_dimension_row, 14,225
+# participants. Race blocks whose counts add up to more than the baseline
+# population fall from 392 to 338, their excess by 12,862; none rises. No
+# ethnicity block changes.
+
+_ETHNICITY_DIMENSION_RX = re.compile(
+    r"^\s*ethnic(?:ity|\s+group)(?![a-z])"
+    r"(?!\s*(?:" + DIMENSION_JOIN + r"|[,\-–—])?\s*rac(?:e|es|ial)(?![a-z]))", re.IGNORECASE)
+_ETHNICITY_DIMENSION_PREFIX_RX = re.compile(
+    r"^\s*(?:ethnicity|ethnic\s+group)\s*[:\-–—_,](?:\s*[:\-–—_,])*\s*(?=\S)", re.IGNORECASE)
+
+
+def _names_ethnicity_dimension(label: str) -> bool:
+    """True when a row's label begins with the ethnicity dimension
+    ("Ethnicity: Unknown", "Ethnicity Not Reported", "Ethnic group - Other")."""
+    return _ETHNICITY_DIMENSION_RX.match(clean_demographic_label(label)) is not None
+
+
+def _strip_ethnicity_dimension(label: str) -> Optional[str]:
+    """The cleaned label without a leading ethnicity dimension name and its
+    separator, or None when it has no such prefix ("Ethnicity : White" ->
+    "White"; "Ethnicity Not Reported" -> None)."""
+    text = clean_demographic_label(label)
+    prefix = _ETHNICITY_DIMENSION_PREFIX_RX.match(text)
+    if prefix is None:
+        return None
+    return text[prefix.end():].strip() or None
+
+
+_RACE_DIMENSION_NAME_RX = re.compile(r"^\s*rac(?:e|es|ial)(?![a-z])", re.IGNORECASE)
+
+
+def _names_race_dimension(label: str) -> bool:
+    """True when a row's cleaned label begins with the word race, races or
+    racial ("Race - Undisclosed", "Race,Asian", "Race", "Race unknown"): a row
+    of a race classification, mapped or not ("Racecourse" -> False)."""
+    return _RACE_DIMENSION_NAME_RX.match(clean_demographic_label(label)) is not None
+
+
+def _is_own_race_row(label: str) -> bool:
+    """True when a row NOT naming the ethnicity dimension shows the table to
+    hold a race classification of its own: it maps to a race-specific
+    category without the "unmapped" flag, or it is named for the race
+    dimension. A bare residual ("Unknown", "Other"), an unmapped row and an
+    ethnicity-only row ("Hispanic") are not (block comment "Ethnicity
+    dimension named in the row label")."""
+    if _names_race_dimension(label):
+        return True
+    mapping = _map_plain_row(label, 0, False)
+    return (mapping is not None and mapping.get("omb_category") in _RACE_SPECIFIC
+            and "unmapped" not in mapping.get("flags", []))
+
+
+def _ethnicity_dimension_is_the_table(labels: List[str]) -> bool:
+    """True when the rows naming the ethnicity dimension are the table's race
+    classification under that name: at least one row names the dimension, no
+    other row is a race row of its own (_is_own_race_row; a bare "Unknown" or
+    "Other" beside them is that classification's residual), and at least one
+    named row, without the prefix, names a race category itself. A row naming
+    an origin group the vocabulary files under a race with a subcategory
+    ("Japanese", "Arab", "African") is not that evidence, since such a name is
+    as much an ethnicity as a race. A table with no such row ("Ethnicity:
+    Hispanic" / "Ethnicity: Not Hispanic" / "Ethnicity: Unknown"; "Ethnicity:
+    Japanese" / "Ethnicity: Not Japanese") is an ethnicity classification
+    (block comment "Ethnicity dimension named in the row label")."""
+    named = [label for label in labels if _names_ethnicity_dimension(label)]
+    if not named or any(_is_own_race_row(label) for label in labels if not _names_ethnicity_dimension(label)):
+        return False
+    for label in named:
+        stripped = _strip_ethnicity_dimension(label)
+        mapping = (_map_plain_row(stripped, 0, False, guard_negation=True)
+                   if stripped is not None else None)
+        if (mapping is not None and mapping.get("confidence") != "low"
+                and mapping.get("omb_category") in _RACE_SPECIFIC
+                and not mapping.get("subcategory")):
+            return True
+    return False
+
+
+def _map_table_row(label: str, count: int, pct_converted: bool, total_only: bool,
+                   whole_table: bool, race_part: Optional[str] = None,
+                   sex: Optional[str] = None) -> Tuple[Optional[Dict], Optional[Dict]]:
+    """(mapping, None) for a row counted as race, (None, record) for a row left
+    out of the race counts (_skipped_ethnicity_row): an ethnicity-only row,
+    or a row naming the ethnicity dimension in a table where other rows do
+    not (block comment "Ethnicity dimension named in the row label").
+    whole_table is _ethnicity_dimension_is_the_table for the row's table, over
+    the race parts when the table crosses race with sex. For a race-by-sex row
+    the race part is what is read, and the record keeps race_part and sex
+    beside the posted label."""
+    text = race_part if race_part is not None else label
+    stripped = _strip_ethnicity_dimension(text) if whole_table else None
+    mapping = _map_plain_row(stripped if stripped is not None else text, count,
+                             pct_converted, total_only, guard_negation=stripped is not None)
+    if mapping is None or (stripped is None and _names_ethnicity_dimension(text)):
+        row = _skipped_ethnicity_row(label, count, pct_converted, race_part, sex, total_only)
+        if mapping is not None:
+            row["flags"].append("ethnicity_dimension_row")
+        return None, row
+    if stripped is not None:
+        # The text read, prefix included: the posted label for a plain row
+        # (a race-by-sex caller then records the whole posted label itself).
+        mapping["original"] = clean_demographic_label(text)
+        mapping["flags"].append("dimension_wording_stripped")
+    return mapping, None
+
 
 def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
                            race_part: Optional[str] = None,
@@ -1080,192 +1935,6 @@ _RACE_SPECIFIC = frozenset({
     "native_hawaiian_pacific_islander", "white", "more_than_one_race",
 })
 
-# ── Rows named for the ethnicity dimension ─────────────────────────────────
-#
-# A race table can hold rows whose label names the ethnicity dimension:
-# "Ethnicity-Not Japanese" 204 / "Ethnicity-Japanese" 0 / "Ethnicity-Unknown
-# or Not Reported" 15 beside "Race-White" 184 / "Race-Asian" 2 / ... of 219
-# (NCT04783935), or "Ethnicity Not Reported" 3 beside a full race
-# classification (NCT03927703). Unless such a row names Hispanic or Latino,
-# _is_ethnicity_only_label does not route it to the ethnicity pipeline, and
-# the vocabulary maps nothing in it: the row was counted as race "other", in
-# most tables on top of race rows that already held every participant.
-# Elsewhere the dimension name is the table's own word for race: every row of
-# "Race/Ethnicity, Customized" reads "Ethnicity : Caucasian" 154 / "Ethnicity :
-# Black or African American" 62 / ... (NCT03476187), and all of them were
-# counted as "other" too.
-#
-# Method. A row is named for the ethnicity dimension when its cleaned label
-# begins with the word "Ethnicity" or "Ethnic group", with or without a
-# separator after it, and does not go on to name race as well: the word race,
-# races or racial right after it, alone or after "/", "&", ",", a dash, "and"
-# or "or" ("Ethnicity/Race Unknown", "Ethnicity and Race: White", "Ethnicity
-# or Race: White", "Ethnicity Race Unknown" are left as they were)
-# (_names_ethnicity_dimension). The decision is made for each plain race
-# table, from its rows as _map_plain_row reads them:
-#   - When some row that is NOT named for the ethnicity dimension maps to a
-#     race-specific category without the "unmapped" flag, or is itself named
-#     for the race dimension (its cleaned label begins with the word race,
-#     races or racial: "Race - Undisclosed", "Race,Asian", a bare "Race"),
-#     the table has race rows of its own, and the named rows are the table's
-#     ethnicity classification. A bare residual row ("Unknown", "Other") or
-#     an unmapped one does not establish a race classification: beside
-#     "Ethnicity: White" / "Ethnicity: Black", a bare "Unknown" is that
-#     classification's own unknown, and taking it for race rows would leave
-#     every named race row out and balance the cohort into unknown. A row
-#     named for race does, mapped or not: "Race,Asian" 279 beside "Ethnicity,
-#     Chinese" 279 (NCT01256177) classifies the same 279 twice, and reading
-#     "Chinese" as race would count them twice. Each named row is left out
-#     of the race counts and recorded in skipped_ethnicity_rows like an
-#     ethnicity-only row, with the flag ethnicity_dimension_row.
-#   - Otherwise (no unnamed row is in a race-specific category), the name is
-#     the table's word for what it classifies. The name and its separator
-#     (":", "-", "–", "—", "_" or ",") are removed from each named row
-#     (_strip_ethnicity_dimension) and the rest is mapped by _map_plain_row
-#     like any race row: "Ethnicity : Caucasian" is White, "Ethnicity:
-#     Hispanic" is still an ethnicity-only row. Unnamed rows (a bare
-#     "Unknown") are read as they are. As for a removed race name, a fuzzy
-#     match of the rest is kept only when it agrees with its key on negation
-#     ("Race dimension named in the row label", "Negation check"):
-#     "Ethnicity: Non-African American" stays unmapped other rather than
-#     Black. The row keeps the posted label and carries the flag
-#     ethnicity_dimension_as_race. This reading is kept only when at least
-#     one row then maps to a race-specific category without the "unmapped"
-#     flag. Otherwise the rows are read as they were before this rule:
-#     "Ethnicity: White British" 1,008 / "Ethnicity: Other ethnic group" 54
-#     (NCT01452191) name no category the vocabulary holds, and leaving them
-#     out would end the block in all-zero rejection, a trial that posted a
-#     race classification reporting none.
-# A row without a separator ("Ethnicity Not Reported") is named for the
-# dimension, so the first branch leaves it out; the second maps it as posted,
-# since there is no name to remove.
-#
-# Why. In the first case the named row describes people who are already in
-# the table's race rows: NCT04783935's 204 "Not Japanese" participants are
-# among its 219, and counting them again as race "other" put the block at 453
-# participants for a population of 219. In the second case the rows are the
-# race classification, and the posted name hid the category.
-#
-# The recorded rows enter no total, as for any row in skipped_ethnicity_rows.
-# None names Hispanic, so _negates_ethnicity reads each as not stating the
-# ethnicity: a recorded row with participants keeps a shortfall in
-# unknown_inferred rather than unknown_ethnicity_only (block comment "A
-# shortfall that the ethnicity rows account for"). Race-by-sex tables and
-# sex/gender-titled tables are not changed.
-#
-# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
-# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main at
-# 1a1d5f8. 71 counted race tables held 106 named rows (14,779 participants),
-# almost all counted as other. 69 race blocks change, 63 in their totals; no
-# block changes reported. 87 named rows (13,163 participants) in 66 trials
-# are left out; 16 rows (552 participants) in three trials (NCT04711460,
-# NCT03476187, NCT03178669) are read as race. other -13,680, White +414,
-# Black or African American +84, American Indian or Alaska Native +19, Asian
-# +14, unknown +287 (unknown_inferred +301, unknown_explicit -14: a named
-# row such as "Ethnicity Unknown/Not Reported" that mapped to unknown is
-# left out, and where it left a gap the gap is inferred). Of the changed
-# blocks, 58 added up to more than their baseline population, by 12,877
-# participants; 4 do now, by 15, from race rows that do so as posted. No
-# ethnicity block, legacy sex block or combined_classification changes. The
-# two rows of NCT01452191 above are the only named rows still counted as
-# race.
-_ETHNICITY_DIMENSION_RX = re.compile(
-    r"^\s*ethnic(?:ity|\s+group)(?![a-z])"
-    r"(?!\s*(?:[/&,\-–—]|\band\b|\bor\b)?\s*rac(?:e|es|ial)(?![a-z]))", re.IGNORECASE)
-_ETHNICITY_DIMENSION_PREFIX_RX = re.compile(
-    r"^\s*ethnic(?:ity|\s+group)(?:\s*[:\-–—_,])+\s*(?=\S)", re.IGNORECASE)
-ETHNICITY_DIMENSION_ROW_FLAG = "ethnicity_dimension_row"
-ETHNICITY_DIMENSION_AS_RACE_FLAG = "ethnicity_dimension_as_race"
-
-
-def _names_ethnicity_dimension(label: str) -> bool:
-    """True when the cleaned label begins with the ethnicity dimension's name
-    and does not also name race (block comment above).
-
-      "Ethnicity-Not Japanese", "Ethnicity Not Reported"  -> True
-      "Ethnic group: White British"                       -> True
-      "Ethnicity/Race Unknown", "Ethnicity or Race: White" -> False
-      "Ethnic minority"                                   -> False
-    """
-    return _ETHNICITY_DIMENSION_RX.match(clean_demographic_label(label)) is not None
-
-
-_RACE_DIMENSION_NAME_RX = re.compile(r"^\s*rac(?:e|es|ial)(?![a-z])", re.IGNORECASE)
-
-
-def _names_race_dimension(label: str) -> bool:
-    """True when the cleaned label begins with the word race, races or
-    racial ("Race - Undisclosed", "Race,Asian", "Race", "Race unknown"): a
-    row of a race classification (block comment above).
-
-      "Racecourse", "Black"  -> False
-    """
-    return _RACE_DIMENSION_NAME_RX.match(clean_demographic_label(label)) is not None
-
-
-def _strip_ethnicity_dimension(label: str) -> Optional[str]:
-    """The cleaned label without its leading ethnicity dimension name and
-    separator, or None when it has no separator to remove (block comment
-    above).
-
-      "Ethnicity : Caucasian"  -> "Caucasian"
-      "Ethnicity, Chinese"     -> "Chinese"
-      "Ethnicity Not Reported" -> None
-    """
-    text = clean_demographic_label(label)
-    prefix = _ETHNICITY_DIMENSION_PREFIX_RX.match(text)
-    if prefix is None:
-        return None
-    return text[prefix.end():].strip() or None
-
-
-def _read_ethnicity_dimension_rows(rows: List[Tuple[str, int]],
-                                   mappings: List[Optional[Dict]], pct_converted: bool,
-                                   total_only: bool) -> Tuple[List[Optional[Dict]], List[bool]]:
-    """Apply the rule of the block comment above to one plain table.
-
-    rows are the table's (label, count) and mappings what _map_plain_row
-    returned for each (None for an ethnicity-only row). Returns the mapping
-    each row is read with (None: left out of the race counts) and, for each
-    row, whether it is left out as a row named for the ethnicity dimension.
-    A table with no named row mapped as race is returned unchanged.
-    """
-    named = [_names_ethnicity_dimension(label) for label, _count in rows]
-    if not any(nm and m is not None for nm, m in zip(named, mappings)):
-        return mappings, [False] * len(rows)
-    # Race rows of its own: an unnamed row in a race-specific category, or
-    # one named for the race dimension. A bare residual row ("Unknown",
-    # "Other") or an unmapped one is not a race classification by itself
-    # (block comment above).
-    own_race_rows = any(
-        m is not None and not nm
-        and ((m["omb_category"] in _RACE_SPECIFIC and "unmapped" not in m["flags"])
-             or _names_race_dimension(label))
-        for (label, _count), nm, m in zip(rows, named, mappings))
-    if not own_race_rows:
-        as_race: List[Optional[Dict]] = []
-        for (label, count), nm, mapping in zip(rows, named, mappings):
-            stripped = _strip_ethnicity_dimension(label) if nm else None
-            if stripped is None:
-                as_race.append(mapping)
-                continue
-            # The name was removed: a fuzzy match must agree with its key on
-            # negation, as for a removed race name (block comment above).
-            remapped = _map_plain_row(stripped, count, pct_converted, total_only, guard_negation=True)
-            if remapped is not None:
-                remapped["original"] = clean_demographic_label(label)
-                remapped["flags"].append(ETHNICITY_DIMENSION_AS_RACE_FLAG)
-            as_race.append(remapped)
-        if any(m is not None and m["omb_category"] in _RACE_SPECIFIC and "unmapped" not in m["flags"]
-               for m in as_race):
-            return as_race, [False] * len(rows)
-        # No race category under the name: read the rows as before (block
-        # comment above).
-        return mappings, [False] * len(rows)
-    left_out = [nm and m is not None for nm, m in zip(named, mappings)]
-    return [None if out else m for out, m in zip(left_out, mappings)], left_out
-
-
 def split_race_by_sex_label(label: str) -> Optional[Tuple[str, str]]:
     """Split a race-by-sex label into (race_part, sex).
 
@@ -1313,11 +1982,14 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
     skipped: List[Dict] = []
     race_by_sex = False
     if by_sex_rows:
+        # The same ethnicity-dimension routing as a plain table, on the race
+        # parts (block comment "Ethnicity dimension named in the row label").
+        whole_by_sex = _ethnicity_dimension_is_the_table([race_part for race_part, _sex in splits])
         for (label, count), (race_part, sex) in zip(rows, splits):
-            mapping = _map_plain_row(race_part, count, pct_converted, total_only)
-            if mapping is None:
-                skipped.append(_skipped_ethnicity_row(label, count, pct_converted, race_part, sex,
-                                                      total_only))
+            mapping, skipped_row = _map_table_row(label, count, pct_converted, total_only,
+                                                  whole_by_sex, race_part, sex)
+            if skipped_row is not None:
+                skipped.append(skipped_row)
                 continue
             # Quarantine is decided on the race part, as for a plain row; the
             # record then carries the posted label so the source stays visible.
@@ -1336,16 +2008,11 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         # Plain table, or sex words that are not a race-by-sex crossing:
         # every row mapped whole, as before.
         categories, quarantined, skipped = [], [], []
-        mappings = [_map_plain_row(label, count, pct_converted, total_only) for label, count in rows]
-        # Rows named for the ethnicity dimension (block comment of that name).
-        mappings, dimension_rows = _read_ethnicity_dimension_rows(rows, mappings, pct_converted,
-                                                                  total_only)
-        for (label, count), mapping, dimension_row in zip(rows, mappings, dimension_rows):
-            if mapping is None:
-                record = _skipped_ethnicity_row(label, count, pct_converted, total_only=total_only)
-                if dimension_row:
-                    record["flags"].append(ETHNICITY_DIMENSION_ROW_FLAG)
-                skipped.append(record)
+        whole_table = _ethnicity_dimension_is_the_table([label for label, _count in rows])
+        for label, count in rows:
+            mapping, skipped_row = _map_table_row(label, count, pct_converted, total_only, whole_table)
+            if skipped_row is not None:
+                skipped.append(skipped_row)
                 continue
             if _should_quarantine(mapping):
                 quarantined.append(mapping)
@@ -1493,6 +2160,10 @@ def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
         "unknown_explicit": 0,
         "unknown_ethnicity_only": 0,
         "unknown_inferred": 0,
+        # The part of omb_totals["white"] in Middle Eastern or North African
+        # rows (block comment "Middle Eastern or North African within
+        # White"); 0 when there are none.
+        "mena_in_white": 0,
         "subcategory_totals": {},
         "raw_categories": [],
         "quarantined_labels": [],
@@ -1654,6 +2325,13 @@ def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
     # ethnicity-only row"; rows of zero are recorded without it.
     if any(row["count"] > 0 for row in result["skipped_ethnicity_rows"]):
         result["flags"].append("ethnicity_rows_skipped")
+
+    # The MENA part of White, from the counted rows' subcategories (block
+    # comment "Middle Eastern or North African within White"). After
+    # all-zero rejection, which empties subcategory_totals: a rejected block
+    # holds 0.
+    result["mena_in_white"] = sum(result["subcategory_totals"].get(f"white_{sub}", 0)
+                                  for sub in MENA_SUBCATEGORIES)
 
     # Dedupe flags
     # sorted() so identical extractions serialize identically across runs

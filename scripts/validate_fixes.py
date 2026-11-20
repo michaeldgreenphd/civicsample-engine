@@ -46,12 +46,23 @@ Tests:
  19. NCT99000130 — Age-band classes beside a "Total" class that repeats
      their rows, in a "Race/Ethnicity, Customized" and a "Sex: Female, Male"
      measure (fictional study, the labels and counts of NCT04911296)
- 20. NCT99000115 — Rows named for the ethnicity dimension ("Ethnicity-Not
-     Japanese") beside race rows that hold everyone (fictional study, the
-     table shape of NCT04783935)
- 21. NCT99000116 — A race classification whose every row is named for the
-     ethnicity dimension ("Ethnicity : Caucasian") (fictional study, the
-     table shape of NCT03476187)
+ 20. NCT99000140 — Race rows that hold every participant, Hispanic rows, and
+     "Ethnicity not reported" of nearly the same participants in one table
+     (fictional study, the table shape of NCT00452530)
+ 21. NCT99000141 — Middle Eastern or North African rows in the wordings the
+     vocabulary did not read: "Middle Eastern or North African" and "White -
+     Arabic/North African Heritage", beside "White/Middle Eastern" (fictional
+     study)
+ 22. NCT99000142 — Heritage-template rows: "White - Caucasian / European
+     Heritage", "Asian - East Asian Heritage", "Japanese Heritage" and
+     "African American/African Heritage & White" (fictional study)
+ 23. NCT99000143 — Rows naming two races without a heritage word:
+     "American Indian or Alaska Native & White", "Asian and White",
+     "Multiple-Black or African American and White", beside "Asian and
+     Pacific Islander" (fictional study)
+ 24. NCT99000144 — A race classification named "Ethnicity" ("Ethnicity:
+     White" / "Ethnicity: Black") beside a bare residual "Unknown" row
+     (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -67,10 +78,14 @@ totals and flags (EXPECTED_ETHNICITY); study 15 also asserts its race block,
 whose rows are prefixed "Race: " (EXPECTED_SKIPPED_ETHNICITY). Study 19
 asserts its ethnicity totals and flags (EXPECTED_ETHNICITY) and its sex totals
 and flags (EXPECTED_SEX): the Total class is counted once, the age bands not
-again. Study 20 asserts that its rows named for the ethnicity dimension are
-recorded and not counted as race (EXPECTED_SKIPPED_ETHNICITY,
-check_ethnicity_dimension_rows); study 21 asserts its race block and
-raceBreakdown, read as race (EXPECTED_RACE).
+again. Study 20 asserts its race block and the rows it records without
+counting them, among them a row naming the ethnicity dimension
+(EXPECTED_SKIPPED_ETHNICITY). Study 21 asserts its race totals and mena_in_white
+(EXPECTED_MENA). Study 22 asserts its race totals and that no row is
+quarantined (EXPECTED_HERITAGE). Study 23 asserts its race totals
+(EXPECTED_MULTIRACE).
+Study 24 asserts its race block and raceBreakdown (EXPECTED_RACE): the bare
+"Unknown" does not make the named rows an ethnicity classification.
 A mismatch stops the harness.
 """
 import json
@@ -618,48 +633,136 @@ MOCK_NCT99000130 = _make_study(
     total_participants=150,
 )
 
+# ---------- NCT99000140 (fictional): an ethnicity classification's unknown row beside race rows ----------
+# 3,057 participants, every one in a race row. "Ethnicity not reported" names
+# the ethnicity dimension: a row of the table's ethnicity classification, left
+# out of the race counts and recorded (race_extractor, "Ethnicity dimension
+# named in the row label"). Before, its 2,946 were added to other, and the race
+# block added up to 6,003.
+MOCK_NCT99000140 = _make_study(
+    "NCT99000140",
+    "NCT99000140 - Ethnicity row beside a complete race classification (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 2427),
+                _make_category("Black/African American", 31),
+                _make_category("Asian", 506),
+                _make_category("Native Hawaiian/Other Pacific Islander", 2),
+                _make_category("Other [Not specified]", 91),
+                _make_category("Hispanic/Latino", 1),
+                _make_category("Not Hispanic/Latino", 110),
+                _make_category("Ethnicity not reported", 2946),
+            ])
+        ]),
+    ],
+    total_participants=3057,
+)
+
+# ---------- NCT99000141 (fictional): Middle Eastern or North African wordings ----------
+# 200 participants. Both MENA wordings are White with a MENA subcategory and
+# make up mena_in_white (race_extractor, "Middle Eastern or North African
+# labels"); before, both were counted as other. "White/Middle Eastern" names
+# two groups: White, outside mena_in_white.
+MOCK_NCT99000141 = _make_study(
+    "NCT99000141",
+    "NCT99000141 - Middle Eastern or North African wordings (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 140),
+                _make_category("Middle Eastern or North African", 22),
+                _make_category("White - Arabic/North African Heritage", 13),
+                _make_category("White/Middle Eastern", 5),
+                _make_category("Black or African American", 20),
+            ])
+        ]),
+    ],
+    total_participants=200,
+)
+
+# Expected race totals and mena_in_white for the MENA study.
+EXPECTED_MENA = {
+    "NCT99000141": {"omb": {"white": 180, "black_african_american": 20}, "mena_in_white": 35},
+}
+
+# ---------- NCT99000142 (fictional): heritage-template rows ----------
+# 180 participants in the template's rows (race_extractor, "Heritage-template
+# labels"). Before, "White - Caucasian / European Heritage" and "Asian - East
+# Asian Heritage" were counted as other, "Japanese Heritage" was quarantined
+# as not race, and "African American/African Heritage & White" was Black.
+MOCK_NCT99000142 = _make_study(
+    "NCT99000142",
+    "NCT99000142 - Heritage-template rows (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White - Caucasian / European Heritage", 110),
+                _make_category("Asian - East Asian Heritage", 30),
+                _make_category("Japanese Heritage", 12),
+                _make_category("African American/African Heritage", 24),
+                _make_category("African American/African Heritage & White", 4),
+            ])
+        ]),
+    ],
+    total_participants=180,
+)
+
+# Expected non-zero race totals of the heritage-template study.
+EXPECTED_HERITAGE = {
+    "NCT99000142": {"white": 110, "asian": 42, "black_african_american": 24, "more_than_one_race": 4},
+}
+
+# ---------- NCT99000143 (fictional): rows naming two races ----------
+# 200 participants (race_extractor, "Rows naming two or more races"). Before,
+# "American Indian or Alaska Native & White" was American Indian and the other
+# two combinations were other; "Asian and Pacific Islander" is the 1977
+# grouped category and stays as it was.
+# ---------- NCT99000144 (fictional): named race rows beside a bare residual ----------
+# 85 participants, one row each. "Ethnicity" is the table's word for race; the
+# bare "Unknown" is that classification's residual. Read as an ethnicity
+# classification because one row did not name the dimension, the two race
+# rows were left out and all 85 were balanced into unknown.
+MOCK_NCT99000144 = _make_study(
+    "NCT99000144",
+    "NCT99000144 - Race classification named Ethnicity beside a residual (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class(label, [_make_category(None, v)])
+            for label, v in [("Ethnicity: White", 50), ("Ethnicity: Black", 30), ("Unknown", 5)]
+        ]),
+    ],
+    total_participants=85,
+)
+
+MOCK_NCT99000143 = _make_study(
+    "NCT99000143",
+    "NCT99000143 - Rows naming two races (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 120),
+                _make_category("Black or African American", 40),
+                _make_category("American Indian or Alaska Native & White", 15),
+                _make_category("Asian and White", 8),
+                _make_category("Multiple-Black or African American and White", 5),
+                _make_category("Asian and Pacific Islander", 12),
+            ])
+        ]),
+    ],
+    total_participants=200,
+)
+
+# Expected non-zero race totals of the study of rows naming two races.
+EXPECTED_MULTIRACE = {
+    "NCT99000143": {"white": 120, "black_african_american": 40, "more_than_one_race": 28, "other": 12},
+}
+
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
 # OMB totals and its inferred unknown. Studies 1 and 2 list ethnicity beside
 # race rows that cover everyone (nothing inferred); study 13 is one exclusive
 # classification (the Hispanic row's 6 are the inferred unknown). The rows
 # are recorded either way and enter no total.
-# ---------- NCT99000115 (fictional): ethnicity-dimension rows beside race rows ----------
-# 219 participants, classified by race in the "Race-" rows (all 219) and by
-# Japanese ethnicity in the "Ethnicity-" rows. Before, the 219 "Ethnicity-"
-# participants were counted again as race "other": a block of 438 for 219.
-MOCK_NCT99000115 = _make_study(
-    "NCT99000115",
-    "NCT99000115 - Ethnicity-dimension rows beside race rows (fictional mock)",
-    [
-        _make_measure("Race/Ethnicity, Customized", [
-            _make_class(label, [_make_category(None, v)])
-            for label, v in [("Ethnicity-Japanese", 0), ("Ethnicity-Not Japanese", 204),
-                             ("Ethnicity-Unknown or Not Reported", 15), ("Race-Asian", 2),
-                             ("Race-Black or African American", 1), ("Race-Other", 6),
-                             ("Race-Unknown or Not Reported", 26), ("Race-White", 184)]
-        ]),
-    ],
-    total_participants=219,
-)
-
-# ---------- NCT99000116 (fictional): a race classification named "Ethnicity" ----------
-# 244 participants, one row each; the rows are races under the name
-# "Ethnicity". Before, the 228 race-row participants were all race "other".
-MOCK_NCT99000116 = _make_study(
-    "NCT99000116",
-    "NCT99000116 - Race classification named Ethnicity (fictional mock)",
-    [
-        _make_measure("Race/Ethnicity, Customized", [
-            _make_class(label, [_make_category(None, v)])
-            for label, v in [("Ethnicity : Caucasian", 154), ("Ethnicity : Black or African American", 62),
-                             ("Ethnicity : Other", 5), ("Ethnicity : American Indian or Alaskan Native", 2),
-                             ("Ethnicity : Asian", 1), ("Ethnicity : Hispanic or Latino", 16),
-                             ("Ethnicity: Multiple Ethnicities", 4)]
-        ]),
-    ],
-    total_participants=244,
-)
-
 EXPECTED_SKIPPED_ETHNICITY = {
     "NCT02766335": {"rows": [("Hispanic", 2), ("Not Hispanic or Latino", 72)],
                     "omb": {"white": 40, "black_african_american": 25, "asian": 7, "unknown_not_reported": 2},
@@ -670,16 +773,14 @@ EXPECTED_SKIPPED_ETHNICITY = {
     "NCT99000109": {"rows": [("Hispanic", 6)],
                     "omb": {"white": 30, "black_african_american": 12, "unknown_not_reported": 8},
                     "unknown_ethnicity_only": 6, "unknown_inferred": 0},
-    # Rows named for the ethnicity dimension beside race rows that hold all
-    # 219 (race_extractor, "Rows named for the ethnicity dimension").
-    "NCT99000115": {"rows": [("Ethnicity-Japanese", 0), ("Ethnicity-Not Japanese", 204),
-                             ("Ethnicity-Unknown or Not Reported", 15)],
-                    "omb": {"white": 184, "asian": 2, "black_african_american": 1, "other": 6,
-                            "unknown_not_reported": 26},
-                    "unknown_inferred": 0},
     # Prefixed race rows map as their bare labels (race_extractor, "Race
     # dimension named in the row label"): before, Black 18, Asian 7 and
     # Other 21 were all counted as other.
+    "NCT99000140": {"rows": [("Hispanic/Latino", 1), ("Not Hispanic/Latino", 110),
+                             ("Ethnicity not reported", 2946)],
+                    "omb": {"white": 2427, "black_african_american": 31, "asian": 506,
+                            "native_hawaiian_pacific_islander": 2, "other": 91},
+                    "unknown_inferred": 0},
     "NCT99000111": {"rows": [("Ethnicity: Hispanic", 170), ("Ethnicity: Non Hispanic", 464)],
                     "omb": {"white": 588, "black_african_american": 18, "asian": 7, "other": 21},
                     "unknown_inferred": 0},
@@ -725,6 +826,12 @@ EXPECTED_ETHNICITY = {
 # Expected race results for the title-rule studies: reported, the non-zero
 # OMB totals, top-level flags, and the raceBreakdown counts (None = no table).
 EXPECTED_RACE = {
+    # A bare residual beside rows named "Ethnicity:" (race_extractor, "Ethnicity
+    # dimension named in the row label"): the named rows are read as race.
+    "NCT99000144": {"reported": True,
+                    "omb": {"white": 50, "black_african_american": 30, "unknown_not_reported": 5},
+                    "flags": ["combined_race_ethnicity", "customized_table", "dimension_wording_stripped"],
+                    "breakdown": {"Ethnicity: White": 50, "Ethnicity: Black": 30}},
     "NCT99000103": {"reported": False, "omb": {}, "flags": [], "breakdown": None},
     "NCT99000104": {"reported": True, "omb": {"unknown_not_reported": 50},
                     "flags": ["denominator_balanced"],
@@ -735,18 +842,6 @@ EXPECTED_RACE = {
                               "race_table_superseded", "slash_normalized"],
                     "breakdown": {"Hispanic or Latino": 4, "Not Hispanic or Latino": 36,
                                   "White": 30, "Black/African American": 8, "Other": 2}},
-    # Every row named for the ethnicity dimension: read as race, the
-    # Hispanic row still an ethnicity row (its 16 are the shortfall).
-    "NCT99000116": {"reported": True,
-                    "omb": {"white": 154, "black_african_american": 62, "american_indian_alaska_native": 2,
-                            "asian": 1, "other": 9, "unknown_not_reported": 16},
-                    "flags": ["combined_race_ethnicity", "customized_table", "denominator_balanced",
-                              "ethnicity_dimension_as_race", "ethnicity_rows_skipped",
-                              "shortfall_is_ethnicity_rows", "unmapped"],
-                    "breakdown": {"Ethnicity : Caucasian": 154, "Ethnicity : Black or African American": 62,
-                                  "Ethnicity : Other": 5, "Ethnicity : American Indian or Alaskan Native": 2,
-                                  "Ethnicity : Asian": 1, "Ethnicity : Hispanic or Latino": 16,
-                                  "Ethnicity: Multiple Ethnicities": 4}},
 }
 
 
@@ -816,16 +911,6 @@ def check_race_rows_in_sex_table(race: dict, sex: dict) -> None:
         "East Asian/South East Asian": "race_label_in_sex_table",
     }, sex["quarantined_labels"]
     print("\n  NCT99000106: race rows counted once, as race (sex unknown 0) — OK")
-
-
-def check_ethnicity_dimension_rows(race: dict) -> None:
-    """NCT99000115: every row named for the ethnicity dimension is recorded
-    with the ethnicity_dimension_row flag, and the race block adds up to the
-    population, not to it twice."""
-    assert all("ethnicity_dimension_row" in r["flags"] for r in race["skipped_ethnicity_rows"]), \
-        race["skipped_ethnicity_rows"]
-    assert sum(race["omb_totals"].values()) == 219, race["omb_totals"]
-    print("\n  NCT99000115: ethnicity-dimension rows recorded, not counted as race — OK")
 
 
 def validate_study(study: dict, nct_id: str) -> None:
@@ -909,10 +994,23 @@ def validate_study(study: dict, nct_id: str) -> None:
         print(f"\n  {nct_id}: expected ethnicity totals and flags — OK")
     if nct_id == "NCT99000106":
         check_race_rows_in_sex_table(race, sex)
+    if nct_id in EXPECTED_MENA:
+        expected = EXPECTED_MENA[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
+        assert race["mena_in_white"] == expected["mena_in_white"], f"{nct_id} mena_in_white: {race['mena_in_white']}"
+        print(f"\n  {nct_id}: expected race totals and mena_in_white — OK")
+    if nct_id in EXPECTED_MULTIRACE:
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == EXPECTED_MULTIRACE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
+        print(f"\n  {nct_id}: rows naming two races read as more than one race — OK")
+    if nct_id in EXPECTED_HERITAGE:
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == EXPECTED_HERITAGE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
+        assert race["quarantined_labels"] == [], f"{nct_id} quarantined: {race['quarantined_labels']}"
+        print(f"\n  {nct_id}: heritage-template rows read as their race — OK")
     if nct_id == "NCT99000110":
         check_joined_labels(race)
-    if nct_id == "NCT99000115":
-        check_ethnicity_dimension_rows(race)
 
 
 def main() -> None:
@@ -936,8 +1034,11 @@ def main() -> None:
         (MOCK_NCT99000113, "NCT99000113"),
         (MOCK_NCT99000114, "NCT99000114"),
         (MOCK_NCT99000130, "NCT99000130"),
-        (MOCK_NCT99000115, "NCT99000115"),
-        (MOCK_NCT99000116, "NCT99000116"),
+        (MOCK_NCT99000140, "NCT99000140"),
+        (MOCK_NCT99000141, "NCT99000141"),
+        (MOCK_NCT99000142, "NCT99000142"),
+        (MOCK_NCT99000143, "NCT99000143"),
+        (MOCK_NCT99000144, "NCT99000144"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

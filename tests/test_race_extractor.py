@@ -1350,6 +1350,11 @@ def test_race_rows_that_state_the_ethnicity_are_not_counted_as_not_hispanic() ->
     ("Race: : White", "White"),
     ("Race/Ethnicity : White", "White"),
     ("Race & Ethnicity : White", "White"),
+    ("Race or Ethnicity: White", "White"),
+    ("Race and/or Ethnic group - Asian", "Asian"),
+    ("Ethnicity/Race: Black", "Black"),
+    ("Ethnicity or Race: White", "White"),
+    ("Ethnicity and/or Race: Asian", "Asian"),
     ("Race: Not Reported", "Not Reported"),
     ("Race: Mixed/Unknown", "Mixed/Unknown"),
 ])
@@ -1466,180 +1471,422 @@ def test_prefixed_race_rows_under_a_sex_title_are_read_as_race() -> None:
     assert rx.is_sex_titled_race_table(table) is True
 
 
-# ── rows named for the ethnicity dimension ─────────────────────────────────
+# ── the ethnicity dimension named in the row label ────────────────────────
 #
-# src/race_extractor.py, "Rows named for the ethnicity dimension". In a table
-# with race rows of its own, a row named for the ethnicity dimension is the
-# table's ethnicity classification: left out and recorded. In a table where
-# every row is so named, the name is the table's word for race.
+# src/race_extractor.py, block comment "Ethnicity dimension named in the row
+# label": such a row is a row of the table's ethnicity classification, left
+# out of the race counts, unless every row of the table names it.
 
-DIMENSION_ROW_FLAG = "ethnicity_dimension_row"
-AS_RACE_FLAG = "ethnicity_dimension_as_race"
+def test_ethnicity_rows_beside_race_rows_are_not_counted_as_race() -> None:
+    """The NCT00452530 shape: the race rows hold all 3,057; "Ethnicity not
+    reported" 2,946 was added to other on top of them."""
+    table = _class_table(COMBINED_TITLE, [("White", 2427), ("Black/African American", 31), ("Asian", 506),
+                                          ("Native Hawaiian/Other Pacific Islander", 2), ("Other [Not specified]", 91),
+                                          ("Hispanic/Latino", 1), ("Not Hispanic/Latino", 110),
+                                          ("Ethnicity not reported", 2946)])
+    race = extract_race_data(_study("NCT99000550", [table], participants=3057))
+    assert race["omb_totals"]["other"] == 91
+    assert sum(race["omb_totals"].values()) == 3057
+    recorded = {r["original"]: r for r in race["skipped_ethnicity_rows"]}
+    assert recorded["Ethnicity not reported"]["count"] == 2946
+    assert "ethnicity_dimension_row" in recorded["Ethnicity not reported"]["flags"]
+    assert "ethnicity_dimension_row" not in recorded["Hispanic/Latino"]["flags"]
 
 
-@pytest.mark.parametrize("label, named", [
-    ("Ethnicity-Not Japanese", True), ("Ethnicity: Unknown", True), ("Ethnicity Not Reported", True),
-    ("ETHNICITY - NOT REPORTED", True), ("Ethnicity, Chinese", True), ("Ethnic group: White British", True),
-    ("Ethnicity", True),
-    ("Ethnicity/Race Unknown", False), ("Ethnicity and Race: White", False), ("Ethnicity & Racial group", False),
-    ("Ethnicity or Race: White", False), ("Ethnicity, Race: Asian", False), ("Ethnicity - Race Unknown", False),
-    ("Ethnicity Race Unknown", False), ("Ethnicity/Races: Other", False), ("Ethnicity: Racecourse staff", True),
-    ("Ethnic minority", False), ("Ethnically diverse", False), ("Race: Black", False), ("White", False),
+def test_a_second_ethnic_classification_is_not_counted_as_race() -> None:
+    """The NCT03197376 shape: Race-African 2,249 / Race-Other 1, and eight
+    ethnic groups of the same 2,250."""
+    table = _class_table(COMBINED_TITLE, [("Race-African", 2249), ("Race-Other", 1), ("Ethnicity-Mandinka", 1174),
+                                          ("Ethnicity-Wolof", 217), ("Ethnicity-Fula", 272), ("Ethnicity-Jola", 280),
+                                          ("Ethnicity-Other", 307)])
+    race = extract_race_data(_study("NCT99000551", [table], participants=2250))
+    assert _nonzero(race) == {"black_african_american": 2249, "other": 1}
+    assert len(race["skipped_ethnicity_rows"]) == 5
+
+
+def test_an_unknown_ethnicity_row_of_an_exclusive_table_is_unknown_race() -> None:
+    """The NCT01022268 shape: race rows, "Declined" and "Ethnicity not
+    available" make up the 902; the last 291 were given no race."""
+    table = _class_table(COMBINED_TITLE, [("Asian", 69), ("Black", 90), ("Mixed race", 36), ("Other", 42),
+                                          ("White", 297), ("Declined", 77), ("Ethnicity not available", 291)])
+    race = extract_race_data(_study("NCT99000552", [table], participants=902))
+    assert race["omb_totals"]["other"] == 42
+    assert race["omb_totals"]["unknown_not_reported"] == 77 + 291
+    assert race["unknown_inferred"] == 291 and race["unknown_ethnicity_only"] == 0
+
+
+def test_a_table_whose_every_row_names_ethnicity_is_read_as_race() -> None:
+    """The NCT03476187 shape: the registrant called the table's one
+    classification "Ethnicity"; its rows are races and Hispanic."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity : Caucasian", 154), ("Ethnicity : Black or African American", 62),
+                                          ("Ethnicity : Hispanic or Latin", 16), ("Ethnicity : Other", 5),
+                                          ("Ethnicity : Asian", 1)])
+    race = extract_race_data(_study("NCT99000553", [table], participants=238))
+    assert _nonzero(race) == {"white": 154, "black_african_american": 62, "other": 5, "asian": 1,
+                              "unknown_not_reported": 16}
+    assert all("dimension_wording_stripped" in c["flags"] for c in race["raw_categories"])
+    assert [r["original"] for r in race["skipped_ethnicity_rows"]] == ["Ethnicity : Hispanic or Latin"]
+
+
+@pytest.mark.parametrize("label, names", [
+    ("Ethnicity Not Reported", True), ("Ethnicity-Unknown or Not Reported", True), ("Ethnic group - Other", True),
+    ("Ethnicity/Race Unknown", False), ("Ethnicity and Race: White", False), ("Ethnicities", False),
+    ("Ethnicity or Race: White", False), ("Ethnicity and/or Race: White", False),
+    ("Ethnic group or race - Asian", False), ("White", False), ("Race: Unknown", False),
 ])
-def test_names_ethnicity_dimension(label: str, named: bool) -> None:
-    assert rx._names_ethnicity_dimension(label) is named
+def test_which_labels_name_the_ethnicity_dimension(label: str, names: bool) -> None:
+    assert rx._names_ethnicity_dimension(label) is names
 
 
-@pytest.mark.parametrize("label, rest", [
-    ("Ethnicity : Caucasian", "Caucasian"), ("Ethnicity-Not Japanese", "Not Japanese"),
-    ("Ethnicity, Chinese", "Chinese"), ("Ethnic group - White", "White"), ("Ethnicity: : Asian", "Asian"),
-    ("Ethnicity Not Reported", None), ("Ethnicity:", None), ("White", None),
-])
-def test_strip_ethnicity_dimension(label: str, rest: Optional[str]) -> None:
-    assert rx._strip_ethnicity_dimension(label) == rest
-
-
-def test_named_rows_beside_race_rows_are_left_out() -> None:
-    """The NCT04783935 shape: the race rows hold all 219; the 204 "Not
-    Japanese" were counted again as race other, putting the block at 453."""
-    table = _class_table(COMBINED_TITLE, [
-        ("Ethnicity-Japanese", 0), ("Ethnicity-Not Japanese", 204), ("Ethnicity-Unknown or Not Reported", 15),
-        ("Race-Asian", 2), ("Race-Black or African American", 1), ("Race-Other", 6),
-        ("Race-Unknown or Not Reported", 26), ("Race-White", 184)])
-    race = extract_race_data(_study("NCT99000560", [table], participants=219))
-    assert _nonzero(race) == {"white": 184, "asian": 2, "black_african_american": 1, "other": 6,
-                              "unknown_not_reported": 26}
-    assert sum(race["omb_totals"].values()) == 219
-    assert _skipped(race) == [("Ethnicity-Japanese", 0), ("Ethnicity-Not Japanese", 204),
-                              ("Ethnicity-Unknown or Not Reported", 15)]
-    assert all(DIMENSION_ROW_FLAG in r["flags"] for r in race["skipped_ethnicity_rows"])
-    assert "ethnicity_rows_skipped" in race["flags"]
-    assert _unknown_parts(race) == (26, 0, 0)
-    assert not any(c["original"].startswith("Ethnicity") for c in race["raw_categories"])
-
-
-def test_a_named_row_without_a_separator_is_left_out_too() -> None:
-    """The NCT03927703 shape: "Ethnicity Not Reported" 3 beside a full race
-    classification of 355."""
-    table = _class_table(COMBINED_TITLE, [("White", 325), ("Black or African American", 14),
-                                          ("Asian", 1), ("More than One Race", 9),
-                                          ("Race Not Reported", 3), ("Ethnicity Not Reported", 3)])
-    race = extract_race_data(_study("NCT99000561", [table], participants=355))
-    assert "other" not in _nonzero(race)
-    assert _skipped(race) == [("Ethnicity Not Reported", 3)]
-
-
-def test_a_hispanic_row_named_for_the_dimension_is_recorded_as_before() -> None:
-    """"Ethnicity: Hispanic" was already ethnicity-only: recorded without the
-    new flag, since _is_ethnicity_only_label left it out, not this rule."""
-    table = _class_table(COMBINED_TITLE, [("Race: White", 40), ("Race: Black", 10),
-                                          ("Ethnicity: Hispanic", 6), ("Ethnicity: Unknown", 4)])
-    race = extract_race_data(_study("NCT99000562", [table], participants=50))
-    records = {r["original"]: r["flags"] for r in race["skipped_ethnicity_rows"]}
-    assert records == {"Ethnicity: Hispanic": [], "Ethnicity: Unknown": [DIMENSION_ROW_FLAG]}
-    assert _nonzero(race) == {"white": 40, "black_african_american": 10}
-
-
-def test_a_left_out_unknown_row_keeps_a_shortfall_inferred() -> None:
-    """White 30 / Black 12 / Ethnicity: Hispanic 6 / Ethnicity: Unknown 2, of
-    50. "Ethnicity: Unknown" names no ethnicity, so it reads as not stating
-    it (_negates_ethnicity) and the 8-participant gap stays inferred."""
-    table = _class_table(COMBINED_TITLE, [("White", 30), ("Black", 12), ("Ethnicity: Hispanic", 6),
-                                          ("Ethnicity: Unknown", 2)])
-    study = _study("NCT99000563", [table], participants=50)
-    race = extract_race_data(study)
-    assert _nonzero(race) == {"white": 30, "black_african_american": 12, "unknown_not_reported": 8}
-    assert _unknown_parts(race) == (0, 0, 8) and SPLIT_FLAG not in race["flags"]
-    assert rx.combined_classification(study) is None
-
-
-def test_a_table_named_for_ethnicity_throughout_is_read_as_race() -> None:
-    """The NCT03476187 shape: every row "Ethnicity : <race>", plus a Hispanic
-    row that stays an ethnicity row. Before: 229 participants of other."""
-    table = _class_table(COMBINED_TITLE, [
-        ("Ethnicity : Caucasian", 154), ("Ethnicity : Black or African American", 62), ("Ethnicity : Other", 5),
-        ("Ethnicity : American Indian or Alaskan Native", 2), ("Ethnicity : Asian", 1),
-        ("Ethnicity : Hispanic or Latino", 16), ("Ethnicity: Multiple Ethnicities", 4)])
-    race = extract_race_data(_study("NCT99000564", [table], participants=244))
-    assert _nonzero(race) == {"white": 154, "black_african_american": 62, "american_indian_alaska_native": 2,
-                              "asian": 1, "other": 9, "unknown_not_reported": 16}
-    assert all(AS_RACE_FLAG in c["flags"] for c in race["raw_categories"])
-    assert race["raw_categories"][0]["original"] == "Ethnicity : Caucasian"
-    assert _skipped(race) == [("Ethnicity : Hispanic or Latino", 16)]
-    assert race["skipped_ethnicity_rows"][0]["flags"] == []
-    assert _unknown_parts(race) == (0, 16, 0)
-
-
-@pytest.mark.parametrize("rows", [
-    [("Ethnicity: White British", 1008), ("Ethnicity: Other ethnic group", 54)],      # NCT01452191
-    [("Ethnicity: Hispanic", 10), ("Ethnicity: Not Hispanic", 80), ("Ethnicity: Unknown", 5)],
-])
-def test_a_table_named_for_ethnicity_with_no_race_category_is_read_as_before(rows: list[tuple[str, int]]) -> None:
-    """Stripped, the rows name no race category: they are read as they were
-    before the rule, so the trial does not lose a reported race block."""
-    table = _class_table(COMBINED_TITLE, rows)
-    race = extract_race_data(_study("NCT99000565", [table], participants=sum(v for _, v in rows)))
+def test_rows_prefixed_with_a_combined_name_joined_by_or_are_read_as_race() -> None:
+    """"Ethnicity or Race: White" names the one combined classification, not
+    the ethnicity dimension (a review finding): the rows are read as race,
+    not recorded as ethnicity rows, so the table publishes its race counts."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity or Race: White", 30), ("Ethnicity or Race: Black", 20)])
+    race = extract_race_data(_study("NCT99000560", [table], participants=50))
     assert race["reported"] is True
-    assert not any(AS_RACE_FLAG in c["flags"] for c in race["raw_categories"])
-    assert not any(DIMENSION_ROW_FLAG in r["flags"] for r in race["skipped_ethnicity_rows"])
-    assert [c["omb_category"] for c in race["raw_categories"]] == ["other"] * len(race["raw_categories"])
-
-
-def test_labels_naming_both_dimensions_are_read_as_before() -> None:
-    """The NCT00552448 shape: "Ethnicity/Race Unknown" is the table's unknown."""
-    table = _class_table(COMBINED_TITLE, [("Black or African American", 18), ("Caucasian", 11),
-                                          ("Two or more Ethnicity/Races", 2), ("Ethnicity/Race Unknown", 2)])
-    race = extract_race_data(_study("NCT99000566", [table], participants=33))
-    assert _nonzero(race) == {"black_african_american": 18, "white": 11, "other": 2, "unknown_not_reported": 2}
+    assert _nonzero(race) == {"white": 30, "black_african_american": 20}
     assert race["skipped_ethnicity_rows"] == []
 
 
-def test_a_race_table_without_named_rows_is_unchanged() -> None:
-    rows = [("White", 30), ("Black", 12), ("Hispanic", 6), ("Unknown", 2)]
-    mappings = [rx._map_plain_row(label, count, False) for label, count in rows]
-    read, left_out = rx._read_ethnicity_dimension_rows(rows, mappings, False, False)
-    assert read is mappings and left_out == [False] * 4
+def test_a_combined_dimension_name_stays_a_row_of_the_classification() -> None:
+    """"Ethnicity/Race Unknown" (NCT00552448) is the combined
+    classification's unknown row: counted as race unknown, as before."""
+    table = _class_table(COMBINED_TITLE, [("Black", 18), ("White", 11), ("Hispanic", 3), ("Ethnicity/Race Unknown", 2)])
+    race = extract_race_data(_study("NCT99000554", [table], participants=34))
+    assert race["unknown_explicit"] == 2 and race["unknown_ethnicity_only"] == 3
 
 
-def test_a_stripped_ethnicity_name_keeps_the_negation_check() -> None:
-    """Read as race, "Ethnicity: Non-African American" becomes "Non-African
-    American", 88.9 against "African American": without the check it would
-    be counted as Black."""
-    table = _class_table(COMBINED_TITLE, [("Ethnicity: White", 40), ("Ethnicity: Non-African American", 9)])
-    race = extract_race_data(_study("NCT99000567", [table], participants=49))
-    assert _nonzero(race) == {"white": 40, "other": 9}
-    negated = race["raw_categories"][1]
-    assert negated["original"] == "Ethnicity: Non-African American"
-    assert {"unmapped", AS_RACE_FLAG} <= set(negated["flags"])
+def test_ethnicity_rows_crossed_with_sex_are_not_counted_as_race() -> None:
+    """A race-by-sex table whose ethnicity rows are crossed with sex too (a
+    review finding): the race parts are routed as a plain table's rows are,
+    and a recorded row keeps its race part and sex."""
+    table = _class_table(COMBINED_TITLE, [("White Female", 30), ("White Male", 20),
+                                          ("Ethnicity-Not Reported Female", 30), ("Ethnicity-Not Reported Male", 20)])
+    race = extract_race_data(_study("NCT99000555", [table], participants=50))
+    assert _nonzero(race) == {"white": 50}
+    recorded = race["skipped_ethnicity_rows"]
+    assert [(r["original"], r["race_part"], r["sex"], r["count"]) for r in recorded] == [
+        ("Ethnicity-Not Reported Female", "Ethnicity-Not Reported", "female", 30),
+        ("Ethnicity-Not Reported Male", "Ethnicity-Not Reported", "male", 20)]
+    assert all({"race_by_sex", "ethnicity_dimension_row"} <= set(r["flags"]) for r in recorded)
 
 
-def test_a_label_naming_both_dimensions_beside_race_rows_stays_counted() -> None:
-    """"Ethnicity or Race: White" names race too: it is a race row, not the
-    table's ethnicity classification, and is not left out."""
-    table = _class_table(COMBINED_TITLE, [("Black", 10), ("Ethnicity or Race: White", 20)])
-    race = extract_race_data(_study("NCT99000568", [table], participants=30))
+def test_a_race_by_sex_table_whose_race_parts_all_name_ethnicity_is_read_as_race() -> None:
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: White Female", 30), ("Ethnicity: White Male", 20),
+                                          ("Ethnicity: Asian Female", 6), ("Ethnicity: Asian Male", 4)])
+    race = extract_race_data(_study("NCT99000556", [table], participants=60))
+    assert _nonzero(race) == {"white": 50, "asian": 10}
+    assert race["joint_sex_counts"] is not None
+
+
+def test_an_all_prefixed_ethnicity_classification_publishes_no_race() -> None:
+    """Every row names "Ethnicity" and none is a race (a review finding): the
+    table is an ethnicity classification, so its "Unknown" is not race
+    unknown and nothing is counted as race."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: Hispanic", 10), ("Ethnicity: Not Hispanic", 35),
+                                          ("Ethnicity: Unknown", 5)])
+    race = extract_race_data(_study("NCT99000557", [table], participants=50))
+    assert race["reported"] is False
+    assert [r["original"] for r in race["skipped_ethnicity_rows"]] == [
+        "Ethnicity: Hispanic", "Ethnicity: Not Hispanic", "Ethnicity: Unknown"]
+    assert "ethnicity_dimension_row" in race["skipped_ethnicity_rows"][2]["flags"]
+
+
+def test_an_origin_group_row_is_not_evidence_that_an_all_prefixed_table_is_race() -> None:
+    """"Japanese" is in the race vocabulary (Asian, subcategory japanese), but
+    "Ethnicity: Japanese" / "Ethnicity: Not Japanese" classifies one
+    ethnicity, not race (a review finding): no row names a race category
+    itself, so neither row is counted as race and both are recorded."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: Japanese", 40), ("Ethnicity: Not Japanese", 60)])
+    race = extract_race_data(_study("NCT99000558", [table], participants=100))
+    assert race["reported"] is False
+    assert race["omb_totals"]["asian"] == 0
+    assert [r["original"] for r in race["skipped_ethnicity_rows"]] == [
+        "Ethnicity: Japanese", "Ethnicity: Not Japanese"]
+    assert all("ethnicity_dimension_row" in r["flags"] for r in race["skipped_ethnicity_rows"])
+
+
+def test_an_origin_group_row_is_read_as_race_when_another_row_names_a_race() -> None:
+    """The NCT01151215 shape: "Ethnicity: Native American" names a race
+    category itself, so the table is a race classification and its
+    "Ethnicity: Japanese" and "Ethnicity: Chinese" rows are read as Asian."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: Native American", 5), ("Ethnicity: Japanese", 30),
+                                          ("Ethnicity: Chinese", 25), ("Ethnicity: Other", 40)])
+    race = extract_race_data(_study("NCT99000559", [table], participants=100))
+    assert race["reported"] is True
+    assert race["omb_totals"]["american_indian_alaska_native"] == 5
+    assert race["omb_totals"]["asian"] == 55
+    assert race["omb_totals"]["other"] == 40
     assert race["skipped_ethnicity_rows"] == []
-    assert sum(race["omb_totals"].values()) == 30
 
+
+# ── Middle Eastern or North African labels ─────────────────────────────────
+#
+# src/race_extractor.py, block comments "Middle Eastern or North African
+# labels" and "Middle Eastern or North African within White".
+
+@pytest.mark.parametrize("label, subcategory", [
+    ("Middle Eastern or North African", "middle_eastern_north_african"),
+    ("White - Arabic/North African Heritage", "middle_eastern_north_african"),
+    ("White - Arabic / North African heritage", "middle_eastern_north_african"),
+    ("WHITE (W) ARABIC/NORTH AFRICAN HER", "middle_eastern_north_african"),
+    ("Wh - Arabic/North African H", "middle_eastern_north_african"),
+    ("White (Middle Eastern or North African)", "middle_eastern_north_african"),
+    ("MENA: Middle Eastern North African", "middle_eastern_north_african"),
+    ("Middle Eastern/North African", "middle_eastern_north_african"),
+    ("White: Arabic", "middle_eastern_arab"),
+    ("Arab ethnicity", "middle_eastern_arab"),
+    ("North African descent", "north_african"),
+    ("Iranian/Persian", "middle_eastern_persian"),
+    ("Arab/Middle Eastern", "middle_eastern"),
+    ("Middle Eastern (Arab)", "middle_eastern"),
+])
+def test_a_label_naming_only_mena_groups_is_white_with_a_mena_subcategory(label: str, subcategory: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["confidence"]) == ("white", subcategory, "high")
+    assert subcategory in rx.MENA_SUBCATEGORIES
+
+
+@pytest.mark.parametrize("label", [
+    "White/Middle Eastern", "Arab or West Asian", "Other: Arabic", "Native Arab",
+    "Chinese, Middle Eastern, or Other Ethnic Group", "Middle Eastern or North African/Mediterranean",
+    "North African (Morocco)", "Caucasian and North African", "Midwest", "White", "Turkish",
+])
+def test_a_label_naming_another_group_is_not_read_by_the_mena_rule(label: str) -> None:
+    assert rx.mena_subcategory(label) is None
+
+
+def test_the_vocabularys_own_entries_keep_their_subcategories() -> None:
+    assert rx.map_race_category("Arab")["subcategory"] == "middle_eastern_arab"
+    assert rx.map_race_category("Middle Eastern")["subcategory"] == "middle_eastern"
+    assert "middle_eastern_turkish" not in rx.MENA_SUBCATEGORIES
+
+
+def test_mena_in_white_is_the_mena_part_of_white() -> None:
+    """The GSK heritage shape: before, its MENA row was counted as other."""
+    table = _category_table("Race/Ethnicity, Customized", [
+        ("White", 120), ("White - Arabic/North African Heritage", 14),
+        ("Black or African American", 10), ("White/Middle Eastern", 6)])
+    race = extract_race_data(_study("NCT99000563", [table], participants=150))
+    assert race["omb_totals"]["white"] == 140 and race["omb_totals"]["other"] == 0
+    assert race["mena_in_white"] == 14            # "White/Middle Eastern" names two groups: not in it
+    assert race["subcategory_totals"]["white_middle_eastern_north_african"] == 14
+
+
+def test_every_block_carries_mena_in_white() -> None:
+    plain = extract_race_data(_study("NCT99000561", [_category_table("Race (NIH/OMB)", [("White", 30), ("Asian", 5)])], 35))
+    assert plain["mena_in_white"] == 0
+    none = extract_race_data(_study("NCT99000562", [], 35))
+    assert none["reported"] is False and none["mena_in_white"] == 0
+
+
+# ── Heritage-template labels ───────────────────────────────────────────────
+#
+# src/race_extractor.py, block comment "Heritage-template labels".
+
+@pytest.mark.parametrize("label, category, subcategory", [
+    ("White - Caucasian / European Heritage", "white", None),
+    ("White-Caucasian/ European heritage, n (%)", "white", None),
+    ("Wt-Wt/Caucasian (Ca.)/European (Eu.) H.", "white", None),
+    ("White(Wh)-Wh/Caucasian(Ca)/European(Eu)Heritage(H)", "white", None),
+    ("White, European Heritage", "white", "european"),
+    ("White Heritage", "white", None),
+    ("Asian - East Asian Heritage", "asian", "east_asian"),
+    ("Asian-East Asian H", "asian", "east_asian"),
+    ("Asian - South East Asian Heritage", "asian", "southeast_asian"),
+    ("Asian - Japanese Heritage", "asian", "japanese"),
+    ("Asian - Chinese Heritage", "asian", "chinese"),
+    ("Asian - Central/South Asian Heritage", "asian", None),
+    ("East/South East Asian heritage", "asian", None),
+    ("Japanese H./East Asian H./SouthEast Asian H.", "asian", None),
+    ("Japanese Heritage", "asian", "japanese"),
+    ("White-Arabic/NA H and white/caucasia/European H", "white", None),  # NA: North African
+    ("JAPANESE HERITAGE(H)/EAST A H/SOUTH EAST A H", "asian", None),
+    ("Black, of African Heritage", "black_african_american", "african"),
+    ("Black of African heritage", "black_african_american", "african"),
+    ("Asian; South East Asian Heritage", "asian", "southeast_asian"),
+    ("Asian-South East Asian Heritag", "asian", "southeast_asian"),
+    ("Black or African Heritage", "black_african_american", None),
+    ("African American (Af Am)/African Heritage (Af Ht)", "black_african_american", None),
+    ("American Indian/ Alaska native Heritage", "american_indian_alaska_native", None),
+    ("Mixed Heritage", "more_than_one_race", None),
+])
+def test_a_heritage_template_label_maps_to_its_race(label: str, category: str, subcategory: Optional[str]) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"]) == (category, subcategory)
+    assert mapping["confidence"] in ("high", "medium") and "heritage_label" in mapping["flags"]
+
+
+@pytest.mark.parametrize("label", [
+    "African American/African Heritage & White",
+    "African American/ African and White Heritage",
+    "American Indian/Alaskan Native and White Heritage",
+    "Multiple-Afr Amer/Afr Her/Amer Ind or Al N",
+    "Multiple-Black/AA and White/Caucasian/EU H",
+    "Asian - East Asian and White Heritage",
+    "AA/African Heritage and AI or AN and White",
+    "Af Am/Af Her & White",
+    "Asian Heritage and Native Hawaiian Heritage",  # two races, not the 1977 grouping
+    "Asian Heritage and Pacific Islander Heritage",  # each side its own heritage
+    "Asian Heritage and Other Pacific Islander Heritage",
+])
+def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert mapping["omb_category"] == "more_than_one_race" and "heritage_label" in mapping["flags"]
+
+
+@pytest.mark.parametrize("label", [
+    "African Amer/African Heritage/Amer Ind or Alaska N",  # two races joined by "/": either or both
+    "African - White / Caucasian Heritage",
+    "Mixed Heritage or Other",
+    "Asian and Pacific Islander Heritage",  # the 1977 grouped category, not a combination
+    "Asian & Other Pacific Islander Heritage",
+    "Af Amer/White Heritage",  # an unread group beside a race: either race or both
+    "American/African Heritage",
+    "Mixed-Heritage or Other",  # the "Mixed-" prefix does not override an other row
+    "Mixed-Heritage Unknown",
+    "Multiple-Heritage Refused",  # a tail that reads as no race
+    "Multiple-Heritage N/A",
+    "Multiple-White-Refused Heritage",  # a qualified tail group read whole
+    "Multiple-African American-NA Heritage",  # not by a fuzzy match
+    "American Indian or Alaska Native-NA Heritage",  # the whole text not fuzzily either
+    "White - Caucasian-NA Heritage",  # a compact non-answer inside a group
+    "White - (N/A) Heritage",  # a parenthesised non-answer is not a gloss
+    "Asian - (Unk) Heritage",
+    "Multiple-White-(N/A) Heritage",
+    "American Indian or Alaska Native-NA H",  # not fuzzily matched before the rule
+    "African American-NA H",
+    "Native Hawaiian or Other Pacific Islander-Unk H",
+    "White - Refused Heritage",  # a non-answer after a qualifier
+    "White - N/A Heritage",
+    "White - NA Heritage",  # a compact non-answer with no group beside it
+    "Asian - Unk Heritage",
+    "Non-European heritage",
+    "Asian - East Asian",  # no heritage word: outside this rule
+])
+def test_a_heritage_label_naming_no_single_race_is_not_read(label: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert mapping["omb_category"] == "other" and "heritage_label" not in mapping["flags"]
+
+
+@pytest.mark.parametrize("label, category, subcategory, flag", [
+    ("White - White/Caucasian/European Heritage", "white", None, "slash_normalized"),
+    ("African American/African Heritage", "black_african_american", "african_american", "slash_normalized"),
+    ("Japanese/East Asian HER/South East Asian HER", "asian", "japanese", "slash_normalized"),
+    ("White - Arabic/North African Heritage", "white", "middle_eastern_north_african", "mena_label"),
+])
+def test_a_heritage_label_the_vocabulary_already_reads_keeps_its_reading(
+        label: str, category: str, subcategory: Optional[str], flag: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"]) == (category, subcategory)
+    assert flag in mapping["flags"] and "heritage_label" not in mapping["flags"]
+
+
+def test_a_heritage_template_table_counts_no_row_as_other() -> None:
+    """The template's rows, as one trial posts them: before, East Asian,
+    South East Asian, the European row and the combination were other or
+    the wrong race, and "Japanese Heritage" was quarantined as not race."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White - Caucasian / European Heritage", 120), ("White - Arabic/North African Heritage", 6),
+        ("Asian - East Asian Heritage", 30), ("Asian - South East Asian Heritage", 12),
+        ("Japanese Heritage", 9), ("African American/African Heritage", 15),
+        ("African American/African Heritage & White", 3)])
+    race = extract_race_data(_study("NCT99000564", [table], participants=195))
+    assert _nonzero(race) == {"white": 126, "asian": 51, "black_african_american": 15, "more_than_one_race": 3}
+    assert race["quarantined_labels"] == [] and race["mena_in_white"] == 6
+    assert race["subcategory_totals"]["asian_japanese"] == 9
+
+
+# ── Rows naming two or more races ──────────────────────────────────────────
+#
+# src/race_extractor.py, block comment "Rows naming two or more races".
+
+@pytest.mark.parametrize("label", [
+    "American Indian or Alaska Native & White",  # was American Indian
+    "Black or African American & White",  # was Black
+    "Asian and White",
+    "White + Asian",
+    "Black/African American and White/Caucasian",  # was Black, by its first slash fragment
+    "American Indian/Alaska Native and Asian and White",
+    "Asian & Native Hawaiian or Other Pacific Islander",  # 1997 categories joined, not the 1977 grouping
+    "Black & Middle Eastern/North African",
+    "Multiple-Black or African American and White",
+    "Multiple - Asian, White",
+    "Mixed (Black/White)",
+    "Mixed: Black/Indian",  # was Asian
+    "Multiracial: black/white/native",  # an unread part beside two races
+    "More Than One Race (Black/African American, White and American Indian/Alaska Native)",
+    "MULTIPLE-ASIAN & BLACK OR AFRICAN AMERICAN",
+    "Caucasian, Black, and Asian",  # a list with a joiner
+    "American Indian and Alaska Native and White",  # a category name holding "and", then a joiner
+    "African-American/Black, Hispanic, and Caucasian/White",  # an ethnicity part passed over
+])
+def test_a_label_naming_two_or_more_races_is_more_than_one_race(label: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert mapping["omb_category"] == "more_than_one_race" and "multirace_label" in mapping["flags"]
+
+
+@pytest.mark.parametrize("label", [
+    "Asian and Pacific Islander",  # the 1977 grouped category
+    "Asian & Other Pacific Islander",
+    "Black and African American",  # one race
+    "Asian and Asian American",
+    "American Indian and Alaska Native",  # a part that is not read as a race
+    "White and Hispanic",  # an ethnicity, not a race
+    "White and Other",
+    "Black and Unknown",
+    "White, Asian",  # a comma alone may join one grouped category
+    "Asian, Pacific Islander",
+    "White or Black",  # either race
+    "Black/White",
+    "Multiple - child",  # a prefix naming no race
+    "Mixed Asian",  # a prefix naming one race
+    "Mixed - Any other mixed background",
+    "Asian, Indigenous, Native Hawaiian and Pacific Islander, non-Hispanic",  # NCT03360539: a grouping
+    "Native Hawaiian and Other Pacific Islander",  # one category holding "and"
+])
+def test_a_label_not_naming_two_races_is_not_read_as_more_than_one_race(label: str) -> None:
+    assert "multirace_label" not in rx.map_race_category(label)["flags"]
+
+
+def test_a_multiracial_breakdown_adds_to_the_table_population() -> None:
+    """The NCT00609674 shape: single-race rows and combination rows add up
+    to the population, so the combinations are counted as more than one race
+    rather than as their first race or as other."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White", 60), ("Black or African American", 20), ("Asian", 10),
+        ("American Indian or Alaska Native & White", 6), ("Asian and White", 4)])
+    race = extract_race_data(_study("NCT99000565", [table], participants=100))
+    assert _nonzero(race) == {"white": 60, "black_african_american": 20, "asian": 10, "more_than_one_race": 10}
+
+
+# ── refinements of the ethnicity-dimension rule ────────────────────────────
+#
+# src/race_extractor.py, "Ethnicity dimension named in the row label": a
+# residual unnamed row does not make the named rows an ethnicity
+# classification; a row named for race does; the negation check applies to
+# the text left after the ethnicity name; and a label naming race after any
+# joiner, or none, is not named for the ethnicity dimension.
 
 @pytest.mark.parametrize("residual, category", [("Unknown", "unknown_not_reported"), ("Other", "other")])
 def test_a_residual_unnamed_row_does_not_make_named_race_rows_an_ethnicity_classification(
         residual: str, category: str) -> None:
     """"Ethnicity: White" 50 / "Ethnicity: Black" 30 / a bare residual 5, of
-    85: the residual is not a race classification of its own, so the named
-    rows are read as race; leaving them out would balance 80 into unknown."""
+    85: the residual is that classification's own, not a race classification;
+    leaving the named rows out would balance 80 into unknown."""
     table = _class_table(COMBINED_TITLE, [("Ethnicity: White", 50), ("Ethnicity: Black", 30), (residual, 5)])
-    race = extract_race_data(_study("NCT99000569", [table], participants=85))
+    race = extract_race_data(_study("NCT99000690", [table], participants=85))
     assert _nonzero(race) == {"white": 50, "black_african_american": 30, category: 5}
     assert race["skipped_ethnicity_rows"] == []
-    assert [AS_RACE_FLAG in c["flags"] for c in race["raw_categories"]] == [True, True, False]
+    assert ["dimension_wording_stripped" in c["flags"] for c in race["raw_categories"]] == [True, True, False]
 
 
 def test_an_unmapped_unnamed_row_does_not_make_named_race_rows_an_ethnicity_classification() -> None:
     table = _class_table(COMBINED_TITLE, [("Ethnicity: White", 50), ("Ethnicity: Asian", 10),
                                           ("Prefer to self-describe", 4)])
-    race = extract_race_data(_study("NCT99000570", [table], participants=64))
-    assert {"white": 50, "asian": 10} == {k: v for k, v in _nonzero(race).items() if k in ("white", "asian")}
+    race = extract_race_data(_study("NCT99000691", [table], participants=64))
+    assert (_nonzero(race)["white"], _nonzero(race)["asian"]) == (50, 10)
     assert race["skipped_ethnicity_rows"] == []
 
 
@@ -1653,11 +1900,10 @@ def test_an_unmapped_row_named_for_race_is_the_tables_race_classification(
     """The race row maps to no race-specific category, but its label names
     the race dimension: the named ethnicity row is the second classification
     of the same people and is left out, never read as race beside it."""
-    table = _class_table(COMBINED_TITLE, rows)
-    race = extract_race_data(_study("NCT99000571", [table], participants=participants))
+    race = extract_race_data(_study("NCT99000692", [_class_table(COMBINED_TITLE, rows)], participants=participants))
     assert sum(race["omb_totals"].values()) == participants
     assert [r["original"] for r in race["skipped_ethnicity_rows"]] == [rows[1][0]]
-    assert DIMENSION_ROW_FLAG in race["skipped_ethnicity_rows"][0]["flags"]
+    assert "ethnicity_dimension_row" in race["skipped_ethnicity_rows"][0]["flags"]
 
 
 @pytest.mark.parametrize("label, named", [
@@ -1666,3 +1912,42 @@ def test_an_unmapped_row_named_for_race_is_the_tables_race_classification(
 ])
 def test_names_race_dimension(label: str, named: bool) -> None:
     assert rx._names_race_dimension(label) is named
+
+
+def test_a_stripped_ethnicity_name_keeps_the_negation_check() -> None:
+    """Read as race, "Ethnicity: Non-African American" becomes "Non-African
+    American", 88.9 against "African American": without the check it would
+    be counted as Black."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: White", 40), ("Ethnicity: Non-African American", 9)])
+    race = extract_race_data(_study("NCT99000693", [table], participants=49))
+    assert _nonzero(race) == {"white": 40, "other": 9}
+    negated = race["raw_categories"][1]
+    assert negated["original"] == "Ethnicity: Non-African American"
+    assert {"unmapped", "dimension_wording_stripped"} <= set(negated["flags"])
+
+
+def test_a_negated_named_row_alone_is_not_evidence_of_a_race_classification() -> None:
+    """With the check, "Ethnicity: Non-African American" maps to no race, so
+    a table of it and "Ethnicity: Unknown" is an ethnicity classification."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: Non-African American", 9), ("Ethnicity: Unknown", 3)])
+    race = extract_race_data(_study("NCT99000694", [table], participants=12))
+    assert race["reported"] is False
+
+
+@pytest.mark.parametrize("label", ["Ethnicity, Race: Asian", "Ethnicity - Race Unknown", "Ethnicity Race Unknown",
+                                   "Ethnicity/Races: Other", "Ethnicity & Racial group"])
+def test_a_label_naming_race_after_any_joiner_does_not_name_the_ethnicity_dimension(label: str) -> None:
+    assert rx._names_ethnicity_dimension(label) is False
+
+
+def test_a_word_beginning_with_race_is_not_a_joined_race_name() -> None:
+    assert rx._names_ethnicity_dimension("Ethnicity: Racecourse staff") is True
+
+
+def test_a_label_naming_both_dimensions_beside_race_rows_stays_counted() -> None:
+    """"Ethnicity, Race: White" names race too: a race row, not the table's
+    ethnicity classification, so it is not left out."""
+    table = _class_table(COMBINED_TITLE, [("Black", 10), ("Ethnicity, Race: White", 20)])
+    race = extract_race_data(_study("NCT99000695", [table], participants=30))
+    assert race["skipped_ethnicity_rows"] == []
+    assert sum(race["omb_totals"].values()) == 30

@@ -66,8 +66,10 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 #
 # Method (total_class_view). A measure is read from its Total class alone
 # when all of these hold:
-#   - exactly one class is titled "Total" (trimmed, case-insensitive), and
-#     there is at least one other class;
+#   - exactly one class has a whole-population title, "Total", "Overall" or
+#     "All participants" (WHOLE_POPULATION_CLASS_TITLES, trimmed,
+#     case-insensitive), and there is at least one other class. "Total class"
+#     below means that class, whichever of the three titles it has;
 #   - the Total class holds at least one labelled row: a category whose title
 #     is not a measurement label. A class titled "Total" whose only category
 #     is "Count" is a row named Total, not a Total class;
@@ -124,8 +126,9 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 # What it does not do. If a subgroup class has a row label the Total class
 # lacks, the measure is read as before (every class summed): the classes are
 # then not one breakdown of the Total's rows, and the labels alone cannot
-# show which reading is right. Other whole-population class titles
-# ("Overall", "All participants") are not treated as Total. The breakdowns
+# show which reading is right. Other titles are not read as a whole
+# population: the one class titled "All" in the measured snapshot is a row
+# of its own (NCT05216835: Female 14, Male 27, All 4). The breakdowns
 # of utils.extract_demographic_breakdown (raceBreakdown, ethnicityBreakdown,
 # sexBreakdown), which already sum every table of a type and which the site
 # does not read, are not changed; neither is the vendored sex/gender parser,
@@ -139,8 +142,8 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 # counts such a row carries it in its own flags.
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
-# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main reproduced
-# 80,987 of their published race and legacy sex blocks). Race, ethnicity or
+# snapshot (CT.gov API v2, re-fetched 2026-11-18; engine main at ad97014
+# reproduced 80,987 of their published race and legacy sex blocks). Race, ethnicity or
 # sex measures with a Total class beside other classes: 8 trials. In 7 the
 # subgroups repeat the Total's rows and the rule applies; in the eighth
 # (NCT01696435) the class titled "Total" is a row, already quarantined by race
@@ -149,11 +152,33 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 # participants) and are off by one participant in 1 (NCT06027593). Blocks
 # changed: race 6, ethnicity 4, legacy sex 7, legacy gender 0; none changes
 # reported. Every changed block now sums to its baseline total. Trials whose
-# block summed above the baseline total: race 397 -> 392, ethnicity
-# 135 -> 131, legacy sex 279 -> 272. Classes titled "Overall" or
-# "All participants" with the same shape remain in 12 trials (race 8,
-# ethnicity 8, sex 12).
+# block summed above the baseline total, against engine main at 2e45cbf:
+# race 397 -> 392, ethnicity 136 -> 132, legacy sex 279 -> 272. (Against
+# ad97014, before main's own ethnicity changes in #65 and #70 moved one
+# trial this rule does not touch, ethnicity was 135 -> 131; the changed
+# trials and every totals delta are the same against both.)
+#
+# "Overall" and "All participants" were added to the titles after that, on
+# the same inputs. 12 trials have a race, ethnicity or sex measure with such
+# a class beside others whose rows it repeats (race 8, ethnicity 8, sex 12).
+# In every one, the whole-population class holds exactly the baseline total.
+# The other classes are not always a breakdown: they add up to it in 5
+# trials ("Adolescents" / "Caregivers", NCT04268004), are subsets of it in 5
+# ("Completers", NCT03621280; propensity-matched populations, NCT02785354)
+# and overlap in 2 ("Global cohort" / "China cohort", NCT02542293). Summing
+# any of them with the whole class counts people twice; the whole class alone
+# counts each participant once in all 12. Blocks changed by the two added
+# titles: race 8, ethnicity 7 (NCT03026556's ethnicity block is not reported:
+# its "Race/Ethnicity, Customized" table is a race-only table), legacy sex 12,
+# legacy gender 0; none changes reported, and each now sums to its baseline
+# total. Trials whose block summed above the baseline total, from the
+# "Total"-only rule to all three titles, on engine main at 2e45cbf:
+# race 392 -> 384, ethnicity 132 -> 125, legacy sex 272 -> 260.
 TOTAL_CLASS_FLAG = "total_class_only"
+
+# Class titles that name the whole baseline population of a measure (block
+# comment above), compared trimmed and lower-cased.
+WHOLE_POPULATION_CLASS_TITLES = frozenset({"total", "overall", "all participants"})
 
 # Category titles that are measurement labels, not row labels: the row's label
 # is then its class title (the same set each extractor keeps as
@@ -231,7 +256,8 @@ def total_class_view(measure: dict, overall_group_id: Optional[str]) -> Tuple[di
     classes = [cls for cls in measure.get("classes") or [] if isinstance(cls, dict)]
     if len(classes) < 2:
         return measure, False
-    totals = [cls for cls in classes if (cls.get("title") or "").strip().lower() == "total"]
+    totals = [cls for cls in classes
+              if (cls.get("title") or "").strip().lower() in WHOLE_POPULATION_CLASS_TITLES]
     if len(totals) != 1:
         return measure, False
     total_rows = _labelled_rows(totals[0])
