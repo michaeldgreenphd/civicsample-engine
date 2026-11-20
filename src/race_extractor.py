@@ -374,6 +374,9 @@ def mena_subcategory(label: str) -> Optional[str]:
 #     "(AN)", "(N)", "(Al)", "Alaska" alone); with a name or a continent,
 #     "North", "South" and "Central" ("North, South or Central American
 #     Native");
+#   - with a name only, a tribal suffix: Nation(s), Tribe(s), Tribal, Band(s),
+#     Member(s), Community ("Navajo Nation", "Blackfeet Tribe"; a review
+#     finding), so "Tribal members" alone is not read;
 #   - fillers: people(s), person(s), only, e.g., i.e., from, of, non-status,
 #     ethnicity, descent, origin(s), ancestry.
 # At least one name, or an Indigenous word with a place, must be present.
@@ -423,6 +426,8 @@ _AIAN_COUNTRY = (r"canad(?:a|ian|ians)|alaskan?|brazil(?:ian|ians)?|mexic(?:o|an
                  r"peru(?:vian|vians)?|bolivi(?:a|an|ans)|ecuador(?:ian|ians)?|chile(?:an|ans)?|colombi(?:a|an|ans)")
 _AIAN_INDIGENOUS = r"indigenous|aboriginals?|aborigines?"
 _AIAN_ABBREV = r"amer|am|amc|ind|al|alk|n|nat|ai|an|amin|alaska"
+# A tribal suffix ("Navajo Nation", "Blackfeet Tribe"; a review finding).
+_AIAN_TRIBE = r"nations?|tribes?|tribal|bands?|members?|communit(?:y|ies)"
 _AIAN_FILLER = (r"peoples?|persons?|only|e\s*g|i\s*e|from|of|non\s+status|ethnicity|descent|origins?|"
                 r"ancestry")
 # A bracketed template abbreviation, removed before the label is read.
@@ -431,7 +436,7 @@ _AIAN_GLOSS_RX = re.compile(rf"\s*\(\s*(?:{_AIAN_ABBREV}|alk\s+n|amer\s+ind)\s*\
 _AIAN_TOKEN_RX = re.compile(
     rf"(?:(?P<name>{_AIAN_NAME})|(?P<indigenous>{_AIAN_INDIGENOUS})|(?P<native>natives?)|"
     rf"(?P<continent>{_AIAN_CONTINENT})|(?P<country>{_AIAN_COUNTRY})|"
-    rf"(?P<direction>north|south|central)|(?P<abbrev>{_AIAN_ABBREV})|"
+    rf"(?P<direction>north|south|central)|(?P<abbrev>{_AIAN_ABBREV})|(?P<tribe>{_AIAN_TRIBE})|"
     rf"(?P<filler>{_AIAN_FILLER})|(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
     re.IGNORECASE)
 
@@ -472,10 +477,10 @@ def aian_label(label: str) -> bool:
               or "native" in kinds and "continent" in kinds)
     if not (named or placed):
         return False
-    # A template abbreviation names nothing without a name beside it; a
-    # direction ("North, South or Central American Native") needs a name or
-    # a continent.
-    if "abbrev" in kinds and not named:
+    # A template abbreviation or a tribal suffix ("Tribal members") names
+    # nothing without a name beside it; a direction ("North, South or
+    # Central American Native") needs a name or a continent.
+    if ("abbrev" in kinds or "tribe" in kinds) and not named:
         return False
     if "direction" in kinds and not (named or "continent" in kinds):
         return False

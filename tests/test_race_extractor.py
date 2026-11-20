@@ -2081,6 +2081,9 @@ def test_a_slash_row_whose_fragments_all_name_the_race_is_still_evidence() -> No
     "Indigenous Mayan",
     "Indigenous (Brazil)",
     "Navajo",  # quarantined as not race before
+    "Navajo Nation",  # a tribal suffix (a review finding)
+    "Blackfeet Tribe",
+    "American Indian tribal member",
     "White Mountain Apache",
     "Alaskan Native, Yup'ik",
     "Quechua",
@@ -2098,6 +2101,8 @@ def test_a_label_naming_american_indian_or_alaska_native_peoples_maps_there(labe
     "Torres Strait Islander", "Aboriginal and/or Torres Strait Islander", "Maori", "Indigenous swede",
     # An unqualified word names the trial country's Indigenous people.
     "Aboriginal", "Aborigine", "Native", "Native Indian", "Tribal members", "Native/Aboriginal",
+    # A tribal suffix without a name.
+    "Nation", "Tribe",
     # "Native" with a country may mean born there.
     "Native Mexican", "Native Canadian",
     # Another group beside, or a crossing with another variable.
