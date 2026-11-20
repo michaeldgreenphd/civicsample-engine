@@ -1888,6 +1888,8 @@ def test_a_comma_list_names_its_races(label: str, races: set[str]) -> None:
     "White, Asian, or Hispanic",  # NCT03506724: alternatives
     "White, Asian, or Black",
     "Asian, Black or African American, Other",  # a part that is not a race
+    "White, Asian/Black",  # a part that may name either race (a review finding)
+    "Asian/Pacific Islander, White",  # the 1977 grouping, with a slash
     "More than one race, White",
     "Multiple - Asian, White",  # the prefix rule reads it (block comment "Rows naming two or more races")
     "Asian and White",  # the joiner rule reads it
@@ -1985,3 +1987,16 @@ def test_a_comma_list_read_as_more_than_one_race_is_race_specific_under_a_sex_ti
     assert rx.is_sex_titled_race_table(table)
     race = extract_race_data(_study("NCT99000571", [table], participants=42))
     assert _nonzero(race) == {"white": 30, "asian": 10, "more_than_one_race": 2}
+
+
+def test_a_comma_list_part_naming_either_of_two_races_leaves_the_row_as_it_was() -> None:
+    """A review finding: "Asian/Black" was read as its first fragment, Asian,
+    so "White, Asian/Black" beside a White row became more than one race. A
+    slash part names one race only when its fragments agree."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White", 40), ("Black/African American", 10), ("White, Asian/Black", 2),
+        ("White, Black/African American", 3)])
+    race = extract_race_data(_study("NCT99000572", [table], participants=55))
+    readings = {c["original"]: c["flags"] for c in race["raw_categories"]}
+    assert "multirace_comma_list" not in readings["White, Asian/Black"]
+    assert "multirace_comma_list" in readings["White, Black/African American"]

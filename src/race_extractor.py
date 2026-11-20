@@ -1774,10 +1774,13 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
 # prefix such as "Multiple" or "Mixed" and no "&", "+" or "and", and splits at
 # "," and ";" into parts each naming one race through a reading that is not
 # fuzzy (_named_race), passing over a part that is only an ethnicity term
-# ("Hispanic"), with two or more different races named. A part starting with
-# "or" ("White, Asian, or Hispanic", NCT03506724) offers alternatives: the
-# row is not a comma list. A label the vocabulary holds whole is not one
-# either. A comma list maps to more than one race, flagged
+# ("Hispanic"), with two or more different races named. A part holding "/"
+# names one race only when every fragment read as a race reads as that race
+# ("Black/African American", "White/Cau"); "Asian/Black" may name either
+# race, so the row is not a comma list (_comma_list_part_race). A part
+# starting with "or" ("White, Asian, or Hispanic", NCT03506724) offers
+# alternatives: the row is not a comma list. A label the vocabulary holds
+# whole is not one either. A comma list maps to more than one race, flagged
 # multirace_comma_list, when the same table has another row, not itself a
 # comma list, read as one of the races named through a reading that is not
 # fuzzy (confidence high, not unmapped). A grouped category stands in the
@@ -1843,11 +1846,24 @@ def _comma_list_races(text: str) -> Optional[FrozenSet[str]]:
             return None
         if not part.strip(" -–—:,;()/.") or _is_ethnicity_only_label(part):
             continue
-        race = _named_race(part)
+        race = _comma_list_part_race(part)
         if race is None or race == "more_than_one_race":
             return None
         races.add(race)
     return frozenset(races) if len(races) >= 2 else None
+
+
+def _comma_list_part_race(part: str) -> Optional[str]:
+    """The one race a part of a comma list names (_named_race), or None. A
+    part holding "/" names one race only when every fragment read as a race
+    reads as that race: "Black/African American" and "White/Cau" do, but
+    "Asian/Black" may name either race and "Asian/Pacific Islander" is the
+    1977 grouping (a review finding)."""
+    race = _named_race(part)
+    if race is None or "/" not in part:
+        return race
+    fragments = {_named_race(fragment) for fragment in part.split("/")} - {None}
+    return race if fragments <= {race} else None
 
 
 def _row_text_read(text: str, whole_table: bool) -> str:
