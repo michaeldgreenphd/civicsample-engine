@@ -60,6 +60,10 @@ Tests:
      "American Indian or Alaska Native & White", "Asian and White",
      "Multiple-Black or African American and White", beside "Asian and
      Pacific Islander" (fictional study)
+ 24. NCT99000144 — Comma lists: "White, Black or African American" and
+     "White, American Indian or Alaska Native" in a table with a White row,
+     beside "Asian, Pacific Islander" in the same table, which has no Asian
+     or Pacific Islander row (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -79,7 +83,7 @@ again. Study 20 asserts its race block and the rows it records without
 counting them, among them a row naming the ethnicity dimension
 (EXPECTED_SKIPPED_ETHNICITY). Study 21 asserts its race totals and mena_in_white
 (EXPECTED_MENA). Study 22 asserts its race totals and that no row is
-quarantined (EXPECTED_HERITAGE). Study 23 asserts its race totals
+quarantined (EXPECTED_HERITAGE). Studies 23 and 24 assert their race totals
 (EXPECTED_MULTIRACE).
 A mismatch stops the harness.
 """
@@ -731,9 +735,33 @@ MOCK_NCT99000143 = _make_study(
     total_participants=200,
 )
 
-# Expected non-zero race totals of the study of rows naming two races.
+# ---------- NCT99000144 (fictional): comma lists ----------
+# 140 participants (race_extractor, "Comma lists naming two or more races").
+# The table has a White row, so the two lists naming White are combinations;
+# before, the fuzzy match read them as Black and American Indian. No row
+# names Asian or Pacific Islander alone, so "Asian, Pacific Islander" is a
+# grouped category and stays other.
+MOCK_NCT99000144 = _make_study(
+    "NCT99000144",
+    "NCT99000144 - Comma lists (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 90),
+                _make_category("Black or African American", 30),
+                _make_category("White, Black or African American", 6),
+                _make_category("White, American Indian or Alaska Native", 4),
+                _make_category("Asian, Pacific Islander", 10),
+            ])
+        ]),
+    ],
+    total_participants=140,
+)
+
+# Expected non-zero race totals of the studies of rows naming two races.
 EXPECTED_MULTIRACE = {
     "NCT99000143": {"white": 120, "black_african_american": 40, "more_than_one_race": 28, "other": 12},
+    "NCT99000144": {"white": 90, "black_african_american": 30, "more_than_one_race": 10, "other": 10},
 }
 
 # Expected skipped_ethnicity_rows (label, count), the race block's non-zero
@@ -1010,6 +1038,7 @@ def main() -> None:
         (MOCK_NCT99000141, "NCT99000141"),
         (MOCK_NCT99000142, "NCT99000142"),
         (MOCK_NCT99000143, "NCT99000143"),
+        (MOCK_NCT99000144, "NCT99000144"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

@@ -5,7 +5,7 @@ Extracts race data from baseline characteristics and maps to NIH/OMB categories
 with granular subcategories preserved.
 """
 import re
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, FrozenSet, List, Tuple, Optional
 from rapidfuzz import fuzz, process
 from src.utils import clean_demographic_label, COMBINED_DIMENSION, DIMENSION_JOIN
 # The manuscript parser's sex/gender measure selection (/sex|gender/i), reused
@@ -692,11 +692,13 @@ def _heritage_combination(label: str) -> bool:
 # row maps to more than one race, flagged multirace_label.
 #
 # What it does not do. Parts joined only by "," or ";" without a prefix are
-# not read: a comma joins the names of one grouped category as often as it
-# joins a combination ("Asian, Pacific Islander" beside "American Indian,
-# Alaskan Native" in NCT00851799, but "White, Black or African American" in
-# NCT03492281). Two races joined by "/" or "or" without a prefix are not read
-# either: the row may name either race.
+# not read by this rule: a comma joins the names of one grouped category as
+# often as it joins a combination ("Asian, Pacific Islander" beside "American
+# Indian, Alaskan Native" in NCT00851799, but "White, Black or African
+# American" in NCT03492281), and only the rest of the table tells the two
+# apart (block comment "Comma lists naming two or more races"). Two races
+# joined by "/" or "or" without a prefix are not read either: the row may
+# name either race.
 #
 # These rows add to the table's population, not to a "More than one race" row
 # beside them: of the tables holding them in the 2026-11-15 inputs, those with
@@ -711,9 +713,8 @@ def _heritage_combination(label: str) -> bool:
 # mena_in_white falls by 2 ("Black & Middle Eastern/North African" and "Asian
 # & Middle Eastern/North African", White through a slash fragment before). No
 # block changes reported, no ethnicity block changes, and the 338 race blocks
-# over their population stay 338, none larger. Comma lists left unread: 1,150
-# participants in 78 trials, 1,027 of them in grouped categories ("Asian,
-# Pacific Islander" 978 in 32 trials).
+# over their population stay 338, none larger. Comma lists are measured in
+# block comment "Comma lists naming two or more races".
 _MULTIRACE_PREFIX_RX = re.compile(
     r"^(?:multiple(?:\s+races?)?|multi[\s\-]?racial|mixed(?:\s+races?)?|bi[\s\-]?racial|"
     r"more\s+than\s+one\s+races?|two\s+or\s+more\s+races)\s*(?:[\-:–—(]\s*|\s+(?=\S))",
@@ -1356,7 +1357,7 @@ def _strip_race_dimension(label: str) -> Optional[str]:
 
 
 def _map_plain_row(label: str, count: int, pct_converted: bool,
-                   total_only: bool = False) -> Optional[Dict]:
+                   total_only: bool = False, reading: Optional[Dict] = None) -> Optional[Dict]:
     """Map one row the way every plain race row is mapped.
 
     Returns None for a purely ethnicity label (e.g. "Hispanic or Latino"), which
@@ -1366,12 +1367,20 @@ def _map_plain_row(label: str, count: int, pct_converted: bool,
     this function, so it lands where the same text would land on its own row.
     A leading race dimension name is removed first (block comment "Race
     dimension named in the row label").
+
+    reading, when given, is used in place of _map_race_label's mapping (a
+    copy is taken): the comma-list rule, which needs the rest of the table,
+    passes its reading here so the row gets every row-level step as any
+    other row does (block comment "Comma lists naming two or more races").
     """
     stripped = _strip_race_dimension(label)
     text = stripped if stripped is not None else label
     if _is_ethnicity_only_label(text):
         return None
-    mapping = _map_race_label(text, guard_negation=stripped is not None)
+    if reading is not None:
+        mapping = {**reading, "flags": list(reading["flags"])}
+    else:
+        mapping = _map_race_label(text, guard_negation=stripped is not None)
     if stripped is not None:
         mapping["original"] = clean_demographic_label(label)
         mapping["flags"].append("dimension_wording_stripped")
@@ -1404,12 +1413,9 @@ def extract_race_from_measure(measure: dict, overall_group_id: Optional[str] = N
     """
     rows, pct_converted, total_only = _measure_rows(measure, overall_group_id, fallback_denom)
     whole_table = _ethnicity_dimension_is_the_table([label for label, _count in rows])
-    results = []
-    for label, count in rows:
-        mapping, _skipped = _map_table_row(label, count, pct_converted, total_only, whole_table)
-        if mapping is not None:
-            results.append(mapping)
-    return results
+    return [mapping for mapping, _skipped in
+            _map_table_rows(rows, pct_converted, total_only, whole_table)
+            if mapping is not None]
 
 # ── Ethnicity rows inside a race table ──────────────────────────────────────
 #
@@ -1701,7 +1707,8 @@ def _ethnicity_dimension_is_the_table(labels: List[str]) -> bool:
 
 def _map_table_row(label: str, count: int, pct_converted: bool, total_only: bool,
                    whole_table: bool, race_part: Optional[str] = None,
-                   sex: Optional[str] = None) -> Tuple[Optional[Dict], Optional[Dict]]:
+                   sex: Optional[str] = None,
+                   reading: Optional[Dict] = None) -> Tuple[Optional[Dict], Optional[Dict]]:
     """(mapping, None) for a row counted as race, (None, record) for a row left
     out of the race counts (_skipped_ethnicity_row): an ethnicity-only row,
     or a row naming the ethnicity dimension in a table where other rows do
@@ -1709,11 +1716,12 @@ def _map_table_row(label: str, count: int, pct_converted: bool, total_only: bool
     whole_table is _ethnicity_dimension_is_the_table for the row's table, over
     the race parts when the table crosses race with sex. For a race-by-sex row
     the race part is what is read, and the record keeps race_part and sex
-    beside the posted label."""
+    beside the posted label. reading is passed to _map_plain_row (the
+    comma-list rule; _map_table_rows)."""
     text = race_part if race_part is not None else label
     stripped = _strip_ethnicity_dimension(text) if whole_table else None
     mapping = _map_plain_row(stripped if stripped is not None else text, count,
-                             pct_converted, total_only)
+                             pct_converted, total_only, reading)
     if mapping is None or (stripped is None and _names_ethnicity_dimension(text)):
         row = _skipped_ethnicity_row(label, count, pct_converted, race_part, sex, total_only)
         if mapping is not None:
@@ -1744,6 +1752,151 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
         flags.append(table_selection.TOTAL_CLASS_FLAG)
     row["flags"] = flags
     return row
+
+# ── Comma lists naming two or more races ───────────────────────────────────
+#
+# A row listing races with "," or ";" only, with no prefix and no "&", "+" or
+# "and" (block comment "Rows naming two or more races"), is posted for two
+# different things. It is a combination, the participants who reported each
+# race named, in "Asian / Black or African American / Native Hawaiian or
+# Other Pacific Islander / White / White, American Indian or Alaska Native /
+# White, Black or African American / White, Native Hawaiian or Other Pacific
+# Islander" (NCT05064449). It is a grouped category,
+# participants who reported any one of the races named, in "White
+# Non-Hispanic / Black Non-Hispanic / Hispanic (Regardless of Race) / Asian,
+# Pacific Islander" (NCT01403051): the 1977 Asian or Pacific Islander group.
+# The row alone cannot tell the two apart; the rest of its table can.
+#
+# Method (_comma_list_rows, over the rows of one table after each is mapped).
+# A row is a comma list when its label, read as every row is (dimension
+# wording removed, _row_text_read; category names holding "and" kept whole,
+# as in the rule for rows naming two or more races), has no heritage word, no
+# prefix such as "Multiple" or "Mixed" and no "&", "+" or "and", and splits at
+# "," and ";" into parts each naming one race through a reading that is not
+# fuzzy (_named_race), passing over a part that is only an ethnicity term
+# ("Hispanic"), with two or more different races named. A part starting with
+# "or" ("White, Asian, or Hispanic", NCT03506724) offers alternatives: the
+# row is not a comma list. A label the vocabulary holds whole is not one
+# either. A comma list maps to more than one race, flagged
+# multirace_comma_list, when the same table has another row, not itself a
+# comma list, read as one of the races named through a reading that is not
+# fuzzy (confidence high, not unmapped). A grouped category stands in the
+# table for its races, so no row of the table names any of them alone: in
+# every table of the inputs holding a comma list with no such row, the row is
+# a grouped category ("Asian, Pacific Islander" in 31 trials; "American
+# Indian or Alaska Native, Asian" in NCT03596450; "Native American, Native
+# Hawaiian, Pacific Islander" in NCT05299983). One race named alone is
+# enough, not every race: a table posts only the categories someone
+# reported, and "White, American Indian or Alaska Native" is a combination in
+# NCT05064449, whose table has a White row and no American Indian row.
+#
+# What it does not do. A comma list in a table naming none of its races
+# alone keeps the reading it had: "Asian, Pacific Islander" stays other, and
+# "American Indian or Alaska Native, Asian" stays American Indian through
+# the fuzzy match, which is the earlier reading, not a verdict. A part that
+# is not a race ("Asian, Black or African American, Other") leaves the row
+# as it was, as in the rule for rows naming two or more races; "American
+# Indian" alone is not in the vocabulary, so "American Indian, White or
+# Caucasian" (NCT01401842) is not read. The rule reads the posted rows of one
+# table; it does not compare a row's count with the counts of the rows
+# beside it. A comma list it reads is race-specific, so a sex/gender-titled
+# measure holding one can now pass the gate above _sex_titled_race_table.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against the rule for rows
+# naming two or more races: rows flagged multirace_comma_list in 38 trials,
+# 27 labels; more than one race +82, from other 40, Black 21 ("White, Black
+# or African American" 15 in 6 trials, "Black or African American, White" 6
+# in 6), American Indian 19, Native Hawaiian 1, Asian 1. "Asian, Pacific
+# Islander" is read as a combination in one trial (NCT01401842, 1
+# participant), whose table lists Asian and Pacific Islander alone beside 12
+# other rows joining labels with commas. No block changes reported, no ethnicity or sex block
+# changes, no sex/gender-titled measure changes the gate, and the 338 race
+# blocks over their population stay 338, none larger. Comma lists left as
+# they were, in tables naming none of their races alone: 1,050 participants
+# in 37 trials, every one a grouped category ("Asian, Pacific Islander" 977
+# in 31 trials; "American Indian or Alaska Native, Asian" 43 in NCT03596450).
+_COMMA_LIST_SPLIT_RX = re.compile(r"\s*[,;]\s*")
+_COMMA_LIST_ALTERNATIVE_RX = re.compile(r"^or\b", re.IGNORECASE)
+_COMMA_LIST_FLAG = "multirace_comma_list"
+
+
+def _comma_list_races(text: str) -> Optional[FrozenSet[str]]:
+    """The races a comma list names, or None when the text is not a comma
+    list (block comment "Comma lists naming two or more races")."""
+    text = clean_demographic_label(text)
+    if any(key.lower() == text.lower() for key in RACE_MAPPINGS):
+        return None
+    for name_rx, name in _MULTIRACE_ONE_CATEGORY:
+        text = name_rx.sub(name, text)
+    if (_HERITAGE_WORD_RX.search(text) is not None
+            or _MULTIRACE_PREFIX_RX.match(text) is not None
+            or len(_MULTIRACE_JOIN_SPLIT_RX.split(text)) >= 2):
+        return None
+    parts = _COMMA_LIST_SPLIT_RX.split(text)
+    if len(parts) < 2:
+        return None
+    races = set()
+    for part in parts:
+        # Before the ethnicity test: "or Hispanic" offers an alternative.
+        if _COMMA_LIST_ALTERNATIVE_RX.match(part):
+            return None
+        if not part.strip(" -–—:,;()/.") or _is_ethnicity_only_label(part):
+            continue
+        race = _named_race(part)
+        if race is None or race == "more_than_one_race":
+            return None
+        races.add(race)
+    return frozenset(races) if len(races) >= 2 else None
+
+
+def _row_text_read(text: str, whole_table: bool) -> str:
+    """The text _map_race_label reads for a row (or race part): ethnicity
+    dimension wording removed when the table is that dimension, as
+    _map_table_row does, then race dimension wording, as _map_plain_row
+    does."""
+    stripped = _strip_ethnicity_dimension(text) if whole_table else None
+    text = stripped if stripped is not None else text
+    stripped = _strip_race_dimension(text)
+    return stripped if stripped is not None else text
+
+
+def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[int]:
+    """Indices of the rows of one table read as more than one race by the
+    comma-list rule. texts[i] is the text read for row i (_row_text_read),
+    mappings[i] its mapping, or None for a row left out of the race counts."""
+    lists = [_comma_list_races(text) if mapping is not None else None
+             for text, mapping in zip(texts, mappings)]
+    alone = {mapping["omb_category"] for races, mapping in zip(lists, mappings)
+             if races is None and mapping is not None
+             and mapping["confidence"] == "high" and "unmapped" not in mapping["flags"]
+             and mapping["omb_category"] in _RACE_SPECIFIC
+             and mapping["omb_category"] != "more_than_one_race"}
+    return [i for i, races in enumerate(lists) if races is not None and races & alone]
+
+
+def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only: bool,
+                    whole_table: bool,
+                    splits: Optional[List[Tuple[str, str]]] = None,
+                    ) -> List[Tuple[Optional[Dict], Optional[Dict]]]:
+    """_map_table_row for every row of one table, then the comma-list rule
+    (block comment "Comma lists naming two or more races"). splits holds the
+    (race part, sex) of each row of a race-by-sex table, else None."""
+    parts: List[Tuple[Optional[str], Optional[str]]] = (
+        list(splits) if splits is not None else [(None, None)] * len(rows))
+    results = [_map_table_row(label, count, pct_converted, total_only, whole_table,
+                              race_part, sex)
+               for (label, count), (race_part, sex) in zip(rows, parts)]
+    texts = [_row_text_read(race_part if race_part is not None else label, whole_table)
+             for (label, _count), (race_part, _sex) in zip(rows, parts)]
+    for i in _comma_list_rows(texts, [mapping for mapping, _skipped in results]):
+        (label, count), (race_part, sex) = rows[i], parts[i]
+        reading = {"omb_category": "more_than_one_race", "subcategory": None,
+                   "confidence": "high", "original": clean_demographic_label(texts[i]),
+                   "flags": [_COMMA_LIST_FLAG]}
+        results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
+                                    race_part, sex, reading)
+    return results
 
 # ── Race-by-sex tables ──────────────────────────────────────────────────────
 #
@@ -1935,9 +2088,8 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         # The same ethnicity-dimension routing as a plain table, on the race
         # parts (block comment "Ethnicity dimension named in the row label").
         whole_by_sex = _ethnicity_dimension_is_the_table([race_part for race_part, _sex in splits])
-        for (label, count), (race_part, sex) in zip(rows, splits):
-            mapping, skipped_row = _map_table_row(label, count, pct_converted, total_only,
-                                                  whole_by_sex, race_part, sex)
+        mapped = _map_table_rows(rows, pct_converted, total_only, whole_by_sex, splits)
+        for (label, _count), (race_part, sex), (mapping, skipped_row) in zip(rows, splits, mapped):
             if skipped_row is not None:
                 skipped.append(skipped_row)
                 continue
@@ -1959,8 +2111,7 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         # every row mapped whole, as before.
         categories, quarantined, skipped = [], [], []
         whole_table = _ethnicity_dimension_is_the_table([label for label, _count in rows])
-        for label, count in rows:
-            mapping, skipped_row = _map_table_row(label, count, pct_converted, total_only, whole_table)
+        for mapping, skipped_row in _map_table_rows(rows, pct_converted, total_only, whole_table):
             if skipped_row is not None:
                 skipped.append(skipped_row)
                 continue

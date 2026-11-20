@@ -1859,3 +1859,129 @@ def test_a_multiracial_breakdown_adds_to_the_table_population() -> None:
         ("American Indian or Alaska Native & White", 6), ("Asian and White", 4)])
     race = extract_race_data(_study("NCT99000565", [table], participants=100))
     assert _nonzero(race) == {"white": 60, "black_african_american": 20, "asian": 10, "more_than_one_race": 10}
+
+
+# ── Comma lists naming two or more races ───────────────────────────────────
+#
+# src/race_extractor.py, block comment "Comma lists naming two or more races".
+
+@pytest.mark.parametrize("label, races", [
+    ("White, Asian", {"white", "asian"}),
+    ("Black or African American, White or Caucasian", {"black_african_american", "white"}),
+    ("American Indian or Alaska Native,White", {"american_indian_alaska_native", "white"}),
+    ("Asian; White", {"asian", "white"}),
+    # An ethnicity part passed over; slash fragments read.
+    ("Asian, Black/African American, Hispanic, White/Cau", {"asian", "black_african_american", "white"}),
+    # A category name holding "and" is one part.
+    ("White, Native Hawaiian and Other Pacific Islander", {"white", "native_hawaiian_pacific_islander"}),
+    # A comma list whatever it means: the table decides (tests below).
+    ("Asian, Pacific Islander", {"asian", "native_hawaiian_pacific_islander"}),
+])
+def test_a_comma_list_names_its_races(label: str, races: set[str]) -> None:
+    assert rx._comma_list_races(label) == races
+
+
+@pytest.mark.parametrize("label", [
+    "White, Caucasian",  # one race
+    "White, non-Hispanic",
+    "Asian, Hispanic",
+    "White, Asian, or Hispanic",  # NCT03506724: alternatives
+    "White, Asian, or Black",
+    "Asian, Black or African American, Other",  # a part that is not a race
+    "More than one race, White",
+    "Multiple - Asian, White",  # the prefix rule reads it (block comment "Rows naming two or more races")
+    "Asian and White",  # the joiner rule reads it
+    "Caucasian, Black, and Asian",
+    "White - European Heritage, Asian - East Asian Heritage",  # a heritage word
+    "White",
+])
+def test_a_label_that_is_not_a_comma_list(label: str) -> None:
+    assert rx._comma_list_races(label) is None
+
+
+def test_a_comma_list_is_a_combination_when_its_table_names_one_of_its_races_alone() -> None:
+    """The NCT05064449 shape. Before, the fuzzy match read "White, American
+    Indian or Alaska Native" as American Indian and "White, Black or African
+    American" as Black, and "White, Native Hawaiian or Other Pacific
+    Islander" was Native Hawaiian. American Indian has no row of its own
+    (nobody reported it alone); White does, which is enough."""
+    table = _category_table(COMBINED_TITLE, [
+        ("Asian", 10), ("Black or African American", 20),
+        ("Native Hawaiian or Other Pacific Islander", 2), ("White", 60),
+        ("White, American Indian or Alaska Native", 3), ("White, Black or African American", 4),
+        ("White, Native Hawaiian or Other Pacific Islander", 1)])
+    race = extract_race_data(_study("NCT99000566", [table], participants=100))
+    assert _nonzero(race) == {"asian": 10, "black_african_american": 20,
+                              "native_hawaiian_pacific_islander": 2, "white": 60,
+                              "more_than_one_race": 8}
+    combos = [c for c in race["raw_categories"] if c["omb_category"] == "more_than_one_race"]
+    assert [(c["original"], c["count"]) for c in combos] == [
+        ("White, American Indian or Alaska Native", 3), ("White, Black or African American", 4),
+        ("White, Native Hawaiian or Other Pacific Islander", 1)]
+    for c in combos:
+        assert c["flags"].count("multirace_comma_list") == 1 and c["confidence"] == "high"
+        assert not any(f.startswith("fuzzy_match") for f in c["flags"])
+
+
+def test_a_comma_list_naming_no_race_alone_in_its_table_keeps_its_reading() -> None:
+    """The NCT01403051 shape: the 1977 Asian or Pacific Islander group beside
+    rows that name neither race alone is a grouped category, not people who
+    reported both."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White Non-Hispanic", 50), ("Black Non-Hispanic", 30),
+        ("Hispanic (Regardless of Race)", 12), ("Asian, Pacific Islander", 7),
+        ("American Indian, Alaskan Native", 1)])
+    race = extract_race_data(_study("NCT99000567", [table], participants=100))
+    assert race["omb_totals"]["more_than_one_race"] == 0
+    row = next(c for c in race["raw_categories"] if c["original"] == "Asian, Pacific Islander")
+    assert row["omb_category"] == "other" and "multirace_comma_list" not in row["flags"]
+
+
+def test_only_a_row_read_as_one_race_without_a_fuzzy_match_names_a_race_alone() -> None:
+    """"Asians" (a fuzzy match) and the comma list "Asian, White" do not
+    name Asian alone, so "Asian, Pacific Islander" keeps its reading;
+    "Asian, White" is a combination through the White row."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White", 40), ("Asians", 10), ("Asian, White", 3), ("Asian, Pacific Islander", 5)])
+    race = extract_race_data(_study("NCT99000568", [table], participants=58))
+    readings = {c["original"]: c["omb_category"] for c in race["raw_categories"]}
+    assert readings["Asian, White"] == "more_than_one_race"
+    assert readings["Asian, Pacific Islander"] == "other"
+
+
+def test_a_comma_list_in_a_race_by_sex_table() -> None:
+    """The race part is what is read, and the record keeps the posted label."""
+    table = _category_table(COMBINED_TITLE, [
+        ("White - Female", 20), ("White - Male", 18), ("Black - Female", 5),
+        ("White, Black - Female", 2), ("White, Black - Male", 1)])
+    race = extract_race_data(_study("NCT99000569", [table], participants=46))
+    assert _nonzero(race) == {"white": 38, "black_african_american": 5, "more_than_one_race": 3}
+    combos = [c for c in race["raw_categories"] if c["omb_category"] == "more_than_one_race"]
+    assert [(c["original"], c["race_part"], c["sex"]) for c in combos] == [
+        ("White, Black - Female", "White, Black", "female"), ("White, Black - Male", "White, Black", "male")]
+    assert all({"multirace_comma_list", "race_by_sex"} <= set(c["flags"]) for c in combos)
+
+
+def test_a_comma_list_keeps_the_row_level_steps_and_reads_alike_row_by_row() -> None:
+    """Race dimension wording is removed before the list is read and is
+    recorded as for any row; extract_race_from_measure reads the table the
+    same way."""
+    table = _category_table("Race, Customized", [
+        ("Race: White", 30), ("Race: Black", 10), ("Race: White, Black", 2)])
+    race = extract_race_data(_study("NCT99000570", [table], participants=42))
+    row = next(c for c in race["raw_categories"] if c["original"] == "Race: White, Black")
+    assert row["omb_category"] == "more_than_one_race"
+    assert {"multirace_comma_list", "dimension_wording_stripped"} <= set(row["flags"])
+    assert [(m["original"], m["omb_category"]) for m in rx.extract_race_from_measure(table)] == [
+        ("Race: White", "white"), ("Race: Black", "black_african_american"),
+        ("Race: White, Black", "more_than_one_race")]
+
+
+def test_a_comma_list_read_as_more_than_one_race_is_race_specific_under_a_sex_title() -> None:
+    """A sex/gender-titled measure is read as race only when every row is
+    race-specific (_parse_race_table). "White, Asian" was other before, and
+    the measure was not read as race."""
+    table = _category_table("Sex/Gender, Customized", [("White", 30), ("Asian", 10), ("White, Asian", 2)])
+    assert rx.is_sex_titled_race_table(table)
+    race = extract_race_data(_study("NCT99000571", [table], participants=42))
+    assert _nonzero(race) == {"white": 30, "asian": 10, "more_than_one_race": 2}
