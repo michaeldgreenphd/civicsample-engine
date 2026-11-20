@@ -1950,4 +1950,28 @@ def test_a_label_naming_both_dimensions_beside_race_rows_stays_counted() -> None
     table = _class_table(COMBINED_TITLE, [("Black", 10), ("Ethnicity, Race: White", 20)])
     race = extract_race_data(_study("NCT99000695", [table], participants=30))
     assert race["skipped_ethnicity_rows"] == []
-    assert sum(race["omb_totals"].values()) == 30
+    assert _nonzero(race) == {"black_african_american": 10, "white": 20}
+    white = race["raw_categories"][1]
+    assert white["original"] == "Ethnicity, Race: White" and "dimension_wording_stripped" in white["flags"]
+
+
+@pytest.mark.parametrize("label, category", [
+    ("Ethnicity, Race: White", "white"), ("Ethnicity - Race: Asian", "asian"),
+    ("Ethnicity Race: Black", "black_african_american"), ("Ethnicity, Race Unknown", "unknown_not_reported"),
+    ("Ethnicity Race Unknown", "unknown_not_reported"), ("Ethnic group, Race: White", "white"),
+])
+def test_a_combined_name_with_a_new_joiner_is_removed_before_mapping(label: str, category: str) -> None:
+    """The race name after the ethnicity name is read as the race prefix
+    rule reads it, so the row lands in its race, not in other."""
+    mapping = rx._map_plain_row(label, 5, False)
+    assert mapping is not None
+    assert (mapping["omb_category"], mapping["original"]) == (category, label)
+    assert "dimension_wording_stripped" in mapping["flags"]
+
+
+@pytest.mark.parametrize("label, stripped", [
+    ("Ethnicity or Race: White", "White"), ("Race and Ethnicity: White", "White"), ("Race: Black", "Black"),
+    ("Ethnicity: White", None), ("Ethnicity: Racecourse staff", None), ("White", None),
+])
+def test_existing_prefix_forms_are_stripped_as_before(label: str, stripped: Optional[str]) -> None:
+    assert rx._strip_race_dimension(label) == stripped

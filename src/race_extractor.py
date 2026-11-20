@@ -1323,6 +1323,15 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # "Race or Ethnic Group"), so no race block changes.
 _RACE_DIMENSION_PREFIX_RX = re.compile(
     r"^(?:" + COMBINED_DIMENSION + r"|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
+# An ethnicity name joined to a following race name by ",", a dash or no
+# joiner as well as the joiners of utils.DIMENSION_JOIN ("Ethnicity, Race:
+# White", "Ethnicity Race Unknown"): such a label names race too, so the rule
+# of "Ethnicity dimension named in the row label" does not leave it out, and
+# the ethnicity name is removed here so that the race name after it is read
+# by the rule above.
+_ETHNICITY_BEFORE_RACE_RX = re.compile(
+    r"^\s*ethnic(?:ity|\s+group)\s*(?:" + DIMENSION_JOIN + r"|[,\-–—])?\s*(?=rac(?:e|es|ial)(?![a-z]))",
+    re.IGNORECASE)
 
 
 # Negation as a word ("Not Reported", "Non-White", "No race") or "non" joined
@@ -1345,10 +1354,22 @@ def _strip_race_dimension(label: str) -> Optional[str]:
       "Race: Black"                             -> "Black"
       "Race and Ethnicity : White Non-Hispanic" -> "White Non-Hispanic"
       "Ethnicity or Race: White"                -> "White"
+      "Ethnicity, Race: White"                  -> "White"
+      "Ethnicity Race Unknown"                  -> "Race Unknown"
       "Race unknown"                            -> None
       "Ethnicity: Hispanic"                     -> None
     """
     text = clean_demographic_label(label)
+    lead = _ETHNICITY_BEFORE_RACE_RX.match(text)
+    if lead is not None and _RACE_DIMENSION_PREFIX_RX.match(text) is None:
+        # The ethnicity name before a race name (comment above): what follows
+        # is read as a label of its own, with its race name removed when a
+        # separator follows it ("Race: White" -> "White"), else as it stands
+        # ("Race Unknown").
+        rest = text[lead.end():].strip()
+        prefix = _RACE_DIMENSION_PREFIX_RX.match(rest)
+        rest = rest[prefix.end():].strip() if prefix is not None else rest
+        return rest or None
     prefix = _RACE_DIMENSION_PREFIX_RX.match(text)
     if prefix is None:
         return None
@@ -1597,9 +1618,10 @@ def _negates_ethnicity(label: str) -> bool:
 # Unknown") or after "/", "&", "and", "or", "and/or", "," or a dash (a
 # combined name, as "Race/Ethnicity", whose rows belong to the one
 # classification; its prefix is removed by the race dimension rule above, so
-# "Ethnicity or Race: White" is read as White, and a form that rule does not
-# remove, "Ethnicity, Race: White", is read as posted, never left out). Then,
-# by table:
+# "Ethnicity or Race: White" is read as White; the forms with ",", a dash or
+# no joiner are removed there too, by _ETHNICITY_BEFORE_RACE_RX, so
+# "Ethnicity, Race: White" is White and "Ethnicity Race Unknown" unknown).
+# Then, by table:
 #   - some row names it, no other row is a race row of the table's own
 #     (_is_own_race_row: a row in a race-specific category without
 #     "unmapped", or one named for the race dimension, "Race - Undisclosed",
@@ -1633,8 +1655,11 @@ def _negates_ethnicity(label: str) -> bool:
 #     mapped or not: NCT01256177 posts "Race,Asian" 279 beside "Ethnicity,
 #     Chinese" 279, the same 279 classified twice. In the 2026-11-15 inputs
 #     no table has a residual row beside named race rows, a negated named
-#     row or a "," / dash / bare joiner before race, so these three
-#     refinements change no output there. A row of such a table
+#     row or a "," / dash / bare joiner before race, so these refinements
+#     change no count there; one block changes in its flags only
+#     (NCT00552448: "Ethnicity/Race Unknown" 2, still unknown, now flagged
+#     dimension_wording_stripped as its ethnicity name is removed). A row of
+#     such a table
 #     with no separator ("Ethnicity" alone) is recorded as below. An
 #     all-prefixed table with no race row ("Ethnicity: Hispanic" / "Ethnicity:
 #     Not Hispanic" / "Ethnicity: Unknown") is an ethnicity classification, read
