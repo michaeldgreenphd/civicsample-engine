@@ -1495,6 +1495,15 @@ def _measure_rows(measure: dict, overall_group_id: Optional[str] = None,
 # "Race or Ethnic Group"), so no race block changes.
 _RACE_DIMENSION_PREFIX_RX = re.compile(
     r"^(?:" + COMBINED_DIMENSION + r"|race)\s*[:\-–—_](?:\s*[:\-–—_])*\s*(?=\S)", re.IGNORECASE)
+# An ethnicity name joined to a following race name by ",", a dash or no
+# joiner as well as the joiners of utils.DIMENSION_JOIN ("Ethnicity, Race:
+# White", "Ethnicity Race Unknown"): such a label names race too, so the rule
+# of "Ethnicity dimension named in the row label" does not leave it out, and
+# the ethnicity name is removed here so that the race name after it is read
+# by the rule above.
+_ETHNICITY_BEFORE_RACE_RX = re.compile(
+    r"^\s*ethnic(?:ity|\s+group)\s*(?:" + DIMENSION_JOIN + r"|[,\-–—])?\s*(?=rac(?:e|es|ial)(?![a-z]))",
+    re.IGNORECASE)
 
 
 # Negation as a word ("Not Reported", "Non-White", "No race") or "non" joined
@@ -1517,10 +1526,22 @@ def _strip_race_dimension(label: str) -> Optional[str]:
       "Race: Black"                             -> "Black"
       "Race and Ethnicity : White Non-Hispanic" -> "White Non-Hispanic"
       "Ethnicity or Race: White"                -> "White"
+      "Ethnicity, Race: White"                  -> "White"
+      "Ethnicity Race Unknown"                  -> "Race Unknown"
       "Race unknown"                            -> None
       "Ethnicity: Hispanic"                     -> None
     """
     text = clean_demographic_label(label)
+    lead = _ETHNICITY_BEFORE_RACE_RX.match(text)
+    if lead is not None and _RACE_DIMENSION_PREFIX_RX.match(text) is None:
+        # The ethnicity name before a race name (comment above): what follows
+        # is read as a label of its own, with its race name removed when a
+        # separator follows it ("Race: White" -> "White"), else as it stands
+        # ("Race Unknown").
+        rest = text[lead.end():].strip()
+        prefix = _RACE_DIMENSION_PREFIX_RX.match(rest)
+        rest = rest[prefix.end():].strip() if prefix is not None else rest
+        return rest or None
     prefix = _RACE_DIMENSION_PREFIX_RX.match(text)
     if prefix is None:
         return None
@@ -1528,7 +1549,8 @@ def _strip_race_dimension(label: str) -> Optional[str]:
 
 
 def _map_plain_row(label: str, count: int, pct_converted: bool,
-                   total_only: bool = False, reading: Optional[Dict] = None) -> Optional[Dict]:
+                   total_only: bool = False, reading: Optional[Dict] = None,
+                   guard_negation: bool = False) -> Optional[Dict]:
     """Map one row the way every plain race row is mapped.
 
     Returns None for a purely ethnicity label (e.g. "Hispanic or Latino"), which
@@ -1537,7 +1559,10 @@ def _map_plain_row(label: str, count: int, pct_converted: bool,
     with the row's count. A race-by-sex row's race part goes through exactly
     this function, so it lands where the same text would land on its own row.
     A leading race dimension name is removed first (block comment "Race
-    dimension named in the row label").
+    dimension named in the row label"). guard_negation applies that
+    comment's negation check to the fuzzy match even when no race name is
+    removed: a caller passes it for text whose ethnicity dimension name it
+    removed (block comment "Ethnicity dimension named in the row label").
 
     reading, when given, is used in place of _map_race_label's mapping (a
     copy is taken): the comma-list rule, which needs the rest of the table,
@@ -1551,7 +1576,7 @@ def _map_plain_row(label: str, count: int, pct_converted: bool,
     if reading is not None:
         mapping = {**reading, "flags": list(reading["flags"])}
     else:
-        mapping = _map_race_label(text, guard_negation=stripped is not None)
+        mapping = _map_race_label(text, guard_negation=guard_negation or stripped is not None)
     if stripped is not None:
         mapping["original"] = clean_demographic_label(label)
         mapping["flags"].append("dimension_wording_stripped")
@@ -1767,11 +1792,18 @@ def _negates_ethnicity(label: str) -> bool:
 #
 # Method. A row names the ethnicity dimension when its cleaned label begins
 # with "Ethnicity" or "Ethnic group" as a word ("Ethnicities" does not), not
-# followed by "/ Race", "& Race", "and Race", "or Race" or "and/or Race" (a
+# followed by the word race, races or racial, either directly ("Ethnicity Race
+# Unknown") or after "/", "&", "and", "or", "and/or", "," or a dash (a
 # combined name, as "Race/Ethnicity", whose rows belong to the one
 # classification; its prefix is removed by the race dimension rule above, so
-# "Ethnicity or Race: White" is read as White). Then, by table:
-#   - every row of the table names it and at least one row, without the
+# "Ethnicity or Race: White" is read as White; the forms with ",", a dash or
+# no joiner are removed there too, by _ETHNICITY_BEFORE_RACE_RX, so
+# "Ethnicity, Race: White" is White and "Ethnicity Race Unknown" unknown).
+# Then, by table:
+#   - some row names it, no other row is a race row of the table's own
+#     (_is_own_race_row: a row in a race-specific category without
+#     "unmapped", or one named for the race dimension, "Race - Undisclosed",
+#     "Race,Asian", a bare "Race"), and at least one named row, without the
 #     prefix, names a race category itself (White, Black, Asian, American
 #     Indian, Native Hawaiian or Pacific Islander, more than one race: a
 #     mapping to one of them with no subcategory;
@@ -1789,7 +1821,23 @@ def _negates_ethnicity(label: str) -> bool:
 #     dimension name and its separator(s) (":", "-",
 #     "–", "—", "_", ",") are removed and the rest is read exactly as the bare
 #     label, flagged dimension_wording_stripped, as a "Race:" prefix is (block
-#     comment "Race dimension named in the row label"). A row of such a table
+#     comment "Race dimension named in the row label"), including its
+#     negation check: "Ethnicity: Non-African American" is unmapped other,
+#     not Black, though "Non-African American" alone scores 88.9 against
+#     "African American". A row not naming the dimension beside them, a bare
+#     "Unknown" or "Other", is read as posted: it is that classification's
+#     own residual, not a race classification, and taking it for one would
+#     leave every named race row out and balance the cohort into unknown
+#     ("Ethnicity: White" 50 / "Ethnicity: Black" 30 / "Unknown" 5 read as
+#     unknown 85; a review finding). A row named for race does count as one,
+#     mapped or not: NCT01256177 posts "Race,Asian" 279 beside "Ethnicity,
+#     Chinese" 279, the same 279 classified twice. In the 2026-11-15 inputs
+#     no table has a residual row beside named race rows, a negated named
+#     row or a "," / dash / bare joiner before race, so these refinements
+#     change no count there; one block changes in its flags only
+#     (NCT00552448: "Ethnicity/Race Unknown" 2, still unknown, now flagged
+#     dimension_wording_stripped as its ethnicity name is removed). A row of
+#     such a table
 #     with no separator ("Ethnicity" alone) is recorded as below. An
 #     all-prefixed table with no race row ("Ethnicity: Hispanic" / "Ethnicity:
 #     Not Hispanic" / "Ethnicity: Unknown") is an ethnicity classification, read
@@ -1831,7 +1879,8 @@ def _negates_ethnicity(label: str) -> bool:
 # ethnicity block changes.
 
 _ETHNICITY_DIMENSION_RX = re.compile(
-    r"^\s*ethnic(?:ity|\s+group)(?![a-z])(?!\s*" + DIMENSION_JOIN + r"\s*race)", re.IGNORECASE)
+    r"^\s*ethnic(?:ity|\s+group)(?![a-z])"
+    r"(?!\s*(?:" + DIMENSION_JOIN + r"|[,\-–—])?\s*rac(?:e|es|ial)(?![a-z]))", re.IGNORECASE)
 _ETHNICITY_DIMENSION_PREFIX_RX = re.compile(
     r"^\s*(?:ethnicity|ethnic\s+group)\s*[:\-–—_,](?:\s*[:\-–—_,])*\s*(?=\S)", re.IGNORECASE)
 
@@ -1853,22 +1902,49 @@ def _strip_ethnicity_dimension(label: str) -> Optional[str]:
     return text[prefix.end():].strip() or None
 
 
+_RACE_DIMENSION_NAME_RX = re.compile(r"^\s*rac(?:e|es|ial)(?![a-z])", re.IGNORECASE)
+
+
+def _names_race_dimension(label: str) -> bool:
+    """True when a row's cleaned label begins with the word race, races or
+    racial ("Race - Undisclosed", "Race,Asian", "Race", "Race unknown"): a row
+    of a race classification, mapped or not ("Racecourse" -> False)."""
+    return _RACE_DIMENSION_NAME_RX.match(clean_demographic_label(label)) is not None
+
+
+def _is_own_race_row(label: str) -> bool:
+    """True when a row NOT naming the ethnicity dimension shows the table to
+    hold a race classification of its own: it maps to a race-specific
+    category without the "unmapped" flag, or it is named for the race
+    dimension. A bare residual ("Unknown", "Other"), an unmapped row and an
+    ethnicity-only row ("Hispanic") are not (block comment "Ethnicity
+    dimension named in the row label")."""
+    if _names_race_dimension(label):
+        return True
+    mapping = _map_plain_row(label, 0, False)
+    return (mapping is not None and mapping.get("omb_category") in _RACE_SPECIFIC
+            and "unmapped" not in mapping.get("flags", []))
+
+
 def _ethnicity_dimension_is_the_table(labels: List[str]) -> bool:
-    """True when every row of a table names the ethnicity dimension and at
-    least one of them, without the prefix, names a race category itself: the
-    registrant's name for the race classification the table posts. A row
-    naming an origin group the vocabulary files under a race with a
-    subcategory ("Japanese", "Arab", "African") is not that evidence, since
-    such a name is as much an ethnicity as a race. An all-prefixed table with
-    no such row ("Ethnicity: Hispanic" / "Ethnicity: Not Hispanic" /
-    "Ethnicity: Unknown"; "Ethnicity: Japanese" / "Ethnicity: Not Japanese")
-    is an ethnicity classification (block comment "Ethnicity dimension named
-    in the row label")."""
-    if not labels or not all(_names_ethnicity_dimension(label) for label in labels):
+    """True when the rows naming the ethnicity dimension are the table's race
+    classification under that name: at least one row names the dimension, no
+    other row is a race row of its own (_is_own_race_row; a bare "Unknown" or
+    "Other" beside them is that classification's residual), and at least one
+    named row, without the prefix, names a race category itself. A row naming
+    an origin group the vocabulary files under a race with a subcategory
+    ("Japanese", "Arab", "African") is not that evidence, since such a name is
+    as much an ethnicity as a race. A table with no such row ("Ethnicity:
+    Hispanic" / "Ethnicity: Not Hispanic" / "Ethnicity: Unknown"; "Ethnicity:
+    Japanese" / "Ethnicity: Not Japanese") is an ethnicity classification
+    (block comment "Ethnicity dimension named in the row label")."""
+    named = [label for label in labels if _names_ethnicity_dimension(label)]
+    if not named or any(_is_own_race_row(label) for label in labels if not _names_ethnicity_dimension(label)):
         return False
-    for label in labels:
+    for label in named:
         stripped = _strip_ethnicity_dimension(label)
-        mapping = _map_plain_row(stripped, 0, False) if stripped is not None else None
+        mapping = (_map_plain_row(stripped, 0, False, guard_negation=True)
+                   if stripped is not None else None)
         if (mapping is not None and mapping.get("confidence") != "low"
                 and mapping.get("omb_category") in _RACE_SPECIFIC
                 and not mapping.get("subcategory")):
@@ -1892,7 +1968,8 @@ def _map_table_row(label: str, count: int, pct_converted: bool, total_only: bool
     text = race_part if race_part is not None else label
     stripped = _strip_ethnicity_dimension(text) if whole_table else None
     mapping = _map_plain_row(stripped if stripped is not None else text, count,
-                             pct_converted, total_only, reading)
+                             pct_converted, total_only, reading=reading,
+                             guard_negation=stripped is not None)
     if mapping is None or (stripped is None and _names_ethnicity_dimension(text)):
         row = _skipped_ethnicity_row(label, count, pct_converted, race_part, sex, total_only)
         if mapping is not None:
