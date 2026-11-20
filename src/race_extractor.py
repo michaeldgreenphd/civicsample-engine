@@ -561,15 +561,18 @@ def aian_label(label: str) -> bool:
 # Asian alone in another row (NCT01192178, NCT00843024, NCT01691859,
 # NCT03261167). So a row read as more than one race whose text is "Asian"
 # joined by "and", "&" or "+", in either order, to a part this rule reads
-# ("Native Hawaiian or Pacific Islander", "Hawaiian or Pacific Islander",
-# "Hawaiian-Pacific"; a review finding) is counted as other (flags unmapped, asian_pacific_grouped) when no other
+# that names the category, Pacific Islanders as a group and nothing besides
+# Hawaiian ("Native Hawaiian or Pacific Islander", "Hawaiian or Pacific
+# Islander", "Hawaiian-Pacific"; review findings), is counted as other (flags unmapped, asian_pacific_grouped) when no other
 # row of its table names Asian, or Native Hawaiian or Pacific Islander,
 # apart from the other: a row read as Asian whose text names no Pacific
 # group ("Asian", "Japanese/East Asian Heritage"; not "Asian/Pacific
 # Islander", which slash fragments read as Asian), or a row read as Native
 # Hawaiian or Pacific Islander whose text does not name Asian
 # (_grouped_asian_nhpi_rows). Readings of low confidence and unmapped rows
-# are not evidence.
+# are not evidence. A part naming a people ("Asian and Samoan", "Asian and
+# Maori", "Asian and Native Hawaiian") is a combination, not the grouped
+# category, and keeps its reading.
 #
 # "Tonga" is not read as Tongan. It is the name of a country, and of the
 # Tonga of southern Zambia and northern Zimbabwe, a Bantu people; the fuzzy
@@ -635,6 +638,46 @@ def _nhpi_name_subcategory(name: str) -> Optional[str]:
     return None
 
 
+def _nhpi_terms(label: str) -> Optional[Tuple[List[str], bool]]:
+    """The names a label is read through by nhpi_label (lower case), and
+    whether "Pacific" alone or a Pacific abbreviation (PI, OPI, NHPI, NHOPI)
+    is among its terms; None when the label is not one nhpi_label reads."""
+    text = unicodedata.normalize("NFKD", clean_demographic_label(label).lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
+    text = re.sub(r"[.'’]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    names: List[str] = []
+    # "Pacific" alone and the abbreviations PI, OPI, NHPI, NHOPI name Pacific
+    # Islanders too, so the label has no single subcategory.
+    names_pacific = False
+    kinds: List[str] = []
+    position = 0
+    while position < len(text):
+        match = _NHPI_TOKEN_RX.match(text, position)
+        if match is None or match.end() == position:
+            return None
+        kinds.append(match.lastgroup if match.group("mark") not in ("(", ")") else "bracket")
+        if match.lastgroup == "name":
+            names.append(re.sub(r"\s+", " ", match.group("name")))
+        elif match.lastgroup == "pacific" or (match.lastgroup == "abbrev"
+                                               and match.group("abbrev").lower() != "nh"):
+            names_pacific = True
+        position = match.end()
+        while position < len(text) and text[position].isspace():
+            position += 1
+    # Every other term ("Native", "Pacific", "South", an abbreviation, a
+    # filler) names nothing without a name beside it.
+    if not names:
+        return None
+    # A label beginning or ending with a join is a piece of a longer label:
+    # the multirace rule splits "Asian and/or Pacific Islander" at "and" and
+    # reads "/or Pacific Islander" through map_race_category.
+    if kinds[0] in ("join", "mark") or kinds[-1] in ("join", "mark"):
+        return None
+    return names, names_pacific
+
+
 def nhpi_label(label: str) -> Tuple[bool, Optional[str]]:
     """(True, subcategory) when a label names Native Hawaiian or Pacific
     Islander peoples only, by the terms of the block comment above; else
@@ -650,43 +693,36 @@ def nhpi_label(label: str) -> Tuple[bool, Optional[str]]:
       "Torres Strait Islander"                          -> (False, None)
       "Tonga"                                           -> (False, None)
     """
-    text = unicodedata.normalize("NFKD", clean_demographic_label(label).lower())
-    text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
-    text = re.sub(r"[.'’]", "", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    names: List[str] = []
-    # "Pacific" alone and the abbreviations PI, OPI, NHPI, NHOPI name Pacific
-    # Islanders too, so the label has no single subcategory.
-    names_pacific = False
-    kinds: List[str] = []
-    position = 0
-    while position < len(text):
-        match = _NHPI_TOKEN_RX.match(text, position)
-        if match is None or match.end() == position:
-            return False, None
-        kinds.append(match.lastgroup if match.group("mark") not in ("(", ")") else "bracket")
-        if match.lastgroup == "name":
-            names.append(re.sub(r"\s+", " ", match.group("name")))
-        elif match.lastgroup == "pacific" or (match.lastgroup == "abbrev"
-                                               and match.group("abbrev").lower() != "nh"):
-            names_pacific = True
-        position = match.end()
-        while position < len(text) and text[position].isspace():
-            position += 1
-    # Every other term ("Native", "Pacific", "South", an abbreviation, a
-    # filler) names nothing without a name beside it.
-    if not names:
+    terms = _nhpi_terms(label)
+    if terms is None:
         return False, None
-    # A label beginning or ending with a join is a piece of a longer label:
-    # the multirace rule splits "Asian and/or Pacific Islander" at "and" and
-    # reads "/or Pacific Islander" through map_race_category.
-    if kinds[0] in ("join", "mark") or kinds[-1] in ("join", "mark"):
-        return False, None
+    names, names_pacific = terms
     subcategories = {_nhpi_name_subcategory(name) for name in names}
     if names_pacific:
         subcategories.add(None)
     return True, (subcategories.pop() if len(subcategories) == 1 else None)
+
+
+# The category's own words: Pacific Islanders as a group, and Hawaiian.
+_NHPI_GROUP_NAME_RX = re.compile(rf"{_NHPI_PACIFIC}\s+(?:islanders?|islands?|isles?|peoples?)$")
+_NHPI_HAWAIIAN_NAME_RX = re.compile(rf"(?:native\s+hawaii|{_NHPI_HAWAIIAN})$")
+
+
+def _nhpi_names_the_category(label: str) -> bool:
+    """True when nhpi_label reads the label and it names the category, not a
+    people: it names Pacific Islanders as a group ("Pacific Islander",
+    "Pacific" alone, PI, OPI, NHPI, NHOPI) and no name besides those and
+    Hawaiian ("Native Hawaiian or Pacific Islander", "Hawaiian-Pacific"; not
+    "Samoan", "Maori" or "Native Hawaiian" alone). Used by
+    _asian_joined_to_nhpi (block comment above; a review finding)."""
+    terms = _nhpi_terms(label)
+    if terms is None:
+        return False
+    names, names_pacific = terms
+    if any(_NHPI_GROUP_NAME_RX.match(name) is None and _NHPI_HAWAIIAN_NAME_RX.match(name) is None
+           for name in names):
+        return False
+    return names_pacific or any(_NHPI_GROUP_NAME_RX.match(name) is not None for name in names)
 
 # ── Heritage-template labels ───────────────────────────────────────────────
 #
@@ -2486,9 +2522,10 @@ _GROUPED_ASIAN_NHPI_FLAG = "asian_pacific_grouped"
 
 def _asian_joined_to_nhpi(text: str) -> bool:
     """True when a row's text is two parts joined by "and", "&" or "+", one
-    "Asian" and the other read by nhpi_label, in either order. A category
-    name holding "and" ("Native Hawaiian and Other Pacific Islander") is one
-    part, as for the multirace rule (_MULTIRACE_ONE_CATEGORY)."""
+    "Asian" and the other naming the Native Hawaiian or Pacific Islander
+    category (_nhpi_names_the_category), in either order. A category name
+    holding "and" ("Native Hawaiian and Other Pacific Islander") is one part,
+    as for the multirace rule (_MULTIRACE_ONE_CATEGORY)."""
     text = re.sub(r"\s+", " ", clean_demographic_label(text)).strip()
     for rx, name in _MULTIRACE_ONE_CATEGORY:
         text = rx.sub(name, text)
@@ -2496,8 +2533,8 @@ def _asian_joined_to_nhpi(text: str) -> bool:
     if len(parts) != 2:
         return False
     first, second = parts
-    return bool((_ASIAN_PART_RX.fullmatch(first) and nhpi_label(second)[0])
-                or (_ASIAN_PART_RX.fullmatch(second) and nhpi_label(first)[0]))
+    return bool((_ASIAN_PART_RX.fullmatch(first) and _nhpi_names_the_category(second))
+                or (_ASIAN_PART_RX.fullmatch(second) and _nhpi_names_the_category(first)))
 _PACIFIC_TERM_RX = re.compile(r"pacific|hawai|islander", re.IGNORECASE)
 _ASIAN_TERM_RX = re.compile(r"asian", re.IGNORECASE)
 

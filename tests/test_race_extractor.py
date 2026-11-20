@@ -2686,7 +2686,9 @@ def test_asian_joined_to_pacific_islander_is_the_grouped_category_without_asian_
 
 
 @pytest.mark.parametrize("label", [
-    "Asian and White", "Asian and Native Hawaiian or Pacific Islander and White"])
+    "Asian and White", "Asian and Native Hawaiian or Pacific Islander and White",
+    # a part naming a people, not the category (review finding)
+    "Asian and Samoan", "Samoan and Asian", "Asian and Native Hawaiian", "Asian and Maori"])
 def test_other_combinations_naming_asian_are_not_the_grouped_category(label: str) -> None:
     table = _category_table(COMBINED_TITLE, [(label, 21), ("Black or African American", 11), ("White", 68)])
     race = extract_race_data(_study("NCT99000610", [table], 100))
