@@ -24,6 +24,10 @@ skipped_ethnicity_rows and flags ethnicity_rows_skipped. A label that names a
 race beside the ethnicity term ("Non-Hispanic White") is a race row of that
 race (last two sections).
 
+A race table that posts a study's groups as rows ("White - Usual Care", each
+row's count in its own group's column only) is read by its race parts (last
+section of the file).
+
 Which measures are race tables at all is the title word rule
 (race_extractor.is_race_table): titles that only contain the letters "race"
 inside another word ("Contraception History", "GRACE score", "Intracerebral
@@ -2372,3 +2376,190 @@ def test_rows_read_without_the_study_are_unchanged() -> None:
     table = _category_table(COMBINED_TITLE, INDIGENOUS_TABLE)
     row = next(m for m in rx.extract_race_from_measure(table) if m["original"] == "Aboriginal")
     assert row["omb_category"] == "other" and "unmapped" in row["flags"]
+
+
+# ── Race crossed with baseline group ───────────────────────────────────────
+# A study's groups posted as rows of the race table, "<race> - <group>",
+# each row's count in its own group's column and the Total column only
+# (race_extractor block comment "Race crossed with baseline group"; the
+# registry case is NCT02675777). The fictional study has two periods, 60 and
+# 40 participants, and a Total group.
+
+PERIODS = [("BG000", "Quality Improvement (ALPHA) Intervention Period"),
+           ("BG001", "Usual Care Period")]
+TOTAL_GROUP = ("BG002", "Total")
+
+
+def _group_row(label: str, values: dict[str, Any]) -> dict[str, Any]:
+    """A customized-table row posting a value in each named group column."""
+    return {"title": label, "categories": [{"measurements": [
+        {"groupId": group_id, "value": str(v)} for group_id, v in values.items()]}]}
+
+
+def _period_row(label: str, group_id: str, n: int) -> dict[str, Any]:
+    """A row posted in one period's column and the Total column."""
+    return _group_row(label, {group_id: n, TOTAL_GROUP[0]: n})
+
+
+def _grouped_table(rows: list[dict[str, Any]], title: str = COMBINED_TITLE,
+                   unit: str = "participants") -> dict[str, Any]:
+    return {"title": title, "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": unit,
+            "classes": rows}
+
+
+def _grouped_study(nct_id: str, measures: list[dict[str, Any]], key: str = "id",
+                   groups: Optional[list[tuple[str, str]]] = None) -> dict[str, Any]:
+    """A study with two period groups (60 and 40) and a Total group (100).
+    key is the group id's key: "id" as the registry returns it, "groupId" as
+    the other fixtures in this file post it."""
+    pairs = groups if groups is not None else PERIODS + [TOTAL_GROUP]
+    sizes = {pairs[0][0]: 60, pairs[1][0]: 40, pairs[-1][0]: 100}
+    baseline: dict[str, Any] = {
+        "groups": [{key: group_id, "title": title} for group_id, title in pairs],
+        "denoms": [{"units": "Participants", "counts": [
+            {"groupId": group_id, "value": str(n)} for group_id, n in sizes.items()]}],
+        "measures": measures}
+    return {"protocolSection": {"identificationModule": {"nctId": nct_id},
+                                "designModule": {"enrollmentInfo": {"count": 100}}},
+            "resultsSection": {"baselineCharacteristicsModule": baseline}}
+
+
+RACE_BY_PERIOD = [
+    _period_row("White - ALPHA", "BG000", 40),
+    _period_row("White - Usual Care", "BG001", 25),
+    _period_row("Black or African American - ALPHA", "BG000", 15),
+    _period_row("Black or African American - Usual Care", "BG001", 10),
+    _period_row("Unknown - ALPHA", "BG000", 5),
+    _period_row("Unknown - Usual Care", "BG001", 5),
+]
+
+
+@pytest.mark.parametrize("label, expected", [
+    ("White - ALPHA", ("White", "BG000")),
+    ("Asian - Usual Care", ("Asian", "BG001")),
+    ("Black or African American – Usual Care", ("Black or African American", "BG001")),
+    ("Asian - East Asian Heritage - ALPHA", ("Asian - East Asian Heritage", "BG000")),  # last dash
+    ("White - usual care, %", ("White", "BG001")),  # cleaned, any case
+])
+def test_a_race_by_group_label_splits_into_race_part_and_group(
+        label: str, expected: tuple[str, str]) -> None:
+    assert rx.split_race_by_group_label(label, PERIODS) == expected
+
+
+@pytest.mark.parametrize("label", [
+    "White",
+    "White/Caucasian",
+    "White-ALPHA",       # no spaced dash
+    "White - Period",    # names both groups
+    "White - Placebo",   # names no group
+    "White - Total",     # the whole-population group is not a column
+    "- ALPHA",           # nothing before the dash
+    "ALPHA - White",     # the reverse order is not read
+])
+def test_a_label_naming_no_single_group_does_not_split(label: str) -> None:
+    assert rx.split_race_by_group_label(label, PERIODS) is None
+
+
+def test_group_columns_leave_out_the_one_whole_population_group() -> None:
+    assert rx._baseline_group_columns(_grouped_study("NCT99000589", [])) == PERIODS
+    # Two whole-population titles: neither is taken for the Total, so a row
+    # repeated in a Total column fails the posting test.
+    two = PERIODS + [("BG002", "Total"), ("BG003", "Overall")]
+    assert rx._baseline_group_columns(_grouped_study("NCT99000589", [], groups=two)) == two
+
+
+@pytest.mark.parametrize("key", ["id", "groupId"])
+def test_a_race_by_group_table_is_read_by_its_race_parts(key: str) -> None:
+    """Before, every row was mapped whole: "White - ALPHA" and the other rows
+    reached a race only by fuzzy match, if at all."""
+    race = extract_race_data(_grouped_study("NCT99000590", [_grouped_table(RACE_BY_PERIOD)], key=key))
+    assert _nonzero(race) == {"white": 65, "black_african_american": 25, "unknown_not_reported": 10}
+    assert "race_by_group_table" in race["flags"] and "race_by_sex_table" not in race["flags"]
+    white = [c for c in race["raw_categories"] if c["omb_category"] == "white"]
+    assert [(c["original"], c["race_part"], c["group"], c["count"]) for c in white] == [
+        ("White - ALPHA", "White", PERIODS[0][1], 40),
+        ("White - Usual Care", "White", PERIODS[1][1], 25)]
+    for cat in race["raw_categories"]:
+        assert "race_by_group" in cat["flags"] and "sex" not in cat
+        assert not any(flag.startswith("fuzzy_match") for flag in cat["flags"])
+
+
+@pytest.mark.parametrize("rows", [
+    pytest.param([_group_row("White - ALPHA", {"BG000": 20, "BG001": 20, "BG002": 40}),
+                  _group_row("White - Usual Care", {"BG000": 30, "BG001": 30, "BG002": 60})],
+                 id="counts in both columns"),
+    pytest.param([_group_row("White - ALPHA", {"BG000": 55, "BG002": 60}),
+                  _period_row("White - Usual Care", "BG001", 40)],
+                 id="count read is not the column's"),
+    pytest.param([_group_row("White - ALPHA", {"BG000": 40, "BG001": 5, "BG002": 40}),
+                  _period_row("White - Usual Care", "BG001", 60)],
+                 id="a number in another column"),
+    pytest.param([_period_row("White - ALPHA", "BG000", 50),
+                  _period_row("Black - ALPHA", "BG000", 10),
+                  _period_row("Black", "BG001", 40)],
+                 id="a row naming no group"),
+    pytest.param([_period_row("White - ALPHA", "BG000", 50),
+                  _period_row("Black - ALPHA", "BG000", 50)],
+                 id="one group named"),
+])
+def test_a_table_failing_a_race_by_group_test_is_read_as_plain_rows(
+        rows: list[dict[str, Any]]) -> None:
+    race = extract_race_data(_grouped_study("NCT99000591", [_grouped_table(rows)]))
+    assert "race_by_group_table" not in race["flags"]
+    assert all("group" not in c and "race_by_group" not in c["flags"] for c in race["raw_categories"])
+
+
+def test_a_percentage_table_is_not_read_by_group() -> None:
+    rows = [_period_row("White - ALPHA", "BG000", 60), _period_row("White - Usual Care", "BG001", 40)]
+    race = extract_race_data(_grouped_study("NCT99000592", [_grouped_table(rows, unit="% of participants")]))
+    assert "race_by_group_table" not in race["flags"]
+
+
+def test_rows_posted_in_one_arm_but_naming_races_only_stay_plain() -> None:
+    """Groups defined by race: each row's count is in one column, but no row
+    names a group, so the table is read as it was."""
+    groups = [("BG000", "White Adults"), ("BG001", "Black Adults"), TOTAL_GROUP]
+    rows = [_period_row("White", "BG000", 60), _period_row("Black or African American", "BG001", 40)]
+    race = extract_race_data(_grouped_study("NCT99000593", [_grouped_table(rows)], groups=groups))
+    assert _nonzero(race) == {"white": 60, "black_african_american": 40}
+    assert "race_by_group_table" not in race["flags"]
+
+
+def test_a_race_by_sex_reading_is_kept_when_the_groups_are_the_sexes() -> None:
+    """Rows that pass both tests are read by sex, as before."""
+    groups = [("BG000", "Female Participants"), ("BG001", "Male Participants"), TOTAL_GROUP]
+    rows = [_period_row("White - Female", "BG000", 45), _period_row("Asian - Female", "BG000", 15),
+            _period_row("White - Male", "BG001", 30), _period_row("Asian - Male", "BG001", 10)]
+    race = extract_race_data(_grouped_study("NCT99000594", [_grouped_table(rows)], groups=groups))
+    assert _nonzero(race) == {"white": 75, "asian": 25}
+    assert "race_by_sex_table" in race["flags"] and "race_by_group_table" not in race["flags"]
+    assert all("group" not in c for c in race["raw_categories"])
+
+
+def test_an_ethnicity_row_of_a_race_by_group_table_is_recorded_with_its_group() -> None:
+    rows = [_period_row("White - ALPHA", "BG000", 40),
+            _period_row("Hispanic or Latino - ALPHA", "BG000", 20),
+            _period_row("White - Usual Care", "BG001", 30),
+            _period_row("Hispanic or Latino - Usual Care", "BG001", 10)]
+    race = extract_race_data(_grouped_study("NCT99000595", [_grouped_table(rows)]))
+    assert race["omb_totals"]["white"] == 70
+    assert [(r["original"], r["race_part"], r["group"], r["count"])
+            for r in race["skipped_ethnicity_rows"]] == [
+        ("Hispanic or Latino - ALPHA", "Hispanic or Latino", PERIODS[0][1], 20),
+        ("Hispanic or Latino - Usual Care", "Hispanic or Latino", PERIODS[1][1], 10)]
+    for row in race["skipped_ethnicity_rows"]:
+        assert "race_by_group" in row["flags"] and "race_by_sex" not in row["flags"]
+        assert "sex" not in row
+
+
+def test_a_race_by_group_table_whose_race_parts_do_not_map_is_read_as_plain_rows() -> None:
+    """As for a race-by-sex table: when no race part maps, the rows are read
+    whole. (This wording is not yet in the vocabulary; NCT02675777 posts it.)"""
+    rows = [_period_row("Hawaiian or Pacific Islander - ALPHA", "BG000", 60),
+            _period_row("Hawaiian or Pacific Islander - Usual Care", "BG001", 40)]
+    race = extract_race_data(_grouped_study("NCT99000596", [_grouped_table(rows)]))
+    assert race["omb_totals"]["other"] == 100
+    assert "race_by_group_table" not in race["flags"]
+    assert [c["original"] for c in race["raw_categories"]] == [
+        "Hawaiian or Pacific Islander - ALPHA", "Hawaiian or Pacific Islander - Usual Care"]
+    assert all("group" not in c and "race_part" not in c for c in race["raw_categories"])

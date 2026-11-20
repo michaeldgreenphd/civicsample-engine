@@ -77,6 +77,9 @@ Tests:
  28. NCT99000147 — "Aboriginal" and "Indigenous" rows in a trial whose sites
      are all in Canada, read as American Indian or Alaska Native by the
      trial's sites (fictional study)
+ 29. NCT99000148 — A race table posting the study's two periods as rows
+     ("White - Intervention", "White - Usual Care"), each row's count in its
+     own period's column only, read by its race parts (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -103,6 +106,8 @@ ethnicity totals and flags (EXPECTED_ETHNICITY).
 Study 27 asserts its race block and raceBreakdown (EXPECTED_RACE): the bare
 "Unknown" does not make the named rows an ethnicity classification.
 Study 28 asserts its race totals (EXPECTED_AIAN).
+Study 29 asserts its race totals, that every row is read by its race part
+with its group named, and the race_by_group_table flag (EXPECTED_RACE_BY_GROUP).
 A mismatch stops the harness.
 """
 import json
@@ -839,6 +844,48 @@ MOCK_NCT99000147 = _make_study(
 MOCK_NCT99000147["protocolSection"]["contactsLocationsModule"] = {
     "locations": [{"country": "Canada", "city": "Winnipeg"}, {"country": "Canada", "city": "Toronto"}]}
 
+# ---------- NCT99000148 (fictional): race crossed with baseline group ----------
+# 100 participants in two periods, 55 and 45, and a Total group. The race
+# table posts one row per race and period, each row's count in its own
+# period's column and the Total column only (race_extractor, "Race crossed
+# with baseline group"; the registry case is NCT02675777). Before, every row
+# was mapped whole and most were counted as other. The group ids use the
+# registry's key, "id".
+_PERIOD_GROUPS = [{"id": "BG000", "title": "Intervention Period"},
+                  {"id": "BG001", "title": "Usual Care Period"},
+                  {"id": "BG002", "title": "Total"}]
+
+
+def _period_class(label: str, group_id: str, n: int) -> dict:
+    """A customized-table row posted in one period's column and the Total column."""
+    return {"title": label, "categories": [{"measurements": [
+        _make_measurement(n, group_id), _make_measurement(n, "BG002")]}]}
+
+
+MOCK_NCT99000148 = _make_study(
+    "NCT99000148",
+    "NCT99000148 - Race rows posted per study period (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _period_class("White - Intervention", "BG000", 35),
+            _period_class("White - Usual Care", "BG001", 30),
+            _period_class("Asian - Intervention", "BG000", 12),
+            _period_class("Asian - Usual Care", "BG001", 8),
+            _period_class("Native American or Alaskan Native - Intervention", "BG000", 3),
+            _period_class("Native American or Alaskan Native - Usual Care", "BG001", 2),
+            _period_class("Unknown - Intervention", "BG000", 5),
+            _period_class("Unknown - Usual Care", "BG001", 5),
+        ]),
+    ],
+    total_participants=100,
+    groups=_PERIOD_GROUPS,
+)
+
+EXPECTED_RACE_BY_GROUP = {
+    "NCT99000148": {"white": 65, "asian": 20, "american_indian_alaska_native": 5,
+                    "unknown_not_reported": 10},
+}
+
 EXPECTED_AIAN = {
     "NCT99000145": {"white": 100, "american_indian_alaska_native": 35, "other": 3},
     "NCT99000147": {"white": 80, "american_indian_alaska_native": 15, "asian": 5},
@@ -1126,6 +1173,14 @@ def validate_study(study: dict, nct_id: str) -> None:
         assert nonzero == EXPECTED_AIAN[nct_id], f"{nct_id} race omb_totals: {nonzero}"
         assert race["quarantined_labels"] == [], f"{nct_id} quarantined: {race['quarantined_labels']}"
         print(f"\n  {nct_id}: American Indian or Alaska Native wordings read as such — OK")
+    if nct_id in EXPECTED_RACE_BY_GROUP:
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == EXPECTED_RACE_BY_GROUP[nct_id], f"{nct_id} race omb_totals: {nonzero}"
+        assert "race_by_group_table" in race["flags"], f"{nct_id} race flags: {race['flags']}"
+        for cat in race["raw_categories"]:
+            assert cat.get("group") and cat.get("race_part") and "race_by_group" in cat["flags"], \
+                f"{nct_id} row not read by group: {cat}"
+        print(f"\n  {nct_id}: race rows posted per group read by their race parts — OK")
     if nct_id in EXPECTED_HERITAGE:
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
         assert nonzero == EXPECTED_HERITAGE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
@@ -1165,6 +1220,7 @@ def main() -> None:
         (MOCK_NCT99000115, "NCT99000115"),
         (MOCK_NCT99000146, "NCT99000146"),
         (MOCK_NCT99000147, "NCT99000147"),
+        (MOCK_NCT99000148, "NCT99000148"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
