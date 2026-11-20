@@ -737,3 +737,66 @@ def test_race_rows_under_a_combined_name_keep_a_race_table_race_only() -> None:
         table = _table(COMBINED, [(f"{prefix}: White", 40), (f"{prefix}: Black", 10)])
         eth = extract_ethnicity_data(_study("NCT99000720", [table], participants=50))
         assert eth["reported"] is False and eth["flags"] == ["race_only_table_skipped"], prefix
+
+
+# ── A race classification's unknown row beside a complete ethnicity ────────
+#    classification
+#
+# src/ethnicity_extractor.py, block comment of that name (a review finding).
+
+def test_a_race_unknown_row_is_not_counted_beside_a_complete_ethnicity_classification() -> None:
+    """The NCT01557517 shape: the definition row 6 and "Not meeting
+    definition for Hispanic or Latino" 34 hold all 40 participants, so the
+    race classification's "Unknown" 1 is not unknown ethnicity: the block is
+    40 of 40, not 41 of 40."""
+    table = _table(COMBINED, [
+        ("White", 30), ("Black or African American", 9), ("Unknown", 1),
+        ("Mexican, Puerto Rican, Cuban, Central or So. Amer.", 6),
+        ("Not meeting definition for Hispanic or Latino", 34)])
+    eth = extract_ethnicity_data(_study("NCT99000901", [table], participants=40))
+    assert eth["omb_totals"] == {"hispanic_latino": 6, "not_hispanic_latino": 34, "unknown_not_reported": 0}
+    assert "race_unknown_rows_not_counted" in eth["flags"]
+    assert not any(c["omb_category"] == "unknown_not_reported" for c in eth["raw_categories"])
+
+
+def test_an_unknown_row_is_counted_when_the_ethnicity_rows_fall_short() -> None:
+    """Hispanic and Not Hispanic hold 36 of 40: the unknown row may be the
+    ethnicity classification's own, and is counted as before."""
+    table = _table(COMBINED, [("White", 30), ("Black", 10), ("Hispanic", 6), ("Not Hispanic", 30), ("Unknown", 4)])
+    eth = extract_ethnicity_data(_study("NCT99000902", [table], participants=40))
+    assert eth["omb_totals"] == {"hispanic_latino": 6, "not_hispanic_latino": 30, "unknown_not_reported": 4}
+    assert "race_unknown_rows_not_counted" not in eth["flags"]
+
+
+def test_an_unknown_row_naming_the_ethnicity_dimension_is_counted_as_before() -> None:
+    """"Ethnicity: Unknown" says it is an ethnicity row; a table whose rows
+    then exceed its population is not read by guess."""
+    table = _table(COMBINED, [("White", 30), ("Black", 10), ("Hispanic", 6), ("Not Hispanic", 34),
+                              ("Ethnicity: Unknown", 2)])
+    eth = extract_ethnicity_data(_study("NCT99000903", [table], participants=40))
+    assert eth["omb_totals"]["unknown_not_reported"] == 2
+    assert "race_unknown_rows_not_counted" not in eth["flags"]
+
+
+def test_an_ethnicity_titled_table_is_read_as_before() -> None:
+    """The rule is for race-titled tables, where a race classification sits
+    beside the ethnicity rows; an ethnicity table's unknown row is its own."""
+    table = _table("Ethnicity (NIH/OMB)", [("Hispanic or Latino", 6), ("Not Hispanic or Latino", 34),
+                                           ("Unknown or Not Reported", 1)])
+    eth = extract_ethnicity_data(_study("NCT99000904", [table], participants=40))
+    assert eth["omb_totals"]["unknown_not_reported"] == 1
+
+
+def test_parts_whose_race_unknown_row_hid_a_complete_classification_are_summed() -> None:
+    """The NCT01224106 shape: two parts of the population (797 + 154). The
+    second part's race "Unknown" pushed it over its Number Analyzed, so the
+    parts could not be summed and its participants were balanced into unknown.
+    Without it, the parts add up to the population."""
+    part_a = _table(COMBINED, [("Non-Hispanic", 648), ("Hispanic", 127), ("White", 700), ("Black", 75),
+                               ("Not Available", 22)], analyzed=797)
+    part_b = _table(COMBINED, [("Non-Hispanic", 127), ("Hispanic", 27), ("White", 140), ("Asian", 10),
+                               ("Unknown", 4)], analyzed=154)
+    eth = extract_ethnicity_data(_study("NCT99000905", [part_a, part_b], participants=951))
+    assert eth["omb_totals"]["hispanic_latino"] == 154
+    assert eth["omb_totals"]["not_hispanic_latino"] == 775
+    assert "ethnicity_tables_partitioned" in eth["flags"]

@@ -847,6 +847,48 @@ def _is_race_only_table(kept: List[Dict], dropped: List[Dict]) -> bool:
     return any((c.get("count") or 0) > 0 for c in dropped)
 
 
+# ── A race classification's unknown row beside a complete ethnicity ────────
+#    classification
+#
+# Some race-titled tables post a race classification and an ethnicity
+# classification of the same participants in one table: race rows (White,
+# Black, ..., "Unknown") and ethnicity rows (Hispanic, Not Hispanic). The race
+# rows are dropped here as unmapped, but the race classification's "Unknown"
+# row maps to unknown in the ethnicity vocabulary and was counted as unknown
+# ethnicity, beside an ethnicity classification that already holds everyone:
+# NCT01557517 posts the OMB definition of Hispanic 6 and "Not meeting
+# definition for Hispanic or Latino" 34 for a population of 40, and its race
+# "Unknown" 1 made the block 41 of 40 (a review finding).
+#
+# Method (_race_unknown_rows). In a race-titled table (is_race_table) whose
+# Hispanic and Not Hispanic rows add up exactly to the table's population
+# (its own Number Analyzed, else the baseline population), a row mapped to
+# unknown with a count above zero is not counted for ethnicity: the
+# ethnicity classification is complete, so the row is not part of it. A row
+# naming the ethnicity dimension ("Ethnicity: Unknown") is counted as before:
+# it says it is an ethnicity row, and such a table is not read by guess. The
+# block carries the flag race_unknown_rows_not_counted when a counted table
+# had such a row; its participants stay in the race block, where the row is
+# read as unknown race.
+#
+# What it does not do. A table whose Hispanic and Not Hispanic rows fall
+# short of its population is read as before: its unknown row may be the
+# ethnicity classification's own. A table without a Hispanic or Not Hispanic
+# row is the rule above's ("A race table under a race-and-ethnicity title").
+def _race_unknown_rows(categories: List[Dict], population: Optional[int]) -> List[Dict]:
+    """The unknown rows of a race-titled table not counted for ethnicity,
+    because its Hispanic and Not Hispanic rows already hold the whole
+    population (block comment above); [] otherwise."""
+    if not population:
+        return []
+    classified = sum(c.get("count") or 0 for c in categories if c["omb_category"] in _ETHNICITY_SPECIFIC)
+    if classified != population:
+        return []
+    return [c for c in categories
+            if c["omb_category"] == "unknown_not_reported" and (c.get("count") or 0) > 0
+            and not _names_ethnicity_dimension(c)]
+
+
 def _race_rows_not_hispanic(study: dict, counted: List[Dict], omb_totals: Dict,
                             total_participants: Optional[int]) -> int:
     """Participants of a combined classification's race rows that this block
@@ -925,11 +967,23 @@ def extract_ethnicity_data(study: dict) -> Dict:
             # comment "Race joined to ethnicity in one label").
             unread = sum(c.get("count") or 0 for c in dropped if _names_hispanic(c))
 
+        analyzed = table_selection.number_analyzed(measure, overall_group_id)
+        # A race classification's unknown row beside a complete ethnicity
+        # classification is not counted (block comment above
+        # _race_unknown_rows).
+        left_out: List[Dict] = []
+        if "race" in title.lower():
+            from src.race_extractor import is_race_table
+            if is_race_table(title):
+                left_out = _race_unknown_rows(
+                    categories, analyzed if analyzed is not None else total_participants)
+                categories = [c for c in categories if not any(c is row for row in left_out)]
+
         result["reported"] = True
         tables.append({"title": title, "index": index,
-                       "analyzed": table_selection.number_analyzed(measure, overall_group_id),
+                       "analyzed": analyzed,
                        "population": table_selection.population_of(measure),
-                       "categories": categories, "unread": unread})
+                       "categories": categories, "unread": unread, "left_out": bool(left_out)})
 
     ethnicity_tables_found = len(tables)
     counted, partitioned = table_selection.select_tables(
@@ -943,6 +997,8 @@ def extract_ethnicity_data(study: dict) -> Dict:
 
     if any(table["unread"] > 0 for table in counted):
         result["flags"].append("ethnicity_rows_unread")
+    if any(table["left_out"] for table in counted):
+        result["flags"].append("race_unknown_rows_not_counted")
 
     for table in counted:
         categories = table["categories"]
