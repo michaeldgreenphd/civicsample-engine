@@ -388,11 +388,11 @@ def mena_subcategory(label: str) -> Optional[str]:
 # What it does not do. A label naming an Indigenous people outside the
 # Americas stays as it was ("Indigenous African", "Aboriginal Australian",
 # "Torres Strait Islander", "Maori", "Indigenous swede"). An unqualified
-# "Indigenous", "Aboriginal", "Aborigine", "Native" or "Tribal members" stays
-# as it was: it names Indigenous people of the trial's own country, which the
-# label does not give ("Aboriginal" is posted by Canadian and by Australian
-# trials; "Indigenous", a vocabulary entry read as American Indian, is posted
-# by one Australia and New Zealand trial). A label naming another group
+# "Indigenous", "Aboriginal" or "Aborigine" names Indigenous people of the
+# trial's own country, which the label does not give: it is read by the
+# trial's sites (block comment "Unqualified Indigenous labels, read by the
+# trial's sites"). "Native" alone and "Tribal members" stay as they were.
+# A label naming another group
 # beside these ("Native American or Pacific Islander", "American Indian and
 # White", "Other (including American Indian or Alaska Native)") is not read
 # by this rule; a combination is read by the multirace rules, which now find
@@ -2157,8 +2157,12 @@ def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[i
 def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only: bool,
                     whole_table: bool,
                     splits: Optional[List[Tuple[str, str]]] = None,
+                    indigenous_region: Optional[str] = None,
                     ) -> List[Tuple[Optional[Dict], Optional[Dict]]]:
-    """_map_table_row for every row of one table, then the comma-list rule
+    """_map_table_row for every row of one table, then the rule for
+    unqualified Indigenous labels when the trial's site region is given
+    (indigenous_region, from _trial_site_region; block comment "Unqualified
+    Indigenous labels, read by the trial's sites"), then the comma-list rule
     (block comment "Comma lists naming two or more races"). splits holds the
     (race part, sex) of each row of a race-by-sex table, else None."""
     parts: List[Tuple[Optional[str], Optional[str]]] = (
@@ -2168,6 +2172,18 @@ def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only
                for (label, count), (race_part, sex) in zip(rows, parts)]
     texts = [_row_text_read(race_part if race_part is not None else label, whole_table)
              for (label, _count), (race_part, _sex) in zip(rows, parts)]
+    if indigenous_region is not None:
+        for i, (mapping, _skipped) in enumerate(results):
+            if mapping is None or not _unqualified_indigenous(texts[i]):
+                continue
+            (label, count), (race_part, sex) = rows[i], parts[i]
+            category = ("american_indian_alaska_native" if indigenous_region == "americas"
+                        else "other")
+            reading = {"omb_category": category, "subcategory": None, "confidence": "high",
+                       "original": clean_demographic_label(texts[i]),
+                       "flags": [f"indigenous_sites_{indigenous_region}"]}
+            results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
+                                        race_part, sex, reading)
     for i in _comma_list_rows(texts, [mapping for mapping, _skipped in results]):
         (label, count), (race_part, sex) = rows[i], parts[i]
         reading = {"omb_category": "more_than_one_race", "subcategory": None,
@@ -2176,6 +2192,111 @@ def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only
         results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
                                     race_part, sex, reading)
     return results
+
+# ── Unqualified Indigenous labels, read by the trial's sites ───────────────
+#
+# A row reading "Indigenous", "Aboriginal", "Aborigine", "Indigenous Person"
+# or "Native/Aboriginal" names the Indigenous people of the place the trial
+# ran, which the label does not give. The vocabulary read "Indigenous" as
+# American Indian or Alaska Native wherever it was posted, also in an
+# Australia and New Zealand trial (NCT05610176), and counted the others as
+# other, also in Canadian trials posting the First Nations, Inuit and Metis
+# as "Aboriginal" (11 trials). OMB's American Indian or Alaska Native is the
+# original peoples of North, Central and South America (block comment
+# "American Indian or Alaska Native labels"); Indigenous peoples elsewhere
+# are not in it.
+#
+# Method. A row whose text, read as every row is (_row_text_read), is made
+# only of "Indigenous", "Aboriginal(s)", "Aborigine(s)" and "Native(s)",
+# joined by "/", ",", "&", "or", "and" or a space, with at least one of the
+# first three, and an optional "people(s)", "person(s)" or "population"
+# (_unqualified_indigenous), is read by the trial's site countries
+# (protocolSection.contactsLocationsModule.locations[].country, the source
+# of the published countries; _trial_site_region):
+#   - every site in the Americas (_AMERICAS_COUNTRIES: North, Central and
+#     South America and the Caribbean): American Indian or Alaska Native,
+#     flagged indigenous_sites_americas;
+#   - no site in the Americas: other, flagged
+#     indigenous_sites_outside_americas;
+#   - sites in and outside the Americas: other, flagged
+#     indigenous_sites_mixed: the participants may be either;
+#   - no site country posted: other, flagged indigenous_sites_unknown.
+# American Indian or Alaska Native is given only where the sites place the
+# trial in the Americas; elsewhere the row is other, with the flag saying
+# why, never left as "unmapped".
+#
+# What it does not do. "Native" alone, "Tribal members", and a label naming
+# a people or place ("Indigenous Mayan", "Aboriginal Australian", block
+# comment "American Indian or Alaska Native labels") are not read by this
+# rule. The United States counts as the Americas whole: a trial whose only
+# sites are in Hawaii, where "Indigenous" would name Native Hawaiians, is
+# read as American Indian (none in the 2026-11-15 inputs posts such a row).
+# Sex/gender-titled tables and extract_race_from_measure, read without the
+# study, are not changed. Guam, American Samoa, Micronesia and the United
+# States Minor Outlying Islands are Pacific, not the Americas.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), with each trial's site
+# countries from the snapshot's published countries, against engine main:
+# American Indian +92 (110 participants in 20 trials from other, mostly
+# Canadian "Aboriginal" rows: NCT03149328 32, NCT00326924 30, and an
+# Arizona trial, NCT00706121 18; 18 in 3 trials to other: NCT03385304 16,
+# sites in Canada, Spain and the United States; NCT05610176 1, Australia and
+# New Zealand; NCT01908751 1, Australia, Canada and the United States).
+# Other -92. 22 race blocks change their totals, 68 any field (rows that
+# stay other lose "unmapped" and gain the reason flag); none changes
+# reported, no ethnicity block changes, and the race blocks over their
+# population do not change. Rows flagged: indigenous_sites_americas 354
+# participants in 35 trials, indigenous_sites_mixed 96 in 11,
+# indigenous_sites_outside_americas 91 in 5, indigenous_sites_unknown 26 in
+# 17 (15 of them "Aborigine" in trials posting no site).
+_AMERICAS_COUNTRIES = frozenset({
+    # North and Central America
+    "United States", "Canada", "Mexico", "Greenland", "Saint Pierre and Miquelon", "Bermuda",
+    "Guatemala", "Belize", "Honduras", "El Salvador", "Nicaragua", "Costa Rica", "Panama",
+    # South America
+    "Colombia", "Venezuela", "Ecuador", "Peru", "Bolivia", "Brazil", "Paraguay", "Uruguay",
+    "Argentina", "Chile", "Guyana", "Suriname", "French Guiana", "Falkland Islands",
+    # The Caribbean
+    "Puerto Rico", "Dominican Republic", "Haiti", "Jamaica", "Cuba", "Trinidad and Tobago",
+    "Barbados", "The Bahamas", "Bahamas", "Guadeloupe", "Martinique", "Saint Lucia", "Grenada",
+    "Antigua and Barbuda", "Dominica", "Saint Kitts and Nevis",
+    "Saint Vincent and the Grenadines", "Aruba", "Curaçao", "Curacao", "Sint Maarten",
+    "Saint Martin", "Saint Barthélemy", "Netherlands Antilles", "Cayman Islands",
+    "Turks and Caicos Islands", "British Virgin Islands", "Virgin Islands",
+    "Virgin Islands (U.S.)", "U.S. Virgin Islands", "Anguilla", "Montserrat",
+})
+_INDIGENOUS_WORD = r"(?:indigenous|aborigin(?:al|als|e|es)|natives?)"
+_UNQUALIFIED_INDIGENOUS_RX = re.compile(
+    rf"^{_INDIGENOUS_WORD}(?:\s*(?:/|,|&|\bor\b|\band\b)\s*{_INDIGENOUS_WORD}|\s+{_INDIGENOUS_WORD})*"
+    r"(?:\s+(?:people|peoples|person|persons|population))?$", re.IGNORECASE)
+_NAMES_INDIGENOUS_RX = re.compile(r"indigenous|aborigin", re.IGNORECASE)
+
+
+def _unqualified_indigenous(text: str) -> bool:
+    """True when a row's text names Indigenous people without saying which
+    (block comment above): "Indigenous", "Aboriginal", "Native/Aboriginal",
+    "Indigenous Person"; not "Native" alone or "Indigenous Mayan"."""
+    text = clean_demographic_label(text).strip()
+    return (_UNQUALIFIED_INDIGENOUS_RX.match(text) is not None
+            and _NAMES_INDIGENOUS_RX.search(text) is not None)
+
+
+def _trial_site_region(study: dict) -> str:
+    """Where a trial's sites are (block comment above): "americas" when every
+    site country is in the Americas, "outside_americas" when none is,
+    "mixed" when some are, "unknown" when no site posts a country."""
+    locations = (((study or {}).get("protocolSection") or {})
+                 .get("contactsLocationsModule") or {}).get("locations") or []
+    countries = {(location or {}).get("country") for location in locations} - {None, ""}
+    if not countries:
+        return "unknown"
+    inside = {country in _AMERICAS_COUNTRIES for country in countries}
+    if inside == {True}:
+        return "americas"
+    if inside == {False}:
+        return "outside_americas"
+    return "mixed"
 
 # ── Race-by-sex tables ──────────────────────────────────────────────────────
 #
@@ -2343,7 +2464,8 @@ def split_race_by_sex_label(label: str) -> Optional[Tuple[str, str]]:
     return race_part, sex
 
 def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str],
-                      fallback_denom: Optional[int], sex_titled: bool) -> Optional[Dict]:
+                      fallback_denom: Optional[int], sex_titled: bool,
+                      indigenous_region: Optional[str] = None) -> Optional[Dict]:
     """Read one baseline measure as a race table.
 
     Returns {"title", "index", "analyzed", "sex_titled", "race_by_sex",
@@ -2367,7 +2489,8 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         # The same ethnicity-dimension routing as a plain table, on the race
         # parts (block comment "Ethnicity dimension named in the row label").
         whole_by_sex = _ethnicity_dimension_is_the_table([race_part for race_part, _sex in splits])
-        mapped = _map_table_rows(rows, pct_converted, total_only, whole_by_sex, splits)
+        mapped = _map_table_rows(rows, pct_converted, total_only, whole_by_sex, splits,
+                                 indigenous_region=indigenous_region)
         for (label, _count), (race_part, sex), (mapping, skipped_row) in zip(rows, splits, mapped):
             if skipped_row is not None:
                 skipped.append(skipped_row)
@@ -2390,7 +2513,8 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         # every row mapped whole, as before.
         categories, quarantined, skipped = [], [], []
         whole_table = _ethnicity_dimension_is_the_table([label for label, _count in rows])
-        for mapping, skipped_row in _map_table_rows(rows, pct_converted, total_only, whole_table):
+        for mapping, skipped_row in _map_table_rows(rows, pct_converted, total_only, whole_table,
+                                                    indigenous_region=indigenous_region):
             if skipped_row is not None:
                 skipped.append(skipped_row)
                 continue
@@ -2560,7 +2684,8 @@ def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
         title = measure.get("title", "")
         if is_race_table(title):
             typed.append(_parse_race_table(measure, index, overall_group_id,
-                                           total_participants, sex_titled=False))
+                                           total_participants, sex_titled=False,
+                                           indigenous_region=_trial_site_region(study)))
         else:
             table = _sex_titled_race_table(measure, index, overall_group_id, total_participants)
             if table is not None:

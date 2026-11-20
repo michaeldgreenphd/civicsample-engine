@@ -71,6 +71,9 @@ Tests:
      out ("Mexican, Puerto Rican, Central or So. Amer. or Oth") and "Not
      meeting definition for Hispanic or Latino" (fictional study, the table
      shape of NCT02153918)
+ 27. NCT99000147 — "Aboriginal" and "Indigenous" rows in a trial whose sites
+     are all in Canada, read as American Indian or Alaska Native by the
+     trial's sites (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -93,7 +96,8 @@ counting them, among them a row naming the ethnicity dimension
 quarantined (EXPECTED_HERITAGE). Studies 23 and 24 assert their race totals
 (EXPECTED_MULTIRACE). Study 25 asserts its race totals and that no row is
 quarantined (EXPECTED_AIAN). Study 26 asserts its
-ethnicity totals and flags (EXPECTED_ETHNICITY).
+ethnicity totals and flags (EXPECTED_ETHNICITY). Study 27 asserts its race
+totals (EXPECTED_AIAN).
 A mismatch stops the harness.
 """
 import json
@@ -790,8 +794,32 @@ MOCK_NCT99000145 = _make_study(
 )
 
 # Expected non-zero race totals of the American Indian or Alaska Native study.
+# ---------- NCT99000147 (fictional): unqualified Indigenous rows ----------
+# 100 participants at Canadian sites only (race_extractor, "Unqualified
+# Indigenous labels, read by the trial's sites"). Before, "Aboriginal" was
+# other and "Indigenous" American Indian whatever the sites; here both are
+# the First Nations, Inuit and Metis.
+MOCK_NCT99000147 = _make_study(
+    "NCT99000147",
+    "NCT99000147 - Unqualified Indigenous rows at Canadian sites (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 80),
+                _make_category("Aboriginal", 12),
+                _make_category("Indigenous", 3),
+                _make_category("Asian", 5),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+MOCK_NCT99000147["protocolSection"]["contactsLocationsModule"] = {
+    "locations": [{"country": "Canada", "city": "Winnipeg"}, {"country": "Canada", "city": "Toronto"}]}
+
 EXPECTED_AIAN = {
     "NCT99000145": {"white": 100, "american_indian_alaska_native": 35, "other": 3},
+    "NCT99000147": {"white": 80, "american_indian_alaska_native": 15, "asian": 5},
 }
 
 # Expected non-zero race totals of the studies of rows naming two races.
@@ -1107,6 +1135,7 @@ def main() -> None:
         (MOCK_NCT99000144, "NCT99000144"),
         (MOCK_NCT99000145, "NCT99000145"),
         (MOCK_NCT99000115, "NCT99000115"),
+        (MOCK_NCT99000147, "NCT99000147"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
