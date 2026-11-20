@@ -2667,15 +2667,30 @@ def test_pacific_rows_of_a_table_are_counted() -> None:
     assert [q["original"] for q in race["quarantined_labels"]] == ["Torres Strait Islander"]
 
 
-def test_asian_joined_to_pacific_islander_is_the_grouped_category_without_asian_alone() -> None:
+@pytest.mark.parametrize("joined", [
+    "Asian and Native Hawaiian or Pacific Islander",          # NCT01912287
+    "Asian and Hawaiian or Pacific Islander",                 # wordings this rule reads (review finding)
+    "Asian & Hawaiian-Pacific",
+    "Native Hawaiian or Pacific Islander and Asian",          # either order
+    "Asian and Native Hawaiian and Other Pacific Islander",   # a category name holding "and"
+])
+def test_asian_joined_to_pacific_islander_is_the_grouped_category_without_asian_alone(joined: str) -> None:
     """NCT01912287's table: no Asian or Pacific row besides the joined one."""
     table = _category_table(COMBINED_TITLE, [
-        ("American Indian or Alaska Native", 2), ("Asian and Native Hawaiian or Pacific Islander", 21),
+        ("American Indian or Alaska Native", 2), (joined, 21),
         ("Black or African American", 11), ("White", 66)])
     race = extract_race_data(_study("NCT99000607", [table], 100))
     assert race["omb_totals"]["other"] == 21 and race["omb_totals"]["more_than_one_race"] == 0
-    row = next(c for c in race["raw_categories"] if c["original"].startswith("Asian and"))
+    row = next(c for c in race["raw_categories"] if c["original"] == joined)
     assert "asian_pacific_grouped" in row["flags"]
+
+
+@pytest.mark.parametrize("label", [
+    "Asian and White", "Asian and Native Hawaiian or Pacific Islander and White"])
+def test_other_combinations_naming_asian_are_not_the_grouped_category(label: str) -> None:
+    table = _category_table(COMBINED_TITLE, [(label, 21), ("Black or African American", 11), ("White", 68)])
+    race = extract_race_data(_study("NCT99000610", [table], 100))
+    assert race["omb_totals"]["more_than_one_race"] == 21
 
 
 @pytest.mark.parametrize("asian_row", [

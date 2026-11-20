@@ -559,9 +559,10 @@ def aian_label(label: str) -> bool:
 # Asian or Pacific Islander group, the reading "Asian and Pacific Islander"
 # already has; tables posting it among combinations ("Asian and White") name
 # Asian alone in another row (NCT01192178, NCT00843024, NCT01691859,
-# NCT03261167). So a row read as more than one race whose text is Asian
-# joined by "and", "&" or "+" to Native Hawaiian or (Other) Pacific Islander
-# is counted as other (flags unmapped, asian_pacific_grouped) when no other
+# NCT03261167). So a row read as more than one race whose text is "Asian"
+# joined by "and", "&" or "+", in either order, to a part this rule reads
+# ("Native Hawaiian or Pacific Islander", "Hawaiian or Pacific Islander",
+# "Hawaiian-Pacific"; a review finding) is counted as other (flags unmapped, asian_pacific_grouped) when no other
 # row of its table names Asian, or Native Hawaiian or Pacific Islander,
 # apart from the other: a row read as Asian whose text names no Pacific
 # group ("Asian", "Japanese/East Asian Heritage"; not "Asian/Pacific
@@ -2474,13 +2475,29 @@ def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[i
 
 
 # "Asian and Native Hawaiian or Pacific Islander", "Asian & Native
-# Hawaiian/Other Pacific Islander": the 1977 Asian or Pacific Islander group
-# under the 1997 names, or a row of participants who reported both races
-# (block comment "Native Hawaiian or Pacific Islander labels").
-_GROUPED_ASIAN_NHPI_RX = re.compile(
-    r"asians?\s*(?:&|\+|and)\s*native\s+hawaiians?\s*(?:or|/)\s*(?:other\s+)?pacific\s+islanders?",
-    re.IGNORECASE)
+# Hawaiian/Other Pacific Islander", "Hawaiian or Pacific Islander and Asian":
+# the 1977 Asian or Pacific Islander group under later names, or a row of
+# participants who reported both races (block comment "Native Hawaiian or
+# Pacific Islander labels").
+_ASIAN_PART_RX = re.compile(r"asians?", re.IGNORECASE)
+_GROUPED_JOIN_RX = re.compile(r"\s*(?:&|\+|\band\b)\s*", re.IGNORECASE)
 _GROUPED_ASIAN_NHPI_FLAG = "asian_pacific_grouped"
+
+
+def _asian_joined_to_nhpi(text: str) -> bool:
+    """True when a row's text is two parts joined by "and", "&" or "+", one
+    "Asian" and the other read by nhpi_label, in either order. A category
+    name holding "and" ("Native Hawaiian and Other Pacific Islander") is one
+    part, as for the multirace rule (_MULTIRACE_ONE_CATEGORY)."""
+    text = re.sub(r"\s+", " ", clean_demographic_label(text)).strip()
+    for rx, name in _MULTIRACE_ONE_CATEGORY:
+        text = rx.sub(name, text)
+    parts = [part.strip() for part in _GROUPED_JOIN_RX.split(text)]
+    if len(parts) != 2:
+        return False
+    first, second = parts
+    return bool((_ASIAN_PART_RX.fullmatch(first) and nhpi_label(second)[0])
+                or (_ASIAN_PART_RX.fullmatch(second) and nhpi_label(first)[0]))
 _PACIFIC_TERM_RX = re.compile(r"pacific|hawai|islander", re.IGNORECASE)
 _ASIAN_TERM_RX = re.compile(r"asian", re.IGNORECASE)
 
@@ -2488,7 +2505,7 @@ _ASIAN_TERM_RX = re.compile(r"asian", re.IGNORECASE)
 def _grouped_asian_nhpi_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[int]:
     """Indices of the rows of one table read as more than one race whose
     text is Asian joined to Native Hawaiian or Pacific Islander
-    (_GROUPED_ASIAN_NHPI_RX) when no other row of the table names Asian or
+    (_asian_joined_to_nhpi) when no other row of the table names Asian or
     Native Hawaiian or Pacific Islander apart from the other: there they are
     the grouped category, not a combination (block comment "Native Hawaiian
     or Pacific Islander labels"). A row names Asian apart when it is read as
@@ -2498,8 +2515,7 @@ def _grouped_asian_nhpi_rows(texts: List[str], mappings: List[Optional[Dict]]) -
     texts and mappings as for _comma_list_rows."""
     candidates = [i for i, (text, mapping) in enumerate(zip(texts, mappings))
                   if mapping is not None and mapping["omb_category"] == "more_than_one_race"
-                  and _GROUPED_ASIAN_NHPI_RX.fullmatch(
-                      re.sub(r"\s+", " ", clean_demographic_label(text)).strip()) is not None]
+                  and _asian_joined_to_nhpi(text)]
     if not candidates:
         return []
     for text, mapping in zip(texts, mappings):
