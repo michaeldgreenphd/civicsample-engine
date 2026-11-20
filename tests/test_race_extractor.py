@@ -2491,6 +2491,9 @@ def test_a_race_by_group_table_is_read_by_its_race_parts(key: str) -> None:
     pytest.param([_group_row("White - ALPHA", {"BG000": 55, "BG002": 60}),
                   _period_row("White - Usual Care", "BG001", 40)],
                  id="count read is not the column's"),
+    pytest.param([_group_row("White - ALPHA", {"BG000": 40, "BG001": 5, "BG002": 40}),
+                  _period_row("White - Usual Care", "BG001", 60)],
+                 id="a number in another column"),
     pytest.param([_period_row("White - ALPHA", "BG000", 50),
                   _period_row("Black - ALPHA", "BG000", 10),
                   _period_row("Black", "BG001", 40)],
@@ -2550,7 +2553,13 @@ def test_an_ethnicity_row_of_a_race_by_group_table_is_recorded_with_its_group() 
 
 
 def test_a_race_by_group_table_whose_race_parts_do_not_map_is_read_as_plain_rows() -> None:
-    rows = [_period_row("Group 1 - ALPHA", "BG000", 60), _period_row("Group 2 - Usual Care", "BG001", 40)]
+    """As for a race-by-sex table: when no race part maps, the rows are read
+    whole. (This wording is not yet in the vocabulary; NCT02675777 posts it.)"""
+    rows = [_period_row("Hawaiian or Pacific Islander - ALPHA", "BG000", 60),
+            _period_row("Hawaiian or Pacific Islander - Usual Care", "BG001", 40)]
     race = extract_race_data(_grouped_study("NCT99000596", [_grouped_table(rows)]))
+    assert race["omb_totals"]["other"] == 100
     assert "race_by_group_table" not in race["flags"]
-    assert all("group" not in c for c in race["raw_categories"] + race["quarantined_labels"])
+    assert [c["original"] for c in race["raw_categories"]] == [
+        "Hawaiian or Pacific Islander - ALPHA", "Hawaiian or Pacific Islander - Usual Care"]
+    assert all("group" not in c and "race_part" not in c for c in race["raw_categories"])
