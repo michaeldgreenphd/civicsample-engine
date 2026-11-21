@@ -235,6 +235,11 @@ def _merge_trials_and_manifest(
                 f"and --cohort-manifest ({overlay['in_audit']!r})"
             )
         combined = {**base, **overlay}
+        for flag in ("protocol", "sap"):
+            if flag in base and flag in overlay:
+                b_val = ol._require_strict_bool(base[flag], f"{nct_id}.trials.{flag}")
+                o_val = ol._require_strict_bool(overlay[flag], f"{nct_id}.cohort_manifest.{flag}")
+                combined[flag] = b_val or o_val
         combined["nct_id"] = nct_id
         merged[nct_id] = combined
     return merged

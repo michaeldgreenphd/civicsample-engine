@@ -1295,8 +1295,13 @@ def _normalize_location_pass(
     *,
     pass_label: str,
     docs_by_filename: Mapping[str, Mapping[str, Any]] | None,
+    has_posted_documents: bool = False,
 ) -> list[dict[str, Any]]:
     """Validate and sort one pass's decision-rule location rows."""
+    has_posted_docs_flag = _require_strict_bool(
+        has_posted_documents, f"{pass_label}.has_posted_documents"
+    )
+    effective_has_docs = has_posted_docs_flag or bool(docs_by_filename)
     seen_pairs: set[tuple[int, str]] = set()
     normalized: list[dict[str, Any]] = []
     for raw_row in rows:
@@ -1345,9 +1350,9 @@ def _normalize_location_pass(
             )
             for c in raw_citations
         ]
-        if status == "NO_DOCUMENT" and docs_by_filename:
+        if status == "NO_DOCUMENT" and effective_has_docs:
             raise OutcomesLayoutError(
-                f"{pass_label} {pair}: status 'NO_DOCUMENT' is forbidden when document_profile contains posted document(s)"
+                f"{pass_label} {pair}: status 'NO_DOCUMENT' is forbidden when posted document(s) are present"
             )
         if status in ("FOUND", "AMBIGUOUS") and len(citations) < 1:
             raise OutcomesLayoutError(
@@ -1418,6 +1423,7 @@ def normalize_decision_rule_locations(
     *,
     document_profile: Mapping[str, Any] | None = None,
     primary_outcomes_count: int | None = None,
+    has_posted_documents: bool = False,
 ) -> dict[str, Any] | None:
     """Normalize decision-rule location records into the unified shard block.
 
@@ -1428,6 +1434,9 @@ def normalize_decision_rule_locations(
     append-only and computes deterministic ``effective_pass`` under precedence
     ``primary -> ocr_recovery -> adjudication``.
     """
+    has_posted_docs_flag = _require_strict_bool(
+        has_posted_documents, "decision_rule_locations.has_posted_documents"
+    )
     if raw is None:
         return None
 
@@ -1440,6 +1449,7 @@ def normalize_decision_rule_locations(
                 for d in docs
                 if isinstance(d, Mapping) and isinstance(d.get("filename"), str)
             }
+    effective_has_docs = has_posted_docs_flag or bool(docs_by_filename)
 
     primary_raw: list[Mapping[str, Any]] = []
     second_raw: list[Mapping[str, Any]] = []
@@ -1492,12 +1502,14 @@ def normalize_decision_rule_locations(
         primary_raw,
         pass_label="primary_pass",
         docs_by_filename=docs_by_filename,
+        has_posted_documents=effective_has_docs,
     )
     second_pass = (
         _normalize_location_pass(
             second_raw,
             pass_label="second_pass",
             docs_by_filename=docs_by_filename,
+            has_posted_documents=effective_has_docs,
         )
         if second_raw
         else None
@@ -1507,6 +1519,7 @@ def normalize_decision_rule_locations(
             ocr_recovery_raw,
             pass_label="ocr_recovery_pass",
             docs_by_filename=docs_by_filename,
+            has_posted_documents=effective_has_docs,
         )
         if ocr_recovery_raw
         else None
@@ -1516,6 +1529,7 @@ def normalize_decision_rule_locations(
             adjudication_raw,
             pass_label="adjudication_pass",
             docs_by_filename=docs_by_filename,
+            has_posted_documents=effective_has_docs,
         )
         if adjudication_raw
         else None
@@ -1547,6 +1561,11 @@ def normalize_decision_rule_locations(
                 by_outcome.setdefault(r["primary_outcome_index"], set()).add(r["element"])
             all_full = bool(by_outcome) and all(elems == set(ELEMENTS) for elems in by_outcome.values())
             census_status = "complete" if all_full else "partial"
+
+    if census_status == "no_document" and effective_has_docs:
+        raise OutcomesLayoutError(
+            "decision_rule_locations: census_status 'no_document' is forbidden when posted document(s) are present"
+        )
 
     return canonicalize_nested({
         "census_status": census_status,
@@ -1785,20 +1804,22 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(conds, Sequence) and not isinstance(conds, (str, bytes)) and conds:
             primary_condition = str(conds[0])
 
+    large_has_protocol = any(
+        isinstance(d, Mapping) and bool(d.get("hasProtocol"))
+        for d in large_docs
+    )
+    large_has_sap = any(
+        isinstance(d, Mapping) and bool(d.get("hasSap"))
+        for d in large_docs
+    )
     if "protocol" in trial:
-        protocol_flag = _require_strict_bool(trial["protocol"], f"{nct_id}.protocol")
+        protocol_flag = _require_strict_bool(trial["protocol"], f"{nct_id}.protocol") or large_has_protocol
     else:
-        protocol_flag = any(
-            isinstance(d, Mapping) and bool(d.get("hasProtocol"))
-            for d in large_docs
-        )
+        protocol_flag = large_has_protocol
     if "sap" in trial:
-        sap_flag = _require_strict_bool(trial["sap"], f"{nct_id}.sap")
+        sap_flag = _require_strict_bool(trial["sap"], f"{nct_id}.sap") or large_has_sap
     else:
-        sap_flag = any(
-            isinstance(d, Mapping) and bool(d.get("hasSap"))
-            for d in large_docs
-        )
+        sap_flag = large_has_sap
 
     return {
         "nct_id": nct_id,
@@ -1871,15 +1892,21 @@ def build_trial_bundle(
         primary_outcomes_count = reg_count if reg_count > 0 else (meas_count if meas_count > 0 else None)
 
     norm_profile = normalize_document_profile(document_profile)
+    norm_prov = normalize_longitudinal_provenance(longitudinal_provenance, in_audit=is_holdout)
+    has_docs = (
+        meta["protocol"]
+        or meta["sap"]
+        or bool(norm_profile and norm_profile["documents"])
+        or bool(norm_prov and norm_prov["posted_documents"])
+    )
     norm_locations = normalize_decision_rule_locations(
         decision_rule_locations,
         document_profile=norm_profile,
         primary_outcomes_count=primary_outcomes_count,
+        has_posted_documents=has_docs,
     )
-    norm_prov = normalize_longitudinal_provenance(longitudinal_provenance, in_audit=is_holdout)
 
     doc_badge = build_document_badge(in_audit=is_holdout, document_profile=norm_profile)
-    has_docs = meta["protocol"] or meta["sap"] or bool(norm_profile and norm_profile["documents"])
     census_badge = build_census_badge(
         in_audit=is_holdout,
         decision_rule_locations=norm_locations,
@@ -2080,12 +2107,36 @@ class ValidationResult:
         }
 
 
+def _shard_has_posted_documents(
+    idx_row: Mapping[str, Any] | None,
+    document_profile: Any = None,
+    longitudinal_provenance: Any = None,
+) -> bool:
+    """Return True if any on-disk source proves posted protocol/SAP document(s)."""
+    has_profile_docs = (
+        isinstance(document_profile, Mapping)
+        and isinstance(document_profile.get("documents"), list)
+        and len(document_profile["documents"]) > 0
+    )
+    has_manifest_docs = (
+        isinstance(idx_row, Mapping)
+        and (idx_row.get("protocol") is True or idx_row.get("sap") is True)
+    )
+    has_prov_docs = (
+        isinstance(longitudinal_provenance, Mapping)
+        and isinstance(longitudinal_provenance.get("posted_documents"), list)
+        and len(longitudinal_provenance["posted_documents"]) > 0
+    )
+    return has_profile_docs or has_manifest_docs or has_prov_docs
+
+
 def _validate_shard_decision_rule_locations(
     rel: str,
     nct_id: str,
     locs: Any,
     idx_row: Mapping[str, Any] | None,
     document_profile: Any = None,
+    longitudinal_provenance: Any = None,
 ) -> list[str]:
     """Validate a non-audit shard record's ``decision_rule_locations`` block."""
     errs: list[str] = []
@@ -2093,15 +2144,19 @@ def _validate_shard_decision_rule_locations(
     if not isinstance(locs, Mapping):
         return [f"{prefix} must be an object or None"]
 
+    has_posted_docs = _shard_has_posted_documents(
+        idx_row,
+        document_profile=document_profile,
+        longitudinal_provenance=longitudinal_provenance,
+    )
+
     census_status = locs.get("census_status")
     if census_status not in ("complete", "partial", "not_started", "no_document"):
         errs.append(f"{prefix}.census_status is invalid: {census_status!r}")
-
-    has_posted_docs = (
-        isinstance(document_profile, Mapping)
-        and isinstance(document_profile.get("documents"), list)
-        and len(document_profile["documents"]) > 0
-    )
+    elif census_status == "no_document" and has_posted_docs:
+        errs.append(
+            f"{prefix}.census_status 'no_document' is forbidden when posted document(s) are present"
+        )
 
     primary_pass = locs.get("primary_pass")
     if not isinstance(primary_pass, list):
@@ -2143,7 +2198,7 @@ def _validate_shard_decision_rule_locations(
                 all_pass_rows_valid = False
             elif status == "NO_DOCUMENT" and has_posted_docs:
                 errs.append(
-                    f"{prefix}.{pass_key}[{idx}]: status 'NO_DOCUMENT' is forbidden when document_profile has posted document(s)"
+                    f"{prefix}.{pass_key}[{idx}]: status 'NO_DOCUMENT' is forbidden when posted document(s) are present"
                 )
             if "text_source" in row:
                 ts_val = row["text_source"]
@@ -2162,8 +2217,13 @@ def _validate_shard_decision_rule_locations(
             sp = row.get("source_pass")
             if sp not in EFFECTIVE_SOURCE_PASSES:
                 errs.append(f"{prefix}.effective_pass[{idx}].source_pass is invalid: {sp!r}")
-            if row.get("status") not in LOCATION_STATUSES:
-                errs.append(f"{prefix}.effective_pass[{idx}].status is invalid: {row.get('status')!r}")
+            eff_status = row.get("status")
+            if eff_status not in LOCATION_STATUSES:
+                errs.append(f"{prefix}.effective_pass[{idx}].status is invalid: {eff_status!r}")
+            elif eff_status == "NO_DOCUMENT" and has_posted_docs:
+                errs.append(
+                    f"{prefix}.effective_pass[{idx}]: status 'NO_DOCUMENT' is forbidden when posted document(s) are present"
+                )
             if "text_source" in row:
                 ts_val = row["text_source"]
                 if not isinstance(ts_val, str) or not ts_val.strip():
@@ -2184,7 +2244,7 @@ def _validate_shard_decision_rule_locations(
             build_census_badge(
                 in_audit=False,
                 decision_rule_locations=locs,
-                has_documents=True,
+                has_documents=has_posted_docs,
             )
         )
         if idx_row.get("census_badge") != expected_badge:
@@ -2562,8 +2622,27 @@ def validate_outcomes_tree(
                             entry["decision_rule_locations"],
                             idx_row,
                             document_profile=entry.get("document_profile"),
+                            longitudinal_provenance=entry.get("longitudinal_provenance"),
                         )
                     )
+                elif entry.get("in_audit") is False and idx_row is not None:
+                    has_posted_docs = _shard_has_posted_documents(
+                        idx_row,
+                        document_profile=entry.get("document_profile"),
+                        longitudinal_provenance=entry.get("longitudinal_provenance"),
+                    )
+                    expected_badge = canonicalize_nested(
+                        build_census_badge(
+                            in_audit=False,
+                            decision_rule_locations=None,
+                            has_documents=has_posted_docs,
+                        )
+                    )
+                    if idx_row.get("census_badge") != expected_badge:
+                        found_problems.append(
+                            f"{nct_id}: index census_badge ({idx_row.get('census_badge')!r}) "
+                            f"does not match shard document presence ({expected_badge!r})"
+                        )
 
         # Index-to-shard bijection check.
         index_nct_set = set(index_by_nct)

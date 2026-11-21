@@ -149,8 +149,9 @@ python scripts/verify_and_plan_census_batch.py plan \
    before emitting `status = "NOT_FOUND"`. In default publication mode,
    `verify_location_record` rejects `NOT_FOUND` whenever `pages_not_searched`
    is non-empty (`NOT_FOUND_WITH_UNSEARCHED_PAGES`), and rejects `NO_DOCUMENT`
-   whenever posted documents exist for the trial
-   (`NO_DOCUMENT_WITH_POSTED_DOCUMENT`).
+   whenever posted documents exist in `documents.jsonl` or `--index`
+   `protocol` / `sap` flags (`expected_has_documents_by_nct` /
+   `manifest_has_documents`, emitting `NO_DOCUMENT_WITH_POSTED_DOCUMENT`).
 
 ### Step 4: Mechanical Gate Before Posting `[done]`
 
@@ -167,12 +168,23 @@ python scripts/verify_and_plan_census_batch.py verify \
   --report-out /tmp/census_verify_report.json
 ```
 
-For `ocr_recovery` shards, pass `--ocr-dir <pages_ocr_dir>` and
-`--text-source macos_vision_ocr_v1` (omitting `--check-completeness`, since
-recovery shards intentionally cover only previously `UNREADABLE` cells). Note
-that `--check-completeness` validates every `in_audit == False` trial present
-in `--index`; single-shard verification runs should pass a shard-scoped
-`--index` (or omit `--check-completeness` until verifying the merged corpus).
+When verifying a merged corpus with `--check-completeness`,
+`verify_census_corpus` always enforces the full `7 * K` grid on
+`pass = "primary"` (so orphan sparse rows without `"primary"` fail with
+`TRIAL_GRID_MISSING_CELL`), while sparse override passes in `SPARSE_PASSES`
+(`ocr_recovery`, `adjudication`) run `verify_trial_completeness` with
+`allow_sparse=True` — permitting targeted cell overrides while still enforcing
+`0 <= primary_outcome_index < K` bounds (`TRIAL_GRID_UNEXPECTED_CELL`) and
+duplicate checks (`TRIAL_GRID_DUPLICATE_CELL`). Passing `--index` also
+populates `expected_has_documents_by_nct` from each `in_audit == False` row's
+`protocol` / `sap` flags so `NO_DOCUMENT` is rejected even when
+`documents.jsonl` omits those records. For standalone `ocr_recovery` or
+`adjudication` shards prior to merging with `"primary"`, omit
+`--check-completeness` (and for `ocr_recovery`, pass `--ocr-dir <pages_ocr_dir>`
+and `--text-source macos_vision_ocr_v1`). Note that `--check-completeness`
+validates every `in_audit == False` trial present in `--index`; single-shard
+verification runs should pass a shard-scoped `--index` (or omit
+`--check-completeness` until verifying the merged corpus).
 
 A shard is eligible to land only when `verify` exits `0` (`ok == true`,
 `substring_mismatches == 0`, `ellipsis_flags == 0`,

@@ -534,3 +534,483 @@ def test_helpers_fingerprint_and_unreadable_classifier() -> None:
         )
         == "image_only_scan"
     )
+
+
+def test_cli_verify_merged_sparse_passes_and_completeness_guards(tmp_path: Path) -> None:
+    index_path = tmp_path / "outcomes_index.json"
+    docs_path = tmp_path / "documents.jsonl"
+    locs_path = tmp_path / "locations.jsonl"
+    pages_dir = tmp_path / "pages"
+    ocr_dir = tmp_path / "ocr_pages"
+    report_path = tmp_path / "verify_report.json"
+
+    index_path.write_text(
+        json.dumps(
+            {
+                "data": [
+                    {
+                        "nct_id": "NCT01234567",
+                        "in_audit": False,
+                        "protocol": True,
+                        "sap": False,
+                        "cohorts": ["industry_phase3"],
+                        "primary_outcomes_count": 1,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _write_jsonl(
+        docs_path,
+        [_doc("NCT01234567", "Prot_000.pdf", SHA_1, physical_pages=3, pages_without_text=[3])],
+    )
+    pages_dir.mkdir(parents=True)
+    ocr_dir.mkdir(parents=True)
+    (pages_dir / f"{SHA_1}.json").write_text(
+        json.dumps(
+            {
+                "pages": [
+                    "Title page",
+                    "9 Statistical Methods\nPrimary endpoint analyzed in the ITT population.",
+                    "",
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (ocr_dir / f"{SHA_1}.json").write_text(
+        json.dumps(
+            {
+                "pages": [
+                    "Title page",
+                    "9 Statistical Methods\nPrimary endpoint analyzed in the ITT population.",
+                    "Non-inferiority margin is 10 percentage points.",
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    primary_rows = _complete_primary_locations(
+        "NCT01234567",
+        "Prot_000.pdf",
+        SHA_1,
+        unreadable_elements={"margin"},
+        unreadable_note="Page 3 is a scanned image without extractable text.",
+    )
+    for row in primary_rows:
+        if row["element"] == "multiplicity":
+            row["status"] = "AMBIGUOUS"
+            row["note"] = "Flagged for adjudication."
+
+    ocr_row: dict[str, Any] = {
+        "nct_id": "NCT01234567",
+        "primary_outcome_index": 0,
+        "primary_outcome_title": "Primary Endpoint",
+        "element": "margin",
+        "status": "FOUND",
+        "citations": [
+            {
+                "filename": "Prot_000.pdf",
+                "sha256": SHA_1,
+                "physical_page": 3,
+                "printed_page": "3",
+                "section_heading": "9.3 Margin",
+                "quotation": "Non-inferiority margin is 10 percentage points.",
+            }
+        ],
+        "pages_searched": "all",
+        "pages_not_searched": [],
+        "note": "Recovered via Vision OCR.",
+        "worker": "ocr-shard-01",
+        "pass": "ocr_recovery",
+        "text_source": "macos_vision_ocr_v1",
+    }
+    adj_row: dict[str, Any] = {
+        "nct_id": "NCT01234567",
+        "primary_outcome_index": 0,
+        "primary_outcome_title": "Primary Endpoint",
+        "element": "multiplicity",
+        "status": "FOUND",
+        "citations": [
+            {
+                "filename": "Prot_000.pdf",
+                "sha256": SHA_1,
+                "physical_page": 2,
+                "printed_page": "2",
+                "section_heading": "9 Statistical Methods",
+                "quotation": "Primary endpoint analyzed in the ITT population.",
+            }
+        ],
+        "pages_searched": "all",
+        "pages_not_searched": [],
+        "note": "Adjudicated multiplicity.",
+        "worker": "adjudicator-01",
+        "pass": "adjudication",
+    }
+
+    _write_jsonl(locs_path, primary_rows + [ocr_row, adj_row])
+    rc_merged = main(
+        [
+            "verify",
+            "--index",
+            str(index_path),
+            "--documents",
+            str(docs_path),
+            "--locations",
+            str(locs_path),
+            "--pages-dir",
+            str(pages_dir),
+            "--ocr-dir",
+            str(ocr_dir),
+            "--check-completeness",
+            "--report-out",
+            str(report_path),
+        ]
+    )
+    assert rc_merged == 0
+    merged_report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert merged_report["ok"] is True
+    assert merged_report["locations_checked"] == 9
+    assert merged_report["error_count"] == 0
+
+    # Orphan sparse adjudication without primary rows MUST fail --check-completeness.
+    _write_jsonl(locs_path, [adj_row])
+    rc_orphan = main(
+        [
+            "verify",
+            "--index",
+            str(index_path),
+            "--documents",
+            str(docs_path),
+            "--locations",
+            str(locs_path),
+            "--pages-dir",
+            str(pages_dir),
+            "--check-completeness",
+            "--report-out",
+            str(report_path),
+        ]
+    )
+    assert rc_orphan == 1
+    orphan_report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert orphan_report["error_count"] == len(ELEMENTS)
+    assert {i["code"] for i in orphan_report["issues"]} == {"TRIAL_GRID_MISSING_CELL"}
+    assert all(i["location_key"][2] == "primary" for i in orphan_report["issues"])
+
+    # Out-of-bounds sparse adjudication row fails --check-completeness.
+    oob_adj = dict(adj_row)
+    oob_adj["primary_outcome_index"] = 1
+    _write_jsonl(locs_path, primary_rows + [oob_adj])
+    rc_oob = main(
+        [
+            "verify",
+            "--index",
+            str(index_path),
+            "--documents",
+            str(docs_path),
+            "--locations",
+            str(locs_path),
+            "--pages-dir",
+            str(pages_dir),
+            "--check-completeness",
+            "--report-out",
+            str(report_path),
+        ]
+    )
+    assert rc_oob == 1
+    oob_report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert [i["code"] for i in oob_report["issues"]] == ["TRIAL_GRID_UNEXPECTED_CELL"]
+
+
+def test_planner_adjudication_and_ocr_override_parity() -> None:
+    index_rows = [
+        {
+            "nct_id": "NCT00000011",
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "cohorts": ["industry_phase3"],
+            "primary_outcomes_count": 1,
+        },
+        {
+            "nct_id": "NCT00000012",
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "cohorts": ["industry_phase3"],
+            "primary_outcomes_count": 1,
+        },
+        {
+            "nct_id": "NCT00000013",
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "cohorts": ["industry_phase3"],
+            "primary_outcomes_count": 1,
+        },
+        {
+            "nct_id": "NCT00000014",
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "cohorts": ["industry_phase3"],
+            "primary_outcomes_count": 1,
+        },
+    ]
+    documents = [
+        _doc("NCT00000011", "Prot_000.pdf", SHA_1, pages_without_text=[5]),
+        _doc("NCT00000012", "Prot_000.pdf", SHA_2, pages_without_text=[5]),
+        _doc("NCT00000013", "Prot_000.pdf", SHA_3),
+        _doc("NCT00000014", "Prot_000.pdf", SHA_4, pages_without_text=[5]),
+    ]
+
+    # NCT00000011: primary UNREADABLE on margin, resolved by adjudication -> cached_complete.
+    locs_11 = _complete_primary_locations(
+        "NCT00000011",
+        "Prot_000.pdf",
+        SHA_1,
+        unreadable_elements={"margin"},
+        unreadable_note="Scanned page 5.",
+    ) + [
+        {
+            "nct_id": "NCT00000011",
+            "primary_outcome_index": 0,
+            "primary_outcome_title": "Primary Endpoint",
+            "element": "margin",
+            "status": "FOUND",
+            "citations": [
+                {
+                    "filename": "Prot_000.pdf",
+                    "sha256": SHA_1,
+                    "physical_page": 2,
+                    "printed_page": "2",
+                    "section_heading": "9 Statistical Methods",
+                    "quotation": "Primary endpoint analyzed in the ITT population.",
+                }
+            ],
+            "pages_searched": "all",
+            "pages_not_searched": [],
+            "note": "Adjudication resolved margin from section 9.",
+            "worker": "adjudicator-01",
+            "pass": "adjudication",
+        }
+    ]
+
+    # NCT00000012: primary UNREADABLE -> ocr_recovery FOUND -> adjudication overrides back to UNREADABLE.
+    locs_12 = _complete_primary_locations(
+        "NCT00000012",
+        "Prot_000.pdf",
+        SHA_2,
+        unreadable_elements={"margin"},
+        unreadable_note="Scanned page 5.",
+    ) + [
+        {
+            "nct_id": "NCT00000012",
+            "primary_outcome_index": 0,
+            "primary_outcome_title": "Primary Endpoint",
+            "element": "margin",
+            "status": "FOUND",
+            "citations": [
+                {
+                    "filename": "Prot_000.pdf",
+                    "sha256": SHA_2,
+                    "physical_page": 5,
+                    "printed_page": "5",
+                    "section_heading": "9.3 Margin",
+                    "quotation": "Margin text.",
+                }
+            ],
+            "pages_searched": "all",
+            "pages_not_searched": [],
+            "note": "OCR recovery attempt.",
+            "worker": "ocr-shard-01",
+            "pass": "ocr_recovery",
+        },
+        {
+            "nct_id": "NCT00000012",
+            "primary_outcome_index": 0,
+            "primary_outcome_title": "Primary Endpoint",
+            "element": "margin",
+            "status": "UNREADABLE",
+            "citations": [],
+            "pages_searched": "all",
+            "pages_not_searched": [],
+            "note": "Adjudication reverted cell to UNREADABLE due to image-only scan artifacts.",
+            "worker": "adjudicator-01",
+            "pass": "adjudication",
+        },
+    ]
+
+    # NCT00000013: primary all FOUND -> adjudication overrides margin to UNREADABLE (CCI redaction).
+    locs_13 = _complete_primary_locations("NCT00000013", "Prot_000.pdf", SHA_3) + [
+        {
+            "nct_id": "NCT00000013",
+            "primary_outcome_index": 0,
+            "primary_outcome_title": "Primary Endpoint",
+            "element": "margin",
+            "status": "UNREADABLE",
+            "citations": [],
+            "pages_searched": "all",
+            "pages_not_searched": [],
+            "note": "Adjudication confirmed [CCI] redaction over margin value.",
+            "worker": "adjudicator-01",
+            "pass": "adjudication",
+        }
+    ]
+
+    # NCT00000014: primary UNREADABLE on margin -> ocr_recovery resolves to FOUND -> cached_complete.
+    locs_14 = _complete_primary_locations(
+        "NCT00000014",
+        "Prot_000.pdf",
+        SHA_4,
+        unreadable_elements={"margin"},
+        unreadable_note="Scanned page 5.",
+    ) + [
+        {
+            "nct_id": "NCT00000014",
+            "primary_outcome_index": 0,
+            "primary_outcome_title": "Primary Endpoint",
+            "element": "margin",
+            "status": "FOUND",
+            "citations": [
+                {
+                    "filename": "Prot_000.pdf",
+                    "sha256": SHA_4,
+                    "physical_page": 5,
+                    "printed_page": "5",
+                    "section_heading": "9.3 Margin",
+                    "quotation": "Margin text.",
+                }
+            ],
+            "pages_searched": "all",
+            "pages_not_searched": [],
+            "note": "Recovered cleanly via OCR.",
+            "worker": "ocr-shard-01",
+            "pass": "ocr_recovery",
+        }
+    ]
+
+    all_locs = locs_11 + locs_12 + locs_13 + locs_14
+
+    for mode in ("incremental-delta", "recover-unreadable"):
+        plan = plan_incremental_cohort(
+            index_rows,
+            documents=documents,
+            locations=all_locs,
+            cohort="industry_phase3",
+            mode=mode,
+            shard_size=10,
+            budget_cap_usd=50.0,
+        )
+        assert plan["partitions"]["cached_complete"] == ["NCT00000011", "NCT00000014"]
+        assert plan["partitions"]["unreadable_recoverable_ocr"] == ["NCT00000012"]
+        assert plan["partitions"]["unreadable_terminal_redacted"] == ["NCT00000013"]
+        assert plan["partitions"]["amended_doc_or_outcome_delta"] == []
+        if mode == "recover-unreadable":
+            assert plan["scheduled_trial_count"] == 1
+            assert plan["shards"][0]["nct_ids"] == ["NCT00000012"]
+            assert plan["shards"][0]["target_elements_by_nct"]["NCT00000012"] == [
+                {"primary_outcome_index": 0, "element": "margin"}
+            ]
+
+
+def test_cli_verify_rejects_no_document_using_index_document_flags(tmp_path: Path) -> None:
+    index_path = tmp_path / "outcomes_index.json"
+    docs_path = tmp_path / "documents.jsonl"
+    locs_path = tmp_path / "locations.jsonl"
+    report_path = tmp_path / "verify_report.json"
+
+    _write_jsonl(docs_path, [])
+    no_doc_rows = [
+        {
+            "nct_id": "NCT01234567",
+            "primary_outcome_index": 0,
+            "primary_outcome_title": "Primary Endpoint",
+            "element": elem,
+            "status": "NO_DOCUMENT",
+            "citations": [],
+            "pages_searched": "all",
+            "pages_not_searched": [],
+            "note": "No protocol or SAP posted.",
+            "worker": "shard-01",
+            "pass": "primary",
+        }
+        for elem in ELEMENTS
+    ]
+    _write_jsonl(locs_path, no_doc_rows)
+
+    # protocol=True or sap=True in --index MUST reject NO_DOCUMENT even when documents.jsonl is empty.
+    for proto_flag, sap_flag in ((True, False), (False, True)):
+        index_path.write_text(
+            json.dumps(
+                {
+                    "data": [
+                        {
+                            "nct_id": "NCT01234567",
+                            "in_audit": False,
+                            "protocol": proto_flag,
+                            "sap": sap_flag,
+                            "primary_outcomes_count": 1,
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        rc_fail = main(
+            [
+                "verify",
+                "--index",
+                str(index_path),
+                "--documents",
+                str(docs_path),
+                "--locations",
+                str(locs_path),
+                "--report-out",
+                str(report_path),
+            ]
+        )
+        assert rc_fail == 1
+        rep = json.loads(report_path.read_text(encoding="utf-8"))
+        assert rep["ok"] is False
+        assert rep["error_count"] == len(ELEMENTS)
+        assert {i["code"] for i in rep["issues"]} == {"NO_DOCUMENT_WITH_POSTED_DOCUMENT"}
+
+    # protocol=False and sap=False with empty documents.jsonl passes cleanly (including --check-completeness).
+    index_path.write_text(
+        json.dumps(
+            {
+                "data": [
+                    {
+                        "nct_id": "NCT01234567",
+                        "in_audit": False,
+                        "protocol": False,
+                        "sap": False,
+                        "primary_outcomes_count": 1,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    rc_ok = main(
+        [
+            "verify",
+            "--index",
+            str(index_path),
+            "--documents",
+            str(docs_path),
+            "--locations",
+            str(locs_path),
+            "--check-completeness",
+            "--report-out",
+            str(report_path),
+        ]
+    )
+    assert rc_ok == 0
+    rep_ok = json.loads(report_path.read_text(encoding="utf-8"))
+    assert rep_ok["ok"] is True
+    assert rep_ok["error_count"] == 0

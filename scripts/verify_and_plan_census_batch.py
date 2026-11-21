@@ -294,43 +294,71 @@ def _trial_has_in_scope_doc(
     return bool(row.get("protocol")) or bool(row.get("sap"))
 
 
+def _resolve_effective_cells(
+    nct_locs: Sequence[Mapping[str, Any]],
+) -> dict[tuple[int, str], Mapping[str, Any]]:
+    """Resolve effective per-cell rows in precedence order: primary -> ocr_recovery -> adjudication."""
+    effective: dict[tuple[int, str], Mapping[str, Any]] = {}
+    for pass_name in ("primary", "ocr_recovery", "adjudication"):
+        for loc in nct_locs:
+            if loc.get("pass") != pass_name:
+                continue
+            idx = loc.get("primary_outcome_index")
+            elem = loc.get("element")
+            if type(idx) is int and isinstance(elem, str) and elem in ELEMENTS:
+                effective[(idx, elem)] = loc
+    return effective
+
+
 def _verified_pass_doc_fingerprints(
     locations: Sequence[Mapping[str, Any]],
     existing_docs_by_nct: Mapping[str, Sequence[Mapping[str, Any]]],
     pass_role: str,
 ) -> dict[tuple[str, str, tuple[tuple[str, str], ...]], bool]:
     """Build cache lookup of ``(nct_id, pass_role, doc_sha256_tuple)`` for completed trials."""
+    all_locs_by_nct: dict[str, list[Mapping[str, Any]]] = {}
     locs_by_nct: dict[str, list[Mapping[str, Any]]] = {}
     for loc in locations:
-        if loc.get("pass") != pass_role:
-            continue
         nct = loc.get("nct_id")
-        if isinstance(nct, str) and nct:
+        if not isinstance(nct, str) or not nct:
+            continue
+        all_locs_by_nct.setdefault(nct, []).append(loc)
+        if loc.get("pass") == pass_role:
             locs_by_nct.setdefault(nct, []).append(loc)
 
     verified_keys: dict[tuple[str, str, tuple[tuple[str, str], ...]], bool] = {}
     for nct_id, nct_locs in locs_by_nct.items():
-        # Verify each outcome index has all 7 elements and zero UNREADABLE rows.
+        # Verify each outcome index has all 7 elements and zero unresolved UNREADABLE rows.
         by_outcome: dict[int, set[str]] = {}
-        has_unreadable = False
         for loc in nct_locs:
             idx = loc.get("primary_outcome_index")
             elem = loc.get("element")
-            if loc.get("status") == "UNREADABLE":
-                has_unreadable = True
             if type(idx) is int and isinstance(elem, str) and elem in ELEMENTS:
                 by_outcome.setdefault(idx, set()).add(elem)
         if not by_outcome:
             continue
         all_complete = all(elems == set(ELEMENTS) for elems in by_outcome.values())
-        if not all_complete or has_unreadable:
+        if not all_complete:
+            continue
+
+        if pass_role == "primary":
+            effective_cells = _resolve_effective_cells(all_locs_by_nct.get(nct_id, ()))
+            has_unreadable = any(
+                cell.get("status") == "UNREADABLE" for cell in effective_cells.values()
+            )
+            citation_source_locs: Sequence[Mapping[str, Any]] = list(effective_cells.values())
+        else:
+            has_unreadable = any(loc.get("status") == "UNREADABLE" for loc in nct_locs)
+            citation_source_locs = nct_locs
+
+        if has_unreadable:
             continue
 
         doc_tuple = compute_doc_sha256_tuple(existing_docs_by_nct.get(nct_id, ()))
         if not doc_tuple:
             # Fallback to unique (filename, sha256) pairs referenced in citations.
             cit_pairs: set[tuple[str, str]] = set()
-            for loc in nct_locs:
+            for loc in citation_source_locs:
                 for cit in loc.get("citations", []):
                     if isinstance(cit, Mapping):
                         fn = cit.get("filename")
@@ -476,19 +504,16 @@ def plan_incremental_cohort(
 
         nct_locs = locs_by_nct.get(nct_id, [])
         primary_locs = [loc for loc in nct_locs if loc.get("pass") == "primary"]
-        ocr_locs = [loc for loc in nct_locs if loc.get("pass") == "ocr_recovery"]
+        effective_cells = _resolve_effective_cells(nct_locs)
 
-        # Check for UNREADABLE rows in primary pass not yet resolved by ocr_recovery.
-        resolved_ocr_cells = {
-            (loc.get("primary_outcome_index"), loc.get("element"))
-            for loc in ocr_locs
-            if loc.get("status") != "UNREADABLE"
-        }
+        # Resolve per-cell override status in precedence order
+        # (primary -> ocr_recovery -> adjudication) so a primary UNREADABLE cell
+        # resolved by ocr_recovery or adjudication is not re-scheduled, while an
+        # adjudication override back to UNREADABLE is respected.
         unresolved_unreadable_rows = [
             loc
-            for loc in primary_locs
+            for loc in effective_cells.values()
             if loc.get("status") == "UNREADABLE"
-            and (loc.get("primary_outcome_index"), loc.get("element")) not in resolved_ocr_cells
         ]
 
         # Check if profile itself flags unreadable documents before primary pass.
@@ -679,9 +704,15 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
 def _cmd_verify(args: argparse.Namespace) -> int:
     audit_nct_ids: frozenset[str] = frozenset()
     expected_outcomes_by_nct: dict[str, int] | None = None
+    expected_has_documents_by_nct: dict[str, bool] | None = None
     if args.index is not None:
         index_rows = load_index_rows(Path(args.index))
         audit_nct_ids = extract_audit_nct_ids(index_rows)
+        expected_has_documents_by_nct = {
+            str(r["nct_id"]): bool(r.get("protocol")) or bool(r.get("sap"))
+            for r in index_rows
+            if r["in_audit"] is False and isinstance(r.get("nct_id"), str) and r["nct_id"]
+        }
         if args.check_completeness:
             expected_outcomes_by_nct = {
                 str(r["nct_id"]): int(r["primary_outcomes_count"])
@@ -708,6 +739,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         page_text_provider=provider,
         pdf_root=Path(args.pdf_root) if args.pdf_root is not None else None,
         expected_outcomes_by_nct=expected_outcomes_by_nct,
+        expected_has_documents_by_nct=expected_has_documents_by_nct,
         strict_document_keys=not args.allow_extra_document_keys,
         require_exhaustive_for_not_found=not args.allow_non_exhaustive_not_found,
         text_source=args.text_source,

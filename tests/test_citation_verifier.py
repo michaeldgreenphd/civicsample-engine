@@ -17,6 +17,7 @@ from src.citation_verifier import (
     ELEMENTS,
     NEUTRAL_LANGUAGE_VOCAB_SHA256,
     PageTextProvider,
+    SPARSE_PASSES,
     check_neutral_language,
     check_note_page_counts,
     enforce_audit_holdout,
@@ -569,3 +570,237 @@ def test_no_document_consistency_with_posted_documents() -> None:
     )
     assert report_ok.ok is True
     assert report_ok.issues == ()
+
+    # Manifest/index document flags reject NO_DOCUMENT even when docs_for_nct is empty.
+    _, issues_manifest_flag = verify_location_record(
+        loc_no_doc,
+        docs_by_nct={},
+        manifest_has_documents=True,
+    )
+    assert len(issues_manifest_flag) == 1
+    assert issues_manifest_flag[0].code == "NO_DOCUMENT_WITH_POSTED_DOCUMENT"
+
+    _, issues_manifest_false = verify_location_record(
+        loc_no_doc,
+        docs_by_nct={},
+        manifest_has_documents=False,
+    )
+    assert issues_manifest_false == []
+
+    report_manifest_fail = verify_census_corpus(
+        [],
+        no_doc_grid,
+        expected_outcomes_by_nct={"NCT01234567": 1},
+        expected_has_documents_by_nct={"NCT01234567": True},
+    )
+    assert report_manifest_fail.ok is False
+    assert report_manifest_fail.to_dict()["error_count"] == len(ELEMENTS)
+    assert {i.code for i in report_manifest_fail.issues} == {"NO_DOCUMENT_WITH_POSTED_DOCUMENT"}
+
+    report_manifest_ok = verify_census_corpus(
+        [],
+        no_doc_grid,
+        expected_outcomes_by_nct={"NCT01234567": 1},
+        expected_has_documents_by_nct={"NCT01234567": False},
+    )
+    assert report_manifest_ok.ok is True
+    assert report_manifest_ok.issues == ()
+
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_census_corpus(
+            [],
+            [],
+            audit_nct_ids={"NCT99999999"},
+            expected_has_documents_by_nct={"NCT99999999": True},
+        )
+
+
+def test_sparse_pass_completeness_and_bounds() -> None:
+    assert SPARSE_PASSES == ("ocr_recovery", "adjudication")
+
+    doc = _make_doc(physical_pages=3, pages_without_text=[3])
+    provider = DictPageTextProvider(
+        pages_by_sha256={
+            SHA_A: [
+                "Protocol Cover Page",
+                "Primary analysis uses ITT population and hierarchical testing at two-sided alpha = 0.05.",
+                "",
+            ]
+        },
+        ocr_pages_by_sha256={
+            SHA_A: [
+                "Protocol Cover Page",
+                "Primary analysis uses ITT population and hierarchical testing at two-sided alpha = 0.05.",
+                "Non-inferiority margin is 10 percentage points.",
+            ]
+        },
+    )
+
+    primary_quote = (
+        "Primary analysis uses ITT population and hierarchical testing at two-sided alpha = 0.05."
+    )
+    ocr_quote = "Non-inferiority margin is 10 percentage points."
+
+    primary_rows: list[dict[str, Any]] = []
+    for elem in ELEMENTS:
+        if elem == "margin":
+            primary_rows.append(
+                _make_location(
+                    element=elem,
+                    status="UNREADABLE",
+                    citations=[],
+                    note="Page 3 is a scanned image without extractable text.",
+                )
+            )
+        elif elem == "multiplicity":
+            primary_rows.append(
+                _make_location(
+                    element=elem,
+                    status="AMBIGUOUS",
+                    citations=[_make_citation(physical_page=2, quotation=primary_quote)],
+                    note="Hierarchical testing phrasing flagged for adjudication.",
+                )
+            )
+        else:
+            primary_rows.append(
+                _make_location(
+                    element=elem,
+                    status="FOUND",
+                    citations=[_make_citation(physical_page=2, quotation=primary_quote)],
+                    note="Verified from Prot_000.pdf (3 pages).",
+                )
+            )
+
+    ocr_row = _make_location(
+        element="margin",
+        status="FOUND",
+        citations=[_make_citation(physical_page=3, printed_page="3", quotation=ocr_quote)],
+        note="Recovered from Vision OCR on page 3.",
+        worker="ocr-shard-01",
+        pass_name="ocr_recovery",
+        extra={"text_source": "macos_vision_ocr_v1"},
+    )
+    adj_row = _make_location(
+        element="multiplicity",
+        status="FOUND",
+        citations=[_make_citation(physical_page=2, quotation=primary_quote)],
+        note="Adjudicated hierarchical multiplicity rule.",
+        worker="adjudicator-01",
+        pass_name="adjudication",
+    )
+
+    # Merged primary + sparse ocr_recovery + sparse adjudication passes cleanly.
+    merged_report = verify_census_corpus(
+        [doc],
+        primary_rows + [ocr_row, adj_row],
+        page_text_provider=provider,
+        expected_outcomes_by_nct={"NCT01234567": 1},
+    )
+    assert merged_report.ok is True
+    assert merged_report.issues == ()
+    assert merged_report.locations_checked == 9
+    assert merged_report.citations_checked == 8
+
+    # Direct verify_trial_completeness preserves allow_sparse=False default and supports allow_sparse=True.
+    assert (
+        verify_trial_completeness(
+            "NCT01234567",
+            [adj_row],
+            expected_primary_outcomes=1,
+            pass_name="adjudication",
+            allow_sparse=True,
+        )
+        == []
+    )
+    strict_missing = verify_trial_completeness(
+        "NCT01234567",
+        [adj_row],
+        expected_primary_outcomes=1,
+        pass_name="adjudication",
+    )
+    assert len(strict_missing) == len(ELEMENTS) - 1
+    assert {i.code for i in strict_missing} == {"TRIAL_GRID_MISSING_CELL"}
+
+    strict_missing_explicit = verify_trial_completeness(
+        "NCT01234567",
+        [adj_row],
+        expected_primary_outcomes=1,
+        pass_name="adjudication",
+        allow_sparse=False,
+    )
+    assert len(strict_missing_explicit) == len(ELEMENTS) - 1
+
+    # allow_sparse=True still enforces INVALID_EXPECTED_OUTCOMES_COUNT, duplicates, and bounds.
+    bad_k_issues = verify_trial_completeness(
+        "NCT01234567",
+        [adj_row],
+        expected_primary_outcomes=0,
+        pass_name="adjudication",
+        allow_sparse=True,
+    )
+    assert [i.code for i in bad_k_issues] == ["INVALID_EXPECTED_OUTCOMES_COUNT"]
+
+    dup_issues = verify_trial_completeness(
+        "NCT01234567",
+        [adj_row, dict(adj_row)],
+        expected_primary_outcomes=1,
+        pass_name="adjudication",
+        allow_sparse=True,
+    )
+    assert [i.code for i in dup_issues] == ["TRIAL_GRID_DUPLICATE_CELL"]
+
+    # Orphan sparse adjudication or ocr_recovery row with 0 primary rows fails with 7 missing primary cells.
+    for sparse_row in (adj_row, ocr_row):
+        orphan_report = verify_census_corpus(
+            [doc],
+            [sparse_row],
+            page_text_provider=provider,
+            expected_outcomes_by_nct={"NCT01234567": 1},
+        )
+        assert orphan_report.ok is False
+        assert len(orphan_report.issues) == len(ELEMENTS)
+        assert {i.code for i in orphan_report.issues} == {"TRIAL_GRID_MISSING_CELL"}
+        assert all(
+            i.location_key is not None and i.location_key[2] == "primary"
+            for i in orphan_report.issues
+        )
+
+    # Out-of-bounds primary_outcome_index >= expected_k on sparse passes emits TRIAL_GRID_UNEXPECTED_CELL.
+    oob_adj = _make_location(
+        primary_outcome_index=1,
+        element="multiplicity",
+        status="FOUND",
+        citations=[_make_citation(physical_page=2, quotation=primary_quote)],
+        note="Out-of-bounds adjudication row.",
+        worker="adjudicator-01",
+        pass_name="adjudication",
+    )
+    oob_adj_report = verify_census_corpus(
+        [doc],
+        primary_rows + [oob_adj],
+        page_text_provider=provider,
+        expected_outcomes_by_nct={"NCT01234567": 1},
+    )
+    assert oob_adj_report.ok is False
+    assert [i.code for i in oob_adj_report.issues] == ["TRIAL_GRID_UNEXPECTED_CELL"]
+    assert oob_adj_report.issues[0].location_key == (1, "multiplicity", "adjudication")
+
+    oob_ocr = _make_location(
+        primary_outcome_index=1,
+        element="margin",
+        status="FOUND",
+        citations=[_make_citation(physical_page=3, printed_page="3", quotation=ocr_quote)],
+        note="Out-of-bounds OCR recovery row.",
+        worker="ocr-shard-01",
+        pass_name="ocr_recovery",
+        extra={"text_source": "macos_vision_ocr_v1"},
+    )
+    oob_ocr_report = verify_census_corpus(
+        [doc],
+        primary_rows + [oob_ocr],
+        page_text_provider=provider,
+        expected_outcomes_by_nct={"NCT01234567": 1},
+    )
+    assert oob_ocr_report.ok is False
+    assert [i.code for i in oob_ocr_report.issues] == ["TRIAL_GRID_UNEXPECTED_CELL"]
+    assert oob_ocr_report.issues[0].location_key == (1, "margin", "ocr_recovery")

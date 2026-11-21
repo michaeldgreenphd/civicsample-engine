@@ -59,6 +59,10 @@ ALLOWED_PASSES: Final[tuple[str, ...]] = (
     "ocr_recovery",
     "adjudication",
 )
+SPARSE_PASSES: Final[tuple[str, ...]] = (
+    "ocr_recovery",
+    "adjudication",
+)
 UNREADABLE_SUBTYPES: Final[tuple[str, ...]] = (
     "image_only_scan",
     "redacted_cci_ppd",
@@ -1676,6 +1680,7 @@ def verify_location_record(
     page_text_provider: PageTextProvider | None = None,
     require_exhaustive_for_not_found: bool = True,
     text_source: str = "pdfkit",
+    manifest_has_documents: bool = False,
 ) -> tuple[dict[str, int], list[VerificationIssue]]:
     """Verify a single location record, its citations, search coverage, and note neutrality."""
     nct_id_raw = loc.get("nct_id")
@@ -1822,7 +1827,17 @@ def verify_location_record(
         )
 
     docs_for_nct = docs_by_nct.get(nct_id, {})
-    if status == "NO_DOCUMENT" and docs_for_nct:
+    if status == "NO_DOCUMENT" and (bool(docs_for_nct) or manifest_has_documents):
+        if docs_for_nct:
+            no_doc_message = (
+                f"status='NO_DOCUMENT' is invalid when {len(docs_for_nct)} posted "
+                f"document(s) exist for {nct_id} ({sorted(docs_for_nct.keys())})."
+            )
+        else:
+            no_doc_message = (
+                f"status='NO_DOCUMENT' is invalid when manifest/index flags indicate "
+                f"posted document(s) exist for {nct_id}."
+            )
         issues.append(
             VerificationIssue(
                 code="NO_DOCUMENT_WITH_POSTED_DOCUMENT",
@@ -1831,10 +1846,7 @@ def verify_location_record(
                 location_key=loc_key,
                 filename=None,
                 physical_page=None,
-                message=(
-                    f"status='NO_DOCUMENT' is invalid when {len(docs_for_nct)} posted "
-                    f"document(s) exist for {nct_id} ({sorted(docs_for_nct.keys())})."
-                ),
+                message=no_doc_message,
             )
         )
     pages_searched = loc.get("pages_searched")
@@ -1937,8 +1949,16 @@ def verify_trial_completeness(
     *,
     expected_primary_outcomes: int,
     pass_name: str = "primary",
+    allow_sparse: bool = False,
 ) -> list[VerificationIssue]:
-    """Assert exact bijection over ``range(expected_primary_outcomes) x ELEMENTS``."""
+    """Assert exact bijection over ``range(expected_primary_outcomes) x ELEMENTS``.
+
+    When ``allow_sparse=True`` (used for targeted override passes in
+    ``SPARSE_PASSES``), ``TRIAL_GRID_MISSING_CELL`` is suppressed while
+    ``INVALID_EXPECTED_OUTCOMES_COUNT``, ``TRIAL_GRID_DUPLICATE_CELL``, and
+    ``TRIAL_GRID_UNEXPECTED_CELL`` (``0 <= idx < expected_primary_outcomes``)
+    remain strictly enforced.
+    """
     issues: list[VerificationIssue] = []
     if not _is_strict_int(expected_primary_outcomes) or expected_primary_outcomes < 1:
         issues.append(
@@ -1990,21 +2010,22 @@ def verify_trial_completeness(
                 ),
             )
         )
-    for idx, elem in missing:
-        issues.append(
-            VerificationIssue(
-                code="TRIAL_GRID_MISSING_CELL",
-                severity="error",
-                nct_id=nct_id,
-                location_key=(idx, elem, pass_name),
-                filename=None,
-                physical_page=None,
-                message=(
-                    f"Missing location row for ({nct_id}, outcome={idx}, "
-                    f"element={elem!r}, pass={pass_name!r})."
-                ),
+    if not allow_sparse:
+        for idx, elem in missing:
+            issues.append(
+                VerificationIssue(
+                    code="TRIAL_GRID_MISSING_CELL",
+                    severity="error",
+                    nct_id=nct_id,
+                    location_key=(idx, elem, pass_name),
+                    filename=None,
+                    physical_page=None,
+                    message=(
+                        f"Missing location row for ({nct_id}, outcome={idx}, "
+                        f"element={elem!r}, pass={pass_name!r})."
+                    ),
+                )
             )
-        )
     for idx, elem in unexpected:
         issues.append(
             VerificationIssue(
@@ -2032,6 +2053,7 @@ def verify_census_corpus(
     page_text_provider: PageTextProvider | None = None,
     pdf_root: Path | None = None,
     expected_outcomes_by_nct: Mapping[str, int] | None = None,
+    expected_has_documents_by_nct: Mapping[str, bool] | None = None,
     strict_document_keys: bool = True,
     require_exhaustive_for_not_found: bool = True,
     text_source: str = "pdfkit",
@@ -2041,6 +2063,10 @@ def verify_census_corpus(
     Raises ``AuditHoldoutViolationError`` immediately if ANY document or
     location record references an ``in_audit == True`` trial.
     """
+    if expected_has_documents_by_nct is not None:
+        for nct_id in sorted(expected_has_documents_by_nct.keys()):
+            enforce_audit_holdout(nct_id, in_audit=False, audit_nct_ids=audit_nct_ids)
+
     all_issues: list[VerificationIssue] = []
     docs_by_nct: dict[str, dict[str, Mapping[str, Any]]] = {}
 
@@ -2081,6 +2107,12 @@ def verify_census_corpus(
     passes_by_nct: dict[str, set[str]] = {}
 
     for loc in locations:
+        loc_nct_raw = loc.get("nct_id")
+        manifest_has_docs = (
+            bool(expected_has_documents_by_nct.get(loc_nct_raw, False))
+            if expected_has_documents_by_nct is not None and isinstance(loc_nct_raw, str)
+            else False
+        )
         counts, loc_issues = verify_location_record(
             loc,
             docs_by_nct=docs_by_nct,
@@ -2088,6 +2120,7 @@ def verify_census_corpus(
             page_text_provider=page_text_provider,
             require_exhaustive_for_not_found=require_exhaustive_for_not_found,
             text_source=text_source,
+            manifest_has_documents=manifest_has_docs,
         )
         all_issues.extend(loc_issues)
         citations_checked += counts["citations_checked"]
@@ -2128,16 +2161,14 @@ def verify_census_corpus(
         for nct_id in sorted(expected_outcomes_by_nct.keys()):
             enforce_audit_holdout(nct_id, in_audit=False, audit_nct_ids=audit_nct_ids)
             expected_k = expected_outcomes_by_nct[nct_id]
-            for pass_name in sorted(passes_by_nct.get(nct_id, {"primary"})):
-                if pass_name == "ocr_recovery":
-                    # Recovery passes intentionally cover only previously UNREADABLE cells.
-                    continue
+            for pass_name in sorted(passes_by_nct.get(nct_id, set()) | {"primary"}):
                 all_issues.extend(
                     verify_trial_completeness(
                         nct_id,
                         locations,
                         expected_primary_outcomes=expected_k,
                         pass_name=pass_name,
+                        allow_sparse=pass_name in SPARSE_PASSES,
                     )
                 )
 

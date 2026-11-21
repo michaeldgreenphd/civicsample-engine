@@ -160,7 +160,10 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
   (`extract_reported_results`), `document_profile` (`normalize_document_profile`),
   `decision_rule_locations` (`normalize_decision_rule_locations`, retaining
   append-only `primary_pass`, `second_pass`, `ocr_recovery_pass`, and
-  `adjudication_pass` alongside deterministic `effective_pass`), and
+  `adjudication_pass` alongside deterministic `effective_pass`, and rejecting
+  `NO_DOCUMENT` / `census_status="no_document"` whenever posted documents are
+  established by `document_profile`, manifest/trial `protocol`/`sap` flags or
+  `largeDocs`, or `longitudinal_provenance`), and
   `longitudinal_provenance` (`normalize_longitudinal_provenance`) via
   `build_trial_bundle` and `build_outcomes_documents`.
 - **Hard `in_audit` firewall:** `assert_no_audit_leakage` and
@@ -194,8 +197,14 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
   `verify_location_record`, `verify_trial_completeness`, and
   `verify_census_corpus` enforce `NOT_FOUND` requiring `pages_not_searched == []`
   in exhaustive mode, `UNREADABLE` validity checks, `NO_DOCUMENT` rejection when
-  posted documents exist (`NO_DOCUMENT_WITH_POSTED_DOCUMENT`), and exact `7 * K`
-  primary outcome grid completeness, stamped with `VERIFIER_RULES_VERSION` and
+  posted documents exist in `documents.jsonl` or manifest/index flags
+  (`manifest_has_documents` / `expected_has_documents_by_nct`, emitting
+  `NO_DOCUMENT_WITH_POSTED_DOCUMENT`), and exact `7 * K` grid completeness on
+  `"primary"` (always verified even when only sparse passes are present) and
+  `"second"`, while sparse override passes in `SPARSE_PASSES` (`ocr_recovery`,
+  `adjudication`) run `verify_trial_completeness(..., allow_sparse=True)` to
+  allow targeted cell overrides while still enforcing `0..K-1` bounds and
+  duplicate checks, stamped with `VERIFIER_RULES_VERSION` and
   `NEUTRAL_LANGUAGE_VOCAB_SHA256`.
 - **Neutral-language guard:** `scan_neutral_language` (aliased as
   `check_neutral_language`) and `scan_neutral_language_record` block objective-met
@@ -231,12 +240,17 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
   gate failure, `2` `AuditHoldoutViolationError`).
 - **Incremental `sha256` cache & `UNREADABLE` partitioning:**
   `plan_incremental_cohort` computes `compute_doc_sha256_tuple` and
-  `compute_doc_set_fingerprint`, skips already-verified
+  `compute_doc_set_fingerprint`, resolves per-cell effective status in
+  precedence order (`primary -> ocr_recovery -> adjudication`) when identifying
+  unresolved `UNREADABLE` targets and cache hits, skips already-verified
   `(nct_id, pass_role, doc_sha256_tuple)` trials at `$0`, detects amended PDFs,
   partitions `UNREADABLE` trials via `classify_unreadable_subtype` into
   `image_only_scan`, `garbled_cmap`, and terminal `$0` `redacted_cci_ppd`,
   computes `max_launchable_shards` and `launch_approved` against
   `--budget-cap-usd`, and emits ready-to-launch `/swarm` shard manifests.
+  In `verify` mode, supplying `--index` also populates
+  `expected_has_documents_by_nct` from each `in_audit == False` row's
+  `protocol` / `sap` flags.
 
 ## 4. Verification Commands
 

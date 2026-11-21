@@ -807,6 +807,315 @@ def test_ocr_recovery_and_adjudication_passes_effective_pass_and_cli(tmp_path: p
         ol.normalize_decision_rule_locations(primary_rows + [bad_ocr_nodoc], document_profile=prof)
 
 
+def _make_no_document_locations(nct_id: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "nct_id": nct_id,
+            "primary_outcome_index": 0,
+            "primary_outcome_title": "Overall Survival",
+            "element": elem,
+            "status": "NO_DOCUMENT",
+            "citations": [],
+            "pages_searched": "all",
+            "pages_not_searched": [],
+            "note": "No protocol or SAP posted.",
+            "worker": "shard-01",
+            "pass": "primary",
+        }
+        for elem in ol.ELEMENTS
+    ]
+
+
+def test_no_document_rejected_by_trial_flags_large_docs_and_provenance() -> None:
+    nct_id = "NCT01975376"
+    nodoc_rows = _make_no_document_locations(nct_id)
+
+    # 1a. protocol=True, sap=False with document_profile=None -> rejected
+    study_proto = _make_ctgov_study(nct_id, in_audit=False, protocol=True, sap=False)
+    with pytest.raises(ol.OutcomesLayoutError, match="NO_DOCUMENT"):
+        ol.build_trial_bundle(
+            study_proto,
+            shards=8,
+            document_profile=None,
+            decision_rule_locations=nodoc_rows,
+        )
+
+    # 1b. protocol=False, sap=True with document_profile=None -> rejected
+    study_sap = _make_ctgov_study(nct_id, in_audit=False, protocol=False, sap=True)
+    with pytest.raises(ol.OutcomesLayoutError, match="NO_DOCUMENT"):
+        ol.build_trial_bundle(
+            study_sap,
+            shards=8,
+            document_profile=None,
+            decision_rule_locations=nodoc_rows,
+        )
+
+    # 1c. protocol=False, sap=False masked over CT.gov largeDocs hasProtocol/hasSap -> rejected
+    study_large_proto = _make_ctgov_study(nct_id, in_audit=False, protocol=False, sap=False)
+    study_large_proto["documentSection"] = {
+        "largeDocumentModule": {
+            "largeDocs": [{"hasProtocol": True, "hasSap": False, "filename": "Prot_000.pdf"}]
+        }
+    }
+    with pytest.raises(ol.OutcomesLayoutError, match="NO_DOCUMENT"):
+        ol.build_trial_bundle(
+            study_large_proto,
+            shards=8,
+            document_profile=None,
+            decision_rule_locations=nodoc_rows,
+        )
+
+    study_large_sap = _make_ctgov_study(nct_id, in_audit=False, protocol=False, sap=False)
+    study_large_sap["documentSection"] = {
+        "largeDocumentModule": {
+            "largeDocs": [{"hasProtocol": False, "hasSap": True, "filename": "SAP_000.pdf"}]
+        }
+    }
+    with pytest.raises(ol.OutcomesLayoutError, match="NO_DOCUMENT"):
+        ol.build_trial_bundle(
+            study_large_sap,
+            shards=8,
+            document_profile=None,
+            decision_rule_locations=nodoc_rows,
+        )
+
+    # 1d. protocol=False, sap=False with longitudinal_provenance posted_documents -> rejected
+    study_prov = _make_ctgov_study(nct_id, in_audit=False, protocol=False, sap=False)
+    with pytest.raises(ol.OutcomesLayoutError, match="NO_DOCUMENT"):
+        ol.build_trial_bundle(
+            study_prov,
+            shards=8,
+            document_profile=None,
+            decision_rule_locations=nodoc_rows,
+            longitudinal_provenance=_make_module4_provenance(nct_id, with_pdf_scraped=False),
+        )
+
+    # 1e. Genuine no-document trial (protocol=False, sap=False, no profile/provenance) -> accepted
+    study_nodoc = _make_ctgov_study(nct_id, in_audit=False, protocol=False, sap=False)
+    row_out, rec_out = ol.build_trial_bundle(
+        study_nodoc,
+        shards=8,
+        document_profile=None,
+        decision_rule_locations=nodoc_rows,
+        longitudinal_provenance=None,
+    )
+    assert rec_out["decision_rule_locations"] is not None
+    assert rec_out["decision_rule_locations"]["census_status"] == "no_document"
+    assert row_out["census_badge"]["census_status"] == "no_document"
+    assert row_out["census_badge"]["status_counts"] == {"NO_DOCUMENT": 7}
+
+
+def test_pregrouped_census_status_no_document_rejected_when_docs_posted() -> None:
+    empty_nodoc_grouped: dict[str, Any] = {
+        "primary_pass": [],
+        "census_status": "no_document",
+    }
+    with pytest.raises(ol.OutcomesLayoutError, match="no_document"):
+        ol.normalize_decision_rule_locations(
+            empty_nodoc_grouped,
+            document_profile=None,
+            has_posted_documents=True,
+        )
+
+    prof = ol.normalize_document_profile(_make_doc_profile("NCT01975376"))
+    with pytest.raises(ol.OutcomesLayoutError, match="no_document"):
+        ol.normalize_decision_rule_locations(
+            empty_nodoc_grouped,
+            document_profile=prof,
+            has_posted_documents=False,
+        )
+
+    with pytest.raises(ol.OutcomesLayoutError, match="explicit bool"):
+        ol.normalize_decision_rule_locations(
+            empty_nodoc_grouped,
+            has_posted_documents=1,  # type: ignore[arg-type]
+        )
+
+    allowed = ol.normalize_decision_rule_locations(
+        empty_nodoc_grouped,
+        document_profile=None,
+        has_posted_documents=False,
+    )
+    assert allowed is not None
+    assert allowed["census_status"] == "no_document"
+
+
+def test_cli_no_document_manifest_and_trials_flag_merge_guards(tmp_path: pathlib.Path) -> None:
+    nct_id = "NCT01975376"
+    locs_path = tmp_path / "locations.jsonl"
+    locs_path.write_text(
+        "\n".join(json.dumps(r) for r in _make_no_document_locations(nct_id)) + "\n",
+        encoding="utf-8",
+    )
+
+    # Case 2a: --cohort-manifest only (without --trials) with protocol=True -> exit 1, out_dir untouched
+    manifest_only_path = tmp_path / "manifest_proto_true.jsonl"
+    manifest_only_path.write_text(
+        json.dumps({
+            "nct_id": nct_id,
+            "brief_title": f"Trial {nct_id}",
+            "in_audit": False,
+            "cohorts": ["industry_phase3"],
+            "protocol": True,
+            "sap": False,
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    out_2a = tmp_path / "out_manifest_proto_true"
+    rc_2a = cli.main([
+        "--cohort-manifest", str(manifest_only_path),
+        "--locations", str(locs_path),
+        "--extracted-at", SAMPLE_TS,
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out_2a),
+    ])
+    assert rc_2a == 1
+    assert not out_2a.exists()
+    assert not (tmp_path / "out_manifest_proto_true.partial").exists()
+
+    # Case 2b: --trials protocol=False, sap=False + --cohort-manifest sap=True -> exit 1, out_dir untouched
+    trials_false_path = tmp_path / "trials_false.json"
+    trials_false_path.write_text(
+        json.dumps([_make_ctgov_study(nct_id, in_audit=False, protocol=False, sap=False)]),
+        encoding="utf-8",
+    )
+    manifest_sap_true_path = tmp_path / "manifest_sap_true.jsonl"
+    manifest_sap_true_path.write_text(
+        json.dumps({
+            "nct_id": nct_id,
+            "in_audit": False,
+            "protocol": False,
+            "sap": True,
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    out_2b = tmp_path / "out_trials_false_manifest_sap_true"
+    rc_2b = cli.main([
+        "--trials", str(trials_false_path),
+        "--cohort-manifest", str(manifest_sap_true_path),
+        "--locations", str(locs_path),
+        "--extracted-at", SAMPLE_TS,
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out_2b),
+    ])
+    assert rc_2b == 1
+    assert not out_2b.exists()
+    assert not (tmp_path / "out_trials_false_manifest_sap_true.partial").exists()
+
+    # Case 2c: asymmetric merge --trials protocol=True + --cohort-manifest protocol=False -> exit 1
+    trials_proto_true_path = tmp_path / "trials_proto_true.json"
+    trials_proto_true_path.write_text(
+        json.dumps([_make_ctgov_study(nct_id, in_audit=False, protocol=True, sap=False)]),
+        encoding="utf-8",
+    )
+    manifest_false_path = tmp_path / "manifest_false.jsonl"
+    manifest_false_path.write_text(
+        json.dumps({
+            "nct_id": nct_id,
+            "in_audit": False,
+            "protocol": False,
+            "sap": False,
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    out_2c = tmp_path / "out_trials_true_manifest_false"
+    rc_2c = cli.main([
+        "--trials", str(trials_proto_true_path),
+        "--cohort-manifest", str(manifest_false_path),
+        "--locations", str(locs_path),
+        "--extracted-at", SAMPLE_TS,
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out_2c),
+    ])
+    assert rc_2c == 1
+    assert not out_2c.exists()
+    assert not (tmp_path / "out_trials_true_manifest_false.partial").exists()
+
+    # Case 2d: both --trials and --cohort-manifest have protocol=False, sap=False -> exit 0
+    out_2d = tmp_path / "out_both_false"
+    rc_2d = cli.main([
+        "--trials", str(trials_false_path),
+        "--cohort-manifest", str(manifest_false_path),
+        "--locations", str(locs_path),
+        "--extracted-at", SAMPLE_TS,
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out_2d),
+    ])
+    assert rc_2d == 0
+    assert cli.main(["--check", str(out_2d)]) == 0
+    idx_doc = json.loads((out_2d / "index.json").read_text(encoding="utf-8"))
+    assert idx_doc["data"][0]["protocol"] is False
+    assert idx_doc["data"][0]["sap"] is False
+    assert idx_doc["data"][0]["census_badge"]["census_status"] == "no_document"
+
+
+def test_validate_outcomes_tree_catches_tampered_protocol_on_no_document_trial(
+    tmp_path: pathlib.Path,
+) -> None:
+    nct_id = "NCT01975376"
+    study = _make_ctgov_study(nct_id, in_audit=False, protocol=False, sap=False)
+    nodoc_rows = _make_no_document_locations(nct_id)
+    bundle = ol.build_trial_bundle(
+        study,
+        shards=8,
+        document_profile=None,
+        decision_rule_locations=nodoc_rows,
+        longitudinal_provenance=None,
+    )
+    idx_doc, shard_docs = ol.build_outcomes_documents(
+        [bundle],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=8,
+    )
+    out_dir = tmp_path / "valid_nodoc_tree"
+    write_res = ol.write_outcomes_tree(out_dir, idx_doc, shard_docs)
+    assert write_res.ok
+    assert cli.main(["--check", str(out_dir)]) == 0
+
+    # Tamper index.json on disk: flip protocol to True while shard still carries NO_DOCUMENT
+    tampered_idx = json.loads((out_dir / "index.json").read_text(encoding="utf-8"))
+    tampered_idx["data"][0]["protocol"] = True
+    (out_dir / "index.json").write_text(
+        ol.encode_json_text(tampered_idx, trailing_newline=True),
+        encoding="utf-8",
+    )
+
+    check_res = ol.validate_outcomes_tree(out_dir)
+    assert not check_res.ok
+    assert any("NO_DOCUMENT" in p and "forbidden" in p for p in check_res.problems)
+    assert any("no_document" in p and "forbidden" in p for p in check_res.problems)
+    assert cli.main(["--check", str(out_dir)]) == 1
+
+    # Restore protocol=False and tamper shard longitudinal_provenance.posted_documents -> also caught
+    tampered_idx["data"][0]["protocol"] = False
+    (out_dir / "index.json").write_text(
+        ol.encode_json_text(tampered_idx, trailing_newline=True),
+        encoding="utf-8",
+    )
+    assert ol.validate_outcomes_tree(out_dir).ok
+
+    shard_id = ol.outcomes_shard_of(nct_id, 8)
+    shard_path = out_dir / "shards" / f"{shard_id}.json.gz"
+    sdoc = json.loads(gzip.decompress(shard_path.read_bytes()).decode("utf-8"))
+    sdoc["data"][nct_id]["longitudinal_provenance"] = ol.normalize_longitudinal_provenance(
+        _make_module4_provenance(nct_id, with_pdf_scraped=False),
+        in_audit=False,
+    )
+    shard_path.write_bytes(ol.encode_gz_bytes(sdoc))
+    prov_tamper_res = ol.validate_outcomes_tree(out_dir)
+    assert not prov_tamper_res.ok
+    assert any("NO_DOCUMENT" in p and "forbidden" in p for p in prov_tamper_res.problems)
+    assert cli.main(["--check", str(out_dir)]) == 1
+
+
 def test_module4_longitudinal_provenance_adapter() -> None:
     prov = _make_module4_provenance("NCT01975376", with_pdf_scraped=True)
     norm = ol.normalize_longitudinal_provenance(prov, in_audit=False)
