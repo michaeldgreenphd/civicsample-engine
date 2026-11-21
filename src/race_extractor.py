@@ -1058,7 +1058,11 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
 #     a review finding);
 #   - one race heading, or the groups of one race with no heading ("British
 #     African", "Caribbean British"; a UK nation gives White), is that race;
-#   - anything else is not read ("Black or White British").
+#   - anything else is not read ("Black or White British"), nor is a label
+#     with an alternative naming no group ("White British or Other ethnic
+#     group", "White British/Other": it pools Other; a review finding), an
+#     alternative counted outside brackets only ("White (British, Irish,
+#     Other)" is White).
 # The subcategory is the vocabulary's key for a group named after the last
 # dash or colon ("Black / African / Caribbean / Black British - Caribbean"),
 # else for the one group the label names; a label naming several groups
@@ -1095,6 +1099,9 @@ _UK_TOKEN_RX = re.compile(
     r"(?P<ethnic>ethnic|groups?)|(?P<filler>race|origin|of)|(?P<or>or)|(?P<and>and))(?![a-z])"
     r"|(?P<mark>[/,;&():\-–—])",
     re.IGNORECASE)
+# The kinds that name a group, one of which every alternative of a UK label
+# must hold (uk_census_label).
+_UK_NAMING_KINDS = frozenset({"asian", "black", "white", "mixed", "british", "nation", "asian_sub", "black_sub"})
 _UK_SUBCATEGORY = {
     "indian": "south_asian_indian", "pakistani": "south_asian_pakistani",
     "bangladeshi": "south_asian_bangladeshi", "chinese": "chinese",
@@ -1116,7 +1123,8 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
       "White British", "White Irish"             -> ("white", None)
       "English/Welsh/Scottish/Northern Irish/British" -> ("white", None)
       "Mixed or Multiple Ethnic Groups"          -> ("more_than_one_race", None)
-      "White and Black Caribbean"                -> ("more_than_one_race", None)
+      "Mixed: White and Black Caribbean"         -> ("more_than_one_race", None)
+      "White British or Other ethnic group"      -> None (pools Other)
       "British", "Irish"                         -> None (a nationality alone)
       "Asian - Mixed Race"                       -> None (no UK wording)
       "Other ethnic group"                       -> None
@@ -1171,6 +1179,23 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
         if any("mixed" not in alternative for alternative in alternatives if alternative):
             return None
         return "more_than_one_race", None
+    # Each alternative ("or", "/", ",", ";" outside brackets) must name a
+    # group. One made of "Other" and fillers only ("White British or Other
+    # ethnic group", "White British/Other") pools a group whose count cannot
+    # be told apart (a review finding). "Any other White background" names
+    # White, and a bracket describes its heading ("White (British, Irish,
+    # Other)"). A Mixed label lists the parts of the mix and is read above.
+    alternative: List[str] = []
+    depth = 0
+    for kind, text in tokens + [("or", "or")]:
+        if kind == "mark" and text in ("(", ")"):
+            depth += 1 if text == "(" else -1
+        elif depth == 0 and (kind == "or" or (kind == "mark" and text in ("/", ",", ";"))):
+            if alternative and not _UK_NAMING_KINDS & set(alternative):
+                return None
+            alternative = []
+            continue
+        alternative.append(kind)
     if len(races) != 1:
         return None
     race = races.pop()

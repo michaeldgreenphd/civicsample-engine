@@ -3219,6 +3219,7 @@ BLACK = "black_african_american"
     ("Mixed white and black carribean", "more_than_one_race", None),
     ("Any other mixed background", "more_than_one_race", None),
     ("(Mixed ethnic group:) White / Black Caribbean", "more_than_one_race", None),
+    ("(Mixed ethnic group:) White / Other", "more_than_one_race", None),  # the parts of the mix
     ("Multiple (Asian-White)", "more_than_one_race", None),
 ])
 def test_a_uk_census_wording_is_read_by_its_heading(label: str, category: str,
@@ -3245,6 +3246,10 @@ def test_a_uk_census_wording_is_read_by_its_heading(label: str, category: str,
     "White and Black African",  # no UK wording without a Mixed heading
     "White British or Mixed ethnic group",  # Mixed pooled with another group (a review finding)
     "Mixed ethnic group or Other",
+    "White British or Other ethnic group",  # fictional: Other pooled (a review finding)
+    "Asian or Asian British or Other",  # fictional
+    "Black or Black British or any other ethnic group",  # fictional
+    "White British/Other",  # fictional
 ])
 def test_a_label_without_a_uk_census_reading_is_not_read_by_the_rule(label: str) -> None:
     assert rx.uk_census_label(label) is None
