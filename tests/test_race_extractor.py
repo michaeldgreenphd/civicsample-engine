@@ -3344,6 +3344,7 @@ def test_a_label_naming_more_or_less_than_black_groups_is_not_read_by_the_rule(l
     ("African", "african", []),
     ("Black/African American", None, ["slash_normalized"]),  # the slash fragments run first
     ("African/American", "african_american", ["black_label"]),  # one name: not the "African" fragment (review finding)
+    ("African/American, Black", None, ["black_label"]),  # fictional: the Black labels read the rejoined label
     ("Black African", "african", ["black_label"]),
 ])
 def test_black_readings_through_map_race_category(label: str, subcategory: Optional[str],
@@ -3359,10 +3360,12 @@ def test_rejoining_african_american_keeps_the_other_slash_fragments() -> None:
     mapping = rx.map_race_category("White/African/American")
     assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
         "white", None, ["slash_normalized"])
-    # A slash after "American" ends its fragment: the rejoined name is read.
-    mapping = rx.map_race_category("African/American/Black")
-    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
-        "black_african_american", "african_american", ["slash_normalized"])
+    # A slash after "American" ends its fragment: the rejoined name is read,
+    # also where the Black labels do not read the whole label.
+    for label in ("African/American/Black", "African/American/Asian"):
+        mapping = rx.map_race_category(label)
+        assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
+            "black_african_american", "african_american", ["slash_normalized"]), label
 
 
 @pytest.mark.parametrize("label", ["African/American Indian", "African/American-Indian", "African/American (Indian)",
@@ -3370,7 +3373,10 @@ def test_rejoining_african_american_keeps_the_other_slash_fragments() -> None:
                                    "African/American {Indian}", "African/American. Indian",
                                    # "American" does not end its fragment (review finding)
                                    "African/American Samoan", "African/American Pacific Islander",
-                                   "African/American (Black)", "African/Americans"])
+                                   "African/American (Black)", "African/Americans",
+                                   # the rejoined label is read by nothing (review finding)
+                                   "African/American or Indian", "African/American, or Indian",
+                                   "African/American or Samoan"])
 def test_african_slash_american_indian_is_not_rejoined(label: str) -> None:
     """"American Indian" after the slash names a second race, with or without
     punctuation, and an "American" that does not end its fragment goes on to

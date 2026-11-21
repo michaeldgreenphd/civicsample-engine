@@ -2241,6 +2241,22 @@ def _multirace_label(label: str) -> bool:
         races.add(race)
     return len(races) >= 2
 
+def _slash_fragment_mapping(text: str) -> Optional[Tuple[str, Optional[str]]]:
+    """The (category, subcategory) of the first "/" fragment of `text` that
+    is a RACE_MAPPINGS key, matched exactly, ignoring case; None when the
+    text holds no slash or no fragment matches."""
+    if "/" not in text:
+        return None
+    for frag in text.split("/"):
+        frag = frag.strip()
+        if not frag:
+            continue
+        for key, (omb, subcat) in RACE_MAPPINGS.items():
+            if key.lower() == frag.lower():
+                return omb, subcat
+    return None
+
+
 def map_race_category(label: str, fuzzy_threshold: int = 85, *,
                       guard_negation: bool = False, heritage: bool = True,
                       multirace: bool = True) -> Dict:
@@ -2367,22 +2383,24 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
     # American" alone has no slash left and the Black labels read it
     # (african_american, not african), and "White/African/American" keeps
     # its "White" fragment (block comment "Black labels"; review findings).
+    # When the rejoined label gives no reading, neither from a fragment nor
+    # by the Black labels, its own slashes are read as before the rejoin:
+    # "African/American or Indian" stays Black/african through "African"
+    # rather than going unread (a review finding). The rejoin can then
+    # change a label's reading but never take one away.
     slash_text = _AFRICAN_SLASH_AMERICAN_RX.sub("African American", label_clean)
-    if "/" in slash_text:
-        for frag in slash_text.split("/"):
-            frag = frag.strip()
-            if not frag:
-                continue
-            for key, (omb, subcat) in RACE_MAPPINGS.items():
-                if key.lower() == frag.lower():
-                    flags.append("slash_normalized")
-                    return {
-                        "omb_category": omb,
-                        "subcategory": subcat,
-                        "confidence": "high",
-                        "original": label_clean,
-                        "flags": flags
-                    }
+    slash_reading = _slash_fragment_mapping(slash_text)
+    if slash_reading is None and slash_text != label_clean and not black_label(label_clean)[0]:
+        slash_reading = _slash_fragment_mapping(label_clean)
+    if slash_reading is not None:
+        flags.append("slash_normalized")
+        return {
+            "omb_category": slash_reading[0],
+            "subcategory": slash_reading[1],
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
 
     # A label naming European origin only (block comment "European labels"),
     # after the slash fragments, so a label they read as White keeps that
