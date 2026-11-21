@@ -3899,3 +3899,109 @@ def test_a_negated_american_indian_row() -> None:
                                           ("Unknown/Missing", 4)])
     race = extract_race_data(_study("NCT99000908", [table], 431))
     assert _nonzero(race) == {"american_indian_alaska_native": 385, "other": 42, "unknown_not_reported": 4}
+
+
+# ── where a race row's wording comes from ──────────────────────────────────
+#
+# src/race_extractor.py, block comment "Where a race row's wording comes
+# from": every race row records whether its words are the registry template's,
+# UK census wording, a United States identity, a narrower origin (its
+# subcategory) or the category alone. The field changes no count.
+
+CUSTOM = "Race/Ethnicity, Customized"
+
+
+def _row(original: str, subcategory: Optional[str] = None, flags: Optional[list[str]] = None) -> dict[str, Any]:
+    return {"original": original, "subcategory": subcategory, "flags": flags or []}
+
+
+@pytest.mark.parametrize("label", ["White", "Black or African American", "Asian", "More than one race",
+                                   "American Indian or Alaska Native", "Native Hawaiian or Other Pacific Islander",
+                                   "Unknown or Not Reported", "black or african american", "More than One Race"])
+def test_a_template_name_in_a_template_table_is_the_registry_template(label: str) -> None:
+    assert rx.wording_source(_row(label), "Race (NIH/OMB)") == "registry_template"
+    assert rx.wording_source(_row(label), " Race  (NIH/OMB) ") == "registry_template"
+
+
+@pytest.mark.parametrize("label, source", [
+    # Rows a registrant added to a template table are classified by their words.
+    ("Black", "generic"), ("Other", "generic"), ("Hawaiian", "generic"),
+    ("American Indian/ Alaska Native", "us_term"),
+])
+def test_a_row_outside_the_seven_in_a_template_table(label: str, source: str) -> None:
+    assert rx.wording_source(_row(label), "Race (NIH/OMB)") == source
+
+
+@pytest.mark.parametrize("label", [
+    "Black or African American", "African American", "African-American", "Black/African American",
+    "Afro-American", "Black American", "Asian American", "Asian/Asian-American", "European American",
+    "Arab American", "Mexican-American", "South Asian or Indian American", "Native American",
+    "American Indian or Alaska Native", "Alaskan Native", "Non-African American",
+    "Black (African American)", "American (Am) Indian or Alaska (Al.) native",
+    "American(Amer) Indian(Ind) or Alaska(Al) Native(N)", "Black or African American (Comparison 1)",
+])
+def test_a_united_states_identity_in_a_registrants_table(label: str) -> None:
+    assert rx.wording_source(_row(label), CUSTOM) == "us_term"
+
+
+def test_the_african_american_subcategory_is_a_united_states_identity() -> None:
+    """A misspelling the reader resolves to African American."""
+    assert rx.wording_source(_row("Afican American", "african_american"), CUSTOM) == "us_term"
+
+
+@pytest.mark.parametrize("label", ["Latin American", "South American Indian", "North American Native",
+                                   "Native South American", "Central American", "Americas"])
+def test_a_region_before_american_is_not_a_united_states_identity(label: str) -> None:
+    assert rx.wording_source(_row(label), CUSTOM) == "generic"
+
+
+@pytest.mark.parametrize("label, subcategory", [
+    ("Nigerian", "african"), ("Black African", "african"), ("Afro-Caribbean", "caribbean"),
+    ("Japanese", "japanese"), ("Russian", "european"), ("Arab", "middle_eastern_arab"), ("Samoan", "samoan"),
+])
+def test_a_subcategory_names_the_origin(label: str, subcategory: str) -> None:
+    assert rx.wording_source(_row(label, subcategory), CUSTOM) == "origin_term"
+
+
+@pytest.mark.parametrize("label", ["Black", "White", "Caucasian", "Asian", "Native Hawaiian or Other Pacific Islander",
+                                   "Other", "Unknown", "Navajo", "Non-Hispanic Black"])
+def test_the_category_alone_is_generic(label: str) -> None:
+    assert rx.wording_source(_row(label), CUSTOM) == "generic"
+
+
+def test_uk_census_wording_is_its_own_source() -> None:
+    assert rx.wording_source(_row("Black or Black British", flags=["uk_census_label"]), CUSTOM) == "uk_census"
+    # Before the United States terms and the subcategory.
+    assert rx.wording_source(_row("Black British/African American", "african", ["uk_census_label"]), CUSTOM) == "uk_census"
+
+
+def test_the_first_value_that_applies_wins() -> None:
+    assert rx.wording_source(_row("Black or African American", "african_american"), "Race (NIH/OMB)") == "registry_template"
+    assert rx.wording_source(_row("Asian American", "japanese"), CUSTOM) == "us_term"
+    assert rx.WORDING_SOURCES == ("registry_template", "uk_census", "us_term", "origin_term", "generic")
+
+
+def test_every_row_of_a_template_table_is_the_registry_template() -> None:
+    table = _category_table("Race (NIH/OMB)", [("White", 30), ("Black or African American", 10), ("Asian", 5),
+                                               ("Unknown or Not Reported", 2)])
+    race = extract_race_data(_study("NCT99000909", [table], 47))
+    assert [c["wording_source"] for c in race["raw_categories"]] == ["registry_template"] * 4
+
+
+def test_a_registrants_table_records_each_rows_source_and_no_count_moves() -> None:
+    rows = [("Black or Black British", 20), ("African American", 15), ("Nigerian", 10), ("Black", 25), ("White", 30)]
+    race = extract_race_data(_study("NCT99000910", [_class_table(COMBINED_TITLE, rows)], 100))
+    assert [(c["original"], c["wording_source"]) for c in race["raw_categories"]] == [
+        ("Black or Black British", "uk_census"), ("African American", "us_term"), ("Nigerian", "origin_term"),
+        ("Black", "generic"), ("White", "generic")]
+    assert _nonzero(race) == {BLACK: 70, "white": 30}
+    assert race["subcategory_totals"] == {f"{BLACK}_african_american": 15, f"{BLACK}_african": 10}
+
+
+def test_rows_of_a_sex_titled_race_table_carry_a_source() -> None:
+    """A table read from a sex/gender-titled measure is never the template."""
+    table = _class_table("Sex/Gender, Customized", [("White Female", 10), ("White Male", 8),
+                                                    ("Black Female", 4), ("Black Male", 3)])
+    race = extract_race_data(_study("NCT99000911", [table], 25))
+    assert race["raw_categories"], race
+    assert {c["wording_source"] for c in race["raw_categories"]} == {"generic"}

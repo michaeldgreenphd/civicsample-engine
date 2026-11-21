@@ -5150,6 +5150,108 @@ def _joint_sex_counts(table: Dict, used_for_totals: bool) -> Dict:
         "rows": rows,
     }
 
+# ── Where a race row's wording comes from ───────────────────────────────────
+#
+# A row's words say different things depending on who chose them. The
+# registry's "Race (NIH/OMB)" template prints OMB's seven category names
+# whatever the trial's country: "Black or African American" in a template
+# table outside the United States is the registry's wording, not the
+# participants'. A registrant's own table can name a United States identity
+# ("African American"), a UK census group ("Black British"), a narrower
+# origin ("Nigerian", "Japanese") or the category alone ("Black"). Every race
+# row of extract_race_data records which, in wording_source, so the
+# distinction can be audited without re-reading labels. The field describes
+# the words, not the reading: it changes no count, and a negated row ("Non-
+# African American", block comment "Negated race labels") still uses United
+# States wording.
+#
+# Values, the first that applies:
+#   - registry_template: the row is in a table titled "Race (NIH/OMB)" and its
+#     label is one of the template's seven names (any letter case). 20 of the
+#     33,187 template tables in the 2026-11-15 inputs carry a row outside the
+#     seven ("Other", "Black", "Hawaiian"): those rows are the registrant's
+#     own words and are classified by them.
+#   - uk_census: the row was read by the UK census rule (flag uk_census_label,
+#     block comment "UK census labels").
+#   - us_term: the label names a United States identity: a group joined to
+#     "American" (African, Afro, Black, Asian, European, Arab, Mexican,
+#     Indian, Pacific, Hispanic, Latino American), Native American, American
+#     Indian or Alaska Native; or the row has the african_american
+#     subcategory (which also covers misspellings the reader resolves,
+#     "Afican American"). A region before "American" names a place of origin,
+#     not a United States identity: "Latin American", "South American" and
+#     "North American Indian" are not us_term. The label is read whole and
+#     with its bracketed segments removed, so a term split by glosses
+#     ("American (Am) Indian or Alaska (Al.) native") is found, and so is one
+#     inside brackets ("Black (African American)").
+#   - origin_term: the row has any other subcategory, which names the
+#     narrower origin (african, caribbean, european, japanese,
+#     middle_eastern_arab, ...). The subcategory itself is the origin term;
+#     the posted word stays in original.
+#   - generic: none of these. The category alone ("Black", "White",
+#     "Caucasian"), the full OMB name typed into the registrant's own table
+#     where it names no United States identity ("Native Hawaiian or Other
+#     Pacific Islander", "Asian"), and rows naming no race ("Other",
+#     "Unknown"). American Indian or Alaska Native rows naming a people
+#     ("Navajo", "First Nations") are generic too: the engine gives that
+#     category no subcategory, so no origin is recorded for them.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
+# the negated race labels: no count, flag or other field changes. Of 289,558
+# race rows, 233,116 are registry_template, 41,119 generic, 11,685 us_term,
+# 3,439 origin_term and 199 uk_census. Of the 1,111,028 Black participants in
+# trials whose every site is outside the United States, 938,282 (84.5%) are
+# in registry_template rows, 63,533 in us_term rows, 51,286 generic, 45,188
+# origin_term and 12,739 uk_census. 7,758 American Indian or Alaska Native
+# participants in 56 rows name a people or a region and are generic for want
+# of a subcategory ("North American Native", "Navajo"). The demographics
+# parts grow by 651,871 gzip bytes.
+#
+# Published: in the race block of every record (raw_categories[].
+# wording_source) and the full records. The site does not read it, so it is
+# not in the site's record contract; were the site's split layout turned on,
+# it would be dropped from the split files like subcategory and count, and
+# remain in the full records.
+WORDING_SOURCES = ("registry_template", "uk_census", "us_term", "origin_term", "generic")
+_RACE_TEMPLATE_TITLE = "race (nih/omb)"
+_RACE_TEMPLATE_LABELS = frozenset({
+    "american indian or alaska native", "asian", "black or african american",
+    "native hawaiian or other pacific islander", "white", "more than one race",
+    "unknown or not reported",
+})
+_US_TERM_RX = re.compile(
+    r"(?<![a-z])(?:"
+    r"(?:african|afro|black|asian|european|arab|mexican|indian|pacific|hispanic|latin[oa])[\s\-]*americans?"
+    r"|native[\s\-]+americans?"
+    r"|american[\s\-]+indians?"
+    r"|alaska(?:n)?[\s\-]+natives?"
+    r")(?![a-z])",
+    re.IGNORECASE)
+# A region joined to "American" names a place of origin; removed before the
+# United States terms are looked for ("South American Indian").
+_REGION_AMERICAN_RX = re.compile(
+    r"(?<![a-z])(?:latin|south|central|north)[\s\-]+american(?![a-z])", re.IGNORECASE)
+
+
+def wording_source(category: Dict, table_title: str) -> str:
+    """Where a race row's wording comes from, one of WORDING_SOURCES (block
+    comment "Where a race row's wording comes from")."""
+    label = clean_demographic_label(category.get("original") or "")
+    if (" ".join(str(table_title or "").split()).lower() == _RACE_TEMPLATE_TITLE
+            and label.lower() in _RACE_TEMPLATE_LABELS):
+        return "registry_template"
+    if "uk_census_label" in category.get("flags", []):
+        return "uk_census"
+    if (category.get("subcategory") == "african_american"
+            or any(_US_TERM_RX.search(_REGION_AMERICAN_RX.sub(" ", text)) is not None
+                   for text in (label, _outside_brackets(label)))):
+        return "us_term"
+    if category.get("subcategory"):
+        return "origin_term"
+    return "generic"
+
+
 def extract_race_data(study: dict) -> Dict:
     """
     Extract all race data from a study.
@@ -5288,6 +5390,8 @@ def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
             })
 
         for cat in categories:
+            # Block comment "Where a race row's wording comes from".
+            cat["wording_source"] = wording_source(cat, table["title"])
             result["raw_categories"].append(cat)
 
             # Add to OMB totals
