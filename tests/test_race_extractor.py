@@ -3276,6 +3276,8 @@ def test_the_black_subcategory_comes_from_the_names(label: str, subcategory: Opt
     "Black or non-specified",  # fictional
     "Black or Indigenous",  # fictional: another race pooled (review finding)
     "Black, Indigenous",  # fictional
+    "Indigenous Caribbean",  # fictional: Indigenous qualifies African peoples only (review finding)
+    "Indigenous Black",  # fictional
     "Black or participants of all ethnicities",  # fictional: fillers only pooled (review finding)
     "all participants or Race: Black",  # fictional: "or" before the heading's colon pools (review finding)
     "Black (or Indigenous)",  # fictional: a choice in a bracket names another race (review finding)

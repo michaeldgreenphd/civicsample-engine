@@ -1055,7 +1055,8 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
 #     Africa is the Middle East and North Africa); "Other"; example words;
 #     non-specified, unspecified ("African, Caribbean, or non-specified
 #     Black", NCT04588415) and indigenous ("Indigenous African",
-#     NCT00080119); alone as an alternative a non-answer or another race,
+#     NCT00080119; beside African peoples only, so "Indigenous Caribbean"
+#     is not read); alone as an alternative a non-answer or another race,
 #     so "Black or unspecified" and "Black or Indigenous" are not read
 #     (review findings);
 #   - fillers: descent, origin(s), ancestry, background, ethnic(ity),
@@ -1268,6 +1269,12 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
         # A name, or an abbreviation beside a name elsewhere ("Black or Af
         # Am"): "AA" alone names nothing the rule can tell.
         if not any(kind == "name" or (kind == "abbrev" and has_name) for kind, _t, _w in segment):
+            return False, None
+        # "Indigenous" qualifies African peoples only ("Indigenous African",
+        # NCT00080119): beside another Black name it may name a people who
+        # are not Black ("Indigenous Caribbean"; a review finding).
+        if any(kind == "qualifier" and term == "indigenous" for kind, term, _w in segment) and not all(
+                _black_subcategory_of(term) == "african" for kind, term, _w in segment if kind == "name"):
             return False, None
         # Names given as examples describe a wider group and name no
         # subcategory: every name in a bracket holding an example word, or in
