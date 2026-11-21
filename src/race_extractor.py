@@ -2881,9 +2881,11 @@ def negated_race_label(label: str) -> bool:
 #
 # Method (_slash_fragment_mapping). The category is the first fragment's the
 # vocabulary holds, as before. The subcategory is reduced across every
-# fragment naming that category through a reading that is not fuzzy (the
-# vocabulary, or a rule reading the fragment whole: "South East Asian" by
-# the Asian labels, "Yoruba" by the Black labels), as the Black and Asian
+# fragment naming that category through a reading that is not fuzzy
+# (confidence high, not unmapped: the vocabulary, or a rule reading the
+# fragment whole: "South East Asian" by the Asian labels, "Yoruba" by the
+# Black labels; not "Afican Heritage", which the heritage rule reads through
+# a fuzzy match of its group), as the Black and Asian
 # labels reduce alternatives (_black_alternatives,
 # _asian_label_subcategory): theirs when all agree; none when one names the
 # category alone; else the region they all lie in ("Indian/Pakistani/
@@ -2925,7 +2927,10 @@ def _fragment_reading(fragment: str) -> Optional[Tuple[str, Optional[str]]]:
         if key.lower() == fragment.lower():
             return omb, subcat
     mapping = map_race_category(fragment, multirace=False)
-    if "unmapped" in mapping["flags"] or any(f.startswith("fuzzy_match") for f in mapping["flags"]):
+    # Not fuzzy: confidence high, not unmapped, as the comma-list rule tests a
+    # part. A fuzzy match made inside the heritage rule ("Afican Heritage")
+    # carries no fuzzy_match flag, only medium confidence (a review finding).
+    if mapping["confidence"] != "high" or "unmapped" in mapping["flags"]:
         return None
     return mapping["omb_category"], mapping["subcategory"]
 

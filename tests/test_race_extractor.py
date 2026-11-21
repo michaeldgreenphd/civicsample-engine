@@ -4056,6 +4056,10 @@ def test_a_slash_reading_does_not_depend_on_the_order(first: str, second: str) -
     # A fragment read only through a fuzzy match does not take part, as no
     # fuzzy reading counts in the rules that read a label's parts.
     ("African/Blak", BLACK, "african"),
+    # Nor one the heritage rule reads through a fuzzy match of its group
+    # (a review finding).
+    ("African American/Afican Heritage", BLACK, "african_american"),
+    ("Chinese/Japanes Heritage", "asian", "chinese"),
 ])
 def test_the_subcategory_of_a_slash_reading(label: str, category: str, subcategory: Optional[str]) -> None:
     mapping = rx.map_race_category(label)
