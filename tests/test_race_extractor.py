@@ -3242,6 +3242,9 @@ def test_a_label_naming_black_groups_only_is_read_as_black(label: str, subcatego
     # Names given as examples name no subgroup.
     ("Black or African American (African American, Jamaican, Haitian, Nigerian, Ethiopian, Somali, etc.)", None),
     ("Black (e.g., Haitian, Jamaican)", None),  # examples alone would make it caribbean
+    ("Black including Haitian", None),  # fictional: an example word outside brackets (review finding)
+    ("Black African including Nigerian", "african"),  # fictional: the names before it still count
+    ("African, Caribbean, or non-specified Black", None),  # "non-specified" describes Black
     # Haitian lies in Caribbean; across alternatives, theirs when all agree.
     ("Caribbean (Haitian)", "caribbean_haitian"),
     ("Afro-Caribbean or Caribbean", "caribbean"),
@@ -3260,6 +3263,8 @@ def test_the_black_subcategory_comes_from_the_names(label: str, subcategory: Opt
     "African American or Other",
     "Black, Euro-African, or African American",
     "Black or other race",
+    "Black or unspecified",  # fictional: a non-answer pooled (review finding)
+    "Black or non-specified",  # fictional
     "Not Black",  # negated
     "Non-Black",
     "Black or African American (Comparison 1)",  # crossed with something else

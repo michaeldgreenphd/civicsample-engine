@@ -1053,17 +1053,21 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
 #     Rwanda, Nigeria, Ghana, Ethiopia, Somalia, Zimbabwe, Brazil, Canada);
 #     directions (West, East, Central, Southern; North is not one: North
 #     Africa is the Middle East and North Africa); "Other"; example words;
+#     non-specified, unspecified ("African, Caribbean, or non-specified
+#     Black", NCT04588415; alone as an alternative a non-answer, so "Black or
+#     unspecified" is not read: a review finding);
 #   - fillers: descent, origin(s), ancestry, background, ethnic(ity),
 #     race, people(s), only, of, from, in, all, tribe(s), group(s),
 #     speaking, continent, indigenous, self-reported, participants,
-#     subjects, non-specified.
+#     subjects.
 # A label beginning or ending with a join is not read; each alternative must
 # name a Black group (as for European labels). The subcategory: within an
 # alternative, the name every other one refines (Haitian and Jamaican lie
 # in Caribbean), else none; Black beside African American is the category's
 # own name, not the subgroup ("Black (or African American)"); names given
-# as examples name none; across alternatives, theirs when all agree, else
-# none.
+# as examples name none, in a bracket holding an example word or after one
+# outside brackets ("Black including Haitian"; a review finding); across
+# alternatives, theirs when all agree, else none.
 #
 # What it does not do. "South African" alone names a country of every race,
 # and "Coloured" (550 in 17 trials), "Colored" and "Southern African
@@ -1114,7 +1118,11 @@ _BLACK_TOKEN_RX = re.compile(
     r"(?P<other>other)|(?P<example>e\s*g|i\s*e|including|etc)|"
     r"(?P<filler>descent|decent|origins?|ancestry|background|ethnicit(?:y|ies)|ethnic|race|racial|"
     r"peoples?|only|of|from|in|all|tribes?|groups?|speaking|continent|indigenous|self\s+reported|"
-    r"participants?|subjects?|non\s+specified|unspecified)|"
+    r"participants?|subjects?)|"
+    # Describes a name in its alternative ("non-specified Black"); alone it
+    # is a non-answer, an alternative naming no group ("Black or
+    # unspecified"; a review finding).
+    r"(?P<unspecified>non\s+specified|unspecified)|"
     r"(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
     re.IGNORECASE)
 _BLACK_ALTERNATIVE_JOINS = _EUROPEAN_ALTERNATIVE_JOINS
@@ -1182,7 +1190,8 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     for kind, term, depth in tokens:
         if depth == 0 and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS:
             segments.append([])
-        elif kind in ("name", "abbrev", "place", "direction", "other", "example", "open", "close"):
+        elif kind in ("name", "abbrev", "place", "direction", "other", "example", "unspecified",
+                      "open", "close"):
             segments[-1].append((kind, term, depth))
     has_name = any(kind == "name" for kind, _t, _d in tokens)
     subcategories: List[Optional[str]] = []
@@ -1193,11 +1202,16 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
         # Am"): "AA" alone names nothing the rule can tell.
         if not any(kind == "name" or (kind == "abbrev" and has_name) for kind, _t, _d in segment):
             return False, None
-        # Names given as examples ("(..., Nigerian, Ethiopian, Somali,
-        # etc.)") describe a wider group and name no subcategory.
-        example_depths = {depth for kind, _t, depth in segment if kind == "example"}
-        specific = [_black_subcategory_of(term) for kind, term, depth in segment
-                    if kind == "name" and not (depth and depth in example_depths)]
+        # Names given as examples describe a wider group and name no
+        # subcategory: every name in a bracket holding an example word
+        # ("(..., Nigerian, Ethiopian, Somali, etc.)"), and outside brackets
+        # the names after one ("Black including Haitian"; a review finding).
+        example_depths = {depth for kind, _t, depth in segment if kind == "example" and depth}
+        first_example = next((i for i, (kind, _t, depth) in enumerate(segment)
+                              if kind == "example" and depth == 0), None)
+        specific = [_black_subcategory_of(term) for i, (kind, term, depth) in enumerate(segment)
+                    if kind == "name" and depth not in example_depths
+                    and not (depth == 0 and first_example is not None and i > first_example)]
         candidates = [sub for sub in specific if sub is not None]
         # Black beside African American is the category's own name ("Black
         # (or African American)", "Black of African American"): no subgroup.
