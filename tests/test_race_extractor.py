@@ -3323,6 +3323,16 @@ def test_rejoining_african_american_keeps_the_other_slash_fragments() -> None:
         "white", None, ["slash_normalized"])
 
 
+@pytest.mark.parametrize("label", ["African/American Indian", "African/American-Indian", "African/American (Indian)"])
+def test_african_slash_american_indian_is_not_rejoined(label: str) -> None:
+    """"American Indian" after the slash names a second race, with or without
+    punctuation, and the label keeps its slash reading (fictional; a review
+    finding)."""
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
+        "black_african_american", "african", ["slash_normalized"])
+
+
 def test_a_table_of_african_peoples_is_counted_as_black() -> None:
     table = _class_table(COMBINED_TITLE, [("Zulu", 40), ("Xhosa", 30), ("Coloured", 20), ("White", 10)])
     race = extract_race_data(_study("NCT99000629", [table], 100))

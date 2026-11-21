@@ -1132,8 +1132,10 @@ _BLACK_TOKEN_RX = re.compile(
 _BLACK_ALTERNATIVE_JOINS = _EUROPEAN_ALTERNATIVE_JOINS
 # "African/American" (and "African / American"): the one name split by a
 # slash, which the slash fragments would otherwise read as "African".
-# Not "African/American Indian", which names two races (left as it was).
-_AFRICAN_SLASH_AMERICAN_RX = re.compile(r"\bafrican\s*/\s*american\b(?!\s*indian)", re.IGNORECASE)
+# Not "African/American Indian", which names two races (left as it was),
+# with or without punctuation before "Indian" ("African/American-Indian",
+# "African/American (Indian)"; a review finding).
+_AFRICAN_SLASH_AMERICAN_RX = re.compile(r"\bafrican\s*/\s*american\b(?![\s\-–—()]*indian)", re.IGNORECASE)
 # A bracketed abbreviation of the label's own words, as registrants post
 # them: "Black or African (Afr) Amer", "BLACK (BLA) OR AFRICAN AMERICAN (AFR
 # AME)", "(B or Af Am)", "(US)". Only these words: "(Part C)" is a crossing.
