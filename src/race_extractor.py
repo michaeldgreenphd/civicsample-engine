@@ -638,9 +638,10 @@ def _european_subcategory(groups: List[List[str]]) -> str:
 # findings; no such table in the 2026-11-15 inputs).
 #
 # What it does not do. "Asian or Pacific Islander" and other wordings joining
-# Asian to the Pacific are the 1977 grouped category, left as they were
-# ("Asian American and Pacific Islander" included, through
-# _asian_joined_to_nhpi). The UK census wordings ("Asian or Asian British"
+# Asian to the Pacific are the 1977 grouped category, read by its own rule
+# (block comment "The 1977 Asian or Pacific Islander category"; "Asian
+# American and Pacific Islander" included, through _asian_joined_to_nhpi).
+# The UK census wordings ("Asian or Asian British"
 # 64,897 in 17 trials, beside "Black or Black British" and "White British")
 # are left for a rule of their own. Rows crossing Asian with something else
 # are not read: comparisons (NCT07465926 crosses every race with its
@@ -1670,7 +1671,8 @@ def aian_label(label: str) -> bool:
 # first).
 #
 # What it does not do. A label naming another group beside these ("Asian or
-# Pacific Islander", the 1977 grouped category; "Native American or Pacific
+# Pacific Islander", the 1977 grouped category, read by its own rule: block
+# comment "The 1977 Asian or Pacific Islander category"; "Native American or Pacific
 # Islander"; "Pacific Islander-White"; "Oceania (e.g., Australian, New
 # Zealander, Pacific Islander)") is not read by this rule, nor is a row
 # crossing race with another variable ("Adolescent Native Hawaiian or Pacific
@@ -1691,7 +1693,9 @@ def aian_label(label: str) -> bool:
 # joined by "and", "&" or "+", in either order, to a part this rule reads
 # that names the category, Pacific Islanders as a group and nothing besides
 # Hawaiian ("Native Hawaiian or Pacific Islander", "Hawaiian or Pacific
-# Islander", "Hawaiian-Pacific"; review findings), is counted as other (flags unmapped, asian_pacific_grouped) when no other
+# Islander", "Hawaiian-Pacific"; review findings), is counted as the group:
+# Asian, flagged asian_pacific_grouped (before, as other, flagged unmapped;
+# block comment "The 1977 Asian or Pacific Islander category"), when no other
 # row of its table names Asian, or Native Hawaiian or Pacific Islander,
 # apart from the other: a row read as Asian whose text names no Pacific
 # group ("Asian", "Japanese/East Asian Heritage"; not "Asian/Pacific
@@ -1851,6 +1855,122 @@ def _nhpi_names_the_category(label: str) -> bool:
            for name in names):
         return False
     return names_pacific or any(_NHPI_GROUP_NAME_RX.match(name) is not None for name in names)
+
+# ── The 1977 Asian or Pacific Islander category ───────────────────────────
+#
+# The 1977 OMB standard had one category, "Asian or Pacific Islander"; the
+# 1997 standard, whose categories this engine counts, split it into Asian
+# and Native Hawaiian or Other Pacific Islander. Trials still post the
+# grouped wording, and the engine read it four ways in the 2026-11-15
+# inputs: as other ("Asian or Pacific Islander", 371,261 participants in 119
+# trials; "Asian, Pacific Islander" 977; "Asian Pacific Islander"); as Asian
+# through a slash fragment ("Asian/Pacific Islander", 85,340 in 129); as
+# Native Hawaiian or Pacific Islander through a slash fragment or the fuzzy
+# match ("Asian, Native Hawaiian, or Other Pacific Islander" 82, "Asian
+# American/Pacific Islander" 14); or, joined by "and", as the group (other)
+# or as a combination by the table (_grouped_asian_nhpi_rows). Its people
+# are Asian or Pacific Islander and the counts cannot be split. The
+# maintainer's decision: count the group as Asian, flagged
+# asian_pacific_grouped, with no subcategory (a Pacific Islander share is
+# then counted as Asian).
+#
+# Method (asian_pacific_grouped_label; after the Native Hawaiian or Pacific
+# Islander labels and before the heritage, multirace and slash rules and the
+# fuzzy match). A label is the group when, cleaned ("." removed, "non-
+# Hispanic" passed over, "and/or" read as "or"), it is made of parts set
+# side by side by "or", "/", "," or ";", each an Asian part (asian_label:
+# "Asian", "Asian American", "East Asian", "Filipino", "Oriental") or a
+# Pacific part (nhpi_label, as "Native Hawaiian and Other Pacific Islander"
+# or "Pacific Islander only"; or Pacific, Pacific Isl., PI, Islander,
+# Hawaiian Islander, Native Hawaiian), or Asian and Pacific written together
+# ("Asian Pacific Islander", "Asian Hawaiian or Other Pacific Islander"),
+# with at least one of each. "Asian and Pacific Islander" itself is the
+# group in any table, as the multirace rule already read it
+# (_HERITAGE_GROUPED_API_RX, its heritage form included). "and", "&" and
+# "+" do not set parts side by side: an "and" inside one part stays there
+# for asian_label or nhpi_label to read, and those readers refuse a part
+# joining Asian to the Pacific ("Asian and Native Hawaiian"), so the other
+# wordings joining them by "and", "&" or "+" stay with the multirace rule, and _grouped_asian_nhpi_rows now counts the group as
+# Asian where no row names either race apart; beside a row naming Asian or
+# Pacific Islander alone they are still more than one race, as is a comma
+# list beside one (the comma-list rule). A grouped row names no race alone
+# for the comma-list rule, and a grouped part names no one race of a list.
+#
+# What it does not do. Wordings pooling another race are not read as the
+# group ("Asian/American Indian/Pacific", "AI/AN/Asian/NH/PI", "American
+# Indian, Alaska Native, Asian, Native Hawaiian, or Other Pacific Islander",
+# "Asian, Pacific-Islander, other"), nor crossed rows ("Caregivers:
+# Asian/Pacific Islander").
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
+# the Asian labels: Asian +374,883; other -374,725; Native Hawaiian or
+# Pacific Islander -159 (the grouped wordings the slash fragments or the
+# fuzzy match read so); more than one race +1 ("African American & Asian or
+# Pacific Islander", whose grouped part now reads); east_asian -31 ("East
+# Asian/Pacific"). Rows read as the group: 51 labels, 462,947 participants
+# in 374 trials: 374,724 counted as other before, 88,064 already as Asian
+# (slash fragments), 159 as Native Hawaiian or Pacific Islander. No trial
+# changes whether it reports race; no ethnicity block, no sex block and no
+# sex/gender-titled gate changes; race blocks over their population stay
+# 330.
+_GROUPED_PACIFIC_PART_RX = re.compile(
+    r"(?:other\s+)?(?:pacific(?:\s+isl(?:anders?|ands?|a)?)?|pi|islanders?|hawaiian\s+islanders?)"
+    r"|(?:native\s+)?hawaiians?", re.IGNORECASE)
+_GROUPED_ADJACENT_RX = re.compile(
+    r"asian(?:\s+americans?)?\s+(?:(?:other\s+)?pacific(?:\s+islanders?)?|hawaiians?)", re.IGNORECASE)
+_GROUPED_SPLIT_RX = re.compile(r"\s*(?:\bor\b|/|,|;)\s*", re.IGNORECASE)
+_GROUPED_ETHNICITY_RX = re.compile(r"\bnon[\s\-]*hispanic\b", re.IGNORECASE)
+
+
+def asian_pacific_grouped_label(label: str) -> bool:
+    """True when a label is the 1977 Asian or Pacific Islander category: Asian
+    and Pacific Islander parts only, at least one of each, set side by side
+    by "or", "and/or", "/", "," or ";" or written together ("Asian Pacific
+    Islander"), or the wording "Asian and Pacific Islander" itself. "and",
+    "&" and "+" do not set parts side by side, so any other label joining
+    Asian to the Pacific by one of them has a part no reader takes and is
+    left to the multirace rule and _grouped_asian_nhpi_rows, which tell the
+    group from a combination by the table (block comment above).
+
+      "Asian or Pacific Islander"                -> True
+      "Asian/Pacific Islander"                   -> True
+      "Asian, Native Hawaiian, or Other Pacific Islander" -> True
+      "Asian American/Pacific Islander"          -> True
+      "Asian and Pacific Islander"               -> True (as the multirace rule reads it)
+      "Asian and Native Hawaiian or Pacific Islander" -> False (by the table)
+      "Asian/American Indian/Pacific"            -> False (another race)
+      "Caregivers: Asian/Pacific Islander"       -> False
+    """
+    text = re.sub(r"[.]", "", clean_demographic_label(label))
+    text = re.sub(r"\s+", " ", text).strip()
+    text = _GROUPED_ETHNICITY_RX.sub(" ", text)
+    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\band\s*/\s*or\b", "or", text, flags=re.IGNORECASE)
+    # "Asian and Pacific Islander" itself is the group in any table: the
+    # multirace rule never reads it as two races (_HERITAGE_GROUPED_API_RX).
+    if _HERITAGE_GROUPED_API_RX.fullmatch(text.strip()) is not None:
+        return True
+    # An "and" inside one part stays in it: asian_label and nhpi_label read
+    # "Chinese and Japanese" or "Native Hawaiian and Other Pacific Islander"
+    # and refuse a part pooling another race ("Pacific Islander and White")
+    # or joining Asian to the Pacific ("Asian and Native Hawaiian").
+    text = text.strip(" ,;-")
+    asian = pacific = False
+    for part in _GROUPED_SPLIT_RX.split(text):
+        part = part.strip(" -()")
+        if not part:
+            continue
+        if _GROUPED_ADJACENT_RX.fullmatch(part):
+            asian = pacific = True
+        elif asian_label(part)[0]:
+            asian = True
+        elif _GROUPED_PACIFIC_PART_RX.fullmatch(part) or nhpi_label(part)[0]:
+            pacific = True
+        else:
+            return False
+    return asian and pacific
+
 
 # ── Heritage-template labels ───────────────────────────────────────────────
 #
@@ -2403,6 +2523,20 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
         return {
             "omb_category": "native_hawaiian_pacific_islander",
             "subcategory": nhpi_subcategory,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # The 1977 Asian or Pacific Islander category (block comment "The 1977
+    # Asian or Pacific Islander category"), before the heritage, multirace
+    # and slash rules and the fuzzy match, which read some of its wordings as
+    # Native Hawaiian or Pacific Islander.
+    if asian_pacific_grouped_label(label_clean):
+        flags.append(_GROUPED_ASIAN_NHPI_FLAG)
+        return {
+            "omb_category": "asian",
+            "subcategory": None,
             "confidence": "high",
             "original": label_clean,
             "flags": flags
@@ -3669,6 +3803,11 @@ def _comma_list_part_race(part: str) -> Optional[str]:
     """The one race a part of a comma list names (_named_race), or None when
     it names none, or names one only through a slash fragment that the other
     fragments do not confirm (_slash_reading_names_one_race)."""
+    # The 1977 Asian or Pacific Islander group names no one race of a list
+    # ("Asian/Pacific Islander, White"; block comment "The 1977 Asian or
+    # Pacific Islander category").
+    if asian_pacific_grouped_label(part.strip(" -–—:,;()/.")):
+        return None
     race = _named_race(part)
     if race is None or not _read_through_slash(part):
         return race
@@ -3698,6 +3837,7 @@ def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[i
              and mapping["confidence"] == "high" and "unmapped" not in mapping["flags"]
              and mapping["omb_category"] in _RACE_SPECIFIC
              and mapping["omb_category"] != "more_than_one_race"
+             and _GROUPED_ASIAN_NHPI_FLAG not in mapping["flags"]
              and ("slash_normalized" not in mapping["flags"]
                   or _slash_reading_names_one_race(text, mapping["omb_category"]))}
     return [i for i, races in enumerate(lists) if races is not None and races & alone]
@@ -3854,9 +3994,9 @@ def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only
                                     race_part, sex, reading)
     for i in _grouped_asian_nhpi_rows(texts, [mapping for mapping, _skipped in results]):
         (label, count), (race_part, sex) = rows[i], parts[i]
-        reading = {"omb_category": "other", "subcategory": None, "confidence": "low",
+        reading = {"omb_category": "asian", "subcategory": None, "confidence": "high",
                    "original": clean_demographic_label(texts[i]),
-                   "flags": ["unmapped", _GROUPED_ASIAN_NHPI_FLAG]}
+                   "flags": [_GROUPED_ASIAN_NHPI_FLAG]}
         results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
                                     race_part, sex, reading)
     return results

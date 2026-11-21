@@ -28,8 +28,8 @@ A race table that posts a study's groups as rows ("White - Usual Care", each
 row's count in its own group's column only) is read by its race parts (its own
 section). Native Hawaiian or Pacific Islander wordings, and the rows they
 meet in a table, have a section of their own, as do European-only wordings
-and Asian wordings with the tables they meet; Black-only wordings are the
-last section.
+and Asian wordings with the tables they meet; Black-only wordings and the
+1977 Asian or Pacific Islander category are the last two sections.
 
 Which measures are race tables at all is the title word rule
 (race_extractor.is_race_table): titles that only contain the letters "race"
@@ -223,12 +223,14 @@ def test_hyphen_pattern_routes_each_race_part_as_a_plain_row() -> None:
     assert race["omb_totals"]["white"] == 22
     assert race["omb_totals"]["black_african_american"] == 7
     assert race["omb_totals"]["american_indian_alaska_native"] == 1
-    # The plain vocabulary has no entry for "Asian or Pacific Islander" (it is
-    # two OMB categories), so a plain row of that text is unmapped "other";
-    # the crossed rows follow it, with the explicit "Other" rows.
-    assert rx._map_race_label("Asian or Pacific Islander")["omb_category"] == "other"
-    assert race["omb_totals"]["other"] == 8
-    assert race["joint_sex_counts"]["counts"]["other"] == {"male": 3, "female": 5}
+    # "Asian or Pacific Islander" is the 1977 grouped category, read as Asian
+    # (block comment "The 1977 Asian or Pacific Islander category"); the
+    # crossed rows follow the plain reading, and "Other" stays other.
+    assert rx._map_race_label("Asian or Pacific Islander")["omb_category"] == "asian"
+    assert race["omb_totals"]["asian"] == 5
+    assert race["omb_totals"]["other"] == 3
+    assert race["joint_sex_counts"]["counts"]["other"] == {"male": 1, "female": 2}
+    assert race["joint_sex_counts"]["counts"]["asian"] == {"male": 2, "female": 3}
     assert race["joint_sex_counts"]["counts"]["black_african_american"] == {"male": 3, "female": 4}
     # Hispanic/Latino rows are not race rows: their 11 participants are the
     # whole gap, filed as the ethnicity rows' part of unknown
@@ -1753,8 +1755,6 @@ def test_a_heritage_combination_is_more_than_one_race(label: str) -> None:
     "African Amer/African Heritage/Amer Ind or Alaska N",  # two races joined by "/": either or both
     "African - White / Caucasian Heritage",
     "Mixed Heritage or Other",
-    "Asian and Pacific Islander Heritage",  # the 1977 grouped category, not a combination
-    "Asian & Other Pacific Islander Heritage",
     "Af Amer/White Heritage",  # an unread group beside a race: either race or both
     "American/African Heritage",
     "Mixed-Heritage or Other",  # the "Mixed-" prefix does not override an other row
@@ -2068,7 +2068,10 @@ def test_a_comma_list_naming_no_race_alone_in_its_table_keeps_its_reading() -> N
     race = extract_race_data(_study("NCT99000567", [table], participants=100))
     assert race["omb_totals"]["more_than_one_race"] == 0
     row = next(c for c in race["raw_categories"] if c["original"] == "Asian, Pacific Islander")
-    assert row["omb_category"] == "other" and "multirace_comma_list" not in row["flags"]
+    # The group is read as Asian (block comment "The 1977 Asian or Pacific
+    # Islander category"), not as people who reported both.
+    assert row["omb_category"] == "asian" and "multirace_comma_list" not in row["flags"]
+    assert "asian_pacific_grouped" in row["flags"]
 
 
 def test_only_a_row_read_as_one_race_without_a_fuzzy_match_names_a_race_alone() -> None:
@@ -2081,7 +2084,7 @@ def test_only_a_row_read_as_one_race_without_a_fuzzy_match_names_a_race_alone() 
     race = extract_race_data(_study("NCT99000568", [table], participants=58))
     readings = {c["original"]: c["omb_category"] for c in race["raw_categories"]}
     assert readings["Asian, White"] == "more_than_one_race"
-    assert readings["Asian, Pacific Islander"] == "other"
+    assert readings["Asian, Pacific Islander"] == "asian"  # the 1977 group, not a combination
 
 
 def test_a_comma_list_in_a_race_by_sex_table() -> None:
@@ -2691,7 +2694,10 @@ def test_asian_joined_to_pacific_islander_is_the_grouped_category_without_asian_
         ("American Indian or Alaska Native", 2), (joined, 21),
         ("Black or African American", 11), ("White", 66)])
     race = extract_race_data(_study("NCT99000607", [table], 100))
-    assert race["omb_totals"]["other"] == 21 and race["omb_totals"]["more_than_one_race"] == 0
+    # The group is read as Asian (block comment "The 1977 Asian or Pacific
+    # Islander category"; it was other before).
+    assert race["omb_totals"]["asian"] == 21 and race["omb_totals"]["more_than_one_race"] == 0
+    assert race["omb_totals"]["other"] == 0
     row = next(c for c in race["raw_categories"] if c["original"] == joined)
     assert "asian_pacific_grouped" in row["flags"]
 
@@ -2724,7 +2730,8 @@ def test_a_slash_row_naming_asian_and_pacific_islander_is_not_evidence_of_asian_
         ("Asian/Pacific Islander", 10), ("Asian and Native Hawaiian or Pacific Islander", 5), ("White", 85)])
     race = extract_race_data(_study("NCT99000609", [table], 100))
     assert race["omb_totals"]["more_than_one_race"] == 0
-    assert race["omb_totals"]["other"] == 5
+    assert race["omb_totals"]["asian"] == 15  # both the group (block comment "The 1977 ...")
+    assert race["omb_totals"]["other"] == 0
 
 
 def test_a_combination_naming_pacific_islander_and_white_is_more_than_one_race() -> None:
@@ -3038,7 +3045,7 @@ def test_asian_american_beside_pacific_islander_stays_the_grouped_category() -> 
         ("Asian American and Pacific Islander", 3), ("Other", 2)])
     race = extract_race_data(_study("NCT99000614", [table], 30))
     row = next(c for c in race["raw_categories"] if c["original"] == "Asian American and Pacific Islander")
-    assert row["omb_category"] == "other" and "asian_pacific_grouped" in row["flags"]
+    assert row["omb_category"] == "asian" and "asian_pacific_grouped" in row["flags"]
 
 
 def test_a_trial_whose_only_race_row_names_an_asian_people_reports_race() -> None:
@@ -3431,3 +3438,109 @@ def test_the_multirace_rule_reads_a_black_part_the_rule_reads() -> None:
                                           ("Black or African Amer. & White", 20)])
     race = extract_race_data(_study("NCT99000631", [table], 100))
     assert _nonzero(race) == {"white": 50, BLACK_CATEGORY: 30, "more_than_one_race": 20}
+
+
+# ── The 1977 Asian or Pacific Islander category ───────────────────────────
+#
+# Fictional studies NCT99000632–635 (block comment "The 1977 Asian or
+# Pacific Islander category" in src/race_extractor.py). The maintainer's
+# decision: the grouped category is counted as Asian. Each label comes from
+# the 2026-11-15 inputs unless noted.
+
+GROUPED = "asian_pacific_grouped"
+
+
+@pytest.mark.parametrize("label", [
+    "Asian or Pacific Islander",
+    "Asian or pacific islander",
+    "Asian or Other Pacific Islander",
+    "Asian and/or Pacific Islander",
+    "Asian and / or Pacific Islander",  # fictional
+    "Asian and Pacific Islander",  # the group in any table
+    "Asian & Other Pacific Islander",
+    "Asian and Pacific Islander Heritage",  # its heritage form
+    "Asian & Other Pacific Islander Heritage",
+    "Asian/Pacific Islander",
+    "Asian / Pacific Islander",
+    "Asian/Pacific",
+    "Asian/PI",
+    "Asian/Pacific Isl.",
+    "Asian/Islander",
+    "Asian, Pacific Islander",
+    "Asian, Asian American, Pacific Islander",
+    "Asian, Asian-American, or Pacific Islander",
+    "Asian Pacific Islander",
+    "Asian Pacific",
+    "Asian Hawaiian or Other Pacific Islander",
+    "Asian, Native Hawaiian, or Other Pacific Islander",  # the fuzzy match read it as NHPI
+    "Asian American/Pacific Islander",  # the slash fragments read it as NHPI
+    "Non-Hispanic Asian / Pacific Islander",
+    "Asian/Pacific Islander, non-Hispanic",
+    "Native Hawaiian or Pacific Islander/Asian",
+    "Asian or Native Hawaiian or Pacific Islander",
+    "Asian or Native Hawaiian",
+    "Asian; Native Hawaiian; Pacific Islander",
+    "Asian/Oriental or Pacific Islander",
+    "Filipino, Asian, or Asian Pacific Islander",
+    "East Asian/Pacific",
+    "Asian/PI (Pacific Islander)",  # a Pacific part only nhpi_label reads
+    "Non-Hispanic Asian or Pacific Islander only",
+    "Asian or Pacific Islander (Hawaiian and Samoan)",  # fictional: "and" inside a part
+    "Asian, Native Hawaiian and Other Pacific Islander",  # fictional: the "and" name of NHPI
+])
+def test_a_label_naming_the_1977_group_is_read_as_asian(label: str) -> None:
+    assert rx.asian_pacific_grouped_label(label)
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"]) == ("asian", None)
+    assert GROUPED in mapping["flags"]
+
+
+@pytest.mark.parametrize("label", [
+    "Asian and Native Hawaiian or Pacific Islander",  # "and": the table decides
+    "Asian American and Pacific Islander",
+    "Asian & Native Hawaiian or Other Pacific Islander",
+    "Asian/American Indian/Pacific (non-Hispanic)",  # another race pooled
+    "AI/AN/Asian/NH/PI",
+    "American Indian, Alaska Native, Asian, Native Hawaiian, or Other Pacific Islander",
+    "Asian, Pacific-Islander, other",
+    "Asian/Pacific Islander and White",  # fictional: another race joined by "and"
+    "Asian and White/Pacific Islander",  # fictional
+    "Caregivers: Asian/Pacific Islander",  # crossed
+    "Asian",
+    "Pacific Islander",
+    "Asian or Other",
+    "Asian/Pacific American",
+])
+def test_a_label_that_is_not_the_1977_group_by_itself(label: str) -> None:
+    assert not rx.asian_pacific_grouped_label(label)
+
+
+def test_the_group_counts_as_asian_in_a_table() -> None:
+    table = _category_table(COMBINED_TITLE, [
+        ("Asian or Pacific Islander", 30), ("White", 60), ("Black or African American", 10)])
+    race = extract_race_data(_study("NCT99000632", [table], 100))
+    assert _nonzero(race) == {"asian": 30, "white": 60, "black_african_american": 10}
+
+
+def test_a_comma_list_of_the_two_races_beside_asian_alone_is_still_a_combination() -> None:
+    """The comma-list rule reads "Asian, Pacific Islander" as two races when
+    the table names Asian alone (1 trial in the 2026-11-15 inputs)."""
+    table = _category_table(COMBINED_TITLE, [("Asian", 20), ("Asian, Pacific Islander", 2), ("White", 78)])
+    race = extract_race_data(_study("NCT99000633", [table], 100))
+    row = next(c for c in race["raw_categories"] if c["original"] == "Asian, Pacific Islander")
+    assert row["omb_category"] == "more_than_one_race" and "multirace_comma_list" in row["flags"]
+
+
+def test_a_grouped_row_names_no_race_alone_for_the_comma_list_rule() -> None:
+    table = _category_table(COMBINED_TITLE, [
+        ("Asian or Pacific Islander", 10), ("Asian, Black", 2), ("Other", 88)])
+    race = extract_race_data(_study("NCT99000634", [table], 100))
+    row = next(c for c in race["raw_categories"] if c["original"] == "Asian, Black")
+    assert "multirace_comma_list" not in row["flags"]
+
+
+def test_asian_joined_to_pacific_islander_beside_asian_alone_is_still_a_combination() -> None:
+    table = _category_table(COMBINED_TITLE, [
+        ("Asian", 20), ("Asian and Native Hawaiian or Pacific Islander", 2), ("White", 78)])
+    race = extract_race_data(_study("NCT99000635", [table], 100))
+    assert race["omb_totals"]["more_than_one_race"] == 2 and race["omb_totals"]["asian"] == 20
