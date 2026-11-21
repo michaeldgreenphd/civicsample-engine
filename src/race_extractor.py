@@ -1181,17 +1181,33 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
         first_mixed = kinds.index("mixed")
         cut = next((i for i in range(first_mixed + 1, len(tokens))
                     if tokens[i][0] == "mark" and tokens[i][1] in (":", "-", "–", "—")), None)
-        # Each alternative "or" sets beside Mixed in the heading must be Mixed
-        # too ("Mixed or Multiple ethnic groups"); "White British or Mixed
-        # ethnic group" pools two groups whose counts cannot be told apart (a
-        # review finding).
+        # Each alternative "or" sets beside Mixed in the heading, outside
+        # brackets, must be Mixed too ("Mixed or Multiple ethnic groups";
+        # "Multiple (Asian or White)" lists its parts in the bracket); "White
+        # British or Mixed ethnic group" pools two groups whose counts cannot
+        # be told apart. "and" and "&" list the parts of the mix, but not a
+        # complete Other heading ("Mixed ethnic group and Other ethnic
+        # group": Other with its own "ethnic group" and no race; review
+        # findings).
         alternatives: List[List[str]] = [[]]
-        for kind in kinds[:cut]:
-            if kind == "or":
+        joined: List[List[str]] = [[]]
+        depth = 0
+        for kind, text in tokens[:cut]:
+            if kind == "mark" and text in ("(", ")"):
+                depth += 1 if text == "(" else -1
+            elif depth == 0 and kind == "or":
                 alternatives.append([])
-            else:
-                alternatives[-1].append(kind)
+                joined.append([])
+                continue
+            elif depth == 0 and (kind == "and" or (kind == "mark" and text == "&")):
+                joined.append([])
+                continue
+            alternatives[-1].append(kind)
+            joined[-1].append(kind)
         if any("mixed" not in alternative for alternative in alternatives if alternative):
+            return None
+        if any("other" in part and "ethnic" in part and not _UK_NAMING_KINDS & set(part)
+               for part in joined[1:]):
             return None
         # Without a heading mark, "/", "," and ";" set alternatives side by
         # side too, and each must be Mixed: one naming another group, or
