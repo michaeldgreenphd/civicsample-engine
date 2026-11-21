@@ -6,7 +6,7 @@ with granular subcategories preserved.
 """
 import re
 import unicodedata
-from typing import Dict, FrozenSet, List, Tuple, Optional
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 from rapidfuzz import fuzz, process
 from src.utils import (clean_demographic_label, COMBINED_DIMENSION, DIMENSION_JOIN,
                        is_overall_group_title, measurement_number)
@@ -1210,7 +1210,8 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
             position += 1
     if not tokens or (tokens[0][0] in ("join", "mark", "close")) or tokens[-1][0] in ("join", "mark", "open"):
         return False, None  # empty, or a piece of a longer label
-    segments: List[List[Tuple[str, str, Tuple[int, ...]]]] = [[]]
+    # Each alternative's terms, with their places in `tokens`.
+    segments: List[List[Tuple[str, str, Tuple[int, ...], int]]] = [[]]
     # Whether each alternative held any term, fillers included, and whether
     # it holds a heading colon: an alternative of fillers only pools a group
     # the rule cannot name ("Black or participants of all ethnicities"),
@@ -1220,7 +1221,7 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     held: List[bool] = [False]
     colon: List[bool] = [False]
     joins: List[str] = []  # the join after each alternative
-    for kind, term, within in tokens:
+    for position, (kind, term, within) in enumerate(tokens):
         if not within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS:
             segments.append([])
             held.append(False)
@@ -1232,42 +1233,55 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
             colon[-1] = True
         if kind in ("name", "abbrev", "place", "direction", "other", "example", "qualifier",
                     "open", "close"):
-            segments[-1].append((kind, term, within))
+            segments[-1].append((kind, term, within, position))
     has_name = any(kind == "name" for kind, _t, _w in tokens)
-    # Inside a bracket, "or", "and" and "and/or" also set choices side by
-    # side, and every choice, before or after the join, must name a Black
-    # group: one naming none pools another race or a non-answer ("Black (or
+    # Inside a bracket the joins that split alternatives outside it ("or",
+    # "and", "and/or", "/", ",", "&", ";") also set choices side by side,
+    # and every choice, before or after the join, must name a Black group:
+    # one naming none pools another race or a non-answer ("Black (or
     # Indigenous)", "Black (or unspecified)", "Black (or Other)", "Black
-    # (and Other)", "Black (unspecified or Black)"; review findings), while
-    # "Black (or African American)" names the category. A bare "other" is
-    # the other Black groups only in a bracket whose other choices name a
-    # group or give examples ("(Haitian, Jamaican, or other)", "(e.g.,
-    # Haitian, Jamaican, and other)"); "other race", "other ethnicity" or
-    # "other participants" names any race ("Black (Haitian or other
-    # race)").
+    # (and Other)", "Black (unspecified or Black)", "Black (Haitian /
+    # unspecified)", "Black (Haitian, unspecified)"; review findings), while
+    # "Black (or African American)" names the category. An example word
+    # alone is no choice ("e.g.," before its list, "etc." after it). A bare
+    # "other" is the other Black groups only in a bracket whose other
+    # choices name a group or give examples ("(Haitian, Jamaican, or
+    # other)", "(e.g., Haitian, Jamaican, and other)"); "other race", "other
+    # ethnicity" or "other participants" names any race ("Black (Haitian or
+    # other race)").
+    # In a bracket with an "other" choice, the names in its other choices
+    # list some members of a wider group, as examples do, and name no
+    # subcategory ("Black (Haitian, Jamaican, or other)" is Black with no
+    # subgroup; "Black (Haitian or other Caribbean)" is caribbean; "Black
+    # African (Nigerian, Ghanaian, or other)" stays african by the names
+    # outside the bracket).
+    listed_positions: Set[int] = set()
     frames = {within[-1] for kind, term, within in tokens
-              if within and kind == "join" and term in ("or", "and/or", "and")}
+              if within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS}
     for frame in frames:
-        choices: List[List[Tuple[str, str]]] = [[]]
-        for kind, term, within in tokens:
+        choices: List[List[Tuple[str, str, int]]] = [[]]
+        for position, (kind, term, within) in enumerate(tokens):
             if frame not in within or (kind in ("open", "close") and within[-1] == frame):
                 continue
-            if kind == "join" and within[-1] == frame and term in ("or", "and/or", "and"):
+            if kind in ("join", "mark") and within[-1] == frame and term in _BLACK_ALTERNATIVE_JOINS:
                 choices.append([])
             else:
-                choices[-1].append((kind, term))
-        named = [any(k == "name" or (k == "abbrev" and has_name) for k, _t in choice)
+                choices[-1].append((kind, term, position))
+        named = [any(k == "name" or (k == "abbrev" and has_name) for k, _t, _p in choice)
                  for choice in choices]
         for c, choice in enumerate(choices):
-            kinds_here = [k for k, _t in choice]
-            if not choice or named[c]:
+            kinds_here = [k for k, _t, _p in choice]
+            if not choice or named[c] or all(k == "example" for k in kinds_here):
                 continue
-            listed = any(named[d] or any(k == "example" for k, _t in choices[d])
+            listed = any(named[d] or any(k == "example" for k, _t, _p in choices[d])
                          for d in range(len(choices)) if d != c) or "example" in kinds_here
-            race_wide = any(t in _BLACK_RACE_WIDE_FILLERS for _k, t in choice)
+            race_wide = any(t in _BLACK_RACE_WIDE_FILLERS for _k, t, _p in choice)
             if ("qualifier" in kinds_here or all(k == "filler" for k in kinds_here)
                     or "other" not in kinds_here or not listed or race_wide):
                 return False, None
+        if any(k == "other" for choice in choices for k, _t, _p in choice):
+            listed_positions.update(p for choice in choices if not any(k == "other" for k, _t, _p in choice)
+                                    for k, _t, p in choice if k == "name")
     subcategories: List[Optional[str]] = []
     for i, segment in enumerate(segments):
         if not segment:
@@ -1282,24 +1296,26 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
             continue  # ", or" leaves nothing between two joins
         # A name, or an abbreviation beside a name elsewhere ("Black or Af
         # Am"): "AA" alone names nothing the rule can tell.
-        if not any(kind == "name" or (kind == "abbrev" and has_name) for kind, _t, _w in segment):
+        if not any(kind == "name" or (kind == "abbrev" and has_name) for kind, _t, _w, _p in segment):
             return False, None
         # "Indigenous" qualifies African peoples only ("Indigenous African",
         # NCT00080119): beside another Black name it may name a people who
         # are not Black ("Indigenous Caribbean"; a review finding).
-        if any(kind == "qualifier" and term == "indigenous" for kind, term, _w in segment) and not all(
-                _black_subcategory_of(term) == "african" for kind, term, _w in segment if kind == "name"):
+        if any(kind == "qualifier" and term == "indigenous" for kind, term, _w, _p in segment) and not all(
+                _black_subcategory_of(term) == "african" for kind, term, _w, _p in segment if kind == "name"):
             return False, None
         # Names given as examples describe a wider group and name no
         # subcategory: every name in a bracket holding an example word, or in
         # a bracket within it ("(..., Nigerian, Ethiopian, Somali, etc.)",
         # "(including Caribbean (Haitian))"), and every name after an example
-        # word outside brackets ("Black including Haitian"; review findings).
-        example_frames = {within[-1] for kind, _t, within in segment if kind == "example" and within}
-        first_example = next((i for i, (kind, _t, within) in enumerate(segment)
+        # word outside brackets ("Black including Haitian"; review findings);
+        # likewise the names listed beside an "other" choice (above).
+        example_frames = {within[-1] for kind, _t, within, _p in segment if kind == "example" and within}
+        first_example = next((i for i, (kind, _t, within, _p) in enumerate(segment)
                               if kind == "example" and not within), None)
-        specific = [_black_subcategory_of(term) for i, (kind, term, within) in enumerate(segment)
+        specific = [_black_subcategory_of(term) for i, (kind, term, within, position) in enumerate(segment)
                     if kind == "name" and not example_frames & set(within)
+                    and position not in listed_positions
                     and not (first_example is not None and i > first_example)]
         candidates = [sub for sub in specific if sub is not None]
         # Black beside African American is the category's own name ("Black
