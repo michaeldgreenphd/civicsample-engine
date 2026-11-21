@@ -1225,15 +1225,16 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
                     "open", "close"):
             segments[-1].append((kind, term, within))
     has_name = any(kind == "name" for kind, _t, _w in tokens)
-    # Inside a bracket, "or" also sets a choice beside the name, and one
-    # naming no Black group pools another race or a non-answer ("Black (or
-    # Indigenous)", "Black (or unspecified)", "Black (or Other)"; review
-    # findings); "Black (or African American)" names the category. "or
-    # other" is a choice of other Black groups only in a bracket that also
-    # names a group or gives examples ("(Haitian, Jamaican, or other)",
-    # "(e.g., Haitian, Jamaican, or other)").
+    # Inside a bracket, "or" and "and" also set a choice beside the name,
+    # and one naming no Black group pools another race or a non-answer
+    # ("Black (or Indigenous)", "Black (or unspecified)", "Black (or
+    # Other)", "Black (and Other)"; review findings); "Black (or African
+    # American)" names the category. "or other" and "and other" are other
+    # Black groups only in a bracket that also names a group or gives
+    # examples ("(Haitian, Jamaican, or other)", "(e.g., Haitian, Jamaican,
+    # and other)").
     for i, (kind, term, within) in enumerate(tokens):
-        if not (within and kind == "join" and term in ("or", "and/or")):
+        if not (within and kind == "join" and term in ("or", "and/or", "and")):
             continue
         frame = within[-1]
         choice = []

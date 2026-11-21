@@ -3251,6 +3251,7 @@ def test_a_label_naming_black_groups_only_is_read_as_black(label: str, subcatego
     ("African American including Black", "african_american"),  # fictional: an example Black (review finding)
     ("African American (e.g. Black)", "african_american"),  # fictional
     ("Black (e.g., Haitian, Jamaican, or other)", None),  # fictional: "or other" in a list of examples is read
+    ("Black (e.g., Haitian, Jamaican, and other)", None),  # fictional: "and other" likewise
     ("African, Caribbean, or non-specified Black", None),  # "non-specified" describes Black
     # Haitian lies in Caribbean; across alternatives, theirs when all agree.
     ("Caribbean (Haitian)", "caribbean_haitian"),
@@ -3279,6 +3280,8 @@ def test_the_black_subcategory_comes_from_the_names(label: str, subcategory: Opt
     "Black (or unspecified)",  # fictional
     "Black (or Other)",  # fictional: Other as a bracketed choice (review finding)
     "Black (or other race)",  # fictional
+    "Black (and Other)",  # fictional: "and" in a bracket (review finding)
+    "Black (and unspecified)",  # fictional
     "Not Black",  # negated
     "Non-Black",
     "Black or African American (Comparison 1)",  # crossed with something else
