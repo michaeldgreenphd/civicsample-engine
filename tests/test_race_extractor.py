@@ -3197,6 +3197,8 @@ BLACK = "black_african_american"
     ("Asian, Asian British or Asian Welsh", "asian", None),  # the 2021 heading in Wales
     ("Black or Black British", BLACK, None),
     ("Black or Black British (African)", BLACK, "african"),
+    ("Asian or Asian British (Indian or Other)", "asian", None),  # fictional: Other pooled (review finding)
+    ("Black or Black British (Caribbean, Other)", BLACK, None),  # fictional
     ("Black, African, Caribbean or Black British", BLACK, None),
     ("Black, Black British, Black Welsh, Caribbean or African", BLACK, None),
     ("Black / African / Caribbean / Black British - Caribbean", BLACK, "caribbean"),

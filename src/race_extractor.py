@@ -1067,7 +1067,9 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
 # The subcategory is the vocabulary's key for a group named after the last
 # dash or colon ("Black / African / Caribbean / Black British - Caribbean"),
 # else for the one group the label names; a label naming several groups
-# ("Black African/Caribbean/British") has none, and White has none.
+# ("Black African/Caribbean/British") has none, nor does one naming Other
+# ("Asian or Asian British (Indian or Other)": a review finding), and White
+# has none.
 #
 # What it does not do. A nationality alone ("British", "Irish") is left to
 # the nationality rule, and "Gypsy or Irish Traveller" and "Roma" to theirs.
@@ -1201,6 +1203,11 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
     if len(races) != 1:
         return None
     race = races.pop()
+    # A label naming Other anywhere names no subgroup: Other pools people the
+    # group does not cover ("Asian or Asian British (Indian or Other)"; a
+    # review finding).
+    if "other" in kinds:
+        return race, None
     # The census writes the category's heading, then its group after a dash
     # or colon ("Black / African / Caribbean / Black British - Caribbean"):
     # a group named alone there is the subcategory; else one named alone in
