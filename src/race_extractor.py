@@ -1134,6 +1134,9 @@ _BLACK_ALTERNATIVE_JOINS = _EUROPEAN_ALTERNATIVE_JOINS
 # The joins that build a heading before its colon ("Race and Ethnicity :",
 # "Race/Ethnicity:", "Race, Ethnicity:"), unlike "or", which pools.
 _BLACK_HEADING_JOINS = frozenset({"and", "&", ",", "/"})
+# Fillers that widen an "other" choice to any race ("or other race").
+_BLACK_RACE_WIDE_FILLERS = frozenset({"race", "racial", "ethnic", "ethnicity", "ethnicities",
+                                      "participant", "participants", "subject", "subjects"})
 # "African/American" (and "African / American"): the one name split by a
 # slash, which the slash fragments would otherwise read as "African".
 # Not "African/American Indian", which names two races (left as it was),
@@ -1244,15 +1247,21 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
             continue
         frame = within[-1]
         choice = []
-        for later_kind, _later_term, later_within in tokens[i + 1:]:
+        choice_terms = []
+        for later_kind, later_term, later_within in tokens[i + 1:]:
             if frame not in later_within or (later_kind == "join" and later_within[-1] == frame):
                 break
             if later_kind not in ("open", "close"):
                 choice.append(later_kind)
+                choice_terms.append(later_term)
         if any(k == "name" or (k == "abbrev" and has_name) for k in choice):
             continue
         listed = any(k in ("name", "example") and frame in w for k, _t, w in tokens[:i])
-        if "qualifier" in choice or all(k == "filler" for k in choice) or not listed:
+        # "other race", "other ethnicity" or "other participants" names any
+        # race, not other Black groups ("Black (Haitian or other race)"; a
+        # review finding).
+        race_wide = any(term in _BLACK_RACE_WIDE_FILLERS for term in choice_terms)
+        if "qualifier" in choice or all(k == "filler" for k in choice) or not listed or race_wide:
             return False, None
     subcategories: List[Optional[str]] = []
     for i, segment in enumerate(segments):
