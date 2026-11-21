@@ -2884,7 +2884,7 @@ def test_a_heritage_row_naming_caucasian_european_carries_the_european_subcatego
 
 # ── Asian labels ───────────────────────────────────────────────────────────
 #
-# Fictional studies NCT99000613–622 (block comment "Asian labels" in
+# Fictional studies NCT99000613–625 (block comment "Asian labels" in
 # src/race_extractor.py). Each label comes from the 2026-11-15 inputs, where
 # it was counted as other or quarantined as not race unless noted.
 
@@ -3075,6 +3075,16 @@ def test_west_asian_beside_another_reading_of_asia_is_not_read(beside: tuple[str
     assert row["omb_category"] == "other" and "west_asian_template" not in row["flags"]
 
 
+def test_an_american_indian_row_does_not_veto_the_template() -> None:
+    """Review finding: "American Indian or Alaska Native" names the
+    Americas, not India, so beside it the template's West Asian is read."""
+    table = _class_table(COMBINED_TITLE, [("Caucasian", 120), ("East Asian", 30), ("African", 10),
+                                          ("American Indian or Alaska Native", 2), ("West Asian", 38)])
+    race = extract_race_data(_study("NCT99000622", [table], 200))
+    row = next(c for c in race["raw_categories"] if c["original"] == "West Asian")
+    assert (row["omb_category"], row["subcategory"]) == ("asian", "south_asian")
+
+
 def test_west_asian_without_an_east_asian_row_is_not_read() -> None:
     table = _class_table(COMBINED_TITLE, [("Caucasian", 120), ("African", 10), ("West Asian", 38)])
     race = extract_race_data(_study("NCT99000618", [table], 168))
@@ -3122,6 +3132,37 @@ def test_asian_rows_that_are_not_a_breakdown_are_all_counted(rows: list[tuple[st
     assert race["quarantined_labels"] == []
     assert race["omb_totals"]["asian"] == sum(n for label, n in rows
                                               if rx.map_race_category(label)["omb_category"] == "asian")
+
+
+def test_an_asian_breakdown_in_a_race_by_sex_table_is_not_counted_again() -> None:
+    """Review finding: the guard reads each sex of a race-by-sex table apart."""
+    table = _class_table(COMBINED_TITLE, [("Asian: Female", 10), ("Han: Female", 10), ("White: Male", 5)])
+    race = extract_race_data(_study("NCT99000623", [table], 15))
+    assert "race_by_sex_table" in race["flags"]
+    assert _nonzero(race) == {"asian": 10, "white": 5}
+    assert [(q["original"], q["reason"]) for q in race["quarantined_labels"]] == [
+        ("Han: Female", "asian_breakdown")]
+
+
+def test_asian_rows_of_different_sexes_are_not_a_breakdown_of_each_other() -> None:
+    """"Asian: Female" and "Han: Male" are different people: the table's
+    excess stays as posted."""
+    table = _class_table(COMBINED_TITLE, [("Asian: Female", 10), ("Han: Male", 10), ("White: Male", 5)])
+    race = extract_race_data(_study("NCT99000624", [table], 15))
+    assert race["quarantined_labels"] == []
+    assert race["omb_totals"]["asian"] == 20
+
+
+def test_an_asian_breakdown_in_a_race_by_group_table_is_not_counted_again() -> None:
+    """Review finding: the guard reads each group of a race-by-group table apart."""
+    table = _grouped_table([
+        _period_row("Asian - ALPHA", "BG000", 10), _period_row("Han - ALPHA", "BG000", 10),
+        _period_row("White - ALPHA", "BG000", 50), _period_row("White - Usual Care", "BG001", 40)])
+    race = extract_race_data(_grouped_study("NCT99000625", [table]))
+    assert "race_by_group_table" in race["flags"]
+    assert _nonzero(race) == {"asian": 10, "white": 90}
+    assert [(q["original"], q["reason"]) for q in race["quarantined_labels"]] == [
+        ("Han - ALPHA", "asian_breakdown")]
 
 
 def test_a_combined_table_with_every_race_row_read_counts_them_not_hispanic() -> None:

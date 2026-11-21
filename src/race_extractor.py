@@ -633,7 +633,9 @@ def _european_subcategory(groups: List[List[str]]) -> str:
 # of 32 (NCT00661141), "Asian (Japanese)" 4, "Asian (Except for Japanese)" 0
 # and "Asian (Total)" 4 of 18 (NCT04227600). _asian_breakdown_rows leaves such
 # a breakdown out of the counts (quarantined, reason asian_breakdown) when the
-# table's excess over its population is exactly the breakdown.
+# table's excess over its population is exactly the breakdown, reading a
+# race-by-sex or race-by-group table one sex or group at a time (review
+# findings; no such table in the 2026-11-15 inputs).
 #
 # What it does not do. "Asian or Pacific Islander" and other wordings joining
 # Asian to the Pacific are the 1977 grouped category, left as they were
@@ -3297,8 +3299,9 @@ def _west_asian_template_rows(texts: List[str], mappings: List[Optional[Dict]]) 
     names the Indian subcontinent (block comment "Asian labels"): at least
     one row is read as East or Southeast Asian, every other row read as Asian
     is one of those, and no row names the Middle East, North Africa, Iran,
-    Afghanistan, Turkey or South Asia (_WEST_ASIAN_ELSEWHERE_RX). texts and
-    mappings as for _comma_list_rows."""
+    Afghanistan, Turkey or South Asia (_WEST_ASIAN_ELSEWHERE_RX; a row read
+    as American Indian or Alaska Native is not South Asia, a review finding).
+    texts and mappings as for _comma_list_rows."""
     candidates = [i for i, (text, mapping) in enumerate(zip(texts, mappings))
                   if mapping is not None and "unmapped" in mapping["flags"]
                   and _WEST_ASIAN_ROW_RX.fullmatch(clean_demographic_label(text).strip())]
@@ -3308,6 +3311,8 @@ def _west_asian_template_rows(texts: List[str], mappings: List[Optional[Dict]]) 
     for i, (text, mapping) in enumerate(zip(texts, mappings)):
         if i in candidates:
             continue
+        if mapping is not None and mapping["omb_category"] == "american_indian_alaska_native":
+            continue  # "American Indian" names the Americas, not India (a review finding)
         if _WEST_ASIAN_ELSEWHERE_RX.search(text):
             return []
         if (mapping is None or mapping["omb_category"] != "asian" or mapping["confidence"] == "low"
@@ -3810,35 +3815,49 @@ _ASIAN_BREAKDOWN_FLAG = "asian_breakdown"
 
 
 def _asian_breakdown_rows(categories: List[Dict], population: Optional[int]) -> List[int]:
-    """Indices of the counted rows of one plain table to leave out because
-    they count again Asian participants another row counts (block comment
-    "Asian labels"). The parent is the table's largest row read as Asian
-    (ties: a reading made before the Asian label rules, then one with no
-    subcategory, then the first). The other Asian rows are its breakdown
-    when they add up to no more than it and the table, which adds up to more
-    than its population, adds up to exactly its population without them: the
-    excess is the breakdown. A table over its population by less than the
-    breakdown is left as posted ("Asian" 11 beside "Indian Subcontinent" 139
-    in NCT01829295, over by 7; a review of the first version). Then the
-    breakdown rows the Asian label rules read are left out; when the parent
-    is the only row those rules read, the parent is. A table no row of which
-    those rules read is left as it is."""
+    """Indices of the counted rows of one table to leave out because they
+    count again Asian participants another row counts (block comment "Asian
+    labels"). The rows are taken by partition: the whole of a plain table,
+    each sex of a race-by-sex table, each group of a race-by-group table (a
+    review finding). In each partition holding a row the Asian label rules
+    read, the parent is the largest row read as Asian (ties: a reading made
+    before those rules, then one with no subcategory, then the first), and
+    the other Asian rows are its breakdown when they add up to no more than
+    it. The table, which adds up to more than its population, must add up to
+    exactly its population without the breakdowns: the excess is the
+    breakdown. A table over its population by less is left as posted
+    ("Asian" 11 beside "Indian Subcontinent" 139 in NCT01829295, over by 7; a
+    review of the first version). Then, in each partition, the breakdown rows
+    the Asian label rules read are left out; when the parent is the only row
+    those rules read, the parent is. A table no row of which those rules read
+    is left as it is."""
     if population is None:
-        return []
-    asian = [i for i, category in enumerate(categories) if category["omb_category"] == "asian"]
-    new = {i for i in asian if _ASIAN_RULE_FLAGS & set(categories[i]["flags"])}
-    if not new or len(asian) < 2:
         return []
     table_sum = sum(category["count"] for category in categories)
     if table_sum <= population:
         return []
-    parent = max(asian, key=lambda i: (categories[i]["count"], i not in new,
-                                       categories[i]["subcategory"] is None, -i))
-    others = [i for i in asian if i != parent]
-    breakdown = sum(categories[i]["count"] for i in others)
-    if categories[parent]["count"] < breakdown or table_sum - breakdown != population:
+    partitions: Dict[Tuple[Optional[str], Optional[str]], List[int]] = {}
+    for i, category in enumerate(categories):
+        if category["omb_category"] == "asian":
+            partitions.setdefault((category.get("sex"), category.get("group")), []).append(i)
+    new = {i for rows in partitions.values() for i in rows
+           if _ASIAN_RULE_FLAGS & set(categories[i]["flags"])}
+    nests: List[Tuple[int, List[int]]] = []
+    for asian in partitions.values():
+        if len(asian) < 2 or not new.intersection(asian):
+            continue
+        parent = max(asian, key=lambda i: (categories[i]["count"], i not in new,
+                                           categories[i]["subcategory"] is None, -i))
+        others = [i for i in asian if i != parent]
+        if categories[parent]["count"] >= sum(categories[i]["count"] for i in others):
+            nests.append((parent, others))
+    breakdown = sum(categories[i]["count"] for _parent, others in nests for i in others)
+    if not nests or table_sum - breakdown != population:
         return []
-    return [i for i in others if i in new] or [parent]
+    left_out: List[int] = []
+    for parent, others in nests:
+        left_out.extend([i for i in others if i in new] or [parent])
+    return sorted(left_out)
 
 
 def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str],
@@ -3936,17 +3955,6 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
                 quarantined.append(mapping)
             else:
                 categories.append(mapping)
-        # Asian rows that count the table's Asian participants again (block
-        # comment "Asian labels"), against the table's own Number Analyzed,
-        # else the study's baseline population.
-        analyzed = _number_analyzed(measure, overall_group_id)
-        breakdown = set(_asian_breakdown_rows(
-            categories, analyzed if analyzed is not None else fallback_denom))
-        for i in sorted(breakdown):
-            categories[i]["flags"].append(_ASIAN_BREAKDOWN_FLAG)
-            categories[i]["quarantine_reason"] = _ASIAN_BREAKDOWN_FLAG
-            quarantined.append(categories[i])
-        categories = [category for i, category in enumerate(categories) if i not in breakdown]
 
     if sex_titled:
         # Race rows under a sex/gender title: every row must be race-specific
@@ -3959,10 +3967,24 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         for cat in categories:
             cat["flags"].append("race_from_sex_titled_table")
 
+    # Asian rows that count the table's Asian participants again (block
+    # comment "Asian labels"), in a plain, race-by-sex or race-by-group table
+    # (a review finding), against the table's own Number Analyzed, else the
+    # study's baseline population. After the sex/gender gate, which reads a
+    # table whole.
+    analyzed = _number_analyzed(measure, overall_group_id)
+    breakdown = set(_asian_breakdown_rows(
+        categories, analyzed if analyzed is not None else fallback_denom))
+    for i in sorted(breakdown):
+        categories[i]["flags"].append(_ASIAN_BREAKDOWN_FLAG)
+        categories[i]["quarantine_reason"] = _ASIAN_BREAKDOWN_FLAG
+        quarantined.append(categories[i])
+    categories = [category for i, category in enumerate(categories) if i not in breakdown]
+
     return {
         "title": title,
         "index": index,
-        "analyzed": _number_analyzed(measure, overall_group_id),
+        "analyzed": analyzed,
         "population": table_selection.population_of(measure),
         "sex_titled": sex_titled,
         "race_by_sex": race_by_sex,
