@@ -1202,16 +1202,32 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     if not tokens or (tokens[0][0] in ("join", "mark", "close")) or tokens[-1][0] in ("join", "mark", "open"):
         return False, None  # empty, or a piece of a longer label
     segments: List[List[Tuple[str, str, Tuple[int, ...]]]] = [[]]
+    # Whether each alternative held any term, fillers included, and whether
+    # it holds a heading colon: an alternative of fillers only pools a group
+    # the rule cannot name ("Black or participants of all ethnicities"),
+    # unless it is part of a heading before a colon ("Race and Ethnicity :
+    # Black"); one left empty by two joins (", or") is nothing (review
+    # findings).
+    held: List[bool] = [False]
+    colon: List[bool] = [False]
     for kind, term, within in tokens:
         if not within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS:
             segments.append([])
-        elif kind in ("name", "abbrev", "place", "direction", "other", "example", "qualifier",
-                      "open", "close"):
+            held.append(False)
+            colon.append(False)
+            continue
+        held[-1] = True
+        if not within and kind == "mark" and term == ":":
+            colon[-1] = True
+        if kind in ("name", "abbrev", "place", "direction", "other", "example", "qualifier",
+                    "open", "close"):
             segments[-1].append((kind, term, within))
     has_name = any(kind == "name" for kind, _t, _w in tokens)
     subcategories: List[Optional[str]] = []
-    for segment in segments:
+    for i, segment in enumerate(segments):
         if not segment:
+            if held[i] and not any(colon[i + 1:]):
+                return False, None  # fillers only, not a heading
             continue  # ", or" leaves nothing between two joins
         # A name, or an abbreviation beside a name elsewhere ("Black or Af
         # Am"): "AA" alone names nothing the rule can tell.
