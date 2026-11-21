@@ -363,21 +363,25 @@ def mena_subcategory(label: str) -> Optional[str]:
 #     summaries, the Stats NZ pages could not be fetched here);
 #   - with a European name only: White, Caucasian(s); a direction (North(ern),
 #     South(ern), East(ern), West(ern), Central, Mid, Middle, but not "Middle
-#     East"); New Zealand, New Zealander(s), NZ; "Other" directly before a
-#     direction or a European name ("Other European"); the nationalities
-#     posted as examples of European (British, French, Scandinavian: "European
-#     (e.g., British, French, Western European, Eastern European)");
+#     East"); New Zealand, New Zealander(s), NZ; "Other" ("Other European");
+#     the nationalities posted as examples of European (British, French,
+#     Scandinavian: "European (e.g., British, French, Western European,
+#     Eastern European)");
 #   - fillers: descent, origin(s), ancestry, background, people(s), of, only,
 #     e.g., i.e.
 # A label beginning or ending with a join is not read (a piece of a longer
-# label), nor one whose New Zealand qualifier or direction qualifies no
-# European name ("European or New Zealander", "European or Western"; a
-# review finding). The subcategory follows the vocabulary's: european_eastern when
-# every European name comes directly after a direction and every direction
-# is east, european_western likewise for west, else european; a White or
-# Caucasian set beside them as an alternative ("White or Eastern European",
-# "Eastern European/White", "White & Eastern European") also makes it european, as does an unqualified
-# European name ("European or Western European"; a review finding).
+# label). Each alternative the label joins ("or", "and", "/", ",", "&",
+# ";") must name a group on its own (_european_alternatives; review
+# findings): a European name with its qualifiers ("NZ European", "Western
+# European White"), or White, Caucasian or a European nationality. So
+# "European or New Zealander" and "North or European" are not read. An
+# alternative made only of directions shares the next one's noun
+# ("North/Mid/East European"), and "New Zealander, European" keeps its
+# comma as apposition. The subcategory follows the vocabulary's:
+# european_eastern when every alternative is qualified by an east direction,
+# european_western likewise for west, else european; an unqualified
+# alternative ("European or Western European", "White people or Eastern
+# European", "Eastern European or British") names a wider group.
 #
 # What it does not do. A label naming anything else beside European is not
 # read: "Western background (European countries (excluding Turkey), North
@@ -410,7 +414,7 @@ _EUROPEAN_DIRECTION = (r"north(?:ern)?|south(?:ern)?|east(?:ern)?|west(?:ern)?|c
                        r"middle(?!\s*east)")
 _EUROPEAN_TOKEN_RX = re.compile(
     rf"(?:(?P<name>{_EUROPEAN_NAME})|(?P<white>white|caucasians?)|"
-    rf"(?P<other>other(?=\s+(?:{_EUROPEAN_DIRECTION}|{_EUROPEAN_NAME}|scandinavian)))|"
+    rf"(?P<other>other)|"
     rf"(?P<direction>{_EUROPEAN_DIRECTION})|"
     rf"(?P<new_zealand>new\s+zealand(?:ers?)?|nz)|"
     rf"(?P<nationality>british|french|scandinavians?)|"
@@ -458,40 +462,10 @@ def european_label(label: str) -> Tuple[bool, Optional[str]]:
     # A label beginning or ending with a join is a piece of a longer label.
     if kinds[0] in ("join", "mark") or kinds[-1] in ("join", "mark"):
         return False, None
-    if not _european_qualifiers_attached(tokens):
+    groups = _european_alternatives(tokens)
+    if groups is None:
         return False, None
-    return True, _european_subcategory(tokens)
-
-
-def _european_qualifiers_attached(tokens: List[Tuple[str, str]]) -> bool:
-    """True when every New Zealand qualifier and every direction in a label
-    qualifies a European name, so that no alternative the label joins names
-    something else (a review finding): "European or New Zealander" pools
-    New Zealanders of any origin, "European or Western" names no group.
-    A New Zealand qualifier comes directly before a European name, or before
-    a comma and one ("New Zealander, European", posted beside a separate
-    "European" row in NCT01117792); a direction reaches a European name
-    through further directions and joins ("North/Mid/East European",
-    "Western or Eastern European")."""
-    for i, (kind, _text) in enumerate(tokens):
-        if kind == "new_zealand":
-            following = [k for k, _t in tokens[i + 1:i + 3]]
-            if not (following[:1] == ["name"]
-                    or (following == ["mark", "name"] and tokens[i + 1][1] == ",")):
-                return False
-        elif kind == "direction":
-            reached = False
-            for later_kind, later_text in tokens[i + 1:]:
-                if later_kind == "name":
-                    reached = True
-                    break
-                if later_kind == "direction" or (later_kind in ("join", "mark")
-                                                 and later_text in _EUROPEAN_ALTERNATIVE_JOINS):
-                    continue
-                break
-            if not reached:
-                return False
-    return True
+    return True, _european_subcategory(groups)
 
 
 # Joins that set two groups side by side as alternatives, not one group
@@ -503,31 +477,76 @@ def _european_qualifiers_attached(tokens: List[Tuple[str, str]]) -> bool:
 _EUROPEAN_ALTERNATIVE_JOINS = frozenset({"or", "and", "and/or", "/", ",", "&", ";"})
 
 
-def _european_subcategory(tokens: List[Tuple[str, str]]) -> str:
-    """The subcategory of a label european_label reads, from its (kind, text)
-    tokens: european_eastern or european_western when every European name
-    is directly after a direction and every direction is east, or every one
-    west, and no White or Caucasian stands beside them as an alternative
-    (next to a join in _EUROPEAN_ALTERNATIVE_JOINS); else european. "European or Western
-    European" and "White or Eastern European" name a wider group than the
-    direction does (a review finding)."""
-    directions = [text for kind, text in tokens if kind == "direction"]
-    if not directions:
+def _european_alternatives(tokens: List[Tuple[str, str]]) -> Optional[List[List[str]]]:
+    """Read each alternative of a label on its own (block comment above;
+    review findings). The (kind, text) tokens are split at the joins in
+    _EUROPEAN_ALTERNATIVE_JOINS; fillers, brackets, ":" and dashes describe
+    and are passed over. Returns, for each alternative naming a group, the
+    directions that qualify it, or [] for an unqualified group; None when an
+    alternative names no European or White group.
+
+    An alternative names a group when it holds a European name, qualified
+    by the directions in it ("NZ European", "White: Western European"); or
+    when it is White, Caucasian or a European nationality ("White people",
+    "British"), unqualified. One holding none of these ("Other", "New
+    Zealander") names nothing. Two shapes cross a
+    join: an alternative made only of directions shares the noun of the next
+    alternative that names one after a direction ("North/Mid/East European",
+    "Western or Eastern European"; not "North or European"), and "New
+    Zealander" before a comma and a European name is that name's qualifier
+    ("New Zealander, European", posted beside a separate "European" row in
+    NCT01117792; not "European or New Zealander")."""
+    segments: List[List[Tuple[str, str]]] = [[]]
+    joins: List[str] = []
+    for kind, text in tokens:
+        if kind in ("join", "mark") and text in _EUROPEAN_ALTERNATIVE_JOINS:
+            segments.append([])
+            joins.append(text)
+        elif kind not in ("filler", "bracket", "mark"):
+            segments[-1].append((kind, text))
+
+    def only_directions(segment: List[Tuple[str, str]]) -> bool:
+        return bool(segment) and all(kind == "direction" for kind, _text in segment)
+
+    groups: List[List[str]] = []
+    for i, segment in enumerate(segments):
+        if not segment:
+            continue  # ", or" leaves nothing between two joins
+        segment_kinds = [kind for kind, _text in segment]
+        if only_directions(segment):
+            following = next((s for s in segments[i + 1:] if s and not only_directions(s)), None)
+            if following is None or following[0][0] != "direction" or (
+                    "name" not in [kind for kind, _text in following]):
+                return None
+            groups.append([text for _kind, text in segment])
+            continue
+        if segment_kinds == ["new_zealand"]:
+            if (i < len(joins) and joins[i] == "," and i + 1 < len(segments)
+                    and segments[i + 1] and segments[i + 1][0][0] == "name"):
+                continue
+            return None
+        if "name" in segment_kinds:
+            groups.append([text for kind, text in segment if kind == "direction"])
+        elif "white" in segment_kinds or "nationality" in segment_kinds:
+            groups.append([])
+        else:
+            return None
+    return groups
+
+
+def _european_subcategory(groups: List[List[str]]) -> str:
+    """The subcategory of a label european_label reads, from the directions
+    of its alternatives (_european_alternatives): european_eastern when every
+    alternative is qualified and every direction is east, european_western
+    likewise for west, else european. An unqualified alternative ("European
+    or Western European", "White or Eastern European", "Eastern European or
+    British") names a wider group than a direction does (review findings)."""
+    if not groups or any(not directions for directions in groups):
         return "european"
-    # A nationality is a European group too: an unqualified "British" beside
-    # "Eastern European" widens the group (a review finding).
-    names_qualified = all(i > 0 and tokens[i - 1][0] == "direction"
-                          for i, (kind, _text) in enumerate(tokens)
-                          if kind in ("name", "nationality"))
-    white_alternative = any(
-        kind == "white" and any(0 <= j < len(tokens) and tokens[j][1] in _EUROPEAN_ALTERNATIVE_JOINS
-                                for j in (i - 1, i + 1))
-        for i, (kind, _text) in enumerate(tokens))
-    if not names_qualified or white_alternative:
-        return "european"
-    if all(d.startswith("east") for d in directions):
+    directions = [direction for group in groups for direction in group]
+    if all(direction.startswith("east") for direction in directions):
         return "european_eastern"
-    if all(d.startswith("west") for d in directions):
+    if all(direction.startswith("west") for direction in directions):
         return "european_western"
     return "european"
 

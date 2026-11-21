@@ -2594,6 +2594,7 @@ def test_a_race_by_group_table_whose_race_parts_do_not_map_is_read_as_plain_rows
     ("New Zealand European", "european"),
     ("NZ European", "european"),
     ("New Zealander, European", "european"),
+    ("New Zealander, of European descent", "european"),   # fillers are passed over
     ("Western European White", "european_western"),
     ("White: Western European", "european_western"),
     ("Eastern European White", "european_eastern"),
@@ -2648,6 +2649,8 @@ def test_a_direction_names_the_subcategory_only_when_it_qualifies_every_group(
     "New Zealander or European",
     "European/NZ",
     "European or Western",
+    "North or European",                                       # a direction does not cross "or" (review finding)
+    "North/European",
 ])
 def test_a_label_naming_more_or_less_than_european_origin_is_not_read_by_the_rule(label: str) -> None:
     assert rx.european_label(label) == (False, None)
@@ -2661,6 +2664,9 @@ def test_a_label_naming_more_or_less_than_european_origin_is_not_read_by_the_rul
     ("North & East European", "european"),
     ("White: Eastern European", "european_eastern"),   # ":" describes
     ("White - Western European", "european_western"),  # a dash describes
+    # a filler does not hide an unqualified alternative (review finding)
+    ("White people or Eastern European", "european"),
+    ("Caucasian background & Western European", "european"),
 ])
 def test_the_subcategory_of_a_mapped_row_counts_every_alternative_join(
         label: str, subcategory: str) -> None:
