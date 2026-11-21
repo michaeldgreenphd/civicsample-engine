@@ -2759,6 +2759,112 @@ def _multirace_label(label: str) -> bool:
         races.add(race)
     return len(races) >= 2
 
+# ── Negated race labels ─────────────────────────────────────────────────────
+#
+# A row whose label negates a race ("Not African-American", "Non-Black/African
+# American", "Other than White or Black/African American", "Non-Native
+# American") counts the participants who are not of that race. The rules
+# below read the race word and nothing else: fuzz.ratio scores "Non-African
+# American" 88.9 against "African American", the slash fragments keep
+# "African American" from "Non-Black/African American", and "Non-Native
+# American" scores 88.2 against "Native American". Each such row was counted
+# as the race it excludes.
+#
+# Rule. A label is negated when a negation (non, not, neither, other than,
+# except, excluding, as a word, or "non" joined to the next word as in
+# "Nonwhite"), followed by optional spaces or dashes and an optional
+# "a"/"an", stands directly before a race word (_NEGATED_RACE_WORD), and no
+# race word comes before that negation. Such a label is counted as other
+# with low confidence and the flags "negated_race" and "unmapped", as
+# "Non-White" already was; the unmapped flag keeps quarantine treating it as
+# "Non-White" (it holds a race word, so it is kept as other). A negated label
+# is not split as a combined label (_map_race_label): the split would keep
+# the race of a pooled row, "Asian" of "Non-White Hispanic/Asian". A combined
+# label whose race part is negated ("Hispanic, not African American") is
+# read by this rule too.
+#
+# Brackets. A negation inside brackets qualifies a race named outside them:
+# "(Non-Indian) Asian" names Asian participants other than Indian ones, read
+# as Asian by the rule of block comment "Asian labels" (a review finding).
+# When a race word stands outside brackets, only the text outside them is
+# read; "Non-Black (African American)" is negated, "(Non-Indian) Asian" and
+# "(Not Japanese) Asian" are not. A label naming a race only inside brackets
+# is read whole: "Other (Nonblack)" is negated.
+#
+# Order. The rule runs after the exact and case-insensitive matches of
+# RACE_MAPPINGS, so a vocabulary key keeps its reading whatever words it
+# holds ("White, not Hispanic").
+#
+# What it does not do. Hispanic and Latino are not race words here: "Non-
+# Hispanic White" names White participants, read by the rule of block
+# comment "A race named beside an ethnicity term in one label". "Minority"
+# is not a race word: "White/Non-Minority" stays White. A label naming a race
+# before the negation is left to the rules below, because there the negation
+# qualifies or contrasts the named race: "Asian - Not Japanese" stays Asian;
+# "White vs. non-white", "White & Non-White/Multiple", "Race (White vs
+# Non-White)", "Caucasian - Non-white", "Caucasian, non-European descent"
+# and "Asian (Other than Indian subcontinent)" read as they did.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), with each trial's site
+# countries, against engine main. Of the 6,780 distinct race row titles the
+# rule reads 92; 78 were already other. 14, each posted by one trial, were
+# counted as the race they exclude and are now other: "Not African-American"
+# (NCT02134314), "Non-African American" (NCT02153359), "Non African
+# American" (NCT02560558), "Non- African-American" (NCT01386970),
+# "Non-Black/African American" (NCT01769469), "Non-Black/African-American"
+# (NCT01769456), "Other than White or Black/African American" (NCT03583099),
+# "Hispanic, not African American" (NCT00706121) and "Hispanic, Non-African
+# American" (NCT04070833), Black before; "Non-Native American" (NCT05773833),
+# American Indian or Alaska Native before; "Non Caucasian/Asian"
+# (NCT00556933) and "Non-White Hispanic/Asian" (NCT04655170), Asian before;
+# "Non-white/more than one race" (NCT04535583), more than one race before;
+# "Non-White/Multiple selected/Missing" (NCT04152824), unknown before (by
+# its "Missing" fragment; the row pools non-White, multiple and missing).
+# 14 race blocks change, all still reporting race: Black -538, unknown -135,
+# American Indian or Alaska Native -42, more than one race -19, Asian -18,
+# White +57, other +695. NCT01769469 and NCT01769456 post a second race
+# table (Asian/Pacific Islander, Black/African American, White,
+# White/Hispanic, Other/Mixed Race); their Black and non-Black table was
+# chosen because every one of its rows read as Black (table_selection rule
+# 2, the largest specific sum: 101 against 75, and 78 against 52). Now it
+# places 52 and 33, and the second table is counted: White +57 and Asian +4
+# come from it. No ethnicity block changes. 241 other race blocks gain the
+# negated_race flag on rows already counted as other.
+_NEGATED_RACE_WORD = (
+    r"(?:black|african|afro|white|caucasian|european|asian|oriental|native|"
+    r"american\s+indian|indian|alaska|alaskan|hawaiian|pacific|islander|"
+    r"indigenous|aboriginal|arab|arabic|middle\s+eastern|multiracial|"
+    r"multi-racial|mixed)(?![a-z])")
+_NEGATED_RACE_RX = re.compile(
+    r"(?<![a-z])(?:(?:non|not|neither|other\s+than|except|excluding)(?![a-z])[\s\-–—]*(?:an?\s+)?|non)"
+    r"(?=" + _NEGATED_RACE_WORD + r")",
+    re.IGNORECASE)
+_RACE_WORD_RX = re.compile(r"(?<![a-z])" + _NEGATED_RACE_WORD, re.IGNORECASE)
+# A bracketed segment holding no bracket: removed repeatedly, innermost first.
+_BRACKETED_SEGMENT_RX = re.compile(r"\([^()\[\]]*\)|\[[^()\[\]]*\]")
+
+
+def _outside_brackets(text: str) -> str:
+    """The text with its bracketed segments, nested ones included, replaced
+    by a space; an unbalanced bracket is left as it is."""
+    while True:
+        stripped = _BRACKETED_SEGMENT_RX.sub(" ", text)
+        if stripped == text:
+            return text
+        text = stripped
+
+
+def negated_race_label(label: str) -> bool:
+    """True when the label negates a race named directly after the negation,
+    with no race named before it; when a race is named outside brackets, only
+    the text outside them is read (block comment "Negated race labels")."""
+    outside = _outside_brackets(label)
+    text = outside if _RACE_WORD_RX.search(outside) else label
+    match = _NEGATED_RACE_RX.search(text)
+    return match is not None and _RACE_WORD_RX.search(text[:match.start()]) is None
+
+
 def _slash_fragment_mapping(text: str) -> Optional[Tuple[str, Optional[str]]]:
     """The (category, subcategory) of the first "/" fragment of `text` that
     is a RACE_MAPPINGS key, matched exactly, ignoring case; None when the
@@ -2825,6 +2931,17 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
                 "original": label_clean,
                 "flags": flags
             }
+
+    # A label negating a race (block comment "Negated race labels") is not
+    # read as that race by any rule below.
+    if negated_race_label(label_clean):
+        return {
+            "omb_category": "other",
+            "subcategory": None,
+            "confidence": "low",
+            "original": label_clean,
+            "flags": ["negated_race", "unmapped"]
+        }
 
     # A label naming Middle Eastern or North African groups only (block
     # comment "Middle Eastern or North African labels"), before the slash
@@ -3301,8 +3418,11 @@ def _map_race_label(label: str, guard_negation: bool = False) -> Dict:
 
     # Combined label splitting: if the whole label fails to map
     # but contains both race and ethnicity fragments, re-map
-    # using only the race fragment.
-    if mapping.get("omb_category") == "other" and "unmapped" in mapping.get("flags", []):
+    # using only the race fragment. A label negating a race is not split
+    # (block comment "Negated race labels"): the split would keep the race
+    # of a pooled row, as "Asian" of "Non-White Hispanic/Asian".
+    if (mapping.get("omb_category") == "other" and "unmapped" in mapping.get("flags", [])
+            and "negated_race" not in mapping["flags"]):
         split = _split_combined_label(label)
         if split:
             race_part, _eth_part = split
