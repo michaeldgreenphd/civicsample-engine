@@ -615,17 +615,18 @@ def _european_subcategory(groups: List[List[str]]) -> str:
 # (Central Asia has no key; "Central/South Asian Heritage" has none).
 #
 # West Asian. In Eli Lilly's race template "West Asian" is the Indian
-# subcontinent: 12 of its trials post "West Asian (Indian sub-continent)", and
-# its tables post no South Asian row. Elsewhere it is the Middle East: beside
-# "South Asian" in Imperial College, Novartis and Rutgers tables, and Iranian
-# or Afghan in the Canadian census categories VBI posts. A label naming the
-# subcontinent is read as south_asian by asian_label. "West Asian" or
-# "Western Asian" alone is read so only in a table that follows the template
-# (_west_asian_template_rows): some row is read as East or Southeast Asian,
-# every other Asian row is one of those, and no row names the Middle East,
-# North Africa, Iran, Afghanistan, Turkey or South Asia. Such rows are flagged
-# west_asian_template, confidence medium. Other West-qualified labels ("South
-# or West Asian") are not read.
+# subcontinent: of the 60 Lilly trials posting a West Asian wording (of 74
+# in all), 14 spell it out ("West Asian (Indian sub-continent)" and three
+# other spellings), and none posts a South Asian or Indian row. Elsewhere it
+# is the Middle East: beside "South Asian" in Imperial College, Novartis and
+# Rutgers tables, and Iranian or Afghan in the Canadian census categories VBI
+# posts. A label naming the subcontinent is read as south_asian by
+# asian_label. "West Asian" or "Western Asian" alone is read so only in a
+# table that follows the template (_west_asian_template_rows): some row is
+# read as East or Southeast Asian, every other Asian row is one of those,
+# and no row names the Middle East, North Africa, Iran, Afghanistan, Turkey
+# or South Asia. Such rows are flagged west_asian_template, confidence
+# medium. Other West-qualified labels ("South or West Asian") are not read.
 #
 # One table may post two classifications of the same participants: "Chinese"
 # 44 and "Han" 44 of 44 (NCT05135871), "Asian" 32 and "Japanese Ancestry" 32
