@@ -1130,6 +1130,9 @@ _BLACK_TOKEN_RX = re.compile(
     r"(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
     re.IGNORECASE)
 _BLACK_ALTERNATIVE_JOINS = _EUROPEAN_ALTERNATIVE_JOINS
+# The joins that build a heading before its colon ("Race and Ethnicity :",
+# "Race/Ethnicity:", "Race, Ethnicity:"), unlike "or", which pools.
+_BLACK_HEADING_JOINS = frozenset({"and", "&", ",", "/"})
 # "African/American" (and "African / American"): the one name split by a
 # slash, which the slash fragments would otherwise read as "African".
 # Not "African/American Indian", which names two races (left as it was),
@@ -1212,11 +1215,13 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     # findings).
     held: List[bool] = [False]
     colon: List[bool] = [False]
+    joins: List[str] = []  # the join after each alternative
     for kind, term, within in tokens:
         if not within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS:
             segments.append([])
             held.append(False)
             colon.append(False)
+            joins.append(term)
             continue
         held[-1] = True
         if not within and kind == "mark" and term == ":":
@@ -1251,7 +1256,13 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     subcategories: List[Optional[str]] = []
     for i, segment in enumerate(segments):
         if not segment:
-            if held[i] and not any(colon[i + 1:]):
+            # A heading runs to its colon through heading joins only ("Race
+            # and Ethnicity :", "Race/Ethnicity:"); "or" sets a pooled
+            # choice beside it ("all participants or Race: Black"; review
+            # findings).
+            heading = next((j for j in range(i + 1, len(segments)) if colon[j]), None)
+            if held[i] and (heading is None or any(
+                    join not in _BLACK_HEADING_JOINS for join in joins[i:heading])):
                 return False, None  # fillers only, not a heading
             continue  # ", or" leaves nothing between two joins
         # A name, or an abbreviation beside a name elsewhere ("Black or Af
