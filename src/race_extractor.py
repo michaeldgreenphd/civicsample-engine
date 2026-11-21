@@ -555,12 +555,18 @@ def _european_subcategory(groups: List[List[str]]) -> str:
 
 # ── Asian labels ───────────────────────────────────────────────────────────
 #
-# OMB's Asian category is the original peoples of the Far East, Southeast
-# Asia or the Indian subcontinent, "including, for example, Cambodia, China,
-# India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand,
-# and Vietnam" (1997 standard; the 2024 revision keeps the category). The
-# vocabulary held "Asian", national origins ("Chinese", "Pakistani") and the
-# three regions ("East Asian", "South Asian", "Southeast Asian"). Wordings
+# OMB's 1997 Asian category, the one this engine counts (block comment
+# "Middle Eastern or North African labels"), is the original peoples of the
+# Far East, Southeast Asia or the Indian subcontinent, with Cambodia, China,
+# India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand
+# and Vietnam as its examples. The 2024 revision keeps Asian as a minimum
+# category and names Central or East Asia, Southeast Asia and South Asia
+# instead, with Pakistani, Hmong and Afghan among its examples. Both are read
+# from search summaries: the Federal Register pages could not be fetched
+# here, so the 1997 wording is paraphrased, not quoted.
+#
+# The vocabulary held "Asian", national origins ("Chinese", "Pakistani") and
+# the three regions ("East Asian", "South Asian", "Southeast Asian"). Wordings
 # qualifying or restating those matched nothing. They were counted as other:
 # "Asian (Japanese)" (2,181 participants in 19 trials, in the 2026-11-15
 # inputs), "Asian-Chinese", "Asian: East", "Other Asian" (3,503 in 35),
@@ -639,8 +645,10 @@ def _european_subcategory(groups: List[List[str]]) -> str:
 # Neither are pooled labels ("Asian or Other", "Other (Asian, multiracial,
 # unknown)"), "Non-Asian", mixed ones ("Asian - Mixed Race", "Mixed Asian"),
 # the Chinese minorities posted beside Han (Zhuang, Hui, Uyghur and others,
-# about 150 participants), or "Indian" in no Asian company ("Indian ancestry",
-# "Indian (American)"). Asian national origins alone are read, as the
+# about 150 participants), "Afghan (Asian)" (25; Afghan is among the 2024
+# examples, not clearly within the 1997 regions), or "Indian" in no Asian
+# company ("Indian ancestry", "Indian (American)"). Asian national origins
+# alone are read, as the
 # vocabulary already read "Chinese" and "Pakistani" and as OMB's definition
 # names them; European nationalities alone are not (block comment "European
 # labels").
