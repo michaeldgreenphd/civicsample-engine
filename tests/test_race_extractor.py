@@ -3277,6 +3277,8 @@ def test_the_black_subcategory_comes_from_the_names(label: str, subcategory: Opt
     "Black or participants of all ethnicities",  # fictional: fillers only pooled (review finding)
     "Black (or Indigenous)",  # fictional: a choice in a bracket names another race (review finding)
     "Black (or unspecified)",  # fictional
+    "Black (or Other)",  # fictional: Other as a bracketed choice (review finding)
+    "Black (or other race)",  # fictional
     "Not Black",  # negated
     "Non-Black",
     "Black or African American (Comparison 1)",  # crossed with something else
