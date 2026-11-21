@@ -27,8 +27,9 @@ race (last two sections).
 A race table that posts a study's groups as rows ("White - Usual Care", each
 row's count in its own group's column only) is read by its race parts (its own
 section). Native Hawaiian or Pacific Islander wordings, and the rows they
-meet in a table, have a section of their own, as do European-only wordings;
-Asian wordings, and the tables they meet, are the last section.
+meet in a table, have a section of their own, as do European-only wordings
+and Asian wordings with the tables they meet; Black-only wordings are the
+last section.
 
 Which measures are race tables at all is the title word rule
 (race_extractor.is_race_table): titles that only contain the letters "race"
@@ -3175,3 +3176,143 @@ def test_a_combined_table_with_every_race_row_read_counts_them_not_hispanic() ->
     assert ethnicity["omb_totals"]["hispanic_latino"] == 2
     assert ethnicity["omb_totals"]["not_hispanic_latino"] == 68
     assert ethnicity["omb_totals"]["unknown_not_reported"] == 0
+
+
+# ── Black labels ───────────────────────────────────────────────────────────
+#
+# Fictional studies NCT99000629–631 (block comment "Black labels" in
+# src/race_extractor.py). Each label comes from the 2026-11-15 inputs, where
+# it was counted as other or quarantined as not race unless noted.
+
+BLACK_CATEGORY = "black_african_american"
+
+
+@pytest.mark.parametrize("label, subcategory", [
+    ("Black African", "african"),
+    ("Race - Black African", "african"),
+    ("African Descent", "african"),
+    ("African Ancestry", "african"),
+    ("Black of African origin", "african"),
+    ("Sub-Saharan African origin", "african"),
+    ("Indigenous African", "african"),
+    ("Other African tribe", "african"),
+    ("African (Rwandan)", "african"),
+    ("Black Kenyan", "african"),
+    ("Zulu", "african"),
+    ("Hausa", "african"),
+    ("Luo ethnic group", "african"),
+    ("Ghanaian", "african"),
+    ("Afro-descendant", "african"),
+    ("Ethnicity: African continent", "african"),
+    ("Afro-Caribbean", "caribbean"),
+    ("Afro-Carribean", "caribbean"),  # as posted
+    ("Black Carribean", "caribbean"),
+    ("Black (Caribbean)", "caribbean"),
+    ("Black American", "african_american"),
+    ("Afro-American", "african_american"),
+    ("African-American (black)", None),  # Black beside African American: the category's name
+    ("African - American (Black)", None),
+    ("African, black", None),
+    ("African American or Black", None),
+    ("Black, African American, or African", None),
+    ("Black or African", None),
+    ("Black only", None),
+    ("Black race", None),
+    ("Other Black", None),
+    ("Black (all ethnicities)", None),
+    ("Black South African", None),
+    ("Black (Brazil)", None),
+    ("Black Canadian or African or African Caribbean", None),
+    ("Black, African American, or Negro", None),
+    ("Black or African (Afr) Amer", None),  # a bracketed abbreviation
+    ("BLACK (BLA) OR AFRICAN AMERICAN (AFR AME)", None),
+    ("Black or African American (B or Af Am)", None),
+    ("Black or Af Am", None),
+    ("Black (US)", None),
+    ("Jamaicans of West African descent", None),
+])
+def test_a_label_naming_black_groups_only_is_read_as_black(label: str, subcategory: Optional[str]) -> None:
+    assert rx.black_label(label) == (True, subcategory)
+
+
+@pytest.mark.parametrize("label, subcategory", [
+    # Black beside African American is the category's own name.
+    ("Black (or African American)", None),
+    ("Black of African American", None),
+    # Names given as examples name no subgroup.
+    ("Black or African American (African American, Jamaican, Haitian, Nigerian, Ethiopian, Somali, etc.)", None),
+    ("Black (e.g., Haitian, Jamaican)", None),  # examples alone would make it caribbean
+    # Haitian lies in Caribbean; across alternatives, theirs when all agree.
+    ("Caribbean (Haitian)", "caribbean_haitian"),
+    ("Afro-Caribbean or Caribbean", "caribbean"),
+    ("Afro-Caribbean or African Origin", None),
+])
+def test_the_black_subcategory_comes_from_the_names(label: str, subcategory: Optional[str]) -> None:
+    assert rx.black_label(label) == (True, subcategory)
+
+
+@pytest.mark.parametrize("label", [
+    "South African",  # a country of every race
+    "Coloured",  # the South African census's own group
+    "Southern African Colored",
+    "Coloured/Mixed Ancestry",
+    "Black or mixed race",  # pooled
+    "African American or Other",
+    "Black, Euro-African, or African American",
+    "Black or other race",
+    "Not Black",  # negated
+    "Non-Black",
+    "Black or African American (Comparison 1)",  # crossed with something else
+    "African Mothers",
+    "Black : Children",
+    "Black (11 to 18 years)",
+    "Black (Part C)",
+    "Phase 1, Black",
+    "Black not Hisp",  # an ethnicity qualifier
+    "NH-Black",
+    "African (e.g., Central and West African, North African, Southern Africa)",  # North Africa
+    "Middle Eastern or North African/Mediterranean",
+    "Black or Black British",  # the UK census rule's
+    "AA",  # an abbreviation alone
+    "Tonga",
+    "/Black",
+    "Black or",
+])
+def test_a_label_naming_more_or_less_than_black_groups_is_not_read_by_the_rule(label: str) -> None:
+    assert rx.black_label(label) == (False, None)
+
+
+@pytest.mark.parametrize("label, subcategory, flags", [
+    ("Black or African American", None, []),  # the vocabulary's own
+    ("African", "african", []),
+    ("Black/African American", None, ["slash_normalized"]),  # the slash fragments run first
+    ("Black African", "african", ["black_label"]),
+])
+def test_black_readings_through_map_race_category(label: str, subcategory: Optional[str],
+                                                  flags: list[str]) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
+        BLACK_CATEGORY, subcategory, flags)
+
+
+def test_a_table_of_african_peoples_is_counted_as_black() -> None:
+    table = _class_table(COMBINED_TITLE, [("Zulu", 40), ("Xhosa", 30), ("Coloured", 20), ("White", 10)])
+    race = extract_race_data(_study("NCT99000629", [table], 100))
+    assert _nonzero(race) == {BLACK_CATEGORY: 70, "white": 10, "unknown_not_reported": 20}
+    assert race["subcategory_totals"] == {"black_african_american_african": 70}
+    assert [q["original"] for q in race["quarantined_labels"]] == ["Coloured"]
+
+
+def test_a_trial_whose_only_race_row_names_an_african_nationality_reports_race() -> None:
+    """The NCT03062228 shape: one row, "Ghanaian", quarantined before."""
+    race = extract_race_data(_study("NCT99000630", [_class_table(COMBINED_TITLE, [("Ghanaian", 162)])], 162))
+    assert race["reported"] and _nonzero(race) == {BLACK_CATEGORY: 162}
+
+
+def test_the_multirace_rule_reads_a_black_part_the_rule_reads() -> None:
+    """"Black or African Amer. & White" (148 participants in the 2026-11-15
+    inputs) is two races once its Black part reads."""
+    table = _class_table(COMBINED_TITLE, [("White", 50), ("Black or African Amer.", 30),
+                                          ("Black or African Amer. & White", 20)])
+    race = extract_race_data(_study("NCT99000631", [table], 100))
+    assert _nonzero(race) == {"white": 50, BLACK_CATEGORY: 30, "more_than_one_race": 20}

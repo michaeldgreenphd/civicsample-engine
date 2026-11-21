@@ -1018,6 +1018,211 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
     return regions.pop() if len(regions) == 1 and None not in regions else None
 
 
+# ── Black labels ───────────────────────────────────────────────────────────
+#
+# OMB's Black or African American category is a person having origins in
+# any of the Black racial groups of Africa (1997 standard; read from the
+# search summaries cited in the block comment "Asian labels"). The
+# vocabulary held "Black", "Black or African American", "African
+# American", "African", "Caribbean", "West Indian", "Haitian", "Jamaican",
+# "Sub-Saharan African" and "Negro". Wordings qualifying or restating them
+# matched nothing. They were counted as other, in the 2026-11-15 inputs:
+# "Race - Black African" (12,979 participants, 1 trial), "African, black"
+# (10,069), "Black African" (6,791 in 35 trials), "Black, African American,
+# or African", "African American or Black" (1,151 in 29), "African Descent",
+# "Black or African", "Afro-Caribbean". Or they were quarantined as not
+# race: the peoples and nationalities "Zulu" (2,953), "Hausa", "Luo",
+# "Xhosa", "Yoruba", "Igbo", "Akan", "Kikuyu", "Ghanaian", "Kenyan".
+#
+# Method (black_label; after the Asian labels and before the fuzzy match).
+# A label cleaned as for European labels, with the registry's bracketed
+# abbreviations removed ("(Afr) Amer", "(BLA)", "(B or Af Am)", "(US)";
+# _BLACK_GLOSS_RX) and "African - American" or "African/American" joined,
+# maps to Black, flagged black_label, when it is made only of these terms,
+# with at least one Black name:
+#   - names, each with the vocabulary's subcategory key (_BLACK_NAMES):
+#     Black(s), Negro (no key); African American(s), Afro-American, Black
+#     American, African Amer, Afr Amer; Caribbean, Afro-Caribbean (any
+#     spelling of Caribbean with one or two r's and b's), African Caribbean,
+#     West Indian; Haitian; Jamaican; African(s), Sub-Saharan African,
+#     Afro-descendant, the peoples Zulu, Xhosa, Yoruba, Igbo, Hausa, Fulani,
+#     Akan, Ashanti, Luo, Kikuyu, Bantu, and the nationalities Kenyan,
+#     Ghanaian, Nigerian, Ethiopian, Eritrean, Somali, Rwandan, Ugandan,
+#     Zimbabwean (african); "AA" and "Af Am" only beside another name;
+#   - beside a name only: places (Africa, South Africa, Kenya, Uganda,
+#     Rwanda, Nigeria, Ghana, Ethiopia, Somalia, Zimbabwe, Brazil, Canada);
+#     directions (West, East, Central, Southern; North is not one: North
+#     Africa is the Middle East and North Africa); "Other"; example words;
+#   - fillers: descent, origin(s), ancestry, background, ethnic(ity),
+#     race, people(s), only, of, from, in, all, tribe(s), group(s),
+#     speaking, continent, indigenous, self-reported, participants,
+#     subjects, non-specified.
+# A label beginning or ending with a join is not read; each alternative must
+# name a Black group (as for European labels). The subcategory: within an
+# alternative, the name every other one refines (Haitian and Jamaican lie
+# in Caribbean), else none; Black beside African American is the category's
+# own name, not the subgroup ("Black (or African American)"); names given
+# as examples name none; across alternatives, theirs when all agree, else
+# none.
+#
+# What it does not do. "South African" alone names a country of every race,
+# and "Coloured" (550 in 17 trials), "Colored" and "Southern African
+# Colored" a group the South African census counts apart: not read. Mixed
+# or pooled wordings ("Black or mixed race", "African American or Other",
+# "Black, Euro-African, or African American"), negations ("Not Black",
+# "Non-Black"), rows crossed with something else ("Black or African
+# American (Comparison 1)", "African Mothers", "Black : Children",
+# "Black (11 to 18 years)", "Phase 1, Black") and "Hisp"/"NH" qualifiers
+# ("Black not Hisp", "NH-Black") are not read. "Tonga" stays withheld (block
+# comment "Native Hawaiian or Pacific Islander labels"). UK census wordings
+# naming "British" are the UK census rule's.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
+# the Asian labels: Black +50,378; more than one race +170 (the multirace
+# rule now reads the Black part of "Black or African Amer. & White", 148,
+# "White and Black African", "White + Black or African"); other -43,602;
+# unknown -6,418 (unknown_inferred). Rows read by black_label: 157 labels,
+# 70,269 participants in 453 trials, of them 43,432 counted as other before,
+# 6,946 quarantined and 19,891 already read as Black (by a fuzzy match or a
+# slash fragment, with the same subcategory). Subcategories: african
+# +31,848, african_american +70, caribbean +134. Four trials now report race,
+# each posting one row naming an African people or nationality: "Luo" 244
+# (NCT03178643), "Ghanaian" 162 (NCT03062228), "Kenyan" 60 (NCT04550221),
+# "Ugandan" 60 (NCT04030520). No ethnicity block, no sex block and no
+# sex/gender-titled gate changes; race blocks over their population stay
+# 330.
+_BLACK_NAMES = (
+    # (pattern, subcategory), longest first: the vocabulary's keys.
+    (r"african\s+americans?|afro\s+americans?|black\s+americans?|african\s+amer|afr\s+amer", "african_american"),
+    (r"afro\s*car{1,2}ib{1,2}eans?|african\s+car{1,2}ib{1,2}eans?|car{1,2}ib{1,2}eans?|"
+     r"west\s+indians?", "caribbean"),
+    (r"haitians?", "caribbean_haitian"),
+    (r"jamaicans?", "caribbean_jamaican"),
+    (r"sub\s*saharan\s+africans?|africans?|afro\s+descendants?|zulus?|xhosas?|yorubas?|igbos?|"
+     r"hausas?|fulanis?|akans?|ashantis?|luos?|kikuyus?|bantus?|kenyans?|ghanaians?|nigerians?|"
+     r"ethiopians?|eritreans?|somalis?|rwandans?|ugandans?|zimbabweans?", "african"),
+    (r"blacks?|negro(?:es)?", None),
+)
+_BLACK_REGION = {"caribbean_haitian": "caribbean", "caribbean_jamaican": "caribbean"}
+_BLACK_TOKEN_RX = re.compile(
+    r"(?:(?P<place>south\s+africans?|south\s+africa|africa|kenya|uganda|rwanda|nigeria|ghana|ethiopia|"
+    r"somalia|zimbabwe|brazil|canadians?|canada)|"
+    rf"(?P<name>{'|'.join(pattern for pattern, _sub in _BLACK_NAMES)})|"
+    r"(?P<abbrev>aa|af\s+am)|"
+    r"(?P<direction>west(?:ern)?|east(?:ern)?|central|southern)|"
+    r"(?P<other>other)|(?P<example>e\s*g|i\s*e|including|etc)|"
+    r"(?P<filler>descent|decent|origins?|ancestry|background|ethnicit(?:y|ies)|ethnic|race|racial|"
+    r"peoples?|only|of|from|in|all|tribes?|groups?|speaking|continent|indigenous|self\s+reported|"
+    r"participants?|subjects?|non\s+specified|unspecified)|"
+    r"(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
+    re.IGNORECASE)
+_BLACK_ALTERNATIVE_JOINS = _EUROPEAN_ALTERNATIVE_JOINS
+# A bracketed abbreviation of the label's own words, as registrants post
+# them: "Black or African (Afr) Amer", "BLACK (BLA) OR AFRICAN AMERICAN (AFR
+# AME)", "(B or Af Am)", "(US)". Only these words: "(Part C)" is a crossing.
+_BLACK_GLOSS_WORD = r"(?:afr|ame|amer|bla|b|af|am|aa|us)\.?"
+_BLACK_GLOSS_RX = re.compile(
+    rf"\(\s*{_BLACK_GLOSS_WORD}(?:\s*(?:\s|/|\bor\b)\s*{_BLACK_GLOSS_WORD})*\s*\)", re.IGNORECASE)
+
+
+def _black_subcategory_of(text: str) -> Optional[str]:
+    for pattern, subcategory in _BLACK_NAMES:
+        if re.fullmatch(pattern, text, re.IGNORECASE):
+            return subcategory
+    return None
+
+
+def black_label(label: str) -> Tuple[bool, Optional[str]]:
+    """(True, subcategory) when a label names Black groups only, by the terms
+    of the block comment above; else (False, None).
+
+      "Black African"                            -> (True, "african")
+      "African American or Black"                -> (True, None)
+      "Black, African American, or African"      -> (True, None)
+      "Afro-Caribbean"                           -> (True, "caribbean")
+      "Zulu-speaking, Black South African"       -> (True, "african")
+      "African Ancestry"                         -> (True, "african")
+      "South African"                            -> (False, None)
+      "Coloured"                                 -> (False, None)
+      "Non-Black"                                -> (False, None)
+      "Black or mixed race"                      -> (False, None)
+    """
+    text = unicodedata.normalize("NFKD", clean_demographic_label(label).lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = _BLACK_GLOSS_RX.sub(" ", text)  # "(Afr)", "(BLA)", "(B or Af Am)"
+    # "African - American", "African/American": the one name split.
+    text = re.sub(r"\bafrican\s*(?:[\-–—/])\s*american", "african american", text)
+    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
+    text = re.sub(r"[.'’]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    tokens: List[Tuple[str, str, int]] = []
+    depth = 0
+    position = 0
+    while position < len(text):
+        match = _BLACK_TOKEN_RX.match(text, position)
+        if match is None or match.end() == position:
+            return False, None
+        kind, term = match.lastgroup, re.sub(r"\s+", " ", match.group(0).lower())
+        if kind == "mark" and term == "(":
+            depth += 1
+            kind = "open"
+        elif kind == "mark" and term == ")":
+            depth -= 1
+            if depth < 0:
+                return False, None
+            kind = "close"
+        tokens.append((kind, term, depth))
+        position = match.end()
+        while position < len(text) and text[position].isspace():
+            position += 1
+    if not tokens or (tokens[0][0] in ("join", "mark", "close")) or tokens[-1][0] in ("join", "mark", "open"):
+        return False, None  # empty, or a piece of a longer label
+    segments: List[List[Tuple[str, str, int]]] = [[]]
+    for kind, term, depth in tokens:
+        if depth == 0 and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS:
+            segments.append([])
+        elif kind in ("name", "abbrev", "place", "direction", "other", "example", "open", "close"):
+            segments[-1].append((kind, term, depth))
+    has_name = any(kind == "name" for kind, _t, _d in tokens)
+    subcategories: List[Optional[str]] = []
+    for segment in segments:
+        if not segment:
+            continue  # ", or" leaves nothing between two joins
+        # A name, or an abbreviation beside a name elsewhere ("Black or Af
+        # Am"): "AA" alone names nothing the rule can tell.
+        if not any(kind == "name" or (kind == "abbrev" and has_name) for kind, _t, _d in segment):
+            return False, None
+        # Names given as examples ("(..., Nigerian, Ethiopian, Somali,
+        # etc.)") describe a wider group and name no subcategory.
+        example_depths = {depth for kind, _t, depth in segment if kind == "example"}
+        specific = [_black_subcategory_of(term) for kind, term, depth in segment
+                    if kind == "name" and not (depth and depth in example_depths)]
+        candidates = [sub for sub in specific if sub is not None]
+        # Black beside African American is the category's own name ("Black
+        # (or African American)", "Black of African American"): no subgroup.
+        names_black = any(kind == "name" and _black_subcategory_of(term) is None
+                          for kind, term, _depth in segment)
+        if not candidates or (names_black and "african_american" in candidates):
+            subcategories.append(None)
+            continue
+        for candidate in candidates:
+            if all(candidate == other or _BLACK_REGION.get(candidate) == other for other in candidates):
+                subcategories.append(candidate)
+                break
+        else:
+            regions = {_BLACK_REGION.get(candidate, candidate) for candidate in candidates}
+            subcategories.append(regions.pop() if len(regions) == 1 else None)
+    if not subcategories:
+        return False, None
+    if len(set(subcategories)) == 1:
+        return True, subcategories[0]
+    if None in subcategories:
+        return True, None
+    regions = {_BLACK_REGION.get(sub, sub) for sub in subcategories}
+    return True, (regions.pop() if len(regions) == 1 else None)
+
+
 # ── American Indian or Alaska Native labels ────────────────────────────────
 #
 # OMB's 2024 revision of SPD 15 (Federal Register document 2024-06469, March
@@ -2020,6 +2225,19 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
         return {
             "omb_category": "asian",
             "subcategory": asian_subcategory,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A label naming Black groups only (block comment "Black labels"), after
+    # the Asian labels and before the fuzzy match.
+    is_black, black_subcategory = black_label(label_clean)
+    if is_black:
+        flags.append("black_label")
+        return {
+            "omb_category": "black_african_american",
+            "subcategory": black_subcategory,
             "confidence": "high",
             "original": label_clean,
             "flags": flags

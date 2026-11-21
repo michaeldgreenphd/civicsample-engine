@@ -90,6 +90,9 @@ Tests:
  32. NCT99000151 — Asian wordings the vocabulary did not hold ("Asian
      (Japanese)", "Other Asian", "Han", "Oriental") beside "Non-Asian"
      (fictional study)
+ 34. NCT99000153 — Black-only wordings the vocabulary did not hold ("Black
+     African", "African American or Black", "Zulu", "Afro-Caribbean") beside
+     "Coloured" (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -124,6 +127,8 @@ Study 31 asserts its race totals, its White subcategories and that only "Roma
 European" is quarantined (EXPECTED_EUROPEAN).
 Study 32 asserts its race totals, its Asian subcategories and that no row is
 quarantined (EXPECTED_ASIAN).
+Study 34 asserts its race totals, its Black subcategories and that only
+"Coloured" is quarantined (EXPECTED_BLACK).
 A mismatch stops the harness.
 """
 import json
@@ -985,6 +990,36 @@ EXPECTED_ASIAN = {
                     "quarantined": []},
 }
 
+# ---------- NCT99000153 (fictional): Black-only wordings ----------
+# 100 participants (race_extractor, "Black labels"). Before, "Black African"
+# and "African American or Black" were other and "Zulu" was quarantined as
+# not race (its 15 then balanced to unknown, with "Coloured"'s 5); here all
+# four are Black. "Coloured" is quarantined as before.
+MOCK_NCT99000153 = _make_study(
+    "NCT99000153",
+    "NCT99000153 - Black-only wordings (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("Black African", 40),
+                _make_category("African American or Black", 20),
+                _make_category("Zulu", 15),
+                _make_category("Afro-Caribbean", 10),
+                _make_category("Coloured", 5),
+                _make_category("White", 10),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+
+EXPECTED_BLACK = {
+    "NCT99000153": {"omb": {"black_african_american": 85, "white": 10, "unknown_not_reported": 5},
+                    "subcategories": {"black_african_american_african": 55,
+                                      "black_african_american_caribbean": 10},
+                    "quarantined": ["Coloured"]},
+}
+
 EXPECTED_RACE_BY_GROUP = {
     "NCT99000148": {"white": 65, "asian": 20, "american_indian_alaska_native": 5,
                     "unknown_not_reported": 10},
@@ -1310,6 +1345,15 @@ def validate_study(study: dict, nct_id: str) -> None:
         quarantined = [q["original"] for q in race["quarantined_labels"]]
         assert quarantined == expected["quarantined"], f"{nct_id} quarantined: {quarantined}"
         print(f"\n  {nct_id}: Asian wordings read as Asian — OK")
+    if nct_id in EXPECTED_BLACK:
+        expected = EXPECTED_BLACK[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
+        assert race["subcategory_totals"] == expected["subcategories"], \
+            f"{nct_id} subcategory_totals: {race['subcategory_totals']}"
+        quarantined = [q["original"] for q in race["quarantined_labels"]]
+        assert quarantined == expected["quarantined"], f"{nct_id} quarantined: {quarantined}"
+        print(f"\n  {nct_id}: Black-only wordings read as Black — OK")
     if nct_id in EXPECTED_HERITAGE:
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
         assert nonzero == EXPECTED_HERITAGE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
@@ -1353,6 +1397,7 @@ def main() -> None:
         (MOCK_NCT99000149, "NCT99000149"),
         (MOCK_NCT99000150, "NCT99000150"),
         (MOCK_NCT99000151, "NCT99000151"),
+        (MOCK_NCT99000153, "NCT99000153"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
