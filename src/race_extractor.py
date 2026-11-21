@@ -1194,8 +1194,9 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
         if any("mixed" not in alternative for alternative in alternatives if alternative):
             return None
         # Without a heading mark, "/", "," and ";" set alternatives side by
-        # side too, and one made of Other and fillers pools a group apart
-        # ("Mixed ethnic group / Other"; a review finding). "and" and "&"
+        # side too, and each must be Mixed: one naming another group, or
+        # Other, pools a group apart ("Mixed ethnic group / Other", "Mixed
+        # ethnic group / White British"; review findings). "and" and "&"
         # always list the parts of the mix ("Mixed white and black
         # carribean").
         if cut is None:
@@ -1205,7 +1206,7 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
                 if kind == "mark" and text in ("(", ")"):
                     depth += 1 if text == "(" else -1
                 elif depth == 0 and kind == "mark" and text in ("/", ",", ";"):
-                    if part and not _UK_NAMING_KINDS & set(part):
+                    if part and "mixed" not in part:
                         return None
                     part = []
                     continue
