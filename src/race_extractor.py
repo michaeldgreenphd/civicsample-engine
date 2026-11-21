@@ -1140,9 +1140,10 @@ _BLACK_RACE_WIDE_FILLERS = frozenset({"race", "racial", "ethnic", "ethnicity", "
 # "African/American" (and "African / American"): the one name split by a
 # slash, which the slash fragments would otherwise read as "African".
 # Not "African/American Indian", which names two races (left as it was),
-# with or without punctuation before "Indian" ("African/American-Indian",
-# "African/American (Indian)"; a review finding).
-_AFRICAN_SLASH_AMERICAN_RX = re.compile(r"\bafrican\s*/\s*american\b(?![\s\-–—()]*indian)", re.IGNORECASE)
+# whatever spaces or marks come before "Indian" ("African/American-Indian",
+# "African/American (Indian)", "African/American [Indian]",
+# "African/American/Indian"; review findings).
+_AFRICAN_SLASH_AMERICAN_RX = re.compile(r"\bafrican\s*/\s*american\b(?![^a-z]*indian)", re.IGNORECASE)
 # A bracketed abbreviation of the label's own words, as registrants post
 # them: "Black or African (Afr) Amer", "BLACK (BLA) OR AFRICAN AMERICAN (AFR
 # AME)", "(B or Af Am)", "(US)". Only these words: "(Part C)" is a crossing.
@@ -1156,6 +1157,27 @@ def _black_subcategory_of(text: str) -> Optional[str]:
         if re.fullmatch(pattern, text, re.IGNORECASE):
             return subcategory
     return None
+
+
+def _black_choice_names(tokens: List[Tuple[str, str, Tuple[int, ...]]], position: int) -> List[str]:
+    """The names in the choice holding tokens[position]: the run of terms
+    in its bracket (or outside brackets), brackets within it included, up to
+    the alternative joins at its own level."""
+    within = tokens[position][2]
+
+    def inside(i: int) -> bool:
+        return tokens[i][2][:len(within)] == within
+
+    def splits(i: int) -> bool:
+        kind, term, there = tokens[i]
+        return there == within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS
+
+    start = end = position
+    while start > 0 and inside(start - 1) and not splits(start - 1):
+        start -= 1
+    while end + 1 < len(tokens) and inside(end + 1) and not splits(end + 1):
+        end += 1
+    return [term for kind, term, _w in tokens[start:end + 1] if kind == "name"]
 
 
 def black_label(label: str) -> Tuple[bool, Optional[str]]:
@@ -1312,10 +1334,14 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
             return False, None
         # "Indigenous" qualifies African peoples only ("Indigenous African",
         # NCT00080119): beside another Black name it may name a people who
-        # are not Black ("Indigenous Caribbean"; a review finding).
-        if any(kind == "qualifier" and term == "indigenous" for kind, term, _w, _p in segment) and not all(
-                _black_subcategory_of(term) == "african" for kind, term, _w, _p in segment if kind == "name"):
-            return False, None
+        # are not Black ("Indigenous Caribbean"; a review finding). It
+        # qualifies the names in its own choice, not the label's other names
+        # ("Black (Indigenous African or Haitian)"; a review finding).
+        for kind, term, _w, position in segment:
+            if kind == "qualifier" and term == "indigenous":
+                qualified = _black_choice_names(tokens, position)
+                if not qualified or not all(_black_subcategory_of(name) == "african" for name in qualified):
+                    return False, None
         # Names given as examples describe a wider group and name no
         # subcategory: every name in a bracket holding an example word, or in
         # a bracket within it ("(..., Nigerian, Ethiopian, Somali, etc.)",

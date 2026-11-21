@@ -3263,6 +3263,9 @@ def test_a_label_naming_black_groups_only_is_read_as_black(label: str, subcatego
     ("Black (African or other Caribbean)", None),  # fictional
     ("Black (Nigerian or other African)", "african"),  # fictional
     ("Black (Haitian or other Black)", None),  # fictional: "other Black" widens Black itself
+    # "Indigenous" qualifies the names in its own choice (review finding).
+    ("Black (Indigenous African)", "african"),  # fictional
+    ("Black (Indigenous African or Haitian)", None),  # fictional
     ("Black (African/Caribbean)", None),  # fictional: each "/" choice names a group
     ("Black (including African, Caribbean descent)", None),  # a "," choice with a filler
     ("African, Caribbean, or non-specified Black", None),  # "non-specified" describes Black
@@ -3290,6 +3293,11 @@ def test_the_black_subcategory_comes_from_the_names(label: str, subcategory: Opt
     "Black, Indigenous",  # fictional
     "Indigenous Caribbean",  # fictional: Indigenous qualifies African peoples only (review finding)
     "Indigenous Black",  # fictional
+    "Black (Indigenous Caribbean)",  # fictional: in a bracket too
+    "Black (Indigenous Caribbean or African)",  # fictional: its own choice is Caribbean
+    "Indigenous Black (African)",  # fictional: its choice holds Black too
+    "Indigenous African (or Caribbean)",  # fictional: a bracket within its choice counts
+    "Black (Indigenous)",  # fictional: its choice names no group
     "Black or participants of all ethnicities",  # fictional: fillers only pooled (review finding)
     "all participants or Race: Black",  # fictional: "or" before the heading's colon pools (review finding)
     "Black (or Indigenous)",  # fictional: a choice in a bracket names another race (review finding)
@@ -3348,7 +3356,9 @@ def test_rejoining_african_american_keeps_the_other_slash_fragments() -> None:
         "white", None, ["slash_normalized"])
 
 
-@pytest.mark.parametrize("label", ["African/American Indian", "African/American-Indian", "African/American (Indian)"])
+@pytest.mark.parametrize("label", ["African/American Indian", "African/American-Indian", "African/American (Indian)",
+                                   "African/American [Indian]", "African/American/Indian",  # review finding
+                                   "African/American {Indian}", "African/American. Indian"])
 def test_african_slash_american_indian_is_not_rejoined(label: str) -> None:
     """"American Indian" after the slash names a second race, with or without
     punctuation, and the label keeps its slash reading (fictional; a review
