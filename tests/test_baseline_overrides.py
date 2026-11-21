@@ -5,8 +5,8 @@ share two cohorts; its Total column counts people twice. Read through the
 exception, BG000 and BG004 are dropped, the Total column is the sum of the six
 kept groups (187,700) and rows differing only by their comparison tag are
 merged. The fixture is the trial's record as posted in the 2026-11-15 snapshot
-(groups, denominators and the Age, Sex/Gender, Ethnicity and Race/Ethnicity
-measures, verbatim).
+(the whole baseline module, verbatim), whose measures' sha256 the exception
+pins: any edit of the module reads the trial as posted.
 """
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from src.extract_all import extract_demographics_from_study  # noqa: E402
 
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "nct07465926_baseline.json")
 KEPT = ["BG001", "BG002", "BG003", "BG005", "BG006", "BG007"]
+PARTITIONS = {"Age, Customized", "Sex/Gender, Customized", "Ethnicity (NIH/OMB)", "Race/Ethnicity, Customized"}
 
 
 @pytest.fixture()
@@ -63,8 +64,11 @@ def test_every_total_is_the_sum_of_the_kept_groups(study: dict[str, Any]) -> Non
                 values = _values(cat)
                 assert list(values) == KEPT + ["BG008"], (measure["title"], cat)
                 assert values["BG008"] == sum(values[g] for g in KEPT), (measure["title"], cat)
-        total = sum(_values(cat)["BG008"] for cls in measure["classes"] for cat in cls["categories"])
-        assert total == 187700, measure["title"]
+        # The four tables that divide the participants among their rows sum to
+        # them; the others (CKD, Hypertension, ...) count one condition.
+        if measure["title"] in PARTITIONS:
+            total = sum(_values(cat)["BG008"] for cls in measure["classes"] for cat in cls["categories"])
+            assert total == 187700, measure["title"]
 
 
 def test_rows_differing_only_by_their_comparison_are_merged(study: dict[str, Any]) -> None:
@@ -146,6 +150,27 @@ def test_a_measure_that_is_not_a_count_reads_the_trial_as_posted(study: dict[str
 
 def test_a_value_that_is_not_a_count_reads_the_trial_as_posted(study: dict[str, Any]) -> None:
     _measure(study, "Race/Ethnicity, Customized")["classes"][0]["categories"][0]["measurements"][1]["value"] = "NA"
+    _not_applied(study)
+
+
+def test_the_fixture_is_the_pinned_module(study: dict[str, Any]) -> None:
+    spec = bo.OVERRIDES["NCT07465926"]
+    assert bo.measures_sha256(_module(study)) == spec["measures_sha256"]
+    assert len(_module(study)["measures"]) == 11
+
+
+def test_a_missing_row_reads_the_trial_as_posted(study: dict[str, Any]) -> None:
+    """Without "White (Comparison 1)", White would be 113,521 and the race rows
+    175,927 (a review finding)."""
+    race = _measure(study, "Race/Ethnicity, Customized")
+    race["classes"] = [c for c in race["classes"] if c["title"] != "White (Comparison 1)"]
+    _not_applied(study)
+
+
+def test_a_changed_value_reads_the_trial_as_posted(study: dict[str, Any]) -> None:
+    """A registry correction is read as posted until the exception is
+    reviewed again."""
+    _measure(study, "Sex/Gender, Customized")["classes"][0]["categories"][0]["measurements"][1]["value"] = "9532"
     _not_applied(study)
 
 

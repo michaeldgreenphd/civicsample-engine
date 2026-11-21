@@ -1,5 +1,5 @@
 {
- "_source": "ClinicalTrials.gov API v2 record of NCT07465926 as posted in the 2026-11-15 snapshot (re-fetched 2026-11-18): identification, enrollment and the baseline module's groups, denominators and four of its eleven measures (Age, Sex/Gender, Ethnicity, Race/Ethnicity), verbatim.",
+ "_source": "ClinicalTrials.gov API v2 record of NCT07465926 as posted in the 2026-11-15 snapshot (re-fetched 2026-11-18): identification, enrollment and the whole baseline module (population description, groups, denominators and all eleven measures), verbatim. src/baseline_overrides.py pins the sha256 of its measures.",
  "protocolSection": {
   "identificationModule": {
    "nctId": "NCT07465926"
@@ -915,6 +915,454 @@
        "categories": [
         {
          "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "3142"}, {"groupId": "BG007", "value": "3101"}, {"groupId": "BG008", "value": "6243"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "CKD",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "CKD (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "1519"}, {"groupId": "BG001", "value": "1535"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "3054"}]
+        }
+       ]
+      },
+      {
+       "title": "CKD (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "4429"}, {"groupId": "BG003", "value": "4103"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "8532"}]
+        }
+       ]
+      },
+      {
+       "title": "CKD (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "2099"}, {"groupId": "BG005", "value": "2087"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "4186"}]
+        }
+       ]
+      },
+      {
+       "title": "CKD (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "4065"}, {"groupId": "BG007", "value": "3819"}, {"groupId": "BG008", "value": "7884"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Hypertension",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Hypertension (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "11197"}, {"groupId": "BG001", "value": "11270"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "22467"}]
+        }
+       ]
+      },
+      {
+       "title": "Hypertension (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "27169"}, {"groupId": "BG003", "value": "26598"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "53767"}]
+        }
+       ]
+      },
+      {
+       "title": "Hypertension (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "12624"}, {"groupId": "BG005", "value": "12702"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "25326"}]
+        }
+       ]
+      },
+      {
+       "title": "Hypertension (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "23741"}, {"groupId": "BG007", "value": "23336"}, {"groupId": "BG008", "value": "47077"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Dyslipidemia",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Dyslipidemia (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "10176"}, {"groupId": "BG001", "value": "10269"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "20445"}]
+        }
+       ]
+      },
+      {
+       "title": "Dyslipidemia (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "25292"}, {"groupId": "BG003", "value": "24881"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "50173"}]
+        }
+       ]
+      },
+      {
+       "title": "Dyslipidemia (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "11629"}, {"groupId": "BG005", "value": "11676"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "23305"}]
+        }
+       ]
+      },
+      {
+       "title": "Dyslipidemia (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "22290"}, {"groupId": "BG007", "value": "21982"}, {"groupId": "BG008", "value": "44272"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Tobacco Use",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Tobacco Use (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "451"}, {"groupId": "BG001", "value": "449"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "900"}]
+        }
+       ]
+      },
+      {
+       "title": "Tobacco Use (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "1070"}, {"groupId": "BG003", "value": "1021"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "2091"}]
+        }
+       ]
+      },
+      {
+       "title": "Tobacco Use (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "512"}, {"groupId": "BG005", "value": "499"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "1011"}]
+        }
+       ]
+      },
+      {
+       "title": "Tobacco Use (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "888"}, {"groupId": "BG007", "value": "856"}, {"groupId": "BG008", "value": "1744"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "BMI ≥30 kg/m2",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "BMI ≥30 kg/m2 (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "11362"}, {"groupId": "BG001", "value": "11392"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "22754"}]
+        }
+       ]
+      },
+      {
+       "title": "BMI ≥30 kg/m2 (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "27538"}, {"groupId": "BG003", "value": "26929"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "54467"}]
+        }
+       ]
+      },
+      {
+       "title": "BMI ≥30 kg/m2 (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "11241"}, {"groupId": "BG005", "value": "11297"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "22538"}]
+        }
+       ]
+      },
+      {
+       "title": "BMI ≥30 kg/m2 (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "23274"}, {"groupId": "BG007", "value": "23009"}, {"groupId": "BG008", "value": "46283"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "SBP ≥140 mmHg",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "SBP ≥140 mmHg (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "7996"}, {"groupId": "BG001", "value": "8065"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "16061"}]
+        }
+       ]
+      },
+      {
+       "title": "SBP ≥140 mmHg (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "17999"}, {"groupId": "BG003", "value": "17376"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "35375"}]
+        }
+       ]
+      },
+      {
+       "title": "SBP ≥140 mmHg (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "8627"}, {"groupId": "BG005", "value": "8600"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "17227"}]
+        }
+       ]
+      },
+      {
+       "title": "SBP ≥140 mmHg (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "14951"}, {"groupId": "BG007", "value": "14476"}, {"groupId": "BG008", "value": "29427"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "HbA1c ≥7%",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "HbA1c ≥7% (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "10002"}, {"groupId": "BG001", "value": "10109"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "20111"}]
+        }
+       ]
+      },
+      {
+       "title": "HbA1c ≥7% (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "21778"}, {"groupId": "BG003", "value": "22018"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "43796"}]
+        }
+       ]
+      },
+      {
+       "title": "HbA1c ≥7% (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "10331"}, {"groupId": "BG005", "value": "10327"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "20658"}]
+        }
+       ]
+      },
+      {
+       "title": "HbA1c ≥7% (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "18847"}, {"groupId": "BG007", "value": "18758"}, {"groupId": "BG008", "value": "37605"}]
         }
        ]
       }

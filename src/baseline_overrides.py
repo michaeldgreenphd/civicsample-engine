@@ -2,7 +2,7 @@
 
 A few trials post a baseline module that no general rule reads correctly and
 that one documented exception can. Each exception here names the trial, the
-posted structure it was written for (pinned, so a registry update cannot be
+posted module it was reviewed against (pinned, so a registry update cannot be
 read under a stale rule), what it changes and why. apply_baseline_override()
 returns the study as the engine's own demographic readers see it; every other
 reader, and the record's metadata, keep the study as posted.
@@ -14,11 +14,18 @@ src.sex_gender_analysis) or its retained raw measures: that parser is vendored
 from the manuscript (AGENTS.md), and a change to what it reads goes into the
 manuscript bundle first.
 
+Pinning. An exception applies only to the module it was reviewed against:
+the baseline groups (id and title) and denominators as posted, and the sha256
+of the measures as posted (every title, class, row, group and value; JSON
+with sorted keys, no spaces, UTF-8). A registry edit of any of them, a row or
+a measurement removed, added or changed, switches the exception off until it
+is reviewed again and its pins updated. Checking the structure piece by
+piece left gaps (a row missing a kept group, or a whole row missing, passed
+and was summed as zero; review findings); the hash leaves none.
+
 Provenance. A block read through an exception carries the flag
-baseline_override. When the posted module no longer matches the pinned
-structure (groups, denominators, a measure that does not count participants,
-a value that is not a count, or a row that does not post each pinned group
-exactly once), the exception is not applied, the module is read as posted, the
+baseline_override. When the posted module is not the pinned one, the
+exception is not applied, the module is read as posted, the
 blocks carry baseline_override_not_applied and a warning is logged: absence
 of the reading is recorded, never silent.
 
@@ -68,6 +75,8 @@ ethnicity Hispanic or Latino 20,548, not Hispanic or Latino 135,074, unknown
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -99,6 +108,7 @@ OVERRIDES: Dict[str, Dict[str, Any]] = {
         ),
         "denoms": {"BG000": 17146, "BG001": 17146, "BG002": 40152, "BG003": 40152, "BG004": 19202,
                    "BG005": 19202, "BG006": 35524, "BG007": 35524, "BG008": 224048},
+        "measures_sha256": "e9af306917821243e6e2d54dc3358276ed6bfba0d9ae6182ab5a33bf115d0789",
         "drop": ("BG000", "BG004"),
         "total": "BG008",
     },
@@ -131,30 +141,23 @@ def _posted_denoms(module: dict) -> Dict[str, Optional[int]]:
     return counts
 
 
+def measures_sha256(module: dict) -> str:
+    """The sha256 of a baseline module's measures as posted: JSON with sorted
+    keys, no spaces, UTF-8 (module docstring, "Pinning")."""
+    text = json.dumps(module.get("measures") or [], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def _mismatch(module: dict, spec: Dict[str, Any]) -> Optional[str]:
-    """Why the posted module is not the structure the exception was written
-    for, or None when it is."""
+    """Why the posted module is not the one the exception was reviewed
+    against, or None when it is."""
     groups = tuple((g.get("id") or g.get("groupId"), g.get("title")) for g in module.get("groups") or [])
     if groups != spec["groups"]:
         return "baseline groups differ from the pinned ones"
     if _posted_denoms(module) != spec["denoms"]:
         return "baseline denominators differ from the pinned ones"
-    group_ids = sorted(gid for gid, _title in spec["groups"])
-    for measure in module.get("measures") or []:
-        if measure.get("paramType") != "COUNT_OF_PARTICIPANTS":
-            return f"measure {measure.get('title')!r} does not count participants"
-        for cls in measure.get("classes") or []:
-            for cat in cls.get("categories") or []:
-                measurements = cat.get("measurements") or []
-                # Every row posts each pinned group exactly once: a missing
-                # kept group would otherwise be summed as zero (a review
-                # finding), a repeated one twice.
-                if sorted(m.get("groupId") for m in measurements) != group_ids:
-                    return (f"measure {measure.get('title')!r} has a row that does not post "
-                            f"each pinned group exactly once")
-                for m in measurements:
-                    if _count(m.get("value")) is None:
-                        return f"measure {measure.get('title')!r} posts a value that is not a count"
+    if measures_sha256(module) != spec["measures_sha256"]:
+        return "baseline measures differ from the pinned ones (sha256)"
     return None
 
 
