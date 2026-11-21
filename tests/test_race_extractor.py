@@ -4019,13 +4019,19 @@ def test_rows_of_a_sex_titled_race_table_carry_a_source() -> None:
     # "unknown or not reported" is one category name: "/" joins the rest.
     ("Multiracial/other/unknown or not reported", {"more_than_one_race", "other", "unknown_not_reported"}, True),
     ("Caucasian/More than One Race", {"white", "more_than_one_race"}, True),
-    ("Black/Asian/Other Race, Minority", {"black_african_american", "asian", "other"}, False),
+    # ", Minority" names nothing: "/" joins the alternatives; "Other" makes it a pool.
+    ("Black/Asian/Other Race, Minority", {"black_african_american", "asian", "other"}, True),
     ("White, Asian, or Hispanic", {"white", "asian"}, False),
     ("Black or Asian American", {"black_african_american", "asian"}, False),
     ("Black/AA & Other", {"black_african_american", "other"}, False),
     ("non-Hispanic Black or Black/Mixed Race", {"black_african_american", "more_than_one_race"}, False),
     ("Asian/American Indian/Pacific (non-Hispanic)", {"asian", "american_indian_alaska_native"}, True),
     ("Hawaiian or Pacific Islander/ White", {"native_hawaiian_pacific_islander", "white"}, True),
+    # "and" joins the race alternatives to an ethnicity term, not two races
+    # (a review finding).
+    ("White/Asian and Hispanic", {"white", "asian"}, True),
+    ("White/Asian, Hispanic", {"white", "asian"}, True),
+    ("Non-Hispanic, other/multiple races", {"other", "more_than_one_race"}, True),
     # The residual row with its members in brackets.
     ("Not Hispanic, Other (incl. Native American, Asian/Pacific Islander, More than one)",
      {"other", "asian", "native_hawaiian_pacific_islander"}, False),
@@ -4083,6 +4089,13 @@ def test_a_slash_pool_beside_another_race_and_other() -> None:
     neither alone."""
     race = _pooled_table([("Black", 215), ("White/Asian", 15), ("Other", 2)], 232)
     assert _nonzero(race) == {BLACK: 215, "other": 17}
+
+
+def test_a_pool_joined_to_an_ethnicity_by_and_is_not_its_first_race() -> None:
+    """"White/Asian and Hispanic" beside a Black row: the "and" joins an
+    ethnicity, so the row is the White/Asian pool (a review finding)."""
+    race = _pooled_table([("Black", 40), ("White/Asian and Hispanic", 10)], 50)
+    assert _nonzero(race) == {BLACK: 40, "other": 10}
 
 
 def test_or_lists_are_pools_even_beside_their_races() -> None:

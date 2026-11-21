@@ -4444,9 +4444,13 @@ def _west_asian_template_rows(texts: List[str], mappings: List[Optional[Dict]]) 
 # names nothing. The row pools its categories when
 #   - the alternatives name two or more different categories, at least one a
 #     race or more than one race, and the row is not a list joined by "&",
-#     "+" or "and" naming races only (a combination, the rule for rows naming
-#     two or more races: "Black, Native American, and Creole" is not read
-#     here); or
+#     "+" or "and" whose items name races only (a combination, the rule for
+#     rows naming two or more races: "Black, Native American, and Creole" is
+#     not read here). A list item naming nothing, an ethnicity term or text
+#     the vocabulary does not hold, is passed over: when one item alone names
+#     something, it is the row's text ("White/Asian and Hispanic" is the
+#     "White/Asian" pool, not a combination joined by "and"; a review
+#     finding); or
 #   - the text outside the brackets names only a residual category and the
 #     brackets name a race: the residual row with its members listed, "Not
 #     Hispanic, Other (incl. Native American, Asian/Pacific Islander, More
@@ -4518,6 +4522,8 @@ _POOLED_ONE_CATEGORY = (
 _POOLED_SPLIT_RX = re.compile(r"\s*(?:/|,|;|&|\+|(?<![a-z])(?:or|and)(?![a-z]))\s*", re.IGNORECASE)
 # The joiners of a combination (block comment "Rows naming two or more races").
 _POOLED_AND_RX = re.compile(r"&|\+|(?<![a-z])and(?![a-z])", re.IGNORECASE)
+# The items of a list: "A, B, and C", "White/Asian and Hispanic".
+_POOLED_LIST_SPLIT_RX = re.compile(r"\s*(?:,|;|&|\+|(?<![a-z])and(?![a-z]))\s*", re.IGNORECASE)
 # Any joiner other than "/".
 _POOLED_NOT_SLASH_RX = re.compile(r",|;|&|\+|(?<![a-z])(?:or|and)(?![a-z])", re.IGNORECASE)
 _RESIDUAL_CATEGORIES = frozenset({"other", "unknown_not_reported"})
@@ -4566,12 +4572,19 @@ def _pooled_categories(text: str) -> Optional[Tuple[FrozenSet[str], bool]]:
                 return named_outside | inside, False
             return None
         text = outside
+    # The list items that name something; one alone is the row's text, the
+    # others being an ethnicity term or text that names nothing ("White/Asian
+    # and Hispanic" is "White/Asian"; a review finding).
+    naming = [item for item in _POOLED_LIST_SPLIT_RX.split(text) if _named_categories(item)]
+    if len(naming) == 1:
+        text = naming[0]
     named = _named_categories(text)
     if len(named) < 2 or not named - _RESIDUAL_CATEGORIES:
         return None
     if named == {"asian", "native_hawaiian_pacific_islander"} and asian_pacific_grouped_label(text):
         return None
-    if _POOLED_AND_RX.search(text) and not named & (_RESIDUAL_CATEGORIES | {"more_than_one_race"}):
+    if (len(naming) >= 2 and _POOLED_AND_RX.search(text)
+            and not named & (_RESIDUAL_CATEGORIES | {"more_than_one_race"})):
         return None  # a combination joined by "and": the rule for rows naming two or more races
     return named, _POOLED_NOT_SLASH_RX.search(text) is None
 
