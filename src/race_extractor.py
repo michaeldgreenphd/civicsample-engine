@@ -552,6 +552,472 @@ def _european_subcategory(groups: List[List[str]]) -> str:
         return "european_western"
     return "european"
 
+
+# ── Asian labels ───────────────────────────────────────────────────────────
+#
+# OMB's 1997 Asian category, the one this engine counts (block comment
+# "Middle Eastern or North African labels"), is the original peoples of the
+# Far East, Southeast Asia or the Indian subcontinent, with Cambodia, China,
+# India, Japan, Korea, Malaysia, Pakistan, the Philippine Islands, Thailand
+# and Vietnam as its examples. The 2024 revision keeps Asian as a minimum
+# category and names Central or East Asia, Southeast Asia and South Asia
+# instead, with Pakistani, Hmong and Afghan among its examples. Both are read
+# from search summaries: the Federal Register pages could not be fetched
+# here, so the 1997 wording is paraphrased, not quoted.
+#
+# The vocabulary held "Asian", national origins ("Chinese", "Pakistani") and
+# the three regions ("East Asian", "South Asian", "Southeast Asian"). Wordings
+# qualifying or restating those matched nothing. They were counted as other:
+# "Asian (Japanese)" (2,181 participants in 19 trials, in the 2026-11-15
+# inputs), "Asian-Chinese", "Asian: East", "Other Asian" (3,503 in 35),
+# "Asian, Bangladeshi" (44,567, NCT00860470), "Asian or Asian American". Or
+# they were quarantined as not race, their participants then balanced to
+# unknown: "Sri Lankan" (223,865 in 4 trials; NCT01146496's only race row,
+# 223,861, the count of its enrollment country), "Han" and its variants,
+# "Malay", "Oriental" (1,218 in 44), "Nepalese". "Asian American" was
+# fuzzy-matched to "African American" and counted as Black (84 in 18 trials;
+# "Asian-American" 8 in 4).
+#
+# Method (asian_label; after the slash fragments and the European labels, so
+# a label they read keeps that reading, and before the fuzzy match). A
+# label cleaned as for European labels maps to Asian, flagged asian_label,
+# when it is made only of these terms, with at least one Asian name:
+#   - names, each with the vocabulary's subcategory key (_ASIAN_NAMES):
+#     Asian(s), Asian American(s), American Asian, Oriental(s) (no key); Asian
+#     Indian, East Indian; Chinese, Han (the majority people of China);
+#     Japanese; (South) Korean; Vietnamese; Filipino; Pakistani; Bangladeshi;
+#     Sri Lankan, Nepalese, Nepali, Desi (south_asian); Thai; Cambodian;
+#     Laotian; Malaysian; Indonesian, Javanese; Taiwanese; Burmese, Hmong,
+#     Malay, Singaporean (southeast_asian); the Indian subcontinent, OMB's own
+#     wording (south_asian). "Indian" and "Indian American" name a group only
+#     when the label names another Asian group or place: alone, "Indian" is
+#     also the American Indian. A label holding "West Indian" (the
+#     Caribbean) is not read;
+#   - beside a name only: places (China, India, Japan, ..., Asia), which
+#     describe ("Japanese from Japan"); directions (North East, South East,
+#     East, South, Central, West); "Other"; negations (non, not, other than,
+#     except, excluding), which take the names after them out of the reading
+#     ("Asian (other than Chinese or Japanese)" is Asian; "Non-Chinese" alone
+#     is not read); example words (e.g., including, etc.);
+#   - fillers: descent, origin(s), ancestry, background, ethnic(ity), race,
+#     people(s), population(s), subjects, participants, nationality, only,
+#     of, from, in, i.e., total, number.
+# A label beginning or ending with a join is not read. As for European
+# labels, each alternative must name a group on its own (_asian_alternatives),
+# and a bracket describes its alternative rather than adding alternatives
+# ("Asian (China, Philippines, Vietnam, Korea, etc.)"). The subcategory:
+# within an alternative, the term every other one refines ("East Asian
+# (Chinese)": chinese), else the region they all lie in; across alternatives,
+# theirs when all agree, else the region they all lie in when none is
+# unqualified ("Indian or Pakistani": south_asian), else none ("Asian or Asian
+# American", "East/South East Asian"). Terms given as examples, terms in a
+# bracket holding "other" and a Central direction name no subcategory
+# (Central Asia has no key; "Central/South Asian Heritage" has none).
+#
+# West Asian. In Eli Lilly's race template "West Asian" is the Indian
+# subcontinent: of the 60 Lilly trials posting a West Asian wording (of 74
+# in all), 14 spell it out ("West Asian (Indian sub-continent)" and three
+# other spellings), and none posts a South Asian or Indian row. Elsewhere it
+# is the Middle East: beside "South Asian" in Imperial College, Novartis and
+# Rutgers tables, and Iranian or Afghan in the Canadian census categories VBI
+# posts. A label naming the subcontinent is read as south_asian by
+# asian_label. "West Asian" or "Western Asian" alone is read so only in a
+# table that follows the template (_west_asian_template_rows): some row is
+# read as East or Southeast Asian, every other Asian row is one of those,
+# and no row names the Middle East, North Africa, Iran, Afghanistan, Turkey
+# or South Asia. Such rows are flagged west_asian_template, confidence
+# medium. Other West-qualified labels ("South or West Asian") are not read.
+#
+# One table may post two classifications of the same participants: "Chinese"
+# 44 and "Han" 44 of 44 (NCT05135871), "Asian" 32 and "Japanese Ancestry" 32
+# of 32 (NCT00661141), "Asian (Japanese)" 4, "Asian (Except for Japanese)" 0
+# and "Asian (Total)" 4 of 18 (NCT04227600). _asian_breakdown_rows leaves such
+# a breakdown out of the counts (quarantined, reason asian_breakdown) when the
+# table's excess over its population is exactly the breakdown, reading a
+# race-by-sex or race-by-group table one sex or group at a time (review
+# findings; no such table in the 2026-11-15 inputs).
+#
+# What it does not do. "Asian or Pacific Islander" and other wordings joining
+# Asian to the Pacific are the 1977 grouped category, left as they were
+# ("Asian American and Pacific Islander" included, through
+# _asian_joined_to_nhpi). The UK census wordings ("Asian or Asian British"
+# 64,897 in 17 trials, beside "Black or Black British" and "White British")
+# are left for a rule of their own. Rows crossing Asian with something else
+# are not read: comparisons (NCT07465926 crosses every race with its
+# comparison), ages, phases, parts, arms, generations, enrollment region.
+# Neither are pooled labels ("Asian or Other", "Other (Asian, multiracial,
+# unknown)"), "Non-Asian", mixed ones ("Asian - Mixed Race", "Mixed Asian"),
+# the Chinese minorities posted beside Han (Zhuang, Hui, Uyghur and others,
+# about 150 participants), "Afghan (Asian)" (25; Afghan is among the 2024
+# examples, not clearly within the 1997 regions), or "Indian" in no Asian
+# company ("Indian ancestry", "Indian (American)"). Asian national origins
+# alone are read, as the
+# vocabulary already read "Chinese" and "Pakistani" and as OMB's definition
+# names them; European nationalities alone are not (block comment "European
+# labels").
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
+# the European labels: Asian +310,231; other -71,640; unknown -10,364
+# (unknown_inferred -10,532, unknown_ethnicity_only +168); Black -92 (the
+# "Asian American" rows); more than one race +2 ("White and
+# Asian-Non-Japanese", "White, Asian-Non-Japanese", whose Asian part now
+# reads). 32 trials now report race, with 228,137 participants, 223,861 of
+# them in NCT01146496. Rows read by asian_label or the West Asian template:
+# 231 labels, 312,912 participants in 547 trials (west_asian_template 803 in
+# 41 trials). Subcategories: south_asian +226,792, south_asian_bangladeshi
+# +44,567, chinese +16,081, japanese +5,038, southeast_asian +4,405,
+# east_asian +1,720; "Javanese" moves 90 from japanese to
+# southeast_asian_indonesian; heritage rows naming "South East Asian" gain
+# southeast_asian (254). Race blocks over their population stay 330:
+# NCT04227600 leaves; NCT05597787 joins (Malay 28, Chinese 35, Indian 24 and
+# Other 1 of 78, as posted). Seven combined classifications now read every
+# race row ("Oriental", "chinese han"), so the ethnicity extractor counts
+# their race rows as not Hispanic: 3,984 participants from unknown. No sex
+# block and no sex/gender-titled gate changes.
+_ASIAN_NAMES = (
+    # (pattern, subcategory), longest first: the vocabulary's keys, so a name
+    # read here lands where the same name alone already lands.
+    (r"asian\s+indians?|east\s+indians?", "south_asian_indian"),
+    (r"asian\s+americans?|american\s+asians?|asians?", None),
+    (r"orientals?|oriential", None),
+    (r"chinese|han", "chinese"),
+    (r"japanese", "japanese"),
+    (r"(?:south\s+)?koreans?", "korean"),
+    (r"vietnamese", "vietnamese"),
+    (r"filipin(?:o|a)s?", "filipino"),
+    (r"pakistanis?", "south_asian_pakistani"),
+    (r"bangladeshis?", "south_asian_bangladeshi"),
+    (r"sri\s+lankans?|nepal(?:ese|is?)|desis?", "south_asian"),
+    (r"thais?", "southeast_asian_thai"),
+    (r"cambodians?", "southeast_asian_cambodian"),
+    (r"laotians?", "southeast_asian_laotian"),
+    (r"malaysians?", "southeast_asian_malaysian"),
+    (r"indonesians?|javanese", "southeast_asian_indonesian"),
+    (r"taiwanese", "east_asian_taiwanese"),
+    (r"burmese|hmong|malays?|singaporeans?", "southeast_asian"),
+)
+_ASIAN_PLACES = (
+    (r"(?:mainland\s+)?china(?:\s+mainland)?", "chinese"),
+    (r"japan", "japanese"),
+    (r"(?:south\s+)?korea", "korean"),
+    (r"india", "south_asian_indian"),
+    (r"pakistan", "south_asian_pakistani"),
+    (r"bangladesh", "south_asian_bangladeshi"),
+    (r"sri\s+lanka|nepal", "south_asian"),
+    (r"viet\s*nam", "vietnamese"),
+    (r"phil+ip+ines", "filipino"),
+    (r"thailand", "southeast_asian_thai"),
+    (r"taiwan", "east_asian_taiwanese"),
+    (r"malaysia", "southeast_asian_malaysian"),
+    (r"indonesia", "southeast_asian_indonesian"),
+    (r"cambodia", "southeast_asian_cambodian"),
+    (r"laos", "southeast_asian_laotian"),
+    (r"myanmar|burma|singapore", "southeast_asian"),
+    (r"asia", None),
+)
+_ASIAN_DIRECTIONS = (
+    (r"north\s*east(?:ern)?", "east_asian"),
+    (r"south\s*east(?:ern)?", "southeast_asian"),
+    (r"east(?:ern)?", "east_asian"),
+    (r"south(?:ern)?", "south_asian"),
+    (r"central", None),
+    (r"west(?:ern)?", None),
+)
+# The region a subgroup key lies in, for reading two subgroups together.
+_ASIAN_REGION = {
+    "chinese": "east_asian", "japanese": "east_asian", "korean": "east_asian",
+    "east_asian_taiwanese": "east_asian", "vietnamese": "southeast_asian",
+    "filipino": "southeast_asian", "south_asian_indian": "south_asian",
+    "south_asian_pakistani": "south_asian", "south_asian_bangladeshi": "south_asian",
+    "southeast_asian_thai": "southeast_asian", "southeast_asian_cambodian": "southeast_asian",
+    "southeast_asian_laotian": "southeast_asian", "southeast_asian_malaysian": "southeast_asian",
+    "southeast_asian_indonesian": "southeast_asian",
+}
+_ASIAN_REGIONS = frozenset({"east_asian", "south_asian", "southeast_asian"})
+
+
+def _asian_alternation(table: Tuple[Tuple[str, Optional[str]], ...]) -> str:
+    return "|".join(pattern for pattern, _subcategory in table)
+
+
+_ASIAN_TOKEN_RX = re.compile(
+    r"(?:(?P<west_indian>west\s+indians?)|"
+    r"(?P<subcontinent>(?:the\s+)?(?:indian\s+)?sub\s*continent)|"
+    rf"(?P<name>{_asian_alternation(_ASIAN_NAMES)})|"
+    r"(?P<indian>indian\s+americans?|indians?)|"
+    rf"(?P<place>{_asian_alternation(_ASIAN_PLACES)})|"
+    r"(?P<negation>other\s+than|except(?:\s+for)?|excluding|non|not|no)|"
+    r"(?P<other>any\s+other|others?)|"
+    rf"(?P<direction>{_asian_alternation(_ASIAN_DIRECTIONS)})|"
+    r"(?P<example>e\s*g|including|includes|etc)|"
+    r"(?P<filler>descent|decent|origins?|ancestry|ancestral|background|ethnicity|ethnic|ethinic|"
+    r"race|racial|peoples?|populations?|subjects?|participants?|nationality|only|of|from|in|"
+    r"i\s*e|total|number)|"
+    r"(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
+    re.IGNORECASE)
+# Joins that set two groups side by side, as for European labels
+# (_EUROPEAN_ALTERNATIVE_JOINS); ":", dashes and brackets describe.
+_ASIAN_ALTERNATIVE_JOINS = _EUROPEAN_ALTERNATIVE_JOINS
+
+
+def _asian_subcategory_of(kind: str, text: str) -> Optional[str]:
+    """The subcategory a name, place, direction or Indian-subcontinent token
+    names (the tables above); None for one naming the whole category."""
+    if kind == "subcontinent":
+        return "south_asian"
+    if kind == "indian":
+        return "south_asian_indian"
+    table = {"name": _ASIAN_NAMES, "place": _ASIAN_PLACES, "direction": _ASIAN_DIRECTIONS}.get(kind)
+    for pattern, subcategory in table or ():
+        if re.fullmatch(pattern, text, re.IGNORECASE):
+            return subcategory
+    return None
+
+
+def _asian_tokens(label: str) -> Optional[List[Tuple[str, str, int]]]:
+    """(kind, text, bracket depth) of each term of a cleaned label (cleaned as
+    for european_label), or None when a term is not one of the rule's."""
+    text = unicodedata.normalize("NFKD", clean_demographic_label(label).lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
+    text = re.sub(r"[.'’]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    tokens: List[Tuple[str, str, int]] = []
+    depth = 0
+    position = 0
+    while position < len(text):
+        match = _ASIAN_TOKEN_RX.match(text, position)
+        if match is None or match.end() == position:
+            return None
+        kind, term = match.lastgroup, match.group(0).lower()
+        if kind == "west_indian":
+            return None  # the Caribbean, not a direction of Asia
+        if kind == "mark" and term == "(":
+            tokens.append(("open", term, depth))
+            depth += 1
+        elif kind == "mark" and term == ")":
+            depth -= 1
+            if depth < 0:
+                return None
+            tokens.append(("close", term, depth))
+        else:
+            tokens.append((kind, re.sub(r"\s+", " ", term), depth))
+        position = match.end()
+        while position < len(text) and text[position].isspace():
+            position += 1
+    return tokens
+
+
+def _asian_reading(label: str) -> Optional[Tuple[str, Optional[str]]]:
+    """("asian", subcategory) when a label names Asian groups only (block
+    comment above); ("west", None) when it would, but a top-level alternative
+    is qualified by West and nothing names the Indian subcontinent (read by
+    the table, _west_asian_template_rows); else None."""
+    tokens = _asian_tokens(label)
+    if not tokens:
+        return None
+    if tokens[0][0] in ("join", "mark", "close") or tokens[-1][0] in ("join", "mark", "open"):
+        return None  # a piece of a longer label
+    alternatives = _asian_alternatives(tokens)
+    if alternatives is None:
+        return None
+    has_subcontinent = any(kind == "subcontinent" for kind, _text, _depth in tokens)
+    if any(west for _subcategory, west in alternatives) and not has_subcontinent:
+        return "west", None
+    return "asian", _asian_label_subcategory([subcategory for subcategory, _west in alternatives])
+
+
+def asian_label(label: str) -> Tuple[bool, Optional[str]]:
+    """(True, subcategory) when a label names Asian groups only, by the terms
+    of the block comment above; else (False, None).
+
+      "Asian (Japanese)"                         -> (True, "japanese")
+      "Asian: East"                              -> (True, "east_asian")
+      "East/South East Asian"                    -> (True, None)
+      "Han Chinese"                              -> (True, "chinese")
+      "Sri Lankan"                               -> (True, "south_asian")
+      "Asian (other than Chinese or Japanese)"   -> (True, None)
+      "West Asian (Indian sub-continent)"        -> (True, "south_asian")
+      "West Asian"                               -> (False, None)
+      "Non-Asian"                                -> (False, None)
+      "Asian (Comparison 1)"                     -> (False, None)
+    """
+    reading = _asian_reading(label)
+    if reading is None or reading[0] != "asian":
+        return False, None
+    return True, reading[1]
+
+
+_ASIAN_NAMING_KINDS = frozenset({"name", "place", "subcontinent", "indian"})
+_ASIAN_SEGMENT_KINDS = _ASIAN_NAMING_KINDS | {"direction", "negation", "other", "example",
+                                              "open", "close"}
+
+
+def _asian_alternatives(tokens: List[Tuple[str, str, int]]
+                        ) -> Optional[List[Tuple[Optional[str], bool]]]:
+    """Read each top-level alternative of a label on its own, as for European
+    labels (_european_alternatives): the tokens are split at the joins in
+    _ASIAN_ALTERNATIVE_JOINS outside brackets; a bracket describes the
+    alternative it is in. Returns, for each alternative naming an Asian
+    group, (its subcategory, whether West qualifies it); None when an
+    alternative names no Asian group.
+
+    An alternative names a group when it holds a name, or the Indian
+    subcontinent, that no negation removes (_asian_segment_terms). "Indian"
+    names a group only when the label names another Asian group or place: it
+    is also the American Indian ("Indian (American)"). A place names no group;
+    it describes one ("Japanese from Japan", "Asian (China Mainland)"). Two
+    shapes cross a join: an alternative made only of directions shares the
+    noun of a neighbour that names one beside a direction ("East/South East
+    Asian", "Asian: Central/South"), and a bare "Asian" before a comma heads
+    what follows when the label has two alternatives ("Asian, Bangladeshi",
+    "Asian, Non-Japanese")."""
+    segments: List[List[Tuple[str, str, int]]] = [[]]
+    joins: List[str] = []
+    for kind, text, depth in tokens:
+        if depth == 0 and kind in ("join", "mark") and text in _ASIAN_ALTERNATIVE_JOINS:
+            segments.append([])
+            joins.append(text)
+        elif kind in _ASIAN_SEGMENT_KINDS:
+            segments[-1].append((kind, text, depth))
+    if (len(segments) == 2 and joins == [","]
+            and [(k, t) for k, t, _d in segments[0]] in ([("name", "asian")], [("name", "asians")])):
+        segments = [segments[0] + segments[1]]
+    company = any(kind != "direction" for segment in segments
+                  for kind, _text in _asian_segment_terms(segment, False)[0])
+
+    def only_directions(segment: List[Tuple[str, str, int]]) -> bool:
+        return bool(segment) and all(kind == "direction" for kind, _text, _depth in segment)
+
+    def names_group(segment: List[Tuple[str, str, int]]) -> bool:
+        return any(kind in ("name", "subcontinent", "indian")
+                   for kind, _text in _asian_segment_terms(segment, company)[0])
+
+    results: List[Tuple[Optional[str], bool]] = []
+    for i, segment in enumerate(segments):
+        if not segment:
+            continue  # ", or" leaves nothing between two joins
+        if only_directions(segment):
+            following = next((s for s in segments[i + 1:] if s and not only_directions(s)), None)
+            previous = next((s for s in reversed(segments[:i]) if s and not only_directions(s)), None)
+            if not ((following is not None and following[0][0] == "direction"
+                     and names_group(following))
+                    or (previous is not None and previous[-1][0] == "direction"
+                        and names_group(previous))):
+                return None
+        elif not names_group(segment):
+            return None
+        _named, specific = _asian_segment_terms(segment, company)
+        west = any(kind == "direction" and text.startswith("west") for kind, text in specific)
+        results.append((_asian_segment_subcategory(specific), west))
+    return results or None
+
+
+def _asian_segment_terms(segment: List[Tuple[str, str, int]], company: bool
+                         ) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+    """(named, specific) for one alternative: the (kind, text) of its names,
+    places and directions that no negation removes, and those of them not
+    given as examples. A negation ("non", "not", "other than", "except",
+    "excluding") removes what follows it in its bracket, or in the
+    alternative at the top level, brackets opened after it included ("Asian
+    (other than Chinese or Japanese)", "Asian Non Chinese"). An example word
+    ("e.g.", "including", "etc.") makes every term of its bracket an example
+    ("Asian (China, Philippines, Vietnam, Korea, etc.)"): it names members of
+    a wider group, not the group; so does "other" in a bracket ("Asian Eastern
+    (Chinese, other)"). "Indian" counts only when company is True
+    (the label names another Asian group or place)."""
+    # The bracket frame of each token: 0 at the top level, a new frame for
+    # each "(" (the brackets themselves belong to the frame around them).
+    frames: List[int] = []
+    parent: Dict[int, Optional[int]] = {0: None}
+    stack = [0]
+    for kind, _text, _depth in segment:
+        if kind == "open":
+            frames.append(stack[-1])
+            parent[len(parent)] = stack[-1]
+            stack.append(len(parent) - 1)
+        elif kind == "close":
+            if len(stack) > 1:
+                stack.pop()
+            frames.append(stack[-1])
+        else:
+            frames.append(stack[-1])
+    # "Other" in a bracket widens it as an example word does ("Asian Eastern
+    # (Chinese, other)"); at the top level it does not ("Other East Asian").
+    example_frames = {frame for (kind, _t, _d), frame in zip(segment, frames)
+                      if kind == "example" or (kind == "other" and frame != 0)}
+
+    def within(frame: Optional[int], marked: set) -> bool:
+        while frame is not None:
+            if frame in marked:
+                return True
+            frame = parent.get(frame)
+        return False
+
+    negated: set = set()
+    named: List[Tuple[str, str]] = []
+    specific: List[Tuple[str, str]] = []
+    for (kind, text, _depth), frame in zip(segment, frames):
+        if kind == "negation":
+            negated.add(frame)
+        elif kind in _ASIAN_NAMING_KINDS or kind == "direction":
+            if within(frame, negated) or (kind == "indian" and not company):
+                continue
+            named.append((kind, text))
+            if not within(frame, example_frames):
+                specific.append((kind, text))
+    return named, specific
+
+
+def _asian_refines(subcategory: str, other: str) -> bool:
+    """True when subcategory is other or a group within it ("chinese" in
+    "east_asian")."""
+    return subcategory == other or _ASIAN_REGION.get(subcategory) == other
+
+
+def _asian_region(subcategory: Optional[str]) -> Optional[str]:
+    if subcategory in _ASIAN_REGIONS:
+        return subcategory
+    return _ASIAN_REGION.get(subcategory) if subcategory is not None else None
+
+
+def _asian_segment_subcategory(specific: List[Tuple[str, str]]) -> Optional[str]:
+    """The subcategory of one alternative from the terms that specify it: the
+    one term every other refines ("East Asian (Chinese)" -> chinese); else the
+    region all of them lie in ("South Asian (India, Pakistan, ...)" with an
+    example word, or "Indian, Pakistani" in one bracket -> south_asian); else
+    None ("Asian", "East - South East Asian")."""
+    # Central Asia has no key of its own, and "Central/South Asian Heritage"
+    # has none (block comment "Heritage-template labels"): a Central
+    # direction leaves the alternative unqualified ("Asian - Central South
+    # Asian").
+    if any(kind == "direction" and text == "central" for kind, text in specific):
+        return None
+    candidates = [sub for sub in (_asian_subcategory_of(kind, text) for kind, text in specific)
+                  if sub is not None]
+    if not candidates:
+        return None
+    for candidate in candidates:
+        if all(_asian_refines(candidate, other) for other in candidates):
+            return candidate
+    regions = {_asian_region(candidate) for candidate in candidates}
+    return regions.pop() if len(regions) == 1 and None not in regions else None
+
+
+def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str]:
+    """The subcategory of a label from those of its alternatives: theirs when
+    all agree; the region all of them lie in when none is unqualified
+    ("Indian or Pakistani" -> south_asian); else None ("Asian or Asian
+    American", "East/South East Asian")."""
+    if len(set(subcategories)) == 1:
+        return subcategories[0]
+    if None in subcategories:
+        return None
+    regions = {_asian_region(subcategory) for subcategory in subcategories}
+    return regions.pop() if len(regions) == 1 and None not in regions else None
+
+
 # ── American Indian or Alaska Native labels ────────────────────────────────
 #
 # OMB's 2024 revision of SPD 15 (Federal Register document 2024-06469, March
@@ -1540,6 +2006,20 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
         return {
             "omb_category": "white",
             "subcategory": european_subcategory,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A label naming Asian groups only (block comment "Asian labels"), after
+    # the slash fragments, so a label they read as Asian keeps that reading,
+    # and before the fuzzy match.
+    is_asian, asian_subcategory = asian_label(label_clean)
+    if is_asian:
+        flags.append("asian_label")
+        return {
+            "omb_category": "asian",
+            "subcategory": asian_subcategory,
             "confidence": "high",
             "original": label_clean,
             "flags": flags
@@ -2751,7 +3231,7 @@ def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[i
 # the 1977 Asian or Pacific Islander group under later names, or a row of
 # participants who reported both races (block comment "Native Hawaiian or
 # Pacific Islander labels").
-_ASIAN_PART_RX = re.compile(r"asians?", re.IGNORECASE)
+_ASIAN_PART_RX = re.compile(r"asians?|asian[\s\-]+americans?", re.IGNORECASE)
 _GROUPED_JOIN_RX = re.compile(r"\s*(?:&|\+|\band\b)\s*", re.IGNORECASE)
 _GROUPED_ASIAN_NHPI_FLAG = "asian_pacific_grouped"
 
@@ -2802,6 +3282,48 @@ def _grouped_asian_nhpi_rows(texts: List[str], mappings: List[Optional[Dict]]) -
     return candidates
 
 
+_WEST_ASIAN_ROW_RX = re.compile(r"west(?:ern)?[\s\-]+asians?", re.IGNORECASE)
+_WEST_ASIAN_TEMPLATE_FLAG = "west_asian_template"
+# A row naming the Middle East, North Africa, Iran, Afghanistan, Turkey or
+# South Asia: beside one, "West Asian" is not the template's Indian
+# subcontinent (block comment "Asian labels").
+_WEST_ASIAN_ELSEWHERE_RX = re.compile(
+    r"arab|middle[\s\-]*east|north[\s\-]*afric|persian|iran|afghan|turk|south[\s\-]*asia|"
+    r"indian?(?![a-z])|pakistan|bangladesh|sri[\s\-]*lanka|sub[\s\-]*continent", re.IGNORECASE)
+_WEST_ASIAN_TEMPLATE_PEERS = frozenset({"east_asian", "southeast_asian"})
+
+
+def _west_asian_template_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[int]:
+    """Indices of the rows of one table reading "West Asian" or "Western
+    Asian" alone, unread, in a table that follows the template where it
+    names the Indian subcontinent (block comment "Asian labels"): at least
+    one row is read as East or Southeast Asian, every other row read as Asian
+    is one of those, and no row names the Middle East, North Africa, Iran,
+    Afghanistan, Turkey or South Asia (_WEST_ASIAN_ELSEWHERE_RX; a row read
+    as American Indian or Alaska Native is not South Asia, a review finding).
+    texts and mappings as for _comma_list_rows."""
+    candidates = [i for i, (text, mapping) in enumerate(zip(texts, mappings))
+                  if mapping is not None and "unmapped" in mapping["flags"]
+                  and _WEST_ASIAN_ROW_RX.fullmatch(clean_demographic_label(text).strip())]
+    if not candidates:
+        return []
+    peers = 0
+    for i, (text, mapping) in enumerate(zip(texts, mappings)):
+        if i in candidates:
+            continue
+        if mapping is not None and mapping["omb_category"] == "american_indian_alaska_native":
+            continue  # "American Indian" names the Americas, not India (a review finding)
+        if _WEST_ASIAN_ELSEWHERE_RX.search(text):
+            return []
+        if (mapping is None or mapping["omb_category"] != "asian" or mapping["confidence"] == "low"
+                or "unmapped" in mapping["flags"]):
+            continue
+        if mapping["subcategory"] not in _WEST_ASIAN_TEMPLATE_PEERS:
+            return []
+        peers += 1
+    return candidates if peers else []
+
+
 def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only: bool,
                     whole_table: bool,
                     splits: Optional[List[Tuple[str, Optional[str]]]] = None,
@@ -2810,7 +3332,9 @@ def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only
     """_map_table_row for every row of one table, then the rule for
     unqualified Indigenous labels when the trial's site region is given
     (indigenous_region, from _trial_site_region; block comment "Unqualified
-    Indigenous labels, read by the trial's sites"), then the comma-list rule
+    Indigenous labels, read by the trial's sites"), then the West Asian
+    template rule (_west_asian_template_rows; block comment "Asian labels"),
+    then the comma-list rule
     (block comment "Comma lists naming two or more races"), then the rule for
     Asian joined to Native Hawaiian or Pacific Islander
     (_grouped_asian_nhpi_rows; block comment "Native Hawaiian or Pacific
@@ -2837,6 +3361,13 @@ def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only
                        "flags": [f"indigenous_sites_{indigenous_region}"]}
             results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
                                         race_part, sex, reading)
+    for i in _west_asian_template_rows(texts, [mapping for mapping, _skipped in results]):
+        (label, count), (race_part, sex) = rows[i], parts[i]
+        reading = {"omb_category": "asian", "subcategory": "south_asian", "confidence": "medium",
+                   "original": clean_demographic_label(texts[i]),
+                   "flags": [_WEST_ASIAN_TEMPLATE_FLAG]}
+        results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
+                                    race_part, sex, reading)
     for i in _comma_list_rows(texts, [mapping for mapping, _skipped in results]):
         (label, count), (race_part, sex) = rows[i], parts[i]
         reading = {"omb_category": "more_than_one_race", "subcategory": None,
@@ -3279,6 +3810,56 @@ def _race_by_group_splits(measure: dict, rows: List[Tuple[str, int]], pct_conver
             return None
     return named
 
+_ASIAN_RULE_FLAGS = frozenset({"asian_label", _WEST_ASIAN_TEMPLATE_FLAG})
+_ASIAN_BREAKDOWN_FLAG = "asian_breakdown"
+
+
+def _asian_breakdown_rows(categories: List[Dict], population: Optional[int]) -> List[int]:
+    """Indices of the counted rows of one table to leave out because they
+    count again Asian participants another row counts (block comment "Asian
+    labels"). The rows are taken by partition: the whole of a plain table,
+    each sex of a race-by-sex table, each group of a race-by-group table (a
+    review finding). In each partition holding a row the Asian label rules
+    read, the parent is the largest row read as Asian (ties: a reading made
+    before those rules, then one with no subcategory, then the first), and
+    the other Asian rows are its breakdown when they add up to no more than
+    it. The table, which adds up to more than its population, must add up to
+    exactly its population without the breakdowns: the excess is the
+    breakdown. A table over its population by less is left as posted
+    ("Asian" 11 beside "Indian Subcontinent" 139 in NCT01829295, over by 7; a
+    review of the first version). Then, in each partition, the breakdown rows
+    the Asian label rules read are left out; when the parent is the only row
+    those rules read, the parent is. A table no row of which those rules read
+    is left as it is."""
+    if population is None:
+        return []
+    table_sum = sum(category["count"] for category in categories)
+    if table_sum <= population:
+        return []
+    partitions: Dict[Tuple[Optional[str], Optional[str]], List[int]] = {}
+    for i, category in enumerate(categories):
+        if category["omb_category"] == "asian":
+            partitions.setdefault((category.get("sex"), category.get("group")), []).append(i)
+    new = {i for rows in partitions.values() for i in rows
+           if _ASIAN_RULE_FLAGS & set(categories[i]["flags"])}
+    nests: List[Tuple[int, List[int]]] = []
+    for asian in partitions.values():
+        if len(asian) < 2 or not new.intersection(asian):
+            continue
+        parent = max(asian, key=lambda i: (categories[i]["count"], i not in new,
+                                           categories[i]["subcategory"] is None, -i))
+        others = [i for i in asian if i != parent]
+        if categories[parent]["count"] >= sum(categories[i]["count"] for i in others):
+            nests.append((parent, others))
+    breakdown = sum(categories[i]["count"] for _parent, others in nests for i in others)
+    if not nests or table_sum - breakdown != population:
+        return []
+    left_out: List[int] = []
+    for parent, others in nests:
+        left_out.extend([i for i in others if i in new] or [parent])
+    return sorted(left_out)
+
+
 def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str],
                       fallback_denom: Optional[int], sex_titled: bool,
                       indigenous_region: Optional[str] = None,
@@ -3386,10 +3967,24 @@ def _parse_race_table(measure: dict, index: int, overall_group_id: Optional[str]
         for cat in categories:
             cat["flags"].append("race_from_sex_titled_table")
 
+    # Asian rows that count the table's Asian participants again (block
+    # comment "Asian labels"), in a plain, race-by-sex or race-by-group table
+    # (a review finding), against the table's own Number Analyzed, else the
+    # study's baseline population. After the sex/gender gate, which reads a
+    # table whole.
+    analyzed = _number_analyzed(measure, overall_group_id)
+    breakdown = set(_asian_breakdown_rows(
+        categories, analyzed if analyzed is not None else fallback_denom))
+    for i in sorted(breakdown):
+        categories[i]["flags"].append(_ASIAN_BREAKDOWN_FLAG)
+        categories[i]["quarantine_reason"] = _ASIAN_BREAKDOWN_FLAG
+        quarantined.append(categories[i])
+    categories = [category for i, category in enumerate(categories) if i not in breakdown]
+
     return {
         "title": title,
         "index": index,
-        "analyzed": _number_analyzed(measure, overall_group_id),
+        "analyzed": analyzed,
         "population": table_selection.population_of(measure),
         "sex_titled": sex_titled,
         "race_by_sex": race_by_sex,
@@ -3587,7 +4182,7 @@ def _extract_race(study: dict) -> Tuple[Dict, List[Dict]]:
             result["quarantined_labels"].append({
                 "original": cat["original"],
                 "count": cat["count"],
-                "reason": "unmapped_non_race_label"
+                "reason": cat.get("quarantine_reason", "unmapped_non_race_label")
             })
             result["flags"].append("quarantined_label")
 
