@@ -104,6 +104,10 @@ Tests:
  36. NCT99000155 — European nationalities and Roma groups ("Russian",
      "Romanian", "Roma", "Irish Traveller") beside "Spanish" and "Kazakh",
      which stay quarantined (fictional study)
+ 37. NCT99000156 — negated race labels ("Non-Black/African American",
+     "Non-Native American", "Other than White or Black/African American",
+     "Non-White Hispanic/Asian") beside the races they exclude (fictional
+     study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -143,6 +147,8 @@ Study 34 asserts its race totals, its Black subcategories and that only
 "Coloured" is quarantined (EXPECTED_BLACK).
 Study 35 asserts its race totals and that every grouped row is flagged
 asian_pacific_grouped (EXPECTED_GROUPED).
+Study 37 asserts its race totals, that no row is quarantined and the rows
+flagged negated_race (EXPECTED_NEGATED).
 A mismatch stops the harness.
 """
 import json
@@ -1123,6 +1129,39 @@ EXPECTED_GROUPED = {
                                 "Asian, Native Hawaiian, or Other Pacific Islander"]},
 }
 
+# ---------- NCT99000156 (fictional): negated race labels ----------
+# 100 participants (race_extractor, "Negated race labels"). Before, each
+# negated row was counted as the race it excludes: "Non-Black/African
+# American" and "Other than White or Black/African American" as Black (by a
+# slash fragment), "Non-Native American" as American Indian or Alaska Native
+# (by the fuzzy match, 88.2) and "Non-White Hispanic/Asian" as Asian (by the
+# split of a combined label), so Black was 45 of 100. Here the four rows are
+# other.
+MOCK_NCT99000156 = _make_study(
+    "NCT99000156",
+    "NCT99000156 - negated race labels (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 40),
+                _make_category("Black or African American", 20),
+                _make_category("Non-Black/African American", 15),
+                _make_category("Non-Native American", 10),
+                _make_category("Other than White or Black/African American", 10),
+                _make_category("Non-White Hispanic/Asian", 5),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+
+EXPECTED_NEGATED = {
+    "NCT99000156": {"omb": {"white": 40, "black_african_american": 20, "other": 40},
+                    "negated": ["Non-Black/African American", "Non-Native American",
+                                "Other than White or Black/African American",
+                                "Non-White Hispanic/Asian"]},
+}
+
 EXPECTED_RACE_BY_GROUP = {
     "NCT99000148": {"white": 65, "asian": 20, "american_indian_alaska_native": 5,
                     "unknown_not_reported": 10},
@@ -1471,6 +1510,14 @@ def validate_study(study: dict, nct_id: str) -> None:
         grouped = [c["original"] for c in race["raw_categories"] if "asian_pacific_grouped" in c["flags"]]
         assert grouped == expected["grouped"], f"{nct_id} grouped rows: {grouped}"
         print(f"\n  {nct_id}: the 1977 Asian or Pacific Islander category read as Asian — OK")
+    if nct_id in EXPECTED_NEGATED:
+        expected = EXPECTED_NEGATED[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
+        assert race["quarantined_labels"] == [], f"{nct_id} quarantined: {race['quarantined_labels']}"
+        negated = [c["original"] for c in race["raw_categories"] if "negated_race" in c["flags"]]
+        assert negated == expected["negated"], f"{nct_id} negated rows: {negated}"
+        print(f"\n  {nct_id}: negated race labels counted as other — OK")
     if nct_id in EXPECTED_HERITAGE:
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
         assert nonzero == EXPECTED_HERITAGE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
@@ -1518,6 +1565,7 @@ def main() -> None:
         (MOCK_NCT99000153, "NCT99000153"),
         (MOCK_NCT99000154, "NCT99000154"),
         (MOCK_NCT99000155, "NCT99000155"),
+        (MOCK_NCT99000156, "NCT99000156"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

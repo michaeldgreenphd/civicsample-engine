@@ -1420,15 +1420,19 @@ def test_labels_without_a_race_prefix_are_mapped_as_posted(label: str) -> None:
 # "Negation check": a fuzzy match of a label whose prefix was removed must
 # agree with its key on negation.
 
-def test_a_fuzzy_match_that_drops_a_negation_is_not_kept() -> None:
+def test_a_fuzzy_match_that_drops_a_negation_is_not_kept(monkeypatch: pytest.MonkeyPatch) -> None:
     """"Non-African American" scores 88.9 against "African American"; with
     the prefix removed it would otherwise be counted as Black."""
     mapping = rx._map_plain_row("Race: Non-African American", 9, False)
     assert mapping is not None
     assert (mapping["omb_category"], mapping["confidence"]) == ("other", "low")
     assert "unmapped" in mapping["flags"] and "dimension_wording_stripped" in mapping["flags"]
-    # The guard stops it, not the score: unguarded, the bare text matches.
+    # The rule of block comment "Negated race labels" now stops the bare text
+    # too. Without that rule the guard still stops it, not the score:
+    # unguarded, the bare text matches.
+    monkeypatch.setattr(rx, "negated_race_label", lambda label: False)
     assert rx.map_race_category("Non-African American")["omb_category"] == "black_african_american"
+    assert rx.map_race_category("Non-African American", guard_negation=True)["omb_category"] == "other"
 
 
 @pytest.mark.parametrize("label", ["Race: Not reportd", "Race - Unknown or Not reportd", "Race: Not Reported."])
@@ -3783,3 +3787,107 @@ def test_the_census_white_groups_are_counted_with_no_quarantine() -> None:
     assert _nonzero(race) == {"white": 50, "asian": 5}
     assert race["subcategory_totals"] == {"asian_south_asian_indian": 5}
     assert race["quarantined_labels"] == []
+
+
+# ── negated race labels ────────────────────────────────────────────────────
+#
+# src/race_extractor.py, block comment "Negated race labels": a label negating
+# a race named directly after the negation, with no race named before it, is
+# counted as other, never as the race it excludes.
+
+# Posted in the 2026-11-15 snapshot and counted as the race they exclude
+# before the rule, through a fuzzy match, a slash fragment or the split of a
+# combined label.
+NEGATED_POSTED = [
+    "Not African-American", "Non-Black/African American", "Non-Black/African-American",
+    "Non-African American", "Non African American", "Non- African-American",
+    "Other than White or Black/African American", "Non-Native American", "Non Caucasian/Asian",
+    "Non-White Hispanic/Asian", "Non-white/more than one race", "Non-White/Multiple selected/Missing",
+    "Hispanic, not African American", "Hispanic, Non-African American",
+]
+
+
+@pytest.mark.parametrize("label", NEGATED_POSTED)
+def test_a_negated_race_label_is_counted_as_other(label: str) -> None:
+    mapping = rx._map_race_label(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["confidence"]) == ("other", None, "low")
+    assert mapping["flags"] == ["negated_race", "unmapped"]
+    assert mapping["original"] == label
+    assert rx._should_quarantine(mapping) is False
+
+
+@pytest.mark.parametrize("label", ["Nonwhite", "Other (Nonblack)", "Not a Native Hawaiian", "Excluding Asian",
+                                   "Except Black", "Neither Aboriginal nor Torres Strait Islander",
+                                   "NON-AFRICAN AMERICAN", "Non–White", "not an Asian"])
+def test_negated_race_label(label: str) -> None:
+    assert rx.negated_race_label(label) is True
+
+
+@pytest.mark.parametrize("label", [
+    # A race named before the negation: the negation qualifies or contrasts it.
+    "Asian - Not Japanese", "White vs. non-white", "White & Non-White/Multiple", "Race (White vs Non-White)",
+    "Caucasian - Non-white", "Caucasian, non-European descent", "Asian (Other than Indian subcontinent)",
+    # An ethnicity negated, not a race; "minority" is not a race word.
+    "Non-Hispanic White", "Not Hispanic or Latino", "Nonhispanic Black", "White/Non-Minority",
+    # No race word after the negation.
+    "Not Reported", "Unknown or Not Reported", "None of the above", "Non-Hispanic",
+    # A negation inside a longer word, or a race word inside one.
+    "Nonusers", "Notwhite", "Non-Whiteside clinic",
+])
+def test_not_a_negated_race_label(label: str) -> None:
+    assert rx.negated_race_label(label) is False
+
+
+@pytest.mark.parametrize("label, category", [
+    ("White, not Hispanic", "white"), ("Asian - Not Japanese", "asian"), ("White/Non-Minority", "white"),
+    ("Non-Hispanic White", "white"), ("Asian (Other than Indian subcontinent)", "asian"),
+    ("Not Reported", "unknown_not_reported"),
+])
+def test_labels_the_rule_leaves_keep_their_reading(label: str, category: str) -> None:
+    mapping = rx._map_race_label(label)
+    assert mapping["omb_category"] == category
+    assert "negated_race" not in mapping["flags"]
+
+
+def test_a_vocabulary_key_is_read_before_the_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The rule runs after the exact and case-insensitive matches, so a key
+    of RACE_MAPPINGS keeps its reading whatever words it holds."""
+    monkeypatch.setitem(rx.RACE_MAPPINGS, "Not Black (test key)", ("black_african_american", None))
+    assert rx.map_race_category("not black (TEST KEY)")["flags"] == []
+    assert rx.map_race_category("Not Black (test key)")["omb_category"] == "black_african_american"
+
+
+def test_a_negated_label_is_not_split_into_its_race_part() -> None:
+    """Split as a combined label, "Non-White Hispanic/Asian" keeps "Asian";
+    the row pools non-White Hispanic and Asian participants."""
+    assert rx._split_combined_label("Non-White Hispanic/Asian") == ("Asian", "Non-White Hispanic")
+    assert rx._map_race_label("Non-White Hispanic/Asian")["omb_category"] == "other"
+
+
+def test_a_table_of_a_race_and_its_negation() -> None:
+    """The NCT02134314 shape: "African-American" 8, "Not African-American"
+    62 was counted as 70 Black."""
+    table = _class_table(COMBINED_TITLE, [("African-American", 8), ("Not African-American", 62)])
+    race = extract_race_data(_study("NCT99000906", [table], 70))
+    assert race["reported"]
+    assert _nonzero(race) == {BLACK: 8, "other": 62}
+    assert race["quarantined_labels"] == []
+    assert "negated_race" in race["raw_categories"][1]["flags"]
+
+
+def test_a_negated_pooled_row_beside_race_rows() -> None:
+    """The NCT04655170 shape: White 54, Black 5, "Non-White Hispanic/Asian"
+    1, which was counted as Asian."""
+    table = _class_table(COMBINED_TITLE, [("White", 54), ("Black", 5), ("Non-White Hispanic/Asian", 1)])
+    race = extract_race_data(_study("NCT99000907", [table], 60))
+    assert _nonzero(race) == {"white": 54, BLACK: 5, "other": 1}
+    assert race["quarantined_labels"] == []
+
+
+def test_a_negated_american_indian_row() -> None:
+    """The NCT05773833 shape: "Non-Native American" 42 was counted as
+    American Indian or Alaska Native."""
+    table = _class_table(COMBINED_TITLE, [("Native American", 385), ("Non-Native American", 42),
+                                          ("Unknown/Missing", 4)])
+    race = extract_race_data(_study("NCT99000908", [table], 431))
+    assert _nonzero(race) == {"american_indian_alaska_native": 385, "other": 42, "unknown_not_reported": 4}
