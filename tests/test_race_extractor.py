@@ -3250,6 +3250,8 @@ def test_a_uk_census_wording_is_read_by_its_heading(label: str, category: str,
     "Asian or Asian British or Other",  # fictional
     "Black or Black British or any other ethnic group",  # fictional
     "White British/Other",  # fictional
+    "White British and Other ethnic group",  # fictional: joined by "and" (a review finding)
+    "White British & Other",  # fictional
 ])
 def test_a_label_without_a_uk_census_reading_is_not_read_by_the_rule(label: str) -> None:
     assert rx.uk_census_label(label) is None

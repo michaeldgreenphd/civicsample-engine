@@ -1060,8 +1060,9 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
 #     African", "Caribbean British"; a UK nation gives White), is that race;
 #   - anything else is not read ("Black or White British"), nor is a label
 #     with an alternative naming no group ("White British or Other ethnic
-#     group", "White British/Other": it pools Other; a review finding), an
-#     alternative counted outside brackets only ("White (British, Irish,
+#     group", "White British/Other", "White British and Other ethnic group":
+#     it pools Other; review findings), an alternative counted outside
+#     brackets only ("White (British, Irish,
 #     Other)" is White).
 # The subcategory is the vocabulary's key for a group named after the last
 # dash or colon ("Black / African / Caribbean / Black British - Caribbean"),
@@ -1179,10 +1180,11 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
         if any("mixed" not in alternative for alternative in alternatives if alternative):
             return None
         return "more_than_one_race", None
-    # Each alternative ("or", "/", ",", ";" outside brackets) must name a
-    # group. One made of "Other" and fillers only ("White British or Other
-    # ethnic group", "White British/Other") pools a group whose count cannot
-    # be told apart (a review finding). "Any other White background" names
+    # Each alternative ("or", "and", "&", "/", ",", ";" outside brackets)
+    # must name a group. One made of "Other" and fillers only ("White British
+    # or Other ethnic group", "White British/Other", "White British and Other
+    # ethnic group") pools a group whose count cannot be told apart (review
+    # findings). "Any other White background" names
     # White, and a bracket describes its heading ("White (British, Irish,
     # Other)"). A Mixed label lists the parts of the mix and is read above.
     alternative: List[str] = []
@@ -1190,7 +1192,7 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
     for kind, text in tokens + [("or", "or")]:
         if kind == "mark" and text in ("(", ")"):
             depth += 1 if text == "(" else -1
-        elif depth == 0 and (kind == "or" or (kind == "mark" and text in ("/", ",", ";"))):
+        elif depth == 0 and (kind in ("or", "and") or (kind == "mark" and text in ("/", ",", ";", "&"))):
             if alternative and not _UK_NAMING_KINDS & set(alternative):
                 return None
             alternative = []
