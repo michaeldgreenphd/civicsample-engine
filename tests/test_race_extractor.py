@@ -3270,6 +3270,8 @@ def test_the_black_subcategory_comes_from_the_names(label: str, subcategory: Opt
     "Black or other race",
     "Black or unspecified",  # fictional: a non-answer pooled (review finding)
     "Black or non-specified",  # fictional
+    "Black or Indigenous",  # fictional: another race pooled (review finding)
+    "Black, Indigenous",  # fictional
     "Not Black",  # negated
     "Non-Black",
     "Black or African American (Comparison 1)",  # crossed with something else

@@ -1054,12 +1054,13 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
 #     directions (West, East, Central, Southern; North is not one: North
 #     Africa is the Middle East and North Africa); "Other"; example words;
 #     non-specified, unspecified ("African, Caribbean, or non-specified
-#     Black", NCT04588415; alone as an alternative a non-answer, so "Black or
-#     unspecified" is not read: a review finding);
+#     Black", NCT04588415) and indigenous ("Indigenous African",
+#     NCT00080119); alone as an alternative a non-answer or another race,
+#     so "Black or unspecified" and "Black or Indigenous" are not read
+#     (review findings);
 #   - fillers: descent, origin(s), ancestry, background, ethnic(ity),
 #     race, people(s), only, of, from, in, all, tribe(s), group(s),
-#     speaking, continent, indigenous, self-reported, participants,
-#     subjects.
+#     speaking, continent, self-reported, participants, subjects.
 # A label beginning or ending with a join is not read; each alternative must
 # name a Black group (as for European labels). The subcategory: within an
 # alternative, the name every other one refines (Haitian and Jamaican lie
@@ -1119,12 +1120,13 @@ _BLACK_TOKEN_RX = re.compile(
     r"(?P<direction>west(?:ern)?|east(?:ern)?|central|southern)|"
     r"(?P<other>other)|(?P<example>e\s*g|i\s*e|including|etc)|"
     r"(?P<filler>descent|decent|origins?|ancestry|background|ethnicit(?:y|ies)|ethnic|race|racial|"
-    r"peoples?|only|of|from|in|all|tribes?|groups?|speaking|continent|indigenous|self\s+reported|"
+    r"peoples?|only|of|from|in|all|tribes?|groups?|speaking|continent|self\s+reported|"
     r"participants?|subjects?)|"
-    # Describes a name in its alternative ("non-specified Black"); alone it
-    # is a non-answer, an alternative naming no group ("Black or
-    # unspecified"; a review finding).
-    r"(?P<unspecified>non\s+specified|unspecified)|"
+    # Describes a name in its alternative ("non-specified Black",
+    # "Indigenous African"); alone it names no Black group, a non-answer or
+    # another race ("Black or unspecified", "Black or Indigenous": review
+    # findings).
+    r"(?P<qualifier>non\s+specified|unspecified|indigenous)|"
     r"(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
     re.IGNORECASE)
 _BLACK_ALTERNATIVE_JOINS = _EUROPEAN_ALTERNATIVE_JOINS
@@ -1203,7 +1205,7 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     for kind, term, within in tokens:
         if not within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS:
             segments.append([])
-        elif kind in ("name", "abbrev", "place", "direction", "other", "example", "unspecified",
+        elif kind in ("name", "abbrev", "place", "direction", "other", "example", "qualifier",
                       "open", "close"):
             segments[-1].append((kind, term, within))
     has_name = any(kind == "name" for kind, _t, _w in tokens)
