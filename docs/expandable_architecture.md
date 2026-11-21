@@ -95,10 +95,13 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
 - **Legacy bridge:** `to_legacy_census_document_row` and
   `ingest_legacy_census_documents` bridge existing `documents.jsonl` records.
 - **CLI flags (`scripts/index_trial_documents.py`):**
-  `--nct-id`, `--manifest`, `--ingest-census-jsonl`, `--local-pdf-dir`,
-  `--page-map-jsonl`, `--cache-dir`, `--index-out`, `--profiles-out`,
-  `--min-selected-pages`, `--max-selected-pages`, `--rate-limit-sec`,
-  `--limit`, `--offline`, `--force-download`, `--reparse-cached-pages`.
+  `--nct-id`, `--manifest` (required whenever `--nct-id` or
+  `--ingest-census-jsonl` is supplied so every requested/ingested trial is
+  verified against the manifest's `in_audit == False` cohort),
+  `--ingest-census-jsonl`, `--local-pdf-dir`, `--page-map-jsonl`,
+  `--cache-dir`, `--index-out`, `--profiles-out`, `--min-selected-pages`,
+  `--max-selected-pages`, `--rate-limit-sec`, `--limit`, `--offline`,
+  `--force-download`, `--reparse-cached-pages`.
 
 ### Module 2 — Deterministic Analysis-Population Parser & Sponsor Ecosystem
 
@@ -155,7 +158,9 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
   (`INDEX_ROW_KEYS`).
 - **Unified shard record (`SHARD_RECORD_KEYS`):** Combines `reported_results`
   (`extract_reported_results`), `document_profile` (`normalize_document_profile`),
-  `decision_rule_locations` (`normalize_decision_rule_locations`), and
+  `decision_rule_locations` (`normalize_decision_rule_locations`, retaining
+  append-only `primary_pass`, `second_pass`, `ocr_recovery_pass`, and
+  `adjudication_pass` alongside deterministic `effective_pass`), and
   `longitudinal_provenance` (`normalize_longitudinal_provenance`) via
   `build_trial_bundle` and `build_outcomes_documents`.
 - **Hard `in_audit` firewall:** `assert_no_audit_leakage` and
@@ -188,8 +193,9 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
 - **Corpus & coverage invariants:** `verify_document_record`,
   `verify_location_record`, `verify_trial_completeness`, and
   `verify_census_corpus` enforce `NOT_FOUND` requiring `pages_not_searched == []`
-  in exhaustive mode, `UNREADABLE` validity checks, and exact `7 * K` primary
-  outcome grid completeness, stamped with `VERIFIER_RULES_VERSION` and
+  in exhaustive mode, `UNREADABLE` validity checks, `NO_DOCUMENT` rejection when
+  posted documents exist (`NO_DOCUMENT_WITH_POSTED_DOCUMENT`), and exact `7 * K`
+  primary outcome grid completeness, stamped with `VERIFIER_RULES_VERSION` and
   `NEUTRAL_LANGUAGE_VOCAB_SHA256`.
 - **Neutral-language guard:** `scan_neutral_language` (aliased as
   `check_neutral_language`) and `scan_neutral_language_record` block objective-met

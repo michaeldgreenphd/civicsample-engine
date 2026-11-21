@@ -76,6 +76,11 @@ python scripts/index_trial_documents.py \
   --rate-limit-sec 0.55
 ```
 
+Always pass `--manifest` with `scripts/index_trial_documents.py`, including when
+targeting specific trials via `--nct-id` or bridging legacy records via
+`--ingest-census-jsonl`; omitting `--manifest` or referencing a trial outside
+the manifest's `in_audit == False` cohort raises `AuditHoldoutError` (exit `2`).
+
 Then compute the incremental batch plan and verify that `launch_approved` is
 `true` under your budget cap:
 
@@ -143,7 +148,9 @@ python scripts/verify_and_plan_census_batch.py plan \
    `pages_deferred` so `pages_searched == "all"` and `pages_not_searched == []`
    before emitting `status = "NOT_FOUND"`. In default publication mode,
    `verify_location_record` rejects `NOT_FOUND` whenever `pages_not_searched`
-   is non-empty (`NOT_FOUND_WITH_UNSEARCHED_PAGES`).
+   is non-empty (`NOT_FOUND_WITH_UNSEARCHED_PAGES`), and rejects `NO_DOCUMENT`
+   whenever posted documents exist for the trial
+   (`NO_DOCUMENT_WITH_POSTED_DOCUMENT`).
 
 ### Step 4: Mechanical Gate Before Posting `[done]`
 
@@ -202,7 +209,7 @@ To launch a new cohort (for example `nih`, `cooperative_group`, or `academic`):
    `sponsors/company_aliases.csv`.
 2. Build or update the cohort manifest carrying explicit boolean `in_audit`
    flags and cohort tags matching `STANDARD_COHORTS` in `src/outcomes_layout.py`.
-3. Run Step 1 (`scripts/index_trial_documents.py` followed by
+3. Run Step 1 (`scripts/index_trial_documents.py --manifest ...` followed by
    `scripts/verify_and_plan_census_batch.py plan --cohort <slug> --mode incremental-delta`).
    Cross-trial duplicate PDFs (same `sha256`) automatically hit
    `DocumentCacheStore` at zero re-download/re-parse cost.

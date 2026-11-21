@@ -510,3 +510,62 @@ def test_corpus_verification_completeness_and_directory_provider(tmp_path: Path)
         expected_primary_outcomes=1,
     )
     assert [i.code for i in missing_issues] == ["TRIAL_GRID_MISSING_CELL"]
+
+
+def test_no_document_consistency_with_posted_documents() -> None:
+    doc = _make_doc(physical_pages=5)
+    docs_by_nct = {"NCT01234567": {"Prot_000.pdf": doc}}
+
+    loc_no_doc = _make_location(
+        status="NO_DOCUMENT",
+        citations=[],
+        pages_searched="all",
+        pages_not_searched=[],
+        note="No protocol or SAP posted.",
+    )
+
+    # Non-empty docs_for_nct MUST fail verify_location_record with NO_DOCUMENT_WITH_POSTED_DOCUMENT.
+    _, issues_with_doc = verify_location_record(loc_no_doc, docs_by_nct=docs_by_nct)
+    assert len(issues_with_doc) == 1
+    issue = issues_with_doc[0]
+    assert issue.code == "NO_DOCUMENT_WITH_POSTED_DOCUMENT"
+    assert issue.severity == "error"
+    assert issue.nct_id == "NCT01234567"
+    assert issue.location_key == (0, "analysis_population", "primary")
+    assert issue.filename is None
+    assert issue.physical_page is None
+
+    # Full 7-element NO_DOCUMENT grid for a trial with a posted document fails verify_census_corpus.
+    no_doc_grid = [
+        _make_location(
+            element=elem,
+            status="NO_DOCUMENT",
+            citations=[],
+            pages_searched="all",
+            pages_not_searched=[],
+            note="No protocol or SAP posted.",
+        )
+        for elem in ELEMENTS
+    ]
+    report_fail = verify_census_corpus(
+        [doc],
+        no_doc_grid,
+        expected_outcomes_by_nct={"NCT01234567": 1},
+    )
+    assert report_fail.ok is False
+    assert report_fail.to_dict()["error_count"] == len(ELEMENTS)
+    assert {i.code for i in report_fail.issues} == {"NO_DOCUMENT_WITH_POSTED_DOCUMENT"}
+
+    # Empty docs_for_nct (absent NCT or empty dict) with citations=[] continues to pass cleanly.
+    _, issues_absent = verify_location_record(loc_no_doc, docs_by_nct={})
+    assert issues_absent == []
+    _, issues_empty = verify_location_record(loc_no_doc, docs_by_nct={"NCT01234567": {}})
+    assert issues_empty == []
+
+    report_ok = verify_census_corpus(
+        [],
+        no_doc_grid,
+        expected_outcomes_by_nct={"NCT01234567": 1},
+    )
+    assert report_ok.ok is True
+    assert report_ok.issues == ()

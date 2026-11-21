@@ -10,8 +10,10 @@ Pass-1 / Pass-2 partitions.
 Hard safety guarantees:
 - Enforces enforce_not_in_audit() before any API query, CDN download, cache
   lookup, or PDF parse. Manifest rows with in_audit == True are skipped before
-  any external call; explicit --nct-id requests matching an in_audit == True
-  trial raise AuditHoldoutError and exit with status 2.
+  any external call; --manifest is required whenever --nct-id or
+  --ingest-census-jsonl is supplied, and any explicit --nct-id or ingested row
+  matching in_audit == True or unlisted in the manifest's in_audit == False set
+  raises AuditHoldoutError and exits with status 2.
 - Enforces a global inter-request rate-limit lock (<cache-dir>/.ctgov_rate_limit.lock)
   defaulting to 0.55s across processes.
 - Downloads PDFs atomically via .part staging and verifies the %PDF- header and
@@ -639,19 +641,28 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="append",
         nargs="+",
         default=[],
-        help="Explicit NCT ID(s) to index (raises AuditHoldoutError exit 2 if in_audit=True).",
+        help=(
+            "Explicit NCT ID(s) to index (requires --manifest; raises AuditHoldoutError "
+            "exit 2 if in_audit=True or unlisted in manifest)."
+        ),
     )
     parser.add_argument(
         "--manifest",
         type=Path,
         default=None,
-        help="Path to trial manifest JSON/JSONL (e.g. outcomes/index.json) carrying strict bool in_audit.",
+        help=(
+            "Path to trial manifest JSON/JSONL (e.g. outcomes/index.json) carrying strict "
+            "bool in_audit (required for --nct-id and --ingest-census-jsonl)."
+        ),
     )
     parser.add_argument(
         "--ingest-census-jsonl",
         type=Path,
         default=None,
-        help="Offline-ingest legacy rule-census documents.jsonl into the content-addressed cache.",
+        help=(
+            "Offline-ingest legacy rule-census documents.jsonl into the content-addressed "
+            "cache (requires --manifest)."
+        ),
     )
     parser.add_argument(
         "--local-pdf-dir",
@@ -710,14 +721,31 @@ def run_cli(
             for group in (args.nct_id or [])
             for item in group
         ]
+        if (explicit_nct_ids or args.ingest_census_jsonl is not None) and args.manifest is None:
+            raise AuditHoldoutError(
+                "--manifest is required whenever --nct-id or --ingest-census-jsonl is supplied; "
+                "unverified trial IDs are blocked by the audit holdout firewall."
+            )
+
         manifest_rows: list[dict[str, Any]] = []
         audit_nct_ids: frozenset[str] = frozenset()
         if args.manifest is not None:
             manifest_rows, audit_nct_ids = load_manifest_rows(args.manifest)
 
-        # Explicit --nct-id matching in_audit == True raises AuditHoldoutError (exit 2)
+        in_scope_nct_ids: frozenset[str] = (
+            frozenset(validate_nct_id(str(r["nct_id"])) for r in manifest_rows)
+            - audit_nct_ids
+        )
+
+        # Explicit --nct-id matching in_audit == True or unlisted in --manifest raises AuditHoldoutError (exit 2)
         for nct in explicit_nct_ids:
             enforce_not_in_audit(nct, in_audit=False, audit_nct_ids=audit_nct_ids)
+            if nct not in in_scope_nct_ids:
+                raise AuditHoldoutError(
+                    f"Requested --nct-id {nct} is not listed with in_audit=False in "
+                    f"manifest {args.manifest}; unlisted trials are blocked by the "
+                    "audit holdout firewall."
+                )
 
         cache_store = DocumentCacheStore(
             cache_dir=args.cache_dir,
@@ -739,6 +767,7 @@ def run_cli(
                 provider=active_provider,
                 local_pdf_dir=args.local_pdf_dir,
                 audit_nct_ids=audit_nct_ids,
+                allowed_nct_ids=in_scope_nct_ids,
                 extracted_at=stamp,
                 pipeline_commit=commit,
                 indexer_rules_version=INDEXER_RULES_VERSION,

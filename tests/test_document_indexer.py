@@ -306,6 +306,328 @@ def test_audit_holdout_hard_block(tmp_path: Path) -> None:
     assert provider_spy.calls == []
 
 
+def test_cli_requires_manifest_and_blocks_unlisted_trials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CLI exits 2 with zero I/O when --manifest is missing or --nct-id/census row is unlisted."""
+    pdf_bytes = _make_minimal_pdf("Guarded protocol text")
+    pdf_sha = di.sha256_bytes(pdf_bytes)
+    nct_in_scope = "NCT01111111"
+    nct_audit = "NCT09999999"
+    nct_unlisted = "NCT08888888"
+
+    study_unlisted = _make_study(
+        nct_unlisted,
+        [
+            {
+                "filename": "Prot_000.pdf",
+                "hasProtocol": True,
+                "hasSap": False,
+                "size": len(pdf_bytes),
+            }
+        ],
+    )
+    url_unlisted = di.build_ctgov_large_doc_url(nct_unlisted, "Prot_000.pdf")
+
+    api_spy = _SpyAPIClient({nct_unlisted: study_unlisted})
+    http_spy = _FakeSession({url_unlisted: _FakeResponse(200, pdf_bytes)})
+    provider_spy = di.FixturePageTextProvider({pdf_sha: _clean_stat_pages(2)})
+
+    census_jsonl = tmp_path / "documents.jsonl"
+    census_jsonl.write_text(
+        json.dumps(
+            {
+                "nct_id": nct_unlisted,
+                "filename": "Prot_000.pdf",
+                "url": url_unlisted,
+                "http_status": 200,
+                "sha256": pdf_sha,
+                "bytes": len(pdf_bytes),
+                "doc_type": "protocol",
+                "version_label": "",
+                "version_date_as_printed": "",
+                "physical_pages": 2,
+                "pages_without_text": [],
+                "retrieved_at": "2026-11-14T00:00:00Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "data": [
+                    {"nct_id": nct_in_scope, "in_audit": False},
+                    {"nct_id": nct_audit, "in_audit": True},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    cache_inits: list[tuple[Path, Path]] = []
+    real_cache_store = cli_mod.DocumentCacheStore
+
+    def _forbid_cache_init(
+        cache_dir: Path = Path("data/document_cache"),
+        index_path: Path = Path("data/document_index_by_sha256.jsonl"),
+    ) -> di.DocumentCacheStore:
+        cache_inits.append((Path(cache_dir), Path(index_path)))
+        raise AssertionError("DocumentCacheStore must not be instantiated before manifest firewall")
+
+    monkeypatch.setattr(cli_mod, "DocumentCacheStore", _forbid_cache_init)
+
+    # (a) --nct-id without --manifest -> exit 2, zero I/O, no cache init
+    cache_a = tmp_path / "cache_a"
+    index_a = tmp_path / "index_a.jsonl"
+    profiles_a = tmp_path / "profiles_a.jsonl"
+    rc_a = cli_mod.run_cli(
+        [
+            "--nct-id",
+            nct_unlisted,
+            "--cache-dir",
+            str(cache_a),
+            "--index-out",
+            str(index_a),
+            "--profiles-out",
+            str(profiles_a),
+        ],
+        api_client=api_spy,
+        session=http_spy,
+        provider=provider_spy,
+    )
+    assert rc_a == 2
+    assert not cache_a.exists()
+    assert not index_a.exists()
+    assert not profiles_a.exists()
+
+    # (b) --ingest-census-jsonl without --manifest -> exit 2, zero I/O, no cache init
+    cache_b = tmp_path / "cache_b"
+    index_b = tmp_path / "index_b.jsonl"
+    profiles_b = tmp_path / "profiles_b.jsonl"
+    rc_b = cli_mod.run_cli(
+        [
+            "--ingest-census-jsonl",
+            str(census_jsonl),
+            "--cache-dir",
+            str(cache_b),
+            "--index-out",
+            str(index_b),
+            "--profiles-out",
+            str(profiles_b),
+            "--offline",
+        ],
+        api_client=api_spy,
+        session=http_spy,
+        provider=provider_spy,
+    )
+    assert rc_b == 2
+    assert not cache_b.exists()
+    assert not index_b.exists()
+    assert not profiles_b.exists()
+
+    # (c) --nct-id absent from --manifest -> exit 2, zero I/O, no cache init
+    cache_c = tmp_path / "cache_c"
+    index_c = tmp_path / "index_c.jsonl"
+    profiles_c = tmp_path / "profiles_c.jsonl"
+    rc_c = cli_mod.run_cli(
+        [
+            "--manifest",
+            str(manifest),
+            "--nct-id",
+            nct_unlisted,
+            "--cache-dir",
+            str(cache_c),
+            "--index-out",
+            str(index_c),
+            "--profiles-out",
+            str(profiles_c),
+        ],
+        api_client=api_spy,
+        session=http_spy,
+        provider=provider_spy,
+    )
+    assert rc_c == 2
+    assert not cache_c.exists()
+    assert not index_c.exists()
+    assert not profiles_c.exists()
+
+    # Malformed --nct-id without --manifest still exits 1 before manifest/cache checks
+    rc_malformed = cli_mod.run_cli(
+        [
+            "--nct-id",
+            "BAD_NCT",
+            "--cache-dir",
+            str(tmp_path / "cache_bad"),
+            "--index-out",
+            str(tmp_path / "index_bad.jsonl"),
+            "--profiles-out",
+            str(tmp_path / "profiles_bad.jsonl"),
+        ],
+        api_client=api_spy,
+        session=http_spy,
+        provider=provider_spy,
+    )
+    assert rc_malformed == 1
+
+    assert cache_inits == []
+    assert api_spy.requested_ncts == []
+    assert http_spy.requested_urls == []
+    assert provider_spy.calls == []
+
+    # --ingest-census-jsonl with --manifest still blocks unlisted census rows (exit 2, zero writes)
+    monkeypatch.setattr(cli_mod, "DocumentCacheStore", real_cache_store)
+    cache_d = tmp_path / "cache_d"
+    index_d = tmp_path / "index_d.jsonl"
+    profiles_d = tmp_path / "profiles_d.jsonl"
+    rc_d = cli_mod.run_cli(
+        [
+            "--manifest",
+            str(manifest),
+            "--ingest-census-jsonl",
+            str(census_jsonl),
+            "--cache-dir",
+            str(cache_d),
+            "--index-out",
+            str(index_d),
+            "--profiles-out",
+            str(profiles_d),
+            "--offline",
+        ],
+        api_client=api_spy,
+        session=http_spy,
+        provider=provider_spy,
+    )
+    assert rc_d == 2
+    assert not cache_d.exists()
+    assert not index_d.exists()
+    assert not profiles_d.exists()
+    assert api_spy.requested_ncts == []
+    assert http_spy.requested_urls == []
+    assert provider_spy.calls == []
+
+
+def test_ingest_legacy_census_documents_audit_and_allowlist_guard(tmp_path: Path) -> None:
+    """ingest_legacy_census_documents honors row-level in_audit and allowed_nct_ids before any I/O."""
+    sha_ok = "1" * 64
+    sha_bad = "2" * 64
+    nct_ok = "NCT01543490"
+    nct_other = "NCT02543490"
+
+    def _census_row(nct: str, sha: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+        row: dict[str, Any] = {
+            "nct_id": nct,
+            "filename": "Prot_000.pdf",
+            "url": di.build_ctgov_large_doc_url(nct, "Prot_000.pdf"),
+            "http_status": 200,
+            "sha256": sha,
+            "bytes": 4096,
+            "doc_type": "protocol",
+            "version_label": "Version 1.0",
+            "version_date_as_printed": "15 May 2020",
+            "physical_pages": 4,
+            "pages_without_text": [],
+            "retrieved_at": "2026-11-14T00:00:00Z",
+        }
+        if extra is not None:
+            row.update(extra)
+        return row
+
+    provider_spy = di.FixturePageTextProvider(
+        {
+            sha_ok: _clean_stat_pages(4),
+            sha_bad: _clean_stat_pages(4),
+        }
+    )
+
+    # 1. Row carrying explicit in_audit=True raises AuditHoldoutError (even when nct_id is allowed)
+    jsonl_true = tmp_path / "in_audit_true.jsonl"
+    jsonl_true.write_text(
+        json.dumps(_census_row(nct_ok, sha_ok, {"in_audit": False}))
+        + "\n"
+        + json.dumps(_census_row(nct_other, sha_bad, {"in_audit": True}))
+        + "\n",
+        encoding="utf-8",
+    )
+    index_true = tmp_path / "idx_true.jsonl"
+    cache_true = di.DocumentCacheStore(tmp_path / "cache_true", index_true)
+    with pytest.raises(di.AuditHoldoutError):
+        di.ingest_legacy_census_documents(
+            jsonl_true,
+            cache_store=cache_true,
+            provider=provider_spy,
+            allowed_nct_ids={nct_ok, nct_other},
+        )
+    assert provider_spy.calls == []
+    assert cache_true.all_entries() == []
+    assert not index_true.exists()
+
+    # 2. Row carrying non-bool in_audit=None or int raises AuditHoldoutError
+    for bad_val in (None, 0):
+        jsonl_non_bool = tmp_path / f"in_audit_{bad_val}.jsonl"
+        jsonl_non_bool.write_text(
+            json.dumps(_census_row(nct_ok, sha_ok, {"in_audit": bad_val})) + "\n",
+            encoding="utf-8",
+        )
+        index_nb = tmp_path / f"idx_{bad_val}.jsonl"
+        cache_nb = di.DocumentCacheStore(tmp_path / f"cache_{bad_val}", index_nb)
+        with pytest.raises(di.AuditHoldoutError):
+            di.ingest_legacy_census_documents(
+                jsonl_non_bool,
+                cache_store=cache_nb,
+                provider=provider_spy,
+                allowed_nct_ids={nct_ok},
+            )
+        assert provider_spy.calls == []
+        assert cache_nb.all_entries() == []
+        assert not index_nb.exists()
+
+    # 3. Row with nct_id outside allowed_nct_ids (non-empty or empty allowlist) raises AuditHoldoutError
+    jsonl_unlisted = tmp_path / "unlisted.jsonl"
+    jsonl_unlisted.write_text(
+        json.dumps(_census_row(nct_ok, sha_ok, {"in_audit": False}))
+        + "\n"
+        + json.dumps(_census_row(nct_other, sha_bad, {"in_audit": False}))
+        + "\n",
+        encoding="utf-8",
+    )
+    for tag, allowlist in (("subset", {nct_ok}), ("empty", frozenset())):
+        index_unlisted = tmp_path / f"idx_unlisted_{tag}.jsonl"
+        cache_unlisted = di.DocumentCacheStore(tmp_path / f"cache_unlisted_{tag}", index_unlisted)
+        with pytest.raises(di.AuditHoldoutError):
+            di.ingest_legacy_census_documents(
+                jsonl_unlisted,
+                cache_store=cache_unlisted,
+                provider=provider_spy,
+                allowed_nct_ids=allowlist,
+            )
+        assert provider_spy.calls == []
+        assert cache_unlisted.all_entries() == []
+        assert not index_unlisted.exists()
+
+    # 4. Positive control: row with in_audit=False inside allowed_nct_ids succeeds
+    jsonl_ok = tmp_path / "ok.jsonl"
+    jsonl_ok.write_text(
+        json.dumps(_census_row(nct_ok, sha_ok, {"in_audit": False})) + "\n",
+        encoding="utf-8",
+    )
+    index_ok = tmp_path / "idx_ok.jsonl"
+    cache_ok = di.DocumentCacheStore(tmp_path / "cache_ok", index_ok)
+    entries, profiles = di.ingest_legacy_census_documents(
+        jsonl_ok,
+        cache_store=cache_ok,
+        provider=provider_spy,
+        allowed_nct_ids={nct_ok},
+    )
+    assert len(entries) == 1
+    assert len(profiles) == 1
+    assert profiles[0]["nct_id"] == nct_ok
+    assert len(provider_spy.calls) == 1
+    assert index_ok.exists()
+
+
 # ---------------------------------------------------------------------------
 # Group 2: Content-Addressed Cache Immutability & Cross-Trial Dedup
 # ---------------------------------------------------------------------------
@@ -1211,10 +1533,18 @@ def test_cli_ingest_census_offline_and_non_darwin_guard(
         encoding="utf-8",
     )
 
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps({"data": [{"nct_id": "NCT02222222", "in_audit": False}]}),
+        encoding="utf-8",
+    )
+
     index_out = tmp_path / "index.jsonl"
     profiles_out = tmp_path / "profiles.jsonl"
     rc = cli_mod.run_cli(
         [
+            "--manifest",
+            str(manifest),
             "--ingest-census-jsonl",
             str(census_jsonl),
             "--page-map-jsonl",
@@ -1240,9 +1570,11 @@ def test_cli_ingest_census_offline_and_non_darwin_guard(
     assert written_profiles[0]["nct_id"] == "NCT02222222"
     assert written_profiles[0]["readability_summary"] == "machine_readable"
 
-    # --offline with live --nct-id returns exit 1 cleanly
+    # --offline with live --nct-id (with valid in_audit=False manifest) returns exit 1 cleanly
     rc_offline_err = cli_mod.run_cli(
         [
+            "--manifest",
+            str(manifest),
             "--nct-id",
             "NCT02222222",
             "--offline",

@@ -169,6 +169,12 @@ ALLOWED_PASSES: tuple[str, ...] = (
     "adjudication",
 )
 
+EFFECTIVE_SOURCE_PASSES: tuple[str, ...] = (
+    "primary",
+    "ocr_recovery",
+    "adjudication",
+)
+
 # Exact shard test vectors shared with src/site_layout.py.
 SHARD_VECTORS: tuple[dict[str, Any], ...] = (
     {"nct_id": "NCT01975376", "shards": 256, "shard": 80},
@@ -255,6 +261,9 @@ FORBIDDEN_AUDIT_KEYS: frozenset[str] = frozenset({
     "worker",
     "worker_notes",
     "second_pass",
+    "ocr_recovery_pass",
+    "adjudication_pass",
+    "effective_pass",
     "citations",
     "locations",
 })
@@ -1336,31 +1345,72 @@ def _normalize_location_pass(
             )
             for c in raw_citations
         ]
-        if status == "FOUND" and len(citations) < 1:
-            raise OutcomesLayoutError(f"{pass_label} {pair}: status 'FOUND' requires at least 1 citation")
+        if status == "NO_DOCUMENT" and docs_by_filename:
+            raise OutcomesLayoutError(
+                f"{pass_label} {pair}: status 'NO_DOCUMENT' is forbidden when document_profile contains posted document(s)"
+            )
+        if status in ("FOUND", "AMBIGUOUS") and len(citations) < 1:
+            raise OutcomesLayoutError(
+                f"{pass_label} {pair}: status {status!r} requires at least 1 citation"
+            )
         if status in ("NOT_FOUND", "NO_DOCUMENT") and len(citations) != 0:
             raise OutcomesLayoutError(
                 f"{pass_label} {pair}: status {status!r} forbids citations (found {len(citations)})"
             )
 
+        raw_text_source = raw_row.get("text_source")
+        if raw_text_source is not None and not isinstance(raw_text_source, str):
+            raise OutcomesLayoutError(
+                f"{pass_label} {pair}: text_source must be a string or None, got {raw_text_source!r}"
+            )
+        text_source = raw_text_source.strip() if isinstance(raw_text_source, str) else ""
+
         title = raw_row.get("primary_outcome_title")
         note = raw_row.get("note")
         worker = raw_row.get("worker")
-        normalized.append(
-            canonicalize_nested({
-                "primary_outcome_index": outcome_idx,
-                "primary_outcome_title": str(title) if title is not None else None,
-                "element": str(element),
-                "status": str(status),
-                "citations": citations,
-                "pages_searched": pages_searched,
-                "pages_not_searched": pages_not_searched,
-                "note": str(note) if note is not None else None,
-                "worker": str(worker) if worker is not None else None,
-            })
-        )
+        row_out: dict[str, Any] = {
+            "primary_outcome_index": outcome_idx,
+            "primary_outcome_title": str(title) if title is not None else None,
+            "element": str(element),
+            "status": str(status),
+            "citations": citations,
+            "pages_searched": pages_searched,
+            "pages_not_searched": pages_not_searched,
+            "note": str(note) if note is not None else None,
+            "worker": str(worker) if worker is not None else None,
+        }
+        if text_source:
+            row_out["text_source"] = text_source
+        normalized.append(canonicalize_nested(row_out))
     normalized.sort(key=lambda r: (r["primary_outcome_index"], _ELEMENT_ORDER[r["element"]]))
     return normalized
+
+
+def _resolve_effective_pass(
+    primary_pass: Sequence[Mapping[str, Any]],
+    ocr_recovery_pass: Sequence[Mapping[str, Any]] | None,
+    adjudication_pass: Sequence[Mapping[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Resolve each ``(primary_outcome_index, element)`` cell under precedence
+    ``primary -> ocr_recovery -> adjudication`` without mutating any pass row.
+    """
+    resolved: dict[tuple[int, str], dict[str, Any]] = {}
+    layers: tuple[tuple[str, Sequence[Mapping[str, Any]] | None], ...] = (
+        ("primary", primary_pass),
+        ("ocr_recovery", ocr_recovery_pass),
+        ("adjudication", adjudication_pass),
+    )
+    for source_pass, rows in layers:
+        if not rows:
+            continue
+        for row in rows:
+            pair = (int(row["primary_outcome_index"]), str(row["element"]))
+            resolved[pair] = canonicalize_nested({
+                **dict(row),
+                "source_pass": source_pass,
+            })
+    ordered_pairs = sorted(resolved, key=lambda p: (p[0], _ELEMENT_ORDER[p[1]]))
+    return [resolved[pair] for pair in ordered_pairs]
 
 
 def normalize_decision_rule_locations(
@@ -1371,9 +1421,12 @@ def normalize_decision_rule_locations(
 ) -> dict[str, Any] | None:
     """Normalize decision-rule location records into the unified shard block.
 
-    Accepts either a sequence of ``locations.jsonl`` rows (grouped by
-    ``pass``: ``"primary"`` / ``"second"``) or a pre-grouped dict containing
-    ``primary_pass`` and optional ``second_pass``.
+    Accepts either a sequence of ``locations.jsonl`` rows (grouped by ``pass``:
+    ``"primary"`` / ``"second"`` / ``"ocr_recovery"`` / ``"adjudication"``) or a
+    pre-grouped dict containing ``primary_pass`` and optional ``second_pass``,
+    ``ocr_recovery_pass``, and ``adjudication_pass``. Retains every pass
+    append-only and computes deterministic ``effective_pass`` under precedence
+    ``primary -> ocr_recovery -> adjudication``.
     """
     if raw is None:
         return None
@@ -1390,17 +1443,24 @@ def normalize_decision_rule_locations(
 
     primary_raw: list[Mapping[str, Any]] = []
     second_raw: list[Mapping[str, Any]] = []
+    ocr_recovery_raw: list[Mapping[str, Any]] = []
+    adjudication_raw: list[Mapping[str, Any]] = []
     explicit_census_status: str | None = None
 
     if isinstance(raw, Mapping):
         if "primary_pass" not in raw or not isinstance(raw["primary_pass"], Sequence) or isinstance(raw["primary_pass"], (str, bytes)):
             raise OutcomesLayoutError("decision_rule_locations dict must contain 'primary_pass' list")
         primary_raw = list(raw["primary_pass"])
-        sp = raw.get("second_pass")
-        if sp is not None:
-            if not isinstance(sp, Sequence) or isinstance(sp, (str, bytes)):
-                raise OutcomesLayoutError("decision_rule_locations.second_pass must be a list or None")
-            second_raw = list(sp)
+        for pass_key, bucket in (
+            ("second_pass", second_raw),
+            ("ocr_recovery_pass", ocr_recovery_raw),
+            ("adjudication_pass", adjudication_raw),
+        ):
+            val = raw.get(pass_key)
+            if val is not None:
+                if not isinstance(val, Sequence) or isinstance(val, (str, bytes)):
+                    raise OutcomesLayoutError(f"decision_rule_locations.{pass_key} must be a list or None")
+                bucket.extend(val)
         cs = raw.get("census_status")
         if cs is not None:
             if cs not in ("complete", "partial", "not_started", "no_document"):
@@ -1419,10 +1479,10 @@ def normalize_decision_rule_locations(
                 primary_raw.append(row)
             elif pass_name == "second":
                 second_raw.append(row)
-            else:
-                # Future passes (ocr_recovery / adjudication) are not silently
-                # folded into primary_pass; keep primary/second distinct.
-                continue
+            elif pass_name == "ocr_recovery":
+                ocr_recovery_raw.append(row)
+            elif pass_name == "adjudication":
+                adjudication_raw.append(row)
     else:
         raise OutcomesLayoutError(
             f"decision_rule_locations must be a mapping, list of location rows, or None; got {type(raw).__name__}"
@@ -1442,12 +1502,35 @@ def normalize_decision_rule_locations(
         if second_raw
         else None
     )
+    ocr_recovery_pass = (
+        _normalize_location_pass(
+            ocr_recovery_raw,
+            pass_label="ocr_recovery_pass",
+            docs_by_filename=docs_by_filename,
+        )
+        if ocr_recovery_raw
+        else None
+    )
+    adjudication_pass = (
+        _normalize_location_pass(
+            adjudication_raw,
+            pass_label="adjudication_pass",
+            docs_by_filename=docs_by_filename,
+        )
+        if adjudication_raw
+        else None
+    )
+    effective_pass = _resolve_effective_pass(
+        primary_pass,
+        ocr_recovery_pass,
+        adjudication_pass,
+    )
 
     if explicit_census_status is not None:
         census_status = explicit_census_status
-    elif not primary_pass:
+    elif not effective_pass:
         census_status = "not_started"
-    elif all(r["status"] == "NO_DOCUMENT" for r in primary_pass):
+    elif all(r["status"] == "NO_DOCUMENT" for r in effective_pass):
         census_status = "no_document"
     else:
         if primary_outcomes_count is not None and primary_outcomes_count > 0:
@@ -1456,11 +1539,11 @@ def normalize_decision_rule_locations(
                 for idx in range(primary_outcomes_count)
                 for elem in ELEMENTS
             }
-            got_pairs = {(r["primary_outcome_index"], r["element"]) for r in primary_pass}
+            got_pairs = {(r["primary_outcome_index"], r["element"]) for r in effective_pass}
             census_status = "complete" if expected_pairs.issubset(got_pairs) else "partial"
         else:
             by_outcome: dict[int, set[str]] = {}
-            for r in primary_pass:
+            for r in effective_pass:
                 by_outcome.setdefault(r["primary_outcome_index"], set()).add(r["element"])
             all_full = bool(by_outcome) and all(elems == set(ELEMENTS) for elems in by_outcome.values())
             census_status = "complete" if all_full else "partial"
@@ -1470,6 +1553,9 @@ def normalize_decision_rule_locations(
         "elements_expected_per_outcome": list(ELEMENTS),
         "primary_pass": primary_pass,
         "second_pass": second_pass,
+        "ocr_recovery_pass": ocr_recovery_pass,
+        "adjudication_pass": adjudication_pass,
+        "effective_pass": effective_pass,
     })
 
 
@@ -1611,10 +1697,16 @@ def build_census_badge(
             "status_counts": None,
             "has_second_pass": False,
         }
-    primary_rows = decision_rule_locations.get("primary_pass", [])
+    effective_rows = decision_rule_locations.get("effective_pass")
+    if (
+        not isinstance(effective_rows, Sequence)
+        or isinstance(effective_rows, (str, bytes))
+        or not effective_rows
+    ):
+        effective_rows = decision_rule_locations.get("primary_pass", [])
     counts: dict[str, int] = {}
     for status in LOCATION_STATUSES:
-        n = sum(1 for r in primary_rows if isinstance(r, Mapping) and r.get("status") == status)
+        n = sum(1 for r in effective_rows if isinstance(r, Mapping) and r.get("status") == status)
         if n > 0:
             counts[status] = n
     census_status = str(decision_rule_locations["census_status"])
@@ -1988,6 +2080,122 @@ class ValidationResult:
         }
 
 
+def _validate_shard_decision_rule_locations(
+    rel: str,
+    nct_id: str,
+    locs: Any,
+    idx_row: Mapping[str, Any] | None,
+    document_profile: Any = None,
+) -> list[str]:
+    """Validate a non-audit shard record's ``decision_rule_locations`` block."""
+    errs: list[str] = []
+    prefix = f"{rel}.data[{nct_id}].decision_rule_locations"
+    if not isinstance(locs, Mapping):
+        return [f"{prefix} must be an object or None"]
+
+    census_status = locs.get("census_status")
+    if census_status not in ("complete", "partial", "not_started", "no_document"):
+        errs.append(f"{prefix}.census_status is invalid: {census_status!r}")
+
+    has_posted_docs = (
+        isinstance(document_profile, Mapping)
+        and isinstance(document_profile.get("documents"), list)
+        and len(document_profile["documents"]) > 0
+    )
+
+    primary_pass = locs.get("primary_pass")
+    if not isinstance(primary_pass, list):
+        errs.append(f"{prefix}.primary_pass must be a list")
+        primary_pass = None
+
+    optional_passes: dict[str, list[Any] | None] = {}
+    for pass_key in ("second_pass", "ocr_recovery_pass", "adjudication_pass"):
+        val = locs.get(pass_key)
+        if val is not None and not isinstance(val, list):
+            errs.append(f"{prefix}.{pass_key} must be a list or None")
+            optional_passes[pass_key] = None
+        else:
+            optional_passes[pass_key] = val
+
+    all_pass_rows_valid = True
+    for pass_key, pass_rows in (
+        ("primary_pass", primary_pass),
+        ("second_pass", optional_passes["second_pass"]),
+        ("ocr_recovery_pass", optional_passes["ocr_recovery_pass"]),
+        ("adjudication_pass", optional_passes["adjudication_pass"]),
+    ):
+        if pass_rows is None:
+            continue
+        for idx, row in enumerate(pass_rows):
+            if not isinstance(row, Mapping):
+                errs.append(f"{prefix}.{pass_key}[{idx}] must be an object")
+                all_pass_rows_valid = False
+                continue
+            if type(row.get("primary_outcome_index")) is not int or row["primary_outcome_index"] < 0:
+                errs.append(f"{prefix}.{pass_key}[{idx}].primary_outcome_index is invalid")
+                all_pass_rows_valid = False
+            if row.get("element") not in _ELEMENT_ORDER:
+                errs.append(f"{prefix}.{pass_key}[{idx}].element is invalid: {row.get('element')!r}")
+                all_pass_rows_valid = False
+            status = row.get("status")
+            if status not in LOCATION_STATUSES:
+                errs.append(f"{prefix}.{pass_key}[{idx}].status is invalid: {status!r}")
+                all_pass_rows_valid = False
+            elif status == "NO_DOCUMENT" and has_posted_docs:
+                errs.append(
+                    f"{prefix}.{pass_key}[{idx}]: status 'NO_DOCUMENT' is forbidden when document_profile has posted document(s)"
+                )
+            if "text_source" in row:
+                ts_val = row["text_source"]
+                if not isinstance(ts_val, str) or not ts_val.strip():
+                    errs.append(f"{prefix}.{pass_key}[{idx}].text_source must be a non-empty string")
+                    all_pass_rows_valid = False
+
+    effective_pass = locs.get("effective_pass")
+    if not isinstance(effective_pass, list):
+        errs.append(f"{prefix}.effective_pass must be a list")
+    else:
+        for idx, row in enumerate(effective_pass):
+            if not isinstance(row, Mapping):
+                errs.append(f"{prefix}.effective_pass[{idx}] must be an object")
+                continue
+            sp = row.get("source_pass")
+            if sp not in EFFECTIVE_SOURCE_PASSES:
+                errs.append(f"{prefix}.effective_pass[{idx}].source_pass is invalid: {sp!r}")
+            if row.get("status") not in LOCATION_STATUSES:
+                errs.append(f"{prefix}.effective_pass[{idx}].status is invalid: {row.get('status')!r}")
+            if "text_source" in row:
+                ts_val = row["text_source"]
+                if not isinstance(ts_val, str) or not ts_val.strip():
+                    errs.append(f"{prefix}.effective_pass[{idx}].text_source must be a non-empty string")
+        if primary_pass is not None and all_pass_rows_valid:
+            expected_effective = _resolve_effective_pass(
+                primary_pass,
+                optional_passes["ocr_recovery_pass"],
+                optional_passes["adjudication_pass"],
+            )
+            if effective_pass != expected_effective:
+                errs.append(
+                    f"{prefix}.effective_pass does not match primary -> ocr_recovery -> adjudication resolution"
+                )
+
+    if idx_row is not None and not errs:
+        expected_badge = canonicalize_nested(
+            build_census_badge(
+                in_audit=False,
+                decision_rule_locations=locs,
+                has_documents=True,
+            )
+        )
+        if idx_row.get("census_badge") != expected_badge:
+            errs.append(
+                f"{nct_id}: index census_badge ({idx_row.get('census_badge')!r}) "
+                f"does not match shard decision_rule_locations ({expected_badge!r})"
+            )
+
+    return errs
+
+
 def validate_outcomes_tree(
     out_dir: str | os.PathLike[str],
     *,
@@ -2346,6 +2554,17 @@ def validate_outcomes_tree(
                             f"{nct_id}: shard cohorts ({entry.get('cohorts')!r}) != index ({idx_row.get('cohorts')!r})"
                         )
 
+                if entry.get("in_audit") is False and entry.get("decision_rule_locations") is not None:
+                    found_problems.extend(
+                        _validate_shard_decision_rule_locations(
+                            rel,
+                            nct_id,
+                            entry["decision_rule_locations"],
+                            idx_row,
+                            document_profile=entry.get("document_profile"),
+                        )
+                    )
+
         # Index-to-shard bijection check.
         index_nct_set = set(index_by_nct)
         shard_nct_set = set(seen_in_shards)
@@ -2471,6 +2690,11 @@ def write_outcomes_tree(
     work_shards = work / SHARDS_DIR
     work_shards.mkdir(parents=True)
 
+    target_existed_before = target.exists()
+    backup_shards = work / "_previous_shards"
+    moved_old_shards = False
+    installed_new_shards = False
+
     try:
         (work / INDEX_FILE).write_text(
             encode_json_text(index_doc, trailing_newline=True),
@@ -2493,20 +2717,33 @@ def write_outcomes_tree(
         target.mkdir(parents=True, exist_ok=True)
         dst_shards = target / SHARDS_DIR
         dst_index = target / INDEX_FILE
-        backup_shards = work / "_previous_shards"
-        moved_old_shards = False
 
         try:
             if dst_shards.exists():
                 os.replace(dst_shards, backup_shards)
                 moved_old_shards = True
             os.replace(work_shards, dst_shards)
+            installed_new_shards = True
             os.replace(work / INDEX_FILE, dst_index)
         except Exception:
+            if installed_new_shards and dst_shards.exists():
+                failed_new_shards = work / "_failed_new_shards"
+                try:
+                    os.replace(dst_shards, failed_new_shards)
+                except OSError:
+                    shutil.rmtree(dst_shards, ignore_errors=True)
             if moved_old_shards and backup_shards.exists() and not dst_shards.exists():
                 os.replace(backup_shards, dst_shards)
+            if (
+                not moved_old_shards
+                and not target_existed_before
+                and target.exists()
+                and not any(target.iterdir())
+            ):
+                target.rmdir()
             raise
 
         return result
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        if not (moved_old_shards and backup_shards.exists()):
+            shutil.rmtree(work, ignore_errors=True)

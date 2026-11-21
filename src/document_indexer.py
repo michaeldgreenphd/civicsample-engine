@@ -3537,6 +3537,7 @@ def ingest_legacy_census_documents(
     provider: DocumentPageExtractor | None = None,
     local_pdf_dir: Path | None = None,
     audit_nct_ids: AbstractSet[str] = frozenset(),
+    allowed_nct_ids: AbstractSet[str] | None = None,
     extracted_at: str | None = None,
     pipeline_commit: str | None = None,
     indexer_rules_version: str = INDEXER_RULES_VERSION,
@@ -3546,8 +3547,20 @@ def ingest_legacy_census_documents(
 ) -> tuple[list[DocumentIndexEntry], list[TrialDocumentProfile]]:
     """Offline-ingest legacy rule-census documents.jsonl rows into DocumentCacheStore.
 
-    Enforces enforce_not_in_audit() on every row before touching local PDFs or cache.
+    Enforces enforce_not_in_audit() (honoring any row-level ``in_audit`` value)
+    and optional ``allowed_nct_ids`` allowlist membership on every row before
+    touching local PDFs, page providers, or cache state.
     """
+    normalized_allowed: frozenset[str] | None = (
+        frozenset(
+            item.strip().upper()
+            for item in allowed_nct_ids
+            if isinstance(item, str) and item.strip()
+        )
+        if allowed_nct_ids is not None
+        else None
+    )
+
     rows_by_nct: dict[str, list[dict[str, Any]]] = {}
     with Path(documents_jsonl).open("r", encoding="utf-8") as handle:
         for raw_line in handle:
@@ -3558,7 +3571,15 @@ def ingest_legacy_census_documents(
             if not isinstance(row, Mapping):
                 continue
             nct_id = validate_nct_id(str(row.get("nct_id", "")))
-            enforce_not_in_audit(nct_id, in_audit=False, audit_nct_ids=audit_nct_ids)
+            row_in_audit = row["in_audit"] if "in_audit" in row else False
+            enforce_not_in_audit(
+                nct_id, in_audit=row_in_audit, audit_nct_ids=audit_nct_ids
+            )
+            if normalized_allowed is not None and nct_id not in normalized_allowed:
+                raise AuditHoldoutError(
+                    f"Trial {nct_id} in {documents_jsonl} is not in allowed_nct_ids; "
+                    "unlisted trials are blocked by the audit holdout firewall."
+                )
             rows_by_nct.setdefault(nct_id, []).append(dict(row))
 
     stamp = extracted_at or utc_now_iso()

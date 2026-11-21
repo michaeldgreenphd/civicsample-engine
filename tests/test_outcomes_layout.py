@@ -598,6 +598,214 @@ def test_locations_validation_citations_ellipsis_page_bounds_and_unsearched() ->
     with pytest.raises(ol.OutcomesLayoutError, match="duplicate"):
         ol.normalize_decision_rule_locations(dup_rows, document_profile=prof)
 
+    # AMBIGUOUS with 0 citations rejected
+    bad_ambig = copy.deepcopy(rows)
+    bad_ambig[0]["status"] = "AMBIGUOUS"
+    bad_ambig[0]["citations"] = []
+    with pytest.raises(ol.OutcomesLayoutError, match="AMBIGUOUS"):
+        ol.normalize_decision_rule_locations(bad_ambig, document_profile=prof)
+
+    # NO_DOCUMENT rejected when document_profile has posted documents (C4 defense-in-depth)
+    bad_nodoc = copy.deepcopy(rows)
+    bad_nodoc[0]["status"] = "NO_DOCUMENT"
+    bad_nodoc[0]["citations"] = []
+    with pytest.raises(ol.OutcomesLayoutError, match="NO_DOCUMENT"):
+        ol.normalize_decision_rule_locations(bad_nodoc, document_profile=prof)
+
+    # NO_DOCUMENT allowed when document_profile is None or has zero documents
+    nodoc_rows = [
+        {
+            "nct_id": "NCT01975376",
+            "primary_outcome_index": 0,
+            "primary_outcome_title": "Overall Survival",
+            "element": elem,
+            "status": "NO_DOCUMENT",
+            "citations": [],
+            "pages_searched": "all",
+            "pages_not_searched": [],
+            "note": "No protocol or SAP posted.",
+            "worker": "shard-01",
+            "pass": "primary",
+        }
+        for elem in ol.ELEMENTS
+    ]
+    empty_prof = ol.normalize_document_profile({"documents": []})
+    norm_nodoc_none = ol.normalize_decision_rule_locations(nodoc_rows, document_profile=None, primary_outcomes_count=1)
+    norm_nodoc_empty = ol.normalize_decision_rule_locations(nodoc_rows, document_profile=empty_prof, primary_outcomes_count=1)
+    assert norm_nodoc_none is not None and norm_nodoc_none["census_status"] == "no_document"
+    assert norm_nodoc_empty is not None and norm_nodoc_empty["census_status"] == "no_document"
+
+
+def test_ocr_recovery_and_adjudication_passes_effective_pass_and_cli(tmp_path: pathlib.Path) -> None:
+    nct_id = "NCT01975376"
+    prof = ol.normalize_document_profile(_make_doc_profile(nct_id))
+    assert prof is not None
+
+    primary_rows = _make_complete_locations(nct_id)
+    for row in primary_rows:
+        if row["element"] == "alpha_and_sidedness":
+            row["status"] = "UNREADABLE"
+            row["citations"] = []
+            row["note"] = "Image-only scan on statistical methods page."
+        elif row["element"] == "margin":
+            row["status"] = "AMBIGUOUS"
+            row["citations"] = [_make_citation(quotation="Non-inferiority margin described across two sections.")]
+            row["note"] = "Requires adjudication."
+
+    ocr_row: dict[str, Any] = {
+        "nct_id": nct_id,
+        "primary_outcome_index": 0,
+        "primary_outcome_title": "Overall Survival",
+        "element": "alpha_and_sidedness",
+        "status": "FOUND",
+        "citations": [_make_citation(quotation="Two-sided alpha level of 0.05 recovered via OCR.")],
+        "pages_searched": "all",
+        "pages_not_searched": [],
+        "note": "Recovered after macOS Vision OCR.",
+        "worker": "ocr-01",
+        "pass": "ocr_recovery",
+        "text_source": "macos_vision_ocr_v1",
+    }
+    adj_row: dict[str, Any] = {
+        "nct_id": nct_id,
+        "primary_outcome_index": 0,
+        "primary_outcome_title": "Overall Survival",
+        "element": "margin",
+        "status": "FOUND",
+        "citations": [_make_citation(quotation="Final adjudicated non-inferiority margin is HR 1.15.")],
+        "pages_searched": "all",
+        "pages_not_searched": [],
+        "note": "Adjudicated by senior reviewer.",
+        "worker": "adj-01",
+        "pass": "adjudication",
+    }
+    flat_rows = primary_rows + [ocr_row, adj_row]
+
+    norm_flat = ol.normalize_decision_rule_locations(
+        flat_rows,
+        document_profile=prof,
+        primary_outcomes_count=1,
+    )
+    assert norm_flat is not None
+    assert norm_flat["census_status"] == "complete"
+    assert len(norm_flat["primary_pass"]) == 7
+    assert norm_flat["second_pass"] is None
+    assert norm_flat["ocr_recovery_pass"] is not None and len(norm_flat["ocr_recovery_pass"]) == 1
+    assert norm_flat["adjudication_pass"] is not None and len(norm_flat["adjudication_pass"]) == 1
+    assert len(norm_flat["effective_pass"]) == 7
+
+    # Full append-only pass history preserved without mutating source passes.
+    primary_by_el = {r["element"]: r for r in norm_flat["primary_pass"]}
+    assert primary_by_el["alpha_and_sidedness"]["status"] == "UNREADABLE"
+    assert primary_by_el["margin"]["status"] == "AMBIGUOUS"
+    assert all("source_pass" not in r for r in norm_flat["primary_pass"])
+    assert norm_flat["ocr_recovery_pass"][0]["text_source"] == "macos_vision_ocr_v1"
+    assert "source_pass" not in norm_flat["ocr_recovery_pass"][0]
+    assert "source_pass" not in norm_flat["adjudication_pass"][0]
+
+    # effective_pass resolves cells under primary -> ocr_recovery -> adjudication.
+    eff_by_el = {r["element"]: r for r in norm_flat["effective_pass"]}
+    assert all(r["status"] == "FOUND" for r in norm_flat["effective_pass"])
+    assert eff_by_el["alpha_and_sidedness"]["source_pass"] == "ocr_recovery"
+    assert eff_by_el["alpha_and_sidedness"]["text_source"] == "macos_vision_ocr_v1"
+    assert eff_by_el["margin"]["source_pass"] == "adjudication"
+    assert eff_by_el["primary_endpoint_analysed"]["source_pass"] == "primary"
+
+    # Precedence: adjudication overrides ocr_recovery when both touch the same cell.
+    adj_override = copy.deepcopy(ocr_row)
+    adj_override["pass"] = "adjudication"
+    adj_override["note"] = "Adjudication supersedes OCR."
+    adj_override["text_source"] = "macos_vision_ocr_v1"
+    norm_override = ol.normalize_decision_rule_locations(
+        flat_rows + [adj_override],
+        document_profile=prof,
+        primary_outcomes_count=1,
+    )
+    assert norm_override is not None
+    eff_override = {r["element"]: r for r in norm_override["effective_pass"]}
+    assert eff_override["alpha_and_sidedness"]["source_pass"] == "adjudication"
+    assert eff_override["alpha_and_sidedness"]["note"] == "Adjudication supersedes OCR."
+
+    # Pre-grouped mapping produces byte-identical normalized output to flat rows.
+    grouped_input: dict[str, Any] = {
+        "nct_id": nct_id,
+        "primary_pass": primary_rows,
+        "ocr_recovery_pass": [ocr_row],
+        "adjudication_pass": [adj_row],
+    }
+    norm_grouped = ol.normalize_decision_rule_locations(
+        grouped_input,
+        document_profile=prof,
+        primary_outcomes_count=1,
+    )
+    assert norm_grouped == norm_flat
+
+    # build_trial_bundle propagates effective_pass counts into index_row.census_badge.
+    study = _make_ctgov_study(nct_id, in_audit=False)
+    row_out, rec_out = ol.build_trial_bundle(
+        study,
+        shards=8,
+        document_profile=_make_doc_profile(nct_id),
+        decision_rule_locations=flat_rows,
+    )
+    assert row_out["census_badge"] == {
+        "census_status": "complete",
+        "has_second_pass": False,
+        "status_counts": {"FOUND": 7},
+    }
+    assert rec_out["decision_rule_locations"] == norm_flat
+
+    # End-to-end build_outcomes_shards.py CLI with flat locations.jsonl.
+    trials_path = tmp_path / "trials.json"
+    trials_path.write_text(json.dumps([study]), encoding="utf-8")
+    docs_path = tmp_path / "docs.jsonl"
+    docs_path.write_text(json.dumps(_make_doc_profile(nct_id)) + "\n", encoding="utf-8")
+    locs_path = tmp_path / "locations.jsonl"
+    locs_path.write_text("\n".join(json.dumps(r) for r in flat_rows) + "\n", encoding="utf-8")
+    out_dir = tmp_path / "outcomes_cli"
+
+    rc = cli.main([
+        "--trials", str(trials_path),
+        "--documents", str(docs_path),
+        "--locations", str(locs_path),
+        "--extracted-at", SAMPLE_TS,
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out_dir),
+    ])
+    assert rc == 0
+    assert cli.main(["--check", str(out_dir)]) == 0
+
+    idx_doc = json.loads((out_dir / "index.json").read_text(encoding="utf-8"))
+    assert idx_doc["data"][0]["census_badge"]["status_counts"] == {"FOUND": 7}
+    shard_id = ol.outcomes_shard_of(nct_id, 8)
+    sdoc = json.loads(gzip.decompress((out_dir / "shards" / f"{shard_id}.json.gz").read_bytes()).decode("utf-8"))
+    shard_locs = sdoc["data"][nct_id]["decision_rule_locations"]
+    assert shard_locs["ocr_recovery_pass"][0]["text_source"] == "macos_vision_ocr_v1"
+    assert len(shard_locs["adjudication_pass"]) == 1
+    assert len(shard_locs["effective_pass"]) == 7
+
+    # Tampering with effective_pass on disk is detected by validate_outcomes_tree.
+    tampered_sdoc = copy.deepcopy(sdoc)
+    tampered_sdoc["data"][nct_id]["decision_rule_locations"]["effective_pass"][0]["source_pass"] = "ocr_recovery"
+    (out_dir / "shards" / f"{shard_id}.json.gz").write_bytes(ol.encode_gz_bytes(tampered_sdoc))
+    tamper_res = ol.validate_outcomes_tree(out_dir)
+    assert not tamper_res.ok
+    assert any("effective_pass" in p for p in tamper_res.problems)
+
+    # Non-string text_source is rejected.
+    bad_ts = copy.deepcopy(ocr_row)
+    bad_ts["text_source"] = 42
+    with pytest.raises(ol.OutcomesLayoutError, match="text_source"):
+        ol.normalize_decision_rule_locations(primary_rows + [bad_ts], document_profile=prof)
+
+    # NO_DOCUMENT in ocr_recovery_pass rejected when document_profile has posted docs.
+    bad_ocr_nodoc = copy.deepcopy(ocr_row)
+    bad_ocr_nodoc["status"] = "NO_DOCUMENT"
+    bad_ocr_nodoc["citations"] = []
+    with pytest.raises(ol.OutcomesLayoutError, match="NO_DOCUMENT"):
+        ol.normalize_decision_rule_locations(primary_rows + [bad_ocr_nodoc], document_profile=prof)
+
 
 def test_module4_longitudinal_provenance_adapter() -> None:
     prov = _make_module4_provenance("NCT01975376", with_pdf_scraped=True)
@@ -627,6 +835,9 @@ def test_module4_longitudinal_provenance_adapter() -> None:
         ("v2_locations_list", {"in_audit": True, "decision_rule_locations": []}),
         ("v3_forbidden_key_llm", {"in_audit": True, "raw_payload": {"llm_assessment": {"x": 1}}}),
         ("v3_forbidden_key_worker", {"in_audit": True, "raw_payload": {"worker_notes": "draft"}}),
+        ("v3_forbidden_key_ocr_recovery_pass", {"in_audit": True, "raw_payload": {"ocr_recovery_pass": []}}),
+        ("v3_forbidden_key_adjudication_pass", {"in_audit": True, "raw_payload": {"adjudication_pass": []}}),
+        ("v3_forbidden_key_effective_pass", {"in_audit": True, "raw_payload": {"effective_pass": []}}),
         (
             "v3_extra_shard_key",
             {
@@ -879,6 +1090,130 @@ def test_atomic_rollback_and_sibling_file_preservation(tmp_path: pathlib.Path) -
     assert (out / "index.json").read_bytes() == before_index
     assert (out / "unrelated_note.txt").read_text(encoding="utf-8") == "keep me"
     assert not (tmp_path / "outcomes.partial").exists()
+
+
+def test_write_outcomes_tree_restores_v1_shards_when_index_swap_fails(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "outcomes"
+    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    idx_v1, shards_v1 = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(s1, shards=4)],
+        extracted_at="2026-11-20T03:00:00+00:00",
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+    ol.write_outcomes_tree(out, idx_v1, shards_v1)
+    (out / "unrelated_note.txt").write_text("keep me", encoding="utf-8")
+
+    v1_index_bytes = (out / "index.json").read_bytes()
+    v1_shard_bytes = {
+        n: (out / "shards" / f"{n}.json.gz").read_bytes()
+        for n in range(4)
+    }
+
+    s2 = _make_ctgov_study("NCT01174160", in_audit=False, sponsor_class="NIH", phase="PHASE2")
+    idx_v2, shards_v2 = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(s1, shards=4), ol.build_trial_bundle(s2, shards=4)],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+
+    real_replace = os.replace
+    saw_index_swap = False
+
+    def _fail_on_index_swap(src: Any, dst: Any) -> None:
+        nonlocal saw_index_swap
+        if pathlib.Path(dst).name == ol.INDEX_FILE:
+            saw_index_swap = True
+            raise OSError("simulated index.json swap failure")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(ol.os, "replace", _fail_on_index_swap)
+    with pytest.raises(OSError, match="simulated index.json swap failure"):
+        ol.write_outcomes_tree(out, idx_v2, shards_v2)
+
+    assert saw_index_swap is True
+    assert (out / "index.json").read_bytes() == v1_index_bytes
+    for n in range(4):
+        assert (out / "shards" / f"{n}.json.gz").read_bytes() == v1_shard_bytes[n]
+    assert (out / "unrelated_note.txt").read_text(encoding="utf-8") == "keep me"
+    assert ol.validate_outcomes_tree(out).ok is True
+    assert not (tmp_path / "outcomes.partial").exists()
+
+
+def test_write_outcomes_tree_first_time_index_swap_failure_leaves_no_orphan_shards(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "fresh_outcomes"
+    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    idx, shards = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(s1, shards=4)],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+
+    real_replace = os.replace
+
+    def _fail_on_index_swap(src: Any, dst: Any) -> None:
+        if pathlib.Path(dst).name == ol.INDEX_FILE:
+            raise OSError("simulated first-write index.json swap failure")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(ol.os, "replace", _fail_on_index_swap)
+    with pytest.raises(OSError, match="simulated first-write index.json swap failure"):
+        ol.write_outcomes_tree(out, idx, shards)
+
+    assert not (out / "shards").exists()
+    assert not (out / "index.json").exists()
+    assert not out.exists()
+    assert not (tmp_path / "fresh_outcomes.partial").exists()
+
+
+def test_write_outcomes_tree_preserves_backup_if_rollback_restore_fails(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "outcomes_keep_backup"
+    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    idx_v1, shards_v1 = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(s1, shards=4)],
+        extracted_at="2026-11-20T03:00:00+00:00",
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+    ol.write_outcomes_tree(out, idx_v1, shards_v1)
+    v1_shard0 = (out / "shards" / "0.json.gz").read_bytes()
+
+    idx_v2, shards_v2 = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(s1, shards=4)],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+
+    real_replace = os.replace
+
+    def _fail_index_and_restore(src: Any, dst: Any) -> None:
+        src_p = pathlib.Path(src)
+        dst_p = pathlib.Path(dst)
+        if dst_p.name == ol.INDEX_FILE:
+            raise OSError("simulated index swap failure")
+        if src_p.name == "_previous_shards":
+            raise OSError("simulated backup restore failure")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(ol.os, "replace", _fail_index_and_restore)
+    with pytest.raises(OSError, match="simulated backup restore failure"):
+        ol.write_outcomes_tree(out, idx_v2, shards_v2)
+
+    backup_dir = tmp_path / "outcomes_keep_backup.partial" / "_previous_shards"
+    assert backup_dir.is_dir(), "work/.partial must NOT be deleted when _previous_shards restore failed"
+    assert (backup_dir / "0.json.gz").read_bytes() == v1_shard0
 
 
 def test_dataset_folder_present_files_ignores_outcomes_directory(tmp_path: pathlib.Path) -> None:

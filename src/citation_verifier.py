@@ -1822,6 +1822,21 @@ def verify_location_record(
         )
 
     docs_for_nct = docs_by_nct.get(nct_id, {})
+    if status == "NO_DOCUMENT" and docs_for_nct:
+        issues.append(
+            VerificationIssue(
+                code="NO_DOCUMENT_WITH_POSTED_DOCUMENT",
+                severity="error",
+                nct_id=nct_id,
+                location_key=loc_key,
+                filename=None,
+                physical_page=None,
+                message=(
+                    f"status='NO_DOCUMENT' is invalid when {len(docs_for_nct)} posted "
+                    f"document(s) exist for {nct_id} ({sorted(docs_for_nct.keys())})."
+                ),
+            )
+        )
     pages_searched = loc.get("pages_searched")
     pages_not_searched = loc.get("pages_not_searched")
     has_unsearched = _is_non_empty_pages_not_searched(pages_not_searched)
