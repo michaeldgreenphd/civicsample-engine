@@ -1128,6 +1128,10 @@ _BLACK_TOKEN_RX = re.compile(
     r"(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
     re.IGNORECASE)
 _BLACK_ALTERNATIVE_JOINS = _EUROPEAN_ALTERNATIVE_JOINS
+# "African/American" (and "African / American"): the one name split by a
+# slash, which the slash fragments would otherwise read as "African".
+# Not "African/American Indian", which names two races (left as it was).
+_AFRICAN_SLASH_AMERICAN_RX = re.compile(r"\bafrican\s*/\s*american\b(?!\s*indian)", re.IGNORECASE)
 # A bracketed abbreviation of the label's own words, as registrants post
 # them: "Black or African (Afr) Amer", "BLACK (BLA) OR AFRICAN AMERICAN (AFR
 # AME)", "(B or Af Am)", "(US)". Only these words: "(Part C)" is a crossing.
@@ -2210,8 +2214,11 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
         }
 
     # Slash-compound normalization: try each "/" fragment individually
-    # so "Caucasian/White" resolves even without a dedicated mapping entry
-    if "/" in label_clean:
+    # so "Caucasian/White" resolves even without a dedicated mapping entry.
+    # A slash inside "African/American" splits one name, not two: the Black
+    # labels read it ("African/American" is african_american, not african;
+    # block comment "Black labels", a review finding).
+    if "/" in label_clean and _AFRICAN_SLASH_AMERICAN_RX.search(label_clean) is None:
         for frag in label_clean.split("/"):
             frag = frag.strip()
             if not frag:

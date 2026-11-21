@@ -3296,6 +3296,7 @@ def test_a_label_naming_more_or_less_than_black_groups_is_not_read_by_the_rule(l
     ("Black or African American", None, []),  # the vocabulary's own
     ("African", "african", []),
     ("Black/African American", None, ["slash_normalized"]),  # the slash fragments run first
+    ("African/American", "african_american", ["black_label"]),  # one name: not the "African" fragment (review finding)
     ("Black African", "african", ["black_label"]),
 ])
 def test_black_readings_through_map_race_category(label: str, subcategory: Optional[str],
