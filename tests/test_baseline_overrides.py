@@ -149,6 +149,21 @@ def test_a_value_that_is_not_a_count_reads_the_trial_as_posted(study: dict[str, 
     _not_applied(study)
 
 
+def test_a_row_missing_a_kept_group_reads_the_trial_as_posted(study: dict[str, Any]) -> None:
+    """Summed as zero, the missing BG001 would cut White by 11,773 (a review
+    finding). Read as posted, the race reader takes the posted Total column."""
+    row = _measure(study, "Race/Ethnicity, Customized")["classes"][0]["categories"][0]
+    row["measurements"] = [m for m in row["measurements"] if m["groupId"] != "BG001"]
+    record = _not_applied(study)
+    assert record["race"]["omb_totals"]["other"] == 224048
+
+
+def test_a_row_repeating_a_group_reads_the_trial_as_posted(study: dict[str, Any]) -> None:
+    row = _measure(study, "Sex/Gender, Customized")["classes"][0]["categories"][0]
+    row["measurements"].append(dict(row["measurements"][1]))
+    _not_applied(study)
+
+
 def test_another_trial_is_read_as_posted(study: dict[str, Any]) -> None:
     study["protocolSection"]["identificationModule"]["nctId"] = "NCT99000912"
     read, flag = bo.apply_baseline_override(study)

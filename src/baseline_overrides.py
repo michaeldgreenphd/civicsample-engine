@@ -16,7 +16,9 @@ manuscript bundle first.
 
 Provenance. A block read through an exception carries the flag
 baseline_override. When the posted module no longer matches the pinned
-structure, the exception is not applied, the module is read as posted, the
+structure (groups, denominators, a measure that does not count participants,
+a value that is not a count, or a row that does not post each pinned group
+exactly once), the exception is not applied, the module is read as posted, the
 blocks carry baseline_override_not_applied and a warning is logged: absence
 of the reading is recorded, never silent.
 
@@ -137,12 +139,20 @@ def _mismatch(module: dict, spec: Dict[str, Any]) -> Optional[str]:
         return "baseline groups differ from the pinned ones"
     if _posted_denoms(module) != spec["denoms"]:
         return "baseline denominators differ from the pinned ones"
+    group_ids = sorted(gid for gid, _title in spec["groups"])
     for measure in module.get("measures") or []:
         if measure.get("paramType") != "COUNT_OF_PARTICIPANTS":
             return f"measure {measure.get('title')!r} does not count participants"
         for cls in measure.get("classes") or []:
             for cat in cls.get("categories") or []:
-                for m in cat.get("measurements") or []:
+                measurements = cat.get("measurements") or []
+                # Every row posts each pinned group exactly once: a missing
+                # kept group would otherwise be summed as zero (a review
+                # finding), a repeated one twice.
+                if sorted(m.get("groupId") for m in measurements) != group_ids:
+                    return (f"measure {measure.get('title')!r} has a row that does not post "
+                            f"each pinned group exactly once")
+                for m in measurements:
                     if _count(m.get("value")) is None:
                         return f"measure {measure.get('title')!r} posts a value that is not a count"
     return None
