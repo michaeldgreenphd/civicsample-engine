@@ -1065,8 +1065,10 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
 # alternative, the name every other one refines (Haitian and Jamaican lie
 # in Caribbean), else none; Black beside African American is the category's
 # own name, not the subgroup ("Black (or African American)"); names given
-# as examples name none, in a bracket holding an example word or after one
-# outside brackets ("Black including Haitian"; a review finding); across
+# as examples name none, in a bracket holding an example word (and the
+# brackets within it, not a sibling bracket: "Black (African) (e.g.
+# Haitian)" is african) or after one outside brackets ("Black including
+# Haitian"; review findings); across
 # alternatives, theirs when all agree, else none.
 #
 # What it does not do. "South African" alone names a country of every race,
@@ -1164,8 +1166,13 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
     text = re.sub(r"[.'’]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
-    tokens: List[Tuple[str, str, int]] = []
-    depth = 0
+    # Each term carries the brackets it sits in, outermost first, each
+    # bracket by its own number: an example word marks its bracket and the
+    # brackets within it, not a sibling bracket at the same depth ("Black
+    # (African) (e.g. Haitian)"; a review finding).
+    tokens: List[Tuple[str, str, Tuple[int, ...]]] = []
+    frames: List[int] = []
+    opened = 0
     position = 0
     while position < len(text):
         match = _BLACK_TOKEN_RX.match(text, position)
@@ -1173,50 +1180,53 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
             return False, None
         kind, term = match.lastgroup, re.sub(r"\s+", " ", match.group(0).lower())
         if kind == "mark" and term == "(":
-            depth += 1
-            kind = "open"
+            opened += 1
+            frames.append(opened)
+            tokens.append(("open", term, tuple(frames)))
         elif kind == "mark" and term == ")":
-            depth -= 1
-            if depth < 0:
+            if not frames:
                 return False, None
-            kind = "close"
-        tokens.append((kind, term, depth))
+            tokens.append(("close", term, tuple(frames)))
+            frames.pop()
+        else:
+            tokens.append((kind, term, tuple(frames)))
         position = match.end()
         while position < len(text) and text[position].isspace():
             position += 1
     if not tokens or (tokens[0][0] in ("join", "mark", "close")) or tokens[-1][0] in ("join", "mark", "open"):
         return False, None  # empty, or a piece of a longer label
-    segments: List[List[Tuple[str, str, int]]] = [[]]
-    for kind, term, depth in tokens:
-        if depth == 0 and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS:
+    segments: List[List[Tuple[str, str, Tuple[int, ...]]]] = [[]]
+    for kind, term, within in tokens:
+        if not within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS:
             segments.append([])
         elif kind in ("name", "abbrev", "place", "direction", "other", "example", "unspecified",
                       "open", "close"):
-            segments[-1].append((kind, term, depth))
-    has_name = any(kind == "name" for kind, _t, _d in tokens)
+            segments[-1].append((kind, term, within))
+    has_name = any(kind == "name" for kind, _t, _w in tokens)
     subcategories: List[Optional[str]] = []
     for segment in segments:
         if not segment:
             continue  # ", or" leaves nothing between two joins
         # A name, or an abbreviation beside a name elsewhere ("Black or Af
         # Am"): "AA" alone names nothing the rule can tell.
-        if not any(kind == "name" or (kind == "abbrev" and has_name) for kind, _t, _d in segment):
+        if not any(kind == "name" or (kind == "abbrev" and has_name) for kind, _t, _w in segment):
             return False, None
         # Names given as examples describe a wider group and name no
-        # subcategory: every name in a bracket holding an example word
-        # ("(..., Nigerian, Ethiopian, Somali, etc.)"), and outside brackets
-        # the names after one ("Black including Haitian"; a review finding).
-        example_depths = {depth for kind, _t, depth in segment if kind == "example" and depth}
-        first_example = next((i for i, (kind, _t, depth) in enumerate(segment)
-                              if kind == "example" and depth == 0), None)
-        specific = [_black_subcategory_of(term) for i, (kind, term, depth) in enumerate(segment)
-                    if kind == "name" and depth not in example_depths
-                    and not (depth == 0 and first_example is not None and i > first_example)]
+        # subcategory: every name in a bracket holding an example word, or in
+        # a bracket within it ("(..., Nigerian, Ethiopian, Somali, etc.)",
+        # "(including Caribbean (Haitian))"), and every name after an example
+        # word outside brackets ("Black including Haitian"; review findings).
+        example_frames = {within[-1] for kind, _t, within in segment if kind == "example" and within}
+        first_example = next((i for i, (kind, _t, within) in enumerate(segment)
+                              if kind == "example" and not within), None)
+        specific = [_black_subcategory_of(term) for i, (kind, term, within) in enumerate(segment)
+                    if kind == "name" and not example_frames & set(within)
+                    and not (first_example is not None and i > first_example)]
         candidates = [sub for sub in specific if sub is not None]
         # Black beside African American is the category's own name ("Black
         # (or African American)", "Black of African American"): no subgroup.
         names_black = any(kind == "name" and _black_subcategory_of(term) is None
-                          for kind, term, _depth in segment)
+                          for kind, term, _within in segment)
         if not candidates or (names_black and "african_american" in candidates):
             subcategories.append(None)
             continue

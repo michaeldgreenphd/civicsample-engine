@@ -3244,6 +3244,9 @@ def test_a_label_naming_black_groups_only_is_read_as_black(label: str, subcatego
     ("Black (e.g., Haitian, Jamaican)", None),  # examples alone would make it caribbean
     ("Black including Haitian", None),  # fictional: an example word outside brackets (review finding)
     ("Black African including Nigerian", "african"),  # fictional: the names before it still count
+    ("Black including Caribbean (Haitian)", None),  # fictional: a bracket after the example word
+    ("Black (including Caribbean (Haitian))", None),  # fictional: a bracket within the example's (review finding)
+    ("Black (African) (e.g. Haitian)", "african"),  # fictional: a sibling bracket is not an example
     ("African, Caribbean, or non-specified Black", None),  # "non-specified" describes Black
     # Haitian lies in Caribbean; across alternatives, theirs when all agree.
     ("Caribbean (Haitian)", "caribbean_haitian"),
