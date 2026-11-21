@@ -7,19 +7,20 @@
   },
   "started_at": "2026-11-14T01:21:51Z",
   "continuation_started_at": "2026-11-14T13:42:19Z",
-  "ended_at": "2026-11-17T14:02:56Z",
+  "ended_at": "2026-11-21T05:44:25Z",
   "completion_status": {
     "in_scope_trials": 402,
-    "primary_pass_trials_completed": "348 / 402",
+    "primary_pass_trials_completed": "402 / 402",
     "primary_pass_trials_partly_done": "0 / 402",
-    "primary_pass_trials_not_started": "54 / 402",
+    "primary_pass_trials_not_started": "0 / 402",
     "second_pass_trials_completed": "40 / 40",
     "paired_second_pass_trials": "40 / 40",
-    "download_failures": "0 / 678",
+    "download_failures": "0 / 782",
     "clinicaltrials_gov_rate_limits": 0,
     "total_census_hard_cap_usd": 150.0,
     "batch_launch_stop_threshold_usd": 140.0,
-    "stopped_by_cost_cap": true
+    "stopped_by_cost_cap": false,
+    "wave3_completion_note": "Completed remaining 54 / 402 primary-pass trials (shard-18, shard-19, shard-20) on 2026-11-21 via 6 balanced Neon shards (neon-shard-1..neon-shard-6, 9 trials each) running on Antigravity plan quota with gemini-4-neon-high using src/document_indexer.py pre-indexed PDFKit caches and src/citation_verifier.py mechanical verification."
   },
   "workers": {
     "coordinator": {
@@ -528,6 +529,134 @@
       "total_output_tokens": 138015,
       "total_usd_1_25": 4.4842,
       "total_usd_2_00": 6.5608
+    },
+    "census-planner": {
+      "role": "Swarm Worker (Wave 3 baseline verifier & 6-shard planner)",
+      "model": "Gemini 4 Carbon (High)",
+      "model_id": "gemini-4-carbon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "completed_at": "2026-11-21T04:34:15Z"
+    },
+    "census-prefetch": {
+      "role": "Swarm Worker (Wave 3 54-trial CT.gov prefetch & DocumentCacheStore indexer)",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "started_at": "2026-11-21T04:54:45Z",
+      "completed_at": "2026-11-21T04:59:03Z",
+      "trials_indexed": 54,
+      "documents_downloaded": 104,
+      "download_failures": 0
+    },
+    "neon-shard-1": {
+      "role": "Swarm Worker (neon-shard-1, Wave 3 primary extraction)",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "completed_at": "2026-11-21T05:27:33Z",
+      "trials_completed": 9,
+      "documents_count": 18,
+      "primary_outcomes_count": 12,
+      "location_rows_count": 84,
+      "citations_count": 145
+    },
+    "neon-shard-2": {
+      "role": "Swarm Worker (neon-shard-2, Wave 3 primary extraction)",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "completed_at": "2026-11-21T05:28:32Z",
+      "trials_completed": 9,
+      "documents_count": 18,
+      "primary_outcomes_count": 14,
+      "location_rows_count": 98,
+      "citations_count": 182
+    },
+    "neon-shard-3": {
+      "role": "Swarm Worker (neon-shard-3, Wave 3 primary extraction)",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "completed_at": "2026-11-21T05:25:16Z",
+      "trials_completed": 9,
+      "documents_count": 17,
+      "primary_outcomes_count": 17,
+      "location_rows_count": 119,
+      "citations_count": 206
+    },
+    "neon-shard-4": {
+      "role": "Swarm Worker (neon-shard-4, Wave 3 primary extraction)",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "completed_at": "2026-11-21T05:25:02Z",
+      "trials_completed": 9,
+      "documents_count": 15,
+      "primary_outcomes_count": 10,
+      "location_rows_count": 70,
+      "citations_count": 110
+    },
+    "neon-shard-5": {
+      "role": "Swarm Worker (neon-shard-5, Wave 3 primary extraction)",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "completed_at": "2026-11-21T05:31:50Z",
+      "trials_completed": 9,
+      "documents_count": 19,
+      "primary_outcomes_count": 10,
+      "location_rows_count": 70,
+      "citations_count": 164
+    },
+    "neon-shard-6": {
+      "role": "Swarm Worker (neon-shard-6, Wave 3 primary extraction)",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "completed_at": "2026-11-21T05:23:15Z",
+      "trials_completed": 9,
+      "documents_count": 17,
+      "primary_outcomes_count": 10,
+      "location_rows_count": 70,
+      "citations_count": 102
+    },
+    "census-verify-1": {
+      "role": "Swarm Worker (Wave 3 independent verifier for neon-shard-1..3)",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "completed_at": "2026-11-21T05:31:27Z",
+      "trials_verified": 27,
+      "rows_verified": 301,
+      "citations_exact_ws": "533 / 533"
+    },
+    "census-verify-2": {
+      "role": "Swarm Worker (Wave 3 independent verifier for neon-shard-4..6)",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "completed_at": "2026-11-21T05:34:49Z",
+      "trials_verified": 27,
+      "rows_verified": 210,
+      "citations_exact_ws": "376 / 376"
+    },
+    "census-merger": {
+      "role": "Swarm Worker (Wave 3 final corpus assembler & 402-trial mechanical verifier)",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "wave": 3,
+      "billing_mode": "Antigravity plan quota",
+      "completed_at": "2026-11-21T05:44:25Z"
     }
   },
   "appended_continuation_shards": [
@@ -584,6 +713,23 @@
         "usd_model_matched_standard": 0.4011,
         "usd_schedule_1_25": 0.3777,
         "usd_schedule_2_00": 0.5512
+      }
+    },
+    "wave3_neon_completion": {
+      "completed_at": "2026-11-21T05:44:25Z",
+      "trials_completed": 54,
+      "documents_downloaded": 104,
+      "primary_outcomes": 73,
+      "location_rows_added": 511,
+      "citations_added": 909,
+      "model": "Gemini 4 Neon (High) (gemini-4-neon-high)",
+      "pre_indexing": "src/document_indexer.py (MacOSPDFKitProvider + DocumentCacheStore, 6,615 physical pages -> 1,749 pages_selected [26.4%], 4,039 pages_deferred [61.1%], 827 pages_without_text [12.5%])",
+      "billing_mechanism": "Executed on Antigravity plan quota (no per-token USD API invoice). Historical Wave 1 + Wave 2 token-counts-times-price USD totals ($139.60 model-matched / $131.45 uniform Gemini / $191.83 conservative across 348 trials) are preserved unchanged above.",
+      "projected_api_equivalent_usd_pre_run": {
+        "sliced": 4.59,
+        "full": 21.66,
+        "conservative": 29.76,
+        "source": "census-planner /tmp/census_plan_20261120/plan.json"
       }
     }
   },
@@ -1167,7 +1313,7 @@
       "step": 3,
       "worker": "shard-18",
       "trial_count": 18,
-      "status": "not_started_cost_cap",
+      "status": "completed",
       "nct_ids": [
         "NCT04003155",
         "NCT04007367",
@@ -1187,14 +1333,20 @@
         "NCT04078126",
         "NCT04105972",
         "NCT04106557"
-      ]
+      ],
+      "wave": 3,
+      "completed_via_workers": [
+        "neon-shard-1",
+        "neon-shard-2"
+      ],
+      "completed_at": "2026-11-21T05:44:25Z"
     },
     "shard-19": {
       "pass": "primary",
       "step": 3,
       "worker": "shard-19",
       "trial_count": 17,
-      "status": "not_started_cost_cap",
+      "status": "completed",
       "nct_ids": [
         "NCT04109976",
         "NCT04120194",
@@ -1213,14 +1365,20 @@
         "NCT04244084",
         "NCT04249583",
         "NCT04268303"
-      ]
+      ],
+      "wave": 3,
+      "completed_via_workers": [
+        "neon-shard-3",
+        "neon-shard-4"
+      ],
+      "completed_at": "2026-11-21T05:44:25Z"
     },
     "shard-20": {
       "pass": "primary",
       "step": 3,
       "worker": "shard-20",
       "trial_count": 19,
-      "status": "not_started_cost_cap",
+      "status": "completed",
       "nct_ids": [
         "NCT04276883",
         "NCT04292730",
@@ -1241,28 +1399,223 @@
         "NCT06192420",
         "NCT06834490",
         "NCT06854601"
-      ]
+      ],
+      "wave": 3,
+      "completed_via_workers": [
+        "neon-shard-4",
+        "neon-shard-5",
+        "neon-shard-6"
+      ],
+      "completed_at": "2026-11-21T05:44:25Z"
     }
   },
   "coordinator_verification_summary": {
-    "documents_rows": 678,
-    "locations_rows": 4718,
-    "primary_locations_rows": 4291,
+    "verifier_module": "src.citation_verifier.verify_census_corpus",
+    "verifier_rules_version": "1.0.0",
+    "neutral_vocab_sha256": "a11a0fd37d0fab6043ee0869b0b903f5fa18086affcd6e5b795dc5114991155a",
+    "documents_rows": 782,
+    "wave1_2_documents_rows_preserved_byte_for_byte": 678,
+    "wave3_documents_rows_appended": 104,
+    "locations_rows": 5229,
+    "wave1_2_locations_rows_preserved_byte_for_byte": 4718,
+    "wave3_locations_rows_appended": 511,
+    "primary_locations_rows": 4802,
+    "primary_outcomes": 686,
     "second_pass_locations_rows": 427,
-    "citations_checked": 10720,
-    "exact_whitespace_normalized_page_matches": 10720,
-    "unicode_nfkc_normalized_page_matches": 0,
-    "page_substring_mismatches": 0,
+    "second_pass_outcomes": 61,
+    "citations_checked": 11629,
+    "wave3_citations_checked": 909,
+    "wave3_exact_whitespace_normalized_page_matches": 909,
+    "wave3_unicode_nfkc_normalized_page_matches": 0,
+    "wave3_page_substring_mismatches": 0,
+    "wave3_errors": 0,
+    "wave3_warnings": 0,
+    "full_corpus_exact_whitespace_normalized_page_matches_pdfkit": 11594,
+    "full_corpus_unicode_nfkc_normalized_page_matches_pdfkit": 0,
+    "legacy_wave1_2_pdfkit_vs_pypdf_kerning_mismatches": 35,
+    "legacy_wave1_2_coordinator_verified_citations": 10720,
     "ellipsis_character_flags": 0,
+    "neutral_language_flags": 0,
+    "cross_page_span_violations": 0,
+    "in_audit_holdout_violations": 0,
     "structured_schema_inconsistencies": 0,
     "free_text_note_page_count_discrepancy_rows": 7,
+    "free_text_note_page_count_warnings": 35,
     "worker_records_modified_by_coordinator": 0
   },
   "deviations_from_instructions": [
     "Wave 1 (2026-11-14T01:21:51Z to 2026-11-14T03:13:29Z) halted at 62 / 402 primary trials under the initial $18/$20 cap ($26.68 uniform-$1.25 / $38.49 conservative-$2.00). Work resumed at 2026-11-14T13:42:19Z under follow-up instructions specifying a $150.00 hard cap for all further work in order: (1) remaining 32 / 40 sample primary trials, (2) all 40 / 40 independent second-pass trials, (3) shard-04..shard-20 skipping sample trials, stopping after shard-17 at 2026-11-14T20:38:01Z when further-work conservative-$2.00 spend reached $148.81 ($101.79 uniform-$1.25). On 2026-11-17, under delivery instructions specifying a $150.00 total-census cap counting everything already spent and a $140.00 batch-launch stop threshold, cumulative spend from 2026-11-14T01:21:51Z through 2026-11-17T14:02:56Z stood at $139.60 USD (model-matched standard API rates), $131.45 USD (uniform Gemini $1.25 schedule, where 18-trial shard-18 plus merge overhead would exceed $140.00), and $191.83 USD (conservative $2.00 schedule); therefore no new batch was launched and 54 / 402 primary trials (shard-18, shard-19, shard-20) remain unstarted.",
     "Added rule-census-20261114/STATUS.md on 2026-11-17 per the delivery-task instructions (whereas the original census prompt specified four output files only). On 2026-11-14, commit 03359fbb88fec30839f686357c51cb6ccd9d8263 also updated .gitignore to ignore pdfs/ per the 2026-11-14 continuation instructions; .gitignore was not modified on 2026-11-17.",
     "Downloaded PDFs were stored locally at rule-census-20261114/pdfs/{NCT_ID}/{filename} to prevent filename collisions across trials and excluded from git commit/push per instructions, while retaining the exact ClinicalTrials.gov filename in documents.jsonl and locations.jsonl.",
-    "Standalone Informed Consent Form (ICF) PDFs in largeDocs with both hasProtocol=false and hasSap=false were excluded because doc_type is strictly protocol|sap|combined."
+    "Standalone Informed Consent Form (ICF) PDFs in largeDocs with both hasProtocol=false and hasSap=false were excluded because doc_type is strictly protocol|sap|combined.",
+    "Wave 3 completion (2026-11-21): Following implementation of the offline indexing and verification modules (src/document_indexer.py and src/citation_verifier.py), the remaining 54 / 402 primary-pass trials (shard-18, shard-19, shard-20) were completed via 6 balanced 9-trial shards (neon-shard-1..neon-shard-6) running on Antigravity plan quota with gemini-4-neon-high against pre-indexed PDFKit page caches, independently verified (909 / 909 [100.0%] exact_ws citations, 0 errors, 0 warnings), and appended byte-for-byte after the untouched Wave 1/2 records (678 documents.jsonl rows and 4,718 locations.jsonl rows, preserving the 7-row NCT01265849 outcome 1 note discrepancy unmodified)."
   ],
-  "status_reported_at": "2026-11-17T14:02:56Z"
+  "status_reported_at": "2026-11-21T05:44:25Z",
+  "wave3_started_at": "2026-11-21T04:54:45Z",
+  "appended_wave3_shards": [
+    "neon-shard-1",
+    "neon-shard-2",
+    "neon-shard-3",
+    "neon-shard-4",
+    "neon-shard-5",
+    "neon-shard-6"
+  ],
+  "wave3_neon_shards": {
+    "neon-shard-1": {
+      "pass": "primary",
+      "wave": 3,
+      "worker": "neon-shard-1",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "billing_mode": "Antigravity plan quota",
+      "status": "completed",
+      "completed_at": "2026-11-21T05:27:33Z",
+      "trial_count": 9,
+      "document_count": 18,
+      "primary_outcome_count": 12,
+      "location_row_count": 84,
+      "citation_count": 145,
+      "nct_ids": [
+        "NCT04003155",
+        "NCT04007367",
+        "NCT04009577",
+        "NCT04016779",
+        "NCT04024228",
+        "NCT04032158",
+        "NCT04032171",
+        "NCT04034355",
+        "NCT04036292"
+      ]
+    },
+    "neon-shard-2": {
+      "pass": "primary",
+      "wave": 3,
+      "worker": "neon-shard-2",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "billing_mode": "Antigravity plan quota",
+      "status": "completed",
+      "completed_at": "2026-11-21T05:28:32Z",
+      "trial_count": 9,
+      "document_count": 18,
+      "primary_outcome_count": 14,
+      "location_row_count": 98,
+      "citation_count": 182,
+      "nct_ids": [
+        "NCT04039503",
+        "NCT04042077",
+        "NCT04050865",
+        "NCT04052620",
+        "NCT04058353",
+        "NCT04074928",
+        "NCT04078126",
+        "NCT04105972",
+        "NCT04106557"
+      ]
+    },
+    "neon-shard-3": {
+      "pass": "primary",
+      "wave": 3,
+      "worker": "neon-shard-3",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "billing_mode": "Antigravity plan quota",
+      "status": "completed",
+      "completed_at": "2026-11-21T05:25:16Z",
+      "trial_count": 9,
+      "document_count": 17,
+      "primary_outcome_count": 17,
+      "location_row_count": 119,
+      "citation_count": 206,
+      "nct_ids": [
+        "NCT04109976",
+        "NCT04120194",
+        "NCT04127786",
+        "NCT04137887",
+        "NCT04140695",
+        "NCT04146012",
+        "NCT04152083",
+        "NCT04163185",
+        "NCT04172831"
+      ]
+    },
+    "neon-shard-4": {
+      "pass": "primary",
+      "wave": 3,
+      "worker": "neon-shard-4",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "billing_mode": "Antigravity plan quota",
+      "status": "completed",
+      "completed_at": "2026-11-21T05:25:02Z",
+      "trial_count": 9,
+      "document_count": 15,
+      "primary_outcome_count": 10,
+      "location_row_count": 70,
+      "citation_count": 110,
+      "nct_ids": [
+        "NCT04206020",
+        "NCT04211363",
+        "NCT04211389",
+        "NCT04218110",
+        "NCT04234464",
+        "NCT04244084",
+        "NCT04249583",
+        "NCT04268303",
+        "NCT04276883"
+      ]
+    },
+    "neon-shard-5": {
+      "pass": "primary",
+      "wave": 3,
+      "worker": "neon-shard-5",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "billing_mode": "Antigravity plan quota",
+      "status": "completed",
+      "completed_at": "2026-11-21T05:31:50Z",
+      "trial_count": 9,
+      "document_count": 19,
+      "primary_outcome_count": 10,
+      "location_row_count": 70,
+      "citation_count": 164,
+      "nct_ids": [
+        "NCT04292730",
+        "NCT04292899",
+        "NCT04317040",
+        "NCT04320615",
+        "NCT04327388",
+        "NCT04358081",
+        "NCT04362813",
+        "NCT04368429",
+        "NCT04370548"
+      ]
+    },
+    "neon-shard-6": {
+      "pass": "primary",
+      "wave": 3,
+      "worker": "neon-shard-6",
+      "model": "Gemini 4 Neon (High)",
+      "model_id": "gemini-4-neon-high",
+      "billing_mode": "Antigravity plan quota",
+      "status": "completed",
+      "completed_at": "2026-11-21T05:23:15Z",
+      "trial_count": 9,
+      "document_count": 17,
+      "primary_outcome_count": 10,
+      "location_row_count": 70,
+      "citation_count": 102,
+      "nct_ids": [
+        "NCT04372186",
+        "NCT04421508",
+        "NCT04446299",
+        "NCT04513652",
+        "NCT04620213",
+        "NCT04957212",
+        "NCT06192420",
+        "NCT06834490",
+        "NCT06854601"
+      ]
+    }
+  }
 }
