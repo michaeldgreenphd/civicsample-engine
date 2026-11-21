@@ -1250,11 +1250,15 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     # ethnicity" or "other participants" names any race ("Black (Haitian or
     # other race)").
     # In a bracket with an "other" choice, the names in its other choices
-    # list some members of a wider group, as examples do, and name no
-    # subcategory ("Black (Haitian, Jamaican, or other)" is Black with no
-    # subgroup; "Black (Haitian or other Caribbean)" is caribbean; "Black
-    # African (Nigerian, Ghanaian, or other)" stays african by the names
-    # outside the bracket).
+    # that lie within the group "other" widens list some of its members, as
+    # examples do, and name no subcategory. A bare "other" (or "other
+    # Black") widens Black itself: "Black (Haitian, Jamaican, or other)" is
+    # Black with no subgroup, and "Black African (Nigerian, Ghanaian, or
+    # other)" stays african by the names outside the bracket. A named
+    # "other" widens its own group only: "Black (Haitian or other
+    # Caribbean)" is caribbean, while in "Black (African, Haitian, or other
+    # Caribbean)" African stays, and the label names no subgroup (a review
+    # finding).
     listed_positions: Set[int] = set()
     frames = {within[-1] for kind, term, within in tokens
               if within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS}
@@ -1279,9 +1283,17 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
             if ("qualifier" in kinds_here or all(k == "filler" for k in kinds_here)
                     or "other" not in kinds_here or not listed or race_wide):
                 return False, None
-        if any(k == "other" for choice in choices for k, _t, _p in choice):
-            listed_positions.update(p for choice in choices if not any(k == "other" for k, _t, _p in choice)
-                                    for k, _t, p in choice if k == "name")
+        widened: Set[Optional[str]] = set()  # the groups the "other" choices widen; None is Black
+        for choice in choices:
+            if any(k == "other" for k, _t, _p in choice):
+                names_here = [_black_subcategory_of(t) for k, t, _p in choice if k == "name"]
+                widened.update(names_here if names_here else [None])
+        for choice in choices:
+            if widened and not any(k == "other" for k, _t, _p in choice):
+                listed_positions.update(
+                    p for k, t, p in choice if k == "name"
+                    and (None in widened or _black_subcategory_of(t) in widened
+                         or _BLACK_REGION.get(_black_subcategory_of(t) or "") in widened))
     subcategories: List[Optional[str]] = []
     for i, segment in enumerate(segments):
         if not segment:

@@ -3258,7 +3258,11 @@ def test_a_label_naming_black_groups_only_is_read_as_black(label: str, subcatego
     ("Black (Haitian, Other)", None),  # fictional
     ("Black African (Nigerian, Ghanaian, or other)", "african"),  # fictional: by the names outside
     ("Caribbean (Haitian or other)", "caribbean"),  # fictional
-    ("Black (Haitian or other Caribbean)", "caribbean"),  # fictional: a named choice, no bare "other"
+    ("Black (Haitian or other Caribbean)", "caribbean"),  # fictional: Haitian lies within it
+    ("Black (African, Haitian, or other Caribbean)", None),  # fictional: African does not (review finding)
+    ("Black (African or other Caribbean)", None),  # fictional
+    ("Black (Nigerian or other African)", "african"),  # fictional
+    ("Black (Haitian or other Black)", None),  # fictional: "other Black" widens Black itself
     ("Black (African/Caribbean)", None),  # fictional: each "/" choice names a group
     ("Black (including African, Caribbean descent)", None),  # a "," choice with a filler
     ("African, Caribbean, or non-specified Black", None),  # "non-specified" describes Black
