@@ -80,6 +80,10 @@ Tests:
  29. NCT99000148 — A race table posting the study's two periods as rows
      ("White - Intervention", "White - Usual Care"), each row's count in its
      own period's column only, read by its race parts (fictional study)
+ 30. NCT99000149 — Native Hawaiian or Pacific Islander wordings the
+     vocabulary did not hold ("Hawaiian or Pacific Islander", "Hawaiian-
+     Pacific", "Maori", "Marshallese") beside "Torres Strait Islander"
+     (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -108,6 +112,8 @@ Study 27 asserts its race block and raceBreakdown (EXPECTED_RACE): the bare
 Study 28 asserts its race totals (EXPECTED_AIAN).
 Study 29 asserts its race totals, that every row is read by its race part
 with its group named, and the race_by_group_table flag (EXPECTED_RACE_BY_GROUP).
+Study 30 asserts its race totals and that only "Torres Strait Islander" is
+quarantined (EXPECTED_NHPI).
 A mismatch stops the harness.
 """
 import json
@@ -881,6 +887,37 @@ MOCK_NCT99000148 = _make_study(
     groups=_PERIOD_GROUPS,
 )
 
+# ---------- NCT99000149 (fictional): Native Hawaiian or Pacific Islander wordings ----------
+# 100 participants (race_extractor, "Native Hawaiian or Pacific Islander
+# labels"). Before, "Hawaiian or Pacific Islander" and "Hawaiian-Pacific" were
+# other and "Maori" and "Marshallese" quarantined as not race (their 6 then
+# balanced to unknown); here all four are Native Hawaiian or Pacific
+# Islander. "Torres Strait Islander" is quarantined as before.
+MOCK_NCT99000149 = _make_study(
+    "NCT99000149",
+    "NCT99000149 - Pacific Islander wordings (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 70),
+                _make_category("Hawaiian or Pacific Islander", 12),
+                _make_category("Hawaiian-Pacific", 4),
+                _make_category("Maori", 4),
+                _make_category("Marshallese", 2),
+                _make_category("Torres Strait Islander", 3),
+                _make_category("Asian", 5),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+
+EXPECTED_NHPI = {
+    "NCT99000149": {"omb": {"white": 70, "native_hawaiian_pacific_islander": 22, "asian": 5,
+                            "unknown_not_reported": 3},
+                    "quarantined": ["Torres Strait Islander"]},
+}
+
 EXPECTED_RACE_BY_GROUP = {
     "NCT99000148": {"white": 65, "asian": 20, "american_indian_alaska_native": 5,
                     "unknown_not_reported": 10},
@@ -1181,6 +1218,13 @@ def validate_study(study: dict, nct_id: str) -> None:
             assert cat.get("group") and cat.get("race_part") and "race_by_group" in cat["flags"], \
                 f"{nct_id} row not read by group: {cat}"
         print(f"\n  {nct_id}: race rows posted per group read by their race parts — OK")
+    if nct_id in EXPECTED_NHPI:
+        expected = EXPECTED_NHPI[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
+        quarantined = [q["original"] for q in race["quarantined_labels"]]
+        assert quarantined == expected["quarantined"], f"{nct_id} quarantined: {quarantined}"
+        print(f"\n  {nct_id}: Pacific Islander wordings read as Native Hawaiian or Pacific Islander — OK")
     if nct_id in EXPECTED_HERITAGE:
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
         assert nonzero == EXPECTED_HERITAGE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
@@ -1221,6 +1265,7 @@ def main() -> None:
         (MOCK_NCT99000146, "NCT99000146"),
         (MOCK_NCT99000147, "NCT99000147"),
         (MOCK_NCT99000148, "NCT99000148"),
+        (MOCK_NCT99000149, "NCT99000149"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

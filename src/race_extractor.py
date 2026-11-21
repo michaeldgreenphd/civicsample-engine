@@ -5,6 +5,7 @@ Extracts race data from baseline characteristics and maps to NIH/OMB categories
 with granular subcategories preserved.
 """
 import re
+import unicodedata
 from typing import Dict, FrozenSet, List, Tuple, Optional
 from rapidfuzz import fuzz, process
 from src.utils import (clean_demographic_label, COMBINED_DIMENSION, DIMENSION_JOIN,
@@ -486,6 +487,242 @@ def aian_label(label: str) -> bool:
     if "direction" in kinds and not (named or "continent" in kinds):
         return False
     return True
+
+# ── Native Hawaiian or Pacific Islander labels ─────────────────────────────
+#
+# OMB's 2024 revision of SPD 15 defines Native Hawaiian or Pacific Islander
+# by origins in any of the original peoples of Hawaii, Guam, Samoa or other
+# Pacific Islands, with Native Hawaiian, Samoan, Chamorro, Tongan, Fijian and
+# Marshallese among its examples. The Census Bureau tabulates Maori among
+# these groups in the 2020 Census detailed tables. (Both read from search
+# summaries; the standard's and the Bureau's pages could not be fetched
+# here.) The vocabulary held the standard spellings ("Native Hawaiian or
+# Other Pacific Islander", "Native Hawaiian/Pacific Islander", "Pacific
+# Islander", "Native Hawaiian", "Hawaiian") and five peoples (Samoan,
+# Guamanian, Chamorro, Tongan, Fijian). Other wordings of the same category
+# matched nothing and were counted as other: "Hawaiian or Pacific Islander"
+# (2,188 participants in 15 trials of the 2026-11-15 inputs, and 5,129 in the
+# race parts of NCT02675777), "Hawaiian-Pacific" (1,090), "Other Pacific
+# Islander", "South Pacific Islander", "Pacific Peoples". Peoples the
+# vocabulary did not hold were quarantined as not race: "Marshallese" (33),
+# "Maori" (30 in 11 trials), "Micronesian", "Polynesian", "Tahitian",
+# "Guamanian or Chamorro".
+#
+# Method (nhpi_label; after the American Indian or Alaska Native rule and
+# before the heritage, multirace and slash-fragment rules). A cleaned label
+# (lower case, accents and ligatures decomposed, so "Māori" reads "maori" and
+# "Paciﬁc" "pacific"; a hyphen between letters as a space; "." and "'"
+# removed) maps to Native Hawaiian or Pacific Islander, flagged nhpi_label,
+# when it is made only of these terms, joined by "/", ",", ";", "&", "(",
+# ")", ":", " - ", "or", "and" or "and/or", with at least one name:
+#   - names: Hawaiian (also the posted misspellings Hawaiin, Hawiian,
+#     Hawain, Hawaian, Haiwaiian), Native Hawaii, Pacific (or Pacif, Pac)
+#     Islander(s), Island(s), Isle(s) or Peoples, each optionally after
+#     "Other" or "Oth"; the standard's examples (Samoan, Chamorro, Tongan,
+#     Fijian, Marshallese) and the peoples posted in the inputs (Guamanian,
+#     Polynesian, Micronesian, Tahitian, Maori);
+#   - with a name only: "Native" ("Hawaiian Native", "Pacific Island
+#     Native"), "Pacific" alone, optionally after "Other" ("Hawaiian-Pacific",
+#     "Native Hawaiian or other Pacific", a label cut short), "South" ("South
+#     Pacific Islander"), and the template abbreviations PI, OPI, NH, NHPI,
+#     NHOPI ("Native Hawaiian (NH) or other Pacific Islander");
+#   - fillers: people(s), person(s), only, of, descent, origin(s), ancestry,
+#     ethnicity.
+# "Other" counts only before "Pacific": "Native Hawaiian or Other" and
+# "Native Hawaiian or Some other race(s)" pool other races and stay other.
+# A label that begins or ends with a join ("/or Pacific Islander", "Native
+# Hawaiian or") is a piece of a longer label and is not read.
+# The subcategory is the vocabulary's when every name in the label has the
+# same one (Hawaiian: native_hawaiian; Samoan; Tongan; Fijian; Guamanian or
+# Chamorro: guamanian_chamorro) and nothing else names Pacific Islanders
+# ("Pacific" alone, PI, OPI, NHPI, NHOPI), else none: "Hawaiian or Pacific
+# Islander" and "Hawaiian-Pacific" name Pacific Islanders too, so they are
+# not counted as Native Hawaiian. A
+# label the vocabulary holds whole keeps its entry (the exact match runs
+# first).
+#
+# What it does not do. A label naming another group beside these ("Asian or
+# Pacific Islander", the 1977 grouped category; "Native American or Pacific
+# Islander"; "Pacific Islander-White"; "Oceania (e.g., Australian, New
+# Zealander, Pacific Islander)") is not read by this rule, nor is a row
+# crossing race with another variable ("Adolescent Native Hawaiian or Pacific
+# Islander", "Pacific Islander (Part C)"). "Islander" alone and "Torres
+# Strait Islander" (an Indigenous people of Australia, kept with Aboriginal
+# Australian) stay as they were, as does a country name ("Fiji", "Indian
+# (Fiji)").
+#
+# "Asian and Native Hawaiian or Pacific Islander" now has two parts the
+# multirace rule reads (block comment "Rows naming two or more races"), so it
+# would be read as more than one race. A table posting it beside "American
+# Indian or Alaska Native", "Black or African American" and "White", and no
+# Asian or Pacific row (NCT01912287, 21 participants), uses it for the 1977
+# Asian or Pacific Islander group, the reading "Asian and Pacific Islander"
+# already has; tables posting it among combinations ("Asian and White") name
+# Asian alone in another row (NCT01192178, NCT00843024, NCT01691859,
+# NCT03261167). So a row read as more than one race whose text is "Asian"
+# joined by "and", "&" or "+", in either order, to a part this rule reads
+# that names the category, Pacific Islanders as a group and nothing besides
+# Hawaiian ("Native Hawaiian or Pacific Islander", "Hawaiian or Pacific
+# Islander", "Hawaiian-Pacific"; review findings), is counted as other (flags unmapped, asian_pacific_grouped) when no other
+# row of its table names Asian, or Native Hawaiian or Pacific Islander,
+# apart from the other: a row read as Asian whose text names no Pacific
+# group ("Asian", "Japanese/East Asian Heritage"; not "Asian/Pacific
+# Islander", which slash fragments read as Asian), or a row read as Native
+# Hawaiian or Pacific Islander whose text does not name Asian
+# (_grouped_asian_nhpi_rows). Readings of low confidence and unmapped rows
+# are not evidence. A part naming a people ("Asian and Samoan", "Asian and
+# Maori", "Asian and Native Hawaiian") is a combination, not the grouped
+# category, and keeps its reading.
+#
+# "Tonga" is not read as Tongan. It is the name of a country, and of the
+# Tonga of southern Zambia and northern Zimbabwe, a Bantu people; the fuzzy
+# match read it as "Tongan" (90.9) in NCT01241318, whose sites are all in
+# Zambia (34,653 participants, about a quarter of all Native Hawaiian or
+# Pacific Islander participants on the dashboard), and in NCT00705679 (South
+# Africa, Uganda, Zimbabwe; 0 participants). A label in _FUZZY_WITHHELD is not
+# matched fuzzily (flag fuzzy_match_withheld) and is not quarantined as not
+# race: it names a people the vocabulary does not hold, so it is counted as
+# other, as "Other African tribe" is.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
+# the race-by-group rule: Native Hawaiian or Pacific Islander -26,111 net,
+# made of -34,653 (Tonga), +8,436 from other and +111 from rows quarantined
+# as not race (27 labels, 48 trials), and -5 now read as more than one race
+# ("Native Hawaiin or other Pacific Islander and White", NCT02712047, read
+# as Native Hawaiian by the fuzzy match before); other +26,216; more than
+# one race +6; unknown -91 (unknown_inferred -2,616, unknown_ethnicity_only
+# +2,525: in four combined classifications the Pacific row, once counted,
+# leaves a shortfall that is exactly the ethnicity rows). Two New Zealand
+# trials whose only other rows ("New Zealand European", quarantined as not
+# race) left nothing counted are now reported (NCT06428591, NCT06834568).
+# The Native Hawaiian subcategory falls by 534 in 104 trials, rows such as
+# "Hawaiian/Pacific Islander" that a slash fragment had read as Native
+# Hawaiian only. A further 10,075 participants in 467 trials were Native
+# Hawaiian or Pacific Islander already, through the fuzzy match (9,521) or
+# a slash fragment (554), and are now read by this rule. In the four
+# combined classifications the ethnicity extractor counts the race rows as
+# not Hispanic (5,528 participants from unknown). No sex block changes and
+# no sex/gender-titled measure changes the gate.
+_NHPI_HAWAIIAN = r"hawaiians?|hawaiins?|hawiians?|hawains?|hawaians?|haiwaiians?"
+_NHPI_PACIFIC = r"(?:(?:other|oth)\s+)?(?:pacific|pacif|pac)"
+_NHPI_PEOPLE = (r"samoans?|tongans?|fijians?|marshallese|chamorros?|guamanians?|polynesians?|"
+                r"micronesians?|tahitians?|maoris?")
+_NHPI_NAME = (rf"{_NHPI_PACIFIC}\s+(?:islanders?|islands?|isles?|peoples?)|native\s+hawaii|"
+              rf"{_NHPI_HAWAIIAN}|{_NHPI_PEOPLE}")
+_NHPI_FILLER = r"peoples?|persons?|only|of|descent|origins?|ancestry|ethnicity"
+# Words end at a non-letter; a punctuation join may be followed by anything.
+_NHPI_TOKEN_RX = re.compile(
+    rf"(?:(?P<name>{_NHPI_NAME})|(?P<native>natives?)|(?P<pacific>{_NHPI_PACIFIC})|"
+    rf"(?P<direction>south)|(?P<abbrev>pi|opi|nh|nhpi|nhopi)|(?P<filler>{_NHPI_FILLER})|"
+    rf"(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
+    re.IGNORECASE)
+# The vocabulary's subcategory of each name that has one (block comment above).
+_NHPI_NAME_SUBCATEGORY = (
+    (re.compile(rf"(?:native\s+hawaii|{_NHPI_HAWAIIAN})$"), "native_hawaiian"),
+    (re.compile(r"samoans?$"), "samoan"),
+    (re.compile(r"tongans?$"), "tongan"),
+    (re.compile(r"fijians?$"), "fijian"),
+    (re.compile(r"(?:chamorros?|guamanians?)$"), "guamanian_chamorro"),
+)
+# Labels whose closest vocabulary key names a different people (block comment
+# above): not matched fuzzily, and not quarantined as not race.
+_FUZZY_WITHHELD = frozenset({"tonga"})
+
+
+def _nhpi_name_subcategory(name: str) -> Optional[str]:
+    """The vocabulary's subcategory of one name read by nhpi_label, or None."""
+    for rx, subcategory in _NHPI_NAME_SUBCATEGORY:
+        if rx.match(name):
+            return subcategory
+    return None
+
+
+def _nhpi_terms(label: str) -> Optional[Tuple[List[str], bool]]:
+    """The names a label is read through by nhpi_label (lower case), and
+    whether "Pacific" alone or a Pacific abbreviation (PI, OPI, NHPI, NHOPI)
+    is among its terms; None when the label is not one nhpi_label reads."""
+    text = unicodedata.normalize("NFKD", clean_demographic_label(label).lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
+    text = re.sub(r"[.'’]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    names: List[str] = []
+    # "Pacific" alone and the abbreviations PI, OPI, NHPI, NHOPI name Pacific
+    # Islanders too, so the label has no single subcategory.
+    names_pacific = False
+    kinds: List[str] = []
+    position = 0
+    while position < len(text):
+        match = _NHPI_TOKEN_RX.match(text, position)
+        if match is None or match.end() == position:
+            return None
+        kinds.append(match.lastgroup if match.group("mark") not in ("(", ")") else "bracket")
+        if match.lastgroup == "name":
+            names.append(re.sub(r"\s+", " ", match.group("name")))
+        elif match.lastgroup == "pacific" or (match.lastgroup == "abbrev"
+                                               and match.group("abbrev").lower() != "nh"):
+            names_pacific = True
+        position = match.end()
+        while position < len(text) and text[position].isspace():
+            position += 1
+    # Every other term ("Native", "Pacific", "South", an abbreviation, a
+    # filler) names nothing without a name beside it.
+    if not names:
+        return None
+    # A label beginning or ending with a join is a piece of a longer label:
+    # the multirace rule splits "Asian and/or Pacific Islander" at "and" and
+    # reads "/or Pacific Islander" through map_race_category.
+    if kinds[0] in ("join", "mark") or kinds[-1] in ("join", "mark"):
+        return None
+    return names, names_pacific
+
+
+def nhpi_label(label: str) -> Tuple[bool, Optional[str]]:
+    """(True, subcategory) when a label names Native Hawaiian or Pacific
+    Islander peoples only, by the terms of the block comment above; else
+    (False, None). The subcategory is set only when every name agrees.
+
+      "Hawaiian or Pacific Islander"                    -> (True, None)
+      "Hawaiian-Pacific"                                -> (True, None)
+      "Native Hawaiians"                                -> (True, "native_hawaiian")
+      "Guamanian or Chamorro"                           -> (True, "guamanian_chamorro")
+      "Maori"                                           -> (True, None)
+      "Native Hawaiian or Other"                        -> (False, None)
+      "Asian or Pacific Islander"                       -> (False, None)
+      "Torres Strait Islander"                          -> (False, None)
+      "Tonga"                                           -> (False, None)
+    """
+    terms = _nhpi_terms(label)
+    if terms is None:
+        return False, None
+    names, names_pacific = terms
+    subcategories = {_nhpi_name_subcategory(name) for name in names}
+    if names_pacific:
+        subcategories.add(None)
+    return True, (subcategories.pop() if len(subcategories) == 1 else None)
+
+
+# The category's own words: Pacific Islanders as a group, and Hawaiian.
+_NHPI_GROUP_NAME_RX = re.compile(rf"{_NHPI_PACIFIC}\s+(?:islanders?|islands?|isles?|peoples?)$")
+_NHPI_HAWAIIAN_NAME_RX = re.compile(rf"(?:native\s+hawaii|{_NHPI_HAWAIIAN})$")
+
+
+def _nhpi_names_the_category(label: str) -> bool:
+    """True when nhpi_label reads the label and it names the category, not a
+    people: it names Pacific Islanders as a group ("Pacific Islander",
+    "Pacific" alone, PI, OPI, NHPI, NHOPI) and no name besides those and
+    Hawaiian ("Native Hawaiian or Pacific Islander", "Hawaiian-Pacific"; not
+    "Samoan", "Maori" or "Native Hawaiian" alone). Used by
+    _asian_joined_to_nhpi (block comment above; a review finding)."""
+    terms = _nhpi_terms(label)
+    if terms is None:
+        return False
+    names, names_pacific = terms
+    if any(_NHPI_GROUP_NAME_RX.match(name) is None and _NHPI_HAWAIIAN_NAME_RX.match(name) is None
+           for name in names):
+        return False
+    return names_pacific or any(_NHPI_GROUP_NAME_RX.match(name) is not None for name in names)
 
 # ── Heritage-template labels ───────────────────────────────────────────────
 #
@@ -1013,6 +1250,20 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
             "flags": flags
         }
 
+    # A label naming Native Hawaiian or Pacific Islander peoples only (block
+    # comment "Native Hawaiian or Pacific Islander labels"), before the slash
+    # fragments and the fuzzy match.
+    is_nhpi, nhpi_subcategory = nhpi_label(label_clean)
+    if is_nhpi:
+        flags.append("nhpi_label")
+        return {
+            "omb_category": "native_hawaiian_pacific_islander",
+            "subcategory": nhpi_subcategory,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
     # A heritage-template label naming two or more races (block comment
     # "Heritage-template labels"), before the slash fragments, which would
     # keep the first race of "African American/African Heritage & White".
@@ -1061,8 +1312,14 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
     # Fuzzy match. A heritage-template label holding a non-answer is not
     # matched fuzzily: "American Indian or Alaska Native-NA H" scores 93
     # against "American Indian or Alaska Native" (block comment
-    # "Heritage-template labels"; a review finding).
-    match = process.extractOne(label_clean, RACE_MAPPINGS.keys(), scorer=fuzz.ratio)
+    # "Heritage-template labels"; a review finding). A label in
+    # _FUZZY_WITHHELD ("Tonga") is not matched fuzzily (block comment "Native
+    # Hawaiian or Pacific Islander labels").
+    withheld = label_clean.lower() in _FUZZY_WITHHELD
+    if withheld:
+        flags.append("fuzzy_match_withheld")
+    match = (None if withheld
+             else process.extractOne(label_clean, RACE_MAPPINGS.keys(), scorer=fuzz.ratio))
     if (match and match[1] >= fuzzy_threshold
             and not (guard_negation and _negates_race(label_clean) != _negates_race(match[0]))
             and not (heritage and _HERITAGE_WORD_RX.search(label_clean) is not None
@@ -1322,6 +1579,11 @@ def _should_quarantine(mapping: Dict) -> bool:
     if mapping.get("omb_category") != "other" or "unmapped" not in mapping.get("flags", []):
         return False
     label_lower = clean_demographic_label(mapping["original"]).lower()
+    # A label withheld from the fuzzy match names a people the vocabulary
+    # does not hold ("Tonga"; block comment "Native Hawaiian or Pacific
+    # Islander labels"): counted as other, not quarantined.
+    if label_lower in _FUZZY_WITHHELD:
+        return False
     return not any(kw in label_lower for kw in _PLAUSIBLE_RACE_KEYWORDS)
 
 # Category titles that represent measurement values, not race labels.
@@ -2248,6 +2510,62 @@ def _comma_list_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[i
     return [i for i, races in enumerate(lists) if races is not None and races & alone]
 
 
+# "Asian and Native Hawaiian or Pacific Islander", "Asian & Native
+# Hawaiian/Other Pacific Islander", "Hawaiian or Pacific Islander and Asian":
+# the 1977 Asian or Pacific Islander group under later names, or a row of
+# participants who reported both races (block comment "Native Hawaiian or
+# Pacific Islander labels").
+_ASIAN_PART_RX = re.compile(r"asians?", re.IGNORECASE)
+_GROUPED_JOIN_RX = re.compile(r"\s*(?:&|\+|\band\b)\s*", re.IGNORECASE)
+_GROUPED_ASIAN_NHPI_FLAG = "asian_pacific_grouped"
+
+
+def _asian_joined_to_nhpi(text: str) -> bool:
+    """True when a row's text is two parts joined by "and", "&" or "+", one
+    "Asian" and the other naming the Native Hawaiian or Pacific Islander
+    category (_nhpi_names_the_category), in either order. A category name
+    holding "and" ("Native Hawaiian and Other Pacific Islander") is one part,
+    as for the multirace rule (_MULTIRACE_ONE_CATEGORY)."""
+    text = re.sub(r"\s+", " ", clean_demographic_label(text)).strip()
+    for rx, name in _MULTIRACE_ONE_CATEGORY:
+        text = rx.sub(name, text)
+    parts = [part.strip() for part in _GROUPED_JOIN_RX.split(text)]
+    if len(parts) != 2:
+        return False
+    first, second = parts
+    return bool((_ASIAN_PART_RX.fullmatch(first) and _nhpi_names_the_category(second))
+                or (_ASIAN_PART_RX.fullmatch(second) and _nhpi_names_the_category(first)))
+_PACIFIC_TERM_RX = re.compile(r"pacific|hawai|islander", re.IGNORECASE)
+_ASIAN_TERM_RX = re.compile(r"asian", re.IGNORECASE)
+
+
+def _grouped_asian_nhpi_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[int]:
+    """Indices of the rows of one table read as more than one race whose
+    text is Asian joined to Native Hawaiian or Pacific Islander
+    (_asian_joined_to_nhpi) when no other row of the table names Asian or
+    Native Hawaiian or Pacific Islander apart from the other: there they are
+    the grouped category, not a combination (block comment "Native Hawaiian
+    or Pacific Islander labels"). A row names Asian apart when it is read as
+    Asian (not unmapped, not by a low-confidence reading) and its text names
+    no Pacific group (_PACIFIC_TERM_RX), and Native Hawaiian or Pacific
+    Islander apart when it is read so and its text does not name Asian.
+    texts and mappings as for _comma_list_rows."""
+    candidates = [i for i, (text, mapping) in enumerate(zip(texts, mappings))
+                  if mapping is not None and mapping["omb_category"] == "more_than_one_race"
+                  and _asian_joined_to_nhpi(text)]
+    if not candidates:
+        return []
+    for text, mapping in zip(texts, mappings):
+        if mapping is None or mapping["confidence"] == "low" or "unmapped" in mapping["flags"]:
+            continue
+        if mapping["omb_category"] == "asian" and _PACIFIC_TERM_RX.search(text) is None:
+            return []
+        if (mapping["omb_category"] == "native_hawaiian_pacific_islander"
+                and _ASIAN_TERM_RX.search(text) is None):
+            return []
+    return candidates
+
+
 def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only: bool,
                     whole_table: bool,
                     splits: Optional[List[Tuple[str, Optional[str]]]] = None,
@@ -2257,7 +2575,10 @@ def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only
     unqualified Indigenous labels when the trial's site region is given
     (indigenous_region, from _trial_site_region; block comment "Unqualified
     Indigenous labels, read by the trial's sites"), then the comma-list rule
-    (block comment "Comma lists naming two or more races"). splits holds the
+    (block comment "Comma lists naming two or more races"), then the rule for
+    Asian joined to Native Hawaiian or Pacific Islander
+    (_grouped_asian_nhpi_rows; block comment "Native Hawaiian or Pacific
+    Islander labels"). splits holds the
     (race part, sex) of each row of a race-by-sex table, (race part, None)
     for a race-by-group table (block comment "Race crossed with baseline
     group"), else None."""
@@ -2285,6 +2606,13 @@ def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only
         reading = {"omb_category": "more_than_one_race", "subcategory": None,
                    "confidence": "high", "original": clean_demographic_label(texts[i]),
                    "flags": [_COMMA_LIST_FLAG]}
+        results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
+                                    race_part, sex, reading)
+    for i in _grouped_asian_nhpi_rows(texts, [mapping for mapping, _skipped in results]):
+        (label, count), (race_part, sex) = rows[i], parts[i]
+        reading = {"omb_category": "other", "subcategory": None, "confidence": "low",
+                   "original": clean_demographic_label(texts[i]),
+                   "flags": ["unmapped", _GROUPED_ASIAN_NHPI_FLAG]}
         results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
                                     race_part, sex, reading)
     return results
