@@ -2653,6 +2653,22 @@ def test_a_label_naming_more_or_less_than_european_origin_is_not_read_by_the_rul
     assert rx.european_label(label) == (False, None)
 
 
+@pytest.mark.parametrize("label, subcategory", [
+    # every accepted join between alternatives counts (review finding)
+    ("White & Eastern European", "european"),
+    ("Caucasian; Western European", "european"),
+    ("White or Eastern European", "european"),
+    ("North & East European", "european"),
+    ("White: Eastern European", "european_eastern"),   # ":" describes
+    ("White - Western European", "european_western"),  # a dash describes
+])
+def test_the_subcategory_of_a_mapped_row_counts_every_alternative_join(
+        label: str, subcategory: str) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
+        "white", subcategory, ["european_label"])
+
+
 @pytest.mark.parametrize("label, subcategory, flags", [
     ("European", "european", []),                                   # vocabulary entry
     ("Eastern European", "european_eastern", []),

@@ -376,7 +376,7 @@ def mena_subcategory(label: str) -> Optional[str]:
 # every European name comes directly after a direction and every direction
 # is east, european_western likewise for west, else european; a White or
 # Caucasian set beside them as an alternative ("White or Eastern European",
-# "Eastern European/White") also makes it european, as does an unqualified
+# "Eastern European/White", "White & Eastern European") also makes it european, as does an unqualified
 # European name ("European or Western European"; a review finding).
 #
 # What it does not do. A label naming anything else beside European is not
@@ -495,9 +495,12 @@ def _european_qualifiers_attached(tokens: List[Tuple[str, str]]) -> bool:
 
 
 # Joins that set two groups side by side as alternatives, not one group
-# described twice ("White or Eastern European", "Eastern European/White";
-# not "White: Eastern European", "Eastern European White").
-_EUROPEAN_ALTERNATIVE_JOINS = frozenset({"or", "and", "and/or", "/", ","})
+# described twice ("White or Eastern European", "Eastern European/White",
+# "White & Eastern European", "Caucasian; Western European"; not "White:
+# Eastern European", "White - Eastern European", "Eastern European White").
+# Every join the rule accepts is here but ":", the dashes and brackets, which
+# describe (a review finding).
+_EUROPEAN_ALTERNATIVE_JOINS = frozenset({"or", "and", "and/or", "/", ",", "&", ";"})
 
 
 def _european_subcategory(tokens: List[Tuple[str, str]]) -> str:
@@ -505,7 +508,7 @@ def _european_subcategory(tokens: List[Tuple[str, str]]) -> str:
     tokens: european_eastern or european_western when every European name
     is directly after a direction and every direction is east, or every one
     west, and no White or Caucasian stands beside them as an alternative
-    (next to "or", "and", "/" or ","); else european. "European or Western
+    (next to a join in _EUROPEAN_ALTERNATIVE_JOINS); else european. "European or Western
     European" and "White or Eastern European" name a wider group than the
     direction does (a review finding)."""
     directions = [text for kind, text in tokens if kind == "direction"]
