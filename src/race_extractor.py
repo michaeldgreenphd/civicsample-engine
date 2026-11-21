@@ -2783,6 +2783,14 @@ def _multirace_label(label: str) -> bool:
 # label whose race part is negated ("Hispanic, not African American") is
 # read by this rule too.
 #
+# Brackets. A negation inside brackets qualifies a race named outside them:
+# "(Non-Indian) Asian" names Asian participants other than Indian ones, read
+# as Asian by the rule of block comment "Asian labels" (a review finding).
+# When a race word stands outside brackets, only the text outside them is
+# read; "Non-Black (African American)" is negated, "(Non-Indian) Asian" and
+# "(Not Japanese) Asian" are not. A label naming a race only inside brackets
+# is read whole: "Other (Nonblack)" is negated.
+#
 # Order. The rule runs after the exact and case-insensitive matches of
 # RACE_MAPPINGS, so a vocabulary key keeps its reading whatever words it
 # holds ("White, not Hispanic").
@@ -2833,13 +2841,28 @@ _NEGATED_RACE_RX = re.compile(
     r"(?=" + _NEGATED_RACE_WORD + r")",
     re.IGNORECASE)
 _RACE_WORD_RX = re.compile(r"(?<![a-z])" + _NEGATED_RACE_WORD, re.IGNORECASE)
+# A bracketed segment holding no bracket: removed repeatedly, innermost first.
+_BRACKETED_SEGMENT_RX = re.compile(r"\([^()\[\]]*\)|\[[^()\[\]]*\]")
+
+
+def _outside_brackets(text: str) -> str:
+    """The text with its bracketed segments, nested ones included, replaced
+    by a space; an unbalanced bracket is left as it is."""
+    while True:
+        stripped = _BRACKETED_SEGMENT_RX.sub(" ", text)
+        if stripped == text:
+            return text
+        text = stripped
 
 
 def negated_race_label(label: str) -> bool:
     """True when the label negates a race named directly after the negation,
-    with no race named before it (block comment "Negated race labels")."""
-    match = _NEGATED_RACE_RX.search(label)
-    return match is not None and _RACE_WORD_RX.search(label[:match.start()]) is None
+    with no race named before it; when a race is named outside brackets, only
+    the text outside them is read (block comment "Negated race labels")."""
+    outside = _outside_brackets(label)
+    text = outside if _RACE_WORD_RX.search(outside) else label
+    match = _NEGATED_RACE_RX.search(text)
+    return match is not None and _RACE_WORD_RX.search(text[:match.start()]) is None
 
 
 def _slash_fragment_mapping(text: str) -> Optional[Tuple[str, Optional[str]]]:

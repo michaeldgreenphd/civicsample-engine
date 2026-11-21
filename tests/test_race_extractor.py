@@ -3818,7 +3818,11 @@ def test_a_negated_race_label_is_counted_as_other(label: str) -> None:
 
 @pytest.mark.parametrize("label", ["Nonwhite", "Other (Nonblack)", "Not a Native Hawaiian", "Excluding Asian",
                                    "Except Black", "Neither Aboriginal nor Torres Strait Islander",
-                                   "NON-AFRICAN AMERICAN", "Non–White", "not an Asian"])
+                                   "NON-AFRICAN AMERICAN", "Non–White", "not an Asian",
+                                   # A race named outside brackets, negated there.
+                                   "Non-Black (African American)",
+                                   # A race named only inside brackets: read whole.
+                                   "(Non-White)"])
 def test_negated_race_label(label: str) -> None:
     assert rx.negated_race_label(label) is True
 
@@ -3833,6 +3837,10 @@ def test_negated_race_label(label: str) -> None:
     "Not Reported", "Unknown or Not Reported", "None of the above", "Non-Hispanic",
     # A negation inside a longer word, or a race word inside one.
     "Nonusers", "Notwhite", "Non-Whiteside clinic",
+    # A negation inside brackets qualifying a race named outside them (a
+    # review finding), nested brackets included.
+    "(Non-Indian) Asian", "(Not Japanese) Asian", "[Not Black] White", "((Non-Indian)) Asian",
+    "(Non-Indian (South Asian)) Asian",
 ])
 def test_not_a_negated_race_label(label: str) -> None:
     assert rx.negated_race_label(label) is False
@@ -3841,7 +3849,7 @@ def test_not_a_negated_race_label(label: str) -> None:
 @pytest.mark.parametrize("label, category", [
     ("White, not Hispanic", "white"), ("Asian - Not Japanese", "asian"), ("White/Non-Minority", "white"),
     ("Non-Hispanic White", "white"), ("Asian (Other than Indian subcontinent)", "asian"),
-    ("Not Reported", "unknown_not_reported"),
+    ("Not Reported", "unknown_not_reported"), ("(Non-Indian) Asian", "asian"), ("(non-Japanese) Asian", "asian"),
 ])
 def test_labels_the_rule_leaves_keep_their_reading(label: str, category: str) -> None:
     mapping = rx._map_race_label(label)
