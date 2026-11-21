@@ -108,6 +108,9 @@ Tests:
      "Non-Native American", "Other than White or Black/African American",
      "Non-White Hispanic/Asian") beside the races they exclude (fictional
      study)
+ 38. NCT99000157 — one Black row per wording source in a registrant's table
+     ("Black British", "Black or African American", "Black African",
+     "Black") beside "White" (fictional study)
  39. NCT07465926 — eight baseline groups in four matched comparisons whose
      treated arms share two cohorts, every row tagged "(Comparison N)" (the
      trial as posted, tests/fixtures/nct07465926_baseline.json)
@@ -152,6 +155,9 @@ Study 35 asserts its race totals and that every grouped row is flagged
 asian_pacific_grouped (EXPECTED_GROUPED).
 Study 37 asserts its race totals, that no row is quarantined and the rows
 flagged negated_race (EXPECTED_NEGATED).
+Study 38 asserts its race totals and each row's wording_source
+(EXPECTED_WORDING). Every study asserts that each of its race rows carries a
+wording_source, one of race_extractor.WORDING_SOURCES.
 Study 39 asserts its race, ethnicity and sex totals read through its
 baseline exception, and the baseline_override flag (EXPECTED_OVERRIDE).
 Every study is read as src/extract_all reads it: through
@@ -166,7 +172,7 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.baseline_overrides import APPLIED_FLAG, apply_baseline_override, flag_blocks
-from src.race_extractor import extract_race_data
+from src.race_extractor import WORDING_SOURCES, extract_race_data
 from src.ethnicity_extractor import extract_ethnicity_data
 from src.sex_extractor import extract_sex_data
 from src.utils import extract_demographic_breakdown, get_baseline_measures, get_overall_group_id
@@ -1170,6 +1176,36 @@ EXPECTED_NEGATED = {
                                 "Non-White Hispanic/Asian"]},
 }
 
+# ---------- NCT99000157 (fictional): where a race row's wording comes from ----------
+# 100 participants (race_extractor, "Where a race row's wording comes from").
+# The four Black rows are counted as Black whatever their wording; each
+# records its source: UK census wording, a United States identity, a narrower
+# origin (its african subcategory), the category alone.
+MOCK_NCT99000157 = _make_study(
+    "NCT99000157",
+    "NCT99000157 - wording sources (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("Black British", 20),
+                _make_category("Black or African American", 15),
+                _make_category("Black African", 10),
+                _make_category("Black", 25),
+                _make_category("White", 30),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+
+EXPECTED_WORDING = {
+    "NCT99000157": {"omb": {"black_african_american": 70, "white": 30},
+                    "sources": [("Black British", "uk_census"),
+                                ("Black or African American", "us_term"),
+                                ("Black African", "origin_term"),
+                                ("Black", "generic"), ("White", "generic")]},
+}
+
 # ---------- NCT07465926 (the trial as posted): a per-trial baseline exception ----------
 # 224,048 in the Total column, the sum of eight groups whose treated arms in
 # Comparisons 1 and 2, and in 3 and 4, are matched copies of one cohort
@@ -1397,6 +1433,12 @@ def validate_study(study: dict, nct_id: str) -> None:
     sex = extract_sex_data(study)
     flag_blocks([race, ethnicity, sex], override_flag)
 
+    # Every race row records where its wording comes from (race_extractor,
+    # "Where a race row's wording comes from").
+    for row in race["raw_categories"]:
+        assert row.get("wording_source") in WORDING_SOURCES, \
+            f"{nct_id} race row {row['original']!r} wording_source: {row.get('wording_source')!r}"
+
     # Determinism guard: flags must serialize in sorted order so identical
     # extractions produce identical bytes across runs.
     for name, result in (("race", race), ("ethnicity", ethnicity), ("sex", sex)):
@@ -1548,6 +1590,13 @@ def validate_study(study: dict, nct_id: str) -> None:
         negated = [c["original"] for c in race["raw_categories"] if "negated_race" in c["flags"]]
         assert negated == expected["negated"], f"{nct_id} negated rows: {negated}"
         print(f"\n  {nct_id}: negated race labels counted as other — OK")
+    if nct_id in EXPECTED_WORDING:
+        expected = EXPECTED_WORDING[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
+        sources = [(c["original"], c["wording_source"]) for c in race["raw_categories"]]
+        assert sources == expected["sources"], f"{nct_id} wording sources: {sources}"
+        print(f"\n  {nct_id}: each race row records its wording source — OK")
     if nct_id in EXPECTED_OVERRIDE:
         expected = EXPECTED_OVERRIDE[nct_id]
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
@@ -1605,6 +1654,7 @@ def main() -> None:
         (MOCK_NCT99000154, "NCT99000154"),
         (MOCK_NCT99000155, "NCT99000155"),
         (MOCK_NCT99000156, "NCT99000156"),
+        (MOCK_NCT99000157, "NCT99000157"),
         (STUDY_NCT07465926, "NCT07465926"),
     ]
     for study, nct_id in studies:
