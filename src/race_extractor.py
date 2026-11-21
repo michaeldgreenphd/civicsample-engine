@@ -330,6 +330,228 @@ def mena_subcategory(label: str) -> Optional[str]:
         return "middle_eastern"
     return "middle_eastern_north_african"
 
+# ── European labels ────────────────────────────────────────────────────────
+#
+# OMB's White category is the original peoples of Europe (the 1997 standard
+# adds the Middle East and North Africa, which the 2024 revision makes a
+# category of its own; block comment "Middle Eastern or North African within
+# White"). The vocabulary held "European", "Eastern European" and "Western
+# European", and slash fragments read many template wordings ("White - White/
+# Caucasian/European Heritage" through "White"). Other wordings naming only
+# European origin matched nothing: "White (European)" (10,806 participants in
+# NCT00412984, in the 2026-11-15 inputs), "White or European American"
+# (609 in 4 trials), "Western European White", "Caucasian (European
+# descent)", "White European" were counted as other, and "North/Mid/East
+# European" (3,717), "South European" (1,621), "North/Middle European",
+# "European descent" and the New Zealand census wordings "NZ European/
+# Pākehā" (151), "New Zealand European" (31 in 3 trials), "NZ European" and
+# "New Zealander, European" were quarantined as not race, their participants
+# then balanced to unknown.
+#
+# Method (european_label; after the slash fragments and before the fuzzy
+# match, so a label the vocabulary or a slash fragment already reads as White
+# keeps that reading and its subcategory). A cleaned label (lower case,
+# accents decomposed, so "Pākehā" reads "pakeha"; a hyphen between letters as
+# a space; "." and "'" removed) maps to White, flagged european_label, when it
+# is made only of these terms, joined by "/", ",", ";", "&", "(", ")", ":",
+# " - ", "or", "and" or "and/or", with at least one European name:
+#   - European names: European(s), Europe, European American(s), Pakeha
+#     (the Maori name for New Zealanders of European descent, posted as "NZ
+#     European/Pākehā"; Stats NZ's ethnicity classification splits European
+#     into New Zealand European and Other European, and its 2001 review notes
+#     that some prefer "Pākehā" to "New Zealand European"; read from search
+#     summaries, the Stats NZ pages could not be fetched here);
+#   - with a European name only: White, Caucasian(s); a direction (North(ern),
+#     South(ern), East(ern), West(ern), Central, Mid, Middle, but not "Middle
+#     East"); New Zealand, New Zealander(s), NZ; "Other" ("Other European");
+#     the nationalities posted as examples of European (British, French,
+#     Scandinavian: "European (e.g., British, French, Western European,
+#     Eastern European)");
+#   - fillers: descent, origin(s), ancestry, background, people(s), of, only,
+#     e.g., i.e.
+# A label beginning or ending with a join is not read (a piece of a longer
+# label). Each alternative the label joins ("or", "and", "/", ",", "&",
+# ";") must name a group on its own (_european_alternatives; review
+# findings): a European name with its qualifiers ("NZ European", "Western
+# European White"), or White, Caucasian or a European nationality. So
+# "European or New Zealander" and "North or European" are not read. An
+# alternative made only of directions shares the next one's noun
+# ("North/Mid/East European"), and "New Zealander, European" keeps its
+# comma as apposition. The subcategory follows the vocabulary's:
+# european_eastern when every alternative is qualified by an east direction,
+# european_western likewise for west, else european; an unqualified
+# alternative ("European or Western European", "White people or Eastern
+# European", "Eastern European or British") names a wider group.
+#
+# What it does not do. A label naming anything else beside European is not
+# read: "Western background (European countries (excluding Turkey), North
+# America, Japan, Indonesia, Oceania)", "Other (European/Arab)",
+# "African-European", "White(origins of Europe, Middle East, or North
+# Africa)" (which names the Middle East and North Africa, tracked apart),
+# "Not Collected - European Participants" (a non-answer), "Non-White/European
+# descent". "Roma European" stays as it was: whether Roma participants are
+# counted as White is left to its own decision. A nationality alone
+# ("French", "New Zealander") names no race and is not read.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
+# the Native Hawaiian or Pacific Islander labels: White +19,821 (34 labels,
+# 48 trials), from other 13,310 and from rows quarantined as not race 6,511;
+# other -13,310; unknown -6,511 (unknown_inferred -6,522,
+# unknown_ethnicity_only +11). No trial changes whether it reports race. The
+# white_european subcategory grows from 15,748 to 35,343, european_western
+# from 22 to 526 and european_eastern from 5 to 32; this includes two
+# heritage-template rows already read as White whose group, "Caucasian
+# European", the heritage rule now reads through this rule ("White -
+# Caucasian European Heritage", NCT00553358, 282; NCT04630002, 23). Two New
+# Zealand trials reported through their "Maori" row alone now count their
+# European rows as White (NCT06428591, 9; NCT06834568, 8; its "Dutch" row
+# stays quarantined). In one combined classification (NCT01798992)
+# the counted "European Ancestry" row leaves a shortfall that is exactly its
+# Hispanic row, so the ethnicity extractor counts its race rows as not
+# Hispanic (49 participants from unknown). No other ethnicity block, no sex
+# block and no sex/gender-titled gate changes; mena_in_white is unchanged.
+_EUROPEAN_NAME = r"european\s+americans?|europeans?|europe|pakehas?"
+_EUROPEAN_DIRECTION = (r"north(?:ern)?|south(?:ern)?|east(?:ern)?|west(?:ern)?|central|mid|"
+                       r"middle(?!\s*east)")
+_EUROPEAN_TOKEN_RX = re.compile(
+    rf"(?:(?P<name>{_EUROPEAN_NAME})|(?P<white>white|caucasians?)|"
+    rf"(?P<other>other)|"
+    rf"(?P<direction>{_EUROPEAN_DIRECTION})|"
+    rf"(?P<new_zealand>new\s+zealand(?:ers?)?|nz)|"
+    rf"(?P<nationality>british|french|scandinavians?)|"
+    rf"(?P<filler>descent|origins?|ancestry|background|peoples?|of|only|e\s*g|i\s*e)|"
+    rf"(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
+    re.IGNORECASE)
+
+
+def european_label(label: str) -> Tuple[bool, Optional[str]]:
+    """(True, subcategory) when a label names European origin only, by the
+    terms of the block comment above; else (False, None).
+
+      "White (European)"                         -> (True, "european")
+      "North/Mid/East European"                  -> (True, "european")
+      "Eastern European White"                   -> (True, "european_eastern")
+      "NZ European/Pākehā"                       -> (True, "european")
+      "White or European American"               -> (True, "european")
+      "Other European"                           -> (True, "european")
+      "Roma European"                            -> (False, None)
+      "Other (European/Arab)"                    -> (False, None)
+      "White(origins of Europe, Middle East, or North Africa)" -> (False, None)
+    """
+    text = unicodedata.normalize("NFKD", clean_demographic_label(label).lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
+    text = re.sub(r"[.'’]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    tokens: List[Tuple[str, str]] = []
+    position = 0
+    while position < len(text):
+        match = _EUROPEAN_TOKEN_RX.match(text, position)
+        if match is None or match.end() == position:
+            return False, None
+        kind = match.lastgroup
+        if kind == "mark" and match.group("mark") in ("(", ")"):
+            kind = "bracket"
+        tokens.append((kind, match.group(0).lower()))
+        position = match.end()
+        while position < len(text) and text[position].isspace():
+            position += 1
+    kinds = [kind for kind, _text in tokens]
+    # Every other term names nothing without a European name beside it.
+    if "name" not in kinds:
+        return False, None
+    # A label beginning or ending with a join is a piece of a longer label.
+    if kinds[0] in ("join", "mark") or kinds[-1] in ("join", "mark"):
+        return False, None
+    groups = _european_alternatives(tokens)
+    if groups is None:
+        return False, None
+    return True, _european_subcategory(groups)
+
+
+# Joins that set two groups side by side as alternatives, not one group
+# described twice ("White or Eastern European", "Eastern European/White",
+# "White & Eastern European", "Caucasian; Western European"; not "White:
+# Eastern European", "White - Eastern European", "Eastern European White").
+# Every join the rule accepts is here but ":", the dashes and brackets, which
+# describe (a review finding).
+_EUROPEAN_ALTERNATIVE_JOINS = frozenset({"or", "and", "and/or", "/", ",", "&", ";"})
+
+
+def _european_alternatives(tokens: List[Tuple[str, str]]) -> Optional[List[List[str]]]:
+    """Read each alternative of a label on its own (block comment above;
+    review findings). The (kind, text) tokens are split at the joins in
+    _EUROPEAN_ALTERNATIVE_JOINS; fillers, brackets, ":" and dashes describe
+    and are passed over. Returns, for each alternative naming a group, the
+    directions that qualify it, or [] for an unqualified group; None when an
+    alternative names no European or White group.
+
+    An alternative names a group when it holds a European name, qualified
+    by the directions in it ("NZ European", "White: Western European"); or
+    when it is White, Caucasian or a European nationality ("White people",
+    "British"), unqualified. One holding none of these ("Other", "New
+    Zealander") names nothing. Two shapes cross a
+    join: an alternative made only of directions shares the noun of the next
+    alternative that names one after a direction ("North/Mid/East European",
+    "Western or Eastern European"; not "North or European"), and "New
+    Zealander" before a comma and a European name is that name's qualifier
+    ("New Zealander, European", posted beside a separate "European" row in
+    NCT01117792; not "European or New Zealander")."""
+    segments: List[List[Tuple[str, str]]] = [[]]
+    joins: List[str] = []
+    for kind, text in tokens:
+        if kind in ("join", "mark") and text in _EUROPEAN_ALTERNATIVE_JOINS:
+            segments.append([])
+            joins.append(text)
+        elif kind not in ("filler", "bracket", "mark"):
+            segments[-1].append((kind, text))
+
+    def only_directions(segment: List[Tuple[str, str]]) -> bool:
+        return bool(segment) and all(kind == "direction" for kind, _text in segment)
+
+    groups: List[List[str]] = []
+    for i, segment in enumerate(segments):
+        if not segment:
+            continue  # ", or" leaves nothing between two joins
+        segment_kinds = [kind for kind, _text in segment]
+        if only_directions(segment):
+            following = next((s for s in segments[i + 1:] if s and not only_directions(s)), None)
+            if following is None or following[0][0] != "direction" or (
+                    "name" not in [kind for kind, _text in following]):
+                return None
+            groups.append([text for _kind, text in segment])
+            continue
+        if segment_kinds == ["new_zealand"]:
+            if (i < len(joins) and joins[i] == "," and i + 1 < len(segments)
+                    and segments[i + 1] and segments[i + 1][0][0] == "name"):
+                continue
+            return None
+        if "name" in segment_kinds:
+            groups.append([text for kind, text in segment if kind == "direction"])
+        elif "white" in segment_kinds or "nationality" in segment_kinds:
+            groups.append([])
+        else:
+            return None
+    return groups
+
+
+def _european_subcategory(groups: List[List[str]]) -> str:
+    """The subcategory of a label european_label reads, from the directions
+    of its alternatives (_european_alternatives): european_eastern when every
+    alternative is qualified and every direction is east, european_western
+    likewise for west, else european. An unqualified alternative ("European
+    or Western European", "White or Eastern European", "Eastern European or
+    British") names a wider group than a direction does (review findings)."""
+    if not groups or any(not directions for directions in groups):
+        return "european"
+    directions = [direction for group in groups for direction in group]
+    if all(direction.startswith("east") for direction in directions):
+        return "european_eastern"
+    if all(direction.startswith("west") for direction in directions):
+        return "european_western"
+    return "european"
+
 # ── American Indian or Alaska Native labels ────────────────────────────────
 #
 # OMB's 2024 revision of SPD 15 (Federal Register document 2024-06469, March
@@ -1308,6 +1530,20 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
                         "original": label_clean,
                         "flags": flags
                     }
+
+    # A label naming European origin only (block comment "European labels"),
+    # after the slash fragments, so a label they read as White keeps that
+    # reading, and before the fuzzy match.
+    is_european, european_subcategory = european_label(label_clean)
+    if is_european:
+        flags.append("european_label")
+        return {
+            "omb_category": "white",
+            "subcategory": european_subcategory,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
 
     # Fuzzy match. A heritage-template label holding a non-answer is not
     # matched fuzzily: "American Indian or Alaska Native-NA H" scores 93
