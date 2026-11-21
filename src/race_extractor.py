@@ -2377,10 +2377,12 @@ def asian_pacific_grouped_label(label: str) -> bool:
 # flagged heritage_label.
 #
 # What it does not do. A heritage label the vocabulary already reads as one
-# race keeps that reading and its subcategory, including the first-fragment
-# subcategory of a grouped row ("Japanese/East Asian/South East Asian
-# Heritage" is Asian, japanese; "African American/African Heritage" is Black,
-# african_american). A label without a heritage word ("Asian - East Asian")
+# race keeps that reading and its subcategory. The subcategory of a grouped
+# row read through its slash fragments is reduced across them (block comment
+# "The subcategory of a slash reading"): "Japanese/East Asian/South East
+# Asian Heritage" is Asian with no subcategory, "African American/African
+# Heritage" Black with none; each took its first fragment's before. A label
+# without a heritage word ("Asian - East Asian")
 # is not read here. Two races joined by "/" or "or" without "Multiple"
 # ("African Amer/African Heritage/Amer Ind or Alaska N") are not read: the
 # row may name either race or both. "Asian and Pacific Islander" (or "&",
@@ -2865,20 +2867,92 @@ def negated_race_label(label: str) -> bool:
     return match is not None and _RACE_WORD_RX.search(text[:match.start()]) is None
 
 
+# ── The subcategory of a slash reading ─────────────────────────────────────
+#
+# A label read through its "/" fragments takes the category of the first
+# fragment the vocabulary holds. It took that fragment's subcategory too, so
+# the same words read differently by their order: "African/Black" was
+# african and "Black/African" none; "African American/Black" african_american
+# and "Black/African American", the OMB name, none. Read whole by the rule of
+# block comment "Black labels", "African, black" and "African American or
+# Black" were none: a subcategory says every participant of the row belongs
+# to the group it names, and an alternative naming the category alone
+# ("Black") holds participants of any group.
+#
+# Method (_slash_fragment_mapping). The category is the first fragment's the
+# vocabulary holds, as before. The subcategory is reduced across every
+# fragment naming that category through a reading that is not fuzzy (the
+# vocabulary, or a rule reading the fragment whole: "South East Asian" by
+# the Asian labels, "Yoruba" by the Black labels), as the Black and Asian
+# labels reduce alternatives (_black_alternatives,
+# _asian_label_subcategory): theirs when all agree; none when one names the
+# category alone; else the region they all lie in ("Indian/Pakistani/
+# Bangladeshi" is south_asian, "Chinese/Japanese" east_asian), else none
+# ("African/Caribbean", "Japanese/East Asian/South East Asian"). For the
+# other categories, theirs when all agree, else none ("European/Caucasian").
+# Fragments naming another category do not take part: the category is the
+# first fragment's, and a row pooling categories is read at the table level.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), each read through
+# src/baseline_overrides as src/extract_all reads it, against engine main
+# after the wording source: no category total and no other field of a race
+# block changes but subcategory_totals (548 blocks) and the rows of 86
+# labels. Black: african_american to none 48,483 participants in 492 trials
+# ("African heritage/African American" 20,489, "African American/African
+# Heritage" 9,484, "African American/Black" 2,444), african to none 5,188
+# ("African/Black" 4,150). White: european to none 1,830 ("White British/
+# European" 962, "European/ Caucasian/ White" 826). Asian: japanese to none
+# 1,768 ("Japanese/East Asian HER/South East Asian HER" 596) and to
+# east_asian 368, south_asian_indian to south_asian 405 ("Indian/Pakistani/
+# Bangladeshi" 184), chinese to none 144 ("Chinese/Asian"), Taiwanese to
+# east_asian 78, south_asian to none 74, east_asian to none 53. 8,378
+# participants' rows move from wording_source origin_term to generic.
+def _alternatives_subcategory(category: str, subcategories: List[Optional[str]]) -> Optional[str]:
+    """The subcategory of alternatives naming one category (block comment
+    "The subcategory of a slash reading")."""
+    if category == "black_african_american":
+        return _black_alternatives(subcategories)
+    if category == "asian":
+        return _asian_label_subcategory(subcategories)
+    return subcategories[0] if len(set(subcategories)) == 1 else None
+
+
+def _fragment_reading(fragment: str) -> Optional[Tuple[str, Optional[str]]]:
+    """The (category, subcategory) a "/" fragment reads as without a fuzzy
+    match, or None (block comment "The subcategory of a slash reading")."""
+    for key, (omb, subcat) in RACE_MAPPINGS.items():
+        if key.lower() == fragment.lower():
+            return omb, subcat
+    mapping = map_race_category(fragment, multirace=False)
+    if "unmapped" in mapping["flags"] or any(f.startswith("fuzzy_match") for f in mapping["flags"]):
+        return None
+    return mapping["omb_category"], mapping["subcategory"]
+
+
 def _slash_fragment_mapping(text: str) -> Optional[Tuple[str, Optional[str]]]:
-    """The (category, subcategory) of the first "/" fragment of `text` that
-    is a RACE_MAPPINGS key, matched exactly, ignoring case; None when the
-    text holds no slash or no fragment matches."""
+    """The (category, subcategory) of a text read through its "/" fragments:
+    the category of the first fragment that is a RACE_MAPPINGS key, matched
+    exactly, ignoring case, and the subcategory reduced across every fragment
+    naming that category without a fuzzy match (block comment "The
+    subcategory of a slash reading"). None when the text holds no slash or no
+    fragment is a key."""
     if "/" not in text:
         return None
-    for frag in text.split("/"):
-        frag = frag.strip()
-        if not frag:
-            continue
-        for key, (omb, subcat) in RACE_MAPPINGS.items():
+    fragments = [frag.strip() for frag in text.split("/") if frag.strip()]
+    category = None
+    for frag in fragments:
+        for key, (omb, _subcat) in RACE_MAPPINGS.items():
             if key.lower() == frag.lower():
-                return omb, subcat
-    return None
+                category = omb
+                break
+        if category is not None:
+            break
+    if category is None:
+        return None
+    readings = [_fragment_reading(frag) for frag in fragments]
+    return category, _alternatives_subcategory(
+        category, [reading[1] for reading in readings if reading is not None and reading[0] == category])
 
 
 def map_race_category(label: str, fuzzy_threshold: int = 85, *,

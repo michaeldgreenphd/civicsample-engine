@@ -1789,8 +1789,10 @@ def test_a_heritage_label_naming_no_single_race_is_not_read(label: str) -> None:
 
 @pytest.mark.parametrize("label, category, subcategory, flag", [
     ("White - White/Caucasian/European Heritage", "white", None, "slash_normalized"),
-    ("African American/African Heritage", "black_african_american", "african_american", "slash_normalized"),
-    ("Japanese/East Asian HER/South East Asian HER", "asian", "japanese", "slash_normalized"),
+    # A grouped row's subcategory is reduced across its fragments (block
+    # comment "The subcategory of a slash reading"): none for both.
+    ("African American/African Heritage", "black_african_american", None, "slash_normalized"),
+    ("Japanese/East Asian HER/South East Asian HER", "asian", None, "slash_normalized"),
     ("White - Arabic/North African Heritage", "white", "middle_eastern_north_african", "mena_label"),
 ])
 def test_a_heritage_label_the_vocabulary_already_reads_keeps_its_reading(
@@ -2860,7 +2862,10 @@ def test_the_subcategory_of_a_mapped_row_counts_every_alternative_join(
     ("White - White/Caucasian/European Heritage", None, ["slash_normalized"]),
     ("White/European", None, ["slash_normalized"]),        # the rule would say european
     ("Caucasian/European", None, ["slash_normalized"]),
-    ("Middle Eastern/European", "middle_eastern", ["slash_normalized"]),
+    # Fragments disagreeing on the subcategory name none of them, in either
+    # order (block comment "The subcategory of a slash reading").
+    ("Middle Eastern/European", None, ["slash_normalized"]),
+    ("European/Middle Eastern", None, ["slash_normalized"]),
 ])
 def test_readings_before_the_rule_are_kept(label: str, subcategory: Optional[str],
                                            flags: list[str]) -> None:
@@ -3399,10 +3404,12 @@ def test_rejoining_african_american_keeps_the_other_slash_fragments() -> None:
         "white", None, ["slash_normalized"])
     # A slash after "American" ends its fragment: the rejoined name is read,
     # also where the Black labels do not read the whole label.
-    for label in ("African/American/Black", "African/American/Asian"):
+    # "African American/Black" names the category alone beside the subgroup:
+    # no subcategory (block comment "The subcategory of a slash reading").
+    for label, subcategory in (("African/American/Black", None), ("African/American/Asian", "african_american")):
         mapping = rx.map_race_category(label)
         assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
-            "black_african_american", "african_american", ["slash_normalized"]), label
+            "black_african_american", subcategory, ["slash_normalized"]), label
 
 
 @pytest.mark.parametrize("label", ["African/American Indian", "African/American-Indian", "African/American (Indian)",
@@ -4005,3 +4012,66 @@ def test_rows_of_a_sex_titled_race_table_carry_a_source() -> None:
     race = extract_race_data(_study("NCT99000911", [table], 25))
     assert race["raw_categories"], race
     assert {c["wording_source"] for c in race["raw_categories"]} == {"generic"}
+
+
+# ── the subcategory of a slash reading ─────────────────────────────────────
+#
+# src/race_extractor.py, block comment "The subcategory of a slash reading":
+# the subcategory of a label read through its "/" fragments is reduced across
+# the fragments naming its category, whatever their order.
+
+@pytest.mark.parametrize("first, second", [
+    ("African/Black", "Black/African"),
+    ("African American/Black", "Black/African American"),
+    ("African Heritage/African American", "African American/African Heritage"),
+    ("European/Caucasian", "Caucasian/European"),
+    ("Chinese/Asian", "Asian/Chinese"),
+    ("Indian/Pakistani", "Pakistani/Indian"),
+    ("Caribbean/Haitian", "Haitian/Caribbean"),
+])
+def test_a_slash_reading_does_not_depend_on_the_order(first: str, second: str) -> None:
+    a, b = rx.map_race_category(first), rx.map_race_category(second)
+    assert (a["omb_category"], a["subcategory"]) == (b["omb_category"], b["subcategory"])
+    assert "slash_normalized" in a["flags"] and "slash_normalized" in b["flags"]
+
+
+@pytest.mark.parametrize("label, category, subcategory", [
+    # The category alone beside a subgroup: none, as "African, black" and
+    # "African American or Black" read by the Black labels.
+    ("African/Black", BLACK, None),
+    ("African American/Black", BLACK, None),
+    ("European/ Caucasian/ White", "white", None),
+    # Subgroups of one region: the region.
+    ("Indian/Pakistani/Bangladeshi", "asian", "south_asian"),
+    ("Indian/Pakistani/Sri Lankan", "asian", "south_asian"),
+    ("Chinese/Japanese", "asian", "east_asian"),
+    ("Caribbean/Haitian", BLACK, "caribbean"),
+    # Subgroups of different regions: none.
+    ("African/Caribbean", BLACK, None),
+    ("Japanese/East Asian/South East Asian", "asian", None),
+    # All agree: theirs; a fragment naming another category does not take part.
+    ("African/Yoruba", BLACK, "african"),
+    ("White/Hispanic", "white", None),
+    ("African/Indian", BLACK, "african"),
+    # A fragment read only through a fuzzy match does not take part, as no
+    # fuzzy reading counts in the rules that read a label's parts.
+    ("African/Blak", BLACK, "african"),
+])
+def test_the_subcategory_of_a_slash_reading(label: str, category: str, subcategory: Optional[str]) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"]) == (category, subcategory)
+
+
+def test_a_slash_reading_agrees_with_the_black_labels() -> None:
+    """"African, black" is read whole by the Black labels; "African/Black"
+    through its slash fragments. Both name no subgroup."""
+    whole, slash = rx.map_race_category("African, black"), rx.map_race_category("African/Black")
+    assert "black_label" in whole["flags"] and "slash_normalized" in slash["flags"]
+    assert whole["subcategory"] is None and slash["subcategory"] is None
+
+
+def test_the_category_of_a_slash_reading_is_its_first_fragment_held() -> None:
+    """Only the subcategory is reduced: the category stays the first
+    fragment's the vocabulary holds."""
+    assert rx.map_race_category("White/Asian")["omb_category"] == "white"
+    assert rx.map_race_category("Asian/White")["omb_category"] == "asian"
