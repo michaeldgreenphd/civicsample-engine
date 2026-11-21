@@ -3262,6 +3262,7 @@ def test_a_uk_census_wording_is_read_by_its_heading(label: str, category: str,
     "Mixed ethnic group / White British",  # fictional: another group pooled with Mixed (review finding)
     "Mixed ethnic group and Other ethnic group",  # fictional: a complete Other heading (review finding)
     "Mixed ethnic group & Other ethnic group",  # fictional
+    "Mixed ethnic group and White ethnic group",  # fictional: a second complete heading (review finding)
     "White British or Mixed - White & Asian",  # fictional: "or" in the heading pools
 ])
 def test_a_label_without_a_uk_census_reading_is_not_read_by_the_rule(label: str) -> None:

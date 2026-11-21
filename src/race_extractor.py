@@ -1186,9 +1186,9 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
         # "Multiple (Asian or White)" lists its parts in the bracket); "White
         # British or Mixed ethnic group" pools two groups whose counts cannot
         # be told apart. "and" and "&" list the parts of the mix, but not a
-        # complete Other heading ("Mixed ethnic group and Other ethnic
-        # group": Other with its own "ethnic group" and no race; review
-        # findings).
+        # second complete heading, one with its own "ethnic group" that is
+        # not Mixed ("Mixed ethnic group and Other ethnic group", "Mixed
+        # ethnic group and White ethnic group"; review findings).
         alternatives: List[List[str]] = [[]]
         joined: List[List[str]] = [[]]
         depth = 0
@@ -1206,8 +1206,7 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
             joined[-1].append(kind)
         if any("mixed" not in alternative for alternative in alternatives if alternative):
             return None
-        if any("other" in part and "ethnic" in part and not _UK_NAMING_KINDS & set(part)
-               for part in joined[1:]):
+        if any("ethnic" in part and "mixed" not in part for part in joined[1:]):
             return None
         # Without a heading mark, "/", "," and ";" set alternatives side by
         # side too, and each must be Mixed: one naming another group, or
