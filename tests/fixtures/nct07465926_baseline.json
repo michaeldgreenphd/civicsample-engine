@@ -1,0 +1,1374 @@
+{
+ "_source": "ClinicalTrials.gov API v2 record of NCT07465926 as posted in the 2026-11-15 snapshot (re-fetched 2026-11-18): identification, enrollment and the whole baseline module (population description, groups, denominators and all eleven measures), verbatim. src/baseline_overrides.py pins the sha256 of its measures.",
+ "protocolSection": {
+  "identificationModule": {
+   "nctId": "NCT07465926"
+  },
+  "designModule": {
+   "enrollmentInfo": {
+    "count": 451036,
+    "type": "ACTUAL"
+   }
+  }
+ },
+ "resultsSection": {
+  "baselineCharacteristicsModule": {
+   "populationDescription": "Baseline characteristics are presented for each prespecified pairwise propensity score-matched cohort. For each row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+   "groups": [
+    {
+     "id": "BG000",
+     "title": "GLP-1 RA With SGLT2i Add-On (Comparison 1)",
+     "description": "Adults with obesity, type 2 diabetes, and cardiovascular-kidney-metabolic stage 2-3 who initiated a GLP-1 receptor agonist as base therapy and were classified as having SGLT2 inhibitor add-on treatment within 90 days during the initial treatment assessment period. This group represents the propensity score-matched cohort for Comparison 1."
+    },
+    {
+     "id": "BG001",
+     "title": "GLP-1 RA With DPP-4i/SU Add-On (Comparison 1)",
+     "description": "Adults with obesity, type 2 diabetes, and cardiovascular-kidney-metabolic stage 2-3 who initiated a GLP-1 receptor agonist as base therapy and were classified as having DPP-4 inhibitor or sulfonylurea add-on treatment within 90 days during the initial treatment assessment period. This group represents the propensity score-matched cohort for Comparison 1."
+    },
+    {
+     "id": "BG002",
+     "title": "GLP-1 RA With SGLT2i Add-On (Comparison 2)",
+     "description": "Adults with obesity, type 2 diabetes, and cardiovascular-kidney-metabolic stage 2-3 who initiated a GLP-1 receptor agonist as base therapy and were classified as having SGLT2 inhibitor add-on treatment within 90 days during the initial treatment assessment period. This group represents the propensity score-matched cohort for Comparison 2."
+    },
+    {
+     "id": "BG003",
+     "title": "GLP-1 RA Only (No Early Add-On) (Comparison 2)",
+     "description": "Adults with obesity, type 2 diabetes, and cardiovascular-kidney-metabolic stage 2-3 who initiated a GLP-1 receptor agonist as base therapy and did not receive early add-on treatment within 90 days during the initial treatment assessment period. This group represents the propensity score-matched cohort for Comparison 2."
+    },
+    {
+     "id": "BG004",
+     "title": "SGLT2i With GLP-1 RA Add-On (Comparison 3)",
+     "description": "Adults with obesity, type 2 diabetes, and cardiovascular-kidney-metabolic stage 2-3 who initiated an SGLT2 inhibitor as base therapy and were classified as having GLP-1 receptor agonist add-on treatment within 90 days during the initial treatment assessment period. This group represents the propensity score-matched cohort for Comparison 3."
+    },
+    {
+     "id": "BG005",
+     "title": "SGLT2i With DPP-4i/SU Add-On (Comparison 3)",
+     "description": "Adults with obesity, type 2 diabetes, and cardiovascular-kidney-metabolic stage 2-3 who initiated an SGLT2 inhibitor as base therapy and were classified as having DPP-4 inhibitor or sulfonylurea add-on treatment within 90 days during the initial treatment assessment period. This group represents the propensity score-matched cohort for Comparison 3."
+    },
+    {
+     "id": "BG006",
+     "title": "SGLT2i With GLP-1 RA Add-On (Comparison 4)",
+     "description": "Adults with obesity, type 2 diabetes, and cardiovascular-kidney-metabolic stage 2-3 who initiated an SGLT2 inhibitor as base therapy and were classified as having GLP-1 receptor agonist add-on treatment within 90 days during the initial treatment assessment period. This group represents the propensity score-matched cohort for Comparison 4."
+    },
+    {
+     "id": "BG007",
+     "title": "SGLT2i Only (No Early Add-On) (Comparison 4)",
+     "description": "Adults with obesity, type 2 diabetes, and cardiovascular-kidney-metabolic stage 2-3 who initiated an SGLT2 inhibitor as base therapy and did not receive early add-on treatment within 90 days during the initial treatment assessment period. This group represents the propensity score-matched cohort for Comparison 4."
+    },
+    {
+     "id": "BG008",
+     "title": "Total",
+     "description": "Total of all reporting groups"
+    }
+   ],
+   "denoms": [
+    {
+     "units": "Participants",
+     "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "224048"}]
+    }
+   ],
+   "measures": [
+    {
+     "title": "Age, Customized",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each row, counts are reported only for the two arms in that comparison; remaining columns are 0 because those participants are outside the matched cohort. Cohort eligibility required age ≥20 years; participants not resolved into the displayed age strata are reported under \"Other age category\" so counts sum to the analyzed population.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "20-44 years (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "2456"}, {"groupId": "BG001", "value": "2364"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "4820"}]
+        }
+       ]
+      },
+      {
+       "title": "45-64 years (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "8905"}, {"groupId": "BG001", "value": "8934"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "17839"}]
+        }
+       ]
+      },
+      {
+       "title": "65-74 years (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "4277"}, {"groupId": "BG001", "value": "4306"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "8583"}]
+        }
+       ]
+      },
+      {
+       "title": "≥75 years (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "1499"}, {"groupId": "BG001", "value": "1530"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "3029"}]
+        }
+       ]
+      },
+      {
+       "title": "Other age category (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "9"}, {"groupId": "BG001", "value": "12"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "21"}]
+        }
+       ]
+      },
+      {
+       "title": "20-44 years (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "5801"}, {"groupId": "BG003", "value": "5592"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "11393"}]
+        }
+       ]
+      },
+      {
+       "title": "45-64 years (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "22778"}, {"groupId": "BG003", "value": "22794"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "45572"}]
+        }
+       ]
+      },
+      {
+       "title": "65-74 years (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "8803"}, {"groupId": "BG003", "value": "8967"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "17770"}]
+        }
+       ]
+      },
+      {
+       "title": "≥75 years (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "2706"}, {"groupId": "BG003", "value": "2738"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "5444"}]
+        }
+       ]
+      },
+      {
+       "title": "Other age category (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "64"}, {"groupId": "BG003", "value": "61"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "125"}]
+        }
+       ]
+      },
+      {
+       "title": "20-44 years (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "1591"}, {"groupId": "BG005", "value": "1563"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "3154"}]
+        }
+       ]
+      },
+      {
+       "title": "45-64 years (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "9743"}, {"groupId": "BG005", "value": "9685"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "19428"}]
+        }
+       ]
+      },
+      {
+       "title": "65-74 years (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "5640"}, {"groupId": "BG005", "value": "5657"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "11297"}]
+        }
+       ]
+      },
+      {
+       "title": "≥75 years (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "2222"}, {"groupId": "BG005", "value": "2290"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "4512"}]
+        }
+       ]
+      },
+      {
+       "title": "Other age category (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "6"}, {"groupId": "BG005", "value": "7"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "13"}]
+        }
+       ]
+      },
+      {
+       "title": "20-44 years (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "4537"}, {"groupId": "BG007", "value": "4575"}, {"groupId": "BG008", "value": "9112"}]
+        }
+       ]
+      },
+      {
+       "title": "45-64 years (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "20286"}, {"groupId": "BG007", "value": "20523"}, {"groupId": "BG008", "value": "40809"}]
+        }
+       ]
+      },
+      {
+       "title": "65-74 years (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "8036"}, {"groupId": "BG007", "value": "7897"}, {"groupId": "BG008", "value": "15933"}]
+        }
+       ]
+      },
+      {
+       "title": "≥75 years (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "2631"}, {"groupId": "BG007", "value": "2504"}, {"groupId": "BG008", "value": "5135"}]
+        }
+       ]
+      },
+      {
+       "title": "Other age category (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "34"}, {"groupId": "BG007", "value": "25"}, {"groupId": "BG008", "value": "59"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Sex/Gender, Customized",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each row, counts are reported only for the two arms in that comparison; remaining columns are 0 because those participants are outside the matched cohort. Participants not resolved into the displayed sex/gender strata are reported under \"Unknown or Not Reported\" so counts sum to the analyzed population.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Male (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "9500"}, {"groupId": "BG001", "value": "9531"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "19031"}]
+        }
+       ]
+      },
+      {
+       "title": "Female (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "7609"}, {"groupId": "BG001", "value": "7576"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "15185"}]
+        }
+       ]
+      },
+      {
+       "title": "Unknown or Not Reported (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "37"}, {"groupId": "BG001", "value": "39"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "76"}]
+        }
+       ]
+      },
+      {
+       "title": "Male (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "19898"}, {"groupId": "BG003", "value": "19193"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "39091"}]
+        }
+       ]
+      },
+      {
+       "title": "Female (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "20199"}, {"groupId": "BG003", "value": "20899"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "41098"}]
+        }
+       ]
+      },
+      {
+       "title": "Unknown or Not Reported (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "55"}, {"groupId": "BG003", "value": "60"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "115"}]
+        }
+       ]
+      },
+      {
+       "title": "Male (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "8226"}, {"groupId": "BG005", "value": "8207"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "16433"}]
+        }
+       ]
+      },
+      {
+       "title": "Female (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "10949"}, {"groupId": "BG005", "value": "10962"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "21911"}]
+        }
+       ]
+      },
+      {
+       "title": "Unknown or Not Reported (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "27"}, {"groupId": "BG005", "value": "33"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "60"}]
+        }
+       ]
+      },
+      {
+       "title": "Male (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "16367"}, {"groupId": "BG007", "value": "16324"}, {"groupId": "BG008", "value": "32691"}]
+        }
+       ]
+      },
+      {
+       "title": "Female (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "19107"}, {"groupId": "BG007", "value": "19156"}, {"groupId": "BG008", "value": "38263"}]
+        }
+       ]
+      },
+      {
+       "title": "Unknown or Not Reported (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "50"}, {"groupId": "BG007", "value": "44"}, {"groupId": "BG008", "value": "94"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Ethnicity (NIH/OMB)",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Comparison 1",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Hispanic or Latino",
+         "measurements": [{"groupId": "BG000", "value": "1276"}, {"groupId": "BG001", "value": "1293"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "2569"}]
+        },
+        {
+         "title": "Not Hispanic or Latino",
+         "measurements": [{"groupId": "BG000", "value": "12547"}, {"groupId": "BG001", "value": "12488"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "25035"}]
+        },
+        {
+         "title": "Unknown or Not Reported",
+         "measurements": [{"groupId": "BG000", "value": "3323"}, {"groupId": "BG001", "value": "3365"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "6688"}]
+        }
+       ]
+      },
+      {
+       "title": "Comparison 2",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Hispanic or Latino",
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "4505"}, {"groupId": "BG003", "value": "4632"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "9137"}]
+        },
+        {
+         "title": "Not Hispanic or Latino",
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "28876"}, {"groupId": "BG003", "value": "28836"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "57712"}]
+        },
+        {
+         "title": "Unknown or Not Reported",
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "6771"}, {"groupId": "BG003", "value": "6684"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "13455"}]
+        }
+       ]
+      },
+      {
+       "title": "Comparison 3",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Hispanic or Latino",
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "1861"}, {"groupId": "BG005", "value": "1881"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "3742"}]
+        },
+        {
+         "title": "Not Hispanic or Latino",
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "14140"}, {"groupId": "BG005", "value": "14173"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "28313"}]
+        },
+        {
+         "title": "Unknown or Not Reported",
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "3201"}, {"groupId": "BG005", "value": "3148"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "6349"}]
+        }
+       ]
+      },
+      {
+       "title": "Comparison 4",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "title": "Hispanic or Latino",
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "4108"}, {"groupId": "BG007", "value": "4129"}, {"groupId": "BG008", "value": "8237"}]
+        },
+        {
+         "title": "Not Hispanic or Latino",
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "25349"}, {"groupId": "BG007", "value": "25352"}, {"groupId": "BG008", "value": "50701"}]
+        },
+        {
+         "title": "Unknown or Not Reported",
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "6067"}, {"groupId": "BG007", "value": "6043"}, {"groupId": "BG008", "value": "12110"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Race/Ethnicity, Customized",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each row, counts are reported only for the two arms in that comparison; remaining columns are 0 because those participants are outside the matched cohort. Participants not in the listed race strata, including small race groups not shown separately and records without a resolved race category, are reported under \"Other, Unknown, or Not Reported\" so counts sum to the analyzed population.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "White (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "11684"}, {"groupId": "BG001", "value": "11773"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "23457"}]
+        }
+       ]
+      },
+      {
+       "title": "Black or African American (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "3218"}, {"groupId": "BG001", "value": "3155"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "6373"}]
+        }
+       ]
+      },
+      {
+       "title": "Asian (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "448"}, {"groupId": "BG001", "value": "421"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "869"}]
+        }
+       ]
+      },
+      {
+       "title": "Other Races (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "551"}, {"groupId": "BG001", "value": "545"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "1096"}]
+        }
+       ]
+      },
+      {
+       "title": "Other, Unknown, or Not Reported (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "1245"}, {"groupId": "BG001", "value": "1252"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "2497"}]
+        }
+       ]
+      },
+      {
+       "title": "White (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "26579"}, {"groupId": "BG003", "value": "26813"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "53392"}]
+        }
+       ]
+      },
+      {
+       "title": "Black or African American (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "7350"}, {"groupId": "BG003", "value": "7147"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "14497"}]
+        }
+       ]
+      },
+      {
+       "title": "Asian (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "1446"}, {"groupId": "BG003", "value": "1448"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "2894"}]
+        }
+       ]
+      },
+      {
+       "title": "Other Races (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "1328"}, {"groupId": "BG003", "value": "1348"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "2676"}]
+        }
+       ]
+      },
+      {
+       "title": "Other, Unknown, or Not Reported (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "3449"}, {"groupId": "BG003", "value": "3396"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "6845"}]
+        }
+       ]
+      },
+      {
+       "title": "White (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "12958"}, {"groupId": "BG005", "value": "12937"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "25895"}]
+        }
+       ]
+      },
+      {
+       "title": "Black or African American (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "3080"}, {"groupId": "BG005", "value": "3060"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "6140"}]
+        }
+       ]
+      },
+      {
+       "title": "Asian (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "903"}, {"groupId": "BG005", "value": "921"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "1824"}]
+        }
+       ]
+      },
+      {
+       "title": "Other Races (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "753"}, {"groupId": "BG005", "value": "753"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "1506"}]
+        }
+       ]
+      },
+      {
+       "title": "Other, Unknown, or Not Reported (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "1508"}, {"groupId": "BG005", "value": "1531"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "3039"}]
+        }
+       ]
+      },
+      {
+       "title": "White (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "23485"}, {"groupId": "BG007", "value": "23707"}, {"groupId": "BG008", "value": "47192"}]
+        }
+       ]
+      },
+      {
+       "title": "Black or African American (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "6070"}, {"groupId": "BG007", "value": "5923"}, {"groupId": "BG008", "value": "11993"}]
+        }
+       ]
+      },
+      {
+       "title": "Asian (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "1560"}, {"groupId": "BG007", "value": "1517"}, {"groupId": "BG008", "value": "3077"}]
+        }
+       ]
+      },
+      {
+       "title": "Other Races (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "1267"}, {"groupId": "BG007", "value": "1276"}, {"groupId": "BG008", "value": "2543"}]
+        }
+       ]
+      },
+      {
+       "title": "Other, Unknown, or Not Reported (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "3142"}, {"groupId": "BG007", "value": "3101"}, {"groupId": "BG008", "value": "6243"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "CKD",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "CKD (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "1519"}, {"groupId": "BG001", "value": "1535"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "3054"}]
+        }
+       ]
+      },
+      {
+       "title": "CKD (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "4429"}, {"groupId": "BG003", "value": "4103"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "8532"}]
+        }
+       ]
+      },
+      {
+       "title": "CKD (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "2099"}, {"groupId": "BG005", "value": "2087"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "4186"}]
+        }
+       ]
+      },
+      {
+       "title": "CKD (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "4065"}, {"groupId": "BG007", "value": "3819"}, {"groupId": "BG008", "value": "7884"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Hypertension",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Hypertension (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "11197"}, {"groupId": "BG001", "value": "11270"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "22467"}]
+        }
+       ]
+      },
+      {
+       "title": "Hypertension (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "27169"}, {"groupId": "BG003", "value": "26598"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "53767"}]
+        }
+       ]
+      },
+      {
+       "title": "Hypertension (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "12624"}, {"groupId": "BG005", "value": "12702"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "25326"}]
+        }
+       ]
+      },
+      {
+       "title": "Hypertension (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "23741"}, {"groupId": "BG007", "value": "23336"}, {"groupId": "BG008", "value": "47077"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Dyslipidemia",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Dyslipidemia (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "10176"}, {"groupId": "BG001", "value": "10269"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "20445"}]
+        }
+       ]
+      },
+      {
+       "title": "Dyslipidemia (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "25292"}, {"groupId": "BG003", "value": "24881"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "50173"}]
+        }
+       ]
+      },
+      {
+       "title": "Dyslipidemia (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "11629"}, {"groupId": "BG005", "value": "11676"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "23305"}]
+        }
+       ]
+      },
+      {
+       "title": "Dyslipidemia (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "22290"}, {"groupId": "BG007", "value": "21982"}, {"groupId": "BG008", "value": "44272"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "Tobacco Use",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "Tobacco Use (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "451"}, {"groupId": "BG001", "value": "449"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "900"}]
+        }
+       ]
+      },
+      {
+       "title": "Tobacco Use (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "1070"}, {"groupId": "BG003", "value": "1021"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "2091"}]
+        }
+       ]
+      },
+      {
+       "title": "Tobacco Use (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "512"}, {"groupId": "BG005", "value": "499"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "1011"}]
+        }
+       ]
+      },
+      {
+       "title": "Tobacco Use (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "888"}, {"groupId": "BG007", "value": "856"}, {"groupId": "BG008", "value": "1744"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "BMI ≥30 kg/m2",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "BMI ≥30 kg/m2 (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "11362"}, {"groupId": "BG001", "value": "11392"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "22754"}]
+        }
+       ]
+      },
+      {
+       "title": "BMI ≥30 kg/m2 (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "27538"}, {"groupId": "BG003", "value": "26929"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "54467"}]
+        }
+       ]
+      },
+      {
+       "title": "BMI ≥30 kg/m2 (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "11241"}, {"groupId": "BG005", "value": "11297"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "22538"}]
+        }
+       ]
+      },
+      {
+       "title": "BMI ≥30 kg/m2 (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "23274"}, {"groupId": "BG007", "value": "23009"}, {"groupId": "BG008", "value": "46283"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "SBP ≥140 mmHg",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "SBP ≥140 mmHg (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "7996"}, {"groupId": "BG001", "value": "8065"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "16061"}]
+        }
+       ]
+      },
+      {
+       "title": "SBP ≥140 mmHg (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "17999"}, {"groupId": "BG003", "value": "17376"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "35375"}]
+        }
+       ]
+      },
+      {
+       "title": "SBP ≥140 mmHg (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "8627"}, {"groupId": "BG005", "value": "8600"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "17227"}]
+        }
+       ]
+      },
+      {
+       "title": "SBP ≥140 mmHg (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "14951"}, {"groupId": "BG007", "value": "14476"}, {"groupId": "BG008", "value": "29427"}]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "title": "HbA1c ≥7%",
+     "populationDescription": "Data are reported separately for each prespecified pairwise propensity score-matched cohort. For each comparison-specific row, counts are reported only for the two arms that constitute that comparison; the remaining columns are presented as 0 because those participants are outside the matched cohort being characterized in that row.",
+     "paramType": "COUNT_OF_PARTICIPANTS",
+     "unitOfMeasure": "Participants",
+     "classes": [
+      {
+       "title": "HbA1c ≥7% (Comparison 1)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "17146"}, {"groupId": "BG001", "value": "17146"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "34292"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "10002"}, {"groupId": "BG001", "value": "10109"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "20111"}]
+        }
+       ]
+      },
+      {
+       "title": "HbA1c ≥7% (Comparison 2)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "40152"}, {"groupId": "BG003", "value": "40152"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "80304"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "21778"}, {"groupId": "BG003", "value": "22018"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "43796"}]
+        }
+       ]
+      },
+      {
+       "title": "HbA1c ≥7% (Comparison 3)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "19202"}, {"groupId": "BG005", "value": "19202"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "38404"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "10331"}, {"groupId": "BG005", "value": "10327"}, {"groupId": "BG006", "value": "0"}, {"groupId": "BG007", "value": "0"}, {"groupId": "BG008", "value": "20658"}]
+        }
+       ]
+      },
+      {
+       "title": "HbA1c ≥7% (Comparison 4)",
+       "denoms": [
+        {
+         "units": "Participants",
+         "counts": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "35524"}, {"groupId": "BG007", "value": "35524"}, {"groupId": "BG008", "value": "71048"}]
+        }
+       ],
+       "categories": [
+        {
+         "measurements": [{"groupId": "BG000", "value": "0"}, {"groupId": "BG001", "value": "0"}, {"groupId": "BG002", "value": "0"}, {"groupId": "BG003", "value": "0"}, {"groupId": "BG004", "value": "0"}, {"groupId": "BG005", "value": "0"}, {"groupId": "BG006", "value": "18847"}, {"groupId": "BG007", "value": "18758"}, {"groupId": "BG008", "value": "37605"}]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ }
+}
