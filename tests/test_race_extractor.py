@@ -4005,3 +4005,141 @@ def test_rows_of_a_sex_titled_race_table_carry_a_source() -> None:
     race = extract_race_data(_study("NCT99000911", [table], 25))
     assert race["raw_categories"], race
     assert {c["wording_source"] for c in race["raw_categories"]} == {"generic"}
+
+
+# ── pooled race labels ─────────────────────────────────────────────────────
+#
+# src/race_extractor.py, block comment "Pooled race labels": a row whose
+# alternatives name two or more categories is a combination (more than one
+# race) when they are races joined by "/" and the table names one alone,
+# else a pool (other); never the first category it names.
+
+@pytest.mark.parametrize("text, named, slash_only", [
+    ("Caucasian/Asian", {"white", "asian"}, True),
+    # "unknown or not reported" is one category name: "/" joins the rest.
+    ("Multiracial/other/unknown or not reported", {"more_than_one_race", "other", "unknown_not_reported"}, True),
+    ("Caucasian/More than One Race", {"white", "more_than_one_race"}, True),
+    # ", Minority" names nothing: "/" joins the alternatives; "Other" makes it a pool.
+    ("Black/Asian/Other Race, Minority", {"black_african_american", "asian", "other"}, True),
+    ("White, Asian, or Hispanic", {"white", "asian"}, False),
+    ("Black or Asian American", {"black_african_american", "asian"}, False),
+    ("Black/AA & Other", {"black_african_american", "other"}, False),
+    ("non-Hispanic Black or Black/Mixed Race", {"black_african_american", "more_than_one_race"}, False),
+    ("Asian/American Indian/Pacific (non-Hispanic)", {"asian", "american_indian_alaska_native"}, True),
+    ("Hawaiian or Pacific Islander/ White", {"native_hawaiian_pacific_islander", "white"}, True),
+    # "and" joins the race alternatives to an ethnicity term, not two races
+    # (a review finding).
+    ("White/Asian and Hispanic", {"white", "asian"}, True),
+    ("White/Asian, Hispanic", {"white", "asian"}, True),
+    ("Non-Hispanic, other/multiple races", {"other", "more_than_one_race"}, True),
+    # The residual row with its members in brackets.
+    ("Not Hispanic, Other (incl. Native American, Asian/Pacific Islander, More than one)",
+     {"other", "asian", "native_hawaiian_pacific_islander"}, False),
+    ("Other (Hispanic- Latino/Mixed)", {"other", "more_than_one_race"}, False),
+])
+def test_pooled_categories(text: str, named: set[str], slash_only: bool) -> None:
+    assert rx._pooled_categories(text) == (frozenset(named), slash_only)
+
+
+@pytest.mark.parametrize("text", [
+    # One category, synonyms of it, or a category name holding "or".
+    "Black or African American", "Black/African American", "White/Caucasian", "American Indian/Alaska Native",
+    "Native Hawaiian or Other Pacific Islander", "Hispanic/White", "Unknown or Not Reported",
+    # Residual categories only: no race named.
+    "Unknown/Other", "Other, Unknown or Not Reported", "Unknown/Not Reported/Other",
+    # Examples or members of a race in brackets.
+    "African (e.g., Central and West African, North African, Southern Africa)",
+    "Asian (East Asian, South Asian, Middle Eastern)",
+    # A combination joined by "and": the rule for rows naming two or more races.
+    "Black, Native American, and Creole, and Non-Hispanic", "American Indian or Alaska Native & White",
+    # The 1977 Asian or Pacific Islander group, and a comma typo inside "American Indian".
+    "Asian/Pacific Islander", "Asian or Pacific Islander", "American, Indian or Alaska Native",
+])
+def test_not_pooled(text: str) -> None:
+    assert rx._pooled_categories(text) is None
+
+
+def _pooled_table(rows: list[tuple[str, int]], participants: int) -> dict[str, Any]:
+    return extract_race_data(_study("NCT99000913", [_class_table(COMBINED_TITLE, rows)], participants))
+
+
+def _pooled_row(race: dict[str, Any], label: str) -> dict[str, Any]:
+    return next(c for c in race["raw_categories"] if c["original"] == label)
+
+
+def test_a_pool_beside_rows_that_name_none_of_its_races_alone() -> None:
+    """The NCT00556933 shape: "Caucasian/Asian" 157 was counted as White."""
+    race = _pooled_table([("Caucasian/Asian", 157), ("Non Caucasian/Asian", 21)], 178)
+    assert _nonzero(race) == {"other": 178}
+    assert _pooled_row(race, "Caucasian/Asian")["flags"][0] == "pooled_race_label"
+
+
+def test_slash_combinations_beside_their_races_alone() -> None:
+    """The NCT01954394 shape: the "/" rows are participants who reported
+    both races."""
+    race = _pooled_table([("White", 938), ("Black or African American", 4), ("Asian", 8),
+                          ("White/Black or African American", 11), ("White/Asian", 7),
+                          ("Black or African American/Asian", 1)], 969)
+    assert _nonzero(race) == {"white": 938, BLACK: 4, "asian": 8, "more_than_one_race": 19}
+    assert "multirace_slash" in _pooled_row(race, "White/Asian")["flags"]
+
+
+def test_a_slash_pool_beside_another_race_and_other() -> None:
+    """The NCT01351077 shape: "White/Asian" beside "Black" and "Other" names
+    neither alone."""
+    race = _pooled_table([("Black", 215), ("White/Asian", 15), ("Other", 2)], 232)
+    assert _nonzero(race) == {BLACK: 215, "other": 17}
+
+
+def test_a_pool_joined_to_an_ethnicity_by_and_is_not_its_first_race() -> None:
+    """"White/Asian and Hispanic" beside a Black row: the "and" joins an
+    ethnicity, so the row is the White/Asian pool (a review finding)."""
+    race = _pooled_table([("Black", 40), ("White/Asian and Hispanic", 10)], 50)
+    assert _nonzero(race) == {BLACK: 40, "other": 10}
+
+
+def test_or_lists_are_pools_even_beside_their_races() -> None:
+    race = _pooled_table([("White", 30), ("Asian", 10), ("White or Asian", 5)], 45)
+    assert _nonzero(race) == {"white": 30, "asian": 10, "other": 5}
+
+
+def test_residual_pools_with_more_than_one_race() -> None:
+    race = _pooled_table([("Non-Hispanic White", 1866), ("Non-Hispanic Black", 1072),
+                          ("Multi-racial/Other", 340), ("Missing", 55)], 3333)
+    assert _nonzero(race) == {"white": 1866, BLACK: 1072, "other": 340, "unknown_not_reported": 55}
+
+
+def test_a_subgroup_list_keeps_its_reading() -> None:
+    """The NCT03879577 shape: "African/Other" is other African peoples."""
+    race = _pooled_table([("African/Yoruba", 32), ("African/Ibo", 9), ("African/Other", 6)], 47)
+    assert _nonzero(race) == {BLACK: 47}
+    assert all("pooled_race_label" not in c["flags"] for c in race["raw_categories"])
+
+
+def test_a_synonym_sibling_does_not_make_a_combination_a_subgroup() -> None:
+    """"Black/White" shares its first fragment with "Black/African American",
+    whose suffix names Black too, but itself names White: a combination
+    beside the White row (a review finding)."""
+    race = _pooled_table([("Black/African American", 20), ("Black/White", 3), ("White", 30)], 53)
+    assert _nonzero(race) == {BLACK: 20, "more_than_one_race": 3, "white": 30}
+    assert "multirace_slash" in _pooled_row(race, "Black/White")["flags"]
+
+
+def test_residual_only_pools_keep_their_reading() -> None:
+    race = _pooled_table([("White", 10), ("Unknown/Other", 5)], 15)
+    assert _nonzero(race) == {"white": 10, "unknown_not_reported": 5}
+
+
+def test_a_comma_list_beside_one_of_its_races_stays_a_combination() -> None:
+    """The comma-list rule reads it first; the pooled rule leaves its rows."""
+    race = _pooled_table([("White", 11), ("Black or African American", 4),
+                          ("Black or African American, White", 1)], 16)
+    assert _nonzero(race) == {"white": 11, BLACK: 4, "more_than_one_race": 1}
+    assert "multirace_comma_list" in _pooled_row(race, "Black or African American, White")["flags"]
+
+
+def test_a_grouped_comma_list_is_a_pool() -> None:
+    """"American Indian or Alaska Native, Asian" in a table naming neither
+    alone was American Indian through the fuzzy match."""
+    race = _pooled_table([("White", 30), ("American Indian or Alaska Native, Asian", 4)], 34)
+    assert _nonzero(race) == {"white": 30, "other": 4}
