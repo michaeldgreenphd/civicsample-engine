@@ -2607,6 +2607,23 @@ def test_a_label_naming_european_origin_only_is_white(label: str, subcategory: s
     assert mapping["flags"] == ["european_label"]
 
 
+@pytest.mark.parametrize("label, subcategory", [
+    # a direction names the subcategory only when it qualifies every group (review finding)
+    ("European or Western European", "european"),
+    ("European, Eastern European", "european"),
+    ("White or Eastern European", "european"),
+    ("White and Eastern European", "european"),
+    ("Eastern European/White", "european"),
+    ("Western or Eastern European White", "european"),
+    ("White - Eastern European", "european_eastern"),   # White describing the group
+    ("Eastern European White", "european_eastern"),
+    ("Other Western European", "european_western"),
+])
+def test_a_direction_names_the_subcategory_only_when_it_qualifies_every_group(
+        label: str, subcategory: str) -> None:
+    assert rx.european_label(label) == (True, subcategory)
+
+
 @pytest.mark.parametrize("label", [
     "Western background (European countries (excluding Turkey), North America, Japan, Indonesia,Oceania)",
     "Other: Brazil, China, Mexico, MENA, Sub-Saharan Africa, Latin America, Europe, Asia, Oceania",

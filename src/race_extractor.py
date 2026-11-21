@@ -371,8 +371,11 @@ def mena_subcategory(label: str) -> Optional[str]:
 #     e.g., i.e.
 # A label beginning or ending with a join is not read (a piece of a longer
 # label). The subcategory follows the vocabulary's: european_eastern when
-# every direction is east, european_western when every direction is west,
-# else european.
+# every European name comes directly after a direction and every direction
+# is east, european_western likewise for west, else european; a White or
+# Caucasian set beside them as an alternative ("White or Eastern European",
+# "Eastern European/White") also makes it european, as does an unqualified
+# European name ("European or Western European"; a review finding).
 #
 # What it does not do. A label naming anything else beside European is not
 # read: "Western background (European countries (excluding Turkey), North
@@ -433,31 +436,59 @@ def european_label(label: str) -> Tuple[bool, Optional[str]]:
     text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
     text = re.sub(r"[.'’]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
-    kinds: List[str] = []
-    directions: List[str] = []
+    tokens: List[Tuple[str, str]] = []
     position = 0
     while position < len(text):
         match = _EUROPEAN_TOKEN_RX.match(text, position)
         if match is None or match.end() == position:
             return False, None
         kind = match.lastgroup
-        kinds.append(kind if match.group("mark") not in ("(", ")") else "bracket")
-        if kind == "direction":
-            directions.append(match.group("direction").lower())
+        if kind == "mark" and match.group("mark") in ("(", ")"):
+            kind = "bracket"
+        tokens.append((kind, match.group(0).lower()))
         position = match.end()
         while position < len(text) and text[position].isspace():
             position += 1
+    kinds = [kind for kind, _text in tokens]
     # Every other term names nothing without a European name beside it.
     if "name" not in kinds:
         return False, None
     # A label beginning or ending with a join is a piece of a longer label.
     if kinds[0] in ("join", "mark") or kinds[-1] in ("join", "mark"):
         return False, None
-    if directions and all(d.startswith("east") for d in directions):
-        return True, "european_eastern"
-    if directions and all(d.startswith("west") for d in directions):
-        return True, "european_western"
-    return True, "european"
+    return True, _european_subcategory(tokens)
+
+
+# Joins that set two groups side by side as alternatives, not one group
+# described twice ("White or Eastern European", "Eastern European/White";
+# not "White: Eastern European", "Eastern European White").
+_EUROPEAN_ALTERNATIVE_JOINS = frozenset({"or", "and", "and/or", "/", ","})
+
+
+def _european_subcategory(tokens: List[Tuple[str, str]]) -> str:
+    """The subcategory of a label european_label reads, from its (kind, text)
+    tokens: european_eastern or european_western when every European name
+    is directly after a direction and every direction is east, or every one
+    west, and no White or Caucasian stands beside them as an alternative
+    (next to "or", "and", "/" or ","); else european. "European or Western
+    European" and "White or Eastern European" name a wider group than the
+    direction does (a review finding)."""
+    directions = [text for kind, text in tokens if kind == "direction"]
+    if not directions:
+        return "european"
+    names_qualified = all(i > 0 and tokens[i - 1][0] == "direction"
+                          for i, (kind, _text) in enumerate(tokens) if kind == "name")
+    white_alternative = any(
+        kind == "white" and any(0 <= j < len(tokens) and tokens[j][1] in _EUROPEAN_ALTERNATIVE_JOINS
+                                for j in (i - 1, i + 1))
+        for i, (kind, _text) in enumerate(tokens))
+    if not names_qualified or white_alternative:
+        return "european"
+    if all(d.startswith("east") for d in directions):
+        return "european_eastern"
+    if all(d.startswith("west") for d in directions):
+        return "european_western"
+    return "european"
 
 # ── American Indian or Alaska Native labels ────────────────────────────────
 #
