@@ -3246,6 +3246,8 @@ def test_a_label_naming_black_groups_only_is_read_as_black(label: str, subcatego
     ("Black African including Nigerian", "african"),  # fictional: the names before it still count
     ("Race and Ethnicity : Black", None),  # a heading of fillers before the colon (NCT03302910)
     ("Race/Ethnicity: Black", None),  # fictional: a "/" heading
+    ("Ethnic group and race: Black", None),  # fictional: a heading word beside a dimension word
+    ("Self-reported race and ethnicity: Black", None),  # fictional
     ("Black including Caribbean (Haitian)", None),  # fictional: a bracket after the example word
     ("Black (including Caribbean (Haitian))", None),  # fictional: a bracket within the example's (review finding)
     ("Black (African) (e.g. Haitian)", "african"),  # fictional: a sibling bracket is not an example
@@ -3300,6 +3302,9 @@ def test_the_black_subcategory_comes_from_the_names(label: str, subcategory: Opt
     "Black (Indigenous)",  # fictional: its choice names no group
     "Black or participants of all ethnicities",  # fictional: fillers only pooled (review finding)
     "all participants or Race: Black",  # fictional: "or" before the heading's colon pools (review finding)
+    "all participants and Race: Black",  # fictional: not a heading's words (review finding)
+    "all participants, Race: Black",  # fictional
+    "groups and race: Black",  # fictional: no dimension word in the part
     "Black (or Indigenous)",  # fictional: a choice in a bracket names another race (review finding)
     "Black (or unspecified)",  # fictional
     "Black (or Other)",  # fictional: Other as a bracketed choice (review finding)

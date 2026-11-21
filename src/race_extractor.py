@@ -1134,6 +1134,13 @@ _BLACK_ALTERNATIVE_JOINS = _EUROPEAN_ALTERNATIVE_JOINS
 # The joins that build a heading before its colon ("Race and Ethnicity :",
 # "Race/Ethnicity:", "Race, Ethnicity:"), unlike "or", which pools.
 _BLACK_HEADING_JOINS = frozenset({"and", "&", ",", "/"})
+# The words a heading part is made of: at least one dimension word, and
+# otherwise only these ("Ethnic group and race:", "Self-reported race and
+# ethnicity:"). "all participants and Race: Black" pools all participants
+# (a review finding).
+_BLACK_DIMENSION_WORDS = frozenset({"race", "racial", "ethnic", "ethnicity", "ethnicities",
+                                    "ancestry", "origin", "origins", "background"})
+_BLACK_HEADING_WORDS = _BLACK_DIMENSION_WORDS | {"group", "groups", "self reported"}
 # Fillers that widen an "other" choice to any race ("or other race").
 _BLACK_RACE_WIDE_FILLERS = frozenset({"race", "racial", "ethnic", "ethnicity", "ethnicities",
                                       "participant", "participants", "subject", "subjects"})
@@ -1242,15 +1249,19 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     # findings).
     held: List[bool] = [False]
     colon: List[bool] = [False]
+    fillers: List[List[str]] = [[]]  # each alternative's fillers, for the heading check
     joins: List[str] = []  # the join after each alternative
     for position, (kind, term, within) in enumerate(tokens):
         if not within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS:
             segments.append([])
             held.append(False)
             colon.append(False)
+            fillers.append([])
             joins.append(term)
             continue
         held[-1] = True
+        if kind == "filler":
+            fillers[-1].append(term)
         if not within and kind == "mark" and term == ":":
             colon[-1] = True
         if kind in ("name", "abbrev", "place", "direction", "other", "example", "qualifier",
@@ -1321,10 +1332,13 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
         if not segment:
             # A heading runs to its colon through heading joins only ("Race
             # and Ethnicity :", "Race/Ethnicity:"); "or" sets a pooled
-            # choice beside it ("all participants or Race: Black"; review
-            # findings).
+            # choice beside it ("all participants or Race: Black"), and a
+            # part of a heading names a dimension in heading words only
+            # ("all participants and Race: Black" pools; review findings).
             heading = next((j for j in range(i + 1, len(segments)) if colon[j]), None)
-            if held[i] and (heading is None or any(
+            heading_words = (all(word in _BLACK_HEADING_WORDS for word in fillers[i])
+                             and any(word in _BLACK_DIMENSION_WORDS for word in fillers[i]))
+            if held[i] and (heading is None or not heading_words or any(
                     join not in _BLACK_HEADING_JOINS for join in joins[i:heading])):
                 return False, None  # fillers only, not a heading
             continue  # ", or" leaves nothing between two joins
