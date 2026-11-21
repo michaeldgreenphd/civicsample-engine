@@ -370,7 +370,9 @@ def mena_subcategory(label: str) -> Optional[str]:
 #   - fillers: descent, origin(s), ancestry, background, people(s), of, only,
 #     e.g., i.e.
 # A label beginning or ending with a join is not read (a piece of a longer
-# label). The subcategory follows the vocabulary's: european_eastern when
+# label), nor one whose New Zealand qualifier or direction qualifies no
+# European name ("European or New Zealander", "European or Western"; a
+# review finding). The subcategory follows the vocabulary's: european_eastern when
 # every European name comes directly after a direction and every direction
 # is east, european_western likewise for west, else european; a White or
 # Caucasian set beside them as an alternative ("White or Eastern European",
@@ -456,7 +458,40 @@ def european_label(label: str) -> Tuple[bool, Optional[str]]:
     # A label beginning or ending with a join is a piece of a longer label.
     if kinds[0] in ("join", "mark") or kinds[-1] in ("join", "mark"):
         return False, None
+    if not _european_qualifiers_attached(tokens):
+        return False, None
     return True, _european_subcategory(tokens)
+
+
+def _european_qualifiers_attached(tokens: List[Tuple[str, str]]) -> bool:
+    """True when every New Zealand qualifier and every direction in a label
+    qualifies a European name, so that no alternative the label joins names
+    something else (a review finding): "European or New Zealander" pools
+    New Zealanders of any origin, "European or Western" names no group.
+    A New Zealand qualifier comes directly before a European name, or before
+    a comma and one ("New Zealander, European", posted beside a separate
+    "European" row in NCT01117792); a direction reaches a European name
+    through further directions and joins ("North/Mid/East European",
+    "Western or Eastern European")."""
+    for i, (kind, _text) in enumerate(tokens):
+        if kind == "new_zealand":
+            following = [k for k, _t in tokens[i + 1:i + 3]]
+            if not (following[:1] == ["name"]
+                    or (following == ["mark", "name"] and tokens[i + 1][1] == ",")):
+                return False
+        elif kind == "direction":
+            reached = False
+            for later_kind, later_text in tokens[i + 1:]:
+                if later_kind == "name":
+                    reached = True
+                    break
+                if later_kind == "direction" or (later_kind in ("join", "mark")
+                                                 and later_text in _EUROPEAN_ALTERNATIVE_JOINS):
+                    continue
+                break
+            if not reached:
+                return False
+    return True
 
 
 # Joins that set two groups side by side as alternatives, not one group
@@ -476,8 +511,11 @@ def _european_subcategory(tokens: List[Tuple[str, str]]) -> str:
     directions = [text for kind, text in tokens if kind == "direction"]
     if not directions:
         return "european"
+    # A nationality is a European group too: an unqualified "British" beside
+    # "Eastern European" widens the group (a review finding).
     names_qualified = all(i > 0 and tokens[i - 1][0] == "direction"
-                          for i, (kind, _text) in enumerate(tokens) if kind == "name")
+                          for i, (kind, _text) in enumerate(tokens)
+                          if kind in ("name", "nationality"))
     white_alternative = any(
         kind == "white" and any(0 <= j < len(tokens) and tokens[j][1] in _EUROPEAN_ALTERNATIVE_JOINS
                                 for j in (i - 1, i + 1))

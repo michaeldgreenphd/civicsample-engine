@@ -2618,6 +2618,8 @@ def test_a_label_naming_european_origin_only_is_white(label: str, subcategory: s
     ("White - Eastern European", "european_eastern"),   # White describing the group
     ("Eastern European White", "european_eastern"),
     ("Other Western European", "european_western"),
+    ("Eastern European or British", "european"),        # a nationality is a group too (review finding)
+    ("British or Western European", "european"),
 ])
 def test_a_direction_names_the_subcategory_only_when_it_qualifies_every_group(
         label: str, subcategory: str) -> None:
@@ -2630,6 +2632,7 @@ def test_a_direction_names_the_subcategory_only_when_it_qualifies_every_group(
     "Roma European",                                          # left to its own decision
     "White(origins of Europe, Middle East, or North Africa)",  # names the Middle East and North Africa
     "Middle European/Middle Eastern",
+    "Middle Eastern European",                                 # "Middle East" is not a direction
     "Not Collected - European Participants",                   # a non-answer
     "Non-White/European descent",
     "Caucasian, non-European descent",
@@ -2640,6 +2643,11 @@ def test_a_direction_names_the_subcategory_only_when_it_qualifies_every_group(
     "New Zealander",
     "White",                                                   # no European name
     "/or European",                                            # a piece of a longer label
+    # a qualifier that qualifies no European name (review finding)
+    "European or New Zealander",
+    "New Zealander or European",
+    "European/NZ",
+    "European or Western",
 ])
 def test_a_label_naming_more_or_less_than_european_origin_is_not_read_by_the_rule(label: str) -> None:
     assert rx.european_label(label) == (False, None)
