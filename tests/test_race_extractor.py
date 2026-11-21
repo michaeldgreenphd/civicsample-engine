@@ -29,8 +29,8 @@ row's count in its own group's column only) is read by its race parts (its own
 section). Native Hawaiian or Pacific Islander wordings, and the rows they
 meet in a table, have a section of their own, as do European-only wordings
 and Asian wordings with the tables they meet; Black-only wordings, the
-1977 Asian or Pacific Islander category, and European nationalities and
-Roma groups are the last three sections.
+1977 Asian or Pacific Islander category, European nationalities and Roma
+groups, and UK census wordings are the last four sections.
 
 Which measures are race tables at all is the title word rule
 (race_extractor.is_race_table): titles that only contain the letters "race"
@@ -3649,3 +3649,137 @@ def test_a_comma_list_naming_a_nationality_counts_it_as_a_race() -> None:
         ("Caucasian", 25), ("African American", 1), ("African American, Irish, Native American", 1)])
     race = extract_race_data(_study("NCT99000639", [table], 27))
     assert _nonzero(race) == {"white": 25, "black_african_american": 1, "more_than_one_race": 1}
+
+
+# ── UK census labels ───────────────────────────────────────────────────────
+#
+# Fictional studies NCT99000626–628 (block comment "UK census labels" in
+# src/race_extractor.py). Each label comes from the 2026-11-15 inputs, where
+# it was counted as other or quarantined as not race unless noted.
+
+BLACK = "black_african_american"
+
+
+@pytest.mark.parametrize("label, category, subcategory", [
+    ("Asian or Asian British", "asian", None),
+    ("Asian or Asian British (Indian)", "asian", "south_asian_indian"),
+    ("Asian or Asian British - Pakistani", "asian", "south_asian_pakistani"),
+    ("Asian British", "asian", None),
+    ("British Indian", "asian", "south_asian_indian"),
+    ("British or Asian Pakistani", "asian", "south_asian_pakistani"),
+    ("Asian, Asian British or Asian Welsh", "asian", None),  # the 2021 heading in Wales
+    ("Black or Black British", BLACK, None),
+    ("Black or Black British (African)", BLACK, "african"),
+    ("Asian or Asian British (Indian or Other)", "asian", None),  # fictional: Other pooled (review finding)
+    ("Black or Black British (Caribbean, Other)", BLACK, None),  # fictional
+    ("Black, African, Caribbean or Black British", BLACK, None),
+    ("Black, Black British, Black Welsh, Caribbean or African", BLACK, None),
+    ("Black / African / Caribbean / Black British - Caribbean", BLACK, "caribbean"),
+    ("Black African/Caribbean/British", BLACK, None),  # two groups: no subcategory
+    ("British African", BLACK, "african"),
+    ("Caribbean British", BLACK, "caribbean"),
+    ("Afro-Caribbean or British African", BLACK, None),
+    ("Any other Black background", BLACK, None),
+    ("White British", "white", None),
+    ("White - British", "white", None),
+    ("White British/Irish", "white", None),
+    ("White Irish", "white", None),
+    ("White (British, Irish, Other)", "white", None),
+    ("English/Welsh/Scottish/Northern Irish/British", "white", None),
+    ("White - English / Welsh / Scottish / Northern Iris", "white", None),  # truncated as posted
+    ("Any other white background", "white", None),
+    ("Mixed or Multiple Ethnic Groups", "more_than_one_race", None),
+    ("Mixed ethnic group", "more_than_one_race", None),
+    ("Mixed - White & Black Caribbean", "more_than_one_race", None),
+    ("Mixed white and black carribean", "more_than_one_race", None),
+    ("Any other mixed background", "more_than_one_race", None),
+    ("(Mixed ethnic group:) White / Black Caribbean", "more_than_one_race", None),
+    ("(Mixed ethnic group:) White / Other", "more_than_one_race", None),  # the parts of the mix
+    ("Mixed ethnic group white and other", "more_than_one_race", None),  # fictional: "and" lists the parts of the mix
+    ("Mixed ethnic group: White or Other", "more_than_one_race", None),  # fictional: "or" after the heading (review finding)
+    ("Multiple (Asian or White)", "more_than_one_race", None),  # fictional: "or" in a bracket lists parts (review finding)
+    ("Multiple (Asian-White)", "more_than_one_race", None),
+])
+def test_a_uk_census_wording_is_read_by_its_heading(label: str, category: str,
+                                                    subcategory: Optional[str]) -> None:
+    assert rx.uk_census_label(label) == (category, subcategory)
+
+
+@pytest.mark.parametrize("label", [
+    "British",  # a nationality alone: the nationality rule's
+    "Irish",
+    "Other ethnic group",  # stays other
+    "Any other ethnic group",
+    "White-British-UK patients",  # crossed with another dimension
+    "Child - Mixed/Multiple",
+    "Other (Specify): Black British",
+    "Black or White British",  # two races as alternatives
+    "Asian - Mixed Race",  # no UK wording (the heritage template's)
+    "White - Mixed Race",
+    "Mixed Asian Race",
+    "White: Gypsy or Irish Traveller, Roma or Other White",  # left to the Roma rule
+    "English Canadian",
+    "White or English speaker",
+    "/Black British",  # a piece of a longer label
+    "White and Black African",  # no UK wording without a Mixed heading
+    "White British or Mixed ethnic group",  # Mixed pooled with another group (a review finding)
+    "Mixed ethnic group or Other",
+    "White British or Other ethnic group",  # fictional: Other pooled (a review finding)
+    "Asian or Asian British or Other",  # fictional
+    "Black or Black British or any other ethnic group",  # fictional
+    "White British/Other",  # fictional
+    "White British and Other ethnic group",  # fictional: joined by "and" (a review finding)
+    "White British & Other",  # fictional
+    "Mixed ethnic group / Other",  # fictional: Other beside Mixed, no heading (review finding)
+    "Mixed ethnic group, Other",  # fictional
+    "Mixed ethnic group / White British",  # fictional: another group pooled with Mixed (review finding)
+    "Mixed ethnic group and Other ethnic group",  # fictional: a complete Other heading (review finding)
+    "Mixed ethnic group & Other ethnic group",  # fictional
+    "Mixed ethnic group and White ethnic group",  # fictional: a second complete heading (review finding)
+    "White British or Mixed - White & Asian",  # fictional: "or" in the heading pools
+])
+def test_a_label_without_a_uk_census_reading_is_not_read_by_the_rule(label: str) -> None:
+    assert rx.uk_census_label(label) is None
+
+
+@pytest.mark.parametrize("label, category, subcategory, flags", [
+    ("(Mixed ethnic group:) White / Other", "more_than_one_race", None, ["uk_census_label"]),  # before slash
+    ("Asian/Asian British", "asian", None, ["uk_census_label"]),
+    ("Caribbean", BLACK, "caribbean", []),  # the vocabulary's own
+    ("Mixed", "more_than_one_race", None, []),
+])
+def test_uk_census_readings_through_map_race_category(label: str, category: str,
+                                                      subcategory: Optional[str], flags: list[str]) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (category, subcategory, flags)
+
+
+def test_a_uk_census_table_is_counted_by_its_headings() -> None:
+    table = _class_table(COMBINED_TITLE, [
+        ("White British", 55), ("White Irish", 5), ("Asian or Asian British", 20),
+        ("Black, African, Caribbean or Black British", 10), ("Mixed or Multiple Ethnic Groups", 5),
+        ("Other ethnic group", 5)])
+    race = extract_race_data(_study("NCT99000626", [table], 100))
+    assert _nonzero(race) == {"white": 60, "asian": 20, BLACK: 10, "more_than_one_race": 5, "other": 5}
+    assert race["quarantined_labels"] == []
+    assert all("multirace_comma_list" not in c["flags"] for c in race["raw_categories"])
+
+
+def test_an_ethnicity_titled_uk_table_now_reports_race() -> None:
+    """The NCT01452191 shape: every row names the ethnicity dimension, and
+    "White British" now reads as a race, so the table is a race
+    classification."""
+    table = _class_table(COMBINED_TITLE, [("Ethnicity: White British", 100), ("Ethnicity: Other ethnic group", 10)])
+    race = extract_race_data(_study("NCT99000627", [table], 110))
+    assert race["reported"]
+    assert _nonzero(race) == {"white": 100, "other": 10}
+
+
+def test_the_census_white_groups_are_counted_with_no_quarantine() -> None:
+    table = _class_table(COMBINED_TITLE, [
+        ("English/Welsh/Scottish/Northern Irish/British", 40), ("Any other White background", 10),
+        ("Asian/Asian British - Indian", 5)])
+    race = extract_race_data(_study("NCT99000628", [table], 55))
+    assert _nonzero(race) == {"white": 50, "asian": 5}
+    assert race["subcategory_totals"] == {"asian_south_asian_indian": 5}
+    assert race["quarantined_labels"] == []

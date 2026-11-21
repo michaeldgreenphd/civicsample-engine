@@ -1109,6 +1109,255 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
     return regions.pop() if len(regions) == 1 and None not in regions else None
 
 
+# ── UK census labels ───────────────────────────────────────────────────────
+#
+# The UK censuses classify ethnic group under five headings: White; Mixed or
+# Multiple ethnic groups; Asian, Asian British (or Asian Welsh, 2021 in
+# Wales); Black, African, Caribbean or Black British (Black Welsh); and
+# Other ethnic group. Each has groups: "White: English, Welsh, Scottish,
+# Northern Irish or British", "Irish", "Any other White background"; "Mixed:
+# White and Black Caribbean"; "Asian: Indian", "Pakistani"; "Black:
+# African", "Caribbean". (Read from search summaries of ONS pages, which
+# could not be fetched here.) UK trials post these words, and the vocabulary
+# held none of the headings. They were counted as other, in the 2026-11-15
+# inputs: "Asian or Asian British" (64,897 participants in 17 trials),
+# "Black or Black British" (11,766 in 7), "White British" (968 in 31),
+# "Black, African, Caribbean or Black British", "White Irish", "Mixed or
+# Multiple Ethnic Groups". Or they were quarantined as not race:
+# "English/Welsh/Scottish/Northern Irish/British" (148).
+#
+# Method (uk_census_label; before the slash fragments, which would read
+# "(Mixed ethnic group:) White / Other" by its "Other"). A label cleaned as
+# for European labels is read, flagged uk_census_label, when it is made
+# only of these terms:
+#   - the headings Asian(s), Black, White, Mixed, Multiple;
+#   - British; the UK nations (English, Welsh, Scottish, Northern Irish, and
+#     "Northern Iris", the registry's truncation; Irish), a nation after
+#     Asian or Black qualifying it as British does ("Asian Welsh");
+#   - the groups Indian, Pakistani, Bangladeshi, Chinese (Asian) and African,
+#     Africa, Caribbean, Afro-Caribbean (Black);
+#   - "Any other", "All other", "Other", "background", "ethnic", "group(s)",
+#     "race", "origin", "of", "or", "and" and the marks "/", ",", ";", "&",
+#     "(", ")", ":" and dashes;
+# and it holds UK wording: "British"; a UK nation beside White or another
+# nation; "any other ... background"; or Mixed with "ethnic", "Multiple" or
+# two races. A label beginning or ending with a join is not read (a leading
+# "(" is not one). Then:
+#   - Mixed or Multiple ("Mixed: White and Black Caribbean", "Multiple
+#     (Asian-White)") is more than one race, unless "or" sets it beside
+#     something else in the heading, the label up to the first ":" or dash
+#     after Mixed ("White British or Mixed ethnic group" pools two groups;
+#     "Mixed ethnic group: White or Other" lists the parts of the mix),
+#     or, with no heading mark (":" or a dash) after Mixed, "/", "," or ";"
+#     sets an Other beside it ("Mixed ethnic group / Other"; review
+#     findings); after a heading they list the parts of the mix ("(Mixed
+#     ethnic group:) White / Other"), as "and" and "&" do;
+#   - one race heading, or the groups of one race with no heading ("British
+#     African", "Caribbean British"; a UK nation gives White), is that race;
+#   - anything else is not read ("Black or White British"), nor is a label
+#     with an alternative naming no group ("White British or Other ethnic
+#     group", "White British/Other", "White British and Other ethnic group":
+#     it pools Other; review findings), an alternative counted outside
+#     brackets only ("White (British, Irish,
+#     Other)" is White).
+# The subcategory is the vocabulary's key for a group named after the last
+# dash or colon ("Black / African / Caribbean / Black British - Caribbean"),
+# else for the one group the label names; a label naming several groups
+# ("Black African/Caribbean/British") has none, nor does one naming Other
+# ("Asian or Asian British (Indian or Other)": a review finding), and White
+# has none.
+#
+# What it does not do. A nationality alone ("British", "Irish") is left to
+# the nationality rule, and "Gypsy or Irish Traveller" and "Roma" to theirs.
+# "Other ethnic group" and "Any other ethnic group" stay other. Rows crossed
+# with something else are not read ("White-British-UK patients", "Child -
+# Mixed/Multiple"), nor "Other (Specify): Black British". "White and Black
+# African" without a Mixed heading holds no UK wording, so it is read here
+# only once "Black African" is (by the rule for Black-only wordings, through
+# the multirace rule).
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
+# the Asian labels: Asian +64,924, Black +12,541, White +3,153, more than
+# one race +407; other -79,814; unknown -99 (unknown_inferred). Rows read:
+# 104 labels, 81,747 participants in 91 trials. 76 race blocks change their
+# totals, and 15 change only a row the slash fragments read the same way,
+# some with a subcategory now named ("Asian / Asian British - Indian") or
+# dropped ("Black African/Caribbean/British", which names two groups). One
+# trial now reports race: NCT01452191, "Ethnicity: White British" 1,008 and
+# "Ethnicity: Other ethnic group" 54, read as an ethnicity table while no
+# row named a race (block comment "Ethnicity dimension named in the row
+# label"). No ethnicity block, no sex block and no sex/gender-titled gate
+# changes; race blocks over their population stay 330.
+_UK_TOKEN_RX = re.compile(
+    r"(?:(?P<asian>asians?)|(?P<black>black)|(?P<white>white)|(?P<mixed>mixed|multiple|mulitple)|"
+    r"(?P<british>british)|(?P<nation>northern\s+iris(?:h)?|irish|english|welsh|scottish)|"
+    r"(?P<asian_sub>indian|pakistani|bangladeshi|chinese)|"
+    r"(?P<black_sub>afro\s+caribbean|african\s+caribbean|caribbean|carribean|africa|african)|"
+    r"(?P<other>any\s+other|all\s+other|other)|(?P<background>background)|"
+    r"(?P<ethnic>ethnic|groups?)|(?P<filler>race|origin|of)|(?P<or>or)|(?P<and>and))(?![a-z])"
+    r"|(?P<mark>[/,;&():\-–—])",
+    re.IGNORECASE)
+# The kinds that name a group, one of which every alternative of a UK label
+# must hold (uk_census_label).
+_UK_NAMING_KINDS = frozenset({"asian", "black", "white", "mixed", "british", "nation", "asian_sub", "black_sub"})
+_UK_SUBCATEGORY = {
+    "indian": "south_asian_indian", "pakistani": "south_asian_pakistani",
+    "bangladeshi": "south_asian_bangladeshi", "chinese": "chinese",
+    "african": "african", "africa": "african", "caribbean": "caribbean", "carribean": "caribbean",
+    "afro caribbean": "caribbean", "african caribbean": "caribbean",
+}
+_UK_RACE = {"asian": "asian", "black": "black_african_american", "white": "white",
+            "asian_sub": "asian", "black_sub": "black_african_american", "nation": "white"}
+
+
+def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
+    """(category, subcategory) when a label is a UK census ethnic group
+    wording (block comment above); else None.
+
+      "Asian or Asian British"                   -> ("asian", None)
+      "Asian or Asian British (Indian)"          -> ("asian", "south_asian_indian")
+      "Black or Black British"                   -> ("black_african_american", None)
+      "British African"                          -> ("black_african_american", "african")
+      "White British", "White Irish"             -> ("white", None)
+      "English/Welsh/Scottish/Northern Irish/British" -> ("white", None)
+      "Mixed or Multiple Ethnic Groups"          -> ("more_than_one_race", None)
+      "Mixed: White and Black Caribbean"         -> ("more_than_one_race", None)
+      "White British or Other ethnic group"      -> None (pools Other)
+      "British", "Irish"                         -> None (a nationality alone)
+      "Asian - Mixed Race"                       -> None (no UK wording)
+      "Other ethnic group"                       -> None
+    """
+    text = unicodedata.normalize("NFKD", clean_demographic_label(label).lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
+    text = re.sub(r"[.'’]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    tokens: List[Tuple[str, str]] = []
+    position = 0
+    while position < len(text):
+        match = _UK_TOKEN_RX.match(text, position)
+        if match is None or match.end() == position:
+            return None
+        kind = match.lastgroup
+        # A nation after Asian or Black qualifies it as "British" does
+        # ("Asian Welsh", "Black Welsh": the 2021 census in Wales).
+        if kind == "nation" and tokens and tokens[-1][0] in ("asian", "black"):
+            kind = "british"
+        tokens.append((kind, re.sub(r"\s+", " ", match.group(0).lower())))
+        position = match.end()
+        while position < len(text) and text[position].isspace():
+            position += 1
+    kinds = [kind for kind, _text in tokens]
+    if not tokens or (kinds[0] in ("mark", "or", "and") and tokens[0][1] != "(") or (
+            kinds[-1] in ("mark", "or", "and") and tokens[-1][1] != ")"):
+        return None  # a piece of a longer label
+    races = {_UK_RACE[kind] for kind in kinds if kind in _UK_RACE}
+    nations = kinds.count("nation")
+    # The UK wording the rule needs: "British", a UK nation beside White or
+    # another nation, "Any other ... background", or a Mixed group named by
+    # the census's own words.
+    other_background = "other" in kinds and "background" in kinds
+    mixed = "mixed" in kinds
+    marker = ("british" in kinds or other_background
+              or (nations and ("white" in kinds or nations >= 2))
+              or (mixed and ("ethnic" in kinds or kinds.count("mixed") > 1 or len(races) >= 2)))
+    if not marker:
+        return None
+    if mixed:
+        # The heading is the label up to the first heading mark (":" or a
+        # dash) after Mixed; what follows lists the parts of the mix ("(Mixed
+        # ethnic group:) White / Other", "Mixed ethnic group: White or
+        # Other"; review findings).
+        first_mixed = kinds.index("mixed")
+        cut = next((i for i in range(first_mixed + 1, len(tokens))
+                    if tokens[i][0] == "mark" and tokens[i][1] in (":", "-", "–", "—")), None)
+        # Each alternative "or" sets beside Mixed in the heading, outside
+        # brackets, must be Mixed too ("Mixed or Multiple ethnic groups";
+        # "Multiple (Asian or White)" lists its parts in the bracket); "White
+        # British or Mixed ethnic group" pools two groups whose counts cannot
+        # be told apart. "and" and "&" list the parts of the mix, but not a
+        # second complete heading, one with its own "ethnic group" that is
+        # not Mixed ("Mixed ethnic group and Other ethnic group", "Mixed
+        # ethnic group and White ethnic group"; review findings).
+        alternatives: List[List[str]] = [[]]
+        joined: List[List[str]] = [[]]
+        depth = 0
+        for kind, text in tokens[:cut]:
+            if kind == "mark" and text in ("(", ")"):
+                depth += 1 if text == "(" else -1
+            elif depth == 0 and kind == "or":
+                alternatives.append([])
+                joined.append([])
+                continue
+            elif depth == 0 and (kind == "and" or (kind == "mark" and text == "&")):
+                joined.append([])
+                continue
+            alternatives[-1].append(kind)
+            joined[-1].append(kind)
+        if any("mixed" not in alternative for alternative in alternatives if alternative):
+            return None
+        if any("ethnic" in part and "mixed" not in part for part in joined[1:]):
+            return None
+        # Without a heading mark, "/", "," and ";" set alternatives side by
+        # side too, and each must be Mixed: one naming another group, or
+        # Other, pools a group apart ("Mixed ethnic group / Other", "Mixed
+        # ethnic group / White British"; review findings). "and" and "&"
+        # always list the parts of the mix ("Mixed white and black
+        # carribean").
+        if cut is None:
+            part: List[str] = []
+            depth = 0
+            for kind, text in tokens + [("mark", "/")]:
+                if kind == "mark" and text in ("(", ")"):
+                    depth += 1 if text == "(" else -1
+                elif depth == 0 and kind == "mark" and text in ("/", ",", ";"):
+                    if part and "mixed" not in part:
+                        return None
+                    part = []
+                    continue
+                part.append(kind)
+        return "more_than_one_race", None
+    # Each alternative ("or", "and", "&", "/", ",", ";" outside brackets)
+    # must name a group. One made of "Other" and fillers only ("White British
+    # or Other ethnic group", "White British/Other", "White British and Other
+    # ethnic group") pools a group whose count cannot be told apart (review
+    # findings). "Any other White background" names
+    # White, and a bracket describes its heading ("White (British, Irish,
+    # Other)"). A Mixed label lists the parts of the mix and is read above.
+    alternative: List[str] = []
+    depth = 0
+    for kind, text in tokens + [("or", "or")]:
+        if kind == "mark" and text in ("(", ")"):
+            depth += 1 if text == "(" else -1
+        elif depth == 0 and (kind in ("or", "and") or (kind == "mark" and text in ("/", ",", ";", "&"))):
+            if alternative and not _UK_NAMING_KINDS & set(alternative):
+                return None
+            alternative = []
+            continue
+        alternative.append(kind)
+    if len(races) != 1:
+        return None
+    race = races.pop()
+    # A label naming Other anywhere names no subgroup: Other pools people the
+    # group does not cover ("Asian or Asian British (Indian or Other)"; a
+    # review finding).
+    if "other" in kinds:
+        return race, None
+    # The census writes the category's heading, then its group after a dash
+    # or colon ("Black / African / Caribbean / Black British - Caribbean"):
+    # a group named alone there is the subcategory; else one named alone in
+    # the label is, and several name none.
+    cuts = [i for i, (kind, text) in enumerate(tokens) if kind == "mark" and text in "-:–—"]
+    tail = tokens[cuts[-1] + 1:] if cuts else []
+    tail_groups = {_UK_SUBCATEGORY[text] for kind, text in tail if kind in ("asian_sub", "black_sub")}
+    if len(tail_groups) == 1 and not any(kind in ("asian", "black", "white") for kind, _t in tail):
+        return race, tail_groups.pop()
+    subcategories = {_UK_SUBCATEGORY[text] for kind, text in tokens
+                     if kind in ("asian_sub", "black_sub")}
+    return race, (subcategories.pop() if len(subcategories) == 1 else None)
+
+
 # ── Black labels ───────────────────────────────────────────────────────────
 #
 # OMB's Black or African American category is a person having origins in
@@ -2654,6 +2903,20 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
         return {
             "omb_category": "more_than_one_race",
             "subcategory": None,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A UK census ethnic group wording (block comment "UK census labels"),
+    # before the slash fragments, which would read "(Mixed ethnic group:)
+    # White / Other" by its "Other".
+    uk = uk_census_label(label_clean)
+    if uk is not None:
+        flags.append("uk_census_label")
+        return {
+            "omb_category": uk[0],
+            "subcategory": uk[1],
             "confidence": "high",
             "original": label_clean,
             "flags": flags
