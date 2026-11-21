@@ -1054,8 +1054,11 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
 # "(" is not one). Then:
 #   - Mixed or Multiple ("Mixed: White and Black Caribbean", "Multiple
 #     (Asian-White)") is more than one race, unless "or" sets it beside
-#     something else ("White British or Mixed ethnic group" pools two groups;
-#     a review finding);
+#     something else ("White British or Mixed ethnic group" pools two groups),
+#     or, with no heading mark (":" or a dash) after Mixed, "/", "," or ";"
+#     sets an Other beside it ("Mixed ethnic group / Other"; review
+#     findings); after a heading they list the parts of the mix ("(Mixed
+#     ethnic group:) White / Other"), as "and" and "&" do;
 #   - one race heading, or the groups of one race with no heading ("British
 #     African", "Caribbean British"; a UK nation gives White), is that race;
 #   - anything else is not read ("Black or White British"), nor is a label
@@ -1181,6 +1184,25 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
                 alternatives[-1].append(kind)
         if any("mixed" not in alternative for alternative in alternatives if alternative):
             return None
+        # Without a heading mark after Mixed (":" or a dash), "/", "," and
+        # ";" set alternatives side by side too, and one made of Other and
+        # fillers pools a group apart ("Mixed ethnic group / Other"; a review
+        # finding). After a heading they list the parts of the mix ("(Mixed
+        # ethnic group:) White / Other"), and "and" and "&" always do ("Mixed
+        # white and black carribean").
+        first_mixed = kinds.index("mixed")
+        if not any(kind == "mark" and text in (":", "-", "–", "—") for kind, text in tokens[first_mixed + 1:]):
+            part: List[str] = []
+            depth = 0
+            for kind, text in tokens + [("mark", "/")]:
+                if kind == "mark" and text in ("(", ")"):
+                    depth += 1 if text == "(" else -1
+                elif depth == 0 and kind == "mark" and text in ("/", ",", ";"):
+                    if part and not _UK_NAMING_KINDS & set(part):
+                        return None
+                    part = []
+                    continue
+                part.append(kind)
         return "more_than_one_race", None
     # Each alternative ("or", "and", "&", "/", ",", ";" outside brackets)
     # must name a group. One made of "Other" and fillers only ("White British
