@@ -36,6 +36,7 @@ from tqdm import tqdm
 from src.api_client import CTGovAPIClient
 from src.utils import (get_study_metadata, save_json, get_baseline_measures, get_overall_group_id,
                        extract_demographic_breakdown, pipeline_commit)
+from src.baseline_overrides import apply_baseline_override, flag_blocks
 from src.race_extractor import extract_race_data
 from src.ethnicity_extractor import extract_ethnicity_data
 from src.sex_extractor import extract_sex_data
@@ -77,16 +78,21 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
     """
     try:
         metadata = get_study_metadata(study)
-        race_data = extract_race_data(study)
-        ethnicity_data = extract_ethnicity_data(study)
+        # The engine's own demographic readers see the study through any
+        # per-trial exception (src/baseline_overrides.py); the metadata, the
+        # sex/gender manuscript parser and its raw measures keep it as posted.
+        read_study, override_flag = apply_baseline_override(study)
+        race_data = extract_race_data(read_study)
+        ethnicity_data = extract_ethnicity_data(read_study)
 
         # ── Legacy sex/gender extraction (sg=v1), kept until cutover ──
         # Each extractor uses the same iterative loop pattern as Race and
         # Ethnicity: exhaustively checks Standard → Customized → Combined
         # tables before declaring "Not Reported". Not called when the legacy
         # path is switched off; the keys are then None, never absent.
-        sex_data = extract_sex_data(study) if legacy_sex_gender else None
-        gender_data = extract_gender_data(study) if legacy_sex_gender else None
+        sex_data = extract_sex_data(read_study) if legacy_sex_gender else None
+        gender_data = extract_gender_data(read_study) if legacy_sex_gender else None
+        flag_blocks([race_data, ethnicity_data, sex_data, gender_data], override_flag)
 
         # ── Manuscript parser (sg=v2): one flat row, no balancing ──
         # A parser failure on one record is that record's parse_error state
@@ -116,8 +122,8 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
             analysis = sga.analyze(sgt.parse_error_row(nct, None, snap), None, None)
 
         # Extract demographic breakdowns for interactive display
-        baseline_measures = get_baseline_measures(study)
-        overall_group_id = get_overall_group_id(study)
+        baseline_measures = get_baseline_measures(read_study)
+        overall_group_id = get_overall_group_id(read_study)
         race_breakdown = extract_demographic_breakdown(baseline_measures, "race", overall_group_id)
         ethnicity_breakdown = extract_demographic_breakdown(baseline_measures, "ethnicity", overall_group_id)
         sex_breakdown = extract_demographic_breakdown(baseline_measures, "sex", overall_group_id)

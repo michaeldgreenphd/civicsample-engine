@@ -5197,16 +5197,18 @@ def _joint_sex_counts(table: Dict, used_for_totals: bool) -> Dict:
 #     category no subcategory, so no origin is recorded for them.
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
-# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
-# the negated race labels: no count, flag or other field changes. Of 289,558
-# race rows, 233,116 are registry_template, 41,119 generic, 11,685 us_term,
-# 3,439 origin_term and 199 uk_census. Of the 1,111,028 Black participants in
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), each read through
+# src/baseline_overrides as src/extract_all reads it, against engine main after
+# the negated race labels and the NCT07465926 exception: no count, flag or
+# other field changes. Of 289,543 race rows, 233,116 are registry_template,
+# 41,107 generic, 11,682 us_term, 3,439 origin_term and 199 uk_census. Of the 1,111,028 Black participants in
 # trials whose every site is outside the United States, 938,282 (84.5%) are
 # in registry_template rows, 63,533 in us_term rows, 51,286 generic, 45,188
 # origin_term and 12,739 uk_census. 7,758 American Indian or Alaska Native
 # participants in 56 rows name a people or a region and are generic for want
 # of a subcategory ("North American Native", "Navajo"). The demographics
-# parts grow by 651,871 gzip bytes.
+# parts grow by 651,871 gzip bytes (measured before the NCT07465926
+# exception, which merges that trial's 20 race rows into 5).
 #
 # Published: in the race block of every record (raw_categories[].
 # wording_source) and the full records. The site does not read it, so it is

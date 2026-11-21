@@ -111,6 +111,9 @@ Tests:
  38. NCT99000157 — one Black row per wording source in a registrant's table
      ("Black British", "Black or African American", "Black African",
      "Black") beside "White" (fictional study)
+ 39. NCT07465926 — eight baseline groups in four matched comparisons whose
+     treated arms share two cohorts, every row tagged "(Comparison N)" (the
+     trial as posted, tests/fixtures/nct07465926_baseline.json)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -155,6 +158,10 @@ flagged negated_race (EXPECTED_NEGATED).
 Study 38 asserts its race totals and each row's wording_source
 (EXPECTED_WORDING). Every study asserts that each of its race rows carries a
 wording_source, one of race_extractor.WORDING_SOURCES.
+Study 39 asserts its race, ethnicity and sex totals read through its
+baseline exception, and the baseline_override flag (EXPECTED_OVERRIDE).
+Every study is read as src/extract_all reads it: through
+src/baseline_overrides.apply_baseline_override, which changes study 39 only.
 A mismatch stops the harness.
 """
 import json
@@ -164,6 +171,7 @@ from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src.baseline_overrides import APPLIED_FLAG, apply_baseline_override, flag_blocks
 from src.race_extractor import WORDING_SOURCES, extract_race_data
 from src.ethnicity_extractor import extract_ethnicity_data
 from src.sex_extractor import extract_sex_data
@@ -1198,6 +1206,25 @@ EXPECTED_WORDING = {
                                 ("Black", "generic"), ("White", "generic")]},
 }
 
+# ---------- NCT07465926 (the trial as posted): a per-trial baseline exception ----------
+# 224,048 in the Total column, the sum of eight groups whose treated arms in
+# Comparisons 1 and 2, and in 3 and 4, are matched copies of one cohort
+# (src/baseline_overrides.py). Before, every race row was tagged with its
+# comparison and all 224,048 were counted as other; ethnicity and sex summed
+# the Total column. Read through the exception, BG000 and BG004 are dropped
+# and the six kept groups count 187,700 people.
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "tests", "fixtures", "nct07465926_baseline.json"), encoding="utf-8") as _fh:
+    STUDY_NCT07465926 = json.load(_fh)
+
+EXPECTED_OVERRIDE = {
+    "NCT07465926": {"race": {"white": 125294, "black_african_american": 32705, "asian": 7313,
+                             "other": 6517, "unknown_not_reported": 15871},
+                    "ethnicity": {"hispanic_latino": 20548, "not_hispanic_latino": 135074,
+                                  "unknown_not_reported": 32078},
+                    "sex": {"female": 97899, "male": 89520, "unknown": 281}},
+}
+
 EXPECTED_RACE_BY_GROUP = {
     "NCT99000148": {"white": 65, "asian": 20, "american_indian_alaska_native": 5,
                     "unknown_not_reported": 10},
@@ -1399,9 +1426,12 @@ def validate_study(study: dict, nct_id: str) -> None:
     print(f"  {nct_id}")
     print(f"{'='*70}")
 
+    # As src/extract_all reads a study: through any per-trial exception.
+    study, override_flag = apply_baseline_override(study)
     race = extract_race_data(study)
     ethnicity = extract_ethnicity_data(study)
     sex = extract_sex_data(study)
+    flag_blocks([race, ethnicity, sex], override_flag)
 
     # Every race row records where its wording comes from (race_extractor,
     # "Where a race row's wording comes from").
@@ -1567,6 +1597,15 @@ def validate_study(study: dict, nct_id: str) -> None:
         sources = [(c["original"], c["wording_source"]) for c in race["raw_categories"]]
         assert sources == expected["sources"], f"{nct_id} wording sources: {sources}"
         print(f"\n  {nct_id}: each race row records its wording source — OK")
+    if nct_id in EXPECTED_OVERRIDE:
+        expected = EXPECTED_OVERRIDE[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["race"], f"{nct_id} race omb_totals: {nonzero}"
+        assert ethnicity["omb_totals"] == expected["ethnicity"], f"{nct_id} ethnicity: {ethnicity['omb_totals']}"
+        assert sex["totals"] == expected["sex"], f"{nct_id} sex: {sex['totals']}"
+        for name, block in (("race", race), ("ethnicity", ethnicity), ("sex", sex)):
+            assert APPLIED_FLAG in block["flags"], f"{nct_id} {name} flags: {block['flags']}"
+        print(f"\n  {nct_id}: read through its baseline exception, 187,700 participants — OK")
     if nct_id in EXPECTED_HERITAGE:
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
         assert nonzero == EXPECTED_HERITAGE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
@@ -1616,6 +1655,7 @@ def main() -> None:
         (MOCK_NCT99000155, "NCT99000155"),
         (MOCK_NCT99000156, "NCT99000156"),
         (MOCK_NCT99000157, "NCT99000157"),
+        (STUDY_NCT07465926, "NCT07465926"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
