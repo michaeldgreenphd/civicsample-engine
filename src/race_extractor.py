@@ -1191,6 +1191,36 @@ def _black_choice_names(tokens: List[Tuple[str, str, Tuple[int, ...]]], position
     return [term for kind, term, _w in tokens[start:end + 1] if kind == "name"]
 
 
+def _black_refined(subs: List[Optional[str]]) -> Optional[str]:
+    """The subcategory of names within one alternative or one choice, each
+    refining the others ("Caribbean (Haitian)" is caribbean_haitian, "Black
+    African" african; None is a name of Black itself): the most specific
+    subcategory every other agrees with, else their shared region, else
+    None. Black beside African American is the category's own name and
+    names no subgroup ("Black of African American")."""
+    candidates = [sub for sub in subs if sub is not None]
+    if not candidates or (None in subs and "african_american" in candidates):
+        return None
+    for candidate in candidates:
+        if all(candidate == other or _BLACK_REGION.get(candidate) == other for other in candidates):
+            return candidate
+    regions = {_BLACK_REGION.get(candidate, candidate) for candidate in candidates}
+    return regions.pop() if len(regions) == 1 else None
+
+
+def _black_alternatives(subs: List[Optional[str]]) -> Optional[str]:
+    """The subcategory of alternatives side by side ("Haitian or Jamaican"):
+    theirs when all agree, None when one names no subgroup ("Haitian or
+    Black"), else their shared region ("Caribbean or Haitian" is
+    caribbean), else None."""
+    if len(set(subs)) == 1:
+        return subs[0]
+    if None in subs:
+        return None
+    regions = {_BLACK_REGION.get(sub, sub) for sub in subs}
+    return regions.pop() if len(regions) == 1 else None
+
+
 def black_label(label: str) -> Tuple[bool, Optional[str]]:
     """(True, subcategory) when a label names Black groups only, by the terms
     of the block comment above; else (False, None).
@@ -1286,19 +1316,20 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     # other)", "(e.g., Haitian, Jamaican, and other)"); "other race", "other
     # ethnicity" or "other participants" names any race ("Black (Haitian or
     # other race)").
-    # In a bracket with an "other" choice, the names in its other choices
-    # that lie within the group "other" widens list some of its members, as
-    # examples do, and name no subcategory. A bare "other" (or "other
-    # Black") widens Black itself: "Black (Haitian, Jamaican, or other)" is
-    # Black with no subgroup, and "Black African (Nigerian, Ghanaian, or
-    # other)" stays african by the names outside the bracket. A named
-    # "other" widens its own group only: "Black (Haitian or other
-    # Caribbean)" is caribbean, while in "Black (African, Haitian, or other
-    # Caribbean)" African stays, and the label names no subgroup (a review
-    # finding).
+    # A bare "other" choice widens the group the bracket describes: the
+    # names in its other choices list some of that group's members, as
+    # examples do, and name no subcategory ("Black (Haitian, Jamaican, or
+    # other)" is Black with no subgroup; "Black African (Nigerian, Ghanaian,
+    # or other)" stays african by the names outside the bracket). A named
+    # "other" choice ("other Caribbean", "other Black") is an alternative
+    # like the others, reduced with them below: "Black (Haitian or other
+    # Caribbean)" is caribbean, "Black (African, Haitian, or other
+    # Caribbean)" names no subgroup (review findings).
     listed_positions: Set[int] = set()
     frames = {within[-1] for kind, term, within in tokens
               if within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS}
+    depth_of = {within[-1]: len(within) for kind, _t, within in tokens if kind == "open"}
+    choice_of: Dict[Tuple[int, int], int] = {}  # (bracket, place in tokens) -> its choice
     for frame in frames:
         choices: List[List[Tuple[str, str, int]]] = [[]]
         for position, (kind, term, within) in enumerate(tokens):
@@ -1308,6 +1339,7 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
                 choices.append([])
             else:
                 choices[-1].append((kind, term, position))
+                choice_of[(frame, position)] = len(choices) - 1
         named = [any(k == "name" or (k == "abbrev" and has_name) for k, _t, _p in choice)
                  for choice in choices]
         for c, choice in enumerate(choices):
@@ -1320,17 +1352,9 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
             if ("qualifier" in kinds_here or all(k == "filler" for k in kinds_here)
                     or "other" not in kinds_here or not listed or race_wide):
                 return False, None
-        widened: Set[Optional[str]] = set()  # the groups the "other" choices widen; None is Black
-        for choice in choices:
-            if any(k == "other" for k, _t, _p in choice):
-                names_here = [_black_subcategory_of(t) for k, t, _p in choice if k == "name"]
-                widened.update(names_here if names_here else [None])
-        for choice in choices:
-            if widened and not any(k == "other" for k, _t, _p in choice):
-                listed_positions.update(
-                    p for k, t, p in choice if k == "name"
-                    and (None in widened or _black_subcategory_of(t) in widened
-                         or _BLACK_REGION.get(_black_subcategory_of(t) or "") in widened))
+        if any(any(k == "other" for k, _t, _p in choice) and not any(k == "name" for k, _t, _p in choice)
+               for choice in choices):
+            listed_positions.update(p for choice in choices for k, _t, p in choice if k == "name")
     subcategories: List[Optional[str]] = []
     for i, segment in enumerate(segments):
         if not segment:
@@ -1369,34 +1393,46 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
         example_frames = {within[-1] for kind, _t, within, _p in segment if kind == "example" and within}
         first_example = next((i for i, (kind, _t, within, _p) in enumerate(segment)
                               if kind == "example" and not within), None)
-        specific = [_black_subcategory_of(term) for i, (kind, term, within, position) in enumerate(segment)
-                    if kind == "name" and not example_frames & set(within)
-                    and position not in listed_positions
-                    and not (first_example is not None and i > first_example)]
-        candidates = [sub for sub in specific if sub is not None]
-        # Black beside African American is the category's own name ("Black
-        # (or African American)", "Black of African American"): no subgroup.
+        # The names that count, each as (place, brackets, subcategory,
+        # forced); forced marks a bracket whose choices share no subgroup.
         # A Black given as an example does not count ("African American
         # including Black" is african_american; a review finding).
-        names_black = None in specific
-        if not candidates or (names_black and "african_american" in candidates):
-            subcategories.append(None)
-            continue
-        for candidate in candidates:
-            if all(candidate == other or _BLACK_REGION.get(candidate) == other for other in candidates):
-                subcategories.append(candidate)
-                break
-        else:
-            regions = {_BLACK_REGION.get(candidate, candidate) for candidate in candidates}
-            subcategories.append(regions.pop() if len(regions) == 1 else None)
+        items: List[Tuple[int, Tuple[int, ...], Optional[str], bool]] = [
+            (position, within, _black_subcategory_of(term), False)
+            for i, (kind, term, within, position) in enumerate(segment)
+            if kind == "name" and not example_frames & set(within)
+            and position not in listed_positions
+            and not (first_example is not None and i > first_example)]
+        # A bracket's choices are alternatives and are reduced as
+        # alternatives are, innermost bracket first, each to one item:
+        # "Black (Haitian or Black)" names no subgroup, as "Haitian or
+        # Black" does, and "Black (Caribbean or Haitian)" is caribbean, as
+        # "Caribbean or Haitian" is (a review finding). Names within one
+        # choice, and outside choices, refine each other (_black_refined):
+        # "Caribbean (Haitian)", "Black (or African American)".
+        for frame in sorted(frames, key=lambda f: -depth_of[f]):
+            members = [item for item in items if frame in item[1]]
+            if not members:
+                continue
+            by_choice: Dict[int, List[Tuple[int, Tuple[int, ...], Optional[str], bool]]] = {}
+            for item in members:
+                by_choice.setdefault(choice_of[(frame, item[0])], []).append(item)
+            results = [(None, True) if any(item[3] for item in its) else (_black_refined([item[2] for item in its]), False)
+                       for _c, its in sorted(by_choice.items())]
+            subs = [sub for sub, _forced in results]
+            if any(forced for _sub, forced in results):
+                reduced, forced = None, True
+            elif len(subs) == 1 or all(sub is None for sub in subs):
+                reduced, forced = subs[0], False  # one choice named, or Black in each
+            else:
+                reduced = _black_alternatives(subs)
+                forced = reduced is None
+            outer = members[0][1][:members[0][1].index(frame)]
+            items = [item for item in items if frame not in item[1]] + [(members[0][0], outer, reduced, forced)]
+        subcategories.append(None if any(item[3] for item in items) else _black_refined([item[2] for item in items]))
     if not subcategories:
         return False, None
-    if len(set(subcategories)) == 1:
-        return True, subcategories[0]
-    if None in subcategories:
-        return True, None
-    regions = {_BLACK_REGION.get(sub, sub) for sub in subcategories}
-    return True, (regions.pop() if len(regions) == 1 else None)
+    return True, _black_alternatives(subcategories)
 
 
 # ── American Indian or Alaska Native labels ────────────────────────────────
