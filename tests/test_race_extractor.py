@@ -28,8 +28,9 @@ A race table that posts a study's groups as rows ("White - Usual Care", each
 row's count in its own group's column only) is read by its race parts (its own
 section). Native Hawaiian or Pacific Islander wordings, and the rows they
 meet in a table, have a section of their own, as do European-only wordings
-and Asian wordings with the tables they meet; Black-only wordings and the
-1977 Asian or Pacific Islander category are the last two sections.
+and Asian wordings with the tables they meet; Black-only wordings, the
+1977 Asian or Pacific Islander category, and European nationalities and
+Roma groups are the last three sections.
 
 Which measures are race tables at all is the title word rule
 (race_extractor.is_race_table): titles that only contain the letters "race"
@@ -2806,7 +2807,6 @@ def test_a_direction_names_the_subcategory_only_when_it_qualifies_every_group(
 @pytest.mark.parametrize("label", [
     "Western background (European countries (excluding Turkey), North America, Japan, Indonesia,Oceania)",
     "Other: Brazil, China, Mexico, MENA, Sub-Saharan Africa, Latin America, Europe, Asia, Oceania",
-    "Roma European",                                          # left to its own decision
     "White(origins of Europe, Middle East, or North Africa)",  # names the Middle East and North Africa
     "Middle European/Middle Eastern",
     "Middle Eastern European",                                 # "Middle East" is not a direction
@@ -2816,8 +2816,7 @@ def test_a_direction_names_the_subcategory_only_when_it_qualifies_every_group(
     "Other (European/Arab)",
     "African-European",
     "European or Other",                                       # pools other origins
-    "French",                                                  # a nationality alone
-    "New Zealander",
+    "New Zealander",                                           # a nationality outside Europe
     "White",                                                   # no European name
     "/or European",                                            # a piece of a longer label
     # a qualifier that qualifies no European name (review finding)
@@ -2874,12 +2873,16 @@ def test_new_zealand_census_rows_are_counted_as_white() -> None:
     assert race["subcategory_totals"] == {"white_european": 70}
 
 
-def test_quarantined_european_rows_are_counted_and_roma_stays_quarantined() -> None:
+def test_quarantined_european_rows_are_counted_and_so_is_the_roma_row() -> None:
+    """"Roma European" stayed quarantined until the maintainer's decision to
+    read Roma groups as White (section "European nationalities and Roma
+    groups" below)."""
     table = _category_table(COMBINED_TITLE, [
         ("North/Mid/East European", 50), ("South European", 30), ("Roma European", 5), ("Other", 15)])
     race = extract_race_data(_study("NCT99000612", [table], 100))
-    assert _nonzero(race) == {"white": 80, "other": 15, "unknown_not_reported": 5}
-    assert [q["original"] for q in race["quarantined_labels"]] == ["Roma European"]
+    assert _nonzero(race) == {"white": 85, "other": 15}
+    assert race["quarantined_labels"] == []
+    assert race["subcategory_totals"].get("white_european") == 80  # the Roma row has none
 
 
 def test_a_heritage_row_naming_caucasian_european_carries_the_european_subcategory() -> None:
@@ -3544,3 +3547,105 @@ def test_asian_joined_to_pacific_islander_beside_asian_alone_is_still_a_combinat
         ("Asian", 20), ("Asian and Native Hawaiian or Pacific Islander", 2), ("White", 78)])
     race = extract_race_data(_study("NCT99000635", [table], 100))
     assert race["omb_totals"]["more_than_one_race"] == 2 and race["omb_totals"]["asian"] == 20
+
+
+# ── European nationalities and Roma groups ────────────────────────────────
+#
+# Fictional studies NCT99000636–639 (block comment "European labels" in
+# src/race_extractor.py). The maintainer's decisions: a European nationality
+# alone is read as White, and so are Roma, Gypsy and Traveller groups. Each
+# label comes from the 2026-11-15 inputs, where it was quarantined as not
+# race or counted as other, unless noted.
+
+@pytest.mark.parametrize("label", [
+    "Russian", "Italian", "Romanian", "British", "Irish", "Danish", "Dutch", "Greek", "Greeks",
+    "Albanian", "Albanians", "Macedonians", "Belarusian", "Ukrainian", "Hungarian", "Slovak",
+    "Polish", "Portuguese",  # not Hispanic in OMB's definition
+    "Serbian", "Bosnian", "Croatian", "English", "French",
+    "Northern Irish",  # fictional
+    "Russians",  # fictional
+    "Other: Russian", "Other: Macedonian", "Caucasian-Russians", "White, Other: German",
+])
+def test_a_european_nationality_is_read_as_white(label: str) -> None:
+    assert rx.european_label(label) == (True, "european")
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"]) == ("white", "european")
+    assert "european_label" in mapping["flags"]
+
+
+@pytest.mark.parametrize("label", [
+    "Roma", "Gipsy", "Gypsy", "gypsies", "Irish Traveller", "Roma European", "Other (Sinti)",
+    "Gypsy or Irish Traveller",  # fictional: the census wording
+    "White: Gypsy or Irish Traveller",  # fictional
+    "White - Roma",  # fictional
+    "Gypsy/Traveller",  # fictional: every alternative a Roma group
+])
+def test_a_roma_group_is_read_as_white_with_no_subcategory(label: str) -> None:
+    assert rx.european_label(label) == (True, None)
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"]) == ("white", None)
+
+
+@pytest.mark.parametrize("label", [
+    "Spanish",  # Hispanic or Latino in OMB's definition, an ethnicity
+    "Kazakh", "Tartarian", "Baskirian", "Chuvash",  # peoples of Russia and Central Asia
+    "Russian or Kazakh",  # fictional: pools a people the rule does not read
+    "Traveller", "Travellers",  # fictional: names no group alone
+    "French Canadian",
+    "Turkish",  # a vocabulary entry, not this rule's
+    # UK census wordings, left to the rule for those
+    "White British", "White - Irish", "White-Irish", "White British/Irish", "White or White British",
+    "English/Welsh/Scottish/Northern Irish/British",
+    "White- English / Welsh / Scottish / Northern Irish / British",
+])
+def test_a_label_the_nationality_rule_does_not_read(label: str) -> None:
+    assert rx.european_label(label) == (False, None)
+
+
+@pytest.mark.parametrize("label", ["White British/European", "White British/ European"])
+def test_a_uk_nation_beside_a_european_name_keeps_its_reading(label: str) -> None:
+    """Read as White before this rule through "European" (NCT02972606,
+    NCT03699163); the UK census exclusion applies only to labels naming no
+    European name."""
+    assert rx.european_label(label) == (True, "european")
+
+
+def test_a_table_of_peoples_of_russia_reads_the_european_ones() -> None:
+    """The NCT03532932 shape: Russian and Belarusian read as White; Tatar
+    and Kazakh rows stay quarantined, their participants balanced to
+    unknown."""
+    table = _category_table(COMBINED_TITLE, [
+        ("Russian", 60), ("Belarusian", 5), ("Tartarian", 15), ("Kazakh", 10), ("Other", 10)])
+    race = extract_race_data(_study("NCT99000636", [table], 100))
+    assert _nonzero(race) == {"white": 65, "other": 10, "unknown_not_reported": 25}
+    assert sorted(q["original"] for q in race["quarantined_labels"]) == ["Kazakh", "Tartarian"]
+
+
+def test_a_table_of_nationalities_and_roma_newly_reports_race() -> None:
+    """The NCT03912753 shape: every row was quarantined but "Other"; now the
+    trial's race is read."""
+    table = _category_table(COMBINED_TITLE, [("Romanian", 80), ("Hungarian", 10), ("Roma", 5), ("Other", 5)])
+    race = extract_race_data(_study("NCT99000637", [table], 100))
+    assert _nonzero(race) == {"white": 95, "other": 5}
+    assert race["subcategory_totals"].get("white_european") == 90
+
+
+def test_a_combined_table_whose_last_unread_row_was_a_nationality_counts_race_rows_not_hispanic() -> None:
+    """The NCT00955708 shape: with "Russian" read, every row but "Hispanic"
+    is a race, so the ethnicity extractor counts the race rows as not
+    Hispanic (they were unknown while "Russian" was quarantined)."""
+    from src.ethnicity_extractor import extract_ethnicity_data
+    table = _class_table(COMBINED_TITLE, [("Caucasian", 60), ("Russian", 3), ("Hispanic", 2), ("Black", 5)])
+    ethnicity = extract_ethnicity_data(_study("NCT99000638", [table], 70))
+    assert ethnicity["omb_totals"]["hispanic_latino"] == 2
+    assert ethnicity["omb_totals"]["not_hispanic_latino"] == 68
+    assert ethnicity["omb_totals"]["unknown_not_reported"] == 0
+
+
+def test_a_comma_list_naming_a_nationality_counts_it_as_a_race() -> None:
+    """NCT01199042: "African American, Irish, Native American" names three
+    races once "Irish" reads as White."""
+    table = _category_table(COMBINED_TITLE, [
+        ("Caucasian", 25), ("African American", 1), ("African American, Irish, Native American", 1)])
+    race = extract_race_data(_study("NCT99000639", [table], 27))
+    assert _nonzero(race) == {"white": 25, "black_african_american": 1, "more_than_one_race": 1}

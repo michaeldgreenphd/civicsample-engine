@@ -97,6 +97,9 @@ Tests:
      Pacific Islander", "Asian/Pacific Islander", "Asian, Native Hawaiian, or
      Other Pacific Islander") beside "Native Hawaiian or Other Pacific
      Islander" (fictional study)
+ 36. NCT99000155 — European nationalities and Roma groups ("Russian",
+     "Romanian", "Roma", "Irish Traveller") beside "Spanish" and "Kazakh",
+     which stay quarantined (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -127,8 +130,8 @@ Study 29 asserts its race totals, that every row is read by its race part
 with its group named, and the race_by_group_table flag (EXPECTED_RACE_BY_GROUP).
 Study 30 asserts its race totals and that only "Torres Strait Islander" is
 quarantined (EXPECTED_NHPI).
-Study 31 asserts its race totals, its White subcategories and that only "Roma
-European" is quarantined (EXPECTED_EUROPEAN).
+Studies 31 and 36 assert their race totals, their White subcategories and
+their quarantined rows (EXPECTED_EUROPEAN).
 Study 32 asserts its race totals, its Asian subcategories and that no row is
 quarantined (EXPECTED_ASIAN).
 Study 34 asserts its race totals, its Black subcategories and that only
@@ -945,7 +948,9 @@ EXPECTED_NHPI = {
 # 100 participants (race_extractor, "European labels"). Before, "White
 # (European)" was other and "North/Mid/East European" and "NZ European/
 # Pākehā" were quarantined as not race (their 25 then balanced to unknown);
-# here all three are White. "Roma European" is quarantined as before.
+# here all three are White. "Roma European" was quarantined until Roma
+# groups were read as White, with no subcategory (race_extractor, "European
+# labels").
 MOCK_NCT99000150 = _make_study(
     "NCT99000150",
     "NCT99000150 - European wordings (fictional mock)",
@@ -963,10 +968,37 @@ MOCK_NCT99000150 = _make_study(
     total_participants=100,
 )
 
+# ---------- NCT99000155 (fictional): European nationalities and Roma groups ----------
+# 100 participants (race_extractor, "European labels"). Before, every row but
+# "Asian" was quarantined as not race, its participants balanced to unknown;
+# here the nationalities and the Roma groups are White. "Spanish" (Hispanic
+# or Latino in OMB's definition) and "Kazakh" stay quarantined.
+MOCK_NCT99000155 = _make_study(
+    "NCT99000155",
+    "NCT99000155 - European nationalities and Roma groups (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("Russian", 40),
+                _make_category("Romanian", 20),
+                _make_category("Roma", 5),
+                _make_category("Irish Traveller", 5),
+                _make_category("Spanish", 5),
+                _make_category("Kazakh", 10),
+                _make_category("Asian", 15),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+
 EXPECTED_EUROPEAN = {
-    "NCT99000150": {"omb": {"white": 80, "asian": 16, "unknown_not_reported": 4},
+    "NCT99000150": {"omb": {"white": 84, "asian": 16},
                     "subcategories": {"white_european": 80},
-                    "quarantined": ["Roma European"]},
+                    "quarantined": []},
+    "NCT99000155": {"omb": {"white": 70, "asian": 15, "unknown_not_reported": 15},
+                    "subcategories": {"white_european": 60},
+                    "quarantined": ["Spanish", "Kazakh"]},
 }
 
 # ---------- NCT99000151 (fictional): Asian wordings ----------
@@ -1444,6 +1476,7 @@ def main() -> None:
         (MOCK_NCT99000151, "NCT99000151"),
         (MOCK_NCT99000153, "NCT99000153"),
         (MOCK_NCT99000154, "NCT99000154"),
+        (MOCK_NCT99000155, "NCT99000155"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

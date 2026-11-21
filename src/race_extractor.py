@@ -354,26 +354,39 @@ def mena_subcategory(label: str) -> Optional[str]:
 # accents decomposed, so "Pākehā" reads "pakeha"; a hyphen between letters as
 # a space; "." and "'" removed) maps to White, flagged european_label, when it
 # is made only of these terms, joined by "/", ",", ";", "&", "(", ")", ":",
-# " - ", "or", "and" or "and/or", with at least one European name:
+# " - ", "or", "and" or "and/or", with at least one European name, European
+# nationality or Roma group:
 #   - European names: European(s), Europe, European American(s), Pakeha
 #     (the Maori name for New Zealanders of European descent, posted as "NZ
 #     European/Pākehā"; Stats NZ's ethnicity classification splits European
 #     into New Zealand European and Other European, and its 2001 review notes
 #     that some prefer "Pākehā" to "New Zealand European"; read from search
 #     summaries, the Stats NZ pages could not be fetched here);
-#   - with a European name only: White, Caucasian(s); a direction (North(ern),
-#     South(ern), East(ern), West(ern), Central, Mid, Middle, but not "Middle
-#     East"); New Zealand, New Zealander(s), NZ; "Other" ("Other European");
-#     the nationalities posted as examples of European (British, French,
-#     Scandinavian: "European (e.g., British, French, Western European,
+#   - European nationalities and peoples (_EUROPEAN_NATIONALITY: Albanian
+#     to Welsh, singular and plural: "Russian", "Greeks", "Northern Irish"),
+#     which name a group alone, as the Asian rule reads Asian nationalities
+#     alone (the maintainer's decision; block comment "Asian labels"). Before,
+#     only British, French and Scandinavian were held, and only beside a
+#     European name ("European (e.g., British, French, Western European,
 #     Eastern European)");
+#   - Roma groups: Roma, Romani, Sinti, Gypsy, Gipsy and their plurals, and
+#     Traveller(s) in a label naming a nationality or one of these ("Irish
+#     Traveller", "Gypsy/Traveller"; alone it names nothing). The 2021 census of England and Wales lists "Gypsy or Irish
+#     Traveller" and "Roma" under White (the ONS classification of ethnic
+#     group, codes 15 and 16; read from a search summary, not fetched here),
+#     and the maintainer's decision follows it;
+#   - with one of the above only: White, Caucasian(s); a direction
+#     (North(ern), South(ern), East(ern), West(ern), Central, Mid, Middle, but
+#     not "Middle East"); New Zealand, New Zealander(s), NZ; "Other" ("Other
+#     European", "Other: Russian");
 #   - fillers: descent, origin(s), ancestry, background, people(s), of, only,
 #     e.g., i.e.
 # A label beginning or ending with a join is not read (a piece of a longer
 # label). Each alternative the label joins ("or", "and", "/", ",", "&",
 # ";") must name a group on its own (_european_alternatives; review
 # findings): a European name with its qualifiers ("NZ European", "Western
-# European White"), or White, Caucasian or a European nationality. So
+# European White"), or White, Caucasian, a European nationality or a Roma
+# group (Traveller included). So
 # "European or New Zealander" and "North or European" are not read. An
 # alternative made only of directions shares the next one's noun
 # ("North/Mid/East European"), and "New Zealander, European" keeps its
@@ -381,7 +394,20 @@ def mena_subcategory(label: str) -> Optional[str]:
 # european_eastern when every alternative is qualified by an east direction,
 # european_western likewise for west, else european; an unqualified
 # alternative ("European or Western European", "White people or Eastern
-# European", "Eastern European or British") names a wider group.
+# European", "Eastern European or British") names a wider group. A
+# nationality is unqualified: "Russian" is european, as the rule places no
+# nation in a region. A label naming a Roma group has no subcategory ("Roma
+# European" included): the census lists these groups under White without
+# claiming a European origin for them.
+#
+# UK census wordings. A label naming no European name and no Roma group,
+# with a UK nation (British, English, Welsh, Scottish, Scots, Irish) beside
+# White or beside another UK nation ("White British", "White - Irish",
+# "English/Welsh/Scottish/Northern Irish/British"), is not read here: it is a
+# UK census wording, read with the rest of its table ("Asian or Asian
+# British", "Black or Black British") by the rule for those, so that a UK
+# table is not read for White alone. A UK nation alone ("British", "Irish")
+# is a nationality and is read here.
 #
 # What it does not do. A label naming anything else beside European is not
 # read: "Western background (European countries (excluding Turkey), North
@@ -389,9 +415,16 @@ def mena_subcategory(label: str) -> Optional[str]:
 # "African-European", "White(origins of Europe, Middle East, or North
 # Africa)" (which names the Middle East and North Africa, tracked apart),
 # "Not Collected - European Participants" (a non-answer), "Non-White/European
-# descent". "Roma European" stays as it was: whether Roma participants are
-# counted as White is left to its own decision. A nationality alone
-# ("French", "New Zealander") names no race and is not read.
+# descent". "Spanish" is not read: Spanish origin is Hispanic or Latino in
+# OMB's definition (a person of "Cuban, Mexican, Puerto Rican, South or
+# Central American, or other Spanish culture or origin regardless of race",
+# the Census Bureau's statement of the 1997 standard), an ethnicity, and the
+# two tables posting it alone set it beside "Hispanic", "Latino", "Mexican"
+# and "Cuban" (NCT00467259, NCT03099304). Nor are the peoples of Russia and
+# Central Asia that are not European nationalities ("Tartarian",
+# "Baskirian", "Chuvash", "Kazakh", beside "Russian" in NCT03532932 and
+# NCT05107401), a nationality outside Europe ("New Zealander", "French
+# Canadian"), or "Traveller" alone.
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
@@ -411,15 +444,50 @@ def mena_subcategory(label: str) -> Optional[str]:
 # Hispanic row, so the ethnicity extractor counts its race rows as not
 # Hispanic (49 participants from unknown). No other ethnicity block, no sex
 # block and no sex/gender-titled gate changes; mena_in_white is unchanged.
-_EUROPEAN_NAME = r"european\s+americans?|europeans?|europe|pakehas?"
+#
+# The nationalities and Roma groups, measured on the same inputs against
+# engine main after the Asian labels: 32 labels newly read, 3,941
+# participants in 44 trials ("Russian" 1,559, "Italian" 1,080, "Romanian"
+# 405, "British" 170, "Macedonians" 139, "Roma European" 117), quarantined as
+# not race or counted as other before. White +3,941 (white_european +3,797;
+# 144 in Roma groups, with no subcategory); unknown -3,488 (unknown_inferred
+# -3,556, unknown_ethnicity_only +68); other -107; more than one race +3
+# (comma lists and a Mixed row whose nationality now names White: "African
+# American, Irish, Native American", "Mixed (Jamaican and French, German and
+# Jamaican)"). Seven trials posting only nationalities newly report race
+# (NCT01481545, NCT01574352, NCT03010683, NCT03208933, NCT03282682,
+# NCT03475992, NCT05665335). In four combined classifications a nationality
+# was the last unread row (NCT00955708, NCT01610336, NCT01801358,
+# NCT01852292), so the ethnicity extractor counts their race rows as not
+# Hispanic (1,516 participants from unknown) and the race block counts their
+# Hispanic rows as ethnicity only (+68). No sex block and no sex/gender-titled
+# gate changes; mena_in_white is unchanged; race blocks over their
+# population stay 330.
+_EUROPEAN_NAME =r"european\s+americans?|europeans?|europe|pakehas?"
 _EUROPEAN_DIRECTION = (r"north(?:ern)?|south(?:ern)?|east(?:ern)?|west(?:ern)?|central|mid|"
                        r"middle(?!\s*east)")
+# The European nationalities and peoples (block comment above). Not here:
+# Spanish and the peoples of Spain (Spanish origin is Hispanic or Latino in
+# OMB's definition, an ethnicity), Turkish (a vocabulary entry, White with a
+# Middle Eastern subcategory), Cypriot, the peoples of the Caucasus, and the
+# peoples of Russia and Central Asia that are not European nationalities
+# (Tatar, Bashkir, Chuvash, Kazakh).
+_EUROPEAN_NATIONALITY = (
+    r"albanians?|andorrans?|austrians?|belarusians?|belarussians?|byelorussians?|belorussians?|"
+    r"belgians?|bosnians?|british|bulgarians?|croatians?|croats?|czechs?|danish|danes?|dutch|"
+    r"english|estonians?|finnish|finns?|flemish|french|germans?|greeks?|hungarians?|icelandic|"
+    r"icelanders?|irish|italians?|kosovars?|latvians?|lithuanians?|luxembourg(?:ers?|ish)|"
+    r"macedonians?|maltese|moldovans?|montenegrins?|norwegians?|polish|portuguese|romanians?|"
+    r"russians?|scandinavians?|scots?|scottish|serbians?|serbs?|slovakians?|slovaks?|slovenians?|"
+    r"slovenes?|swedish|swedes?|swiss|ukrainians?|welsh")
+_EUROPEAN_UK_NATIONS = frozenset({"british", "english", "welsh", "scottish", "scots", "scot", "irish"})
 _EUROPEAN_TOKEN_RX = re.compile(
     rf"(?:(?P<name>{_EUROPEAN_NAME})|(?P<white>white|caucasians?)|"
     rf"(?P<other>other)|"
     rf"(?P<direction>{_EUROPEAN_DIRECTION})|"
     rf"(?P<new_zealand>new\s+zealand(?:ers?)?|nz)|"
-    rf"(?P<nationality>british|french|scandinavians?)|"
+    rf"(?P<nationality>{_EUROPEAN_NATIONALITY})|"
+    rf"(?P<roma>romani|roma|sinti|gypsies|gipsies|gypsy|gipsy)|(?P<traveller>travell?ers?)|"
     rf"(?P<filler>descent|origins?|ancestry|background|peoples?|of|only|e\s*g|i\s*e)|"
     rf"(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
     re.IGNORECASE)
@@ -435,7 +503,11 @@ def european_label(label: str) -> Tuple[bool, Optional[str]]:
       "NZ European/Pākehā"                       -> (True, "european")
       "White or European American"               -> (True, "european")
       "Other European"                           -> (True, "european")
-      "Roma European"                            -> (False, None)
+      "Russian"                                  -> (True, "european")
+      "Irish Traveller"                          -> (True, None)
+      "Roma European"                            -> (True, None)
+      "Spanish"                                  -> (False, None)
+      "White British"                            -> (False, None) (UK census rule)
       "Other (European/Arab)"                    -> (False, None)
       "White(origins of Europe, Middle East, or North Africa)" -> (False, None)
     """
@@ -458,15 +530,30 @@ def european_label(label: str) -> Tuple[bool, Optional[str]]:
         while position < len(text) and text[position].isspace():
             position += 1
     kinds = [kind for kind, _text in tokens]
-    # Every other term names nothing without a European name beside it.
-    if "name" not in kinds:
+    # Every other term names nothing without a European name, a European
+    # nationality or a Roma or Gypsy group beside it.
+    if not {"name", "nationality", "roma"} & set(kinds):
         return False, None
     # A label beginning or ending with a join is a piece of a longer label.
     if kinds[0] in ("join", "mark") or kinds[-1] in ("join", "mark"):
         return False, None
+    # A UK nation beside White or another UK nation, in a label naming no
+    # European name and no Roma or Traveller group, is a UK census wording
+    # ("White British", "White - Irish", "English/Welsh/Scottish/Northern
+    # Irish/British"): left to the UK census rule with the rest of its table
+    # ("Asian or Asian British"), so that a UK table is not read for White
+    # alone (block comment above).
+    if "name" not in kinds and not {"roma", "traveller"} & set(kinds):
+        nations = {text for kind, text in tokens if kind == "nationality" and text in _EUROPEAN_UK_NATIONS}
+        if nations and ("white" in kinds or len(nations) >= 2):
+            return False, None
     groups = _european_alternatives(tokens)
     if groups is None:
         return False, None
+    # Roma, Gypsy and Traveller groups are White in the census that lists
+    # them, not by European origin: no subcategory (block comment above).
+    if "roma" in kinds or "traveller" in kinds:
+        return True, None
     return True, _european_subcategory(groups)
 
 
@@ -529,7 +616,10 @@ def _european_alternatives(tokens: List[Tuple[str, str]]) -> Optional[List[List[
             return None
         if "name" in segment_kinds:
             groups.append([text for kind, text in segment if kind == "direction"])
-        elif "white" in segment_kinds or "nationality" in segment_kinds:
+        elif {"white", "nationality", "roma", "traveller"} & set(segment_kinds):
+            # "Traveller" is a group in a label naming a nationality or a Roma
+            # group ("Irish Traveller", "Gypsy/Traveller"); alone it names
+            # nothing (european_label).
             groups.append([])
         else:
             return None
