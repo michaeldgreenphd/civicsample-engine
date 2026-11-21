@@ -94,6 +94,16 @@ Tests:
      "Asian or Asian British", "Black or Black British", "Mixed or Multiple
      Ethnic Groups", "English/Welsh/Scottish/Northern Irish/British")
      (fictional study)
+ 34. NCT99000153 — Black-only wordings the vocabulary did not hold ("Black
+     African", "African American or Black", "Zulu", "Afro-Caribbean") beside
+     "Coloured" (fictional study)
+ 35. NCT99000154 — the 1977 Asian or Pacific Islander category ("Asian or
+     Pacific Islander", "Asian/Pacific Islander", "Asian, Native Hawaiian, or
+     Other Pacific Islander") beside "Native Hawaiian or Other Pacific
+     Islander" (fictional study)
+ 36. NCT99000155 — European nationalities and Roma groups ("Russian",
+     "Romanian", "Roma", "Irish Traveller") beside "Spanish" and "Kazakh",
+     which stay quarantined (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -124,11 +134,15 @@ Study 29 asserts its race totals, that every row is read by its race part
 with its group named, and the race_by_group_table flag (EXPECTED_RACE_BY_GROUP).
 Study 30 asserts its race totals and that only "Torres Strait Islander" is
 quarantined (EXPECTED_NHPI).
-Study 31 asserts its race totals, its White subcategories and that only "Roma
-European" is quarantined (EXPECTED_EUROPEAN).
+Studies 31 and 36 assert their race totals, their White subcategories and
+their quarantined rows (EXPECTED_EUROPEAN).
 Study 32 asserts its race totals, its Asian subcategories and that no row is
 quarantined (EXPECTED_ASIAN).
 Study 33 asserts its race totals and that no row is quarantined (EXPECTED_UK).
+Study 34 asserts its race totals, its Black subcategories and that only
+"Coloured" is quarantined (EXPECTED_BLACK).
+Study 35 asserts its race totals and that every grouped row is flagged
+asian_pacific_grouped (EXPECTED_GROUPED).
 A mismatch stops the harness.
 """
 import json
@@ -759,8 +773,9 @@ EXPECTED_HERITAGE = {
 # ---------- NCT99000143 (fictional): rows naming two races ----------
 # 200 participants (race_extractor, "Rows naming two or more races"). Before,
 # "American Indian or Alaska Native & White" was American Indian and the other
-# two combinations were other; "Asian and Pacific Islander" is the 1977
-# grouped category and stays as it was.
+# two combinations were other. "Asian and Pacific Islander" is the 1977
+# grouped category, counted as Asian (race_extractor, "The 1977 Asian or
+# Pacific Islander category"); it was other until that rule.
 # ---------- NCT99000146 (fictional): named race rows beside a bare residual ----------
 # 85 participants, one row each. "Ethnicity" is the table's word for race; the
 # bare "Unknown" is that classification's residual. Read as an ethnicity
@@ -800,8 +815,9 @@ MOCK_NCT99000143 = _make_study(
 # 140 participants (race_extractor, "Comma lists naming two or more races").
 # The table has a White row, so the two lists naming White are combinations;
 # before, the fuzzy match read them as Black and American Indian. No row
-# names Asian or Pacific Islander alone, so "Asian, Pacific Islander" is a
-# grouped category and stays other.
+# names Asian or Pacific Islander alone, so "Asian, Pacific Islander" is the
+# 1977 grouped category, counted as Asian (race_extractor, "The 1977 Asian or
+# Pacific Islander category"); it was other until that rule.
 MOCK_NCT99000144 = _make_study(
     "NCT99000144",
     "NCT99000144 - Comma lists (fictional mock)",
@@ -937,7 +953,9 @@ EXPECTED_NHPI = {
 # 100 participants (race_extractor, "European labels"). Before, "White
 # (European)" was other and "North/Mid/East European" and "NZ European/
 # Pākehā" were quarantined as not race (their 25 then balanced to unknown);
-# here all three are White. "Roma European" is quarantined as before.
+# here all three are White. "Roma European" was quarantined until Roma
+# groups were read as White, with no subcategory (race_extractor, "European
+# labels").
 MOCK_NCT99000150 = _make_study(
     "NCT99000150",
     "NCT99000150 - European wordings (fictional mock)",
@@ -955,10 +973,37 @@ MOCK_NCT99000150 = _make_study(
     total_participants=100,
 )
 
+# ---------- NCT99000155 (fictional): European nationalities and Roma groups ----------
+# 100 participants (race_extractor, "European labels"). Before, every row but
+# "Asian" was quarantined as not race, its participants balanced to unknown;
+# here the nationalities and the Roma groups are White. "Spanish" (Hispanic
+# or Latino in OMB's definition) and "Kazakh" stay quarantined.
+MOCK_NCT99000155 = _make_study(
+    "NCT99000155",
+    "NCT99000155 - European nationalities and Roma groups (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("Russian", 40),
+                _make_category("Romanian", 20),
+                _make_category("Roma", 5),
+                _make_category("Irish Traveller", 5),
+                _make_category("Spanish", 5),
+                _make_category("Kazakh", 10),
+                _make_category("Asian", 15),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+
 EXPECTED_EUROPEAN = {
-    "NCT99000150": {"omb": {"white": 80, "asian": 16, "unknown_not_reported": 4},
+    "NCT99000150": {"omb": {"white": 84, "asian": 16},
                     "subcategories": {"white_european": 80},
-                    "quarantined": ["Roma European"]},
+                    "quarantined": []},
+    "NCT99000155": {"omb": {"white": 70, "asian": 15, "unknown_not_reported": 15},
+                    "subcategories": {"white_european": 60},
+                    "quarantined": ["Spanish", "Kazakh"]},
 }
 
 # ---------- NCT99000151 (fictional): Asian wordings ----------
@@ -1018,6 +1063,66 @@ EXPECTED_UK = {
                     "quarantined": []},
 }
 
+# ---------- NCT99000153 (fictional): Black-only wordings ----------
+# 100 participants (race_extractor, "Black labels"). Before, "Black African"
+# and "African American or Black" were other and "Zulu" was quarantined as
+# not race (its 15 then balanced to unknown, with "Coloured"'s 5); here all
+# four are Black. "Coloured" is quarantined as before.
+MOCK_NCT99000153 = _make_study(
+    "NCT99000153",
+    "NCT99000153 - Black-only wordings (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("Black African", 40),
+                _make_category("African American or Black", 20),
+                _make_category("Zulu", 15),
+                _make_category("Afro-Caribbean", 10),
+                _make_category("Coloured", 5),
+                _make_category("White", 10),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+
+EXPECTED_BLACK = {
+    "NCT99000153": {"omb": {"black_african_american": 85, "white": 10, "unknown_not_reported": 5},
+                    "subcategories": {"black_african_american_african": 55,
+                                      "black_african_american_caribbean": 10},
+                    "quarantined": ["Coloured"]},
+}
+
+# ---------- NCT99000154 (fictional): the 1977 grouped category ----------
+# 100 participants (race_extractor, "The 1977 Asian or Pacific Islander
+# category"). Before, "Asian or Pacific Islander" was other, "Asian/Pacific
+# Islander" Asian through a slash fragment and "Asian, Native Hawaiian, or
+# Other Pacific Islander" Native Hawaiian or Pacific Islander by the fuzzy
+# match; here all three are the group, counted as Asian. The NHPI row
+# named alone stays as it was.
+MOCK_NCT99000154 = _make_study(
+    "NCT99000154",
+    "NCT99000154 - 1977 grouped category (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("Asian or Pacific Islander", 20),
+                _make_category("Asian/Pacific Islander", 10),
+                _make_category("Asian, Native Hawaiian, or Other Pacific Islander", 5),
+                _make_category("Native Hawaiian or Other Pacific Islander", 5),
+                _make_category("White", 60),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+
+EXPECTED_GROUPED = {
+    "NCT99000154": {"omb": {"asian": 35, "native_hawaiian_pacific_islander": 5, "white": 60},
+                    "grouped": ["Asian or Pacific Islander", "Asian/Pacific Islander",
+                                "Asian, Native Hawaiian, or Other Pacific Islander"]},
+}
+
 EXPECTED_RACE_BY_GROUP = {
     "NCT99000148": {"white": 65, "asian": 20, "american_indian_alaska_native": 5,
                     "unknown_not_reported": 10},
@@ -1030,8 +1135,8 @@ EXPECTED_AIAN = {
 
 # Expected non-zero race totals of the studies of rows naming two races.
 EXPECTED_MULTIRACE = {
-    "NCT99000143": {"white": 120, "black_african_american": 40, "more_than_one_race": 28, "other": 12},
-    "NCT99000144": {"white": 90, "black_african_american": 30, "more_than_one_race": 10, "other": 10},
+    "NCT99000143": {"white": 120, "black_african_american": 40, "more_than_one_race": 28, "asian": 12},
+    "NCT99000144": {"white": 90, "black_african_american": 30, "more_than_one_race": 10, "asian": 10},
 }
 
 # ---------- NCT99000115 (fictional): "Not meeting definition for Hispanic or Latino" ----------
@@ -1350,6 +1455,22 @@ def validate_study(study: dict, nct_id: str) -> None:
         quarantined = [q["original"] for q in race["quarantined_labels"]]
         assert quarantined == expected["quarantined"], f"{nct_id} quarantined: {quarantined}"
         print(f"\n  {nct_id}: UK census wordings read by their heading — OK")
+    if nct_id in EXPECTED_BLACK:
+        expected = EXPECTED_BLACK[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
+        assert race["subcategory_totals"] == expected["subcategories"], \
+            f"{nct_id} subcategory_totals: {race['subcategory_totals']}"
+        quarantined = [q["original"] for q in race["quarantined_labels"]]
+        assert quarantined == expected["quarantined"], f"{nct_id} quarantined: {quarantined}"
+        print(f"\n  {nct_id}: Black-only wordings read as Black — OK")
+    if nct_id in EXPECTED_GROUPED:
+        expected = EXPECTED_GROUPED[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
+        grouped = [c["original"] for c in race["raw_categories"] if "asian_pacific_grouped" in c["flags"]]
+        assert grouped == expected["grouped"], f"{nct_id} grouped rows: {grouped}"
+        print(f"\n  {nct_id}: the 1977 Asian or Pacific Islander category read as Asian — OK")
     if nct_id in EXPECTED_HERITAGE:
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
         assert nonzero == EXPECTED_HERITAGE[nct_id], f"{nct_id} race omb_totals: {nonzero}"
@@ -1394,6 +1515,9 @@ def main() -> None:
         (MOCK_NCT99000150, "NCT99000150"),
         (MOCK_NCT99000151, "NCT99000151"),
         (MOCK_NCT99000152, "NCT99000152"),
+        (MOCK_NCT99000153, "NCT99000153"),
+        (MOCK_NCT99000154, "NCT99000154"),
+        (MOCK_NCT99000155, "NCT99000155"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)

@@ -194,9 +194,37 @@ def get_baseline_measures(study: dict) -> list:
             .get("baselineCharacteristicsModule", {})
             .get("measures", []))
 
+# The registry's whole-population baseline group. In the 2026-11-15 inputs
+# 55,810 of the 80,988 published trials post more than one baseline group,
+# and all but one end with it: the highest-numbered BG group, titled "Total"
+# (55,667), "TOTAL" (18), "Total Title" (117) or "Total~(N=...)" (7). The
+# one, NCT00453973, ends with "Pooled AF37702 Inj." and names no whole
+# population. No trial posts an exact "Total" group anywhere else.
+#
+# This read the group's id under "groupId", while the v2 API names it "id",
+# so it returned None for every registry study and each reader fell back to
+# the last measurement of a row (_get_measurement_value) and the last
+# denominator count (get_total_baseline_participants). That is the Total
+# wherever a row posts it last, as all 707,221 rows of those trials that post
+# it do (12 post none, and fall back the same way either way). It also took
+# the first group whose title is_overall_group_title accepts, and that
+# test's "overall" substring accepts arms: 23 trials post one before their
+# Total ("Tafamidis 61/80 mg Treated-Overall", "Overall BRCAm";
+# NCT01029366's "ALL Subjects" is acute lymphoblastic leukemia). Read by id,
+# those would have replaced the Total with an arm. So the last group is the
+# overall group when its title begins with "Total"; otherwise only a group
+# titled exactly as the whole population (_WHOLE_POPULATION_GROUP_TITLES)
+# is. "groupId" is still read for fixtures that post it. On the 2026-11-15
+# inputs no published block changes; a row posting its Total before another
+# group's measurement is now read at its Total.
+_WHOLE_POPULATION_GROUP_TITLES = frozenset({"total", "overall", "all participants",
+                                            "all subjects", "all patients"})
+
+
 def get_overall_group_id(study: dict) -> Optional[str]:
     """
-    Find the groupId of the 'Overall' group in baseline characteristics.
+    Find the id of the 'Overall' group in baseline characteristics (block
+    comment above).
 
     Multi-arm studies have per-arm measurements AND an Overall measurement
     in each category.  We need the Overall groupId so we can read that single
@@ -212,9 +240,12 @@ def get_overall_group_id(study: dict) -> Optional[str]:
     if len(groups) <= 1:
         return None          # single group — every measurement IS the overall
 
+    last = groups[-1]
+    if (last.get("title") or "").strip().lower().startswith("total"):
+        return last.get("id") or last.get("groupId")
     for group in groups:
-        if is_overall_group_title(group.get("title", "")):
-            return group.get("groupId")
+        if (group.get("title") or "").strip().lower() in _WHOLE_POPULATION_GROUP_TITLES:
+            return group.get("id") or group.get("groupId")
 
     return None
 
