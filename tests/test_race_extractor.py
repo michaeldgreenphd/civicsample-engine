@@ -2563,3 +2563,104 @@ def test_a_race_by_group_table_whose_race_parts_do_not_map_is_read_as_plain_rows
     assert [c["original"] for c in race["raw_categories"]] == [
         "Hawaiian or Pacific Islander - ALPHA", "Hawaiian or Pacific Islander - Usual Care"]
     assert all("group" not in c and "race_part" not in c for c in race["raw_categories"])
+
+
+# ── European labels ────────────────────────────────────────────────────────
+# Wordings naming only European origin (race_extractor block comment
+# "European labels"). Before, "White (European)", "White or European
+# American" and "Western European White" were counted as other, and "North/
+# Mid/East European", "South European" and the New Zealand census wordings
+# ("NZ European/Pākehā", "New Zealand European") quarantined as not race.
+
+@pytest.mark.parametrize("label, subcategory", [
+    ("White (European)", "european"),
+    ("North/Mid/East European", "european"),
+    ("North/Middle European", "european"),
+    ("South European", "european"),
+    ("Southern European", "european"),
+    ("Scandinavian/Central European", "european"),
+    ("White or European American", "european"),
+    ("Caucasian, White, or European American", "european"),
+    ("White -White or Caucasian or European", "european"),
+    ("European (e.g., British, French, Western European, Eastern European)", "european"),
+    ("Caucasian (European descent)", "european"),
+    ("European Ancestry", "european"),
+    ("White or of European background", "european"),
+    ("White-European", "european"),
+    ("Other European", "european"),
+    ("Europe", "european"),
+    ("NZ European/Pākehā", "european"),
+    ("NZ European/Pakeha", "european"),
+    ("New Zealand European", "european"),
+    ("NZ European", "european"),
+    ("New Zealander, European", "european"),
+    ("Western European White", "european_western"),
+    ("White: Western European", "european_western"),
+    ("Eastern European White", "european_eastern"),
+    ("White: Eastern European", "european_eastern"),
+    ("Western or Eastern European White", "european"),
+])
+def test_a_label_naming_european_origin_only_is_white(label: str, subcategory: str) -> None:
+    assert rx.european_label(label) == (True, subcategory)
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"]) == ("white", subcategory)
+    assert mapping["flags"] == ["european_label"]
+
+
+@pytest.mark.parametrize("label", [
+    "Western background (European countries (excluding Turkey), North America, Japan, Indonesia,Oceania)",
+    "Other: Brazil, China, Mexico, MENA, Sub-Saharan Africa, Latin America, Europe, Asia, Oceania",
+    "Roma European",                                          # left to its own decision
+    "White(origins of Europe, Middle East, or North Africa)",  # names the Middle East and North Africa
+    "Middle European/Middle Eastern",
+    "Not Collected - European Participants",                   # a non-answer
+    "Non-White/European descent",
+    "Caucasian, non-European descent",
+    "Other (European/Arab)",
+    "African-European",
+    "European or Other",                                       # pools other origins
+    "French",                                                  # a nationality alone
+    "New Zealander",
+    "White",                                                   # no European name
+    "/or European",                                            # a piece of a longer label
+])
+def test_a_label_naming_more_or_less_than_european_origin_is_not_read_by_the_rule(label: str) -> None:
+    assert rx.european_label(label) == (False, None)
+
+
+@pytest.mark.parametrize("label, subcategory, flags", [
+    ("European", "european", []),                                   # vocabulary entry
+    ("Eastern European", "european_eastern", []),
+    ("White - White/Caucasian/European Heritage", None, ["slash_normalized"]),
+    ("White/European", None, ["slash_normalized"]),        # the rule would say european
+    ("Caucasian/European", None, ["slash_normalized"]),
+    ("Middle Eastern/European", "middle_eastern", ["slash_normalized"]),
+])
+def test_readings_before_the_rule_are_kept(label: str, subcategory: Optional[str],
+                                           flags: list[str]) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == ("white", subcategory, flags)
+
+
+def test_new_zealand_census_rows_are_counted_as_white() -> None:
+    table = _category_table(COMBINED_TITLE, [
+        ("NZ European/Pākehā", 60), ("New Zealand European", 10), ("Asian", 20), ("Other", 10)])
+    race = extract_race_data(_study_at("NCT99000611", [table], 100, ["New Zealand"]))
+    assert _nonzero(race) == {"white": 70, "asian": 20, "other": 10}
+    assert race["quarantined_labels"] == []
+    assert race["subcategory_totals"] == {"white_european": 70}
+
+
+def test_quarantined_european_rows_are_counted_and_roma_stays_quarantined() -> None:
+    table = _category_table(COMBINED_TITLE, [
+        ("North/Mid/East European", 50), ("South European", 30), ("Roma European", 5), ("Other", 15)])
+    race = extract_race_data(_study("NCT99000612", [table], 100))
+    assert _nonzero(race) == {"white": 80, "other": 15, "unknown_not_reported": 5}
+    assert [q["original"] for q in race["quarantined_labels"]] == ["Roma European"]
+
+
+def test_a_heritage_row_naming_caucasian_european_carries_the_european_subcategory() -> None:
+    """The heritage rule reads its group through map_race_category, which now
+    reads "Caucasian European" (NCT00553358: 282 participants)."""
+    mapping = rx.map_race_category("White - Caucasian European Heritage")
+    assert (mapping["omb_category"], mapping["subcategory"]) == ("white", "european")
