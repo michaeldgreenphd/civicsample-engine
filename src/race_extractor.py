@@ -1234,35 +1234,40 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
                     "open", "close"):
             segments[-1].append((kind, term, within))
     has_name = any(kind == "name" for kind, _t, _w in tokens)
-    # Inside a bracket, "or" and "and" also set a choice beside the name,
-    # and one naming no Black group pools another race or a non-answer
-    # ("Black (or Indigenous)", "Black (or unspecified)", "Black (or
-    # Other)", "Black (and Other)"; review findings); "Black (or African
-    # American)" names the category. "or other" and "and other" are other
-    # Black groups only in a bracket that also names a group or gives
-    # examples ("(Haitian, Jamaican, or other)", "(e.g., Haitian, Jamaican,
-    # and other)").
-    for i, (kind, term, within) in enumerate(tokens):
-        if not (within and kind == "join" and term in ("or", "and/or", "and")):
-            continue
-        frame = within[-1]
-        choice = []
-        choice_terms = []
-        for later_kind, later_term, later_within in tokens[i + 1:]:
-            if frame not in later_within or (later_kind == "join" and later_within[-1] == frame):
-                break
-            if later_kind not in ("open", "close"):
-                choice.append(later_kind)
-                choice_terms.append(later_term)
-        if any(k == "name" or (k == "abbrev" and has_name) for k in choice):
-            continue
-        listed = any(k in ("name", "example") and frame in w for k, _t, w in tokens[:i])
-        # "other race", "other ethnicity" or "other participants" names any
-        # race, not other Black groups ("Black (Haitian or other race)"; a
-        # review finding).
-        race_wide = any(term in _BLACK_RACE_WIDE_FILLERS for term in choice_terms)
-        if "qualifier" in choice or all(k == "filler" for k in choice) or not listed or race_wide:
-            return False, None
+    # Inside a bracket, "or", "and" and "and/or" also set choices side by
+    # side, and every choice, before or after the join, must name a Black
+    # group: one naming none pools another race or a non-answer ("Black (or
+    # Indigenous)", "Black (or unspecified)", "Black (or Other)", "Black
+    # (and Other)", "Black (unspecified or Black)"; review findings), while
+    # "Black (or African American)" names the category. A bare "other" is
+    # the other Black groups only in a bracket whose other choices name a
+    # group or give examples ("(Haitian, Jamaican, or other)", "(e.g.,
+    # Haitian, Jamaican, and other)"); "other race", "other ethnicity" or
+    # "other participants" names any race ("Black (Haitian or other
+    # race)").
+    frames = {within[-1] for kind, term, within in tokens
+              if within and kind == "join" and term in ("or", "and/or", "and")}
+    for frame in frames:
+        choices: List[List[Tuple[str, str]]] = [[]]
+        for kind, term, within in tokens:
+            if frame not in within or (kind in ("open", "close") and within[-1] == frame):
+                continue
+            if kind == "join" and within[-1] == frame and term in ("or", "and/or", "and"):
+                choices.append([])
+            else:
+                choices[-1].append((kind, term))
+        named = [any(k == "name" or (k == "abbrev" and has_name) for k, _t in choice)
+                 for choice in choices]
+        for c, choice in enumerate(choices):
+            kinds_here = [k for k, _t in choice]
+            if not choice or named[c]:
+                continue
+            listed = any(named[d] or any(k == "example" for k, _t in choices[d])
+                         for d in range(len(choices)) if d != c) or "example" in kinds_here
+            race_wide = any(t in _BLACK_RACE_WIDE_FILLERS for _k, t in choice)
+            if ("qualifier" in kinds_here or all(k == "filler" for k in kinds_here)
+                    or "other" not in kinds_here or not listed or race_wide):
+                return False, None
     subcategories: List[Optional[str]] = []
     for i, segment in enumerate(segments):
         if not segment:
