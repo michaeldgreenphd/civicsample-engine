@@ -2215,11 +2215,14 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
 
     # Slash-compound normalization: try each "/" fragment individually
     # so "Caucasian/White" resolves even without a dedicated mapping entry.
-    # A slash inside "African/American" splits one name, not two: the Black
-    # labels read it ("African/American" is african_american, not african;
-    # block comment "Black labels", a review finding).
-    if "/" in label_clean and _AFRICAN_SLASH_AMERICAN_RX.search(label_clean) is None:
-        for frag in label_clean.split("/"):
+    # A slash inside "African/American" splits one name, not two, so it is
+    # rejoined first and the other slashes are read as before: "African/
+    # American" alone has no slash left and the Black labels read it
+    # (african_american, not african), and "White/African/American" keeps
+    # its "White" fragment (block comment "Black labels"; review findings).
+    slash_text = _AFRICAN_SLASH_AMERICAN_RX.sub("African American", label_clean)
+    if "/" in slash_text:
+        for frag in slash_text.split("/"):
             frag = frag.strip()
             if not frag:
                 continue

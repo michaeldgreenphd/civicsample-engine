@@ -3306,6 +3306,14 @@ def test_black_readings_through_map_race_category(label: str, subcategory: Optio
         BLACK_CATEGORY, subcategory, flags)
 
 
+def test_rejoining_african_american_keeps_the_other_slash_fragments() -> None:
+    """Only the slash inside "African/American" is rejoined; the label's
+    other fragments are read as before (fictional; a review finding)."""
+    mapping = rx.map_race_category("White/African/American")
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
+        "white", None, ["slash_normalized"])
+
+
 def test_a_table_of_african_peoples_is_counted_as_black() -> None:
     table = _class_table(COMBINED_TITLE, [("Zulu", 40), ("Xhosa", 30), ("Coloured", 20), ("White", 10)])
     race = extract_race_data(_study("NCT99000629", [table], 100))
