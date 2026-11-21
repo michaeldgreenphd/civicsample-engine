@@ -1225,8 +1225,9 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
         candidates = [sub for sub in specific if sub is not None]
         # Black beside African American is the category's own name ("Black
         # (or African American)", "Black of African American"): no subgroup.
-        names_black = any(kind == "name" and _black_subcategory_of(term) is None
-                          for kind, term, _within in segment)
+        # A Black given as an example does not count ("African American
+        # including Black" is african_american; a review finding).
+        names_black = None in specific
         if not candidates or (names_black and "african_american" in candidates):
             subcategories.append(None)
             continue
