@@ -3243,6 +3243,8 @@ def test_a_uk_census_wording_is_read_by_its_heading(label: str, category: str,
     "White or English speaker",
     "/Black British",  # a piece of a longer label
     "White and Black African",  # no UK wording without a Mixed heading
+    "White British or Mixed ethnic group",  # Mixed pooled with another group (a review finding)
+    "Mixed ethnic group or Other",
 ])
 def test_a_label_without_a_uk_census_reading_is_not_read_by_the_rule(label: str) -> None:
     assert rx.uk_census_label(label) is None

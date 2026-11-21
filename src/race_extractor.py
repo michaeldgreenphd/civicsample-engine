@@ -1053,7 +1053,9 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
 # two races. A label beginning or ending with a join is not read (a leading
 # "(" is not one). Then:
 #   - Mixed or Multiple ("Mixed: White and Black Caribbean", "Multiple
-#     (Asian-White)") is more than one race;
+#     (Asian-White)") is more than one race, unless "or" sets it beside
+#     something else ("White British or Mixed ethnic group" pools two groups;
+#     a review finding);
 #   - one race heading, or the groups of one race with no heading ("British
 #     African", "Caribbean British"; a UK nation gives White), is that race;
 #   - anything else is not read ("Black or White British").
@@ -1156,6 +1158,18 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
     if not marker:
         return None
     if mixed:
+        # Each alternative "or" sets beside Mixed must be Mixed too ("Mixed
+        # or Multiple ethnic groups"); "White British or Mixed ethnic group"
+        # pools two groups whose counts cannot be told apart (a review
+        # finding).
+        alternatives: List[List[str]] = [[]]
+        for kind in kinds:
+            if kind == "or":
+                alternatives.append([])
+            else:
+                alternatives[-1].append(kind)
+        if any("mixed" not in alternative for alternative in alternatives if alternative):
+            return None
         return "more_than_one_race", None
     if len(races) != 1:
         return None
