@@ -1054,7 +1054,9 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
 # "(" is not one). Then:
 #   - Mixed or Multiple ("Mixed: White and Black Caribbean", "Multiple
 #     (Asian-White)") is more than one race, unless "or" sets it beside
-#     something else ("White British or Mixed ethnic group" pools two groups),
+#     something else in the heading, the label up to the first ":" or dash
+#     after Mixed ("White British or Mixed ethnic group" pools two groups;
+#     "Mixed ethnic group: White or Other" lists the parts of the mix),
 #     or, with no heading mark (":" or a dash) after Mixed, "/", "," or ";"
 #     sets an Other beside it ("Mixed ethnic group / Other"; review
 #     findings); after a heading they list the parts of the mix ("(Mixed
@@ -1172,26 +1174,31 @@ def uk_census_label(label: str) -> Optional[Tuple[str, Optional[str]]]:
     if not marker:
         return None
     if mixed:
-        # Each alternative "or" sets beside Mixed must be Mixed too ("Mixed
-        # or Multiple ethnic groups"); "White British or Mixed ethnic group"
-        # pools two groups whose counts cannot be told apart (a review
-        # finding).
+        # The heading is the label up to the first heading mark (":" or a
+        # dash) after Mixed; what follows lists the parts of the mix ("(Mixed
+        # ethnic group:) White / Other", "Mixed ethnic group: White or
+        # Other"; review findings).
+        first_mixed = kinds.index("mixed")
+        cut = next((i for i in range(first_mixed + 1, len(tokens))
+                    if tokens[i][0] == "mark" and tokens[i][1] in (":", "-", "–", "—")), None)
+        # Each alternative "or" sets beside Mixed in the heading must be Mixed
+        # too ("Mixed or Multiple ethnic groups"); "White British or Mixed
+        # ethnic group" pools two groups whose counts cannot be told apart (a
+        # review finding).
         alternatives: List[List[str]] = [[]]
-        for kind in kinds:
+        for kind in kinds[:cut]:
             if kind == "or":
                 alternatives.append([])
             else:
                 alternatives[-1].append(kind)
         if any("mixed" not in alternative for alternative in alternatives if alternative):
             return None
-        # Without a heading mark after Mixed (":" or a dash), "/", "," and
-        # ";" set alternatives side by side too, and one made of Other and
-        # fillers pools a group apart ("Mixed ethnic group / Other"; a review
-        # finding). After a heading they list the parts of the mix ("(Mixed
-        # ethnic group:) White / Other"), and "and" and "&" always do ("Mixed
-        # white and black carribean").
-        first_mixed = kinds.index("mixed")
-        if not any(kind == "mark" and text in (":", "-", "–", "—") for kind, text in tokens[first_mixed + 1:]):
+        # Without a heading mark, "/", "," and ";" set alternatives side by
+        # side too, and one made of Other and fillers pools a group apart
+        # ("Mixed ethnic group / Other"; a review finding). "and" and "&"
+        # always list the parts of the mix ("Mixed white and black
+        # carribean").
+        if cut is None:
             part: List[str] = []
             depth = 0
             for kind, text in tokens + [("mark", "/")]:
