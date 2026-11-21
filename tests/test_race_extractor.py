@@ -3359,15 +3359,23 @@ def test_rejoining_african_american_keeps_the_other_slash_fragments() -> None:
     mapping = rx.map_race_category("White/African/American")
     assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
         "white", None, ["slash_normalized"])
+    # A slash after "American" ends its fragment: the rejoined name is read.
+    mapping = rx.map_race_category("African/American/Black")
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
+        "black_african_american", "african_american", ["slash_normalized"])
 
 
 @pytest.mark.parametrize("label", ["African/American Indian", "African/American-Indian", "African/American (Indian)",
                                    "African/American [Indian]", "African/American/Indian",  # review finding
-                                   "African/American {Indian}", "African/American. Indian"])
+                                   "African/American {Indian}", "African/American. Indian",
+                                   # "American" does not end its fragment (review finding)
+                                   "African/American Samoan", "African/American Pacific Islander",
+                                   "African/American (Black)", "African/Americans"])
 def test_african_slash_american_indian_is_not_rejoined(label: str) -> None:
     """"American Indian" after the slash names a second race, with or without
-    punctuation, and the label keeps its slash reading (fictional; a review
-    finding)."""
+    punctuation, and an "American" that does not end its fragment goes on to
+    name something else; either way the label keeps its slash reading
+    (fictional; review findings)."""
     mapping = rx.map_race_category(label)
     assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
         "black_african_american", "african", ["slash_normalized"])

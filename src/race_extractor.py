@@ -1145,12 +1145,16 @@ _BLACK_HEADING_WORDS = _BLACK_DIMENSION_WORDS | {"group", "groups", "self report
 _BLACK_RACE_WIDE_FILLERS = frozenset({"race", "racial", "ethnic", "ethnicity", "ethnicities",
                                       "participant", "participants", "subject", "subjects"})
 # "African/American" (and "African / American"): the one name split by a
-# slash, which the slash fragments would otherwise read as "African".
-# Not "African/American Indian", which names two races (left as it was),
+# slash, which the slash fragments would otherwise read as "African". Only
+# where "American" ends its fragment: at the end of the label, or before a
+# slash, comma, semicolon, "&", ")", "or" or "and". "African/American
+# Samoan", "African/American Pacific Islander" or "African/American
+# (Black)" go on to name something else, and keep the slash reading (a
+# review finding). Not "African/American Indian", which names two races,
 # whatever spaces or marks come before "Indian" ("African/American-Indian",
-# "African/American (Indian)", "African/American [Indian]",
-# "African/American/Indian"; review findings).
-_AFRICAN_SLASH_AMERICAN_RX = re.compile(r"\bafrican\s*/\s*american\b(?![^a-z]*indian)", re.IGNORECASE)
+# "African/American [Indian]", "African/American/Indian"; review findings).
+_AFRICAN_SLASH_AMERICAN_RX = re.compile(
+    r"\bafrican\s*/\s*american(?![^a-z]*indian)(?=\s*(?:$|[/,;&)]|(?:or|and)\b))", re.IGNORECASE)
 # A bracketed abbreviation of the label's own words, as registrants post
 # them: "Black or African (Afr) Amer", "BLACK (BLA) OR AFRICAN AMERICAN (AFR
 # AME)", "(B or Af Am)", "(US)". Only these words: "(Part C)" is a crossing.
