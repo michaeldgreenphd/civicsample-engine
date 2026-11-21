@@ -2683,7 +2683,8 @@ def _heritage_combination(label: str) -> bool:
 # American" in NCT03492281), and only the rest of the table tells the two
 # apart (block comment "Comma lists naming two or more races"). Two races
 # joined by "/" or "or" without a prefix are not read either: the row may
-# name either race.
+# name either race; the rest of the table decides it (block comment "Pooled
+# race labels").
 #
 # These rows add to the table's population, not to a "More than one race" row
 # beside them: of the tables holding them in the 2026-11-15 inputs, those with
@@ -4216,11 +4217,12 @@ def _skipped_ethnicity_row(label: str, count: int, pct_converted: bool,
 # NCT05064449, whose table has a White row and no American Indian row.
 #
 # What it does not do. A comma list in a table naming none of its races
-# alone keeps the reading it had: "Asian, Pacific Islander" stays other, and
-# "American Indian or Alaska Native, Asian" stays American Indian through
-# the fuzzy match, which is the earlier reading, not a verdict. A part that
-# is not a race ("Asian, Black or African American, Other") leaves the row
-# as it was, as in the rule for rows naming two or more races. ("American
+# alone is not read by this rule: it is a grouped category, read by the rule
+# of block comment "Pooled race labels" ("American Indian or Alaska Native,
+# Asian", American Indian through the fuzzy match before, is other); the
+# 1977 Asian or Pacific Islander group keeps its own rule. A part that is
+# not a race ("Asian, Black or African American, Other") leaves the row to
+# that rule as well. ("American
 # Indian, White or Caucasian" in NCT01401842 was such a row until "American
 # Indian" was read as a race: block comment "American Indian or Alaska
 # Native labels".) The rule reads the posted rows of one
@@ -4493,6 +4495,235 @@ def _west_asian_template_rows(texts: List[str], mappings: List[Optional[Dict]]) 
     return candidates if peers else []
 
 
+# ── Pooled race labels ──────────────────────────────────────────────────────
+#
+# A row can pool participants of different categories under one label:
+# "Caucasian/Asian" (NCT00556933, 157, beside "Non Caucasian/Asian"),
+# "Multiracial/other/unknown or not reported", "Black/Asian/Other Race,
+# Minority", "Caucasian/More than One Race". The vocabulary reads the first
+# slash fragment it holds, or the fuzzy match the nearest name, and counted
+# the whole row as that one category: "Caucasian/Asian" as White,
+# "Multi-racial/Other" as more than one race, "African American/Black or bi-
+# or multi-racial" as Black.
+#
+# Method (_pooled_rows, over the rows of one table after the comma-list rule
+# and the rule for Asian joined to Native Hawaiian or Pacific Islander). A
+# row's text, read as every row is (_row_text_read), is split into
+# alternatives at "/", ",", ";", "&", "+", "or" and "and", after the category
+# names holding "or" or "and" are taken as one ("Black or African American",
+# "American Indian or Alaska Native", "Native Hawaiian or Other Pacific
+# Islander", "Unknown or Not Reported"; "American, Indian" as "American
+# Indian"). Text in brackets lists members or examples of what precedes it,
+# not alternatives: when the text outside the brackets names something, only
+# it is split ("African (e.g., Central and West African, North African)" names
+# Black; "Asian (East Asian, South Asian, Middle Eastern)" names Asian). Each
+# alternative is read without a fuzzy match (_slash_fragment_category; a race
+# beside an ethnicity phrase by its race part, "non-Hispanic Black"); an
+# ethnicity term, or text the vocabulary does not hold ("Minority", "bi-"),
+# names nothing. The row pools its categories when
+#   - the alternatives name two or more different categories, at least one a
+#     race or more than one race, and the row is not a list joined by "&",
+#     "+" or "and" whose items name races only (a combination, the rule for
+#     rows naming two or more races: "Black, Native American, and Creole" is
+#     not read here). A list item naming nothing, an ethnicity term or text
+#     the vocabulary does not hold, is passed over: when one item alone names
+#     something, it is the row's text ("White/Asian and Hispanic" is the
+#     "White/Asian" pool, not a combination joined by "and"; a review
+#     finding); or
+#   - the text outside the brackets names only a residual category and the
+#     brackets name a race: the residual row with its members listed, "Not
+#     Hispanic, Other (incl. Native American, Asian/Pacific Islander, More
+#     than one)" (NCT03758066, read as Asian through its split before).
+# A pooled row is one of two things:
+#   - a combination, the participants who reported each race named: its
+#     alternatives are joined by "/" only, every category named is a race,
+#     and the same table has another row naming one of them alone (as the
+#     comma-list rule decides it, through a reading that is not fuzzy and is
+#     not itself such a row). It maps to more than one race, flagged
+#     multirace_slash. NCT01954394 posts "White/Black or African American"
+#     11, "White/Asian" 7 and "Black or African American/Asian" 1 beside
+#     White, Black and Asian rows. "Or", "," and ";" offer alternatives, not
+#     a combination (comma lists of races are the comma-list rule's).
+#   - otherwise a pool: participants of any one of its categories, of a
+#     residual category ("Other", "Unknown") or of more than one race. It maps
+#     to other, flagged pooled_race_label and unmapped: no one category holds
+#     them, and every later reader treats the row as one naming no race, as
+#     before when it was read as other ("Native Hawaiian or Other" in a race
+#     by baseline group table is no race part that maps; block comment "Race
+#     crossed with baseline group").
+#     "White/Asian" 15 in NCT01351077, beside "Black" and "Other";
+#     "Caucasian/Asian" 157 in NCT00556933; "White, Asian, or Hispanic" 67 in
+#     NCT03506724, read as White through its split before.
+#
+# What it does not do. Rows read by a rule that reads their wording whole
+# keep their reading: the rules for rows naming two or more races ("&",
+# "and", a "Multiple" prefix), comma lists, heritage-template labels, UK
+# census labels, the 1977 Asian or Pacific Islander category, the Asian,
+# Black, American Indian, Native Hawaiian and European labels, Middle Eastern
+# or North African labels, negated labels and the West Asian template. A row
+# whose alternatives name only residual categories ("Unknown/Other", 385,625
+# participants in 9 trials read as unknown; "Other, Unknown or Not
+# Reported") names no race and keeps its reading. A row of a subgroup list
+# keeps its reading: "African/Other" beside "African/Yoruba" and
+# "African/Ibo" (NCT03879577) is other African peoples, not a pool, because
+# it names nothing but that race or a residual category after its first
+# fragment and another row of the table shares the fragment and names the
+# same race after it (_subgroup_of). A row naming another race after the
+# fragment is never a subgroup row: "Black/White" beside "Black/African
+# American" and "White" is a combination (a review finding).
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), each read through
+# src/baseline_overrides as src/extract_all reads it, against engine main
+# after the wording source: 132 race blocks change their totals, all still
+# reporting race. More than one race -2,047 ("Multi-racial/Other" 520,
+# "Multiracial/other/unknown or not reported" 459, "Multiracial/other" 264),
+# Black -688 ("Black/AA & Other" 296, "African American/Black or bi- or
+# multi-racial" 214, "Black/Asian/Other Race, Minority" 79), White -395
+# ("Caucasian/Asian" 157, "Caucasian/More than One Race" 78, "White, Asian,
+# or Hispanic" 67), Asian -267 ("Asian/American Indian/Pacific (non-
+# Hispanic)" 120), American Indian or Alaska Native -93 ("American Indian or
+# Alaska Native, Asian" 43), Native Hawaiian or Pacific Islander -27, unknown
+# -35 ("Other, More than One Race, or Unknown/Not Reported"), other +3,552.
+# 362 rows (22,033 participants) are flagged pooled_race_label, 18,481 of
+# them counted as other before ("Other or mixed race" 7,958); 57 rows (81
+# participants) are flagged multirace_slash, from White 46, American Indian
+# 13, Black 11 and Asian 11. No ethnicity block changes.
+_POOLED_FLAG = "pooled_race_label"
+_SLASH_COMBINATION_FLAG = "multirace_slash"
+# Category names holding "or", each taken as one alternative: replaced by a
+# name of the same category without it.
+_POOLED_ONE_CATEGORY = (
+    (re.compile(r"american\s*,\s*indians?", re.IGNORECASE), "American Indian"),
+    (re.compile(r"(?:native\s+)?hawaiians?\s+(?:or|and)\s+(?:other\s+)?pacific\s+islanders?", re.IGNORECASE),
+     "Native Hawaiian"),
+    (re.compile(r"american\s+indians?\s+(?:or|and)\s+alaskan?\s+natives?", re.IGNORECASE), "American Indian"),
+    (re.compile(r"black\s+or\s+african[\s\-]+americans?", re.IGNORECASE), "Black"),
+    (re.compile(r"unknown\s+or\s+not\s+reported", re.IGNORECASE), "Unknown"),
+)
+_POOLED_SPLIT_RX = re.compile(r"\s*(?:/|,|;|&|\+|(?<![a-z])(?:or|and)(?![a-z]))\s*", re.IGNORECASE)
+# The joiners of a combination (block comment "Rows naming two or more races").
+_POOLED_AND_RX = re.compile(r"&|\+|(?<![a-z])and(?![a-z])", re.IGNORECASE)
+# The items of a list: "A, B, and C", "White/Asian and Hispanic".
+_POOLED_LIST_SPLIT_RX = re.compile(r"\s*(?:,|;|&|\+|(?<![a-z])and(?![a-z]))\s*", re.IGNORECASE)
+# Any joiner other than "/".
+_POOLED_NOT_SLASH_RX = re.compile(r",|;|&|\+|(?<![a-z])(?:or|and)(?![a-z])", re.IGNORECASE)
+_RESIDUAL_CATEGORIES = frozenset({"other", "unknown_not_reported"})
+# Flags of the rules that read a row's wording whole (block comment above).
+_POOLED_RULE_FLAGS = frozenset({
+    "multirace_label", _COMMA_LIST_FLAG, "heritage_label", "uk_census_label", _GROUPED_ASIAN_NHPI_FLAG,
+    "asian_label", "black_label", "aian_label", "nhpi_label", "european_label", "mena_label",
+    "negated_race", _WEST_ASIAN_TEMPLATE_FLAG,
+})
+
+
+def _alternative_category(part: str) -> Optional[str]:
+    """The category an alternative of a row names without a fuzzy match, or
+    None (block comment "Pooled race labels")."""
+    part = part.strip(" -–—:,;()/.")
+    if not part or _is_ethnicity_only_label(part):
+        return None
+    category = _slash_fragment_category(part)
+    if category is None:
+        joined = _race_joined_to_ethnicity(part)
+        category = _slash_fragment_category(joined[0]) if joined is not None else None
+    return category
+
+
+def _named_categories(text: str) -> FrozenSet[str]:
+    """The categories the alternatives of a text name (block comment "Pooled
+    race labels")."""
+    return frozenset(c for c in (_alternative_category(p) for p in _POOLED_SPLIT_RX.split(text))
+                     if c is not None)
+
+
+def _pooled_categories(text: str) -> Optional[Tuple[FrozenSet[str], bool]]:
+    """The categories a pooled row names and whether its alternatives are
+    joined by "/" only, or None when the row does not pool (block comment
+    "Pooled race labels")."""
+    text = clean_demographic_label(text)
+    for name_rx, name in _POOLED_ONE_CATEGORY:
+        text = name_rx.sub(name, text)
+    outside = _outside_brackets(text)
+    named_outside = _named_categories(outside)
+    if outside.strip() != text.strip() and named_outside:
+        if not named_outside - _RESIDUAL_CATEGORIES:
+            # The residual row with its members in brackets.
+            inside = _named_categories(text)
+            if inside - _RESIDUAL_CATEGORIES:
+                return named_outside | inside, False
+            return None
+        text = outside
+    # The list items that name something; one alone is the row's text, the
+    # others being an ethnicity term or text that names nothing ("White/Asian
+    # and Hispanic" is "White/Asian"; a review finding).
+    naming = [item for item in _POOLED_LIST_SPLIT_RX.split(text) if _named_categories(item)]
+    if len(naming) == 1:
+        text = naming[0]
+    named = _named_categories(text)
+    if len(named) < 2 or not named - _RESIDUAL_CATEGORIES:
+        return None
+    if named == {"asian", "native_hawaiian_pacific_islander"} and asian_pacific_grouped_label(text):
+        return None
+    if (len(naming) >= 2 and _POOLED_AND_RX.search(text)
+            and not named & (_RESIDUAL_CATEGORIES | {"more_than_one_race"})):
+        return None  # a combination joined by "and": the rule for rows naming two or more races
+    return named, _POOLED_NOT_SLASH_RX.search(text) is None
+
+
+def _subgroup_of(text: str, texts: List[str]) -> bool:
+    """True when the text names, after its first slash fragment, nothing but
+    that fragment's race or a residual category, and another row of the table
+    shares the fragment and names the same race after it: the row is one of a
+    list of subgroups ("African/Other" beside "African/Yoruba"), not a pool.
+    "Black/White" names another race and is never one (a review finding)."""
+    if "/" not in text:
+        return False
+    head, _sep, rest = clean_demographic_label(text).partition("/")
+    race = _alternative_category(head)
+    if race is None or race in _RESIDUAL_CATEGORIES:
+        return False
+    if _named_categories(rest) - {race} - _RESIDUAL_CATEGORIES:
+        return False
+    for other in texts:
+        other_head, sep, other_rest = clean_demographic_label(other).partition("/")
+        if (sep and other.strip() != text.strip() and other_head.strip().lower() == head.strip().lower()
+                and _alternative_category(other_rest) == race):
+            return True
+    return False
+
+
+def _pooled_rows(texts: List[str], mappings: List[Optional[Dict]]) -> List[Tuple[int, str]]:
+    """(index, category) for each row of one table whose label pools
+    categories (block comment "Pooled race labels"): more_than_one_race for a
+    combination of races the table names alone, else other. texts and
+    mappings as for _comma_list_rows."""
+    pooled = {}
+    for i, (text, mapping) in enumerate(zip(texts, mappings)):
+        if mapping is None or any(f in _POOLED_RULE_FLAGS or f.startswith("indigenous_sites_")
+                                  for f in mapping["flags"]):
+            continue
+        reading = _pooled_categories(text)
+        if reading is not None and not _subgroup_of(text, texts):
+            pooled[i] = reading
+    if not pooled:
+        return []
+    alone = {mapping["omb_category"]
+             for i, (text, mapping) in enumerate(zip(texts, mappings))
+             if i not in pooled and mapping is not None
+             and mapping["confidence"] == "high" and "unmapped" not in mapping["flags"]
+             and mapping["omb_category"] in _RACE_SPECIFIC
+             and mapping["omb_category"] != "more_than_one_race"
+             and _GROUPED_ASIAN_NHPI_FLAG not in mapping["flags"]
+             and ("slash_normalized" not in mapping["flags"]
+                  or _slash_reading_names_one_race(text, mapping["omb_category"]))}
+    out = []
+    for i, (named, slash_only) in pooled.items():
+        races_only = not named & (_RESIDUAL_CATEGORIES | {"more_than_one_race"})
+        out.append((i, "more_than_one_race" if slash_only and races_only and named & alone else "other"))
+    return out
+
+
 def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only: bool,
                     whole_table: bool,
                     splits: Optional[List[Tuple[str, Optional[str]]]] = None,
@@ -4549,6 +4780,16 @@ def _map_table_rows(rows: List[Tuple[str, int]], pct_converted: bool, total_only
         reading = {"omb_category": "asian", "subcategory": None, "confidence": "high",
                    "original": clean_demographic_label(texts[i]),
                    "flags": [_GROUPED_ASIAN_NHPI_FLAG]}
+        results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
+                                    race_part, sex, reading)
+    # Block comment "Pooled race labels".
+    for i, category in _pooled_rows(texts, [mapping for mapping, _skipped in results]):
+        (label, count), (race_part, sex) = rows[i], parts[i]
+        combination = category == "more_than_one_race"
+        reading = {"omb_category": category, "subcategory": None,
+                   "confidence": "high" if combination else "low",
+                   "original": clean_demographic_label(texts[i]),
+                   "flags": [_SLASH_COMBINATION_FLAG] if combination else [_POOLED_FLAG, "unmapped"]}
         results[i] = _map_table_row(label, count, pct_converted, total_only, whole_table,
                                     race_part, sex, reading)
     return results

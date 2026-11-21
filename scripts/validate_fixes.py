@@ -114,6 +114,9 @@ Tests:
  39. NCT07465926 — eight baseline groups in four matched comparisons whose
      treated arms share two cohorts, every row tagged "(Comparison N)" (the
      trial as posted, tests/fixtures/nct07465926_baseline.json)
+ 40. NCT99000158 — pooled race labels ("Multiracial/Other", "Black/mixed")
+     beside a slash combination of races the table names alone
+     ("White/Asian") (fictional study)
  41. NCT99000159 — slash labels naming a subgroup beside the category alone,
      in both orders ("African/Black", "Black/African"), and South Asian
      peoples ("Indian/Pakistani") (fictional study)
@@ -165,6 +168,8 @@ Study 39 asserts its race, ethnicity and sex totals read through its
 baseline exception, and the baseline_override flag (EXPECTED_OVERRIDE).
 Every study is read as src/extract_all reads it: through
 src/baseline_overrides.apply_baseline_override, which changes study 39 only.
+Study 40 asserts its race totals and the rows flagged pooled_race_label and
+multirace_slash (EXPECTED_POOLED).
 Study 41 asserts its race totals and subcategory totals (EXPECTED_SLASH_SUBCATEGORY).
 A mismatch stops the harness.
 """
@@ -1229,6 +1234,31 @@ EXPECTED_OVERRIDE = {
                     "sex": {"female": 97899, "male": 89520, "unknown": 281}},
 }
 
+# ---------- NCT99000158 (fictional): pooled race labels ----------
+# 100 participants (race_extractor, "Pooled race labels"). Before, each row
+# was counted as the first category it names: "White/Asian" as White,
+# "Multiracial/Other" as more than one race, "Black/mixed" as Black (White
+# 55, Black 25, more than one race 10). Here "White/Asian", beside White and
+# Asian rows, is a combination (more than one race) and the two pools are
+# other.
+MOCK_NCT99000158 = _make_study(
+    "NCT99000158",
+    "NCT99000158 - pooled race labels (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("White", 50),
+                _make_category("Black", 20),
+                _make_category("Asian", 10),
+                _make_category("White/Asian", 5),
+                _make_category("Multiracial/Other", 10),
+                _make_category("Black/mixed", 5),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+
 # ---------- NCT99000159 (fictional): the subcategory of a slash reading ----------
 # 100 participants (race_extractor, "The subcategory of a slash reading").
 # Before, a slash label took its first fragment's subcategory: "African/
@@ -1251,6 +1281,13 @@ MOCK_NCT99000159 = _make_study(
     ],
     total_participants=100,
 )
+
+EXPECTED_POOLED = {
+    "NCT99000158": {"omb": {"white": 50, "black_african_american": 20, "asian": 10,
+                            "more_than_one_race": 5, "other": 15},
+                    "pooled": ["Multiracial/Other", "Black/mixed"],
+                    "combined": ["White/Asian"]},
+}
 
 EXPECTED_SLASH_SUBCATEGORY = {
     "NCT99000159": {"omb": {"black_african_american": 30, "asian": 10, "white": 60},
@@ -1629,6 +1666,15 @@ def validate_study(study: dict, nct_id: str) -> None:
         sources = [(c["original"], c["wording_source"]) for c in race["raw_categories"]]
         assert sources == expected["sources"], f"{nct_id} wording sources: {sources}"
         print(f"\n  {nct_id}: each race row records its wording source — OK")
+    if nct_id in EXPECTED_POOLED:
+        expected = EXPECTED_POOLED[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
+        pooled = [c["original"] for c in race["raw_categories"] if "pooled_race_label" in c["flags"]]
+        combined = [c["original"] for c in race["raw_categories"] if "multirace_slash" in c["flags"]]
+        assert pooled == expected["pooled"], f"{nct_id} pooled rows: {pooled}"
+        assert combined == expected["combined"], f"{nct_id} slash combinations: {combined}"
+        print(f"\n  {nct_id}: pooled race labels counted as other, slash combinations as more than one race — OK")
     if nct_id in EXPECTED_SLASH_SUBCATEGORY:
         expected = EXPECTED_SLASH_SUBCATEGORY[nct_id]
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
@@ -1695,6 +1741,7 @@ def main() -> None:
         (MOCK_NCT99000156, "NCT99000156"),
         (MOCK_NCT99000157, "NCT99000157"),
         (STUDY_NCT07465926, "NCT07465926"),
+        (MOCK_NCT99000158, "NCT99000158"),
         (MOCK_NCT99000159, "NCT99000159"),
     ]
     for study, nct_id in studies:
