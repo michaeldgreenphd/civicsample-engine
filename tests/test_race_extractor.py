@@ -4116,6 +4116,15 @@ def test_a_subgroup_list_keeps_its_reading() -> None:
     assert all("pooled_race_label" not in c["flags"] for c in race["raw_categories"])
 
 
+def test_a_synonym_sibling_does_not_make_a_combination_a_subgroup() -> None:
+    """"Black/White" shares its first fragment with "Black/African American",
+    whose suffix names Black too, but itself names White: a combination
+    beside the White row (a review finding)."""
+    race = _pooled_table([("Black/African American", 20), ("Black/White", 3), ("White", 30)], 53)
+    assert _nonzero(race) == {BLACK: 20, "more_than_one_race": 3, "white": 30}
+    assert "multirace_slash" in _pooled_row(race, "Black/White")["flags"]
+
+
 def test_residual_only_pools_keep_their_reading() -> None:
     race = _pooled_table([("White", 10), ("Unknown/Other", 5)], 15)
     assert _nonzero(race) == {"white": 10, "unknown_not_reported": 5}

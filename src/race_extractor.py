@@ -4487,25 +4487,28 @@ def _west_asian_template_rows(texts: List[str], mappings: List[Optional[Dict]]) 
 # Reported") names no race and keeps its reading. A row of a subgroup list
 # keeps its reading: "African/Other" beside "African/Yoruba" and
 # "African/Ibo" (NCT03879577) is other African peoples, not a pool, because
-# another row of the table shares its first fragment and names the same race
-# after it (_subgroup_of).
+# it names nothing but that race or a residual category after its first
+# fragment and another row of the table shares the fragment and names the
+# same race after it (_subgroup_of). A row naming another race after the
+# fragment is never a subgroup row: "Black/White" beside "Black/African
+# American" and "White" is a combination (a review finding).
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18), each read through
 # src/baseline_overrides as src/extract_all reads it, against engine main
-# after the wording source: 130 race blocks change their totals, all still
-# reporting race. More than one race -2,050 ("Multi-racial/Other" 520,
+# after the wording source: 132 race blocks change their totals, all still
+# reporting race. More than one race -2,047 ("Multi-racial/Other" 520,
 # "Multiracial/other/unknown or not reported" 459, "Multiracial/other" 264),
 # Black -688 ("Black/AA & Other" 296, "African American/Black or bi- or
-# multi-racial" 214, "Black/Asian/Other Race, Minority" 79), White -392
+# multi-racial" 214, "Black/Asian/Other Race, Minority" 79), White -395
 # ("Caucasian/Asian" 157, "Caucasian/More than One Race" 78, "White, Asian,
 # or Hispanic" 67), Asian -267 ("Asian/American Indian/Pacific (non-
 # Hispanic)" 120), American Indian or Alaska Native -93 ("American Indian or
 # Alaska Native, Asian" 43), Native Hawaiian or Pacific Islander -27, unknown
 # -35 ("Other, More than One Race, or Unknown/Not Reported"), other +3,552.
 # 362 rows (22,033 participants) are flagged pooled_race_label, 18,481 of
-# them counted as other before ("Other or mixed race" 7,958); 54 rows (78
-# participants) are flagged multirace_slash, from White 43, American Indian
+# them counted as other before ("Other or mixed race" 7,958); 57 rows (81
+# participants) are flagged multirace_slash, from White 46, American Indian
 # 13, Black 11 and Asian 11. No ethnicity block changes.
 _POOLED_FLAG = "pooled_race_label"
 _SLASH_COMBINATION_FLAG = "multirace_slash"
@@ -4590,14 +4593,18 @@ def _pooled_categories(text: str) -> Optional[Tuple[FrozenSet[str], bool]]:
 
 
 def _subgroup_of(text: str, texts: List[str]) -> bool:
-    """True when another row of the table shares the text's first slash
-    fragment and names the same race after it: the row is one of a list of
-    subgroups ("African/Other" beside "African/Yoruba"), not a pool."""
+    """True when the text names, after its first slash fragment, nothing but
+    that fragment's race or a residual category, and another row of the table
+    shares the fragment and names the same race after it: the row is one of a
+    list of subgroups ("African/Other" beside "African/Yoruba"), not a pool.
+    "Black/White" names another race and is never one (a review finding)."""
     if "/" not in text:
         return False
-    head, _sep, _rest = clean_demographic_label(text).partition("/")
+    head, _sep, rest = clean_demographic_label(text).partition("/")
     race = _alternative_category(head)
     if race is None or race in _RESIDUAL_CATEGORIES:
+        return False
+    if _named_categories(rest) - {race} - _RESIDUAL_CATEGORIES:
         return False
     for other in texts:
         other_head, sep, other_rest = clean_demographic_label(other).partition("/")
