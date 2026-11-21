@@ -1,0 +1,185 @@
+"""Unit tests for `feasibility/termination.py` and `feasibility/termination_reviews.csv`."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from feasibility.termination import (
+    REVIEW_COLUMNS,
+    TERMINATION_RULES_VERSION,
+    classify_stopped_study_results_state,
+    classify_why_stopped,
+    evaluate_termination,
+    load_termination_reviews,
+)
+from tests.feasibility.conftest import make_ctgov_study
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_rules_version_and_curated_csv_is_header_only() -> None:
+    assert TERMINATION_RULES_VERSION == "1.0.0"
+    csv_path = ROOT / "feasibility" / "termination_reviews.csv"
+    raw_lines = csv_path.read_text(encoding="utf-8").splitlines()
+    assert raw_lines == [",".join(REVIEW_COLUMNS)]
+    assert load_termination_reviews(csv_path) == {}
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_category"),
+    [
+        ("Closed early due to slow accrual across participating sites.", "accrual_or_recruitment"),
+        ("Interim analysis showed futility on primary efficacy endpoint.", "futility_or_lack_of_efficacy"),
+        ("Halted due to dose-limiting toxicity and serious adverse events.", "safety_or_toxicity"),
+        ("Terminated following portfolio prioritization and strategic decision.", "business_or_strategic"),
+        ("Study enrollment suspended due to the COVID-19 pandemic.", "covid_or_pandemic"),
+        ("Placed on clinical hold by FDA pending protocol amendment.", "regulatory_or_clinical_hold"),
+        ("Terminated due to study drug shortage and supply chain constraint.", "supply_or_drug_availability"),
+        ("Investigator relocated to another institution.", "other_unclassified_text"),
+        (None, "missing_why_stopped"),
+        ("   ", "missing_why_stopped"),
+    ],
+)
+def test_single_signal_and_fallback_categories(text: str | None, expected_category: str) -> None:
+    res = classify_why_stopped(text)
+    assert res["deterministic_category"] == expected_category
+
+
+def test_negation_guards_prevent_false_positives() -> None:
+    # Real CT.gov patterns where safety, COVID-19, or completed recruitment are explicitly negated.
+    r1 = classify_why_stopped(
+        "Terminated due to strategic portfolio reprioritization; there were no safety concerns."
+    )
+    assert r1["deterministic_category"] == "business_or_strategic"
+    assert r1["matched_signals"] == ["business_or_strategic"]
+
+    r2 = classify_why_stopped(
+        "Recruitment was fully completed for this study; terminated after primary endpoint analysis due to futility."
+    )
+    assert r2["deterministic_category"] == "futility_or_lack_of_efficacy"
+    assert r2["matched_signals"] == ["futility_or_lack_of_efficacy"]
+
+    r3 = classify_why_stopped("Withdrawn due to loss of funding, unrelated to COVID-19 or safety.")
+    assert r3["deterministic_category"] == "business_or_strategic"
+    assert r3["matched_signals"] == ["business_or_strategic"]
+
+
+def test_multiple_signals_detected_preserves_all_matched_categories() -> None:
+    r_eff_tox = classify_why_stopped(
+        "Discontinued due to modest clinical benefit and limited tolerability."
+    )
+    assert r_eff_tox["deterministic_category"] == "multiple_signals_detected"
+    assert r_eff_tox["matched_signals"] == [
+        "futility_or_lack_of_efficacy",
+        "safety_or_toxicity",
+    ]
+
+    r_three = classify_why_stopped(
+        "COVID-19 pandemic caused slow enrollment and study drug supply shortage."
+    )
+    assert r_three["deterministic_category"] == "multiple_signals_detected"
+    assert r_three["matched_signals"] == [
+        "accrual_or_recruitment",
+        "covid_or_pandemic",
+        "supply_or_drug_availability",
+    ]
+
+
+def test_human_review_override_merge_and_csv_validation(tmp_path: Path) -> None:
+    valid_csv = tmp_path / "reviews.csv"
+    valid_csv.write_text(
+        "nct_id,reviewer,reviewed_at,override_category,notes\n"
+        "NCT99100050,Dr Fictional,2026-11-20,safety_or_toxicity,Protocol amendment cited DLT details\n",
+        encoding="utf-8",
+    )
+    loaded = load_termination_reviews(valid_csv)
+    assert "NCT99100050" in loaded
+
+    study = make_ctgov_study(
+        "NCT99100050",
+        overall_status="TERMINATED",
+        why_stopped="See detailed description.",
+    )
+    merged = evaluate_termination(
+        study,
+        "TERMINATED",
+        "See detailed description.",
+        review=loaded["NCT99100050"],
+    )
+    assert merged["classification_source"] == "human_review_override"
+    assert merged["category"] == "safety_or_toxicity"
+    assert merged["deterministic_category"] == "other_unclassified_text"
+    assert merged["why_stopped_verbatim"] == "See detailed description."
+    assert "reviewer" not in merged
+    assert "notes" not in merged
+
+    # Invalid CSV cases must raise ValueError loudly.
+    bad_header = tmp_path / "bad_header.csv"
+    bad_header.write_text("nct_id,override_category\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="expected exact header"):
+        load_termination_reviews(bad_header)
+
+    dup_csv = tmp_path / "dup.csv"
+    dup_csv.write_text(
+        "nct_id,reviewer,reviewed_at,override_category,notes\n"
+        "NCT99100050,Rev A,2026-11-20,safety_or_toxicity,Note 1\n"
+        "NCT99100050,Rev B,2026-11-21,business_or_strategic,Note 2\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate review override"):
+        load_termination_reviews(dup_csv)
+
+    blank_note = tmp_path / "blank_note.csv"
+    blank_note.write_text(
+        "nct_id,reviewer,reviewed_at,override_category,notes\n"
+        "NCT99100050,Rev A,2026-11-20,safety_or_toxicity,   \n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="notes must be non-empty"):
+        load_termination_reviews(blank_note)
+
+
+def test_stopped_study_results_states() -> None:
+    analysed = make_ctgov_study("NCT99100060", overall_status="TERMINATED", has_results=True)
+    assert classify_stopped_study_results_state(analysed) == "results_with_analysed_primary"
+
+    empty_shell = make_ctgov_study(
+        "NCT99100061",
+        overall_status="TERMINATED",
+        has_results=True,
+        outcome_measures=[
+            {
+                "type": "PRIMARY",
+                "title": "Primary Endpoint",
+                "groups": [{"id": "OG000", "title": "Arm A"}, {"id": "OG001", "title": "Arm B"}],
+                "denoms": [
+                    {
+                        "units": "Participants",
+                        "counts": [
+                            {"groupId": "OG000", "value": "0"},
+                            {"groupId": "OG001", "value": "0"},
+                        ],
+                    }
+                ],
+            }
+        ],
+    )
+    assert classify_stopped_study_results_state(empty_shell) == "empty_results_shell_zero_analysed"
+
+    no_denom = make_ctgov_study(
+        "NCT99100062",
+        overall_status="SUSPENDED",
+        has_results=True,
+        outcome_measures=[
+            {
+                "type": "PRIMARY",
+                "title": "Primary Endpoint Without Denom",
+                "groups": [{"id": "OG000", "title": "Arm A"}],
+            }
+        ],
+    )
+    assert classify_stopped_study_results_state(no_denom) == "results_posted_no_primary_denom"
+
+    not_posted = make_ctgov_study("NCT99100063", overall_status="WITHDRAWN", has_results=False)
+    assert classify_stopped_study_results_state(not_posted) == "results_not_posted"
