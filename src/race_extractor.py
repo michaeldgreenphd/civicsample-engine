@@ -1329,7 +1329,9 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
     frames = {within[-1] for kind, term, within in tokens
               if within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS}
     depth_of = {within[-1]: len(within) for kind, _t, within in tokens if kind == "open"}
+    open_of = {within[-1]: position for position, (kind, _t, within) in enumerate(tokens) if kind == "open"}
     choice_of: Dict[Tuple[int, int], int] = {}  # (bracket, place in tokens) -> its choice
+    leading: Set[int] = set()  # brackets opening with a join: "Black (or Haitian)"
     for frame in frames:
         choices: List[List[Tuple[str, str, int]]] = [[]]
         for position, (kind, term, within) in enumerate(tokens):
@@ -1340,6 +1342,8 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
             else:
                 choices[-1].append((kind, term, position))
                 choice_of[(frame, position)] = len(choices) - 1
+        if len(choices) > 1 and not choices[0]:
+            leading.add(frame)
         named = [any(k == "name" or (k == "abbrev" and has_name) for k, _t, _p in choice)
                  for choice in choices]
         for c, choice in enumerate(choices):
@@ -1407,14 +1411,33 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
         # alternatives are, innermost bracket first, each to one item:
         # "Black (Haitian or Black)" names no subgroup, as "Haitian or
         # Black" does, and "Black (Caribbean or Haitian)" is caribbean, as
-        # "Caribbean or Haitian" is (a review finding). Names within one
-        # choice, and outside choices, refine each other (_black_refined):
-        # "Caribbean (Haitian)", "Black (or African American)".
-        for frame in sorted(frames, key=lambda f: -depth_of[f]):
+        # "Caribbean or Haitian" is (a review finding). A bracket opening
+        # with a join takes the names before it as its first choice: "Black
+        # (or Haitian)" is "Black or Haitian" and names no subgroup, and
+        # "Black (or African American)" names none either (a review
+        # finding). Names within one choice, and outside brackets, refine
+        # each other (_black_refined): "Caribbean (Haitian)".
+        # Innermost first, and left to right at one depth, so a bracket
+        # before a leading-join bracket is reduced when that bracket takes it.
+        for frame in sorted(frames, key=lambda f: (-depth_of[f], open_of[f])):
             members = [item for item in items if frame in item[1]]
             if not members:
                 continue
+            outer = tokens[open_of[frame]][2][:-1]
+            before: List[Tuple[int, Tuple[int, ...], Optional[str], bool]] = []
+            if frame in leading:
+                # Every name before the bracket within the bracket around it
+                # (or the alternative), brackets before it included, in the
+                # same choice of the bracket around it: "Caribbean (Jamaican)
+                # (or Haitian)" is "Caribbean (Jamaican) or Haitian".
+                around = outer[-1] if outer else None
+                before = [item for item in items if item[1][:len(outer)] == outer and frame not in item[1]
+                          and item[0] < open_of[frame]
+                          and (around is None or choice_of.get((around, item[0]))
+                               == choice_of.get((around, open_of[frame])))]
             by_choice: Dict[int, List[Tuple[int, Tuple[int, ...], Optional[str], bool]]] = {}
+            if before:
+                by_choice[0] = list(before)
             for item in members:
                 by_choice.setdefault(choice_of[(frame, item[0])], []).append(item)
             results = [(None, True) if any(item[3] for item in its) else (_black_refined([item[2] for item in its]), False)
@@ -1427,8 +1450,8 @@ def black_label(label: str) -> Tuple[bool, Optional[str]]:
             else:
                 reduced = _black_alternatives(subs)
                 forced = reduced is None
-            outer = members[0][1][:members[0][1].index(frame)]
-            items = [item for item in items if frame not in item[1]] + [(members[0][0], outer, reduced, forced)]
+            items = ([item for item in items if frame not in item[1] and item not in before]
+                     + [(members[0][0], outer, reduced, forced)])
         subcategories.append(None if any(item[3] for item in items) else _black_refined([item[2] for item in items]))
     if not subcategories:
         return False, None

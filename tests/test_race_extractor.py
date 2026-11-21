@@ -3277,6 +3277,17 @@ def test_a_label_naming_black_groups_only_is_read_as_black(label: str, subcatego
     ("Caribbean (Haitian or Black)", None),  # fictional: a bracket sharing no subgroup overrides the name outside
     ("Black (Caribbean (Haitian or Black) or Jamaican)", None),  # fictional: the inner bracket shares none
     ("African (or Caribbean (Haitian or Black))", None),  # fictional: and passes that up its one-choice bracket
+    ("African (Caribbean (Haitian or Black) or Negro)", None),  # fictional: and up a bracket with Black in each choice
+    # A bracket opening with a join takes the names before it as its first choice (review finding).
+    ("Black (or Haitian)", None),  # fictional: as "Black or Haitian"
+    ("Caribbean (or Haitian)", "caribbean"),  # fictional: as "Caribbean or Haitian"
+    ("Black African (or Nigerian)", "african"),  # fictional
+    ("Black (or of African descent)", None),  # fictional: as "Black or of African descent"
+    ("Black (Caribbean (or Haitian) or African)", None),  # fictional: in a bracket, the names before it in its choice
+    ("Caribbean (Haitian, Black (or Jamaican))", None),  # fictional: not a name in another choice
+    ("Caribbean (Jamaican) (or Haitian)", "caribbean"),  # fictional: a bracket before it is in its first choice
+    ("Caribbean (Haitian or Black) (or Jamaican)", None),  # fictional: reduced before it is taken in
+    ("Black (or Haitian) Caribbean", None),  # fictional: a name after the bracket is not in its first choice
     # "Indigenous" qualifies the names in its own choice (review finding).
     ("Black (Indigenous African)", "african"),  # fictional
     ("Black (Indigenous African or Haitian)", None),  # fictional
