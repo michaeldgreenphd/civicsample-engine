@@ -27,8 +27,9 @@ race (last two sections).
 A race table that posts a study's groups as rows ("White - Usual Care", each
 row's count in its own group's column only) is read by its race parts (its own
 section). Native Hawaiian or Pacific Islander wordings, and the rows they
-meet in a table, have a section of their own, as do European-only wordings;
-Asian wordings, and the tables they meet, are the last section.
+meet in a table, have a section of their own, as do European-only wordings
+and Asian wordings with the tables they meet; Black-only wordings are the
+last section.
 
 Which measures are race tables at all is the title word rule
 (race_extractor.is_race_table): titles that only contain the letters "race"
@@ -3175,3 +3176,258 @@ def test_a_combined_table_with_every_race_row_read_counts_them_not_hispanic() ->
     assert ethnicity["omb_totals"]["hispanic_latino"] == 2
     assert ethnicity["omb_totals"]["not_hispanic_latino"] == 68
     assert ethnicity["omb_totals"]["unknown_not_reported"] == 0
+
+
+# ── Black labels ───────────────────────────────────────────────────────────
+#
+# Fictional studies NCT99000629–631 (block comment "Black labels" in
+# src/race_extractor.py). Each label comes from the 2026-11-15 inputs, where
+# it was counted as other or quarantined as not race unless noted.
+
+BLACK_CATEGORY = "black_african_american"
+
+
+@pytest.mark.parametrize("label, subcategory", [
+    ("Black African", "african"),
+    ("Race - Black African", "african"),
+    ("African Descent", "african"),
+    ("African Ancestry", "african"),
+    ("Black of African origin", "african"),
+    ("Sub-Saharan African origin", "african"),
+    ("Indigenous African", "african"),
+    ("Other African tribe", "african"),
+    ("African (Rwandan)", "african"),
+    ("Black Kenyan", "african"),
+    ("Zulu", "african"),
+    ("Hausa", "african"),
+    ("Luo ethnic group", "african"),
+    ("Ghanaian", "african"),
+    ("Afro-descendant", "african"),
+    ("Ethnicity: African continent", "african"),
+    ("Afro-Caribbean", "caribbean"),
+    ("Afro-Carribean", "caribbean"),  # as posted
+    ("Black Carribean", "caribbean"),
+    ("Black (Caribbean)", "caribbean"),
+    ("Black American", "african_american"),
+    ("Afro-American", "african_american"),
+    ("African-American (black)", None),  # Black beside African American: the category's name
+    ("African - American (Black)", None),
+    ("African, black", None),
+    ("African American or Black", None),
+    ("Black, African American, or African", None),
+    ("Black or African", None),
+    ("Black only", None),
+    ("Black race", None),
+    ("Other Black", None),
+    ("Black (all ethnicities)", None),
+    ("Black South African", None),
+    ("Black (Brazil)", None),
+    ("Black Canadian or African or African Caribbean", None),
+    ("Black, African American, or Negro", None),
+    ("Black or African (Afr) Amer", None),  # a bracketed abbreviation
+    ("BLACK (BLA) OR AFRICAN AMERICAN (AFR AME)", None),
+    ("Black or African American (B or Af Am)", None),
+    ("Black or Af Am", None),
+    ("Black (US)", None),
+    ("Jamaicans of West African descent", None),
+])
+def test_a_label_naming_black_groups_only_is_read_as_black(label: str, subcategory: Optional[str]) -> None:
+    assert rx.black_label(label) == (True, subcategory)
+
+
+@pytest.mark.parametrize("label, subcategory", [
+    # Black beside African American is the category's own name.
+    ("Black (or African American)", None),
+    ("Black of African American", None),
+    # Names given as examples name no subgroup.
+    ("Black or African American (African American, Jamaican, Haitian, Nigerian, Ethiopian, Somali, etc.)", None),
+    ("Black (e.g., Haitian, Jamaican)", None),  # examples alone would make it caribbean
+    ("Black including Haitian", None),  # fictional: an example word outside brackets (review finding)
+    ("Black African including Nigerian", "african"),  # fictional: the names before it still count
+    ("Race and Ethnicity : Black", None),  # a heading of fillers before the colon (NCT03302910)
+    ("Race/Ethnicity: Black", None),  # fictional: a "/" heading
+    ("Ethnic group and race: Black", None),  # fictional: a heading word beside a dimension word
+    ("Self-reported race and ethnicity: Black", None),  # fictional
+    ("Black including Caribbean (Haitian)", None),  # fictional: a bracket after the example word
+    ("Black (including Caribbean (Haitian))", None),  # fictional: a bracket within the example's (review finding)
+    ("Black (African) (e.g. Haitian)", "african"),  # fictional: a sibling bracket is not an example
+    ("African American including Black", "african_american"),  # fictional: an example Black (review finding)
+    ("African American (e.g. Black)", "african_american"),  # fictional
+    ("Black (e.g., Haitian, Jamaican, or other)", None),  # fictional: "or other" in a list of examples is read
+    ("Black (e.g., Haitian, Jamaican, and other)", None),  # fictional: "and other" likewise
+    ("Black (Haitian, Jamaican, other)", None),  # fictional: a bare "other" after "," too
+    ("Black (Haitian, Jamaican, or other)", None),  # fictional: the list names some members only
+    ("Black (Haitian, Other)", None),  # fictional
+    ("Black African (Nigerian, Ghanaian, or other)", "african"),  # fictional: by the names outside
+    ("Caribbean (Haitian or other)", "caribbean"),  # fictional
+    ("Black (Haitian or other Caribbean)", "caribbean"),  # fictional: Haitian lies within it
+    ("Black (African, Haitian, or other Caribbean)", None),  # fictional: African does not (review finding)
+    ("Black (African or other Caribbean)", None),  # fictional
+    ("Black (Nigerian or other African)", "african"),  # fictional
+    ("Black (Haitian or other Black)", None),  # fictional: "other Black" widens Black itself
+    # A bracket's choices are reduced as alternatives are (review finding).
+    ("Black (Haitian or Black)", None),  # fictional: as "Haitian or Black"
+    ("Black (African or Negro)", None),  # fictional
+    ("Black (Caribbean or Haitian)", "caribbean"),  # fictional: as "Caribbean or Haitian"
+    ("Black (Haitian or Jamaican)", "caribbean"),  # fictional
+    ("Black (Nigerian or Kenyan)", "african"),  # fictional
+    ("Black (African (Nigerian or Kenyan) or Caribbean)", None),  # fictional: innermost bracket first
+    ("Caribbean (Haitian or Jamaican)", "caribbean"),  # fictional: the choices refine the name outside
+    ("African (Black or Negro)", "african"),  # fictional: Black in each choice
+    ("Caribbean (Haitian or Black)", None),  # fictional: a bracket sharing no subgroup overrides the name outside
+    ("Black (Caribbean (Haitian or Black) or Jamaican)", None),  # fictional: the inner bracket shares none
+    ("African (or Caribbean (Haitian or Black))", None),  # fictional: and passes that up its one-choice bracket
+    ("African (Caribbean (Haitian or Black) or Negro)", None),  # fictional: and up a bracket with Black in each choice
+    # A bracket opening with a join takes the names before it as its first choice (review finding).
+    ("Black (or Haitian)", None),  # fictional: as "Black or Haitian"
+    ("Caribbean (or Haitian)", "caribbean"),  # fictional: as "Caribbean or Haitian"
+    ("Black African (or Nigerian)", "african"),  # fictional
+    ("Black (or of African descent)", None),  # fictional: as "Black or of African descent"
+    ("Black (Caribbean (or Haitian) or African)", None),  # fictional: in a bracket, the names before it in its choice
+    ("Caribbean (Haitian, Black (or Jamaican))", None),  # fictional: not a name in another choice
+    ("Caribbean (Jamaican) (or Haitian)", "caribbean"),  # fictional: a bracket before it is in its first choice
+    ("Caribbean (Haitian or Black) (or Jamaican)", None),  # fictional: reduced before it is taken in
+    ("Black (or Haitian) Caribbean", None),  # fictional: a name after the bracket is not in its first choice
+    # "Indigenous" qualifies the names in its own choice (review finding).
+    ("Black (Indigenous African)", "african"),  # fictional
+    ("Black (Indigenous African or Haitian)", None),  # fictional
+    ("Black (African/Caribbean)", None),  # fictional: each "/" choice names a group
+    ("Black (including African, Caribbean descent)", None),  # a "," choice with a filler
+    ("African, Caribbean, or non-specified Black", None),  # "non-specified" describes Black
+    # Haitian lies in Caribbean; across alternatives, theirs when all agree.
+    ("Caribbean (Haitian)", "caribbean_haitian"),
+    ("Afro-Caribbean or Caribbean", "caribbean"),
+    ("Afro-Caribbean or African Origin", None),
+])
+def test_the_black_subcategory_comes_from_the_names(label: str, subcategory: Optional[str]) -> None:
+    assert rx.black_label(label) == (True, subcategory)
+
+
+@pytest.mark.parametrize("label", [
+    "South African",  # a country of every race
+    "Coloured",  # the South African census's own group
+    "Southern African Colored",
+    "Coloured/Mixed Ancestry",
+    "Black or mixed race",  # pooled
+    "African American or Other",
+    "Black, Euro-African, or African American",
+    "Black or other race",
+    "Black or unspecified",  # fictional: a non-answer pooled (review finding)
+    "Black or non-specified",  # fictional
+    "Black or Indigenous",  # fictional: another race pooled (review finding)
+    "Black, Indigenous",  # fictional
+    "Indigenous Caribbean",  # fictional: Indigenous qualifies African peoples only (review finding)
+    "Indigenous Black",  # fictional
+    "Black (Indigenous Caribbean)",  # fictional: in a bracket too
+    "Black (Indigenous Caribbean or African)",  # fictional: its own choice is Caribbean
+    "Indigenous Black (African)",  # fictional: its choice holds Black too
+    "Indigenous African (or Caribbean)",  # fictional: a bracket within its choice counts
+    "Black (Indigenous)",  # fictional: its choice names no group
+    "Black or participants of all ethnicities",  # fictional: fillers only pooled (review finding)
+    "all participants or Race: Black",  # fictional: "or" before the heading's colon pools (review finding)
+    "all participants and Race: Black",  # fictional: not a heading's words (review finding)
+    "all participants, Race: Black",  # fictional
+    "groups and race: Black",  # fictional: no dimension word in the part
+    "Black (or Indigenous)",  # fictional: a choice in a bracket names another race (review finding)
+    "Black (or unspecified)",  # fictional
+    "Black (or Other)",  # fictional: Other as a bracketed choice (review finding)
+    "Black (or other race)",  # fictional
+    "Black (and Other)",  # fictional: "and" in a bracket (review finding)
+    "Black (and unspecified)",  # fictional
+    "Black (Haitian or other race)",  # fictional: "other race" names any race (review finding)
+    "Black (unspecified or Black)",  # fictional: the choice before the join (review finding)
+    "Black (Haitian / unspecified)",  # fictional: a "/" choice in a bracket (review finding)
+    "Black (Haitian, unspecified)",  # fictional: a "," choice in a bracket (review finding)
+    "Black (Haitian; unspecified)",  # fictional
+    "Black (Haitian, other race)",  # fictional
+    "Not Black",  # negated
+    "Non-Black",
+    "Black or African American (Comparison 1)",  # crossed with something else
+    "African Mothers",
+    "Black : Children",
+    "Black (11 to 18 years)",
+    "Black (Part C)",
+    "Phase 1, Black",
+    "Black not Hisp",  # an ethnicity qualifier
+    "NH-Black",
+    "African (e.g., Central and West African, North African, Southern Africa)",  # North Africa
+    "Middle Eastern or North African/Mediterranean",
+    "Black or Black British",  # the UK census rule's
+    "AA",  # an abbreviation alone
+    "Tonga",
+    "/Black",
+    "Black or",
+])
+def test_a_label_naming_more_or_less_than_black_groups_is_not_read_by_the_rule(label: str) -> None:
+    assert rx.black_label(label) == (False, None)
+
+
+@pytest.mark.parametrize("label, subcategory, flags", [
+    ("Black or African American", None, []),  # the vocabulary's own
+    ("African", "african", []),
+    ("Black/African American", None, ["slash_normalized"]),  # the slash fragments run first
+    ("African/American", "african_american", ["black_label"]),  # one name: not the "African" fragment (review finding)
+    ("African/American, Black", None, ["black_label"]),  # fictional: the Black labels read the rejoined label
+    ("Black African", "african", ["black_label"]),
+])
+def test_black_readings_through_map_race_category(label: str, subcategory: Optional[str],
+                                                  flags: list[str]) -> None:
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
+        BLACK_CATEGORY, subcategory, flags)
+
+
+def test_rejoining_african_american_keeps_the_other_slash_fragments() -> None:
+    """Only the slash inside "African/American" is rejoined; the label's
+    other fragments are read as before (fictional; a review finding)."""
+    mapping = rx.map_race_category("White/African/American")
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
+        "white", None, ["slash_normalized"])
+    # A slash after "American" ends its fragment: the rejoined name is read,
+    # also where the Black labels do not read the whole label.
+    for label in ("African/American/Black", "African/American/Asian"):
+        mapping = rx.map_race_category(label)
+        assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
+            "black_african_american", "african_american", ["slash_normalized"]), label
+
+
+@pytest.mark.parametrize("label", ["African/American Indian", "African/American-Indian", "African/American (Indian)",
+                                   "African/American [Indian]", "African/American/Indian",  # review finding
+                                   "African/American {Indian}", "African/American. Indian",
+                                   # "American" does not end its fragment (review finding)
+                                   "African/American Samoan", "African/American Pacific Islander",
+                                   "African/American (Black)", "African/Americans",
+                                   # the rejoined label is read by nothing (review finding)
+                                   "African/American or Indian", "African/American, or Indian",
+                                   "African/American or Samoan"])
+def test_african_slash_american_indian_is_not_rejoined(label: str) -> None:
+    """"American Indian" after the slash names a second race, with or without
+    punctuation, and an "American" that does not end its fragment goes on to
+    name something else; either way the label keeps its slash reading
+    (fictional; review findings)."""
+    mapping = rx.map_race_category(label)
+    assert (mapping["omb_category"], mapping["subcategory"], mapping["flags"]) == (
+        "black_african_american", "african", ["slash_normalized"])
+
+
+def test_a_table_of_african_peoples_is_counted_as_black() -> None:
+    table = _class_table(COMBINED_TITLE, [("Zulu", 40), ("Xhosa", 30), ("Coloured", 20), ("White", 10)])
+    race = extract_race_data(_study("NCT99000629", [table], 100))
+    assert _nonzero(race) == {BLACK_CATEGORY: 70, "white": 10, "unknown_not_reported": 20}
+    assert race["subcategory_totals"] == {"black_african_american_african": 70}
+    assert [q["original"] for q in race["quarantined_labels"]] == ["Coloured"]
+
+
+def test_a_trial_whose_only_race_row_names_an_african_nationality_reports_race() -> None:
+    """The NCT03062228 shape: one row, "Ghanaian", quarantined before."""
+    race = extract_race_data(_study("NCT99000630", [_class_table(COMBINED_TITLE, [("Ghanaian", 162)])], 162))
+    assert race["reported"] and _nonzero(race) == {BLACK_CATEGORY: 162}
+
+
+def test_the_multirace_rule_reads_a_black_part_the_rule_reads() -> None:
+    """"Black or African Amer. & White" (148 participants in the 2026-11-15
+    inputs) is two races once its Black part reads."""
+    table = _class_table(COMBINED_TITLE, [("White", 50), ("Black or African Amer.", 30),
+                                          ("Black or African Amer. & White", 20)])
+    race = extract_race_data(_study("NCT99000631", [table], 100))
+    assert _nonzero(race) == {"white": 50, BLACK_CATEGORY: 30, "more_than_one_race": 20}
