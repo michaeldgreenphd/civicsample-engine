@@ -356,8 +356,11 @@ def mena_subcategory(label: str) -> Optional[str]:
 # is made only of these terms, joined by "/", ",", ";", "&", "(", ")", ":",
 # " - ", "or", "and" or "and/or", with at least one European name:
 #   - European names: European(s), Europe, European American(s), Pakeha
-#     (the Maori name for New Zealanders of European descent, posted beside
-#     "NZ European" as the New Zealand census does);
+#     (the Maori name for New Zealanders of European descent, posted as "NZ
+#     European/Pākehā"; Stats NZ's ethnicity classification splits European
+#     into New Zealand European and Other European, and its 2001 review notes
+#     that some prefer "Pākehā" to "New Zealand European"; read from search
+#     summaries, the Stats NZ pages could not be fetched here);
 #   - with a European name only: White, Caucasian(s); a direction (North(ern),
 #     South(ern), East(ern), West(ern), Central, Mid, Middle, but not "Middle
 #     East"); New Zealand, New Zealander(s), NZ; "Other" directly before a
