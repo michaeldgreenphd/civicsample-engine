@@ -6,7 +6,7 @@ with granular subcategories preserved.
 """
 import re
 import unicodedata
-from typing import Dict, FrozenSet, List, Tuple, Optional
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 from rapidfuzz import fuzz, process
 from src.utils import (clean_demographic_label, COMBINED_DIMENSION, DIMENSION_JOIN,
                        is_overall_group_title, measurement_number)
@@ -1019,6 +1019,446 @@ def _asian_label_subcategory(subcategories: List[Optional[str]]) -> Optional[str
     return regions.pop() if len(regions) == 1 and None not in regions else None
 
 
+# ── Black labels ───────────────────────────────────────────────────────────
+#
+# OMB's Black or African American category is a person having origins in
+# any of the Black racial groups of Africa (1997 standard; read from the
+# search summaries cited in the block comment "Asian labels"). The
+# vocabulary held "Black", "Black or African American", "African
+# American", "African", "Caribbean", "West Indian", "Haitian", "Jamaican",
+# "Sub-Saharan African" and "Negro". Wordings qualifying or restating them
+# matched nothing. They were counted as other, in the 2026-11-15 inputs:
+# "Race - Black African" (12,979 participants, 1 trial), "African, black"
+# (10,069), "Black African" (6,791 in 35 trials), "Black, African American,
+# or African", "African American or Black" (1,151 in 29), "African Descent",
+# "Black or African", "Afro-Caribbean". Or they were quarantined as not
+# race: the peoples and nationalities "Zulu" (2,953), "Hausa", "Luo",
+# "Xhosa", "Yoruba", "Igbo", "Akan", "Kikuyu", "Ghanaian", "Kenyan".
+#
+# Method (black_label; after the Asian labels and before the fuzzy match).
+# A label cleaned as for European labels, with the registry's bracketed
+# abbreviations removed ("(Afr) Amer", "(BLA)", "(B or Af Am)", "(US)";
+# _BLACK_GLOSS_RX) and "African - American" or "African/American" joined,
+# maps to Black, flagged black_label, when it is made only of these terms,
+# with at least one Black name:
+#   - names, each with the vocabulary's subcategory key (_BLACK_NAMES):
+#     Black(s), Negro (no key); African American(s), Afro-American, Black
+#     American, African Amer, Afr Amer; Caribbean, Afro-Caribbean (any
+#     spelling of Caribbean with one or two r's and b's), African Caribbean,
+#     West Indian; Haitian; Jamaican; African(s), Sub-Saharan African,
+#     Afro-descendant, the peoples Zulu, Xhosa, Yoruba, Igbo, Hausa, Fulani,
+#     Akan, Ashanti, Luo, Kikuyu, Bantu, and the nationalities Kenyan,
+#     Ghanaian, Nigerian, Ethiopian, Eritrean, Somali, Rwandan, Ugandan,
+#     Zimbabwean (african); "AA" and "Af Am" only beside another name;
+#   - beside a name only: places (Africa, South Africa, Kenya, Uganda,
+#     Rwanda, Nigeria, Ghana, Ethiopia, Somalia, Zimbabwe, Brazil, Canada);
+#     directions (West, East, Central, Southern; North is not one: North
+#     Africa is the Middle East and North Africa); "Other"; example words;
+#     non-specified, unspecified ("African, Caribbean, or non-specified
+#     Black", NCT04588415) and indigenous ("Indigenous African",
+#     NCT00080119; beside African peoples only, so "Indigenous Caribbean"
+#     is not read); alone as an alternative a non-answer or another race,
+#     so "Black or unspecified" and "Black or Indigenous" are not read
+#     (review findings);
+#   - fillers: descent, origin(s), ancestry, background, ethnic(ity),
+#     race, people(s), only, of, from, in, all, tribe(s), group(s),
+#     speaking, continent, self-reported, participants, subjects.
+# A label beginning or ending with a join is not read; each alternative must
+# name a Black group (as for European labels). The subcategory: within an
+# alternative, the name every other one refines (Haitian and Jamaican lie
+# in Caribbean), else none; Black beside African American is the category's
+# own name, not the subgroup ("Black (or African American)"); names given
+# as examples name none, in a bracket holding an example word (and the
+# brackets within it, not a sibling bracket: "Black (African) (e.g.
+# Haitian)" is african) or after one outside brackets ("Black including
+# Haitian"; review findings); across
+# alternatives, theirs when all agree, else none.
+#
+# What it does not do. "South African" alone names a country of every race,
+# and "Coloured" (550 in 17 trials), "Colored" and "Southern African
+# Colored" a group the South African census counts apart: not read. Mixed
+# or pooled wordings ("Black or mixed race", "African American or Other",
+# "Black, Euro-African, or African American"), negations ("Not Black",
+# "Non-Black"), rows crossed with something else ("Black or African
+# American (Comparison 1)", "African Mothers", "Black : Children",
+# "Black (11 to 18 years)", "Phase 1, Black") and "Hisp"/"NH" qualifiers
+# ("Black not Hisp", "NH-Black") are not read. "Tonga" stays withheld (block
+# comment "Native Hawaiian or Pacific Islander labels"). UK census wordings
+# naming "British" are the UK census rule's.
+#
+# Measured on the baseline modules of the 80,988 trials in the 2026-11-15
+# snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
+# the Asian labels: Black +50,378; more than one race +170 (the multirace
+# rule now reads the Black part of "Black or African Amer. & White", 148,
+# "White and Black African", "White + Black or African"); other -43,602;
+# unknown -6,418 (unknown_inferred). Rows read by black_label: 157 labels,
+# 70,269 participants in 453 trials, of them 43,432 counted as other before,
+# 6,946 quarantined and 19,891 already read as Black (by a fuzzy match or a
+# slash fragment, with the same subcategory). Subcategories: african
+# +31,848, african_american +70, caribbean +134. Four trials now report race,
+# each posting one row naming an African people or nationality: "Luo" 244
+# (NCT03178643), "Ghanaian" 162 (NCT03062228), "Kenyan" 60 (NCT04550221),
+# "Ugandan" 60 (NCT04030520). No ethnicity block, no sex block and no
+# sex/gender-titled gate changes; race blocks over their population stay
+# 330.
+_BLACK_NAMES = (
+    # (pattern, subcategory), longest first: the vocabulary's keys.
+    (r"african\s+americans?|afro\s+americans?|black\s+americans?|african\s+amer|afr\s+amer", "african_american"),
+    (r"afro\s*car{1,2}ib{1,2}eans?|african\s+car{1,2}ib{1,2}eans?|car{1,2}ib{1,2}eans?|"
+     r"west\s+indians?", "caribbean"),
+    (r"haitians?", "caribbean_haitian"),
+    (r"jamaicans?", "caribbean_jamaican"),
+    (r"sub\s*saharan\s+africans?|africans?|afro\s+descendants?|zulus?|xhosas?|yorubas?|igbos?|"
+     r"hausas?|fulanis?|akans?|ashantis?|luos?|kikuyus?|bantus?|kenyans?|ghanaians?|nigerians?|"
+     r"ethiopians?|eritreans?|somalis?|rwandans?|ugandans?|zimbabweans?", "african"),
+    (r"blacks?|negro(?:es)?", None),
+)
+_BLACK_REGION = {"caribbean_haitian": "caribbean", "caribbean_jamaican": "caribbean"}
+_BLACK_TOKEN_RX = re.compile(
+    r"(?:(?P<place>south\s+africans?|south\s+africa|africa|kenya|uganda|rwanda|nigeria|ghana|ethiopia|"
+    r"somalia|zimbabwe|brazil|canadians?|canada)|"
+    rf"(?P<name>{'|'.join(pattern for pattern, _sub in _BLACK_NAMES)})|"
+    r"(?P<abbrev>aa|af\s+am)|"
+    r"(?P<direction>west(?:ern)?|east(?:ern)?|central|southern)|"
+    r"(?P<other>other)|(?P<example>e\s*g|i\s*e|including|etc)|"
+    r"(?P<filler>descent|decent|origins?|ancestry|background|ethnicit(?:y|ies)|ethnic|race|racial|"
+    r"peoples?|only|of|from|in|all|tribes?|groups?|speaking|continent|self\s+reported|"
+    r"participants?|subjects?)|"
+    # Describes a name in its alternative ("non-specified Black",
+    # "Indigenous African"); alone it names no Black group, a non-answer or
+    # another race ("Black or unspecified", "Black or Indigenous": review
+    # findings).
+    r"(?P<qualifier>non\s+specified|unspecified|indigenous)|"
+    r"(?P<join>and/or|or|and))(?![a-z])|(?P<mark>[/,;&():\-–—])",
+    re.IGNORECASE)
+_BLACK_ALTERNATIVE_JOINS = _EUROPEAN_ALTERNATIVE_JOINS
+# The joins that build a heading before its colon ("Race and Ethnicity :",
+# "Race/Ethnicity:", "Race, Ethnicity:"), unlike "or", which pools.
+_BLACK_HEADING_JOINS = frozenset({"and", "&", ",", "/"})
+# The words a heading part is made of: at least one dimension word, and
+# otherwise only these ("Ethnic group and race:", "Self-reported race and
+# ethnicity:"). "all participants and Race: Black" pools all participants
+# (a review finding).
+_BLACK_DIMENSION_WORDS = frozenset({"race", "racial", "ethnic", "ethnicity", "ethnicities",
+                                    "ancestry", "origin", "origins", "background"})
+_BLACK_HEADING_WORDS = _BLACK_DIMENSION_WORDS | {"group", "groups", "self reported"}
+# Fillers that widen an "other" choice to any race ("or other race").
+_BLACK_RACE_WIDE_FILLERS = frozenset({"race", "racial", "ethnic", "ethnicity", "ethnicities",
+                                      "participant", "participants", "subject", "subjects"})
+# "African/American" (and "African / American"): the one name split by a
+# slash, which the slash fragments would otherwise read as "African". Only
+# where "American" ends its fragment: at the end of the label, or before a
+# slash, comma, semicolon, "&", ")", "or" or "and". "African/American
+# Samoan", "African/American Pacific Islander" or "African/American
+# (Black)" go on to name something else, and keep the slash reading (a
+# review finding). Not "African/American Indian", which names two races,
+# whatever spaces or marks come before "Indian" ("African/American-Indian",
+# "African/American [Indian]", "African/American/Indian"; review findings).
+_AFRICAN_SLASH_AMERICAN_RX = re.compile(
+    r"\bafrican\s*/\s*american(?![^a-z]*indian)(?=\s*(?:$|[/,;&)]|(?:or|and)\b))", re.IGNORECASE)
+# A bracketed abbreviation of the label's own words, as registrants post
+# them: "Black or African (Afr) Amer", "BLACK (BLA) OR AFRICAN AMERICAN (AFR
+# AME)", "(B or Af Am)", "(US)". Only these words: "(Part C)" is a crossing.
+_BLACK_GLOSS_WORD = r"(?:afr|ame|amer|bla|b|af|am|aa|us)\.?"
+_BLACK_GLOSS_RX = re.compile(
+    rf"\(\s*{_BLACK_GLOSS_WORD}(?:\s*(?:\s|/|\bor\b)\s*{_BLACK_GLOSS_WORD})*\s*\)", re.IGNORECASE)
+
+
+def _black_subcategory_of(text: str) -> Optional[str]:
+    for pattern, subcategory in _BLACK_NAMES:
+        if re.fullmatch(pattern, text, re.IGNORECASE):
+            return subcategory
+    return None
+
+
+def _black_choice_names(tokens: List[Tuple[str, str, Tuple[int, ...]]], position: int) -> List[str]:
+    """The names in the choice holding tokens[position]: the run of terms
+    in its bracket (or outside brackets), brackets within it included, up to
+    the alternative joins at its own level."""
+    within = tokens[position][2]
+
+    def inside(i: int) -> bool:
+        return tokens[i][2][:len(within)] == within
+
+    def splits(i: int) -> bool:
+        kind, term, there = tokens[i]
+        return there == within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS
+
+    start = end = position
+    while start > 0 and inside(start - 1) and not splits(start - 1):
+        start -= 1
+    while end + 1 < len(tokens) and inside(end + 1) and not splits(end + 1):
+        end += 1
+    return [term for kind, term, _w in tokens[start:end + 1] if kind == "name"]
+
+
+def _black_refined(subs: List[Optional[str]]) -> Optional[str]:
+    """The subcategory of names within one alternative or one choice, each
+    refining the others ("Caribbean (Haitian)" is caribbean_haitian, "Black
+    African" african; None is a name of Black itself): the most specific
+    subcategory every other agrees with, else their shared region, else
+    None. Black beside African American is the category's own name and
+    names no subgroup ("Black of African American")."""
+    candidates = [sub for sub in subs if sub is not None]
+    if not candidates or (None in subs and "african_american" in candidates):
+        return None
+    for candidate in candidates:
+        if all(candidate == other or _BLACK_REGION.get(candidate) == other for other in candidates):
+            return candidate
+    regions = {_BLACK_REGION.get(candidate, candidate) for candidate in candidates}
+    return regions.pop() if len(regions) == 1 else None
+
+
+def _black_alternatives(subs: List[Optional[str]]) -> Optional[str]:
+    """The subcategory of alternatives side by side ("Haitian or Jamaican"):
+    theirs when all agree, None when one names no subgroup ("Haitian or
+    Black"), else their shared region ("Caribbean or Haitian" is
+    caribbean), else None."""
+    if len(set(subs)) == 1:
+        return subs[0]
+    if None in subs:
+        return None
+    regions = {_BLACK_REGION.get(sub, sub) for sub in subs}
+    return regions.pop() if len(regions) == 1 else None
+
+
+def black_label(label: str) -> Tuple[bool, Optional[str]]:
+    """(True, subcategory) when a label names Black groups only, by the terms
+    of the block comment above; else (False, None).
+
+      "Black African"                            -> (True, "african")
+      "African American or Black"                -> (True, None)
+      "Black, African American, or African"      -> (True, None)
+      "Afro-Caribbean"                           -> (True, "caribbean")
+      "Zulu-speaking, Black South African"       -> (True, "african")
+      "African Ancestry"                         -> (True, "african")
+      "South African"                            -> (False, None)
+      "Coloured"                                 -> (False, None)
+      "Non-Black"                                -> (False, None)
+      "Black or mixed race"                      -> (False, None)
+    """
+    text = unicodedata.normalize("NFKD", clean_demographic_label(label).lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = _BLACK_GLOSS_RX.sub(" ", text)  # "(Afr)", "(BLA)", "(B or Af Am)"
+    # "African - American", "African/American": the one name split.
+    text = re.sub(r"\bafrican\s*(?:[\-–—/])\s*american", "african american", text)
+    text = re.sub(r"(?<=[a-z])-(?=[a-z])", " ", text)
+    text = re.sub(r"[.'’]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    # Each term carries the brackets it sits in, outermost first, each
+    # bracket by its own number: an example word marks its bracket and the
+    # brackets within it, not a sibling bracket at the same depth ("Black
+    # (African) (e.g. Haitian)"; a review finding).
+    tokens: List[Tuple[str, str, Tuple[int, ...]]] = []
+    frames: List[int] = []
+    opened = 0
+    position = 0
+    while position < len(text):
+        match = _BLACK_TOKEN_RX.match(text, position)
+        if match is None or match.end() == position:
+            return False, None
+        kind, term = match.lastgroup, re.sub(r"\s+", " ", match.group(0).lower())
+        if kind == "mark" and term == "(":
+            opened += 1
+            frames.append(opened)
+            tokens.append(("open", term, tuple(frames)))
+        elif kind == "mark" and term == ")":
+            if not frames:
+                return False, None
+            tokens.append(("close", term, tuple(frames)))
+            frames.pop()
+        else:
+            tokens.append((kind, term, tuple(frames)))
+        position = match.end()
+        while position < len(text) and text[position].isspace():
+            position += 1
+    if not tokens or (tokens[0][0] in ("join", "mark", "close")) or tokens[-1][0] in ("join", "mark", "open"):
+        return False, None  # empty, or a piece of a longer label
+    # Each alternative's terms, with their places in `tokens`.
+    segments: List[List[Tuple[str, str, Tuple[int, ...], int]]] = [[]]
+    # Whether each alternative held any term, fillers included, and whether
+    # it holds a heading colon: an alternative of fillers only pools a group
+    # the rule cannot name ("Black or participants of all ethnicities"),
+    # unless it is part of a heading before a colon ("Race and Ethnicity :
+    # Black"); one left empty by two joins (", or") is nothing (review
+    # findings).
+    held: List[bool] = [False]
+    colon: List[bool] = [False]
+    fillers: List[List[str]] = [[]]  # each alternative's fillers, for the heading check
+    joins: List[str] = []  # the join after each alternative
+    for position, (kind, term, within) in enumerate(tokens):
+        if not within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS:
+            segments.append([])
+            held.append(False)
+            colon.append(False)
+            fillers.append([])
+            joins.append(term)
+            continue
+        held[-1] = True
+        if kind == "filler":
+            fillers[-1].append(term)
+        if not within and kind == "mark" and term == ":":
+            colon[-1] = True
+        if kind in ("name", "abbrev", "place", "direction", "other", "example", "qualifier",
+                    "open", "close"):
+            segments[-1].append((kind, term, within, position))
+    has_name = any(kind == "name" for kind, _t, _w in tokens)
+    # Inside a bracket the joins that split alternatives outside it ("or",
+    # "and", "and/or", "/", ",", "&", ";") also set choices side by side,
+    # and every choice, before or after the join, must name a Black group:
+    # one naming none pools another race or a non-answer ("Black (or
+    # Indigenous)", "Black (or unspecified)", "Black (or Other)", "Black
+    # (and Other)", "Black (unspecified or Black)", "Black (Haitian /
+    # unspecified)", "Black (Haitian, unspecified)"; review findings), while
+    # "Black (or African American)" names the category. An example word
+    # alone is no choice ("e.g.," before its list, "etc." after it). A bare
+    # "other" is the other Black groups only in a bracket whose other
+    # choices name a group or give examples ("(Haitian, Jamaican, or
+    # other)", "(e.g., Haitian, Jamaican, and other)"); "other race", "other
+    # ethnicity" or "other participants" names any race ("Black (Haitian or
+    # other race)").
+    # A bare "other" choice widens the group the bracket describes: the
+    # names in its other choices list some of that group's members, as
+    # examples do, and name no subcategory ("Black (Haitian, Jamaican, or
+    # other)" is Black with no subgroup; "Black African (Nigerian, Ghanaian,
+    # or other)" stays african by the names outside the bracket). A named
+    # "other" choice ("other Caribbean", "other Black") is an alternative
+    # like the others, reduced with them below: "Black (Haitian or other
+    # Caribbean)" is caribbean, "Black (African, Haitian, or other
+    # Caribbean)" names no subgroup (review findings).
+    listed_positions: Set[int] = set()
+    frames = {within[-1] for kind, term, within in tokens
+              if within and kind in ("join", "mark") and term in _BLACK_ALTERNATIVE_JOINS}
+    depth_of = {within[-1]: len(within) for kind, _t, within in tokens if kind == "open"}
+    open_of = {within[-1]: position for position, (kind, _t, within) in enumerate(tokens) if kind == "open"}
+    choice_of: Dict[Tuple[int, int], int] = {}  # (bracket, place in tokens) -> its choice
+    leading: Set[int] = set()  # brackets opening with a join: "Black (or Haitian)"
+    for frame in frames:
+        choices: List[List[Tuple[str, str, int]]] = [[]]
+        for position, (kind, term, within) in enumerate(tokens):
+            if frame not in within or (kind in ("open", "close") and within[-1] == frame):
+                continue
+            if kind in ("join", "mark") and within[-1] == frame and term in _BLACK_ALTERNATIVE_JOINS:
+                choices.append([])
+            else:
+                choices[-1].append((kind, term, position))
+                choice_of[(frame, position)] = len(choices) - 1
+        if len(choices) > 1 and not choices[0]:
+            leading.add(frame)
+        named = [any(k == "name" or (k == "abbrev" and has_name) for k, _t, _p in choice)
+                 for choice in choices]
+        for c, choice in enumerate(choices):
+            kinds_here = [k for k, _t, _p in choice]
+            if not choice or named[c] or all(k == "example" for k in kinds_here):
+                continue
+            listed = any(named[d] or any(k == "example" for k, _t, _p in choices[d])
+                         for d in range(len(choices)) if d != c) or "example" in kinds_here
+            race_wide = any(t in _BLACK_RACE_WIDE_FILLERS for _k, t, _p in choice)
+            if ("qualifier" in kinds_here or all(k == "filler" for k in kinds_here)
+                    or "other" not in kinds_here or not listed or race_wide):
+                return False, None
+        if any(any(k == "other" for k, _t, _p in choice) and not any(k == "name" for k, _t, _p in choice)
+               for choice in choices):
+            listed_positions.update(p for choice in choices for k, _t, p in choice if k == "name")
+    subcategories: List[Optional[str]] = []
+    for i, segment in enumerate(segments):
+        if not segment:
+            # A heading runs to its colon through heading joins only ("Race
+            # and Ethnicity :", "Race/Ethnicity:"); "or" sets a pooled
+            # choice beside it ("all participants or Race: Black"), and a
+            # part of a heading names a dimension in heading words only
+            # ("all participants and Race: Black" pools; review findings).
+            heading = next((j for j in range(i + 1, len(segments)) if colon[j]), None)
+            heading_words = (all(word in _BLACK_HEADING_WORDS for word in fillers[i])
+                             and any(word in _BLACK_DIMENSION_WORDS for word in fillers[i]))
+            if held[i] and (heading is None or not heading_words or any(
+                    join not in _BLACK_HEADING_JOINS for join in joins[i:heading])):
+                return False, None  # fillers only, not a heading
+            continue  # ", or" leaves nothing between two joins
+        # A name, or an abbreviation beside a name elsewhere ("Black or Af
+        # Am"): "AA" alone names nothing the rule can tell.
+        if not any(kind == "name" or (kind == "abbrev" and has_name) for kind, _t, _w, _p in segment):
+            return False, None
+        # "Indigenous" qualifies African peoples only ("Indigenous African",
+        # NCT00080119): beside another Black name it may name a people who
+        # are not Black ("Indigenous Caribbean"; a review finding). It
+        # qualifies the names in its own choice, not the label's other names
+        # ("Black (Indigenous African or Haitian)"; a review finding).
+        for kind, term, _w, position in segment:
+            if kind == "qualifier" and term == "indigenous":
+                qualified = _black_choice_names(tokens, position)
+                if not qualified or not all(_black_subcategory_of(name) == "african" for name in qualified):
+                    return False, None
+        # Names given as examples describe a wider group and name no
+        # subcategory: every name in a bracket holding an example word, or in
+        # a bracket within it ("(..., Nigerian, Ethiopian, Somali, etc.)",
+        # "(including Caribbean (Haitian))"), and every name after an example
+        # word outside brackets ("Black including Haitian"; review findings);
+        # likewise the names listed beside an "other" choice (above).
+        example_frames = {within[-1] for kind, _t, within, _p in segment if kind == "example" and within}
+        first_example = next((i for i, (kind, _t, within, _p) in enumerate(segment)
+                              if kind == "example" and not within), None)
+        # The names that count, each as (place, brackets, subcategory,
+        # forced); forced marks a bracket whose choices share no subgroup.
+        # A Black given as an example does not count ("African American
+        # including Black" is african_american; a review finding).
+        items: List[Tuple[int, Tuple[int, ...], Optional[str], bool]] = [
+            (position, within, _black_subcategory_of(term), False)
+            for i, (kind, term, within, position) in enumerate(segment)
+            if kind == "name" and not example_frames & set(within)
+            and position not in listed_positions
+            and not (first_example is not None and i > first_example)]
+        # A bracket's choices are alternatives and are reduced as
+        # alternatives are, innermost bracket first, each to one item:
+        # "Black (Haitian or Black)" names no subgroup, as "Haitian or
+        # Black" does, and "Black (Caribbean or Haitian)" is caribbean, as
+        # "Caribbean or Haitian" is (a review finding). A bracket opening
+        # with a join takes the names before it as its first choice: "Black
+        # (or Haitian)" is "Black or Haitian" and names no subgroup, and
+        # "Black (or African American)" names none either (a review
+        # finding). Names within one choice, and outside brackets, refine
+        # each other (_black_refined): "Caribbean (Haitian)".
+        # Innermost first, and left to right at one depth, so a bracket
+        # before a leading-join bracket is reduced when that bracket takes it.
+        for frame in sorted(frames, key=lambda f: (-depth_of[f], open_of[f])):
+            members = [item for item in items if frame in item[1]]
+            if not members:
+                continue
+            outer = tokens[open_of[frame]][2][:-1]
+            before: List[Tuple[int, Tuple[int, ...], Optional[str], bool]] = []
+            if frame in leading:
+                # Every name before the bracket within the bracket around it
+                # (or the alternative), brackets before it included, in the
+                # same choice of the bracket around it: "Caribbean (Jamaican)
+                # (or Haitian)" is "Caribbean (Jamaican) or Haitian".
+                around = outer[-1] if outer else None
+                before = [item for item in items if item[1][:len(outer)] == outer and frame not in item[1]
+                          and item[0] < open_of[frame]
+                          and (around is None or choice_of.get((around, item[0]))
+                               == choice_of.get((around, open_of[frame])))]
+            by_choice: Dict[int, List[Tuple[int, Tuple[int, ...], Optional[str], bool]]] = {}
+            if before:
+                by_choice[0] = list(before)
+            for item in members:
+                by_choice.setdefault(choice_of[(frame, item[0])], []).append(item)
+            results = [(None, True) if any(item[3] for item in its) else (_black_refined([item[2] for item in its]), False)
+                       for _c, its in sorted(by_choice.items())]
+            subs = [sub for sub, _forced in results]
+            if any(forced for _sub, forced in results):
+                reduced, forced = None, True
+            elif len(subs) == 1 or all(sub is None for sub in subs):
+                reduced, forced = subs[0], False  # one choice named, or Black in each
+            else:
+                reduced = _black_alternatives(subs)
+                forced = reduced is None
+            items = ([item for item in items if frame not in item[1] and item not in before]
+                     + [(members[0][0], outer, reduced, forced)])
+        subcategories.append(None if any(item[3] for item in items) else _black_refined([item[2] for item in items]))
+    if not subcategories:
+        return False, None
+    return True, _black_alternatives(subcategories)
+
+
 # ── American Indian or Alaska Native labels ────────────────────────────────
 #
 # OMB's 2024 revision of SPD 15 (Federal Register document 2024-06469, March
@@ -1980,6 +2420,22 @@ def _multirace_label(label: str) -> bool:
         races.add(race)
     return len(races) >= 2
 
+def _slash_fragment_mapping(text: str) -> Optional[Tuple[str, Optional[str]]]:
+    """The (category, subcategory) of the first "/" fragment of `text` that
+    is a RACE_MAPPINGS key, matched exactly, ignoring case; None when the
+    text holds no slash or no fragment matches."""
+    if "/" not in text:
+        return None
+    for frag in text.split("/"):
+        frag = frag.strip()
+        if not frag:
+            continue
+        for key, (omb, subcat) in RACE_MAPPINGS.items():
+            if key.lower() == frag.lower():
+                return omb, subcat
+    return None
+
+
 def map_race_category(label: str, fuzzy_threshold: int = 85, *,
                       guard_negation: bool = False, heritage: bool = True,
                       multirace: bool = True) -> Dict:
@@ -2114,22 +2570,30 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
         }
 
     # Slash-compound normalization: try each "/" fragment individually
-    # so "Caucasian/White" resolves even without a dedicated mapping entry
-    if "/" in label_clean:
-        for frag in label_clean.split("/"):
-            frag = frag.strip()
-            if not frag:
-                continue
-            for key, (omb, subcat) in RACE_MAPPINGS.items():
-                if key.lower() == frag.lower():
-                    flags.append("slash_normalized")
-                    return {
-                        "omb_category": omb,
-                        "subcategory": subcat,
-                        "confidence": "high",
-                        "original": label_clean,
-                        "flags": flags
-                    }
+    # so "Caucasian/White" resolves even without a dedicated mapping entry.
+    # A slash inside "African/American" splits one name, not two, so it is
+    # rejoined first and the other slashes are read as before: "African/
+    # American" alone has no slash left and the Black labels read it
+    # (african_american, not african), and "White/African/American" keeps
+    # its "White" fragment (block comment "Black labels"; review findings).
+    # When the rejoined label gives no reading, neither from a fragment nor
+    # by the Black labels, its own slashes are read as before the rejoin:
+    # "African/American or Indian" stays Black/african through "African"
+    # rather than going unread (a review finding). The rejoin can then
+    # change a label's reading but never take one away.
+    slash_text = _AFRICAN_SLASH_AMERICAN_RX.sub("African American", label_clean)
+    slash_reading = _slash_fragment_mapping(slash_text)
+    if slash_reading is None and slash_text != label_clean and not black_label(label_clean)[0]:
+        slash_reading = _slash_fragment_mapping(label_clean)
+    if slash_reading is not None:
+        flags.append("slash_normalized")
+        return {
+            "omb_category": slash_reading[0],
+            "subcategory": slash_reading[1],
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
 
     # A label naming European origin only (block comment "European labels"),
     # after the slash fragments, so a label they read as White keeps that
@@ -2154,6 +2618,19 @@ def map_race_category(label: str, fuzzy_threshold: int = 85, *,
         return {
             "omb_category": "asian",
             "subcategory": asian_subcategory,
+            "confidence": "high",
+            "original": label_clean,
+            "flags": flags
+        }
+
+    # A label naming Black groups only (block comment "Black labels"), after
+    # the Asian labels and before the fuzzy match.
+    is_black, black_subcategory = black_label(label_clean)
+    if is_black:
+        flags.append("black_label")
+        return {
+            "omb_category": "black_african_american",
+            "subcategory": black_subcategory,
             "confidence": "high",
             "original": label_clean,
             "flags": flags
