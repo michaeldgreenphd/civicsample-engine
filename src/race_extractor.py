@@ -395,16 +395,18 @@ def mena_subcategory(label: str) -> Optional[str]:
 #
 # Measured on the baseline modules of the 80,988 trials in the 2026-11-15
 # snapshot (CT.gov API v2, re-fetched 2026-11-18), against engine main after
-# the race-by-group rule: White +19,821 (34 labels, 48 trials), from other
-# 13,310 and from rows quarantined as not race 6,511; other -13,310;
-# unknown -6,491 (unknown_inferred -6,502, unknown_ethnicity_only +11). The
+# the Native Hawaiian or Pacific Islander labels: White +19,821 (34 labels,
+# 48 trials), from other 13,310 and from rows quarantined as not race 6,511;
+# other -13,310; unknown -6,511 (unknown_inferred -6,522,
+# unknown_ethnicity_only +11). No trial changes whether it reports race. The
 # white_european subcategory grows from 15,748 to 35,343, european_western
 # from 22 to 526 and european_eastern from 5 to 32; this includes two
 # heritage-template rows already read as White whose group, "Caucasian
 # European", the heritage rule now reads through this rule ("White -
 # Caucasian European Heritage", NCT00553358, 282; NCT04630002, 23). Two New
-# Zealand trials whose rows were all quarantined are now reported
-# (NCT06428591, NCT06834568). In one combined classification (NCT01798992)
+# Zealand trials reported through their "Maori" row alone now count their
+# European rows as White (NCT06428591, 9; NCT06834568, 8; its "Dutch" row
+# stays quarantined). In one combined classification (NCT01798992)
 # the counted "European Ancestry" row leaves a shortfall that is exactly its
 # Hispanic row, so the ethnicity extractor counts its race rows as not
 # Hispanic (49 participants from unknown). No other ethnicity block, no sex
