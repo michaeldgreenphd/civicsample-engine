@@ -685,6 +685,14 @@ def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
     rule = signal.get('rule_dimension')
     if rule not in RS.LEVEL_RULE_DIMENSIONS or [signal.get('dimension')] != RS.signal_dimensions(rule, []):
         return "the signal's dimension is not the one its level rule names"
+    # Every posted PRIMARY measure is copied (primary_measures), so a copied measure at the signal's
+    # index says the signal is on a primary measure whatever the signal's own type says; a signal
+    # that disagrees with that measure on its type or title is refused rather than let past the
+    # row checks below (Codex, PR 103).
+    pm = next((m for m in record.get('primary_measures') or []
+               if isinstance(m, dict) and m.get('measure_index') == signal.get('measure_index')), None)
+    if pm is not None and (signal.get('measure_type') != 'PRIMARY' or signal.get('measure_title') != pm.get('title')):
+        return "the signal's measure type or title disagrees with the copied primary measure at its index"
     if signal.get('measure_type') != 'PRIMARY':
         return None
     if record.get('primary_measures') is None:
@@ -694,7 +702,6 @@ def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
         failed = any(isinstance(f, dict) and f.get('section') == 'primary_measures'
                      for f in (record.get('parse') or {}).get('failures') or [])
         return None if failed else 'rows point at primary measures the record neither copies nor records a failure for'
-    pm = next((m for m in record.get('primary_measures') or [] if m.get('measure_index') == signal.get('measure_index')), None)
     if pm is None:
         return 'rows point at a primary measure this record does not copy'
     classes = pm.get('classes') or []

@@ -197,7 +197,7 @@ def test_the_check_refuses_inferences_and_rows_that_do_not_point_at_posted_rows(
         pm['classes'] = [{**copy.deepcopy(one), 'title': t} for t in ('Female', 'Male', 'Overall')]
         pm['groups'][0]['title'], pm['groups'][1]['title'] = 'Zorbatinib, women', 'Placebo, men'
         sig = copy.deepcopy(r['subgroup']['signals'][0])   # a sex signal
-        sig.update(field=field, measure_type='PRIMARY', measure_index=0, rows=rows)
+        sig.update(field=field, measure_type='PRIMARY', measure_index=0, measure_title=pm['title'], rows=rows)
         r['subgroup']['signals'].append(sig)
     unresolved, mismatched = 'does not resolve to the posted table', 'not the ones the rule matches'
     sexes = [{'class_index': 0, 'title': 'Female'}, {'class_index': 1, 'title': 'Male'}]
@@ -219,6 +219,17 @@ def test_the_check_refuses_inferences_and_rows_that_do_not_point_at_posted_rows(
         on_primary(r, sexes)
         r['subgroup']['signals'][-1]['measure_index'] = 7
     assert has(problems(elsewhere), 'a primary measure this record does not copy')
+
+    # Primary status comes from the copied measure at the signal's index: a signal there whose own type
+    # or title disagrees is refused, not let past the row checks (Codex, PR 103).
+    stale = "disagrees with the copied primary measure at its index"
+    def restated(r: dict[str, Any], **kw: Any) -> None:
+        on_primary(r, sexes[:1])   # one row left out: the row checks would refuse it if they ran
+        r['subgroup']['signals'][-1].update(kw)
+    assert has(problems(lambda r: restated(r, measure_type='SECONDARY')), stale)
+    assert has(problems(lambda r: restated(r, measure_type=None)), stale)
+    assert has(problems(lambda r: restated(r, measure_title='Another measure')), stale)
+    assert not has(problems(lambda r: on_primary(r, sexes)), stale)
 
     # The rows are recomputed from rule_dimension, so it must be the rule of the published dimension:
     # a sex signal cannot carry the age rule's rows (Codex, PR 103).
