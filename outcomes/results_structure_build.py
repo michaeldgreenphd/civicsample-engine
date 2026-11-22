@@ -694,6 +694,18 @@ def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
                 posted = cats[j].get('title') if cats is not None and isinstance(j, int) and 0 <= j < len(cats) else None
         if posted != x['title']:
             return 'a row does not resolve to the posted table at its position and title'
+    # The copied table holds every title the level rule reads, so the rows can be recomputed from it:
+    # the same rule on the same titles must give exactly these rows, none substituted and none left
+    # out (Codex, PR 103).
+    if field == 'class_titles':
+        titles = [c.get('title') or '' for c in classes]
+    elif field == 'category_titles':
+        titles = [cat.get('title') or '' for c in classes for cat in c.get('categories') or []]
+    else:
+        titles = [g.get('title') or '' for g in pm.get('groups') or []]
+    ident = RS.level_identity(titles).get(signal.get('rule_dimension'))
+    if ident is None or rows != RS.signal_rows({'classes': classes, 'groups': pm.get('groups') or []}, field, ident):
+        return 'the rows are not the ones the rule matches in the copied titles'
     return None
 
 

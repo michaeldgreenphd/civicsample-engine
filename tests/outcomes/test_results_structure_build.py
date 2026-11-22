@@ -188,23 +188,35 @@ def test_the_check_refuses_inferences_and_rows_that_do_not_point_at_posted_rows(
     kw['rows'] = [{'class_index': 0, 'title': 'Zorbatinib'}]
     assert has(B.check(cue), 'does not read posted titles carries rows')
 
-    # On a PRIMARY measure each row must resolve to the copied table at its position and title.
+    # On a PRIMARY measure the rows must be exactly the ones the rule matches in the copied table:
+    # each resolves at its position and title, and none is substituted or left out (Codex, PR 103).
+    # The fixture's primary measure is given classes Female, Male and Overall, and groups by sex.
     def on_primary(r: dict[str, Any], rows: list[dict[str, Any]], field: str = 'class_titles') -> None:
-        sig = copy.deepcopy(r['subgroup']['signals'][0])
+        pm = r['primary_measures'][0]
+        one = pm['classes'][0]
+        pm['classes'] = [{**copy.deepcopy(one), 'title': t} for t in ('Female', 'Male', 'Overall')]
+        pm['groups'][0]['title'], pm['groups'][1]['title'] = 'Zorbatinib, women', 'Placebo, men'
+        sig = copy.deepcopy(r['subgroup']['signals'][0])   # a sex signal
         sig.update(field=field, measure_type='PRIMARY', measure_index=0, rows=rows)
-        r['primary_measures'][0]['classes'][0]['title'] = 'Female'
         r['subgroup']['signals'].append(sig)
-    unresolved = 'does not resolve to the posted table'
-    assert not has(problems(lambda r: on_primary(r, [{'class_index': 0, 'title': 'Female'}])), unresolved)
-    assert has(problems(lambda r: on_primary(r, [{'class_index': 0, 'title': 'Male'}])), unresolved)
-    assert has(problems(lambda r: on_primary(r, [{'class_index': 4, 'title': 'Female'}])), unresolved)
-    assert not has(problems(lambda r: on_primary(r, [{'group_id': 'OG000', 'title': 'Zorbatinib'}], 'group_titles')), unresolved)
-    assert has(problems(lambda r: on_primary(r, [{'group_id': 'OG009', 'title': 'Zorbatinib'}], 'group_titles')), unresolved)
+    unresolved, mismatched = 'does not resolve to the posted table', 'not the ones the rule matches'
+    sexes = [{'class_index': 0, 'title': 'Female'}, {'class_index': 1, 'title': 'Male'}]
+    matched = problems(lambda r: on_primary(r, sexes))
+    assert not has(matched, unresolved) and not has(matched, mismatched)
+    assert has(problems(lambda r: on_primary(r, [sexes[0], {'class_index': 1, 'title': 'Female'}])), unresolved)
+    assert has(problems(lambda r: on_primary(r, [sexes[0], {'class_index': 4, 'title': 'Male'}])), unresolved)
+    assert has(problems(lambda r: on_primary(r, [sexes[0], {'class_index': 2, 'title': 'Overall'}])), mismatched)   # substituted
+    assert has(problems(lambda r: on_primary(r, sexes[:1])), mismatched)                                          # one left out
+    groups = [{'group_id': 'OG000', 'title': 'Zorbatinib, women'}, {'group_id': 'OG001', 'title': 'Placebo, men'}]
+    by_group = problems(lambda r: on_primary(r, groups, 'group_titles'))
+    assert not has(by_group, unresolved) and not has(by_group, mismatched)
+    assert has(problems(lambda r: on_primary(r, [{'group_id': 'OG009', 'title': 'Zorbatinib, women'}], 'group_titles')), unresolved)
+    assert has(problems(lambda r: on_primary(r, groups[:1], 'group_titles')), mismatched)
     assert has(problems(lambda r: on_primary(r, [{'class_index': 0, 'category_index': 3, 'title': 'Female'}],
                                              'category_titles')), unresolved)
 
     def elsewhere(r: dict[str, Any]) -> None:
-        on_primary(r, [{'class_index': 0, 'title': 'Female'}])
+        on_primary(r, sexes)
         r['subgroup']['signals'][-1]['measure_index'] = 7
     assert has(problems(elsewhere), 'a primary measure this record does not copy')
 
