@@ -746,14 +746,36 @@ def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
     return None
 
 
+def _same(a: Any, b: Any) -> bool:
+    """JSON equality that keeps the types apart. Python's == holds for True == 1, False == 0 and
+    1 == 1.0, so a count published as `true` or `1.0` would pass a plain comparison with the value
+    it should be. Here a bool, an int, a float and a string are each equal only to their own kind,
+    at every depth. A family loaded from disk has only JSON types, and summarize() builds the same
+    ones, so a correct family compares equal."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b))
+    return bool(a == b)
+
+
+def _count(v: Any) -> bool:
+    """Whether v is a count: a non-negative int, and not a bool."""
+    return type(v) is int and v >= 0
+
+
 def check(files: dict[str, Any]) -> list[str]:
     """Producer-side check of a family; every problem found (an empty list passes). The build
-    runs it before anything is written."""
+    runs it before anything is written. Counts and versions are compared with _same and _count,
+    never with == or isinstance(..., int), so `true`, `false` or `1.0` in place of a count is
+    refused."""
     p: list[str] = []
     run = files.get('run.json')
     if not isinstance(run, dict):
         return ['run.json is missing']
-    if run.get('schema_version') != SCHEMA_VERSION:
+    if not _same(run.get('schema_version'), SCHEMA_VERSION):
         p.append('run.json schema_version is not 1')
     if not isinstance(run.get('run_id'), str) or not RUN_ID.match(run['run_id']):
         p.append('run.json run_id is malformed')
@@ -766,7 +788,7 @@ def check(files: dict[str, Any]) -> list[str]:
     for path in sorted(listed):
         if sha256(dump(files[path])) != listed[path]:
             p.append(f'{path}: sha256 does not match run.json')
-        if files[path].get('run_id') != run.get('run_id') or files[path].get('schema_version') != SCHEMA_VERSION \
+        if files[path].get('run_id') != run.get('run_id') or not _same(files[path].get('schema_version'), SCHEMA_VERSION) \
                 or files[path].get('method_version') != RS.METHOD_VERSION:
             p.append(f'{path}: from another run, schema or method version')
     if isinstance(run.get('run_id'), str) and run['run_id'][-10:] != run_identity(run, {k: files[k] for k in listed}):
@@ -776,7 +798,8 @@ def check(files: dict[str, Any]) -> list[str]:
         p.append(f'review-file keys present in records.json: {sorted(leaked)}')
     records = files['records.json'].get('records') or {}
     summary = files['summary.json']
-    if run.get('n_records') != len(records) or (summary.get('denominators') or {}).get('requested', {}).get('n') != len(records):
+    if not _same(run.get('n_records'), len(records)) \
+            or not _same((summary.get('denominators') or {}).get('requested', {}).get('n'), len(records)):
         p.append('record count differs between run.json, summary.json and records.json')
     n_detected = 0
     for n, r in records.items():
@@ -816,9 +839,9 @@ def check(files: dict[str, Any]) -> list[str]:
         p.append('run.json has no scope (frame, included, excluded)')
         return p
     ex = scope['excluded']
-    if scope['included']['n'] != len(records):
+    if not _same(scope['included']['n'], len(records)):
         p.append('scope: the included count is not the number of records')
-    if ex['n'] != len(ex['nct_ids']) or (ex['n'] > 0 and not ex['reason']):
+    if not _same(ex['n'], len(ex['nct_ids'])) or (ex['n'] > 0 and not ex['reason']):
         p.append('scope: excluded records need their ids and a stated reason')
     if set(ex['nct_ids']) & set(records):
         p.append('scope: an excluded id has a record')
@@ -826,16 +849,18 @@ def check(files: dict[str, Any]) -> list[str]:
                                   'unrequested_records': summary['tables']['retrieval_failures'].get('unrequested_records', []),
                                   'reviews_not_matched': (summary.get('reviews') or {}).get('not_matched', [])}, scope)
     for key in ('scope', 'denominators', 'metrics', 'subgroup_states', 'signals', 'tables'):
-        if recount[key] != summary.get(key):
+        if not _same(recount[key], summary.get(key)):
             p.append(f'summary.json {key} is not what records.json gives')
     den = summary.get('denominators') or {}
     for m in summary.get('metrics') or []:
         d = den.get(m.get('denominator'))
-        if d is None or not isinstance(m.get('numerator'), int) or not 0 <= m['numerator'] <= d['n'] or not m.get('definition'):
+        if d is None or not _count(m.get('numerator')) or not _count(d.get('n')) or m['numerator'] > d['n'] \
+                or not m.get('definition'):
             p.append(f"metric {m.get('id')}: unknown denominator, numerator out of range, or no definition")
     for d in RS.DIMENSIONS:
         counts = (summary.get('subgroup_states') or {}).get('by_dimension', {}).get(d) or {}
-        if set(counts) != set(RS.ALL_SUBGROUP_STATES) or sum(counts.values()) != len(records):
+        if set(counts) != set(RS.ALL_SUBGROUP_STATES) or not all(_count(v) for v in counts.values()) \
+                or sum(counts.values()) != len(records):
             p.append(f'subgroup states for {d} must count all five values and sum to the requested trials')
     return p
 

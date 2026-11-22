@@ -269,6 +269,47 @@ def test_the_check_refuses_inferences_and_rows_that_do_not_point_at_posted_rows(
     assert has(problems(lambda r: copy_failed(r, False)), 'neither copies nor records a failure')
 
 
+def test_the_check_refuses_a_count_or_version_of_the_wrong_json_type(family: dict[str, Any]) -> None:
+    # Python's == holds for True == 1 and 1 == 1.0, and isinstance(True, int) holds, so each of
+    # these passed the check before: a count or version that equals the right value but is a bool or
+    # a float. The fixture has a numerator of 1 (usable_all_four), a denominator of 1 (C2) and one
+    # excluded record, so `true` stands exactly where 1 belongs.
+    def problems(edit: Any) -> list[str]:
+        f = copy.deepcopy(family)
+        edit(f)
+        return B.check(f)
+
+    def has(found: list[str], text: str) -> bool:
+        return any(text in p for p in found)
+
+    def metric(f: dict[str, Any], mid: str) -> dict[str, Any]:
+        return next(m for m in f['summary.json']['metrics'] if m['id'] == mid)
+
+    out_of_range = 'unknown denominator, numerator out of range, or no definition'
+    def numerator(value: Any) -> Any:
+        return lambda f: metric(f, 'usable_all_four').update(numerator=value)
+    for wrong in (True, 1.0):
+        found = problems(numerator(wrong))
+        assert has(found, 'metric usable_all_four: ' + out_of_range), wrong
+        assert has(found, 'summary.json metrics is not what records.json gives'), wrong
+    assert has(problems(lambda f: f['summary.json']['denominators']['C2'].update(n=True)),
+               'summary.json denominators is not what records.json gives')
+    assert has(problems(lambda f: f['summary.json']['denominators']['C2'].update(n=True)), 'metric between_arm_analysis: ' + out_of_range)
+    assert has(problems(lambda f: f['run.json'].update(schema_version=True)), 'run.json schema_version is not 1')
+    assert has(problems(lambda f: f['summary.json'].update(schema_version=1.0)), 'from another run, schema or method version')
+    assert has(problems(lambda f: f['run.json'].update(n_records=7.0)), 'record count differs')
+    assert has(problems(lambda f: f['run.json']['scope']['excluded'].update(n=True)), 'excluded records need their ids')
+    assert has(problems(lambda f: f['run.json']['scope']['included'].update(n=7.0)), 'the included count is not the number of records')
+
+    def state_count(f: dict[str, Any]) -> None:
+        counts = f['summary.json']['subgroup_states']['by_dimension']['age']
+        k = next(k for k, v in counts.items() if v == 1)
+        counts[k] = True
+    assert has(problems(state_count), 'subgroup states for age must count all five values')
+    # The values of the right type still pass.
+    assert B.check(copy.deepcopy(family)) == []
+
+
 def test_committed_fixture_is_current(family: dict[str, Any]) -> None:
     """tests/fixtures/results_structure/ is what the site's reader tests copy; regenerate it with
     scripts/build_results_structure_fixture.py when the records or the rules change."""
