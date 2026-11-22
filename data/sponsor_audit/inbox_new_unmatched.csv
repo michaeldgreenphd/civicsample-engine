@@ -1,24 +1,24 @@
 name,n_trials,roles,agency_class,rules_sha256
-"Dr. Reddy's Laboratories Limited, India",31,"collaborator,lead",INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-"Asahi Kasei Therapeutics, Inc.",22,"collaborator,lead",INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-"Asahi Kasei Therapeutics, AB",5,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-Celon Pharma SA,2,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-"National Center for Research and Development, Poland",2,collaborator,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-Arab Resource Collective,1,lead,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-DiaMedica Therapeutics Inc,1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-Evangelisches Klinikum Bethel,1,collaborator,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-Heart and lungfoundation,1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-"James P. Rathmell, MD",1,lead,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-Lungpacer Medical Inc.,1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-MainSquare Co. (dba 'Teleo'),1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-Modern University for Business and Science,1,collaborator,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-Navy Medical Research Command (NMRC),1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-"NiKang Therapeutics, Inc.",1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-STORM Therapeutics LTD,1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-Sponsor GmbH,1,collaborator,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-U.K. Ministry of Defence Research (MoD),1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-U.S. Naval Medical Research Unit - EURAFCENT (NAMRU-EURAFCENT),1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-U.S. Naval Medical Research Unit South (NAMRU-SOUTH),1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-Walter Reed Army Institute of Research - Africa (WRAIR-Africa),1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-Walter Reed Army Institute of Research - Armed Forces Research Institute of Medical Science (WRAIR-AFRIMS),1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-William Zeitler,1,lead,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+"NanOlogy, LLC (doing business as Intryx Therapeutics, LLC)",8,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+American Association of Hip and Knee Surgeons,1,collaborator,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+"AriBio Co., Ltd.",1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+"Beijing Sino-German Union Cosmetic Institute Co., Ltd.",1,lead,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+"Cascade Pharmaceuticals, Inc",1,lead,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+"City St George's, University of London",1,lead,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+Clinsearch GmbH,1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+"Daniel Patterson, PhD, NRP",1,lead,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+"Fluidx Medical Technology, Inc.",1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+HWI pharma services GmbH,1,collaborator,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+LLS PedAL LLC,1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+"National PERT Consortium, Inc.",1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NeuroQore Inc.,1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+"Olema Oncology, Inc.",1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+Philip Spinella,1,lead,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+Rejoni Inc.,1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+Rene Kahn,1,lead,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+Rita Assi,1,lead,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+SocraMetrics GmbH,1,collaborator,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+SocraTec R&D GmbH,1,collaborator,OTHER,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+Thryv Therapeutics,1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+Université Protestant au Congo,1,collaborator,UNKNOWN,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+"Ventyx Biosciences, Inc",1,lead,INDUSTRY,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c

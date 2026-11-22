@@ -1,46 +1,46 @@
 {
-  "snapshot_date": "2026-11-15",
+  "snapshot_date": "2026-11-22",
   "parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14",
   "parser_module_version": "1.1.0",
   "counts": {
-    "n_rows": 80988,
+    "n_rows": 81094,
     "status": {
-      "reported": 80195,
+      "reported": 80301,
       "explicit_unknown_only": 66,
       "uninformative": 727,
       "not_reported": 0,
       "parse_error": 0
     },
     "outcomes": {
-      "reported_sex": 80143,
-      "reported_gender": 693,
-      "reported_both": 641,
-      "reported_any": 80195,
-      "gender_labeled_binary_only": 2995
+      "reported_sex": 80248,
+      "reported_gender": 697,
+      "reported_both": 644,
+      "reported_any": 80301,
+      "gender_labeled_binary_only": 3001
     },
     "count_of_units_primary": 107,
     "is_participant_count_false": 135,
     "declared_not_collected": 533,
     "refetched": 441,
     "uninformative_reason": {
-      "all_values_zero": 143,
       "no_measurements": 441,
       "all_values_na": 103,
+      "all_values_zero": 143,
       "no_mapped_labels": 36,
       "other": 4
     }
   },
   "vs_prior": {
     "n_rows": {
-      "now": 80988,
-      "prior": 80890,
-      "delta": 98
+      "now": 81094,
+      "prior": 80988,
+      "delta": 106
     },
     "status": {
       "reported": {
-        "now": 80195,
-        "prior": 80097,
-        "delta": 98
+        "now": 80301,
+        "prior": 80195,
+        "delta": 106
       },
       "explicit_unknown_only": {
         "now": 66,
@@ -65,29 +65,29 @@
     },
     "outcomes": {
       "reported_sex": {
-        "now": 80143,
-        "prior": 80045,
-        "delta": 98
+        "now": 80248,
+        "prior": 80143,
+        "delta": 105
       },
       "reported_gender": {
-        "now": 693,
-        "prior": 690,
-        "delta": 3
+        "now": 697,
+        "prior": 693,
+        "delta": 4
       },
       "reported_both": {
-        "now": 641,
-        "prior": 638,
+        "now": 644,
+        "prior": 641,
         "delta": 3
       },
       "reported_any": {
-        "now": 80195,
-        "prior": 80097,
-        "delta": 98
+        "now": 80301,
+        "prior": 80195,
+        "delta": 106
       },
       "gender_labeled_binary_only": {
-        "now": 2995,
-        "prior": 2994,
-        "delta": 1
+        "now": 3001,
+        "prior": 2995,
+        "delta": 6
       }
     },
     "count_of_units_primary": {
@@ -111,11 +111,6 @@
       "delta": 0
     },
     "uninformative_reason": {
-      "all_values_zero": {
-        "now": 143,
-        "prior": 143,
-        "delta": 0
-      },
       "no_measurements": {
         "now": 441,
         "prior": 441,
@@ -124,6 +119,11 @@
       "all_values_na": {
         "now": 103,
         "prior": 103,
+        "delta": 0
+      },
+      "all_values_zero": {
+        "now": 143,
+        "prior": 143,
         "delta": 0
       },
       "no_mapped_labels": {
@@ -138,24 +138,24 @@
       }
     }
   },
-  "prior_snapshot_date": "2026-11-08",
+  "prior_snapshot_date": "2026-11-15",
   "prior_parser_rules_version": "parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14",
   "structural_checks": {
     "reported_any_ge_reported_sex": {
       "pass": true,
-      "detail": "80195 >= 80143"
+      "detail": "80301 >= 80248"
     },
     "reported_any_ge_reported_gender": {
       "pass": true,
-      "detail": "80195 >= 693"
+      "detail": "80301 >= 697"
     },
     "reported_both_le_min": {
       "pass": true,
-      "detail": "641 <= min(80143, 693)"
+      "detail": "644 <= min(80248, 697)"
     },
     "status_counts_sum_to_rows": {
       "pass": true,
-      "detail": "80988 == 80988"
+      "detail": "81094 == 81094"
     },
     "every_row_has_one_status": {
       "pass": true,
@@ -195,15 +195,15 @@
     "path": "tests/sex_gender/fixtures/snapshot_baseline_2026-06-09.json",
     "is_baseline_data": false,
     "drift": [
-      "trials_with_measure: got 80988, baseline 66210 (+14778)",
-      "status.reported: got 80195, baseline 65849 (+14346)",
+      "trials_with_measure: got 81094, baseline 66210 (+14884)",
+      "status.reported: got 80301, baseline 65849 (+14452)",
       "status.uninformative: got 727, baseline 315 (+412)",
       "status.explicit_unknown_only: got 66, baseline 45 (+21)",
       "status.not_reported: got 0, baseline 1 (-1)",
-      "reported_sex_true: got 80143, baseline 65802 (+14341)",
-      "reported_gender_true: got 693, baseline 582 (+111)",
-      "reported_both_true: got 641, baseline 535 (+106)",
-      "gender_labeled_binary_only_true: got 2995, baseline 2479 (+516)"
+      "reported_sex_true: got 80248, baseline 65802 (+14446)",
+      "reported_gender_true: got 697, baseline 582 (+115)",
+      "reported_both_true: got 644, baseline 535 (+109)",
+      "gender_labeled_binary_only_true: got 3001, baseline 2479 (+522)"
     ],
     "exact_match": false
   }
