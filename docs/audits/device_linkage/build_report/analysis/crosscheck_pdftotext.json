@@ -1,0 +1,11 @@
+{
+ "n_document_versions": 1532,
+ "n_pdftotext_failed": 0,
+ "n_same_nct_set": 1532,
+ "n_with_ids_only_pypdf_found": 0,
+ "n_with_ids_only_pdftotext_found": 0,
+ "n_without_pypdf_text_where_pdftotext_found_text": 0,
+ "n_versions_with_any_nct_pypdf": 11,
+ "n_versions_with_any_nct_pdftotext": 11,
+ "differences": []
+}

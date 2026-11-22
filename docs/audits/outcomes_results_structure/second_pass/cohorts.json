@@ -1,0 +1,316 @@
+{
+ "cohorts": {
+  "T2DM: HbA1c change from baseline at 24-26 weeks": {
+   "family": "hba1c_change",
+   "n": 248,
+   "race_reported": 131,
+   "ethnicity_reported": 78,
+   "industry": 247,
+   "results_2017_or_later": 98,
+   "race_reported_results_2017_or_later": 68
+  },
+  "T2DM: HbA1c change from baseline, any time point": {
+   "family": "hba1c_change",
+   "n": 406,
+   "race_reported": 227,
+   "ethnicity_reported": 153,
+   "industry": 405,
+   "results_2017_or_later": 174,
+   "race_reported_results_2017_or_later": 132
+  },
+  "MDD (not bipolar/resistant): MADRS total change at 6-8 weeks": {
+   "family": "depression_scale",
+   "n": 31,
+   "race_reported": 22,
+   "ethnicity_reported": 19,
+   "industry": 29,
+   "results_2017_or_later": 13,
+   "race_reported_results_2017_or_later": 13
+  },
+  "Depression: MADRS total change, any time point": {
+   "family": "depression_scale",
+   "n": 82,
+   "race_reported": 59,
+   "ethnicity_reported": 43,
+   "industry": 80,
+   "results_2017_or_later": 44,
+   "race_reported_results_2017_or_later": 42
+  },
+  "Rheumatoid arthritis: ACR20 at week 24": {
+   "family": "acr20",
+   "n": 35,
+   "race_reported": 15,
+   "ethnicity_reported": 8,
+   "industry": 35,
+   "results_2017_or_later": 14,
+   "race_reported_results_2017_or_later": 8
+  },
+  "Rheumatoid arthritis: ACR20, any time point": {
+   "family": "acr20",
+   "n": 84,
+   "race_reported": 40,
+   "ethnicity_reported": 24,
+   "industry": 83,
+   "results_2017_or_later": 44,
+   "race_reported_results_2017_or_later": 33
+  },
+  "Psoriatic arthritis: ACR20 at weeks 12-24": {
+   "family": "acr20",
+   "n": 34,
+   "race_reported": 21,
+   "ethnicity_reported": 15,
+   "industry": 34,
+   "results_2017_or_later": 25,
+   "race_reported_results_2017_or_later": 20
+  },
+  "COPD: trough/pre-dose FEV1 at 12-24 weeks": {
+   "family": "fev1",
+   "n": 49,
+   "race_reported": 32,
+   "ethnicity_reported": 6,
+   "industry": 49,
+   "results_2017_or_later": 16,
+   "race_reported_results_2017_or_later": 12
+  },
+  "COPD: any FEV1 primary": {
+   "family": "fev1",
+   "n": 138,
+   "race_reported": 60,
+   "ethnicity_reported": 14,
+   "industry": 138,
+   "results_2017_or_later": 37,
+   "race_reported_results_2017_or_later": 27
+  },
+  "Asthma: any FEV1 primary": {
+   "family": "fev1",
+   "n": 91,
+   "race_reported": 61,
+   "ethnicity_reported": 34,
+   "industry": 86,
+   "results_2017_or_later": 41,
+   "race_reported_results_2017_or_later": 39
+  },
+  "Breast cancer: PFS": {
+   "family": "progression_free_survival",
+   "n": 87,
+   "race_reported": 58,
+   "ethnicity_reported": 43,
+   "industry": 76,
+   "results_2017_or_later": 57,
+   "race_reported_results_2017_or_later": 47
+  },
+  "Lung cancer: PFS": {
+   "family": "progression_free_survival",
+   "n": 112,
+   "race_reported": 87,
+   "ethnicity_reported": 65,
+   "industry": 103,
+   "results_2017_or_later": 82,
+   "race_reported_results_2017_or_later": 76
+  },
+  "Lung cancer: OS": {
+   "family": "overall_survival",
+   "n": 105,
+   "race_reported": 78,
+   "ethnicity_reported": 53,
+   "industry": 81,
+   "results_2017_or_later": 66,
+   "race_reported_results_2017_or_later": 58
+  },
+  "Multiple myeloma: PFS": {
+   "family": "progression_free_survival",
+   "n": 53,
+   "race_reported": 40,
+   "ethnicity_reported": 32,
+   "industry": 42,
+   "results_2017_or_later": 39,
+   "race_reported_results_2017_or_later": 30
+  },
+  "Oncology: PFS, all tumour types": {
+   "family": "progression_free_survival",
+   "n": 538,
+   "race_reported": 388,
+   "ethnicity_reported": 302,
+   "industry": 470,
+   "results_2017_or_later": 379,
+   "race_reported_results_2017_or_later": 325
+  },
+  "Oncology: OS, all tumour types": {
+   "family": "overall_survival",
+   "n": 419,
+   "race_reported": 290,
+   "ethnicity_reported": 194,
+   "industry": 300,
+   "results_2017_or_later": 283,
+   "race_reported_results_2017_or_later": 237
+  }
+ },
+ "existing_cohort_in_release": {
+  "definition": "study_type INTERVENTIONAL, sponsor_class INDUSTRY, phase == PHASE3, allocation RANDOMIZED, primary_completion_date starts with 2020",
+  "n": 416,
+  "race_reported": 403,
+  "ethnicity_reported": 300,
+  "primary_condition": [
+   [
+    "Oncology",
+    79
+   ],
+   [
+    "Other",
+    41
+   ],
+   [
+    "Autoimmune and Inflammatory",
+    37
+   ],
+   [
+    "Infectious Disease",
+    31
+   ],
+   [
+    "Endocrine and Metabolic",
+    30
+   ],
+   [
+    "Neurology",
+    29
+   ],
+   [
+    "Dermatology",
+    28
+   ],
+   [
+    "Respiratory",
+    25
+   ],
+   [
+    "Mental Health",
+    23
+   ],
+   [
+    "Ophthalmology",
+    18
+   ],
+   [
+    "Gastrointestinal",
+    14
+   ],
+   [
+    "Cardiovascular",
+    11
+   ],
+   [
+    "Hematology",
+    11
+   ],
+   [
+    "Kidney and Urological",
+    10
+   ],
+   [
+    "Reproductive and Sexual Health",
+    8
+   ],
+   [
+    "Rare Diseases",
+    8
+   ],
+   [
+    "Pain",
+    5
+   ],
+   [
+    "Musculoskeletal",
+    5
+   ],
+   [
+    "Transplant and Immunology",
+    3
+   ]
+  ],
+  "families": [
+   [
+    "(no family)",
+    313
+   ],
+   [
+    "overall_survival",
+    30
+   ],
+   [
+    "progression_free_survival",
+    24
+   ],
+   [
+    "hba1c_change",
+    14
+   ],
+   [
+    "seroconversion_or_titre",
+    12
+   ],
+   [
+    "pain_intensity",
+    5
+   ],
+   [
+    "body_weight_change",
+    5
+   ],
+   [
+    "fev1",
+    4
+   ],
+   [
+    "depression_scale",
+    3
+   ],
+   [
+    "acr20",
+    2
+   ],
+   [
+    "ldl_cholesterol",
+    2
+   ],
+   [
+    "objective_response_rate",
+    2
+   ]
+  ],
+  "distinct_normalised_primary_endpoint_titles": 362,
+  "status": [
+   [
+    "COMPLETED",
+    346
+   ],
+   [
+    "TERMINATED",
+    57
+   ],
+   [
+    "ACTIVE_NOT_RECRUITING",
+    13
+   ]
+  ],
+  "oncology": {
+   "n": 79,
+   "race_reported": 78,
+   "pfs": 24,
+   "os": 30,
+   "orr": 2
+  }
+ },
+ "release_interventional_by_primary_completion_year": {
+  "2015": 4242,
+  "2016": 4541,
+  "2017": 4299,
+  "2018": 4513,
+  "2019": 4706,
+  "2020": 4324,
+  "2021": 4424,
+  "2022": 4854,
+  "2023": 4780
+ },
+ "release_missing_primary_completion_date": 74
+}

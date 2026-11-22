@@ -1,0 +1,270 @@
+{
+ "what_this_is": "A check of the port: the production module and the audit scripts run on the same cached records and are compared trial by trial. It does not establish that the rules are scientifically adequate.",
+ "method_version": "results-structure-1",
+ "input": {
+  "cache": "docs/audits/outcomes_results_structure/first_pass/cache/raw_responses.jsonl.gz",
+  "cache_sha256": "a9e4577735b5f3ece14ff672a5db0f4ca70be283f237bb996c09328c3569510a",
+  "sampled_ids": 2000,
+  "records_read": 2000,
+  "ids_not_in_cache": [],
+  "cache_ids_not_sampled": []
+ },
+ "parse_failures": [],
+ "headline": [
+  {
+   "figure": "B1",
+   "audit": 1991,
+   "production": 1991,
+   "difference": 0
+  },
+  {
+   "figure": "F1",
+   "audit": 1995,
+   "production": 1995,
+   "difference": 0
+  },
+  {
+   "figure": "O1",
+   "audit": 1905,
+   "production": 1905,
+   "difference": 0
+  },
+  {
+   "figure": "A1",
+   "audit": 1932,
+   "production": 1932,
+   "difference": 0
+  },
+  {
+   "figure": "all_four_usable",
+   "audit": 1852,
+   "production": 1852,
+   "difference": 0
+  },
+  {
+   "figure": "C1",
+   "audit": 1394,
+   "production": 1394,
+   "difference": 0
+  },
+  {
+   "figure": "C2",
+   "audit": 1134,
+   "production": 1134,
+   "difference": 0
+  },
+  {
+   "figure": "between_arm_analysis_among_C2",
+   "audit": 473,
+   "production": 473,
+   "difference": 0
+  },
+  {
+   "figure": "between_arm_estimate_with_both_limits_among_C2",
+   "audit": 310,
+   "production": 310,
+   "difference": 0
+  },
+  {
+   "figure": "SG2_trials_with_a_signal",
+   "audit": 136,
+   "production": 136,
+   "difference": 0
+  }
+ ],
+ "per_trial_flags": {
+  "B1": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "F1": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "O1": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "A1": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "four_usable": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "C1": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "C2": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "S1": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "S1_between": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "S1_between_p": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "S1_between_est_ci": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "B1_reason": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "F1_reason": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "O1_reason": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "A1_reason": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "present_baselineCharacteristicsModule": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "present_participantFlowModule": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "present_outcomeMeasuresModule": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "present_adverseEventsModule": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  }
+ },
+ "per_trial_denominators": {
+  "BT": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "BT_method": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "FS": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "FS_method": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "EN": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "EN_type": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "BT_arms_sum": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "BT_vs_FS": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "BT_vs_EN": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  },
+  "FS_vs_EN": {
+   "trials_compared": 2000,
+   "trials_differing": 0,
+   "examples": []
+  }
+ },
+ "subgroup": {
+  "audit_trials_with_a_signal": 136,
+  "production_trials_with_a_signal": 136,
+  "only_in_audit": [],
+  "only_in_production": [],
+  "audit_signals": 788,
+  "production_rule_signals": 788,
+  "trials_whose_signal_lists_differ": [],
+  "n_trials_whose_signal_lists_differ": 0,
+  "published_signals_one_per_dimension": 788,
+  "rule_signals_with_a_joined_dimension": 0,
+  "published_signals_by_dimension": {
+   "age": 345,
+   "ethnicity": 4,
+   "other": 358,
+   "race": 15,
+   "sex": 66
+  },
+  "subgroup_state_by_dimension_with_no_reviews": {
+   "age": {
+    "no_explicit_subgroup_results_detected_in_reviewed_structured_fields": 1877,
+    "processing_failed_or_indeterminate": 123
+   },
+   "sex": {
+    "no_explicit_subgroup_results_detected_in_reviewed_structured_fields": 1893,
+    "processing_failed_or_indeterminate": 107
+   },
+   "race": {
+    "no_explicit_subgroup_results_detected_in_reviewed_structured_fields": 1905,
+    "processing_failed_or_indeterminate": 95
+   },
+   "ethnicity": {
+    "no_explicit_subgroup_results_detected_in_reviewed_structured_fields": 1908,
+    "processing_failed_or_indeterminate": 92
+   }
+  },
+  "study_state_with_no_reviews": {
+   "no_explicit_subgroup_results_detected_in_reviewed_structured_fields": 1864,
+   "processing_failed_or_indeterminate": 136
+  }
+ },
+ "p_value_forms_among_between_arm_analyses_on_primary_measures": {
+  "absent": 353,
+  "bound": 344,
+  "number": 853
+ }
+}

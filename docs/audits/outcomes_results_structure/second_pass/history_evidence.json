@@ -1,0 +1,16 @@
+{
+ "n": 2000,
+ "document_fetch_failures": [],
+ "documents_retrieved": 2000,
+ "start_date_missing": 0,
+ "registered_after_start": "649/2,000 (32.5%; 95% CI 30.4-34.5)",
+ "registered_on_or_before_start": "1,351/2,000 (67.5%; 95% CI 65.5-69.6)",
+ "registered_after_primary_completion": "108/2,000 (5.4%; 95% CI 4.5-6.5)",
+ "updated_after_results_first_posted": "856/2,000 (42.8%; 95% CI 40.6-45.0)",
+ "protocol_posted": "1,057/2,000 (52.9%; 95% CI 50.7-55.0)",
+ "sap_posted": "1,035/2,000 (51.8%; 95% CI 49.6-53.9)",
+ "protocol_and_sap_posted": "1,035/2,000 (51.8%; 95% CI 49.6-53.9)",
+ "protocol_posted_results_2017_or_later": "1,053/1,432 (73.5%; 95% CI 71.2-75.8)",
+ "sap_posted_results_2017_or_later": "1,033/1,432 (72.1%; 95% CI 69.8-74.4)",
+ "prospective_and_protocol_and_sap": "810/2,000 (40.5%; 95% CI 38.4-42.7)"
+}

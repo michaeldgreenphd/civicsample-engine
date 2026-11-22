@@ -84,6 +84,25 @@ def is_sex_qualified_identity_label(label: str) -> bool:
     return bool(_SEX_QUALIFIED_IDENTITY_RE.search(label))
 
 
+# ── Combined race and ethnicity dimension names ────────────────────────────
+#
+# A row label can name the one classification a combined table posts, race
+# and ethnicity together, before its value: "Race/Ethnicity: White", "Race and
+# Ethnicity : White Non-Hispanic", "Ethnicity or Race: Hispanic". The race
+# extractor removes such a prefix and keeps such a row out of its
+# ethnicity-dimension routing (race_extractor, "Race dimension named in the
+# row label" and "Ethnicity dimension named in the row label"); the ethnicity
+# extractor removes it before the vocabulary match and does not take it for
+# the ethnicity dimension (ethnicity_extractor, "Dimension wording around an
+# ethnicity label"). One definition serves both, so the two extractors read
+# the same labels as combined names: "Race" and "Ethnicity" or "Ethnic group",
+# in either order, joined by "/", "&", "and", "or" or "and/or". These are
+# pattern fragments, used inside case-insensitive patterns.
+DIMENSION_JOIN = r"(?:/|&|and\s*/\s*or\b|and\b|or\b)"
+COMBINED_DIMENSION = (r"(?:race\s*" + DIMENSION_JOIN + r"\s*(?:ethnicity|ethnic\s+group)"
+                      r"|(?:ethnicity|ethnic\s+group)\s*" + DIMENSION_JOIN + r"\s*race)")
+
+
 def clean_demographic_label(label: str) -> str:
     """Strip measurement suffixes and wrapper text from demographic labels.
 
@@ -175,9 +194,37 @@ def get_baseline_measures(study: dict) -> list:
             .get("baselineCharacteristicsModule", {})
             .get("measures", []))
 
+# The registry's whole-population baseline group. In the 2026-11-15 inputs
+# 55,810 of the 80,988 published trials post more than one baseline group,
+# and all but one end with it: the highest-numbered BG group, titled "Total"
+# (55,667), "TOTAL" (18), "Total Title" (117) or "Total~(N=...)" (7). The
+# one, NCT00453973, ends with "Pooled AF37702 Inj." and names no whole
+# population. No trial posts an exact "Total" group anywhere else.
+#
+# This read the group's id under "groupId", while the v2 API names it "id",
+# so it returned None for every registry study and each reader fell back to
+# the last measurement of a row (_get_measurement_value) and the last
+# denominator count (get_total_baseline_participants). That is the Total
+# wherever a row posts it last, as all 707,221 rows of those trials that post
+# it do (12 post none, and fall back the same way either way). It also took
+# the first group whose title is_overall_group_title accepts, and that
+# test's "overall" substring accepts arms: 23 trials post one before their
+# Total ("Tafamidis 61/80 mg Treated-Overall", "Overall BRCAm";
+# NCT01029366's "ALL Subjects" is acute lymphoblastic leukemia). Read by id,
+# those would have replaced the Total with an arm. So the last group is the
+# overall group when its title begins with "Total"; otherwise only a group
+# titled exactly as the whole population (_WHOLE_POPULATION_GROUP_TITLES)
+# is. "groupId" is still read for fixtures that post it. On the 2026-11-15
+# inputs no published block changes; a row posting its Total before another
+# group's measurement is now read at its Total.
+_WHOLE_POPULATION_GROUP_TITLES = frozenset({"total", "overall", "all participants",
+                                            "all subjects", "all patients"})
+
+
 def get_overall_group_id(study: dict) -> Optional[str]:
     """
-    Find the groupId of the 'Overall' group in baseline characteristics.
+    Find the id of the 'Overall' group in baseline characteristics (block
+    comment above).
 
     Multi-arm studies have per-arm measurements AND an Overall measurement
     in each category.  We need the Overall groupId so we can read that single
@@ -193,13 +240,23 @@ def get_overall_group_id(study: dict) -> Optional[str]:
     if len(groups) <= 1:
         return None          # single group — every measurement IS the overall
 
+    last = groups[-1]
+    if (last.get("title") or "").strip().lower().startswith("total"):
+        return last.get("id") or last.get("groupId")
     for group in groups:
-        title_lower = group.get("title", "").lower().strip()
-        if ("overall" in title_lower or
-            title_lower in {"total", "all participants", "all subjects", "all patients"}):
-            return group.get("groupId")
+        if (group.get("title") or "").strip().lower() in _WHOLE_POPULATION_GROUP_TITLES:
+            return group.get("id") or group.get("groupId")
 
     return None
+
+def is_overall_group_title(title: str) -> bool:
+    """True for a baseline group title that names the whole population: one
+    containing "overall", or exactly "total", "all participants", "all
+    subjects" or "all patients" (trimmed, case-insensitive). The test
+    get_overall_group_id applies to each group."""
+    title_lower = (title or "").lower().strip()
+    return ("overall" in title_lower or
+            title_lower in {"total", "all participants", "all subjects", "all patients"})
 
 def is_percentage_measure(measure: dict) -> bool:
     """Check if a baseline measure reports percentage values.
@@ -254,8 +311,33 @@ def get_measure_denom(measure: dict, overall_group_id: str = None) -> Optional[i
 _SD_NOTATION_RE = re.compile(r'\s*\(.*?\)\s*')
 
 
-def sum_measurements(measurements: list, overall_group_id: str = None,
-                     is_pct: bool = False, denom: int = None) -> int:
+def measurement_number(measurements: list, overall_group_id: Optional[str] = None) -> Optional[float]:
+    """The number sum_measurements reads from a row's measurements, or None
+    when there is none to read: no measurement, a null value, or a value
+    that does not parse as a number ("NA"). sum_measurements counts each of
+    those as 0; table_selection.total_class_view needs to tell them apart
+    from a posted 0.
+
+    The value is the Overall group's, else the single or last measurement
+    (_get_measurement_value), with thousands separators, "%" and a
+    "Mean (SD)" parenthetical stripped.
+    """
+    val = _get_measurement_value(measurements, overall_group_id)
+    if val is None:
+        return None
+    try:
+        val_str = str(val).replace(",", "").replace("%", "").strip()
+        # Strip Mean (SD) / CI notation: "50.3 (33.8)" → "50.3"
+        val_str = _SD_NOTATION_RE.sub('', val_str).strip()
+        if not val_str:
+            return None
+        return float(val_str)
+    except (ValueError, TypeError):
+        return None
+
+
+def sum_measurements(measurements: list, overall_group_id: Optional[str] = None,
+                     is_pct: bool = False, denom: Optional[int] = None) -> int:
     """Parse a measurement value from the API, optionally converting percentages.
 
     Handles values in "Mean (SD)" format by stripping the parenthetical part.
@@ -266,17 +348,8 @@ def sum_measurements(measurements: list, overall_group_id: str = None,
         is_pct: True if the parent measure reports percentage values
         denom: Number of participants (denominator) for percentage → count conversion
     """
-    val = _get_measurement_value(measurements, overall_group_id)
-    if val is None:
-        return 0
-    try:
-        val_str = str(val).replace(",", "").replace("%", "").strip()
-        # Strip Mean (SD) / CI notation: "50.3 (33.8)" → "50.3"
-        val_str = _SD_NOTATION_RE.sub('', val_str).strip()
-        if not val_str:
-            return 0
-        num = float(val_str)
-    except (ValueError, TypeError):
+    num = measurement_number(measurements, overall_group_id)
+    if num is None:
         return 0
 
     # Percentage → count conversion
@@ -356,6 +429,34 @@ def get_total_baseline_participants(study: dict, overall_group_id: Optional[str]
             pass
 
     return None
+
+ELIGIBILITY_SCHEMA_VERSION = "eligibility/1.0"
+
+
+def extract_eligibility(eligibility_mod: Optional[dict]) -> dict:
+    """The registry's sex/gender eligibility fields, verbatim, with absence kept.
+
+    sex                 eligibilityModule.sex as the API gives it (ALL, FEMALE,
+                        MALE) or None when the module omits it
+    gender_based        eligibilityModule.genderBased (true/false) or None
+    gender_description  eligibilityModule.genderDescription (free text) or None
+    present             which of the three keys the registry record carried, so
+                        a None can be told apart from a key that was never there
+
+    None of this is observed participant sex or gender identity; the parser
+    row (sex_gender) and the analysis block (sex_gender_analysis) never read
+    it, and tests/sex_gender_analysis/test_analysis.py pins that.
+    """
+    mod = eligibility_mod if isinstance(eligibility_mod, dict) else {}
+    keys = {"sex": "sex", "genderBased": "gender_based", "genderDescription": "gender_description"}
+    out: dict = {"schema_version": ELIGIBILITY_SCHEMA_VERSION, "sex": None, "gender_based": None,
+                 "gender_description": None, "present": []}
+    for api_key, our_key in keys.items():
+        if api_key in mod:
+            out["present"].append(our_key)
+            out[our_key] = mod.get(api_key)
+    return out
+
 
 def get_study_metadata(study: dict) -> dict:
     """Extract common study metadata."""
@@ -489,6 +590,15 @@ def get_study_metadata(study: dict) -> dict:
     std_ages = eligibility_mod.get("stdAges", [])
     gender = eligibility_mod.get("sex", "ALL")
     healthy_volunteers = eligibility_mod.get("healthyVolunteers", False)
+    # The registry's eligibility fields, verbatim and in their own namespace.
+    # eligibilityModule.sex (ALL / FEMALE / MALE) is who may enrol, not the
+    # observed sex of anyone who did; genderBased and genderDescription are
+    # the registrant's statement that eligibility is based on gender identity.
+    # The legacy "gender" key above is overwritten by the gender extractor in
+    # src/extract_all.py, so until this namespace existed the eligibility sex
+    # never reached the published records. A field the registry omits is
+    # None here, never a default: absence is recorded as absence.
+    eligibility = extract_eligibility(eligibility_mod)
 
     # Compute pediatric status from stdAges
     has_child = "CHILD" in std_ages
@@ -565,6 +675,7 @@ def get_study_metadata(study: dict) -> dict:
         "std_ages": std_ages,
         "pediatric_status": pediatric_status,
         "gender": gender,
+        "eligibility": eligibility,
         "healthy_volunteers": healthy_volunteers,
         # Time metrics
         "completion_to_report_days": completion_to_report,
@@ -579,7 +690,8 @@ def get_study_metadata(study: dict) -> dict:
         "references": references
     }
 
-def extract_demographic_breakdown(measures: list, category_type: str, overall_group_id: Optional[str] = None) -> dict:
+def extract_demographic_breakdown(measures: list, category_type: str,
+                                  overall_group_id: Optional[str] = None) -> Optional[dict]:
     """
     Extract demographic breakdown with counts and percentages.
 
@@ -589,16 +701,30 @@ def extract_demographic_breakdown(measures: list, category_type: str, overall_gr
         overall_group_id: groupId of the Overall group (from get_overall_group_id)
 
     Returns:
-        Dictionary mapping category names to {count, percent} dicts
+        Dictionary mapping category names to {count, percent} dicts, or None
+        when no measure of that type has a labelled row
     """
+    # Imported here: race_extractor imports this module at load time.
+    from src.race_extractor import is_race_table
+
     breakdown = {}
     category_lower = category_type.lower()
 
     for measure in measures:
-        title = measure.get("title", "").lower()
+        posted_title = measure.get("title", "")
+        title = posted_title.lower()
 
-        # Match the category type
-        if category_lower not in title:
+        # Match the category type. Race uses the race extractor's word rule
+        # (race_extractor.is_race_table), so raceBreakdown reads the same
+        # race-titled tables extract_race_data does (not its sex/gender-titled
+        # fallback): "Contraception History" is not a race table, "Racial
+        # Group" is. It reads the title as posted, since a camelCase title
+        # ("RaceEthnicityOther") loses its word breaks when lowercased.
+        # Ethnicity and sex keep the substring test.
+        if category_lower == "race":
+            if not is_race_table(posted_title):
+                continue
+        elif category_lower not in title:
             continue
 
         # Combined "Race/Ethnicity" tables: process for race (the race

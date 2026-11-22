@@ -1,0 +1,6 @@
+trials                          598
+posted_results                  416
+C1                              406
+C2                              406
+C2_between_arm_analysis         291
+C2_estimate_with_both_limits    258

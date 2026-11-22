@@ -1,0 +1,7657 @@
+{
+ "adverse_events": {
+  "all_groups_have_deathsNumAffected": {
+   "ci95": [
+    61.2,
+    65.4
+   ],
+   "k": 1267,
+   "n": 2000,
+   "pct": 63.4
+  },
+  "all_groups_have_deathsNumAtRisk": {
+   "ci95": [
+    61.2,
+    65.4
+   ],
+   "k": 1267,
+   "n": 2000,
+   "pct": 63.4
+  },
+  "all_groups_have_otherNumAffected": {
+   "ci95": [
+    99.6,
+    99.9
+   ],
+   "k": 1997,
+   "n": 2000,
+   "pct": 99.8
+  },
+  "all_groups_have_otherNumAtRisk": {
+   "ci95": [
+    99.2,
+    99.8
+   ],
+   "k": 1992,
+   "n": 2000,
+   "pct": 99.6
+  },
+  "all_groups_have_seriousNumAffected": {
+   "ci95": [
+    99.6,
+    99.9
+   ],
+   "k": 1997,
+   "n": 2000,
+   "pct": 99.8
+  },
+  "all_groups_have_seriousNumAtRisk": {
+   "ci95": [
+    99.3,
+    99.8
+   ],
+   "k": 1993,
+   "n": 2000,
+   "pct": 99.7
+  },
+  "assessmentType_event_rows": {
+   "distinct": 3,
+   "n": 85061,
+   "rows": [
+    {
+     "k": 65685,
+     "pct": 77.2,
+     "value": "SYSTEMATIC_ASSESSMENT"
+    },
+    {
+     "k": 17420,
+     "pct": 20.5,
+     "value": "NON_SYSTEMATIC_ASSESSMENT"
+    },
+    {
+     "k": 1956,
+     "pct": 2.3,
+     "value": "(absent)"
+    }
+   ]
+  },
+  "both": {
+   "ci95": [
+    45.6,
+    50.0
+   ],
+   "k": 956,
+   "n": 2000,
+   "pct": 47.8
+  },
+  "deaths_table_by_results_year": {
+   "2008-2012": {
+    "ci95": [
+     0.6,
+     4.8
+    ],
+    "k": 3,
+    "n": 179,
+    "pct": 1.7
+   },
+   "2013-2016": {
+    "ci95": [
+     2.7,
+     6.9
+    ],
+    "k": 17,
+    "n": 389,
+    "pct": 4.4
+   },
+   "2017-2020": {
+    "ci95": [
+     68.7,
+     75.8
+    ],
+    "k": 435,
+    "n": 601,
+    "pct": 72.4
+   },
+   "2021-2026": {
+    "ci95": [
+     96.5,
+     98.5
+    ],
+    "k": 812,
+    "n": 831,
+    "pct": 97.7
+   }
+  },
+  "description_present": {
+   "ci95": [
+    41.0,
+    45.3
+   ],
+   "k": 863,
+   "n": 2000,
+   "pct": 43.1
+  },
+  "either": {
+   "ci95": [
+    72.0,
+    75.9
+   ],
+   "k": 1480,
+   "n": 2000,
+   "pct": 74.0
+  },
+  "eventGroups_per_trial": {
+   "distinct": 6,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 878,
+     "pct": 43.9,
+     "value": "2"
+    },
+    {
+     "k": 553,
+     "pct": 27.6,
+     "value": "1"
+    },
+    {
+     "k": 255,
+     "pct": 12.8,
+     "value": "3"
+    },
+    {
+     "k": 170,
+     "pct": 8.5,
+     "value": "5+"
+    },
+    {
+     "k": 141,
+     "pct": 7.0,
+     "value": "4"
+    },
+    {
+     "k": 3,
+     "pct": 0.1,
+     "value": "0"
+    }
+   ]
+  },
+  "event_terms_per_trial": {
+   "other": {
+    "max": 738,
+    "mean": 26.162,
+    "median": 5,
+    "min": 0,
+    "n": 2000,
+    "p05": 0,
+    "p25": 0,
+    "p75": 27,
+    "p95": 117
+   },
+   "serious": {
+    "max": 768,
+    "mean": 16.369,
+    "median": 1,
+    "min": 0,
+    "n": 2000,
+    "p05": 0,
+    "p25": 0,
+    "p75": 10,
+    "p95": 86
+   }
+  },
+  "frequencyThreshold": {
+   "distinct": 23,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 1037,
+     "pct": 51.9,
+     "value": "0"
+    },
+    {
+     "k": 794,
+     "pct": 39.7,
+     "value": "5"
+    },
+    {
+     "k": 55,
+     "pct": 2.8,
+     "value": "1"
+    },
+    {
+     "k": 44,
+     "pct": 2.2,
+     "value": "2"
+    },
+    {
+     "k": 30,
+     "pct": 1.5,
+     "value": "3"
+    },
+    {
+     "k": 9,
+     "pct": 0.5,
+     "value": "4"
+    },
+    {
+     "k": 5,
+     "pct": 0.2,
+     "value": "0.5"
+    },
+    {
+     "k": 4,
+     "pct": 0.2,
+     "value": "2.5"
+    },
+    {
+     "k": 3,
+     "pct": 0.1,
+     "value": "5.0"
+    },
+    {
+     "k": 3,
+     "pct": 0.1,
+     "value": "0.05"
+    },
+    {
+     "k": 3,
+     "pct": 0.1,
+     "value": "(module absent)"
+    },
+    {
+     "k": 2,
+     "pct": 0.1,
+     "value": "4.50"
+    }
+   ]
+  },
+  "frequencyThreshold_present": {
+   "ci95": [
+    99.6,
+    99.9
+   ],
+   "k": 1997,
+   "n": 2000,
+   "pct": 99.8
+  },
+  "module_present": {
+   "ci95": [
+    99.6,
+    99.9
+   ],
+   "k": 1997,
+   "n": 2000,
+   "pct": 99.8
+  },
+  "module_present_but_no_event_rows": {
+   "ci95": [
+    24.0,
+    27.8
+   ],
+   "k": 517,
+   "n": 2000,
+   "pct": 25.9
+  },
+  "no_other_rows_and_all_groups_report_0_other_affected": {
+   "ci95": [
+    99.4,
+    100.0
+   ],
+   "k": 614,
+   "n": 614,
+   "pct": 100.0
+  },
+  "no_serious_rows_and_all_groups_report_0_serious_affected": {
+   "ci95": [
+    99.6,
+    100.0
+   ],
+   "k": 944,
+   "n": 944,
+   "pct": 100.0
+  },
+  "otherEvents_nonempty": {
+   "ci95": [
+    67.1,
+    71.1
+   ],
+   "k": 1383,
+   "n": 2000,
+   "pct": 69.2
+  },
+  "other_event_rows": {
+   "n_stat_rows": 211325,
+   "numAffected": {
+    "ci95": [
+     96.6,
+     96.7
+    ],
+    "k": 204268,
+    "n": 211325,
+    "pct": 96.7
+   },
+   "numAtRisk": {
+    "ci95": [
+     100.0,
+     100.0
+    ],
+    "k": 211325,
+    "n": 211325,
+    "pct": 100.0
+   },
+   "numEvents": {
+    "ci95": [
+     52.3,
+     52.7
+    ],
+    "k": 111022,
+    "n": 211325,
+    "pct": 52.5
+   }
+  },
+  "seriousEvents_nonempty": {
+   "ci95": [
+    50.5,
+    54.8
+   ],
+   "k": 1053,
+   "n": 2000,
+   "pct": 52.6
+  },
+  "serious_event_rows": {
+   "n_stat_rows": 115055,
+   "numAffected": {
+    "ci95": [
+     96.6,
+     96.8
+    ],
+    "k": 111264,
+    "n": 115055,
+    "pct": 96.7
+   },
+   "numAtRisk": {
+    "ci95": [
+     100.0,
+     100.0
+    ],
+    "k": 115055,
+    "n": 115055,
+    "pct": 100.0
+   },
+   "numEvents": {
+    "ci95": [
+     48.9,
+     49.5
+    ],
+    "k": 56616,
+    "n": 115055,
+    "pct": 49.2
+   }
+  },
+  "sourceVocabulary_event_rows": {
+   "distinct": 5,
+   "n": 85061,
+   "rows": [
+    {
+     "k": 57086,
+     "pct": 67.1,
+     "value": "MedDRA (any version)"
+    },
+    {
+     "k": 13645,
+     "pct": 16.0,
+     "value": "(absent)"
+    },
+    {
+     "k": 11580,
+     "pct": 13.6,
+     "value": "CTCAE (any version)"
+    },
+    {
+     "k": 2745,
+     "pct": 3.2,
+     "value": "other"
+    },
+    {
+     "k": 5,
+     "pct": 0.0,
+     "value": "SNOMED CT"
+    }
+   ]
+  },
+  "timeFrame_present": {
+   "ci95": [
+    79.3,
+    82.7
+   ],
+   "k": 1621,
+   "n": 2000,
+   "pct": 81.0
+  }
+ },
+ "analyses": {
+  "analyses_per_primary_measure_having_any": {
+   "max": 55,
+   "mean": 1.908,
+   "median": 1,
+   "min": 1,
+   "n": 1057,
+   "p05": 1,
+   "p25": 1,
+   "p75": 2,
+   "p95": 5
+  },
+  "by_phase_frame": {
+   "(blank)": {
+    "primary_analysis": {
+     "ci95": [
+      12.4,
+      26.2
+     ],
+     "k": 22,
+     "n": 120,
+     "pct": 18.3
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      37.2,
+      54.7
+     ],
+     "k": 55,
+     "n": 120,
+     "pct": 45.8
+    }
+   },
+   "EARLY_PHASE1": {
+    "primary_analysis": {
+     "ci95": [
+      10.2,
+      49.5
+     ],
+     "k": 4,
+     "n": 16,
+     "pct": 25.0
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      38.6,
+      81.5
+     ],
+     "k": 10,
+     "n": 16,
+     "pct": 62.5
+    }
+   },
+   "NA": {
+    "primary_analysis": {
+     "ci95": [
+      25.4,
+      33.0
+     ],
+     "k": 161,
+     "n": 554,
+     "pct": 29.1
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      67.2,
+      74.7
+     ],
+     "k": 394,
+     "n": 554,
+     "pct": 71.1
+    }
+   },
+   "PHASE1": {
+    "primary_analysis": {
+     "ci95": [
+      26.1,
+      41.0
+     ],
+     "k": 50,
+     "n": 151,
+     "pct": 33.1
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      81.2,
+      91.8
+     ],
+     "k": 132,
+     "n": 151,
+     "pct": 87.4
+    }
+   },
+   "PHASE1, PHASE2": {
+    "primary_analysis": {
+     "ci95": [
+      6.4,
+      18.3
+     ],
+     "k": 12,
+     "n": 109,
+     "pct": 11.0
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      57.7,
+      75.1
+     ],
+     "k": 73,
+     "n": 109,
+     "pct": 67.0
+    }
+   },
+   "PHASE2": {
+    "primary_analysis": {
+     "ci95": [
+      22.1,
+      29.7
+     ],
+     "k": 131,
+     "n": 509,
+     "pct": 25.7
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      59.8,
+      68.1
+     ],
+     "k": 326,
+     "n": 509,
+     "pct": 64.0
+    }
+   },
+   "PHASE2, PHASE3": {
+    "primary_analysis": {
+     "ci95": [
+      28.8,
+      64.5
+     ],
+     "k": 12,
+     "n": 26,
+     "pct": 46.2
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      75.9,
+      97.9
+     ],
+     "k": 24,
+     "n": 26,
+     "pct": 92.3
+    }
+   },
+   "PHASE3": {
+    "primary_analysis": {
+     "ci95": [
+      47.5,
+      58.5
+     ],
+     "k": 167,
+     "n": 315,
+     "pct": 53.0
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      83.2,
+      90.5
+     ],
+     "k": 275,
+     "n": 315,
+     "pct": 87.3
+    }
+   },
+   "PHASE4": {
+    "primary_analysis": {
+     "ci95": [
+      25.0,
+      37.7
+     ],
+     "k": 62,
+     "n": 200,
+     "pct": 31.0
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      73.4,
+      84.5
+     ],
+     "k": 159,
+     "n": 200,
+     "pct": 79.5
+    }
+   }
+  },
+  "by_results_first_post_year": {
+   "2008-2012": {
+    "primary_analysis": {
+     "ci95": [
+      32.8,
+      47.0
+     ],
+     "k": 71,
+     "n": 179,
+     "pct": 39.7
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      71.6,
+      83.6
+     ],
+     "k": 140,
+     "n": 179,
+     "pct": 78.2
+    }
+   },
+   "2013-2016": {
+    "primary_analysis": {
+     "ci95": [
+      28.4,
+      37.7
+     ],
+     "k": 128,
+     "n": 389,
+     "pct": 32.9
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      70.8,
+      79.3
+     ],
+     "k": 293,
+     "n": 389,
+     "pct": 75.3
+    }
+   },
+   "2017-2020": {
+    "primary_analysis": {
+     "ci95": [
+      29.5,
+      37.0
+     ],
+     "k": 199,
+     "n": 601,
+     "pct": 33.1
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      66.3,
+      73.6
+     ],
+     "k": 421,
+     "n": 601,
+     "pct": 70.0
+    }
+   },
+   "2021-2026": {
+    "primary_analysis": {
+     "ci95": [
+      23.9,
+      29.9
+     ],
+     "k": 223,
+     "n": 831,
+     "pct": 26.8
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      68.3,
+      74.4
+     ],
+     "k": 594,
+     "n": 831,
+     "pct": 71.5
+    }
+   }
+  },
+  "by_sponsor_class_frame": {
+   "INDUSTRY": {
+    "primary_analysis": {
+     "ci95": [
+      36.1,
+      42.4
+     ],
+     "k": 360,
+     "n": 918,
+     "pct": 39.2
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      72.6,
+      78.2
+     ],
+     "k": 693,
+     "n": 918,
+     "pct": 75.5
+    }
+   },
+   "NIH": {
+    "primary_analysis": {
+     "ci95": [
+      11.5,
+      30.0
+     ],
+     "k": 13,
+     "n": 68,
+     "pct": 19.1
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      62.0,
+      82.6
+     ],
+     "k": 50,
+     "n": 68,
+     "pct": 73.5
+    }
+   },
+   "OTHER": {
+    "primary_analysis": {
+     "ci95": [
+      20.9,
+      26.3
+     ],
+     "k": 224,
+     "n": 952,
+     "pct": 23.5
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      65.6,
+      71.5
+     ],
+     "k": 653,
+     "n": 952,
+     "pct": 68.6
+    }
+   },
+   "other classes": {
+    "primary_analysis": {
+     "ci95": [
+      27.6,
+      51.2
+     ],
+     "k": 24,
+     "n": 62,
+     "pct": 38.7
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      72.8,
+      91.0
+     ],
+     "k": 52,
+     "n": 62,
+     "pct": 83.9
+    }
+   }
+  },
+  "by_study_type": {
+   "INTERVENTIONAL": {
+    "primary_analysis": {
+     "ci95": [
+      29.8,
+      34.0
+     ],
+     "k": 600,
+     "n": 1883,
+     "pct": 31.9
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      72.0,
+      76.0
+     ],
+     "k": 1394,
+     "n": 1883,
+     "pct": 74.0
+    }
+   },
+   "OBSERVATIONAL": {
+    "primary_analysis": {
+     "ci95": [
+      12.0,
+      25.9
+     ],
+     "k": 21,
+     "n": 117,
+     "pct": 17.9
+    },
+    "two_plus_group_primary": {
+     "ci95": [
+      37.4,
+      55.2
+     ],
+     "k": 54,
+     "n": 117,
+     "pct": 46.2
+    }
+   }
+  },
+  "ciNumSides": {
+   "distinct": 3,
+   "n": 2017,
+   "rows": [
+    {
+     "k": 1263,
+     "pct": 62.6,
+     "value": "TWO_SIDED"
+    },
+    {
+     "k": 731,
+     "pct": 36.2,
+     "value": "(absent)"
+    },
+    {
+     "k": 23,
+     "pct": 1.1,
+     "value": "ONE_SIDED"
+    }
+   ]
+  },
+  "ciPctValue": {
+   "distinct": 16,
+   "n": 2017,
+   "rows": [
+    {
+     "k": 921,
+     "pct": 45.7,
+     "value": "95"
+    },
+    {
+     "k": 817,
+     "pct": 40.5,
+     "value": "(absent)"
+    },
+    {
+     "k": 239,
+     "pct": 11.8,
+     "value": "90"
+    },
+    {
+     "k": 11,
+     "pct": 0.5,
+     "value": "80"
+    },
+    {
+     "k": 5,
+     "pct": 0.2,
+     "value": "97.5"
+    },
+    {
+     "k": 4,
+     "pct": 0.2,
+     "value": "97.3"
+    },
+    {
+     "k": 4,
+     "pct": 0.2,
+     "value": "97.46"
+    },
+    {
+     "k": 4,
+     "pct": 0.2,
+     "value": "98"
+    }
+   ]
+  },
+  "combo_presence_among_primary_analyses": {
+   "estimate(paramType+paramValue)": {
+    "ci95": [
+     64.5,
+     68.7
+    ],
+    "k": 1344,
+    "n": 2017,
+    "pct": 66.6
+   },
+   "estimate+both_CI_limits": {
+    "ci95": [
+     53.1,
+     57.4
+    ],
+    "k": 1114,
+    "n": 2017,
+    "pct": 55.2
+   },
+   "neither_pValue_nor_estimate": {
+    "ci95": [
+     0.1,
+     0.5
+    ],
+    "k": 4,
+    "n": 2017,
+    "pct": 0.2
+   },
+   "pValue_only_no_estimate": {
+    "ci95": [
+     31.1,
+     35.3
+    ],
+    "k": 669,
+    "n": 2017,
+    "pct": 33.2
+   },
+   "pValue_or_estimate": {
+    "ci95": [
+     99.5,
+     99.9
+    ],
+    "k": 2013,
+    "n": 2017,
+    "pct": 99.8
+   }
+  },
+  "estimate_paramType_top20": {
+   "distinct": 250,
+   "n": 2017,
+   "rows": [
+    {
+     "k": 669,
+     "pct": 33.2,
+     "value": "(absent)"
+    },
+    {
+     "k": 181,
+     "pct": 9.0,
+     "value": "Mean Difference (Final Values)"
+    },
+    {
+     "k": 144,
+     "pct": 7.1,
+     "value": "LS Mean Difference"
+    },
+    {
+     "k": 89,
+     "pct": 4.4,
+     "value": "Odds Ratio (OR)"
+    },
+    {
+     "k": 78,
+     "pct": 3.9,
+     "value": "Mean Difference (Net)"
+    },
+    {
+     "k": 64,
+     "pct": 3.2,
+     "value": "Hazard Ratio (HR)"
+    },
+    {
+     "k": 40,
+     "pct": 2.0,
+     "value": "Difference in percentage of participants"
+    },
+    {
+     "k": 37,
+     "pct": 1.8,
+     "value": "Ratio"
+    },
+    {
+     "k": 32,
+     "pct": 1.6,
+     "value": "Difference in Percent"
+    },
+    {
+     "k": 19,
+     "pct": 0.9,
+     "value": "Slope"
+    },
+    {
+     "k": 17,
+     "pct": 0.8,
+     "value": "Correlation Contingency Coefficient"
+    },
+    {
+     "k": 15,
+     "pct": 0.7,
+     "value": "Geometric Mean Ratio"
+    },
+    {
+     "k": 15,
+     "pct": 0.7,
+     "value": "Risk Difference (RD)"
+    },
+    {
+     "k": 14,
+     "pct": 0.7,
+     "value": "GLS Mean Ratio"
+    },
+    {
+     "k": 13,
+     "pct": 0.6,
+     "value": "Difference"
+    },
+    {
+     "k": 13,
+     "pct": 0.6,
+     "value": "Adjusted Mean Difference"
+    },
+    {
+     "k": 13,
+     "pct": 0.6,
+     "value": "LSM difference"
+    },
+    {
+     "k": 12,
+     "pct": 0.6,
+     "value": "Ratio of adjusted geometric means"
+    },
+    {
+     "k": 12,
+     "pct": 0.6,
+     "value": "Hazard Ratio, log"
+    },
+    {
+     "k": 11,
+     "pct": 0.5,
+     "value": "Difference in percentage"
+    },
+    {
+     "k": 11,
+     "pct": 0.5,
+     "value": "Median Difference (Final Values)"
+    }
+   ]
+  },
+  "estimate_paramType_top20_casefolded": {
+   "distinct": 215,
+   "n": 2017,
+   "rows": [
+    {
+     "k": 669,
+     "pct": 33.2,
+     "value": "(absent)"
+    },
+    {
+     "k": 181,
+     "pct": 9.0,
+     "value": "mean difference final values"
+    },
+    {
+     "k": 146,
+     "pct": 7.2,
+     "value": "ls mean difference"
+    },
+    {
+     "k": 89,
+     "pct": 4.4,
+     "value": "odds ratio or"
+    },
+    {
+     "k": 78,
+     "pct": 3.9,
+     "value": "mean difference net"
+    },
+    {
+     "k": 64,
+     "pct": 3.2,
+     "value": "hazard ratio hr"
+    },
+    {
+     "k": 40,
+     "pct": 2.0,
+     "value": "difference in percentage of participants"
+    },
+    {
+     "k": 39,
+     "pct": 1.9,
+     "value": "ratio"
+    },
+    {
+     "k": 34,
+     "pct": 1.7,
+     "value": "difference in percent"
+    },
+    {
+     "k": 19,
+     "pct": 0.9,
+     "value": "geometric mean ratio"
+    },
+    {
+     "k": 19,
+     "pct": 0.9,
+     "value": "adjusted mean difference"
+    },
+    {
+     "k": 19,
+     "pct": 0.9,
+     "value": "slope"
+    },
+    {
+     "k": 18,
+     "pct": 0.9,
+     "value": "difference in percentage"
+    },
+    {
+     "k": 18,
+     "pct": 0.9,
+     "value": "correlation contingency coefficient"
+    },
+    {
+     "k": 17,
+     "pct": 0.8,
+     "value": "gmt ratio"
+    },
+    {
+     "k": 16,
+     "pct": 0.8,
+     "value": "gls mean ratio"
+    },
+    {
+     "k": 16,
+     "pct": 0.8,
+     "value": "geometric mean ratio %"
+    },
+    {
+     "k": 15,
+     "pct": 0.7,
+     "value": "risk difference rd"
+    },
+    {
+     "k": 14,
+     "pct": 0.7,
+     "value": "lsm difference"
+    },
+    {
+     "k": 13,
+     "pct": 0.6,
+     "value": "difference"
+    },
+    {
+     "k": 12,
+     "pct": 0.6,
+     "value": "least squares mean difference"
+    }
+   ]
+  },
+  "field_presence_among_primary_analyses": {
+   "ciLowerLimit": {
+    "ci95": [
+     53.7,
+     58.0
+    ],
+    "k": 1127,
+    "n": 2017,
+    "pct": 55.9
+   },
+   "ciNumSides": {
+    "ci95": [
+     61.6,
+     65.8
+    ],
+    "k": 1286,
+    "n": 2017,
+    "pct": 63.8
+   },
+   "ciPctValue": {
+    "ci95": [
+     57.3,
+     61.6
+    ],
+    "k": 1200,
+    "n": 2017,
+    "pct": 59.5
+   },
+   "ciUpperLimit": {
+    "ci95": [
+     53.5,
+     57.8
+    ],
+    "k": 1123,
+    "n": 2017,
+    "pct": 55.7
+   },
+   "dispersionType": {
+    "ci95": [
+     15.0,
+     18.2
+    ],
+    "k": 333,
+    "n": 2017,
+    "pct": 16.5
+   },
+   "dispersionValue": {
+    "ci95": [
+     15.0,
+     18.2
+    ],
+    "k": 333,
+    "n": 2017,
+    "pct": 16.5
+   },
+   "estimateComment": {
+    "ci95": [
+     20.0,
+     23.6
+    ],
+    "k": 439,
+    "n": 2017,
+    "pct": 21.8
+   },
+   "groupDescription": {
+    "ci95": [
+     50.7,
+     55.1
+    ],
+    "k": 1067,
+    "n": 2017,
+    "pct": 52.9
+   },
+   "groupIds": {
+    "ci95": [
+     99.8,
+     100.0
+    ],
+    "k": 2017,
+    "n": 2017,
+    "pct": 100.0
+   },
+   "nonInferiorityComment": {
+    "ci95": [
+     24.2,
+     28.0
+    ],
+    "k": 525,
+    "n": 2017,
+    "pct": 26.0
+   },
+   "nonInferiorityType": {
+    "ci95": [
+     99.8,
+     100.0
+    ],
+    "k": 2017,
+    "n": 2017,
+    "pct": 100.0
+   },
+   "pValue": {
+    "ci95": [
+     75.9,
+     79.5
+    ],
+    "k": 1569,
+    "n": 2017,
+    "pct": 77.8
+   },
+   "pValueComment": {
+    "ci95": [
+     23.6,
+     27.4
+    ],
+    "k": 514,
+    "n": 2017,
+    "pct": 25.5
+   },
+   "paramType": {
+    "ci95": [
+     64.7,
+     68.9
+    ],
+    "k": 1348,
+    "n": 2017,
+    "pct": 66.8
+   },
+   "paramValue": {
+    "ci95": [
+     64.5,
+     68.7
+    ],
+    "k": 1344,
+    "n": 2017,
+    "pct": 66.6
+   },
+   "statisticalComment": {
+    "ci95": [
+     12.0,
+     15.0
+    ],
+    "k": 271,
+    "n": 2017,
+    "pct": 13.4
+   },
+   "statisticalMethod": {
+    "ci95": [
+     79.5,
+     83.0
+    ],
+    "k": 1640,
+    "n": 2017,
+    "pct": 81.3
+   },
+   "testedNonInferiority": {
+    "ci95": [
+     22.1,
+     25.9
+    ],
+    "k": 483,
+    "n": 2017,
+    "pct": 23.9
+   }
+  },
+  "measures_with_analysis_by_type": {
+   "OTHER_PRE_SPECIFIED": {
+    "ci95": [
+     6.0,
+     10.3
+    ],
+    "k": 48,
+    "n": 610,
+    "pct": 7.9
+   },
+   "POST_HOC": {
+    "ci95": [
+     41.0,
+     65.1
+    ],
+    "k": 33,
+    "n": 62,
+    "pct": 53.2
+   },
+   "PRIMARY": {
+    "ci95": [
+     22.7,
+     25.3
+    ],
+    "k": 1057,
+    "n": 4408,
+    "pct": 24.0
+   },
+   "SECONDARY": {
+    "ci95": [
+     18.6,
+     20.0
+    ],
+    "k": 2092,
+    "n": 10842,
+    "pct": 19.3
+   }
+  },
+  "n_groups_compared": {
+   "distinct": 4,
+   "n": 2017,
+   "rows": [
+    {
+     "k": 1513,
+     "pct": 75.0,
+     "value": "2"
+    },
+    {
+     "k": 423,
+     "pct": 21.0,
+     "value": "1"
+    },
+    {
+     "k": 57,
+     "pct": 2.8,
+     "value": "3"
+    },
+    {
+     "k": 24,
+     "pct": 1.2,
+     "value": "4+"
+    }
+   ]
+  },
+  "n_primary_analyses": 2017,
+  "nonInferiorityType": {
+   "distinct": 8,
+   "n": 2017,
+   "rows": [
+    {
+     "k": 658,
+     "pct": 32.6,
+     "value": "SUPERIORITY_OR_OTHER"
+    },
+    {
+     "k": 650,
+     "pct": 32.2,
+     "value": "SUPERIORITY"
+    },
+    {
+     "k": 355,
+     "pct": 17.6,
+     "value": "OTHER"
+    },
+    {
+     "k": 135,
+     "pct": 6.7,
+     "value": "EQUIVALENCE"
+    },
+    {
+     "k": 101,
+     "pct": 5.0,
+     "value": "NON_INFERIORITY_OR_EQUIVALENCE"
+    },
+    {
+     "k": 55,
+     "pct": 2.7,
+     "value": "SUPERIORITY_OR_OTHER_LEGACY"
+    },
+    {
+     "k": 42,
+     "pct": 2.1,
+     "value": "NON_INFERIORITY"
+    },
+    {
+     "k": 21,
+     "pct": 1.0,
+     "value": "NON_INFERIORITY_OR_EQUIVALENCE_LEGACY"
+    }
+   ]
+  },
+  "pValue_form": {
+   "distinct": 4,
+   "n": 2017,
+   "rows": [
+    {
+     "k": 1001,
+     "pct": 49.6,
+     "value": "plain number"
+    },
+    {
+     "k": 452,
+     "pct": 22.4,
+     "value": "upper bound (<, <=)"
+    },
+    {
+     "k": 448,
+     "pct": 22.2,
+     "value": "(absent)"
+    },
+    {
+     "k": 116,
+     "pct": 5.8,
+     "value": "lower bound or = (>, >=, =)"
+    }
+   ]
+  },
+  "primary_measures_with_analysis": {
+   "of_all_primary_measures": {
+    "ci95": [
+     22.7,
+     25.3
+    ],
+    "k": 1057,
+    "n": 4408,
+    "pct": 24.0
+   },
+   "of_primary_measures_with_2plus_groups": {
+    "ci95": [
+     28.4,
+     31.6
+    ],
+    "k": 950,
+    "n": 3170,
+    "pct": 30.0
+   }
+  },
+  "statisticalMethod_top15": {
+   "distinct": 133,
+   "n": 2017,
+   "rows": [
+    {
+     "k": 377,
+     "pct": 18.7,
+     "value": "(absent)"
+    },
+    {
+     "k": 308,
+     "pct": 15.3,
+     "value": "Mixed Models Analysis"
+    },
+    {
+     "k": 141,
+     "pct": 7.0,
+     "value": "ANCOVA"
+    },
+    {
+     "k": 141,
+     "pct": 7.0,
+     "value": "t-test, 2 sided"
+    },
+    {
+     "k": 139,
+     "pct": 6.9,
+     "value": "ANOVA"
+    },
+    {
+     "k": 79,
+     "pct": 3.9,
+     "value": "Regression, Linear"
+    },
+    {
+     "k": 70,
+     "pct": 3.5,
+     "value": "Fisher Exact"
+    },
+    {
+     "k": 67,
+     "pct": 3.3,
+     "value": "Spearman Correlation Coefficient"
+    },
+    {
+     "k": 64,
+     "pct": 3.2,
+     "value": "Log Rank"
+    },
+    {
+     "k": 63,
+     "pct": 3.1,
+     "value": "Chi-squared"
+    },
+    {
+     "k": 56,
+     "pct": 2.8,
+     "value": "Pearson Correlation Coefficient"
+    },
+    {
+     "k": 53,
+     "pct": 2.6,
+     "value": "Regression, Logistic"
+    },
+    {
+     "k": 38,
+     "pct": 1.9,
+     "value": "Cochran-Mantel-Haenszel"
+    },
+    {
+     "k": 36,
+     "pct": 1.8,
+     "value": "Wilcoxon (Mann-Whitney)"
+    },
+    {
+     "k": 34,
+     "pct": 1.7,
+     "value": "t-test, 1 sided"
+    },
+    {
+     "k": 32,
+     "pct": 1.6,
+     "value": "Miettinen & Nurminen"
+    }
+   ]
+  },
+  "trial_level_among_trials_with_primary_analysis": {
+   "has_any_SUPERIORITY*_type(incl. _OR_OTHER, legacy)": {
+    "ci95": [
+     67.2,
+     74.3
+    ],
+    "k": 440,
+    "n": 621,
+    "pct": 70.9
+   },
+   "has_estimate": {
+    "ci95": [
+     62.2,
+     69.6
+    ],
+    "k": 410,
+    "n": 621,
+    "pct": 66.0
+   },
+   "has_estimate_with_both_CI_limits": {
+    "ci95": [
+     55.0,
+     62.7
+    ],
+    "k": 366,
+    "n": 621,
+    "pct": 58.9
+   },
+   "has_non_inferiority_or_equivalence_type": {
+    "ci95": [
+     13.3,
+     19.0
+    ],
+    "k": 99,
+    "n": 621,
+    "pct": 15.9
+   },
+   "has_pValue": {
+    "ci95": [
+     79.1,
+     85.1
+    ],
+    "k": 511,
+    "n": 621,
+    "pct": 82.3
+   },
+   "has_statisticalMethod": {
+    "ci95": [
+     83.9,
+     89.2
+    ],
+    "k": 539,
+    "n": 621,
+    "pct": 86.8
+   },
+   "has_type_SUPERIORITY_exactly": {
+    "ci95": [
+     33.6,
+     41.2
+    ],
+    "k": 232,
+    "n": 621,
+    "pct": 37.4
+   }
+  },
+  "trial_level_of_all_sampled": {
+   "primary_analysis_with_estimate_and_both_CI_limits": {
+    "ci95": [
+     16.7,
+     20.1
+    ],
+    "k": 366,
+    "n": 2000,
+    "pct": 18.3
+   },
+   "primary_analysis_with_pValue": {
+    "ci95": [
+     23.7,
+     27.5
+    ],
+    "k": 511,
+    "n": 2000,
+    "pct": 25.6
+   }
+  },
+  "trials_with_any_measure_analysis": {
+   "ci95": [
+    31.2,
+    35.3
+   ],
+   "k": 664,
+   "n": 2000,
+   "pct": 33.2
+  },
+  "trials_with_primary_analysis": {
+   "of_all_sampled": {
+    "ci95": [
+     29.1,
+     33.1
+    ],
+    "k": 621,
+    "n": 2000,
+    "pct": 31.1
+   },
+   "of_trials_with_2plus_group_primary": {
+    "ci95": [
+     36.0,
+     41.0
+    ],
+    "k": 557,
+    "n": 1448,
+    "pct": 38.5
+   },
+   "of_trials_with_posted_PRIMARY_data": {
+    "ci95": [
+     30.4,
+     34.6
+    ],
+    "k": 621,
+    "n": 1915,
+    "pct": 32.4
+   },
+   "of_trials_with_single_group_primary_only": {
+    "ci95": [
+     9.2,
+     14.5
+    ],
+    "k": 64,
+    "n": 552,
+    "pct": 11.6
+   }
+  }
+ },
+ "baseline": {
+  "api_baseline_measure_titles": {
+   "age": {
+    "ci95": [
+     99.8,
+     100.0
+    ],
+    "k": 2000,
+    "n": 2000,
+    "pct": 100.0
+   },
+   "ethnicity (title contains ethnic)": {
+    "ci95": [
+     52.4,
+     56.8
+    ],
+    "k": 1092,
+    "n": 2000,
+    "pct": 54.6
+   },
+   "race (title contains race)": {
+    "ci95": [
+     64.0,
+     68.1
+    ],
+    "k": 1322,
+    "n": 2000,
+    "pct": 66.1
+   },
+   "region of enrollment": {
+    "ci95": [
+     54.1,
+     58.5
+    ],
+    "k": 1126,
+    "n": 2000,
+    "pct": 56.3
+   },
+   "sex/gender": {
+    "ci95": [
+     99.8,
+     100.0
+    ],
+    "k": 2000,
+    "n": 2000,
+    "pct": 100.0
+   }
+  },
+  "api_measure_Race_and_Ethnicity_Not_Collected": {
+   "ci95": [
+    6.6,
+    9.0
+   ],
+   "k": 154,
+   "n": 2000,
+   "pct": 7.7
+  },
+  "api_only_race_measure_titles": {
+   "distinct": 4,
+   "n": 167,
+   "rows": [
+    {
+     "k": 154,
+     "pct": 92.2,
+     "value": "Race and Ethnicity Not Collected"
+    },
+    {
+     "k": 10,
+     "pct": 6.0,
+     "value": "Race/Ethnicity, Customized"
+    },
+    {
+     "k": 2,
+     "pct": 1.2,
+     "value": "Race (NIH/OMB)"
+    },
+    {
+     "k": 1,
+     "pct": 0.6,
+     "value": "Race/ethnicity"
+    }
+   ]
+  },
+  "baseline_denom_units": {
+   "distinct": 12,
+   "n": 2014,
+   "rows": [
+    {
+     "k": 2000,
+     "pct": 99.3,
+     "value": "participants"
+    },
+    {
+     "k": 3,
+     "pct": 0.1,
+     "value": "eyes"
+    },
+    {
+     "k": 2,
+     "pct": 0.1,
+     "value": "lesions"
+    },
+    {
+     "k": 1,
+     "pct": 0.0,
+     "value": "surgeries"
+    },
+    {
+     "k": 1,
+     "pct": 0.0,
+     "value": "wounds"
+    },
+    {
+     "k": 1,
+     "pct": 0.0,
+     "value": "encounters"
+    },
+    {
+     "k": 1,
+     "pct": 0.0,
+     "value": "lvef 3 measures per patient"
+    },
+    {
+     "k": 1,
+     "pct": 0.0,
+     "value": "study eyes"
+    }
+   ]
+  },
+  "baseline_over_started_when_different": {
+   "max": 12.167,
+   "mean": 1.135,
+   "median": 0.954,
+   "min": 0.0,
+   "n": 415,
+   "p05": 0.519,
+   "p25": 0.862,
+   "p75": 0.988,
+   "p95": 2.207
+  },
+  "baseline_total_method": {
+   "distinct": 3,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 1382,
+     "pct": 69.1,
+     "value": "group titled Total"
+    },
+    {
+     "k": 617,
+     "pct": 30.9,
+     "value": "single group"
+    },
+    {
+     "k": 1,
+     "pct": 0.1,
+     "value": "last group equals the sum of the others (untitled total)"
+    }
+   ]
+  },
+  "baseline_total_over_enrollment_actual": {
+   "n": 2000,
+   "rows": [
+    {
+     "k": 31,
+     "pct": 1.6,
+     "value": "<0.50"
+    },
+    {
+     "k": 105,
+     "pct": 5.2,
+     "value": "0.50-<0.80"
+    },
+    {
+     "k": 162,
+     "pct": 8.1,
+     "value": "0.80-<0.95"
+    },
+    {
+     "k": 234,
+     "pct": 11.7,
+     "value": "0.95-<1.00"
+    },
+    {
+     "k": 1448,
+     "pct": 72.4,
+     "value": "=1.00"
+    },
+    {
+     "k": 4,
+     "pct": 0.2,
+     "value": ">1.00-1.05"
+    },
+    {
+     "k": 9,
+     "pct": 0.5,
+     "value": ">1.05-1.50"
+    },
+    {
+     "k": 7,
+     "pct": 0.3,
+     "value": ">1.50"
+    }
+   ],
+   "summary": {
+    "max": 1037.667,
+    "mean": 1.496,
+    "median": 1.0,
+    "min": 0.0,
+    "n": 2000,
+    "p05": 0.75,
+    "p25": 0.996,
+    "p75": 1.0,
+    "p95": 1.0
+   }
+  },
+  "baseline_total_parsable": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "baseline_vs_flow_STARTED": {
+   "distinct": 3,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 1585,
+     "pct": 79.2,
+     "value": "equal"
+    },
+    {
+     "k": 371,
+     "pct": 18.6,
+     "value": "baseline_smaller"
+    },
+    {
+     "k": 44,
+     "pct": 2.2,
+     "value": "baseline_larger"
+    }
+   ]
+  },
+  "enrollment_actual_vs_flow_STARTED": {
+   "distinct": 3,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 1736,
+     "pct": 86.8,
+     "value": "equal"
+    },
+    {
+     "k": 237,
+     "pct": 11.8,
+     "value": "enrollment_larger"
+    },
+    {
+     "k": 27,
+     "pct": 1.4,
+     "value": "enrollment_smaller"
+    }
+   ]
+  },
+  "enrollment_actual_zero_or_missing": 0,
+  "enrollment_type": {
+   "distinct": 1,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 2000,
+     "pct": 100.0,
+     "value": "ACTUAL"
+    }
+   ]
+  },
+  "frame_enrollment_equals_api_enrollment": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "frame_race_reported_vs_api_race_title": {
+   "api_only": 167,
+   "both": 1155,
+   "frame_only": 0,
+   "n": 2000,
+   "neither": 678
+  },
+  "measure_level_populationDescription_present_any": {
+   "ci95": [
+    13.2,
+    16.3
+   ],
+   "k": 293,
+   "n": 2000,
+   "pct": 14.7
+  },
+  "pd_present_by_baseline_vs_started": {
+   "different": {
+    "ci95": [
+     45.3,
+     54.9
+    ],
+    "k": 208,
+    "n": 415,
+    "pct": 50.1
+   },
+   "equal": {
+    "ci95": [
+     26.9,
+     31.4
+    ],
+    "k": 461,
+    "n": 1585,
+    "pct": 29.1
+   }
+  },
+  "populationDescription_distinct": 640,
+  "populationDescription_present": {
+   "ci95": [
+    31.4,
+    35.5
+   ],
+   "k": 669,
+   "n": 2000,
+   "pct": 33.5
+  },
+  "populationDescription_sample30": [
+   {
+    "nct_id": "NCT03216954",
+    "text": "Completing subjects."
+   },
+   {
+    "nct_id": "NCT03531073",
+    "text": "300 patients with all follow up analysed"
+   },
+   {
+    "nct_id": "NCT02675114",
+    "text": "As Treated"
+   },
+   {
+    "nct_id": "NCT06351371",
+    "text": "Patients who were eligible, started protocol therapy, and had mutation status confirmed at the analysis time were the analyzable patients"
+   },
+   {
+    "nct_id": "NCT00369590",
+    "text": "16 patients were anaplastic gliomas and 42 were glioblastomas all underwent central pathologic review"
+   },
+   {
+    "nct_id": "NCT02588664",
+    "text": "Subsequent events (i.e. secondary stroke events) were excluded within the study period."
+   },
+   {
+    "nct_id": "NCT06681909",
+    "text": "All enrolled participants who completed baseline were assessed."
+   },
+   {
+    "nct_id": "NCT05458011",
+    "text": "The intent-to-treat (ITT) analysis set included all randomized participants."
+   },
+   {
+    "nct_id": "NCT03722810",
+    "text": "As per assignment in Participant Flow."
+   },
+   {
+    "nct_id": "NCT01957579",
+    "text": "All patients who received at least 1 dose of MEDI-551."
+   },
+   {
+    "nct_id": "NCT00960401",
+    "text": "Age 60 years or younger at time of radiatiion to chest wall. All subjects had radiation at least 5 years prior to enrollment. Patients with clinical symtoms of CAD were excluded."
+   },
+   {
+    "nct_id": "NCT02388724",
+    "text": "Randomized set included all randomized participants."
+   },
+   {
+    "nct_id": "NCT03177395",
+    "text": "All 24 participants randomised to the study. All participants received the full dose of PP100-01 according to the allocated dosing cohort where randomised to PP100-01 treatment and all participants received as a minimum 12 hours of NAC treatment (loading dose, plus further 10 hours). Total dose w..."
+   },
+   {
+    "nct_id": "NCT01769573",
+    "text": "The trial completed and reached its goal without needing to enroll into the 10,000 TCID50 group."
+   },
+   {
+    "nct_id": "NCT02394925",
+    "text": "All subjects that were dispensed the study lens."
+   },
+   {
+    "nct_id": "NCT02209454",
+    "text": "Twenty-six (26) subjects were randomized (14 male and 12 female) for 24 to complete the study. A total of 25 subjects (13 male and 12 female) completed the study. NOTE: Treatments were administered in a crossover manner, with the same population but one healthy subjects being exposed to the Refer..."
+   },
+   {
+    "nct_id": "NCT03801369",
+    "text": "No participants were enrolled in Arms II - IV."
+   },
+   {
+    "nct_id": "NCT02748356",
+    "text": "6 children with Spina Bifida, 1 child SCI"
+   },
+   {
+    "nct_id": "NCT03661528",
+    "text": "Measured in the Intent-to-Treat Population (ITT), Extended Population, which included all randomized participants according to the randomized treatment."
+   },
+   {
+    "nct_id": "NCT01537042",
+    "text": "The baseline analysis population consisted of the Safety Set (SS), which is all subjects who were randomized and had at least 1 patch applied during the Treatment Period."
+   },
+   {
+    "nct_id": "NCT05229146",
+    "text": "24 dyads (24 mothers of children 5-10 and reported on their n=24 children). Mothers reported demographic data for themselves and their children."
+   },
+   {
+    "nct_id": "NCT04044716",
+    "text": "No baseline demographic information was gathered on participants in the Nurses arm, so those participants are not included in this section."
+   },
+   {
+    "nct_id": "NCT01311895",
+    "text": "The discrepancy between the number of patients enrolled and randomized and those included in analysis is due to the following.\n\nH2O group: never given IV opioids (2), received ketorolac or additional opioids within the 60 min (7).\n\n1+1 group: missing data (3), didn't receive 2nd dose within 60 mi..."
+   },
+   {
+    "nct_id": "NCT01894516",
+    "text": "Safety population included all participants who were randomized and received at least one dose of study medication."
+   },
+   {
+    "nct_id": "NCT00780676",
+    "text": "Individuals who were positive for more than one predictor were assigned to the marker arm for which they had the highest percentile positivity."
+   },
+   {
+    "nct_id": "NCT03980808",
+    "text": "Adults who are Deaf and whose primary language is Americal Sign Language (ASL), some with a diabetes diagnosis and some without. Participants were randomly assigned to either an intervention group or a control group."
+   },
+   {
+    "nct_id": "NCT03932331",
+    "text": "The Safety analysis set included all participants who received at least 1 dose of acalabrutinib. A total of 105 unique participants were enrolled in the study."
+   },
+   {
+    "nct_id": "NCT03169894",
+    "text": "Safety Analysis Set"
+   },
+   {
+    "nct_id": "NCT05903495",
+    "text": "Only one participant enrolled in the study; assigned to the DBS-ON Only arm. No additional participants were enrolled."
+   },
+   {
+    "nct_id": "NCT01919801",
+    "text": "Intent-to-treat (ITT) population included all randomized participants."
+   }
+  ],
+  "populationDescription_tags": {
+   "n": 669,
+   "rows": [
+    {
+     "k": 78,
+     "pct": 11.7,
+     "value": "intent-to-treat / ITT / mITT"
+    },
+    {
+     "k": 49,
+     "pct": 7.3,
+     "value": "full analysis set / FAS"
+    },
+    {
+     "k": 109,
+     "pct": 16.3,
+     "value": "safety population / set"
+    },
+    {
+     "k": 174,
+     "pct": 26.0,
+     "value": "all randomized"
+    },
+    {
+     "k": 142,
+     "pct": 21.2,
+     "value": "all enrolled"
+    },
+    {
+     "k": 239,
+     "pct": 35.7,
+     "value": "treated / received >=1 dose"
+    },
+    {
+     "k": 12,
+     "pct": 1.8,
+     "value": "per-protocol / evaluable"
+    },
+    {
+     "k": 56,
+     "pct": 8.4,
+     "value": "completers / completed"
+    },
+    {
+     "k": 66,
+     "pct": 9.9,
+     "value": "withdrew / excluded / lost / missing explained"
+    },
+    {
+     "k": 145,
+     "pct": 21.7,
+     "value": "analyzed / analysis population (generic)"
+    },
+    {
+     "k": 121,
+     "pct": 18.1,
+     "value": "(no tag matched)"
+    }
+   ]
+  },
+  "ratio_above_1_5": [
+   {
+    "baseline_groups": [
+     "T+OFS",
+     "E+OFS",
+     "Total"
+    ],
+    "baseline_total": 5320,
+    "enrollment_actual": 2672,
+    "flow_started": 2672,
+    "flow_unit": null,
+    "nct_id": "NCT00066703"
+   },
+   {
+    "baseline_groups": [
+     "Investigational",
+     "Control",
+     "Total"
+    ],
+    "baseline_total": 545,
+    "enrollment_actual": 280,
+    "flow_started": 545,
+    "flow_unit": null,
+    "nct_id": "NCT00667459"
+   },
+   {
+    "baseline_groups": [
+     "Enrolled Population",
+     "Placebo (Efficacy Population)",
+     "Xyrem (Efficacy Population)",
+     "Total"
+    ],
+    "baseline_total": 169,
+    "enrollment_actual": 106,
+    "flow_started": 106,
+    "flow_unit": null,
+    "nct_id": "NCT02221869"
+   },
+   {
+    "baseline_groups": [
+     "Group A, SHP611",
+     "Group B, SHP611",
+     "Group C, SHP611",
+     "Group F, SHP611",
+     "GLIA-MLD Matched External Control for Gr",
+     "Total"
+    ],
+    "baseline_total": 68,
+    "enrollment_actual": 36,
+    "flow_started": 68,
+    "flow_unit": null,
+    "nct_id": "NCT03771898"
+   },
+   {
+    "baseline_groups": [
+     "Photobiomodulation Therapy (PBM)",
+     "Historical Matched Controls",
+     "Total"
+    ],
+    "baseline_total": 80,
+    "enrollment_actual": 43,
+    "flow_started": 43,
+    "flow_unit": null,
+    "nct_id": "NCT04227340"
+   },
+   {
+    "baseline_groups": [
+     "ED Patients",
+     "Patients Identified Via Chart Review",
+     "Total"
+    ],
+    "baseline_total": 1528,
+    "enrollment_actual": 53,
+    "flow_started": 1542,
+    "flow_unit": null,
+    "nct_id": "NCT04289363"
+   },
+   {
+    "baseline_groups": [
+     "HPV ECHO",
+     "HPV ECHO+",
+     "Control",
+     "Total"
+    ],
+    "baseline_total": 31130,
+    "enrollment_actual": 30,
+    "flow_started": 31265,
+    "flow_unit": "Clinics",
+    "nct_id": "NCT04587167"
+   }
+  ],
+  "total_group_position": {
+   "distinct": 1,
+   "n": 1382,
+   "rows": [
+    {
+     "k": 1382,
+     "pct": 100.0,
+     "value": "Total-titled group is the last (highest-numbered) BG group"
+    }
+   ]
+  }
+ },
+ "comparability": {
+  "by_primary_condition": [
+   {
+    "distinct_titles": 730,
+    "group": "Oncology",
+    "pct_sharing": 20.8,
+    "pct_top_unit": 42.3,
+    "top_title": "progression free survival",
+    "top_title_trials": 14,
+    "top_unit": "participants",
+    "top_unit_trials": 185,
+    "trials": 437,
+    "trials_sharing_a_title_within_group": 91
+   },
+   {
+    "distinct_titles": 911,
+    "group": "Other",
+    "pct_sharing": 3.4,
+    "pct_top_unit": 26.4,
+    "top_title": "cmax maximum observed concentration",
+    "top_title_trials": 2,
+    "top_unit": "participants",
+    "top_unit_trials": 92,
+    "trials": 349,
+    "trials_sharing_a_title_within_group": 12
+   },
+   {
+    "distinct_titles": 430,
+    "group": "Infectious Disease",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 48.6,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "participants",
+    "top_unit_trials": 67,
+    "trials": 138,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 223,
+    "group": "Neurology",
+    "pct_sharing": 1.7,
+    "pct_top_unit": 31.4,
+    "top_title": "lactobacillus safety",
+    "top_title_trials": 2,
+    "top_unit": "participants",
+    "top_unit_trials": 38,
+    "trials": 121,
+    "trials_sharing_a_title_within_group": 2
+   },
+   {
+    "distinct_titles": 181,
+    "group": "Endocrine and Metabolic",
+    "pct_sharing": 1.8,
+    "pct_top_unit": 12.5,
+    "top_title": "change in glycosylated haemoglobin hba1c",
+    "top_title_trials": 2,
+    "top_unit": "participants",
+    "top_unit_trials": 14,
+    "trials": 112,
+    "trials_sharing_a_title_within_group": 2
+   },
+   {
+    "distinct_titles": 218,
+    "group": "Autoimmune and Inflammatory",
+    "pct_sharing": 2.2,
+    "pct_top_unit": 40.9,
+    "top_title": "number of participants with adverse events",
+    "top_title_trials": 2,
+    "top_unit": "participants",
+    "top_unit_trials": 38,
+    "trials": 93,
+    "trials_sharing_a_title_within_group": 2
+   },
+   {
+    "distinct_titles": 230,
+    "group": "Cardiovascular",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 44.8,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "participants",
+    "top_unit_trials": 39,
+    "trials": 87,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 128,
+    "group": "Mental Health",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 27.8,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "units on a scale",
+    "top_unit_trials": 22,
+    "trials": 79,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 153,
+    "group": "Respiratory",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 21.1,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "participants",
+    "top_unit_trials": 16,
+    "trials": 76,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 138,
+    "group": "Reproductive and Sexual Health",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 21.1,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "participants",
+    "top_unit_trials": 15,
+    "trials": 71,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 90,
+    "group": "Substance Use Disorders",
+    "pct_sharing": 3.6,
+    "pct_top_unit": 42.9,
+    "top_title": "percent heavy drinking days",
+    "top_title_trials": 2,
+    "top_unit": "participants",
+    "top_unit_trials": 24,
+    "trials": 56,
+    "trials_sharing_a_title_within_group": 2
+   },
+   {
+    "distinct_titles": 98,
+    "group": "Dermatology",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 30.9,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "participants",
+    "top_unit_trials": 17,
+    "trials": 55,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 117,
+    "group": "Hematology",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 39.6,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "participants",
+    "top_unit_trials": 21,
+    "trials": 53,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 86,
+    "group": "Pain",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 28.3,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "units on a scale",
+    "top_unit_trials": 15,
+    "trials": 53,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 84,
+    "group": "Musculoskeletal",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 26.5,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "score on a scale",
+    "top_unit_trials": 13,
+    "trials": 49,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 88,
+    "group": "Ophthalmology",
+    "pct_sharing": 9.1,
+    "pct_top_unit": 25.0,
+    "top_title": "visual acuity",
+    "top_title_trials": 3,
+    "top_unit": "participants",
+    "top_unit_trials": 11,
+    "trials": 44,
+    "trials_sharing_a_title_within_group": 4
+   },
+   {
+    "distinct_titles": 64,
+    "group": "Kidney and Urological",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 35.7,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "participants",
+    "top_unit_trials": 15,
+    "trials": 42,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 77,
+    "group": "Gastrointestinal",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 23.7,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "participants",
+    "top_unit_trials": 9,
+    "trials": 38,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 47,
+    "group": "Transplant and Immunology",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 41.4,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "participants",
+    "top_unit_trials": 12,
+    "trials": 29,
+    "trials_sharing_a_title_within_group": 0
+   },
+   {
+    "distinct_titles": 67,
+    "group": "Rare Diseases",
+    "pct_sharing": 0.0,
+    "pct_top_unit": 55.6,
+    "top_title": "(no title shared by 2+ trials)",
+    "top_title_trials": 1,
+    "top_unit": "participants",
+    "top_unit_trials": 10,
+    "trials": 18,
+    "trials_sharing_a_title_within_group": 0
+   }
+  ],
+  "distinct_normalised_primary_titles": 4097,
+  "endpoint_families": {
+   "n": 2000,
+   "rows": [
+    {
+     "k": 320,
+     "pct": 16.0,
+     "value": "adverse events / safety / tolerability / DLT / MTD"
+    },
+    {
+     "k": 146,
+     "pct": 7.3,
+     "value": "tumour response (ORR, CR, response rate)"
+    },
+    {
+     "k": 116,
+     "pct": 5.8,
+     "value": "pharmacokinetics (Cmax, AUC, concentration, half-life)"
+    },
+    {
+     "k": 92,
+     "pct": 4.6,
+     "value": "progression-free / event-free / disease-free survival"
+    },
+    {
+     "k": 90,
+     "pct": 4.5,
+     "value": "pain score"
+    },
+    {
+     "k": 81,
+     "pct": 4.0,
+     "value": "overall survival / mortality / death"
+    },
+    {
+     "k": 62,
+     "pct": 3.1,
+     "value": "feasibility / adherence / retention / recruitment"
+    },
+    {
+     "k": 56,
+     "pct": 2.8,
+     "value": "HbA1c / glucose"
+    },
+    {
+     "k": 47,
+     "pct": 2.4,
+     "value": "depression / anxiety / psychiatric scale"
+    },
+    {
+     "k": 39,
+     "pct": 1.9,
+     "value": "immunogenicity (titer, GMT, seroconversion, antibody)"
+    },
+    {
+     "k": 33,
+     "pct": 1.6,
+     "value": "visual acuity / intraocular pressure"
+    },
+    {
+     "k": 27,
+     "pct": 1.4,
+     "value": "abstinence / substance use"
+    },
+    {
+     "k": 23,
+     "pct": 1.1,
+     "value": "quality of life / patient-reported function"
+    },
+    {
+     "k": 21,
+     "pct": 1.1,
+     "value": "viral load / virologic response"
+    },
+    {
+     "k": 18,
+     "pct": 0.9,
+     "value": "lipids (LDL-C etc.)"
+    },
+    {
+     "k": 17,
+     "pct": 0.8,
+     "value": "blood pressure"
+    },
+    {
+     "k": 15,
+     "pct": 0.8,
+     "value": "body weight / BMI"
+    },
+    {
+     "k": 10,
+     "pct": 0.5,
+     "value": "lung function (FEV1, FVC)"
+    },
+    {
+     "k": 963,
+     "pct": 48.1,
+     "value": "(no family matched)"
+    }
+   ]
+  },
+  "endpoint_families_oncology": {
+   "n": 437,
+   "rows": [
+    {
+     "k": 126,
+     "pct": 28.8,
+     "value": "tumour response (ORR, CR, response rate)"
+    },
+    {
+     "k": 107,
+     "pct": 24.5,
+     "value": "adverse events / safety / tolerability / DLT / MTD"
+    },
+    {
+     "k": 87,
+     "pct": 19.9,
+     "value": "progression-free / event-free / disease-free survival"
+    },
+    {
+     "k": 40,
+     "pct": 9.2,
+     "value": "overall survival / mortality / death"
+    },
+    {
+     "k": 14,
+     "pct": 3.2,
+     "value": "feasibility / adherence / retention / recruitment"
+    },
+    {
+     "k": 11,
+     "pct": 2.5,
+     "value": "pharmacokinetics (Cmax, AUC, concentration, half-life)"
+    },
+    {
+     "k": 123,
+     "pct": 28.1,
+     "value": "(no family matched)"
+    }
+   ]
+  },
+  "frame_primary_endpoint_equals_first_posted_primary_title": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "frame_primary_endpoint_equals_first_registered_primary": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "n_trials_with_primary_title": 2000,
+  "titles_used_by_one_trial_only": {
+   "ci95": [
+    97.8,
+    98.6
+   ],
+   "k": 4026,
+   "n": 4097,
+   "pct": 98.3
+  },
+  "top15_titles": [
+   {
+    "pct_of_trials_with_primary": 0.8,
+    "title": "progression free survival",
+    "trials": 15
+   },
+   {
+    "pct_of_trials_with_primary": 0.7,
+    "title": "overall survival",
+    "trials": 13
+   },
+   {
+    "pct_of_trials_with_primary": 0.6,
+    "title": "progression free survival pfs",
+    "trials": 11
+   },
+   {
+    "pct_of_trials_with_primary": 0.3,
+    "title": "objective response rate orr",
+    "trials": 7
+   },
+   {
+    "pct_of_trials_with_primary": 0.3,
+    "title": "overall response rate orr",
+    "trials": 7
+   },
+   {
+    "pct_of_trials_with_primary": 0.3,
+    "title": "number of participants with adverse events",
+    "trials": 7
+   },
+   {
+    "pct_of_trials_with_primary": 0.3,
+    "title": "adverse events",
+    "trials": 7
+   },
+   {
+    "pct_of_trials_with_primary": 0.3,
+    "title": "overall survival os",
+    "trials": 6
+   },
+   {
+    "pct_of_trials_with_primary": 0.2,
+    "title": "number of participants with adverse events aes",
+    "trials": 5
+   },
+   {
+    "pct_of_trials_with_primary": 0.2,
+    "title": "number of participants with treatment emergent adverse events teaes",
+    "trials": 5
+   },
+   {
+    "pct_of_trials_with_primary": 0.2,
+    "title": "visual acuity",
+    "trials": 4
+   },
+   {
+    "pct_of_trials_with_primary": 0.2,
+    "title": "safety and tolerability",
+    "trials": 4
+   },
+   {
+    "pct_of_trials_with_primary": 0.2,
+    "title": "number of participants with treatment emergent adverse events teaes and treatment emergent serious adverse events tesaes",
+    "trials": 4
+   },
+   {
+    "pct_of_trials_with_primary": 0.2,
+    "title": "overall response rate",
+    "trials": 4
+   },
+   {
+    "pct_of_trials_with_primary": 0.2,
+    "title": "visual analog scale",
+    "trials": 4
+   }
+  ],
+  "trials_covered_by_top15_titles": {
+   "ci95": [
+    4.1,
+    6.0
+   ],
+   "k": 100,
+   "n": 2000,
+   "pct": 5.0
+  },
+  "trials_sharing_exact_title_and_unit": {
+   "ci95": [
+    5.3,
+    7.5
+   ],
+   "k": 126,
+   "n": 2000,
+   "pct": 6.3
+  },
+  "trials_sharing_exact_title_with_another_sampled_trial": {
+   "ci95": [
+    8.9,
+    11.6
+   ],
+   "k": 203,
+   "n": 2000,
+   "pct": 10.2
+  },
+  "units_distinct_normalised": 887,
+  "within_group_sharing_overall": {
+   "ci95": [
+    4.8,
+    6.9
+   ],
+   "k": 115,
+   "n": 2000,
+   "pct": 5.8
+  }
+ },
+ "cooccurrence": {
+  "ethnicity_reported_x_primary_analysis": {
+   "a0_b0": 839,
+   "a0_b1": 342,
+   "a1_b0": 540,
+   "a1_b1": 279,
+   "n": 2000,
+   "odds_ratio": 1.27,
+   "pct_b_given_a0": {
+    "ci95": [
+     26.4,
+     31.6
+    ],
+    "k": 342,
+    "n": 1181,
+    "pct": 29.0
+   },
+   "pct_b_given_a1": {
+    "ci95": [
+     30.9,
+     37.4
+    ],
+    "k": 279,
+    "n": 819,
+    "pct": 34.1
+   },
+   "pct_both_of_all": {
+    "ci95": [
+     12.5,
+     15.5
+    ],
+    "k": 279,
+    "n": 2000,
+    "pct": 13.9
+   }
+  },
+  "frame_counts": {
+   "ethnicity_reported": {
+    "ci95": [
+     38.8,
+     43.1
+    ],
+    "k": 819,
+    "n": 2000,
+    "pct": 41.0
+   },
+   "race_reported": {
+    "ci95": [
+     55.6,
+     59.9
+    ],
+    "k": 1155,
+    "n": 2000,
+    "pct": 57.8
+   },
+   "sex_reported": {
+    "ci95": [
+     97.4,
+     98.6
+    ],
+    "k": 1962,
+    "n": 2000,
+    "pct": 98.1
+   }
+  },
+  "race_and_ethnicity_reported_x_primary_analysis": {
+   "a0_b0": 873,
+   "a0_b1": 356,
+   "a1_b0": 506,
+   "a1_b1": 265,
+   "n": 2000,
+   "odds_ratio": 1.28,
+   "pct_b_given_a0": {
+    "ci95": [
+     26.5,
+     31.6
+    ],
+    "k": 356,
+    "n": 1229,
+    "pct": 29.0
+   },
+   "pct_b_given_a1": {
+    "ci95": [
+     31.1,
+     37.8
+    ],
+    "k": 265,
+    "n": 771,
+    "pct": 34.4
+   },
+   "pct_both_of_all": {
+    "ci95": [
+     11.8,
+     14.8
+    ],
+    "k": 265,
+    "n": 2000,
+    "pct": 13.2
+   }
+  },
+  "race_reported_x_arm_level_effect_computable": {
+   "a0_b0": 379,
+   "a0_b1": 466,
+   "a1_b0": 547,
+   "a1_b1": 608,
+   "n": 2000,
+   "odds_ratio": 0.9,
+   "pct_b_given_a0": {
+    "ci95": [
+     51.8,
+     58.5
+    ],
+    "k": 466,
+    "n": 845,
+    "pct": 55.1
+   },
+   "pct_b_given_a1": {
+    "ci95": [
+     49.8,
+     55.5
+    ],
+    "k": 608,
+    "n": 1155,
+    "pct": 52.6
+   },
+   "pct_both_of_all": {
+    "ci95": [
+     28.4,
+     32.5
+    ],
+    "k": 608,
+    "n": 2000,
+    "pct": 30.4
+   }
+  },
+  "race_reported_x_posted_primary_with_data": {
+   "a0_b0": 47,
+   "a0_b1": 798,
+   "a1_b0": 38,
+   "a1_b1": 1117,
+   "n": 2000,
+   "odds_ratio": 1.73,
+   "pct_b_given_a0": {
+    "ci95": [
+     92.7,
+     95.8
+    ],
+    "k": 798,
+    "n": 845,
+    "pct": 94.4
+   },
+   "pct_b_given_a1": {
+    "ci95": [
+     95.5,
+     97.6
+    ],
+    "k": 1117,
+    "n": 1155,
+    "pct": 96.7
+   },
+   "pct_both_of_all": {
+    "ci95": [
+     53.7,
+     58.0
+    ],
+    "k": 1117,
+    "n": 2000,
+    "pct": 55.9
+   }
+  },
+  "race_reported_x_primary_analysis": {
+   "a0_b0": 606,
+   "a0_b1": 239,
+   "a1_b0": 773,
+   "a1_b1": 382,
+   "n": 2000,
+   "odds_ratio": 1.25,
+   "pct_b_given_a0": {
+    "ci95": [
+     25.4,
+     31.4
+    ],
+    "k": 239,
+    "n": 845,
+    "pct": 28.3
+   },
+   "pct_b_given_a1": {
+    "ci95": [
+     30.4,
+     35.8
+    ],
+    "k": 382,
+    "n": 1155,
+    "pct": 33.1
+   },
+   "pct_both_of_all": {
+    "ci95": [
+     17.4,
+     20.9
+    ],
+    "k": 382,
+    "n": 2000,
+    "pct": 19.1
+   }
+  },
+  "race_reported_x_primary_analysis__2plus_group_primary_only": {
+   "a0_b0": 399,
+   "a0_b1": 214,
+   "a1_b0": 492,
+   "a1_b1": 343,
+   "n": 1448,
+   "odds_ratio": 1.3,
+   "pct_b_given_a0": {
+    "ci95": [
+     31.2,
+     38.8
+    ],
+    "k": 214,
+    "n": 613,
+    "pct": 34.9
+   },
+   "pct_b_given_a1": {
+    "ci95": [
+     37.8,
+     44.4
+    ],
+    "k": 343,
+    "n": 835,
+    "pct": 41.1
+   },
+   "pct_both_of_all": {
+    "ci95": [
+     21.6,
+     25.9
+    ],
+    "k": 343,
+    "n": 1448,
+    "pct": 23.7
+   }
+  },
+  "race_reported_x_primary_analysis__interventional_only": {
+   "a0_b0": 544,
+   "a0_b1": 226,
+   "a1_b0": 739,
+   "a1_b1": 374,
+   "n": 1883,
+   "odds_ratio": 1.22,
+   "pct_b_given_a0": {
+    "ci95": [
+     26.2,
+     32.7
+    ],
+    "k": 226,
+    "n": 770,
+    "pct": 29.4
+   },
+   "pct_b_given_a1": {
+    "ci95": [
+     30.9,
+     36.4
+    ],
+    "k": 374,
+    "n": 1113,
+    "pct": 33.6
+   },
+   "pct_both_of_all": {
+    "ci95": [
+     18.1,
+     21.7
+    ],
+    "k": 374,
+    "n": 1883,
+    "pct": 19.9
+   }
+  },
+  "race_reported_x_primary_analysis_with_estimate_and_CI": {
+   "a0_b0": 720,
+   "a0_b1": 125,
+   "a1_b0": 914,
+   "a1_b1": 241,
+   "n": 2000,
+   "odds_ratio": 1.52,
+   "pct_b_given_a0": {
+    "ci95": [
+     12.6,
+     17.3
+    ],
+    "k": 125,
+    "n": 845,
+    "pct": 14.8
+   },
+   "pct_b_given_a1": {
+    "ci95": [
+     18.6,
+     23.3
+    ],
+    "k": 241,
+    "n": 1155,
+    "pct": 20.9
+   },
+   "pct_both_of_all": {
+    "ci95": [
+     10.7,
+     13.6
+    ],
+    "k": 241,
+    "n": 2000,
+    "pct": 12.1
+   }
+  }
+ },
+ "meta": {
+  "hasResults_true": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "n_sample": 2000,
+  "seed": 20261113,
+  "study_type_api": {
+   "INTERVENTIONAL": 1883,
+   "OBSERVATIONAL": 117
+  },
+  "study_type_frame_vs_api_disagree": 0
+ },
+ "modules": {
+  "adverseEventsModule": {
+   "ci95": [
+    99.6,
+    99.9
+   ],
+   "k": 1997,
+   "n": 2000,
+   "pct": 99.8
+  },
+  "all_five": {
+   "ci95": [
+    99.6,
+    99.9
+   ],
+   "k": 1997,
+   "n": 2000,
+   "pct": 99.8
+  },
+  "baselineCharacteristicsModule": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "by_study_type": {
+   "INTERVENTIONAL": {
+    "adverseEventsModule": {
+     "ci95": [
+      99.5,
+      99.9
+     ],
+     "k": 1880,
+     "n": 1883,
+     "pct": 99.8
+    },
+    "baselineCharacteristicsModule": {
+     "ci95": [
+      99.8,
+      100.0
+     ],
+     "k": 1883,
+     "n": 1883,
+     "pct": 100.0
+    },
+    "moreInfoModule": {
+     "ci95": [
+      99.8,
+      100.0
+     ],
+     "k": 1883,
+     "n": 1883,
+     "pct": 100.0
+    },
+    "outcomeMeasuresModule": {
+     "ci95": [
+      99.8,
+      100.0
+     ],
+     "k": 1883,
+     "n": 1883,
+     "pct": 100.0
+    },
+    "participantFlowModule": {
+     "ci95": [
+      99.8,
+      100.0
+     ],
+     "k": 1883,
+     "n": 1883,
+     "pct": 100.0
+    }
+   },
+   "OBSERVATIONAL": {
+    "adverseEventsModule": {
+     "ci95": [
+      96.8,
+      100.0
+     ],
+     "k": 117,
+     "n": 117,
+     "pct": 100.0
+    },
+    "baselineCharacteristicsModule": {
+     "ci95": [
+      96.8,
+      100.0
+     ],
+     "k": 117,
+     "n": 117,
+     "pct": 100.0
+    },
+    "moreInfoModule": {
+     "ci95": [
+      96.8,
+      100.0
+     ],
+     "k": 117,
+     "n": 117,
+     "pct": 100.0
+    },
+    "outcomeMeasuresModule": {
+     "ci95": [
+      96.8,
+      100.0
+     ],
+     "k": 117,
+     "n": 117,
+     "pct": 100.0
+    },
+    "participantFlowModule": {
+     "ci95": [
+      96.8,
+      100.0
+     ],
+     "k": 117,
+     "n": 117,
+     "pct": 100.0
+    }
+   }
+  },
+  "moreInfoModule": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "moreInfo_limitationsAndCaveats": {
+   "ci95": [
+    20.2,
+    23.8
+   ],
+   "k": 439,
+   "n": 2000,
+   "pct": 21.9
+  },
+  "outcomeMeasuresModule": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "outcomeMeasures_nonempty_list": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "participantFlowModule": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  }
+ },
+ "participant_flow": {
+  "any_additional_milestone": {
+   "ci95": [
+    13.0,
+    16.1
+   ],
+   "k": 290,
+   "n": 2000,
+   "pct": 14.5
+  },
+  "any_dropWithdraws": {
+   "ci95": [
+    59.9,
+    64.2
+   ],
+   "k": 1241,
+   "n": 2000,
+   "pct": 62.0
+  },
+  "dropWithdraw_reason_trials_top10": {
+   "n": 2000,
+   "rows": [
+    {
+     "k": 733,
+     "pct": 36.6,
+     "value": "withdrawal by subject"
+    },
+    {
+     "k": 531,
+     "pct": 26.6,
+     "value": "lost to follow up"
+    },
+    {
+     "k": 472,
+     "pct": 23.6,
+     "value": "adverse event"
+    },
+    {
+     "k": 295,
+     "pct": 14.8,
+     "value": "death"
+    },
+    {
+     "k": 224,
+     "pct": 11.2,
+     "value": "physician decision"
+    },
+    {
+     "k": 203,
+     "pct": 10.2,
+     "value": "protocol violation"
+    },
+    {
+     "k": 134,
+     "pct": 6.7,
+     "value": "lack of efficacy"
+    },
+    {
+     "k": 106,
+     "pct": 5.3,
+     "value": "other"
+    },
+    {
+     "k": 45,
+     "pct": 2.2,
+     "value": "pregnancy"
+    },
+    {
+     "k": 38,
+     "pct": 1.9,
+     "value": "progressive disease"
+    }
+   ]
+  },
+  "dropWithdraw_reason_types_top15": {
+   "distinct": 1247,
+   "n": 4809,
+   "rows": [
+    {
+     "k": 825,
+     "pct": 17.2,
+     "value": "Withdrawal by Subject"
+    },
+    {
+     "k": 598,
+     "pct": 12.4,
+     "value": "Lost to Follow-up"
+    },
+    {
+     "k": 539,
+     "pct": 11.2,
+     "value": "Adverse Event"
+    },
+    {
+     "k": 321,
+     "pct": 6.7,
+     "value": "Death"
+    },
+    {
+     "k": 237,
+     "pct": 4.9,
+     "value": "Physician Decision"
+    },
+    {
+     "k": 215,
+     "pct": 4.5,
+     "value": "Protocol Violation"
+    },
+    {
+     "k": 157,
+     "pct": 3.3,
+     "value": "Lack of Efficacy"
+    },
+    {
+     "k": 114,
+     "pct": 2.4,
+     "value": "Other"
+    },
+    {
+     "k": 55,
+     "pct": 1.1,
+     "value": "Pregnancy"
+    },
+    {
+     "k": 26,
+     "pct": 0.5,
+     "value": "Sponsor Decision"
+    },
+    {
+     "k": 25,
+     "pct": 0.5,
+     "value": "Disease progression"
+    },
+    {
+     "k": 23,
+     "pct": 0.5,
+     "value": "Progressive Disease"
+    },
+    {
+     "k": 21,
+     "pct": 0.4,
+     "value": "Progressive disease"
+    },
+    {
+     "k": 18,
+     "pct": 0.4,
+     "value": "Protocol Deviation"
+    },
+    {
+     "k": 17,
+     "pct": 0.4,
+     "value": "Disease Progression"
+    }
+   ]
+  },
+  "dropWithdraw_reason_types_top15_casefolded": {
+   "distinct": 1122,
+   "n": 4809,
+   "rows": [
+    {
+     "k": 825,
+     "pct": 17.2,
+     "value": "withdrawal by subject"
+    },
+    {
+     "k": 598,
+     "pct": 12.4,
+     "value": "lost to follow up"
+    },
+    {
+     "k": 539,
+     "pct": 11.2,
+     "value": "adverse event"
+    },
+    {
+     "k": 321,
+     "pct": 6.7,
+     "value": "death"
+    },
+    {
+     "k": 237,
+     "pct": 4.9,
+     "value": "physician decision"
+    },
+    {
+     "k": 215,
+     "pct": 4.5,
+     "value": "protocol violation"
+    },
+    {
+     "k": 157,
+     "pct": 3.3,
+     "value": "lack of efficacy"
+    },
+    {
+     "k": 116,
+     "pct": 2.4,
+     "value": "other"
+    },
+    {
+     "k": 55,
+     "pct": 1.1,
+     "value": "pregnancy"
+    },
+    {
+     "k": 45,
+     "pct": 0.9,
+     "value": "progressive disease"
+    },
+    {
+     "k": 42,
+     "pct": 0.9,
+     "value": "disease progression"
+    },
+    {
+     "k": 33,
+     "pct": 0.7,
+     "value": "sponsor decision"
+    },
+    {
+     "k": 33,
+     "pct": 0.7,
+     "value": "study terminated by sponsor"
+    },
+    {
+     "k": 25,
+     "pct": 0.5,
+     "value": "protocol deviation"
+    },
+    {
+     "k": 18,
+     "pct": 0.4,
+     "value": "reason not specified"
+    }
+   ]
+  },
+  "dropWithdraws_present_among_trials_with_noncompleters": {
+   "ci95": [
+    78.2,
+    82.1
+   ],
+   "k": 1241,
+   "n": 1547,
+   "pct": 80.2
+  },
+  "every_period_has_STARTED_and_COMPLETED": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "first_period_COMPLETED": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "first_period_NOT_COMPLETED": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "first_period_STARTED": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "first_period_STARTED_total_parsable": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "first_period_completed_over_started": {
+   "max": 1.0,
+   "mean": 0.8,
+   "median": 0.912,
+   "min": 0.0,
+   "n": 1995,
+   "p05": 0.0,
+   "p25": 0.75,
+   "p75": 0.996,
+   "p95": 1.0
+  },
+  "first_period_zero_completers": {
+   "ci95": [
+    4.3,
+    6.2
+   ],
+   "k": 103,
+   "n": 1995,
+   "pct": 5.2
+  },
+  "first_period_zero_completers_by_status": {
+   "ACTIVE_NOT_RECRUITING": 5,
+   "COMPLETED": 42,
+   "TERMINATED": 56
+  },
+  "groups_per_trial": {
+   "distinct": 5,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 909,
+     "pct": 45.5,
+     "value": "2"
+    },
+    {
+     "k": 565,
+     "pct": 28.2,
+     "value": "1"
+    },
+    {
+     "k": 233,
+     "pct": 11.7,
+     "value": "3"
+    },
+    {
+     "k": 160,
+     "pct": 8.0,
+     "value": "5+"
+    },
+    {
+     "k": 133,
+     "pct": 6.7,
+     "value": "4"
+    }
+   ]
+  },
+  "module_present": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "not_completed_in_first_period": {
+   "ci95": [
+    73.3,
+    77.1
+   ],
+   "k": 1505,
+   "n": 2000,
+   "pct": 75.2
+  },
+  "periods_per_trial": {
+   "distinct": 4,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 1728,
+     "pct": 86.4,
+     "value": "1"
+    },
+    {
+     "k": 164,
+     "pct": 8.2,
+     "value": "2"
+    },
+    {
+     "k": 67,
+     "pct": 3.4,
+     "value": "3"
+    },
+    {
+     "k": 41,
+     "pct": 2.0,
+     "value": "4+"
+    }
+   ]
+  },
+  "preAssignmentDetails_present": {
+   "ci95": [
+    36.5,
+    40.8
+   ],
+   "k": 773,
+   "n": 2000,
+   "pct": 38.6
+  },
+  "recruitmentDetails_present": {
+   "ci95": [
+    35.7,
+    39.9
+   ],
+   "k": 756,
+   "n": 2000,
+   "pct": 37.8
+  },
+  "trials_with_any_NOT_COMPLETED_count_above_0": {
+   "ci95": [
+    75.5,
+    79.1
+   ],
+   "k": 1547,
+   "n": 2000,
+   "pct": 77.3
+  },
+  "typeUnitsAnalyzed_present": {
+   "ci95": [
+    1.3,
+    2.4
+   ],
+   "k": 35,
+   "n": 2000,
+   "pct": 1.8
+  }
+ },
+ "primary_measures": {
+  "anticipatedPostingDate_present": {
+   "ci95": [
+    0.5,
+    1.0
+   ],
+   "k": 32,
+   "n": 4408,
+   "pct": 0.7
+  },
+  "any_category_title": {
+   "ci95": [
+    1.8,
+    2.7
+   ],
+   "k": 97,
+   "n": 4408,
+   "pct": 2.2
+  },
+  "any_class_title": {
+   "ci95": [
+    26.4,
+    29.0
+   ],
+   "k": 1219,
+   "n": 4408,
+   "pct": 27.7
+  },
+  "any_denoms_present": {
+   "ci95": [
+    99.4,
+    99.8
+   ],
+   "k": 4391,
+   "n": 4408,
+   "pct": 99.6
+  },
+  "arm_level_effect_computable": {
+   "any": {
+    "ci95": [
+     51.5,
+     55.9
+    ],
+    "k": 1074,
+    "n": 2000,
+    "pct": 53.7
+   },
+   "any_among_trials_with_2plus_group_primary": {
+    "ci95": [
+     71.9,
+     76.4
+    ],
+    "k": 1074,
+    "n": 1448,
+    "pct": 74.2
+   },
+   "binary_counts": {
+    "ci95": [
+     20.8,
+     24.4
+    ],
+    "k": 451,
+    "n": 2000,
+    "pct": 22.6
+   },
+   "continuous_mean_with_dispersion": {
+    "ci95": [
+     33.2,
+     37.4
+    ],
+    "k": 705,
+    "n": 2000,
+    "pct": 35.2
+   }
+  },
+  "carries_data": {
+   "ci95": [
+    94.8,
+    96.0
+   ],
+   "k": 4208,
+   "n": 4408,
+   "pct": 95.5
+  },
+  "class_level_denoms_present": {
+   "ci95": [
+    5.8,
+    7.2
+   ],
+   "k": 284,
+   "n": 4408,
+   "pct": 6.4
+  },
+  "denom_units": {
+   "distinct": 61,
+   "n": 4522,
+   "rows": [
+    {
+     "k": 4391,
+     "pct": 97.1,
+     "value": "participants"
+    },
+    {
+     "k": 39,
+     "pct": 0.9,
+     "value": "eyes"
+    },
+    {
+     "k": 18,
+     "pct": 0.4,
+     "value": "samples"
+    },
+    {
+     "k": 6,
+     "pct": 0.1,
+     "value": "teeth"
+    },
+    {
+     "k": 4,
+     "pct": 0.1,
+     "value": "devices"
+    },
+    {
+     "k": 3,
+     "pct": 0.1,
+     "value": "implants"
+    },
+    {
+     "k": 2,
+     "pct": 0.0,
+     "value": "number of doses received"
+    },
+    {
+     "k": 2,
+     "pct": 0.0,
+     "value": "number of units"
+    },
+    {
+     "k": 2,
+     "pct": 0.0,
+     "value": "lesions"
+    },
+    {
+     "k": 2,
+     "pct": 0.0,
+     "value": "biopsies"
+    },
+    {
+     "k": 2,
+     "pct": 0.0,
+     "value": "forced expiratory maneuvers"
+    },
+    {
+     "k": 2,
+     "pct": 0.0,
+     "value": "exercise sessions"
+    }
+   ]
+  },
+  "description_present": {
+   "ci95": [
+    94.9,
+    96.1
+   ],
+   "k": 4212,
+   "n": 4408,
+   "pct": 95.6
+  },
+  "dispersionType": {
+   "distinct": 10,
+   "n": 4408,
+   "rows": [
+    {
+     "k": 1824,
+     "pct": 41.4,
+     "value": "(absent)"
+    },
+    {
+     "k": 1331,
+     "pct": 30.2,
+     "value": "Standard Deviation"
+    },
+    {
+     "k": 493,
+     "pct": 11.2,
+     "value": "95% Confidence Interval"
+    },
+    {
+     "k": 248,
+     "pct": 5.6,
+     "value": "Standard Error"
+    },
+    {
+     "k": 228,
+     "pct": 5.2,
+     "value": "Geometric Coefficient of Variation"
+    },
+    {
+     "k": 151,
+     "pct": 3.4,
+     "value": "Full Range"
+    },
+    {
+     "k": 92,
+     "pct": 2.1,
+     "value": "Inter-Quartile Range"
+    },
+    {
+     "k": 37,
+     "pct": 0.8,
+     "value": "90% Confidence Interval"
+    },
+    {
+     "k": 3,
+     "pct": 0.1,
+     "value": "97.5% Confidence Interval"
+    },
+    {
+     "k": 1,
+     "pct": 0.0,
+     "value": "80% Confidence Interval"
+    }
+   ]
+  },
+  "dispersionType_trials": {
+   "distinct": 10,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 1025,
+     "pct": 51.2,
+     "value": "(absent)"
+    },
+    {
+     "k": 590,
+     "pct": 29.5,
+     "value": "Standard Deviation"
+    },
+    {
+     "k": 334,
+     "pct": 16.7,
+     "value": "95% Confidence Interval"
+    },
+    {
+     "k": 153,
+     "pct": 7.7,
+     "value": "Standard Error"
+    },
+    {
+     "k": 92,
+     "pct": 4.6,
+     "value": "Full Range"
+    },
+    {
+     "k": 59,
+     "pct": 3.0,
+     "value": "Inter-Quartile Range"
+    },
+    {
+     "k": 46,
+     "pct": 2.3,
+     "value": "Geometric Coefficient of Variation"
+    },
+    {
+     "k": 23,
+     "pct": 1.1,
+     "value": "90% Confidence Interval"
+    },
+    {
+     "k": 2,
+     "pct": 0.1,
+     "value": "97.5% Confidence Interval"
+    },
+    {
+     "k": 1,
+     "pct": 0.1,
+     "value": "80% Confidence Interval"
+    }
+   ]
+  },
+  "max_categories_per_class": {
+   "distinct": 5,
+   "n": 4408,
+   "rows": [
+    {
+     "k": 4113,
+     "pct": 93.3,
+     "value": "1"
+    },
+    {
+     "k": 200,
+     "pct": 4.5,
+     "value": "0"
+    },
+    {
+     "k": 58,
+     "pct": 1.3,
+     "value": "3-5"
+    },
+    {
+     "k": 28,
+     "pct": 0.6,
+     "value": "2"
+    },
+    {
+     "k": 9,
+     "pct": 0.2,
+     "value": "6+"
+    }
+   ]
+  },
+  "measure_level_denoms_present": {
+   "ci95": [
+    99.4,
+    99.8
+   ],
+   "k": 4391,
+   "n": 4408,
+   "pct": 99.6
+  },
+  "measures_with_non_participant_denom_unit": {
+   "ci95": [
+    2.5,
+    3.5
+   ],
+   "k": 131,
+   "n": 4408,
+   "pct": 3.0
+  },
+  "n_all_measures": 15922,
+  "n_classes": {
+   "distinct": 6,
+   "n": 4408,
+   "rows": [
+    {
+     "k": 2990,
+     "pct": 67.8,
+     "value": "1"
+    },
+    {
+     "k": 512,
+     "pct": 11.6,
+     "value": "2"
+    },
+    {
+     "k": 435,
+     "pct": 9.9,
+     "value": "3-5"
+    },
+    {
+     "k": 199,
+     "pct": 4.5,
+     "value": "0"
+    },
+    {
+     "k": 165,
+     "pct": 3.7,
+     "value": "6-10"
+    },
+    {
+     "k": 107,
+     "pct": 2.4,
+     "value": "11+"
+    }
+   ]
+  },
+  "n_groups": {
+   "distinct": 6,
+   "n": 4408,
+   "rows": [
+    {
+     "k": 2016,
+     "pct": 45.7,
+     "value": "2"
+    },
+    {
+     "k": 1221,
+     "pct": 27.7,
+     "value": "1"
+    },
+    {
+     "k": 545,
+     "pct": 12.4,
+     "value": "3"
+    },
+    {
+     "k": 333,
+     "pct": 7.6,
+     "value": "5+"
+    },
+    {
+     "k": 276,
+     "pct": 6.3,
+     "value": "4"
+    },
+    {
+     "k": 17,
+     "pct": 0.4,
+     "value": "0"
+    }
+   ]
+  },
+  "n_groups_summary": {
+   "max": 32,
+   "mean": 2.411,
+   "median": 2,
+   "min": 0,
+   "n": 4408,
+   "p05": 1,
+   "p25": 1,
+   "p75": 3,
+   "p95": 6
+  },
+  "n_primary_measures": 4408,
+  "n_trials_with_primary": 2000,
+  "paramType": {
+   "distinct": 9,
+   "n": 4408,
+   "rows": [
+    {
+     "k": 1573,
+     "pct": 35.7,
+     "value": "MEAN"
+    },
+    {
+     "k": 1005,
+     "pct": 22.8,
+     "value": "NUMBER"
+    },
+    {
+     "k": 853,
+     "pct": 19.4,
+     "value": "COUNT_OF_PARTICIPANTS"
+    },
+    {
+     "k": 300,
+     "pct": 6.8,
+     "value": "GEOMETRIC_MEAN"
+    },
+    {
+     "k": 255,
+     "pct": 5.8,
+     "value": "MEDIAN"
+    },
+    {
+     "k": 197,
+     "pct": 4.5,
+     "value": "(absent)"
+    },
+    {
+     "k": 185,
+     "pct": 4.2,
+     "value": "LEAST_SQUARES_MEAN"
+    },
+    {
+     "k": 20,
+     "pct": 0.5,
+     "value": "GEOMETRIC_LEAST_SQUARES_MEAN"
+    },
+    {
+     "k": 20,
+     "pct": 0.5,
+     "value": "COUNT_OF_UNITS"
+    }
+   ]
+  },
+  "paramType_trials": {
+   "distinct": 9,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 740,
+     "pct": 37.0,
+     "value": "MEAN"
+    },
+    {
+     "k": 649,
+     "pct": 32.5,
+     "value": "NUMBER"
+    },
+    {
+     "k": 454,
+     "pct": 22.7,
+     "value": "COUNT_OF_PARTICIPANTS"
+    },
+    {
+     "k": 168,
+     "pct": 8.4,
+     "value": "MEDIAN"
+    },
+    {
+     "k": 130,
+     "pct": 6.5,
+     "value": "(absent)"
+    },
+    {
+     "k": 114,
+     "pct": 5.7,
+     "value": "LEAST_SQUARES_MEAN"
+    },
+    {
+     "k": 83,
+     "pct": 4.2,
+     "value": "GEOMETRIC_MEAN"
+    },
+    {
+     "k": 13,
+     "pct": 0.7,
+     "value": "COUNT_OF_UNITS"
+    },
+    {
+     "k": 10,
+     "pct": 0.5,
+     "value": "GEOMETRIC_LEAST_SQUARES_MEAN"
+    }
+   ]
+  },
+  "populationDescription_present": {
+   "ci95": [
+    71.1,
+    73.7
+   ],
+   "k": 3192,
+   "n": 4408,
+   "pct": 72.4
+  },
+  "primary_measures_per_trial": {
+   "distinct": 7,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 1249,
+     "pct": 62.5,
+     "value": "1"
+    },
+    {
+     "k": 354,
+     "pct": 17.7,
+     "value": "2"
+    },
+    {
+     "k": 154,
+     "pct": 7.7,
+     "value": "3"
+    },
+    {
+     "k": 115,
+     "pct": 5.8,
+     "value": "4-5"
+    },
+    {
+     "k": 88,
+     "pct": 4.4,
+     "value": "6-10"
+    },
+    {
+     "k": 28,
+     "pct": 1.4,
+     "value": "11-20"
+    },
+    {
+     "k": 12,
+     "pct": 0.6,
+     "value": "21+"
+    }
+   ]
+  },
+  "reportingStatus": {
+   "distinct": 3,
+   "n": 4408,
+   "rows": [
+    {
+     "k": 4387,
+     "pct": 99.5,
+     "value": "POSTED"
+    },
+    {
+     "k": 17,
+     "pct": 0.4,
+     "value": "NOT_POSTED"
+    },
+    {
+     "k": 4,
+     "pct": 0.1,
+     "value": "(absent)"
+    }
+   ]
+  },
+  "reportingStatus_all_types": {
+   "distinct": 3,
+   "n": 15922,
+   "rows": [
+    {
+     "k": 15378,
+     "pct": 96.6,
+     "value": "POSTED"
+    },
+    {
+     "k": 506,
+     "pct": 3.2,
+     "value": "NOT_POSTED"
+    },
+    {
+     "k": 38,
+     "pct": 0.2,
+     "value": "(absent)"
+    }
+   ]
+  },
+  "structure": {
+   "distinct": 5,
+   "n": 4408,
+   "rows": [
+    {
+     "k": 2920,
+     "pct": 66.2,
+     "value": "single value per group"
+    },
+    {
+     "k": 1194,
+     "pct": 27.1,
+     "value": "multiple classes, one category each"
+    },
+    {
+     "k": 199,
+     "pct": 4.5,
+     "value": "no classes (no data table)"
+    },
+    {
+     "k": 70,
+     "pct": 1.6,
+     "value": "one class, multiple categories"
+    },
+    {
+     "k": 25,
+     "pct": 0.6,
+     "value": "multiple classes and categories"
+    }
+   ]
+  },
+  "timeFrame_present": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 4406,
+   "n": 4408,
+   "pct": 100.0
+  },
+  "trials_max_groups_in_primary": {
+   "distinct": 5,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 951,
+     "pct": 47.5,
+     "value": "2"
+    },
+    {
+     "k": 552,
+     "pct": 27.6,
+     "value": "1"
+    },
+    {
+     "k": 242,
+     "pct": 12.1,
+     "value": "3"
+    },
+    {
+     "k": 131,
+     "pct": 6.5,
+     "value": "4"
+    },
+    {
+     "k": 124,
+     "pct": 6.2,
+     "value": "5+"
+    }
+   ]
+  },
+  "trials_with_primary_having_2plus_groups": {
+   "ci95": [
+    70.4,
+    74.3
+   ],
+   "k": 1448,
+   "n": 2000,
+   "pct": 72.4
+  },
+  "unitOfMeasure_raw_distinct": 1005,
+  "unitOfMeasure_top25": {
+   "distinct": 887,
+   "n": 4408,
+   "rows": [
+    {
+     "k": 1158,
+     "pct": 26.3,
+     "value": "participants"
+    },
+    {
+     "k": 340,
+     "pct": 7.7,
+     "value": "percentage of participants"
+    },
+    {
+     "k": 274,
+     "pct": 6.2,
+     "value": "score on a scale"
+    },
+    {
+     "k": 196,
+     "pct": 4.4,
+     "value": "(absent)"
+    },
+    {
+     "k": 192,
+     "pct": 4.4,
+     "value": "units on a scale"
+    },
+    {
+     "k": 71,
+     "pct": 1.6,
+     "value": "months"
+    },
+    {
+     "k": 71,
+     "pct": 1.6,
+     "value": "hours"
+    },
+    {
+     "k": 45,
+     "pct": 1.0,
+     "value": "ng ml"
+    },
+    {
+     "k": 45,
+     "pct": 1.0,
+     "value": "milligrams per cubic centimeter mg ccm"
+    },
+    {
+     "k": 36,
+     "pct": 0.8,
+     "value": "days"
+    },
+    {
+     "k": 31,
+     "pct": 0.7,
+     "value": "pg ml"
+    },
+    {
+     "k": 31,
+     "pct": 0.7,
+     "value": "nmol l"
+    },
+    {
+     "k": 30,
+     "pct": 0.7,
+     "value": "scores on a scale"
+    },
+    {
+     "k": 30,
+     "pct": 0.7,
+     "value": "ratio"
+    },
+    {
+     "k": 29,
+     "pct": 0.7,
+     "value": "mm hg"
+    },
+    {
+     "k": 28,
+     "pct": 0.6,
+     "value": "proportion of participants"
+    },
+    {
+     "k": 26,
+     "pct": 0.6,
+     "value": "mmhg"
+    },
+    {
+     "k": 25,
+     "pct": 0.6,
+     "value": "minutes"
+    },
+    {
+     "k": 25,
+     "pct": 0.6,
+     "value": "ng h ml"
+    },
+    {
+     "k": 24,
+     "pct": 0.5,
+     "value": "millimeters mm"
+    },
+    {
+     "k": 22,
+     "pct": 0.5,
+     "value": "z score"
+    },
+    {
+     "k": 20,
+     "pct": 0.5,
+     "value": "percent change"
+    },
+    {
+     "k": 19,
+     "pct": 0.4,
+     "value": "mg dl"
+    },
+    {
+     "k": 18,
+     "pct": 0.4,
+     "value": "h umol l"
+    },
+    {
+     "k": 17,
+     "pct": 0.4,
+     "value": "log10 copies ml"
+    }
+   ]
+  },
+  "unitOfMeasure_top25_trials": {
+   "distinct": 887,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 651,
+     "pct": 32.5,
+     "value": "participants"
+    },
+    {
+     "k": 236,
+     "pct": 11.8,
+     "value": "percentage of participants"
+    },
+    {
+     "k": 151,
+     "pct": 7.5,
+     "value": "score on a scale"
+    },
+    {
+     "k": 129,
+     "pct": 6.5,
+     "value": "(absent)"
+    },
+    {
+     "k": 127,
+     "pct": 6.3,
+     "value": "units on a scale"
+    },
+    {
+     "k": 57,
+     "pct": 2.9,
+     "value": "months"
+    },
+    {
+     "k": 39,
+     "pct": 1.9,
+     "value": "ng ml"
+    },
+    {
+     "k": 35,
+     "pct": 1.8,
+     "value": "days"
+    },
+    {
+     "k": 28,
+     "pct": 1.4,
+     "value": "hours"
+    },
+    {
+     "k": 23,
+     "pct": 1.1,
+     "value": "scores on a scale"
+    },
+    {
+     "k": 21,
+     "pct": 1.1,
+     "value": "minutes"
+    },
+    {
+     "k": 18,
+     "pct": 0.9,
+     "value": "percent change"
+    },
+    {
+     "k": 18,
+     "pct": 0.9,
+     "value": "mmhg"
+    },
+    {
+     "k": 17,
+     "pct": 0.8,
+     "value": "percentage"
+    },
+    {
+     "k": 17,
+     "pct": 0.8,
+     "value": "pg ml"
+    },
+    {
+     "k": 16,
+     "pct": 0.8,
+     "value": "ratio"
+    },
+    {
+     "k": 16,
+     "pct": 0.8,
+     "value": "mg dl"
+    },
+    {
+     "k": 14,
+     "pct": 0.7,
+     "value": "seconds"
+    },
+    {
+     "k": 14,
+     "pct": 0.7,
+     "value": "ng h ml"
+    },
+    {
+     "k": 13,
+     "pct": 0.7,
+     "value": "percentage of patients"
+    },
+    {
+     "k": 13,
+     "pct": 0.7,
+     "value": "percentage of subjects"
+    },
+    {
+     "k": 13,
+     "pct": 0.7,
+     "value": "mm"
+    },
+    {
+     "k": 12,
+     "pct": 0.6,
+     "value": "proportion of participants"
+    },
+    {
+     "k": 11,
+     "pct": 0.6,
+     "value": "adverse events"
+    },
+    {
+     "k": 9,
+     "pct": 0.5,
+     "value": "g ml"
+    }
+   ]
+  }
+ },
+ "registered_vs_posted": {
+  "count_registered_primary_vs_posted_PRIMARY": {
+   "distinct": 2,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 1999,
+     "pct": 100.0,
+     "value": "equal"
+    },
+    {
+     "k": 1,
+     "pct": 0.1,
+     "value": "posted_more"
+    }
+   ]
+  },
+  "count_registered_secondary_vs_posted_SECONDARY": {
+   "distinct": 2,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 1999,
+     "pct": 100.0,
+     "value": "equal"
+    },
+    {
+     "k": 1,
+     "pct": 0.1,
+     "value": "posted_more"
+    }
+   ]
+  },
+  "posted_any_type_per_trial": {
+   "max": 124,
+   "mean": 7.961,
+   "median": 5,
+   "min": 1,
+   "n": 2000,
+   "p05": 1,
+   "p25": 3,
+   "p75": 10,
+   "p95": 23
+  },
+  "posted_measures_by_type": {
+   "distinct": 4,
+   "n": 15922,
+   "rows": [
+    {
+     "k": 10842,
+     "pct": 68.1,
+     "value": "SECONDARY"
+    },
+    {
+     "k": 4408,
+     "pct": 27.7,
+     "value": "PRIMARY"
+    },
+    {
+     "k": 610,
+     "pct": 3.8,
+     "value": "OTHER_PRE_SPECIFIED"
+    },
+    {
+     "k": 62,
+     "pct": 0.4,
+     "value": "POST_HOC"
+    }
+   ]
+  },
+  "posted_per_trial": {
+   "OTHER_PRE_SPECIFIED": {
+    "dist": {
+     "distinct": 8,
+     "n": 2000,
+     "rows": [
+      {
+       "k": 1827,
+       "pct": 91.3,
+       "value": "0"
+      },
+      {
+       "k": 70,
+       "pct": 3.5,
+       "value": "1"
+      },
+      {
+       "k": 32,
+       "pct": 1.6,
+       "value": "2"
+      },
+      {
+       "k": 29,
+       "pct": 1.4,
+       "value": "6-10"
+      },
+      {
+       "k": 23,
+       "pct": 1.1,
+       "value": "4-5"
+      },
+      {
+       "k": 12,
+       "pct": 0.6,
+       "value": "3"
+      },
+      {
+       "k": 5,
+       "pct": 0.2,
+       "value": "11-20"
+      },
+      {
+       "k": 2,
+       "pct": 0.1,
+       "value": "21+"
+      }
+     ]
+    },
+    "summary": {
+     "max": 26,
+     "mean": 0.305,
+     "median": 0,
+     "min": 0,
+     "n": 2000,
+     "p05": 0,
+     "p25": 0,
+     "p75": 0,
+     "p95": 2
+    }
+   },
+   "POST_HOC": {
+    "dist": {
+     "distinct": 7,
+     "n": 2000,
+     "rows": [
+      {
+       "k": 1971,
+       "pct": 98.5,
+       "value": "0"
+      },
+      {
+       "k": 17,
+       "pct": 0.8,
+       "value": "1"
+      },
+      {
+       "k": 6,
+       "pct": 0.3,
+       "value": "2"
+      },
+      {
+       "k": 3,
+       "pct": 0.1,
+       "value": "3"
+      },
+      {
+       "k": 1,
+       "pct": 0.1,
+       "value": "11-20"
+      },
+      {
+       "k": 1,
+       "pct": 0.1,
+       "value": "6-10"
+      },
+      {
+       "k": 1,
+       "pct": 0.1,
+       "value": "4-5"
+      }
+     ]
+    },
+    "summary": {
+     "max": 14,
+     "mean": 0.031,
+     "median": 0,
+     "min": 0,
+     "n": 2000,
+     "p05": 0,
+     "p25": 0,
+     "p75": 0,
+     "p95": 0
+    }
+   },
+   "PRIMARY": {
+    "dist": {
+     "distinct": 7,
+     "n": 2000,
+     "rows": [
+      {
+       "k": 1249,
+       "pct": 62.5,
+       "value": "1"
+      },
+      {
+       "k": 354,
+       "pct": 17.7,
+       "value": "2"
+      },
+      {
+       "k": 154,
+       "pct": 7.7,
+       "value": "3"
+      },
+      {
+       "k": 115,
+       "pct": 5.8,
+       "value": "4-5"
+      },
+      {
+       "k": 88,
+       "pct": 4.4,
+       "value": "6-10"
+      },
+      {
+       "k": 28,
+       "pct": 1.4,
+       "value": "11-20"
+      },
+      {
+       "k": 12,
+       "pct": 0.6,
+       "value": "21+"
+      }
+     ]
+    },
+    "summary": {
+     "max": 96,
+     "mean": 2.204,
+     "median": 1,
+     "min": 1,
+     "n": 2000,
+     "p05": 1,
+     "p25": 1,
+     "p75": 2,
+     "p95": 6
+    }
+   },
+   "SECONDARY": {
+    "dist": {
+     "distinct": 8,
+     "n": 2000,
+     "rows": [
+      {
+       "k": 421,
+       "pct": 21.1,
+       "value": "0"
+      },
+      {
+       "k": 315,
+       "pct": 15.8,
+       "value": "6-10"
+      },
+      {
+       "k": 279,
+       "pct": 13.9,
+       "value": "1"
+      },
+      {
+       "k": 266,
+       "pct": 13.3,
+       "value": "4-5"
+      },
+      {
+       "k": 231,
+       "pct": 11.6,
+       "value": "2"
+      },
+      {
+       "k": 220,
+       "pct": 11.0,
+       "value": "11-20"
+      },
+      {
+       "k": 185,
+       "pct": 9.2,
+       "value": "3"
+      },
+      {
+       "k": 83,
+       "pct": 4.2,
+       "value": "21+"
+      }
+     ]
+    },
+    "summary": {
+     "max": 123,
+     "mean": 5.421,
+     "median": 3,
+     "min": 0,
+     "n": 2000,
+     "p05": 0,
+     "p25": 1,
+     "p75": 7,
+     "p95": 19
+    }
+   }
+  },
+  "primary_measures_without_data": {
+   "distinct": 2,
+   "n": 200,
+   "rows": [
+    {
+     "k": 183,
+     "pct": 91.5,
+     "value": "POSTED, every arm has 0 analyzed"
+    },
+    {
+     "k": 17,
+     "pct": 8.5,
+     "value": "NOT_POSTED (no table yet)"
+    }
+   ]
+  },
+  "registered_counts_summary": {
+   "other": {
+    "max": 26,
+    "mean": 0.305,
+    "median": 0,
+    "min": 0,
+    "n": 2000,
+    "p05": 0,
+    "p25": 0,
+    "p75": 0,
+    "p95": 2
+   },
+   "primary": {
+    "max": 96,
+    "mean": 2.204,
+    "median": 1,
+    "min": 1,
+    "n": 2000,
+    "p05": 1,
+    "p25": 1,
+    "p75": 2,
+    "p95": 6
+   },
+   "secondary": {
+    "max": 123,
+    "mean": 5.42,
+    "median": 3,
+    "min": 0,
+    "n": 2000,
+    "p05": 0,
+    "p25": 1,
+    "p75": 7,
+    "p95": 19
+   },
+   "total_registered_other": 610,
+   "total_registered_primary": 4407,
+   "total_registered_secondary": 10840
+  },
+  "registered_primary_per_trial": {
+   "distinct": 7,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 1250,
+     "pct": 62.5,
+     "value": "1"
+    },
+    {
+     "k": 353,
+     "pct": 17.6,
+     "value": "2"
+    },
+    {
+     "k": 154,
+     "pct": 7.7,
+     "value": "3"
+    },
+    {
+     "k": 115,
+     "pct": 5.8,
+     "value": "4-5"
+    },
+    {
+     "k": 88,
+     "pct": 4.4,
+     "value": "6-10"
+    },
+    {
+     "k": 28,
+     "pct": 1.4,
+     "value": "11-20"
+    },
+    {
+     "k": 12,
+     "pct": 0.6,
+     "value": "21+"
+    }
+   ]
+  },
+  "registered_primary_title_match": {
+   "distinct": 1,
+   "n": 4407,
+   "rows": [
+    {
+     "k": 4407,
+     "pct": 100.0,
+     "value": "exact_title_match_to_posted_PRIMARY"
+    }
+   ]
+  },
+  "registered_secondary_per_trial": {
+   "distinct": 8,
+   "n": 2000,
+   "rows": [
+    {
+     "k": 421,
+     "pct": 21.1,
+     "value": "0"
+    },
+    {
+     "k": 315,
+     "pct": 15.8,
+     "value": "6-10"
+    },
+    {
+     "k": 279,
+     "pct": 13.9,
+     "value": "1"
+    },
+    {
+     "k": 266,
+     "pct": 13.3,
+     "value": "4-5"
+    },
+    {
+     "k": 231,
+     "pct": 11.6,
+     "value": "2"
+    },
+    {
+     "k": 220,
+     "pct": 11.0,
+     "value": "11-20"
+    },
+    {
+     "k": 185,
+     "pct": 9.2,
+     "value": "3"
+    },
+    {
+     "k": 83,
+     "pct": 4.2,
+     "value": "21+"
+    }
+   ]
+  },
+  "registered_vs_posted_raw_identity": {
+   "OTHER_PRE_SPECIFIED_description_identical": 610,
+   "OTHER_PRE_SPECIFIED_pairs": 610,
+   "OTHER_PRE_SPECIFIED_timeFrame_identical": 610,
+   "OTHER_PRE_SPECIFIED_title_identical": 610,
+   "PRIMARY_description_identical": 4406,
+   "PRIMARY_pairs": 4406,
+   "PRIMARY_timeFrame_identical": 4406,
+   "PRIMARY_title_identical": 4406,
+   "PRIMARY_trials_with_count_mismatch": 1,
+   "SECONDARY_description_identical": 10833,
+   "SECONDARY_pairs": 10833,
+   "SECONDARY_timeFrame_identical": 10833,
+   "SECONDARY_title_identical": 10833,
+   "SECONDARY_trials_with_count_mismatch": 1
+  },
+  "sum_posted_secondary_over_sum_registered_secondary": {
+   "posted": 10842,
+   "registered": 10840
+  },
+  "trial_level_title_match": {
+   "all_registered_primaries_matched": {
+    "ci95": [
+     99.8,
+     100.0
+    ],
+    "k": 2000,
+    "n": 2000,
+    "pct": 100.0
+   },
+   "at_least_one_matched": {
+    "ci95": [
+     99.8,
+     100.0
+    ],
+    "k": 2000,
+    "n": 2000,
+    "pct": 100.0
+   },
+   "none_matched": {
+    "ci95": [
+     0.0,
+     0.2
+    ],
+    "k": 0,
+    "n": 2000,
+    "pct": 0.0
+   }
+  },
+  "trials_all_posted_PRIMARY_carry_data": {
+   "ci95": [
+    92.2,
+    94.4
+   ],
+   "k": 1867,
+   "n": 2000,
+   "pct": 93.3
+  },
+  "trials_with_a_primary_measure_without_data": {
+   "ci95": [
+    5.6,
+    7.8
+   ],
+   "k": 133,
+   "n": 2000,
+   "pct": 6.7
+  },
+  "trials_with_no_primary_measure_carrying_data": {
+   "ci95": [
+    3.5,
+    5.2
+   ],
+   "k": 85,
+   "n": 2000,
+   "pct": 4.2
+  },
+  "trials_with_posted_PRIMARY": {
+   "ci95": [
+    99.8,
+    100.0
+   ],
+   "k": 2000,
+   "n": 2000,
+   "pct": 100.0
+  },
+  "trials_with_posted_PRIMARY_by_study_type": {
+   "INTERVENTIONAL": {
+    "ci95": [
+     94.6,
+     96.4
+    ],
+    "k": 1800,
+    "n": 1883,
+    "pct": 95.6
+   },
+   "OBSERVATIONAL": {
+    "ci95": [
+     94.0,
+     99.5
+    ],
+    "k": 115,
+    "n": 117,
+    "pct": 98.3
+   }
+  },
+  "trials_with_posted_PRIMARY_carrying_data": {
+   "ci95": [
+    94.8,
+    96.5
+   ],
+   "k": 1915,
+   "n": 2000,
+   "pct": 95.8
+  },
+  "trials_with_posted_type": {
+   "OTHER_PRE_SPECIFIED": {
+    "ci95": [
+     7.5,
+     10.0
+    ],
+    "k": 173,
+    "n": 2000,
+    "pct": 8.7
+   },
+   "POST_HOC": {
+    "ci95": [
+     1.0,
+     2.1
+    ],
+    "k": 29,
+    "n": 2000,
+    "pct": 1.4
+   },
+   "PRIMARY": {
+    "ci95": [
+     99.8,
+     100.0
+    ],
+    "k": 2000,
+    "n": 2000,
+    "pct": 100.0
+   },
+   "SECONDARY": {
+    "ci95": [
+     77.1,
+     80.7
+    ],
+    "k": 1579,
+    "n": 2000,
+    "pct": 79.0
+   }
+  },
+  "trials_with_registered": {
+   "other": {
+    "ci95": [
+     7.5,
+     10.0
+    ],
+    "k": 173,
+    "n": 2000,
+    "pct": 8.7
+   },
+   "primary": {
+    "ci95": [
+     99.8,
+     100.0
+    ],
+    "k": 2000,
+    "n": 2000,
+    "pct": 100.0
+   },
+   "secondary": {
+    "ci95": [
+     77.1,
+     80.7
+    ],
+    "k": 1579,
+    "n": 2000,
+    "pct": 79.0
+   }
+  }
+ },
+ "subgroups": {
+  "arm_level_only_trials": [
+   {
+    "carries_data": true,
+    "dims": [
+     "sex"
+    ],
+    "dims_trial": [
+     "sex"
+    ],
+    "group_titles": [
+     "SQ Females",
+     "IM Female",
+     "SQ Males",
+     "IM Male"
+    ],
+    "n_analyses": 0,
+    "n_groups": 4,
+    "n_measures_with_arm_strata": 2,
+    "nct_id": "NCT00119067",
+    "title": "Local AEs",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": true,
+    "dims": [
+     "sex"
+    ],
+    "dims_trial": [
+     "sex"
+    ],
+    "group_titles": [
+     "Linezolid-male",
+     "Linezolid-female"
+    ],
+    "n_analyses": 1,
+    "n_groups": 2,
+    "n_measures_with_arm_strata": 1,
+    "nct_id": "NCT00666276",
+    "title": "Factors Considered to Affect the Safety of Linezolid - Gender.",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": true,
+    "dims": [
+     "age"
+    ],
+    "dims_trial": [
+     "age"
+    ],
+    "group_titles": [
+     "Oseltamivir: Age 91 to < 365 Days",
+     "Oseltamivir: Age 31 to 90 Days",
+     "Oseltamivir: Age 0 to 30 Days"
+    ],
+    "n_analyses": 0,
+    "n_groups": 3,
+    "n_measures_with_arm_strata": 11,
+    "nct_id": "NCT01053663",
+    "title": "Area Under the Concentration Versus Time Curve From Time Zero to Last Measurable Plasma Concentration (AUClast) of Oseltamivir and Oseltamivir Carboxylate on Day 1",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": true,
+    "dims": [
+     "sex"
+    ],
+    "dims_trial": [
+     "sex"
+    ],
+    "group_titles": [
+     "Odanacatib (MK-0822) in Males (Panel A)",
+     "Placebo in Males (Panel A)",
+     "Odnacatib (MK-0822) in Postmenopausal Females (Panel B)",
+     "Placebo in Postmenopausal Females (Panel B)"
+    ],
+    "n_analyses": 2,
+    "n_groups": 4,
+    "n_measures_with_arm_strata": 3,
+    "nct_id": "NCT01068262",
+    "title": "Weighted Average Inhibition (WAI) of Urine Aminoterminal Crosslinked Telopeptide of Type I Collagen (u-NTx/Cr) After Administration of Odanacatib 50 mg or Placebo Qw for 4 Weeks in Healthy Males and Postmenopausal Females",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": false,
+    "dims": [
+     "age"
+    ],
+    "dims_trial": [
+     "age"
+    ],
+    "group_titles": [
+     "Part 1a(Aralast NP)-Subjects Aged 16-35 Yrs",
+     "Part 1a (Aralast NP)-Subjects 8-15 Yrs",
+     "Part 1b (Aralast NP)-Subjects Aged 18-35 Yrs",
+     "Part 1b (Aralast NP)-Subjects 8-17 Yrs"
+    ],
+    "n_analyses": 0,
+    "n_groups": 4,
+    "n_measures_with_arm_strata": 1,
+    "nct_id": "NCT01183468",
+    "title": "C-peptide 2-hour AUC in Response to a Mixed-meal Tolerance Test at Week 52",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": true,
+    "dims": [
+     "sex"
+    ],
+    "dims_trial": [
+     "sex"
+    ],
+    "group_titles": [
+     "Heterosexual Males",
+     "Females",
+     "Men Who Have Sex With Men"
+    ],
+    "n_analyses": 9,
+    "n_groups": 3,
+    "n_measures_with_arm_strata": 6,
+    "nct_id": "NCT01651949",
+    "title": "Geometric Mean Titers (GMTs) to the HPV Types Contained in the 9vHPV Vaccine",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": true,
+    "dims": [
+     "age"
+    ],
+    "dims_trial": [
+     "age"
+    ],
+    "group_titles": [
+     "Pediatric Group",
+     "Adult Group"
+    ],
+    "n_analyses": 0,
+    "n_groups": 2,
+    "n_measures_with_arm_strata": 1,
+    "nct_id": "NCT02415244",
+    "title": "Number of Thoracic Spinal Segments Successfully Visualized With TEE",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": true,
+    "dims": [
+     "age"
+    ],
+    "dims_trial": [
+     "age"
+    ],
+    "group_titles": [
+     "Group 1 Adolescents: Apremilast 20 mg",
+     "Group 1 Adolescents: Apremilast 30 mg",
+     "Group 2 Children: Apremilast 20 mg"
+    ],
+    "n_analyses": 0,
+    "n_groups": 3,
+    "n_measures_with_arm_strata": 9,
+    "nct_id": "NCT02576678",
+    "title": "Number of Participants With Treatment Emergent Adverse Events (TEAEs)",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": true,
+    "dims": [
+     "race"
+    ],
+    "dims_trial": [
+     "race"
+    ],
+    "group_titles": [
+     "Caucasian",
+     "African American"
+    ],
+    "n_analyses": 0,
+    "n_groups": 2,
+    "n_measures_with_arm_strata": 8,
+    "nct_id": "NCT03098836",
+    "title": "Percentage of Participants With 2-Year Progression-Free Survival (PFS)",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": true,
+    "dims": [
+     "age"
+    ],
+    "dims_trial": [
+     "age"
+    ],
+    "group_titles": [
+     "Dose Escalation - Adult Arm: SAR443579 10-100 mcg/kg",
+     "Dose Escalation - Adult Arm: SAR443579 30-300 mcg/kg",
+     "Dose Escalation - Adult Arm: SAR443579 750 mcg/kg",
+     "Dose Escalation - Adult Arm: SAR443579 800 mcg/kg",
+     "Dose Escalation - Adult Arm: SAR443579 100-1000 mcg/kg",
+     "Dose Escalation - Adult Arm: SAR443579 300-1000 mcg/kg",
+     "Dose Escalation - Adult Arm: SAR443579 1000 mcg/kg",
+     "Dose Escalation - Adult Arm: SAR443579 1500 mcg/kg"
+    ],
+    "n_analyses": 0,
+    "n_groups": 14,
+    "n_measures_with_arm_strata": 19,
+    "nct_id": "NCT05086315",
+    "title": "Dose Escalation: Number of Participants With Dose Limiting Toxicities (DLTs)",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": true,
+    "dims": [
+     "age"
+    ],
+    "dims_trial": [
+     "age"
+    ],
+    "group_titles": [
+     "Vaccination at 9 Months of Age With NmCV-5",
+     "Vaccination at 9 Months of Age With MenACWY-TT",
+     "Vaccination at 15 Months of Age With NmCV-5",
+     "Vaccination at 15 Months of Age With MenACWY-TT"
+    ],
+    "n_analyses": 8,
+    "n_groups": 4,
+    "n_measures_with_arm_strata": 13,
+    "nct_id": "NCT05093829",
+    "title": "Number of Participants With Seroprotection for Meningitis Serogroups A, C, W and Y",
+    "type": "PRIMARY"
+   },
+   {
+    "carries_data": true,
+    "dims": [
+     "age"
+    ],
+    "dims_trial": [
+     "age"
+    ],
+    "group_titles": [
+     "Experimental, Child Sample",
+     "Control, Child Sample",
+     "Experimental, Adolescent Sample",
+     "Control, Adolescent Sample"
+    ],
+    "n_analyses": 0,
+    "n_groups": 4,
+    "n_measures_with_arm_strata": 2,
+    "nct_id": "NCT06815562",
+    "title": "Mean Difference in Average Domain Z-scores Across Raters Within Two Weeks on the Clinical Scale of the Treatment Outcome Package (TOP-CS) Between a) Baseline and b) Follow-up.",
+    "type": "PRIMARY"
+   }
+  ],
+  "flagged_trials_all": [
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": false,
+     "any_level_has_class_denoms": false,
+     "denoms_differ_between_levels": false,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Participants <= 50 Years (n=132, 131)",
+     "Participants >50 Years (n=34, 36)",
+     "Male Participants (n=70, 81)",
+     "Female Participants (n=96, 86)",
+     "White Participants (n=63, 74)",
+     "Non-White Participants (n=42, 31)",
+     "Participants with Mild/Grade 1 AE",
+     "Participants with Moderate/Grade 2 AE",
+     "Participants with Severe/Grade 3 AE",
+     "Participants with Very Severe/Grade 4 AE"
+    ],
+    "dims_tier1_trial": [
+     "age",
+     "race",
+     "sex"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "SECONDARY": 1
+    },
+    "matched_levels": {
+     "age": [
+      "Participants <= 50 Years (n=132, 131)",
+      "Participants >50 Years (n=34, 36)"
+     ],
+     "race": [
+      "White Participants (n=63, 74)",
+      "Non-White Participants (n=42, 31)"
+     ],
+     "sex": [
+      "Female Participants (n=96, 86)",
+      "Male Participants (n=70, 81)"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 10,
+    "n_flagged_measures_in_trial": 1,
+    "n_groups": 2,
+    "nct_id": "NCT00261443",
+    "paramType": "NUMBER",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age",
+     "race",
+     "sex"
+    ],
+    "tier2_title_cue": [],
+    "title": "Treatment-Emergent AEs in >=5% of Participants During Phase 3, by Age, Gender, Race, and Maximum Intensity",
+    "type": "SECONDARY",
+    "unitOfMeasure": "Participants"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": false,
+     "any_level_has_class_denoms": false,
+     "denoms_differ_between_levels": false,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "age: < 30 years",
+     "age: >= 30 years",
+     "weight: < 50 kg",
+     "weight: >= 50kg",
+     "functional dysmenorrhea",
+     "organic dysmenorrhea",
+     "with medical surgical history",
+     "without medical surgical history",
+     "with previous medication",
+     "with pregnancy history",
+     "with birth history",
+     "total dysmenorrhea score at baseline 3/4",
+     "total dysmenorrhea score at baseline 5/6"
+    ],
+    "dims_tier1_trial": [
+     "age"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "POST_HOC": 2
+    },
+    "matched_levels": {
+     "age": [
+      "age: < 30 years",
+      "age: >= 30 years"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 13,
+    "n_flagged_measures_in_trial": 2,
+    "n_groups": 2,
+    "nct_id": "NCT00461305",
+    "paramType": "MEAN",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age"
+    ],
+    "tier2_title_cue": [],
+    "title": "Change in Total Dysmenorrhea Score at Final Evaluation in Subgroups (1): From Baseline to Cycle 6",
+    "type": "POST_HOC",
+    "unitOfMeasure": "scores on a scale"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "A/Brisbane at Day 0 [3-4 years]",
+     "A/Brisbane at Day 28 [3-4 years]",
+     "A/Brisbane at Day 0 [5-8 years]",
+     "A/Brisbane at Day 28 [5-8 years]",
+     "A/Brisbane at Day 0 [9-17 years]",
+     "A/Brisbane at Day 28 [9-17 years]",
+     "A/Uruguay at Day 0 [3-4 years]",
+     "A/Uruguay at Day 28 [3-4 years]",
+     "A/Uruguay at Day 0 [5-8 years]",
+     "A/Uruguay at Day 28 [5-8 years]",
+     "A/Uruguay at Day 0 [9-17 years]",
+     "A/Uruguay at Day 28 [9-17 years]",
+     "B/Brisbane at Day 0 [3-4 years]",
+     "B/Brisbane at Day 28 [3-4 years]",
+     "B/Brisbane at Day 0 [5-8 years]",
+     "B/Brisbane at Day 28 [5-8 years]",
+     "B/Brisbane at Day 0 [9-17 years]",
+     "B/Brisbane at Day 28 [9-17 years]"
+    ],
+    "dims_tier1_trial": [
+     "age"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "SECONDARY": 6
+    },
+    "matched_levels": {
+     "age": [
+      "A/Brisbane at Day 0 [3-4 years]",
+      "A/Brisbane at Day 28 [3-4 years]",
+      "A/Brisbane at Day 0 [5-8 years]",
+      "A/Brisbane at Day 28 [5-8 years]",
+      "A/Brisbane at Day 0 [9-17 years]",
+      "A/Brisbane at Day 28 [9-17 years]",
+      "A/Uruguay at Day 0 [3-4 years]",
+      "A/Uruguay at Day 28 [3-4 years]",
+      "A/Uruguay at Day 0 [5-8 years]",
+      "A/Uruguay at Day 28 [5-8 years]",
+      "A/Uruguay at Day 0 [9-17 years]",
+      "A/Uruguay at Day 28 [9-17 years]"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 18,
+    "n_flagged_measures_in_trial": 6,
+    "n_groups": 2,
+    "nct_id": "NCT00980005",
+    "paramType": "GEOMETRIC_MEAN",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age"
+    ],
+    "tier2_title_cue": [],
+    "title": "Geometric Mean of Haemagglutination Inhibiting (HI) Antibodies Titers Against the Three Strains, by Age-strata.",
+    "type": "SECONDARY",
+    "unitOfMeasure": "Titers"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": false,
+     "any_level_has_class_denoms": false,
+     "denoms_differ_between_levels": false,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Male Gender",
+     "Female Gender",
+     "Medical conditions present",
+     "No medical conditions",
+     "Previous gastrointestinal symptoms present",
+     "No gastrointestinal symptoms"
+    ],
+    "dims_tier1_trial": [
+     "sex"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "SECONDARY": 1
+    },
+    "matched_levels": {
+     "sex": [
+      "Female Gender",
+      "Male Gender"
+     ]
+    },
+    "n_analyses": 3,
+    "n_classes": 6,
+    "n_flagged_measures_in_trial": 1,
+    "n_groups": 2,
+    "nct_id": "NCT01060059",
+    "paramType": "NUMBER",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "sex"
+    ],
+    "tier2_title_cue": [],
+    "title": "Factors of Gender, Baseline Presence of Medical Conditions, and Previous Gastrointestinal Symptoms Associated With Treatment Choice at Baseline",
+    "type": "SECONDARY",
+    "unitOfMeasure": "participants"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": false,
+     "any_level_has_class_denoms": false,
+     "denoms_differ_between_levels": false,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "CSC1 5- 9 years (n= 899, 431)",
+     "CSC4 5 - 9 years (n= 900, 396)",
+     "CSC1 10 - 14 years (n= 873, 380)",
+     "CSC4 10 - 14 years (n= 837, 359)",
+     "CSC1 >= 15 years (n= 2904, 1279)",
+     "CSC4 >= 15 years (n= 2760, 1136)"
+    ],
+    "dims_tier1_trial": [
+     "age"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "SECONDARY": 1
+    },
+    "matched_levels": {
+     "age": [
+      "CSC1 5- 9 years (n= 899, 431)",
+      "CSC4 5 - 9 years (n= 900, 396)",
+      "CSC1 10 - 14 years (n= 873, 380)",
+      "CSC4 10 - 14 years (n= 837, 359)",
+      "CSC1 >= 15 years (n= 2904, 1279)",
+      "CSC4 >= 15 years (n= 2760, 1136)"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 6,
+    "n_flagged_measures_in_trial": 1,
+    "n_groups": 2,
+    "nct_id": "NCT01256658",
+    "paramType": "MEAN",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age"
+    ],
+    "tier2_title_cue": [],
+    "title": "Hemoglobin Level (g/dL) in Community Screening Campaign 1 (CSC1)/Day 1 and CSC4/Day 1 by Study Arm and Age Group (Per Cluster)",
+    "type": "SECONDARY",
+    "unitOfMeasure": "g/dL"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": false,
+     "any_level_has_class_denoms": false,
+     "denoms_differ_between_levels": false,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Weight=33.5 kg (tPDE4i=1.012,1.012)",
+     "Weight=70 kg (tPDE4i=0.839,0.839)",
+     "Weight=160 kg (tPDE4i=0.681,0.681)",
+     "Current Smoker (tPDE4i=0.729,0.729)",
+     "Former/Never Smoker (tPDE4i=0.839,0.839)",
+     "Male (tPDE4i=0.839,0.839)",
+     "Female (tPDE4i=0.937,0.937)",
+     "Age=40 years (tPDE4i=0.675,0.675)",
+     "Age=60 years (tPDE4i=0.839,0.839)",
+     "Age=92 years (tPDE4i=1.06,1.06)",
+     "Asian (tPDE4i=0.839,0.839)",
+     "non-Asian (tPDE4i=0.839,0.839)",
+     "COPD_Not Very Severe (tPDE4i=0.839,0.839)",
+     "COPD_Very Severe (tPDE4i=0.839,0.839)",
+     "LAMA=Yes (tPDE4i=0.839,0.839)",
+     "LAMA=No (tPDE4i=0.839,0.839)",
+     "%FEV1 Reversibility=-28% (tPDE4i=0.839,0.839)",
+     "%FEV1 Reversibility=10% (tPDE4i=0.839,0.839)",
+     "%FEV1 Reversibility=147% (tPDE4i=0.839,0.839)"
+    ],
+    "dims_tier1_trial": [
+     "age",
+     "race",
+     "sex"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "SECONDARY": 7
+    },
+    "matched_levels": {
+     "age": [
+      "Age=40 years (tPDE4i=0.675,0.675)",
+      "Age=60 years (tPDE4i=0.839,0.839)",
+      "Age=92 years (tPDE4i=1.06,1.06)"
+     ],
+     "race": [
+      "Asian (tPDE4i=0.839,0.839)",
+      "non-Asian (tPDE4i=0.839,0.839)"
+     ],
+     "sex": [
+      "Female (tPDE4i=0.937,0.937)",
+      "Male (tPDE4i=0.839,0.839)"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 19,
+    "n_flagged_measures_in_trial": 7,
+    "n_groups": 2,
+    "nct_id": "NCT02165826",
+    "paramType": "NUMBER",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age",
+     "race",
+     "sex"
+    ],
+    "tier2_title_cue": [],
+    "title": "Median Simulated Absolute Change From Baseline in FEV1 at Weeks 4 and 12",
+    "type": "SECONDARY",
+    "unitOfMeasure": "milliliters (mL)"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "All ages",
+     "<18 years of age",
+     "18 years of age or older"
+    ],
+    "dims_tier1_trial": [
+     "age"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "OTHER_PRE_SPECIFIED": 1,
+     "POST_HOC": 1,
+     "PRIMARY": 1,
+     "SECONDARY": 2
+    },
+    "matched_levels": {
+     "age": [
+      "<18 years of age",
+      "18 years of age or older"
+     ]
+    },
+    "n_analyses": 3,
+    "n_classes": 3,
+    "n_flagged_measures_in_trial": 5,
+    "n_groups": 2,
+    "nct_id": "NCT02246439",
+    "paramType": "COUNT_OF_PARTICIPANTS",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age"
+    ],
+    "tier2_title_cue": [],
+    "title": "Treatment Success From 30 Minutes Through 24 Hours After First Dose of Study Medication - ITT Population",
+    "type": "PRIMARY",
+    "unitOfMeasure": "Participants"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Male",
+     "Female"
+    ],
+    "dims_tier1_trial": [
+     "sex"
+    ],
+    "dims_tier2_trial": [
+     "race"
+    ],
+    "flagged_types": {
+     "SECONDARY": 2
+    },
+    "matched_levels": {
+     "sex": [
+      "Female",
+      "Male"
+     ]
+    },
+    "n_analyses": 1,
+    "n_classes": 2,
+    "n_flagged_measures_in_trial": 2,
+    "n_groups": 1,
+    "nct_id": "NCT02304406",
+    "paramType": "NUMBER",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "sex"
+    ],
+    "tier2_title_cue": [],
+    "title": "Percentage of Participants With Association of Anaplastic Lymphoma Kinase (ALK) Rearrangement by Gender",
+    "type": "SECONDARY",
+    "unitOfMeasure": "percentage of participants"
+   },
+   {
+    "carries_data": false,
+    "category_titles": [],
+    "class_denoms": null,
+    "class_titles": [],
+    "dims_tier1_trial": [],
+    "dims_tier2_trial": [
+     "age",
+     "race",
+     "sex"
+    ],
+    "flagged_types": {
+     "OTHER_PRE_SPECIFIED": 3
+    },
+    "matched_levels": {},
+    "n_analyses": 0,
+    "n_classes": 0,
+    "n_flagged_measures_in_trial": 3,
+    "n_groups": 2,
+    "nct_id": "NCT02588664",
+    "paramType": null,
+    "reportingStatus": "POSTED",
+    "tier1": [],
+    "tier2_title_cue": [
+     "race"
+    ],
+    "title": "Subgroup Analysis: Race",
+    "type": "OTHER_PRE_SPECIFIED",
+    "unitOfMeasure": null
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "<2 years",
+     ">=2 years to <6 years",
+     ">=6 years to <12 years",
+     ">=12 years to <=18 years"
+    ],
+    "dims_tier1_trial": [
+     "age"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "POST_HOC": 1
+    },
+    "matched_levels": {
+     "age": [
+      "<2 years",
+      ">=2 years to <6 years",
+      ">=6 years to <12 years",
+      ">=12 years to <=18 years"
+     ]
+    },
+    "n_analyses": 3,
+    "n_classes": 4,
+    "n_flagged_measures_in_trial": 1,
+    "n_groups": 1,
+    "nct_id": "NCT02688764",
+    "paramType": "LEAST_SQUARES_MEAN",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age"
+    ],
+    "tier2_title_cue": [],
+    "title": "Change in Serum Phosphorus Level From Baseline to End of Stage 1 in PA21 Group, by Age Group",
+    "type": "POST_HOC",
+    "unitOfMeasure": "mmol/L"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "12 to <16 years old",
+     "16 to <18 years old",
+     "12 to <18 years old"
+    ],
+    "dims_tier1_trial": [
+     "age"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "PRIMARY": 2
+    },
+    "matched_levels": {
+     "age": [
+      "12 to <16 years old",
+      "16 to <18 years old",
+      "12 to <18 years old"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 3,
+    "n_flagged_measures_in_trial": 2,
+    "n_groups": 1,
+    "nct_id": "NCT03500094",
+    "paramType": "GEOMETRIC_MEAN",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age"
+    ],
+    "tier2_title_cue": [],
+    "title": "Pharmacokinetics (PK): Area Under The Plasma Concentration-time Curve Over The Dosing Interval (AUCtau) Of Migalastat",
+    "type": "PRIMARY",
+    "unitOfMeasure": "h*ng/mL"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": null,
+    "class_titles": [],
+    "dims_tier1_trial": [],
+    "dims_tier2_trial": [
+     "sex"
+    ],
+    "flagged_types": {
+     "SECONDARY": 1
+    },
+    "matched_levels": {},
+    "n_analyses": 0,
+    "n_classes": 1,
+    "n_flagged_measures_in_trial": 1,
+    "n_groups": 2,
+    "nct_id": "NCT03722810",
+    "paramType": "MEAN",
+    "reportingStatus": "POSTED",
+    "tier1": [],
+    "tier2_title_cue": [
+     "sex"
+    ],
+    "title": "The Effect of Students' Gender on Their Levels of Patient-centredness as Assessed by the PPOS-D12 Questionnaire",
+    "type": "SECONDARY",
+    "unitOfMeasure": "score on a scale"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": null,
+    "class_titles": [
+     "Current NOAC: Dabigatran (110 mg BID and 150 mg BID patients)",
+     "Current NOAC: Rivaroxaban (15 mg QD and 20 mg QD patients)",
+     "Current NOAC: Apixaban (2.5 mg BID and 5 mg BID patients)",
+     "Current NOAC: Edoxaban (30 mg QD and 60 mg QD patients)",
+     "Dabigatran 110 mg BID",
+     "Dabigatran 150 mg BID",
+     "Rivaroxaban 15 mg QD",
+     "Rivaroxaban 20 mg QD",
+     "Apixaban 2.5 mg BID",
+     "Apixaban 5 mg BID",
+     "Edoxaban 30 mg QD",
+     "Edoxaban 60 mg QD"
+    ],
+    "dims_tier1_trial": [],
+    "dims_tier2_trial": [
+     "age",
+     "sex"
+    ],
+    "flagged_types": {
+     "PRIMARY": 3
+    },
+    "matched_levels": {},
+    "n_analyses": 0,
+    "n_classes": 12,
+    "n_flagged_measures_in_trial": 3,
+    "n_groups": 2,
+    "nct_id": "NCT03993119",
+    "paramType": "COUNT_OF_PARTICIPANTS",
+    "reportingStatus": "POSTED",
+    "tier1": [],
+    "tier2_title_cue": [
+     "sex"
+    ],
+    "title": "Type of Current Non-vitamin K Antagonist Oral Anticoagulant (NOAC) and Current NOAC Dose According to Sex",
+    "type": "PRIMARY",
+    "unitOfMeasure": "Participants"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "A/H1N1: Day 28: 60-64 years",
+     "A/H3N2: Day 28: 60-64 years",
+     "B1: Day 28: 60-64 years",
+     "B2: Day 28: 60-64 years",
+     "A/H1N1: Day 28: >= 65 years",
+     "A/H3N2: Day 28: >=65 years",
+     "B1: Day 28: >=65 years",
+     "B2: Day 28: >=65 years"
+    ],
+    "dims_tier1_trial": [
+     "age"
+    ],
+    "dims_tier2_trial": [
+     "age"
+    ],
+    "flagged_types": {
+     "PRIMARY": 1,
+     "SECONDARY": 8
+    },
+    "matched_levels": {
+     "age": [
+      "A/H1N1: Day 28: 60-64 years",
+      "A/H3N2: Day 28: 60-64 years",
+      "B1: Day 28: 60-64 years",
+      "B2: Day 28: 60-64 years",
+      "A/H1N1: Day 28: >= 65 years",
+      "A/H3N2: Day 28: >=65 years",
+      "B1: Day 28: >=65 years",
+      "B2: Day 28: >=65 years"
+     ]
+    },
+    "n_analyses": 8,
+    "n_classes": 8,
+    "n_flagged_measures_in_trial": 9,
+    "n_groups": 2,
+    "nct_id": "NCT04024228",
+    "paramType": "GEOMETRIC_MEAN",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age"
+    ],
+    "tier2_title_cue": [],
+    "title": "Geometric Mean Titers (GMTs) of Influenza Antibodies in Participants Aged 60-64 Years and Greater Than or Equal to (>=) 65 Years",
+    "type": "PRIMARY",
+    "unitOfMeasure": "titers"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Female Baseline- Time 1",
+     "Female 6 weeks- Time 2",
+     "Female 3 months- Time 3",
+     "Female 6 months- Time 4",
+     "Female 9 months- Time 5",
+     "Male Baseline- Time 1",
+     "Male 6 weeks- Time 2",
+     "Male 3 months- Time 3",
+     "Male 6 months- Time 4",
+     "Male 9 months- Time 5"
+    ],
+    "dims_tier1_trial": [
+     "sex"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "PRIMARY": 1
+    },
+    "matched_levels": {
+     "sex": [
+      "Female Baseline- Time 1",
+      "Female 6 weeks- Time 2",
+      "Female 3 months- Time 3",
+      "Female 6 months- Time 4",
+      "Female 9 months- Time 5",
+      "Male Baseline- Time 1",
+      "Male 6 weeks- Time 2",
+      "Male 3 months- Time 3",
+      "Male 6 months- Time 4",
+      "Male 9 months- Time 5"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 10,
+    "n_flagged_measures_in_trial": 1,
+    "n_groups": 2,
+    "nct_id": "NCT04105244",
+    "paramType": "MEAN",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "sex"
+    ],
+    "tier2_title_cue": [],
+    "title": "Positive Health Practices",
+    "type": "PRIMARY",
+    "unitOfMeasure": "score on a scale"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Stool Test, Men, 45-75 years (Aim 8, INT, Pilot Test)",
+     "Stool Test, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+     "Colonoscopy, Men, 45-75 years (Aim 8, INT, Pilot Test)",
+     "Colonoscopy, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+     "Mammogram, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+     "Pap Smear, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+     "Pap Smear, Women, 21-44 years (Aim 8, INT, Pilot Test)"
+    ],
+    "dims_tier1_trial": [
+     "age",
+     "sex"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "PRIMARY": 1
+    },
+    "matched_levels": {
+     "age": [
+      "Stool Test, Men, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Stool Test, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Colonoscopy, Men, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Colonoscopy, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Mammogram, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Pap Smear, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Pap Smear, Women, 21-44 years (Aim 8, INT, Pilot Test)"
+     ],
+     "sex": [
+      "Stool Test, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Colonoscopy, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Mammogram, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Pap Smear, Women, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Pap Smear, Women, 21-44 years (Aim 8, INT, Pilot Test)",
+      "Stool Test, Men, 45-75 years (Aim 8, INT, Pilot Test)",
+      "Colonoscopy, Men, 45-75 years (Aim 8, INT, Pilot Test)"
+     ]
+    },
+    "n_analyses": 1,
+    "n_classes": 7,
+    "n_flagged_measures_in_trial": 1,
+    "n_groups": 1,
+    "nct_id": "NCT04259762",
+    "paramType": "COUNT_OF_PARTICIPANTS",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age",
+     "sex"
+    ],
+    "tier2_title_cue": [],
+    "title": "Aim 8, INT, Pilot Test: Age/Gender-specific Breast, Colorectal, and Cervical Cancer Screening",
+    "type": "PRIMARY",
+    "unitOfMeasure": "Participants"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "American Indian or Alaska Native",
+     "Asian",
+     "Black or African American",
+     "Native Hawaiian or Other Pacific Islander",
+     "White",
+     "Unknown"
+    ],
+    "dims_tier1_trial": [
+     "ethnicity",
+     "race",
+     "sex"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "POST_HOC": 3
+    },
+    "matched_levels": {
+     "race": [
+      "American Indian or Alaska Native",
+      "Asian",
+      "Black or African American",
+      "Native Hawaiian or Other Pacific Islander",
+      "White"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 6,
+    "n_flagged_measures_in_trial": 3,
+    "n_groups": 4,
+    "nct_id": "NCT04323137",
+    "paramType": "COUNT_OF_PARTICIPANTS",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "race"
+    ],
+    "tier2_title_cue": [],
+    "title": "Flu Vaccination Rate by Race",
+    "type": "POST_HOC",
+    "unitOfMeasure": "Participants"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": false,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Children 12 years or older",
+     "Children less than 12 years"
+    ],
+    "dims_tier1_trial": [
+     "age"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "SECONDARY": 1
+    },
+    "matched_levels": {
+     "age": [
+      "Children 12 years or older",
+      "Children less than 12 years"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 2,
+    "n_flagged_measures_in_trial": 1,
+    "n_groups": 1,
+    "nct_id": "NCT04354155",
+    "paramType": "MEDIAN",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age"
+    ],
+    "tier2_title_cue": [],
+    "title": "Median Twice-daily Enoxaparin Dose Required to Achieve 4-hour Post-dose Anti-factor Xa Between 0.20-0.49 U/mL",
+    "type": "SECONDARY",
+    "unitOfMeasure": "mg/kg"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [
+     "Female - Initiated HPV vaccine",
+     "Male - Initiated HPV vaccine",
+     "Female - Not initiated",
+     "Male - Not initiated"
+    ],
+    "class_denoms": {
+     "all_levels_have_class_denoms": false,
+     "any_level_has_class_denoms": false,
+     "denoms_differ_between_levels": false,
+     "levels_in": "category"
+    },
+    "class_titles": [],
+    "dims_tier1_trial": [
+     "sex"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "SECONDARY": 2
+    },
+    "matched_levels": {
+     "sex": [
+      "Female - Initiated HPV vaccine",
+      "Female - Not initiated",
+      "Male - Initiated HPV vaccine",
+      "Male - Not initiated"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 1,
+    "n_flagged_measures_in_trial": 2,
+    "n_groups": 3,
+    "nct_id": "NCT04587167",
+    "paramType": "COUNT_OF_PARTICIPANTS",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "sex"
+    ],
+    "tier2_title_cue": [],
+    "title": "HPV Vaccination (≥1 Dose), 11-14 Year Olds at 12 Months by Sex",
+    "type": "SECONDARY",
+    "unitOfMeasure": "Participants"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Baseline Women",
+     "t1 women",
+     "t4 women",
+     "Baseline men",
+     "t1 men",
+     "t4 men"
+    ],
+    "dims_tier1_trial": [
+     "sex"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "PRIMARY": 2
+    },
+    "matched_levels": {
+     "sex": [
+      "Baseline Women",
+      "t1 women",
+      "t4 women",
+      "Baseline men",
+      "t1 men",
+      "t4 men"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 6,
+    "n_flagged_measures_in_trial": 2,
+    "n_groups": 2,
+    "nct_id": "NCT04907253",
+    "paramType": "MEAN",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "sex"
+    ],
+    "tier2_title_cue": [],
+    "title": "Quercetin-associated Change in Surgery-associated Inflammation",
+    "type": "PRIMARY",
+    "unitOfMeasure": "mg/L"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Female",
+     "Male"
+    ],
+    "dims_tier1_trial": [
+     "ethnicity",
+     "race",
+     "sex"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "OTHER_PRE_SPECIFIED": 3
+    },
+    "matched_levels": {
+     "sex": [
+      "Female",
+      "Male"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 2,
+    "n_flagged_measures_in_trial": 3,
+    "n_groups": 5,
+    "nct_id": "NCT05009251",
+    "paramType": "COUNT_OF_PARTICIPANTS",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "sex"
+    ],
+    "tier2_title_cue": [],
+    "title": "Flu Vaccination at 2 Weeks After Final Outreach Date by Gender",
+    "type": "OTHER_PRE_SPECIFIED",
+    "unitOfMeasure": "Participants"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": true,
+     "any_level_has_class_denoms": true,
+     "denoms_differ_between_levels": true,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Baseline BEC: <300 Study Period",
+     "Baseline BEC: <300 Baseline Period",
+     "Baseline BEC: ≥300 Study Period",
+     "Baseline BEC: ≥300 Baseline Period",
+     "All perennial fluorescent enzyme immunoassay (FEIA) negative Study Period",
+     "All perennial FEIA negative Baseline Period",
+     "Any perennial FEIA positive Study Period",
+     "Any perennial FEIA positive Baseline Period",
+     "Baseline BEC <300 & with all perennial FEIA negative Study Period",
+     "Baseline BEC <300 & with all perennial FEIA negative Baseline Period",
+     "Baseline BEC <300 & with any perennial FEIA positive Study Period",
+     "Baseline BEC <300 & with any perennial FEIA positive Baseline Period",
+     "Baseline BEC ≥300 & with all perennial FEIA negative Study Period",
+     "Baseline BEC ≥300 & with all perennial FEIA negative Baseline Period",
+     "Baseline BEC ≥300 & with any perennial FEIA positive Study Period",
+     "Baseline BEC ≥300 & with any perennial FEIA positive Baseline Period",
+     "Black or African American Study Period",
+     "Black or African American Baseline Period",
+     "Adolescents Study Period",
+     "Adolescents Baseline Period",
+     "Mild to moderate COPD Study Period",
+     "Mild to moderate COPD Baseline Period",
+     "Baseline smoking status Study Period",
+     "Baseline smoking status Baseline Period"
+    ],
+    "dims_tier1_trial": [
+     "age",
+     "race"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "SECONDARY": 9
+    },
+    "matched_levels": {
+     "age": [
+      "Adolescents Study Period",
+      "Adolescents Baseline Period"
+     ],
+     "race": [
+      "Black or African American Study Period"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 24,
+    "n_flagged_measures_in_trial": 9,
+    "n_groups": 1,
+    "nct_id": "NCT05329194",
+    "paramType": "NUMBER",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age",
+     "race"
+    ],
+    "tier2_title_cue": [],
+    "title": "AAER for Asthma Exacerbations (Subgroups of Participants)",
+    "type": "SECONDARY",
+    "unitOfMeasure": "Adjusted rate (exacerbations per year)"
+   },
+   {
+    "carries_data": true,
+    "category_titles": [],
+    "class_denoms": {
+     "all_levels_have_class_denoms": false,
+     "any_level_has_class_denoms": false,
+     "denoms_differ_between_levels": false,
+     "levels_in": "class"
+    },
+    "class_titles": [
+     "Elderly (>=80 years)",
+     "Non-elderly (18 to <80 years)",
+     "Coronary artery disease",
+     "Frail",
+     "Active cancer",
+     "Previous stroke",
+     "High CHA2DS2-VASc"
+    ],
+    "dims_tier1_trial": [
+     "age"
+    ],
+    "dims_tier2_trial": [],
+    "flagged_types": {
+     "OTHER_PRE_SPECIFIED": 1
+    },
+    "matched_levels": {
+     "age": [
+      "Elderly (>=80 years)",
+      "Non-elderly (18 to <80 years)"
+     ]
+    },
+    "n_analyses": 0,
+    "n_classes": 7,
+    "n_flagged_measures_in_trial": 1,
+    "n_groups": 2,
+    "nct_id": "NCT05838664",
+    "paramType": "COUNT_OF_PARTICIPANTS",
+    "reportingStatus": "POSTED",
+    "tier1": [
+     "age"
+    ],
+    "tier2_title_cue": [],
+    "title": "Number of Participants According to Subgroups in OAC Exposed and Unexposed Participants",
+    "type": "OTHER_PRE_SPECIFIED",
+    "unitOfMeasure": "Participants"
+   }
+  ],
+  "measures": {
+   "n_all_measures": 15922,
+   "tier1_by_dimension": {
+    "age": 42,
+    "ethnicity": 2,
+    "race": 13,
+    "sex": 18
+   },
+   "tier1_measures": 55,
+   "tier1_primary_measures": 8,
+   "tier2_by_dimension": {
+    "age": 6,
+    "race": 2,
+    "sex": 4
+   },
+   "tier2_only_measures": 12
+  },
+  "mention_only_examples_15": [
+   {
+    "group_titles": [
+     "Duloxetine/Duloxetine - Extension Phase",
+     "Placebo/Duloxetine - Extension Phase"
+    ],
+    "level_titles": [
+     "Worst Pain",
+     "Least Pain",
+     "Pain Right Now",
+     "General Activity",
+     "Mood",
+     "Walking Ability"
+    ],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT01237587",
+    "title": "Change From Baseline to 39 Week Endpoint in Brief Pain Inventory (BPI) Modified Short Form-adolescent Version Severity and Interference Items",
+    "type": "SECONDARY"
+   },
+   {
+    "group_titles": [
+     "LentiGlobin BB305 Drug Product"
+    ],
+    "level_titles": [
+     "Health state: Change at Month 12",
+     "Health state: Change at Month 24"
+    ],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT02906202",
+    "title": "Change From Baseline in EuroQol Quality of Life 5-Dimension Adult Scale (EQ-5D-3L) VAS Heath Status Score at Months 12 and 24",
+    "type": "SECONDARY"
+   },
+   {
+    "group_titles": [
+     "Aspirin",
+     "Placebo"
+    ],
+    "level_titles": [],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT04888377",
+    "title": "Ages and Stages Questionnaire, 3rd Edition (ASQ-3) Problem Solving Total Score",
+    "type": "SECONDARY"
+   },
+   {
+    "group_titles": [
+     "Dacomitinib 30 mg",
+     "Dacomitinib 45 mg",
+     "Dacomitinib Other Dose"
+    ],
+    "level_titles": [
+     "Current smoker",
+     "Former smoker",
+     "Never smoker",
+     "Unknown"
+    ],
+    "mention_dims": [
+     "race"
+    ],
+    "nct_id": "NCT04609319",
+    "title": "Number of Participants Classified According to Smoking Status: All Asian Participants",
+    "type": "PRIMARY"
+   },
+   {
+    "group_titles": [
+     "PA21 (Velphoro®)",
+     "Calcium Acetate (Phoslyra®)"
+    ],
+    "level_titles": [
+     "Baseline",
+     "End of Stage 1",
+     "End of Stage 2",
+     "Below",
+     "Within",
+     "Above"
+    ],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT02688764",
+    "title": "Participants With Serum Phosphorus Levels Within the Age-dependent Target Range in Each Stage",
+    "type": "SECONDARY"
+   },
+   {
+    "group_titles": [
+     "Integrated Care",
+     "Referral-Based Care"
+    ],
+    "level_titles": [],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT04251208",
+    "title": "Self-reported Retention of Child Custody Retention - Yes Responses",
+    "type": "SECONDARY"
+   },
+   {
+    "group_titles": [
+     "Subjects With CDI Scores in the Clinical Range.",
+     "Subjects With CDI Scores in the Non-clinical Range"
+    ],
+    "level_titles": [
+     "Mental Health/Cognitive Vulnerability Need",
+     "No Mental Health/Cognitive Vulnerability"
+    ],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT01781481",
+    "title": "Likelihood of Being Identified as Having a Mental Health Need on the Pediatric INTERMED Mental/Cognitive Threat Item When Subject's Total Children's Depression Inventory (CDI) Score is in the Clinical Range.",
+    "type": "PRIMARY"
+   },
+   {
+    "group_titles": [
+     "ABT-414_ Pediatric"
+    ],
+    "level_titles": [],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT02343406",
+    "title": "Pediatric Study: Area Under the Concentration-time-curve (AUC) Observed for Unconjugated Cys-mcMMAF",
+    "type": "PRIMARY"
+   },
+   {
+    "group_titles": [
+     "Panel C - MK-8150 5 mg",
+     "Panel C - MK-8150 24 mg",
+     "Panel C - MK-8150 90 mg",
+     "Panel C - Placebo"
+    ],
+    "level_titles": [],
+    "mention_dims": [
+     "sex"
+    ],
+    "nct_id": "NCT01590810",
+    "title": "Change From Baseline in TWA0-24hrs cDBP in Male Participants With Mild to Moderate Hypertension Administered Single Doses of MK-8150 and Placebo (Panel C)",
+    "type": "PRIMARY"
+   },
+   {
+    "group_titles": [
+     "Naive_4042",
+     "Naive_6062"
+    ],
+    "level_titles": [],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT01027351",
+    "title": "Geometric Mean Concentrations Against Vaccine Antigen 287-953 in Children After Two Catch up Doses of rMenB+OMV NZ Vaccine Given Either at 40 or 60 Months of Age.",
+    "type": "SECONDARY"
+   },
+   {
+    "group_titles": [
+     "Children With Duarte Galactosemia (Cases)",
+     "Unaffected Siblings (Controls)"
+    ],
+    "level_titles": [],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT02519504",
+    "title": "Wechsler Intelligence Scale for Children IV-Integrated (WISC-IV-Integrated): Digit Span Score",
+    "type": "PRIMARY"
+   },
+   {
+    "group_titles": [
+     "Intervention",
+     "Control"
+    ],
+    "level_titles": [],
+    "mention_dims": [
+     "age",
+     "sex"
+    ],
+    "nct_id": "NCT05357144",
+    "title": "Distribution Contraception to Adolescent Girls and Young Women",
+    "type": "SECONDARY"
+   },
+   {
+    "group_titles": [
+     "EXXCEL Soft",
+     "FUSION Bioline"
+    ],
+    "level_titles": [
+     "Major amputation",
+     "Major graft reintervention",
+     "Procedure-related death",
+     "Any MALE or POD"
+    ],
+    "mention_dims": [
+     "sex"
+    ],
+    "nct_id": "NCT01113892",
+    "title": "The Number of Participants Meeting Composite Endpoint of Major Adverse Limb Events (MALE) and Periprocedural Death (POD)",
+    "type": "PRIMARY"
+   },
+   {
+    "group_titles": [
+     "Vyvanse",
+     "Placebo"
+    ],
+    "level_titles": [],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT02712996",
+    "title": "Assessing Physical Symptoms in Children Using Vyvanse Versus Placebo by Measuring Anxiety on the Revised Child Manifest Anxiety Scale (RCMAS)",
+    "type": "PRIMARY"
+   },
+   {
+    "group_titles": [
+     "Group 3 (Chemotherapy, Surgery)",
+     "Group 4 (Chemotherapy, Surgery, Antineoplastic Therapy)"
+    ],
+    "level_titles": [],
+    "mention_dims": [
+     "age"
+    ],
+    "nct_id": "NCT00499616",
+    "title": "Comparison Between Reduce Intensity of Therapy for Patients With Stage 4 Neuroblastoma and Favorable Biological Features and Patients < 1 Year of Age With Stage 4 Neuroblastoma Treated on COG-A3961",
+    "type": "PRIMARY"
+   }
+  ],
+  "mention_only_measures_unflagged": 384,
+  "tier1_measure_denominators": {
+   "all_levels_have_class_denoms": {
+    "ci95": [
+     57.9,
+     81.2
+    ],
+    "k": 39,
+    "n": 55,
+    "pct": 70.9
+   },
+   "any_level_has_class_denoms": {
+    "ci95": [
+     57.9,
+     81.2
+    ],
+    "k": 39,
+    "n": 55,
+    "pct": 70.9
+   },
+   "class_denoms_differ_between_levels": {
+    "ci95": [
+     56.0,
+     79.7
+    ],
+    "k": 38,
+    "n": 55,
+    "pct": 69.1
+   },
+   "levels_in_category": {
+    "ci95": [
+     1.0,
+     12.3
+    ],
+    "k": 2,
+    "n": 55,
+    "pct": 3.6
+   },
+   "levels_in_class": {
+    "ci95": [
+     87.7,
+     99.0
+    ],
+    "k": 53,
+    "n": 55,
+    "pct": 96.4
+   },
+   "measure_level_denoms_present": {
+    "ci95": [
+     93.5,
+     100.0
+    ],
+    "k": 55,
+    "n": 55,
+    "pct": 100.0
+   },
+   "n_tier1_measures": 55
+  },
+  "tier1_trials_by_study_type": {
+   "INTERVENTIONAL": {
+    "ci95": [
+     0.6,
+     1.4
+    ],
+    "k": 17,
+    "n": 1883,
+    "pct": 0.9
+   },
+   "OBSERVATIONAL": {
+    "ci95": [
+     0.9,
+     7.3
+    ],
+    "k": 3,
+    "n": 117,
+    "pct": 2.6
+   }
+  },
+  "tier1_trials_with_analysis_on_a_subgroup_measure": {
+   "ci95": [
+    14.5,
+    51.9
+   ],
+   "k": 6,
+   "n": 20,
+   "pct": 30.0
+  },
+  "trials_any_measure": {
+   "mention_only_upper_bound": {
+    "age": {
+     "ci95": [
+      3.9,
+      5.8
+     ],
+     "k": 96,
+     "n": 2000,
+     "pct": 4.8
+    },
+    "any_dimension": {
+     "ci95": [
+      5.0,
+      7.1
+     ],
+     "k": 120,
+     "n": 2000,
+     "pct": 6.0
+    },
+    "ethnicity": {
+     "ci95": [
+      0.0,
+      0.4
+     ],
+     "k": 2,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "race": {
+     "ci95": [
+      0.2,
+      0.9
+     ],
+     "k": 9,
+     "n": 2000,
+     "pct": 0.5
+    },
+    "sex": {
+     "ci95": [
+      1.3,
+      2.5
+     ],
+     "k": 36,
+     "n": 2000,
+     "pct": 1.8
+    }
+   },
+   "supplementary_arm_titles_tier1": {
+    "age": {
+     "ci95": [
+      0.2,
+      0.9
+     ],
+     "k": 9,
+     "n": 2000,
+     "pct": 0.5
+    },
+    "any_dimension": {
+     "ci95": [
+      0.5,
+      1.2
+     ],
+     "k": 15,
+     "n": 2000,
+     "pct": 0.8
+    },
+    "ethnicity": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "race": {
+     "ci95": [
+      0.0,
+      0.3
+     ],
+     "k": 1,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "sex": {
+     "ci95": [
+      0.1,
+      0.7
+     ],
+     "k": 6,
+     "n": 2000,
+     "pct": 0.3
+    }
+   },
+   "tier1_levels": {
+    "age": {
+     "ci95": [
+      0.4,
+      1.1
+     ],
+     "k": 13,
+     "n": 2000,
+     "pct": 0.7
+    },
+    "any_dimension": {
+     "ci95": [
+      0.6,
+      1.5
+     ],
+     "k": 20,
+     "n": 2000,
+     "pct": 1.0
+    },
+    "ethnicity": {
+     "ci95": [
+      0.0,
+      0.4
+     ],
+     "k": 2,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "race": {
+     "ci95": [
+      0.1,
+      0.6
+     ],
+     "k": 5,
+     "n": 2000,
+     "pct": 0.2
+    },
+    "race_or_ethnicity": {
+     "ci95": [
+      0.1,
+      0.6
+     ],
+     "k": 5,
+     "n": 2000,
+     "pct": 0.2
+    },
+    "sex": {
+     "ci95": [
+      0.3,
+      0.9
+     ],
+     "k": 10,
+     "n": 2000,
+     "pct": 0.5
+    },
+    "sex_race_or_ethnicity": {
+     "ci95": [
+      0.3,
+      1.0
+     ],
+     "k": 11,
+     "n": 2000,
+     "pct": 0.6
+    }
+   },
+   "tier1_or_tier2": {
+    "age": {
+     "ci95": [
+      0.5,
+      1.2
+     ],
+     "k": 15,
+     "n": 2000,
+     "pct": 0.8
+    },
+    "any_dimension": {
+     "ci95": [
+      0.8,
+      1.7
+     ],
+     "k": 23,
+     "n": 2000,
+     "pct": 1.1
+    },
+    "ethnicity": {
+     "ci95": [
+      0.0,
+      0.4
+     ],
+     "k": 2,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "race": {
+     "ci95": [
+      0.2,
+      0.7
+     ],
+     "k": 7,
+     "n": 2000,
+     "pct": 0.3
+    },
+    "sex": {
+     "ci95": [
+      0.4,
+      1.1
+     ],
+     "k": 13,
+     "n": 2000,
+     "pct": 0.7
+    },
+    "sex_race_or_ethnicity": {
+     "ci95": [
+      0.4,
+      1.2
+     ],
+     "k": 14,
+     "n": 2000,
+     "pct": 0.7
+    }
+   },
+   "tier2_title_cue_only": {
+    "age": {
+     "ci95": [
+      0.0,
+      0.4
+     ],
+     "k": 2,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "any_dimension": {
+     "ci95": [
+      0.1,
+      0.4
+     ],
+     "k": 3,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "ethnicity": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "race": {
+     "ci95": [
+      0.0,
+      0.4
+     ],
+     "k": 2,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "sex": {
+     "ci95": [
+      0.1,
+      0.4
+     ],
+     "k": 3,
+     "n": 2000,
+     "pct": 0.1
+    }
+   }
+  },
+  "trials_primary_measure": {
+   "mention_only_upper_bound": {
+    "age": {
+     "ci95": [
+      1.6,
+      2.9
+     ],
+     "k": 44,
+     "n": 2000,
+     "pct": 2.2
+    },
+    "any_dimension": {
+     "ci95": [
+      2.2,
+      3.7
+     ],
+     "k": 57,
+     "n": 2000,
+     "pct": 2.9
+    },
+    "ethnicity": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "race": {
+     "ci95": [
+      0.0,
+      0.4
+     ],
+     "k": 2,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "sex": {
+     "ci95": [
+      0.5,
+      1.3
+     ],
+     "k": 16,
+     "n": 2000,
+     "pct": 0.8
+    }
+   },
+   "supplementary_arm_titles_tier1": {
+    "age": {
+     "ci95": [
+      0.2,
+      0.8
+     ],
+     "k": 8,
+     "n": 2000,
+     "pct": 0.4
+    },
+    "any_dimension": {
+     "ci95": [
+      0.4,
+      1.1
+     ],
+     "k": 13,
+     "n": 2000,
+     "pct": 0.7
+    },
+    "ethnicity": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "race": {
+     "ci95": [
+      0.0,
+      0.3
+     ],
+     "k": 1,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "sex": {
+     "ci95": [
+      0.1,
+      0.6
+     ],
+     "k": 5,
+     "n": 2000,
+     "pct": 0.2
+    }
+   },
+   "tier1_levels": {
+    "age": {
+     "ci95": [
+      0.1,
+      0.5
+     ],
+     "k": 4,
+     "n": 2000,
+     "pct": 0.2
+    },
+    "any_dimension": {
+     "ci95": [
+      0.1,
+      0.7
+     ],
+     "k": 6,
+     "n": 2000,
+     "pct": 0.3
+    },
+    "ethnicity": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "race": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "race_or_ethnicity": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "sex": {
+     "ci95": [
+      0.1,
+      0.4
+     ],
+     "k": 3,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "sex_race_or_ethnicity": {
+     "ci95": [
+      0.1,
+      0.4
+     ],
+     "k": 3,
+     "n": 2000,
+     "pct": 0.1
+    }
+   },
+   "tier1_or_tier2": {
+    "age": {
+     "ci95": [
+      0.1,
+      0.6
+     ],
+     "k": 5,
+     "n": 2000,
+     "pct": 0.2
+    },
+    "any_dimension": {
+     "ci95": [
+      0.2,
+      0.7
+     ],
+     "k": 7,
+     "n": 2000,
+     "pct": 0.3
+    },
+    "ethnicity": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "race": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "sex": {
+     "ci95": [
+      0.1,
+      0.5
+     ],
+     "k": 4,
+     "n": 2000,
+     "pct": 0.2
+    },
+    "sex_race_or_ethnicity": {
+     "ci95": [
+      0.1,
+      0.5
+     ],
+     "k": 4,
+     "n": 2000,
+     "pct": 0.2
+    }
+   },
+   "tier2_title_cue_only": {
+    "age": {
+     "ci95": [
+      0.0,
+      0.3
+     ],
+     "k": 1,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "any_dimension": {
+     "ci95": [
+      0.0,
+      0.3
+     ],
+     "k": 1,
+     "n": 2000,
+     "pct": 0.1
+    },
+    "ethnicity": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "race": {
+     "ci95": [
+      0.0,
+      0.2
+     ],
+     "k": 0,
+     "n": 2000,
+     "pct": 0.0
+    },
+    "sex": {
+     "ci95": [
+      0.0,
+      0.3
+     ],
+     "k": 1,
+     "n": 2000,
+     "pct": 0.1
+    }
+   }
+  },
+  "union_tier1_tier2_arm": {
+   "any_measure": {
+    "ci95": [
+     1.3,
+     2.4
+    ],
+    "k": 35,
+    "n": 2000,
+    "pct": 1.8
+   },
+   "any_measure_race_or_ethnicity": {
+    "ci95": [
+     0.2,
+     0.8
+    ],
+    "k": 8,
+    "n": 2000,
+    "pct": 0.4
+   },
+   "any_measure_sex_race_ethnicity": {
+    "ci95": [
+     0.6,
+     1.5
+    ],
+    "k": 19,
+    "n": 2000,
+    "pct": 0.9
+   },
+   "primary_measure": {
+    "ci95": [
+     0.6,
+     1.5
+    ],
+    "k": 19,
+    "n": 2000,
+    "pct": 0.9
+   }
+  }
+ }
+}

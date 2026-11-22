@@ -1,0 +1,498 @@
+{
+ "n_detected": 136,
+ "n_non_detected": 1864,
+ "random60": [
+  "NCT00081653",
+  "NCT00095199",
+  "NCT00114244",
+  "NCT00225784",
+  "NCT00340379",
+  "NCT00353938",
+  "NCT00369590",
+  "NCT00430183",
+  "NCT00465361",
+  "NCT00566696",
+  "NCT00627978",
+  "NCT00708162",
+  "NCT00714051",
+  "NCT00724971",
+  "NCT00856908",
+  "NCT00940589",
+  "NCT01263938",
+  "NCT01289210",
+  "NCT01375491",
+  "NCT01475734",
+  "NCT01489111",
+  "NCT01490788",
+  "NCT01546636",
+  "NCT01620944",
+  "NCT01768000",
+  "NCT01794000",
+  "NCT01927068",
+  "NCT01940497",
+  "NCT01944644",
+  "NCT02178722",
+  "NCT02303574",
+  "NCT02431364",
+  "NCT02453711",
+  "NCT02513485",
+  "NCT02528318",
+  "NCT02576249",
+  "NCT02634346",
+  "NCT02829983",
+  "NCT03123354",
+  "NCT03338673",
+  "NCT03468218",
+  "NCT03649217",
+  "NCT03669250",
+  "NCT03676257",
+  "NCT03755414",
+  "NCT04029480",
+  "NCT04176133",
+  "NCT04234997",
+  "NCT04333147",
+  "NCT04548349",
+  "NCT04629196",
+  "NCT04663737",
+  "NCT04717323",
+  "NCT05014919",
+  "NCT05205941",
+  "NCT05348993",
+  "NCT05384834",
+  "NCT05735249",
+  "NCT05964465",
+  "NCT06361875"
+ ],
+ "targeted40": [
+  {
+   "nct_id": "NCT02886728",
+   "score": 10,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6",
+    "groups>=4",
+    "title:by/stratified",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT03932682",
+   "score": 9,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6",
+    "groups>=4",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT01240863",
+   "score": 9,
+   "why": [
+    "phase3",
+    "classes>=6",
+    "groups>=4",
+    "title:by/stratified",
+    "loose-mention",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT03304379",
+   "score": 9,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6",
+    "title:by/stratified",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT01174446",
+   "score": 8,
+   "why": [
+    "phase3",
+    "classes>=6",
+    "groups>=4",
+    "title:by/stratified",
+    "loose-mention"
+   ]
+  },
+  {
+   "nct_id": "NCT02125461",
+   "score": 8,
+   "why": [
+    "phase3",
+    "n>=500",
+    "classes>=6",
+    "loose-mention",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT03131453",
+   "score": 8,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT00954447",
+   "score": 8,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT01122927",
+   "score": 8,
+   "why": [
+    "phase3",
+    "n>=500",
+    "classes>=6",
+    "groups>=4",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT01421147",
+   "score": 7,
+   "why": [
+    "phase3",
+    "n>=500",
+    "classes>=6",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT00251719",
+   "score": 7,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT03714672",
+   "score": 7,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6",
+    "groups>=4"
+   ]
+  },
+  {
+   "nct_id": "NCT00114777",
+   "score": 7,
+   "why": [
+    "phase3",
+    "n>=500",
+    "classes>=6",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT00493870",
+   "score": 7,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT01391793",
+   "score": 7,
+   "why": [
+    "phase3",
+    "n>=500",
+    "loose-mention",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT04321460",
+   "score": 7,
+   "why": [
+    "phase3",
+    "n>=500",
+    "classes>=6",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT01041404",
+   "score": 7,
+   "why": [
+    "phase3",
+    "n>=500",
+    "classes>=6",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT03221426",
+   "score": 7,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "groups>=4",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT04908202",
+   "score": 7,
+   "why": [
+    "phase3",
+    "n>=500",
+    "classes>=6",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT03080935",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6"
+   ]
+  },
+  {
+   "nct_id": "NCT02914600",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6"
+   ]
+  },
+  {
+   "nct_id": "NCT01871727",
+   "score": 6,
+   "why": [
+    "phase3",
+    "classes>=6",
+    "groups>=4",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT00005044",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6"
+   ]
+  },
+  {
+   "nct_id": "NCT00086580",
+   "score": 6,
+   "why": [
+    "phase3",
+    "classes>=6",
+    "title:by/stratified",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT04534491",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT00346073",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6"
+   ]
+  },
+  {
+   "nct_id": "NCT02655016",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "classes>=6",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT04421027",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6"
+   ]
+  },
+  {
+   "nct_id": "NCT02502266",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "groups>=4",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT00010803",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6"
+   ]
+  },
+  {
+   "nct_id": "NCT01696643",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6"
+   ]
+  },
+  {
+   "nct_id": "NCT01152554",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "title:by/stratified"
+   ]
+  },
+  {
+   "nct_id": "NCT02437318",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "classes>=6",
+    "groups>=4"
+   ]
+  },
+  {
+   "nct_id": "NCT02325791",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6"
+   ]
+  },
+  {
+   "nct_id": "NCT01152996",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6"
+   ]
+  },
+  {
+   "nct_id": "NCT01029353",
+   "score": 6,
+   "why": [
+    "n>=500",
+    "groups>=4",
+    "title:by/stratified",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT03381742",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "groups>=4"
+   ]
+  },
+  {
+   "nct_id": "NCT00820027",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "groups>=4",
+    "analysis:interaction/stratif"
+   ]
+  },
+  {
+   "nct_id": "NCT00296504",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "classes>=6",
+    "groups>=4"
+   ]
+  },
+  {
+   "nct_id": "NCT02227446",
+   "score": 6,
+   "why": [
+    "phase3",
+    "n>=500",
+    "n>=1000",
+    "classes>=6"
+   ]
+  }
+ ],
+ "targeted_cutoff_score": 6,
+ "n_rest_at_or_above_cutoff": 43,
+ "score_distribution_rest": {
+  "0": 871,
+  "1": 226,
+  "2": 332,
+  "3": 179,
+  "4": 95,
+  "5": 58,
+  "6": 24,
+  "7": 10,
+  "8": 5,
+  "9": 3,
+  "10": 1
+ },
+ "seed": 20261113
+}

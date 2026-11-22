@@ -1,0 +1,796 @@
+{
+ "definition": {
+  "has_results_expression": "AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+  "year_expression": "AREA[PrimaryCompletionDate]RANGE[Y-01-01,Y-12-31]",
+  "strata": {
+   "interventional_all": "AREA[StudyType]INTERVENTIONAL",
+   "interventional_completed_or_terminated": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED)",
+   "interventional_phase3": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3",
+   "interventional_industry_lead": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY",
+   "interventional_phase3_industry_randomized": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED",
+   "interventional_fda_regulated_drug_or_device": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true)",
+   "interventional_us_location": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\"",
+   "observational_all": "AREA[StudyType]OBSERVATIONAL"
+  },
+  "request": "GET /api/v2/studies?countTotal=true&pageSize=1&fields=NCTId&filter.advanced=<expr>"
+ },
+ "cells": [
+  {
+   "stratum": "interventional_all",
+   "year": 2015,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 16393,
+   "n_with_results": 4242,
+   "n_without_results": 12151
+  },
+  {
+   "stratum": "interventional_all",
+   "year": 2016,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 17982,
+   "n_with_results": 4542,
+   "n_without_results": 13440
+  },
+  {
+   "stratum": "interventional_all",
+   "year": 2017,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 19076,
+   "n_with_results": 4299,
+   "n_without_results": 14777
+  },
+  {
+   "stratum": "interventional_all",
+   "year": 2018,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 20435,
+   "n_with_results": 4516,
+   "n_without_results": 15919
+  },
+  {
+   "stratum": "interventional_all",
+   "year": 2019,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 22197,
+   "n_with_results": 4706,
+   "n_without_results": 17491
+  },
+  {
+   "stratum": "interventional_all",
+   "year": 2020,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 21688,
+   "n_with_results": 4326,
+   "n_without_results": 17362
+  },
+  {
+   "stratum": "interventional_all",
+   "year": 2021,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 23455,
+   "n_with_results": 4427,
+   "n_without_results": 19028
+  },
+  {
+   "stratum": "interventional_all",
+   "year": 2022,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 26867,
+   "n_with_results": 4857,
+   "n_without_results": 22010
+  },
+  {
+   "stratum": "interventional_all",
+   "year": 2023,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 28767,
+   "n_with_results": 4789,
+   "n_without_results": 23978
+  },
+  {
+   "stratum": "interventional_completed_or_terminated",
+   "year": 2015,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 13709,
+   "n_with_results": 4218,
+   "n_without_results": 9491
+  },
+  {
+   "stratum": "interventional_completed_or_terminated",
+   "year": 2016,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 14697,
+   "n_with_results": 4521,
+   "n_without_results": 10176
+  },
+  {
+   "stratum": "interventional_completed_or_terminated",
+   "year": 2017,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 15133,
+   "n_with_results": 4273,
+   "n_without_results": 10860
+  },
+  {
+   "stratum": "interventional_completed_or_terminated",
+   "year": 2018,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 15962,
+   "n_with_results": 4473,
+   "n_without_results": 11489
+  },
+  {
+   "stratum": "interventional_completed_or_terminated",
+   "year": 2019,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 17001,
+   "n_with_results": 4640,
+   "n_without_results": 12361
+  },
+  {
+   "stratum": "interventional_completed_or_terminated",
+   "year": 2020,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 15617,
+   "n_with_results": 4241,
+   "n_without_results": 11376
+  },
+  {
+   "stratum": "interventional_completed_or_terminated",
+   "year": 2021,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 16563,
+   "n_with_results": 4332,
+   "n_without_results": 12231
+  },
+  {
+   "stratum": "interventional_completed_or_terminated",
+   "year": 2022,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 18456,
+   "n_with_results": 4710,
+   "n_without_results": 13746
+  },
+  {
+   "stratum": "interventional_completed_or_terminated",
+   "year": 2023,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[OverallStatus](COMPLETED OR TERMINATED) AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 19067,
+   "n_with_results": 4569,
+   "n_without_results": 14498
+  },
+  {
+   "stratum": "interventional_phase3",
+   "year": 2015,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 1977,
+   "n_with_results": 864,
+   "n_without_results": 1113
+  },
+  {
+   "stratum": "interventional_phase3",
+   "year": 2016,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 1887,
+   "n_with_results": 811,
+   "n_without_results": 1076
+  },
+  {
+   "stratum": "interventional_phase3",
+   "year": 2017,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 1905,
+   "n_with_results": 804,
+   "n_without_results": 1101
+  },
+  {
+   "stratum": "interventional_phase3",
+   "year": 2018,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 1847,
+   "n_with_results": 795,
+   "n_without_results": 1052
+  },
+  {
+   "stratum": "interventional_phase3",
+   "year": 2019,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 1773,
+   "n_with_results": 772,
+   "n_without_results": 1001
+  },
+  {
+   "stratum": "interventional_phase3",
+   "year": 2020,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 1886,
+   "n_with_results": 735,
+   "n_without_results": 1151
+  },
+  {
+   "stratum": "interventional_phase3",
+   "year": 2021,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 1920,
+   "n_with_results": 716,
+   "n_without_results": 1204
+  },
+  {
+   "stratum": "interventional_phase3",
+   "year": 2022,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 2059,
+   "n_with_results": 732,
+   "n_without_results": 1327
+  },
+  {
+   "stratum": "interventional_phase3",
+   "year": 2023,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[Phase]PHASE3 AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 2098,
+   "n_with_results": 719,
+   "n_without_results": 1379
+  },
+  {
+   "stratum": "interventional_industry_lead",
+   "year": 2015,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 4265,
+   "n_with_results": 1945,
+   "n_without_results": 2320
+  },
+  {
+   "stratum": "interventional_industry_lead",
+   "year": 2016,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 4571,
+   "n_with_results": 2012,
+   "n_without_results": 2559
+  },
+  {
+   "stratum": "interventional_industry_lead",
+   "year": 2017,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 4428,
+   "n_with_results": 1969,
+   "n_without_results": 2459
+  },
+  {
+   "stratum": "interventional_industry_lead",
+   "year": 2018,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 4476,
+   "n_with_results": 2006,
+   "n_without_results": 2470
+  },
+  {
+   "stratum": "interventional_industry_lead",
+   "year": 2019,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 4701,
+   "n_with_results": 2011,
+   "n_without_results": 2690
+  },
+  {
+   "stratum": "interventional_industry_lead",
+   "year": 2020,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 4362,
+   "n_with_results": 1791,
+   "n_without_results": 2571
+  },
+  {
+   "stratum": "interventional_industry_lead",
+   "year": 2021,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 4989,
+   "n_with_results": 1839,
+   "n_without_results": 3150
+  },
+  {
+   "stratum": "interventional_industry_lead",
+   "year": 2022,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 5757,
+   "n_with_results": 1959,
+   "n_without_results": 3798
+  },
+  {
+   "stratum": "interventional_industry_lead",
+   "year": 2023,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 6030,
+   "n_with_results": 1860,
+   "n_without_results": 4170
+  },
+  {
+   "stratum": "interventional_phase3_industry_randomized",
+   "year": 2015,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 733,
+   "n_with_results": 508,
+   "n_without_results": 225
+  },
+  {
+   "stratum": "interventional_phase3_industry_randomized",
+   "year": 2016,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 758,
+   "n_with_results": 505,
+   "n_without_results": 253
+  },
+  {
+   "stratum": "interventional_phase3_industry_randomized",
+   "year": 2017,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 702,
+   "n_with_results": 476,
+   "n_without_results": 226
+  },
+  {
+   "stratum": "interventional_phase3_industry_randomized",
+   "year": 2018,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 692,
+   "n_with_results": 481,
+   "n_without_results": 211
+  },
+  {
+   "stratum": "interventional_phase3_industry_randomized",
+   "year": 2019,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 670,
+   "n_with_results": 457,
+   "n_without_results": 213
+  },
+  {
+   "stratum": "interventional_phase3_industry_randomized",
+   "year": 2020,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 648,
+   "n_with_results": 443,
+   "n_without_results": 205
+  },
+  {
+   "stratum": "interventional_phase3_industry_randomized",
+   "year": 2021,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 678,
+   "n_with_results": 413,
+   "n_without_results": 265
+  },
+  {
+   "stratum": "interventional_phase3_industry_randomized",
+   "year": 2022,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 771,
+   "n_with_results": 424,
+   "n_without_results": 347
+  },
+  {
+   "stratum": "interventional_phase3_industry_randomized",
+   "year": 2023,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LeadSponsorClass]INDUSTRY AND AREA[Phase]PHASE3 AND AREA[DesignAllocation]RANDOMIZED AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 825,
+   "n_with_results": 418,
+   "n_without_results": 407
+  },
+  {
+   "stratum": "interventional_fda_regulated_drug_or_device",
+   "year": 2015,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 503,
+   "n_with_results": 366,
+   "n_without_results": 137
+  },
+  {
+   "stratum": "interventional_fda_regulated_drug_or_device",
+   "year": 2016,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 976,
+   "n_with_results": 711,
+   "n_without_results": 265
+  },
+  {
+   "stratum": "interventional_fda_regulated_drug_or_device",
+   "year": 2017,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 1789,
+   "n_with_results": 1149,
+   "n_without_results": 640
+  },
+  {
+   "stratum": "interventional_fda_regulated_drug_or_device",
+   "year": 2018,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 3140,
+   "n_with_results": 1964,
+   "n_without_results": 1176
+  },
+  {
+   "stratum": "interventional_fda_regulated_drug_or_device",
+   "year": 2019,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 4273,
+   "n_with_results": 2585,
+   "n_without_results": 1688
+  },
+  {
+   "stratum": "interventional_fda_regulated_drug_or_device",
+   "year": 2020,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 4403,
+   "n_with_results": 2620,
+   "n_without_results": 1783
+  },
+  {
+   "stratum": "interventional_fda_regulated_drug_or_device",
+   "year": 2021,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 5000,
+   "n_with_results": 2841,
+   "n_without_results": 2159
+  },
+  {
+   "stratum": "interventional_fda_regulated_drug_or_device",
+   "year": 2022,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 5707,
+   "n_with_results": 3155,
+   "n_without_results": 2552
+  },
+  {
+   "stratum": "interventional_fda_regulated_drug_or_device",
+   "year": 2023,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND (AREA[IsFDARegulatedDrug]true OR AREA[IsFDARegulatedDevice]true) AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 5859,
+   "n_with_results": 3048,
+   "n_without_results": 2811
+  },
+  {
+   "stratum": "interventional_us_location",
+   "year": 2015,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 5918,
+   "n_with_results": 2936,
+   "n_without_results": 2982
+  },
+  {
+   "stratum": "interventional_us_location",
+   "year": 2016,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 6540,
+   "n_with_results": 3247,
+   "n_without_results": 3293
+  },
+  {
+   "stratum": "interventional_us_location",
+   "year": 2017,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 6444,
+   "n_with_results": 3176,
+   "n_without_results": 3268
+  },
+  {
+   "stratum": "interventional_us_location",
+   "year": 2018,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 7078,
+   "n_with_results": 3488,
+   "n_without_results": 3590
+  },
+  {
+   "stratum": "interventional_us_location",
+   "year": 2019,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 7676,
+   "n_with_results": 3731,
+   "n_without_results": 3945
+  },
+  {
+   "stratum": "interventional_us_location",
+   "year": 2020,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 7226,
+   "n_with_results": 3545,
+   "n_without_results": 3681
+  },
+  {
+   "stratum": "interventional_us_location",
+   "year": 2021,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 7312,
+   "n_with_results": 3631,
+   "n_without_results": 3681
+  },
+  {
+   "stratum": "interventional_us_location",
+   "year": 2022,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 8303,
+   "n_with_results": 4040,
+   "n_without_results": 4263
+  },
+  {
+   "stratum": "interventional_us_location",
+   "year": 2023,
+   "expr_all": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31]",
+   "expr_with_results": "AREA[StudyType]INTERVENTIONAL AND AREA[LocationCountry]\"United States\" AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 8386,
+   "n_with_results": 3962,
+   "n_without_results": 4424
+  },
+  {
+   "stratum": "observational_all",
+   "year": 2015,
+   "expr_all": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31]",
+   "expr_with_results": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2015-01-01,2015-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 4396,
+   "n_with_results": 267,
+   "n_without_results": 4129
+  },
+  {
+   "stratum": "observational_all",
+   "year": 2016,
+   "expr_all": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31]",
+   "expr_with_results": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2016-01-01,2016-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 5025,
+   "n_with_results": 321,
+   "n_without_results": 4704
+  },
+  {
+   "stratum": "observational_all",
+   "year": 2017,
+   "expr_all": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31]",
+   "expr_with_results": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2017-01-01,2017-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 5475,
+   "n_with_results": 300,
+   "n_without_results": 5175
+  },
+  {
+   "stratum": "observational_all",
+   "year": 2018,
+   "expr_all": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31]",
+   "expr_with_results": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2018-01-01,2018-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 6108,
+   "n_with_results": 273,
+   "n_without_results": 5835
+  },
+  {
+   "stratum": "observational_all",
+   "year": 2019,
+   "expr_all": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31]",
+   "expr_with_results": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2019-01-01,2019-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 7161,
+   "n_with_results": 306,
+   "n_without_results": 6855
+  },
+  {
+   "stratum": "observational_all",
+   "year": 2020,
+   "expr_all": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31]",
+   "expr_with_results": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2020-01-01,2020-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 8518,
+   "n_with_results": 268,
+   "n_without_results": 8250
+  },
+  {
+   "stratum": "observational_all",
+   "year": 2021,
+   "expr_all": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31]",
+   "expr_with_results": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2021-01-01,2021-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 8945,
+   "n_with_results": 246,
+   "n_without_results": 8699
+  },
+  {
+   "stratum": "observational_all",
+   "year": 2022,
+   "expr_all": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31]",
+   "expr_with_results": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2022-01-01,2022-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 9600,
+   "n_with_results": 273,
+   "n_without_results": 9327
+  },
+  {
+   "stratum": "observational_all",
+   "year": 2023,
+   "expr_all": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31]",
+   "expr_with_results": "AREA[StudyType]OBSERVATIONAL AND AREA[PrimaryCompletionDate]RANGE[2023-01-01,2023-12-31] AND AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n_all": 9888,
+   "n_with_results": 293,
+   "n_without_results": 9595
+  }
+ ],
+ "frame_checks": {
+  "engine_frame_now": {
+   "expr": "AREA[ResultsFirstPostDate]RANGE[2009-01-01,MAX]",
+   "n": 80988,
+   "fetched_at": "2026-11-13T23:21:47Z"
+  },
+  "engine_frame_through_2026-11-08": {
+   "expr": "AREA[ResultsFirstPostDate]RANGE[2009-01-01,2026-11-08]",
+   "n": 80890,
+   "fetched_at": "2026-11-13T23:21:48Z"
+  },
+  "engine_frame_through_2026-11-06": {
+   "expr": "AREA[ResultsFirstPostDate]RANGE[2009-01-01,2026-11-06]",
+   "n": 80890,
+   "fetched_at": "2026-11-13T23:21:48Z"
+  },
+  "any_results_first_post_date": {
+   "expr": "AREA[ResultsFirstPostDate]RANGE[MIN,MAX]",
+   "n": 81029,
+   "fetched_at": "2026-11-13T23:21:49Z"
+  },
+  "results_first_post_before_2009": {
+   "expr": "AREA[ResultsFirstPostDate]RANGE[MIN,2008-12-31]",
+   "n": 41,
+   "fetched_at": "2026-11-13T23:21:50Z"
+  },
+  "has_results_true": {
+   "expr": "AREA[HasResults]true",
+   "n": 81029,
+   "fetched_at": "2026-11-13T23:21:50Z"
+  },
+  "engine_frame_now_interventional": {
+   "expr": "AREA[ResultsFirstPostDate]RANGE[2009-01-01,MAX] AND AREA[StudyType]INTERVENTIONAL",
+   "n": 76247,
+   "fetched_at": "2026-11-13T23:21:52Z"
+  },
+  "engine_frame_now_observational": {
+   "expr": "AREA[ResultsFirstPostDate]RANGE[2009-01-01,MAX] AND AREA[StudyType]OBSERVATIONAL",
+   "n": 4741,
+   "fetched_at": "2026-11-13T23:21:52Z"
+  },
+  "all_registered_studies": {
+   "expr": "",
+   "n": 611771,
+   "fetched_at": "2026-11-13T23:21:53Z"
+  },
+  "all_interventional": {
+   "expr": "AREA[StudyType]INTERVENTIONAL",
+   "n": 466861,
+   "fetched_at": "2026-11-13T23:21:54Z"
+  },
+  "all_observational": {
+   "expr": "AREA[StudyType]OBSERVATIONAL",
+   "n": 142843,
+   "fetched_at": "2026-11-13T23:21:54Z"
+  }
+ },
+ "consistency_checks": [
+  {
+   "year": 2015,
+   "not_results_first_post": 12151,
+   "aggFilters_results_with": 4242,
+   "aggFilters_results_without": 12151,
+   "HasResults_true": 4242
+  },
+  {
+   "year": 2016,
+   "not_results_first_post": 13440,
+   "aggFilters_results_with": 4542,
+   "aggFilters_results_without": 13440,
+   "HasResults_true": 4542
+  },
+  {
+   "year": 2017,
+   "not_results_first_post": 14777,
+   "aggFilters_results_with": 4299,
+   "aggFilters_results_without": 14777,
+   "HasResults_true": 4299
+  },
+  {
+   "year": 2018,
+   "not_results_first_post": 15919,
+   "aggFilters_results_with": 4516,
+   "aggFilters_results_without": 15919,
+   "HasResults_true": 4516
+  },
+  {
+   "year": 2019,
+   "not_results_first_post": 17491,
+   "aggFilters_results_with": 4706,
+   "aggFilters_results_without": 17491,
+   "HasResults_true": 4706
+  },
+  {
+   "year": 2020,
+   "not_results_first_post": 17362,
+   "aggFilters_results_with": 4326,
+   "aggFilters_results_without": 17362,
+   "HasResults_true": 4326
+  },
+  {
+   "year": 2021,
+   "not_results_first_post": 19028,
+   "aggFilters_results_with": 4427,
+   "aggFilters_results_without": 19028,
+   "HasResults_true": 4427
+  },
+  {
+   "year": 2022,
+   "not_results_first_post": 22010,
+   "aggFilters_results_with": 4857,
+   "aggFilters_results_without": 22010,
+   "HasResults_true": 4857
+  },
+  {
+   "year": 2023,
+   "not_results_first_post": 23978,
+   "aggFilters_results_with": 4789,
+   "aggFilters_results_without": 23978,
+   "HasResults_true": 4789
+  }
+ ],
+ "failures": [],
+ "api_version": {
+  "apiVersion": "2.0.5",
+  "dataTimestamp": "2026-11-13T10:00:06"
+ },
+ "first_fetch": "2026-11-13T23:19:50Z",
+ "last_fetch": "2026-11-13T23:21:54Z"
+}

@@ -1,12 +1,12 @@
 {
   "about": "Written by scripts/first_view_parity.mjs --excerpt with the excerpt beside it; never edited by hand.",
-  "source": "michaeldgreenphd/clinical-trial-populations@c4e297ab45d61f2872eff5140cc9b91ddd0605d6",
+  "source": "michaeldgreenphd/clinical-trial-populations@ca2d6d34d08729590611e92f8f1b4c6d8b538f9c",
   "site_files": {
-    "app.js": "ddd5db56f3d727f5f0377cdd0a1cae24774cbe08cc5b56f0b311677a5f7ac887",
-    "index.html": "0ca94a29262426f046477262ecb746370abefb6f3e98a77ae1829ab439816e9d"
+    "app.js": "3eea2b680e67f38228c3bc240068f5e11fe7b15187530aa4c6027d16f2aaaae5",
+    "index.html": "a8e7116d28497b8177f2a4093594dc4b3fb163e3402149a188a8127b63d0e7ab"
   },
   "excerpt": {
-    "app_overview.js": "7cd645106c0bc52b512e1c840bcf1c6635849dee4706f5aaa2208cf09e5f49ea",
-    "index_overview.html": "c0a45ab03a955b55943745a7fb41e8fccdbe922e0c7a73b214800044733aa120"
+    "app_overview.js": "0b25705a3bddde6c2a2e82873c51f834e83438263cf07d112899cf17c148e5ed",
+    "index_overview.html": "b9e4470e566b7f21314b8c555e1147174781d36507b06b227d141be55d25579b"
   }
 }

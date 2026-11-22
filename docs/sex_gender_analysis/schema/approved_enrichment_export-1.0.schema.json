@@ -1,0 +1,406 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/michaeldgreenphd/civicsample-engine/docs/sex_gender_analysis/schema/approved_enrichment_export-1.0.schema.json",
+  "title": "civicsample-approved-enrichment-export-1.0",
+  "description": "The narrow, public, allowlisted export the private promotion tooling writes and src/enrichment_import.py joins onto the full study records under the enrichment namespace. A record reaches this file only with a validated candidate, an independent acceptance decision and a release decision, each with its reference and chronology. SUPPORTED, an audit match or an evidence quotation is none of those. The schema is structural; src/enrichment_import.validate_export adds the semantic checks (allowlist, taxonomy ids, chronology order, conflicts, private fields, snapshot compatibility).",
+  "type": "object",
+  "required": [
+    "format",
+    "export_id",
+    "exported_at",
+    "source_repository",
+    "source_commit",
+    "allowlist_version",
+    "release_decision",
+    "applies_to",
+    "records"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "civicsample-approved-enrichment-export-1.0"
+    },
+    "export_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exported_at": {
+      "type": "string"
+    },
+    "source_repository": {
+      "type": "string",
+      "description": "The private repository the decisions live in (name only)"
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "allowlist_version": {
+      "const": "public-allowlist/1.0"
+    },
+    "release_decision": {
+      "type": "object",
+      "required": [
+        "decision_id",
+        "decided_at",
+        "release_status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "decision_id": {
+          "type": "string"
+        },
+        "decided_at": {
+          "type": "string"
+        },
+        "release_status": {
+          "const": "released"
+        }
+      }
+    },
+    "applies_to": {
+      "type": "object",
+      "required": [
+        "registry_snapshot_date"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "registry_snapshot_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "description": "The registry snapshot the export was prepared against; joining it to another snapshot needs an explicit historical compatibility decision"
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    },
+    "promotion_package": {
+      "type": "string",
+      "description": "The private promotion package version that wrote the export (optional)"
+    },
+    "coverage": {
+      "type": "object",
+      "description": "Per run: how many planned units the run completed. A partial run is exported as partial; a record from it is never evidence about a label the run did not reach.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "task",
+          "units_completed",
+          "units_planned",
+          "coverage"
+        ],
+        "properties": {
+          "task": {
+            "type": "string"
+          },
+          "units_completed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "units_planned": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "coverage": {
+            "enum": [
+              "complete",
+              "partial"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "record": {
+      "type": "object",
+      "required": [
+        "record_id",
+        "revision",
+        "schema_version",
+        "nct_id",
+        "field",
+        "source",
+        "evidence",
+        "method",
+        "value",
+        "value_state",
+        "validation_status",
+        "review_status",
+        "release_status",
+        "decision_ref",
+        "chronology",
+        "supersedes",
+        "linkage"
+      ],
+      "properties": {
+        "record_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "schema_version": {
+          "const": "approved_enrichment_record/1.0"
+        },
+        "nct_id": {
+          "type": "string",
+          "pattern": "^NCT[0-9]{8}$"
+        },
+        "field": {
+          "enum": [
+            "conditions.proposed_membership",
+            "conditions.accepted_membership",
+            "conditions.review_leads"
+          ]
+        },
+        "source": {
+          "type": "object",
+          "required": [
+            "kind",
+            "identity",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "registry_snapshot",
+                "document"
+              ]
+            },
+            "identity": {
+              "type": "string",
+              "description": "The exact registry snapshot or document identity (never a private URL)"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "snapshot_date": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "required": [
+            "pointer",
+            "population",
+            "timepoint"
+          ],
+          "properties": {
+            "pointer": {
+              "type": "string"
+            },
+            "population": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "timepoint": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "method": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "registry",
+                "deterministic_rule",
+                "ai_extraction",
+                "ai_classification"
+              ]
+            },
+            "rule_version": {
+              "type": "string"
+            },
+            "prompt_version": {
+              "type": "string"
+            },
+            "guide_version": {
+              "type": "string"
+            },
+            "taxonomy_version": {
+              "type": "string"
+            },
+            "model_id": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "native_task": {
+              "type": "string",
+              "description": "The experiment the answer came from and its native vocabulary (for example label-pilot-1.0 SUPPORTED/NOT_SUPPORTED/INSUFFICIENT_INFORMATION); never relabelled"
+            },
+            "run_coverage": {
+              "enum": [
+                "complete",
+                "partial"
+              ],
+              "description": "Whether the run that produced this record completed every planned unit"
+            },
+            "units_completed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "units_planned": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "value": {},
+        "value_state": {
+          "enum": [
+            "present",
+            "missing",
+            "error",
+            "not_assessed"
+          ]
+        },
+        "state_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validation_status": {
+          "const": "validated"
+        },
+        "review_status": {
+          "const": "accepted"
+        },
+        "release_status": {
+          "enum": [
+            "released",
+            "revoked"
+          ]
+        },
+        "revocation_ref": {
+          "type": "string"
+        },
+        "revoked_at": {
+          "type": "string"
+        },
+        "decision_ref": {
+          "type": "string"
+        },
+        "chronology": {
+          "type": "object",
+          "required": [
+            "validated_at",
+            "reviewed_at",
+            "released_at"
+          ],
+          "properties": {
+            "validated_at": {
+              "type": "string"
+            },
+            "reviewed_at": {
+              "type": "string"
+            },
+            "released_at": {
+              "type": "string"
+            }
+          }
+        },
+        "supersedes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "linkage": {
+          "type": "object",
+          "required": [
+            "status",
+            "method",
+            "evidence"
+          ],
+          "properties": {
+            "status": {
+              "const": "validated"
+            },
+            "method": {
+              "enum": [
+                "registry_nct",
+                "document_declared_nct_verified",
+                "manual_verified"
+              ]
+            },
+            "evidence": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "membership_value": {
+      "type": "object",
+      "required": [
+        "taxonomy_version",
+        "labels"
+      ],
+      "properties": {
+        "taxonomy_version": {
+          "const": "civicsample-condition-catalog-20/1.0"
+        },
+        "labels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "status"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "accepted",
+                  "proposed",
+                  "rejected",
+                  "unassessed"
+                ]
+              },
+              "lead_kind": {
+                "enum": [
+                  "removal",
+                  "addition",
+                  "confirmation",
+                  null
+                ]
+              },
+              "native_task": {
+                "type": "string"
+              },
+              "native_decision": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,137 @@
+nct_id	judgement	kind	reason
+NCT00078819	false_positive	none	"stratified by age group" names the stratification factor of a CMH/van Elteren test; no result is posted by age
+NCT00113516	false_positive	none	"subgroup/subset of subjects" defines the responder set for duration of response and a sampled subset; not a subgroup result
+NCT00119067	true_subgroup_result	demographic: sex	PRIMARY local AEs posted for route x sex groups (SQ Females, IM Female, SQ Males, IM Male)
+NCT00261443	true_subgroup_result	demographic: age, sex, race	SECONDARY treatment-emergent AEs posted by age (<=50/>50), gender and race (White/Non-White) classes
+NCT00264849	partial	non-demographic	outcome posted only for the one subgroup requiring maintenance oral steroids; no complementary level
+NCT00348309	true_subgroup_result	non-demographic: APOE4 genotype	PRIMARY ADAS-Cog change posted for APOE4-negative, all-except-E4/E4 and full populations, with analyses
+NCT00388505	false_positive	none	"pharmacokinetic/audiology subpopulation" are analysis sets
+NCT00391768	partial	demographic: age	PK and AEs posted per age-defined dosing cohort; age and dose are confounded by design
+NCT00423046	true_subgroup_result	demographic: age	immunogenicity posted by age group (18-26, 27-35, 36-45 years) in class titles; found through the population description
+NCT00461305	true_subgroup_result	demographic: age	POST_HOC dysmenorrhea score by age (<30/>=30) alongside weight and diagnosis subgroups
+NCT00464945	false_positive	none	ages in the arm descriptions are the infant dosing schedule; arms differ by manufacturing scale
+NCT00477464	false_positive	none	"subset of participants who showed a response" defines the duration-of-response set
+NCT00479856	false_positive	none	"subset of participants with a confirmed CR or PR" defines the duration-of-response set; no data posted
+NCT00502801	true_subgroup_result	non-demographic: pneumonia type	PRIMARY clinical response posted for all evaluable and by nosocomial / ventilator-associated / healthcare-associated pneumonia
+NCT00537394	false_positive	none	"subgroup of participants experiencing virologic failure" defines who the outcome applies to
+NCT00540592	partial	demographic: age	arms are vaccine formulations in adults >=65 years with a differently-aged comparison cohort; age and formulation are confounded
+NCT00666276	true_subgroup_result	demographic: sex	observational PRIMARY "factors affecting safety - gender": adverse reactions posted for male vs female groups with an analysis
+NCT00730041	false_positive	none	"5 subgroups" are questionnaire domains
+NCT00758420	false_positive	none	"subset of the VEINES-Sym" is an instrument description
+NCT00882999	false_positive	none	"B cell subsets" are laboratory cell populations
+NCT00910247	false_positive	none	"subgroup" refers to questionnaire item groups
+NCT00961649	false_positive	none	"a subset of the subject's visits" is a data-exclusion note
+NCT00964158	true_subgroup_result	demographic: age	immunogenicity and reactogenicity posted per age cohort (3-5, 6-9, 10-17 years), same vaccine in each; the cohorts are the study's groups
+NCT00980005	true_subgroup_result	demographic: age	HI titres, seroconversion and seroprotection posted "by age-strata" (3-4, 5-8, 9-17 years)
+NCT00997893	false_positive	none	"Logical Memory subset" is an instrument component
+NCT01027351	false_positive	none	ages in arm descriptions are the vaccination schedule of the parent study
+NCT01053663	true_subgroup_result	demographic: age	PRIMARY oseltamivir PK posted per infant age band (0-30, 31-90, 91-<365 days); the bands are the study's cohorts
+NCT01060059	partial	demographic: sex	counts of patients by gender per treatment arm (factor associated with treatment choice at baseline); not an outcome by sex
+NCT01068262	true_subgroup_result	demographic: sex	PRIMARY pharmacodynamic outcome posted for male and postmenopausal female panels, drug and placebo in each, with a between-panel analysis
+NCT01079143	false_positive	none	"Donor Sex / Donor Age" are donor attributes used as risk factors, not participant subgroups
+NCT01113892	false_positive	none	"subset of the efficacy analysis population with available data"
+NCT01183468	true_subgroup_result	demographic: age	PRIMARY C-peptide AUC posted per age cohort (8-15/8-17 vs 16-35/18-35 years); small phase 1 (n=17), cohorts are the study's groups
+NCT01256658	true_subgroup_result	demographic: age	haemoglobin by study arm and age group (5-9, 10-14, >=15 years)
+NCT01323790	partial	non-demographic	key secondary outcomes posted for one prespecified subgroup (laxative inadequate response); no complementary level
+NCT01345240	false_positive	none	infant age at first vaccination appears in arm descriptions; groups are regimens/lots
+NCT01358357	false_positive	none	"subset of items in the PANSS" is an instrument description
+NCT01393743	false_positive	none	"subset of participants who experienced these seizure types" defines who the outcome applies to
+NCT01557959	true_subgroup_result	non-demographic: molecular profile	response rate and survival posted for Low / High Cyclin D1 subgroups
+NCT01590888	false_positive	none	"subset of participants available" (MRI at one site)
+NCT01650259	false_positive	none	"efficacy set: a subset of the safety set"
+NCT01651949	true_subgroup_result	demographic: sex	PRIMARY HPV antibody titres posted for females, heterosexual males and MSM with a between-group analysis; the groups are enrolment cohorts
+NCT01665040	partial	non-demographic	PRIMARY posted for a single device-use sub-group (>2 IPG ports)
+NCT01669642	true_subgroup_result	demographic: age	PRIMARY ED50/ED95 posted per age band (2-5, 6-11, 12-17 years) within procedure type
+NCT01781481	false_positive	none	"subset of 40 patients" scored by two raters (reliability)
+NCT01790828	true_subgroup_result	demographic: age	haemorrhages during prophylaxis posted for <18 and >=18 years
+NCT01831635	false_positive	none	age-matching of controls in the arm description
+NCT01838447	false_positive	none	"age-specific norms" define the outcome threshold
+NCT01917916	true_subgroup_result	demographic: origin	PK (Cmax) posted for Chinese and Japanese participants as classes
+NCT01919801	false_positive	none	"sparse PK sampling from a subset of subjects"
+NCT01950819	partial	non-demographic	measure titled "by Subgroup" but the table rows are month 12 / month 24; the subgroup is not identifiable in the record
+NCT01974687	false_positive	none	"PK population: a subpopulation of the per-protocol population"
+NCT02028507	false_positive	none	"QoL population: a subset of enrolled patients"
+NCT02119156	false_positive	none	"B cell subsets" are laboratory cell populations
+NCT02122198	false_positive	none	"collected for a subset of the arm" (data availability)
+NCT02165826	partial	demographic: age, sex	model-derived PDE4 inhibitory activity and simulated AE rates for reference participants at covariate levels (age, sex, weight, smoking); not observed outcomes by subgroup
+NCT02195518	partial	non-demographic	outcome posted for the one subgroup with multi-drug resistance mutations at baseline
+NCT02203786	false_positive	none	"each sub-group" refers to the study's four arms (gamblers/controls x drug)
+NCT02207829	false_positive	none	"24 hour subset flag" is a model covariate
+NCT02246439	true_subgroup_result	demographic: age	PRIMARY treatment success posted for <18 and >=18 years with analyses; POST_HOC subgroup measure also by age
+NCT02304406	true_subgroup_result	demographic: sex, race	observational: ALK rearrangement frequency posted by gender (Female/Male) and, in a second measure, by race (White/Caucasian, Arabic, Others)
+NCT02342548	false_positive	none	"TMC is a subset of the TMS assessment" (instrument)
+NCT02343406	partial	non-demographic	overall survival posted for the one EGFRvIII-mutation subgroup
+NCT02415244	true_subgroup_result	demographic: age	observational PRIMARY posted for pediatric vs adult groups (the study's cohorts)
+NCT02417701	false_positive	none	"response evaluable cohort ... a subset of the total study population"
+NCT02442778	false_positive	none	"11 subsets" of an instrument
+NCT02507375	false_positive	none	"PK analysis subset"
+NCT02542293	true_subgroup_result	non-demographic: biomarker	OS/PFS/ORR posted for bTMB- and PD-L1-defined analysis sets (several levels) and for a China cohort
+NCT02549170	false_positive	none	analysis set defined by relapse in a previous epoch
+NCT02576678	partial	demographic: age	AEs posted for adolescent and child groups whose doses differ by group; age and dose confounded
+NCT02588664	false_positive	none	measures titled "Subgroup Analysis: Race / Sex / Age / ..." are registered but carry no data table; no subgroup result is in the record
+NCT02593825	true_subgroup_result	non-demographic: baseline severity	PRIMARY Bayley score posted for full group, severely delayed and mildly delayed
+NCT02612337	false_positive	none	randomisation "stratified by gender" in a sample-size comment
+NCT02662062	false_positive	none	"T cell subsets" are laboratory cell populations
+NCT02678572	false_positive	none	measure described as "subgroup analysis of demographic information" holds one value for one group; no result by subgroup
+NCT02685826	false_positive	none	age >=65 is the eligibility criterion of one cohort; no second age level
+NCT02688764	true_subgroup_result	demographic: age	POST_HOC serum phosphorus change posted by age group (<2, 2-<6, 6-<12, 12-18 years)
+NCT02726178	false_positive	none	"for infants less than 3 months of age" is part of a product name
+NCT02736890	false_positive	none	"subset of the dataset" is an instrument component
+NCT02737397	partial	non-demographic	POST_HOC result for one "hangover sensitive" subpopulation
+NCT02783300	false_positive	none	"SAEs are subset of AEs"
+NCT02793544	partial	non-demographic	descriptive result for one subgroup (4 HIV-positive participants); the sex categories are donor traits
+NCT02806232	partial	demographic: age	clinical cure posted per cohort; infant age cohorts receive their own formulation/dose
+NCT02869633	false_positive	none	"B/T cell subsets" are laboratory cell populations
+NCT02935062	false_positive	none	"the population is described by the age"
+NCT02938052	false_positive	none	"eight-question subset of the KCCQ" (instrument)
+NCT02988401	false_positive	none	"(Subset)" marks a measurement taken in some participants
+NCT03031912	partial	demographic: age	immunogenicity posted per cohort; cohorts are defined jointly by CD4 count and adult/adolescent status
+NCT03098836	true_subgroup_result	demographic: race	PRIMARY 2-year PFS posted for Caucasian and African American groups (race-defined cohorts, same therapy)
+NCT03100058	true_subgroup_result	non-demographic: glycaemic status	weight-loss response posted for dysglycemic, normoglycemic and T2DM subgroups
+NCT03207867	true_subgroup_result	demographic: origin	PK posted for Japanese and non-Japanese patient groups
+NCT03278782	partial	non-demographic	response rate posted for the ITT set and one lymphoma subtype (TFH phenotype)
+NCT03280563	false_positive	none	"subgroups [crossover arms]" are study arms
+NCT03292705	false_positive	none	"subset of five tasks" (instrument)
+NCT03334695	false_positive	none	"ITTc population is a subset of the FAS"
+NCT03390673	false_positive	none	"PKP population is a subpopulation of the PKC population"
+NCT03414970	false_positive	none	subgroup analyses by reconstruction type are described but the measure carries no data
+NCT03443973	false_positive	none	"in a subset of participants" (PET / CSF substudy)
+NCT03500094	partial	demographic: age	PRIMARY PK by adolescent age band, but the values are model simulations for the age subgroups
+NCT03574389	false_positive	none	ages in the arm descriptions are the vaccination schedule; "randomly selected subset" for an assay
+NCT03653364	false_positive	none	"ITTi population is a subset of ITT"
+NCT03686215	false_positive	none	"within subpopulation having negative margins" defines who the outcome applies to (post-surgery)
+NCT03722810	true_subgroup_result	demographic: sex	SECONDARY: arms combined and split into Female / Male groups to report patient-centredness by gender
+NCT03908125	partial	non-demographic	success rate overall and by operator (HCP) experience; the subgroup is of procedures/operators, not participants
+NCT03993119	true_subgroup_result	demographic: sex, age	observational PRIMARY measures posted "according to sex" and by age category
+NCT04023227	false_positive	none	"assessed in a subset of participants who had an ICD"
+NCT04024228	true_subgroup_result	demographic: age	PRIMARY influenza antibody titres posted for 60-64 and >=65 years
+NCT04066114	false_positive	none	"subset to participants who remained in the study"
+NCT04105244	true_subgroup_result	demographic: sex	PRIMARY posted for Female and Male by time point
+NCT04259762	true_subgroup_result	demographic: sex	PRIMARY screening uptake posted separately for men and women (stool test, colonoscopy); the age bands are screening-eligibility ranges, not levels
+NCT04323137	true_subgroup_result	demographic: race, ethnicity, sex	POST_HOC vaccination rate by race, by ethnicity and by gender
+NCT04354155	true_subgroup_result	demographic: age	enoxaparin dose requirement posted for <12 and >=12 years
+NCT04433585	false_positive	none	"a subset of mITT patients" defines analysis sets
+NCT04511650	false_positive	none	"FA population was a subset of the ITT population"
+NCT04569032	false_positive	none	"subset of participants achieving a CR or PR" defines the duration-of-response set
+NCT04587167	true_subgroup_result	demographic: sex	HPV vaccination posted by sex within 11-14 and 15-17 year-olds
+NCT04681066	partial	non-demographic	PRIMARY posted for all treated and one high-haematocrit subgroup; "stratification by sex" is a model term
+NCT04762160	partial	non-demographic	ORR posted for the pooled group and one mutation subset (n=5 trial)
+NCT04907253	true_subgroup_result	demographic: sex	PRIMARY inflammatory markers posted for women and men by time point
+NCT04960397	partial	demographic: age	reactogenicity posted per cohort; age cohorts (9-17, 2-8 years) receive different doses
+NCT04996264	false_positive	none	age wording occurs only in product/arm descriptions
+NCT05009251	true_subgroup_result	demographic: race, ethnicity, sex	vaccination posted by gender, by race and by ethnicity
+NCT05024032	false_positive	none	"5-item subset of the Physical domain" (instrument)
+NCT05055128	partial	non-demographic	PRIMARY posted for one baseline-defined subset (erosive oesophagitis)
+NCT05086315	partial	demographic: age	adult and paediatric arms are separate dose cohorts; one transfusion-dependence subgroup described
+NCT05093829	true_subgroup_result	demographic: age	PRIMARY seroprotection posted for vaccination at 9 vs 15 months of age, each vaccine in each age cohort
+NCT05195359	false_positive	none	per-protocol-style set of frequent app users (post-randomisation engagement)
+NCT05298306	false_positive	none	"subgroup of the pharmacokinetic population" (measurable levels)
+NCT05329194	true_subgroup_result	demographic: age, race; non-demographic	exacerbation outcomes posted for listed subgroups including adolescents and Black or African American participants, plus eosinophil and allergy subgroups
+NCT05357144	false_positive	none	"disaggregated by sex and age" describes the data source; the outcome is for one sex-age group
+NCT05595642	false_positive	none	"11-item subset of the EXACT" (instrument)
+NCT05654623	false_positive	none	"QTc substudy analysis set = subset of SAS"
+NCT05707351	false_positive	none	"PK AS, a subset of the PK FAS"
+NCT05838664	partial	demographic: age	number of participants in each subgroup (elderly / non-elderly ...): subgroup sizes, not an outcome by subgroup
+NCT05966090	false_positive	none	"pIMD was a subset of adverse events"
+NCT05985304	true_subgroup_result	non-demographic: baseline keratometric cylinder	residual cylinder posted for low and high preoperative-cylinder groups in each arm
+NCT06815562	true_subgroup_result	demographic: age	PRIMARY posted for experimental and control within child and adolescent samples

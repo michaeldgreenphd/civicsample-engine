@@ -165,6 +165,74 @@ def select_raw_measures(study: dict) -> dict:
     }
 
 
+ENVELOPE_VERSION = "sex_gender_raw_envelope/1.0"
+
+
+def select_raw_envelope(study: dict) -> dict:
+    """The versioned raw input envelope: everything a later rule may need from
+    the baseline module beside the selected measures, verbatim.
+
+    The retained raw-measure record (select_raw_measures) keeps the SELECTED
+    measures, enrollment and NCT id only. The newer rules the manuscript's
+    reporting layer discusses (incomplete composition, patients-only groups,
+    repeat randomization, partial coverage) need the baseline module's group
+    and denominator context, which that record never carried. This envelope
+    keeps it, in a separate file with its own version, so an old archive is
+    never silently joined to today's registry response: a rule that needs the
+    context and finds an archive without it reports unavailable evidence.
+
+      envelope_version   this format
+      nct_id, enrollment as select_raw_measures
+      eligibility        src/utils.extract_eligibility (sex, genderBased,
+                         genderDescription, verbatim; absence kept)
+      baseline_groups    baselineCharacteristicsModule.groups (id, title,
+                         description), verbatim
+      baseline_denoms    baselineCharacteristicsModule.denoms (units and
+                         per-group counts), verbatim
+      population_description  the module's populationDescription, verbatim
+      measures           the SELECTED measures, verbatim (select_sex_gender_
+                         measures): title, paramType, dispersionType,
+                         unitOfMeasure, populationDescription, denoms,
+                         classes/categories/measurements with their groupIds,
+                         values, comments (the NA explanations)
+      measure_index      each selected measure's position in the module's
+                         measures list, so the path of every value is
+                         recoverable
+      n_measures_in_module  how many measures the module had in all
+
+    A record with no baseline module has empty lists and None; the keys are
+    always present."""
+    from src.utils import extract_eligibility
+    protocol = study.get("protocolSection") or {}
+    module = ((study.get("resultsSection") or {}).get("baselineCharacteristicsModule")) or {}
+    measures = module.get("measures")
+    measures = measures if isinstance(measures, list) else []
+    selected = sgp.select_sex_gender_measures(measures)
+    index = [i for i, m in enumerate(measures) if any(m is s for s in selected)]
+    return {
+        "envelope_version": ENVELOPE_VERSION,
+        "nct_id": _nct_of(study),
+        "enrollment": _enrollment_of(study),
+        "eligibility": extract_eligibility(protocol.get("eligibilityModule")),
+        "baseline_groups": module.get("groups") if isinstance(module.get("groups"), list) else [],
+        "baseline_denoms": module.get("denoms") if isinstance(module.get("denoms"), list) else [],
+        "population_description": module.get("populationDescription"),
+        "measures": selected,
+        "measure_index": index,
+        "n_measures_in_module": len(measures),
+    }
+
+
+def build_row_from_envelope(env: dict, snapshot_date: str, refetched: bool = False) -> dict:
+    """Row for one raw envelope: the same parse as build_row_from_raw on the
+    same selected measures (the envelope is a superset of the raw record)."""
+    if env.get("envelope_version") != ENVELOPE_VERSION:
+        raise ValueError(f"not a {ENVELOPE_VERSION} envelope: {env.get('envelope_version')!r}")
+    return build_row_from_raw({"nct_id": env.get("nct_id"), "enrollment": env.get("enrollment"),
+                               "measures": env.get("measures") or [], "refetched": env.get("refetched")},
+                              snapshot_date, refetched)
+
+
 def raw_has_measurements(measures: Optional[Iterable[dict]]) -> bool:
     """True if any selected measure carries at least one measurement object."""
     for m in measures or []:

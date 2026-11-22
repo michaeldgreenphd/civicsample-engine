@@ -20,6 +20,10 @@ Alongside the output JSON the run writes sex_gender_raw_measures.jsonl.gz:
 one line per trial with the SELECTED sex/gender measures verbatim, so any
 later rule bump can re-parse every retained snapshot without a registry pull
 (scripts/build_sex_gender_table.py --from-raw).
+
+It also writes condition_mesh.jsonl.gz: one line per trial with CT.gov's MeSH
+indexing of its conditions (src/condition_mesh.py), kept out of the records
+so the site's whole-record parts do not grow.
 """
 import argparse
 import gzip
@@ -32,6 +36,7 @@ from tqdm import tqdm
 from src.api_client import CTGovAPIClient
 from src.utils import (get_study_metadata, save_json, get_baseline_measures, get_overall_group_id,
                        extract_demographic_breakdown, pipeline_commit)
+from src.baseline_overrides import apply_baseline_override, flag_blocks
 from src.race_extractor import extract_race_data
 from src.ethnicity_extractor import extract_ethnicity_data
 from src.sex_extractor import extract_sex_data
@@ -39,6 +44,8 @@ from src.gender_extractor import extract_gender_data
 from src.condition_classifier import classify_conditions
 from src.pubmed_fetcher import PubMedFetcher
 from src import sex_gender_table as sgt
+from src import sex_gender_analysis as sga
+from src import condition_mesh as cmesh
 
 # Set up logging
 logging.basicConfig(
@@ -48,6 +55,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 RAW_MEASURES_FILENAME = "sex_gender_raw_measures.jsonl.gz"
+# The versioned raw envelope (sex_gender_table.select_raw_envelope): written
+# only with --raw-envelope, beside the raw measures, never in their place.
+RAW_ENVELOPE_FILENAME = "sex_gender_raw_envelope.jsonl.gz"
 
 
 def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMedFetcher] = None,
@@ -68,16 +78,21 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
     """
     try:
         metadata = get_study_metadata(study)
-        race_data = extract_race_data(study)
-        ethnicity_data = extract_ethnicity_data(study)
+        # The engine's own demographic readers see the study through any
+        # per-trial exception (src/baseline_overrides.py); the metadata, the
+        # sex/gender manuscript parser and its raw measures keep it as posted.
+        read_study, override_flag = apply_baseline_override(study)
+        race_data = extract_race_data(read_study)
+        ethnicity_data = extract_ethnicity_data(read_study)
 
         # ── Legacy sex/gender extraction (sg=v1), kept until cutover ──
         # Each extractor uses the same iterative loop pattern as Race and
         # Ethnicity: exhaustively checks Standard → Customized → Combined
         # tables before declaring "Not Reported". Not called when the legacy
         # path is switched off; the keys are then None, never absent.
-        sex_data = extract_sex_data(study) if legacy_sex_gender else None
-        gender_data = extract_gender_data(study) if legacy_sex_gender else None
+        sex_data = extract_sex_data(read_study) if legacy_sex_gender else None
+        gender_data = extract_gender_data(read_study) if legacy_sex_gender else None
+        flag_blocks([race_data, ethnicity_data, sex_data, gender_data], override_flag)
 
         # ── Manuscript parser (sg=v2): one flat row, no balancing ──
         # A parser failure on one record is that record's parse_error state
@@ -92,9 +107,23 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
             logger.error(f"[{nct}] sex/gender parser failed ({type(e).__name__}: {e}); row filed as parse_error")
             sex_gender_row = sgt.parse_error_row(nct, enr, snap)
 
+        # ── Analytical layer (sex_gender_analysis): the reporting dimension,
+        # the "neither" sub-states, composition eligibility and the detailed
+        # gender categories of the newer manuscript, derived from the parser
+        # row and the selected measures. It never changes the parser row. A
+        # failure here is recorded on the block (parse_error dimension) and
+        # never drops the study.
+        try:
+            _env = sgt.select_raw_measures(study)
+            analysis = sga.analyze(sex_gender_row, _env["measures"], _env["enrollment"])
+        except Exception as e:  # noqa: BLE001 - the block has a parse_error state for this
+            nct = ((study.get("protocolSection") or {}).get("identificationModule") or {}).get("nctId")
+            logger.error(f"[{nct}] sex/gender analysis layer failed ({type(e).__name__}: {e}); block filed as parse_error")
+            analysis = sga.analyze(sgt.parse_error_row(nct, None, snap), None, None)
+
         # Extract demographic breakdowns for interactive display
-        baseline_measures = get_baseline_measures(study)
-        overall_group_id = get_overall_group_id(study)
+        baseline_measures = get_baseline_measures(read_study)
+        overall_group_id = get_overall_group_id(read_study)
         race_breakdown = extract_demographic_breakdown(baseline_measures, "race", overall_group_id)
         ethnicity_breakdown = extract_demographic_breakdown(baseline_measures, "ethnicity", overall_group_id)
         sex_breakdown = extract_demographic_breakdown(baseline_measures, "sex", overall_group_id)
@@ -126,6 +155,9 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
             # Only the lean subset rides in the parts; the full row is rebuilt
             # from the retained raw measures into sex_gender_parsed.csv.gz.
             "sex_gender": sgt.lean_row(sex_gender_row),
+            # The newer analytical layer's lean block; the full block is rebuilt
+            # from the retained raw measures into sex_gender_analysis.csv.gz.
+            "sex_gender_analysis": sga.lean_block(analysis),
             # Add breakdowns for interactive dashboard
             "raceBreakdown": race_breakdown,
             "ethnicityBreakdown": ethnicity_breakdown,
@@ -234,7 +266,7 @@ def write_raw_measures(raw_records: list, path: Path) -> None:
             fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Extract demographics data from ClinicalTrials.gov"
     )
@@ -270,6 +302,12 @@ def main():
         help="YYYY-MM-DD stamped on every sex_gender row and raw-measure record (default: today, UTC)"
     )
     parser.add_argument(
+        "--raw-envelope",
+        action="store_true",
+        help=f"also write {RAW_ENVELOPE_FILENAME} beside the output: the versioned raw envelope "
+             "(selected measures plus the baseline module's groups, denominators and eligibility, verbatim)"
+    )
+    parser.add_argument(
         "--no-legacy-sex-gender",
         action="store_true",
         help="Do not run the legacy sex/gender extractors (sg=v1); study['sex'] and study['gender'] become null"
@@ -301,6 +339,10 @@ def main():
 
     results = []
     raw_records = []
+    envelopes = []
+    # CT.gov's MeSH indexing of each trial's conditions (src/condition_mesh.py):
+    # written to its own file, never onto the records the site's parts carry.
+    mesh_lines = []
     errors = 0
 
     studies = client.iter_all_studies_with_results(
@@ -324,6 +366,8 @@ def main():
                                                  snapshot_date=snapshot_date, legacy_sex_gender=legacy)
         raw = sgt.select_raw_measures(study)
         raw["refetched"] = False
+        env = sgt.select_raw_envelope(study) if args.raw_envelope else None
+        mesh = cmesh.select_condition_mesh(study)
 
         # The search endpoint occasionally omits measurement values for large
         # studies while keeping category titles intact.  Detect this and
@@ -341,6 +385,9 @@ def main():
                                                          refetched=True)
                 raw = sgt.select_raw_measures(full_study)
                 raw["refetched"] = True          # survives the rebuild from raw measures
+                if args.raw_envelope:
+                    env = sgt.select_raw_envelope(full_study)
+                mesh = cmesh.select_condition_mesh(full_study)
                 refetch_count += 1
                 refetch_reasons[why] += 1
                 if _needs_refetch(result, full_study, raw):
@@ -362,6 +409,17 @@ def main():
             raw["extracted_at"] = extracted_at
             raw["pipeline_commit"] = source_commit
             raw_records.append(raw)
+            if env is not None:
+                env["refetched"] = raw["refetched"]
+                env["snapshot_date"] = snapshot_date
+                env["extracted_at"] = extracted_at
+                env["pipeline_commit"] = source_commit
+                envelopes.append(env)
+            mesh["refetched"] = raw["refetched"]
+            mesh["snapshot_date"] = snapshot_date
+            mesh["extracted_at"] = extracted_at
+            mesh["pipeline_commit"] = source_commit
+            mesh_lines.append(mesh)
         else:
             errors += 1
 
@@ -376,6 +434,15 @@ def main():
     raw_path = output_path.parent / RAW_MEASURES_FILENAME
     logger.info(f"Saving {len(raw_records)} raw sex/gender measure records to {raw_path}")
     write_raw_measures(raw_records, raw_path)
+    if args.raw_envelope:
+        env_path = output_path.parent / RAW_ENVELOPE_FILENAME
+        logger.info(f"Saving {len(envelopes)} raw sex/gender envelopes to {env_path}")
+        write_raw_measures(envelopes, env_path)
+    mesh_path = output_path.parent / cmesh.FILENAME
+    mesh_states = {state: sum(1 for m in mesh_lines if m["state"] == state) for state in cmesh.STATES}
+    logger.info(f"Saving {len(mesh_lines)} condition MeSH lines to {mesh_path} "
+                f"({', '.join(f'{k} {v}' for k, v in mesh_states.items())})")
+    write_raw_measures(mesh_lines, mesh_path)
 
     # Summary statistics
     logger.info("\n=== Extraction Summary ===")

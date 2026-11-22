@@ -33,8 +33,11 @@ The weekly run (`extract.yml`, Sundays 06:00 UTC) does six things, in order:
    study records arrive; `scripts/first_view_parity.mjs` checks it against
    the site's own code.
 4. **Back up** — attaches the week's full study records
-   (`demographics.json.gz`), the raw sex/gender measures and the run log to a
-   dated `data-YYYY-MM-DD` GitHub Release in this repo. Every week's release
+   (`demographics.json.gz`), the raw sex/gender measures, CT.gov's MeSH
+   indexing of each trial's conditions (`condition_mesh.jsonl.gz`,
+   `src/condition_mesh.py`; kept out of the records so the site's parts do not
+   grow) and the run log to a dated `data-YYYY-MM-DD` GitHub Release in this
+   repo. Every week's release
    is kept permanently: it is the complete record of that pull, which the
    site's parts are not (releases start at 2026-08-28). Google Drive also
    gets a copy when configured.

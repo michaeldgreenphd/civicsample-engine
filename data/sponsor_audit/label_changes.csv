@@ -1,20 +1,59 @@
 nct_id,canonical,role,change,literal_before,literal_after,cause,rules_sha256
-NCT03036488,Merck & Co,lead,added,,Merck Sharp & Dohme LLC,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT03444701,Eisai Inc.,lead,added,,"Eisai Co., Ltd.",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT03854032,Bristol-Myers Squibb,collaborator,added,,Bristol-Myers Squibb,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT03949764,Gilead Sciences,collaborator,added,,Gilead Sciences,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT04311606,Regeneron Pharmaceuticals,collaborator,added,,Regeneron Pharmaceuticals,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT04362748,Amgen,lead,added,,Amgen,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT04404283,Pfizer,lead,added,,"Seagen, a wholly owned subsidiary of Pfizer",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT04420884,Takeda,lead,added,,Takeda,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT04500678,Merck & Co,collaborator,added,,Merck Sharp & Dohme LLC,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT04630028,"Janssen Research & Development, LLC",lead,added,,"Janssen Research & Development, LLC",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT04781088,Merck & Co,collaborator,added,,Merck Sharp & Dohme LLC,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT05105841,AbbVie,lead,added,,AbbVie,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT05502341,Gilead Sciences,lead,added,,Gilead Sciences,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT05994807,Eli Lilly and Company,lead,added,,"DICE Therapeutics, Inc., a wholly owned subsidiary of Eli Lilly and Company",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT06079476,Amgen,lead,added,,Amgen,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT06092931,Eli Lilly and Company,lead,added,,"DICE Therapeutics, Inc., a wholly owned subsidiary of Eli Lilly and Company",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT06268860,Amgen,lead,added,,Amgen,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT06508489,Sanofi,lead,added,,Sanofi,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
-NCT06643377,Merck & Co,lead,added,,Merck Sharp & Dohme LLC,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT00508157,"Otsuka Pharmaceutical Development & Commercialization, Inc.",lead,added,,"Otsuka Pharmaceutical Development & Commercialization, Inc.",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT01987492,Hoffmann-La Roche,lead,added,,Hoffmann-La Roche,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02625961,Merck & Co,lead,added,,Merck Sharp & Dohme LLC,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03009981,"Janssen Research & Development, LLC",collaborator,added,,"Janssen Research & Development, LLC",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03341156,CSL Behring,collaborator,added,,CSL Behring,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03462342,AstraZeneca,collaborator,added,,AstraZeneca,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03792841,Amgen,lead,added,,Amgen,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03850782,AbbVie,lead,added,,AbbVie,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT04091126,GlaxoSmithKline,lead,added,,GlaxoSmithKline,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT04294810,Hoffmann-La Roche,lead,added,,Hoffmann-La Roche,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT04513912,"Janssen Research & Development, LLC",lead,added,,"Janssen Research & Development, LLC",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT04614558,"Genzyme, a Sanofi Company",collaborator,added,,"Genzyme, a Sanofi Company",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT04963296,Hoffmann-La Roche,lead,added,,Hoffmann-La Roche,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05125471,"Genentech, Inc.",collaborator,added,,"Genentech, Inc.",registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05298254,GlaxoSmithKline,lead,added,,GlaxoSmithKline,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05433584,Eli Lilly and Company,lead,added,,Eli Lilly and Company,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05689164,Pfizer,lead,added,,Pfizer,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05935748,Pfizer,collaborator,added,,Pfizer,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05936151,Eli Lilly and Company,lead,added,,Eli Lilly and Company,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT06166992,Boehringer Ingelheim,lead,added,,Boehringer Ingelheim,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT06220669,Eli Lilly and Company,lead,added,,Eli Lilly and Company,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT06444529,Alcon Research,lead,added,,Alcon Research,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT06538662,Alcon Research,lead,added,,Alcon Research,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT07226752,AbbVie,collaborator,added,,AbbVie,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT00508157,Bristol-Myers Squibb,lead,removed,Bristol-Myers Squibb,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT01336647,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT01388816,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT01496352,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT01518699,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT01871727,Dr. Reddy's Laboratories Limited,collaborator,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT01888367,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT01907490,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02060903,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02061813,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02097485,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02173301,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02279082,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02296775,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02446600,AstraZeneca,collaborator,removed,AstraZeneca,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02498613,AstraZeneca,collaborator,removed,AstraZeneca,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02569853,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02571049,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02583425,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT02828241,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03009019,Dr. Reddy's Laboratories Limited,collaborator,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03116698,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03290027,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03292640,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03340961,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03341910,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03421197,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03554772,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03599193,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT03976102,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT04268771,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT04529499,Dr. Reddy's Laboratories Limited,lead,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05296629,Dr. Reddy's Laboratories Limited,collaborator,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c
+NCT05343455,Dr. Reddy's Laboratories Limited,collaborator,removed,Dr. Reddy's Laboratories Limited,,registry_edit,3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c

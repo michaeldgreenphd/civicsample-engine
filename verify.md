@@ -90,6 +90,10 @@ replacing the full CI gates above before completion.
 | Retention, backup, raw-measure archives or publishing workflow | `python -m pytest tests/test_prune_snapshots.py tests/test_raw_measures_archive.py tests/test_full_records.py tests/test_check_site_contract.py tests/test_backfill_archives.py -q`; inspect workflow conditions, staged paths and failure ordering. For retention, run `python /absolute/path/to/civicsample-engine/scripts/prune_snapshots.py --dry-run` **from the site root**. |
 | Browser UI | Implement and verify in the frontend repository using its root verify.md in the [frontend repository](https://github.com/michaeldgreenphd/clinical-trial-populations); this repository has no dashboard render path. The sponsor module's Node tests are rule tests, not a browser UI test. |
 | LLM prompt, schema or model | Compile + CI; read [prompts/README.md](scripts/extraction/prompts/README.md). A live pilot is additional paid/network verification, not part of ordinary CI. |
+| Industry Outcomes beta | `python -m pytest tests/outcomes -q`; `python scripts/check_outcomes_contract.py <dir> [--publishable]` on a build; regenerate `tests/fixtures/outcomes/` with `python scripts/build_outcomes_fixture.py` after a contract change and copy it to the site. See [outcomes/README.md](outcomes/README.md). |
+| Census benchmarks | `python -m pytest tests/census -q` (offline; the geography tests need `scripts/census/requirements.txt`, which `requirements-dev.txt` includes). A real build needs `CENSUS_API_KEY` and network access to `api.census.gov` and `www2.census.gov`. See [census/README.md](census/README.md). |
+| Results structure (manual) | `python -m pytest tests/outcomes -q`; regenerate `tests/fixtures/results_structure/` with `python scripts/build_results_structure_fixture.py` after a rule or record change and copy it to the site; `python docs/audits/outcomes_results_structure/port_check/port_check.py` compares the rules with the audit's cached records (a check of the port, not of the rules). A real build needs the registry: `python scripts/build_results_structure.py --fetch --nct-list FILE`. See [outcomes/README.md](outcomes/README.md). |
+| AI/ML device linkage | `python -m pytest tests/devices -q` (offline, fictional records; needs `devices/requirements.txt`, which `requirements-dev.txt` includes); `python scripts/check_device_links_contract.py <dir>` on a build; `python scripts/export_device_links_site.py <build> <out>` cuts a build to the site's files and refuses one whose bytes differ from its manifest (run it into a scratch directory first; the site's own suite then checks `data/devices/` against the exported `run.json`). Acquisition needs network access to `www.accessdata.fda.gov`, `api.fda.gov` and `clinicaltrials.gov`, and no key. See [devices/README.md](devices/README.md). |
 | Runtime/dependency or infrastructure configuration | Full CI on its pinned runtimes; inspect affected workflows, permissions, secret names, schedules and publish guards. Do not dispatch publishing workflows merely to validate documentation. |
 
 ## Inputs, fixtures and established invariants
@@ -151,7 +155,11 @@ replacing the full CI gates above before completion.
   Its industry lead/first alphabetical industry collaborator selection and
   legacy company-grouping rules are distinct from the curated sponsor bridge.
   The full-record tests cover its input path; they do not establish dedicated
-  cohort/model regression coverage. Changes need explicit count comparisons
+  cohort/model regression coverage. Trials the keyword classifier leaves
+  Other / Uncategorized take their primary area, or the "No disease area"
+  category, from the reviewed `condition_placements.json` (`src/condition_placements.py`, tested in
+  `tests/test_condition_placements.py`); `--no-placements` reproduces the
+  output without them, which is the before side of any count comparison. Changes need explicit count comparisons
   and targeted cases rather than relying only on a green packaging suite.
 - The deterministic pipeline does not randomly sample and has no RNG seed.
   Registry eligibility is results posted, optionally filtered by condition

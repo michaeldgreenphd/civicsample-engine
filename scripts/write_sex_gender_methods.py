@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src import sex_gender_analysis as sga  # noqa: E402
 from src import sex_gender_parser as sgp  # noqa: E402
 from src.utils import pipeline_commit  # noqa: E402
 
@@ -111,6 +112,20 @@ def sections(meta: dict, sbs: dict | None) -> list:
          "text": ("The Race and Ethnicity tabs keep the earlier pipeline, including denominator balancing, in this "
                   "release; their quality charts therefore still derive the missing layer from enrollment. The same "
                   "three-state separation is scheduled for those dimensions separately.")},
+        {"id": "analysis_layer", "heading": "The newer analysis layer (sex_gender_analysis)",
+         "text": ("Beside the parser's five states, each trial now carries a versioned analysis block (schema "
+                  f"{sga.SCHEMA_VERSION}, rules {sga.RULES_VERSION}) that follows the manuscript's reporting layer as "
+                  "far as the as-run parser output allows: whether the trial reports sex only, both, gender only or "
+                  "neither; for neither, whether participants were recorded only as unknown or not collected, the "
+                  "measure is absent, or the measure is present without a usable breakdown; whether an explicit "
+                  "Unknown count stands beside reported values; whether the trial enters the composition figures; "
+                  "and the detailed gender-identity categories (transgender with or without a sex term, non-binary or "
+                  "gender-expansive, questioning, a combined gender-minority group, another or self-described gender) "
+                  "with intersex, cisgender-labelled and explicit unknown as separate rows. Incomplete composition "
+                  "and the patients-only rule are carried as not evaluated, never as a value; a record published "
+                  "before this layer has no block and is shown as unavailable, never recomputed from the old counts. "
+                  "The block is the as-run layer: the manuscript's final states include manual reconciliation that "
+                  "no automated run reproduces.")},
         {"id": "version", "heading": "Version",
          "text": (f"Parser rules version: {rules}. Parser module version: {sgp.__version__}. "
                   f"Current snapshot reporting states: " + ", ".join(f"{k} {v:,}" for k, v in counts.items()) + "."
@@ -134,6 +149,8 @@ def main() -> int:
         "snapshot_date": meta.get("snapshot_date"),
         "parser_rules_version": sgp.PARSER_RULES_VERSION,
         "parser_module_version": sgp.__version__,
+        "analysis_schema_version": sga.SCHEMA_VERSION,
+        "analysis_rules_version": sga.RULES_VERSION,
         "fidelity": FIDELITY,
         "sections": secs,
     }

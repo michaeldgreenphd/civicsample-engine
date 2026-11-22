@@ -1,0 +1,60 @@
+{
+  "format": "civicsample-approved-enrichment-export-1.0",
+  "export_id": "fictional-export-0001",
+  "exported_at": "2026-10-28T12:00:00+00:00",
+  "source_repository": "civicsample-verify-ai-private",
+  "source_commit": "0123456789abcdef0123456789abcdef01234567",
+  "allowlist_version": "public-allowlist/1.0",
+  "release_decision": {"decision_id": "fictional-release-0001", "decided_at": "2026-10-28T11:00:00+00:00", "release_status": "released"},
+  "applies_to": {"registry_snapshot_date": "2026-10-28"},
+  "records": [
+    {
+      "record_id": "fict-rec-0001", "revision": 1, "schema_version": "approved_enrichment_record/1.0",
+      "nct_id": "NCT99000010", "field": "conditions.accepted_membership",
+      "source": {"kind": "registry_snapshot", "identity": "fictional registry snapshot 2026-10-28, record NCT99000010", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "snapshot_date": "2026-10-28"},
+      "evidence": {"pointer": "conditionsModule.conditions[0]; briefSummary paragraph 1", "population": "all enrolled", "timepoint": "registration"},
+      "method": {"kind": "ai_classification", "taxonomy_version": "civicsample-condition-catalog-20/1.0", "model_id": "fictional-model-1", "run_id": "fictional-run-1", "guide_version": "fictional-guide-r0", "native_task": "fictional-task-1.0 SUPPORTED/NOT_SUPPORTED/INSUFFICIENT_INFORMATION"},
+      "value": {"taxonomy_version": "civicsample-condition-catalog-20/1.0", "labels": [
+        {"id": "AREA_RESPIRATORY", "status": "accepted"},
+        {"id": "ROW_AST", "status": "accepted"},
+        {"id": "AREA_IMMUNE", "status": "unassessed"}
+      ]},
+      "value_state": "present", "state_reason": null,
+      "validation_status": "validated", "review_status": "accepted", "release_status": "released",
+      "decision_ref": "fictional-decision-0001",
+      "chronology": {"validated_at": "2026-10-27T09:00:00+00:00", "reviewed_at": "2026-10-27T15:00:00+00:00", "released_at": "2026-10-28T11:00:00+00:00"},
+      "supersedes": null,
+      "linkage": {"status": "validated", "method": "registry_nct", "evidence": "the candidate was derived from the registry record of NCT99000010 itself"}
+    },
+    {
+      "record_id": "fict-rec-0002", "revision": 1, "schema_version": "approved_enrichment_record/1.0",
+      "nct_id": "NCT99000010", "field": "conditions.review_leads",
+      "source": {"kind": "registry_snapshot", "identity": "fictional registry snapshot 2026-10-28, record NCT99000010", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "snapshot_date": "2026-10-28"},
+      "evidence": {"pointer": "detailedDescription paragraph 3", "population": null, "timepoint": null},
+      "method": {"kind": "ai_classification", "taxonomy_version": "civicsample-condition-catalog-20/1.0", "model_id": "fictional-model-1", "run_id": "fictional-run-1", "guide_version": "fictional-guide-r0", "native_task": "fictional-task-1.0 SUPPORTED/NOT_SUPPORTED/INSUFFICIENT_INFORMATION"},
+      "value": {"taxonomy_version": "civicsample-condition-catalog-20/1.0", "labels": [
+        {"id": "AREA_INFECTIOUS", "status": "proposed", "lead_kind": "addition", "native_task": "fictional-task-1.0", "native_decision": "SUPPORTED"},
+        {"id": "AREA_IMMUNE", "status": "proposed", "lead_kind": "removal", "native_task": "fictional-task-1.0", "native_decision": "NOT_SUPPORTED"}
+      ]},
+      "value_state": "present", "state_reason": null,
+      "validation_status": "validated", "review_status": "accepted", "release_status": "released",
+      "decision_ref": "fictional-decision-0002",
+      "chronology": {"validated_at": "2026-10-27T09:00:00+00:00", "reviewed_at": "2026-10-27T15:00:00+00:00", "released_at": "2026-10-28T11:00:00+00:00"},
+      "supersedes": null,
+      "linkage": {"status": "validated", "method": "registry_nct", "evidence": "the candidate was derived from the registry record of NCT99000010 itself"}
+    },
+    {
+      "record_id": "fict-rec-0003", "revision": 1, "schema_version": "approved_enrichment_record/1.0",
+      "nct_id": "NCT99000001", "field": "conditions.accepted_membership",
+      "source": {"kind": "document", "identity": "fictional publication, DOI 10.0000/fictional.0001", "sha256": "2222222222222222222222222222222222222222222222222222222222222222"},
+      "evidence": {"pointer": "Methods, paragraph 2", "population": "trial participants as published", "timepoint": "publication"},
+      "method": {"kind": "ai_extraction", "taxonomy_version": "civicsample-condition-catalog-20/1.0", "model_id": "fictional-model-2", "run_id": "fictional-run-2", "prompt_version": "fictional-prompt-1", "native_task": "fictional-extraction-1.0"},
+      "value": null, "value_state": "not_assessed", "state_reason": "the publication names no condition category assessable under the catalog",
+      "validation_status": "validated", "review_status": "accepted", "release_status": "released",
+      "decision_ref": "fictional-decision-0003",
+      "chronology": {"validated_at": "2026-10-27T09:00:00+00:00", "reviewed_at": "2026-10-27T15:00:00+00:00", "released_at": "2026-10-28T11:00:00+00:00"},
+      "supersedes": null,
+      "linkage": {"status": "validated", "method": "document_declared_nct_verified", "evidence": "the publication states NCT99000001 in its registration line, and its enrollment and dates match the registry record"}
+    }
+  ]
+}

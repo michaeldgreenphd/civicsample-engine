@@ -1,0 +1,99 @@
+{
+ "distinct_submission_numbers_searched": 1430,
+ "batch_requests": 58,
+ "numbers_with_ge1_hit": 4,
+ "hit_pairs": 4,
+ "hits": [
+  {
+   "submission_number": "DEN170073",
+   "pathway": "De Novo",
+   "device": "ContaCT",
+   "company": "Viz.Al, Inc.",
+   "decision_date": "2018-02-13",
+   "nct_id": "NCT04608617",
+   "brief_title": "SYNCHRONISE: LVO Triage Timing and Outcome Study",
+   "sponsors": [
+    "Viz.ai, Inc."
+   ],
+   "start_date": "2021-03-09",
+   "primary_completion_date": "2023-02-22",
+   "string_found_in_record": true,
+   "paths": [
+    "/protocolSection/armsInterventionsModule/armGroups[]/interventionNames[]",
+    "/protocolSection/armsInterventionsModule/interventions[]/name"
+   ],
+   "regulatory_word_nearby": true,
+   "first_context": "Device: Viz LVO (De Novo Number DEN170073)",
+   "device_name_in_record": true,
+   "company_brand_in_sponsors": false,
+   "company_brand_anywhere_in_record": false
+  },
+  {
+   "submission_number": "K202212",
+   "pathway": "510(k)",
+   "device": "TruPlan",
+   "company": "Circle Cardiovascular Imaging Inc.",
+   "decision_date": "2021-02-19",
+   "nct_id": "NCT06575179",
+   "brief_title": "Dexmedetomidine Reduces Sevoflurane MAC-BAR During Pneumoperitoneum",
+   "sponsors": [
+    "Fujian Provincial Hospital"
+   ],
+   "start_date": "2024-09-02",
+   "primary_completion_date": "2024-12-30",
+   "string_found_in_record": false,
+   "paths": [],
+   "regulatory_word_nearby": false,
+   "first_context": null,
+   "device_name_in_record": false,
+   "company_brand_in_sponsors": false,
+   "company_brand_anywhere_in_record": false
+  },
+  {
+   "submission_number": "K202404",
+   "pathway": "510(k)",
+   "device": "BoneMRI",
+   "company": "MRIguidance B.V",
+   "decision_date": "2021-12-22",
+   "nct_id": "NCT06442943",
+   "brief_title": "Impact of the Digital Multi-domain Cognitive Intervention in High-risk Populations for Dementia",
+   "sponsors": [
+    "Fujian Provincial Hospital"
+   ],
+   "start_date": "2024-06-04",
+   "primary_completion_date": "2026-12-31",
+   "string_found_in_record": false,
+   "paths": [],
+   "regulatory_word_nearby": false,
+   "first_context": null,
+   "device_name_in_record": false,
+   "company_brand_in_sponsors": false,
+   "company_brand_anywhere_in_record": false
+  },
+  {
+   "submission_number": "K240036",
+   "pathway": "510(k)",
+   "device": "PIUR tUS Infinity",
+   "company": "PIUR Imaging GmbH",
+   "decision_date": "2024-09-20",
+   "nct_id": "NCT07178080",
+   "brief_title": "Comparing a New 3D Technology Used to Measure Thyroid Nodule Volume to Standard Ultrasound",
+   "sponsors": [
+    "Sarasota Memorial Health Care System"
+   ],
+   "start_date": "2025-09-08",
+   "primary_completion_date": "2027-09-08",
+   "string_found_in_record": true,
+   "paths": [
+    "/protocolSection/armsInterventionsModule/interventions[]/description",
+    "/protocolSection/descriptionModule/detailedDescription",
+    "/protocolSection/referencesModule/seeAlsoLinks[]/url"
+   ],
+   "regulatory_word_nearby": true,
+   "first_context": "PIUR imaging technology, cleared by the U.S. Food and Drug Administration under 510(k) (K240036), is designed to provide advanced volumetric imaging capabilities to improve accuracy in assessing nodule size and volume reduction. This technology ",
+   "device_name_in_record": true,
+   "company_brand_in_sponsors": false,
+   "company_brand_anywhere_in_record": true
+  }
+ ]
+}

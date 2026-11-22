@@ -1,0 +1,18 @@
+{
+ "api_version": {
+  "apiVersion": "2.0.5",
+  "dataTimestamp": "2026-11-13T10:00:06"
+ },
+ "cache_file": "cache/raw_responses.jsonl.gz",
+ "cache_sha256": "a9e4577735b5f3ece14ff672a5db0f4ca70be283f237bb996c09328c3569510a",
+ "fields": "NCTId,HasResults,ResultsSection,OutcomesModule,StatusModule,DesignModule",
+ "first_fetch": "2026-11-13T22:32:29Z",
+ "last_fetch": "2026-11-13T22:33:01Z",
+ "missing": [],
+ "requested": 2000,
+ "requests_this_run": 40,
+ "responses_with_nextPageToken": 40,
+ "retries_this_run": 0,
+ "returned": 2000,
+ "unexpected": []
+}

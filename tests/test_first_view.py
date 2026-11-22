@@ -65,7 +65,7 @@ DELETE = object()      # a change that removes the key
 
 SUMMARY_KEYS = ["extracted_at", "pipeline_commit", "totalStudies", "cards", "raceDistribution",
                 "ethnicityDistribution", "sexDistribution", "genderDistribution", "raceSubcategories",
-                "ethnicitySubcategories", "byYear", "fda", "recentStudies", "sexGender"]
+                "ethnicitySubcategories", "byYear", "fda", "recentStudies", "sexGender", "sexGenderAnalysis"]
 
 
 # ── the rules ───────────────────────────────────────────────────────────────
@@ -138,7 +138,8 @@ def test_the_block_counts_the_default_view_and_says_what_it_left_out() -> None:
     assert "2027" not in block["by_results_year"], "a year with no interventional trial is no point on the chart"
     assert block["not_counted"] == {"no_results_date": 2, "results_year_not_from_2009": 2, "not_interventional": 2}
     assert block["trials"] + sum(block["not_counted"].values()) == len(records)
-    assert block["denominators"] == {k: "trials" for k in fv.NUMERATORS}
+    assert block["denominators"] == {k: "trials" for k in fv.RACE_ETHNICITY}, "no parser row: no sex/gender counts"
+    assert not any(k in block for k in fv.SEX_GENDER)
     assert block["about"] and all(isinstance(s, str) for s in block["about"])
 
 
@@ -282,6 +283,112 @@ def test_the_generator_writes_the_block_last_with_the_summarys_stamps(counted: t
     assert block["not_counted"] == {"no_results_date": 3, "results_year_not_from_2009": 6, "not_interventional": 5}
 
 
+def test_the_race_distribution_carries_the_ethnicity_rows_part_of_unknown(tmp_path: pathlib.Path) -> None:
+    """raceDistribution.unknown_ethnicity_only sums race.unknown_ethnicity_only
+    over the trials that report race. It is a part of unknown_not_reported,
+    which keeps its whole sum; a record without the field adds 0."""
+    records = [r for r in _records(40) if isinstance(r.get("race"), dict)
+               and isinstance(r["race"].get("omb_totals"), dict)][:12]
+    assert len(records) == 12
+    parts = [5, 0, 3, 0, 7, 0, 0, 2, 0, 0, 0, 0]
+    for r, part in zip(records, parts):
+        r["race"] = dict(r["race"], omb_totals=dict(r["race"]["omb_totals"]))
+        if part:
+            r["race"]["unknown_ethnicity_only"] = part
+            r["race"]["omb_totals"]["unknown_not_reported"] = (r["race"]["omb_totals"].get("unknown_not_reported") or 0) + part
+        else:
+            r["race"].pop("unknown_ethnicity_only", None)
+    for r in records:
+        r["race"]["reported"] = True
+    records[4]["race"]["reported"] = False            # a trial that does not report race adds nothing
+    _, summary_file = _case(tmp_path, records)
+    dist = json.loads(summary_file.read_text())["raceDistribution"]
+    reporting = [r for r in records if r["race"].get("reported")]
+    assert dist["unknown_ethnicity_only"] == sum(r["race"].get("unknown_ethnicity_only", 0) for r in reporting) == 10
+    assert dist["unknown_not_reported"] == sum(r["race"]["omb_totals"].get("unknown_not_reported") or 0 for r in reporting)
+    assert dist["unknown_ethnicity_only"] <= dist["unknown_not_reported"]
+def test_summary_rows_carry_the_ethnicity_rows_part_of_race_unknown(tmp_path: pathlib.Path) -> None:
+    """A recent-study row's race block carries race.unknown_ethnicity_only
+    when the record has it, so the site's phone pop-up can split unknown; an
+    older record's row has no such key, and a row not reporting race has
+    only reported False."""
+    records = [r for r in _records(40) if isinstance(r.get("race"), dict)
+               and isinstance(r["race"].get("omb_totals"), dict)][:6]
+    for i, r in enumerate(records):
+        r["race"] = dict(r["race"], reported=True)
+        # This test is about unknown_ethnicity_only alone; mena_in_white rides
+        # the same way (test_summary_rows_carry_the_mena_part_of_white).
+        r["race"].pop("mena_in_white", None)
+        if i < 2:
+            r["race"]["unknown_ethnicity_only"] = 4 - i
+        else:
+            r["race"].pop("unknown_ethnicity_only", None)
+        r["results_date"] = f"2024-0{i + 1}-15"       # every one inside the recent list
+    records[5]["race"]["reported"] = False
+    _, summary_file = _case(tmp_path, records)
+    rows = {row["nct_id"]: row["race"] for row in json.loads(summary_file.read_text())["recentStudies"]}
+    by_id = {r["nct_id"]: r for r in records}
+    for nct, race in rows.items():
+        src = by_id[nct]["race"]
+        if not src.get("reported"):
+            assert race == {"reported": False}
+        elif "unknown_ethnicity_only" in src:
+            assert race == {"reported": True, "omb_totals": src["omb_totals"],
+                            "unknown_ethnicity_only": src["unknown_ethnicity_only"]}
+        else:
+            assert race == {"reported": True, "omb_totals": src["omb_totals"]}
+    assert sum("unknown_ethnicity_only" in r for r in rows.values()) == 2
+
+
+def test_the_race_distribution_carries_the_mena_part_of_white(tmp_path: pathlib.Path) -> None:
+    """raceDistribution.mena_in_white sums race.mena_in_white over the trials
+    that report race. It is a part of white, which keeps its whole sum; a
+    record without the field adds 0."""
+    records = [r for r in _records(40) if isinstance(r.get("race"), dict)
+               and isinstance(r["race"].get("omb_totals"), dict)][:10]
+    assert len(records) == 10
+    parts = [4, 0, 9, 0, 6, 0, 0, 1, 0, 0]
+    for r, part in zip(records, parts):
+        r["race"] = dict(r["race"], omb_totals=dict(r["race"]["omb_totals"]), reported=True)
+        if part:
+            r["race"]["mena_in_white"] = part
+            r["race"]["omb_totals"]["white"] = (r["race"]["omb_totals"].get("white") or 0) + part
+        else:
+            r["race"].pop("mena_in_white", None)
+    records[4]["race"]["reported"] = False            # a trial that does not report race adds nothing
+    _, summary_file = _case(tmp_path, records)
+    dist = json.loads(summary_file.read_text())["raceDistribution"]
+    reporting = [r for r in records if r["race"].get("reported")]
+    assert dist["mena_in_white"] == sum(r["race"].get("mena_in_white", 0) for r in reporting) == 14
+    assert dist["white"] == sum(r["race"]["omb_totals"].get("white") or 0 for r in reporting)
+    assert dist["mena_in_white"] <= dist["white"]
+
+
+def test_summary_rows_carry_the_mena_part_of_white(tmp_path: pathlib.Path) -> None:
+    """A recent-study row's race block carries race.mena_in_white when the
+    record has it; an older record's row has no such key."""
+    records = [r for r in _records(40) if isinstance(r.get("race"), dict)
+               and isinstance(r["race"].get("omb_totals"), dict)][:4]
+    for i, r in enumerate(records):
+        r["race"] = dict(r["race"], reported=True)
+        r["race"].pop("unknown_ethnicity_only", None)
+        if i < 2:
+            r["race"]["mena_in_white"] = i
+        else:
+            r["race"].pop("mena_in_white", None)
+        r["results_date"] = f"2024-0{i + 1}-15"
+    _, summary_file = _case(tmp_path, records)
+    rows = {row["nct_id"]: row["race"] for row in json.loads(summary_file.read_text())["recentStudies"]}
+    by_id = {r["nct_id"]: r for r in records}
+    for nct, race in rows.items():
+        src = by_id[nct]["race"]
+        if "mena_in_white" in src:
+            assert race["mena_in_white"] == src["mena_in_white"]
+        else:
+            assert "mena_in_white" not in race
+    assert sum("mena_in_white" in r for r in rows.values()) == 2
+
+
 def test_the_generator_stops_on_a_results_date_the_site_cannot_read(tmp_path: pathlib.Path) -> None:
     records = _records(4)
     records[2]["results_date"] = 20200301
@@ -300,13 +407,20 @@ def test_the_generator_stops_on_a_results_date_the_site_cannot_read(tmp_path: pa
 def _assert_parity(code: int, report: dict[str, Any], block: dict[str, Any]) -> None:
     assert code == 0 and report["ok"], json.dumps(report["mismatches"], indent=1)[:4000]
     site = report["site"]
-    for k in ["trials", *fv.NUMERATORS]:
+    # The sex/gender counts are checked only on a site that paints them; the
+    # vendored excerpt (site main) does not yet, and says so.
+    checked = report["sex_gender_checked"]
+    names = [*fv.RACE_ETHNICITY, *(fv.SEX_GENDER if checked else ())]
+    for k in ["trials", *names]:
         assert site[k] == block[k]
     assert site["newest_results_year"] == block["newest_results_year"]
     for year, c in block["by_results_year"].items():
-        assert site["by_results_year"][year] == c
-    # 40 checks of the view, and one for each year it shows
-    assert report["checked"] == 40 + len(block["by_results_year"])
+        assert {k: site["by_results_year"][year][k] for k in ["trials", *names]} == {k: c[k] for k in ["trials", *names]}
+    # 40 checks of the view, and one for each year it shows; on a site that
+    # paints sex/gender, 4 counts, 8 rows painted twice, its Sex and Gender
+    # trend lines, and one more per year.
+    per_year = 2 if checked else 1
+    assert report["checked"] == 40 + (4 + 16 + 2 if checked else 0) + per_year * len(block["by_results_year"])
 
 
 def test_the_block_is_what_the_sites_own_code_counts_and_paints(counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
@@ -339,7 +453,7 @@ def test_parity_holds_on_every_branch_the_overview_paints(tmp_path: pathlib.Path
     block = json.loads(summary_file.read_text())["firstView"]
     code, report = _parity(records_file, summary_file)
     assert code == 0 and report["ok"], json.dumps(report["mismatches"], indent=1)[:4000]
-    for k in ["trials", *fv.NUMERATORS]:
+    for k in ["trials", *fv.RACE_ETHNICITY]:
         assert report["site"][k] == block[k]
     assert finding in report["site"]["painted"]["finding-context"]
     if case == "no_results_year_from_2009":
@@ -1098,3 +1212,263 @@ def test_the_parity_holds_on_the_split_layouts_core_parts(
     report = json.loads(r.stdout)
     _assert_parity(r.returncode, report, json.loads(summary_file.read_text())["firstView"])
     assert report["records"]["count"] == len(records)
+
+
+# ── sex and gender: the manuscript parser's flags ────────────────────────────
+
+def _sg(record: dict[str, Any], sex: Any = DELETE, gender: Any = DELETE) -> dict[str, Any]:
+    """record with a parser row whose reported_sex / reported_gender are these
+    (DELETE: the key is left out of the row)."""
+    row = {"sex_report_status": "reported"}
+    for key, value in (("reported_sex", sex), ("reported_gender", gender)):
+        if value is not DELETE:
+            row[key] = value
+    return dict(record, sex_gender=row)
+
+
+@pytest.mark.parametrize("value,counted", [
+    (True, True), (False, False), (None, False), (DELETE, False), ("true", False), (1, False), ([True], False),
+])
+def test_sex_and_gender_count_only_when_the_parsers_flag_is_exactly_true(value: Any, counted: bool) -> None:
+    """The site reads every parser flag with === true; a truthy string, number
+    or list is not a reported flag (unlike race.reported, read by truthiness)."""
+    sex = fv.first_view([_sg(_study("NCT1"), sex=value, gender=False)], None, None)
+    gender = fv.first_view([_sg(_study("NCT1"), sex=False, gender=value)], None, None)
+    assert sex["trials_reporting_sex"] == int(counted) and sex["trials_reporting_gender"] == 0
+    assert gender["trials_reporting_gender"] == int(counted) and gender["trials_reporting_sex"] == 0
+
+
+def test_the_combined_counts_need_every_dimension_they_name() -> None:
+    records = [
+        _sg(_study("NCT1", race=True, ethnicity=True), sex=True, gender=True),     # all four
+        _sg(_study("NCT2", race=True, ethnicity=False), sex=True, gender=True),    # sex and gender only
+        _sg(_study("NCT3", race=True, ethnicity=True), sex=True, gender=False),    # no gender
+        _sg(_study("NCT4", race=False, ethnicity=False), sex=False, gender=True),  # gender only
+    ]
+    block = fv.first_view(records, None, None)
+    assert {k: block[k] for k in fv.SEX_GENDER} == {
+        "trials_reporting_sex": 3, "trials_reporting_gender": 3, "trials_reporting_sex_and_gender": 2,
+        "trials_reporting_race_ethnicity_sex_and_gender": 1}
+    assert block["by_results_year"]["2020"] == {k: block[k] for k in ["trials", *fv.NUMERATORS]}
+    assert block["denominators"] == {k: "trials" for k in fv.NUMERATORS}
+
+
+@pytest.mark.parametrize("row", [DELETE, None, [], "reported"])
+def test_a_counted_trial_without_the_parser_row_leaves_the_sex_and_gender_counts_absent(row: Any) -> None:
+    """Absence, not zero: one counted trial with no parser row and the view has
+    no sex/gender numbers, in the block or in any year."""
+    lacking = _study("NCT2", "2021-01-01")
+    if row is not DELETE:
+        lacking["sex_gender"] = row
+    block = fv.first_view([_sg(_study("NCT1"), sex=True, gender=True), lacking], None, None)
+    assert not any(k in block for k in fv.SEX_GENDER)
+    assert not any(k in block["by_results_year"]["2021"] for k in fv.SEX_GENDER)
+    assert block["by_results_year"]["2020"]["trials_reporting_sex"] == 1, "a year whose trials all have the row keeps its counts"
+    assert block["denominators"] == {k: "trials" for k in fv.RACE_ETHNICITY}
+    assert block["trials_reporting_race"] == 2
+
+
+def test_a_trial_outside_the_view_without_the_parser_row_does_not_withdraw_the_counts() -> None:
+    outside = _study("NCT2", "2021-01-01", study_type="OBSERVATIONAL")
+    block = fv.first_view([_sg(_study("NCT1"), sex=True, gender=False), outside], None, None)
+    assert block["trials_reporting_sex"] == 1 and block["trials_reporting_gender"] == 0
+
+
+@pytest.mark.parametrize("record,cut", [
+    ({"sex_gender": {"reported_sex": True, "reported_gender": None, "n_female": 3}},
+     {"sex_gender": {"reported_sex": True, "reported_gender": None}}),
+    ({"sex_gender": {"n_female": 3}}, {"sex_gender": {}}),
+    ({"sex_gender": None}, {"sex_gender": None}),
+    ({"sex": {"reported": True}}, {}),
+])
+def test_the_cut_keeps_the_parsers_flags_and_their_absence(record: dict[str, Any], cut: dict[str, Any]) -> None:
+    assert fv.essentials(record) == cut
+    for dim in fv.PARSER_FLAGS:
+        assert fv.parser_reports(fv.essentials(record), dim) is fv.parser_reports(record, dim)
+    assert fv.has_parser_row(fv.essentials(record)) is fv.has_parser_row(record)
+    assert "sex_gender.reported_sex" in fv.READS and "sex_gender.reported_gender" in fv.READS
+
+
+# A mix of parser flags over the main case's records, in the view and out of it.
+SG_PATTERNS = [(True, False), (True, True), (False, False), (True, False), (False, True), (None, None), ("true", True)]
+
+
+def _sg_records(n_counted: int = 120) -> list[dict[str, Any]]:
+    out = []
+    for i, r in enumerate(_records(n_counted)):
+        sex, gender = SG_PATTERNS[i % len(SG_PATTERNS)]
+        row = dict(r.get("sex_gender") or {}, reported_sex=sex, reported_gender=gender)
+        out.append(dict(r, sex_gender=row))
+    return out
+
+
+def test_the_summary_carries_the_parsers_counts_over_every_study(tmp_path: pathlib.Path) -> None:
+    """Summary mode (phones before firstView, aggregate archives) paints the
+    sex/gender rows from cards and byYear, over every study as its race cards."""
+    records = _sg_records()
+    _, summary_file = _case(tmp_path, records)
+    s = json.loads(summary_file.read_text())
+
+    def reported(r: dict[str, Any], dim: str) -> bool:
+        return bool((r.get(dim) or {}).get("reported"))
+
+    flags = [(reported(r, "race"), reported(r, "ethnicity"), fv.parser_reports(r, "sex"), fv.parser_reports(r, "gender"))
+             for r in records]
+    assert {k: s["cards"][k] for k in ("sgSexCount", "sgGenderCount", "sgSexGenderCount", "allFourCount")} == {
+        "sgSexCount": sum(f[2] for f in flags), "sgGenderCount": sum(f[3] for f in flags),
+        "sgSexGenderCount": sum(f[2] and f[3] for f in flags), "allFourCount": sum(all(f) for f in flags)}
+    for key in ("sg_sex_reported", "sg_gender_reported", "sg_sex_gender_reported", "all_four_reported"):
+        assert all(key in y for y in s["byYear"].values())
+    assert sum(y["sg_sex_reported"] for y in s["byYear"].values()) == sum(
+        f[2] for f, r in zip(flags, records) if (r.get("results_date") or "")[:4])
+    # The cards' older keys come first and keep their order.
+    assert list(s["cards"])[:5] == ["raceCount", "ethCount", "sexCount", "genderCount", "bothCount"]
+
+
+def test_the_summary_has_no_parser_counts_when_a_record_lacks_the_row(tmp_path: pathlib.Path) -> None:
+    records = _sg_records(30)
+    records[-1] = {k: v for k, v in records[-1].items() if k != "sex_gender"}
+    _, summary_file = _case(tmp_path, records)
+    s = json.loads(summary_file.read_text())
+    assert not any(k in s["cards"] for k in ("sgSexCount", "sgGenderCount", "sgSexGenderCount", "allFourCount"))
+    assert not any(k.startswith(("sg_", "all_four")) for y in s["byYear"].values() for k in y)
+
+
+# ── the parity on the site's sex/gender rows ────────────────────────────────
+
+# Site main (the vendored excerpt) paints the rows (renderOverviewSexGender,
+# site PR #274). A site from before it is the same code with that function
+# renamed away: the parity then stubs it like any helper it does not run,
+# paints no sex/gender row and says it checked none.
+def _site_without_the_sex_gender_painter(tmp: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+    app = _excerpt_app()
+    assert app.count("function renderOverviewSexGender(") == 1
+    return (_write_app(tmp, app.replace("renderOverviewSexGender", "renderOverviewSexGenderElsewhere")),
+            EXCERPT / "index_overview.html")
+
+
+def _parity_on(records_file: pathlib.Path, summary_file: pathlib.Path,
+               site: tuple[pathlib.Path, pathlib.Path] | None = None) -> tuple[int, dict[str, Any]]:
+    if site is None:
+        return _parity(records_file, summary_file)
+    return _parity(records_file, summary_file, "--app", str(site[0]), "--index", str(site[1]))
+
+
+@pytest.fixture(scope="module")
+def sg_counted(tmp_path_factory: pytest.TempPathFactory) -> tuple[pathlib.Path, pathlib.Path, None]:
+    tmp = tmp_path_factory.mktemp("first_view_sg")
+    records_file, summary_file = _case(tmp, _sg_records())
+    return records_file, summary_file, None
+
+
+def test_site_main_paints_sex_and_gender_and_is_checked_against_the_block(
+        sg_counted: tuple[pathlib.Path, pathlib.Path, None]) -> None:
+    records_file, summary_file, site = sg_counted
+    block = json.loads(summary_file.read_text())["firstView"]
+    assert block["trials_reporting_gender"] > block["trials_reporting_sex_and_gender"] > 0
+    code, report = _parity_on(records_file, summary_file, site)
+    assert report["sex_gender_checked"] is True
+    _assert_parity(code, report, block)
+    assert report["site"]["painted"]["sex-reporting"].endswith("%")
+    assert report["site"]["painted"]["stat-sub-all-four"].endswith(f"of {block['trials']:,} trials")
+
+
+def test_a_site_without_the_painter_is_not_checked_for_sex_and_gender_and_says_so(
+        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, None]) -> None:
+    records_file, summary_file, _ = sg_counted
+    code, report = _parity_on(records_file, summary_file, _site_without_the_sex_gender_painter(tmp_path))
+    assert code == 0 and report["sex_gender_checked"] is False, json.dumps(report["mismatches"])[:3000]
+    assert report["site_functions_stubbed"] == ["renderOverviewSexGenderElsewhere"]
+
+
+def _move_one_gender_trial(s: dict[str, Any]) -> None:
+    years = s["firstView"]["by_results_year"]
+    years["2016"]["trials_reporting_gender"] -= 1
+    years["2017"]["trials_reporting_gender"] += 1
+
+
+def _drop_sex_and_gender(s: dict[str, Any]) -> None:
+    for c in (s["firstView"], *s["firstView"]["by_results_year"].values()):
+        for k in fv.SEX_GENDER:
+            c.pop(k)
+    for k in fv.SEX_GENDER:
+        s["firstView"]["denominators"].pop(k)
+
+
+@pytest.mark.parametrize("change,expected", [
+    (_move_one_gender_trial, {"sex/gender counts in 2016", "sex/gender counts in 2017"}),
+    (_drop_sex_and_gender, {f"counts: {k}" for k in fv.SEX_GENDER}),
+])
+def test_the_parity_names_what_the_block_gets_wrong_about_sex_and_gender(
+        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, None],
+        change: Callable[[dict[str, Any]], None], expected: set[str]) -> None:
+    records_file, summary_file, site = sg_counted
+    code, report = _parity_on(records_file, _mutated(tmp_path, summary_file, change), site)
+    assert code == 1 and not report["ok"]
+    assert expected <= {m["check"] for m in report["mismatches"]}
+
+
+def test_a_week_without_the_parser_row_passes_on_a_site_that_shows_none(tmp_path: pathlib.Path) -> None:
+    records = _sg_records()
+    records[0] = {k: v for k, v in records[0].items() if k != "sex_gender"}
+    records_file, summary_file = _case(tmp_path, records)
+    block = json.loads(summary_file.read_text())["firstView"]
+    assert fv.first_view(records, None, None)["trials"] and not any(k in block for k in fv.SEX_GENDER)
+    code, report = _parity_on(records_file, summary_file)
+    assert code == 0 and report["sex_gender_checked"] is True, json.dumps(report["mismatches"])[:3000]
+    assert report["site"]["painted"]["sex-reporting"] == "—"
+
+
+def test_a_block_with_some_sex_and_gender_counts_is_malformed(
+        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, None]) -> None:
+    records_file, summary_file, site = sg_counted
+    code, report = _parity_on(records_file, _mutated(tmp_path, summary_file,
+                                                     lambda s: s["firstView"].pop("trials_reporting_gender")), site)
+    assert code == 1
+    detail = next(m for m in report["mismatches"] if m["check"] == "the block is well formed")["detail"]
+    assert "firstView has some of the sex/gender counts, not all" in detail
+
+
+def test_a_block_whose_years_lack_the_counts_it_has_is_malformed(
+        tmp_path: pathlib.Path, sg_counted: tuple[pathlib.Path, pathlib.Path, None]) -> None:
+    records_file, summary_file, site = sg_counted
+
+    def drop_2016(s: dict[str, Any]) -> None:
+        for k in fv.SEX_GENDER:
+            s["firstView"]["by_results_year"]["2016"].pop(k)
+    code, report = _parity_on(records_file, _mutated(tmp_path, summary_file, drop_2016), site)
+    assert code == 1
+    detail = next(m for m in report["mismatches"] if m["check"] == "the block is well formed")["detail"]
+    assert "firstView.by_results_year.2016 has no sex/gender counts, but the block has" in detail
+
+
+def test_the_excerpt_carries_the_helpers_its_pieces_call_so_it_runs_as_app_js_does(
+        tmp_path: pathlib.Path, counted: tuple[pathlib.Path, pathlib.Path, list[dict[str, Any]]]) -> None:
+    """A site PR that adds a call from a piece to a helper declared elsewhere in
+    app.js (site PRs #255 and #259 did) must leave an excerpt the parity can run:
+    the --excerpt writer copies the helper's declaration after the pieces, so
+    the excerpt declares it and the parity stubs it there as in app.js. Before,
+    the refreshed excerpt called a name it never declared and stopped the check."""
+    records_file, summary_file, _ = counted
+    site_app = _site_with_a_new_call(tmp_path / "site", "desktop_path", "function")
+    out = tmp_path / "excerpt"
+    r = subprocess.run([_node(), str(PARITY), "--excerpt", "--app", str(site_app),
+                        "--index", str(EXCERPT / "index_overview.html"),
+                        "--source", "michaeldgreenphd/clinical-trial-populations@" + "0" * 40,
+                        "--out-dir", str(out)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["helpers"] == ["renderTrialPhaseMix"]
+    excerpt = (out / "app_overview.js").read_text(encoding="utf-8")
+    assert excerpt.count("function renderTrialPhaseMix(rows) {") == 1
+    # Written again from itself, the same bytes: the helper slices back out too.
+    again = tmp_path / "again"
+    r = subprocess.run([_node(), str(PARITY), "--excerpt", "--app", str(out / "app_overview.js"),
+                        "--index", str(out / "index_overview.html"),
+                        "--source", "michaeldgreenphd/clinical-trial-populations@" + "0" * 40,
+                        "--out-dir", str(again)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert (again / "app_overview.js").read_bytes() == (out / "app_overview.js").read_bytes()
+    # And the parity runs on it as on the site's app.js: the helper stubbed and named.
+    r = _run_parity(records_file, summary_file, out / "app_overview.js")
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert json.loads(r.stdout)["site_functions_stubbed"] == ["renderTrialPhaseMix"]

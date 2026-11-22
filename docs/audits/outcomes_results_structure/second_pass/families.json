@@ -1,0 +1,440 @@
+{
+ "n_release": 80890,
+ "families": {
+  "overall_survival": {
+   "endpoint_regex": "\\boverall survival\\b|(?-i:\\bOS\\b)",
+   "gate_field": "primary_condition",
+   "gate_regex": "^Oncology$",
+   "matched": 840,
+   "gated": 793,
+   "rp3": 419,
+   "race_reported": 514,
+   "rp3_and_race_reported": 290,
+   "rp3_industry": 300,
+   "rp3_and_race_industry": 229,
+   "phase2_3_randomized": 11,
+   "distinct_normalised_titles_gated": 268,
+   "distinct_normalised_titles_rp3": 127,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "5-year Overall Survival Rate in Patients With Dukes' B3/C Disease",
+    "Overall Survival Rate (10-year)",
+    "Overall Survival"
+   ]
+  },
+  "progression_free_survival": {
+   "endpoint_regex": "\\bprogression[- ]free survival\\b|(?-i:\\bPFS\\b)",
+   "gate_field": "primary_condition",
+   "gate_regex": "^Oncology$",
+   "matched": 2106,
+   "gated": 2026,
+   "rp3": 538,
+   "race_reported": 1289,
+   "rp3_and_race_reported": 388,
+   "rp3_industry": 470,
+   "rp3_and_race_industry": 342,
+   "phase2_3_randomized": 27,
+   "distinct_normalised_titles_gated": 921,
+   "distinct_normalised_titles_rp3": 291,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Progression-free Survival",
+    "Progression-free Survival at 2 Years",
+    "Progression Free Survival (PFS)"
+   ]
+  },
+  "objective_response_rate": {
+   "endpoint_regex": "\\b(?:objective|overall|best overall) (?:tumou?r )?response\\b|(?-i:\\bORR\\b)",
+   "gate_field": "primary_condition",
+   "gate_regex": "^Oncology$",
+   "matched": 2245,
+   "gated": 2061,
+   "rp3": 56,
+   "race_reported": 1425,
+   "rp3_and_race_reported": 46,
+   "rp3_industry": 53,
+   "rp3_and_race_industry": 44,
+   "phase2_3_randomized": 4,
+   "distinct_normalised_titles_gated": 1142,
+   "distinct_normalised_titles_rp3": 40,
+   "rp3_results_year_min_max": [
+    "2011",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Proportion of Patients With Objective Response (First Phase, Step 1)",
+    "Best Overall Response Rate (BORR) (Calliper)",
+    "Number of Patients With Overall Response (Complete Response + Partial Response)"
+   ]
+  },
+  "hba1c_change": {
+   "endpoint_regex": "\\bhb\\s?a1c\\b|\\ba1c\\b|\\bglyc(?:osyl)?ated ha?emoglobin\\b",
+   "gate_field": "conditions",
+   "gate_regex": "diabet",
+   "matched": 1043,
+   "gated": 1021,
+   "rp3": 507,
+   "race_reported": 571,
+   "rp3_and_race_reported": 288,
+   "rp3_industry": 491,
+   "rp3_and_race_industry": 277,
+   "phase2_3_randomized": 14,
+   "distinct_normalised_titles_gated": 626,
+   "distinct_normalised_titles_rp3": 291,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Change in Glycosylated Hemoglobin (HbA1c)",
+    "Change in Glcosylated Hemoglobin (HbA1c)",
+    "Change From Baseline in HbA1c (Hemoglobin A1C) at Week 24"
+   ]
+  },
+  "ldl_cholesterol": {
+   "endpoint_regex": "(?-i:\\bLDL\\b)|\\blow[- ]density lipoprotein\\b",
+   "gate_field": "conditions",
+   "gate_regex": "cholesterol|lipid|lipoprotein",
+   "matched": 280,
+   "gated": 237,
+   "rp3": 117,
+   "race_reported": 124,
+   "rp3_and_race_reported": 64,
+   "rp3_industry": 112,
+   "rp3_and_race_industry": 62,
+   "phase2_3_randomized": 3,
+   "distinct_normalised_titles_gated": 179,
+   "distinct_normalised_titles_rp3": 83,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Percent Change From Baseline in Low-density Lipoprotein Cholesterol (LDL-C)",
+    "Percent Change From Baseline Low Density Lipoprotein-cholesterol (LDL-C) at Week 12",
+    "Percent Change From Baseline in LDL-C"
+   ]
+  },
+  "systolic_blood_pressure": {
+   "endpoint_regex": "\\bsystolic\\b|(?-i:\\bSBP\\b)|\\bblood pressure\\b",
+   "gate_field": "conditions",
+   "gate_regex": "hypertens",
+   "matched": 686,
+   "gated": 446,
+   "rp3": 91,
+   "race_reported": 204,
+   "rp3_and_race_reported": 39,
+   "rp3_industry": 85,
+   "rp3_and_race_industry": 36,
+   "phase2_3_randomized": 5,
+   "distinct_normalised_titles_gated": 379,
+   "distinct_normalised_titles_rp3": 77,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Change in Average Sitting Diastolic Blood Pressure (DBP) Taken at Trough at the End of Treatment Compared to B",
+    "Change in Diastolic Blood Pressure by Cuff 8-10 Weeks Minus Baseline",
+    "Mean Change From Baseline to Week 4 in Systolic Blood Pressure (SBP)"
+   ]
+  },
+  "fev1": {
+   "endpoint_regex": "\\bFEV\\s?-?1\\b|\\bforced expiratory volume\\b",
+   "gate_field": "conditions",
+   "gate_regex": "asthma|copd|chronic obstructive|cystic fibrosis",
+   "matched": 623,
+   "gated": 586,
+   "rp3": 256,
+   "race_reported": 310,
+   "rp3_and_race_reported": 140,
+   "rp3_industry": 251,
+   "rp3_and_race_industry": 137,
+   "phase2_3_randomized": 5,
+   "distinct_normalised_titles_gated": 489,
+   "distinct_normalised_titles_rp3": 205,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Pulmonary Function as Measured by Normalized FEV1 Over a 4-6 Year Period",
+    "Maximum Percent Fall in FEV1 After Exercise Challenge at 2 Hours Post-dose Compared With Pre-exercise Baseline",
+    "Maximum Percent Fall in FEV1 After Exercise Challenge at 2 Hours Postdose Compared With Pre-exercise Baseline "
+   ]
+  },
+  "depression_scale": {
+   "endpoint_regex": "\\bHAM-?D\\b|\\bHDRS\\b|\\bhamilton\\b[^.;]{0,30}\\bdepression\\b|\\bMADRS\\b|\\bmontgomery[- ][a\u00e5]sberg\\b|\\bPHQ-?9\\b|\\bpatient health questionnaire\\b",
+   "gate_field": "conditions",
+   "gate_regex": "depress",
+   "matched": 623,
+   "gated": 564,
+   "rp3": 126,
+   "race_reported": 347,
+   "rp3_and_race_reported": 82,
+   "rp3_industry": 109,
+   "rp3_and_race_industry": 76,
+   "phase2_3_randomized": 10,
+   "distinct_normalised_titles_gated": 453,
+   "distinct_normalised_titles_rp3": 101,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Hamilton Rating Scale for Depression-17 Item",
+    "Remission of Depression Hamilton Depression Scale (Ham-D) and Psychosis Schedule for Affective Disorders in Sc",
+    "Change in Hamilton Depression Rating Scale (HAM-D) Scores"
+   ]
+  },
+  "pain_intensity": {
+   "endpoint_regex": "(?=.*\\bpain\\b)(?:.*\\b(?:intensity|VAS|visual analog(?:ue)? scale|NRS|NPRS|numeric(?:al)? (?:pain )?rating scale|pain scores?)\\b)",
+   "gate_field": "primary_condition",
+   "gate_regex": "^(?:Pain|Musculoskeletal)$",
+   "matched": 1605,
+   "gated": 987,
+   "rp3": 204,
+   "race_reported": 457,
+   "rp3_and_race_reported": 91,
+   "rp3_industry": 168,
+   "rp3_and_race_industry": 72,
+   "phase2_3_randomized": 16,
+   "distinct_normalised_titles_gated": 885,
+   "distinct_normalised_titles_rp3": 189,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Change in Average Daily Pain Score as Measured Using a Pain Intensity Rating (NRS)",
+    "Numerical Rating Scale (0-10), an Interval Pain Scale, on Which 0 Indicates no Pain and 10 Indicates the Worst",
+    "Change in Global Spontaneous Pain Intensity of Target Hand"
+   ]
+  },
+  "acr20": {
+   "endpoint_regex": "\\bACR\\s?-?20\\b|\\bamerican college of rheumatology\\b[^.;]{0,25}\\b20\\b",
+   "gate_field": "conditions",
+   "gate_regex": "arthritis",
+   "matched": 222,
+   "gated": 221,
+   "rp3": 122,
+   "race_reported": 97,
+   "rp3_and_race_reported": 63,
+   "rp3_industry": 121,
+   "rp3_and_race_industry": 63,
+   "phase2_3_randomized": 5,
+   "distinct_normalised_titles_gated": 173,
+   "distinct_normalised_titles_rp3": 86,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Number of American College of Rheumatology 20 (ACR 20) Responders at Day 169",
+    "Double-blind Period (DB); Number of Participants With American College of Rheumatology (ACR) 20 Response at Da",
+    "Percentage of Participants With American College of Rheumatology-ACR20 Response"
+   ]
+  },
+  "pasi75": {
+   "endpoint_regex": "\\bPASI\\s?-?75\\b|\\bpsoriasis area (?:and|&) severity index\\b[^.;]{0,60}\\b75\\b|\\b75\\s?%[^.;]{0,60}\\bPASI\\b",
+   "gate_field": "conditions",
+   "gate_regex": "psoria",
+   "matched": 110,
+   "gated": 110,
+   "rp3": 48,
+   "race_reported": 64,
+   "rp3_and_race_reported": 24,
+   "rp3_industry": 48,
+   "rp3_and_race_industry": 24,
+   "phase2_3_randomized": 1,
+   "distinct_normalised_titles_gated": 109,
+   "distinct_normalised_titles_rp3": 48,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2025"
+   ],
+   "examples_rp3": [
+    "Percentage of Participants Achieving a \u2265 75% Improvement in Psoriasis Area and Severity Index Score (PASI 75) ",
+    "Proportion of Subjects Achieving a PASI-75 at 12 Weeks at Each of the 3 Dose Levels of Voclosporin.",
+    "Psoriasis Area and Severity Index 75 (PASI75) Response at Week 16."
+   ]
+  },
+  "svr_or_viral_load": {
+   "endpoint_regex": "\\bsustained vir(?:ologic(?:al)?|al) response\\b|(?-i:\\bSVR\\s?\\d*\\b)|\\bviral load\\b|\\b(?:HIV|HCV)(?:-1)? RNA\\b|\\bHBV DNA\\b|\\bvirologic(?:al)? (?:response|suppression|failure|success)\\b",
+   "gate_field": "conditions",
+   "gate_regex": "\\bhiv\\b|human immunodeficiency|hepatitis|\\bhcv\\b|\\bhbv\\b",
+   "matched": 801,
+   "gated": 746,
+   "rp3": 192,
+   "race_reported": 375,
+   "rp3_and_race_reported": 108,
+   "rp3_industry": 177,
+   "rp3_and_race_industry": 97,
+   "phase2_3_randomized": 18,
+   "distinct_normalised_titles_gated": 571,
+   "distinct_normalised_titles_rp3": 148,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Sustained Virologic Response (SVR) Rate",
+    "Time From Randomization to Virologic Failure or Death for Participants Who Had SD NVP Exposure Prior to Study ",
+    "Change From Baseline in Hepatitis B Virus DNA (HBV DNA) by Polymerase Chain Reaction (PCR) Assay at Week 12"
+   ]
+  },
+  "svr_hcv": {
+   "endpoint_regex": "\\bsustained vir(?:ologic(?:al)?|al) response\\b|(?-i:\\bSVR\\s?\\d*\\b)",
+   "gate_field": "conditions",
+   "gate_regex": "hepatitis c|\\bhcv\\b",
+   "matched": 405,
+   "gated": 387,
+   "rp3": 102,
+   "race_reported": 167,
+   "rp3_and_race_reported": 36,
+   "rp3_industry": 98,
+   "rp3_and_race_industry": 33,
+   "phase2_3_randomized": 7,
+   "distinct_normalised_titles_gated": 241,
+   "distinct_normalised_titles_rp3": 72,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2021"
+   ],
+   "examples_rp3": [
+    "Sustained Virologic Response (SVR) Rate",
+    "Sustained Viral Response (SVR)",
+    "The Primary Endpoint Would be the Number Who Achieve a Sustained Virologic Response."
+   ]
+  },
+  "hiv_rna": {
+   "endpoint_regex": "\\bHIV(?:-1)? RNA\\b|\\bviral load\\b|\\bvirologic(?:al)? (?:response|suppression|failure|success)\\b",
+   "gate_field": "conditions",
+   "gate_regex": "\\bhiv\\b|human immunodeficiency",
+   "matched": 695,
+   "gated": 282,
+   "rp3": 77,
+   "race_reported": 180,
+   "rp3_and_race_reported": 64,
+   "rp3_industry": 67,
+   "rp3_and_race_industry": 57,
+   "phase2_3_randomized": 11,
+   "distinct_normalised_titles_gated": 255,
+   "distinct_normalised_titles_rp3": 64,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Time From Randomization to Virologic Failure or Death for Participants Who Had SD NVP Exposure Prior to Study ",
+    "Percentage of Participants With Viral Load of Less Than 400 Copies/Milliliter [Copies/mL] and Less Than 50 Cop",
+    "Number of Patients With Human Immunodeficiency Virus Type 1 (HIV-1) Ribonucleic Acid (RNA) Viral Load <50 Copi"
+   ]
+  },
+  "body_weight_change": {
+   "endpoint_regex": "\\bbody weight\\b|\\bweight (?:loss|change|reduction)\\b|\\bchange in weight\\b|\\b(?:change|reduction|loss)\\b[^.;]{0,25}\\bweight\\b",
+   "gate_field": "conditions",
+   "gate_regex": "obes|overweight",
+   "matched": 494,
+   "gated": 307,
+   "rp3": 54,
+   "race_reported": 209,
+   "rp3_and_race_reported": 41,
+   "rp3_industry": 49,
+   "rp3_and_race_industry": 36,
+   "phase2_3_randomized": 3,
+   "distinct_normalised_titles_gated": 198,
+   "distinct_normalised_titles_rp3": 38,
+   "rp3_results_year_min_max": [
+    "2011",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Weight Loss (%)",
+    "Year 1: Co-Primary Endpoint- Proportion (%) of Patients Achieving > or = 5% Weight Loss From Baseline to Week ",
+    "Co-primary: Body Weight- Mean Percent Change"
+   ]
+  },
+  "seroconversion_or_titre": {
+   "endpoint_regex": "\\bsero(?:conver|protect|respon)\\w*|\\bantibody tit(?:er|re)s?\\b|\\bgeometric mean (?:tit(?:er|re)|concentration)s?\\b|(?-i:\\bGM[TC]s?\\b)|\\bha?emagglutination[- ]inhibit\\w*|\\bimmunogenicity\\b|\\bneutrali[sz]ing antibod\\w*",
+   "gate_field": null,
+   "gate_regex": null,
+   "matched": 818,
+   "gated": 818,
+   "rp3": 313,
+   "race_reported": 387,
+   "rp3_and_race_reported": 163,
+   "rp3_industry": 298,
+   "rp3_and_race_industry": 153,
+   "phase2_3_randomized": 12,
+   "distinct_normalised_titles_gated": 770,
+   "distinct_normalised_titles_rp3": 304,
+   "rp3_results_year_min_max": [
+    "2009",
+    "2026"
+   ],
+   "examples_rp3": [
+    "Serum Neutralizing Antibodies (SNA) Response Against Rotavirus Serotypes G1, G2, G3, G4 and P1A[8]",
+    "Number of Subjects Who Seroconverted for HPV 6 by Week 4 Postdose 3",
+    "Number of Participants With Postvaccination Measles Enzyme-Linked Immunosorbent Assay (ELISA) Antibody Titer \u2265"
+   ]
+  }
+ },
+ "any_family_gated": 10912,
+ "rp3_total_in_release": 10852,
+ "rp3_race_total_in_release": 6405,
+ "rp3_in_any_family": 3041,
+ "exact_title": {
+  "distinct_normalised": 67634,
+  "used_once": 63388,
+  "trials_with_unique_title": 63388,
+  "top10": [
+   [
+    "progression free survival pfs",
+    511
+   ],
+   [
+    "progression free survival",
+    338
+   ],
+   [
+    "overall survival",
+    261
+   ],
+   [
+    "number of participants with adverse events",
+    229
+   ],
+   [
+    "objective response rate orr",
+    228
+   ],
+   [
+    "overall survival os",
+    217
+   ],
+   [
+    "number of participants with treatment emergent adverse events teaes",
+    189
+   ],
+   [
+    "overall response rate",
+    184
+   ],
+   [
+    "overall response rate orr",
+    161
+   ],
+   [
+    "objective response rate",
+    120
+   ]
+  ]
+ }
+}

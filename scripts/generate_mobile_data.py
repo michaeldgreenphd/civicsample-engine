@@ -34,6 +34,7 @@ written last, so every key above keeps its bytes.
 import argparse
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 from typing import Any
@@ -42,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import first_view as fv  # noqa: E402
 from src import full_records  # noqa: E402
+from src import sex_gender_analysis as sga  # noqa: E402
 from src import sex_gender_table as sgt  # noqa: E402
 
 # Drill-down label lists carry at most this many distinct labels each; every
@@ -218,12 +220,59 @@ def sex_gender_summary(all_studies, table_rows=None):
     }
 
 
+def check_analysis_provenance(meta_path: str, extracted_at: str, pipeline_commit: str, table_path: str) -> dict:
+    """Refuse an analysis sidecar whose meta file is missing or was derived from
+    another pull. Returns the meta on success. A stale sidecar joined by NCT id
+    would publish old reporting states under this run's stamps."""
+    if not os.path.exists(meta_path):
+        raise SystemExit(f"{table_path}: no meta file at {meta_path}; the sidecar's provenance cannot be checked")
+    with open(meta_path) as fh:
+        meta = json.load(fh)
+    want = (extracted_at, pipeline_commit)
+    got = (meta.get("source_extracted_at"), meta.get("source_pipeline_commit"))
+    if got != want:
+        raise SystemExit(f"{table_path}: derived from extracted_at {got[0]!r} / commit {got[1]!r}, but the full records "
+                         f"are {want[0]!r} / {want[1]!r}; rebuild the sidecar from this pull or remove it")
+    return meta
+
+
+def sex_gender_analysis_summary(all_studies, analysis_rows=None):
+    """The sexGenderAnalysis block of dashboard-summary.json, built ONLY from
+    the analytical layer's per-trial blocks (src/sex_gender_analysis.py).
+
+    analysis_rows is the full sidecar table (sex_gender_analysis.csv.gz via
+    sex_gender_analysis.read_table); without it the lean blocks in the study
+    records are used. A record with no block (a pull that predates the
+    layer) contributes nothing: the block then says how many trials it
+    covers, so a reader can tell partial coverage from a whole snapshot."""
+    by_nct = {r.get("nct_id"): r for r in (analysis_rows or [])}
+    blocks = []
+    for s in all_studies:
+        r = by_nct.get(s.get("nct_id"))
+        if r:
+            blocks.append({k: r.get(k) for k in sga.LEAN_KEYS})
+        else:
+            b = sga.lean_from_study(s)
+            if b:
+                blocks.append(b)
+    if not blocks:
+        return None
+    out = sga.summarize(blocks)
+    out["recordsInDataset"] = len(all_studies)
+    return out
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--demographics", default=full_records.DEFAULT_PATH,
                     help="the week's full records (default: %(default)s)")
     ap.add_argument("--table", default="data/sex_gender_parsed.csv.gz",
                     help="the full sex/gender table (default: %(default)s)")
+    ap.add_argument("--analysis-table", default="data/sex_gender_analysis.csv.gz",
+                    help="the sex/gender analysis sidecar table (default: %(default)s)")
+    ap.add_argument("--analysis-meta", default=None,
+                    help="its meta file (default: the table's name with _meta.json); its source stamps must match "
+                         "the full records or the run stops")
     ap.add_argument("--out", default="data/dashboard-summary.json",
                     help="where to write the summary (default: %(default)s)")
     a = ap.parse_args(argv)
@@ -244,6 +293,16 @@ def main(argv: list[str] | None = None) -> None:
     table_path = a.table
     table_rows = sgt.read_table(table_path) if os.path.exists(table_path) else None
     print(f"Sex/gender table: {len(table_rows) if table_rows else 'absent (lean rows only)'}")
+    analysis_rows = None
+    if os.path.exists(a.analysis_table):
+        # The sidecar is a derived file: it is used only when its meta file says
+        # it was derived from this pull (extracted_at and pipeline_commit), so a
+        # table left over from an earlier run can never outrun the records.
+        meta_path = a.analysis_meta or re.sub(r"\.csv(\.gz)?$", "_meta.json", a.analysis_table)
+        check_analysis_provenance(meta_path, extracted_at, pipeline_commit, a.analysis_table)
+        analysis_rows = sga.read_table(a.analysis_table)
+    print(f"Sex/gender analysis table: {len(analysis_rows) if analysis_rows else 'absent (lean blocks only)'}")
+    analysis_by_nct = {r.get("nct_id"): r for r in (analysis_rows or [])}
 
     # ── Summary cards ──
     race_count = sum(1 for s in all_studies if (s.get("race") or {}).get("reported"))
@@ -253,6 +312,27 @@ def main(argv: list[str] | None = None) -> None:
     both_count = sum(1 for s in all_studies
                      if (s.get("race") or {}).get("reported")
                      and (s.get("ethnicity") or {}).get("reported"))
+    # The Overview's sex/gender rows when a summary paints it (phones before
+    # firstView, aggregate archives): the manuscript parser's flags, counted
+    # when exactly true (first_view.parser_reports), over every study as the
+    # cards above are. Written only when every record carries the parser's
+    # row; without it there are no sex/gender numbers, never zeros.
+    sg_every = bool(all_studies) and all(fv.has_parser_row(s) for s in all_studies)
+
+    def _sg_reports(s: dict[str, Any]) -> dict[str, bool]:
+        race = bool((s.get("race") or {}).get("reported"))
+        eth = bool((s.get("ethnicity") or {}).get("reported"))
+        sex, gender = fv.parser_reports(s, "sex"), fv.parser_reports(s, "gender")
+        return {"sex": sex, "gender": gender, "sex_gender": sex and gender,
+                "all_four": race and eth and sex and gender}
+
+    sg_cards: dict[str, int] = {}
+    if sg_every:
+        flags = [_sg_reports(s) for s in all_studies]
+        sg_cards = {"sgSexCount": sum(f["sex"] for f in flags),
+                    "sgGenderCount": sum(f["gender"] for f in flags),
+                    "sgSexGenderCount": sum(f["sex_gender"] for f in flags),
+                    "allFourCount": sum(f["all_four"] for f in flags)}
 
     # ── Aggregate distributions (non-year-grouped) ──
     race_dist = defaultdict(int)
@@ -267,6 +347,20 @@ def main(argv: list[str] | None = None) -> None:
         if r.get("reported"):
             for k, v in (r.get("omb_totals") or {}).items():
                 race_dist[k] += v or 0
+            # The part of unknown_not_reported that is the Hispanic rows of an
+            # exact combined race and ethnicity classification
+            # (race_extractor, "A shortfall that the ethnicity rows account
+            # for"). A PART of unknown_not_reported, not a further category:
+            # the site draws it as its own row and takes it out of "Unknown".
+            # Records extracted before the field existed add 0, so their
+            # unknown stays whole.
+            race_dist["unknown_ethnicity_only"] += r.get("unknown_ethnicity_only") or 0
+            # The part of white that the rows name Middle Eastern or North
+            # African (race_extractor, "Middle Eastern or North African within
+            # White"). A PART of white, not a further category: the site can
+            # draw it apart and take it out of "White". Records extracted
+            # before the field existed add 0, so their White stays whole.
+            race_dist["mena_in_white"] += r.get("mena_in_white") or 0
             for k, v in (r.get("subcategory_totals") or {}).items():
                 race_subcats[k] += v or 0
 
@@ -345,6 +439,13 @@ def main(argv: list[str] | None = None) -> None:
             y["gender_reported"] += 1
         if r_rep and e_rep:
             y["both_reported"] += 1
+
+        if sg_every:
+            # Appended after the bucket's other keys, so they keep their order.
+            f = _sg_reports(s)
+            for key, flag in (("sg_sex_reported", "sex"), ("sg_gender_reported", "gender"),
+                              ("sg_sex_gender_reported", "sex_gender"), ("all_four_reported", "all_four")):
+                y[key] = y.get(key, 0) + int(f[flag])
 
         # Race aggregates
         if r_rep:
@@ -497,6 +598,24 @@ def main(argv: list[str] | None = None) -> None:
             return {"reported": False}
         return {"reported": True, totals_key: obj.get(totals_key) or {}}
 
+    def _race_row(obj: dict[str, Any] | None) -> dict[str, Any]:
+        """The race block of a summary row: _demo's, plus the part of
+        unknown_not_reported that a combined race and ethnicity table counted
+        as Hispanic or Latino and gave no race (race_extractor,
+        "A shortfall that the ethnicity rows account for"), so the site's
+        race pop-up splits it on a phone as it does from the full record.
+        Only when the record carries it: an older record's row has no such
+        key, and the site then shows unknown whole."""
+        row = _demo(obj, "omb_totals")
+        if row["reported"] and "unknown_ethnicity_only" in obj:
+            row["unknown_ethnicity_only"] = obj.get("unknown_ethnicity_only") or 0
+        # Likewise the Middle Eastern or North African part of white
+        # (race_extractor, "Middle Eastern or North African within White"),
+        # only when the record carries it.
+        if row["reported"] and "mena_in_white" in obj:
+            row["mena_in_white"] = obj.get("mena_in_white") or 0
+        return row
+
     _COMPACT_SG = ("sex_report_status", "reported_sex", "reported_gender", "reported_both",
                    "gender_labeled_binary_only", "is_participant_count", "n_female", "n_male",
                    "n_unknown", "n_gender_diverse", "n_ambiguous_gender", "uninformative_reason",
@@ -511,6 +630,14 @@ def main(argv: list[str] | None = None) -> None:
         if not row:
             return None
         return {k: row.get(k) for k in _COMPACT_SG}
+
+    def _compact_analysis(s):
+        """The lean analysis block, from the sidecar when it is there, else
+        the record's own; None when the record predates the layer."""
+        r = analysis_by_nct.get(s.get("nct_id"))
+        if r:
+            return {k: r.get(k) for k in sga.LEAN_KEYS}
+        return sga.lean_from_study(s)
 
     def _compact(s: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -532,13 +659,16 @@ def main(argv: list[str] | None = None) -> None:
             "is_fda_regulated_drug": s.get("is_fda_regulated_drug"),
             "is_fda_regulated_device": s.get("is_fda_regulated_device"),
             "is_unapproved_device": s.get("is_unapproved_device"),
-            "race": _demo(s.get("race"), "omb_totals"),
+            "race": _race_row(s.get("race")),
             "ethnicity": _demo(s.get("ethnicity"), "omb_totals"),
             "sex": _demo(s.get("sex"), "totals"),
             "gender": _demo(s.get("gender"), "totals"),
             # sg=v2 row, trimmed to what a table cell needs; the label trails
             # stay on the desktop rows and in the parsed table.
             "sex_gender": _compact_sex_gender(s),
+            # The newer analytical layer's lean block (null when the record
+            # predates it): the site shows "unavailable", never a value.
+            "sex_gender_analysis": _compact_analysis(s),
             # Geography details aren't shipped to mobile (study_sites is heavy
             # and desktop-only). Leaving countries empty makes the cell show ✗
             # rather than a ✓ that opens an empty modal; lists_locations below
@@ -563,6 +693,7 @@ def main(argv: list[str] | None = None) -> None:
             "sexCount": sex_count,
             "genderCount": gender_count,
             "bothCount": both_count,
+            **sg_cards,
         },
         "raceDistribution": dict(race_dist),
         "ethnicityDistribution": dict(eth_dist),
@@ -576,6 +707,8 @@ def main(argv: list[str] | None = None) -> None:
         # sg=v2: the manuscript parser's table, summarised. None on pulls that
         # predate the sex_gender row (archived snapshot summaries stay valid).
         "sexGender": sex_gender_summary(all_studies, table_rows),
+        # The analytical layer, summarised; None on pulls that predate it.
+        "sexGenderAnalysis": sex_gender_analysis_summary(all_studies, analysis_rows),
         # The Overview as it opens (Interventional, results from 2009 on),
         # counted with the site's own rules; last, so the keys above keep
         # their bytes. Archived summaries have none and the site treats that
@@ -592,7 +725,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"  ({total} studies pre-aggregated into {len(years)} year buckets)")
     trials = first["trials"]
     shares = ", ".join(f"{name.removeprefix('trials_reporting_')} {first[name] / trials * 100:.1f}%"
-                       for name in fv.NUMERATORS) if trials else "no trials"
+                       for name in fv.NUMERATORS if name in first) if trials else "no trials"
     print(f"  firstView: {trials} interventional trials with results from {fv.RESULTS_YEAR_FROM} "
           f"(newest results year {first['newest_results_year']}): {shares}; not counted {first['not_counted']}")
 

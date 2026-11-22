@@ -1,0 +1,90 @@
+{
+ "redraw_matches_sample_ids_txt": true,
+ "redraw_sha256": "9bd0c403097b055faf01b505fbd0b98a6ca21611d965c8878751f11f1e0d525f",
+ "sample_ids_txt_sha256": "9bd0c403097b055faf01b505fbd0b98a6ca21611d965c8878751f11f1e0d525f",
+ "sampling_json_sha256": "9bd0c403097b055faf01b505fbd0b98a6ca21611d965c8878751f11f1e0d525f",
+ "allocation": {
+  "INTERVENTIONAL": 1883,
+  "OBSERVATIONAL": 117
+ },
+ "seed": 20261113,
+ "n": 2000,
+ "sample_profile": {
+  "phase": [
+   [
+    "NA",
+    554
+   ],
+   [
+    "PHASE2",
+    509
+   ],
+   [
+    "PHASE3",
+    315
+   ],
+   [
+    "PHASE4",
+    200
+   ],
+   [
+    "PHASE1",
+    151
+   ],
+   [
+    "",
+    120
+   ],
+   [
+    "PHASE1, PHASE2",
+    109
+   ],
+   [
+    "PHASE2, PHASE3",
+    26
+   ],
+   [
+    "EARLY_PHASE1",
+    16
+   ]
+  ],
+  "sponsor_class": [
+   [
+    "OTHER",
+    952
+   ],
+   [
+    "INDUSTRY",
+    918
+   ],
+   [
+    "NIH",
+    68
+   ],
+   [
+    "FED",
+    38
+   ],
+   [
+    "NETWORK",
+    17
+   ],
+   [
+    "OTHER_GOV",
+    4
+   ],
+   [
+    "INDIV",
+    2
+   ],
+   [
+    "UNKNOWN",
+    1
+   ]
+  ],
+  "results_year_min_max": [
+   "2009-03-23",
+   "2026-11-03"
+  ]
+ }
+}

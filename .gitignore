@@ -36,6 +36,8 @@ data/dataset/
 data/dataset.partial/
 data/dashboard-summary.json
 data/industry_sponsors.json
+# CT.gov MeSH indexing per trial (src/condition_mesh.py): kept on the data-* release
+data/condition_mesh.jsonl.gz
 # Sponsor bridge is published to the site; the audit under data/sponsor_audit/ IS committed
 data/sponsors/
 
@@ -51,6 +53,8 @@ data/Clinical Trials Manuscripts/*
 # Never commit credentials
 vertex_key.json
 *.pem
+.gemini/
+gha-creds-*.json
 
 # Site checkout created by the publish steps in CI (and by local testing)
 site/
@@ -62,8 +66,12 @@ data/sex_gender_parsed.csv.gz
 data/sex_gender_parsed_meta.json
 data/sex_gender_raw_measures.jsonl.gz
 data/sex_gender/
+data/sex_gender_raw_envelope.jsonl.gz
+data/analysis_sidecar/
 
-# Transient sharded outcomes, document pre-indexer caches, and local census PDFs
+# Transient outcomes bundles, document pre-indexer caches, and local census PDFs
+data/outcomes_bundles/
+data/outcomes_bundles.partial/
 data/outcomes/
 data/outcomes.partial/
 data/document_cache/

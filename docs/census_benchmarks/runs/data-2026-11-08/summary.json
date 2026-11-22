@@ -1,0 +1,1222 @@
+{
+ "schema_version": 1,
+ "cohort_funnel": {
+  "records": 80890,
+  "no_facility_listed": 4375,
+  "any_non_us_facility": 29921,
+  "one_us_facility_plus_non_us_facilities": 801,
+  "us_several_facilities": 15833,
+  "us_several_facilities_one_with_zip": 108,
+  "us_one_listed_facility": 30761,
+  "definition": "Weekly release records by the facilities their registration lists."
+ },
+ "site_count_tiers": {
+  "one_listed_facility": 27337,
+  "self_described_single_site": 1921,
+  "text_indicates_multiple_sites": 1461,
+  "conflicting_text": 42
+ },
+ "enrolment_period_basis": {
+  "midpoint_of_start_to_primary_completion": 30750,
+  "midpoint_of_start_to_completion": 6,
+  "primary_completion_date_only": 2,
+  "no_usable_date": 3
+ },
+ "benchmark_window": {
+  "2015-2019": 9182,
+  "2020-2024": 9142,
+  "2010-2014": 7511,
+  "2005-2009": 4923,
+  "None": 3
+ },
+ "benchmark_window_reason": {
+  "midpoint_inside_window": 30226,
+  "before_first_window": 291,
+  "after_last_window": 241,
+  "no_usable_date": 3
+ },
+ "resolution": {
+  "zcta": {
+   "zip_has_no_zcta_in_this_window": 3739,
+   "zip_code_equals_published_zcta_code": 21797,
+   "zcta_tables_not_published_for_this_window": 4919,
+   "resolved_place_is_outside_the_registered_state": 44,
+   "no_zip_in_registration": 259
+  },
+  "county": {
+   "city_point_in_polygon": 4931,
+   "zcta_polygon_largest_area_share": 25765,
+   "resolved_place_is_outside_the_registered_state": 44,
+   "no_zcta_polygon_and_no_coordinates": 18
+  },
+  "cbsa": {
+   "city_point_in_polygon": 4928,
+   "zcta_polygon_largest_area_share": 25734,
+   "resolved_place_is_outside_the_registered_state": 44,
+   "outside_any_metro_or_micro_area": 34,
+   "no_zcta_polygon_and_no_coordinates": 18
+  },
+  "state": {
+   "registered_state_name": 30758
+  },
+  "region": {
+   "census_region_of_state": 30758
+  },
+  "us": {
+   "national": 30758
+  }
+ },
+ "county_from_zcta_agrees_with_city_point": {
+  "agree": 24723,
+  "disagree": 1017,
+  "not_comparable": 5018
+ },
+ "county_area_share": {
+  "under_0.5": 11,
+  "at_least_0.9": 24918
+ },
+ "referral_zips": {
+  "n_zips": 33,
+  "n_trials": 11830
+ },
+ "reference_population_fit": {
+  "contextual": 26009,
+  "general": 4751,
+  "not_assessed": 1
+ },
+ "reference_population_assessed": {
+  "n": 30760,
+  "definition": "Trials in the cohort whose registered eligibility could be read, so the fit of a general-population benchmark could be assessed. The rest are counted as not_assessed."
+ },
+ "reference_caveats": {
+  "enrols_patients_not_the_general_population": 22045,
+  "site_in_a_referral_centre_zip": 11829,
+  "children_only": 1581,
+  "single_sex_eligibility": 3953,
+  "older_adults_only": 743
+ },
+ "dimensions": {
+  "race": {
+   "reported": 18682,
+   "not_reported": 12079,
+   "pooled": 14371,
+   "category_structure": {
+    "matches_sex_table": 16799,
+    "race_table_has_ethnicity_rows": 1578,
+    "table_total_exceeds_sex_table": 96,
+    "table_total_below_sex_table": 55,
+    "no_other_table_to_check_against": 154
+   },
+   "category_cautions": {
+    "title_names_ethnicity_rows_are_race_only": 1707,
+    "ethnicity_rows_beside_race_rows_that_cover_everyone": 118
+   },
+   "classified_share_computed": 16833,
+   "classified_share_not_computed_reasons": {
+    "rows_not_one_classification": 1674,
+    "nobody_classified": 175
+   },
+   "geography_sensitivity": {
+    "True": 15542,
+    "False": 3100,
+    "None": 40
+   },
+   "not_pooled_reasons": {
+    "table_rows_not_one_classification": 1674,
+    "under_min_participants": 2524,
+    "over_size_cap": 112,
+    "eligible_ages_unreadable": 1
+   },
+   "benchmark_available_by_level": {
+    "zcta": 13616,
+    "county": 18642,
+    "cbsa": 18616,
+    "state": 18681,
+    "region": 18681,
+    "us": 18681
+   },
+   "benchmark_unavailable_reasons": {
+    "zcta": {
+     "zip_has_no_zcta_in_this_window": 2573,
+     "no_eligible_residents_estimated": 1297,
+     "resolved_place_is_outside_the_registered_state": 35,
+     "zcta_tables_not_published_for_this_window": 1056,
+     "no_zip_in_registration": 104,
+     "eligible_ages_unreadable": 1
+    },
+    "county": {
+     "resolved_place_is_outside_the_registered_state": 35,
+     "no_zcta_polygon_and_no_coordinates": 4,
+     "eligible_ages_unreadable": 1
+    },
+    "cbsa": {
+     "resolved_place_is_outside_the_registered_state": 35,
+     "outside_any_metro_or_micro_area": 26,
+     "no_zcta_polygon_and_no_coordinates": 4,
+     "eligible_ages_unreadable": 1
+    },
+    "state": {
+     "eligible_ages_unreadable": 1
+    },
+    "region": {
+     "eligible_ages_unreadable": 1
+    },
+    "us": {
+     "eligible_ages_unreadable": 1
+    }
+   }
+  },
+  "ethnicity": {
+   "reported": 13351,
+   "not_reported": 17410,
+   "pooled": 11361,
+   "category_structure": {
+    "matches_sex_table": 13035,
+    "no_other_table_to_check_against": 137,
+    "table_total_below_sex_table": 56,
+    "table_total_exceeds_sex_table": 123
+   },
+   "category_cautions": {},
+   "classified_share_computed": 11542,
+   "classified_share_not_computed_reasons": {
+    "table_reports_one_ethnicity_category_only": 1380,
+    "nobody_classified": 306,
+    "rows_not_one_classification": 123
+   },
+   "geography_sensitivity": {
+    "False": 7238,
+    "True": 6082,
+    "None": 31
+   },
+   "not_pooled_reasons": {
+    "under_min_participants": 1752,
+    "over_size_cap": 115,
+    "table_rows_not_one_classification": 123
+   },
+   "benchmark_available_by_level": {
+    "zcta": 9792,
+    "county": 13320,
+    "cbsa": 13310,
+    "state": 13351,
+    "region": 13351,
+    "us": 13351
+   },
+   "benchmark_unavailable_reasons": {
+    "zcta": {
+     "zip_has_no_zcta_in_this_window": 1783,
+     "no_eligible_residents_estimated": 1003,
+     "resolved_place_is_outside_the_registered_state": 26,
+     "zcta_tables_not_published_for_this_window": 661,
+     "no_zip_in_registration": 86
+    },
+    "county": {
+     "resolved_place_is_outside_the_registered_state": 26,
+     "no_zcta_polygon_and_no_coordinates": 5
+    },
+    "cbsa": {
+     "resolved_place_is_outside_the_registered_state": 26,
+     "no_zcta_polygon_and_no_coordinates": 5,
+     "outside_any_metro_or_micro_area": 10
+    },
+    "state": {},
+    "region": {},
+    "us": {}
+   }
+  },
+  "sex": {
+   "reported": 29775,
+   "not_reported": 986,
+   "pooled": 22082,
+   "category_structure": {
+    "no_other_table_to_check_against": 29775
+   },
+   "category_cautions": {},
+   "classified_share_computed": 29699,
+   "classified_share_not_computed_reasons": {
+    "nobody_classified": 76
+   },
+   "geography_sensitivity": {
+    "False": 24755,
+    "None": 3891,
+    "True": 1129
+   },
+   "not_pooled_reasons": {
+    "single_sex_by_eligibility": 3844,
+    "under_min_participants": 3623,
+    "over_size_cap": 222,
+    "eligible_ages_unreadable": 1,
+    "no_benchmark_window": 3
+   },
+   "benchmark_available_by_level": {
+    "zcta": 16995,
+    "county": 25884,
+    "cbsa": 25852,
+    "state": 25927,
+    "region": 25927,
+    "us": 25927
+   },
+   "benchmark_unavailable_reasons": {
+    "zcta": {
+     "zip_has_no_zcta_in_this_window": 3616,
+     "zcta_tables_not_published_for_this_window": 4696,
+     "single_sex_by_eligibility": 2514,
+     "no_eligible_residents_estimated": 1662,
+     "resolved_place_is_outside_the_registered_state": 42,
+     "no_zip_in_registration": 246,
+     "eligible_ages_unreadable": 1,
+     "no_benchmark_window": 3
+    },
+    "county": {
+     "single_sex_by_eligibility": 3829,
+     "resolved_place_is_outside_the_registered_state": 42,
+     "no_zcta_polygon_and_no_coordinates": 16,
+     "eligible_ages_unreadable": 1,
+     "no_benchmark_window": 3
+    },
+    "cbsa": {
+     "single_sex_by_eligibility": 3827,
+     "resolved_place_is_outside_the_registered_state": 42,
+     "outside_any_metro_or_micro_area": 33,
+     "no_zcta_polygon_and_no_coordinates": 16,
+     "eligible_ages_unreadable": 1,
+     "no_benchmark_window": 3,
+     "area_not_in_this_window_file": 1
+    },
+    "state": {
+     "single_sex_by_eligibility": 3844,
+     "eligible_ages_unreadable": 1,
+     "no_benchmark_window": 3
+    },
+    "region": {
+     "single_sex_by_eligibility": 3844,
+     "eligible_ages_unreadable": 1,
+     "no_benchmark_window": 3
+    },
+    "us": {
+     "single_sex_by_eligibility": 3844,
+     "eligible_ages_unreadable": 1,
+     "no_benchmark_window": 3
+    }
+   }
+  }
+ },
+ "areas": [
+  {
+   "level": "cbsa",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 47
+  },
+  {
+   "level": "cbsa",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 165
+  },
+  {
+   "level": "cbsa",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 36
+  },
+  {
+   "level": "cbsa",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 176
+  },
+  {
+   "level": "cbsa",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "cbsa",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 91
+  },
+  {
+   "level": "cbsa",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 89
+  },
+  {
+   "level": "cbsa",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 57
+  },
+  {
+   "level": "cbsa",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 185
+  },
+  {
+   "level": "cbsa",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 51
+  },
+  {
+   "level": "cbsa",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 191
+  },
+  {
+   "level": "cbsa",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 3
+  },
+  {
+   "level": "cbsa",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 94
+  },
+  {
+   "level": "cbsa",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 96
+  },
+  {
+   "level": "cbsa",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 66
+  },
+  {
+   "level": "cbsa",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 225
+  },
+  {
+   "level": "cbsa",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 61
+  },
+  {
+   "level": "cbsa",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 230
+  },
+  {
+   "level": "cbsa",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 3
+  },
+  {
+   "level": "cbsa",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 118
+  },
+  {
+   "level": "cbsa",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "cbsa",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 119
+  },
+  {
+   "level": "county",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 50
+  },
+  {
+   "level": "county",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 287
+  },
+  {
+   "level": "county",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 37
+  },
+  {
+   "level": "county",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 299
+  },
+  {
+   "level": "county",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "county",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 129
+  },
+  {
+   "level": "county",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 126
+  },
+  {
+   "level": "county",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 63
+  },
+  {
+   "level": "county",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 318
+  },
+  {
+   "level": "county",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 54
+  },
+  {
+   "level": "county",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 326
+  },
+  {
+   "level": "county",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "county",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 136
+  },
+  {
+   "level": "county",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 135
+  },
+  {
+   "level": "county",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 75
+  },
+  {
+   "level": "county",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 390
+  },
+  {
+   "level": "county",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 69
+  },
+  {
+   "level": "county",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 396
+  },
+  {
+   "level": "county",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 2
+  },
+  {
+   "level": "county",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 166
+  },
+  {
+   "level": "county",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 166
+  },
+  {
+   "level": "region",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "region",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "state",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 32
+  },
+  {
+   "level": "state",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 19
+  },
+  {
+   "level": "state",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 32
+  },
+  {
+   "level": "state",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 19
+  },
+  {
+   "level": "state",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "state",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 37
+  },
+  {
+   "level": "state",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "state",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 39
+  },
+  {
+   "level": "state",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 37
+  },
+  {
+   "level": "state",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 14
+  },
+  {
+   "level": "state",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 37
+  },
+  {
+   "level": "state",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 14
+  },
+  {
+   "level": "state",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 7
+  },
+  {
+   "level": "state",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 35
+  },
+  {
+   "level": "state",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "state",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 40
+  },
+  {
+   "level": "state",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 39
+  },
+  {
+   "level": "state",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 12
+  },
+  {
+   "level": "state",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 39
+  },
+  {
+   "level": "state",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 12
+  },
+  {
+   "level": "state",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 11
+  },
+  {
+   "level": "state",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 35
+  },
+  {
+   "level": "state",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 4
+  },
+  {
+   "level": "state",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 42
+  },
+  {
+   "level": "us",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "us",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 1
+  },
+  {
+   "level": "zcta",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 30
+  },
+  {
+   "level": "zcta",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 1141
+  },
+  {
+   "level": "zcta",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 8
+  },
+  {
+   "level": "zcta",
+   "dimension": "ethnicity",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 1140
+  },
+  {
+   "level": "zcta",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 249
+  },
+  {
+   "level": "zcta",
+   "dimension": "ethnicity",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 226
+  },
+  {
+   "level": "zcta",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 38
+  },
+  {
+   "level": "zcta",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 1258
+  },
+  {
+   "level": "zcta",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 15
+  },
+  {
+   "level": "zcta",
+   "dimension": "race",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 1258
+  },
+  {
+   "level": "zcta",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 281
+  },
+  {
+   "level": "zcta",
+   "dimension": "race",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 258
+  },
+  {
+   "level": "zcta",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "show",
+   "n": 49
+  },
+  {
+   "level": "zcta",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 1626
+  },
+  {
+   "level": "zcta",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "show",
+   "n": 26
+  },
+  {
+   "level": "zcta",
+   "dimension": "sex",
+   "site_basis": "one_listed_facility",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 1626
+  },
+  {
+   "level": "zcta",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "with_referral_zips",
+   "display_rule": "withheld",
+   "n": 373
+  },
+  {
+   "level": "zcta",
+   "dimension": "sex",
+   "site_basis": "self_described_single_site",
+   "variant": "without_referral_zips",
+   "display_rule": "withheld",
+   "n": 350
+  }
+ ],
+ "national_share_by_window_pct": {
+  "definition": "Share of all US residents in each ACS table, by window, as pulled. A change between windows mixes population change with the 2020 revision of the race question; the two are not separated.",
+  "series": {
+   "2005-2009": {
+    "white": 74.46,
+    "black_african_american": 12.36,
+    "american_indian_alaska_native": 0.8,
+    "asian": 4.38,
+    "native_hawaiian_pacific_islander": 0.15,
+    "other": 5.63,
+    "more_than_one_race": 2.21,
+    "hispanic_latino": 15.09
+   },
+   "2010-2014": {
+    "white": 73.81,
+    "black_african_american": 12.6,
+    "american_indian_alaska_native": 0.82,
+    "asian": 5.0,
+    "native_hawaiian_pacific_islander": 0.17,
+    "other": 4.7,
+    "more_than_one_race": 2.91,
+    "hispanic_latino": 16.9
+   },
+   "2015-2019": {
+    "white": 72.49,
+    "black_african_american": 12.7,
+    "american_indian_alaska_native": 0.85,
+    "asian": 5.52,
+    "native_hawaiian_pacific_islander": 0.18,
+    "other": 4.94,
+    "more_than_one_race": 3.32,
+    "hispanic_latino": 18.01
+   },
+   "2020-2024": {
+    "white": 60.95,
+    "black_african_american": 12.22,
+    "american_indian_alaska_native": 0.92,
+    "asian": 5.95,
+    "native_hawaiian_pacific_islander": 0.19,
+    "other": 7.13,
+    "more_than_one_race": 12.63,
+    "hispanic_latino": 19.34
+   }
+  }
+ }
+}

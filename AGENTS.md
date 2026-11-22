@@ -36,6 +36,10 @@ than assuming the instruction hierarchy is unchanged.
 | Sex/gender table | The parser and wrapper described below, [tests/sex_gender/](tests/sex_gender/), retained raw measures and their provenance |
 | LLM document streams | [scripts/extraction/prompts/README.md](scripts/extraction/prompts/README.md), extraction scripts and their separate requirements file |
 | Automation and retention | [.github/workflows/](.github/workflows/), [scripts/prune_snapshots.py](scripts/prune_snapshots.py); publication writes to the site repository |
+| Industry Outcomes beta (manual, not scheduled) | [outcomes/README.md](outcomes/README.md), [scripts/build_outcomes_beta.py](scripts/build_outcomes_beta.py), [scripts/check_outcomes_contract.py](scripts/check_outcomes_contract.py) |
+| Census benchmarks for single-site US trials (manual, not scheduled) | [census/README.md](census/README.md), [scripts/build_census_benchmarks.py](scripts/build_census_benchmarks.py); needs `CENSUS_API_KEY` in the environment, never in a file |
+| Results structure and subgroup-reporting states (manual, not scheduled) | [outcomes/README.md](outcomes/README.md), [outcomes/results_structure.py](outcomes/results_structure.py), [scripts/build_results_structure.py](scripts/build_results_structure.py), human reviews in [outcomes/subgroup_reviews.csv](outcomes/subgroup_reviews.csv) |
+| AI/ML device linkage to registered studies (manual, not scheduled) | [devices/README.md](devices/README.md), [scripts/build_device_links.py](scripts/build_device_links.py), [scripts/check_device_links_contract.py](scripts/check_device_links_contract.py), [scripts/export_device_links_site.py](scripts/export_device_links_site.py) (the files the site's AI Devices tab reads; run by hand, a person commits them to the site); the four curated CSVs in `devices/` are the only place a family, an organisation alias, a documentary statement or a human review is recorded |
 | Setup, architecture, checks | [README.md](README.md), [CLAUDE.md](CLAUDE.md), [verify.md](verify.md), [.github/workflows/ci.yml](.github/workflows/ci.yml) |
 
 The repositories communicate through generated files, not a running backend
@@ -79,6 +83,46 @@ Practical consequences:
 - State what you verified and how. A claim about weekly output should be
   backed by a run against real inputs or a fixture, not by inspection alone.
 - Say plainly what you did *not* do, and why, rather than leaving it implied.
+
+## Automated PR review
+
+**Codex** is the only automated reviewer. It audits hunk-level diff logic, local
+edge cases, syntax/types and isolated code correctness. A `@codex review`
+comment requests it, on every pull request and after every push that changes
+the diff (see the pull request workflow below); do not rely on opening a pull
+request or marking it ready to start one.
+
+Nothing automated checks cross-file effects: untouched downstream callers, data
+provenance, or the contract between civicsample-engine and
+clinical-trial-populations. The author covers these with this repository's own
+verification steps: the targeted checks and
+[the connected verification path](verify.md#connected-verification) in
+[verify.md](verify.md), including `scripts/check_site_contract.py` and
+`scripts/first_view_parity.mjs` against a site checkout.
+
+The Gemini PR review was removed on 2026-11-10 at the owner's request.
+
+## Pull request workflow — required
+
+1. Branch from `main` and open a pull request against `main`. Never push to
+   `main` directly unless the owner explicitly says to.
+2. Immediately after opening the PR, or after marking a draft ready, post a
+   comment containing exactly `@codex review`. Do this for every PR, without
+   being asked, and again after any push that changes the diff: a Codex
+   review covers only the commit it ran on.
+3. Address every Codex finding before the PR is considered done: verify it
+   against the diff, push a fix for anything real, and reply on the thread
+   saying what changed. Resolve the threads you addressed.
+4. Ask before disputing. When a finding is unclear or looks wrong, do not
+   argue with it or ignore it — post a comment addressed to `@codex` with the
+   specific question, then act on the answer: fix, or reply with the reason
+   it should not be taken. Codex answers direct questions; it does not
+   respond to ordinary thread replies.
+5. One editor per branch. Never use `@codex address that feedback`, or
+   otherwise ask Codex to push commits, while an agent or session is working
+   on the branch. Asking Codex questions is fine at any time.
+6. Keep the PR title and description accurate as the branch changes.
+7. Agents do not merge; the owner merges.
 
 ## Code Review Rules
 
@@ -193,7 +237,12 @@ data-loss defect.
 
 **The weekly `data-*` releases are the permanent full record.** Each holds
 that week's `demographics.json.gz`, every field of every study record. They
-are never pruned. The release runs before the site checkout, so a site-side
+are never pruned. From the first run with `src/condition_mesh.py`, each also
+holds `condition_mesh.jsonl.gz`: CT.gov's MeSH descriptors and ancestors for
+each trial's conditions, one line per trial with a state that records why a
+trial has none. The descriptors stay off the study records because, while the
+site's split layout is off, every record field ships in the site's
+whole-record parts. The release runs before the site checkout, so a site-side
 failure cannot skip it; if it fails, the files are kept as a 90-day workflow
 artifact and the run turns red, and the site is published all the same.
 Releases start at `data-2026-08-28`: for earlier weeks the full records exist
@@ -243,13 +292,19 @@ Python's: JavaScript truthiness for `reported`, a results year only when the
 first four characters of `results_date` are ASCII digits, the study type
 compared strictly, the newest results year taken over every study type. What
 the view leaves out is counted in `not_counted`, never folded into a zero, and
-a record the site's code would throw on stops the generator.
+a record the site's code would throw on stops the generator. Its sex and
+gender counts are the manuscript parser's flags (`sex_gender.reported_sex`,
+`sex_gender.reported_gender`, counted when exactly true), present for a scope
+only when every trial counted in it has the parser's row; the parity checks
+them once the site's app.js declares `renderOverviewSexGender`.
 `scripts/first_view_parity.mjs` runs the site's own Overview code over the
 same records and checks every number of the block against what it counts and
 paints; `tests/test_first_view.py` runs it on a fixture against
 `tests/fixtures/site_overview/`, the pieces of the site's app.js and
 index.html that the Overview runs, copied unchanged by the script's
-`--excerpt` mode, whose first line names the site commit. `--excerpt` also
+`--excerpt` mode, whose first line names the site commit. It also copies,
+after them, the declarations of any app.js functions those pieces call
+that the parity stubs rather than runs, so the excerpt runs as app.js does. `--excerpt` also
 writes `tests/fixtures/site_overview/SOURCE.json`, the SHA-256 of the site's two files at that commit and of
 the excerpt; CI checks the excerpt against it and fetches the site's files at
 that commit (the site repository is public) to check that they still give the

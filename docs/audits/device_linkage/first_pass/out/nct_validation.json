@@ -1,0 +1,89 @@
+{
+ "http_status": 200,
+ "results": [
+  {
+   "queried": "NCT03812471",
+   "exists": true,
+   "record": {
+    "nct_id": "NCT03812471",
+    "aliases": [],
+    "brief_title": "Optimization of Fetal Biometry With 3D Ultrasound and Image Recognition",
+    "lead_sponsor": "Philips Clinical & Medical Affairs Global",
+    "interventions": [
+     [
+      "DEVICE",
+      "3D volume acquisitions"
+     ],
+     [
+      "DEVICE",
+      "2D standard measurements and 3D volumes acquisitions"
+     ]
+    ],
+    "start": "2018-10-23"
+   }
+  },
+  {
+   "queried": "NCT05151939",
+   "exists": true,
+   "record": {
+    "nct_id": "NCT05151939",
+    "aliases": [],
+    "brief_title": "Endoscopic Ultrasound (EUS) Artificial Intelligence Model for Normal Mediastinal and Abdominal Strictures Assessment",
+    "lead_sponsor": "Instituto Ecuatoriano de Enfermedades Digestivas",
+    "interventions": [
+     [
+      "DIAGNOSTIC_TEST",
+      "Identification or discharge visualization of mediastinal and abdominal organ/anatomic strictures through Endoscopic ultrasound (EUS) videos by an expert endoscopist"
+     ],
+     [
+      "DIAGNOSTIC_TEST",
+      "Recognition of mediastinal and abdominal organ/anatomic strictures through Endoscopic ultrasound (EUS) videos using artificial intelligence (AI)"
+     ]
+    ],
+    "start": "2021-10-01"
+   }
+  },
+  {
+   "queried": "NCT05530681",
+   "exists": true,
+   "record": {
+    "nct_id": "NCT05530681",
+    "aliases": [],
+    "brief_title": "Correlation Pelvic Floor Function and Ultrasound Findings One Year After Childbirth",
+    "lead_sponsor": "Universitaire Ziekenhuizen KU Leuven",
+    "interventions": [
+     [
+      "DIAGNOSTIC_TEST",
+      "Questionnaire"
+     ],
+     [
+      "DIAGNOSTIC_TEST",
+      "Pelvic floor ultrasound"
+     ]
+    ],
+    "start": "2022-08-17"
+   }
+  },
+  {
+   "queried": "NCT05637346",
+   "exists": true,
+   "record": {
+    "nct_id": "NCT05637346",
+    "aliases": [],
+    "brief_title": "Vessel- and Bone-based Ultrasound Registration",
+    "lead_sponsor": "The Netherlands Cancer Institute",
+    "interventions": [
+     [
+      "PROCEDURE",
+      "Intra-operative ultrasound measurement"
+     ]
+    ],
+    "start": "2021-12-05"
+   }
+  },
+  {
+   "queried": "NCT99999999",
+   "exists": false
+  }
+ ]
+}
