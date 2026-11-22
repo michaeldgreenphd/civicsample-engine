@@ -215,6 +215,20 @@ def test_the_check_refuses_inferences_and_rows_that_do_not_point_at_posted_rows(
     assert has(problems(lambda r: on_primary(r, [{'class_index': 0, 'category_index': 3, 'title': 'Female'}],
                                              'category_titles')), unresolved)
 
+    # A position is a non-negative int, never a bool: `false` equals 0 in Python and would otherwise
+    # resolve to the first row and pass the comparison (Codex, PR 103).
+    bad_position = 'not a non-negative integer'
+    for row, field in (({'class_index': False, 'title': 'Female'}, 'class_titles'),
+                       ({'class_index': -1, 'title': 'Female'}, 'class_titles'),
+                       ({'class_index': 0.0, 'title': 'Female'}, 'class_titles'),
+                       ({'class_index': 0, 'category_index': True, 'title': 'Female'}, 'category_titles'),
+                       ({'group_id': 0, 'title': 'Zorbatinib, women'}, 'group_titles')):
+        assert has(problems(lambda r, row=row, field=field: on_primary(r, [row], field)), bad_position), row
+    def bool_index(r: dict[str, Any]) -> None:
+        on_primary(r, sexes)
+        r['subgroup']['signals'][-1]['measure_index'] = False
+    assert has(problems(bool_index), "measure_index is not a non-negative integer")
+
     def elsewhere(r: dict[str, Any]) -> None:
         on_primary(r, sexes)
         r['subgroup']['signals'][-1]['measure_index'] = 7

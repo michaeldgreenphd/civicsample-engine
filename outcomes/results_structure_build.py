@@ -662,6 +662,11 @@ def _walk_keys(obj: Any) -> set[str]:
     return found
 
 
+def _position(v: Any) -> bool:
+    """Whether v is a table position: a non-negative int, and not a bool."""
+    return type(v) is int and v >= 0
+
+
 def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
     """Why a signal's `rows` cannot stand, or None. A title-level signal lists at least one row,
     each with exactly the keys of its field; on a PRIMARY measure each row must resolve to the
@@ -677,6 +682,14 @@ def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
         return 'a title-level signal has no rows'
     if any(not isinstance(x, dict) or set(x) != ROW_KEYS[field] or not isinstance(x.get('title'), str) for x in rows):
         return f'a row does not have exactly the keys {sorted(ROW_KEYS[field])}'
+    # A position is a non-negative int and a group id a string. bool is a subclass of int in Python,
+    # so `false` would pass isinstance(..., int) and compare equal to 0 below; type() is checked
+    # instead (Codex, PR 103). The signal's measure_index is held to the same rule.
+    if any(not _position(x[k]) for x in rows for k in ('class_index', 'category_index') if k in x) \
+            or any(not isinstance(x['group_id'], str) for x in rows if 'group_id' in x):
+        return 'a row position is not a non-negative integer, or a group id is not a string'
+    if not _position(signal.get('measure_index')):
+        return "the signal's measure_index is not a non-negative integer"
     # Only the level rule reads posted titles, so rule_dimension is one of its dimensions and the
     # published dimension is what signal_dimensions maps it to (origin is 'other'). The rows below
     # are recomputed from rule_dimension, so it must agree with the dimension a reviewer is shown:
@@ -690,7 +703,7 @@ def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
     # that disagrees with that measure on its type or title is refused rather than let past the
     # row checks below (Codex, PR 103).
     pm = next((m for m in record.get('primary_measures') or []
-               if isinstance(m, dict) and m.get('measure_index') == signal.get('measure_index')), None)
+               if isinstance(m, dict) and _position(m.get('measure_index')) and m['measure_index'] == signal['measure_index']), None)
     if pm is not None and (signal.get('measure_type') != 'PRIMARY' or signal.get('measure_title') != pm.get('title')):
         return "the signal's measure type or title disagrees with the copied primary measure at its index"
     if signal.get('measure_type') != 'PRIMARY':
@@ -710,12 +723,12 @@ def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
             posted = next((g.get('title') for g in pm.get('groups') or [] if g.get('id') == x['group_id']), None)
         else:
             k = x['class_index']
-            cats = classes[k].get('categories') or [] if isinstance(k, int) and 0 <= k < len(classes) else None
+            cats = classes[k].get('categories') or [] if k < len(classes) else None
             if field == 'class_titles':
                 posted = classes[k].get('title') if cats is not None else None
             else:
                 j = x['category_index']
-                posted = cats[j].get('title') if cats is not None and isinstance(j, int) and 0 <= j < len(cats) else None
+                posted = cats[j].get('title') if cats is not None and j < len(cats) else None
         if posted != x['title']:
             return 'a row does not resolve to the posted table at its position and title'
     # The copied table holds every title the level rule reads, so the rows can be recomputed from it:
