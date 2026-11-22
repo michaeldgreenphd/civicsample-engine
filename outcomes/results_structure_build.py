@@ -61,6 +61,13 @@ RUN_ID = re.compile(r'^results-structure-\d{4}-\d{2}-\d{2}-[0-9a-f]{10}$')
 NCT = re.compile(r'^NCT\d{8}$')
 # Keys that belong to the private review file and must not reach a published artifact.
 PRIVATE_KEYS = {'reviewer', 'note'}
+# Keys that would state an inference. The reported facts (`primary_measures`, layer B) and a signal's
+# `rows` are copied from the registry and judge nothing, so none of these may appear inside them
+# (docs/outcomes-methods roadmap, layer B acceptance: "No inference").
+INFERENCE_KEYS = {'state', 'met', 'significant', 'favours'}
+# The keys of one row of a title-level signal, by the field the level rule read (RS.signal_rows).
+ROW_KEYS = {'class_titles': {'class_index', 'title'}, 'category_titles': {'class_index', 'category_index', 'title'},
+            'group_titles': {'group_id', 'title'}}
 
 
 class BuildError(Exception):
@@ -655,6 +662,41 @@ def _walk_keys(obj: Any) -> set[str]:
     return found
 
 
+def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
+    """Why a signal's `rows` cannot stand, or None. A title-level signal lists at least one row,
+    each with exactly the keys of its field; on a PRIMARY measure each row must resolve to the
+    posted table this record copies (the class, category or group at that position, with that
+    title). Rows of other measure types cannot be resolved here, because only primary measures
+    are copied. Any other signal carries rows None."""
+    rows, field = signal.get('rows'), signal.get('field')
+    if field not in RS.TITLE_LEVEL_FIELDS:
+        return None if rows is None else 'a signal that does not read posted titles carries rows'
+    if not isinstance(rows, list) or not rows:
+        return 'a title-level signal has no rows'
+    if any(not isinstance(x, dict) or set(x) != ROW_KEYS[field] or not isinstance(x.get('title'), str) for x in rows):
+        return f'a row does not have exactly the keys {sorted(ROW_KEYS[field])}'
+    if signal.get('measure_type') != 'PRIMARY':
+        return None
+    pm = next((m for m in record.get('primary_measures') or [] if m.get('measure_index') == signal.get('measure_index')), None)
+    if pm is None:
+        return 'rows point at a primary measure this record does not copy'
+    classes = pm.get('classes') or []
+    for x in rows:
+        if field == 'group_titles':
+            posted = next((g.get('title') for g in pm.get('groups') or [] if g.get('id') == x['group_id']), None)
+        else:
+            k = x['class_index']
+            cats = classes[k].get('categories') or [] if isinstance(k, int) and 0 <= k < len(classes) else None
+            if field == 'class_titles':
+                posted = classes[k].get('title') if cats is not None else None
+            else:
+                j = x['category_index']
+                posted = cats[j].get('title') if cats is not None and isinstance(j, int) and 0 <= j < len(cats) else None
+        if posted != x['title']:
+            return 'a row does not resolve to the posted table at its position and title'
+    return None
+
+
 def check(files: dict[str, Any]) -> list[str]:
     """Producer-side check of a family; every problem found (an empty list passes). The build
     runs it before anything is written."""
@@ -698,6 +740,14 @@ def check(files: dict[str, Any]) -> list[str]:
         if r.get('document_and_publication_review') != RS.DOCUMENT_AND_PUBLICATION_REVIEW:
             p.append(f'{n}: document_and_publication_review is not stated')
         sg = r.get('subgroup') or {}
+        inferred = (_walk_keys(r.get('primary_measures') or [])
+                    | _walk_keys([s.get('rows') for s in sg.get('signals') or []])) & INFERENCE_KEYS
+        if inferred:
+            p.append(f'{n}: copied facts or signal rows carry an inference key {sorted(inferred)}')
+        for s in sg.get('signals') or []:
+            problem = _rows_problem(s, r)
+            if problem:
+                p.append(f"{n} {s.get('signal_id')}: {problem}")
         states = [sg.get('state'), *((sg.get('by_dimension') or {}).get(d) for d in RS.DIMENSIONS)]
         if any(s not in RS.ALL_SUBGROUP_STATES for s in states):
             p.append(f'{n}: a subgroup state is outside the vocabulary')

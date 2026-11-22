@@ -157,6 +157,58 @@ def test_the_check_refuses_a_changed_file_a_dropped_state_and_an_unreviewed_dete
     assert any('no scope' in p for p in B.check(noscope))
 
 
+def test_the_check_refuses_inferences_and_rows_that_do_not_point_at_posted_rows(family: dict[str, Any]) -> None:
+    def problems(edit: Any) -> list[str]:
+        f = copy.deepcopy(family)
+        edit(f['records.json']['records']['NCT99000001'])
+        return B.check(f)
+
+    def has(found: list[str], text: str) -> bool:
+        return any(text in p for p in found)
+
+    # No inference key inside the copied facts or a signal's rows (roadmap, layer B: "No inference").
+    def met(r: dict[str, Any]) -> None:
+        r['primary_measures'][0]['analyses'][0]['met'] = True
+    assert has(problems(met), "an inference key ['met']")
+
+    def favours(r: dict[str, Any]) -> None:
+        r['subgroup']['signals'][0]['rows'][0]['favours'] = 'Female'
+    assert has(problems(favours), 'inference key')
+    # A title-level signal lists its rows, with exactly its field's keys; any other signal has none.
+    for rows in (None, []):
+        def norows(r: dict[str, Any], rows: Any = rows) -> None:
+            r['subgroup']['signals'][0]['rows'] = rows
+        assert has(problems(norows), 'a title-level signal has no rows')
+
+    def wrongkeys(r: dict[str, Any]) -> None:
+        r['subgroup']['signals'][0]['rows'][0] = {'group_id': 'OG000', 'title': 'Female'}
+    assert has(problems(wrongkeys), 'exactly the keys')
+    cue = copy.deepcopy(family)
+    [kw] = cue['records.json']['records']['NCT99000007']['subgroup']['signals']
+    kw['rows'] = [{'class_index': 0, 'title': 'Zorbatinib'}]
+    assert has(B.check(cue), 'does not read posted titles carries rows')
+
+    # On a PRIMARY measure each row must resolve to the copied table at its position and title.
+    def on_primary(r: dict[str, Any], rows: list[dict[str, Any]], field: str = 'class_titles') -> None:
+        sig = copy.deepcopy(r['subgroup']['signals'][0])
+        sig.update(field=field, measure_type='PRIMARY', measure_index=0, rows=rows)
+        r['primary_measures'][0]['classes'][0]['title'] = 'Female'
+        r['subgroup']['signals'].append(sig)
+    unresolved = 'does not resolve to the posted table'
+    assert not has(problems(lambda r: on_primary(r, [{'class_index': 0, 'title': 'Female'}])), unresolved)
+    assert has(problems(lambda r: on_primary(r, [{'class_index': 0, 'title': 'Male'}])), unresolved)
+    assert has(problems(lambda r: on_primary(r, [{'class_index': 4, 'title': 'Female'}])), unresolved)
+    assert not has(problems(lambda r: on_primary(r, [{'group_id': 'OG000', 'title': 'Zorbatinib'}], 'group_titles')), unresolved)
+    assert has(problems(lambda r: on_primary(r, [{'group_id': 'OG009', 'title': 'Zorbatinib'}], 'group_titles')), unresolved)
+    assert has(problems(lambda r: on_primary(r, [{'class_index': 0, 'category_index': 3, 'title': 'Female'}],
+                                             'category_titles')), unresolved)
+
+    def elsewhere(r: dict[str, Any]) -> None:
+        on_primary(r, [{'class_index': 0, 'title': 'Female'}])
+        r['subgroup']['signals'][-1]['measure_index'] = 7
+    assert has(problems(elsewhere), 'a primary measure this record does not copy')
+
+
 def test_committed_fixture_is_current(family: dict[str, Any]) -> None:
     """tests/fixtures/results_structure/ is what the site's reader tests copy; regenerate it with
     scripts/build_results_structure_fixture.py when the records or the rules change."""
