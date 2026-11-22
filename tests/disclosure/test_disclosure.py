@@ -139,6 +139,66 @@ def test_resumable_log_truncates_interrupted_line_and_reuses_settled_answers(tmp
     assert len(calls) == first_count + 1
 
 
+def test_unicode_line_separators_in_jsonl_logs_local_jsonl_and_frozen_archives(tmp_path: Path) -> None:
+    """U+2028, U+2029, U+0085, VT (\\x0b), and FF (\\x0c) inside ensure_ascii=False JSON strings
+    must never split JSONL records across read_jsonl, local .jsonl.gz seeding, or frozen archives."""
+    tricky_title = 'Phase 3 trial\u2028line-sep\u2029para-sep\x85nel\x0bvt\x0cff of zorbatinib'
+    study = copy.deepcopy(F.STUDIES['NCT09990001'])
+    study['protocolSection']['identificationModule']['briefTitle'] = tricky_title
+
+    # 1. Local `.jsonl.gz` seeding with unescaped UTF-8 U+2028 / U+2029 (`ensure_ascii=False`)
+    local_jsonl = tmp_path / 'tricky_studies.jsonl.gz'
+    raw_line = (json.dumps(study, ensure_ascii=False) + '\n').encode('utf-8')
+    assert '\u2028'.encode('utf-8') in raw_line and '\u2029'.encode('utf-8') in raw_line
+    local_jsonl.write_bytes(gzip.compress(raw_line, mtime=0))
+
+    cache_dir = tmp_path / 'unicode_cache'
+    A.ingest_local_ctgov_records(local_jsonl, cache_dir)
+
+    # 2. Also append a literature ResponseLog record containing unescaped U+2028 / U+2029 in abstractText
+    lit_log = A.ResponseLog(A.raw_log_path(cache_dir, 'literature'))
+    epmc_body = {
+        'hitCount': 1,
+        'resultList': {'result': [{
+            'id': '99000001',
+            'pmid': '99000001',
+            'title': f'Results\u2028with\u2029separators',
+            'abstractText': 'Primary results\u2028of NCT09990001\u2029in adults\x85confirmed.',
+            'firstPublicationDate': '2021-02-10',
+        }]},
+    }
+    lit_log.put({
+        'key': 'literature/epmc_nct/NCT09990001',
+        'url': A.EPMC_REST,
+        'params': {'query': '"NCT09990001"', 'format': 'json', 'pageSize': '100', 'resultType': 'core'},
+        'tag': {'nct_id': 'NCT09990001'},
+        'fetched_at': F.GENERATED_AT,
+        'status': 200,
+        'http_status': 200,
+        'attempts': 1,
+        'response_sha256': A.sha256_bytes(A.canonical_json_bytes(epmc_body)),
+        'body': epmc_body,
+        'error': None,
+    })
+    # Reload ResponseLog via read_jsonl and freeze + reload via _read_verified_archive
+    reloaded_lit = A.ResponseLog(A.raw_log_path(cache_dir, 'literature'))
+    assert '\u2028' in reloaded_lit.get('literature/epmc_nct/NCT09990001')['body']['resultList']['result'][0]['abstractText']  # type: ignore[index]
+
+    A.freeze_cache(cache_dir, ['NCT09990001'], frozen_at=F.GENERATED_AT)
+    loaded = A.load_frozen_cache(cache_dir)
+    built = ART.build_artifacts(
+        loaded,
+        reviews_path=ROOT / 'disclosure' / 'reviews.csv',
+        statements_path=ROOT / 'disclosure' / 'documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv',
+        producer=cli_build.producer_metadata(),
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+    )
+    assert ART.check_contract(built) == []
+    assert built['studies.json']['studies'][0]['brief_title'] == tricky_title
+
+
 def test_offline_cache_loader_refuses_partial_missing_or_hash_mismatched_caches(
     tmp_path: Path,
     frozen_cache: A.FrozenCache,

@@ -104,7 +104,7 @@ def write_atomic(path: Path, data: bytes) -> None:
 
 def read_nct_list(path: Path) -> list[str]:
     """Read distinct NCT IDs (one per line, `#` comments allowed); raise ValueError on bad/dup IDs."""
-    ids = [line.strip() for line in path.read_text(encoding='utf-8').splitlines()
+    ids = [line.strip() for line in path.read_text(encoding='utf-8').split('\n')
            if line.strip() and not line.strip().startswith('#')]
     bad = [item for item in ids if not NCT_RE.match(item)]
     if bad:
@@ -216,7 +216,8 @@ def polite_get(
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
-    """Read append-only JSONL; truncate any interrupted trailing line lacking a newline."""
+    """Read append-only JSONL splitting strictly on `\\n` (`0x0A`) so U+2028/U+2029/VT/FF inside
+    `ensure_ascii=False` JSON strings never split a record mid-line."""
     if not path.exists():
         return []
     raw = path.read_bytes()
@@ -225,7 +226,11 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     keep = raw[:raw.rfind(b'\n') + 1]
     if len(keep) != len(raw):
         path.write_bytes(keep)
-    return [json.loads(line) for line in keep.decode('utf-8').splitlines() if line.strip()]
+    return [
+        json.loads(raw_line.rstrip(b'\r').decode('utf-8'))
+        for raw_line in keep.split(b'\n')
+        if raw_line.strip()
+    ]
 
 
 class ResponseLog:
@@ -657,10 +662,10 @@ def _iter_studies_from_local_file(path: Path) -> Iterable[dict[str, Any]]:
     is_jsonl = '.jsonl' in name
     raw = gzip.decompress(path.read_bytes()) if is_gz else path.read_bytes()
     if is_jsonl:
-        for line in raw.decode('utf-8').splitlines():
-            if not line.strip():
+        for raw_line in raw.split(b'\n'):
+            if not raw_line.strip():
                 continue
-            obj = json.loads(line)
+            obj = json.loads(raw_line.rstrip(b'\r').decode('utf-8'))
             if isinstance(obj, dict) and 'protocolSection' in obj:
                 yield obj
             elif isinstance(obj, dict) and isinstance(obj.get('body'), str):
@@ -893,7 +898,7 @@ def _read_verified_archive(
         raise CacheIntegrityError(f'{path.name}: uncompressed sha256 mismatch against manifest/meta')
 
     records: dict[str, dict[str, Any]] = {}
-    lines = [ln for ln in raw.splitlines() if ln.strip()]
+    lines = [ln.rstrip(b'\r') for ln in raw.split(b'\n') if ln.strip()]
     for line in lines:
         try:
             rec = json.loads(line.decode('utf-8'))
