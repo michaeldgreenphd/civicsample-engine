@@ -430,6 +430,71 @@ def test_contract_checker_refuses_tampered_or_invariant_violating_builds(tmp_pat
     assert any("withhold percentiles" in x for x in probs_small)
 
 
+def test_unicode_line_separators_in_jsonl_roundtrip(tmp_path: Path) -> None:
+    """U+2028, U+2029, \\x85, \\x0b, \\x0c inside JSON strings must never split JSONL lines."""
+    tricky_title = "Phase 3 Study\u2028LineSep\u2029ParaSep\x85NextLine\x0bVT\x0cFF"
+    tricky_mesh_term = "Diabetes Mellitus\u2028Type 2\u2029Adult"
+    study = fx.make_raw_ctgov_study(
+        "NCT99000901",
+        locations=[{"facility": "Clinic\u2028North\u2029Wing", "state": "MA", "country": "United States"}],
+        conditions=["Type 2 Diabetes\u2028Mellitus"],
+        lead_sponsor_name="Acme Bio",
+        measures=[
+            fx.make_measure("Race (NIH/OMB)", [("White", "80"), ("Black or African American", "20")]),
+            fx.make_measure("Sex: Female, Male", [("Female", "50"), ("Male", "50")]),
+        ],
+    )
+    study["protocolSection"]["identificationModule"]["briefTitle"] = tricky_title
+
+    studies_jsonl = tmp_path / "unicode_studies.jsonl.gz"
+    studies_jsonl.write_bytes(
+        gzip.compress(
+            (json.dumps(study, ensure_ascii=False) + "\n").encode("utf-8"),
+            mtime=0,
+        )
+    )
+    mesh_jsonl = tmp_path / "unicode_mesh.jsonl.gz"
+    mesh_row = {
+        "schema_version": "1.0",
+        "nct_id": "NCT99000901",
+        "state": "indexed",
+        "meshes": [{"id": "D003924", "term": tricky_mesh_term}],
+        "ancestors": [],
+    }
+    mesh_jsonl.write_bytes(
+        gzip.compress(
+            (json.dumps(mesh_row, ensure_ascii=False) + "\n").encode("utf-8"),
+            mtime=0,
+        )
+    )
+
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    out_dir = tmp_path / "unicode_build"
+    assert (
+        cli_build.main(
+            [
+                "--records",
+                str(studies_jsonl),
+                "--condition-mesh",
+                str(mesh_jsonl),
+                "--sponsor-rules",
+                str(rules_path),
+                "--generated-at",
+                "2026-11-22T12:00:00+00:00",
+                "--out",
+                str(out_dir),
+            ]
+        )
+        == 0
+    )
+    assert cli_check.main([str(out_dir)]) == 0
+
+    reloaded = artifacts.load_dir(out_dir)
+    assert len(reloaded["trial_rows"]) == 1
+    assert reloaded["trial_rows"][0]["brief_title"] == tricky_title
+    assert reloaded["trial_rows"][0]["indication"]["meshes"][0]["term"] == tricky_mesh_term
+
+
 def test_codebase_ast_typing_future_annotations_and_zero_rng() -> None:
     """Enforce CLAUDE.md Python 3.11, full type annotations, and zero-RNG constraints."""
     target_files = sorted((ROOT / "dap").rglob("*.py")) + [

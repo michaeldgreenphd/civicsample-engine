@@ -708,9 +708,13 @@ def load_dir(path: Path) -> dict[str, Any]:
             out["_extra_files"].append(entry.name)
             continue
         if entry.name == TRIALS_FILE:
-            decompressed = gzip.decompress(raw).decode("utf-8")
+            # Split strictly on 0x0A (b"\n"), NEVER str.splitlines(), which splits
+            # mid-JSON-string on U+2028, U+2029, \x85, \x0b, and \x0c when ensure_ascii=False.
+            decompressed = gzip.decompress(raw)
             out["trial_rows"] = [
-                json.loads(line) for line in decompressed.splitlines() if line.strip()
+                json.loads(raw_line.decode("utf-8"))
+                for raw_line in decompressed.split(b"\n")
+                if raw_line.strip()
             ]
         else:
             out[entry.name] = json.loads(raw.decode("utf-8"))

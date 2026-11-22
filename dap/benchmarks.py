@@ -465,12 +465,13 @@ def load_study_records(
     if is_jsonl:
         by_nct: dict[str, dict[str, Any]] = {}
         ordered: list[dict[str, Any]] = []
-        with opener(path, "rt", encoding="utf-8") as fh:
-            for line_no, line in enumerate(fh, start=1):
-                stripped = line.strip()
-                if not stripped:
+        # Read in binary mode so line splitting occurs strictly on 0x0A (b"\n"),
+        # never splitting mid-string on U+2028, U+2029, \x85, or bare \r.
+        with opener(path, "rb") as fh:
+            for line_no, raw_line in enumerate(fh, start=1):
+                if not raw_line.strip():
                     continue
-                obj = json.loads(stripped)
+                obj = json.loads(raw_line.decode("utf-8"))
                 if not isinstance(obj, dict):
                     raise ValueError(f"{path}:{line_no}: expected JSON object")
                 # Support frozen CT.gov API v2 response-log lines (`{"body": ...}`).
@@ -562,12 +563,11 @@ def load_condition_mesh(
     opener = gzip.open if path.name.endswith(".gz") else open
     by_nct: dict[str, dict[str, Any]] = {}
     state_counts: Counter[str] = Counter()
-    with opener(path, "rt", encoding="utf-8") as fh:
-        for line_no, line in enumerate(fh, start=1):
-            stripped = line.strip()
-            if not stripped:
+    with opener(path, "rb") as fh:
+        for line_no, raw_line in enumerate(fh, start=1):
+            if not raw_line.strip():
                 continue
-            row = json.loads(stripped)
+            row = json.loads(raw_line.decode("utf-8"))
             if not isinstance(row, dict):
                 raise ValueError(f"{path}:{line_no}: expected JSON object")
             nct_id = row.get("nct_id")
