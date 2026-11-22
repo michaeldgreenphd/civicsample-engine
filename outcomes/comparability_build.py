@@ -364,10 +364,13 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
     studies_by_nct: dict[str, dict[str, Any]] = {}
     fetched_dates: list[str] = []
     try:
-        with gzip.open(cache_path, 'rt', encoding='utf-8') as fh:
-            for line_no, line in enumerate(fh, start=1):
-                if not line.strip():
+        # Read binary lines (`0x0A` only) so U+2028/U+2029/\x85/\r inside `ensure_ascii=False`
+        # JSON strings never split a JSONL record mid-line.
+        with gzip.open(cache_path, 'rb') as fh:
+            for line_no, raw_line in enumerate(fh, start=1):
+                if not raw_line.strip():
                     continue
+                line = raw_line.decode('utf-8')
                 outer = json.loads(line)
                 if isinstance(outer, dict) and isinstance(outer.get('fetched_at'), str):
                     if re.match(r'^\d{4}-\d{2}-\d{2}', outer['fetched_at']):

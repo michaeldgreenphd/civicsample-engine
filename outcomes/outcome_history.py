@@ -441,15 +441,18 @@ def load_history_archive(path: Path) -> tuple[dict[str, dict[str, Any]], dict[st
         meta = {}
 
     snapshots: dict[str, dict[str, Any]] = {}
-    lines = raw_bytes.decode('utf-8').splitlines()
+    # Split strictly on 0x0A (`b'\n'`), never `str.splitlines()`, because real CT.gov text with
+    # `ensure_ascii=False` may contain U+2028, U+2029, U+0085, \x0b, or \x0c inside JSON strings.
+    raw_lines = raw_bytes.split(b'\n')
     non_empty_lines = 0
-    for line_no, line in enumerate(lines, start=1):
-        if not line.strip():
+    for line_no, raw_line in enumerate(raw_lines, start=1):
+        if not raw_line.strip():
             continue
         non_empty_lines += 1
         try:
+            line = raw_line.decode('utf-8')
             obj = json.loads(line)
-        except ValueError as exc:
+        except (UnicodeDecodeError, ValueError) as exc:
             raise HistoryArchiveError(f'{path.name} line {line_no}: invalid JSON ({exc})') from exc
         if not isinstance(obj, dict):
             raise HistoryArchiveError(f'{path.name} line {line_no}: expected JSON object')

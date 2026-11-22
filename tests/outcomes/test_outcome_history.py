@@ -292,3 +292,64 @@ def test_history_archive_supports_nested_protocol_section_and_refuses_tampering(
     )
     with pytest.raises(OH.HistoryArchiveError, match='invalid nct_id'):
         OH.load_history_archive(p_bad_id)
+
+
+def test_jsonl_readers_preserve_unicode_line_separators_when_ensure_ascii_is_false(tmp_path: Path) -> None:
+    """Regression: U+2028, U+2029, U+0085, \\x0b, and \\x0c inside `ensure_ascii=False` JSONL
+    strings must never split a line mid-JSON-string."""
+    from outcomes import acquire
+    from outcomes import comparability_build as B
+
+    tricky_title = 'Change in HbA1c\u2028(Part A)\u2029and Fasting Glucose\x85at\x0bWeek\x0c24'
+    hist_row = {
+        'nct_id': 'NCT99000303',
+        'version_date': '2020-03-01',
+        'primaryOutcomes': [{'measure': tricky_title, 'timeFrame': 'Week\u202824'}],
+    }
+    raw_hist = (json.dumps(hist_row, ensure_ascii=False, sort_keys=True) + '\n').encode('utf-8')
+    assert b'\xe2\x80\xa8' in raw_hist and b'\xe2\x80\xa9' in raw_hist
+    hist_file = tmp_path / 'unicode_hist.jsonl.gz'
+    hist_file.write_bytes(gzip.compress(raw_hist, mtime=0))
+    (tmp_path / 'unicode_hist.jsonl.gz.meta.json').write_text(
+        json.dumps({'sha256_uncompressed': hashlib.sha256(raw_hist).hexdigest(), 'n_records': 1}),
+        encoding='utf-8',
+    )
+
+    snaps, meta = OH.load_history_archive(hist_file)
+    assert meta['n_records'] == 1
+    assert snaps['NCT99000303']['primary_outcomes'][0]['title'] == tricky_title
+
+    study = _make_study(
+        'NCT99000303',
+        primary_outcomes=[{'measure': tricky_title, 'timeFrame': 'Week\u202824'}],
+        results_measures=[{'type': 'PRIMARY', 'title': tricky_title, 'timeFrame': 'Week\u202824'}],
+    )
+    # Test frozen study archive (`acquire.encode` uses `ensure_ascii=False`) + `iter_archive`
+    study_line = acquire.encode([study])
+    rec_meta = {
+        'source': 'fictional',
+        'mode': 'fetch',
+        'api_version': '2.0.5',
+        'data_timestamp': '2026-11-22T00:00:00',
+        'retrieved_at': '2026-11-22T00:00:00+00:00',
+        'n_records': 1,
+        'n_requested': 1,
+    }
+    arch_path = tmp_path / B.archive_name({'NCT99000303': study_line}, rec_meta, ['NCT99000303'])
+    B.write_archive({'NCT99000303': study_line}, arch_path, rec_meta, ['NCT99000303'])
+    assert B.read_archive_meta(arch_path)['n_records'] == 1
+    reloaded = list(B.iter_archive(arch_path))
+    assert len(reloaded) == 1 and isinstance(reloaded[0], dict)
+
+    # Test `load_responses_cache` with `ensure_ascii=False`
+    resp_raw = (
+        json.dumps({'fetched_at': '2026-11-22T00:00:00Z', 'body': {'studies': [study]}}, ensure_ascii=False)
+        + '\n'
+    ).encode('utf-8')
+    resp_path = tmp_path / 'unicode_resp.jsonl.gz'
+    resp_path.write_bytes(gzip.compress(resp_raw, mtime=0))
+    loaded_studies, _ = B.load_responses_cache(resp_path)
+    assert len(loaded_studies) == 1
+    diff_res = OH.inspect_outcome_history(loaded_studies[0], 'posted', history_snapshots=snaps)
+    assert diff_res['version_history']['state_counts']['unchanged'] == 1
+    assert diff_res['protocol_to_results']['state_counts']['verbatim_measure_and_timeframe_match'] == 1
