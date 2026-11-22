@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import shutil
 import sys
@@ -15,12 +16,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
-if str(Path(__file__).resolve().parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+_FX_SPEC = importlib.util.spec_from_file_location(
+    "dap_fixture", Path(__file__).resolve().parent / "fixture.py"
+)
+assert _FX_SPEC is not None and _FX_SPEC.loader is not None
+fx = sys.modules.setdefault("dap_fixture", importlib.util.module_from_spec(_FX_SPEC))
+if not hasattr(fx, "make_raw_ctgov_study"):
+    _FX_SPEC.loader.exec_module(fx)
 
 import build_dap_benchmarks as cli_build  # noqa: E402
 import export_dap_benchmarks_site as site_export  # noqa: E402
-import fixture as fx  # noqa: E402
 from dap import artifacts  # noqa: E402
 
 
