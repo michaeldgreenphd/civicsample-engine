@@ -224,28 +224,84 @@ _RESCUE_EXCLUDED_RE = re.compile(
 )
 
 # Hypothesis and margin extraction helpers.
-_CI_OR_ALPHA_NOISE_RE = re.compile(
-    r'\b\d+(?:\.\d+)?\s*%\s*(?:(?:two|one|2|1)[- ]sided\s+)?'
-    r'(?:confidence\s+(?:intervals?|limits?|bounds?)|CI)\b|'
-    r'\b(?:alpha|significance\s+level|type\s+i\s+error|p[- ]?value)\s*(?:of|is|was|=|<|≤)?\s*0?\.\d+\b|'
-    r'\b(?:week|day|month|year|visit|period|cycle)s?\s+\d+\b',
-    _I,
+# Noise spans (confidence levels, alpha / Type-I error / p-value thresholds, power, SD, sample size,
+# sidedness, timepoint labels, weight/viral-load covariates) are masked with equal-length spaces so
+# regex match offsets `[m.start():m.end()]` slice the exact verbatim substring from the raw comment.
+_NOISE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r'\b\d+(?:\.\d+)?\s*%\s*(?:(?:two|one|2|1)[- ]sided\s+)?'
+        r'(?:confidence\s+(?:intervals?|limits?|bounds?)\b(?:\s*\(CIs?\))?|CIs?\b)',
+        _I,
+    ),
+    re.compile(
+        r'\b(?:(?:two|one|2|1)[- ]sided\s+)\d+(?:\.\d+)?\s*%\s*'
+        r'(?:confidence\s+(?:intervals?|limits?|bounds?)\b(?:\s*\(CIs?\))?|CIs?\b)',
+        _I,
+    ),
+    re.compile(
+        r'\bbetween\s+the\s+\d+(?:\.\d+)?(?:st|nd|rd|th)\s+and\s+'
+        r'\d+(?:\.\d+)?(?:st|nd|rd|th)\s+percentiles?\b',
+        _I,
+    ),
+    re.compile(
+        r'\b(?:alpha|significance\s+level|level\s+of\s+significance|type\s+(?:i|1)\s+error(?:\s+rate)?|'
+        r'p[- ]?values?|p)\s*(?:of\s+|is\s+|was\s+|had\s+|set\s+(?:at|as|to)\s+|=\s*|\\?[<>≤≥]=?\s*)?'
+        r'(?:0?\.\d+|\d+(?:\.\d+)?\s*%)',
+        _I,
+    ),
+    re.compile(
+        r'(?:0?\.\d+|\d+(?:\.\d+)?\s*%)\s+(?:set\s+as\s+)?(?:(?:one|two|1|2)[- ]sided\s+)?'
+        r'(?:alpha|level\s+of\s+significance|significance\s+level|type\s+(?:i|1)\s+error)',
+        _I,
+    ),
+    re.compile(r'\b\d+(?:\.\d+)?\s*%\s*(?:statistical\s+)?power\b|\bpower\s+(?:of\s+|=\s*|was\s+)?\d+(?:\.\d+)?\s*%', _I),
+    re.compile(r'\b(?:SD|standard\s+deviation)\s*(?:of\s+|is\s+|was\s+|=\s*)?\d+(?:\.\d+)?\s*%?', _I),
+    re.compile(r'\b(?:sample\s+size\s+of\s+|n\s*=\s*|up\s+to\s+)\d+\b', _I),
+    re.compile(r'\b\d+\s+(?:subjects?|participants?|patients?|infants?|adults?|arms?|groups?|events?)\b', _I),
+    re.compile(r'\b(?:[12]|one|two)[- ]sided\b|\b[12]\s+sided\b', _I),
+    re.compile(r'\b(?:week|day|month|year|visit|period|cycle|stage|step|phase|part)s?\s+\d+\b', _I),
+    re.compile(r'\b\d+(?:\.\d+)?[- ](?:week|day|month|year|hour|hr)s?\b', _I),
+    re.compile(r'(?:\\?[<>≤≥]=?\s*|\b)\d+(?:\.\d+)?\s*(?:kilograms?|kg|copies/ml)\b', _I),
 )
 
+_MARGIN_UNIT = r'(?:\s*(?!(?:to|and|or|is|was|be|in|of|at|by)\b)[a-zA-Z]{1,8})?'
+_MARGIN_NUM = r'(?:[+-±]?\s*(?:\d+(?:\.\d+)?|\.\d+)\s*%?)'
+_MARGIN_RANGE = _MARGIN_NUM + _MARGIN_UNIT + r'(?:\s*(?:to|and|,|[-–])\s*' + _MARGIN_NUM + _MARGIN_UNIT + r')?'
+
 _MARGIN_IN_NI_COMMENT_RE = re.compile(
-    r'(?:margin|delta|bound|limit|threshold|criterion|interval|range|within|above|below|'
-    r'less\s+than|greater\s+than|at\s+most|at\s+least|[<>≤≥±])\s*'
-    r'(?:of\s+|is\s+|was\s+|=\s*|:\s*)?'
-    r'[+-±]?\d+(?:\.\d+)?\s*%?(?:\s*(?:to|and|[-–])\s*[+-±]?\d+(?:\.\d+)?\s*%?)?|'
-    r'\b[+-]?\d+(?:\.\d+)?\s*%?\s*(?:to|[-–])\s*[+-]?\d+(?:\.\d+)?\s*%\b|'
-    r'\b(?:0\.\d+|1\.\d+)\s*(?:to|[-–])\s*(?:1\.\d+|2\.\d+)\b',
+    r'\b(?:margin|delta|threshold|criterion|'
+    r'(?:equivalence|non[- ]?inferior(?:ity)?|acceptance|hypothesized|predefined|pre-?specified)\s+'
+    r'(?:limit|bound|range|interval|margin)s?)\b'
+    r'(?:\s+(?:of|is|was|were|set\s+(?:to|at|as)|pre-?specified\s+(?:at|as)|defined\s+as|from|equal\s+to))*'
+    r'\s*(?:[:=]|\\?[\[(])?\s*' + _MARGIN_RANGE + r'(?:\s*\\?[\])])?|'
+    r'\b(?:LL|UL|(?:lower|upper)\s+(?:limit|bound)s?)\b[^.;\n]{0,160}?'
+    r'\b(?:(?:is|was|were|be|are)\s+)?'
+    r'(?:excludes?|exceeds?|above|below|within|less\s+than(?:\s+or\s+equal\s+to)?|'
+    r'greater\s+than(?:\s+or\s+equal\s+to)?|is|was|were|be)\s*'
+    r'(?:\(\\?[<>≤≥]=?\)\s*)?(?:[:=]|\\?[\[(])?\s*' + _MARGIN_NUM + _MARGIN_UNIT + r'|'
+    r'\b(?:included\s+in|falls?\s+within|within|excludes?|above|below|'
+    r'less\s+than(?:\s+or\s+equal\s+to)?|greater\s+than(?:\s+or\s+equal\s+to)?|'
+    r'at\s+most|at\s+least|no\s+(?:more|less|worse)\s+than)\b'
+    r'(?:\s*\(\\?[<>≤≥]=?\))?(?:\s+the)?'
+    r'(?:\s+(?:predefined|pre-?specified|hypothesized|acceptance))?'
+    r'(?:\s+(?:equivalence\s+|non[- ]?inferior(?:ity)?\s+)?(?:interval|range|limit|bound|margin)s?)?'
+    r'(?:\s+(?:from|of))?'
+    r'\s*(?:[:=]|\\?[\[(])?\s*' + _MARGIN_RANGE + r'(?:\s*\\?[\])])?'
+    r'(?:\s+(?:equivalence\s+)?(?:interval|range))?|'
+    r'\b(?:is|was|were|be)\s+' + _MARGIN_NUM + r'\s+or\s+(?:greater|less|higher|lower|more|smaller)\b|'
+    r'\\?[<>≤≥]=?\s*' + _MARGIN_NUM + r'|'
+    r'±\s*(?:\d+(?:\.\d+)?|\.\d+)\s*%?|'
+    r'\\?[\[(]\s*[+-]?\s*(?:\d+(?:\.\d+)?|\.\d+)\s*(?:[a-zA-Z%]+\s*)?'
+    r'(?:to|and|,|[-–])\s*[+-]?\s*(?:\d+(?:\.\d+)?|\.\d+)\s*(?:[a-zA-Z%]+)?\s*\\?[\])]|'
+    r'\b\d+(?:\.\d+)?\s*%?\s*(?:to|[-–])\s*\d+(?:\.\d+)?\s*%|'
+    r'\b0\.\d+\s*(?:to|and|,|[-–])\s*1\.\d+\b',
     _I,
 )
 
 _ANCHORED_MARGIN_IN_OTHER_TEXT_RE = re.compile(
     r'\b(?:non[- ]?inferior(?:ity)?|equivalen(?:ce|t)|bioequivalen(?:ce|t))\s+'
-    r'(?:margin|delta|bound|limit|threshold|criterion|interval|range)\b[^.;\n]{0,45}?'
-    r'[+-±]?\d+(?:\.\d+)?\s*%?(?:\s*(?:to|and|[-–])\s*[+-±]?\d+(?:\.\d+)?\s*%?)?',
+    r'(?:margin|delta|bound|limit|threshold|criterion|interval|range)s?\b[^.;\n]{0,60}?'
+    + _MARGIN_RANGE,
     _I,
 )
 
@@ -998,9 +1054,6 @@ def align_ogs_to_target_groups(
                 state = 'pooled_or_subset_suspected'
                 candidates = sorted(set(contained_targets + containing_targets))
 
-        if matched_target is not None:
-            claimed_targets.add(matched_target['id'])
-
         alignments.append({
             'og_id': x['id'],
             'og_title': x['title'],
@@ -1010,6 +1063,29 @@ def align_ogs_to_target_groups(
             'match_basis': basis,
             'candidate_target_ids': candidates,
         })
+
+    # Enforce strict 1-to-1 target uniqueness across all passes: if two or more OGs claimed the
+    # same target group (e.g. OG000 via normalized_title and OG001 via title_to_description_equivalence),
+    # downgrade every colliding OG to `ambiguous_duplicate_titles` and release the target from
+    # `claimed_targets` so neither arm is treated as uniquely aligned.
+    target_claim_counts: dict[str, int] = {}
+    for al in alignments:
+        tid = al['matched_target_id']
+        if tid is not None:
+            target_claim_counts[tid] = target_claim_counts.get(tid, 0) + 1
+
+    claimed_targets = set()
+    for al in alignments:
+        tid = al['matched_target_id']
+        if tid is not None:
+            if target_claim_counts[tid] > 1:
+                al['state'] = 'ambiguous_duplicate_titles'
+                al['matched_target_id'] = None
+                al['matched_target_title'] = None
+                al['match_basis'] = None
+                al['candidate_target_ids'] = [tid]
+            else:
+                claimed_targets.add(tid)
 
     unmatched_targets = [
         {
@@ -1241,31 +1317,42 @@ def detect_intercurrent_event_signals(field_texts: list[tuple[str, Any]]) -> dic
     }
 
 
+def _mask_margin_noise(text: str) -> str:
+    """Replace CI-level, alpha, power, SD, sample-size, and timepoint spans with equal-length spaces
+    so match indices `[m.start():m.end()]` remain exact offsets into `text`."""
+    masked = text
+    for rx in _NOISE_PATTERNS:
+        masked = rx.sub(lambda m: ' ' * len(m.group(0)), masked)
+    return masked
+
+
 def _extract_margin_evidence(analysis: dict[str, Any], base_path: str) -> dict[str, str] | None:
     """Detect an explicit numeric non-inferiority or equivalence margin in structured analysis text."""
     ni_comment = analysis.get('nonInferiorityComment')
     if isinstance(ni_comment, str) and ni_comment.strip():
-        cleaned = _CI_OR_ALPHA_NOISE_RE.sub(' ', ni_comment)
+        raw_ni = ni_comment.strip()
+        cleaned = _mask_margin_noise(raw_ni)
         m = _MARGIN_IN_NI_COMMENT_RE.search(cleaned)
         if m:
-            # Map back to verbatim substring in `ni_comment` when exact, else use matched text.
-            matched = m.group(0).strip()
+            matched = raw_ni[m.start():m.end()].strip()
             return {
                 'json_path': f'{base_path}.nonInferiorityComment',
                 'matched_substring': matched,
-                'comment_verbatim': ni_comment.strip(),
+                'comment_verbatim': raw_ni,
             }
 
     for field in ('statisticalComment', 'otherAnalysisDescription'):
         txt = analysis.get(field)
         if isinstance(txt, str) and txt.strip():
-            cleaned = _CI_OR_ALPHA_NOISE_RE.sub(' ', txt)
+            raw_txt = txt.strip()
+            cleaned = _mask_margin_noise(raw_txt)
             m = _ANCHORED_MARGIN_IN_OTHER_TEXT_RE.search(cleaned)
             if m:
+                matched = raw_txt[m.start():m.end()].strip()
                 return {
                     'json_path': f'{base_path}.{field}',
-                    'matched_substring': m.group(0).strip(),
-                    'comment_verbatim': txt.strip(),
+                    'matched_substring': matched,
+                    'comment_verbatim': raw_txt,
                 }
     return None
 

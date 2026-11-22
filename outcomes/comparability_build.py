@@ -1377,12 +1377,19 @@ def check(files: dict[str, Any]) -> list[str]:
             if pm.get('denom_state') not in C.MEASURE_DENOM_STATES:
                 p.append(f'{n}: invalid denom_state on primary measure')
             for side in ('og_to_bg_alignment', 'og_to_fg_alignment'):
+                seen_matched_targets: set[str] = set()
                 for oa in (pm.get(side) or {}).get('og_alignments') or []:
                     if oa.get('state') not in C.ARM_ALIGNMENT_STATES:
                         p.append(f'{n}: invalid arm alignment state {oa.get("state")!r}')
-                    if oa.get('state') == 'exact_unique_title_match' and not oa.get('matched_target_id'):
-                        p.append(f'{n}: exact_unique_title_match without matched_target_id')
-                    if oa.get('state') != 'exact_unique_title_match' and oa.get('matched_target_id') is not None:
+                    if oa.get('state') == 'exact_unique_title_match':
+                        mtid = oa.get('matched_target_id')
+                        if not mtid:
+                            p.append(f'{n}: exact_unique_title_match without matched_target_id')
+                        elif mtid in seen_matched_targets:
+                            p.append(f'{n}: duplicate matched_target_id {mtid} across exact_unique_title_match OGs')
+                        else:
+                            seen_matched_targets.add(mtid)
+                    elif oa.get('matched_target_id') is not None:
                         p.append(f'{n}: non-exact alignment state carries matched_target_id')
 
             cs = pm.get('contrast_structure') or {}
@@ -1412,6 +1419,12 @@ def check(files: dict[str, Any]) -> list[str]:
                     p.append(f'{n}: undisambiguated legacy hypothesis enum {raw_ni} not marked ambiguous_legacy_enum')
                 if h_state in ('non_inferiority_with_margin', 'equivalence_with_margin') and not hc.get('margin_stated'):
                     p.append(f'{n}: {h_state} claimed without margin_stated')
+                mev = hc.get('margin_evidence')
+                if mev is not None:
+                    msub = mev.get('matched_substring')
+                    cverb = mev.get('comment_verbatim')
+                    if not isinstance(msub, str) or not msub or not isinstance(cverb, str) or msub not in cverb:
+                        p.append(f'{n}: margin_evidence matched_substring is not a verbatim substring of comment_verbatim')
 
             md = pm.get('missing_data_signal') or {}
             if md.get('state') not in C.MISSING_DATA_STATES:

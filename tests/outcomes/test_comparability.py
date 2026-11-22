@@ -500,6 +500,29 @@ def test_rule_t_untitled_total_and_malformed_sections_never_coerce_to_zero() -> 
     assert rec_non_dict['results_status'] == 'unknown' and rec_non_dict['parse']['status'] == 'failed'
 
 
+def test_cross_pass_two_to_one_target_collision_downgrades_both_ogs_to_ambiguous() -> None:
+    # Regression (Finding 2): OG000 matches BG000 via normalized_title ("Zorbatinib 10 mg") while
+    # OG001 matches BG000 via title_to_description_equivalence ("Experimental Arm"). Both colliding
+    # OGs must downgrade to `ambiguous_duplicate_titles` and release BG000 from `matched_target_ids`.
+    ogs = [
+        {'group_id': 'OG000', 'title': 'Zorbatinib 10 mg', 'description': None},
+        {'group_id': 'OG001', 'title': 'Experimental Arm', 'description': None},
+    ]
+    bgs = [
+        {'group_id': 'BG000', 'title': 'Zorbatinib 10 mg', 'description': 'Experimental Arm', 'count': 100},
+        {'group_id': 'BG001', 'title': 'Placebo', 'description': 'Control Arm', 'count': 100},
+    ]
+    aligned = C.align_ogs_to_target_groups(ogs, bgs, 'baselineCharacteristicsModule')
+    assert [a['state'] for a in aligned['og_alignments']] == [
+        'ambiguous_duplicate_titles',
+        'ambiguous_duplicate_titles',
+    ]
+    assert all(a['matched_target_id'] is None and a['match_basis'] is None for a in aligned['og_alignments'])
+    assert [a['candidate_target_ids'] for a in aligned['og_alignments']] == [['BG000'], ['BG000']]
+    assert aligned['matched_target_ids'] == []
+    assert [g['group_id'] for g in aligned['unmatched_target_groups']] == ['BG000', 'BG001']
+
+
 # ---------------------------------------------------------------- 3. estimands, missing data, documents, hypotheses
 
 def test_documents_missing_data_and_intercurrent_event_signals_with_exact_paths() -> None:
@@ -632,6 +655,77 @@ def test_individual_missing_data_method_states(text: str, expected_state: str) -
         ),
         ({'nonInferiorityType': 'OTHER'}, 'other_explicit'),
         ({}, 'not_stated'),
+        # Regression (Finding 3): real CT.gov margin phrasings + negative controls
+        (
+            {
+                'nonInferiorityType': 'NON_INFERIORITY',
+                'nonInferiorityComment': 'Noninferiority margin was prespecified at 0.4%',
+            },
+            'non_inferiority_with_margin',
+        ),
+        (
+            {
+                'nonInferiorityType': 'EQUIVALENCE',
+                'nonInferiorityComment': '95% Confidence Interval is included in the interval from -0.4 to 0.4',
+            },
+            'equivalence_with_margin',
+        ),
+        (
+            {
+                'nonInferiorityType': 'EQUIVALENCE',
+                'nonInferiorityComment': (
+                    'The equivalence limit was set to 1.5 mmHg. within the equivalence range (-1.5 mmHg, 1.5 mmHg).'
+                ),
+            },
+            'equivalence_with_margin',
+        ),
+        (
+            {
+                'nonInferiorityType': 'NON_INFERIORITY',
+                'nonInferiorityComment': (
+                    'lower limit of the 95% confidence intervals (CIs) were greater than or equal to (≥) -10%'
+                ),
+            },
+            'non_inferiority_with_margin',
+        ),
+        (
+            {
+                'nonInferiorityType': 'EQUIVALENCE',
+                'nonInferiorityComment': 'within the hypothesized interval (0.80 and 1.25)',
+            },
+            'equivalence_with_margin',
+        ),
+        (
+            {
+                'nonInferiorityType': 'EQUIVALENCE',
+                'nonInferiorityComment': r'within the predefined \[80.00%-125.00%\] equivalence interval',
+            },
+            'equivalence_with_margin',
+        ),
+        (
+            {
+                'nonInferiorityType': 'NON_INFERIORITY',
+                'nonInferiorityComment': 'Upper limit of two-sided 95% CI is 0.3%',
+            },
+            'non_inferiority_with_margin',
+        ),
+        (
+            {
+                'nonInferiorityType': 'EQUIVALENCE',
+                'nonInferiorityComment': (
+                    'Paired t tests had .05 set as level of significance to reject null hypothesis. '
+                    'Sample size of 200 with SD = 1.2 and 80% power at alpha = 0.025.'
+                ),
+            },
+            'equivalence_missing_margin',
+        ),
+        (
+            {
+                'nonInferiorityType': 'EQUIVALENCE',
+                'nonInferiorityComment': r'independent sample t-test with p\<.05',
+            },
+            'equivalence_missing_margin',
+        ),
     ],
 )
 def test_hypothesis_and_margin_clarity_states(analysis_dict: dict[str, Any], expected_state: str) -> None:
@@ -640,6 +734,8 @@ def test_hypothesis_and_margin_clarity_states(analysis_dict: dict[str, Any], exp
         'resultsSection.outcomeMeasuresModule.outcomeMeasures[0].analyses[0]',
     )
     assert got['state'] == expected_state
+    if got['margin_evidence'] is not None:
+        assert got['margin_evidence']['matched_substring'] in got['margin_evidence']['comment_verbatim']
 
 
 # ---------------------------------------------------------------- 4. contrast cardinality & shared-arm non-independence
@@ -797,6 +893,26 @@ def test_contract_checker_refuses_tampering_private_keys_and_broken_invariants(t
         'state'
     ] = 'superiority_explicit'
     assert any('undisambiguated legacy hypothesis enum' in p for p in B.check(bad_hyp))
+
+    # 4b. Duplicate matched_target_id across exact_unique_title_match OGs -> contract refusal
+    bad_dup_tgt = copy.deepcopy(base)
+    og_al = bad_dup_tgt['records.json']['records']['NCT99000001']['primary_measures'][0]['og_to_bg_alignment'][
+        'og_alignments'
+    ]
+    og_al[1]['matched_target_id'] = og_al[0]['matched_target_id']
+    assert any('duplicate matched_target_id' in p for p in B.check(bad_dup_tgt))
+
+    # 4c. Non-verbatim margin matched_substring -> contract refusal
+    bad_mev = copy.deepcopy(base)
+    hc0 = bad_mev['records.json']['records']['NCT99000001']['primary_measures'][0]['analyses'][0]['hypothesis_clarity']
+    hc0['state'] = 'non_inferiority_with_margin'
+    hc0['margin_stated'] = True
+    hc0['margin_evidence'] = {
+        'json_path': 'resultsSection.outcomeMeasuresModule.outcomeMeasures[0].analyses[0].nonInferiorityComment',
+        'matched_substring': 'limit of   is 0.3%',
+        'comment_verbatim': 'Upper limit of two-sided 95% CI is 0.3%',
+    }
+    assert any('not a verbatim substring of comment_verbatim' in p for p in B.check(bad_mev))
 
     # 5. CLI check_outcomes_comparability_contract returns exit code 1 when bytes on disk are tampered
     tampered_dir = tmp_path / 'tampered_out'
