@@ -318,6 +318,23 @@ def _sex_participant_total(record: dict[str, Any], sex_gender: dict[str, Any]) -
     return None
 
 
+def _label_and_count(entry: Any) -> tuple[str, int] | None:
+    """Extract ``(label, count)`` from either a dict or legacy ``[label, count]`` pair."""
+    if isinstance(entry, dict):
+        orig = str(entry.get("original") or entry.get("label") or "")
+        raw_cnt = entry.get("count")
+        cnt = int(raw_cnt) if isinstance(raw_cnt, (int, float)) else 0
+        return orig, cnt
+    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+        orig = str(entry[0] or "")
+        raw_cnt = entry[1]
+        cnt = int(raw_cnt) if isinstance(raw_cnt, (int, float)) else 0
+        return orig, cnt
+    if isinstance(entry, str):
+        return entry, 0
+    return None
+
+
 def _detect_combined_race_ethnicity(race_block: dict[str, Any]) -> tuple[bool, list[str], str | None]:
     """Return ``(is_combined, matched_labels, reason)`` when Hispanic/Latino appears in a race measure."""
     flags = {str(f) for f in (race_block.get("flags") or [])}
@@ -333,20 +350,22 @@ def _detect_combined_race_ethnicity(race_block: dict[str, Any]) -> tuple[bool, l
                 matched.append(orig)
 
     for q in race_block.get("quarantined_labels") or []:
-        orig = str(q.get("original") if isinstance(q, dict) else q or "")
-        if _ETHNICITY_IN_RACE_RX.search(orig) and orig not in matched:
-            matched.append(orig)
+        parsed_q = _label_and_count(q)
+        if parsed_q is None:
+            continue
+        orig_q, _ = parsed_q
+        if _ETHNICITY_IN_RACE_RX.search(orig_q) and orig_q not in matched:
+            matched.append(orig_q)
 
     skipped = race_block.get("skipped_ethnicity_rows")
     if isinstance(skipped, list):
         for row in skipped:
-            if not isinstance(row, dict):
+            parsed_row = _label_and_count(row)
+            if parsed_row is None:
                 continue
-            orig = str(row.get("original") or "")
-            cnt = int(row.get("count") or 0)
-            if cnt > 0 or _ETHNICITY_IN_RACE_RX.search(orig):
-                if cnt > 0 and orig and orig not in matched:
-                    matched.append(orig)
+            orig, cnt = parsed_row
+            if cnt > 0 and orig and orig not in matched:
+                matched.append(orig)
         if matched:
             return True, matched[:10], "hispanic_or_ethnicity_row_in_race_measure"
 
@@ -464,8 +483,11 @@ def _analyze_race_block(
     unmapped_from_other = min(raw_counts["other"], sum(int(c.get("count") or 0) for c in unmapped_in_raw))
     raw_counts["other"] -= unmapped_from_other
 
-    quarantined_items = [q for q in (block.get("quarantined_labels") or []) if isinstance(q, dict)]
-    quarantined_sum = sum(int(q.get("count") or 0) for q in quarantined_items)
+    quarantined_parsed = [
+        pq for q in (block.get("quarantined_labels") or [])
+        if (pq := _label_and_count(q)) is not None
+    ]
+    quarantined_sum = sum(cnt for _, cnt in quarantined_parsed)
     flags = {str(f) for f in (block.get("flags") or [])}
     if quarantined_sum > 0 and "denominator_balanced" in flags:
         inferred = int(block.get("unknown_inferred") or 0)
@@ -495,7 +517,7 @@ def _analyze_race_block(
     double_counted = bool(
         sex_total is not None and baseline_total > sex_total + max(1, int(0.01 * sex_total))
     )
-    has_non_standard = bool(unmapped_in_raw or quarantined_items or extra_keys or double_counted)
+    has_non_standard = bool(unmapped_in_raw or quarantined_parsed or extra_keys or double_counted)
     status = "non_standard_categories_present" if has_non_standard else "omb_compatible"
 
     if double_counted:
@@ -554,10 +576,10 @@ def _analyze_race_block(
             )
         ),
     }
-    if unmapped_in_raw or quarantined_items or extra_keys:
+    if unmapped_in_raw or quarantined_parsed or extra_keys:
         out["non_standard_labels"] = (
             [str(c.get("original") or "") for c in unmapped_in_raw]
-            + [str(q.get("original") or "") for q in quarantined_items]
+            + [lbl for lbl, _ in quarantined_parsed]
             + sorted(extra_keys)
         )[:10]
     return out

@@ -182,6 +182,45 @@ def test_combined_race_ethnicity_quarantined_excludes_counts_and_keeps_audit_det
     assert pure_demo["race"]["usable_for_omb_pooling"] is True
     assert pure_demo["race"]["of_baseline_total"]["white"]["floor"] == pytest.approx(0.70)
 
+    # Pre-PR-#99 weekly releases emitted skipped_ethnicity_rows as [[label, count], ...]
+    # rather than [{"original": ..., "count": ...}]; both shapes MUST populate
+    # quarantined_ethnicity_labels and quarantine the race block.
+    legacy_weekly = {
+        "nct_id": "NCT99000215",
+        "results_posted": True,
+        "study_sites": [{"country": "United States", "state": "TX"}],
+        "race": {
+            "reported": True,
+            "omb_totals": {
+                "white": 60,
+                "black_african_american": 20,
+                "unknown_not_reported": 20,
+            },
+            "raw_categories": [
+                {"omb_category": "white", "original": "White", "count": 60},
+                {"omb_category": "black_african_american", "original": "Black", "count": 20},
+            ],
+            "skipped_ethnicity_rows": [["Hispanic", 15], ("Latino", 5)],
+            "flags": ["ethnicity_rows_skipped"],
+        },
+    }
+    legacy_demo = extract_demographics(legacy_weekly)
+    assert legacy_demo["race_table_status"] == "combined_race_ethnicity_quarantined"
+    assert legacy_demo["race"]["quarantined_ethnicity_labels"] == ["Hispanic", "Latino"]
+    assert legacy_demo["race"]["counts"] is None
+
+    dict_weekly = {
+        **legacy_weekly,
+        "nct_id": "NCT99000216",
+        "race": {
+            **legacy_weekly["race"],
+            "skipped_ethnicity_rows": [{"original": "Hispanic or Latino", "count": 20}],
+        },
+    }
+    dict_demo = extract_demographics(dict_weekly)
+    assert dict_demo["race_table_status"] == "combined_race_ethnicity_quarantined"
+    assert dict_demo["race"]["quarantined_ethnicity_labels"] == ["Hispanic or Latino"]
+
 
 def test_single_category_ethnicity_withholds_of_classified_and_keeps_denominator_a() -> None:
     study = fx.make_raw_ctgov_study(
