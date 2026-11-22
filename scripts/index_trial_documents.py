@@ -254,7 +254,7 @@ def download_pdf_atomic(
 def load_manifest_rows(
     manifest_path: Path,
 ) -> tuple[list[dict[str, Any]], frozenset[str]]:
-    """Load manifest rows (outcomes/index.json, JSON array, or JSONL) with strict bool in_audit.
+    """Load manifest rows (outcomes/index.json, outcomes_bundles/index.json, JSON array, or JSONL) with strict bool in_audit.
 
     Returns (in_scope_rows, audit_nct_ids). Rejects any row missing an explicit
     boolean in_audit value by raising AuditHoldoutError.
@@ -269,8 +269,15 @@ def load_manifest_rows(
             parsed = json.loads(raw_text)
         except json.JSONDecodeError:
             parsed = None
-        if isinstance(parsed, Mapping) and isinstance(parsed.get("data"), list):
-            rows = [r for r in parsed["data"] if isinstance(r, Mapping)]
+        if isinstance(parsed, Mapping):
+            if isinstance(parsed.get("data"), list):
+                rows = [r for r in parsed["data"] if isinstance(r, Mapping)]
+            elif isinstance(parsed.get("rows"), list):
+                rows = [r for r in parsed["rows"] if isinstance(r, Mapping)]
+            elif isinstance(parsed.get("trials"), list):
+                rows = [r for r in parsed["trials"] if isinstance(r, Mapping)]
+            else:
+                rows = [parsed]
         elif isinstance(parsed, list):
             rows = [r for r in parsed if isinstance(r, Mapping)]
         else:
@@ -651,8 +658,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Path to trial manifest JSON/JSONL (e.g. outcomes/index.json) carrying strict "
-            "bool in_audit (required for --nct-id and --ingest-census-jsonl)."
+            "Path to trial manifest JSON/JSONL (e.g. data/outcomes/index.json or "
+            "data/outcomes_bundles/index.json) carrying strict bool in_audit "
+            "(required for --nct-id and --ingest-census-jsonl)."
         ),
     )
     parser.add_argument(

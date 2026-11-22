@@ -605,6 +605,22 @@ def test_locations_validation_citations_ellipsis_page_bounds_and_unsearched() ->
     with pytest.raises(ol.OutcomesLayoutError, match="AMBIGUOUS"):
         ol.normalize_decision_rule_locations(bad_ambig, document_profile=prof)
 
+    # NOT_APPLICABLE with 0 citations rejected (C7), while >= 1 citation is accepted
+    bad_na = copy.deepcopy(rows)
+    bad_na[0]["status"] = "NOT_APPLICABLE"
+    bad_na[0]["citations"] = []
+    with pytest.raises(ol.OutcomesLayoutError, match="NOT_APPLICABLE"):
+        ol.normalize_decision_rule_locations(bad_na, document_profile=prof)
+
+    good_na = copy.deepcopy(rows)
+    good_na[0]["status"] = "NOT_APPLICABLE"
+    good_na[0]["citations"] = [_make_citation(quotation="Superiority trial; non-inferiority margin does not apply.")]
+    norm_na = ol.normalize_decision_rule_locations(good_na, document_profile=prof, primary_outcomes_count=1)
+    assert norm_na is not None
+    assert norm_na["primary_pass"][0]["status"] == "NOT_APPLICABLE"
+    assert len(norm_na["primary_pass"][0]["citations"]) == 1
+    assert norm_na["effective_pass"][0]["status"] == "NOT_APPLICABLE"
+
     # NO_DOCUMENT rejected when document_profile has posted documents (C4 defense-in-depth)
     bad_nodoc = copy.deepcopy(rows)
     bad_nodoc[0]["status"] = "NO_DOCUMENT"
@@ -1116,6 +1132,80 @@ def test_validate_outcomes_tree_catches_tampered_protocol_on_no_document_trial(
     assert cli.main(["--check", str(out_dir)]) == 1
 
 
+def test_validate_outcomes_tree_catches_on_disk_citation_status_tampering(
+    tmp_path: pathlib.Path,
+) -> None:
+    """C7: on-disk validation catches missing citations on NOT_APPLICABLE, forbidden
+    citations on NOT_FOUND, and non-list citations across all passes + effective_pass.
+    """
+    nct_id = "NCT01975376"
+    study = _make_ctgov_study(nct_id, in_audit=False)
+    prof = _make_doc_profile(nct_id)
+    loc_rows = _make_complete_locations(nct_id, include_second_pass=True)
+    for r in loc_rows:
+        if r["pass"] == "primary" and r["element"] == "margin":
+            r["status"] = "NOT_APPLICABLE"
+            r["citations"] = [_make_citation(quotation="Superiority design; no non-inferiority margin.")]
+        elif r["pass"] == "primary" and r["element"] == "interim_boundary":
+            r["status"] = "NOT_FOUND"
+            r["citations"] = []
+
+    bundle = ol.build_trial_bundle(
+        study,
+        shards=8,
+        document_profile=prof,
+        decision_rule_locations=loc_rows,
+    )
+    idx_doc, shard_docs = ol.build_outcomes_documents(
+        [bundle],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=8,
+    )
+    out_dir = tmp_path / "citation_tamper"
+    assert ol.write_outcomes_tree(out_dir, idx_doc, shard_docs).ok
+    assert cli.main(["--check", str(out_dir)]) == 0
+
+    shard_id = ol.outcomes_shard_of(nct_id, 8)
+    shard_path = out_dir / "shards" / f"{shard_id}.json.gz"
+    clean_sdoc = json.loads(gzip.decompress(shard_path.read_bytes()).decode("utf-8"))
+
+    # Tamper 1: clear citations on NOT_APPLICABLE in primary_pass + effective_pass
+    tamper_na = copy.deepcopy(clean_sdoc)
+    locs_na = tamper_na["data"][nct_id]["decision_rule_locations"]
+    for bucket_name in ("primary_pass", "effective_pass"):
+        for row in locs_na[bucket_name]:
+            if row["element"] == "margin":
+                row["citations"] = []
+    shard_path.write_bytes(ol.encode_gz_bytes(tamper_na))
+    res_na = ol.validate_outcomes_tree(out_dir)
+    assert not res_na.ok
+    assert any("primary_pass" in p and "NOT_APPLICABLE" in p for p in res_na.problems)
+    assert any("effective_pass" in p and "NOT_APPLICABLE" in p for p in res_na.problems)
+    assert cli.main(["--check", str(out_dir)]) == 1
+
+    # Tamper 2: inject a citation onto NOT_FOUND in primary_pass + effective_pass
+    tamper_nf = copy.deepcopy(clean_sdoc)
+    locs_nf = tamper_nf["data"][nct_id]["decision_rule_locations"]
+    for bucket_name in ("primary_pass", "effective_pass"):
+        for row in locs_nf[bucket_name]:
+            if row["element"] == "interim_boundary":
+                row["citations"] = [_make_citation()]
+    shard_path.write_bytes(ol.encode_gz_bytes(tamper_nf))
+    res_nf = ol.validate_outcomes_tree(out_dir)
+    assert not res_nf.ok
+    assert any("primary_pass" in p and "NOT_FOUND" in p for p in res_nf.problems)
+    assert any("effective_pass" in p and "NOT_FOUND" in p for p in res_nf.problems)
+
+    # Tamper 3: non-list citations in second_pass
+    tamper_type = copy.deepcopy(clean_sdoc)
+    tamper_type["data"][nct_id]["decision_rule_locations"]["second_pass"][0]["citations"] = "invalid"
+    shard_path.write_bytes(ol.encode_gz_bytes(tamper_type))
+    res_type = ol.validate_outcomes_tree(out_dir)
+    assert not res_type.ok
+    assert any("second_pass[0].citations must be a list" in p for p in res_type.problems)
+
+
 def test_module4_longitudinal_provenance_adapter() -> None:
     prov = _make_module4_provenance("NCT01975376", with_pdf_scraped=True)
     norm = ol.normalize_longitudinal_provenance(prov, in_audit=False)
@@ -1525,7 +1615,180 @@ def test_write_outcomes_tree_preserves_backup_if_rollback_restore_fails(
     assert (backup_dir / "0.json.gz").read_bytes() == v1_shard0
 
 
-def test_dataset_folder_present_files_ignores_outcomes_directory(tmp_path: pathlib.Path) -> None:
+def test_write_outcomes_tree_cleans_partial_after_consecutive_overwrites(
+    tmp_path: pathlib.Path,
+) -> None:
+    """C9: two consecutive successful writes clean up .partial and _previous_shards."""
+    out = tmp_path / "outcomes_bundles"
+    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    s2 = _make_ctgov_study("NCT01174160", in_audit=False, sponsor_class="NIH", phase="PHASE2")
+
+    idx_v1, shards_v1 = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(s1, shards=4)],
+        extracted_at="2026-11-20T03:00:00+00:00",
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+    res1 = ol.write_outcomes_tree(out, idx_v1, shards_v1)
+    assert res1.ok
+    assert not pathlib.Path(f"{out}.partial").exists()
+
+    idx_v2, shards_v2 = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(s1, shards=4), ol.build_trial_bundle(s2, shards=4)],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+    res2 = ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    assert res2.ok
+    assert not pathlib.Path(f"{out}.partial").exists()
+    assert ol.validate_outcomes_tree(out).ok
+    live_idx = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    assert live_idx["total_trials"] == 2
+
+
+def test_write_outcomes_tree_refuses_foreign_data_directories(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Refuse to overwrite live data/outcomes/, data/results_structure/, or data/."""
+    assert ol.DEFAULT_OUT_DIR_NAME == "outcomes_bundles"
+    assert cli.DEFAULT_OUT_DIR == os.path.join("data", "outcomes_bundles")
+
+    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    idx, shards = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(s1, shards=4)],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+
+    # Case 1: live outcomes_beta directory (run.json, summary.json, records/r00.json, rows index.json)
+    live_outcomes = tmp_path / "outcomes"
+    (live_outcomes / "records").mkdir(parents=True)
+    run_bytes = b'{"run_id":"outcomes-2026-11-09"}\n'
+    summary_bytes = b'{"schema_version":1}\n'
+    rec_bytes = b'{"records":{}}\n'
+    beta_index_bytes = b'{"run_id":"outcomes-2026-11-09","schema_version":1,"rows":[]}\n'
+    (live_outcomes / "run.json").write_bytes(run_bytes)
+    (live_outcomes / "summary.json").write_bytes(summary_bytes)
+    (live_outcomes / "records" / "r00.json").write_bytes(rec_bytes)
+    (live_outcomes / "index.json").write_bytes(beta_index_bytes)
+
+    with pytest.raises(ol.OutcomesLayoutError, match="foreign data directory"):
+        ol.write_outcomes_tree(live_outcomes, idx, shards)
+    assert not pathlib.Path(f"{live_outcomes}.partial").exists()
+    assert (live_outcomes / "run.json").read_bytes() == run_bytes
+    assert (live_outcomes / "summary.json").read_bytes() == summary_bytes
+    assert (live_outcomes / "records" / "r00.json").read_bytes() == rec_bytes
+    assert (live_outcomes / "index.json").read_bytes() == beta_index_bytes
+
+    # Case 2: directory with ONLY an outcomes_beta index.json ({"rows": [...]})
+    beta_idx_only = tmp_path / "beta_idx_only"
+    beta_idx_only.mkdir()
+    (beta_idx_only / "index.json").write_bytes(beta_index_bytes)
+    with pytest.raises(ol.OutcomesLayoutError, match="foreign directory"):
+        ol.write_outcomes_tree(beta_idx_only, idx, shards)
+    assert not pathlib.Path(f"{beta_idx_only}.partial").exists()
+    assert (beta_idx_only / "index.json").read_bytes() == beta_index_bytes
+
+    # Case 3: results_structure directory (records.json)
+    rs_dir = tmp_path / "results_structure"
+    rs_dir.mkdir()
+    (rs_dir / "records.json").write_bytes(b'{"records":[]}\n')
+    with pytest.raises(ol.OutcomesLayoutError, match="foreign data directory"):
+        ol.write_outcomes_tree(rs_dir, idx, shards)
+    assert not pathlib.Path(f"{rs_dir}.partial").exists()
+    assert (rs_dir / "records.json").read_bytes() == b'{"records":[]}\n'
+
+
+def test_cli_builds_from_outcomes_beta_index_manifest(tmp_path: pathlib.Path) -> None:
+    """build_outcomes_shards.py reads live outcomes_beta index.json ('rows',
+    'n_primary_outcomes', 'title', 'sponsor') cleanly.
+    """
+    beta_index = {
+        "run_id": "outcomes-2026-11-09-d41f32ec4d",
+        "schema_version": 1,
+        "columns_note": "One row per eligible trial; see run.json for definitions.",
+        "rows": [
+            {
+                "nct_id": "NCT01975376",
+                "title": "Beta Phase 3 Trial of Drug X",
+                "sponsor": "Beta Pharma Inc.",
+                "sponsor_state": "attributed",
+                "recode_differs": False,
+                "area": "Oncology",
+                "area_secondary": None,
+                "primary_objective": "Overall Survival",
+                "n_primary_outcomes": 2,
+                "results_state": "POSTED",
+                "results_sub_reason": None,
+                "results_first_post_date": "2023-01-10",
+                "protocol": True,
+                "sap": True,
+                "in_audit": False,
+                "assessment_kind": None,
+                "trial_state": None,
+                "review_status": None,
+                "in_demographics": True,
+                "record": "records/r00.json",
+            },
+            {
+                "nct_id": "NCT00663858",
+                "title": "Holdout Beta Trial",
+                "sponsor": "Holdout Therapeutics",
+                "n_primary_outcomes": 1,
+                "results_first_post_date": "2022-05-01",
+                "protocol": True,
+                "sap": False,
+                "in_audit": True,
+            },
+        ],
+        "excluded": [],
+    }
+    manifest_path = tmp_path / "beta_index.json"
+    manifest_path.write_text(json.dumps(beta_index), encoding="utf-8")
+
+    # Provide locations only for outcome 0 on NCT01975376 (which has n_primary_outcomes=2)
+    # so census_status resolves to "partial" rather than "complete".
+    locs_path = tmp_path / "locations.jsonl"
+    locs_path.write_text(
+        "\n".join(json.dumps(r) for r in _make_complete_locations("NCT01975376")) + "\n",
+        encoding="utf-8",
+    )
+    docs_path = tmp_path / "docs.jsonl"
+    docs_path.write_text(json.dumps(_make_doc_profile("NCT01975376")) + "\n", encoding="utf-8")
+
+    out_dir = tmp_path / "outcomes_bundles"
+    rc = cli.main([
+        "--cohort-manifest", str(manifest_path),
+        "--documents", str(docs_path),
+        "--locations", str(locs_path),
+        "--extracted-at", SAMPLE_TS,
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out_dir),
+    ])
+    assert rc == 0
+    assert cli.main(["--check", str(out_dir)]) == 0
+    assert not pathlib.Path(f"{out_dir}.partial").exists()
+
+    idx_doc = json.loads((out_dir / "index.json").read_text(encoding="utf-8"))
+    by_id = {row["nct_id"]: row for row in idx_doc["data"]}
+    assert by_id["NCT01975376"]["brief_title"] == "Beta Phase 3 Trial of Drug X"
+    assert by_id["NCT01975376"]["lead_sponsor_name"] == "Beta Pharma Inc."
+    assert by_id["NCT01975376"]["primary_outcomes_count"] == 2
+    assert by_id["NCT01975376"]["cohorts"] == ["all_large_docs"]
+    assert by_id["NCT01975376"]["census_badge"]["census_status"] == "partial"
+
+    assert by_id["NCT00663858"]["brief_title"] == "Holdout Beta Trial"
+    assert by_id["NCT00663858"]["lead_sponsor_name"] == "Holdout Therapeutics"
+    assert by_id["NCT00663858"]["primary_outcomes_count"] == 1
+    assert by_id["NCT00663858"]["in_audit"] is True
+    assert by_id["NCT00663858"]["document_badge"]["readability_status"] == "in_audit_holdout"
+    assert by_id["NCT00663858"]["census_badge"]["census_status"] == "in_audit_holdout"
+
+
+def test_dataset_folder_present_files_ignores_outcomes_bundles_directory(tmp_path: pathlib.Path) -> None:
     site_data = tmp_path / "data"
     site_data.mkdir()
     (site_data / "demographics.part1.json.gz").write_bytes(b"stub")
@@ -1538,11 +1801,11 @@ def test_dataset_folder_present_files_ignores_outcomes_directory(tmp_path: pathl
         source_pipeline_commit=SAMPLE_COMMIT,
         shards=8,
     )
-    ol.write_outcomes_tree(site_data / "outcomes", idx, shards)
+    ol.write_outcomes_tree(site_data / ol.DEFAULT_OUT_DIR_NAME, idx, shards)
 
     present = df.present_files(str(site_data))
     assert present == ["demographics.part1.json.gz", "run.json"]
-    assert not any("outcomes" in name for name in present)
+    assert not any("outcomes_bundles" in name for name in present)
 
 
 def test_cli_end_to_end_and_graceful_git_fallback(
@@ -1618,6 +1881,8 @@ def test_cli_end_to_end_and_graceful_git_fallback(
 
 def test_gitignore_covers_transient_outcomes_and_cache_paths() -> None:
     expected_entries = [
+        "data/outcomes_bundles/",
+        "data/outcomes_bundles.partial/",
         "data/outcomes/",
         "data/outcomes.partial/",
         "data/document_cache/",
@@ -1638,6 +1903,8 @@ def test_gitignore_covers_transient_outcomes_and_cache_paths() -> None:
     )
     if probe.returncode == 0:
         for sample in (
+            "data/outcomes_bundles/index.json",
+            "data/outcomes_bundles.partial/index.json",
             "data/outcomes/index.json",
             "data/outcomes.partial/index.json",
             "data/document_cache/url_manifest.json",

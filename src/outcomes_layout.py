@@ -4,7 +4,7 @@ This module defines the static file layout for ClinicalTrials.gov primary
 outcome reporting, document readability/redaction profiles, decision-rule
 locations, and longitudinal provenance:
 
-  outcomes/
+  outcomes_bundles/
     index.json             lightweight multi-cohort catalog (one row per trial,
                            sorted ascending by nct_id, top-level "data" last)
     shards/0.json.gz       per-trial unified bundles for shard n, where
@@ -60,11 +60,22 @@ DEFAULT_SHARDS = 256
 DEFAULT_OUTCOMES_SHARDS = DEFAULT_SHARDS
 MAX_SHARDS = 1024
 
+DEFAULT_OUT_DIR_NAME = "outcomes_bundles"
 INDEX_FILE = "index.json"
 SHARDS_DIR = "shards"
 SHARD_FILE_TEMPLATE = "shards/{n}.json.gz"
 SHARD_CLASS = "outcomes_detail"
 SECTION_LABEL_REPORTED_RESULTS = "Primary results as posted"
+
+# Markers identifying other live data families (site/data/outcomes/,
+# site/data/results_structure/, site/data/) that write_outcomes_tree must
+# never overwrite.
+FOREIGN_DIRECTORY_MARKERS: tuple[str, ...] = (
+    "run.json",
+    "summary.json",
+    "records",
+    "records.json",
+)
 
 # Size guardrails matching scripts/check_site_contract.py (telemetry only;
 # never modifies tests/data_budget.json).
@@ -117,6 +128,17 @@ LOCATION_STATUSES: tuple[str, ...] = (
     "NOT_APPLICABLE",
     "AMBIGUOUS",
     "UNREADABLE",
+    "NO_DOCUMENT",
+)
+
+CITATION_REQUIRED_STATUSES: tuple[str, ...] = (
+    "FOUND",
+    "AMBIGUOUS",
+    "NOT_APPLICABLE",
+)
+
+CITATION_FORBIDDEN_STATUSES: tuple[str, ...] = (
+    "NOT_FOUND",
     "NO_DOCUMENT",
 )
 
@@ -317,7 +339,7 @@ def shard_relpath(shard: int) -> str:
 
 
 def layout_header(shards: int = DEFAULT_OUTCOMES_SHARDS) -> dict[str, Any]:
-    """The ``layout`` metadata block written into ``outcomes/index.json``."""
+    """The ``layout`` metadata block written into ``outcomes_bundles/index.json``."""
     n_shards = _validate_shards(shards)
     return {
         "version": LAYOUT_VERSION,
@@ -1354,11 +1376,11 @@ def _normalize_location_pass(
             raise OutcomesLayoutError(
                 f"{pass_label} {pair}: status 'NO_DOCUMENT' is forbidden when posted document(s) are present"
             )
-        if status in ("FOUND", "AMBIGUOUS") and len(citations) < 1:
+        if status in CITATION_REQUIRED_STATUSES and len(citations) < 1:
             raise OutcomesLayoutError(
                 f"{pass_label} {pair}: status {status!r} requires at least 1 citation"
             )
-        if status in ("NOT_FOUND", "NO_DOCUMENT") and len(citations) != 0:
+        if status in CITATION_FORBIDDEN_STATUSES and len(citations) != 0:
             raise OutcomesLayoutError(
                 f"{pass_label} {pair}: status {status!r} forbids citations (found {len(citations)})"
             )
@@ -1755,7 +1777,9 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
     nct_id = trial.get("nct_id") or ident.get("nctId")
     brief_title = trial.get("brief_title")
     if brief_title is None:
-        brief_title = ident.get("briefTitle") or ""
+        brief_title = ident.get("briefTitle")
+    if brief_title is None:
+        brief_title = trial.get("title") or ""
 
     study_type = trial.get("study_type") if "study_type" in trial else design.get("studyType")
 
@@ -1786,11 +1810,12 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
     primary_completion_date = _date_struct("primary_completion_date", "primaryCompletionDateStruct")
     results_first_post_date = _date_struct("results_first_post_date", "resultsFirstPostDateStruct")
 
-    lead_sponsor_name = (
-        trial.get("lead_sponsor_name")
-        if "lead_sponsor_name" in trial
-        else lead_sponsor.get("name")
-    )
+    if "lead_sponsor_name" in trial:
+        lead_sponsor_name = trial.get("lead_sponsor_name")
+    elif lead_sponsor.get("name") is not None:
+        lead_sponsor_name = lead_sponsor.get("name")
+    else:
+        lead_sponsor_name = trial.get("sponsor")
     sponsor_class = (
         trial.get("sponsor_class")
         if "sponsor_class" in trial
@@ -1803,6 +1828,11 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
         conds = cond_mod.get("conditions")
         if isinstance(conds, Sequence) and not isinstance(conds, (str, bytes)) and conds:
             primary_condition = str(conds[0])
+
+    raw_poc = trial.get("primary_outcomes_count")
+    if raw_poc is None and "n_primary_outcomes" in trial:
+        raw_poc = trial.get("n_primary_outcomes")
+    primary_outcomes_count = _strict_int_or_none(raw_poc, f"{nct_id}.primary_outcomes_count")
 
     large_has_protocol = any(
         isinstance(d, Mapping) and bool(d.get("hasProtocol"))
@@ -1834,6 +1864,7 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
         "sponsor_class": str(sponsor_class) if sponsor_class is not None else None,
         "ecosystem_category": str(ecosystem_category) if ecosystem_category is not None else None,
         "primary_condition": str(primary_condition) if primary_condition is not None else None,
+        "primary_outcomes_count": primary_outcomes_count,
         "protocol": protocol_flag,
         "sap": sap_flag,
     }
@@ -1883,9 +1914,8 @@ def build_trial_bundle(
         parsed_populations=parsed_populations,
     )
 
-    raw_poc = trial.get("primary_outcomes_count")
-    if raw_poc is not None:
-        primary_outcomes_count: int | None = _strict_int_or_none(raw_poc, f"{nct_id}.primary_outcomes_count")
+    if meta["primary_outcomes_count"] is not None:
+        primary_outcomes_count: int | None = meta["primary_outcomes_count"]
     else:
         reg_count = len(reported_results["registered_primary_outcomes"])
         meas_count = len(reported_results["primary_outcome_measures"])
@@ -2200,6 +2230,18 @@ def _validate_shard_decision_rule_locations(
                 errs.append(
                     f"{prefix}.{pass_key}[{idx}]: status 'NO_DOCUMENT' is forbidden when posted document(s) are present"
                 )
+            cits = row.get("citations")
+            if not isinstance(cits, list):
+                errs.append(f"{prefix}.{pass_key}[{idx}].citations must be a list")
+                all_pass_rows_valid = False
+            elif status in CITATION_REQUIRED_STATUSES and len(cits) < 1:
+                errs.append(
+                    f"{prefix}.{pass_key}[{idx}]: status {status!r} requires at least 1 citation"
+                )
+            elif status in CITATION_FORBIDDEN_STATUSES and len(cits) != 0:
+                errs.append(
+                    f"{prefix}.{pass_key}[{idx}]: status {status!r} forbids citations (found {len(cits)})"
+                )
             if "text_source" in row:
                 ts_val = row["text_source"]
                 if not isinstance(ts_val, str) or not ts_val.strip():
@@ -2223,6 +2265,17 @@ def _validate_shard_decision_rule_locations(
             elif eff_status == "NO_DOCUMENT" and has_posted_docs:
                 errs.append(
                     f"{prefix}.effective_pass[{idx}]: status 'NO_DOCUMENT' is forbidden when posted document(s) are present"
+                )
+            eff_cits = row.get("citations")
+            if not isinstance(eff_cits, list):
+                errs.append(f"{prefix}.effective_pass[{idx}].citations must be a list")
+            elif eff_status in CITATION_REQUIRED_STATUSES and len(eff_cits) < 1:
+                errs.append(
+                    f"{prefix}.effective_pass[{idx}]: status {eff_status!r} requires at least 1 citation"
+                )
+            elif eff_status in CITATION_FORBIDDEN_STATUSES and len(eff_cits) != 0:
+                errs.append(
+                    f"{prefix}.effective_pass[{idx}]: status {eff_status!r} forbids citations (found {len(eff_cits)})"
                 )
             if "text_source" in row:
                 ts_val = row["text_source"]
@@ -2712,6 +2765,50 @@ def problems(out_dir: str | os.PathLike[str], *, allow_null_commit: bool = False
 
 # ── atomic staging + swap writer ──────────────────────────────────────────────
 
+def _assert_not_foreign_output_dir(target: Path) -> None:
+    """Refuse to overwrite another live data family (e.g. ``site/data/outcomes/``,
+    ``site/data/results_structure/``, or ``site/data/``).
+    """
+    if not target.exists():
+        return
+    if not target.is_dir():
+        raise OutcomesLayoutError(
+            f"refusing to overwrite non-directory output path {target}"
+        )
+    present_markers = [
+        name for name in FOREIGN_DIRECTORY_MARKERS if (target / name).exists()
+    ]
+    if present_markers:
+        raise OutcomesLayoutError(
+            f"refusing to overwrite foreign data directory {target}: found marker(s) "
+            f"{', '.join(present_markers)} (point --out-dir at a dedicated "
+            f"{DEFAULT_OUT_DIR_NAME!r} directory)"
+        )
+    existing_index = target / INDEX_FILE
+    if existing_index.exists():
+        if not existing_index.is_file():
+            raise OutcomesLayoutError(
+                f"refusing to overwrite foreign directory {target}: existing {INDEX_FILE} is not a file"
+            )
+        try:
+            parsed = json.loads(existing_index.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            raise OutcomesLayoutError(
+                f"refusing to overwrite foreign directory {target}: existing {INDEX_FILE} "
+                f"is not valid JSON ({exc})"
+            ) from exc
+        if (
+            not isinstance(parsed, dict)
+            or "layout_version" not in parsed
+            or "layout" not in parsed
+            or "data" not in parsed
+        ):
+            raise OutcomesLayoutError(
+                f"refusing to overwrite foreign directory {target}: existing {INDEX_FILE} "
+                f"is not an {DEFAULT_OUT_DIR_NAME} index (missing 'layout_version', 'layout', or 'data')"
+            )
+
+
 def write_outcomes_tree(
     out_dir: str | os.PathLike[str],
     index_doc: Mapping[str, Any],
@@ -2721,12 +2818,16 @@ def write_outcomes_tree(
 ) -> ValidationResult:
     """Atomically write and verify an outcomes tree via ``<out_dir>.partial``.
 
-    Runs the 6-vector audit holdout firewall across all supplied rows and
-    shards BEFORE creating ``.partial`` or touching ``out_dir``. Only after
-    ``validate_outcomes_tree(work)`` passes does this function swap
-    ``index.json`` and ``shards/`` into ``out_dir``, leaving any unrelated
-    sibling files untouched.
+    Refuses to overwrite any foreign data directory (such as ``data/outcomes/``
+    or ``data/results_structure/``) and runs the 6-vector audit holdout
+    firewall across all supplied rows and shards BEFORE creating ``.partial``
+    or touching ``out_dir``. Only after ``validate_outcomes_tree(work)`` passes
+    does this function swap ``index.json`` and ``shards/`` into ``out_dir``,
+    leaving any unrelated sibling files untouched.
     """
+    target = Path(os.path.normpath(os.fspath(out_dir)))
+    _assert_not_foreign_output_dir(target)
+
     layout = index_doc.get("layout")
     if not isinstance(layout, Mapping):
         raise OutcomesLayoutError("index_doc.layout must be an object")
@@ -2763,7 +2864,6 @@ def write_outcomes_tree(
                 index_row=rows_by_nct.get(str(nct_id)),
             )
 
-    target = Path(os.path.normpath(os.fspath(out_dir)))
     work = Path(f"{target}.partial")
     shutil.rmtree(work, ignore_errors=True)
     work_shards = work / SHARDS_DIR
@@ -2773,6 +2873,7 @@ def write_outcomes_tree(
     backup_shards = work / "_previous_shards"
     moved_old_shards = False
     installed_new_shards = False
+    preserve_work_for_unrestored_backup = False
 
     try:
         (work / INDEX_FILE).write_text(
@@ -2805,24 +2906,28 @@ def write_outcomes_tree(
             installed_new_shards = True
             os.replace(work / INDEX_FILE, dst_index)
         except Exception:
-            if installed_new_shards and dst_shards.exists():
-                failed_new_shards = work / "_failed_new_shards"
-                try:
-                    os.replace(dst_shards, failed_new_shards)
-                except OSError:
-                    shutil.rmtree(dst_shards, ignore_errors=True)
-            if moved_old_shards and backup_shards.exists() and not dst_shards.exists():
-                os.replace(backup_shards, dst_shards)
-            if (
-                not moved_old_shards
-                and not target_existed_before
-                and target.exists()
-                and not any(target.iterdir())
-            ):
-                target.rmdir()
+            try:
+                if installed_new_shards and dst_shards.exists():
+                    failed_new_shards = work / "_failed_new_shards"
+                    try:
+                        os.replace(dst_shards, failed_new_shards)
+                    except OSError:
+                        shutil.rmtree(dst_shards, ignore_errors=True)
+                if moved_old_shards and backup_shards.exists() and not dst_shards.exists():
+                    os.replace(backup_shards, dst_shards)
+                if (
+                    not moved_old_shards
+                    and not target_existed_before
+                    and target.exists()
+                    and not any(target.iterdir())
+                ):
+                    target.rmdir()
+            finally:
+                if moved_old_shards and backup_shards.exists():
+                    preserve_work_for_unrestored_backup = True
             raise
 
         return result
     finally:
-        if not (moved_old_shards and backup_shards.exists()):
+        if not preserve_work_for_unrestored_backup:
             shutil.rmtree(work, ignore_errors=True)

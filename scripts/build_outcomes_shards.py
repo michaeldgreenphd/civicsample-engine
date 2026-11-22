@@ -15,13 +15,14 @@ READS   --trials           JSON/JSONL (plain or .gz) of CT.gov study records or
         --population-parsed optional JSON/JSONL of Module 2
                            TrialAnalysisPopulations or ParsedOutcomePopulation
                            outputs.
-WRITES  --out-dir (default data/outcomes):
+WRITES  --out-dir (default data/outcomes_bundles):
           index.json          multi-cohort trial catalog, sorted by nct_id
           shards/0.json.gz    per-trial unified shard bundles (n = int(nct[3:]) % N)
             .. {N-1}.json.gz  gzip level 9, mtime=0, OS byte 0xff
         Staged in <out-dir>.partial, verified with
         src.outcomes_layout.validate_outcomes_tree before swapping into
-        --out-dir, and cleaned up in a finally block.
+        --out-dir, and cleaned up in a finally block. Refuses to overwrite
+        foreign data directories (e.g. data/outcomes/ or data/results_structure/).
 CHECKS  --check <dir> validates an existing outcomes directory on disk without
         modifying it.
 EXITS   0 on success; 2 on any AuditFirewallError (in_audit holdout violation,
@@ -44,7 +45,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import outcomes_layout as ol  # noqa: E402
 
-DEFAULT_OUT_DIR = os.path.join("data", "outcomes")
+DEFAULT_OUT_DIR = os.path.join("data", "outcomes_bundles")
 
 
 def _open_text_maybe_gz(path: Path) -> Any:
@@ -60,7 +61,8 @@ def _load_records_file(path: str | os.PathLike[str]) -> tuple[list[dict[str, Any
     Accepts:
     - JSONL / ``.jsonl.gz`` (one JSON object per non-empty line)
     - JSON array of objects
-    - JSON container object with ``data`` or ``trials`` list (preserving
+    - JSON container object with ``data``, ``trials``, ``records``, or ``rows``
+      list (including live ``outcomes_beta`` ``index.json``; preserving
       top-level ``extracted_at`` / ``pipeline_commit`` / ``source_pipeline_commit``)
     - JSON mapping keyed by ``nct_id`` -> object
     """
@@ -104,7 +106,7 @@ def _load_records_file(path: str | os.PathLike[str]) -> tuple[list[dict[str, Any
             for k in ("extracted_at", "pipeline_commit", "source_pipeline_commit", "indexer_rules_version")
             if k in parsed
         }
-        for list_key in ("data", "trials", "records"):
+        for list_key in ("data", "trials", "records", "rows"):
             if isinstance(parsed.get(list_key), list):
                 items = parsed[list_key]
                 if not all(isinstance(x, dict) for x in items):
@@ -283,7 +285,7 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--out-dir",
         default=DEFAULT_OUT_DIR,
-        help="Target outcomes directory (default %(default)s)",
+        help="Target outcomes bundles directory (default %(default)s)",
     )
     ap.add_argument("--report", default=None, help="Optional JSON path to write build/check report")
     ap.add_argument("--check", default=None, metavar="DIR", help="Validate an existing outcomes tree without writing")

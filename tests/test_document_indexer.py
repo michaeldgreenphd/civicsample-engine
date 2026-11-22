@@ -1615,3 +1615,128 @@ def test_cli_ingest_census_offline_and_non_darwin_guard(
     pdfkit = di.MacOSPDFKitProvider(compile_dir=tmp_path)
     with pytest.raises(di.PageExtractionError, match="only available on macOS"):
         pdfkit.extract_pages(sha256=sha, pdf_path=tmp_path / "missing.pdf")
+
+
+def test_load_manifest_rows_outcomes_beta_and_trials_shapes(tmp_path: Path) -> None:
+    """load_manifest_rows and CLI accept live outcomes_beta index.json ('rows') and 'trials' manifests."""
+    beta_manifest = tmp_path / "outcomes_beta_index.json"
+    beta_manifest.write_text(
+        json.dumps(
+            {
+                "run_id": "outcomes-2026-11-09-d41f32ec4d",
+                "schema_version": 1,
+                "rows": [
+                    {
+                        "nct_id": "NCT02222222",
+                        "in_audit": False,
+                        "protocol": True,
+                        "sap": False,
+                        "n_primary_outcomes": 2,
+                    },
+                    {
+                        "nct_id": "NCT09999999",
+                        "in_audit": True,
+                        "protocol": True,
+                        "sap": True,
+                        "n_primary_outcomes": 1,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    in_scope, audit_ids = cli_mod.load_manifest_rows(beta_manifest)
+    assert [row["nct_id"] for row in in_scope] == ["NCT02222222"]
+    assert in_scope[0]["n_primary_outcomes"] == 2
+    assert audit_ids == frozenset({"NCT09999999"})
+
+    # 'trials' wrapper key is also supported with strict in_audit separation.
+    trials_manifest = tmp_path / "trials_manifest.json"
+    trials_manifest.write_text(
+        json.dumps(
+            {
+                "trials": [
+                    {"nct_id": "NCT02222222", "in_audit": False},
+                    {"nct_id": "NCT09999999", "in_audit": True},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    in_scope_t, audit_ids_t = cli_mod.load_manifest_rows(trials_manifest)
+    assert [row["nct_id"] for row in in_scope_t] == ["NCT02222222"]
+    assert audit_ids_t == frozenset({"NCT09999999"})
+
+    # End-to-end offline CLI run with outcomes_beta index.json as --manifest.
+    sha = "a" * 64
+    census_jsonl = tmp_path / "documents.jsonl"
+    census_jsonl.write_text(
+        json.dumps(
+            {
+                "nct_id": "NCT02222222",
+                "filename": "Prot_000.pdf",
+                "url": di.build_ctgov_large_doc_url("NCT02222222", "Prot_000.pdf"),
+                "http_status": 200,
+                "sha256": sha,
+                "bytes": 4096,
+                "doc_type": "protocol",
+                "version_label": "",
+                "version_date_as_printed": "",
+                "physical_pages": 4,
+                "pages_without_text": [],
+                "retrieved_at": "2026-11-14T00:00:00Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    page_map = tmp_path / "pages.jsonl"
+    page_map.write_text(
+        json.dumps({"sha256": sha, "pages": _clean_stat_pages(4)}) + "\n",
+        encoding="utf-8",
+    )
+    index_out = tmp_path / "index.jsonl"
+    profiles_out = tmp_path / "profiles.jsonl"
+
+    rc_ok = cli_mod.run_cli(
+        [
+            "--manifest",
+            str(beta_manifest),
+            "--ingest-census-jsonl",
+            str(census_jsonl),
+            "--page-map-jsonl",
+            str(page_map),
+            "--cache-dir",
+            str(tmp_path / "cache"),
+            "--index-out",
+            str(index_out),
+            "--profiles-out",
+            str(profiles_out),
+            "--offline",
+        ]
+    )
+    assert rc_ok == 0
+    profiles = [
+        json.loads(line)
+        for line in profiles_out.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [p["nct_id"] for p in profiles] == ["NCT02222222"]
+
+    # Holdout trial inside 'rows' still exits 2 when requested explicitly.
+    rc_audit = cli_mod.run_cli(
+        [
+            "--manifest",
+            str(beta_manifest),
+            "--nct-id",
+            "NCT09999999",
+            "--cache-dir",
+            str(tmp_path / "cache_audit"),
+            "--index-out",
+            str(tmp_path / "index_audit.jsonl"),
+            "--profiles-out",
+            str(tmp_path / "profiles_audit.jsonl"),
+        ]
+    )
+    assert rc_audit == 2

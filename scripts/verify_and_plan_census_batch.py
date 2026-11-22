@@ -92,7 +92,7 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def load_index_rows(path: Path) -> list[dict[str, Any]]:
-    """Load cohort index rows from ``outcomes/index.json`` or manifest JSON/JSONL."""
+    """Load cohort index rows from ``outcomes/index.json``, ``outcomes_bundles/index.json``, or manifest JSON/JSONL."""
     if path.suffix in {".jsonl", ".gz"} and path.name.endswith((".jsonl", ".jsonl.gz")):
         raw_rows = load_jsonl(path)
     else:
@@ -103,11 +103,13 @@ def load_index_rows(path: Path) -> list[dict[str, Any]]:
         elif isinstance(payload, dict):
             if isinstance(payload.get("data"), list):
                 raw_rows = payload["data"]
+            elif isinstance(payload.get("rows"), list):
+                raw_rows = payload["rows"]
             elif isinstance(payload.get("trials"), list):
                 raw_rows = payload["trials"]
             else:
                 raise CitationVerificationError(
-                    f"Index file {path} must contain a list under 'data' or 'trials'."
+                    f"Index file {path} must contain a list under 'data', 'rows', or 'trials'."
                 )
         else:
             raise CitationVerificationError(
@@ -124,6 +126,18 @@ def load_index_rows(path: Path) -> list[dict[str, Any]]:
             )
         rows.append(row)
     return rows
+
+
+def _row_primary_outcomes_count(row: Mapping[str, Any]) -> int | None:
+    """Resolve primary outcome count from ``primary_outcomes_count`` or ``n_primary_outcomes``."""
+    raw = (
+        row["primary_outcomes_count"]
+        if "primary_outcomes_count" in row and row["primary_outcomes_count"] is not None
+        else row.get("n_primary_outcomes")
+    )
+    if type(raw) is int:
+        return raw
+    return None
 
 
 def extract_audit_nct_ids(index_rows: Sequence[Mapping[str, Any]]) -> frozenset[str]:
@@ -578,17 +592,29 @@ def plan_incremental_cohort(
             )
         )
         if cache_hit:
-            # Verify primary_outcomes_count didn't grow since last census pass.
-            expected_k = row.get("primary_outcomes_count")
-            existing_indices = {
-                loc.get("primary_outcome_index")
-                for loc in primary_locs
-                if type(loc.get("primary_outcome_index")) is int
-            }
-            if type(expected_k) is int and expected_k > 0 and len(existing_indices) != expected_k:
-                partitions["amended_doc_or_outcome_delta"].append(nct_id)
-            else:
-                partitions["cached_complete"].append(nct_id)
+            # Verify cached outcome indices match exact 0..K-1 range and full 7-element grid.
+            expected_k = _row_primary_outcomes_count(row)
+            grid_locs = (
+                primary_locs
+                if effective_pass_role in {"primary", "ocr_recovery"}
+                else [loc for loc in nct_locs if loc.get("pass") == effective_pass_role]
+            )
+            by_outcome: dict[int, set[str]] = {}
+            for loc in grid_locs:
+                idx = loc.get("primary_outcome_index")
+                elem = loc.get("element")
+                if type(idx) is int and isinstance(elem, str) and elem in ELEMENTS:
+                    by_outcome.setdefault(idx, set()).add(elem)
+            existing_indices = set(by_outcome.keys())
+            if type(expected_k) is int and expected_k > 0:
+                expected_indices = set(range(expected_k))
+                all_elements = set(ELEMENTS)
+                if existing_indices != expected_indices or not all(
+                    by_outcome.get(i) == all_elements for i in range(expected_k)
+                ):
+                    partitions["amended_doc_or_outcome_delta"].append(nct_id)
+                    continue
+            partitions["cached_complete"].append(nct_id)
             continue
 
         if primary_locs:
@@ -714,13 +740,16 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             if r["in_audit"] is False and isinstance(r.get("nct_id"), str) and r["nct_id"]
         }
         if args.check_completeness:
-            expected_outcomes_by_nct = {
-                str(r["nct_id"]): int(r["primary_outcomes_count"])
-                for r in index_rows
-                if r["in_audit"] is False
-                and type(r.get("primary_outcomes_count")) is int
-                and int(r["primary_outcomes_count"]) >= 1
-            }
+            expected_outcomes_by_nct = {}
+            for r in index_rows:
+                if r["in_audit"] is not False:
+                    continue
+                nct_id = r.get("nct_id")
+                if not isinstance(nct_id, str) or not nct_id:
+                    continue
+                expected_k = _row_primary_outcomes_count(r)
+                if type(expected_k) is int and expected_k >= 1:
+                    expected_outcomes_by_nct[nct_id] = expected_k
 
     documents = load_jsonl(Path(args.documents))
     locations = load_jsonl(Path(args.locations))

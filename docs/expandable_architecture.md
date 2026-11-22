@@ -25,6 +25,27 @@ dashboard pipeline:
 - **Zero-touch `in_audit` holdout firewall:** Every module rejects
   `in_audit == True` trials unconditionally before any API query, CDN download,
   PDF parse, citation check, publication fetch, batch plan, or shard write.
+- **Namespace separation from existing `outcomes/` pipelines:**
+  - `data/outcomes/` belongs to `scripts/build_outcomes_beta.py` (`run.json`,
+    `summary.json`, `index.json` with `"rows"`, and `records/r00.json..r07.json`).
+  - `data/results_structure/` belongs to `scripts/build_results_structure.py`
+    (`SG2` subgroup-reporting family: `run.json`, `summary.json`, `records.json`).
+  - Module 3 writes exclusively to `data/outcomes_bundles/`
+    (`outcomes_bundles/index.json` + `outcomes_bundles/shards/{n}.json.gz`,
+    with `.gitignore` covering `data/outcomes_bundles/` and
+    `data/outcomes_bundles.partial/`). `write_outcomes_tree` refuses to
+    overwrite foreign directories (such as `data/outcomes/` or
+    `data/results_structure/`).
+  - Passing `--manifest data/outcomes/index.json`, `--index data/outcomes/index.json`,
+    or `--cohort-manifest data/outcomes/index.json` remains valid as a
+    **read-only input manifest** (`"rows"` + `"n_primary_outcomes"`), while
+    `--out-dir` targets `data/outcomes_bundles`.
+- **Private/offline research artifact governance:** AI-generated protocol/SAP
+  decision-rule census quotations and location rows are **private/offline
+  research artifacts** and are NOT published to the public site unless and
+  until the investigator explicitly decides otherwise after completing blinded
+  human review. All `in_audit == true` trials remain strictly quarantined from
+  all AI queries, downloads, caches, and outputs.
 
 ## 2. End-to-End Platform Dataflow
 
@@ -49,9 +70,9 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
         │       └─ Incremental sha256-keyed batch planner & budget-gated /swarm shards
         │
         └──► Module 3: src/outcomes_layout.py + scripts/build_outcomes_shards.py
-                ├─ Cohort-agnostic outcomes/index.json + outcomes/shards/{n}.json.gz
+                ├─ Cohort-agnostic outcomes_bundles/index.json + outcomes_bundles/shards/{n}.json.gz
                 ├─ Exact parity with src/site_layout.py (nct_number_mod, 256 shards)
-                └─ Atomic .partial staging + AuditFirewallError enforcement
+                └─ Atomic .partial staging + foreign-dir guard + AuditFirewallError
 ```
 
 ## 3. Module-by-Module Specification
@@ -97,7 +118,9 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
 - **CLI flags (`scripts/index_trial_documents.py`):**
   `--nct-id`, `--manifest` (required whenever `--nct-id` or
   `--ingest-census-jsonl` is supplied so every requested/ingested trial is
-  verified against the manifest's `in_audit == False` cohort),
+  verified against the manifest's `in_audit == False` cohort; accepts live
+  read-only `data/outcomes/index.json` `"rows"` as well as `"data"`,
+  `"trials"`, JSON arrays, and JSONL),
   `--ingest-census-jsonl`, `--local-pdf-dir`, `--page-map-jsonl`,
   `--cache-dir`, `--index-out`, `--profiles-out`, `--min-selected-pages`,
   `--max-selected-pages`, `--rate-limit-sec`, `--limit`, `--offline`,
@@ -146,21 +169,35 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
 
 - **Files:** `src/outcomes_layout.py`, `scripts/build_outcomes_shards.py`,
   `tests/test_outcomes_layout.py`.
+- **Output directory & foreign-directory guard:** Writes to
+  `data/outcomes_bundles/` (`outcomes_bundles/index.json` +
+  `outcomes_bundles/shards/{n}.json.gz`, ignored in `.gitignore` via
+  `data/outcomes_bundles/` and `data/outcomes_bundles.partial/`). Never writes
+  to `data/outcomes/` (owned by `scripts/build_outcomes_beta.py`,
+  `records/r00..r07.json`) or `data/results_structure/` (owned by
+  `scripts/build_results_structure.py`, `SG2`); `write_outcomes_tree` refuses
+  to overwrite foreign directories and cleans `<out_dir>.partial` after a
+  successful swap (retaining it only if rollback restoration fails).
+  `--cohort-manifest data/outcomes/index.json` remains valid as a **read-only
+  input manifest**, while `--out-dir` targets `data/outcomes_bundles`.
 - **Sharding & canonical encoding:** `outcomes_shard_of` uses `nct_number_mod`
-  over `DEFAULT_SHARDS = 256` shards (`shards/{n}.json.gz`), matching
-  `src/site_layout.py` exactly (`SHARD_VECTORS`). `encode_json_text` keeps
-  `"data"` last (`INDEX_HEADERS`, `SHARD_HEADERS`); `encode_gz_bytes` writes
-  deterministic gzip bytes (`compresslevel=9, mtime=0`, OS byte `0xff`).
-- **Decoupled multi-cohort index (`outcomes/index.json`):** `derive_cohorts`
-  assigns sorted cohort tags from `STANDARD_COHORTS` (`industry_phase3`, `nih`,
-  `cooperative_group`, `academic`, `us_federal_other`,
-  `non_profit_foundation`, `all_large_docs`), keeping per-trial rows compact
-  (`INDEX_ROW_KEYS`).
+  over `DEFAULT_SHARDS = 256` shards (`outcomes_bundles/shards/{n}.json.gz`),
+  matching `src/site_layout.py` exactly (`SHARD_VECTORS`). `encode_json_text`
+  keeps `"data"` last (`INDEX_HEADERS`, `SHARD_HEADERS`); `encode_gz_bytes`
+  writes deterministic gzip bytes (`compresslevel=9, mtime=0`, OS byte `0xff`).
+- **Decoupled multi-cohort index (`outcomes_bundles/index.json`):**
+  `derive_cohorts` assigns sorted cohort tags from `STANDARD_COHORTS`
+  (`industry_phase3`, `nih`, `cooperative_group`, `academic`,
+  `us_federal_other`, `non_profit_foundation`, `all_large_docs`), keeping
+  per-trial rows compact (`INDEX_ROW_KEYS`).
 - **Unified shard record (`SHARD_RECORD_KEYS`):** Combines `reported_results`
   (`extract_reported_results`), `document_profile` (`normalize_document_profile`),
   `decision_rule_locations` (`normalize_decision_rule_locations`, retaining
   append-only `primary_pass`, `second_pass`, `ocr_recovery_pass`, and
-  `adjudication_pass` alongside deterministic `effective_pass`, and rejecting
+  `adjudication_pass` alongside deterministic `effective_pass`, enforcing
+  `CITATION_REQUIRED_STATUSES` where `FOUND`, `AMBIGUOUS`, and `NOT_APPLICABLE`
+  each require `>= 1` citation across normalization and on-disk validation
+  while `NOT_FOUND` and `NO_DOCUMENT` forbid citations, and rejecting
   `NO_DOCUMENT` / `census_status="no_document"` whenever posted documents are
   established by `document_profile`, manifest/trial `protocol`/`sap` flags or
   `largeDocs`, or `longitudinal_provenance`), and
@@ -174,7 +211,8 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
   `--trials`, `--cohort-manifest`, `--documents`, `--locations`,
   `--provenance`, `--population-parsed`, `--extracted-at`, `--now-utc`,
   `--source-pipeline-commit`, `--allow-null-commit`, `--require-commit`,
-  `--shards`, `--out-dir`, `--report`, `--check`.
+  `--shards`, `--out-dir` (default `data/outcomes_bundles`), `--report`,
+  `--check`.
 
 ### Module 4 — Mechanical Citation Verifier, Longitudinal Provenance & Batch Planner
 
@@ -195,7 +233,9 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
   `DocumentPageExtractor`).
 - **Corpus & coverage invariants:** `verify_document_record`,
   `verify_location_record`, `verify_trial_completeness`, and
-  `verify_census_corpus` enforce `NOT_FOUND` requiring `pages_not_searched == []`
+  `verify_census_corpus` enforce `CITATION_REQUIRED_STATUSES` (`FOUND`,
+  `AMBIGUOUS`, and `NOT_APPLICABLE` each require `>= 1` citation, matching
+  Module 3), `NOT_FOUND` requiring `pages_not_searched == []`
   in exhaustive mode, `UNREADABLE` validity checks, `NO_DOCUMENT` rejection when
   posted documents exist in `documents.jsonl` or manifest/index flags
   (`manifest_has_documents` / `expected_has_documents_by_nct`, emitting
@@ -239,18 +279,24 @@ ClinicalTrials.gov API v2 + Posted PDFs + PubMed / Europe PMC
 - **Subcommands:** `verify` and `plan` (exit `0` ok, `1` verification or budget
   gate failure, `2` `AuditHoldoutViolationError`).
 - **Incremental `sha256` cache & `UNREADABLE` partitioning:**
-  `plan_incremental_cohort` computes `compute_doc_sha256_tuple` and
+  `plan_incremental_cohort` accepts live read-only `data/outcomes/index.json`
+  (`"rows"` + `"n_primary_outcomes"`) alongside `"data"` / `"trials"` +
+  `"primary_outcomes_count"`, computes `compute_doc_sha256_tuple` and
   `compute_doc_set_fingerprint`, resolves per-cell effective status in
   precedence order (`primary -> ocr_recovery -> adjudication`) when identifying
   unresolved `UNREADABLE` targets and cache hits, skips already-verified
-  `(nct_id, pass_role, doc_sha256_tuple)` trials at `$0`, detects amended PDFs,
+  `(nct_id, pass_role, doc_sha256_tuple)` trials at `$0` only when the
+  full-grid pass covers exact `set(range(expected_k))` with all 7 elements per
+  outcome (routing index mismatches such as `{0, 2}` for `expected_k=2` to
+  `amended_doc_or_outcome_delta`), detects amended PDFs,
   partitions `UNREADABLE` trials via `classify_unreadable_subtype` into
   `image_only_scan`, `garbled_cmap`, and terminal `$0` `redacted_cci_ppd`,
   computes `max_launchable_shards` and `launch_approved` against
   `--budget-cap-usd`, and emits ready-to-launch `/swarm` shard manifests.
   In `verify` mode, supplying `--index` also populates
   `expected_has_documents_by_nct` from each `in_audit == False` row's
-  `protocol` / `sap` flags.
+  `protocol` / `sap` flags and `expected_outcomes_by_nct` from
+  `primary_outcomes_count` / `n_primary_outcomes`.
 
 ## 4. Verification Commands
 

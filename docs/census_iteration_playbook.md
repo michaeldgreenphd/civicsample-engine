@@ -15,18 +15,38 @@ and `all_large_docs`) under the Carbon -> Neon `/swarm` operating model.
    `AuditHoldoutViolationError` in `src/citation_verifier.py`,
    `AuditFirewallError` in `src/outcomes_layout.py`).
 2. **Incremental `sha256`-keyed work skipping:** Trials already verified for
-   `(nct_id, pass_role, doc_sha256_tuple)` are skipped at `$0` unless a posted
-   PDF's `sha256` changes or registered primary outcomes change.
+   `(nct_id, pass_role, doc_sha256_tuple)` are skipped at `$0` only when the
+   full-grid pass covers exact `set(range(expected_k))` with all 7 elements per
+   outcome and the posted PDF `sha256` tuple is unchanged.
 3. **Strict single-page verbatim citations:** Every quotation must match one
    physical page (`match_quotation_on_page` in `src/citation_verifier.py`),
    carry no ellipses (`has_ellipsis`), and never cross a page boundary
-   (`cross_page_span_violation`).
+   (`cross_page_span_violation`). Under `CITATION_REQUIRED_STATUSES`, `FOUND`,
+   `AMBIGUOUS`, and `NOT_APPLICABLE` each require `>= 1` citation in both
+   Module 4 verification and Module 3 normalization / on-disk validation.
 4. **Neutral-language discipline:** All commentary fields (`note`) must pass
    `scan_neutral_language` with zero evaluative, spin, or FDAAA compliance
    claims. Verbatim `quotation` and `statement_verbatim` strings remain exact.
 5. **Append-only pass history:** `primary`, `second`, `ocr_recovery`, and
    `adjudication` passes coexist in `locations.jsonl` keyed by `"pass"`. Never
    overwrite an earlier pass in place.
+6. **Private/offline research governance & namespace separation:**
+   - AI-generated protocol/SAP decision-rule census quotations and location
+     rows are **private/offline research artifacts** and are NOT published to
+     the public site unless and until the investigator explicitly decides
+     otherwise after completing blinded human review (`in_audit == true` trials
+     remain strictly quarantined from all AI queries, downloads, caches, and
+     outputs).
+   - `data/outcomes/` belongs to `scripts/build_outcomes_beta.py`
+     (`records/r00..r07.json`) and `data/results_structure/` belongs to
+     `scripts/build_results_structure.py` (`SG2`). Module 3 outputs live under
+     `data/outcomes_bundles/` (`outcomes_bundles/index.json` +
+     `outcomes_bundles/shards/{n}.json.gz`, ignored in `.gitignore` via
+     `data/outcomes_bundles/` and `data/outcomes_bundles.partial/`), and
+     `write_outcomes_tree` refuses to overwrite foreign directories.
+     `--manifest data/outcomes/index.json` and `--index data/outcomes/index.json`
+     remain valid as **read-only input manifests**, while `--out-dir` targets
+     `data/outcomes_bundles`.
 
 ## 2. Three-Bucket `UNREADABLE` Recovery Triage
 
@@ -80,6 +100,10 @@ Always pass `--manifest` with `scripts/index_trial_documents.py`, including when
 targeting specific trials via `--nct-id` or bridging legacy records via
 `--ingest-census-jsonl`; omitting `--manifest` or referencing a trial outside
 the manifest's `in_audit == False` cohort raises `AuditHoldoutError` (exit `2`).
+Passing `--manifest data/outcomes/index.json` (or `--index data/outcomes/index.json`
+below) is supported strictly as a **read-only input manifest** (`"rows"` +
+`"n_primary_outcomes"` from `scripts/build_outcomes_beta.py`, alongside
+`"data"` / `"trials"` + `"primary_outcomes_count"`).
 
 Then compute the incremental batch plan and verify that `launch_approved` is
 `true` under your budget cap:
@@ -142,8 +166,9 @@ python scripts/verify_and_plan_census_batch.py plan \
 
 1. Each worker reads the pre-sliced `pages_selected` first.
 2. If all 7 elements (`ELEMENTS`) for every registered primary outcome are
-   resolved (`FOUND` or `NOT_APPLICABLE`), the worker records citations and
-   stops.
+   resolved (`FOUND` or `NOT_APPLICABLE`), the worker records `>= 1` verbatim
+   citation for every row in `CITATION_REQUIRED_STATUSES` (`FOUND`,
+   `AMBIGUOUS`, `NOT_APPLICABLE`) and stops.
 3. If any element remains unresolved, the worker **must** search
    `pages_deferred` so `pages_searched == "all"` and `pages_not_searched == []`
    before emitting `status = "NOT_FOUND"`. In default publication mode,
@@ -197,20 +222,36 @@ A shard is eligible to land only when `verify` exits `0` (`ok == true`,
 2. Assemble factual longitudinal provenance per trial with
    `src/longitudinal_provenance.py` (`assemble_longitudinal_provenance` /
    `to_outcomes_layout_provenance`).
-3. Build and validate the sharded outcomes tree atomically via Module 3:
+3. Build and validate the private/offline sharded outcomes bundle tree
+   atomically via Module 3 into `data/outcomes_bundles/`
+   (`outcomes_bundles/index.json` + `outcomes_bundles/shards/{n}.json.gz`,
+   ignored in `.gitignore` via `data/outcomes_bundles/` and
+   `data/outcomes_bundles.partial/`). Never point `--out-dir` at
+   `data/outcomes/` (owned by `scripts/build_outcomes_beta.py`,
+   `records/r00..r07.json`) or `data/results_structure/` (owned by
+   `scripts/build_results_structure.py`, `SG2`) — `write_outcomes_tree` refuses
+   to overwrite foreign directories, while `--cohort-manifest data/outcomes/index.json`
+   remains valid as a **read-only input manifest**:
 
 ```bash
 python scripts/build_outcomes_shards.py \
   --trials data/demographics.json.gz \
-  --cohort-manifest data/outcomes_manifest.json \
+  --cohort-manifest data/outcomes/index.json \
   --documents data/trial_document_profiles.jsonl \
   --locations rule-census-20261114/locations.jsonl \
   --provenance data/longitudinal_provenance.jsonl \
-  --out-dir data/outcomes \
+  --out-dir data/outcomes_bundles \
   --report /tmp/outcomes_build_report.json
 
-python scripts/build_outcomes_shards.py --check data/outcomes
+python scripts/build_outcomes_shards.py --check data/outcomes_bundles
 ```
+
+> **Governance note:** AI-generated protocol/SAP decision-rule census
+> quotations and location rows in `data/outcomes_bundles/` are
+> **private/offline research artifacts** and are NOT published to the public
+> site unless and until the investigator explicitly decides otherwise after
+> completing blinded human review. All `in_audit == true` trials remain
+> strictly quarantined from all AI queries, downloads, caches, and outputs.
 
 ## 5. Expanding to New Cohorts
 

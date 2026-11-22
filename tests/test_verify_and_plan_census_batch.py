@@ -1014,3 +1014,339 @@ def test_cli_verify_rejects_no_document_using_index_document_flags(tmp_path: Pat
     rep_ok = json.loads(report_path.read_text(encoding="utf-8"))
     assert rep_ok["ok"] is True
     assert rep_ok["error_count"] == 0
+
+
+def _complete_locations_for_outcome(
+    nct_id: str,
+    filename: str,
+    sha256: str,
+    *,
+    outcome_index: int,
+    pass_name: str = "primary",
+) -> list[dict[str, Any]]:
+    rows = _complete_primary_locations(nct_id, filename, sha256)
+    for row in rows:
+        row["primary_outcome_index"] = outcome_index
+        row["primary_outcome_title"] = f"Primary Endpoint {outcome_index}"
+        row["pass"] = pass_name
+    return rows
+
+
+def test_c8_cached_outcome_index_set_and_grid_check() -> None:
+    """C8: Cached outcome indices must match exact set(range(expected_k)), not just cardinality."""
+    index_rows = [
+        {
+            "nct_id": "NCT00000101",
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "primary_outcomes_count": 2,
+        },
+        {
+            "nct_id": "NCT00000102",
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "primary_outcomes_count": 2,
+        },
+        {
+            "nct_id": "NCT00000103",
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "n_primary_outcomes": 2,
+        },
+        {
+            "nct_id": "NCT00000104",
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "primary_outcomes_count": 2,
+        },
+    ]
+    documents = [
+        _doc("NCT00000101", "Prot_000.pdf", SHA_1),
+        _doc("NCT00000102", "Prot_000.pdf", SHA_2),
+        _doc("NCT00000103", "Prot_000.pdf", SHA_3),
+        _doc("NCT00000104", "Prot_000.pdf", SHA_4),
+    ]
+    # NCT00000101: indices {0, 2} for expected_k=2 (same len == 2, wrong index set!) -> delta.
+    locs_101 = _complete_locations_for_outcome(
+        "NCT00000101", "Prot_000.pdf", SHA_1, outcome_index=0
+    ) + _complete_locations_for_outcome(
+        "NCT00000101", "Prot_000.pdf", SHA_1, outcome_index=2
+    )
+    # NCT00000102: exact indices {0, 1} for expected_k=2 -> cached_complete.
+    locs_102 = _complete_locations_for_outcome(
+        "NCT00000102", "Prot_000.pdf", SHA_2, outcome_index=0
+    ) + _complete_locations_for_outcome(
+        "NCT00000102", "Prot_000.pdf", SHA_2, outcome_index=1
+    )
+    # NCT00000103: indices {0, 2} with n_primary_outcomes=2 -> delta.
+    locs_103 = _complete_locations_for_outcome(
+        "NCT00000103", "Prot_000.pdf", SHA_3, outcome_index=0
+    ) + _complete_locations_for_outcome(
+        "NCT00000103", "Prot_000.pdf", SHA_3, outcome_index=2
+    )
+    # NCT00000104: primary has only outcome 0 (missing outcome 1) while ocr_recovery has all 7
+    # elements for outcome 0 -> must NOT be masked into cached_complete in recover-unreadable mode.
+    locs_104 = _complete_locations_for_outcome(
+        "NCT00000104", "Prot_000.pdf", SHA_4, outcome_index=0, pass_name="primary"
+    ) + _complete_locations_for_outcome(
+        "NCT00000104", "Prot_000.pdf", SHA_4, outcome_index=0, pass_name="ocr_recovery"
+    )
+    all_locs = locs_101 + locs_102 + locs_103 + locs_104
+
+    plan_delta = plan_incremental_cohort(
+        index_rows,
+        documents=documents,
+        locations=all_locs,
+        mode="incremental-delta",
+    )
+    assert plan_delta["partitions"]["cached_complete"] == ["NCT00000102"]
+    assert plan_delta["partitions"]["amended_doc_or_outcome_delta"] == [
+        "NCT00000101",
+        "NCT00000103",
+        "NCT00000104",
+    ]
+    assert plan_delta["shards"][0]["nct_ids"] == [
+        "NCT00000101",
+        "NCT00000103",
+        "NCT00000104",
+    ]
+
+    plan_ocr = plan_incremental_cohort(
+        index_rows,
+        documents=documents,
+        locations=all_locs,
+        mode="recover-unreadable",
+    )
+    assert plan_ocr["partitions"]["cached_complete"] == ["NCT00000102"]
+    assert plan_ocr["partitions"]["amended_doc_or_outcome_delta"] == [
+        "NCT00000101",
+        "NCT00000103",
+        "NCT00000104",
+    ]
+
+    # Non-primary full-grid pass (pass_role="second") also enforces exact set(range(expected_k)).
+    second_locs = (
+        _complete_locations_for_outcome(
+            "NCT00000101", "Prot_000.pdf", SHA_1, outcome_index=0, pass_name="second"
+        )
+        + _complete_locations_for_outcome(
+            "NCT00000101", "Prot_000.pdf", SHA_1, outcome_index=2, pass_name="second"
+        )
+        + _complete_locations_for_outcome(
+            "NCT00000102", "Prot_000.pdf", SHA_2, outcome_index=0, pass_name="second"
+        )
+        + _complete_locations_for_outcome(
+            "NCT00000102", "Prot_000.pdf", SHA_2, outcome_index=1, pass_name="second"
+        )
+    )
+    plan_second = plan_incremental_cohort(
+        index_rows[:2],
+        documents=documents[:2],
+        locations=second_locs,
+        mode="incremental-delta",
+        pass_role="second",
+    )
+    assert plan_second["partitions"]["cached_complete"] == ["NCT00000102"]
+    assert plan_second["partitions"]["amended_doc_or_outcome_delta"] == ["NCT00000101"]
+
+
+def test_outcomes_beta_rows_index_support_plan_and_verify(tmp_path: Path) -> None:
+    """Live outcomes_beta index.json ('rows' + 'n_primary_outcomes') works read-only in plan & verify."""
+    index_path = tmp_path / "index.json"
+    docs_path = tmp_path / "documents.jsonl"
+    locs_path = tmp_path / "locations.jsonl"
+    pages_dir = tmp_path / "pages"
+    plan_path = tmp_path / "plan.json"
+    report_path = tmp_path / "report.json"
+
+    index_path.write_text(
+        json.dumps(
+            {
+                "run_id": "outcomes-2026-11-09-d41f32ec4d",
+                "schema_version": 1,
+                "rows": [
+                    {
+                        "nct_id": "NCT01234567",
+                        "in_audit": False,
+                        "protocol": True,
+                        "sap": False,
+                        "n_primary_outcomes": 2,
+                    },
+                    {
+                        "nct_id": "NCT01234568",
+                        "in_audit": False,
+                        "protocol": True,
+                        "sap": False,
+                        "n_primary_outcomes": 1,
+                    },
+                    {
+                        "nct_id": "NCT09999999",
+                        "in_audit": True,
+                        "protocol": True,
+                        "sap": True,
+                        "n_primary_outcomes": 1,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load_index_rows(index_path)
+    assert [r["nct_id"] for r in loaded] == ["NCT01234567", "NCT01234568", "NCT09999999"]
+
+    _write_jsonl(docs_path, [_doc("NCT01234567", "Prot_000.pdf", SHA_1, physical_pages=2)])
+    pages_dir.mkdir(parents=True)
+    (pages_dir / f"{SHA_1}.json").write_text(
+        json.dumps(
+            {
+                "pages": [
+                    "Title page",
+                    "9 Statistical Methods\nPrimary endpoint analyzed in the ITT population.",
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # With only outcome 0 present for NCT01234567 (n_primary_outcomes=2), plan puts it in delta
+    # and verify --check-completeness fails for missing outcome 1.
+    locs_only_0 = _complete_locations_for_outcome(
+        "NCT01234567", "Prot_000.pdf", SHA_1, outcome_index=0
+    )
+    _write_jsonl(locs_path, locs_only_0)
+
+    rc_plan_incomplete = main(
+        [
+            "plan",
+            "--index",
+            str(index_path),
+            "--documents",
+            str(docs_path),
+            "--locations",
+            str(locs_path),
+            "--mode",
+            "incremental-delta",
+            "--out-plan",
+            str(plan_path),
+        ]
+    )
+    assert rc_plan_incomplete == 0
+    plan_inc = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan_inc["excluded_in_audit_count"] == 1
+    assert plan_inc["partitions"]["amended_doc_or_outcome_delta"] == ["NCT01234567"]
+    assert plan_inc["partitions"]["unstarted_primary"] == ["NCT01234568"]
+    assert plan_inc["partitions"]["cached_complete"] == []
+
+    # Verify with --check-completeness catches missing outcome 1 from n_primary_outcomes=2.
+    single_row_index = tmp_path / "single_rows_index.json"
+    single_row_index.write_text(
+        json.dumps(
+            {
+                "run_id": "outcomes-2026-11-09-d41f32ec4d",
+                "schema_version": 1,
+                "rows": [
+                    {
+                        "nct_id": "NCT01234567",
+                        "in_audit": False,
+                        "protocol": True,
+                        "sap": False,
+                        "n_primary_outcomes": 2,
+                    },
+                    {
+                        "nct_id": "NCT09999999",
+                        "in_audit": True,
+                        "protocol": True,
+                        "sap": True,
+                        "n_primary_outcomes": 1,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    rc_verify_missing = main(
+        [
+            "verify",
+            "--index",
+            str(single_row_index),
+            "--documents",
+            str(docs_path),
+            "--locations",
+            str(locs_path),
+            "--pages-dir",
+            str(pages_dir),
+            "--check-completeness",
+            "--report-out",
+            str(report_path),
+        ]
+    )
+    assert rc_verify_missing == 1
+    rep_missing = json.loads(report_path.read_text(encoding="utf-8"))
+    assert rep_missing["ok"] is False
+    assert {i["code"] for i in rep_missing["issues"]} == {"TRIAL_GRID_MISSING_CELL"}
+    assert rep_missing["error_count"] == len(ELEMENTS)
+
+    # With both outcomes {0, 1} present, plan caches NCT01234567 and verify passes cleanly.
+    locs_0_and_1 = locs_only_0 + _complete_locations_for_outcome(
+        "NCT01234567", "Prot_000.pdf", SHA_1, outcome_index=1
+    )
+    _write_jsonl(locs_path, locs_0_and_1)
+
+    rc_plan_complete = main(
+        [
+            "plan",
+            "--index",
+            str(index_path),
+            "--documents",
+            str(docs_path),
+            "--locations",
+            str(locs_path),
+            "--mode",
+            "incremental-delta",
+            "--out-plan",
+            str(plan_path),
+        ]
+    )
+    assert rc_plan_complete == 0
+    plan_ok = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan_ok["partitions"]["cached_complete"] == ["NCT01234567"]
+    assert plan_ok["partitions"]["unstarted_primary"] == ["NCT01234568"]
+    assert plan_ok["partitions"]["amended_doc_or_outcome_delta"] == []
+
+    rc_verify_ok = main(
+        [
+            "verify",
+            "--index",
+            str(single_row_index),
+            "--documents",
+            str(docs_path),
+            "--locations",
+            str(locs_path),
+            "--pages-dir",
+            str(pages_dir),
+            "--check-completeness",
+            "--report-out",
+            str(report_path),
+        ]
+    )
+    assert rc_verify_ok == 0
+    rep_ok = json.loads(report_path.read_text(encoding="utf-8"))
+    assert rep_ok["ok"] is True
+    assert rep_ok["error_count"] == 0
+
+    # Explicit in_audit trial from 'rows' index still exits 2.
+    rc_audit = main(
+        [
+            "plan",
+            "--index",
+            str(index_path),
+            "--nct-id",
+            "NCT09999999",
+        ]
+    )
+    assert rc_audit == 2
