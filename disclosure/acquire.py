@@ -268,7 +268,21 @@ def logged_json(
             return held
     (status, _, body, error), attempts = polite_get(get, throttle, url, wanted_params)
     if status is None:
-        return log.get(key)
+        rec_err: dict[str, Any] = {
+            'key': key,
+            'url': url,
+            'params': wanted_params,
+            'tag': tag or {},
+            'fetched_at': now_utc(),
+            'status': None,
+            'http_status': None,
+            'attempts': attempts,
+            'response_sha256': sha256_bytes(b''),
+            'body': None,
+            'error': error or 'transport_or_timeout_error',
+        }
+        log.put(rec_err)
+        return rec_err
     parsed: Any = None
     body_sha = sha256_bytes(body) if body else sha256_bytes(b'')
     if body:

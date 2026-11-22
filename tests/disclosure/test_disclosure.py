@@ -430,6 +430,99 @@ def test_human_review_overrides_statements_orphans_and_private_key_stripping(
     assert 'Curator Jane' not in dumped
 
 
+def test_indeterminate_ctgov_results_review_and_human_rejected_epmc_hits(
+    tmp_path: Path,
+    frozen_cache: A.FrozenCache,
+    built_files: dict[str, Any],
+) -> None:
+    ctgov_04 = next(
+        x for x in built_files['links.json']['links']
+        if x['nct_id'] == 'NCT09990004' and x['source_route'] == 'ctgov_results'
+    )
+    epmc_06 = next(
+        x for x in built_files['links.json']['links']
+        if x['nct_id'] == 'NCT09990006' and x['source_route'] == 'literature_search'
+    )
+
+    rev_csv = tmp_path / 'reviews_indeterminate.csv'
+    with rev_csv.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.REVIEW_COLUMNS)
+        w.writerow([ctgov_04['link_id'], 'NCT09990004', 'Dr. Reviewer', '2026-11-02', 'indeterminate', 'Pending QC verification'])
+        w.writerow([epmc_06['link_id'], 'NCT09990006', 'Dr. Reviewer', '2026-11-02', 'rejected_false_positive', 'Mentions unrelated trial'])
+
+    res = ART.build_artifacts(
+        frozen_cache,
+        reviews_path=rev_csv,
+        statements_path=ROOT / 'disclosure' / 'documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv',
+        producer=cli_build.producer_metadata(),
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+    )
+    assert ART.check_contract(res) == []
+    assert _cell_of(res, 'NCT09990004', 'ctgov_results')['state'] == 'candidate_awaiting_review'
+    assert _timeline_of(res, 'NCT09990004')['discordance']['state'] == 'coverage_incomplete_or_awaiting_review'
+
+    epmc_cell = _cell_of(res, 'NCT09990006', 'literature_search')
+    assert epmc_cell['state'] == 'no_candidate_in_completed_scope'
+    assert 'rejected as false positives by human review' in epmc_cell['reason']
+    assert '0 publications mentioning' not in epmc_cell['reason']
+
+
+def test_transport_timeout_status_none_logs_search_incomplete_and_retries_on_resume(tmp_path: Path) -> None:
+    attempts = [0]
+
+    def flaky_get(url: str, params: dict[str, Any] | None) -> A.Response:
+        if url == f'{A.CTGOV_API}/version':
+            return F._json_resp({'apiVersion': '2.0.5', 'dataTimestamp': '2026-11-01T08:00:00'})
+        if 'NCT09990001' in url and attempts[0] < A.MAX_ATTEMPTS:
+            attempts[0] += 1
+            return None, {}, b'', 'TimeoutError: simulated socket timeout'
+        return F.stub_get()(url, params)
+
+    cache_dir = tmp_path / 'timeout_cache'
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    ct_log = A.ResponseLog(A.raw_log_path(cache_dir, 'ctgov'))
+    lit_log = A.ResponseLog(A.raw_log_path(cache_dir, 'literature'))
+    fda_log = A.ResponseLog(A.raw_log_path(cache_dir, 'openfda'))
+
+    # Run 1: NCT09990001 fails all 4 attempts with status=None
+    res1 = A.fetch_ctgov_studies(['NCT09990001'], ct_log, flaky_get, throttle, day='2026-11-01')
+    assert res1 == {'studies_answered': 0, 'studies_unanswered': 1}
+    assert ct_log.get('ctgov/study/NCT09990001') is not None
+    assert ct_log.get('ctgov/study/NCT09990001')['status'] is None  # type: ignore[index]
+    assert ct_log.settled('ctgov/study/NCT09990001') is None
+
+    # Also fail EPMC and openFDA with transport status=None
+    def always_timeout_get(url: str, params: dict[str, Any] | None) -> A.Response:
+        return None, {}, b'', 'ConnectionError: offline'
+
+    A.fetch_literature(['NCT09990001'], {'NCT09990001': None}, lit_log, always_timeout_get, throttle)
+    A.fetch_openfda(['NCT09990001'], {'NCT09990001': None}, fda_log, always_timeout_get, throttle)
+    A.freeze_cache(cache_dir, ['NCT09990001'], frozen_at=F.GENERATED_AT)
+
+    built_timeout = ART.build_artifacts(
+        A.load_frozen_cache(cache_dir),
+        reviews_path=ROOT / 'disclosure' / 'reviews.csv',
+        statements_path=ROOT / 'disclosure' / 'documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv',
+        producer=cli_build.producer_metadata(),
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+    )
+    assert ART.check_contract(built_timeout) == []
+    # Every attempted-but-timed-out route MUST be `search_incomplete_or_blocked`, NEVER `not_searched`!
+    for route in ('ctgov_results', 'registry_references', 'literature_search', 'openfda_drugsfda'):
+        assert _cell_of(built_timeout, 'NCT09990001', route)['state'] == 'search_incomplete_or_blocked', route
+
+    # Run 2 (resume): because status=None is unsettled, fetch_ctgov_studies retries and succeeds!
+    res2 = A.fetch_ctgov_studies(['NCT09990001'], ct_log, flaky_get, throttle, day='2026-11-01')
+    assert res2 == {'studies_answered': 1, 'studies_unanswered': 0}
+    assert ct_log.settled('ctgov/study/NCT09990001') is not None
+    assert ct_log.settled('ctgov/study/NCT09990001')['status'] == 200  # type: ignore[index]
+
+
 def test_malformed_reviews_and_statements_raise_immediately(tmp_path: Path) -> None:
     bad_rev = tmp_path / 'bad_reviews.csv'
     bad_rev.write_text(

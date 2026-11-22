@@ -122,7 +122,7 @@ def ctgov_results_cell(
     has_results = body.get('hasResults')
     rs_mod = body.get('resultsSection')
     live = _active_links(route_links)
-    confirmed = [x for x in live if x['automated_validation'] == 'identifier_confirmed']
+    confirmed = [x for x in live if x['automated_validation'] == 'identifier_confirmed' and x['review_status'] != 'indeterminate']
     if confirmed:
         reviewed = sum(1 for x in confirmed if x['review_status'] != 'unreviewed')
         return _cell(
@@ -131,6 +131,14 @@ def ctgov_results_cell(
             f'retrieved study record carries a posted resultsSection ({reviewed}/{len(confirmed)} human-reviewed)',
             has_results=True,
             n_links=len(confirmed),
+        )
+    if live:
+        return _cell(
+            route,
+            'candidate_awaiting_review',
+            f'{len(live)} CT.gov results link(s) marked indeterminate or awaiting settled human review',
+            has_results=bool(has_results),
+            n_candidates=len(live),
         )
     if has_results is True and (not isinstance(rs_mod, dict) or not rs_mod):
         return _cell(
@@ -305,14 +313,33 @@ def literature_search_cell(
             hit_count=hit_count,
         )
 
+    n_human_rejected = sum(1 for x in route_links if x['review_status'] == 'rejected_false_positive')
     n_set_aside = sum(1 for x in route_links if x['automated_validation'] == 'rejected_by_rule')
-    msg = (
-        f'Europe PMC search completed ({hit_count} hit(s)); {n_set_aside} hit(s) lacked an exact {nct_id} '
-        'token in retrieved fields and were rejected by rule'
-        if n_set_aside
-        else f'Europe PMC search completed with 0 publications mentioning {nct_id}'
+    if n_human_rejected and not n_set_aside:
+        msg = (
+            f'Europe PMC search completed ({hit_count} hit(s)); all {n_human_rejected} candidate '
+            'publication(s) were rejected as false positives by human review'
+        )
+    elif n_set_aside and n_human_rejected:
+        msg = (
+            f'Europe PMC search completed ({hit_count} hit(s)); {n_set_aside} hit(s) rejected by rule '
+            f'and {n_human_rejected} rejected as false positives by human review'
+        )
+    elif n_set_aside:
+        msg = (
+            f'Europe PMC search completed ({hit_count} hit(s)); {n_set_aside} hit(s) lacked an exact {nct_id} '
+            'token in retrieved fields and were rejected by rule'
+        )
+    else:
+        msg = f'Europe PMC search completed with 0 publications mentioning {nct_id}'
+    return _cell(
+        route,
+        'no_candidate_in_completed_scope',
+        msg,
+        hit_count=hit_count,
+        n_rejected_by_rule=n_set_aside,
+        n_rejected_by_human_review=n_human_rejected,
     )
-    return _cell(route, 'no_candidate_in_completed_scope', msg, hit_count=hit_count, n_rejected_by_rule=n_set_aside)
 
 
 def openfda_drugsfda_cell(
@@ -393,14 +420,16 @@ def openfda_drugsfda_cell(
             planned_drugs=drugs,
         )
 
+    n_human_rejected = sum(1 for x in route_links if x['review_status'] == 'rejected_false_positive')
     n_set_aside = sum(1 for x in route_links if x['automated_validation'] == 'rejected_by_rule')
     return _cell(
         route,
         'no_candidate_in_completed_scope',
         f'openFDA Drugs@FDA search completed across NCT ID and {len(drugs)} drug candidate(s) with '
-        f'zero live candidates ({n_set_aside} rejected by rule)',
+        f'zero live candidates ({n_set_aside} rejected by rule, {n_human_rejected} rejected by human review)',
         planned_drugs=drugs,
         n_rejected_by_rule=n_set_aside,
+        n_rejected_by_human_review=n_human_rejected,
     )
 
 
