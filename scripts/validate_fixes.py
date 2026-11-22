@@ -117,6 +117,9 @@ Tests:
  40. NCT99000158 — pooled race labels ("Multiracial/Other", "Black/mixed")
      beside a slash combination of races the table names alone
      ("White/Asian") (fictional study)
+ 41. NCT99000159 — slash labels naming a subgroup beside the category alone,
+     in both orders ("African/Black", "Black/African"), and South Asian
+     peoples ("Indian/Pakistani") (fictional study)
 
 Studies 7-9 also assert their expected race block and raceBreakdown
 (EXPECTED_RACE); study 10 asserts its race and sex blocks
@@ -167,6 +170,7 @@ Every study is read as src/extract_all reads it: through
 src/baseline_overrides.apply_baseline_override, which changes study 39 only.
 Study 40 asserts its race totals and the rows flagged pooled_race_label and
 multirace_slash (EXPECTED_POOLED).
+Study 41 asserts its race totals and subcategory totals (EXPECTED_SLASH_SUBCATEGORY).
 A mismatch stops the harness.
 """
 import json
@@ -1255,11 +1259,39 @@ MOCK_NCT99000158 = _make_study(
     total_participants=100,
 )
 
+# ---------- NCT99000159 (fictional): the subcategory of a slash reading ----------
+# 100 participants (race_extractor, "The subcategory of a slash reading").
+# Before, a slash label took its first fragment's subcategory: "African/
+# Black" african and "Black/African" none, "African American/Black"
+# african_american, "Indian/Pakistani" south_asian_indian. Here the
+# subcategory is reduced across the fragments, whatever their order.
+MOCK_NCT99000159 = _make_study(
+    "NCT99000159",
+    "NCT99000159 - slash subcategories (fictional mock)",
+    [
+        _make_measure("Race/Ethnicity, Customized", [
+            _make_class("", [
+                _make_category("African/Black", 10),
+                _make_category("Black/African", 10),
+                _make_category("African American/Black", 10),
+                _make_category("Indian/Pakistani", 10),
+                _make_category("White", 60),
+            ])
+        ]),
+    ],
+    total_participants=100,
+)
+
 EXPECTED_POOLED = {
     "NCT99000158": {"omb": {"white": 50, "black_african_american": 20, "asian": 10,
                             "more_than_one_race": 5, "other": 15},
                     "pooled": ["Multiracial/Other", "Black/mixed"],
                     "combined": ["White/Asian"]},
+}
+
+EXPECTED_SLASH_SUBCATEGORY = {
+    "NCT99000159": {"omb": {"black_african_american": 30, "asian": 10, "white": 60},
+                    "subcategories": {"asian_south_asian": 10}},
 }
 
 EXPECTED_RACE_BY_GROUP = {
@@ -1643,6 +1675,13 @@ def validate_study(study: dict, nct_id: str) -> None:
         assert pooled == expected["pooled"], f"{nct_id} pooled rows: {pooled}"
         assert combined == expected["combined"], f"{nct_id} slash combinations: {combined}"
         print(f"\n  {nct_id}: pooled race labels counted as other, slash combinations as more than one race — OK")
+    if nct_id in EXPECTED_SLASH_SUBCATEGORY:
+        expected = EXPECTED_SLASH_SUBCATEGORY[nct_id]
+        nonzero = {k: v for k, v in race["omb_totals"].items() if v}
+        assert nonzero == expected["omb"], f"{nct_id} race omb_totals: {nonzero}"
+        assert race["subcategory_totals"] == expected["subcategories"], \
+            f"{nct_id} subcategory_totals: {race['subcategory_totals']}"
+        print(f"\n  {nct_id}: slash labels take the subcategory their fragments agree on — OK")
     if nct_id in EXPECTED_OVERRIDE:
         expected = EXPECTED_OVERRIDE[nct_id]
         nonzero = {k: v for k, v in race["omb_totals"].items() if v}
@@ -1703,6 +1742,7 @@ def main() -> None:
         (MOCK_NCT99000157, "NCT99000157"),
         (STUDY_NCT07465926, "NCT07465926"),
         (MOCK_NCT99000158, "NCT99000158"),
+        (MOCK_NCT99000159, "NCT99000159"),
     ]
     for study, nct_id in studies:
         validate_study(study, nct_id)
