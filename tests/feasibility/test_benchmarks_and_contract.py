@@ -249,6 +249,62 @@ def test_refuses_site_projected_demographics_parts(tmp_path: Path) -> None:
     assert not (tmp_path / "out").exists()
 
 
+def test_unicode_line_separators_in_jsonl_roundtrip(tmp_path: Path) -> None:
+    """Regression test: U+2028, U+2029, \\x85, \\x0b, and \\x0c inside ensure_ascii=False JSONL
+    strings must never be split mid-string by archive/sidecar/trials.jsonl.gz readers.
+    """
+    tricky_title = "Phase 3 Trial\u2028Line Two\u2029Paragraph Two\x85Next\x0bVT\x0cFF"
+    tricky_why = "Slow accrual across sites\u2028and COVID-19 lockdown\u2029disruption."
+    study = make_ctgov_study(
+        "NCT99500001",
+        brief_title=tricky_title,
+        overall_status="TERMINATED",
+        why_stopped=tricky_why,
+    )
+    archive_path = tmp_path / "unicode_studies.jsonl.gz"
+    archive_raw = (json.dumps(study, ensure_ascii=False) + "\n").encode("utf-8")
+    archive_path.write_bytes(gzip.compress(archive_raw, mtime=0))
+
+    mesh_path = tmp_path / "unicode_mesh.jsonl.gz"
+    mesh_line = {
+        "schema_version": "1.0",
+        "nct_id": "NCT99500001",
+        "state": "indexed",
+        "meshes": [{"id": "D003924", "term": "Diabetes\u2028Mellitus\u2029Type 2"}],
+        "ancestors": [],
+    }
+    mesh_raw = (json.dumps(mesh_line, ensure_ascii=False) + "\n").encode("utf-8")
+    mesh_path.write_bytes(gzip.compress(mesh_raw, mtime=0))
+
+    out_dir = tmp_path / "unicode_build"
+    site_dir = tmp_path / "unicode_site"
+    assert (
+        build_feasibility_benchmarks.main(
+            [
+                "--archive",
+                str(archive_path),
+                "--condition-mesh",
+                str(mesh_path),
+                "--generated-at",
+                "2026-11-22T12:00:00+00:00",
+                "--out",
+                str(out_dir),
+            ]
+        )
+        == 0
+    )
+    assert check_feasibility_contract.main([str(out_dir)]) == 0
+    assert export_feasibility_site.main([str(out_dir), str(site_dir)]) == 0
+
+    decoded_trials = artifacts.decode_trials_jsonl_gz((out_dir / "trials.jsonl.gz").read_bytes())
+    assert len(decoded_trials) == 1
+    assert decoded_trials[0]["brief_title"] == tricky_title
+    assert decoded_trials[0]["termination"]["why_stopped_verbatim"] == tricky_why
+    assert decoded_trials[0]["indication"]["condition_mesh"]["meshes"][0]["term"] == (
+        "Diabetes\u2028Mellitus\u2029Type 2"
+    )
+
+
 def test_sponsor_rule_conflicts_and_empty_notes_fail_loudly(tmp_path: Path) -> None:
     studies = [make_ctgov_study("NCT99400001", lead_sponsor_name="Contested Pharma")]
 

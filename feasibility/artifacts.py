@@ -99,9 +99,18 @@ def encode_trials_jsonl_gz(trials: Sequence[dict[str, Any]]) -> bytes:
 
 
 def decode_trials_jsonl_gz(raw_gz: bytes) -> list[dict[str, Any]]:
-    """Decompress and parse `trials.jsonl.gz` lines."""
-    text = gzip.decompress(raw_gz).decode("utf-8")
-    return [json.loads(line) for line in text.splitlines() if line.strip()]
+    """Decompress and parse `trials.jsonl.gz` lines.
+
+    Splits strictly on `b"\\n"` (`0x0A`) rather than `str.splitlines()`, because `ensure_ascii=False`
+    preserves Unicode line/paragraph separators (`U+2028`, `U+2029`, `\\x85`, `\\x0b`, `\\x0c`) verbatim
+    inside JSON string literals, which `str.splitlines()` would split mid-string.
+    """
+    uncompressed = gzip.decompress(raw_gz)
+    return [
+        json.loads(raw_line.rstrip(b"\r").decode("utf-8"))
+        for raw_line in uncompressed.split(b"\n")
+        if raw_line.strip()
+    ]
 
 
 def _count_item(

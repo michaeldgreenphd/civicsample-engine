@@ -175,18 +175,17 @@ def load_studies_input(
             )
         raw_bytes = archive_path.read_bytes()
         file_sha = hashlib.sha256(raw_bytes).hexdigest()
-        text = (
-            gzip.decompress(raw_bytes).decode("utf-8")
-            if archive_path.name.endswith(".gz")
-            else raw_bytes.decode("utf-8")
+        uncompressed = (
+            gzip.decompress(raw_bytes) if archive_path.name.endswith(".gz") else raw_bytes
         )
         studies = []
-        for line_no, line in enumerate(text.splitlines(), start=1):
-            stripped = line.strip()
-            if not stripped:
+        # Split strictly on ASCII LF (0x0A), never str.splitlines(), so U+2028 / U+2029 / \x85
+        # inside ensure_ascii=False JSON string values are never split mid-string.
+        for line_no, raw_line in enumerate(uncompressed.split(b"\n"), start=1):
+            if not raw_line.strip():
                 continue
             try:
-                obj = json.loads(stripped)
+                obj = json.loads(raw_line.rstrip(b"\r").decode("utf-8"))
             except ValueError as exc:
                 raise ValueError(f"{archive_path.name}:{line_no}: invalid JSON line") from exc
             studies.extend(_extract_studies_from_json_obj(obj))
@@ -231,12 +230,12 @@ def load_condition_mesh_sidecar(
         raise ValueError(f"{path}: --condition-mesh file does not exist")
     raw = path.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
-    text = gzip.decompress(raw).decode("utf-8") if path.name.endswith(".gz") else raw.decode("utf-8")
+    uncompressed = gzip.decompress(raw) if path.name.endswith(".gz") else raw
     by_nct: dict[str, dict[str, Any]] = {}
-    for line_no, line in enumerate(text.splitlines(), start=1):
-        if not line.strip():
+    for line_no, raw_line in enumerate(uncompressed.split(b"\n"), start=1):
+        if not raw_line.strip():
             continue
-        obj = json.loads(line)
+        obj = json.loads(raw_line.rstrip(b"\r").decode("utf-8"))
         nct = obj.get("nct_id")
         if not isinstance(nct, str) or not nct.strip():
             raise ValueError(f"{path.name}:{line_no}: missing nct_id in condition_mesh sidecar")
