@@ -1626,3 +1626,432 @@ def test_outcomes_beta_rows_index_support_plan_and_verify(tmp_path: Path) -> Non
         ]
     )
     assert rc_audit == 2
+
+
+# ---------------------------------------------------------------------------
+# Adversarial Red-Team Suite (strictly fictional NCT99800001..NCT99899999)
+# ---------------------------------------------------------------------------
+
+RT_AUDIT_ID = "NCT99888888"
+RT_SCOPE_ID = "NCT99800001"
+RT_SCOPE_ID_2 = "NCT99800002"
+RT_UNLISTED_ID = "NCT99800099"
+
+
+def _rt_index_rows() -> list[dict[str, Any]]:
+    return [
+        {
+            "nct_id": RT_SCOPE_ID,
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "cohorts": ["rt_cohort"],
+            "primary_outcomes_count": 1,
+        },
+        {
+            "nct_id": RT_AUDIT_ID,
+            "in_audit": True,
+            "protocol": True,
+            "sap": True,
+            "cohorts": ["rt_cohort"],
+            "primary_outcomes_count": 1,
+        },
+    ]
+
+
+def test_redteam_cli_verify_missing_index_and_holdout_vectors(tmp_path: Path) -> None:
+    """CLI verify red-team: missing --index, missing/non-bool in_audit, unlisted/audit/malformed NCTs, and contaminated --pages-dir."""
+    # 1. Missing --index exits 2 BEFORE touching --documents, --locations, or --pages-dir.
+    assert (
+        main(
+            [
+                "verify",
+                "--documents",
+                str(tmp_path / "absent_docs.jsonl"),
+                "--locations",
+                str(tmp_path / "absent_locs.jsonl"),
+                "--pages-dir",
+                str(tmp_path / "absent_pages"),
+            ]
+        )
+        == 2
+    )
+
+    good_index = tmp_path / "good_index.json"
+    good_index.write_text(json.dumps({"data": _rt_index_rows()}), encoding="utf-8")
+    clean_docs = tmp_path / "clean_docs.jsonl"
+    clean_locs = tmp_path / "clean_locs.jsonl"
+    _write_jsonl(clean_docs, [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)])
+    _write_jsonl(clean_locs, _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1))
+
+    # 2. Missing or non-bool in_audit in --index exits 2.
+    for bad_flag_row in (
+        {"nct_id": RT_SCOPE_ID, "primary_outcomes_count": 1},
+        {"nct_id": RT_SCOPE_ID, "in_audit": None, "primary_outcomes_count": 1},
+        {"nct_id": RT_SCOPE_ID, "in_audit": 0, "primary_outcomes_count": 1},
+        {"nct_id": RT_SCOPE_ID, "in_audit": "false", "primary_outcomes_count": 1},
+    ):
+        bad_idx = tmp_path / "bad_flag_index.json"
+        bad_idx.write_text(json.dumps({"data": [bad_flag_row]}), encoding="utf-8")
+        assert (
+            main(
+                [
+                    "verify",
+                    "--index",
+                    str(bad_idx),
+                    "--documents",
+                    str(clean_docs),
+                    "--locations",
+                    str(clean_locs),
+                ]
+            )
+            == 2
+        )
+
+    # 3. Malformed, audit (NCT99888888), or unlisted (NCT99800099) NCT IDs in --documents / --locations exit 2.
+    for forbidden_id in (
+        RT_AUDIT_ID,
+        RT_UNLISTED_ID,
+        "nct99888888",
+        "NCT99888888 ",
+        " NCT99888888",
+        "NCT99888888\u200b",
+        "NCT\u0669\u0669\u0668\u0668\u0668\u0668\u0668\u0668",
+    ):
+        bad_docs = tmp_path / "bad_docs.jsonl"
+        _write_jsonl(bad_docs, [_doc(forbidden_id, "Prot_000.pdf", SHA_1)])
+        assert (
+            main(
+                [
+                    "verify",
+                    "--index",
+                    str(good_index),
+                    "--documents",
+                    str(bad_docs),
+                    "--locations",
+                    str(clean_locs),
+                ]
+            )
+            == 2
+        )
+        bad_locs = tmp_path / "bad_locs.jsonl"
+        _write_jsonl(
+            bad_locs,
+            _complete_primary_locations(forbidden_id, "Prot_000.pdf", SHA_1),
+        )
+        assert (
+            main(
+                [
+                    "verify",
+                    "--index",
+                    str(good_index),
+                    "--documents",
+                    str(clean_docs),
+                    "--locations",
+                    str(bad_locs),
+                ]
+            )
+            == 2
+        )
+
+    # 4. --pages-dir pointing to audit file, named NCT99888888, or holding sneaky audit filenames exits 2.
+    direct_audit_file = tmp_path / "direct_p" / RT_AUDIT_ID / "Prot_000.json"
+    direct_audit_file.parent.mkdir(parents=True)
+    direct_audit_file.write_text(json.dumps({"pages": ["Holdout"]}), encoding="utf-8")
+    assert (
+        main(
+            [
+                "verify",
+                "--index",
+                str(good_index),
+                "--documents",
+                str(clean_docs),
+                "--locations",
+                str(clean_locs),
+                "--pages-dir",
+                str(direct_audit_file),
+            ]
+        )
+        == 2
+    )
+
+    sneaky_pages_dir = tmp_path / "sneaky_p"
+    sneaky_pages_dir.mkdir(parents=True)
+    (sneaky_pages_dir / f" {RT_AUDIT_ID}.json").write_text(
+        json.dumps({"pages": ["Holdout"]}), encoding="utf-8"
+    )
+    assert (
+        main(
+            [
+                "verify",
+                "--index",
+                str(good_index),
+                "--documents",
+                str(clean_docs),
+                "--locations",
+                str(clean_locs),
+                "--pages-dir",
+                str(sneaky_pages_dir),
+            ]
+        )
+        == 2
+    )
+
+
+def test_redteam_cli_plan_holdout_unlisted_doc_cache_and_profiles(tmp_path: Path) -> None:
+    """CLI plan red-team: NCT99888888, unlisted, and malformed NCTs in --nct-id, --doc-cache, and --profiles."""
+    good_index = tmp_path / "good_index.json"
+    good_index.write_text(json.dumps({"data": _rt_index_rows()}), encoding="utf-8")
+
+    for bad_target in (
+        RT_AUDIT_ID,
+        RT_UNLISTED_ID,
+        "nct99888888",
+        "NCT99888888 ",
+        "NCT99888888\u200b",
+        "NCT\u0669\u0669\u0668\u0668\u0668\u0668\u0668\u0668",
+    ):
+        assert main(["plan", "--index", str(good_index), "--nct-id", bad_target]) == 2
+
+    # --doc-cache smuggling NCT99888888 via nct_id, nct_ids, nctId, nested metadata, in_audit, or URL.
+    sneaky_cache_rows: tuple[dict[str, Any], ...] = (
+        {"sha256": SHA_1, "nct_id": RT_AUDIT_ID},
+        {"sha256": SHA_1, "nct_id": RT_UNLISTED_ID},
+        {"sha256": SHA_1, "nct_id": "nct99888888"},
+        {"sha256": SHA_1, "nct_ids": [RT_SCOPE_ID, RT_AUDIT_ID]},
+        {"sha256": SHA_1, "nctId": RT_AUDIT_ID},
+        {"sha256": SHA_1, "metadata": {"nct_id": RT_AUDIT_ID}},
+        {"sha256": SHA_1, "in_audit": True},
+        {"sha256": SHA_1, "in_audit": None},
+        {"sha256": SHA_1, "in_audit": "false"},
+        {
+            "sha256": SHA_1,
+            "url": f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID}/Prot_000.pdf",
+        },
+    )
+    for idx, cache_row in enumerate(sneaky_cache_rows):
+        cache_path = tmp_path / f"cache_{idx}.jsonl"
+        _write_jsonl(cache_path, [cache_row])
+        assert (
+            main(["plan", "--index", str(good_index), "--doc-cache", str(cache_path)]) == 2
+        ), f"plan accepted sneaky --doc-cache row: {cache_row!r}"
+
+    # --profiles smuggling NCT99888888 or unlisted/malformed NCTs at top level or nested documents.
+    sneaky_profile_rows: tuple[dict[str, Any], ...] = (
+        {"nct_id": RT_AUDIT_ID, "in_audit": False, "documents": []},
+        {"nct_id": RT_UNLISTED_ID, "in_audit": False, "documents": []},
+        {"nct_id": "NCT99888888\u200b", "in_audit": False, "documents": []},
+        {"nct_id": RT_SCOPE_ID, "in_audit": 0, "documents": []},
+        {
+            "nct_id": RT_SCOPE_ID,
+            "in_audit": False,
+            "documents": [
+                {
+                    "nct_id": RT_SCOPE_ID,
+                    "filename": "Prot_000.pdf",
+                    "url": f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID}/Prot_000.pdf",
+                }
+            ],
+        },
+    )
+    for idx, prof_row in enumerate(sneaky_profile_rows):
+        prof_path = tmp_path / f"prof_{idx}.jsonl"
+        _write_jsonl(prof_path, [prof_row])
+        assert (
+            main(["plan", "--index", str(good_index), "--profiles", str(prof_path)]) == 2
+        ), f"plan accepted sneaky --profiles row: {prof_row!r}"
+
+
+def test_redteam_f3_plan_expected_k_index_gaps_stale_sha_and_nodoc_cache(
+    tmp_path: Path,
+) -> None:
+    """F3 red-team: bad expected_k, {0,2} for k=2, stale citation SHA, NO_DOCUMENT cache, and orphan sparse."""
+    # 1. expected_k missing, None, False, True, '2', 0, -1, or conflicting primary_outcomes_count vs n_primary_outcomes.
+    bad_k_rows: tuple[dict[str, Any], ...] = (
+        {"nct_id": RT_SCOPE_ID, "in_audit": False, "protocol": True, "sap": False},
+        {"nct_id": RT_SCOPE_ID, "in_audit": False, "protocol": True, "primary_outcomes_count": None},
+        {"nct_id": RT_SCOPE_ID, "in_audit": False, "protocol": True, "primary_outcomes_count": False},
+        {"nct_id": RT_SCOPE_ID, "in_audit": False, "protocol": True, "primary_outcomes_count": True},
+        {"nct_id": RT_SCOPE_ID, "in_audit": False, "protocol": True, "primary_outcomes_count": "2"},
+        {"nct_id": RT_SCOPE_ID, "in_audit": False, "protocol": True, "primary_outcomes_count": 0},
+        {"nct_id": RT_SCOPE_ID, "in_audit": False, "protocol": True, "primary_outcomes_count": -1},
+        {"nct_id": RT_SCOPE_ID, "in_audit": False, "protocol": True, "n_primary_outcomes": None},
+        {"nct_id": RT_SCOPE_ID, "in_audit": False, "protocol": True, "n_primary_outcomes": False},
+        {
+            "nct_id": RT_SCOPE_ID,
+            "in_audit": False,
+            "protocol": True,
+            "primary_outcomes_count": 1,
+            "n_primary_outcomes": 2,
+        },
+        {"nct_id": RT_SCOPE_ID, "in_audit": False, "protocol": None, "primary_outcomes_count": 1},
+    )
+    audit_anchor = _rt_index_rows()[1]
+    for bad_row in bad_k_rows:
+        with pytest.raises(CitationVerificationError):
+            plan_incremental_cohort([audit_anchor, bad_row])
+
+    # Invalid --pass-role rejected.
+    with pytest.raises(CitationVerificationError):
+        plan_incremental_cohort(_rt_index_rows(), pass_role="bogus_pass")
+
+    # 2. {0, 2} for expected_k=2 routed to amended_doc_or_outcome_delta, never cached_complete.
+    idx_k2 = [
+        {
+            "nct_id": RT_SCOPE_ID,
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "primary_outcomes_count": 2,
+        },
+        audit_anchor,
+    ]
+    locs_0_2 = _complete_locations_for_outcome(
+        RT_SCOPE_ID, "Prot_000.pdf", SHA_1, outcome_index=0
+    ) + _complete_locations_for_outcome(
+        RT_SCOPE_ID, "Prot_000.pdf", SHA_1, outcome_index=2
+    )
+    plan_gap = plan_incremental_cohort(
+        idx_k2,
+        documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+        locations=locs_0_2,
+    )
+    assert plan_gap["partitions"]["cached_complete"] == []
+    assert plan_gap["partitions"]["amended_doc_or_outcome_delta"] == [RT_SCOPE_ID]
+
+    # 3. Amended documents.jsonl (SHA_2) while locations still cite stale SHA_1 must NOT hit cached_complete!
+    plan_stale_sha = plan_incremental_cohort(
+        _rt_index_rows(),
+        documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_2)],
+        locations=_complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1),
+    )
+    assert plan_stale_sha["partitions"]["cached_complete"] == []
+    assert plan_stale_sha["partitions"]["amended_doc_or_outcome_delta"] == [RT_SCOPE_ID]
+
+    # 4. NO_DOCUMENT rows (or FOUND rows with 0 citations) when trial has posted document must NOT hit cached_complete!
+    no_doc_locs = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    for row in no_doc_locs:
+        row["status"] = "NO_DOCUMENT"
+        row["citations"] = []
+    plan_nodoc = plan_incremental_cohort(
+        _rt_index_rows(),
+        documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+        locations=no_doc_locs,
+    )
+    assert plan_nodoc["partitions"]["cached_complete"] == []
+    assert plan_nodoc["partitions"]["amended_doc_or_outcome_delta"] == [RT_SCOPE_ID]
+
+    # 5. CLI verify --check-completeness with unlisted trial (exits 2) & orphan sparse pass without primary (exits 1).
+    good_idx = tmp_path / "idx.json"
+    good_idx.write_text(json.dumps({"data": _rt_index_rows()}), encoding="utf-8")
+    docs_f = tmp_path / "docs.jsonl"
+    locs_f = tmp_path / "locs.jsonl"
+    rep_f = tmp_path / "rep.json"
+    _write_jsonl(docs_f, [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)])
+
+    for sparse_pass in ("adjudication", "ocr_recovery"):
+        orphan_row = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)[0]
+        orphan_row["pass"] = sparse_pass
+        _write_jsonl(locs_f, [orphan_row])
+        assert (
+            main(
+                [
+                    "verify",
+                    "--index",
+                    str(good_idx),
+                    "--documents",
+                    str(docs_f),
+                    "--locations",
+                    str(locs_f),
+                    "--check-completeness",
+                    "--report-out",
+                    str(rep_f),
+                ]
+            )
+            == 1
+        )
+        rep = json.loads(rep_f.read_text(encoding="utf-8"))
+        assert rep["ok"] is False
+        assert {i["code"] for i in rep["issues"]} == {"TRIAL_GRID_MISSING_CELL"}
+        assert rep["error_count"] == len(ELEMENTS)
+
+
+def test_redteam_f6_cli_verify_and_plan_provenance_refusals(tmp_path: Path) -> None:
+    """F6 red-team on CLI verify and plan: missing, whitespace, invisible-only, and non-str stamps."""
+    idx_path = tmp_path / "index.json"
+    idx_path.write_text(json.dumps({"data": _rt_index_rows()}), encoding="utf-8")
+    clean_docs = tmp_path / "clean_docs.jsonl"
+    clean_locs = tmp_path / "clean_locs.jsonl"
+    _write_jsonl(clean_docs, [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)])
+    _write_jsonl(clean_locs, _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1))
+
+    for bad_stamp in ("", "   ", "\u200b", "\ufeff", None, 123, True):
+        bad_doc_p = tmp_path / "bad_doc.jsonl"
+        _write_jsonl(
+            bad_doc_p,
+            [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1, model_id=bad_stamp)],
+        )
+        assert (
+            main(
+                [
+                    "verify",
+                    "--index",
+                    str(idx_path),
+                    "--documents",
+                    str(bad_doc_p),
+                    "--locations",
+                    str(clean_locs),
+                ]
+            )
+            == 1
+        )
+        assert (
+            main(
+                [
+                    "plan",
+                    "--index",
+                    str(idx_path),
+                    "--documents",
+                    str(bad_doc_p),
+                    "--locations",
+                    str(clean_locs),
+                ]
+            )
+            == 1
+        )
+
+        bad_loc_p = tmp_path / "bad_loc.jsonl"
+        _write_jsonl(
+            bad_loc_p,
+            _complete_primary_locations(
+                RT_SCOPE_ID, "Prot_000.pdf", SHA_1, prompt_version=bad_stamp
+            ),
+        )
+        assert (
+            main(
+                [
+                    "verify",
+                    "--index",
+                    str(idx_path),
+                    "--documents",
+                    str(clean_docs),
+                    "--locations",
+                    str(bad_loc_p),
+                ]
+            )
+            == 1
+        )
+        assert (
+            main(
+                [
+                    "plan",
+                    "--index",
+                    str(idx_path),
+                    "--documents",
+                    str(clean_docs),
+                    "--locations",
+                    str(bad_loc_p),
+                ]
+            )
+            == 1
+        )

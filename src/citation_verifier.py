@@ -4,16 +4,17 @@ Verifies document records, decision-rule location records, and verbatim
 single-page PDF quotations for clinical trial rule censuses.
 
 Runtime dependencies:
-- Python 3.11+ standard library only (``dataclasses``, ``gzip``, ``hashlib``,
-  ``json``, ``pathlib``, ``re``, ``typing``, ``unicodedata``).
+- Python 3.11+ standard library (``dataclasses``, ``gzip``, ``hashlib``,
+  ``json``, ``pathlib``, ``re``, ``typing``, ``unicodedata``, ``urllib.parse``).
 - Performs zero network calls and invokes zero external PDF binaries; consumes
   pre-extracted JSON or JSONL single-page text maps via ``PageTextProvider``.
 
 Key invariants:
 - Strict ASCII NCT ID gate (``STRICT_NCT_ID_RE = ^NCT[0-9]{8}$``): every entry
   point validates NCT IDs with ``validate_strict_nct_id`` FIRST (before any
-  audit-set or allowlist check) and raises ``InvalidNctIdError`` immediately on
-  any non-matching value without case-folding or whitespace stripping.
+  ``in_audit`` flag, audit-set, or allowlist check) and raises
+  ``InvalidNctIdError`` immediately on any non-matching value without
+  case-folding or whitespace stripping.
 - Hard ``in_audit`` holdout firewall: every entry point requires explicit
   ``bool`` ``in_audit`` (or verified ``in_scope_nct_ids`` + ``audit_nct_ids``)
   and non-empty ``audit_nct_ids`` by default, raising
@@ -57,6 +58,7 @@ from typing import (
     runtime_checkable,
 )
 import unicodedata
+from urllib.parse import unquote
 
 __version__: Final[str] = "1.1.0"
 VERIFIER_RULES_VERSION: Final[str] = "1.1.0"
@@ -181,8 +183,18 @@ _SAFE_PDF_BASENAME_RE: Final[re.Pattern[str]] = re.compile(
     r"^[A-Za-z0-9._-]+\.pdf$",
     re.IGNORECASE | re.ASCII,
 )
+_SAFE_STEM_RE: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9._-]+$", re.ASCII)
+_EMBEDDED_NCT_TOKEN_RE: Final[re.Pattern[str]] = re.compile(
+    r"nct[0-9]{7,10}",
+    re.IGNORECASE | re.ASCII,
+)
+_NCT_FIELD_KEYS: Final[frozenset[str]] = frozenset({"nct_id", "nctId", "trial_nct_id"})
+_NCT_LIST_KEYS: Final[frozenset[str]] = frozenset({"nct_ids", "trial_nct_ids"})
+_URL_FIELD_KEYS: Final[frozenset[str]] = frozenset(
+    {"url", "source_url", "pdf_url", "document_url", "uri"}
+)
 _ELLIPSIS_RE: Final[re.Pattern[str]] = re.compile(
-    r"\.{3,}|(?:\.\s+){2,}\.|[\u2026\u22ee\u22ef]"
+    r"\.{3,}|(?:\.\s+){2,}\.|[\u2026\u22ee\u22ef\u22f0\u22f1\ufe19\u1801\u0eaf]"
 )
 _DASH_TRANS: Final[dict[int, str]] = str.maketrans(
     {
@@ -199,7 +211,9 @@ _DASH_TRANS: Final[dict[int, str]] = str.maketrans(
         "\u201d": '"',
     }
 )
-_INVISIBLE_CHARS_RE: Final[re.Pattern[str]] = re.compile(r"[\u00ad\u200b\u200c\u200d\ufeff]")
+_INVISIBLE_CHARS_RE: Final[re.Pattern[str]] = re.compile(
+    r"[\u00ad\u034f\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]"
+)
 _SOFT_HYPHEN_WRAP_RE: Final[re.Pattern[str]] = re.compile(r"([A-Za-z])\u00ad\s*\r?\n\s*([a-z])")
 _LINE_BREAK_HYPHEN_RE: Final[re.Pattern[str]] = re.compile(
     r"([A-Za-z])[\-\u2010\u2011]\s*\r?\n\s*([a-z])"
@@ -431,9 +445,22 @@ def _is_strict_int(value: Any) -> bool:
     return type(value) is int
 
 
+def _strip_invisible(text: str) -> str:
+    """Remove invisible/format Unicode characters while preserving standard whitespace."""
+    cleaned = _INVISIBLE_CHARS_RE.sub("", text)
+    return "".join(
+        ch
+        for ch in cleaned
+        if unicodedata.category(ch) not in {"Cf", "Cc"} or ch in "\t\n\r"
+    )
+
+
 def _is_non_empty_str(value: Any) -> bool:
-    """Return True only when ``value`` is an exact ``str`` with non-whitespace content."""
-    return type(value) is str and len(value.strip()) > 0
+    """Return True only when ``value`` is an exact ``str`` with visible non-whitespace content."""
+    if type(value) is not str:
+        return False
+    folded = _strip_invisible(unicodedata.normalize("NFKC", value)).strip()
+    return len(folded) > 0
 
 
 def _is_safe_pdf_filename(value: Any) -> bool:
@@ -454,8 +481,8 @@ def validate_strict_nct_id(value: Any, *, context: str = "nct_id") -> str:
 
     Checks ``type(value) is str``, ``len(value) == 11``, and
     ``STRICT_NCT_ID_RE.fullmatch(value)`` so trailing newlines, leading/trailing
-    spaces, lowercase prefixes, zero-width characters, and non-ASCII digits are
-    unconditionally rejected with ``InvalidNctIdError``.
+    spaces, lowercase prefixes, zero-width characters, string subclasses, and
+    non-ASCII digits are unconditionally rejected with ``InvalidNctIdError``.
     """
     if type(value) is not str or len(value) != 11 or STRICT_NCT_ID_RE.fullmatch(value) is None:
         raise InvalidNctIdError(
@@ -480,6 +507,149 @@ def _validate_nct_set(
     return frozenset(validated)
 
 
+def _check_embedded_url_ncts(
+    url_text: str,
+    *,
+    context: str,
+    expected_nct_id: str | None,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+) -> None:
+    """Reject audit, unlisted, malformed, or mismatched NCT tokens embedded inside URLs."""
+    variants = [url_text]
+    if "%" in url_text:
+        variants.append(unquote(url_text))
+    variants.append(_strip_invisible(unicodedata.normalize("NFKC", variants[-1])))
+
+    for variant in variants:
+        for match in _EMBEDDED_NCT_TOKEN_RE.finditer(variant):
+            raw_tok = match.group(0)
+            upper_tok = raw_tok.upper()
+            if STRICT_NCT_ID_RE.fullmatch(upper_tok) is not None and upper_tok in audit_nct_ids:
+                raise AuditHoldoutViolationError(
+                    f"Audit holdout violation in {context}: URL references holdout trial {upper_tok!r}."
+                )
+            if STRICT_NCT_ID_RE.fullmatch(raw_tok) is None:
+                raise InvalidNctIdError(
+                    f"Malformed NCT token {raw_tok!r} in {context}: expected strict ^NCT[0-9]{{8}}$."
+                )
+            if in_scope_nct_ids is not None and raw_tok not in in_scope_nct_ids:
+                raise AuditHoldoutViolationError(
+                    f"Audit holdout refusal in {context}: URL references unlisted trial {raw_tok!r}."
+                )
+            if expected_nct_id is not None and raw_tok != expected_nct_id:
+                raise AuditHoldoutViolationError(
+                    f"Audit holdout refusal in {context}: URL NCT {raw_tok!r} disagrees with "
+                    f"record nct_id={expected_nct_id!r}."
+                )
+
+
+def _prescan_nested_nct_fields(obj: Any, *, context: str) -> None:
+    """Phase-A recursive strict NCT validation across nested mappings/lists before audit checks."""
+    if isinstance(obj, Mapping):
+        for raw_k, val in obj.items():
+            key = str(raw_k)
+            child_ctx = f"{context}.{key}"
+            if key in _NCT_FIELD_KEYS:
+                validate_strict_nct_id(val, context=child_ctx)
+            elif key in _NCT_LIST_KEYS:
+                if not isinstance(val, list):
+                    raise CitationVerificationError(
+                        f"{child_ctx} must be a list, got {type(val).__name__}."
+                    )
+                for idx, item in enumerate(val):
+                    validate_strict_nct_id(item, context=f"{child_ctx}[{idx}]")
+            elif key == "pages" and isinstance(val, list):
+                for idx, item in enumerate(val):
+                    if isinstance(item, Mapping):
+                        _prescan_nested_nct_fields(item, context=f"{child_ctx}[{idx}]")
+            elif isinstance(val, (Mapping, list, tuple)):
+                _prescan_nested_nct_fields(val, context=child_ctx)
+    elif isinstance(obj, (list, tuple)):
+        for idx, item in enumerate(obj):
+            if isinstance(item, (Mapping, list, tuple)):
+                _prescan_nested_nct_fields(item, context=f"{context}[{idx}]")
+
+
+def _validate_nested_firewall_metadata(
+    obj: Any,
+    *,
+    context: str,
+    expected_nct_id: str | None,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+    allow_empty_audit_set: bool,
+) -> list[str]:
+    """Recursively validate ``nct_id``/``nctId``/``nct_ids``/``in_audit``/URLs in metadata."""
+    discovered_ncts: list[str] = []
+
+    def _walk(node: Any, path: str) -> None:
+        if isinstance(node, Mapping):
+            for raw_k, val in node.items():
+                key = str(raw_k)
+                child_ctx = f"{path}.{key}"
+                if key in _NCT_FIELD_KEYS:
+                    checked = validate_strict_nct_id(val, context=child_ctx)
+                    enforce_audit_holdout(
+                        checked,
+                        in_audit=False,
+                        audit_nct_ids=audit_nct_ids,
+                        in_scope_nct_ids=in_scope_nct_ids,
+                        allow_empty_audit_set=allow_empty_audit_set,
+                    )
+                    if expected_nct_id is not None and checked != expected_nct_id:
+                        raise AuditHoldoutViolationError(
+                            f"{child_ctx}={checked!r} disagrees with expected nct_id={expected_nct_id!r}."
+                        )
+                    discovered_ncts.append(checked)
+                elif key in _NCT_LIST_KEYS:
+                    if not isinstance(val, list):
+                        raise CitationVerificationError(
+                            f"{child_ctx} must be a list, got {type(val).__name__}."
+                        )
+                    for idx, item in enumerate(val):
+                        checked = validate_strict_nct_id(item, context=f"{child_ctx}[{idx}]")
+                        enforce_audit_holdout(
+                            checked,
+                            in_audit=False,
+                            audit_nct_ids=audit_nct_ids,
+                            in_scope_nct_ids=in_scope_nct_ids,
+                            allow_empty_audit_set=allow_empty_audit_set,
+                        )
+                        discovered_ncts.append(checked)
+                elif key == "in_audit":
+                    if type(val) is not bool:
+                        raise AuditHoldoutViolationError(
+                            f"{child_ctx} carries non-bool in_audit={val!r}."
+                        )
+                    if val is True:
+                        raise AuditHoldoutViolationError(
+                            f"Audit holdout violation: {child_ctx} carries in_audit=True."
+                        )
+                elif key in _URL_FIELD_KEYS and isinstance(val, str):
+                    _check_embedded_url_ncts(
+                        val,
+                        context=child_ctx,
+                        expected_nct_id=expected_nct_id,
+                        audit_nct_ids=audit_nct_ids,
+                        in_scope_nct_ids=in_scope_nct_ids,
+                    )
+                elif key == "pages" and isinstance(val, list):
+                    for idx, item in enumerate(val):
+                        if isinstance(item, Mapping):
+                            _walk(item, f"{child_ctx}[{idx}]")
+                elif isinstance(val, (Mapping, list, tuple)):
+                    _walk(val, child_ctx)
+        elif isinstance(node, (list, tuple)):
+            for idx, item in enumerate(node):
+                if isinstance(item, (Mapping, list, tuple)):
+                    _walk(item, f"{path}[{idx}]")
+
+    _prescan_nested_nct_fields(obj, context=context)
+    _walk(obj, context)
+    return discovered_ncts
+
+
 def enforce_audit_holdout(
     nct_id: str,
     *,
@@ -488,7 +658,7 @@ def enforce_audit_holdout(
     in_scope_nct_ids: AbstractSet[str] | None = None,
     allow_empty_audit_set: bool = False,
 ) -> None:
-    """Hard holdout firewall: validate strict NCT ID first, then enforce ``in_audit == False``.
+    """Hard holdout firewall: validate strict NCT IDs first, then enforce ``in_audit == False``.
 
     Order of checks:
     1. ``validate_strict_nct_id`` on ``nct_id`` and all entries in
@@ -563,10 +733,19 @@ def _enforce_record_firewall(
     audit_nct_ids: AbstractSet[str],
     in_scope_nct_ids: AbstractSet[str] | None,
     allow_empty_audit_set: bool,
-) -> str:
-    """Validate strict NCT ID and ``in_audit`` firewall on a single record mapping."""
+) -> tuple[str, frozenset[str], frozenset[str] | None]:
+    """Validate strict NCT IDs FIRST across record & sets, then enforce ``in_audit`` firewall."""
+    # Phase A (F2): Validate all NCT IDs FIRST before touching any in_audit flag.
     checked_nct = validate_strict_nct_id(record.get("nct_id"), context=f"{record_label}.nct_id")
+    checked_audit_ids = _validate_nct_set(audit_nct_ids, context="audit_nct_ids")
+    checked_scope_ids: frozenset[str] | None = (
+        _validate_nct_set(in_scope_nct_ids, context="in_scope_nct_ids")
+        if in_scope_nct_ids is not None
+        else None
+    )
+    _prescan_nested_nct_fields(record, context=record_label)
 
+    # Phase B (F1): Inspect in_audit flags, membership, and embedded URLs.
     has_row_flag = "in_audit" in record
     if has_row_flag:
         row_flag = record["in_audit"]
@@ -597,11 +776,19 @@ def _enforce_record_firewall(
     enforce_audit_holdout(
         checked_nct,
         in_audit=effective_in_audit,
-        audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
         allow_empty_audit_set=allow_empty_audit_set,
     )
-    return checked_nct
+    _validate_nested_firewall_metadata(
+        record,
+        context=record_label,
+        expected_nct_id=checked_nct,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
+    return checked_nct, checked_audit_ids, checked_scope_ids
 
 
 def validate_status_citations(
@@ -675,8 +862,8 @@ def validate_citation_shape(
     - ``physical_page`` is a strict ``int >= 1`` (not ``bool``, not a span).
     - ``printed_page`` and ``section_heading`` are ``str`` (or ``str | None``
       only when ``allow_none_optional_strings=True``).
-    - ``quotation`` is a non-empty single-space-normalized ``str`` of length
-      ``1..300`` without ellipsis markers (``has_ellipsis``).
+    - ``quotation`` is a non-empty visible single-space-normalized ``str`` of
+      length ``1..300`` without ellipsis markers (``has_ellipsis``).
     """
     if type(allow_none_optional_strings) is not bool:
         raise CitationVerificationError(
@@ -751,7 +938,12 @@ def validate_citation_shape(
 
     if "quotation" in cit:
         quotation = cit["quotation"]
-        if type(quotation) is not str or len(quotation) == 0:
+        if (
+            type(quotation) is not str
+            or len(quotation) == 0
+            or not _is_non_empty_str(quotation)
+            or not normalize_for_page_match(quotation)
+        ):
             errors.append("Citation quotation must be a non-empty string.")
         else:
             if len(quotation) > MAX_QUOTATION_CHARS:
@@ -776,44 +968,27 @@ def normalize_for_page_match(
     *,
     repair_line_break_hyphens: bool = False,
 ) -> str:
-    """Normalize PDF page text or quotation text for Tier-2 single-page matching.
-
-    Applies:
-    1. Optional soft-hyphen and hyphenated line-wrap joining on raw multi-line
-       PDF text before whitespace collapse (e.g., ``random-\\nization`` ->
-       ``randomization``).
-    2. Unicode NFKC normalization (expands ligatures like ``ﬁ`` -> ``fi``,
-       ``ﬂ`` -> ``fl``, ``ﬃ`` -> ``ffi``, and normalizes NBSP).
-    3. Removal of soft hyphens (``U+00AD``) and zero-width characters.
-    4. Folding of Unicode dashes/minus to ASCII ``-`` and curly quotes to
-       straight ASCII quotes.
-    5. Canonical single-space whitespace collapse.
-    """
+    """Normalize PDF page text or quotation text for Tier-2 single-page matching."""
     normalized = text
     if repair_line_break_hyphens:
         normalized = _SOFT_HYPHEN_WRAP_RE.sub(r"\1\2", normalized)
         normalized = _LINE_BREAK_HYPHEN_RE.sub(r"\1\2", normalized)
     normalized = unicodedata.normalize("NFKC", normalized)
-    normalized = _INVISIBLE_CHARS_RE.sub("", normalized)
+    normalized = _strip_invisible(normalized)
     normalized = normalized.translate(_DASH_TRANS)
     return " ".join(normalized.split())
 
 
 def has_ellipsis(text: str) -> bool:
-    """Return True if text contains literal, spaced, or Unicode ellipsis markers."""
-    return bool(_ELLIPSIS_RE.search(text))
+    """Return True if text contains literal, spaced, compatibility, or invisible-split ellipsis markers."""
+    if _ELLIPSIS_RE.search(text):
+        return True
+    folded = _strip_invisible(unicodedata.normalize("NFKC", text))
+    return bool(_ELLIPSIS_RE.search(folded))
 
 
 def match_quotation_on_page(quotation: str, page_text: str) -> MatchTier:
-    """Check whether ``quotation`` occurs verbatim on a single ``page_text``.
-
-    Never joins text across adjacent pages. Returns:
-    - ``"exact_ws"``: exact substring after collapsing ASCII/Unicode whitespace.
-    - ``"unicode_nfkc_hyphen"``: substring after NFKC ligature folding,
-      typographic dash/quote folding, invisible-char removal, and optional
-      line-break hyphen repair.
-    - ``"mismatch"``: absent from this single page under both tiers.
-    """
+    """Check whether ``quotation`` occurs verbatim on a single ``page_text``."""
     q_ws = " ".join(quotation.split())
     if not q_ws:
         return "mismatch"
@@ -824,9 +999,6 @@ def match_quotation_on_page(quotation: str, page_text: str) -> MatchTier:
     q_norm = normalize_for_page_match(quotation, repair_line_break_hyphens=False)
     if not q_norm:
         return "mismatch"
-    # Check both with line-break hyphen repair (for wrapped words like
-    # "random-\nization") and without (for genuine hyphenated terms like
-    # "intent-\nto-treat" wrapped across lines).
     p_norm_repaired = normalize_for_page_match(page_text, repair_line_break_hyphens=True)
     if q_norm in p_norm_repaired:
         return "unicode_nfkc_hyphen"
@@ -837,11 +1009,7 @@ def match_quotation_on_page(quotation: str, page_text: str) -> MatchTier:
 
 
 def scan_neutral_language(text: str) -> list[NeutralLanguageFlag]:
-    """Scan commentary text for evaluative, spin, or compliance-inference claims.
-
-    Intended strictly for worker/system commentary (such as ``note`` fields),
-    never for verbatim source quotations (``quotation``, ``statement_verbatim``).
-    """
+    """Scan commentary text for evaluative, spin, or compliance-inference claims."""
     if not text:
         return []
     flags: list[NeutralLanguageFlag] = []
@@ -860,8 +1028,6 @@ def scan_neutral_language(text: str) -> list[NeutralLanguageFlag]:
     return flags
 
 
-# Alias so callers using either check_neutral_language or scan_neutral_language
-# share the exact deterministic implementation.
 check_neutral_language = scan_neutral_language
 
 
@@ -895,15 +1061,7 @@ def scan_neutral_language_record(
 
 
 class DictPageTextProvider:
-    """In-memory ``PageTextProvider`` for deterministic offline tests and fixtures.
-
-    Accepts keys in any of three lookup forms:
-    1. ``(sha256, physical_page, text_source)``
-    2. ``(sha256, physical_page)``
-    3. ``(nct_id, filename, physical_page)`` or ``(nct_id, filename, physical_page, text_source)``
-    or a nested mapping ``sha256 -> Sequence[str]`` (1-based ``physical_page``
-    indexed at ``physical_page - 1``).
-    """
+    """In-memory ``PageTextProvider`` for deterministic offline tests and fixtures."""
 
     def __init__(
         self,
@@ -913,6 +1071,7 @@ class DictPageTextProvider:
         ocr_pages_by_sha256: Mapping[str, Sequence[str]] | None = None,
         audit_nct_ids: AbstractSet[str] = frozenset(),
         in_scope_nct_ids: AbstractSet[str] | None = None,
+        allow_empty_audit_set: bool = False,
     ) -> None:
         self._audit_nct_ids: frozenset[str] = _validate_nct_set(
             audit_nct_ids, context="DictPageTextProvider.audit_nct_ids"
@@ -922,6 +1081,19 @@ class DictPageTextProvider:
             if in_scope_nct_ids is not None
             else None
         )
+        if type(allow_empty_audit_set) is not bool:
+            raise AuditHoldoutViolationError(
+                f"allow_empty_audit_set must be bool, got {type(allow_empty_audit_set).__name__}."
+            )
+        self._allow_empty_audit_set: bool = allow_empty_audit_set
+        if self._in_scope_nct_ids is not None and (self._audit_nct_ids & self._in_scope_nct_ids):
+            raise AuditHoldoutViolationError(
+                "Audit holdout violation: DictPageTextProvider in_scope_nct_ids overlaps audit_nct_ids."
+            )
+        if not self._allow_empty_audit_set and len(self._audit_nct_ids) == 0:
+            raise AuditHoldoutViolationError(
+                "DictPageTextProvider requires non-empty audit_nct_ids unless allow_empty_audit_set=True."
+            )
         self._pages_by_key: dict[Any, str] = dict(pages_by_key or {})
         self._pages_by_sha256: dict[str, tuple[str, ...]] = {
             k: tuple(v) for k, v in (pages_by_sha256 or {}).items()
@@ -931,13 +1103,55 @@ class DictPageTextProvider:
         }
         self._validate_stored_keys()
 
+    def _validate_sha256_map_key(self, raw_sha: Any, *, context: str) -> None:
+        if type(raw_sha) is str:
+            cleaned = _strip_invisible(unicodedata.normalize("NFKC", raw_sha)).strip()
+            if STRICT_NCT_ID_RE.fullmatch(cleaned.upper()) is not None:
+                if cleaned.upper() in self._audit_nct_ids:
+                    raise AuditHoldoutViolationError(
+                        f"Audit holdout violation in {context}: {raw_sha!r}."
+                    )
+        if (
+            type(raw_sha) is not str
+            or len(raw_sha) != 64
+            or _SHA256_RE.fullmatch(raw_sha) is None
+        ):
+            raise CitationVerificationError(
+                f"{context} must be a 64-character lowercase hex sha256, got {raw_sha!r}."
+            )
+
     def _validate_stored_keys(self) -> None:
+        for sha_k in self._pages_by_sha256:
+            self._validate_sha256_map_key(
+                sha_k, context="DictPageTextProvider.pages_by_sha256 key"
+            )
+        for sha_k in self._ocr_pages_by_sha256:
+            self._validate_sha256_map_key(
+                sha_k, context="DictPageTextProvider.ocr_pages_by_sha256 key"
+            )
+
         for key in self._pages_by_key:
-            if (
-                isinstance(key, tuple)
-                and len(key) in (3, 4)
-                and isinstance(key[1], str)
-            ):
+            if not isinstance(key, tuple) or len(key) not in (2, 3, 4):
+                raise CitationVerificationError(
+                    f"Unsupported DictPageTextProvider key shape: {key!r}."
+                )
+            if len(key) == 2:
+                self._validate_sha256_map_key(
+                    key[0], context="DictPageTextProvider.pages_by_key sha256"
+                )
+                if not _is_strict_int(key[1]) or key[1] < 1:
+                    raise CitationVerificationError(
+                        f"Invalid physical_page in DictPageTextProvider key: {key!r}."
+                    )
+            elif len(key) == 3 and _is_strict_int(key[1]):
+                self._validate_sha256_map_key(
+                    key[0], context="DictPageTextProvider.pages_by_key sha256"
+                )
+                if key[1] < 1 or not _is_non_empty_str(key[2]):
+                    raise CitationVerificationError(
+                        f"Invalid (sha256, page, text_source) key in DictPageTextProvider: {key!r}."
+                    )
+            elif len(key) in (3, 4):
                 nct_key = validate_strict_nct_id(key[0], context="DictPageTextProvider.nct_id")
                 if nct_key in self._audit_nct_ids:
                     raise AuditHoldoutViolationError(
@@ -947,12 +1161,25 @@ class DictPageTextProvider:
                     raise AuditHoldoutViolationError(
                         f"Unlisted trial {nct_key!r} in DictPageTextProvider is absent from in_scope_nct_ids."
                     )
+                if not _is_safe_pdf_filename(key[1]):
+                    raise CitationVerificationError(
+                        f"Unsafe PDF filename in DictPageTextProvider key: {key!r}."
+                    )
+                if not _is_strict_int(key[2]) or key[2] < 1:
+                    raise CitationVerificationError(
+                        f"Invalid physical_page in DictPageTextProvider key: {key!r}."
+                    )
+                if len(key) == 4 and not _is_non_empty_str(key[3]):
+                    raise CitationVerificationError(
+                        f"Invalid text_source in DictPageTextProvider key: {key!r}."
+                    )
 
     def bind_firewall(
         self,
         *,
         audit_nct_ids: AbstractSet[str],
         in_scope_nct_ids: AbstractSet[str] | None = None,
+        allow_empty_audit_set: bool = False,
     ) -> None:
         """Bind or tighten firewall sets and re-verify stored keys."""
         merged_audit = self._audit_nct_ids | _validate_nct_set(
@@ -966,8 +1193,17 @@ class DictPageTextProvider:
             merged_scope = (
                 incoming_scope if merged_scope is None else (merged_scope & incoming_scope)
             )
+        if merged_scope is not None and (merged_audit & merged_scope):
+            raise AuditHoldoutViolationError(
+                "Audit holdout violation: DictPageTextProvider in_scope_nct_ids overlaps audit_nct_ids."
+            )
+        if not allow_empty_audit_set and len(merged_audit) == 0:
+            raise AuditHoldoutViolationError(
+                "DictPageTextProvider requires non-empty audit_nct_ids unless allow_empty_audit_set=True."
+            )
         self._audit_nct_ids = merged_audit
         self._in_scope_nct_ids = merged_scope
+        self._allow_empty_audit_set = allow_empty_audit_set
         self._validate_stored_keys()
 
     def get_page_text(
@@ -1012,15 +1248,7 @@ class DictPageTextProvider:
 
 
 class DirectoryPageTextProvider:
-    """Filesystem ``PageTextProvider`` reading JSON, gzipped JSON, or JSONL page maps.
-
-    Supports flat census page directories (``{sha256}.json``,
-    ``{nct_id}/{filename}.json``, ``{nct_id}__{filename}.json``), content-addressed
-    cache directories (``{sha256[:2]}/{sha256}.json.gz``), and ``.jsonl`` /
-    ``.jsonl.gz`` page-map files. Validates every discovered file, path prefix,
-    and JSON/JSONL row ``nct_id`` / ``in_audit`` against ``validate_strict_nct_id``,
-    ``audit_nct_ids``, and ``in_scope_nct_ids`` before loading any page text.
-    """
+    """Filesystem ``PageTextProvider`` reading JSON, gzipped JSON, or JSONL page maps."""
 
     def __init__(
         self,
@@ -1029,6 +1257,7 @@ class DirectoryPageTextProvider:
         ocr_dir: Path | None = None,
         audit_nct_ids: AbstractSet[str] = frozenset(),
         in_scope_nct_ids: AbstractSet[str] | None = None,
+        allow_empty_audit_set: bool = False,
     ) -> None:
         self._pages_dir = Path(pages_dir)
         self._ocr_dir = Path(ocr_dir) if ocr_dir is not None else None
@@ -1042,6 +1271,19 @@ class DirectoryPageTextProvider:
             if in_scope_nct_ids is not None
             else None
         )
+        if type(allow_empty_audit_set) is not bool:
+            raise AuditHoldoutViolationError(
+                f"allow_empty_audit_set must be bool, got {type(allow_empty_audit_set).__name__}."
+            )
+        self._allow_empty_audit_set: bool = allow_empty_audit_set
+        if self._in_scope_nct_ids is not None and (self._audit_nct_ids & self._in_scope_nct_ids):
+            raise AuditHoldoutViolationError(
+                "Audit holdout violation: DirectoryPageTextProvider in_scope_nct_ids overlaps audit_nct_ids."
+            )
+        if not self._allow_empty_audit_set and len(self._audit_nct_ids) == 0:
+            raise AuditHoldoutViolationError(
+                "DirectoryPageTextProvider requires non-empty audit_nct_ids unless allow_empty_audit_set=True."
+            )
         self._cache: dict[tuple[str, str, str, str], dict[int, str] | None] = {}
         self._jsonl_pages: dict[tuple[str, str], dict[int, str]] = {}
         self._jsonl_trial_pages: dict[tuple[str, str, str], dict[int, str]] = {}
@@ -1052,6 +1294,7 @@ class DirectoryPageTextProvider:
         *,
         audit_nct_ids: AbstractSet[str],
         in_scope_nct_ids: AbstractSet[str] | None = None,
+        allow_empty_audit_set: bool = False,
     ) -> None:
         """Bind or tighten firewall sets and re-scan page-map roots before serving pages."""
         merged_audit = self._audit_nct_ids | _validate_nct_set(
@@ -1065,9 +1308,22 @@ class DirectoryPageTextProvider:
             merged_scope = (
                 incoming_scope if merged_scope is None else (merged_scope & incoming_scope)
             )
-        if merged_audit != self._audit_nct_ids or merged_scope != self._in_scope_nct_ids:
+        if merged_scope is not None and (merged_audit & merged_scope):
+            raise AuditHoldoutViolationError(
+                "Audit holdout violation: DirectoryPageTextProvider in_scope_nct_ids overlaps audit_nct_ids."
+            )
+        if not allow_empty_audit_set and len(merged_audit) == 0:
+            raise AuditHoldoutViolationError(
+                "DirectoryPageTextProvider requires non-empty audit_nct_ids unless allow_empty_audit_set=True."
+            )
+        if (
+            merged_audit != self._audit_nct_ids
+            or merged_scope != self._in_scope_nct_ids
+            or allow_empty_audit_set != self._allow_empty_audit_set
+        ):
             self._audit_nct_ids = merged_audit
             self._in_scope_nct_ids = merged_scope
+            self._allow_empty_audit_set = allow_empty_audit_set
             self._cache.clear()
             self._jsonl_pages.clear()
             self._jsonl_trial_pages.clear()
@@ -1085,46 +1341,39 @@ class DirectoryPageTextProvider:
             )
         return checked
 
+    def _check_path_part_for_embedded_nct(self, part: str, *, context: str) -> None:
+        """Scan a path component for exact or obfuscated NCT tokens."""
+        folded = _strip_invisible(unicodedata.normalize("NFKC", part))
+        for match in _EMBEDDED_NCT_TOKEN_RE.finditer(folded):
+            tok = match.group(0)
+            upper = tok.upper()
+            if STRICT_NCT_ID_RE.fullmatch(upper) is not None and upper in self._audit_nct_ids:
+                raise AuditHoldoutViolationError(
+                    f"Audit holdout violation in {context}: path references holdout trial {upper!r}."
+                )
+            if part != tok or STRICT_NCT_ID_RE.fullmatch(tok) is None:
+                raise InvalidNctIdError(
+                    f"Malformed or obfuscated NCT path component {part!r} in {context}."
+                )
+            self._check_nct_allowed(tok, context=context)
+
     def _validate_payload_firewall(self, payload: Any, *, source_desc: str) -> str | None:
-        """Validate ``nct_id``, ``nct_ids``, and ``in_audit`` fields inside a page-map payload."""
+        """Recursively validate ``nct_id``, ``nctId``, ``nct_ids``, ``in_audit``, and URLs."""
         if not isinstance(payload, Mapping):
             return None
-
-        payload_nct: str | None = None
+        discovered = _validate_nested_firewall_metadata(
+            payload,
+            context=source_desc,
+            expected_nct_id=None,
+            audit_nct_ids=self._audit_nct_ids,
+            in_scope_nct_ids=self._in_scope_nct_ids,
+            allow_empty_audit_set=self._allow_empty_audit_set,
+        )
         if "nct_id" in payload:
-            payload_nct = self._check_nct_allowed(
-                payload["nct_id"], context=f"{source_desc}.nct_id"
-            )
-
-        if "nct_ids" in payload:
-            raw_ids = payload["nct_ids"]
-            if not isinstance(raw_ids, list):
-                raise CitationVerificationError(
-                    f"{source_desc}.nct_ids must be a list, got {type(raw_ids).__name__}."
-                )
-            for idx, item in enumerate(raw_ids):
-                self._check_nct_allowed(item, context=f"{source_desc}.nct_ids[{idx}]")
-
-        if "in_audit" in payload:
-            flag = payload["in_audit"]
-            if type(flag) is not bool:
-                raise AuditHoldoutViolationError(
-                    f"{source_desc} carries non-bool in_audit={flag!r}."
-                )
-            if flag is True:
-                raise AuditHoldoutViolationError(
-                    f"Audit holdout violation: {source_desc} carries in_audit=True."
-                )
-
-        pages_obj = payload.get("pages")
-        if isinstance(pages_obj, list):
-            for idx, item in enumerate(pages_obj):
-                if isinstance(item, Mapping):
-                    self._validate_payload_firewall(
-                        item, source_desc=f"{source_desc}.pages[{idx}]"
-                    )
-
-        return payload_nct
+            return str(payload["nct_id"])
+        if "nctId" in payload:
+            return str(payload["nctId"])
+        return discovered[0] if len(set(discovered)) == 1 else None
 
     @staticmethod
     def _is_jsonl_path(path: Path) -> bool:
@@ -1135,6 +1384,14 @@ class DirectoryPageTextProvider:
         return not DirectoryPageTextProvider._is_jsonl_path(path) and path.name.endswith(
             (".json", ".json.gz")
         )
+
+    @staticmethod
+    def _strip_map_extensions(name: str) -> str:
+        stem = name[:-3] if name.endswith(".gz") else name
+        for ext in (".jsonl", ".json"):
+            if stem.endswith(ext):
+                return stem[: -len(ext)]
+        return stem
 
     def _ingest_jsonl_file(self, path: Path, *, default_source_bucket: str) -> None:
         opener = gzip.open if path.suffix == ".gz" else open
@@ -1178,43 +1435,161 @@ class DirectoryPageTextProvider:
         except json.JSONDecodeError as exc:
             raise CitationVerificationError(f"Malformed JSON in {path}: {exc}") from exc
 
+    def _validate_file_name_layout(self, entry: Path, *, root: Path) -> str | None:
+        """Enforce strict directory/filename layout whitelist inside ``root``."""
+        stem = self._strip_map_extensions(entry.name)
+        if entry.parent == root:
+            if self._is_jsonl_path(entry):
+                self._check_path_part_for_embedded_nct(stem, context=f"page_map_jsonl({entry})")
+                if _SAFE_STEM_RE.fullmatch(stem) is None:
+                    raise CitationVerificationError(
+                        f"Unsafe page-map JSONL filename {entry.name!r} under {root}."
+                    )
+                return None
+            if "__" in stem:
+                prefix, doc_part = stem.split("__", 1)
+                checked_prefix = self._check_nct_allowed(
+                    prefix, context=f"page_map_file({entry})"
+                )
+                self._check_path_part_for_embedded_nct(
+                    doc_part, context=f"page_map_file({entry})"
+                )
+                if _SAFE_STEM_RE.fullmatch(doc_part) is None:
+                    raise CitationVerificationError(
+                        f"Unsafe page-map filename {entry.name!r} under {root}."
+                    )
+                return checked_prefix
+            self._check_path_part_for_embedded_nct(stem, context=f"page_map_file({entry})")
+            if len(stem) != 64 or _SHA256_RE.fullmatch(stem) is None:
+                raise CitationVerificationError(
+                    f"Top-level page map {entry.name!r} under {root} must be <sha256>.json[.gz] "
+                    f"or <NCT_ID>__<doc>.json[.gz]."
+                )
+            return None
+
+        parent = entry.parent
+        if parent.parent != root:
+            self._check_path_part_for_embedded_nct(
+                parent.name, context=f"page_map_dir({parent})"
+            )
+            raise CitationVerificationError(
+                f"Nested page-map directory {parent} is not permitted under {root}."
+            )
+
+        if _HEX2_DIR_RE.fullmatch(parent.name) is not None:
+            self._check_path_part_for_embedded_nct(stem, context=f"page_map_file({entry})")
+            if (
+                not self._is_json_map_path(entry)
+                or len(stem) != 64
+                or _SHA256_RE.fullmatch(stem) is None
+                or stem[:2] != parent.name
+            ):
+                raise CitationVerificationError(
+                    f"Shard file {entry} must be <sha256>.json[.gz] matching prefix {parent.name!r}."
+                )
+            return None
+
+        checked_dir_nct = self._check_nct_allowed(
+            parent.name, context=f"page_map_dir({parent})"
+        )
+        self._check_path_part_for_embedded_nct(stem, context=f"page_map_file({entry})")
+        if not self._is_json_map_path(entry) or _SAFE_STEM_RE.fullmatch(stem) is None:
+            raise CitationVerificationError(
+                f"Unsafe per-trial page map {entry.name!r} under {parent}."
+            )
+        return checked_dir_nct
+
     def _scan_root(self, root: Path, *, default_source_bucket: str) -> None:
+        # Check root's own path components for any embedded/direct NCT token even if absent!
+        for part in root.parts:
+            folded = _strip_invisible(unicodedata.normalize("NFKC", part))
+            if _EMBEDDED_NCT_TOKEN_RE.search(folded) is not None:
+                if part == root.name and root.is_file() and "__" in part:
+                    stem = self._strip_map_extensions(part)
+                    prefix, rest = stem.split("__", 1)
+                    self._check_nct_allowed(prefix, context=f"page_map_file({root})")
+                    self._check_path_part_for_embedded_nct(
+                        rest, context=f"page_map_file({root})"
+                    )
+                else:
+                    self._check_path_part_for_embedded_nct(part, context=f"page_map_root({root})")
+
         if not root.exists():
             return
+
         if root.is_file():
+            stem = self._strip_map_extensions(root.name)
+            expected_nct: str | None = None
+            if "__" in stem:
+                prefix, doc_part = stem.split("__", 1)
+                expected_nct = self._check_nct_allowed(
+                    prefix, context=f"page_map_file({root})"
+                )
+                if _SAFE_STEM_RE.fullmatch(doc_part) is None:
+                    raise CitationVerificationError(
+                        f"Unsafe page-map filename {root.name!r}."
+                    )
+            elif STRICT_NCT_ID_RE.fullmatch(root.parent.name) is not None:
+                expected_nct = self._check_nct_allowed(
+                    root.parent.name, context=f"page_map_dir({root.parent})"
+                )
+
             if self._is_jsonl_path(root):
                 self._ingest_jsonl_file(root, default_source_bucket=default_source_bucket)
             elif self._is_json_map_path(root):
                 payload = self._read_json_file(root)
-                self._validate_payload_firewall(payload, source_desc=str(root))
+                payload_nct = self._validate_payload_firewall(payload, source_desc=str(root))
+                if (
+                    expected_nct is not None
+                    and payload_nct is not None
+                    and payload_nct != expected_nct
+                ):
+                    raise AuditHoldoutViolationError(
+                        f"Page map {root} path NCT {expected_nct!r} disagrees with payload {payload_nct!r}."
+                    )
+            else:
+                raise CitationVerificationError(
+                    f"Unsupported page-map file extension on {root}."
+                )
             return
 
         for entry in sorted(root.rglob("*")):
             if entry.is_dir():
-                if entry.parent == root and _HEX2_DIR_RE.fullmatch(entry.name) is not None:
-                    continue
-                if entry.parent == root or entry.name.lower().startswith("nct"):
-                    self._check_nct_allowed(
+                if entry.parent != root:
+                    self._check_path_part_for_embedded_nct(
                         entry.name, context=f"page_map_dir({entry})"
                     )
+                    raise CitationVerificationError(
+                        f"Nested directory {entry} is not permitted under {root}."
+                    )
+                if _HEX2_DIR_RE.fullmatch(entry.name) is not None:
+                    continue
+                self._check_path_part_for_embedded_nct(
+                    entry.name, context=f"page_map_dir({entry})"
+                )
+                self._check_nct_allowed(entry.name, context=f"page_map_dir({entry})")
                 continue
+
             if not entry.is_file():
                 continue
-            stem_name = entry.name[:-3] if entry.name.endswith(".gz") else entry.name
-            for ext in (".jsonl", ".json"):
-                if stem_name.endswith(ext):
-                    stem_name = stem_name[: -len(ext)]
-                    break
-            if "__" in stem_name:
-                prefix, _ = stem_name.split("__", 1)
-                self._check_nct_allowed(prefix, context=f"page_map_file({entry})")
-            elif _SHA256_RE.fullmatch(stem_name) is None and stem_name.lower().startswith("nct"):
-                self._check_nct_allowed(stem_name, context=f"page_map_file({entry})")
+            path_nct = self._validate_file_name_layout(entry, root=root)
             if self._is_jsonl_path(entry):
                 self._ingest_jsonl_file(entry, default_source_bucket=default_source_bucket)
             elif self._is_json_map_path(entry):
                 payload = self._read_json_file(entry)
-                self._validate_payload_firewall(payload, source_desc=str(entry))
+                payload_nct = self._validate_payload_firewall(payload, source_desc=str(entry))
+                if (
+                    path_nct is not None
+                    and payload_nct is not None
+                    and payload_nct != path_nct
+                ):
+                    raise AuditHoldoutViolationError(
+                        f"Page map {entry} path NCT {path_nct!r} disagrees with payload {payload_nct!r}."
+                    )
+            else:
+                raise CitationVerificationError(
+                    f"Unexpected non-JSON file {entry} inside page-map directory {root}."
+                )
 
     def _preflight_scan_all(self) -> None:
         self._scan_root(self._pages_dir, default_source_bucket="pdfkit")
@@ -1291,7 +1666,6 @@ class DirectoryPageTextProvider:
                 if page_num >= 1:
                     result[page_num] = str(val)
             return result
-        # Flat mapping {"1": "...", "2": "..."}
         numeric_map: dict[int, str] = {}
         for key, val in payload.items():
             if isinstance(key, str) and key.isdigit() and isinstance(val, str):
@@ -1369,6 +1743,44 @@ class DirectoryPageTextProvider:
         return pages.get(physical_page)
 
 
+def _validate_pdf_root_firewall(
+    pdf_root: Path | None,
+    *,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+) -> None:
+    """Scan ``pdf_root`` path components and subdirectories for holdout/malformed NCT IDs."""
+    if pdf_root is None:
+        return
+    root = Path(pdf_root)
+
+    def _check_part(part: str, ctx: str) -> None:
+        folded = _strip_invisible(unicodedata.normalize("NFKC", part))
+        for match in _EMBEDDED_NCT_TOKEN_RE.finditer(folded):
+            tok = match.group(0)
+            upper = tok.upper()
+            if STRICT_NCT_ID_RE.fullmatch(upper) is not None and upper in audit_nct_ids:
+                raise AuditHoldoutViolationError(
+                    f"Audit holdout violation in {ctx}: path references holdout trial {upper!r}."
+                )
+            if part != tok or STRICT_NCT_ID_RE.fullmatch(tok) is None:
+                raise InvalidNctIdError(
+                    f"Malformed or obfuscated NCT path component {part!r} in {ctx}."
+                )
+            if in_scope_nct_ids is not None and tok not in in_scope_nct_ids:
+                raise AuditHoldoutViolationError(
+                    f"Audit holdout refusal in {ctx}: path references unlisted trial {tok!r}."
+                )
+
+    for part in root.parts:
+        _check_part(part, f"pdf_root({root})")
+    if root.exists() and root.is_dir():
+        for entry in sorted(root.rglob("*")):
+            rel_parts = entry.relative_to(root).parts
+            for part in rel_parts:
+                _check_part(part, f"pdf_root_entry({entry})")
+
+
 def verify_document_record(
     doc: Mapping[str, Any],
     *,
@@ -1385,13 +1797,18 @@ def verify_document_record(
             f"Document record must be a mapping, got {type(doc).__name__}."
         )
 
-    nct_id = _enforce_record_firewall(
+    nct_id, checked_audit_ids, checked_scope_ids = _enforce_record_firewall(
         doc,
         record_label="document",
         in_audit=in_audit,
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+    )
+    _validate_pdf_root_firewall(
+        pdf_root,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
     )
 
     issues: list[VerificationIssue] = []
@@ -1470,6 +1887,20 @@ def verify_document_record(
                 filename=filename,
                 physical_page=None,
                 message=f"Unsafe or non-PDF filename {filename_raw!r}",
+            )
+        )
+
+    url_raw = doc.get("url")
+    if not _is_non_empty_str(url_raw):
+        issues.append(
+            VerificationIssue(
+                code="INVALID_DOCUMENT_URL",
+                severity="error",
+                nct_id=nct_id,
+                location_key=None,
+                filename=filename,
+                physical_page=None,
+                message=f"Document url must be a non-empty string, got {url_raw!r}",
             )
         )
 
@@ -1632,7 +2063,6 @@ def verify_document_record(
                 break
             prev_page = p
 
-    # Optional on-disk byte + SHA-256 verification when pdf_root is supplied.
     if (
         pdf_root is not None
         and http_status == 200
@@ -1749,19 +2179,51 @@ def _citation_shape_error_code(message: str) -> str:
     return "INVALID_CITATION_SHAPE"
 
 
+def _validate_docs_mapping_for_nct(
+    expected_nct: str,
+    docs_by_filename: Mapping[str, Mapping[str, Any]],
+    *,
+    context: str,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+    allow_empty_audit_set: bool,
+) -> None:
+    """Validate every document entry inside ``docs_by_filename`` against the firewall."""
+    if not isinstance(docs_by_filename, Mapping):
+        raise CitationVerificationError(
+            f"{context} must be a mapping, got {type(docs_by_filename).__name__}."
+        )
+    for doc_fn, doc_obj in docs_by_filename.items():
+        if not isinstance(doc_obj, Mapping):
+            raise CitationVerificationError(
+                f"{context}[{doc_fn!r}] must be a mapping, got {type(doc_obj).__name__}."
+            )
+        _validate_nested_firewall_metadata(
+            doc_obj,
+            context=f"{context}[{doc_fn!r}]",
+            expected_nct_id=expected_nct,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+
+
 def verify_citation(
     nct_id: str,
     location_key: tuple[int, str, str],
     citation: Any,
     *,
     docs_by_filename: Mapping[str, Mapping[str, Any]],
+    in_audit: Any = _MISSING,
+    audit_nct_ids: AbstractSet[str] = frozenset(),
+    in_scope_nct_ids: AbstractSet[str] | None = None,
+    allow_empty_audit_set: bool = False,
     pages_not_searched: Any = None,
     page_text_provider: PageTextProvider | None = None,
     text_source: str = "pdfkit",
-    audit_nct_ids: AbstractSet[str] = frozenset(),
-    in_scope_nct_ids: AbstractSet[str] | None = None,
 ) -> tuple[MatchTier | None, list[VerificationIssue]]:
-    """Verify a single citation's shape, bounds, hygiene, and single-page substring match."""
+    """Verify a single citation's firewall status, shape, bounds, and single-page match."""
+    # Phase A (F2): Strict NCT validation FIRST across nct_id, sets, and docs_by_filename.
     checked_nct = validate_strict_nct_id(nct_id, context="citation.nct_id")
     checked_audit_ids = _validate_nct_set(audit_nct_ids, context="audit_nct_ids")
     checked_scope_ids: frozenset[str] | None = (
@@ -1769,40 +2231,46 @@ def verify_citation(
         if in_scope_nct_ids is not None
         else None
     )
-    if checked_nct in checked_audit_ids:
-        raise AuditHoldoutViolationError(
-            f"Audit holdout violation: trial {checked_nct!r} is in audit_nct_ids."
-        )
-    if checked_scope_ids is not None and checked_nct not in checked_scope_ids:
-        raise AuditHoldoutViolationError(
-            f"Audit holdout refusal: trial {checked_nct!r} is absent from in_scope_nct_ids."
-        )
-    if isinstance(citation, Mapping) and "in_audit" in citation:
-        cit_flag = citation["in_audit"]
-        if type(cit_flag) is not bool or cit_flag is True:
-            raise AuditHoldoutViolationError(
-                f"Citation for {checked_nct!r} carries forbidden in_audit={cit_flag!r}."
-            )
-    for doc_fn, doc_obj in docs_by_filename.items():
-        if isinstance(doc_obj, Mapping):
-            if "nct_id" in doc_obj:
-                doc_nct = validate_strict_nct_id(
-                    doc_obj["nct_id"], context=f"docs_by_filename[{doc_fn!r}].nct_id"
+    if isinstance(docs_by_filename, Mapping):
+        for doc_fn, doc_obj in docs_by_filename.items():
+            if isinstance(doc_obj, Mapping):
+                _prescan_nested_nct_fields(
+                    doc_obj, context=f"docs_by_filename[{doc_fn!r}]"
                 )
-                if doc_nct in checked_audit_ids:
-                    raise AuditHoldoutViolationError(
-                        f"Audit holdout violation in docs_by_filename[{doc_fn!r}]: {doc_nct!r}."
-                    )
-                if checked_scope_ids is not None and doc_nct not in checked_scope_ids:
-                    raise AuditHoldoutViolationError(
-                        f"Unlisted trial in docs_by_filename[{doc_fn!r}]: {doc_nct!r}."
-                    )
-            if "in_audit" in doc_obj:
-                d_flag = doc_obj["in_audit"]
-                if type(d_flag) is not bool or d_flag is True:
-                    raise AuditHoldoutViolationError(
-                        f"Document {doc_fn!r} carries forbidden in_audit={d_flag!r}."
-                    )
+    if isinstance(citation, Mapping):
+        _prescan_nested_nct_fields(citation, context="citation")
+
+    # Phase B (F1): Enforce holdout firewall on nct_id, citation, docs_by_filename, and provider.
+    enforce_audit_holdout(
+        checked_nct,
+        in_audit=in_audit,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
+    if isinstance(citation, Mapping):
+        _validate_nested_firewall_metadata(
+            citation,
+            context="citation",
+            expected_nct_id=checked_nct,
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+    _validate_docs_mapping_for_nct(
+        checked_nct,
+        docs_by_filename,
+        context="docs_by_filename",
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
+    if isinstance(page_text_provider, (DirectoryPageTextProvider, DictPageTextProvider)):
+        page_text_provider.bind_firewall(
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
 
     issues: list[VerificationIssue] = []
     shape_errors = validate_citation_shape(citation, allow_none_optional_strings=False)
@@ -1955,7 +2423,12 @@ def verify_citation(
             )
 
     quotation = citation.get("quotation")
-    quotation_valid = type(quotation) is str and len(quotation) > 0
+    quotation_valid = (
+        type(quotation) is str
+        and len(quotation) > 0
+        and _is_non_empty_str(quotation)
+        and bool(normalize_for_page_match(quotation))
+    )
 
     match_tier: MatchTier | None = None
     if (
@@ -1994,8 +2467,6 @@ def verify_citation(
         else:
             match_tier = match_quotation_on_page(quotation, page_text)
             if match_tier == "mismatch":
-                # Check adjacent pages solely to diagnose a cross-page span
-                # violation; never accept a cross-page match.
                 spans_adjacent = False
                 if phys_page > 1:
                     prev_text = page_text_provider.get_page_text(
@@ -2378,14 +2849,27 @@ def verify_location_record(
         raise CitationVerificationError(
             f"Location record must be a mapping, got {type(loc).__name__}."
         )
+    if not isinstance(docs_by_nct, Mapping):
+        raise CitationVerificationError(
+            f"docs_by_nct must be a mapping, got {type(docs_by_nct).__name__}."
+        )
     if type(manifest_has_documents) is not bool:
         raise CitationVerificationError(
             f"manifest_has_documents must be bool, got {manifest_has_documents!r}."
         )
-    for k in docs_by_nct:
-        validate_strict_nct_id(k, context="docs_by_nct key")
 
-    nct_id = _enforce_record_firewall(
+    # Phase A (F2): Validate strict NCT IDs on docs_by_nct BEFORE _enforce_record_firewall.
+    for k, per_nct_docs in docs_by_nct.items():
+        validate_strict_nct_id(k, context="docs_by_nct key")
+        if isinstance(per_nct_docs, Mapping):
+            for doc_fn, doc_obj in per_nct_docs.items():
+                if isinstance(doc_obj, Mapping):
+                    _prescan_nested_nct_fields(
+                        doc_obj, context=f"docs_by_nct[{k!r}][{doc_fn!r}]"
+                    )
+
+    # Phase A+B on loc & sets.
+    nct_id, checked_audit_ids, checked_scope_ids = _enforce_record_firewall(
         loc,
         record_label="location",
         in_audit=in_audit,
@@ -2394,10 +2878,29 @@ def verify_location_record(
         allow_empty_audit_set=allow_empty_audit_set,
     )
 
+    # Phase B on docs_by_nct keys and inner document objects.
+    for k, per_nct_docs in docs_by_nct.items():
+        enforce_audit_holdout(
+            k,
+            in_audit=False,
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+        _validate_docs_mapping_for_nct(
+            k,
+            per_nct_docs,
+            context=f"docs_by_nct[{k!r}]",
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+
     if isinstance(page_text_provider, (DirectoryPageTextProvider, DictPageTextProvider)):
         page_text_provider.bind_firewall(
-            audit_nct_ids=audit_nct_ids,
-            in_scope_nct_ids=in_scope_nct_ids,
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
         )
 
     idx_raw = loc.get("primary_outcome_index")
@@ -2602,6 +3105,10 @@ def verify_location_record(
             loc_key,
             cit,
             docs_by_filename=docs_for_nct,
+            in_audit=False,
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
             pages_not_searched=pages_not_searched,
             page_text_provider=page_text_provider,
             text_source=effective_text_source,
@@ -2611,12 +3118,11 @@ def verify_location_record(
             counts["ellipsis_flags"] += 1
         if tier == "exact_ws":
             counts["exact_ws_matches"] += 1
-        elif tier == "unicode_nfkc_hyphen_matches" or tier == "unicode_nfkc_hyphen":
+        elif tier == "unicode_nfkc_hyphen":
             counts["unicode_nfkc_hyphen_matches"] += 1
         elif tier == "mismatch":
             counts["substring_mismatches"] += 1
 
-    # Neutral-language scan on worker commentary (never on verbatim citations).
     note = loc.get("note")
     if type(note) is str:
         for flag in scan_neutral_language(note):
@@ -2647,17 +3153,13 @@ def verify_trial_completeness(
     expected_primary_outcomes: int,
     pass_name: str = "primary",
     allow_sparse: bool = False,
+    in_audit: Any = _MISSING,
     audit_nct_ids: AbstractSet[str] = frozenset(),
     in_scope_nct_ids: AbstractSet[str] | None = None,
+    allow_empty_audit_set: bool = False,
 ) -> list[VerificationIssue]:
-    """Assert exact bijection over ``range(expected_primary_outcomes) x ELEMENTS``.
-
-    When ``allow_sparse=True`` (used for targeted override passes in
-    ``SPARSE_PASSES``), ``TRIAL_GRID_MISSING_CELL`` is suppressed while
-    ``INVALID_EXPECTED_OUTCOMES_COUNT``, ``TRIAL_GRID_DUPLICATE_CELL``, and
-    ``TRIAL_GRID_UNEXPECTED_CELL`` (``0 <= idx < expected_primary_outcomes``)
-    remain strictly enforced.
-    """
+    """Assert exact bijection over ``range(expected_primary_outcomes) x ELEMENTS``."""
+    # Phase A (F2): Validate strict NCT IDs across nct_id, sets, and locations FIRST.
     checked_nct = validate_strict_nct_id(nct_id, context="completeness.nct_id")
     checked_audit_ids = _validate_nct_set(audit_nct_ids, context="audit_nct_ids")
     checked_scope_ids: frozenset[str] | None = (
@@ -2665,36 +3167,53 @@ def verify_trial_completeness(
         if in_scope_nct_ids is not None
         else None
     )
-    for loc in locations:
+    if isinstance(locations, (str, bytes, Mapping)) or not isinstance(locations, Sequence):
+        raise CitationVerificationError(
+            f"locations must be a sequence of mappings, got {type(locations).__name__}."
+        )
+    for idx_loc, loc in enumerate(locations):
         if not isinstance(loc, Mapping):
             raise CitationVerificationError(
-                f"Location entry in verify_trial_completeness must be a mapping, got {type(loc).__name__}."
+                f"Location entry {idx_loc} in verify_trial_completeness must be a mapping, "
+                f"got {type(loc).__name__}."
             )
-        validate_strict_nct_id(loc.get("nct_id"), context="location.nct_id")
-    if checked_nct in checked_audit_ids:
-        raise AuditHoldoutViolationError(
-            f"Audit holdout violation: trial {checked_nct!r} is in audit_nct_ids."
-        )
-    if checked_scope_ids is not None and checked_nct not in checked_scope_ids:
-        raise AuditHoldoutViolationError(
-            f"Audit holdout refusal: trial {checked_nct!r} is absent from in_scope_nct_ids."
-        )
-    for loc in locations:
+        validate_strict_nct_id(loc.get("nct_id"), context=f"locations[{idx_loc}].nct_id")
+        _prescan_nested_nct_fields(loc, context=f"locations[{idx_loc}]")
+
+    # Phase B (F1): Enforce holdout firewall on nct_id and all location entries.
+    enforce_audit_holdout(
+        checked_nct,
+        in_audit=in_audit,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
+    for idx_loc, loc in enumerate(locations):
         loc_nct = loc["nct_id"]
-        if loc_nct in checked_audit_ids:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout violation: location row {loc_nct!r} is in audit_nct_ids."
-            )
-        if checked_scope_ids is not None and loc_nct not in checked_scope_ids:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout refusal: location row {loc_nct!r} is absent from in_scope_nct_ids."
-            )
-        if "in_audit" in loc:
-            l_flag = loc["in_audit"]
-            if type(l_flag) is not bool or l_flag is True:
-                raise AuditHoldoutViolationError(
-                    f"Location row for {loc_nct!r} carries forbidden in_audit={l_flag!r}."
-                )
+        enforce_audit_holdout(
+            loc_nct,
+            in_audit=False,
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+        _validate_nested_firewall_metadata(
+            loc,
+            context=f"locations[{idx_loc}]",
+            expected_nct_id=loc_nct,
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+
+    if type(allow_sparse) is not bool:
+        raise CitationVerificationError(
+            f"allow_sparse must be bool, got {allow_sparse!r}."
+        )
+    if type(pass_name) is not str or pass_name not in ALLOWED_PASSES:
+        raise CitationVerificationError(
+            f"Invalid pass_name {pass_name!r}; expected one of {ALLOWED_PASSES}."
+        )
 
     issues: list[VerificationIssue] = []
     if not _is_strict_int(expected_primary_outcomes) or expected_primary_outcomes < 1:
@@ -2797,16 +3316,14 @@ def verify_census_corpus(
     require_exhaustive_for_not_found: bool = True,
     text_source: str = "pdfkit",
 ) -> CorpusVerificationReport:
-    """Run full mechanical verification across a documents + locations corpus.
-
-    Validates all NCT IDs via ``validate_strict_nct_id`` FIRST, requires
-    non-empty ``audit_nct_ids`` unless ``allow_empty_audit_set=True``, and
-    raises ``AuditHoldoutViolationError`` immediately on any audit, missing-flag,
-    or unlisted trial.
-    """
-    if type(allow_empty_audit_set) is not bool:
-        raise AuditHoldoutViolationError(
-            f"allow_empty_audit_set must be bool, got {type(allow_empty_audit_set).__name__}."
+    """Run full mechanical verification across a documents + locations corpus."""
+    if isinstance(documents, (str, bytes, Mapping)) or not isinstance(documents, Sequence):
+        raise CitationVerificationError(
+            f"documents must be a sequence of mappings, got {type(documents).__name__}."
+        )
+    if isinstance(locations, (str, bytes, Mapping)) or not isinstance(locations, Sequence):
+        raise CitationVerificationError(
+            f"locations must be a sequence of mappings, got {type(locations).__name__}."
         )
 
     # Step 1 (F2): Validate strict ASCII ^NCT[0-9]{8}$ across ALL inputs FIRST.
@@ -2828,14 +3345,20 @@ def verify_census_corpus(
                 f"documents[{idx}] must be a mapping, got {type(doc).__name__}."
             )
         validate_strict_nct_id(doc.get("nct_id"), context=f"documents[{idx}].nct_id")
+        _prescan_nested_nct_fields(doc, context=f"documents[{idx}]")
     for idx, loc in enumerate(locations):
         if not isinstance(loc, Mapping):
             raise CitationVerificationError(
                 f"locations[{idx}] must be a mapping, got {type(loc).__name__}."
             )
         validate_strict_nct_id(loc.get("nct_id"), context=f"locations[{idx}].nct_id")
+        _prescan_nested_nct_fields(loc, context=f"locations[{idx}]")
 
     # Step 2 (F1): Enforce non-empty audit_nct_ids and firewall invariants.
+    if type(allow_empty_audit_set) is not bool:
+        raise AuditHoldoutViolationError(
+            f"allow_empty_audit_set must be bool, got {type(allow_empty_audit_set).__name__}."
+        )
     if checked_scope_ids is not None and (checked_audit_ids & checked_scope_ids):
         overlap = sorted(checked_audit_ids & checked_scope_ids)
         raise AuditHoldoutViolationError(
@@ -2851,7 +3374,13 @@ def verify_census_corpus(
         page_text_provider.bind_firewall(
             audit_nct_ids=checked_audit_ids,
             in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
         )
+    _validate_pdf_root_firewall(
+        pdf_root,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
+    )
 
     if expected_has_documents_by_nct is not None:
         for nct_id, has_docs_val in sorted(expected_has_documents_by_nct.items()):
@@ -2966,7 +3495,8 @@ def verify_census_corpus(
                 )
             else:
                 seen_location_keys.add(full_key)
-            passes_by_nct.setdefault(loc_nct, set()).add(pass_name)
+            if pass_name in ALLOWED_PASSES:
+                passes_by_nct.setdefault(loc_nct, set()).add(pass_name)
 
     if expected_outcomes_by_nct is not None:
         missing_from_expected = sorted(corpus_ncts - set(expected_outcomes_by_nct.keys()))
@@ -2990,6 +3520,10 @@ def verify_census_corpus(
                         expected_primary_outcomes=expected_k,
                         pass_name=pass_name,
                         allow_sparse=pass_name in SPARSE_PASSES,
+                        in_audit=False,
+                        audit_nct_ids=checked_audit_ids,
+                        in_scope_nct_ids=checked_scope_ids,
+                        allow_empty_audit_set=allow_empty_audit_set,
                     )
                 )
 

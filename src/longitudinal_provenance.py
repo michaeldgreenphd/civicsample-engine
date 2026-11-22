@@ -53,6 +53,9 @@ from typing import (
 
 from src.citation_verifier import (
     _MISSING,
+    _prescan_nested_nct_fields,
+    _validate_nct_set,
+    _validate_nested_firewall_metadata,
     AuditHoldoutViolationError,
     CitationVerificationError,
     InvalidNctIdError,
@@ -1035,33 +1038,64 @@ def _extract_and_merge_publications(
     return output
 
 
-def _resolve_study_nct_id(study: Mapping[str, Any]) -> str:
-    """Resolve and validate ``nct_id`` from ``study`` without silent fallback across mismatches."""
+def _resolve_study_nct_id(study: Mapping[str, Any]) -> tuple[str, list[str]]:
+    """Resolve and validate all NCT ID fields on ``study`` without silent fallback."""
     protocol = study.get("protocolSection")
     id_mod = protocol.get("identificationModule") if isinstance(protocol, Mapping) else None
 
-    has_mod_nct = isinstance(id_mod, Mapping) and "nctId" in id_mod
-    has_top_nct = "nct_id" in study
-
-    mod_nct: str | None = None
-    top_nct: str | None = None
-    if has_mod_nct and isinstance(id_mod, Mapping):
-        mod_nct = validate_strict_nct_id(
-            id_mod["nctId"], context="study.protocolSection.identificationModule.nctId"
+    candidates: list[tuple[str, str]] = []
+    if isinstance(id_mod, Mapping):
+        if "nctId" in id_mod:
+            candidates.append(
+                (
+                    "study.protocolSection.identificationModule.nctId",
+                    validate_strict_nct_id(
+                        id_mod["nctId"],
+                        context="study.protocolSection.identificationModule.nctId",
+                    ),
+                )
+            )
+        if "nct_id" in id_mod:
+            candidates.append(
+                (
+                    "study.protocolSection.identificationModule.nct_id",
+                    validate_strict_nct_id(
+                        id_mod["nct_id"],
+                        context="study.protocolSection.identificationModule.nct_id",
+                    ),
+                )
+            )
+    if "nct_id" in study:
+        candidates.append(
+            ("study.nct_id", validate_strict_nct_id(study["nct_id"], context="study.nct_id"))
         )
-    if has_top_nct:
-        top_nct = validate_strict_nct_id(study["nct_id"], context="study.nct_id")
+    if "nctId" in study:
+        candidates.append(
+            ("study.nctId", validate_strict_nct_id(study["nctId"], context="study.nctId"))
+        )
 
-    if mod_nct is not None and top_nct is not None and mod_nct != top_nct:
+    if not candidates:
+        return validate_strict_nct_id(None, context="study.nct_id"), []
+    return candidates[0][1], [val for _, val in candidates]
+
+
+def _prescan_side_stream(
+    records: Sequence[Mapping[str, Any]] | None,
+    *,
+    stream_name: str,
+) -> None:
+    if records is None:
+        return
+    if isinstance(records, (str, bytes, Mapping)) or not isinstance(records, Sequence):
         raise CitationVerificationError(
-            f"Mismatched study NCT IDs: identificationModule.nctId={mod_nct!r} vs "
-            f"study.nct_id={top_nct!r}."
+            f"{stream_name} must be a sequence of mappings, got {type(records).__name__}."
         )
-    if mod_nct is not None:
-        return mod_nct
-    if top_nct is not None:
-        return top_nct
-    return validate_strict_nct_id(None, context="study.nct_id")
+    for idx, rec in enumerate(records):
+        if not isinstance(rec, Mapping):
+            raise CitationVerificationError(
+                f"{stream_name}[{idx}] must be a mapping, got {type(rec).__name__}."
+            )
+        _prescan_nested_nct_fields(rec, context=f"{stream_name}[{idx}]")
 
 
 def _validate_side_stream_records(
@@ -1069,42 +1103,23 @@ def _validate_side_stream_records(
     *,
     stream_name: str,
     expected_nct_id: str,
-    audit_nct_ids: AbstractSet[str],
-    in_scope_nct_ids: AbstractSet[str] | None,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
     allow_empty_audit_set: bool,
 ) -> None:
-    """Validate strict NCT IDs and ``in_audit`` flags on side-stream records."""
+    """Validate strict NCT IDs, ``in_audit`` flags, and embedded URLs on side streams."""
     if records is None:
         return
+    _prescan_side_stream(records, stream_name=stream_name)
     for idx, rec in enumerate(records):
-        if not isinstance(rec, Mapping):
-            continue
-        if "nct_id" in rec:
-            rec_nct = validate_strict_nct_id(
-                rec["nct_id"], context=f"{stream_name}[{idx}].nct_id"
-            )
-            enforce_audit_holdout(
-                rec_nct,
-                in_audit=False,
-                audit_nct_ids=audit_nct_ids,
-                in_scope_nct_ids=in_scope_nct_ids,
-                allow_empty_audit_set=allow_empty_audit_set,
-            )
-            if rec_nct != expected_nct_id:
-                raise CitationVerificationError(
-                    f"{stream_name}[{idx}] declares nct_id={rec_nct!r}, "
-                    f"expected {expected_nct_id!r}."
-                )
-        if "in_audit" in rec:
-            flag = rec["in_audit"]
-            if type(flag) is not bool:
-                raise AuditHoldoutViolationError(
-                    f"{stream_name}[{idx}] carries non-bool in_audit={flag!r}."
-                )
-            if flag is True:
-                raise AuditHoldoutViolationError(
-                    f"Audit holdout violation: {stream_name}[{idx}] carries in_audit=True."
-                )
+        _validate_nested_firewall_metadata(
+            rec,
+            context=f"{stream_name}[{idx}]",
+            expected_nct_id=expected_nct_id,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
 
 
 def assemble_longitudinal_provenance(
@@ -1123,7 +1138,7 @@ def assemble_longitudinal_provenance(
 ) -> LongitudinalProvenanceRecord:
     """Assemble factual longitudinal registry, document, and publication provenance.
 
-    Validates ``nct_id`` via ``validate_strict_nct_id`` FIRST and enforces
+    Validates all NCT IDs via ``validate_strict_nct_id`` FIRST and enforces
     ``enforce_audit_holdout`` BEFORE invoking any injected
     ``publication_provider`` or reading any document metadata.
     """
@@ -1132,19 +1147,18 @@ def assemble_longitudinal_provenance(
             f"study must be a mapping, got {type(study).__name__}."
         )
 
-    # Step 1 (F2): Strict ASCII ^NCT[0-9]{8}$ check FIRST on study and side streams.
-    nct_id = _resolve_study_nct_id(study)
-    for stream_name, stream in (
-        ("extracted_documents", extracted_documents),
-        ("pubmed_records", pubmed_records),
-        ("europe_pmc_records", europe_pmc_records),
-    ):
-        if stream is not None:
-            for idx, item in enumerate(stream):
-                if isinstance(item, Mapping) and "nct_id" in item:
-                    validate_strict_nct_id(
-                        item["nct_id"], context=f"{stream_name}[{idx}].nct_id"
-                    )
+    # Step 1 (F2): Strict ASCII ^NCT[0-9]{8}$ check FIRST across study, sets, and side streams.
+    nct_id, all_study_ncts = _resolve_study_nct_id(study)
+    checked_audit_ids = _validate_nct_set(audit_nct_ids, context="audit_nct_ids")
+    checked_scope_ids: frozenset[str] | None = (
+        _validate_nct_set(in_scope_nct_ids, context="in_scope_nct_ids")
+        if in_scope_nct_ids is not None
+        else None
+    )
+    _prescan_nested_nct_fields(study, context="study")
+    _prescan_side_stream(extracted_documents, stream_name="extracted_documents")
+    _prescan_side_stream(pubmed_records, stream_name="pubmed_records")
+    _prescan_side_stream(europe_pmc_records, stream_name="europe_pmc_records")
 
     # Step 2 (F1): Hard holdout firewall BEFORE any provider call or document parse.
     if "in_audit" in study:
@@ -1165,11 +1179,25 @@ def assemble_longitudinal_provenance(
     else:
         effective_in_audit = _MISSING
 
-    enforce_audit_holdout(
-        nct_id,
-        in_audit=effective_in_audit,
-        audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
+    for candidate_nct in all_study_ncts:
+        enforce_audit_holdout(
+            candidate_nct,
+            in_audit=effective_in_audit,
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+    if len(set(all_study_ncts)) > 1:
+        raise CitationVerificationError(
+            f"Mismatched study NCT IDs across fields: {all_study_ncts}."
+        )
+
+    _validate_nested_firewall_metadata(
+        study,
+        context="study",
+        expected_nct_id=nct_id,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
         allow_empty_audit_set=allow_empty_audit_set,
     )
 
@@ -1177,24 +1205,24 @@ def assemble_longitudinal_provenance(
         extracted_documents,
         stream_name="extracted_documents",
         expected_nct_id=nct_id,
-        audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
         allow_empty_audit_set=allow_empty_audit_set,
     )
     _validate_side_stream_records(
         pubmed_records,
         stream_name="pubmed_records",
         expected_nct_id=nct_id,
-        audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
         allow_empty_audit_set=allow_empty_audit_set,
     )
     _validate_side_stream_records(
         europe_pmc_records,
         stream_name="europe_pmc_records",
         expected_nct_id=nct_id,
-        audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
         allow_empty_audit_set=allow_empty_audit_set,
     )
 
@@ -1205,8 +1233,8 @@ def assemble_longitudinal_provenance(
             effective_pubmed,
             stream_name="publication_provider",
             expected_nct_id=nct_id,
-            audit_nct_ids=audit_nct_ids,
-            in_scope_nct_ids=in_scope_nct_ids,
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
 

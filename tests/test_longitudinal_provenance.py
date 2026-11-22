@@ -463,3 +463,139 @@ def test_to_outcomes_layout_provenance_dict_contract_and_jsonl_roundtrip(
     bad_record["nct_id"] = "nct99000002"
     with pytest.raises(InvalidNctIdError):
         to_outcomes_layout_provenance(bad_record)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Adversarial Red-Team Suite (strictly fictional NCT99800001..NCT99899999)
+# ---------------------------------------------------------------------------
+
+RT_AUDIT_ID = "NCT99888888"
+RT_AUDIT_SET: frozenset[str] = frozenset({RT_AUDIT_ID})
+RT_SCOPE_ID = "NCT99800001"
+RT_UNLISTED_ID = "NCT99800099"
+RT_SCOPE_SET: frozenset[str] = frozenset({RT_SCOPE_ID})
+
+
+def test_redteam_provenance_firewall_strict_nct_and_side_streams() -> None:
+    """Red-team assemble_longitudinal_provenance & to_outcomes_layout_provenance against holdout/NCT attacks."""
+    spy = _SpyPublicationProvider(
+        [{"nct_id": RT_AUDIT_ID, "pmid": "34000001", "pub_date": "2021 May"}]
+    )
+
+    # 1. Malformed NCT IDs raise InvalidNctIdError FIRST before any audit or provider call.
+    for bad_nct in (
+        "nct99888888",
+        "NCT99888888 ",
+        " NCT99888888",
+        "NCT99888888\u200b",
+        "NCT\u0669\u0669\u0668\u0668\u0668\u0668\u0668\u0668",
+        None,
+        99888888,
+    ):
+        with pytest.raises(InvalidNctIdError):
+            assemble_longitudinal_provenance(
+                _sample_study(nct_id=bad_nct),
+                in_audit=True,
+                audit_nct_ids=RT_AUDIT_SET,
+                publication_provider=spy,
+            )
+
+    # F2 ordering: malformed audit_nct_ids raises InvalidNctIdError even when study["in_audit"]=True.
+    study_true = _sample_study(nct_id=RT_SCOPE_ID)
+    study_true["in_audit"] = True
+    with pytest.raises(InvalidNctIdError):
+        assemble_longitudinal_provenance(
+            study_true,
+            audit_nct_ids={"nct99888888"},
+            publication_provider=spy,
+        )
+
+    # 2. Missing in_audit, empty audit_nct_ids, non-bool in_audit, audit ID, and unlisted ID refused.
+    clean_study = _sample_study(nct_id=RT_SCOPE_ID)
+    with pytest.raises(AuditHoldoutViolationError):
+        assemble_longitudinal_provenance(clean_study, audit_nct_ids=RT_AUDIT_SET, publication_provider=spy)
+    with pytest.raises(AuditHoldoutViolationError):
+        assemble_longitudinal_provenance(
+            clean_study, in_audit=False, audit_nct_ids=set(), publication_provider=spy
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        assemble_longitudinal_provenance(
+            _sample_study(nct_id=RT_AUDIT_ID),
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+            publication_provider=spy,
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        assemble_longitudinal_provenance(
+            _sample_study(nct_id=RT_UNLISTED_ID),
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+            publication_provider=spy,
+        )
+    for bad_flag in (True, None, 0, "false"):
+        with pytest.raises(AuditHoldoutViolationError):
+            assemble_longitudinal_provenance(
+                clean_study,
+                in_audit=bad_flag,
+                audit_nct_ids=RT_AUDIT_SET,
+                publication_provider=spy,
+            )
+
+    # 3. Top-level camelCase study["nctId"] smuggling NCT99888888 alongside study["nct_id"].
+    camel_mismatch = {"nct_id": RT_SCOPE_ID, "nctId": RT_AUDIT_ID}
+    with pytest.raises((AuditHoldoutViolationError, CitationVerificationError)):
+        assemble_longitudinal_provenance(
+            camel_mismatch,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+            publication_provider=spy,
+        )
+
+    # 4. Side streams carrying audit nct_id, non-bool in_audit, embedded audit URL, or bare str stream.
+    with pytest.raises(AuditHoldoutViolationError):
+        assemble_longitudinal_provenance(
+            clean_study,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+            extracted_documents=[
+                {
+                    "nct_id": RT_SCOPE_ID,
+                    "filename": "Prot_000.pdf",
+                    "url": f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID}/Prot_000.pdf",
+                }
+            ],
+            publication_provider=spy,
+        )
+    with pytest.raises(CitationVerificationError):
+        assemble_longitudinal_provenance(
+            clean_study,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+            extracted_documents=RT_AUDIT_ID,  # type: ignore[arg-type]
+            publication_provider=spy,
+        )
+
+    # Zero calls reached spy across all pre-provider firewall refusals.
+    assert spy.calls == []
+
+    # 5. Provider returning an NCT99888888 row is refused on return validation.
+    with pytest.raises(AuditHoldoutViolationError):
+        assemble_longitudinal_provenance(
+            clean_study,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+            publication_provider=spy,
+        )
+    assert spy.calls == [RT_SCOPE_ID]
+
+    # 6. Projection refuses audit flags and malformed NCT IDs.
+    valid_rec = assemble_longitudinal_provenance(
+        clean_study,
+        in_scope_nct_ids=RT_SCOPE_SET,
+        audit_nct_ids=RT_AUDIT_SET,
+    )
+    for bad_flag in (True, None, 0, "false"):
+        tampered = dict(valid_rec)
+        tampered["in_audit"] = bad_flag
+        with pytest.raises(AuditHoldoutViolationError):
+            to_outcomes_layout_provenance(tampered)  # type: ignore[arg-type]

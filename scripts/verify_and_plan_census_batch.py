@@ -50,6 +50,11 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from src.citation_verifier import (  # noqa: E402
+    ALLOWED_PASSES,
+    STRICT_NCT_ID_RE,
+    _is_non_empty_str,
+    _prescan_nested_nct_fields,
+    _validate_nested_firewall_metadata,
     AuditHoldoutViolationError,
     CitationVerificationError,
     DirectoryPageTextProvider,
@@ -58,6 +63,8 @@ from src.citation_verifier import (  # noqa: E402
     UNREADABLE_SUBTYPES,
     VERIFIER_RULES_VERSION,
     enforce_audit_holdout,
+    validate_citation_shape,
+    validate_status_citations,
     validate_strict_nct_id,
     verify_census_corpus,
 )
@@ -92,10 +99,6 @@ _SCAN_NOTE_RE: Final[re.Pattern[str]] = re.compile(
 
 class PlanScopeError(CitationVerificationError):
     """Raised when an explicit ``--nct-id`` target falls outside the selected cohort."""
-
-
-def _is_non_empty_str(value: Any) -> bool:
-    return type(value) is str and len(value.strip()) > 0
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -137,15 +140,21 @@ def _partition_index_firewall(
     in_scope_by_nct: dict[str, Mapping[str, Any]] = {}
     seen_ncts: set[str] = set()
 
+    # Phase A (F2): Validate strict ASCII ^NCT[0-9]{8}$ across ALL index rows FIRST.
+    validated_ncts: list[str] = []
     for idx, row in enumerate(index_rows):
         if not isinstance(row, Mapping):
             raise CitationVerificationError(
                 f"{source_label}[{idx}] is not a JSON object ({type(row).__name__})."
             )
-        # F2: Strict ASCII ^NCT[0-9]{8}$ check FIRST before any audit check.
-        nct_id = validate_strict_nct_id(
-            row.get("nct_id"), context=f"{source_label}[{idx}].nct_id"
+        validated_ncts.append(
+            validate_strict_nct_id(row.get("nct_id"), context=f"{source_label}[{idx}].nct_id")
         )
+        _prescan_nested_nct_fields(row, context=f"{source_label}[{idx}]")
+
+    # Phase B (F1): Enforce uniqueness and explicit bool in_audit on every row.
+    for idx, row in enumerate(index_rows):
+        nct_id = validated_ncts[idx]
         if nct_id in seen_ncts:
             raise AuditHoldoutViolationError(
                 f"Duplicate nct_id {nct_id!r} in {source_label} at row {idx}."
@@ -167,7 +176,18 @@ def _partition_index_firewall(
         and len(in_scope_by_nct) == len(index_rows)
         and len(index_rows) > 0
     )
-    return frozenset(audit_ids), in_scope_by_nct, allow_empty_audit_set
+    frozen_audit = frozenset(audit_ids)
+    frozen_scope = frozenset(in_scope_by_nct.keys())
+    for nct_id, row in sorted(in_scope_by_nct.items()):
+        _validate_nested_firewall_metadata(
+            row,
+            context=f"{source_label}[{nct_id}]",
+            expected_nct_id=nct_id,
+            audit_nct_ids=frozen_audit,
+            in_scope_nct_ids=frozen_scope,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+    return frozen_audit, in_scope_by_nct, allow_empty_audit_set
 
 
 def load_index_rows(path: Path) -> list[dict[str, Any]]:
@@ -254,7 +274,7 @@ def _validate_index_doc_flags(row: Mapping[str, Any], *, context: str) -> bool:
     nct_label = row.get("nct_id")
     has_doc = False
     for flag_key in ("protocol", "sap"):
-        if flag_key in row and row[flag_key] is not None:
+        if flag_key in row:
             flag_val = row[flag_key]
             if type(flag_val) is not bool:
                 raise CitationVerificationError(
@@ -301,60 +321,35 @@ def _validate_doc_cache_entry(
     row: Mapping[str, Any],
     *,
     context: str,
-    audit_nct_ids: AbstractSet[str],
-    in_scope_nct_ids: AbstractSet[str],
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
 ) -> None:
-    """Validate ``nct_id``, ``nct_ids``, and ``in_audit`` on a doc-cache entry before use."""
-    if "nct_id" in row:
-        checked_nct = validate_strict_nct_id(row["nct_id"], context=f"{context}.nct_id")
-    else:
-        checked_nct = None
-
-    checked_nct_list: list[str] = []
-    if "nct_ids" in row:
-        raw_list = row["nct_ids"]
-        if not isinstance(raw_list, list):
-            raise CitationVerificationError(
-                f"{context}.nct_ids must be a list, got {type(raw_list).__name__}."
-            )
-        for idx, item in enumerate(raw_list):
-            checked_nct_list.append(
-                validate_strict_nct_id(item, context=f"{context}.nct_ids[{idx}]")
-            )
-
-    if "in_audit" in row:
-        flag = row["in_audit"]
-        if type(flag) is not bool:
-            raise AuditHoldoutViolationError(
-                f"{context} carries non-bool in_audit={flag!r}."
-            )
-        if flag is True:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout violation: {context} carries in_audit=True."
-            )
-
-    for target_nct in ([checked_nct] if checked_nct is not None else []) + checked_nct_list:
-        enforce_audit_holdout(
-            target_nct,
-            in_audit=False,
-            audit_nct_ids=audit_nct_ids,
-            in_scope_nct_ids=in_scope_nct_ids,
-            allow_empty_audit_set=allow_empty_audit_set,
-        )
+    """Recursively validate NCT IDs, ``in_audit`` flags, and URLs on a doc-cache entry."""
+    _validate_nested_firewall_metadata(
+        row,
+        context=context,
+        expected_nct_id=None,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
 
 
 def _load_doc_cache_by_sha256(
     path: Path | None,
     *,
-    audit_nct_ids: AbstractSet[str],
-    in_scope_nct_ids: AbstractSet[str],
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
 ) -> dict[str, dict[str, Any]]:
     if path is None:
         return {}
+    rows = load_jsonl(path)
+    for idx, row in enumerate(rows):
+        _prescan_nested_nct_fields(row, context=f"{path}[{idx}]")
     by_sha: dict[str, dict[str, Any]] = {}
-    for idx, row in enumerate(load_jsonl(path)):
+    for idx, row in enumerate(rows):
         _validate_doc_cache_entry(
             row,
             context=f"{path}[{idx}]",
@@ -373,27 +368,12 @@ def _validate_profile_entry(
     row: Mapping[str, Any],
     *,
     context: str,
-    audit_nct_ids: AbstractSet[str],
-    in_scope_nct_ids: AbstractSet[str],
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
 ) -> str:
     checked_key = validate_strict_nct_id(key_nct, context=f"{context}.nct_id")
-    if "nct_id" in row:
-        checked_row = validate_strict_nct_id(row["nct_id"], context=f"{context}.row.nct_id")
-        if checked_row != checked_key:
-            raise CitationVerificationError(
-                f"{context} key {checked_key!r} disagrees with row nct_id={checked_row!r}."
-            )
-    if "in_audit" in row:
-        flag = row["in_audit"]
-        if type(flag) is not bool:
-            raise AuditHoldoutViolationError(
-                f"{context} carries non-bool in_audit={flag!r}."
-            )
-        if flag is True:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout violation: {context} carries in_audit=True."
-            )
+    _prescan_nested_nct_fields(row, context=context)
     enforce_audit_holdout(
         checked_key,
         in_audit=False,
@@ -401,43 +381,43 @@ def _validate_profile_entry(
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
     )
+    _validate_nested_firewall_metadata(
+        row,
+        context=context,
+        expected_nct_id=checked_key,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
     nested_docs = row.get("documents")
+    if nested_docs is not None and not isinstance(nested_docs, list):
+        raise CitationVerificationError(
+            f"{context}.documents must be a list, got {type(nested_docs).__name__}."
+        )
     if isinstance(nested_docs, list):
         for doc_idx, doc in enumerate(nested_docs):
             if not isinstance(doc, Mapping):
                 raise CitationVerificationError(
                     f"{context}.documents[{doc_idx}] must be an object."
                 )
-            if "nct_id" in doc:
-                doc_nct = validate_strict_nct_id(
-                    doc["nct_id"], context=f"{context}.documents[{doc_idx}].nct_id"
-                )
-                if doc_nct != checked_key:
-                    raise CitationVerificationError(
-                        f"{context}.documents[{doc_idx}] declares nct_id={doc_nct!r}, "
-                        f"expected {checked_key!r}."
-                    )
-            if "in_audit" in doc:
-                d_flag = doc["in_audit"]
-                if type(d_flag) is not bool or d_flag is True:
-                    raise AuditHoldoutViolationError(
-                        f"Audit holdout violation in {context}.documents[{doc_idx}]: "
-                        f"in_audit={d_flag!r}."
-                    )
     return checked_key
 
 
 def _load_profiles_by_nct(
     path: Path | None,
     *,
-    audit_nct_ids: AbstractSet[str],
-    in_scope_nct_ids: AbstractSet[str],
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
 ) -> dict[str, dict[str, Any]]:
     if path is None:
         return {}
+    rows = load_jsonl(path)
+    for idx, row in enumerate(rows):
+        validate_strict_nct_id(row.get("nct_id"), context=f"{path}[{idx}].nct_id")
+        _prescan_nested_nct_fields(row, context=f"{path}[{idx}]")
     by_nct: dict[str, dict[str, Any]] = {}
-    for idx, row in enumerate(load_jsonl(path)):
+    for idx, row in enumerate(rows):
         checked_nct = _validate_profile_entry(
             row.get("nct_id"),
             row,
@@ -593,12 +573,21 @@ def _verified_pass_doc_fingerprints(
     verified_keys: dict[tuple[str, str, tuple[tuple[str, str], ...]], bool] = {}
     for nct_id, nct_locs in locs_by_nct.items():
         by_outcome: dict[int, set[str]] = {}
+        seen_cells: set[tuple[int, str]] = set()
+        malformed_or_duplicate = False
         for loc in nct_locs:
             idx = loc.get("primary_outcome_index")
             elem = loc.get("element")
-            if type(idx) is int and isinstance(elem, str) and elem in ELEMENTS:
-                by_outcome.setdefault(idx, set()).add(elem)
-        if not by_outcome:
+            if type(idx) is not int or idx < 0 or type(elem) is not str or elem not in ELEMENTS:
+                malformed_or_duplicate = True
+                break
+            cell_key = (idx, elem)
+            if cell_key in seen_cells:
+                malformed_or_duplicate = True
+                break
+            seen_cells.add(cell_key)
+            by_outcome.setdefault(idx, set()).add(elem)
+        if malformed_or_duplicate or not by_outcome:
             continue
         all_complete = all(elems == set(ELEMENTS) for elems in by_outcome.values())
         if not all_complete:
@@ -617,16 +606,35 @@ def _verified_pass_doc_fingerprints(
         if has_unreadable:
             continue
 
+        # Validate status-to-citation rules and 6-key citation shape across all effective cells.
+        rows_valid = True
+        cit_pairs: set[tuple[str, str]] = set()
+        for loc in citation_source_locs:
+            cits = loc.get("citations")
+            status_val = loc.get("status")
+            if not isinstance(cits, list) or type(status_val) is not str:
+                rows_valid = False
+                break
+            if validate_status_citations(
+                status_val, len(cits), has_posted_documents=True
+            ):
+                rows_valid = False
+                break
+            for cit in cits:
+                if validate_citation_shape(cit):
+                    rows_valid = False
+                    break
+                cit_pairs.add((str(cit["filename"]), str(cit["sha256"])))
+            if not rows_valid:
+                break
+        if not rows_valid:
+            continue
+
         doc_tuple = compute_doc_sha256_tuple(existing_docs_by_nct.get(nct_id, ()))
-        if not doc_tuple:
-            cit_pairs: set[tuple[str, str]] = set()
-            for loc in citation_source_locs:
-                for cit in loc.get("citations", []):
-                    if isinstance(cit, Mapping):
-                        fn = cit.get("filename")
-                        sha = cit.get("sha256")
-                        if isinstance(fn, str) and fn and isinstance(sha, str) and sha:
-                            cit_pairs.add((fn, sha))
+        if doc_tuple:
+            if not cit_pairs.issubset(set(doc_tuple)):
+                continue
+        else:
             doc_tuple = tuple(sorted(cit_pairs))
 
         verified_keys[(nct_id, pass_role, doc_tuple)] = True
@@ -686,6 +694,10 @@ def plan_incremental_cohort(
         if pass_role is not None
         else ("ocr_recovery" if mode == "recover-unreadable" else "primary")
     )
+    if type(effective_pass_role) is not str or effective_pass_role not in ALLOWED_PASSES:
+        raise CitationVerificationError(
+            f"Invalid pass_role {effective_pass_role!r}; expected one of {ALLOWED_PASSES}."
+        )
 
     # Step 1 (F2): Validate strict NCT IDs across explicit_nct_ids and side streams FIRST,
     # alongside index_rows validation.
@@ -704,12 +716,28 @@ def plan_incremental_cohort(
                 f"documents[{doc_idx}] must be a mapping, got {type(doc).__name__}."
             )
         validate_strict_nct_id(doc.get("nct_id"), context=f"documents[{doc_idx}].nct_id")
+        _prescan_nested_nct_fields(doc, context=f"documents[{doc_idx}]")
     for loc_idx, loc in enumerate(locations):
         if not isinstance(loc, Mapping):
             raise CitationVerificationError(
                 f"locations[{loc_idx}] must be a mapping, got {type(loc).__name__}."
             )
         validate_strict_nct_id(loc.get("nct_id"), context=f"locations[{loc_idx}].nct_id")
+        _prescan_nested_nct_fields(loc, context=f"locations[{loc_idx}]")
+    for sha_key, cache_row in doc_cache_by_sha256.items():
+        if not isinstance(cache_row, Mapping):
+            raise CitationVerificationError(
+                f"doc_cache_by_sha256[{sha_key!r}] must be a mapping."
+            )
+        _prescan_nested_nct_fields(cache_row, context=f"doc_cache_by_sha256[{sha_key!r}]")
+    for prof_key in sorted(profiles_by_nct.keys(), key=str):
+        validate_strict_nct_id(prof_key, context=f"profiles_by_nct[{prof_key!r}].nct_id")
+        prof_row = profiles_by_nct[prof_key]
+        if not isinstance(prof_row, Mapping):
+            raise CitationVerificationError(
+                f"profiles_by_nct[{prof_key!r}] must be a mapping."
+            )
+        _prescan_nested_nct_fields(prof_row, context=f"profiles_by_nct[{prof_key!r}]")
 
     # Step 2 (F1 & F3): Hard firewall + scope checks across explicit_nct_ids and all side streams.
     for nct_id in sorted(checked_explicit_ids):
@@ -727,15 +755,17 @@ def plan_incremental_cohort(
 
     for doc_idx, doc in enumerate(documents):
         doc_nct = doc["nct_id"]
-        if "in_audit" in doc:
-            d_flag = doc["in_audit"]
-            if type(d_flag) is not bool or d_flag is True:
-                raise AuditHoldoutViolationError(
-                    f"documents[{doc_idx}] ({doc_nct!r}) carries forbidden in_audit={d_flag!r}."
-                )
         enforce_audit_holdout(
             doc_nct,
             in_audit=False,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+        _validate_nested_firewall_metadata(
+            doc,
+            context=f"documents[{doc_idx}]",
+            expected_nct_id=doc_nct,
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
@@ -744,15 +774,17 @@ def plan_incremental_cohort(
 
     for loc_idx, loc in enumerate(locations):
         loc_nct = loc["nct_id"]
-        if "in_audit" in loc:
-            l_flag = loc["in_audit"]
-            if type(l_flag) is not bool or l_flag is True:
-                raise AuditHoldoutViolationError(
-                    f"locations[{loc_idx}] ({loc_nct!r}) carries forbidden in_audit={l_flag!r}."
-                )
         enforce_audit_holdout(
             loc_nct,
             in_audit=False,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+        _validate_nested_firewall_metadata(
+            loc,
+            context=f"locations[{loc_idx}]",
+            expected_nct_id=loc_nct,
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
@@ -764,6 +796,11 @@ def plan_incremental_cohort(
             raise CitationVerificationError(
                 f"doc_cache_by_sha256[{sha_key!r}] must be a mapping."
             )
+        if type(sha_key) is str and STRICT_NCT_ID_RE.fullmatch(sha_key.strip().upper()) is not None:
+            if sha_key.strip().upper() in audit_nct_ids:
+                raise AuditHoldoutViolationError(
+                    f"Audit holdout violation in doc_cache_by_sha256 key {sha_key!r}."
+                )
         _validate_doc_cache_entry(
             cache_row,
             context=f"doc_cache_by_sha256[{sha_key!r}]",
@@ -912,7 +949,7 @@ def plan_incremental_cohort(
                 )
             continue
 
-        cache_hit = (
+        cache_hit = bool(current_doc_tuple) and (
             (nct_id, effective_pass_role, current_doc_tuple) in verified_target_pass_cache
             or (
                 effective_pass_role in {"primary", "ocr_recovery"}
@@ -924,6 +961,18 @@ def plan_incremental_cohort(
                 primary_locs
                 if effective_pass_role in {"primary", "ocr_recovery"}
                 else [loc for loc in nct_locs if loc.get("pass") == effective_pass_role]
+            )
+            cit_check_locs: Sequence[Mapping[str, Any]] = (
+                list(effective_cells.values())
+                if effective_pass_role in {"primary", "ocr_recovery"}
+                else grid_locs
+            )
+            allowed_doc_pairs = set(current_doc_tuple)
+            has_stale_cit_pair = any(
+                (str(cit.get("filename")), str(cit.get("sha256"))) not in allowed_doc_pairs
+                for loc in cit_check_locs
+                for cit in (loc.get("citations") or ())
+                if isinstance(cit, Mapping)
             )
             by_outcome: dict[int, set[str]] = {}
             for loc in grid_locs:
@@ -943,6 +992,7 @@ def plan_incremental_cohort(
                 existing_indices != expected_indices
                 or not all(by_outcome.get(i) == all_elements for i in range(expected_k))
                 or has_oob_sparse
+                or has_stale_cit_pair
             ):
                 partitions["amended_doc_or_outcome_delta"].append(nct_id)
                 continue
@@ -1083,13 +1133,14 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     # Validate strict NCT IDs and firewall membership across documents & locations
     # BEFORE initializing DirectoryPageTextProvider or touching page maps.
     for idx, doc in enumerate(documents):
-        doc_nct = validate_strict_nct_id(doc.get("nct_id"), context=f"documents[{idx}].nct_id")
-        if "in_audit" in doc:
-            d_flag = doc["in_audit"]
-            if type(d_flag) is not bool or d_flag is True:
-                raise AuditHoldoutViolationError(
-                    f"documents[{idx}] ({doc_nct!r}) carries forbidden in_audit={d_flag!r}."
-                )
+        validate_strict_nct_id(doc.get("nct_id"), context=f"documents[{idx}].nct_id")
+        _prescan_nested_nct_fields(doc, context=f"documents[{idx}]")
+    for idx, loc in enumerate(locations):
+        validate_strict_nct_id(loc.get("nct_id"), context=f"locations[{idx}].nct_id")
+        _prescan_nested_nct_fields(loc, context=f"locations[{idx}]")
+
+    for idx, doc in enumerate(documents):
+        doc_nct = doc["nct_id"]
         enforce_audit_holdout(
             doc_nct,
             in_audit=False,
@@ -1097,18 +1148,28 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        _validate_nested_firewall_metadata(
+            doc,
+            context=f"documents[{idx}]",
+            expected_nct_id=doc_nct,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
 
     for idx, loc in enumerate(locations):
-        loc_nct = validate_strict_nct_id(loc.get("nct_id"), context=f"locations[{idx}].nct_id")
-        if "in_audit" in loc:
-            l_flag = loc["in_audit"]
-            if type(l_flag) is not bool or l_flag is True:
-                raise AuditHoldoutViolationError(
-                    f"locations[{idx}] ({loc_nct!r}) carries forbidden in_audit={l_flag!r}."
-                )
+        loc_nct = loc["nct_id"]
         enforce_audit_holdout(
             loc_nct,
             in_audit=False,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+        _validate_nested_firewall_metadata(
+            loc,
+            context=f"locations[{idx}]",
+            expected_nct_id=loc_nct,
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
@@ -1121,6 +1182,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             ocr_dir=Path(args.ocr_dir) if args.ocr_dir is not None else None,
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
         )
 
     expected_outcomes_by_nct: dict[str, int] | None = (

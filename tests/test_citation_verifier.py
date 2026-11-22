@@ -491,6 +491,8 @@ def test_quotation_hygiene_and_match_tiers() -> None:
             (0, "alpha_and_sidedness", "primary"),
             _make_citation(quotation=bad_q),
             docs_by_filename=docs_map,
+            in_audit=False,
+            audit_nct_ids=HOLDOUT_SET,
         )
         assert expected_code in {i.code for i in issues}
 
@@ -499,6 +501,8 @@ def test_quotation_hygiene_and_match_tiers() -> None:
         (0, "alpha_and_sidedness", "primary"),
         _make_citation(physical_page=True),
         docs_by_filename=docs_map,
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
     )
     assert "INVALID_CITATION_PAGE" in {i.code for i in bool_page_issues}
 
@@ -507,12 +511,15 @@ def test_quotation_hygiene_and_match_tiers() -> None:
         (0, "alpha_and_sidedness", "primary"),
         _make_citation(physical_page=4),
         docs_by_filename=docs_map,
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
     )
     assert "CITATION_PAGE_OUT_OF_RANGE" in {i.code for i in range_issues}
 
     provider = DictPageTextProvider(
         pages_by_sha256={SHA_A: ["p1", "p2", ""]},
         ocr_pages_by_sha256={SHA_A: ["p1", "p2", "OCR recovered alpha = 0.05 two-sided."]},
+        audit_nct_ids=HOLDOUT_SET,
     )
     assert isinstance(provider, PageTextProvider)
     _, pwt_pdfkit_issues = verify_citation(
@@ -520,6 +527,8 @@ def test_quotation_hygiene_and_match_tiers() -> None:
         (0, "alpha_and_sidedness", "primary"),
         _make_citation(physical_page=3, quotation="OCR recovered alpha = 0.05 two-sided."),
         docs_by_filename=docs_map,
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
         page_text_provider=provider,
         text_source="pdfkit",
     )
@@ -530,6 +539,8 @@ def test_quotation_hygiene_and_match_tiers() -> None:
         (0, "alpha_and_sidedness", "ocr_recovery"),
         _make_citation(physical_page=3, quotation="OCR recovered alpha = 0.05 two-sided."),
         docs_by_filename=docs_map,
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
         page_text_provider=provider,
         text_source="macos_vision_ocr_v1",
     )
@@ -546,7 +557,8 @@ def test_strict_single_page_cross_page_span_violation() -> None:
                 "The primary endpoint will be analyzed using a stratified",
                 "log-rank test at a two-sided alpha level of 0.05.",
             ]
-        }
+        },
+        audit_nct_ids=HOLDOUT_SET,
     )
     spanning_quote = (
         "The primary endpoint will be analyzed using a stratified "
@@ -557,6 +569,8 @@ def test_strict_single_page_cross_page_span_violation() -> None:
         (0, "alpha_and_sidedness", "primary"),
         _make_citation(physical_page=2, quotation=spanning_quote),
         docs_by_filename={"Prot_000.pdf": doc},
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
         page_text_provider=provider,
     )
     assert tier == "mismatch"
@@ -567,6 +581,8 @@ def test_strict_single_page_cross_page_span_violation() -> None:
         (0, "alpha_and_sidedness", "primary"),
         _make_citation(physical_page="2-3", quotation="Cover page"),
         docs_by_filename={"Prot_000.pdf": doc},
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
     )
     assert "cross_page_span_violation" in {i.code for i in range_str_issues}
 
@@ -575,6 +591,8 @@ def test_strict_single_page_cross_page_span_violation() -> None:
         (0, "alpha_and_sidedness", "primary"),
         _make_citation(physical_page=2, quotation="Completely unrelated fabricated text."),
         docs_by_filename={"Prot_000.pdf": doc},
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
         page_text_provider=provider,
     )
     assert tier_absent == "mismatch"
@@ -787,6 +805,8 @@ def test_corpus_verification_completeness_and_directory_provider(tmp_path: Path)
         "NCT99000001",
         locs[:-1],
         expected_primary_outcomes=1,
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
     )
     assert [i.code for i in missing_issues] == ["TRIAL_GRID_MISSING_CELL"]
 
@@ -959,6 +979,7 @@ def test_sparse_pass_completeness_and_bounds() -> None:
                 "Non-inferiority margin is 10 percentage points.",
             ]
         },
+        audit_nct_ids=HOLDOUT_SET,
     )
 
     primary_quote = (
@@ -1034,6 +1055,8 @@ def test_sparse_pass_completeness_and_bounds() -> None:
             expected_primary_outcomes=1,
             pass_name="adjudication",
             allow_sparse=True,
+            in_audit=False,
+            audit_nct_ids=HOLDOUT_SET,
         )
         == []
     )
@@ -1042,6 +1065,8 @@ def test_sparse_pass_completeness_and_bounds() -> None:
         [adj_row],
         expected_primary_outcomes=1,
         pass_name="adjudication",
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
     )
     assert len(strict_missing) == len(ELEMENTS) - 1
     assert {i.code for i in strict_missing} == {"TRIAL_GRID_MISSING_CELL"}
@@ -1052,6 +1077,8 @@ def test_sparse_pass_completeness_and_bounds() -> None:
         expected_primary_outcomes=1,
         pass_name="adjudication",
         allow_sparse=False,
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
     )
     assert len(strict_missing_explicit) == len(ELEMENTS) - 1
 
@@ -1061,6 +1088,8 @@ def test_sparse_pass_completeness_and_bounds() -> None:
         expected_primary_outcomes=0,
         pass_name="adjudication",
         allow_sparse=True,
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
     )
     assert [i.code for i in bad_k_issues] == ["INVALID_EXPECTED_OUTCOMES_COUNT"]
 
@@ -1070,6 +1099,8 @@ def test_sparse_pass_completeness_and_bounds() -> None:
         expected_primary_outcomes=1,
         pass_name="adjudication",
         allow_sparse=True,
+        in_audit=False,
+        audit_nct_ids=HOLDOUT_SET,
     )
     assert [i.code for i in dup_issues] == ["TRIAL_GRID_DUPLICATE_CELL"]
 
@@ -1198,3 +1229,658 @@ def test_m4_static_isolation_typing_fictional_ncts_and_docstring_disclosure() ->
                 assert token.startswith(
                     "NCT99"
                 ), f"{rel} contains non-fictional NCT token {token}"
+
+
+# ---------------------------------------------------------------------------
+# Adversarial Red-Team Suite (strictly fictional NCT99800001..NCT99899999)
+# ---------------------------------------------------------------------------
+
+RT_AUDIT_ID = "NCT99888888"
+RT_AUDIT_SET: frozenset[str] = frozenset({RT_AUDIT_ID})
+RT_SCOPE_ID = "NCT99800001"
+RT_SCOPE_ID_2 = "NCT99800002"
+RT_UNLISTED_ID = "NCT99800099"
+RT_SCOPE_SET: frozenset[str] = frozenset({RT_SCOPE_ID})
+
+
+class _SneakyNctStr(str):
+    """String subclass attempting to bypass exact ``type(v) is str`` checks."""
+
+
+def test_redteam_strict_nct_id_all_obfuscations_rejected() -> None:
+    """F2 red-team: reject case-folding, whitespace, zero-width, Unicode digits, and subclasses."""
+    assert validate_strict_nct_id(RT_SCOPE_ID) == RT_SCOPE_ID
+    assert validate_strict_nct_id(RT_AUDIT_ID) == RT_AUDIT_ID
+
+    malformed_vectors: tuple[Any, ...] = (
+        "nct99888888",
+        "Nct99888888",
+        "NCT99888888 ",
+        " NCT99888888",
+        "NCT99888888\n",
+        "NCT99888888\r",
+        "NCT99888888\t",
+        "NCT99888888\u200b",
+        "\u200bNCT99888888",
+        "NCT\u00ad99888888",
+        "NCT99888888\ufeff",
+        "NCT\u0669\u0669\u0668\u0668\u0668\u0668\u0668\u0668",
+        "NCT\u096f\u096f\u096e\u096e\u096e\u096e\u096e\u096e",
+        "NCT\uff19\uff19\uff18\uff18\uff18\uff18\uff18\uff18",
+        "\uff2e\uff23\uff3499888888",
+        _SneakyNctStr(RT_AUDIT_ID),
+        b"NCT99888888",
+        None,
+        0,
+        99888888,
+        False,
+        True,
+    )
+    for bad in malformed_vectors:
+        with pytest.raises(InvalidNctIdError):
+            validate_strict_nct_id(bad)
+        with pytest.raises(InvalidNctIdError):
+            enforce_audit_holdout(bad, in_audit=True, audit_nct_ids=RT_AUDIT_SET)  # type: ignore[arg-type]
+
+    # Malformed NCT ID inside audit_nct_ids or in_scope_nct_ids raises InvalidNctIdError FIRST,
+    # even when in_audit=True on the record/call.
+    with pytest.raises(InvalidNctIdError):
+        enforce_audit_holdout(RT_SCOPE_ID, in_audit=True, audit_nct_ids={"nct99888888"})
+    with pytest.raises(InvalidNctIdError):
+        enforce_audit_holdout(
+            RT_SCOPE_ID,
+            in_audit=True,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids={"NCT99800001 "},
+        )
+
+
+def test_redteam_enforce_audit_holdout_missing_nonbool_empty_and_overlap() -> None:
+    """F1 red-team: refuse missing in_audit, non-bool flags, empty audit set, str sets, and overlap."""
+    with pytest.raises(AuditHoldoutViolationError):
+        enforce_audit_holdout(RT_AUDIT_ID)
+    with pytest.raises(AuditHoldoutViolationError):
+        enforce_audit_holdout(RT_SCOPE_ID, audit_nct_ids=RT_AUDIT_SET)
+    with pytest.raises(AuditHoldoutViolationError):
+        enforce_audit_holdout(RT_SCOPE_ID, in_audit=False, audit_nct_ids=set())
+    with pytest.raises(AuditHoldoutViolationError):
+        enforce_audit_holdout(
+            RT_SCOPE_ID,
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+            allow_empty_audit_set=1,  # type: ignore[arg-type]
+        )
+
+    for sneaky_flag in (True, None, 0, 1, "false", "False", "0", [], {}):
+        with pytest.raises(AuditHoldoutViolationError):
+            enforce_audit_holdout(
+                RT_SCOPE_ID,
+                in_audit=sneaky_flag,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+
+    # Passing bare string or dict as audit_nct_ids / in_scope_nct_ids must not iterate characters/keys.
+    with pytest.raises(AuditHoldoutViolationError):
+        enforce_audit_holdout(RT_SCOPE_ID, in_audit=False, audit_nct_ids=RT_AUDIT_ID)  # type: ignore[arg-type]
+    with pytest.raises(AuditHoldoutViolationError):
+        enforce_audit_holdout(
+            RT_SCOPE_ID,
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids={RT_SCOPE_ID: True},  # type: ignore[arg-type]
+        )
+
+    # Overlap and unlisted trial refusals.
+    with pytest.raises(AuditHoldoutViolationError):
+        enforce_audit_holdout(
+            RT_SCOPE_ID,
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids={RT_SCOPE_ID, RT_AUDIT_ID},
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        enforce_audit_holdout(
+            RT_UNLISTED_ID,
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+        )
+
+
+def test_redteam_verify_document_record_firewall_and_url_contamination() -> None:
+    """F1/F2 red-team on verify_document_record including embedded NCT99888888 URL smuggling."""
+    doc_audit = _make_doc(nct_id=RT_AUDIT_ID)
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_document_record(doc_audit)
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_document_record(doc_audit, in_audit=False, audit_nct_ids=RT_AUDIT_SET)
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_document_record(_make_doc(nct_id=RT_SCOPE_ID), in_audit=False, audit_nct_ids=set())
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_document_record(
+            _make_doc(nct_id=RT_UNLISTED_ID),
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+
+    for bad_flag in (True, None, 0, "false"):
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_document_record(
+                _make_doc(nct_id=RT_SCOPE_ID, extra={"in_audit": bad_flag}),
+                in_scope_nct_ids=RT_SCOPE_SET,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+
+    # F2 ordering: malformed audit_nct_ids raises InvalidNctIdError even when row has in_audit=True.
+    with pytest.raises(InvalidNctIdError):
+        verify_document_record(
+            _make_doc(nct_id=RT_SCOPE_ID, extra={"in_audit": True}),
+            audit_nct_ids={"nct99888888"},
+        )
+
+    # Smuggling NCT99888888 inside url on an in-scope NCT99800001 document must be refused!
+    smuggled_url_doc = _make_doc(
+        nct_id=RT_SCOPE_ID,
+        extra={"url": f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID}/Prot_000.pdf"},
+    )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_document_record(
+            smuggled_url_doc,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+
+
+def test_redteam_verify_location_record_and_docs_by_nct_firewall() -> None:
+    """F1/F2 red-team on verify_location_record including docs_by_nct audit smuggling."""
+    loc_audit = _make_location(nct_id=RT_AUDIT_ID)
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_location_record(loc_audit, docs_by_nct={})
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_location_record(
+            loc_audit,
+            docs_by_nct={},
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID),
+            docs_by_nct={},
+            in_audit=False,
+            audit_nct_ids=set(),
+        )
+
+    # F2 ordering: malformed audit_nct_ids raises InvalidNctIdError before row in_audit=True.
+    with pytest.raises(InvalidNctIdError):
+        verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID, extra={"in_audit": True}),
+            docs_by_nct={},
+            audit_nct_ids={"NCT99888888 "},
+        )
+
+    # Smuggling audit trial key inside docs_by_nct alongside an in-scope location.
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID),
+            docs_by_nct={
+                RT_SCOPE_ID: {"Prot_000.pdf": _make_doc(nct_id=RT_SCOPE_ID)},
+                RT_AUDIT_ID: {"Prot_000.pdf": _make_doc(nct_id=RT_AUDIT_ID, extra={"in_audit": True})},
+            },
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+
+    # Smuggling doc with nct_id=NCT99888888 inside docs_by_nct[NCT99800001] (with & without citations).
+    for status, cits in (("FOUND", [_make_citation()]), ("NOT_FOUND", [])):
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_location_record(
+                _make_location(nct_id=RT_SCOPE_ID, status=status, citations=cits),
+                docs_by_nct={
+                    RT_SCOPE_ID: {"Prot_000.pdf": _make_doc(nct_id=RT_AUDIT_ID)},
+                },
+                in_scope_nct_ids=RT_SCOPE_SET,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_location_record(
+                _make_location(nct_id=RT_SCOPE_ID, status=status, citations=cits),
+                docs_by_nct={
+                    RT_SCOPE_ID: {
+                        "Prot_000.pdf": _make_doc(nct_id=RT_SCOPE_ID, extra={"in_audit": None})
+                    },
+                },
+                in_scope_nct_ids=RT_SCOPE_SET,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+
+
+def test_redteam_verify_citation_direct_firewall_and_provider_binding() -> None:
+    """F1/F2 red-team on direct verify_citation calls and provider firewall binding."""
+    cit = _make_citation()
+    docs_audit = {"Prot_000.pdf": _make_doc(nct_id=RT_AUDIT_ID)}
+    docs_scope = {"Prot_000.pdf": _make_doc(nct_id=RT_SCOPE_ID)}
+
+    # Missing in_audit and empty audit_nct_ids must NOT allow NCT99888888 through!
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_citation(
+            RT_AUDIT_ID,
+            (0, "analysis_population", "primary"),
+            cit,
+            docs_by_filename=docs_audit,
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_citation(
+            RT_SCOPE_ID,
+            (0, "analysis_population", "primary"),
+            cit,
+            docs_by_filename=docs_scope,
+            in_audit=False,
+            audit_nct_ids=set(),
+        )
+    for bad_flag in (True, None, 0, "false"):
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_citation(
+                RT_SCOPE_ID,
+                (0, "analysis_population", "primary"),
+                cit,
+                docs_by_filename=docs_scope,
+                in_audit=bad_flag,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+
+    # Mismatched doc["nct_id"] inside docs_by_filename must be refused.
+    with pytest.raises((AuditHoldoutViolationError, CitationVerificationError)):
+        verify_citation(
+            RT_SCOPE_ID,
+            (0, "analysis_population", "primary"),
+            cit,
+            docs_by_filename={"Prot_000.pdf": _make_doc(nct_id=RT_SCOPE_ID_2)},
+            in_scope_nct_ids={RT_SCOPE_ID, RT_SCOPE_ID_2},
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+
+    # Provider holding NCT99888888 must be caught via bind_firewall inside verify_citation.
+    contaminated_dict_prov = DictPageTextProvider(
+        pages_by_key={(RT_AUDIT_ID, "Prot_000.pdf", 2): "Holdout text"},
+        allow_empty_audit_set=True,
+    )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_citation(
+            RT_SCOPE_ID,
+            (0, "analysis_population", "primary"),
+            cit,
+            docs_by_filename=docs_scope,
+            page_text_provider=contaminated_dict_prov,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+
+
+def test_redteam_verify_trial_completeness_direct_firewall_and_sparse_guards() -> None:
+    """F1/F2/F3 red-team on direct verify_trial_completeness calls."""
+    locs_audit = [_make_location(nct_id=RT_AUDIT_ID, element=e) for e in ELEMENTS]
+    locs_scope = [_make_location(nct_id=RT_SCOPE_ID, element=e) for e in ELEMENTS]
+
+    # Missing in_audit and empty audit_nct_ids must NOT allow NCT99888888 through!
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_trial_completeness(RT_AUDIT_ID, locs_audit, expected_primary_outcomes=1)
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_trial_completeness(
+            RT_SCOPE_ID,
+            locs_scope,
+            expected_primary_outcomes=1,
+            in_audit=False,
+            audit_nct_ids=set(),
+        )
+    for bad_flag in (True, None, 0, "false"):
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_trial_completeness(
+                RT_SCOPE_ID,
+                locs_scope,
+                expected_primary_outcomes=1,
+                in_audit=bad_flag,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+
+    # Non-bool allow_sparse refused; invalid expected_primary_outcomes (bool/None/str/<=0) flagged.
+    with pytest.raises(CitationVerificationError):
+        verify_trial_completeness(
+            RT_SCOPE_ID,
+            locs_scope,
+            expected_primary_outcomes=1,
+            allow_sparse="yes",  # type: ignore[arg-type]
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+    for bad_k in (None, False, True, "2", 0, -1):
+        issues = verify_trial_completeness(
+            RT_SCOPE_ID,
+            locs_scope,
+            expected_primary_outcomes=bad_k,  # type: ignore[arg-type]
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+        assert [i.code for i in issues] == ["INVALID_EXPECTED_OUTCOMES_COUNT"]
+
+
+def test_redteam_verify_census_corpus_firewall_unlisted_and_orphan_sparse() -> None:
+    """F1/F2/F3 red-team on verify_census_corpus."""
+    doc_scope = _make_doc(nct_id=RT_SCOPE_ID)
+    locs_scope = [_make_location(nct_id=RT_SCOPE_ID, element=e) for e in ELEMENTS]
+
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_census_corpus([doc_scope], locs_scope, in_scope_nct_ids=RT_SCOPE_SET, audit_nct_ids=set())
+
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_census_corpus(
+            [_make_doc(nct_id=RT_AUDIT_ID)],
+            locs_scope,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_census_corpus(
+            [doc_scope],
+            [_make_location(nct_id=RT_UNLISTED_ID)],
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+    with pytest.raises(CitationVerificationError):
+        verify_census_corpus(
+            [doc_scope],
+            locs_scope,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            audit_nct_ids=RT_AUDIT_SET,
+            expected_outcomes_by_nct={RT_SCOPE_ID: True},  # type: ignore[dict-item]
+        )
+
+
+def test_redteam_directory_and_dict_page_text_providers_holdout_evasion(
+    tmp_path: Path,
+) -> None:
+    """F1/F2 red-team on DirectoryPageTextProvider and DictPageTextProvider holdout evasion."""
+    # 1. Empty audit_nct_ids refused by default unless allow_empty_audit_set=True.
+    empty_dir = tmp_path / "empty_pages"
+    empty_dir.mkdir(parents=True)
+    with pytest.raises(AuditHoldoutViolationError):
+        DirectoryPageTextProvider(empty_dir)
+    with pytest.raises(AuditHoldoutViolationError):
+        DictPageTextProvider(pages_by_sha256={SHA_A: ["Page 1"]})
+
+    # 2. Direct file path under NCT99888888 directory or named NCT99888888__Prot_000.json.
+    direct_audit_dir_file = tmp_path / "case_direct" / RT_AUDIT_ID / "Prot_000.json"
+    direct_audit_dir_file.parent.mkdir(parents=True)
+    direct_audit_dir_file.write_text(json.dumps({"pages": ["Holdout"]}), encoding="utf-8")
+    with pytest.raises(AuditHoldoutViolationError):
+        DirectoryPageTextProvider(
+            direct_audit_dir_file,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+        )
+
+    direct_audit_prefixed_file = tmp_path / "case_prefix" / f"{RT_AUDIT_ID}__Prot_000.json"
+    direct_audit_prefixed_file.parent.mkdir(parents=True)
+    direct_audit_prefixed_file.write_text(json.dumps({"pages": ["Holdout"]}), encoding="utf-8")
+    with pytest.raises(AuditHoldoutViolationError):
+        DirectoryPageTextProvider(
+            direct_audit_prefixed_file,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+        )
+
+    # 3. Root directory itself named NCT99888888.
+    audit_named_root = tmp_path / "case_root" / RT_AUDIT_ID
+    audit_named_root.mkdir(parents=True)
+    (audit_named_root / f"{SHA_A}.json").write_text(
+        json.dumps({"pages": ["Holdout"]}), encoding="utf-8"
+    )
+    with pytest.raises(AuditHoldoutViolationError):
+        DirectoryPageTextProvider(
+            audit_named_root,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+        )
+
+    # 4. Sneaky filenames/subdirs inside pages_dir (leading space, zero-width, prefix, fullwidth, nested).
+    for idx, sneaky_rel in enumerate(
+        (
+            f" {RT_AUDIT_ID}.json",
+            f"\u200b{RT_AUDIT_ID}.json",
+            f"trial_{RT_AUDIT_ID}.json",
+            "\uff2e\uff23\uff3499888888.json",
+            f"aa/ {RT_AUDIT_ID}/Prot_000.json",
+            "aa/holdout/Prot_000.json",
+        )
+    ):
+        case_dir = tmp_path / f"sneak_{idx}"
+        target = case_dir / sneaky_rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({"pages": ["Holdout"]}), encoding="utf-8")
+        with pytest.raises((AuditHoldoutViolationError, InvalidNctIdError, CitationVerificationError)):
+            DirectoryPageTextProvider(
+                case_dir,
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+            )
+
+    # 5. JSONL / JSON payload carrying nested nct_id, nctId, or audit URL.
+    for idx, sneaky_payload in enumerate(
+        (
+            {"sha256": SHA_A, "nctId": RT_AUDIT_ID, "pages": ["Holdout"]},
+            {"sha256": SHA_A, "metadata": {"nct_id": RT_AUDIT_ID}, "pages": ["Holdout"]},
+            {
+                "sha256": SHA_A,
+                "url": f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID}/Prot_000.pdf",
+                "pages": ["Holdout"],
+            },
+        )
+    ):
+        p_dir = tmp_path / f"payload_{idx}"
+        p_dir.mkdir(parents=True)
+        (p_dir / "maps.jsonl").write_text(json.dumps(sneaky_payload) + "\n", encoding="utf-8")
+        with pytest.raises(AuditHoldoutViolationError):
+            DirectoryPageTextProvider(
+                p_dir,
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+            )
+
+    # 6. DictPageTextProvider 2-tuple / non-str-filename / non-hex sha256 keys holding NCT99888888.
+    with pytest.raises((AuditHoldoutViolationError, InvalidNctIdError, CitationVerificationError)):
+        DictPageTextProvider(
+            pages_by_key={(RT_AUDIT_ID, 1): "Holdout"},
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+        )
+    with pytest.raises((AuditHoldoutViolationError, InvalidNctIdError, CitationVerificationError)):
+        DictPageTextProvider(
+            pages_by_key={(RT_AUDIT_ID, None, 1): "Holdout"},
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+        )
+    with pytest.raises((AuditHoldoutViolationError, InvalidNctIdError, CitationVerificationError)):
+        DictPageTextProvider(
+            pages_by_sha256={RT_AUDIT_ID: ["Holdout"]},
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+        )
+
+    clean_prov = DictPageTextProvider(
+        pages_by_sha256={SHA_A: ["Clean page"]},
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+    )
+    with pytest.raises(AuditHoldoutViolationError):
+        clean_prov.get_page_text(RT_AUDIT_ID, "Prot_000.pdf", SHA_A, 1)
+    with pytest.raises(AuditHoldoutViolationError):
+        clean_prov.get_page_text(RT_UNLISTED_ID, "Prot_000.pdf", SHA_A, 1)
+    with pytest.raises(InvalidNctIdError):
+        clean_prov.get_page_text("nct99800001", "Prot_000.pdf", SHA_A, 1)
+
+
+def test_redteam_f5_citation_shape_and_status_citations_adversarial() -> None:
+    """F5 red-team: non-mappings, bool pages, path traversal, bad sha256, invisible quotes & ellipses."""
+    for non_obj in (None, "x", 0, 1, True, False, [], ("a",)):
+        errs = validate_citation_shape(non_obj)
+        assert len(errs) == 1
+        assert "JSON object" in errs[0]
+
+    assert len(validate_citation_shape({})) == 1
+    assert len(validate_citation_shape({**_make_citation(), "unexpected": 1})) == 1
+
+    for bad_page in (True, False, 0, -1, 1.5, "1", "1-2", [1, 2], None):
+        assert len(validate_citation_shape(_make_citation(physical_page=bad_page))) >= 1
+
+    for bad_fn in (
+        "../x.pdf",
+        "..\\x.pdf",
+        "/etc/passwd.pdf",
+        "dir/x.pdf",
+        ".hidden.pdf",
+        "..pdf",
+        "Prot_000.txt",
+        "Prot_000.pdf\n",
+        "",
+        None,
+        123,
+    ):
+        assert len(validate_citation_shape(_make_citation(filename=bad_fn))) >= 1
+
+    for bad_sha in ("A" * 64, "a" * 63, "a" * 65, "g" * 64, SHA_A + "\n", "", None, 123):
+        assert len(validate_citation_shape(_make_citation(sha256=bad_sha))) >= 1
+
+    # Invisible-only quotations must be rejected (normalize to empty string!).
+    for invisible_q in ("", " ", "  ", "\u200b", "\ufeff", "\u00ad", "\u200c\u200d"):
+        errs = validate_citation_shape(_make_citation(quotation=invisible_q))
+        assert len(errs) >= 1, f"Accepted invisible quotation {invisible_q!r}"
+
+    # Obfuscated ellipses (zero-width, soft-hyphen, fullwidth, compatibility Unicode) must be caught.
+    for sneaky_ellipsis in (
+        "alpha ... 0.05",
+        "alpha . . . 0.05",
+        "alpha \u2026 0.05",
+        "alpha \u22ef 0.05",
+        "alpha .\u200b.\u200b. 0.05",
+        "alpha .\u00ad.\u00ad. 0.05",
+        "alpha \uff0e\uff0e\uff0e 0.05",
+        "alpha \ufe19 0.05",
+        "alpha \u2024\u2024\u2024 0.05",
+        "alpha \u2025. 0.05",
+    ):
+        assert has_ellipsis(sneaky_ellipsis), f"has_ellipsis missed {sneaky_ellipsis!r}"
+        assert len(validate_citation_shape(_make_citation(quotation=sneaky_ellipsis))) >= 1
+
+    # Status-to-citation invariants.
+    assert len(validate_status_citations("NO_DOCUMENT", 0, has_posted_documents=True)) >= 1
+    assert len(validate_status_citations("FOUND", 1, has_posted_documents=False)) >= 1
+    assert len(validate_status_citations("AMBIGUOUS", 1, has_posted_documents=False)) >= 1
+    assert len(validate_status_citations("NOT_APPLICABLE", 1, has_posted_documents=False)) >= 1
+    assert len(validate_status_citations("NOT_APPLICABLE", 0, has_posted_documents=True)) >= 1
+    assert len(validate_status_citations("NOT_FOUND", 1, has_posted_documents=True)) >= 1
+    assert len(validate_status_citations("FOUND", True, has_posted_documents=True)) >= 1  # type: ignore[arg-type]
+    assert len(validate_status_citations("FOUND", 1, has_posted_documents="yes")) >= 1  # type: ignore[arg-type]
+
+
+def test_redteam_f6_provenance_stamps_missing_blank_invisible_and_nonstr() -> None:
+    """F6 red-team: refuse missing, empty, whitespace, invisible-only, and non-str stamps."""
+    base_doc = _make_doc(nct_id=RT_SCOPE_ID)
+    docs_by_nct = {RT_SCOPE_ID: {"Prot_000.pdf": base_doc}}
+
+    bad_stamps: tuple[Any, ...] = ("", " ", "   ", "\t\n", "\u200b", "\ufeff", "\u00ad", None, 0, 1, True, [], {})
+    for doc_key in ("model_id", "profile_version"):
+        without_key = dict(base_doc)
+        del without_key[doc_key]
+        issues_missing = verify_document_record(
+            without_key, in_audit=False, audit_nct_ids=RT_AUDIT_SET
+        )
+        assert "DOCUMENT_MISSING_KEYS" in {i.code for i in issues_missing}
+        for bad_val in bad_stamps:
+            tampered = dict(base_doc)
+            tampered[doc_key] = bad_val
+            issues_bad = verify_document_record(
+                tampered, in_audit=False, audit_nct_ids=RT_AUDIT_SET
+            )
+            assert len(issues_bad) >= 1, f"Document accepted {doc_key}={bad_val!r}"
+
+    base_loc = _make_location(nct_id=RT_SCOPE_ID)
+    for loc_key in ("model_id", "prompt_version"):
+        without_loc_key = dict(base_loc)
+        del without_loc_key[loc_key]
+        _, loc_missing = verify_location_record(
+            without_loc_key,
+            docs_by_nct=docs_by_nct,
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+        assert "LOCATION_MISSING_KEYS" in {i.code for i in loc_missing}
+        for bad_val in bad_stamps:
+            tampered_loc = dict(base_loc)
+            tampered_loc[loc_key] = bad_val
+            _, loc_bad = verify_location_record(
+                tampered_loc,
+                docs_by_nct=docs_by_nct,
+                in_audit=False,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+            assert len(loc_bad) >= 1, f"Location accepted {loc_key}={bad_val!r}"
+
+
+def test_redteam_m4_zero_cross_module_imports_and_fictional_ids() -> None:
+    """Verify zero static/dynamic M1/M2/M3 imports across M4 and strict NCT998xxxxx red-team IDs."""
+    repo_root = Path(cv_mod.__file__).resolve().parents[1]
+    m4_files = (
+        "src/citation_verifier.py",
+        "src/longitudinal_provenance.py",
+        "scripts/verify_and_plan_census_batch.py",
+        "tests/test_citation_verifier.py",
+        "tests/test_longitudinal_provenance.py",
+        "tests/test_verify_and_plan_census_batch.py",
+    )
+    forbidden_import_substrings = (
+        "document_indexer",
+        "index_trial_documents",
+        "analysis_population_parser",
+        "ecosystem",
+        "outcomes_layout",
+        "build_outcomes_shards",
+    )
+    forbidden_census_tag = "rule-census-" + "20261114"
+    nct_re = re.compile(r"NCT[0-9]{8}", re.ASCII)
+
+    for rel in m4_files:
+        src_text = (repo_root / rel).read_text(encoding="utf-8")
+        assert forbidden_census_tag not in src_text, f"{rel} references {forbidden_census_tag}"
+        tree = ast.parse(src_text, filename=rel, feature_version=(3, 11))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    for bad in forbidden_import_substrings:
+                        assert bad not in alias.name, f"{rel} imports {alias.name}"
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                for bad in forbidden_import_substrings:
+                    assert bad not in node.module, f"{rel} imports from {node.module}"
+            elif isinstance(node, ast.Call):
+                func_name = ""
+                if isinstance(node.func, ast.Name):
+                    func_name = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    func_name = node.func.attr
+                if func_name in {"__import__", "import_module"} and node.args:
+                    first_arg = node.args[0]
+                    if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                        for bad in forbidden_import_substrings:
+                            assert bad not in first_arg.value, (
+                                f"{rel} dynamically imports {first_arg.value!r}"
+                            )
+            elif (
+                rel.startswith("tests/")
+                and isinstance(node, ast.FunctionDef)
+                and node.name.startswith("test_redteam_")
+            ):
+                fn_segment = ast.get_source_segment(src_text, node) or ""
+                for tok in nct_re.findall(fn_segment):
+                    num = int(tok[3:])
+                    assert 99800001 <= num <= 99899999, (
+                        f"{rel}::{node.name} uses {tok} outside NCT99800001..NCT99899999"
+                    )
