@@ -666,8 +666,10 @@ def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
     """Why a signal's `rows` cannot stand, or None. A title-level signal lists at least one row,
     each with exactly the keys of its field; on a PRIMARY measure each row must resolve to the
     posted table this record copies (the class, category or group at that position, with that
-    title). Rows of other measure types cannot be resolved here, because only primary measures
-    are copied. Any other signal carries rows None."""
+    title), and they must be exactly the rows the level rule matches in the copied titles. Rows of
+    other measure types cannot be resolved here, because only primary measures are copied, and nor
+    can rows on a primary measure whose copy failed to parse, a failure the record states. Any
+    other signal carries rows None."""
     rows, field = signal.get('rows'), signal.get('field')
     if field not in RS.TITLE_LEVEL_FIELDS:
         return None if rows is None else 'a signal that does not read posted titles carries rows'
@@ -675,8 +677,23 @@ def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
         return 'a title-level signal has no rows'
     if any(not isinstance(x, dict) or set(x) != ROW_KEYS[field] or not isinstance(x.get('title'), str) for x in rows):
         return f'a row does not have exactly the keys {sorted(ROW_KEYS[field])}'
+    # Only the level rule reads posted titles, so rule_dimension is one of its dimensions and the
+    # published dimension is what signal_dimensions maps it to (origin is 'other'). The rows below
+    # are recomputed from rule_dimension, so it must agree with the dimension a reviewer is shown:
+    # a sex signal carrying the age rule's rows would put unrelated rows under a review of sex
+    # (Codex, PR 103).
+    rule = signal.get('rule_dimension')
+    if rule not in RS.LEVEL_RULE_DIMENSIONS or [signal.get('dimension')] != RS.signal_dimensions(rule, []):
+        return "the signal's dimension is not the one its level rule names"
     if signal.get('measure_type') != 'PRIMARY':
         return None
+    if record.get('primary_measures') is None:
+        # study_record parses the primary measures and the subgroup rule separately, so the rule can
+        # fire on a measure whose copy failed (a measurement without a group id, say). There is then
+        # no copied table to resolve the rows against; the record is kept with that failure stated.
+        failed = any(isinstance(f, dict) and f.get('section') == 'primary_measures'
+                     for f in (record.get('parse') or {}).get('failures') or [])
+        return None if failed else 'rows point at primary measures the record neither copies nor records a failure for'
     pm = next((m for m in record.get('primary_measures') or [] if m.get('measure_index') == signal.get('measure_index')), None)
     if pm is None:
         return 'rows point at a primary measure this record does not copy'

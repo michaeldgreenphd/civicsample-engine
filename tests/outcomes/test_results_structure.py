@@ -395,6 +395,30 @@ def test_title_level_signals_point_at_every_matched_row_as_posted() -> None:
     assert grp['rows'] == [{'group_id': 'OG000', 'title': 'Zorbatinib, women'}, {'group_id': 'OG001', 'title': 'Zorbatinib, men'}]
 
 
+def test_category_and_group_rows_come_from_every_class_and_group_with_titles_as_posted() -> None:
+    # Written out by hand, not recomputed: the build's check compares rows with signal_rows itself, so
+    # only these expected values would catch a defect in it. Categories repeated under two time points
+    # are all listed, from every class, and a title keeps its trailing space as posted.
+    m = F.measure()
+    row = m['classes'][0]['categories'][0]['measurements']
+    m['classes'] = [{'title': f'Week {w}', 'categories': [{'title': 'Women ', 'measurements': row},
+                                                         {'title': 'Men', 'measurements': row},
+                                                         {'title': 'All participants', 'measurements': row}]}
+                    for w in (4, 12)]
+    [cat] = signals_of(m)
+    assert (cat['field'], cat['dimension']) == ('category_titles', 'sex')
+    assert cat['rows'] == [{'class_index': 0, 'category_index': 0, 'title': 'Women '},
+                           {'class_index': 0, 'category_index': 1, 'title': 'Men'},
+                           {'class_index': 1, 'category_index': 0, 'title': 'Women '},
+                           {'class_index': 1, 'category_index': 1, 'title': 'Men'}]
+    # Every group whose title carries a level, two groups with one title included, each as posted.
+    [grp] = signals_of(F.measure(titles=('Zorbatinib, women ', 'Zorbatinib, men', 'Placebo', 'Zorbatinib, men'),
+                                 analysed=('9', '9', '9', '9'), values=('1', '2', '3', '4')))
+    assert (grp['field'], grp['dimension']) == ('group_titles', 'sex')
+    assert grp['rows'] == [{'group_id': 'OG000', 'title': 'Zorbatinib, women '}, {'group_id': 'OG001', 'title': 'Zorbatinib, men'},
+                           {'group_id': 'OG003', 'title': 'Zorbatinib, men'}]
+
+
 def test_rows_follow_the_posted_order_and_never_move_a_signal_id() -> None:
     # The id is taken from the set of titles; the rows give the positions, so a reordering moves the rows only.
     a = signals_of(F.measure(class_titles=('Overall', 'Female', 'Male')))

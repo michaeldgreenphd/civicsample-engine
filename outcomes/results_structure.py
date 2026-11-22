@@ -760,6 +760,8 @@ def _level_matches(titles: list[str], dims: tuple[str, ...]) -> dict[str, tuple[
 
 # How many matching titles a level signal displays, per list (the audit's display cut).
 _LEVEL_SHOWN = {'sex': 2, 'race': 4, 'ethnicity': 3, 'origin': 4, 'age': 4}
+# The dimensions the level rule names; a title-level signal's rule_dimension is one of these.
+LEVEL_RULE_DIMENSIONS = tuple(_LEVEL_SHOWN)
 
 
 def level_identity(titles: list[str],
@@ -935,8 +937,9 @@ def signal_dimensions(rule_dimension: str, matched: list[str]) -> list[str]:
 _MAX_MATCHED = 400   # characters of one matched text kept; a longer text is cut and flagged
 
 # The level rules that read posted row or column titles: class titles, category titles and group
-# titles. Only their signals point at rows of a posted table. A cue, a group-description match and an
-# analysis signal point at wording, not at a row, and carry `rows: None`.
+# titles. Only their signals list rows of a posted table. A cue, a group-description match and an
+# analysis signal carry `rows: None`; a cue in a class or category title is in one row's title, but
+# the signal records the cue's wording and the title list's path, not which row.
 TITLE_LEVEL_FIELDS = ('class_titles', 'category_titles', 'group_titles')
 
 

@@ -27,7 +27,8 @@ at the engine commit that adds signal rows. It replaces that run on the site.
     categories) or group columns whose titles carry a level: each one's position and title as
     posted, every one, in posted order;
   - every other signal (a cue, a group-description match, an analysis of level-defined groups)
-    points at wording, not at a row, and has `rows: null`.
+    has `rows: null`. A cue in a class or category title is in one posted row's title, but the
+    signal records the cue's wording and the path of the title list, not which row.
 
 A listed row is what rule SG2 matched. It is not a finding that the row is a subgroup result:
 only a human review record can settle a signal, and there are none.
@@ -90,8 +91,10 @@ This build passes all of them.
 The earlier runs' limitations hold. In addition:
 
 - Rows come from title-level signals only. A subgroup posted as a separate outcome measure, named
-  only in a measure's description, or tested in an analysis has no rows; a keyword signal points at
-  wording.
+  only in a measure's description, or tested in an analysis has no rows. Nor does a cue in a class
+  or category title: the row holding it is not listed. This build has one, on a secondary measure
+  of NCT02753127 (a class titled "Number of Patients with Adverse Events in the pSTAT3(+)
+  Subpopulation").
 - The rule reads titles, so a row is listed because its title carries a level, not because its
   values were checked. Of the 152 primary measures with more than one class (85 trials), the rule
   reads levels in the class titles of 2. A sample of the others read for this increment showed

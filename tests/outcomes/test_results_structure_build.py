@@ -220,6 +220,29 @@ def test_the_check_refuses_inferences_and_rows_that_do_not_point_at_posted_rows(
         r['subgroup']['signals'][-1]['measure_index'] = 7
     assert has(problems(elsewhere), 'a primary measure this record does not copy')
 
+    # The rows are recomputed from rule_dimension, so it must be the rule of the published dimension:
+    # a sex signal cannot carry the age rule's rows (Codex, PR 103).
+    named = "dimension is not the one its level rule names"
+    def relabelled(r: dict[str, Any], rule: str, dim: str) -> None:
+        on_primary(r, sexes)
+        r['subgroup']['signals'][-1].update(rule_dimension=rule, dimension=dim)
+    assert has(problems(lambda r: relabelled(r, 'age', 'sex')), named)
+    assert has(problems(lambda r: relabelled(r, 'keyword', 'other')), named)
+    assert has(problems(lambda r: relabelled(r, 'origin', 'race')), named)
+    assert not has(problems(lambda r: relabelled(r, 'sex', 'sex')), named)
+
+    # A primary measure whose copy failed to parse has no table to resolve against; the record
+    # keeps the signal and states the failure, and that is not a reason to refuse the family. A
+    # record that copies no primary measures and states no failure is refused.
+    def copy_failed(r: dict[str, Any], stated: bool) -> None:
+        on_primary(r, sexes)
+        r['primary_measures'] = None
+        r['parse'] = {'status': 'failed', 'failures': [{'section': 'primary_measures', 'reason': "KeyError: 'groupId'"}]
+                      if stated else []}
+    failed = problems(lambda r: copy_failed(r, True))
+    assert not any('NCT99000001 sg-' in p for p in failed), failed
+    assert has(problems(lambda r: copy_failed(r, False)), 'neither copies nor records a failure')
+
 
 def test_committed_fixture_is_current(family: dict[str, Any]) -> None:
     """tests/fixtures/results_structure/ is what the site's reader tests copy; regenerate it with
