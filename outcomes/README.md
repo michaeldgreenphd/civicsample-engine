@@ -101,6 +101,15 @@ One state per study and one per dimension (age, sex, race, ethnicity):
 A signal whose dimension is `other` (the word "subgroup" with no named characteristic, or
 national-origin levels) leaves all four dimensions indeterminate until a person settles it.
 
+A signal of the level rule on class, category or group titles also lists `rows`: the posted rows
+(classes or categories) or group columns whose titles carry a level, each with its position and its
+title as posted, every one, in posted order (`signal_rows`). Every other signal (a cue, a
+group-description match, an analysis of level-defined groups) has `rows: null`. A cue found in a
+class or category title (`class_title_cue`, `category_title_cue`) does stand in one posted row's
+title, but the signal records the cue's wording and the path of the title list, not which row, so
+that row is neither listed nor marked. Rows are not part of the signal id. A listed row is what the rule matched, not a
+finding that it is a subgroup result.
+
 Human reviews are read from `subgroup_reviews.csv` (columns `nct_id, dimension, signal_id,
 decision, reviewer, reviewed_on, note`; decision is `accepted`, `rejected` or `unresolved`).
 `load_reviews` raises on a wrong header, an empty note or reviewer, a `reviewed_on` that is not a

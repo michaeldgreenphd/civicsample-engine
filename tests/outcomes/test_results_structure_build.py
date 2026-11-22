@@ -157,6 +157,118 @@ def test_the_check_refuses_a_changed_file_a_dropped_state_and_an_unreviewed_dete
     assert any('no scope' in p for p in B.check(noscope))
 
 
+def test_the_check_refuses_inferences_and_rows_that_do_not_point_at_posted_rows(family: dict[str, Any]) -> None:
+    def problems(edit: Any) -> list[str]:
+        f = copy.deepcopy(family)
+        edit(f['records.json']['records']['NCT99000001'])
+        return B.check(f)
+
+    def has(found: list[str], text: str) -> bool:
+        return any(text in p for p in found)
+
+    # No inference key inside the copied facts or a signal's rows (roadmap, layer B: "No inference").
+    def met(r: dict[str, Any]) -> None:
+        r['primary_measures'][0]['analyses'][0]['met'] = True
+    assert has(problems(met), "an inference key ['met']")
+
+    def favours(r: dict[str, Any]) -> None:
+        r['subgroup']['signals'][0]['rows'][0]['favours'] = 'Female'
+    assert has(problems(favours), 'inference key')
+    # A title-level signal lists its rows, with exactly its field's keys; any other signal has none.
+    for rows in (None, []):
+        def norows(r: dict[str, Any], rows: Any = rows) -> None:
+            r['subgroup']['signals'][0]['rows'] = rows
+        assert has(problems(norows), 'a title-level signal has no rows')
+
+    def wrongkeys(r: dict[str, Any]) -> None:
+        r['subgroup']['signals'][0]['rows'][0] = {'group_id': 'OG000', 'title': 'Female'}
+    assert has(problems(wrongkeys), 'exactly the keys')
+    cue = copy.deepcopy(family)
+    [kw] = cue['records.json']['records']['NCT99000007']['subgroup']['signals']
+    kw['rows'] = [{'class_index': 0, 'title': 'Zorbatinib'}]
+    assert has(B.check(cue), 'does not read posted titles carries rows')
+
+    # On a PRIMARY measure the rows must be exactly the ones the rule matches in the copied table:
+    # each resolves at its position and title, and none is substituted or left out (Codex, PR 103).
+    # The fixture's primary measure is given classes Female, Male and Overall, and groups by sex.
+    def on_primary(r: dict[str, Any], rows: list[dict[str, Any]], field: str = 'class_titles') -> None:
+        pm = r['primary_measures'][0]
+        one = pm['classes'][0]
+        pm['classes'] = [{**copy.deepcopy(one), 'title': t} for t in ('Female', 'Male', 'Overall')]
+        pm['groups'][0]['title'], pm['groups'][1]['title'] = 'Zorbatinib, women', 'Placebo, men'
+        sig = copy.deepcopy(r['subgroup']['signals'][0])   # a sex signal
+        sig.update(field=field, measure_type='PRIMARY', measure_index=0, measure_title=pm['title'], rows=rows)
+        r['subgroup']['signals'].append(sig)
+    unresolved, mismatched = 'does not resolve to the posted table', 'not the ones the rule matches'
+    sexes = [{'class_index': 0, 'title': 'Female'}, {'class_index': 1, 'title': 'Male'}]
+    matched = problems(lambda r: on_primary(r, sexes))
+    assert not has(matched, unresolved) and not has(matched, mismatched)
+    assert has(problems(lambda r: on_primary(r, [sexes[0], {'class_index': 1, 'title': 'Female'}])), unresolved)
+    assert has(problems(lambda r: on_primary(r, [sexes[0], {'class_index': 4, 'title': 'Male'}])), unresolved)
+    assert has(problems(lambda r: on_primary(r, [sexes[0], {'class_index': 2, 'title': 'Overall'}])), mismatched)   # substituted
+    assert has(problems(lambda r: on_primary(r, sexes[:1])), mismatched)                                          # one left out
+    groups = [{'group_id': 'OG000', 'title': 'Zorbatinib, women'}, {'group_id': 'OG001', 'title': 'Placebo, men'}]
+    by_group = problems(lambda r: on_primary(r, groups, 'group_titles'))
+    assert not has(by_group, unresolved) and not has(by_group, mismatched)
+    assert has(problems(lambda r: on_primary(r, [{'group_id': 'OG009', 'title': 'Zorbatinib, women'}], 'group_titles')), unresolved)
+    assert has(problems(lambda r: on_primary(r, groups[:1], 'group_titles')), mismatched)
+    assert has(problems(lambda r: on_primary(r, [{'class_index': 0, 'category_index': 3, 'title': 'Female'}],
+                                             'category_titles')), unresolved)
+
+    # A position is a non-negative int, never a bool: `false` equals 0 in Python and would otherwise
+    # resolve to the first row and pass the comparison (Codex, PR 103).
+    bad_position = 'not a non-negative integer'
+    for row, field in (({'class_index': False, 'title': 'Female'}, 'class_titles'),
+                       ({'class_index': -1, 'title': 'Female'}, 'class_titles'),
+                       ({'class_index': 0.0, 'title': 'Female'}, 'class_titles'),
+                       ({'class_index': 0, 'category_index': True, 'title': 'Female'}, 'category_titles'),
+                       ({'group_id': 0, 'title': 'Zorbatinib, women'}, 'group_titles')):
+        assert has(problems(lambda r, row=row, field=field: on_primary(r, [row], field)), bad_position), row
+    def bool_index(r: dict[str, Any]) -> None:
+        on_primary(r, sexes)
+        r['subgroup']['signals'][-1]['measure_index'] = False
+    assert has(problems(bool_index), "measure_index is not a non-negative integer")
+
+    def elsewhere(r: dict[str, Any]) -> None:
+        on_primary(r, sexes)
+        r['subgroup']['signals'][-1]['measure_index'] = 7
+    assert has(problems(elsewhere), 'a primary measure this record does not copy')
+
+    # Primary status comes from the copied measure at the signal's index: a signal there whose own type
+    # or title disagrees is refused, not let past the row checks (Codex, PR 103).
+    stale = "disagrees with the copied primary measure at its index"
+    def restated(r: dict[str, Any], **kw: Any) -> None:
+        on_primary(r, sexes[:1])   # one row left out: the row checks would refuse it if they ran
+        r['subgroup']['signals'][-1].update(kw)
+    assert has(problems(lambda r: restated(r, measure_type='SECONDARY')), stale)
+    assert has(problems(lambda r: restated(r, measure_type=None)), stale)
+    assert has(problems(lambda r: restated(r, measure_title='Another measure')), stale)
+    assert not has(problems(lambda r: on_primary(r, sexes)), stale)
+
+    # The rows are recomputed from rule_dimension, so it must be the rule of the published dimension:
+    # a sex signal cannot carry the age rule's rows (Codex, PR 103).
+    named = "dimension is not the one its level rule names"
+    def relabelled(r: dict[str, Any], rule: str, dim: str) -> None:
+        on_primary(r, sexes)
+        r['subgroup']['signals'][-1].update(rule_dimension=rule, dimension=dim)
+    assert has(problems(lambda r: relabelled(r, 'age', 'sex')), named)
+    assert has(problems(lambda r: relabelled(r, 'keyword', 'other')), named)
+    assert has(problems(lambda r: relabelled(r, 'origin', 'race')), named)
+    assert not has(problems(lambda r: relabelled(r, 'sex', 'sex')), named)
+
+    # A primary measure whose copy failed to parse has no table to resolve against; the record
+    # keeps the signal and states the failure, and that is not a reason to refuse the family. A
+    # record that copies no primary measures and states no failure is refused.
+    def copy_failed(r: dict[str, Any], stated: bool) -> None:
+        on_primary(r, sexes)
+        r['primary_measures'] = None
+        r['parse'] = {'status': 'failed', 'failures': [{'section': 'primary_measures', 'reason': "KeyError: 'groupId'"}]
+                      if stated else []}
+    failed = problems(lambda r: copy_failed(r, True))
+    assert not any('NCT99000001 sg-' in p for p in failed), failed
+    assert has(problems(lambda r: copy_failed(r, False)), 'neither copies nor records a failure')
+
+
 def test_committed_fixture_is_current(family: dict[str, Any]) -> None:
     """tests/fixtures/results_structure/ is what the site's reader tests copy; regenerate it with
     scripts/build_results_structure_fixture.py when the records or the rules change."""

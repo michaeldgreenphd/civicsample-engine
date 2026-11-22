@@ -366,8 +366,76 @@ def test_level_signals_carry_field_path_measure_and_verbatim_text() -> None:
     assert s == {'signal_id': s['signal_id'], 'dimension': 'sex', 'rule_dimension': 'sex', 'field': 'class_titles',
                  'field_path': 'resultsSection.outcomeMeasuresModule.outcomeMeasures[1].classes[].title',
                  'measure_index': 1, 'measure_type': 'SECONDARY', 'measure_title': 'Response by sex',
-                 'matched_text': ['Women', 'Men'], 'matched_text_truncated': False, 'context': None, 'review': []}
+                 'matched_text': ['Women', 'Men'], 'matched_text_truncated': False, 'context': None,
+                 'rows': [{'class_index': 0, 'title': 'Women'}, {'class_index': 1, 'title': 'Men'}], 'review': []}
     assert RS._SIGNAL_ID.match(s['signal_id'])
+
+
+def test_title_level_signals_point_at_every_matched_row_as_posted() -> None:
+    # Every class whose title carries a level, in posted order and verbatim, past the display cut of matched_text.
+    bands = ('Overall', 'Age 18 to 39 years', 'Age 40 to 64 years', 'Age 65 to 74 years', 'Age 75 to 84 years',
+             'Age 85 years and older ')
+    [s] = signals_of(F.measure(class_titles=bands))
+    assert (s['field'], s['dimension']) == ('class_titles', 'age')
+    assert len(s['matched_text']) == RS._LEVEL_SHOWN['age'] < len(bands) - 1
+    assert s['rows'] == [{'class_index': k, 'title': t} for k, t in enumerate(bands) if k]
+    # Two classes with one title are both listed.
+    [dup] = signals_of(F.measure(class_titles=('Female', 'Male', 'Female')))
+    assert [r['class_index'] for r in dup['rows']] == [0, 1, 2]
+    # Category titles point at (class, category); group titles at the group id.
+    m = F.measure()
+    row = m['classes'][0]['categories'][0]['measurements']
+    m['classes'] = [{'title': 'Week 12', 'categories': [{'title': 'Women', 'measurements': row}, {'title': 'Men', 'measurements': row}]}]
+    [cat] = signals_of(m)
+    assert cat['field'] == 'category_titles'
+    assert cat['rows'] == [{'class_index': 0, 'category_index': 0, 'title': 'Women'},
+                           {'class_index': 0, 'category_index': 1, 'title': 'Men'}]
+    [grp] = signals_of(F.measure(titles=('Zorbatinib, women', 'Zorbatinib, men')))
+    assert grp['field'] == 'group_titles'
+    assert grp['rows'] == [{'group_id': 'OG000', 'title': 'Zorbatinib, women'}, {'group_id': 'OG001', 'title': 'Zorbatinib, men'}]
+
+
+def test_category_and_group_rows_come_from_every_class_and_group_with_titles_as_posted() -> None:
+    # Written out by hand, not recomputed: the build's check compares rows with signal_rows itself, so
+    # only these expected values would catch a defect in it. Categories repeated under two time points
+    # are all listed, from every class, and a title keeps its trailing space as posted.
+    m = F.measure()
+    row = m['classes'][0]['categories'][0]['measurements']
+    m['classes'] = [{'title': f'Week {w}', 'categories': [{'title': 'Women ', 'measurements': row},
+                                                         {'title': 'Men', 'measurements': row},
+                                                         {'title': 'All participants', 'measurements': row}]}
+                    for w in (4, 12)]
+    [cat] = signals_of(m)
+    assert (cat['field'], cat['dimension']) == ('category_titles', 'sex')
+    assert cat['rows'] == [{'class_index': 0, 'category_index': 0, 'title': 'Women '},
+                           {'class_index': 0, 'category_index': 1, 'title': 'Men'},
+                           {'class_index': 1, 'category_index': 0, 'title': 'Women '},
+                           {'class_index': 1, 'category_index': 1, 'title': 'Men'}]
+    # Every group whose title carries a level, two groups with one title included, each as posted.
+    [grp] = signals_of(F.measure(titles=('Zorbatinib, women ', 'Zorbatinib, men', 'Placebo', 'Zorbatinib, men'),
+                                 analysed=('9', '9', '9', '9'), values=('1', '2', '3', '4')))
+    assert (grp['field'], grp['dimension']) == ('group_titles', 'sex')
+    assert grp['rows'] == [{'group_id': 'OG000', 'title': 'Zorbatinib, women '}, {'group_id': 'OG001', 'title': 'Zorbatinib, men'},
+                           {'group_id': 'OG003', 'title': 'Zorbatinib, men'}]
+
+
+def test_rows_follow_the_posted_order_and_never_move_a_signal_id() -> None:
+    # The id is taken from the set of titles; the rows give the positions, so a reordering moves the rows only.
+    a = signals_of(F.measure(class_titles=('Overall', 'Female', 'Male')))
+    b = signals_of(F.measure(class_titles=('Male', 'Female', 'Overall')))
+    assert [s['signal_id'] for s in a] == [s['signal_id'] for s in b]
+    assert a[0]['rows'] == [{'class_index': 1, 'title': 'Female'}, {'class_index': 2, 'title': 'Male'}]
+    assert b[0]['rows'] == [{'class_index': 0, 'title': 'Male'}, {'class_index': 1, 'title': 'Female'}]
+
+
+def test_signals_that_do_not_read_posted_titles_have_no_rows() -> None:
+    # A cue, a group-description match and an analysis of level-defined groups point at wording, not at a row.
+    groups = [{'id': 'OG000', 'title': 'Arm A', 'description': 'Women aged 18 or over'},
+              {'id': 'OG001', 'title': 'Arm B', 'description': 'Men aged 18 or over'}]
+    sig = signals_of(F.measure(description='Analysed in the subgroup of participants with a week 4 sample.',
+                               groups=groups, analyses=[F.analysis(('OG000', 'OG001'), pValue='0.2')]))
+    assert {s['field'] for s in sig} == {'group_descriptions', 'analysis_groupIds', 'measure_description'}
+    assert all(s['rows'] is None for s in sig)
 
 
 @pytest.mark.parametrize('titles, dimension, rule_dimension', [
