@@ -2880,3 +2880,23 @@ def test_reference_entry_with_no_citation_or_pmid_is_no_candidate_and_no_negativ
     cell = C.registry_references_cell(nct, ctgov_rec, [], {}, True)
     assert cell['state'] == 'search_incomplete_or_blocked', cell
     assert 'has no citation text or PMID' in cell['reason']
+
+
+@pytest.mark.parametrize('entry', [
+    {'pmid': 31234569, 'type': 'RESULT', 'citation': 'Fictional et al.'},
+    {'pmid': '31234569', 'type': 'RESULT', 'citation': ['Fictional et al.']},
+    {'pmid': '31234569', 'type': 3, 'citation': 'Fictional et al.'},
+])
+def test_reference_entry_with_a_mistyped_field_cannot_verify_the_route(entry: dict[str, Any]) -> None:
+    # On c7c16f7 each entry was still extracted (the integer PMID coerced to text), resolved against the
+    # cached PubMed answer and made the route `verified_link` despite the reported problem.
+    nct = 'NCT09990027'
+    study = F._make_study(nct, title='Mistyped reference', lead_sponsor='Fictional Sponsor', references=[entry])
+    ctgov_rec = {'status': 200, 'body': study}
+    lit = {'literature/pubmed_pmid/31234569': {'status': 200, 'body': {'result': {'31234569': {'title': 'T'}}}}}
+    assert A.extract_registry_references(study) == []
+    links = E.build_registry_reference_links(nct, ctgov_rec, lit)
+    assert links == []
+    cell = C.registry_references_cell(nct, ctgov_rec, links, lit, True)
+    assert cell['state'] == 'search_incomplete_or_blocked', cell
+    assert 'is not a string' in cell['reason']

@@ -747,8 +747,9 @@ def registry_references_problem(study: dict[str, Any] | None) -> str | None:
     present part of the wrong type (none in the stored records) leaves the citations unknown.
 
     An entry is readable only when it carries a non-blank `pmid` or `citation`, and its `pmid`,
-    `citation` and `type` are strings where present (null counts as absent). An entry with neither has
-    nothing a review could read, so it is not turned into a placeholder candidate. All 3,449 entries in
+    `citation` and `type` are strings where present (null counts as absent). An unreadable entry
+    yields no link at all: one with neither field has nothing a review could read, and one with a
+    mistyped field (an integer PMID) must not verify the route by coercion. All 3,449 entries in
     the stored records carry a citation string, 3,345 a PMID string too, and none has a non-string field.
     """
     if not isinstance(study, dict) or not isinstance(study.get('protocolSection'), dict):
@@ -765,27 +766,34 @@ def registry_references_problem(study: dict[str, Any] | None) -> str | None:
     if not isinstance(refs, list):
         return 'referencesModule.references is not a list'
     for i, ref in enumerate(refs):
-        where = f'referencesModule.references[{i}]'
-        if not isinstance(ref, dict):
-            return f'{where} is not an object'
-        for key in ('pmid', 'citation', 'type'):
-            if ref.get(key) is not None and not isinstance(ref[key], str):
-                return f'{where}.{key} is not a string'
-        if not _registry_reference_identifiable(ref):
-            return f'{where} has no citation text or PMID'
+        problem = _registry_reference_entry_problem(ref)
+        if problem:
+            return f'referencesModule.references[{i}]{problem}'
     return None
 
 
-def _registry_reference_identifiable(ref: dict[str, Any]) -> bool:
-    """True when a reference entry carries a non-blank `pmid` or `citation` string."""
-    return any(isinstance(ref.get(key), str) and ref[key].strip() for key in ('pmid', 'citation'))
+def _registry_reference_entry_problem(ref: Any) -> str | None:
+    """Why one reference entry cannot be read, as a suffix to its path, or None when it can.
+
+    `extract_registry_references` skips every entry this names, so a malformed entry never yields a
+    link: an integer PMID coerced to text could otherwise resolve on PubMed and verify the route.
+    """
+    if not isinstance(ref, dict):
+        return ' is not an object'
+    for key in ('pmid', 'citation', 'type'):
+        if ref.get(key) is not None and not isinstance(ref[key], str):
+            return f'.{key} is not a string'
+    if not any(isinstance(ref.get(key), str) and ref[key].strip() for key in ('pmid', 'citation')):
+        return ' has no citation text or PMID'
+    return None
 
 
 def extract_registry_references(study: dict[str, Any] | None) -> list[dict[str, Any]]:
     """Return normalized entries from `protocolSection.referencesModule.references`.
 
-    Read type-safely (a non-object module raised `AttributeError`); a malformed part, or an entry with
-    no citation text or PMID, gives no entry here and is reported by `registry_references_problem`.
+    Read type-safely (a non-object module raised `AttributeError`); a malformed part, or an entry
+    `_registry_reference_entry_problem` names, gives no entry here and is reported by
+    `registry_references_problem`.
     """
     if not isinstance(study, dict):
         return []
@@ -796,8 +804,10 @@ def extract_registry_references(study: dict[str, Any] | None) -> list[dict[str, 
         return []
     out: list[dict[str, Any]] = []
     for idx, ref in enumerate(refs):
-        if not isinstance(ref, dict) or not _registry_reference_identifiable(ref):
-            continue  # a placeholder `ref:<nct>:<index>` candidate would offer a review nothing to read
+        if _registry_reference_entry_problem(ref) is not None:
+            # Unreadable (reported by `registry_references_problem`): a placeholder `ref:<nct>:<index>`
+            # would offer a review nothing to read, and a coerced field could verify the route.
+            continue
         pmid_raw = ref.get('pmid')
         pmid = str(pmid_raw).strip() if pmid_raw is not None and str(pmid_raw).strip() else None
         ref_type_raw = ref.get('type')
