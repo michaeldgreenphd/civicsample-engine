@@ -8,14 +8,15 @@ Reads only ``BUILD_DIR``, verifies every file against ``run.json`` checksums and
 ``dap.artifacts.check_contract``, projects ``summary.json``, ``strata.json``,
 and ``sponsors.json`` (leaving per-trial ``trials.jsonl.gz`` with the engine
 build), stages atomically into a sibling directory, verifies written SHA-256
-digests, and swaps ``OUT_DIR`` into place. Never scheduled; makes no network
-calls.
+digests, and swaps ``OUT_DIR`` into place. The site ``run.json`` records this
+exporter's own provenance (``exporter``: commit, uncommitted changes and source
+SHA-256 over its import closure, from local ``git``), and the site ``run_id``
+is derived from the exported content. Never scheduled; makes no network calls.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import shutil
 import sys
 import tempfile
@@ -23,9 +24,11 @@ from pathlib import Path
 from typing import Any
 
 ROOT: Path = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for _p in (ROOT, ROOT / "scripts"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
+import build_dap_benchmarks  # noqa: E402
 from dap import UNIT_BASIS, artifacts  # noqa: E402
 
 SITE_SCHEMA_VERSION: int = 1
@@ -75,10 +78,27 @@ def read_verified_build(build_dir: Path) -> dict[str, Any]:
     return loaded
 
 
-def site_run_id(build_run: dict[str, Any]) -> str:
-    """Build run_id suffixed with an 8-hex digest of all build file hashes."""
-    digest = sha256_bytes(json.dumps(sorted(build_run["files"].items())).encode("utf-8"))
-    return f"{build_run['run_id']}-{digest[:8]}"
+def site_run_id(build_run: dict[str, Any], site_files: dict[str, dict[str, Any]]) -> str:
+    """Build run_id suffixed with an 8-hex digest of the selected site content.
+
+    The digest covers every site file as ``select_site_files`` builds it,
+    ``run.json`` included (which carries the build's file SHA-256s as
+    ``build_files`` and the ``exporter`` provenance), leaving out only the
+    ``run_id`` each file is then stamped with. Re-exporting an unchanged build
+    with changed exporter code or from another commit therefore gives a new id,
+    and the same build exported by the same code keeps its id.
+    """
+    content = {name: {k: v for k, v in obj.items() if k != "run_id"} for name, obj in site_files.items()}
+    return f"{build_run['run_id']}-{sha256_bytes(artifacts.dump(content))[:8]}"
+
+
+def exporter_info() -> dict[str, Any]:
+    """This exporter's provenance: commit, uncommitted changes and source SHA-256 over its import closure.
+
+    Same method as the build's ``producer`` block (``build_dap_benchmarks.producer_info``),
+    started from this script, so the site files name the code that projected them.
+    """
+    return build_dap_benchmarks.producer_info(ROOT, entry=Path(__file__))
 
 
 def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
@@ -95,11 +115,11 @@ def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
     if sum(int(v) for v in lit_states.values()) != summary["denominators"]["sponsor_literals"]["n"]:
         raise ValueError("sponsors.json literal count disagrees with summary.json denominators.sponsor_literals")
 
-    s_run_id = site_run_id(run)
+    # run_id is stamped last, from the content (site_run_id).
     site_objs: dict[str, dict[str, Any]] = {
-        "summary.json": {**summary, "schema_version": SITE_SCHEMA_VERSION, "run_id": s_run_id},
-        "strata.json": {**strata, "schema_version": SITE_SCHEMA_VERSION, "run_id": s_run_id},
-        "sponsors.json": {**sponsors, "schema_version": SITE_SCHEMA_VERSION, "run_id": s_run_id},
+        "summary.json": {**summary, "schema_version": SITE_SCHEMA_VERSION, "run_id": None},
+        "strata.json": {**strata, "schema_version": SITE_SCHEMA_VERSION, "run_id": None},
+        "sponsors.json": {**sponsors, "schema_version": SITE_SCHEMA_VERSION, "run_id": None},
     }
 
     inputs = run.get("inputs") or {}
@@ -126,7 +146,7 @@ def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
 
     site_manifest: dict[str, Any] = {
         "schema_version": SITE_SCHEMA_VERSION,
-        "run_id": s_run_id,
+        "run_id": None,
         "build_run_id": run["run_id"],
         "build_schema_version": run["schema_version"],
         "generated_at": run["generated_at"],
@@ -134,6 +154,7 @@ def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
         "method_version": run["method_version"],
         "unit_basis": UNIT_BASIS,
         "producer": run["producer"],
+        "exporter": exporter_info(),
         "parameters": run["parameters"],
         "counting_units": run["counting_units"],
         "vocabularies": run["vocabularies"],
@@ -158,7 +179,11 @@ def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
         },
         "build_files": run["files"],
     }
-    return {"run.json": site_manifest, **site_objs}
+    selected = {"run.json": site_manifest, **site_objs}
+    s_run_id = site_run_id(run, selected)
+    for obj in selected.values():
+        obj["run_id"] = s_run_id
+    return selected
 
 
 def export_site(build_dir: Path, out_dir: Path) -> dict[str, Any]:

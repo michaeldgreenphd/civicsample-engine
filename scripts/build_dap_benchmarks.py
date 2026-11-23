@@ -76,8 +76,11 @@ def _imported_module_names(path: Path, package: str | None) -> set[str]:
     return names
 
 
-def producer_paths(root: Path = ROOT) -> list[str]:
+def producer_paths(root: Path = ROOT, entry: Path | None = None) -> list[str]:
     """Sorted paths, relative to ``root`` (the checkout imported from), of the files the build imported.
+
+    ``entry`` names another loaded script to start from instead of this one
+    (``export_dap_benchmarks_site.py`` records its own closure this way).
 
     Method: the repo-local entries of ``sys.modules`` (files under
     ``PRODUCER_DIRS``) are the modules actually loaded. Starting from this
@@ -91,9 +94,14 @@ def producer_paths(root: Path = ROOT) -> list[str]:
     Call it after the build has run, so imports made at run time are loaded.
     """
     loaded = _loaded_repo_modules(root)
-    entry = Path(__file__).resolve()
+    start = Path(__file__).resolve() if entry is None else entry.resolve()
+    # The start file's package resolves its relative imports (scripts have none).
+    start_package = next(
+        (getattr(sys.modules[name], "__package__", None) for name, path in loaded.items() if path == start),
+        None,
+    )
     seen: set[Path] = set()
-    pending: list[tuple[Path, str | None]] = [(entry, __package__)]
+    pending: list[tuple[Path, str | None]] = [(start, start_package)]
     while pending:
         path, package = pending.pop()
         if path in seen:
@@ -116,13 +124,14 @@ def source_digest(root: Path = ROOT, paths: list[str] | None = None) -> str:
     return h.hexdigest()
 
 
-def producer_info(root: Path = ROOT) -> dict[str, Any]:
+def producer_info(root: Path = ROOT, entry: Path | None = None) -> dict[str, Any]:
     """Git commit, working-tree cleanliness of producing paths, and code SHA-256.
 
     The digest and the ``git status`` dirty check cover the same list: the
-    build's import closure (``producer_paths``), checked in ``root``.
+    import closure of this build (or of ``entry``; see ``producer_paths``),
+    checked in ``root``.
     """
-    paths = producer_paths()
+    paths = producer_paths(entry=entry)
     commit_proc = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=root,

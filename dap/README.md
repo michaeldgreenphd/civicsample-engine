@@ -78,6 +78,13 @@ modified.
 | `sponsors.json` | Canonical (`current_owner`) and `as_registered` company peer scorecards and 3-state attribution summary |
 | `trials.jsonl.gz` | Deterministic `nct_id`-sorted per-trial records (kept with the engine build; omitted by `export_dap_benchmarks_site.py`) |
 
+`export_dap_benchmarks_site.py` writes the site's `run.json`, `summary.json`,
+`strata.json` and `sponsors.json`. The site `run.json` keeps the build's
+`producer` block and adds an `exporter` block (commit, uncommitted changes and
+source SHA-256 over the exporter's own import closure). The site `run_id` is
+`<build run_id>-<8 hex>`, the hex being a digest of the exported content minus
+`run_id`: a changed exporter or commit gives a new id for the same build.
+
 ## Condition MeSH sidecar (`--condition-mesh`)
 
 The optional `condition_mesh.jsonl.gz` (`src/condition_mesh.py`) replaces each

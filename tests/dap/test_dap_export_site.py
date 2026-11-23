@@ -136,6 +136,48 @@ def test_site_manifest_carries_verified_condition_mesh_provenance(tmp_path: Path
         site_export.select_site_files(unverified)
 
 
+def test_site_run_records_exporter_provenance_and_content_derived_id(
+    verified_build: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out_a = tmp_path / "a" / "dap"
+    out_b = tmp_path / "b" / "dap"
+    site_export.export_site(verified_build, out_a)
+    site_export.export_site(verified_build, out_b)
+    run_a = json.loads((out_a / "run.json").read_text(encoding="utf-8"))
+
+    # The exporter's own provenance, over its import closure, beside the build's producer block.
+    exp = run_a.get("exporter")
+    assert isinstance(exp, dict), "site run.json has no exporter provenance block"
+    assert set(exp) == {"repository", "commit", "uncommitted_changes", "source_sha256"}
+    exporter_paths = cli_build.producer_paths(entry=ROOT / "scripts" / "export_dap_benchmarks_site.py")
+    assert "scripts/export_dap_benchmarks_site.py" in exporter_paths
+    assert "dap/artifacts.py" in exporter_paths
+    assert "scripts/check_dap_benchmarks_contract.py" not in exporter_paths
+    assert exp["source_sha256"] == cli_build.source_digest(ROOT, exporter_paths)
+    assert run_a["producer"] == json.loads((verified_build / "run.json").read_text(encoding="utf-8"))["producer"]
+
+    # Same build, same exporter: same bytes and id. The id is the digest of the content minus run_id.
+    for name in ("run.json", "summary.json", "strata.json", "sponsors.json"):
+        assert (out_a / name).read_bytes() == (out_b / name).read_bytes(), name
+    content = {
+        name: {k: v for k, v in json.loads((out_a / name).read_text(encoding="utf-8")).items() if k != "run_id"}
+        for name in ("run.json", "summary.json", "strata.json", "sponsors.json")
+    }
+    content["run.json"].pop("files")  # added after the id, from the stamped bytes
+    want = f"{run_a['build_run_id']}-{hashlib.sha256(artifacts.dump(content)).hexdigest()[:8]}"
+    assert run_a["run_id"] == want
+
+    # Changed exporter code (a different source digest) re-exports the same build under a new id.
+    changed = {**exp, "source_sha256": "0" * 64}
+    monkeypatch.setattr(site_export, "exporter_info", lambda: changed)
+    out_c = tmp_path / "c" / "dap"
+    site_export.export_site(verified_build, out_c)
+    run_c = json.loads((out_c / "run.json").read_text(encoding="utf-8"))
+    assert run_c["build_run_id"] == run_a["build_run_id"]
+    assert run_c["exporter"] == changed
+    assert run_c["run_id"] != run_a["run_id"]
+
+
 def test_tampered_or_incomplete_build_is_refused_and_leaves_site_intact(
     verified_build: Path, tmp_path: Path
 ) -> None:
