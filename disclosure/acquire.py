@@ -858,11 +858,17 @@ DOSAGE_FORM_ABBREVIATIONS: frozenset[str] = frozenset({
 # `every N weeks`, `for N days`, or a dose-level qualifier immediately followed by `dose`. Abbreviations
 # (`bid`, `qd`, `q3w`) are removed at the end only, where no compound code can follow them. Dose levels
 # in the middle of a label (`of the mid dose vax-31`) and design text (`as formulation a`) are kept.
+# The words of a phrase may be joined by hyphens (`Once-weekly semaglutide`, `Metformin twice-daily`,
+# `Pembrolizumab every-3-weeks`): `normalize_drug_term` keeps hyphens, so the term had kept `once-weekly`,
+# a phrase no Drugs@FDA name carries. A single schedule word still needs a space or the label's edge
+# before it, so `drug-daily` and `Pronamel Daily-Protection` are kept.
+_SCHEDULE_GAP = r'[\s-]+'
 _SCHEDULE_PHRASES = (
-    r'(?:once|twice|thrice|\d+\s+times?)\s+(?:a|per|each|every)\s+(?:day|week|month|night)'
-    r'|(?:once|twice|thrice)\s+(?:daily|weekly|monthly|nightly)'
-    r'|(?:every|each)\s+(?:other\s+)?(?:\d+\s+)?(?:days?|weeks?|months?|hours?)'
-    r'|for\s+\d+\s+(?:days?|weeks?|months?)'
+    rf'(?:once|twice|thrice|\d+{_SCHEDULE_GAP}times?){_SCHEDULE_GAP}(?:a|per|each|every){_SCHEDULE_GAP}'
+    r'(?:day|week|month|night)'
+    rf'|(?:once|twice|thrice){_SCHEDULE_GAP}(?:daily|weekly|monthly|nightly)'
+    rf'|(?:every|each){_SCHEDULE_GAP}(?:other{_SCHEDULE_GAP})?(?:\d+{_SCHEDULE_GAP})?(?:days?|weeks?|months?|hours?)'
+    rf'|for{_SCHEDULE_GAP}\d+{_SCHEDULE_GAP}(?:days?|weeks?|months?)'
     r'|daily|weekly|biweekly|monthly|nightly'
 )
 _SCHEDULE_ABBREVIATIONS = r'bid|tid|qid|qd|qod|qam|qpm|qhs|qw|q\d+(?:h|hr|hrs|d|w|wk|wks)'

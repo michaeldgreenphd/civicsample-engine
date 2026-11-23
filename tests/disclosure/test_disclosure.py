@@ -1984,8 +1984,20 @@ def test_combination_labels_also_query_each_component(raw: str, expected: list[s
         ('Single dose of PF-07104091', 'pf-07104091'),
         ('Ir-CPI - Dose 1', 'ir-cpi'),
         ('Mirikizumab - IV', 'mirikizumab'),
+        # On 4ea753b a schedule written with hyphens stayed in the term (`once-weekly semaglutide`).
+        ('Once-weekly semaglutide', 'semaglutide'),
+        ('Metformin twice-daily', 'metformin'),
+        ('Pembrolizumab every-3-weeks', 'pembrolizumab'),
+        ('Insulin glargine once-a-day', 'insulin glargine'),
+        ('Drugzumab every-other-day', 'drugzumab'),
+        ('Drugzumab 3-times-a-day', 'drugzumab'),
         # Kept: a qualifier word in the middle of a name, a compound code, and a dose word not at an end.
         ('Pronamel Daily Protection', 'pronamel daily protection'),
+        # Kept on both heads: a schedule word joined to a name, and a treatment duration, which the closed
+        # schedule forms do not cover (`24-week entecavir`, one of 20 stored labels with a duration).
+        ('Pronamel Daily-Protection', 'pronamel daily-protection'),
+        ('Drugzumab-daily', 'drugzumab-daily'),
+        ('24-week Entecavir', '24-week entecavir'),
         ('QD 123', 'qd 123'),
         ('0.5 mL of the mid dose VAX-31', 'of the mid dose vax-31'),
         # A label made only of a qualifier names no drug.
