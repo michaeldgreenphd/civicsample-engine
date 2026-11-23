@@ -368,7 +368,7 @@ def test_shard_vectors_and_exact_parity_with_site_layout() -> None:
         assert sl.shard_of(vec["nct_id"], vec["shards"]) == vec["shard"]
 
     # 120+ NCT IDs across multiple shard counts must match site_layout.shard_of 1:1.
-    ids = [f"NCT{i * 31337 % 100_000_000:08d}" for i in range(128)]
+    ids = [f"NCT99{i * 31337 % 1_000_000:06d}" for i in range(128)]
     for shards in (1, 16, 128, 256, 1024):
         for nct in ids:
             assert ol.outcomes_shard_of(nct, shards) == sl.shard_of(nct, shards)
@@ -376,7 +376,7 @@ def test_shard_vectors_and_exact_parity_with_site_layout() -> None:
 
 @pytest.mark.parametrize(
     "bad_nct",
-    [None, 12345678, "nct01975376", "NCT1234567", "NCT123456789", "NCT1234567A", ""],
+    [None, 12345678, "nct99000076", "NCT1234567", "NCT123456789", "NCT1234567A", ""],
 )
 def test_outcomes_shard_of_rejects_invalid_nct_id(bad_nct: Any) -> None:
     with pytest.raises(ol.OutcomesLayoutError):
@@ -386,16 +386,16 @@ def test_outcomes_shard_of_rejects_invalid_nct_id(bad_nct: Any) -> None:
 @pytest.mark.parametrize("bad_shards", [0, -1, 1025, True, False, "256", 256.0, None])
 def test_outcomes_shard_of_rejects_invalid_shards(bad_shards: Any) -> None:
     with pytest.raises(ol.OutcomesLayoutError):
-        ol.outcomes_shard_of("NCT01975376", bad_shards)
+        ol.outcomes_shard_of("NCT99000076", bad_shards)
 
 
 # ── 2. Byte-for-byte determinism, gzip header & "data" last ──────────────────
 
 def test_byte_for_byte_determinism_gzip_header_and_data_last(tmp_path: pathlib.Path) -> None:
     studies = [
-        _make_ctgov_study("NCT01975376", in_audit=False),
-        _make_ctgov_study("NCT00663858", in_audit=True),
-        _make_ctgov_study("NCT01174160", in_audit=False, sponsor_class="NIH", phase="PHASE2"),
+        _make_ctgov_study("NCT99000076", in_audit=False),
+        _make_ctgov_study("NCT99000058", in_audit=True),
+        _make_ctgov_study("NCT99000060", in_audit=False, sponsor_class="NIH", phase="PHASE2"),
     ]
     bundles_a = [
         ol.build_trial_bundle(
@@ -446,22 +446,22 @@ def test_byte_for_byte_determinism_gzip_header_and_data_last(tmp_path: pathlib.P
 
 def test_multi_cohort_index_decoupling_and_counts() -> None:
     trials = [
-        _make_ctgov_study("NCT00000001", sponsor_class="INDUSTRY", phase="PHASE3", protocol=True, sap=True),
-        _make_ctgov_study("NCT00000002", sponsor_class="NIH", ecosystem_category="nih", phase="PHASE2", protocol=True, sap=False),
-        _make_ctgov_study("NCT00000003", sponsor_class="OTHER", ecosystem_category="nctn_cooperative_group", phase="PHASE3", protocol=False, sap=True),
-        _make_ctgov_study("NCT00000004", sponsor_class="OTHER", ecosystem_category="academic_medical_center", phase="PHASE2", protocol=False, sap=False),
-        _make_ctgov_study("NCT00000005", sponsor_class="FED", ecosystem_category="us_federal_other", phase="PHASE3", protocol=True, sap=True),
+        _make_ctgov_study("NCT99100001", sponsor_class="INDUSTRY", phase="PHASE3", protocol=True, sap=True),
+        _make_ctgov_study("NCT99100002", sponsor_class="NIH", ecosystem_category="nih", phase="PHASE2", protocol=True, sap=False),
+        _make_ctgov_study("NCT99100003", sponsor_class="OTHER", ecosystem_category="nctn_cooperative_group", phase="PHASE3", protocol=False, sap=True),
+        _make_ctgov_study("NCT99100004", sponsor_class="OTHER", ecosystem_category="academic_medical_center", phase="PHASE2", protocol=False, sap=False),
+        _make_ctgov_study("NCT99100005", sponsor_class="FED", ecosystem_category="us_federal_other", phase="PHASE3", protocol=True, sap=True),
     ]
     bundles = [ol.build_trial_bundle(t, shards=8) for t in trials]
     index_doc, _ = ol.build_outcomes_documents(
         bundles, extracted_at=SAMPLE_TS, source_pipeline_commit=SAMPLE_COMMIT, shards=8
     )
     by_id = {row["nct_id"]: row for row in index_doc["data"]}
-    assert by_id["NCT00000001"]["cohorts"] == ["all_large_docs", "industry_phase3"]
-    assert by_id["NCT00000002"]["cohorts"] == ["all_large_docs", "nih"]
-    assert by_id["NCT00000003"]["cohorts"] == ["all_large_docs", "cooperative_group"]
-    assert by_id["NCT00000004"]["cohorts"] == ["academic"]
-    assert by_id["NCT00000005"]["cohorts"] == ["all_large_docs", "us_federal_other"]
+    assert by_id["NCT99100001"]["cohorts"] == ["all_large_docs", "industry_phase3"]
+    assert by_id["NCT99100002"]["cohorts"] == ["all_large_docs", "nih"]
+    assert by_id["NCT99100003"]["cohorts"] == ["all_large_docs", "cooperative_group"]
+    assert by_id["NCT99100004"]["cohorts"] == ["academic"]
+    assert by_id["NCT99100005"]["cohorts"] == ["all_large_docs", "us_federal_other"]
     assert index_doc["cohort_counts"] == {
         "academic": 1,
         "all_large_docs": 4,
@@ -482,10 +482,10 @@ def test_derive_cohorts_rejects_empty_or_invalid_slug() -> None:
 # ── 4. Verbatim reported_results & None absence semantics ────────────────────
 
 def test_reported_results_verbatim_and_none_absence() -> None:
-    study = _make_ctgov_study("NCT01975376", enrollment=None, phase="")
+    study = _make_ctgov_study("NCT99000076", enrollment=None, phase="")
     study["protocolSection"]["statusModule"] = {}
     parsed_pop = {
-        "nct_id": "NCT01975376",
+        "nct_id": "NCT99000076",
         "parser_rules_version": "analysis_pop@2026-11-20.v1",
         "outcomes": [
             {
@@ -516,9 +516,9 @@ def test_reported_results_verbatim_and_none_absence() -> None:
 def test_legacy_documents_jsonl_and_raw_text_rejection() -> None:
     legacy_rows = [
         {
-            "nct_id": "NCT01975376",
+            "nct_id": "NCT99000076",
             "filename": "Prot_000.pdf",
-            "url": "https://cdn.clinicaltrials.gov/large-docs/76/NCT01975376/Prot_000.pdf",
+            "url": "https://cdn.clinicaltrials.gov/large-docs/76/NCT99000076/Prot_000.pdf",
             "http_status": 200,
             "sha256": SHA_A,
             "bytes": 5000,
@@ -530,9 +530,9 @@ def test_legacy_documents_jsonl_and_raw_text_rejection() -> None:
             "retrieved_at": SAMPLE_TS,
         },
         {
-            "nct_id": "NCT01975376",
+            "nct_id": "NCT99000076",
             "filename": "SAP_001.pdf",
-            "url": "https://cdn.clinicaltrials.gov/large-docs/76/NCT01975376/SAP_001.pdf",
+            "url": "https://cdn.clinicaltrials.gov/large-docs/76/NCT99000076/SAP_001.pdf",
             "http_status": 200,
             "sha256": SHA_B,
             "bytes": 4000,
@@ -551,15 +551,15 @@ def test_legacy_documents_jsonl_and_raw_text_rejection() -> None:
     assert prof["documents"][1]["version_label"] is None  # empty string -> None
 
     # Embedded raw text arrays must be rejected so shards stay compact.
-    bad_prof = _make_doc_profile("NCT01975376")
+    bad_prof = _make_doc_profile("NCT99000076")
     bad_prof["documents"][0]["page_texts"] = ["raw page 1"]
     with pytest.raises(ol.OutcomesLayoutError, match="raw PDF text"):
         ol.normalize_document_profile(bad_prof)
 
 
 def test_locations_validation_citations_ellipsis_page_bounds_and_unsearched() -> None:
-    prof = ol.normalize_document_profile(_make_doc_profile("NCT01975376"))
-    rows = _make_complete_locations("NCT01975376", include_second_pass=True)
+    prof = ol.normalize_document_profile(_make_doc_profile("NCT99000076"))
+    rows = _make_complete_locations("NCT99000076", include_second_pass=True)
     norm = ol.normalize_decision_rule_locations(rows, document_profile=prof, primary_outcomes_count=1)
     assert norm is not None
     assert norm["census_status"] == "complete"
@@ -631,7 +631,7 @@ def test_locations_validation_citations_ellipsis_page_bounds_and_unsearched() ->
     # NO_DOCUMENT allowed when document_profile is None or has zero documents
     nodoc_rows = [
         {
-            "nct_id": "NCT01975376",
+            "nct_id": "NCT99000076",
             "primary_outcome_index": 0,
             "primary_outcome_title": "Overall Survival",
             "element": elem,
@@ -653,7 +653,7 @@ def test_locations_validation_citations_ellipsis_page_bounds_and_unsearched() ->
 
 
 def test_ocr_recovery_and_adjudication_passes_effective_pass_and_cli(tmp_path: pathlib.Path) -> None:
-    nct_id = "NCT01975376"
+    nct_id = "NCT99000076"
     prof = ol.normalize_document_profile(_make_doc_profile(nct_id))
     assert prof is not None
 
@@ -843,7 +843,7 @@ def _make_no_document_locations(nct_id: str) -> list[dict[str, Any]]:
 
 
 def test_no_document_rejected_by_trial_flags_large_docs_and_provenance() -> None:
-    nct_id = "NCT01975376"
+    nct_id = "NCT99000076"
     nodoc_rows = _make_no_document_locations(nct_id)
 
     # 1a. protocol=True, sap=False with document_profile=None -> rejected
@@ -933,7 +933,7 @@ def test_pregrouped_census_status_no_document_rejected_when_docs_posted() -> Non
             has_posted_documents=True,
         )
 
-    prof = ol.normalize_document_profile(_make_doc_profile("NCT01975376"))
+    prof = ol.normalize_document_profile(_make_doc_profile("NCT99000076"))
     with pytest.raises(ol.OutcomesLayoutError, match="no_document"):
         ol.normalize_decision_rule_locations(
             empty_nodoc_grouped,
@@ -957,7 +957,7 @@ def test_pregrouped_census_status_no_document_rejected_when_docs_posted() -> Non
 
 
 def test_cli_no_document_manifest_and_trials_flag_merge_guards(tmp_path: pathlib.Path) -> None:
-    nct_id = "NCT01975376"
+    nct_id = "NCT99000076"
     locs_path = tmp_path / "locations.jsonl"
     locs_path.write_text(
         "\n".join(json.dumps(r) for r in _make_no_document_locations(nct_id)) + "\n",
@@ -1075,7 +1075,7 @@ def test_cli_no_document_manifest_and_trials_flag_merge_guards(tmp_path: pathlib
 def test_validate_outcomes_tree_catches_tampered_protocol_on_no_document_trial(
     tmp_path: pathlib.Path,
 ) -> None:
-    nct_id = "NCT01975376"
+    nct_id = "NCT99000076"
     study = _make_ctgov_study(nct_id, in_audit=False, protocol=False, sap=False)
     nodoc_rows = _make_no_document_locations(nct_id)
     bundle = ol.build_trial_bundle(
@@ -1138,7 +1138,7 @@ def test_validate_outcomes_tree_catches_on_disk_citation_status_tampering(
     """C7: on-disk validation catches missing citations on NOT_APPLICABLE, forbidden
     citations on NOT_FOUND, and non-list citations across all passes + effective_pass.
     """
-    nct_id = "NCT01975376"
+    nct_id = "NCT99000076"
     study = _make_ctgov_study(nct_id, in_audit=False)
     prof = _make_doc_profile(nct_id)
     loc_rows = _make_complete_locations(nct_id, include_second_pass=True)
@@ -1207,7 +1207,7 @@ def test_validate_outcomes_tree_catches_on_disk_citation_status_tampering(
 
 
 def test_module4_longitudinal_provenance_adapter() -> None:
-    prov = _make_module4_provenance("NCT01975376", with_pdf_scraped=True)
+    prov = _make_module4_provenance("NCT99000076", with_pdf_scraped=True)
     norm = ol.normalize_longitudinal_provenance(prov, in_audit=False)
     assert norm is not None
     assert "registry_milestones" in norm
@@ -1242,7 +1242,7 @@ def test_module4_longitudinal_provenance_adapter() -> None:
             {
                 "in_audit": True,
                 "shard_record": {
-                    "nct_id": "NCT00663858",
+                    "nct_id": "NCT99000058",
                     "in_audit": True,
                     "cohorts": ["industry_phase3"],
                     "shard": 50,
@@ -1259,7 +1259,7 @@ def test_module4_longitudinal_provenance_adapter() -> None:
             "v4_provenance_pdf_scraped_sha256",
             {
                 "in_audit": True,
-                "longitudinal_provenance": _make_module4_provenance("NCT00663858", with_pdf_scraped=True),
+                "longitudinal_provenance": _make_module4_provenance("NCT99000058", with_pdf_scraped=True),
             },
         ),
         (
@@ -1267,7 +1267,7 @@ def test_module4_longitudinal_provenance_adapter() -> None:
             {
                 "in_audit": True,
                 "index_row": {
-                    "nct_id": "NCT00663858",
+                    "nct_id": "NCT99000058",
                     "brief_title": "T",
                     "study_type": None,
                     "phase": None,
@@ -1304,7 +1304,7 @@ def test_module4_longitudinal_provenance_adapter() -> None:
             {
                 "in_audit": True,
                 "index_row": {
-                    "nct_id": "NCT00663858",
+                    "nct_id": "NCT99000058",
                     "brief_title": "T",
                     "study_type": None,
                     "phase": None,
@@ -1343,16 +1343,16 @@ def test_audit_firewall_vectors_1_through_5_raise_value_error(
     kwargs: dict[str, Any],
 ) -> None:
     with pytest.raises(ol.AuditFirewallError):
-        ol.assert_no_audit_leakage(nct_id="NCT00663858", **kwargs)
+        ol.assert_no_audit_leakage(nct_id="NCT99000058", **kwargs)
     # AuditFirewallError must also be a ValueError.
     with pytest.raises(ValueError):
-        ol.assert_no_audit_leakage(nct_id="NCT00663858", **kwargs)
+        ol.assert_no_audit_leakage(nct_id="NCT99000058", **kwargs)
 
 
 def test_in_audit_ctgov_study_with_native_contacts_locations_is_allowed() -> None:
     """Native CT.gov contactsLocationsModule.locations must not false-positive."""
-    study = _make_ctgov_study("NCT00663858", in_audit=True, include_native_locations=True)
-    prov_clean = _make_module4_provenance("NCT00663858", with_pdf_scraped=False)
+    study = _make_ctgov_study("NCT99000058", in_audit=True, include_native_locations=True)
+    prov_clean = _make_module4_provenance("NCT99000058", with_pdf_scraped=False)
     row, rec = ol.build_trial_bundle(study, shards=16, longitudinal_provenance=prov_clean)
     assert row["in_audit"] is True
     assert row["document_badge"]["readability_status"] == "in_audit_holdout"
@@ -1369,8 +1369,8 @@ def test_audit_firewall_vector_6_aborts_cli_before_touching_out_dir(
     trials_path = tmp_path / "trials.json"
     trials_path.write_text(
         json.dumps([
-            _make_ctgov_study("NCT01975376", in_audit=False),
-            _make_ctgov_study("NCT00663858", in_audit=True),
+            _make_ctgov_study("NCT99000076", in_audit=False),
+            _make_ctgov_study("NCT99000058", in_audit=True),
         ]),
         encoding="utf-8",
     )
@@ -1390,13 +1390,13 @@ def test_audit_firewall_vector_6_aborts_cli_before_touching_out_dir(
     if leak_stream == "locations":
         loc_path = tmp_path / "locations.jsonl"
         loc_path.write_text(
-            "\n".join(json.dumps(r) for r in _make_complete_locations("NCT00663858")) + "\n",
+            "\n".join(json.dumps(r) for r in _make_complete_locations("NCT99000058")) + "\n",
             encoding="utf-8",
         )
         argv += ["--locations", str(loc_path)]
     else:
         doc_path = tmp_path / "documents.jsonl"
-        doc_path.write_text(json.dumps(_make_doc_profile("NCT00663858")) + "\n", encoding="utf-8")
+        doc_path.write_text(json.dumps(_make_doc_profile("NCT99000058")) + "\n", encoding="utf-8")
         argv += ["--documents", str(doc_path)]
 
     rc = cli.main(argv)
@@ -1408,10 +1408,10 @@ def test_audit_firewall_vector_6_aborts_cli_before_touching_out_dir(
 # ── 7. On-disk tamper detection & provenance validation ──────────────────────
 
 def test_validate_outcomes_tree_detects_tampering_and_strict_commit(tmp_path: pathlib.Path) -> None:
-    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
-    s2 = _make_ctgov_study("NCT00663858", in_audit=True)
+    s1 = _make_ctgov_study("NCT99000076", in_audit=False)
+    s2 = _make_ctgov_study("NCT99000058", in_audit=True)
     bundles = [
-        ol.build_trial_bundle(s1, shards=8, document_profile=_make_doc_profile("NCT01975376")),
+        ol.build_trial_bundle(s1, shards=8, document_profile=_make_doc_profile("NCT99000076")),
         ol.build_trial_bundle(s2, shards=8),
     ]
     idx, shards = ol.build_outcomes_documents(
@@ -1441,10 +1441,10 @@ def test_validate_outcomes_tree_detects_tampering_and_strict_commit(tmp_path: pa
     # Tamper 3: inject decision_rule_locations into in_audit=True shard on disk
     leak_case = tmp_path / "tamper_leak"
     ol.write_outcomes_tree(leak_case, idx, shards)
-    audit_shard = ol.outcomes_shard_of("NCT00663858", 8)
+    audit_shard = ol.outcomes_shard_of("NCT99000058", 8)
     sp = leak_case / "shards" / f"{audit_shard}.json.gz"
     sdoc = json.loads(gzip.decompress(sp.read_bytes()).decode("utf-8"))
-    sdoc["data"]["NCT00663858"]["decision_rule_locations"] = {"leaked": True}
+    sdoc["data"]["NCT99000058"]["decision_rule_locations"] = {"leaked": True}
     sp.write_bytes(ol.encode_gz_bytes(sdoc))
     leak_res = ol.validate_outcomes_tree(leak_case)
     assert not leak_res.ok
@@ -1469,7 +1469,7 @@ def test_validate_outcomes_tree_detects_tampering_and_strict_commit(tmp_path: pa
 
 def test_atomic_rollback_and_sibling_file_preservation(tmp_path: pathlib.Path) -> None:
     out = tmp_path / "outcomes"
-    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    s1 = _make_ctgov_study("NCT99000076", in_audit=False)
     idx, shards = ol.build_outcomes_documents(
         [ol.build_trial_bundle(s1, shards=4)],
         extracted_at=SAMPLE_TS,
@@ -1496,7 +1496,7 @@ def test_write_outcomes_tree_restores_v1_shards_when_index_swap_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     out = tmp_path / "outcomes"
-    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    s1 = _make_ctgov_study("NCT99000076", in_audit=False)
     idx_v1, shards_v1 = ol.build_outcomes_documents(
         [ol.build_trial_bundle(s1, shards=4)],
         extracted_at="2026-11-20T03:00:00+00:00",
@@ -1512,7 +1512,7 @@ def test_write_outcomes_tree_restores_v1_shards_when_index_swap_fails(
         for n in range(4)
     }
 
-    s2 = _make_ctgov_study("NCT01174160", in_audit=False, sponsor_class="NIH", phase="PHASE2")
+    s2 = _make_ctgov_study("NCT99000060", in_audit=False, sponsor_class="NIH", phase="PHASE2")
     idx_v2, shards_v2 = ol.build_outcomes_documents(
         [ol.build_trial_bundle(s1, shards=4), ol.build_trial_bundle(s2, shards=4)],
         extracted_at=SAMPLE_TS,
@@ -1548,7 +1548,7 @@ def test_write_outcomes_tree_first_time_index_swap_failure_leaves_no_orphan_shar
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     out = tmp_path / "fresh_outcomes"
-    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    s1 = _make_ctgov_study("NCT99000076", in_audit=False)
     idx, shards = ol.build_outcomes_documents(
         [ol.build_trial_bundle(s1, shards=4)],
         extracted_at=SAMPLE_TS,
@@ -1578,7 +1578,7 @@ def test_write_outcomes_tree_preserves_backup_if_rollback_restore_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     out = tmp_path / "outcomes_keep_backup"
-    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    s1 = _make_ctgov_study("NCT99000076", in_audit=False)
     idx_v1, shards_v1 = ol.build_outcomes_documents(
         [ol.build_trial_bundle(s1, shards=4)],
         extracted_at="2026-11-20T03:00:00+00:00",
@@ -1620,8 +1620,8 @@ def test_write_outcomes_tree_cleans_partial_after_consecutive_overwrites(
 ) -> None:
     """C9: two consecutive successful writes clean up .partial and _previous_shards."""
     out = tmp_path / "outcomes_bundles"
-    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
-    s2 = _make_ctgov_study("NCT01174160", in_audit=False, sponsor_class="NIH", phase="PHASE2")
+    s1 = _make_ctgov_study("NCT99000076", in_audit=False)
+    s2 = _make_ctgov_study("NCT99000060", in_audit=False, sponsor_class="NIH", phase="PHASE2")
 
     idx_v1, shards_v1 = ol.build_outcomes_documents(
         [ol.build_trial_bundle(s1, shards=4)],
@@ -1654,7 +1654,7 @@ def test_write_outcomes_tree_refuses_foreign_data_directories(
     assert ol.DEFAULT_OUT_DIR_NAME == "outcomes_bundles"
     assert cli.DEFAULT_OUT_DIR == os.path.join("data", "outcomes_bundles")
 
-    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    s1 = _make_ctgov_study("NCT99000076", in_audit=False)
     idx, shards = ol.build_outcomes_documents(
         [ol.build_trial_bundle(s1, shards=4)],
         extracted_at=SAMPLE_TS,
@@ -1711,7 +1711,7 @@ def test_cli_builds_from_outcomes_beta_index_manifest(tmp_path: pathlib.Path) ->
         "columns_note": "One row per eligible trial; see run.json for definitions.",
         "rows": [
             {
-                "nct_id": "NCT01975376",
+                "nct_id": "NCT99000076",
                 "title": "Beta Phase 3 Trial of Drug X",
                 "sponsor": "Beta Pharma Inc.",
                 "sponsor_state": "attributed",
@@ -1733,7 +1733,7 @@ def test_cli_builds_from_outcomes_beta_index_manifest(tmp_path: pathlib.Path) ->
                 "record": "records/r00.json",
             },
             {
-                "nct_id": "NCT00663858",
+                "nct_id": "NCT99000058",
                 "title": "Holdout Beta Trial",
                 "sponsor": "Holdout Therapeutics",
                 "n_primary_outcomes": 1,
@@ -1748,15 +1748,15 @@ def test_cli_builds_from_outcomes_beta_index_manifest(tmp_path: pathlib.Path) ->
     manifest_path = tmp_path / "beta_index.json"
     manifest_path.write_text(json.dumps(beta_index), encoding="utf-8")
 
-    # Provide locations only for outcome 0 on NCT01975376 (which has n_primary_outcomes=2)
+    # Provide locations only for outcome 0 on NCT99000076 (which has n_primary_outcomes=2)
     # so census_status resolves to "partial" rather than "complete".
     locs_path = tmp_path / "locations.jsonl"
     locs_path.write_text(
-        "\n".join(json.dumps(r) for r in _make_complete_locations("NCT01975376")) + "\n",
+        "\n".join(json.dumps(r) for r in _make_complete_locations("NCT99000076")) + "\n",
         encoding="utf-8",
     )
     docs_path = tmp_path / "docs.jsonl"
-    docs_path.write_text(json.dumps(_make_doc_profile("NCT01975376")) + "\n", encoding="utf-8")
+    docs_path.write_text(json.dumps(_make_doc_profile("NCT99000076")) + "\n", encoding="utf-8")
 
     out_dir = tmp_path / "outcomes_bundles"
     rc = cli.main([
@@ -1774,18 +1774,18 @@ def test_cli_builds_from_outcomes_beta_index_manifest(tmp_path: pathlib.Path) ->
 
     idx_doc = json.loads((out_dir / "index.json").read_text(encoding="utf-8"))
     by_id = {row["nct_id"]: row for row in idx_doc["data"]}
-    assert by_id["NCT01975376"]["brief_title"] == "Beta Phase 3 Trial of Drug X"
-    assert by_id["NCT01975376"]["lead_sponsor_name"] == "Beta Pharma Inc."
-    assert by_id["NCT01975376"]["primary_outcomes_count"] == 2
-    assert by_id["NCT01975376"]["cohorts"] == ["all_large_docs"]
-    assert by_id["NCT01975376"]["census_badge"]["census_status"] == "partial"
+    assert by_id["NCT99000076"]["brief_title"] == "Beta Phase 3 Trial of Drug X"
+    assert by_id["NCT99000076"]["lead_sponsor_name"] == "Beta Pharma Inc."
+    assert by_id["NCT99000076"]["primary_outcomes_count"] == 2
+    assert by_id["NCT99000076"]["cohorts"] == ["all_large_docs"]
+    assert by_id["NCT99000076"]["census_badge"]["census_status"] == "partial"
 
-    assert by_id["NCT00663858"]["brief_title"] == "Holdout Beta Trial"
-    assert by_id["NCT00663858"]["lead_sponsor_name"] == "Holdout Therapeutics"
-    assert by_id["NCT00663858"]["primary_outcomes_count"] == 1
-    assert by_id["NCT00663858"]["in_audit"] is True
-    assert by_id["NCT00663858"]["document_badge"]["readability_status"] == "in_audit_holdout"
-    assert by_id["NCT00663858"]["census_badge"]["census_status"] == "in_audit_holdout"
+    assert by_id["NCT99000058"]["brief_title"] == "Holdout Beta Trial"
+    assert by_id["NCT99000058"]["lead_sponsor_name"] == "Holdout Therapeutics"
+    assert by_id["NCT99000058"]["primary_outcomes_count"] == 1
+    assert by_id["NCT99000058"]["in_audit"] is True
+    assert by_id["NCT99000058"]["document_badge"]["readability_status"] == "in_audit_holdout"
+    assert by_id["NCT99000058"]["census_badge"]["census_status"] == "in_audit_holdout"
 
 
 def test_dataset_folder_present_files_ignores_outcomes_bundles_directory(tmp_path: pathlib.Path) -> None:
@@ -1794,7 +1794,7 @@ def test_dataset_folder_present_files_ignores_outcomes_bundles_directory(tmp_pat
     (site_data / "demographics.part1.json.gz").write_bytes(b"stub")
     (site_data / "run.json").write_text("{}", encoding="utf-8")
 
-    s1 = _make_ctgov_study("NCT01975376", in_audit=False)
+    s1 = _make_ctgov_study("NCT99000076", in_audit=False)
     idx, shards = ol.build_outcomes_documents(
         [ol.build_trial_bundle(s1, shards=8)],
         extracted_at=SAMPLE_TS,
@@ -1815,21 +1815,21 @@ def test_cli_end_to_end_and_graceful_git_fallback(
     trials_path = tmp_path / "trials.json"
     trials_path.write_text(
         json.dumps([
-            _make_ctgov_study("NCT01975376", in_audit=False),
-            _make_ctgov_study("NCT00663858", in_audit=True),
+            _make_ctgov_study("NCT99000076", in_audit=False),
+            _make_ctgov_study("NCT99000058", in_audit=True),
         ]),
         encoding="utf-8",
     )
     docs_path = tmp_path / "profiles.jsonl"
-    docs_path.write_text(json.dumps(_make_doc_profile("NCT01975376")) + "\n", encoding="utf-8")
+    docs_path.write_text(json.dumps(_make_doc_profile("NCT99000076")) + "\n", encoding="utf-8")
     locs_path = tmp_path / "locations.jsonl"
     locs_path.write_text(
-        "\n".join(json.dumps(r) for r in _make_complete_locations("NCT01975376")) + "\n",
+        "\n".join(json.dumps(r) for r in _make_complete_locations("NCT99000076")) + "\n",
         encoding="utf-8",
     )
     prov_path = tmp_path / "provenance.jsonl"
     prov_path.write_text(
-        json.dumps(_make_module4_provenance("NCT01975376", with_pdf_scraped=True)) + "\n",
+        json.dumps(_make_module4_provenance("NCT99000076", with_pdf_scraped=True)) + "\n",
         encoding="utf-8",
     )
     report_path = tmp_path / "report.json"
