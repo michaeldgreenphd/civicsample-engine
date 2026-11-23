@@ -19,6 +19,11 @@ Core analytical invariants:
    - `end.latest < start.earliest`: `status = "inverted_dates_anomaly"`, excluded.
    - Start or completion date typed `ESTIMATED` or `ANTICIPATED`:
      `status = "excluded_estimated_or_anticipated_date"`, excluded from realized durations.
+   - Weekly projection record (`src/utils.py`) without a start or end date type:
+     `status = "date_type_unavailable_in_weekly_projection"`, excluded from realized durations.
+     The projection keeps `start_date` / `primary_completion_date` / `completion_date` but drops
+     each struct's `type`, so a projected (future) completion date is indistinguishable from an
+     ACTUAL one. Absence of the type is recorded, never read as ACTUAL.
 2. Enrollment type separation: `enrollmentInfo.type` is normalized strictly into
    `{"ACTUAL", "ESTIMATED", "MISSING_TYPE"}` (`ANTICIPATED` maps to `ESTIMATED` while keeping
    `raw_type` verbatim). Accrual velocity (`actual_participants_per_month` and `[min_rate, max_rate]`)
@@ -55,6 +60,7 @@ DURATION_STATUSES = (
     "overlapping_or_zero_at_precision",
     "inverted_dates_anomaly",
     "excluded_estimated_or_anticipated_date",
+    "date_type_unavailable_in_weekly_projection",
     "missing_start_or_end_date",
     "malformed_date",
 )
@@ -64,6 +70,7 @@ ACCRUAL_RATE_STATUSES = (
     "excluded_non_actual_enrollment",
     "missing_enrollment_count",
     "excluded_estimated_or_anticipated_date",
+    "date_type_unavailable_in_weekly_projection",
     "missing_start_or_end_date",
     "overlapping_or_zero_at_precision",
     "inverted_dates_anomaly",
@@ -235,11 +242,21 @@ def compute_duration(
     start_type: Any = None,
     end_raw: Any = None,
     end_type: Any = None,
+    *,
+    from_weekly_projection: bool = False,
 ) -> dict[str, Any]:
     """Compute date-precision-aware duration from a start date struct to an end date struct.
 
     Excludes any window where `start_type` or `end_type` is `ESTIMATED` or `ANTICIPATED` from
     realized-duration distributions (`status = "excluded_estimated_or_anticipated_date"`).
+
+    `from_weekly_projection=True` marks a standardized weekly record (`src/utils.py`), whose
+    projection writes the three date strings but no `*_date_type` fields. There a missing type
+    means "not recorded", not "ACTUAL": a window whose start or end type is absent is excluded
+    with `status = "date_type_unavailable_in_weekly_projection"` and no day/month bounds, so a
+    projected completion date never enters realized durations or accrual velocity. Missing or
+    malformed dates and explicit `ESTIMATED`/`ANTICIPATED` types keep their own, more specific
+    statuses (checked first). API v2 documents (`from_weekly_projection=False`) are unchanged.
     """
     s_parsed = parse_date_bounds(start_raw)
     e_parsed = parse_date_bounds(end_raw)
@@ -274,6 +291,13 @@ def compute_duration(
 
     if s_type in ("ESTIMATED", "ANTICIPATED") or e_type in ("ESTIMATED", "ANTICIPATED"):
         base["status"] = "excluded_estimated_or_anticipated_date"
+        return base
+
+    # Weekly projection: `_clean_date_type` returns None for an absent/blank/"N/A" type. Only a
+    # window with BOTH types recorded (and neither ESTIMATED/ANTICIPATED, handled above) can be
+    # treated as realized; otherwise the absence is recorded with its reason, never as ACTUAL.
+    if from_weekly_projection and (s_type is None or e_type is None):
+        base["status"] = "date_type_unavailable_in_weekly_projection"
         return base
 
     s_lo: date = s_parsed["earliest"]
@@ -754,17 +778,21 @@ def extract_trial_metrics(study: dict[str, Any]) -> dict[str, Any]:
         overall_status = study.get("status") or None
         why_stopped = study.get("why_stopped")
 
+        # The weekly projection (`src/utils.py`) carries no `*_date_type` keys, so both windows
+        # are recorded as `date_type_unavailable_in_weekly_projection` unless a type is present.
         primary_duration = compute_duration(
             study.get("start_date"),
             study.get("start_date_type"),
             study.get("primary_completion_date"),
             study.get("primary_completion_date_type"),
+            from_weekly_projection=True,
         )
         study_duration = compute_duration(
             study.get("start_date"),
             study.get("start_date_type"),
             study.get("completion_date"),
             study.get("completion_date_type"),
+            from_weekly_projection=True,
         )
 
         enrollment = normalize_enrollment(

@@ -76,6 +76,12 @@ PERCENTILE_BLOCK_KEYS = (
     "period1_completion_rate",
 )
 
+# `accrual.calendar_window_used` -> the `durations` entry that window was computed from.
+ACCRUAL_WINDOW_DURATION_KEYS = {
+    "start_to_primary_completion": "primary_completion",
+    "start_to_study_completion": "study_completion",
+}
+
 
 def sha256_bytes(data: bytes) -> str:
     """Return hex SHA-256 digest of `data`."""
@@ -280,7 +286,8 @@ def summarize_trials(
             n_realized_prim,
             "trials",
             denominators,
-            "Trials with non-estimated, non-inverted, non-overlapping start and primary completion dates.",
+            "Trials with non-estimated, non-inverted, non-overlapping start and primary completion dates "
+            "(weekly projection records without date types are excluded as date_type_unavailable_in_weekly_projection).",
         ),
         _count_item(
             "realized_study_duration_eligible",
@@ -288,7 +295,8 @@ def summarize_trials(
             n_realized_study,
             "trials",
             denominators,
-            "Trials with non-estimated, non-inverted, non-overlapping start and study completion dates.",
+            "Trials with non-estimated, non-inverted, non-overlapping start and study completion dates "
+            "(weekly projection records without date types are excluded as date_type_unavailable_in_weekly_projection).",
         ),
         _count_item(
             "actual_accrual_rate_computed",
@@ -869,6 +877,7 @@ def check_contract(
             problems.append(f"private review key leaked into artifact: {leak}")
 
     # ---- Trial-level domain invariants
+    weekly_input = rec_in.get("mode") == "weekly_full_records"
     nct_ids: list[str] = []
     n_overrides_seen = 0
     for idx, t in enumerate(trials):
@@ -898,6 +907,16 @@ def check_contract(
                     "malformed_date",
                 ):
                     problems.append(f"{nct}.durations.{dur_name}: ESTIMATED/ANTICIPATED date not excluded")
+            # Weekly full records carry no date types (src/utils.py projection): an untyped window
+            # in such a build, or one carrying the weekly status, can never be a realized duration.
+            untyped = d.get("start_date_type") is None or d.get("end_date_type") is None
+            if (
+                st == "date_type_unavailable_in_weekly_projection"
+                and (d.get("eligible_for_realized_duration") is not False or d.get("midpoint_days") is not None)
+            ) or (weekly_input and untyped and d.get("eligible_for_realized_duration") is not False):
+                problems.append(
+                    f"{nct}.durations.{dur_name}: weekly date with no recorded type treated as realized"
+                )
             if d.get("start_precision") in ("month", "year") or d.get("end_precision") in ("month", "year"):
                 if d.get("days") is not None:
                     problems.append(f"{nct}.durations.{dur_name}: partial date fabricated exact days")
@@ -915,6 +934,17 @@ def check_contract(
             problems.append(f"{nct}.enrollment: invalid type {enr.get('type')!r}")
         if acc.get("rate_basis") != RATE_BASIS or acc.get("facility_basis") != FACILITY_BASIS:
             problems.append(f"{nct}.accrual: missing or wrong proxy basis metadata")
+        if acc.get("rate_status") not in ACCRUAL_RATE_STATUSES:
+            problems.append(f"{nct}.accrual: invalid rate_status {acc.get('rate_status')!r}")
+        # Accrual velocity is a rate over a realized calendar window: the window it names must
+        # itself be eligible for realized duration (so excluded windows, including weekly dates
+        # with no recorded type, can never reach actual_participants_per_month).
+        if acc.get("rate_status") == "computed":
+            window_dur = (t.get("durations") or {}).get(
+                ACCRUAL_WINDOW_DURATION_KEYS.get(acc.get("calendar_window_used"), "")
+            ) or {}
+            if window_dur.get("eligible_for_realized_duration") is not True:
+                problems.append(f"{nct}.accrual: velocity computed over a window not eligible for realized duration")
         if enr.get("type") != "ACTUAL":
             if any(
                 acc.get(k) is not None

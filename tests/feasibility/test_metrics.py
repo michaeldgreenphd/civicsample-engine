@@ -14,7 +14,7 @@ from feasibility.metrics import (
     normalize_enrollment,
     normalize_phase,
 )
-from tests.feasibility.conftest import make_ctgov_study
+from tests.feasibility.conftest import make_ctgov_study, make_weekly_record
 
 
 def test_exact_day_duration_and_single_day_zero() -> None:
@@ -309,6 +309,63 @@ def test_weekly_record_projection_input() -> None:
     m = extract_trial_metrics(weekly)
     assert m["enrollment"]["type"] == "MISSING_TYPE"
     assert m["enrollment"]["count"] is None
-    assert m["durations"]["primary_completion"]["status"] == "bounded_partial_precision"
+    # The weekly projection carries no date types, so the window is not shown as realized.
+    assert m["durations"]["primary_completion"]["status"] == "date_type_unavailable_in_weekly_projection"
     assert m["durations"]["primary_completion"]["days"] is None
+    assert m["durations"]["primary_completion"]["start_precision"] == "month"
     assert m["retention"]["flow_status"] == "flow_module_not_in_input_projection"
+
+
+def test_weekly_projection_future_completion_excluded_without_date_type() -> None:
+    m = extract_trial_metrics(make_weekly_record())
+    for window in ("primary_completion", "study_completion"):
+        dur = m["durations"][window]
+        assert dur["status"] == "date_type_unavailable_in_weekly_projection"
+        assert dur["eligible_for_realized_duration"] is False
+        assert dur["start_date_type"] is None and dur["end_date_type"] is None
+        assert dur["days"] is None and dur["midpoint_days"] is None and dur["midpoint_months"] is None
+    # ACTUAL enrollment stays ACTUAL, but no accrual velocity is computed over an untyped window.
+    assert m["enrollment"]["type"] == "ACTUAL"
+    assert m["accrual"]["rate_status"] == "date_type_unavailable_in_weekly_projection"
+    assert m["accrual"]["actual_participants_per_month"] is None
+    assert m["accrual"]["min_rate"] is None and m["accrual"]["max_rate"] is None
+    # The facility proxy does not depend on dates and is still computed.
+    assert m["accrual"]["facility_metric_status"] == "computed"
+
+
+def test_weekly_projection_status_precedence_and_recorded_types() -> None:
+    # Missing and malformed dates keep their own, more specific statuses.
+    missing = extract_trial_metrics(make_weekly_record(primary_completion_date="", completion_date=""))
+    assert missing["durations"]["primary_completion"]["status"] == "missing_start_or_end_date"
+    malformed = extract_trial_metrics(make_weekly_record(primary_completion_date="2031-13"))
+    assert malformed["durations"]["primary_completion"]["status"] == "malformed_date"
+    # An explicit ESTIMATED type still wins over the weekly status.
+    est = extract_trial_metrics(make_weekly_record(primary_completion_date_type="ESTIMATED"))
+    assert est["durations"]["primary_completion"]["status"] == "excluded_estimated_or_anticipated_date"
+    # One recorded type is not enough; both ends must be typed.
+    half = extract_trial_metrics(make_weekly_record(start_date_type="ACTUAL"))
+    assert half["durations"]["primary_completion"]["status"] == "date_type_unavailable_in_weekly_projection"
+    # If a weekly record ever carries both ACTUAL types, the window is evaluated normally.
+    typed = extract_trial_metrics(
+        make_weekly_record(
+            primary_completion_date="2025-02-01",
+            start_date_type="ACTUAL",
+            primary_completion_date_type="ACTUAL",
+        )
+    )
+    assert typed["durations"]["primary_completion"]["status"] == "exact_days"
+    assert typed["accrual"]["rate_status"] == "computed"
+
+
+def test_api_v2_actual_date_types_unaffected_by_weekly_rule() -> None:
+    m = extract_trial_metrics(make_ctgov_study("NCT99100031"))
+    prim = m["durations"]["primary_completion"]
+    assert prim["status"] == "exact_days"
+    assert prim["eligible_for_realized_duration"] is True
+    assert prim["start_date_type"] == "ACTUAL" and prim["end_date_type"] == "ACTUAL"
+    assert prim["days"] == 366
+    assert m["durations"]["study_completion"]["status"] == "exact_days"
+    assert m["accrual"]["rate_status"] == "computed"
+    assert m["accrual"]["actual_participants_per_month"] is not None
+    # compute_duration's default (API v2) path still reads an untyped date as before.
+    assert compute_duration("2020-01-15", None, "2021-01-15", None)["status"] == "exact_days"

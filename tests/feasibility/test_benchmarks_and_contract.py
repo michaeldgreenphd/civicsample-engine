@@ -16,7 +16,7 @@ from scripts import (
     check_feasibility_contract,
     export_feasibility_site,
 )
-from tests.feasibility.conftest import make_ctgov_study
+from tests.feasibility.conftest import make_ctgov_study, make_weekly_record
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -388,6 +388,106 @@ def test_contract_checker_catches_domain_invariant_violations() -> None:
     small_cell["realized_primary_duration_months"]["withheld"] = False
     small_cell["realized_primary_duration_months"]["p50"] = 14.0
     assert any("failed to withhold percentiles" in p for p in artifacts.check_contract(unwithheld))
+
+
+def _fixture_family(
+    trials: list[dict[str, Any]],
+    sponsor_meta: dict[str, Any],
+    review_meta: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, bytes]]:
+    """Assemble an in-memory artifact family with fixed fixture provenance."""
+    return artifacts.build_artifact_family(
+        trials=trials,
+        sponsor_meta=sponsor_meta,
+        review_meta=review_meta,
+        inputs_meta={
+            "records": {"mode": "fixture", "source": "mem", "n_records": len(trials), "sha256": "a" * 64},
+            "sponsor_rules": {"file": "company_aliases.csv", "sha256": sponsor_meta["rules_sha256"]},
+            "termination_reviews": {"file": "termination_reviews.csv", "n_rows": 0, "sha256": "b" * 64},
+            "condition_mesh": None,
+        },
+        producer_meta={
+            "repository": "civicsample-engine",
+            "commit": None,
+            "uncommitted_changes": None,
+            "source_sha256": "c" * 64,
+        },
+        generated_at="2026-11-21T12:00:00+00:00",
+    )
+
+
+def test_weekly_untyped_dates_excluded_from_percentiles_and_counted_in_summary() -> None:
+    weekly_status = "date_type_unavailable_in_weekly_projection"
+    api_studies = [make_ctgov_study(f"NCT9960000{i}") for i in range(1, 6)]
+    weekly_records = [make_weekly_record(f"NCT9960001{i}") for i in range(0, 5)]
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(
+        api_studies + weekly_records, reviews={}
+    )
+
+    overall = benchmarks.summarize_cell(trials, min_cell_trials=5)
+    for block in (
+        "realized_primary_duration_days",
+        "realized_primary_duration_months",
+        "realized_study_duration_months",
+        "actual_participants_per_month",
+    ):
+        assert overall[block]["n_trials"] == 10
+        assert overall[block]["n_eligible"] == 5, block  # API v2 ACTUAL-typed trials only
+        assert overall[block]["n_excluded"] == 5, block
+    # Every API v2 fixture runs 2020-01-15 -> 2021-01-15; a projected 2031 date would move p90.
+    assert overall["realized_primary_duration_days"]["p90"] == 366.0
+
+    summary = artifacts.summarize_trials(trials, min_cell_trials=5)
+    metrics = {m["id"]: m for m in summary["metrics"]}
+    assert metrics["realized_primary_duration_eligible"]["numerator"] == 5
+    assert metrics["realized_study_duration_eligible"]["numerator"] == 5
+    assert metrics["actual_accrual_rate_computed"]["numerator"] == 5
+    assert metrics["actual_accrual_rate_computed"]["denominator"] == "actual_enrollment_trials"
+    for table, prefix in (
+        ("primary_duration_states", "primary_duration"),
+        ("study_duration_states", "study_duration"),
+        ("accrual_rate_states", "accrual_rate"),
+    ):
+        rows = {r["id"]: r["numerator"] for r in summary["tables"][table]["rows"]}
+        assert rows[f"{prefix}:{weekly_status}"] == 5, table
+        assert sum(rows.values()) == 10, table  # the partition still covers every trial
+
+    family, raw = _fixture_family(trials, sponsor_meta, review_meta)
+    assert artifacts.check_contract(family, raw) == []
+    assert weekly_status in family["run.json"]["vocabularies"]["duration_statuses"]
+    assert weekly_status in family["run.json"]["vocabularies"]["accrual_rate_statuses"]
+
+    # A weekly window flipped to realized, or velocity computed over it, fails the contract.
+    realized_bounds = {
+        "eligible_for_realized_duration": True,
+        "days": 2706,
+        "min_days": 2706,
+        "max_days": 2706,
+        "midpoint_days": 2706.0,
+        "min_months": 88.9,
+        "max_months": 88.9,
+        "midpoint_months": 88.9,
+    }
+    flipped = json.loads(json.dumps(family))
+    wk = next(t for t in flipped["trials.jsonl.gz"] if t["nct_id"] == "NCT99600010")
+    wk["durations"]["primary_completion"].update(realized_bounds)
+    assert any("no recorded type treated as realized" in p for p in artifacts.check_contract(flipped))
+    # The original defect: a weekly build reading an untyped window as ACTUAL under any status.
+    as_actual = json.loads(json.dumps(family))
+    as_actual["run.json"]["inputs"]["records"]["mode"] = "weekly_full_records"
+    wk = next(t for t in as_actual["trials.jsonl.gz"] if t["nct_id"] == "NCT99600010")
+    wk["durations"]["primary_completion"].update(realized_bounds, status="exact_days")
+    assert any("no recorded type treated as realized" in p for p in artifacts.check_contract(as_actual))
+    leaked = json.loads(json.dumps(family))
+    wk = next(t for t in leaked["trials.jsonl.gz"] if t["nct_id"] == "NCT99600010")
+    wk["accrual"].update(
+        rate_status="computed",
+        calendar_window_used="start_to_primary_completion",
+        actual_participants_per_month=2.7,
+        min_rate=2.7,
+        max_rate=2.7,
+    )
+    assert any("window not eligible for realized duration" in p for p in artifacts.check_contract(leaked))
 
 
 def test_weekly_demographics_and_condition_mesh_sidecar_build(tmp_path: Path) -> None:

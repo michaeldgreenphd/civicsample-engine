@@ -175,3 +175,28 @@ def make_ctgov_study(
             },
         }
     return study
+
+
+def make_weekly_record(nct_id: str = "NCT99100030", **overrides: Any) -> dict[str, Any]:
+    """A standardized weekly record shaped like the `src/utils.py` projection (no `*_date_type`)."""
+    rec: dict[str, Any] = {
+        "nct_id": nct_id,
+        "brief_title": "Weekly projection record with a projected completion date",
+        "study_type": "INTERVENTIONAL",
+        "phase": "PHASE3",
+        "enrollment": 240,
+        "enrollment_type": "ACTUAL",
+        "status": "ACTIVE_NOT_RECRUITING",
+        "start_date": "2024-02-01",
+        "primary_completion_date": "2031-06-30",
+        "completion_date": "2032-12-31",
+        "results_date": "",
+        "why_stopped": "",
+        "sponsor_class": "INDUSTRY",
+        "lead_sponsor_name": "Pfizer",
+        "collaborators": [],
+        "study_sites": [{"facility": "Clinic 1", "country": "United States"}],
+        "conditions": ["Hypertension"],
+    }
+    rec.update(overrides)
+    return rec
