@@ -1596,6 +1596,20 @@ def _measured_study(nct_id: str) -> dict:
          f"{_BASE}.denoms[0].counts[0].value (a string)"),
         (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "counts", 0, "groupId"), None,
          f"{_BASE}.denoms[0].counts[0].groupId (a string)"),
+        # A measure's or class's own Number Analyzed: on 44b9e1c each loaded, and the first three raised
+        # AttributeError in table_selection.number_analyzed.
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "denoms"), "corrupt",
+         f"{_BASE}.measures[0].classes[0].denoms (a list)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "denoms"), [None],
+         f"{_BASE}.measures[0].classes[0].denoms[0] (an object)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "denoms"), "corrupt",
+         f"{_BASE}.measures[0].denoms (a list)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "denoms"),
+         [{"units": "Participants", "counts": [{"groupId": "BG000", "value": {}}]}],
+         f"{_BASE}.measures[0].denoms[0].counts[0].value (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "denoms"),
+         [{"counts": [{"groupId": "BG000", "value": "90"}]}],
+         f"{_BASE}.measures[0].classes[0].denoms[0].units (a string)"),
     ],
 )
 def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
@@ -2101,7 +2115,10 @@ def test_weekly_block_flags_with_their_fields_load(tmp_path: Path) -> None:
                 flags=["ethnicity_rows_skipped", "shortfall_is_ethnicity_rows", "denominator_balanced",
                        "combined_race_ethnicity"])
     race["raw_categories"][0]["flags"] = ["combined_race_ethnicity"]
-    race["omb_totals"]["unknown_not_reported"] += 5  # the shortfall the two fields record
+    # The shortfall the two fields record, within the baseline total of 100 the other blocks sum to.
+    race["raw_categories"][0]["count"] -= 5
+    race["omb_totals"][race["raw_categories"][0]["omb_category"]] -= 5
+    race["omb_totals"]["unknown_not_reported"] += 5
     assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
 
 
@@ -2142,7 +2159,55 @@ def test_weekly_block_totals_with_their_recorded_additions_load(tmp_path: Path) 
     weekly_doc = fx.build_weekly_full_records_doc()
     eth = weekly_doc["data"][1]["ethnicity"]
     eth.update(not_hispanic_from_race_rows=6, flags=["denominator_balanced", "not_hispanic_from_combined_table"])
-    eth["omb_totals"].update(not_hispanic_latino=86, unknown_not_reported=9)
+    # rows 15 + 70 + 5, plus 6 race rows and a shortfall of 4: the baseline total of 100
+    eth["raw_categories"][1]["count"] = 70
+    eth["omb_totals"].update(not_hispanic_latino=76, unknown_not_reported=9)
+    assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
+
+
+def _balance_race(rec: dict[str, Any], by: int = 5) -> None:
+    """Move `by` White participants of a weekly race block into its recorded shortfall (still 100)."""
+    race = rec["race"]
+    white = next(e for e in race["raw_categories"] if e["omb_category"] == "white")
+    white["count"] -= by
+    race["omb_totals"]["white"] -= by
+    race["omb_totals"]["unknown_not_reported"] += by
+    race.update(unknown_inferred=by, flags=["denominator_balanced"])
+
+
+def _balance_ethnicity(rec: dict[str, Any], unknown_total: int) -> None:
+    eth = rec["ethnicity"]
+    eth["flags"] = ["denominator_balanced"]
+    eth["omb_totals"]["unknown_not_reported"] = unknown_total
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        # On 44b9e1c a balanced ethnicity unknown could take any value above its rows (Codex's case).
+        (lambda rec: (_balance_race(rec), _balance_ethnicity(rec, 12)),
+         "balanced blocks sum to different baseline totals (race 100, ethnicity 107"),
+        (lambda rec: _balance_ethnicity(rec, 15),
+         "race sums to 100, below the baseline total 110 its balanced blocks sum to"),
+        (lambda rec: (_balance_race(rec), rec["sex"].update(unknown_inferred=4,
+                                                            totals={"female": 50, "male": 50, "unknown": 4})),
+         "balanced blocks sum to different baseline totals (race 100, sex 104"),
+    ],
+)
+def test_weekly_balanced_blocks_must_share_one_baseline_total(tmp_path: Path, change: Any, problem: str) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    change(weekly_doc["data"][1])
+    with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem}")):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
+def test_weekly_balanced_blocks_at_one_baseline_total_load(tmp_path: Path) -> None:
+    # Race and ethnicity both balanced to 100, with sex unbalanced at 100.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    rec = weekly_doc["data"][1]
+    _balance_race(rec)
+    rec["ethnicity"]["raw_categories"][2]["count"] = 2
+    _balance_ethnicity(rec, 5)
     assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
 
 

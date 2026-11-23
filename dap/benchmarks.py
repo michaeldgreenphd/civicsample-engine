@@ -593,14 +593,24 @@ CTGOV_PHASES: frozenset[str] = frozenset({"NA", "EARLY_PHASE1", "PHASE1", "PHASE
 # measurements and 10,361 denominator counts in the 3,133 stored records with a baseline table carry
 # both as strings.
 _BASELINE_VALUE: dict[str, Any] = {"groupId": REQUIRED_STR, "value": REQUIRED_STR}
+# A denominator list: the table's own, or a measure's or class's Number Analyzed, which
+# `table_selection.number_analyzed` reads through `get_measure_denom` with `.get` and no type check (a
+# `classes[0].denoms: "corrupt"` raised `AttributeError` in the build). All 2,951 class-level and 74
+# measure-level lists in the stored records are lists of objects with a string `units`, and their
+# 10,560 counts carry `groupId` and `value` as strings.
+_BASELINE_DENOMS: dict[str, Any] = {"units": REQUIRED_STR, "counts": _BASELINE_VALUE}
 BASELINE_SHAPE: dict[str, Any] = {
     "groups": {"title": str},
-    "denoms": {"units": REQUIRED_STR, "counts": _BASELINE_VALUE},
+    "denoms": _BASELINE_DENOMS,
     "measures": {
         "title": REQUIRED_STR,
         "paramType": str,
         "unitOfMeasure": str,
-        "classes": {"categories": {"title": str, "measurements": _BASELINE_VALUE}},
+        "denoms": _BASELINE_DENOMS,
+        "classes": {
+            "denoms": _BASELINE_DENOMS,
+            "categories": {"title": str, "measurements": _BASELINE_VALUE},
+        },
     },
 }
 
@@ -838,6 +848,7 @@ WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS: dict[str, dict[str, tuple[str, bool]]] = {
     "sex": {
         "reported": ("bool", True),
         "totals": ("totals", True),
+        "unknown_inferred": ("count", True),  # read by weekly_shared_total_problem
     },
     "gender": {
         "reported": ("bool", True),
@@ -950,6 +961,47 @@ def weekly_block_totals_problem(block: str, payload: dict[str, Any]) -> str | No
             return (
                 f"{block}.omb_totals.{key} is {total}, but its category rows and recorded additions give {want} "
                 "(see weekly_block_totals_problem)"
+            )
+    return None
+
+
+def weekly_shared_total_problem(rec: dict[str, Any]) -> str | None:
+    """Why a weekly record's balanced race, ethnicity or sex totals contradict one another, or `None`.
+
+    The three extractors fold a block's shortfall against one number, the trial's baseline participant
+    total (`src.utils.get_total_baseline_participants`, called with the same Overall group by each). A
+    balanced block therefore sums to exactly that total, and any other reported block to at least it,
+    since it is balanced only when its rows fall short. The weekly record does not carry the total, so
+    a balanced ethnicity block's unknown (whose shortfall the block does not record either) could be
+    raised to any larger value and still agree with its rows. It must now sum to what every other
+    balanced block sums to, and to no more than any reported block. A block counts as balanced when
+    its recorded shortfall is positive (race `unknown_inferred` plus `unknown_ethnicity_only`, sex
+    `unknown_inferred`) or, for ethnicity, when it carries `denominator_balanced`. Every one of the
+    80,890 weekly records keeps the rule; of their 4,577 balanced ethnicity blocks, 3,256 are pinned
+    exactly by another balanced block, 1,320 are bounded by a reported one, and 1 has no reported race
+    or sex block to check against.
+    """
+    sums: dict[str, tuple[int, bool]] = {}
+    race, eth, sex = rec["race"], rec["ethnicity"], rec["sex"]
+    if race["reported"]:
+        shortfall = race["unknown_inferred"] + race.get("unknown_ethnicity_only", 0)
+        sums["race"] = (sum(race["omb_totals"].values()), shortfall > 0)
+    if eth["reported"]:
+        sums["ethnicity"] = (sum(eth["omb_totals"].values()), "denominator_balanced" in eth["flags"])
+    if sex["reported"]:
+        sums["sex"] = (sum(sex["totals"].values()), sex["unknown_inferred"] > 0)
+    balanced = {block: total for block, (total, is_balanced) in sums.items() if is_balanced}
+    if not balanced:
+        return None
+    if len(set(balanced.values())) > 1:
+        shown = ", ".join(f"{block} {total}" for block, total in balanced.items())
+        return f"balanced blocks sum to different baseline totals ({shown}; see weekly_shared_total_problem)"
+    shared = next(iter(balanced.values()))
+    for block, (total, is_balanced) in sums.items():
+        if not is_balanced and total < shared:
+            return (
+                f"{block} sums to {total}, below the baseline total {shared} its balanced blocks sum to, "
+                "though a block is balanced whenever its rows fall short (see weekly_shared_total_problem)"
             )
     return None
 
@@ -1071,6 +1123,8 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     for block in ("race", "ethnicity"):
         if problem := weekly_block_flag_problem(block, rec[block]) or weekly_block_totals_problem(block, rec[block]):
             return problem
+    if problem := weekly_shared_total_problem(rec):
+        return problem
     status = rec["sex_gender"].get("sex_report_status")
     if status not in SEX_GENDER_STATES:
         return f"sex_gender.sex_report_status {status!r} is not one of SEX_GENDER_STATES"

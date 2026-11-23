@@ -132,7 +132,9 @@ location, or a module read as empty, would lower or zero the listed facilities a
 footprint class with nothing reported. Every measurement and denominator count must carry its
 `groupId` and `value` as strings, CT.gov's form (`"60"`, `"NA"`): `src/utils.sum_measurements`
 counts a value it cannot parse as 0, so a missing or non-string one (`{}`, `["60"]`, `true`, `null`)
-moved a posted row's participants into the balanced unknown remainder.
+moved a posted row's participants into the balanced unknown remainder. The same holds for a
+measure's or class's own Number Analyzed (`denoms`), which `table_selection.number_analyzed` reads
+without a type check (a `classes[0].denoms: "corrupt"` stopped the build with `AttributeError`).
 Weekly full records never pass these checks, so their own lists are checked
 too (`WEEKLY_LIST_FIELDS`): `study_sites`, `collaborators` and `conditions`
 must be present, as `src/utils.py` always writes them; `study_sites` and
@@ -208,6 +210,13 @@ shortfall was folded into the unknowns, `split_from_combined` and
 ethnicity `not_hispanic_latino` adds `not_hispanic_from_race_rows`, and an
 ethnicity `unknown_not_reported` exceeds its rows exactly when the block carries
 `denominator_balanced`. A total edited away from its rows was published as it stood.
+The race, ethnicity and sex extractors balance against one baseline participant
+total, so a record's balanced blocks must sum to the same number, and every other
+reported block to at least it (`weekly_shared_total_problem`). The weekly record
+does not carry that total, so a balanced ethnicity unknown is pinned exactly only
+when another block is balanced (3,256 of the 4,577 in the 2026-11-08 extraction),
+bounded above by a reported block otherwise (1,320), and unchecked in one record
+with no reported race or sex block.
 A category entry flagged `unmapped` must be in the category the extractors give
 such rows (`other` for race, `unknown_not_reported` for ethnicity), since the
 analyzers subtract or drop flagged rows by that rule. A condition_mesh sidecar
