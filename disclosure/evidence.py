@@ -423,16 +423,30 @@ def build_ctgov_results_links(nct_id: str, ctgov_rec: dict[str, Any] | None) -> 
 
 # ---------------------------------------------------------------- route 2: registry references
 
-def _pubmed_summary_date(entry: dict[str, Any]) -> tuple[str | None, str]:
+def _pubmed_summary_date(
+    entry: dict[str, Any], retrieved_day: str | None = None
+) -> tuple[str | None, str, list[str]]:
+    """The first readable date of a PubMed esummary entry, its precision, and why a field was passed over.
+
+    An `epubdate` after `retrieved_day`, the day the record was fetched, is no electronic publication the
+    record can show: `2100-01-01` in a record fetched in 2026 became a resolved RESULT reference's date,
+    and so the trial's earliest results publication. It is passed over, with a reason, for `pubdate`.
+    `pubdate` and `sortpubdate` are not bounded, since a journal issue can carry a later date than its
+    online publication.
+    """
+    notes: list[str] = []
     for field in ('epubdate', 'pubdate', 'sortpubdate'):
         val = entry.get(field)
         if isinstance(val, str) and val.strip():
             raw = val.strip().split(' ')[0] if field == 'sortpubdate' and '/' in val else val.strip()
             raw = raw.replace('/', '-') if field == 'sortpubdate' else raw
             norm, prec = normalize_publication_date(raw)
-            if norm is not None:
-                return norm, prec
-    return None, 'missing'
+            if norm is not None and field == 'epubdate' and _after_retrieval(norm, retrieved_day):
+                notes.append(f'PubMed epubdate {norm} is after the record was retrieved on {retrieved_day}, '
+                             'so it is not used')
+            elif norm is not None:
+                return norm, prec, notes
+    return None, 'missing', notes
 
 
 def build_registry_reference_links(
@@ -523,7 +537,7 @@ def build_registry_reference_links(
                         )
                     )
                 else:
-                    pub_date, prec = _pubmed_summary_date(entry)
+                    pub_date, prec, date_notes = _pubmed_summary_date(entry, _retrieved_day(pm_rec))
                     pm_title = squash_whitespace(str(entry.get('title') or ''))
                     excerpt = citation_text if citation_text else (pm_title or f'PMID:{pmid}')
                     out.append(
@@ -541,7 +555,9 @@ def build_registry_reference_links(
                             automated_validation='identifier_confirmed',
                             validation_reasons=[
                                 'PMID cited in protocolSection.referencesModule resolves in NCBI PubMed esummary; '
-                                'automated check confirms identifier resolution only, not whether it reports primary results'
+                                'automated check confirms identifier resolution only, not whether it reports '
+                                'primary results',
+                                *date_notes,
                             ],
                             detail={
                                 'pubmed_title': pm_title or None,
@@ -1233,6 +1249,21 @@ def _locate_statement_source(
         return None, None, 'source_not_retrieved'
 
     if stype == 'openfda_record':
+        # `drug:<term>:<path>` names a record a drug-term query returned, the path inside it: a
+        # sponsor-and-drug candidate is found only that way, and the direct NCT-query record below could not
+        # hold it, so such a statement read `source_not_retrieved` however it was reviewed. The term must be
+        # one this trial's openFDA search planned (`A.extract_drug_candidates`), and the path is required,
+        # since a search response holds several applications.
+        if locator.startswith('drug:'):
+            term, _, subpath = locator[5:].partition(':')
+            ctgov = ctgov_records.get(f'ctgov/study/{nct_id}')
+            planned = A.extract_drug_candidates(ctgov.get('body')) if ctgov and ctgov.get('status') == 200 else []
+            rec = openfda_records.get(A.drug_query_key(term)) if term in planned else None
+            if not (rec and rec.get('status') == 200 and isinstance(rec.get('body'), dict)):
+                return None, None, 'source_not_retrieved'
+            if not subpath.strip():
+                return None, _record_sha256(rec), 'locator_not_resolved'
+            return _at_locator(rec, subpath)
         rec = openfda_records.get(f'openfda/nct/{nct_id}')
         if rec and rec.get('status') == 200 and isinstance(rec.get('body'), dict):
             return _at_locator(rec, locator)

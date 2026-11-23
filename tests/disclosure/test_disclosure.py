@@ -525,6 +525,8 @@ def test_exact_dates_keep_to_the_years_the_other_forms_allow(value: str) -> None
     # On d708f89 a day that does not exist became the month, 2021-02, and the pubdate was never read.
     ('2021 Feb 30', '2021-03'),
     ('2021 Feb 00', '2021-03'),
+    # On 43fc6ab an epubdate after the record's retrieval (the fixture fetches it today) was the date.
+    ('2100-01-01', '2021-03'),
     # Control, on both heads: the fixture's own date.
     ('2021 Feb 10', '2021-02-10'),
 ])
@@ -2257,6 +2259,53 @@ def test_a_mistyped_fda_submission_date_is_unknown(raw: object) -> None:
     cited['submissions'][0]['submission_status_date'] = '20250102'
     assert _nct_cited_link(cited)['publication_or_action_date'] == '2025-01-02'
     assert E._openfda_action_date({**candidate, 'submissions': [_ORIG_2000]}) == ('2000-01-15', 'day')
+
+
+def test_a_pubmed_epubdate_after_retrieval_gives_way_to_the_pubdate() -> None:
+    entry = {'epubdate': '2100-01-01', 'pubdate': '2021 Mar'}
+    assert E._pubmed_summary_date(entry, '2026-11-01') == ('2021-03', 'month', [
+        'PubMed epubdate 2100-01-01 is after the record was retrieved on 2026-11-01, so it is not used'])
+    # A year or month containing the retrieval day is not after it, and the pubdate is not bounded (an
+    # issue can be dated later than its online publication).
+    assert E._pubmed_summary_date({'epubdate': '2026'}, '2026-11-01') == ('2026', 'year', [])
+    assert E._pubmed_summary_date({'pubdate': '2027 Jan'}, '2026-11-01') == ('2027-01', 'month', [])
+
+
+def _openfda_statement_check(locator: str, excerpt: str, nct_record: bool = False) -> str:
+    nct = 'NCT09990001'
+    study = F.STUDIES[nct]
+    drug = A.extract_drug_candidates(study)[0]
+    app = {'application_number': 'NDA990009', 'sponsor_name': 'ACME THERAPEUTICS',
+           'submissions': [{**_ORIG_2000, 'submission_public_notes': 'Pivotal efficacy trial in adults.'}]}
+    body = {'meta': {'results': {'total': 1}}, 'results': [app]}
+    records = {(f'openfda/nct/{nct}' if nct_record else A.drug_query_key(drug)): {'status': 200, 'body': body},
+               # A record the cache holds for a term this trial did not plan.
+               A.drug_query_key('ibuprofen'): {'status': 200, 'body': body}}
+    assert drug != 'ibuprofen'
+    row = dict.fromkeys(E.STATEMENT_COLUMNS, '')
+    row.update(statement_id='stmt-fda', nct_id=nct, source_type='openfda_record',
+               source_locator=locator.replace('<drug>', drug), verbatim_excerpt=excerpt, recorded_by='Curator',
+               notes='Drugs@FDA record')
+    ctgov = {f'ctgov/study/{nct}': {'status': 200, 'body': study}}
+    return E.build_statement_links([row], 'a' * 64, ctgov, {}, records)[0]['detail']['statement_check']
+
+
+@pytest.mark.parametrize(
+    ('locator', 'nct_record', 'check'),
+    [
+        # On 43fc6ab an openfda_record statement resolved only in the direct NCT-query record, so one citing a
+        # record a drug-term query returned read source_not_retrieved however it was reviewed.
+        ('drug:<drug>:results[0].submissions[0].submission_public_notes', False, 'quote_found_at_locator'),
+        # The path is required: a search response holds several applications.
+        ('drug:<drug>', False, 'locator_not_resolved'),
+        # Controls, on both heads: a term this trial's search did not plan names no record of its own, and the
+        # direct NCT-query locator reads as before.
+        ('drug:ibuprofen:results[0].submissions[0].submission_public_notes', False, 'source_not_retrieved'),
+        ('results[0].submissions[0].submission_public_notes', True, 'quote_found_at_locator'),
+    ],
+)
+def test_an_openfda_statement_can_cite_a_drug_query_record(locator: str, nct_record: bool, check: str) -> None:
+    assert _openfda_statement_check(locator, 'Pivotal efficacy trial', nct_record) == check
 
 
 def _pmid_statement_check(locator: str, excerpt: str, result: dict[str, Any]) -> str:
