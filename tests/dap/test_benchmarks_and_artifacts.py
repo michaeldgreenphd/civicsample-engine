@@ -394,7 +394,7 @@ def test_response_log_lines_must_be_whole_successful_answers(tmp_path: Path) -> 
     base_url = "https://clinicaltrials.gov/api/v2/studies"
 
     def env(body: Any, **fields: Any) -> dict[str, Any]:
-        """A cached response line as first_pass/scripts/fetch.py writes it."""
+        """A complete (unprojected) cached response line: status, body, body_sha256, ids or url."""
         text = body if isinstance(body, str) or body is None else json.dumps(body)
         line: dict[str, Any] = {"status": 200, "body": text, **fields}
         if isinstance(text, str) and "body_sha256" not in fields:
@@ -438,6 +438,73 @@ def test_response_log_lines_must_be_whole_successful_answers(tmp_path: Path) -> 
         with pytest.raises(ValueError, match=re.escape(message)) as err:
             load([good, bad], name)
         assert f"{name}.jsonl:2" in str(err.value), (name, str(err.value))
+
+
+def test_projected_or_incomplete_raw_records_are_refused(tmp_path: Path) -> None:
+    """A fields= projection or a missing required protocol module refuses the input (see the audit caches)."""
+    full = fx.make_raw_ctgov_study("NCT99000971")
+    body = json.dumps({"studies": [full]})
+    projected = {
+        "status": 200,
+        "url": "https://clinicaltrials.gov/api/v2/studies?filter.ids=NCT99000971"
+        "&fields=NCTId,HasResults,ResultsSection,OutcomesModule,StatusModule,DesignModule",
+        "body": body,
+        "body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+    }
+    log = tmp_path / "projected.jsonl"
+    log.write_text(json.dumps(projected) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"projected.jsonl:1: response was requested with fields=NCTId,HasResults"):
+        benchmarks.load_study_records(log)
+
+    # A study missing any required module is refused through every raw input shape.
+    assert benchmarks.REQUIRED_PROTOCOL_MODULES == (
+        "identificationModule",
+        "statusModule",
+        "sponsorCollaboratorsModule",
+        "conditionsModule",
+        "designModule",
+    )
+    for module in benchmarks.REQUIRED_PROTOCOL_MODULES:
+        partial = fx.make_raw_ctgov_study("NCT99000972")
+        del partial["protocolSection"][module]
+        key = "NCT99000972" if module != "identificationModule" else "index 1"
+        want = rf"1 of 2 study records lack required protocol modules \(first: {key} lacks {module}\)"
+        studies_dir = fx.write_studies_dir([full], tmp_path / f"dir_{module}")
+        (studies_dir / "z_partial.json").write_text(json.dumps(partial), encoding="utf-8")
+        container = tmp_path / f"{module}.json"
+        container.write_text(json.dumps({"studies": [full, partial]}), encoding="utf-8")
+        plain = tmp_path / f"{module}.jsonl"
+        plain.write_text(json.dumps(full) + "\n" + json.dumps(partial) + "\n", encoding="utf-8")
+        for path in (studies_dir, container, plain):
+            with pytest.raises(ValueError, match=want):
+                benchmarks.load_study_records(path)
+    flat = tmp_path / "flat.json"
+    flat.write_text(json.dumps({"records": [full, {"nct_id": "NCT99000973", "conditions": ["X"]}]}), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"first: NCT99000973 lacks protocolSection"):
+        benchmarks.load_study_records(flat)
+
+    # No contactsLocationsModule and no derivedSection are real absences: the study loads and builds.
+    bare = fx.make_raw_ctgov_study("NCT99000974", locations=None, meshes=None)
+    assert "contactsLocationsModule" not in bare["protocolSection"] and "derivedSection" not in bare
+    out_dir = tmp_path / "bare_build"
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    rc = cli_build.main(
+        [
+            "--records-dir",
+            str(fx.write_studies_dir([bare], tmp_path / "bare")),
+            "--sponsor-rules",
+            str(rules_path),
+            "--generated-at",
+            "2026-11-21T00:00:00+00:00",
+            "--out",
+            str(out_dir),
+        ]
+    )
+    assert rc == 0
+    row = artifacts.load_dir(out_dir)["trial_rows"][0]
+    assert row["geography"]["site_footprint_class"] == "no_listed_facilities"
+    assert row["indication"]["mesh_state"] == "no_derived"
+    assert row["indication"]["primary_condition"] != "Other"
 
 
 def test_weekly_full_records_container_supported(tmp_path: Path) -> None:

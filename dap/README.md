@@ -92,13 +92,23 @@ is not null) passes the contract but is never exported.
 `--records` and `--records-dir` take raw CT.gov API v2 study documents: one
 study, a `studies`/`records` list, a top-level list, a JSONL file of studies,
 or a JSONL log of cached API responses (one `{"status", "body", "body_sha256",
-"ids" or "url"}` line per request, as
-`docs/audits/outcomes_results_structure/first_pass/scripts/fetch.py` writes).
-Nothing is skipped: a non-object entry refuses the input, and each response
-line must be a whole, successful answer (status 200, a body matching
-`body_sha256`, at least one study, returned NCT ids equal to the requested
-ones, and no trial returned twice across lines), or the build is refused,
-naming the line.
+"ids" or "url"}` line per request). Nothing is skipped: a non-object entry
+refuses the input, and each response line must be a whole, successful answer
+(status 200, a body matching `body_sha256`, at least one study, returned NCT
+ids equal to the requested ones, and no trial returned twice across lines),
+or the build is refused, naming the line.
+
+**Records must be complete.** A response requested with a `fields=` projection
+is refused, and so is any raw study missing a protocol module CT.gov requires
+on every registration: `identificationModule`, `statusModule`,
+`sponsorCollaboratorsModule`, `conditionsModule` or `designModule`. A projected
+record would otherwise build with every trial read as ontology Other, no
+listed facilities, no MeSH and an unreviewed "Unknown" sponsor, and the
+contract would pass. `contactsLocationsModule` and `derivedSection` are not
+required: their absence is a real "no listed facilities" / `no_derived`.
+**The audit caches under `docs/audits/outcomes_results_structure/` are not
+valid DAP inputs**: every request in them used `fields=` (first pass:
+`NCTId,HasResults,ResultsSection,OutcomesModule,StatusModule,DesignModule`).
 
 ## Condition MeSH sidecar (`--condition-mesh`)
 

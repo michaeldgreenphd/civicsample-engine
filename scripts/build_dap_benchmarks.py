@@ -5,9 +5,11 @@ Manual offline build (never scheduled; makes zero network calls):
 
   python3 scripts/build_dap_benchmarks.py --demographics demographics.json.gz --out build/dap
   python3 scripts/build_dap_benchmarks.py --records-dir /path/to/ctgov_studies --out build/dap
-  python3 scripts/build_dap_benchmarks.py --records raw_responses.jsonl.gz --out build/dap
+  python3 scripts/build_dap_benchmarks.py --records ctgov_responses.jsonl.gz --out build/dap
 
-Writes nothing unless the staged artifact family passes ``dap.artifacts.check_contract``.
+Raw inputs must be complete API v2 records (no ``fields=`` projection); the
+audit caches under ``docs/audits/outcomes_results_structure/`` are projected
+and are refused. Writes nothing unless the staged artifact family passes ``dap.artifacts.check_contract``.
 """
 from __future__ import annotations
 

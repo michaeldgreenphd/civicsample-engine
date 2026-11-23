@@ -437,6 +437,45 @@ def _require_study_objects(entries: list[Any], where: str) -> list[dict[str, Any
     return entries
 
 
+# Protocol modules ClinicalTrials.gov requires on every registration (identification,
+# overall status, sponsor, conditions, study type), so a complete API v2 record always
+# carries them. A record without one was fetched with a ``fields=`` projection or
+# truncated: building from it would read the gaps as "no conditions" (ontology Other),
+# "no sponsor" (lead "Unknown", unreviewed) and so on while the contract still passed.
+# Their absence is refused, not benchmarked. ``contactsLocationsModule`` and
+# ``derivedSection`` are legitimately absent on some registrations ("no listed
+# facilities", "no_derived") and are not required. Same rule as the feasibility
+# benchmarks (#107).
+REQUIRED_PROTOCOL_MODULES: tuple[str, ...] = (
+    "identificationModule",
+    "statusModule",
+    "sponsorCollaboratorsModule",
+    "conditionsModule",
+    "designModule",
+)
+
+
+def _require_complete_records(studies: list[dict[str, Any]], source: str) -> None:
+    """Refuse raw API v2 study records missing any ``REQUIRED_PROTOCOL_MODULES`` (see the note above)."""
+    incomplete: dict[str, list[str]] = {}
+    for idx, study in enumerate(studies):
+        protocol = study.get("protocolSection")
+        key = _extract_core_metadata(study)["nct_id"] or f"index {idx}"
+        if not isinstance(protocol, dict):
+            incomplete[key] = ["protocolSection"]
+            continue
+        missing = [m for m in REQUIRED_PROTOCOL_MODULES if not isinstance(protocol.get(m), dict)]
+        if missing:
+            incomplete[key] = missing
+    if incomplete:
+        first = next(iter(incomplete))
+        raise ValueError(
+            f"{source}: {len(incomplete)} of {len(studies)} study records lack required protocol modules "
+            f"(first: {first} lacks {', '.join(incomplete[first])}); these look field-projected or "
+            "truncated, so the build is refused rather than reading the gaps as absent data"
+        )
+
+
 def _requested_nct_ids(envelope: dict[str, Any]) -> list[str] | None:
     """NCT ids a cached request asked for: its ``ids`` field, else the ``url``'s
     ``filter.ids`` or its single-study path (``/studies/NCT########``)."""
@@ -458,12 +497,14 @@ def _requested_nct_ids(envelope: dict[str, Any]) -> list[str] | None:
 def _response_log_studies(envelope: dict[str, Any], where: str) -> list[dict[str, Any]]:
     """Studies from one cached CT.gov API v2 response line, refusing a failed, altered or short one.
 
-    Method (as feasibility benchmarks' ``_response_envelope_studies``): the
-    cached-response writers in this repository
-    (``docs/audits/outcomes_results_structure/first_pass/scripts/fetch.py``,
-    ``.../second_pass/scripts/ctgov.py``) store one line per request with its
-    ``status``, ``body_sha256`` and unparsed ``body``, and the requested ids in
-    ``ids`` and/or the ``url``'s ``filter.ids``. A line whose request failed,
+    Method (as feasibility benchmarks' ``_response_envelope_studies``): a
+    cached-response log stores one line per request with its ``status``,
+    ``body_sha256`` and unparsed ``body``, and the requested ids in ``ids``
+    and/or the ``url``'s ``filter.ids``. A request made with a ``fields=``
+    projection is refused outright: its records lack the modules these
+    benchmarks read. (The audit caches under
+    ``docs/audits/outcomes_results_structure/`` are such projections and are not
+    DAP inputs.) A line whose request failed,
     whose body is null, blank, altered or holds no study, or that answered
     fewer or other trials than it asked for would otherwise contribute nothing
     with nothing said while the input sha256 still covers it. So ``status``
@@ -477,6 +518,14 @@ def _response_log_studies(envelope: dict[str, Any], where: str) -> list[dict[str
     if status != 200:
         raise ValueError(
             f"{where}: cached response status {status!r}, not 200; a failed request is not an empty batch"
+        )
+    url = envelope.get("url")
+    projected = parse_qs(urlsplit(url).query).get("fields") if isinstance(url, str) else None
+    if projected:
+        raise ValueError(
+            f"{where}: response was requested with fields={','.join(projected)}; a field-projected record "
+            "lacks the modules these benchmarks read (conditions, sponsors, locations, derivedSection) and "
+            "would publish every trial as Other / no listed facilities / no sponsor. Use complete study records."
         )
     body = envelope.get("body")
     want_sha = envelope.get("body_sha256")
@@ -565,6 +614,7 @@ def load_study_records(
             if not isinstance(doc, dict):
                 raise ValueError(f"{fpath}: expected study JSON object")
             studies.append(doc)
+        _require_complete_records(studies, str(path))
         if limit is not None and limit > 0:
             studies = studies[:limit]
         return studies, {
@@ -626,6 +676,7 @@ def load_study_records(
                 ordered.append(obj)
         if not ordered:
             raise ValueError(f"{path}: holds no study records")
+        _require_complete_records(ordered, str(path))
         if limit is not None and limit > 0:
             ordered = ordered[:limit]
         return ordered, {
@@ -669,6 +720,7 @@ def load_study_records(
 
     if not studies_list:
         raise ValueError(f"{path}: holds no study records")
+    _require_complete_records(studies_list, str(path))
     if limit is not None and limit > 0:
         studies_list = studies_list[:limit]
     return studies_list, {
