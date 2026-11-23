@@ -684,6 +684,13 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
             base["completion_rate_status"] = "withheld_missing_started_or_completed"
             return base
         mtype = ms.get("type")
+        if not (isinstance(mtype, str) and mtype.strip()):
+            # A milestone without a type could be a second STARTED or COMPLETED too, so the retention
+            # rate is withheld rather than computed beside it. All 8,988 milestones of the cached records
+            # with a participant flow carry one.
+            base["flow_status"] = "malformed_participant_flow"
+            base["completion_rate_status"] = "withheld_missing_started_or_completed"
+            return base
         if mtype in ("STARTED", "COMPLETED") and mtype in milestones:
             # A second STARTED or COMPLETED milestone in Period 1 leaves no single count; using
             # either occurrence would publish an arbitrary one.

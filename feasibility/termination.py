@@ -31,7 +31,7 @@ from typing import Any
 
 from feasibility.metrics import is_num, parse_num
 
-TERMINATION_RULES_VERSION = "1.4.4"
+TERMINATION_RULES_VERSION = "1.4.5"
 # CT.gov's outcome measure types. The 2,200 cached records with posted outcome measures under
 # docs/audits/outcomes_results_structure/ hold only these four (4,688 PRIMARY, 13,388 SECONDARY,
 # 689 OTHER_PRE_SPECIFIED, 71 POST_HOC).
@@ -217,6 +217,12 @@ _NEGATION_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
 }
 
+# A shortage of staff is not a supply problem (rules 1.4.5): the bare `shortage` alternative of the
+# supply detector skips one preceded by a staffing word. Each lookbehind has a fixed width.
+_STAFF_LOOKBEHIND = "".join(
+    rf"(?<!\b{word}\s)" for word in ("staff", "staffing", "nurse", "nursing", "personnel", "workforce")
+)
+
 _SIGNAL_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
     "accrual_or_recruitment": (
         re.compile(
@@ -308,8 +314,11 @@ _SIGNAL_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
     "supply_or_drug_availability": (
         re.compile(
             r"\b(?:study\s+drug|drug|investigational\s+(?:medicinal\s+)?product|medication|vaccine|device|placebo|compound|imp)\s+"
-            r"(?:supply|shortage|unavailab\w*|availability|expir(?:ation|y|ed)|stability\s+issue)\b"
-            r"|\b(?:shortage|unavailability|lack\s+of\s+supply|supply\s+(?:issue|problem|chain|constraint|shortage))\b"
+            # Rules 1.4.5: plural forms too ("Supply issues", "Drug shortages" read as unclassified), and
+            # no shortage of staff ("Staff shortage" and "staffing shortages" are not a drug supply problem).
+            r"(?:supply|shortages?|unavailab\w*|availability|expir(?:ation|y|ed)|stability\s+issues?)\b"
+            r"|\b(?:" + _STAFF_LOOKBEHIND + r"shortages?|unavailability|lack\s+of\s+supply"
+            r"|supply\s+(?:issues?|problems?|chain|constraints?|shortages?))\b"
             r"|\bmanufacturing\s+(?:issue|problem|delay|defect|failure|hold|constraint)s?\b"
             r"|\bunavailable\s+(?:study\s+)?(?:drug|medication|investigational\s+product|device)\b",
             _I,

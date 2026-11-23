@@ -472,6 +472,36 @@ def test_repeated_period1_milestone_type_withholds_retention(milestone_index: in
     assert ret.get("period1_completion_rate") is None
 
 
+@pytest.mark.parametrize("mtype", ["<missing>", None, 7, ["STARTED"], " "])
+def test_period1_milestone_without_a_type_withholds_retention(mtype: object) -> None:
+    """On 909d748 such a milestone was skipped, and STARTED and COMPLETED beside it gave a rate."""
+    import copy
+
+    study = copy.deepcopy(make_ctgov_study("NCT99100066"))
+    milestones = study["resultsSection"]["participantFlowModule"]["periods"][0]["milestones"]
+    extra = copy.deepcopy(milestones[0])
+    if mtype == "<missing>":
+        extra.pop("type")
+    else:
+        extra["type"] = mtype
+    milestones.append(extra)
+    ret = extract_period1_retention(study)
+    assert ret["flow_status"] == "malformed_participant_flow"
+    assert ret.get("period1_completion_rate") is None
+
+
+def test_period1_milestone_of_another_named_type_keeps_retention() -> None:
+    """A typed milestone other than STARTED or COMPLETED (a NOT COMPLETED row) leaves the rate standing."""
+    import copy
+
+    study = copy.deepcopy(make_ctgov_study("NCT99100067"))
+    milestones = study["resultsSection"]["participantFlowModule"]["periods"][0]["milestones"]
+    extra = copy.deepcopy(milestones[0])
+    extra["type"] = "NOT COMPLETED"
+    milestones.append(extra)
+    assert extract_period1_retention(study)["flow_status"] == "ok"
+
+
 def _flow_edit(edit: str) -> dict:
     """The fixture study with one part of its participant flow given the wrong type."""
     study = make_ctgov_study("NCT99100090")

@@ -388,6 +388,10 @@ def _mistyped_optional_parts(ps: dict[str, Any]) -> list[str]:
     if isinstance(status_mod, dict) and isinstance(status_mod.get("overallStatus"), str):
         if status_mod["overallStatus"] not in CTGOV_OVERALL_STATUSES:
             out.append("statusModule.overallStatus (a CT.gov status value)")
+    # `extract_trial_metrics` turned a non-string `whyStopped` into None, so `["Low recruitment"]` was
+    # published as `missing_why_stopped`. All 459 stored `whyStopped` values are strings.
+    if isinstance(status_mod, dict) and "whyStopped" in status_mod and not isinstance(status_mod["whyStopped"], str):
+        out.append("statusModule.whyStopped (a string)")
     design = ps.get("designModule")
     enrollment = design.get("enrollmentInfo") if isinstance(design, dict) else None
     if isinstance(enrollment, dict) and "type" in enrollment:
@@ -427,6 +431,15 @@ def _mistyped_optional_parts(ps: dict[str, Any]) -> list[str]:
                 for name in entry_fields
                 if name in entry and not isinstance(entry[name], str)
             ]
+            # A collaborator without a name was read as "" and dropped by the sponsor adapter, so a
+            # company's collaborator and any-role counts fell with nothing reported. All 61,241
+            # collaborator entries in the stored local files carry a non-blank name.
+            # (A name of another type is reported just above.)
+            name = entry.get("name")
+            if (mod, field) == ("sponsorCollaboratorsModule", "collaborators") and (
+                "name" not in entry or (isinstance(name, str) and not name.strip())
+            ):
+                out.append(f"{where}[{i}].name (a non-blank string)")
     return out
 
 
@@ -759,7 +772,12 @@ WEEKLY_LIST_FIELDS: dict[str, tuple[type, tuple[str, ...]]] = {
 }
 # Entry fields `src/utils.py` always writes as non-blank strings: it keeps a site, and a country entry,
 # only for a location with a country, so a blank one would be counted as a facility no source lists.
-WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {"study_sites": ("country",), "countries": ("country",)}
+WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {
+    "study_sites": ("country",),
+    "countries": ("country",),
+    # An unnamed collaborator dropped out of sponsor attribution; all 48,077 weekly ones carry a name.
+    "collaborators": ("name",),
+}
 # The scalar weekly fields the build reads, the type `src/utils.py` writes for each, and whether it is
 # never blank (dates and `why_stopped` are "" when CT.gov has none). A missing or mistyped one was read
 # as absent: an "Unknown" sponsor, no enrollment, no dates. `primary_condition`/`secondary_condition`
@@ -838,7 +856,11 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
                     return f"{key}[{i}].{field} is {type(entry[field]).__name__}, not a string"
             for field in WEEKLY_REQUIRED_ENTRY_FIELDS.get(key, ()):
                 if not (isinstance(entry.get(field), str) and entry[field].strip()):
-                    return f"{key}[{i}].{field} is missing or blank (src/utils.py keeps only sites with one)"
+                    why = (
+                        "an unnamed collaborator drops out of sponsor attribution" if key == "collaborators"
+                        else "src/utils.py keeps only sites with one"
+                    )
+                    return f"{key}[{i}].{field} is missing or blank ({why})"
     # `src/utils.py` derives both lists from the same locations: `countries` is the set of their
     # non-blank countries, and `study_sites` keeps exactly the locations with one. `extract_trial_metrics`
     # reads `countries` whenever it is non-empty, so a partial list published a lower `n_countries`

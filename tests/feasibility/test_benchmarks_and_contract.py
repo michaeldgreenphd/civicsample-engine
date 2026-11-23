@@ -676,6 +676,8 @@ _SITE = {"facility": "Hospital A", "country": "United States"}
         ("why_stopped", None, "why_stopped is NoneType, not str"),
         # On dd1e29c each built: the trial left the stopped benchmarks, or its enrollment read MISSING_TYPE.
         ("status", "terminated", "status 'terminated' is not a CT.gov status value"),
+        ("collaborators", [{"class": "INDUSTRY"}],
+         "collaborators[0].name is missing or blank (an unnamed collaborator drops out of sponsor attribution)"),
         ("enrollment_type", "BANANA", "enrollment_type 'BANANA' is not ACTUAL, ESTIMATED, ANTICIPATED or N/A"),
         # On 1fb8452 any non-empty results_date read as posted results.
         ("results_date", "N/A",
@@ -1571,6 +1573,14 @@ def test_records_missing_condition_or_lead_sponsor_payloads_are_refused(
         # On dd1e29c a status outside CT.gov's values fell outside every status group, and an unknown
         # enrollment type became MISSING_TYPE.
         (("statusModule", "overallStatus"), "terminated", "statusModule.overallStatus (a CT.gov status value)"),
+        # On 909d748 an unnamed collaborator was dropped from attribution, and a non-string whyStopped
+        # was published as missing_why_stopped.
+        (("sponsorCollaboratorsModule", "collaborators"), [{"class": "INDUSTRY"}],
+         "sponsorCollaboratorsModule.collaborators[0].name (a non-blank string)"),
+        (("sponsorCollaboratorsModule", "collaborators"), [{"name": " ", "class": "INDUSTRY"}],
+         "sponsorCollaboratorsModule.collaborators[0].name (a non-blank string)"),
+        (("statusModule", "whyStopped"), ["Low recruitment"], "statusModule.whyStopped (a string)"),
+        (("statusModule", "whyStopped"), None, "statusModule.whyStopped (a string)"),
         (("statusModule", "overallStatus"), "STOPPED", "statusModule.overallStatus (a CT.gov status value)"),
         (("designModule", "enrollmentInfo", "type"), "BANANA",
          "designModule.enrollmentInfo.type (ACTUAL, ESTIMATED or ANTICIPATED)"),

@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_rules_version_and_curated_csv_is_header_only() -> None:
-    assert TERMINATION_RULES_VERSION == "1.4.4"
+    assert TERMINATION_RULES_VERSION == "1.4.5"
     csv_path = ROOT / "feasibility" / "termination_reviews.csv"
     raw_lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert raw_lines == [",".join(REVIEW_COLUMNS)]
@@ -308,6 +308,14 @@ def test_no_masks_business_only_when_it_denies_a_reason(why: str, category: str)
         ("No supply chain issues; sponsor decision", "business_or_strategic"),
         ("Manufacturing defects", "supply_or_drug_availability"),
         ("Supply chain issues", "supply_or_drug_availability"),
+        # rules 1.4.5: plural supply forms are detected, and a shortage of staff is not a supply problem
+        ("Supply issues", "supply_or_drug_availability"),
+        ("Drug shortages", "supply_or_drug_availability"),
+        ("Shortages of study drug", "supply_or_drug_availability"),
+        ("slow recruitment and study drug shortages", "multiple_signals_detected"),
+        ("Staff shortage", "other_unclassified_text"),
+        ("Due to COVID and staffing shortages", "covid_or_pandemic"),
+        ("Reagent shortage", "supply_or_drug_availability"),
         # controls: the stated causes stand
         ("Terminated due to FDA feedback", "regulatory_or_clinical_hold"),
         ("Manufacturing issues", "supply_or_drug_availability"),
