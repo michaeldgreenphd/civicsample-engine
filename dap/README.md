@@ -57,6 +57,17 @@ modified.
    - Race measures containing Hispanic/Latino or combined race+ethnicity rows
      are classified `combined_race_ethnicity_quarantined`, excluded from all
      pooled OMB race distributions, and counted explicitly.
+   - A race or ethnicity table summing to more than 1% (at least 1) above the
+     sex table's participant total, or above the baseline table's own
+     `Participants` denominator, counts some people twice; it is
+     `non_standard_categories_present`, with no shares, and its `status_detail`
+     says which (`table_total_exceeds_sex_table`, tried first, or
+     `table_total_exceeds_baseline_denominator`). Without the denominator check,
+     White 80 and Black 40 of 100, with no sex table, were published as
+     `omb_compatible` shares of 120. None of the 3,345 stored raw trials changes:
+     the 15 race and 8 ethnicity tables above their denominator all have a sex
+     total that already caught them. Weekly records carry no baseline table, so
+     only the sex total bounds them.
    - **Denominator A (`of_baseline_total`)**: `floor = count / baseline_total`,
      `unknown_bounds = [floor, (count + unknown + unmapped) / baseline_total]`,
      and `direction_settled` (`True` when both bounds lie strictly on the same

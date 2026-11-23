@@ -2196,6 +2196,43 @@ def test_sex_tables_the_parser_reads_load(tmp_path: Path, female: str, male: str
     assert len(_load_pair(tmp_path, _sex_study("NCT99800078", female, male, **measure))) == 2
 
 
+_RACE_OVER = ("Race (NIH/OMB)", [("White", "80"), ("Black or African American", "40")])
+_ETH_OVER = ("Ethnicity (NIH/OMB)", [("Hispanic or Latino", "70"), ("Not Hispanic or Latino", "50")])
+_SEX_100 = ("Sex: Female, Male", [("Female", "50"), ("Male", "50")])
+
+
+def _demographics_of(tmp_path: Path, *measures: tuple[str, list[tuple[str, str]]]) -> dict[str, Any]:
+    """Load a raw trial with these baseline measures (Participants denominator 100) and extract it."""
+    study = fx.make_raw_ctgov_study("NCT99800079", measures=[fx.make_measure(t, rows) for t, rows in measures])
+    rows = _load_pair(tmp_path, study)
+    return extract_demographics(
+        next(r for r in rows if r["protocolSection"]["identificationModule"]["nctId"] == "NCT99800079"))
+
+
+@pytest.mark.parametrize("dim", ["race", "ethnicity"])
+def test_a_table_summing_above_its_own_denominator_is_not_pooled_without_a_sex_table(
+    tmp_path: Path, dim: str
+) -> None:
+    # On 9293eec White 80 and Black 40 of 100 participants, with no sex table to compare against, were
+    # published as omb_compatible shares of 120 (Black 1/3, not 40 of 100); ethnicity likewise.
+    block = _demographics_of(tmp_path, _RACE_OVER if dim == "race" else _ETH_OVER)[dim]
+    assert (block["table_status"], block["baseline_total"]) == ("non_standard_categories_present", 120)
+    detail = "table_total_exceeds_baseline_denominator"
+    assert block["status_detail"] == block["of_classified_withheld_reason"] == detail
+    assert block["usable_for_omb_pooling"] is False and block["of_classified"] is None
+
+
+def test_a_table_within_one_percent_of_its_denominator_and_one_the_sex_table_bounds_keep_their_reading(
+    tmp_path: Path,
+) -> None:
+    # Controls, on both heads: 101 of 100 is within the 1% allowance, and a table the sex total already
+    # bounds keeps that detail.
+    within = _demographics_of(tmp_path, ("Race (NIH/OMB)", [("White", "61"), ("Asian", "40")]))["race"]
+    assert (within["table_status"], within["baseline_total"]) == ("omb_compatible", 101)
+    bounded = _demographics_of(tmp_path, _RACE_OVER, _SEX_100)["race"]
+    assert bounded["status_detail"] == "table_total_exceeds_sex_table"
+
+
 _COMPOSITION = ("percent_female", "female_share", "of_parsed_total", "of_classified")
 
 

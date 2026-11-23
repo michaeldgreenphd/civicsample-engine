@@ -452,12 +452,37 @@ def _detect_combined_race_ethnicity(race_block: dict[str, Any]) -> tuple[bool, l
     return False, [], None
 
 
+def _table_total_excess(
+    baseline_total: int, sex_total: int | None, baseline_participants: int | None
+) -> str | None:
+    """Why a race or ethnicity table's total exceeds a count of the same people, or None.
+
+    A table summing to more than its participants counts some of them twice (a multi-select race
+    question, or rows of another table read again), so its shares would be normalized to the wrong
+    total. It is compared with the sex table's participant total, as before, and with the baseline
+    table's own Participants denominator, the total `race_extractor` and `ethnicity_extractor` balance
+    against. Without a sex total, White 80 and Black 40 of 100 had been published as `omb_compatible`
+    shares of 120. Each comparison allows 1% (at least 1). The sex comparison is tried first, so the 15
+    race and 8 ethnicity tables of the stored raw trials it already caught keep their detail; none of
+    those trials lacks a sex total.
+    """
+    def exceeds(limit: int | None) -> bool:
+        return limit is not None and baseline_total > limit + max(1, int(0.01 * limit))
+
+    if exceeds(sex_total):
+        return "table_total_exceeds_sex_table"
+    if exceeds(baseline_participants):
+        return "table_total_exceeds_baseline_denominator"
+    return None
+
+
 def _analyze_race_block(
     race_block: dict[str, Any] | None,
     *,
     results_posted: bool,
     sex_total: int | None,
     reference_medians: dict[str, float] | None = None,
+    baseline_participants: int | None = None,
 ) -> dict[str, Any]:
     """Classify and compute Denominator A & B metrics for a baseline race block."""
     if not results_posted:
@@ -566,9 +591,8 @@ def _analyze_race_block(
             "status_detail": "race_table_total_is_zero",
         }
 
-    double_counted = bool(
-        sex_total is not None and baseline_total > sex_total + max(1, int(0.01 * sex_total))
-    )
+    excess = _table_total_excess(baseline_total, sex_total, baseline_participants)
+    double_counted = excess is not None
     has_non_standard = bool(unmapped_in_raw or quarantined_parsed or extra_keys or double_counted)
     status = "non_standard_categories_present" if has_non_standard else "omb_compatible"
 
@@ -584,8 +608,8 @@ def _analyze_race_block(
             "counts": raw_counts,
             "of_baseline_total": None,
             "of_classified": None,
-            "of_classified_withheld_reason": "table_total_exceeds_sex_table",
-            "status_detail": "table_total_exceeds_sex_table",
+            "of_classified_withheld_reason": excess,
+            "status_detail": excess,
         }
 
     refs = reference_medians or {}
@@ -643,6 +667,7 @@ def _analyze_ethnicity_block(
     results_posted: bool,
     sex_total: int | None,
     reference_medians: dict[str, float] | None = None,
+    baseline_participants: int | None = None,
 ) -> dict[str, Any]:
     """Classify and compute Denominator A & B metrics for a baseline ethnicity block."""
     if not results_posted:
@@ -741,10 +766,8 @@ def _analyze_ethnicity_block(
             "status_detail": "ethnicity_table_total_is_zero",
         }
 
-    double_counted = bool(
-        sex_total is not None and baseline_total > sex_total + max(1, int(0.01 * sex_total))
-    )
-    if double_counted:
+    excess = _table_total_excess(baseline_total, sex_total, baseline_participants)
+    if excess is not None:
         return {
             "table_status": "non_standard_categories_present",
             "usable_for_omb_pooling": False,
@@ -756,8 +779,8 @@ def _analyze_ethnicity_block(
             "counts": raw_counts,
             "of_baseline_total": None,
             "of_classified": None,
-            "of_classified_withheld_reason": "table_total_exceeds_sex_table",
-            "status_detail": "table_total_exceeds_sex_table",
+            "of_classified_withheld_reason": excess,
+            "status_detail": excess,
         }
 
     if raw_cats:
@@ -1000,6 +1023,16 @@ def extract_demographics(
     else:
         raw_eth = None
 
+    # The baseline table's own Participants count, read as the extractors balance against it, without
+    # the registered-enrollment fallback. Weekly records carry no baseline table, so for them it is None
+    # and only the sex total bounds a race or ethnicity table.
+    baseline_participants = (
+        src_utils.get_total_baseline_participants(
+            _study_without_protocol_enrollment_padding(record), src_utils.get_overall_group_id(record)
+        )
+        if posted and "resultsSection" in record
+        else None
+    )
     refs = reference_medians or {}
     if posted and "protocolSection" in record and whole_population_group_unidentified(record):
         # No group stands for the whole trial, so neither extractor's counts are the trial's.
@@ -1011,12 +1044,14 @@ def extract_demographics(
             results_posted=posted,
             sex_total=sex_total,
             reference_medians=refs.get("race"),
+            baseline_participants=baseline_participants,
         )
         eth_info = _analyze_ethnicity_block(
             raw_eth,
             results_posted=posted,
             sex_total=sex_total,
             reference_medians=refs.get("ethnicity"),
+            baseline_participants=baseline_participants,
         )
 
     omission_audit = build_us_site_omission_audit(
