@@ -664,16 +664,21 @@ def _require_weekly_phases(records: list[dict[str, Any]], source: str) -> None:
     The weekly extractor writes a record's phases as one string, CT.gov's values joined with ", "
     ("PHASE1, PHASE2"), or "" when none is stated; all 80,890 records of the 2026-11-08 extraction
     have that form. These records never pass `_require_complete_records`, so a hand-built or edited
-    one with "phase": "BANANA" became a phase stratum of its own. Each token split the way
-    `normalize_phase` splits must be in `CTGOV_PHASES`; a missing key still reads as no phase.
+    one with "phase": "BANANA" became a phase stratum of its own. The value must be exactly "" or,
+    split the way `normalize_phase` splits it, consist only of `CTGOV_PHASES` values: an empty piece
+    (`","`, `" / "`, `"PHASE1,,PHASE2"`) is refused too, since `normalize_phase` would drop it and read
+    a separator-only value as no phase stated. A missing key still reads as no phase.
     """
     bad: list[str] = []
     for idx, rec in enumerate(records):
         if "phase" not in rec:
             continue
         phase = rec["phase"]
-        tokens = [t.strip() for t in re.split(r"[,;/]", phase) if t.strip()] if isinstance(phase, str) else None
-        if tokens is None or any(t not in CTGOV_PHASES for t in tokens):
+        if not isinstance(phase, str):
+            pieces = None
+        else:
+            pieces = [] if phase == "" else [t.strip() for t in re.split(r"[,;/]", phase)]
+        if pieces is None or any(t not in CTGOV_PHASES for t in pieces):
             bad.append(f"{rec.get('nct_id') or f'index {idx}'} has phase {phase!r}")
     if bad:
         raise ValueError(

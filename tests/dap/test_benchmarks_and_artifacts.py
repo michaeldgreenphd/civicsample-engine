@@ -508,7 +508,11 @@ def test_projected_or_incomplete_raw_records_are_refused(tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("source_kind", ["full_records", "auto"])
-@pytest.mark.parametrize("phase", ["BANANA", "PHASE3, PHASE_9", 3, None])
+@pytest.mark.parametrize(
+    "phase",
+    # separator-only or with an empty piece: normalize_phase dropped the pieces and read "no phase"
+    ["BANANA", "PHASE3, PHASE_9", 3, None, ",", " / ", "PHASE1,,PHASE2", "PHASE2,", " "],
+)
 def test_weekly_records_with_a_phase_outside_ctgov_values_are_refused(
     tmp_path: Path, phase: object, source_kind: str
 ) -> None:
