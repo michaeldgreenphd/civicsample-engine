@@ -251,6 +251,10 @@ def _load_records_file(
         parsed = _loads_strict(stripped)
     except _RepeatedKeyError as exc:
         raise _RepeatedKeyError(f"{p}: {exc}") from None
+    except ol.NonFiniteNumberError as exc:
+        # NaN/Infinity: not JSON, and a browser rejects a shard holding one.
+        # Refused as such, not retried as JSONL (red-team m3 round 3).
+        raise ol.NonFiniteNumberError(f"{p}: {exc}") from None
     except ValueError:
         rows: list[dict[str, Any]] = []
         for lineno, line in enumerate(raw_text.splitlines(), start=1):
@@ -261,6 +265,8 @@ def _load_records_file(
                 obj = _loads_strict(text)
             except _RepeatedKeyError as exc:
                 raise _RepeatedKeyError(f"{p}:{lineno}: {exc}") from None
+            except ol.NonFiniteNumberError as exc:
+                raise ol.NonFiniteNumberError(f"{p}:{lineno}: {exc}") from None
             except ValueError as exc:
                 raise ol.OutcomesLayoutError(f"{p}:{lineno}: invalid JSONL ({exc})") from exc
             if not isinstance(obj, dict):
