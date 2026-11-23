@@ -49,7 +49,13 @@ READS   --cohort-manifest  REQUIRED JSON/JSONL (plain or .gz): one row per trial
         source_pipeline_commit, indexer_rules_version, run_id,
         schema_version; for the manifest also the live index's columns_note
         and excluded), and any other key is refused (exit 2). Header values
-        naming a holdout are refused (run_id is published).
+        naming a holdout are refused; every container's header values are
+        published in index.json's input_stamps, by input. A manifest row's
+        primary outcome count (primary_outcomes_count or n_primary_outcomes)
+        must agree with the other key and with the outcomes the trial's
+        record registers. Records stating different versions of one
+        component (indexer_rules_version, provenance_rules_version,
+        parser_rules_version) are refused: component_versions names one.
 WRITES  --out-dir (default <engine root>/data/outcomes_bundles, resolved from
         this file, not the working directory):
           index.json            multi-cohort trial catalog, sorted by nct_id
@@ -67,7 +73,10 @@ WRITES  --out-dir (default <engine root>/data/outcomes_bundles, resolved from
         (data/run.json); pass --out-dir elsewhere then.
         source_pipeline_commit is --pipeline-commit, else the engine
         checkout's own HEAD (git -C <engine root>); when neither resolves the
-        build is refused, never stamped null.
+        build is refused, never stamped null. extracted_at is --extracted-at,
+        else the --trials and --cohort-manifest containers' extracted_at (two
+        different ones are refused), else --now-utc; when none is given the
+        build is refused, never stamped with the build time.
         --report (optional) gets the same allowlist.
 CHECKS  --check <dir> validates an existing outcomes directory on disk without
         modifying it (--allow-null-commit accepts a tree stamped null). Every
@@ -88,8 +97,7 @@ import argparse
 import gzip
 import os
 import sys
-from collections.abc import Mapping, Sequence
-from datetime import datetime, timezone
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -154,14 +162,7 @@ def _read_text(path: Path) -> str:
 # A JSON container object: exactly one row list under one of these keys...
 _CONTAINER_LIST_KEYS: tuple[str, ...] = ("data", "trials", "records", "rows")
 # ...beside header values (strings, or a schema version number)...
-_CONTAINER_META_KEYS: tuple[str, ...] = (
-    "extracted_at",
-    "pipeline_commit",
-    "source_pipeline_commit",
-    "indexer_rules_version",
-    "run_id",
-    "schema_version",
-)
+_CONTAINER_META_KEYS: tuple[str, ...] = ol.INPUT_STAMP_KEYS
 # ...and, in a cohort manifest only, the live outcomes index's own two keys
 # (outcomes/artifacts.py writes them): a note, and the trials the cohort
 # excluded, each an ID with its reason(s).
@@ -534,28 +535,15 @@ def _merge_trials_and_manifest(
                 raise ol.OutcomesLayoutError(
                     f"cohorts must be a list of slugs, got {type(own).__name__}"
                 )
-            combined["cohorts"] = sorted(set(own or []) | {manifest_cohort})
+            # Appended, not merged into a sorted set: ol.derive_cohorts reads
+            # every slug (a string matching the slug pattern, refused by
+            # position and type otherwise) and returns them sorted and unique.
+            # Hashing or sorting them here first raised a TypeError traceback
+            # for a non-string slug (skeptic review of m3).
+            combined["cohorts"] = [*(own or []), manifest_cohort]
         combined["nct_id"] = nct_id
         merged[nct_id] = combined
     return merged
-
-
-def _check_side_stream_membership(
-    streams: Mapping[str, Mapping[str, Any]],
-    build_ids: set[str],
-) -> None:
-    """Refuse side-stream records for trials outside the build (L5/L6).
-
-    Before, a record for a trial the build does not contain was looked up by
-    no one and dropped without a word; now it is an input error.
-    """
-    for name, by_nct in streams.items():
-        outside = sum(1 for nct in by_nct if nct not in build_ids)
-        if outside:
-            raise ol.OutcomesLayoutError(
-                f"{name}: {outside} trial(s) absent from --cohort-manifest; a record for a trial "
-                f"outside the build is refused, not dropped"
-            )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -591,8 +579,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--provenance", help="JSON/JSONL (.gz ok) of Module 4 longitudinal provenance records", **once)
     ap.add_argument("--population-parsed", help="JSON/JSONL (.gz ok) of Module 2 parsed population records", **once)
-    ap.add_argument("--extracted-at", help="ISO-8601 UTC timestamp stamp (overrides input container)", **once)
-    ap.add_argument("--now-utc", help="Fallback UTC ISO-8601 timestamp when --extracted-at is omitted", **once)
+    ap.add_argument(
+        "--extracted-at",
+        help="ISO-8601 UTC time the inputs were extracted (overrides the containers' extracted_at, which are "
+        "still published in input_stamps)",
+        **once,
+    )
+    ap.add_argument(
+        "--now-utc",
+        help="Fallback UTC ISO-8601 timestamp when --extracted-at is omitted and no container states one; "
+        "without either the build is refused",
+        **once,
+    )
     ap.add_argument(
         "--source-pipeline-commit",
         "--pipeline-commit",
@@ -770,6 +768,121 @@ def _run_build(args: argparse.Namespace) -> int:
         raise type(exc)(shown) from None
 
 
+def _resolve_extracted_at(
+    args: argparse.Namespace,
+    trials_meta: Mapping[str, Any],
+    manifest_meta: Mapping[str, Any],
+) -> str:
+    """The build's ``extracted_at``: when the inputs were extracted, never the build time.
+
+    Method: ``--extracted-at`` when given (the operator's statement; every
+    container's own value is still published in ``input_stamps``); else the
+    ``extracted_at`` of the --trials and --cohort-manifest containers, which
+    must agree when both state one (two different values do not say which
+    is the extraction time, so they are refused, never resolved by
+    precedence); else ``--now-utc``. With none of these the build is refused,
+    as an unresolvable commit is: the wall-clock time of the build was once
+    stamped as the extraction time (skeptic review of m3).
+    """
+    if args.extracted_at is not None:
+        return str(args.extracted_at)
+    stated = sorted(
+        {
+            meta["extracted_at"]
+            for meta in (trials_meta, manifest_meta)
+            if meta.get("extracted_at") is not None
+        }
+    )
+    if len(stated) > 1:
+        _fail(
+            "the --trials and --cohort-manifest containers state different extracted_at values; which is the "
+            "extraction time is not said, so pass --extracted-at (nothing was written; each container's own "
+            "value is published in index.json input_stamps)"
+        )
+    if stated:
+        return str(stated[0])
+    if args.now_utc is not None:
+        return str(args.now_utc)
+    _fail(
+        "extracted_at unknown: no --extracted-at, no extracted_at in the --trials or --cohort-manifest "
+        "container and no --now-utc; the build time is never stamped as the extraction time, so pass "
+        "--extracted-at <ISO-8601> (nothing was written)"
+    )
+
+
+def _input_stamps(
+    metas: Mapping[str, Mapping[str, Any]],
+    locations_metas: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Each input container's header stamps (``ol.INPUT_STAMP_KEYS``), by input name.
+
+    Every container's stamps are published in index.json (``input_stamps``),
+    so none is read and dropped (skeptic review of m3: only the trials or
+    manifest container's extracted_at, chosen by precedence, reached the
+    tree). The manifest's columns_note and excluded list are not stamps and
+    are read as before. ``--locations`` gives one entry per file with stamps.
+    """
+    stamps: dict[str, Any] = {}
+    for source, meta in metas.items():
+        block = {key: meta[key] for key in ol.INPUT_STAMP_KEYS if key in meta}
+        if block:
+            stamps[source] = block
+    blocks = [
+        {key: meta[key] for key in ol.INPUT_STAMP_KEYS if key in meta} for meta in locations_metas
+    ]
+    blocks = [block for block in blocks if block]
+    if blocks:
+        stamps["locations"] = blocks
+    return stamps
+
+
+def _one_version(
+    records: Iterable[Any],
+    keys: Sequence[str],
+    source: str,
+    *,
+    rows_key: str | None = None,
+) -> str | None:
+    """The one version string the records state under ``keys``, or None when none states one.
+
+    Method: every object among ``records`` (a record, a list of rows, and
+    with ``rows_key`` each row of a record's ``rows_key`` list) is read; a
+    stated version must be a string. Records stating two or more different
+    versions are refused: component_versions names one version per
+    component, and taking the first record's misattributed every other
+    record to it (skeptic review of m3: a Module 2 record of v2 was
+    published under v1). Each record keeps its own version in its shard.
+    """
+    found: set[str] = set()
+
+    def _read(obj: Any) -> None:
+        if isinstance(obj, list):
+            for item in obj:
+                _read(item)
+            return
+        if not isinstance(obj, Mapping):
+            return
+        for key in keys:
+            value = obj.get(key)
+            if value is None:
+                continue
+            if type(value) is not str:
+                _fail(f"{source}: {key} must be a string or null, got {type(value).__name__}")
+            found.add(value)
+        if rows_key is not None and isinstance(obj.get(rows_key), list):
+            _read(obj[rows_key])
+
+    for record in records:
+        _read(record)
+    if len(found) > 1:
+        _fail(
+            f"{source}: the records state {len(found)} different {'/'.join(keys)} values; index.json's "
+            f"component_versions names one version per component, so records of several versions are refused "
+            f"rather than stamped as one (nothing was written)"
+        )
+    return next(iter(found), None)
+
+
 def _build_and_write(
     args: argparse.Namespace,
     merged: Mapping[str, dict[str, Any]],
@@ -780,11 +893,15 @@ def _build_and_write(
 ) -> int:
     """Read the side streams, build every trial's bundle and write the tree.
 
-    The vector-6 cross-stream firewall (every key, and every record read
-    against its key with ``ol.check_side_input_identity``) runs before any
-    bundle is built or ``--out-dir`` is touched; each bundle is built with
-    the build's holdout set, so a trial record or side input naming a holdout
-    anywhere is refused.
+    The vector-6 cross-stream firewall (every key, a key outside the
+    manifest refused unread, and every other record read against its key with
+    ``ol.check_side_input_identity``) runs before any bundle is built or
+    ``--out-dir`` is touched; each bundle is built with the build's holdout
+    set, so a trial record or side input naming a holdout anywhere is
+    refused. The index header carries the build's own stamps
+    (``_resolve_extracted_at``, the resolved commit), each input container's
+    stamps (``_input_stamps``) and one version per component
+    (``_one_version``).
     """
     docs_by_nct, docs_meta = _load_documents_stream(args.documents) if args.documents else ({}, {})
     locs_by_nct, locs_meta = _load_locations_streams(args.locations) if args.locations else ({}, [])
@@ -808,29 +925,29 @@ def _build_and_write(
         ol.refuse_audit_ids(meta, audit_nct_ids=audit_nct_ids, label=label)
 
     # Vector 6 hard cross-stream firewall BEFORE building or touching --out-dir.
+    # A record for a trial outside the manifest is refused by count before
+    # any record is read (L5/L6: never looked up and dropped; skeptic review
+    # of m3: the identity walk read such a record first and its refusal
+    # printed the record's content).
     ol.assert_no_audit_cross_stream_leakage(
         audit_nct_ids,
         documents_by_nct=docs_by_nct,
         locations_by_nct=locs_by_nct,
         provenance_by_nct=prov_by_nct,
         population_parsed_by_nct=pop_by_nct,
-    )
-    _check_side_stream_membership(
-        {
-            "--documents": docs_by_nct,
-            "--locations": locs_by_nct,
-            "--provenance": prov_by_nct,
-            "--population-parsed": pop_by_nct,
-        },
-        set(merged),
+        allowed_nct_ids=frozenset(merged),
     )
 
-    extracted_at = (
-        args.extracted_at
-        or trials_meta.get("extracted_at")
-        or manifest_meta.get("extracted_at")
-        or args.now_utc
-        or datetime.now(timezone.utc).isoformat()
+    extracted_at = _resolve_extracted_at(args, trials_meta, manifest_meta)
+    input_stamps = _input_stamps(
+        {
+            "cohort_manifest": manifest_meta,
+            "trials": trials_meta,
+            "documents": docs_meta,
+            "provenance": prov_meta,
+            "population_parsed": pop_meta,
+        },
+        locs_meta,
     )
 
     component_versions: dict[str, str | None] = {
@@ -838,18 +955,24 @@ def _build_and_write(
     }
     if manifest_meta.get("run_id") is not None:
         component_versions["cohort_manifest"] = manifest_meta["run_id"]
-    for prof in docs_by_nct.values():
-        if isinstance(prof, Mapping) and isinstance(prof.get("indexer_rules_version"), str):
-            component_versions["document_indexer"] = prof["indexer_rules_version"]
-            break
-    for prov in prov_by_nct.values():
-        if isinstance(prov, Mapping) and isinstance(prov.get("provenance_rules_version"), str):
-            component_versions["longitudinal_provenance"] = prov["provenance_rules_version"]
-            break
-    for pop in pop_by_nct.values():
-        if isinstance(pop, Mapping) and isinstance(pop.get("parser_rules_version"), str):
-            component_versions["analysis_population_parser"] = pop["parser_rules_version"]
-            break
+    for name, version in (
+        (
+            "document_indexer",
+            _one_version(
+                [docs_meta, *docs_by_nct.values()], ("indexer_rules_version",), "--documents"
+            ),
+        ),
+        (
+            "longitudinal_provenance",
+            _one_version(prov_by_nct.values(), ("provenance_rules_version",), "--provenance"),
+        ),
+        (
+            "analysis_population_parser",
+            _one_version(pop_by_nct.values(), ("parser_rules_version",), "--population-parsed", rows_key="outcomes"),
+        ),
+    ):
+        if version is not None:
+            component_versions[name] = version
 
     bundles: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for nct_id in sorted(merged):
@@ -872,6 +995,7 @@ def _build_and_write(
         source_pipeline_commit=commit,
         shards=args.shards,
         component_versions=component_versions,
+        input_stamps=input_stamps,
     )
 
     result = ol.write_outcomes_tree(args.out_dir, index_doc, shard_docs)

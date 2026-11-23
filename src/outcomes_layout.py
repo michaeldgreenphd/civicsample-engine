@@ -69,6 +69,18 @@ An in-scope trial's record may carry a side section inline at its top level,
 which is then published (and must equal the same section given as a side
 input); a section key the builder does not read is refused.
 
+Provenance is carried, never dropped or assembled: ``index.json`` holds the
+build's own ``extracted_at`` (when the inputs were extracted, never the
+build time) and ``source_pipeline_commit``, ``input_stamps`` (each input
+container's own stamps, by input) and ``component_versions`` (one version
+per component; inputs of several versions are refused by the CLI). Each
+section keeps its source's stamps: a document profile its indexer version,
+extraction time and commit, every Module 1 document field, a Module 2
+record its ``analysis_populations`` (parser version, vocabulary hash,
+snapshot date). A trial's ``primary_outcomes_count`` is its registered
+outcomes' when it has any (``primary_outcomes_count_of``); a stated count
+they contradict is refused, and location rows are bounded by it.
+
 Every input is read as ``plain_data`` where it is taken (a dataclass by its
 fields, any Sequence as a list), so the identity walk, the holdout-flag
 reading and Module 4's audit-ID scan read exactly what is published.
@@ -394,7 +406,33 @@ INDEX_HEADERS: tuple[str, ...] = (
     "total_trials",
     "audit_holdout_trials",
     "component_versions",
+    "input_stamps",
     "data",
+)
+
+# The header stamps an input container may carry (a JSON object holding one
+# row list beside them), and the inputs that may carry them. They are
+# published in index.json's ``input_stamps`` under the input's name (the
+# locations input, which may be several files, as one entry per file that
+# has any), as given: each input's extraction time and pipeline commit stay
+# with that input, and none is dropped (skeptic review of m3: every
+# container's stamps were read, and only the trials or manifest container's
+# extracted_at, chosen by precedence, reached the tree).
+INPUT_STAMP_KEYS: tuple[str, ...] = (
+    "extracted_at",
+    "pipeline_commit",
+    "source_pipeline_commit",
+    "indexer_rules_version",
+    "run_id",
+    "schema_version",
+)
+INPUT_STAMP_SOURCES: tuple[str, ...] = (
+    "cohort_manifest",
+    "trials",
+    "documents",
+    "locations",
+    "provenance",
+    "population_parsed",
 )
 
 SHARD_HEADERS: tuple[str, ...] = (
@@ -471,12 +509,39 @@ FORBIDDEN_RAW_TEXT_KEYS: frozenset[str] = frozenset({
     "full_text",
 })
 
+
+def _folded_key(key: Any) -> str:
+    """Fold a key the way Module 4 folds the holdout-flag key.
+
+    Method: NFKC folding, invisible and format characters removed
+    (``_strip_invisible``), case folded, and everything but the letters a-z
+    dropped. ``nct_id``, ``nctId``, ``NCT-ID``, ``"nct id"`` and ``nct`` +
+    U+200B + ``_id`` all fold to ``nctid``; ``in_audit`` and ``inAudit`` to
+    ``inaudit``. The fold is used only to recognise a key, never shown.
+    """
+    text = key if isinstance(key, str) else str(key)
+    folded = _strip_invisible(unicodedata.normalize("NFKC", text)).casefold()
+    return re.sub(r"[^a-z]", "", folded)
+
+
+def _folded_forms(*spellings: str) -> frozenset[str]:
+    """The folded forms (``_folded_key``) of ``spellings``.
+
+    Every key-form set below is built through this, because a key is
+    compared only after it is folded: a listed spelling that is not its own
+    fold could never match (skeptic review of m3: ``"sha256"`` was listed as
+    written, folds to ``"sha"``, and a PDF's sha256 in a trial's record was
+    dropped without a word).
+    """
+    return frozenset(_folded_key(spelling) for spelling in spellings)
+
+
 # Keys naming a shard section or a side input, folded (``_folded_key``). A
 # holdout's stub carries none of these, so one found anywhere in a holdout's
 # own --trials or manifest record is holdout material in the input, refused
 # (AuditFirewallError) rather than dropped. CT.gov's own schema has none of
 # them, so the whole record is read, its native sections included.
-HOLDOUT_INLINE_SECTION_FORMS: frozenset[str] = frozenset({
+HOLDOUT_INLINE_SECTION_FORMS: frozenset[str] = _folded_forms(
     "reportedresults",
     "documentprofile",
     "decisionrulelocations",
@@ -484,7 +549,7 @@ HOLDOUT_INLINE_SECTION_FORMS: frozenset[str] = frozenset({
     "analysispopulationparsed",
     "parsedpopulations",
     "populationparsed",
-})
+)
 
 # Keys of a section's content (folded), as a side input carries them inside
 # its wrapper: a Module 1 profile's documents and summary, Module 4's
@@ -497,7 +562,7 @@ HOLDOUT_INLINE_SECTION_FORMS: frozenset[str] = frozenset({
 # schema uses some of these spellings (documentSection's largeDocs folds to
 # largedocs), so those sections are read for the wrapped forms and the
 # vector-3 keys instead.
-HOLDOUT_SIDE_CONTENT_FORMS: frozenset[str] = frozenset({
+HOLDOUT_SIDE_CONTENT_FORMS: frozenset[str] = _folded_forms(
     "documents",
     "readabilitysummary",
     "redactionflags",
@@ -524,11 +589,12 @@ HOLDOUT_SIDE_CONTENT_FORMS: frozenset[str] = frozenset({
     "primaryoutcomemeasures",
     "registeredprimaryoutcomes",
     "resultsposted",
+    "analysispopulations",
     "pagetexts",
     "rawpages",
     "pagestext",
     "fulltext",
-})
+)
 
 # Keys of one side row (folded), as a Module 1 document row, a PDF inspection
 # row or a decision-rule location row carries them: a document's PDF-scraped
@@ -540,7 +606,7 @@ HOLDOUT_SIDE_CONTENT_FORMS: frozenset[str] = frozenset({
 # version_date_as_printed on CT.gov's own largeDocs, were dropped without a
 # word). Keys CT.gov's schema does use (filename, url, status, title, note)
 # are not listed; a side row carries listed keys beside them.
-SIDE_ROW_KEY_FORMS: frozenset[str] = frozenset({
+SIDE_ROW_KEY_FORMS: frozenset[str] = _folded_forms(
     "sha256",
     "physicalpages",
     "pageswithouttext",
@@ -558,6 +624,9 @@ SIDE_ROW_KEY_FORMS: frozenset[str] = frozenset({
     "unreadablesubtype",
     "unreadablerecoverybucket",
     "unreadablestatisticalpages",
+    "apidocdate",
+    "uploadtiming",
+    "cachehit",
     "profileversion",
     "primaryoutcomeindex",
     "primaryoutcometitle",
@@ -567,14 +636,14 @@ SIDE_ROW_KEY_FORMS: frozenset[str] = frozenset({
     "textsource",
     "sourcepass",
     "promptversion",
-})
+)
 
 # The side-content forms CT.gov's own schema uses inside its native sections
 # (documentSection.largeDocumentModule.largeDocs folds to ``largedocs``); every
 # other form of HOLDOUT_SIDE_CONTENT_FORMS and SIDE_ROW_KEY_FORMS is read there
 # too (red-team m3 round 3: a primary_pass inside protocolSection.outcomesModule
 # and a documents list inside resultsSection were dropped without a word).
-_CTGOV_NATIVE_CONTENT_FORMS: frozenset[str] = frozenset({"largedocs"})
+_CTGOV_NATIVE_CONTENT_FORMS: frozenset[str] = _folded_forms("largedocs")
 
 # The positions at which an in-scope trial's own record may carry a section
 # inline, and the builder reads it there: the three side sections and a
@@ -592,8 +661,8 @@ INLINE_SIDE_SECTIONS: tuple[str, ...] = (
 # Folded key forms read as naming a trial (``_folded_key``): one ID, or a list
 # of IDs. These are Module 4's named keys (nct_id, nctId, trial_nct_id;
 # nct_ids, trial_nct_ids) under any case, separator or invisible character.
-_TRIAL_ID_KEY_FORMS: frozenset[str] = frozenset({"nctid", "trialnctid"})
-_TRIAL_ID_LIST_KEY_FORMS: frozenset[str] = frozenset({"nctids", "trialnctids"})
+_TRIAL_ID_KEY_FORMS: frozenset[str] = _folded_forms("nctid", "trialnctid")
+_TRIAL_ID_LIST_KEY_FORMS: frozenset[str] = _folded_forms("nctids", "trialnctids")
 
 # Index-row fields that hold one scalar each: text (str or None), a whole
 # number (int, never bool, or None), a flag (bool) or a tri-state flag (bool
@@ -731,14 +800,21 @@ def withhold_if_names(text: str, nct_ids: AbstractSet[str]) -> str:
 def strict_nct_id(value: Any, label: str = "nct_id") -> str:
     """Return ``value`` if it is an ASCII ``^NCT[0-9]{8}$`` string, else raise.
 
-    Delegates to Module 4's ``validate_strict_nct_id`` (no stripping, no case
-    folding, no non-ASCII digits) and re-raises its refusal as
-    ``OutcomesLayoutError``; Module 4's message withholds any NCT-like value.
+    Delegates the decision to Module 4's ``validate_strict_nct_id`` (no
+    stripping, no case folding, no non-ASCII digits). The refusal names the
+    position (NCT-like tokens withheld) and the value's type only, never the
+    value: Module 4's message quotes a value that holds no NCT-like token
+    (its ``repr``), and a holdout's record, or the side record of a trial
+    outside the manifest, placed results text under a trial-ID key, which the
+    refusal printed (skeptic review of m3).
     """
     try:
         return validate_strict_nct_id(value, context=label)
-    except CitationVerificationError as exc:
-        raise OutcomesLayoutError(str(exc)) from None
+    except CitationVerificationError:
+        raise OutcomesLayoutError(
+            f"{withhold_nct_ids(label)} must be a strict ASCII ^NCT[0-9]{{8}}$ trial ID, got "
+            f"{type(value).__name__} that is not one (value not shown)"
+        ) from None
 
 
 # ── sharding and naming ───────────────────────────────────────────────────────
@@ -1369,6 +1445,7 @@ def assert_no_audit_cross_stream_leakage(
     profiles_by_nct: Mapping[str, Any] | None = None,
     provenance_by_nct: Mapping[str, Any] | None = None,
     population_parsed_by_nct: Mapping[str, Any] | None = None,
+    allowed_nct_ids: AbstractSet[str] | None = None,
 ) -> None:
     """Vector 6: abort BEFORE touching output dirs if any audit NCT appears in
     any side stream (documents, locations, document profiles, provenance or
@@ -1387,7 +1464,11 @@ def assert_no_audit_cross_stream_leakage(
        the same way;
     2. a key that is an audit trial is a leak (counts and stream names only in
        the message, never an ID);
-    3. every record is read with ``check_side_input_identity`` against its own
+    3. with ``allowed_nct_ids`` (the build's trials), a key outside it is
+       refused by count, before any record is read (skeptic review of m3:
+       the identity walk read a trial-absent record first, and its refusal
+       printed the record's content);
+    4. every record is read with ``check_side_input_identity`` against its own
        key, as a trial outside the holdout: a nested trial-ID key, URL or
        mapping key naming another trial, a holdout flag that is not false, or
        any key or string naming an audit trial in any reading is refused.
@@ -1395,6 +1476,7 @@ def assert_no_audit_cross_stream_leakage(
     another trial is refused either way.
     """
     audit = _strict_id_set(audit_nct_ids, "audit_nct_ids")
+    allowed = None if allowed_nct_ids is None else _strict_id_set(allowed_nct_ids, "allowed_nct_ids")
     streams: list[tuple[str, Mapping[str, Any]]] = []
     for stream_name, mapping in (
         ("locations", locations_by_nct),
@@ -1420,6 +1502,14 @@ def assert_no_audit_cross_stream_leakage(
                 f"in_audit holdout leak (vector 6) — {leaked} audit holdout trial(s) present "
                 f"in {stream_name} stream (IDs withheld); aborting before touching output directory"
             )
+    if allowed is not None:
+        for stream_name, mapping in streams:
+            outside = sum(1 for nct in mapping if nct not in allowed)
+            if outside:
+                raise OutcomesLayoutError(
+                    f"{stream_name} stream: {outside} trial(s) absent from the cohort manifest; a record for a "
+                    f"trial outside the build is refused unread, not dropped (IDs withheld)"
+                )
     for stream_name, mapping in streams:
         for key, record in mapping.items():
             check_side_input_identity(
@@ -1432,20 +1522,6 @@ def assert_no_audit_cross_stream_leakage(
 
 
 # ── side-input identity: nested trial IDs and in_audit flags ─────────────────
-
-def _folded_key(key: Any) -> str:
-    """Fold a key the way Module 4 folds the holdout-flag key.
-
-    Method: NFKC folding, invisible and format characters removed
-    (``_strip_invisible``), case folded, and everything but the letters a-z
-    dropped. ``nct_id``, ``nctId``, ``NCT-ID``, ``"nct id"`` and ``nct`` +
-    U+200B + ``_id`` all fold to ``nctid``; ``in_audit`` and ``inAudit`` to
-    ``inaudit``. The fold is used only to recognise a key, never shown.
-    """
-    text = key if isinstance(key, str) else str(key)
-    folded = _strip_invisible(unicodedata.normalize("NFKC", text)).casefold()
-    return re.sub(r"[^a-z]", "", folded)
-
 
 # Module 4's URL keys (url, source_url, pdf_url, document_url, uri), folded.
 _URL_KEY_FORMS: frozenset[str] = frozenset(_folded_key(k) for k in _M4_URL_FIELD_KEYS)
@@ -1643,6 +1719,35 @@ def check_side_input_identity(
     _scan_for_audit_trials(obj, audit_nct_ids=audit - {expected}, label=label)
 
 
+# CT.gov v2's position of another record's ID: the expanded-access record's
+# NCT number, under exactly this route and spelling.
+_EXPANDED_ACCESS_ID_ROUTE: tuple[str, ...] = ("protocolSection", "statusModule", "expandedAccessInfo")
+
+
+def _without_expanded_access_record_id(trial: dict[str, Any], *, label: str) -> dict[str, Any]:
+    """``trial`` without CT.gov's ``expandedAccessInfo.nctId`` (a strict ID or null, else refused).
+
+    Method: the route is followed by structure (``_EXPANDED_ACCESS_ID_ROUTE``,
+    each step an object), never by a path string a key could imitate; only
+    the objects on the route are copied, the input is not changed. Any other
+    spelling of the key there is still read by rule 1.
+    """
+    node: Any = trial
+    for step in _EXPANDED_ACCESS_ID_ROUTE:
+        node = node.get(step) if isinstance(node, dict) else None
+    if not isinstance(node, dict) or "nctId" not in node:
+        return trial
+    if node["nctId"] is not None:
+        strict_nct_id(node["nctId"], f"{label}.{'.'.join(_EXPANDED_ACCESS_ID_ROUTE)}.nctId")
+    copied = dict(trial)
+    parent = copied
+    for step in _EXPANDED_ACCESS_ID_ROUTE[:-1]:
+        parent[step] = dict(parent[step])
+        parent = parent[step]
+    parent[_EXPANDED_ACCESS_ID_ROUTE[-1]] = {k: v for k, v in node.items() if k != "nctId"}
+    return copied
+
+
 def check_trial_record_identity(
     trial: Mapping[str, Any],
     *,
@@ -1663,13 +1768,20 @@ def check_trial_record_identity(
     so rules 3 and 4 (other trials in URLs and keys) are not applied; Module 4
     likewise reads registry text for audit IDs only. A holdout's own record is
     not scanned for text: it is reduced to its stub and never published.
+
+    One CT.gov v2 field is another record's ID by its schema:
+    ``protocolSection.statusModule.expandedAccessInfo.nctId``, the NCT number
+    of the trial's expanded-access record. It is a strict ID (or null), and
+    rule 1 does not read it as this record's (skeptic review of m3: any trial
+    with an expanded-access program refused the whole --trials build); the
+    audit scan still reads it, so one naming a holdout is refused.
     """
     expected = strict_nct_id(expected_nct_id, f"{label}: expected nct_id")
     expected_flag = _require_strict_bool(expected_in_audit, f"{label}: expected in_audit")
     audit = _strict_id_set(audit_nct_ids, "audit_nct_ids")
     trial = plain_data(trial, label)
     _refuse_named_ids_and_flags(
-        list(_iter_mapping_entries(trial)),
+        list(_iter_mapping_entries(_without_expanded_access_record_id(trial, label=label))),
         expected_nct_id=expected,
         expected_in_audit=expected_flag,
         label=label,
@@ -1985,6 +2097,69 @@ def _extract_parsed_population_map(
     return by_index
 
 
+# Module 2's TrialAnalysisPopulations fields published with a trial's
+# results, as ``reported_results.analysis_populations``: every field but
+# ``nct_id`` (the trial's own, checked against it) and ``outcomes`` (each row
+# is published with its measure as ``analysis_population_parsed``). The
+# record's provenance (parser_rules_version, vocabulary_sha256,
+# snapshot_date) stays with the trial it describes (skeptic review of m3: only
+# ``outcomes`` was read, and the hash and snapshot date were dropped).
+POPULATION_RECORD_FIELDS: frozenset[str] = frozenset({
+    "snapshot_date",
+    "enrollment",
+    "has_results_section",
+    "has_participant_flow",
+    "n_outcomes_total",
+    "n_primary_outcomes",
+    "primary_population_classes",
+    "parse_ok",
+    "parser_rules_version",
+    "vocabulary_sha256",
+})
+
+
+def _population_record_fields(fields: Mapping[str, Any], label: str) -> dict[str, Any] | None:
+    """Module 2 trial-level fields, as given, or refused; None when there are none.
+
+    Method: every key must be one of ``POPULATION_RECORD_FIELDS`` (any other
+    would be dropped, so it is refused); ``primary_population_classes`` is a
+    list of strings or null, every other value a scalar (a string, number or
+    bool) or null, never an object. Messages name keys and types, never values.
+    """
+    unknown = sorted(withhold_nct_ids(str(key)) for key in fields if key not in POPULATION_RECORD_FIELDS)
+    if unknown:
+        raise OutcomesLayoutError(
+            f"{label}: the record carries {len(unknown)} key(s) the builder does not publish "
+            f"({', '.join(unknown[:5])}); they would be dropped, so they are refused"
+        )
+    for key, value in fields.items():
+        if value is None:
+            continue
+        if key == "primary_population_classes":
+            if not isinstance(value, list) or not all(type(item) is str for item in value):
+                raise OutcomesLayoutError(f"{label}.{key} must be a list of strings or null, got {type(value).__name__}")
+        elif type(value) not in (str, int, float, bool):
+            raise OutcomesLayoutError(f"{label}.{key} must be a scalar or null, got {type(value).__name__}")
+    return canonicalize_nested(dict(fields)) if fields else None
+
+
+def _population_record(parsed_populations: Any) -> dict[str, Any] | None:
+    """The trial-level fields of a Module 2 record (``_population_record_fields``).
+
+    Method: an object carrying ``outcomes`` is a ``TrialAnalysisPopulations``
+    record: its keys but ``outcomes``, ``nct_id`` and holdout flags (read by
+    the caller, False) are its trial-level fields. A list of rows has none.
+    """
+    if not isinstance(parsed_populations, dict):
+        return None
+    fields = {
+        key: value
+        for key, value in parsed_populations.items()
+        if key not in ("outcomes", "nct_id") and not is_holdout_flag_key(key)
+    }
+    return _population_record_fields(fields, "parsed populations")
+
+
 def _attach_populations(
     measures: Sequence[tuple[Mapping[str, Any], int, tuple[int, ...]]],
     pop_by_idx: Mapping[int, Mapping[str, Any]],
@@ -2035,16 +2210,24 @@ _PREBUILT_RESULTS_KEYS: frozenset[str] = frozenset({
     "results_posted",
     "registered_primary_outcomes",
     "primary_outcome_measures",
+    "analysis_populations",
 })
 
 
 def _prebuilt_indexes(rows: Sequence[Mapping[str, Any]], label: str) -> list[int]:
-    """The outcome index of each pre-built row: its own ``outcome_index``, else its position.
+    """The outcome index of each pre-built row: its position, which a stated ``outcome_index`` must be.
 
-    Method: a stated ``outcome_index`` must be a non-negative int; any other
-    value is refused, never replaced by the row's position (red-team m3 round
-    3: ``"1"`` became 0 and two measures shared index 0). Two rows with one
-    index are refused as conflicting.
+    Method: the builder numbers registered primary outcomes and primary
+    measures by their position in CT.gov's lists, so a block it writes holds
+    ``0..n-1`` in order, and a pre-built block is held to that. A stated
+    ``outcome_index`` must be a non-negative int (any other value is
+    refused, never replaced by the row's position; red-team m3 round 3:
+    ``"1"`` became 0 and two measures shared index 0) and the row's
+    position: registered outcomes numbered 0 and 7, or a lone measure for
+    outcome 9, name outcomes the list does not hold, and location rows were
+    then bounded by the list's length, so rows for an absent outcome 1 were
+    published and rows for the stated outcome 7 refused (skeptic review of
+    m3). Such a block is refused.
     """
     indexes: list[int] = []
     for pos, row in enumerate(rows):
@@ -2055,14 +2238,52 @@ def _prebuilt_indexes(rows: Sequence[Mapping[str, Any]], label: str) -> list[int
                     f"{label}[{pos}].outcome_index must be a non-negative int, got {type(own).__name__}; it is "
                     f"never replaced by the row's position"
                 )
-        else:
-            own = pos
-        if own in indexes:
-            raise OutcomesLayoutError(
-                f"{label}: two rows have outcome index {own}; conflicting rows are refused, not resolved"
-            )
-        indexes.append(own)
+            if own != pos:
+                raise OutcomesLayoutError(
+                    f"{label}[{pos}].outcome_index is {own}, not its position {pos}; primary outcomes are numbered "
+                    f"by position (CT.gov's order), so an index elsewhere names an outcome the list does not hold "
+                    f"and the block is refused"
+                )
+        indexes.append(pos)
     return indexes
+
+
+def primary_outcomes_count_of(
+    stated: int | None,
+    reported_results: Mapping[str, Any],
+    *,
+    label: str = "trial",
+) -> int | None:
+    """A trial's primary outcome count: its registered outcomes' when it has any.
+
+    Method: the count bounds the trial's location rows (an outcome index at
+    or past it is refused) and sets the outcomes a complete census covers,
+    so it is the trial's own wherever the trial says: the number of
+    ``registered_primary_outcomes`` (numbered ``0..n-1``,
+    ``_prebuilt_indexes``) when the results block has any, and a ``stated``
+    count (the manifest row's ``primary_outcomes_count`` or
+    ``n_primary_outcomes``) that differs from it is refused, never taken over
+    it (skeptic review of m3: a live row's n_primary_outcomes 2 beside a
+    record registering one outcome published location rows for outcome 1,
+    and --check passed them). With no registered outcome, the stated count;
+    else the number of posted primary measures; else None (unknown). The
+    builder writes the result as the index row's ``primary_outcomes_count``,
+    and --check recomputes it from the shard the same way.
+    """
+    registered = reported_results.get("registered_primary_outcomes")
+    measures = reported_results.get("primary_outcome_measures")
+    n_registered = len(registered) if isinstance(registered, list) else 0
+    if n_registered:
+        if stated is not None and stated != n_registered:
+            raise OutcomesLayoutError(
+                f"{label}: the stated primary outcome count ({stated}) is not the {n_registered} primary "
+                f"outcome(s) the trial's record registers; a count the record contradicts is refused, never "
+                f"taken over the record's own outcomes"
+            )
+        return n_registered
+    if stated is not None:
+        return stated
+    return len(measures) if isinstance(measures, list) and measures else None
 
 
 def _registered_measure_text(value: Any, where: str) -> str | None:
@@ -2120,7 +2341,16 @@ def extract_reported_results(
     block with a key this block does not have, a ``hasResults`` that
     disagrees with the pre-built ``results_posted``, a parsed population for
     an outcome index the results do not have, or one that differs from the
-    measure's own inline ``analysis_population_parsed`` is refused.
+    measure's own inline ``analysis_population_parsed`` is refused, as is a
+    pre-built outcome whose ``outcome_index`` is not its position
+    (``_prebuilt_indexes``).
+
+    A Module 2 ``TrialAnalysisPopulations`` record (an object with an
+    ``outcomes`` list) has its trial-level fields, provenance included,
+    published as ``analysis_populations`` (``POPULATION_RECORD_FIELDS``; a
+    key outside them is refused); a list of rows, or no populations, gives
+    None. A pre-built block's own ``analysis_populations`` and a supplied
+    record must agree.
     """
     study = plain_data(study, "study")
     if not isinstance(study, dict):
@@ -2172,6 +2402,23 @@ def extract_reported_results(
                 "conflicting inputs are refused, not resolved"
             )
         pop_by_idx = _extract_parsed_population_map(parsed_populations)
+        supplied_record = _population_record(parsed_populations)
+        pre_record_raw = pre.get("analysis_populations")
+        if pre_record_raw is not None and not isinstance(pre_record_raw, Mapping):
+            raise OutcomesLayoutError(
+                f"reported_results.analysis_populations must be an object or null, got {type(pre_record_raw).__name__}"
+            )
+        pre_record = (
+            _population_record_fields(pre_record_raw, "reported_results.analysis_populations")
+            if pre_record_raw is not None
+            else None
+        )
+        if pre_record is not None and supplied_record is not None and pre_record != supplied_record:
+            raise OutcomesLayoutError(
+                "reported_results.analysis_populations and the parsed populations' record differ; conflicting "
+                "inputs are refused, not resolved"
+            )
+        population_record = pre_record if pre_record is not None else supplied_record
         indexed: list[tuple[Mapping[str, Any], int, tuple[int, ...]]] = []
         for own, m in zip(_prebuilt_indexes(measures, "reported_results.primary_outcome_measures"), measures):
             indexed.append((m, own, (own,)))
@@ -2200,6 +2447,7 @@ def extract_reported_results(
             "results_posted": results_posted,
             "registered_primary_outcomes": norm_reg,
             "primary_outcome_measures": norm_measures,
+            "analysis_populations": population_record,
         })
 
     results_sec = study.get("resultsSection") if isinstance(study.get("resultsSection"), Mapping) else {}
@@ -2232,6 +2480,7 @@ def extract_reported_results(
         parsed_populations = plain_data(population_parser(copy.deepcopy(study)), "population_parser result")
         _refuse_holdout_flags(parsed_populations, label="reported_results")
     pop_by_idx = _extract_parsed_population_map(parsed_populations)
+    population_record = _population_record(parsed_populations)
 
     om_mod = (
         results_sec.get("outcomeMeasuresModule")
@@ -2273,6 +2522,7 @@ def extract_reported_results(
         "results_posted": results_posted_ct,
         "registered_primary_outcomes": registered,
         "primary_outcome_measures": primary_measures,
+        "analysis_populations": population_record,
     })
 
 
@@ -2315,6 +2565,56 @@ def _summarize_doc_readability(docs: Sequence[Mapping[str, Any]]) -> str:
     return "partial_image_or_redacted"
 
 
+# Every key a document row may carry: Module 1's TrialDocumentRecord (the
+# m1 branch's src/document_indexer.py), and the two provenance keys of its
+# legacy census projection (to_legacy_census_document_row: model_id,
+# profile_version). Each is published with the row (a key the row does not
+# carry is not written), so a key outside this set would be dropped, and is
+# refused (skeptic review of m3: api_doc_date, upload_timing,
+# unreadable_statistical_pages, unreadable_recovery_bucket and cache_hit were
+# dropped without a word). Holdout flags are read by the caller (False).
+DOCUMENT_ROW_KEYS: frozenset[str] = frozenset({
+    "nct_id",
+    "filename",
+    "doc_type",
+    "url",
+    "http_status",
+    "download_error",
+    "extraction_error",
+    "sha256",
+    "bytes",
+    "physical_pages",
+    "pages_without_text",
+    "readability_status",
+    "unreadable_recovery_bucket",
+    "redaction_markers",
+    "version_label",
+    "version_date_as_printed",
+    "api_doc_date",
+    "upload_date",
+    "upload_timing",
+    "pages_selected",
+    "pages_deferred",
+    "unreadable_statistical_pages",
+    "retrieved_at",
+    "cache_hit",
+    "model_id",
+    "profile_version",
+})
+# Every key a document profile may carry: Module 1's TrialDocumentProfile.
+DOCUMENT_PROFILE_KEYS: frozenset[str] = frozenset({
+    "nct_id",
+    "indexer_rules_version",
+    "extracted_at",
+    "pipeline_commit",
+    "readability_summary",
+    "redaction_flags",
+    "excluded_icf_count",
+    "document_badge",
+    "documents",
+})
+
+
 def _normalize_single_document(
     raw_doc: Mapping[str, Any],
     *,
@@ -2325,8 +2625,27 @@ def _normalize_single_document(
     A row's own ``nct_id``, when present, must be a strict ASCII NCT ID and,
     when the caller knows the trial (``expected_nct_id``), that trial's: a
     document row naming another trial is refused, never filed under this one.
+
+    Every key is published or refused, never dropped (``DOCUMENT_ROW_KEYS``):
+    a text field is a string or null, never the ``str()`` of an object
+    (skeptic review of m3: an object url was published as its text), and
+    Module 1's ``api_doc_date``, ``upload_timing`` (an object whose
+    ``date_precision`` values are Module 1's), ``unreadable_statistical_pages``
+    (positive page numbers), ``unreadable_recovery_bucket`` (Module 4's
+    ``UNREADABLE_SUBTYPES``), ``cache_hit`` (a bool) and the census row's
+    ``model_id`` and ``profile_version`` are written when the row carries them.
     """
     _reject_embedded_raw_text(raw_doc, "document")
+    unknown = sorted(
+        withhold_nct_ids(str(key))
+        for key in raw_doc
+        if key not in DOCUMENT_ROW_KEYS and not is_holdout_flag_key(key)
+    )
+    if unknown:
+        raise OutcomesLayoutError(
+            f"document: the row carries {len(unknown)} key(s) a document row does not have "
+            f"({', '.join(unknown[:5])}); they would be dropped, so they are refused"
+        )
     if "nct_id" in raw_doc:
         row_nct = strict_nct_id(raw_doc["nct_id"], "document.nct_id")
         if expected_nct_id is not None and row_nct != expected_nct_id:
@@ -2399,16 +2718,18 @@ def _normalize_single_document(
         else:
             readability_status = "machine_readable"
 
-    def _opt_str(val: Any) -> str | None:
+    def _opt_str(val: Any, key_name: str = "text field") -> str | None:
+        # A string as given ("" is absent), or null; never str() of an object.
         if val is None:
             return None
-        s = str(val)
-        return s if s != "" else None
+        if type(val) is not str:
+            raise OutcomesLayoutError(f"{filename}.{key_name} must be a string or null, got {type(val).__name__}")
+        return val if val != "" else None
 
     out: dict[str, Any] = {
         "filename": filename,
         "doc_type": doc_type,
-        "url": _opt_str(raw_doc.get("url")),
+        "url": _opt_str(raw_doc.get("url"), "url"),
         "http_status": http_status,
         "sha256": sha256,
         "bytes": byte_count,
@@ -2416,12 +2737,12 @@ def _normalize_single_document(
         "pages_without_text": pages_without_text,
         "readability_status": readability_status,
         "redaction_markers": redaction_markers,
-        "version_label": _opt_str(raw_doc.get("version_label")),
-        "version_date_as_printed": _opt_str(raw_doc.get("version_date_as_printed")),
-        "upload_date": _opt_str(raw_doc.get("upload_date")),
+        "version_label": _opt_str(raw_doc.get("version_label"), "version_label"),
+        "version_date_as_printed": _opt_str(raw_doc.get("version_date_as_printed"), "version_date_as_printed"),
+        "upload_date": _opt_str(raw_doc.get("upload_date"), "upload_date"),
         "pages_selected": pages_selected,
         "pages_deferred": pages_deferred,
-        "retrieved_at": _opt_str(raw_doc.get("retrieved_at")),
+        "retrieved_at": _opt_str(raw_doc.get("retrieved_at"), "retrieved_at"),
     }
     # Module 1 records why a document has no pages: download_error when its
     # bytes were never obtained (download_failed), extraction_error when they
@@ -2445,6 +2766,41 @@ def _normalize_single_document(
                     f"records it only for that state, so the row contradicts itself"
                 )
         out[reason_key] = reason
+    if "api_doc_date" in raw_doc:
+        out["api_doc_date"] = _opt_str(raw_doc["api_doc_date"], "api_doc_date")
+    if "upload_timing" in raw_doc:
+        timing = raw_doc["upload_timing"]
+        if timing is not None:
+            if not isinstance(timing, Mapping):
+                raise OutcomesLayoutError(f"{filename}.upload_timing must be an object or null, got {type(timing).__name__}")
+            _validate_date_precisions_recursive(timing, f"{filename}.upload_timing")
+            timing = plain_data(timing, f"{filename}.upload_timing")
+        out["upload_timing"] = timing
+    if "unreadable_statistical_pages" in raw_doc:
+        out["unreadable_statistical_pages"] = _int_list_or_none(
+            raw_doc["unreadable_statistical_pages"], "unreadable_statistical_pages"
+        )
+    if "unreadable_recovery_bucket" in raw_doc:
+        bucket = raw_doc["unreadable_recovery_bucket"]
+        if bucket is not None and (type(bucket) is not str or bucket not in UNREADABLE_SUBTYPES):
+            raise OutcomesLayoutError(
+                f"{filename}.unreadable_recovery_bucket must be one of {UNREADABLE_SUBTYPES} or null "
+                f"(value not shown)"
+            )
+        out["unreadable_recovery_bucket"] = bucket
+    if "cache_hit" in raw_doc:
+        cache_hit = raw_doc["cache_hit"]
+        if cache_hit is not None and type(cache_hit) is not bool:
+            raise OutcomesLayoutError(f"{filename}.cache_hit must be a bool or null, got {type(cache_hit).__name__}")
+        out["cache_hit"] = cache_hit
+    for provenance_key in ("model_id", "profile_version"):
+        if provenance_key in raw_doc:
+            stamp = raw_doc[provenance_key]
+            if stamp is not None and (type(stamp) is not str or not stamp.strip()):
+                raise OutcomesLayoutError(
+                    f"{filename}.{provenance_key} must be a non-empty string or null, got {type(stamp).__name__}"
+                )
+            out[provenance_key] = stamp
     return canonicalize_nested(out)
 
 
@@ -2471,6 +2827,13 @@ def normalize_document_profile(
     ``excluded_icf_count`` (a non-negative int or null) are published with it
     when given, so the section cannot outrun its source unnoticed (round 3:
     they were dropped).
+
+    A profile key outside Module 1's (``DOCUMENT_PROFILE_KEYS``) is refused,
+    never dropped, as is a non-string ``indexer_rules_version``; Module 1's
+    own ``document_badge``, when given, must be the badge the profile's
+    documents give (``build_document_badge``, which the index row publishes),
+    or the two disagree and are refused (skeptic review of m3: it was read
+    and dropped). Each document row is held to ``DOCUMENT_ROW_KEYS``.
     """
     if raw is None:
         return None
@@ -2488,13 +2851,29 @@ def normalize_document_profile(
     stamps: dict[str, Any] = {}
     raw_docs: Sequence[Mapping[str, Any]]
 
+    module1_badge: Any = None
     if isinstance(raw, Mapping):
         _reject_embedded_raw_text(raw, "document_profile")
+        unknown = sorted(
+            withhold_nct_ids(str(key))
+            for key in raw
+            if key not in DOCUMENT_PROFILE_KEYS and not is_holdout_flag_key(key)
+        )
+        if unknown:
+            raise OutcomesLayoutError(
+                f"document_profile carries {len(unknown)} key(s) a Module 1 profile does not have "
+                f"({', '.join(unknown[:5])}); they would be dropped, so they are refused"
+            )
         if "documents" not in raw or not isinstance(raw["documents"], Sequence) or isinstance(raw["documents"], (str, bytes)):
             raise OutcomesLayoutError("document_profile mapping must contain a 'documents' list")
         raw_docs = raw["documents"]
         ver = raw.get("indexer_rules_version")
-        indexer_rules_version = str(ver) if isinstance(ver, str) and ver.strip() else None
+        if ver is not None and type(ver) is not str:
+            raise OutcomesLayoutError(
+                f"document_profile.indexer_rules_version must be a string or null, got {type(ver).__name__}"
+            )
+        indexer_rules_version = ver if isinstance(ver, str) and ver.strip() else None
+        module1_badge = raw.get("document_badge")
         if "extracted_at" in raw:
             stamps["extracted_at"] = validate_iso_timestamp(raw["extracted_at"], "document_profile.extracted_at")
         if "pipeline_commit" in raw:
@@ -2547,13 +2926,26 @@ def normalize_document_profile(
 
     union_flags = sorted({flag for d in docs for flag in d["redaction_markers"]} | set(explicit_flags or []))
     summary = explicit_summary if explicit_summary is not None else _summarize_doc_readability(docs)
-    return canonicalize_nested({
+    profile = canonicalize_nested({
         "indexer_rules_version": indexer_rules_version,
         "readability_summary": summary,
         "redaction_flags": union_flags,
         "documents": docs,
         **stamps,
     })
+    if module1_badge is not None:
+        # Module 1's own badge is the index row's document_badge, which the
+        # builder computes from the profile: it must be that badge, or the
+        # two sources disagree and are refused (it was dropped unread).
+        badge = plain_data(module1_badge, "document_profile.document_badge")
+        if isinstance(badge, dict) and isinstance(badge.get("redaction_flags"), list):
+            badge = {**badge, "redaction_flags": sorted(badge["redaction_flags"], key=str)}
+        if canonicalize_nested(badge) != canonicalize_nested(build_document_badge(in_audit=False, document_profile=profile)):
+            raise OutcomesLayoutError(
+                "document_profile.document_badge is not the badge its documents give (values not shown); "
+                "conflicting inputs are refused, not resolved"
+            )
+    return profile
 
 
 # ── section 3: decision_rule_locations (locations.jsonl adapter) ──────────────
@@ -3387,14 +3779,22 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
     )
 
     def _date_struct(key_flat: str, key_struct: str) -> str | None:
+        # A date is a string as written (blank is absent) or null; anything
+        # else is refused by field and type, as every other text field is
+        # (skeptic review of m3: a date object or number was published as
+        # null without a word). CT.gov's struct is an object or null.
         if key_flat in trial:
-            v = trial[key_flat]
-            return str(v) if isinstance(v, str) and v.strip() else None
+            v = _text_or_none(trial[key_flat], f"{nct_id}.{key_flat}")
+            return v if v is not None and v.strip() else None
         struct = status_mod.get(key_struct)
-        if isinstance(struct, Mapping):
-            v = struct.get("date")
-            return str(v) if isinstance(v, str) and v.strip() else None
-        return None
+        if struct is None:
+            return None
+        if not isinstance(struct, Mapping):
+            raise OutcomesLayoutError(
+                f"{nct_id}.statusModule.{key_struct} must be an object or null, got {type(struct).__name__}"
+            )
+        v = _text_or_none(struct.get("date"), f"{nct_id}.statusModule.{key_struct}.date")
+        return v if v is not None and v.strip() else None
 
     primary_completion_date = _date_struct("primary_completion_date", "primaryCompletionDateStruct")
     results_first_post_date = _date_struct("results_first_post_date", "resultsFirstPostDateStruct")
@@ -3418,10 +3818,24 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(conds, Sequence) and not isinstance(conds, (str, bytes)) and conds:
             primary_condition = _text_or_none(conds[0], f"{nct_id}.conditionsModule.conditions[0]")
 
-    raw_poc = trial.get("primary_outcomes_count")
-    if raw_poc is None and "n_primary_outcomes" in trial:
-        raw_poc = trial.get("n_primary_outcomes")
-    primary_outcomes_count = _strict_int_or_none(raw_poc, f"{nct_id}.primary_outcomes_count")
+    # The stated count, under either key (the live index writes
+    # n_primary_outcomes, the number of registered primary outcomes). Both
+    # are read: two different counts do not say which is meant, so they are
+    # refused, never resolved by precedence (skeptic review of m3: 3 was
+    # taken over 1 without a word). A count is a non-negative int or null.
+    stated_counts: set[int] = set()
+    for count_key in ("primary_outcomes_count", "n_primary_outcomes"):
+        count = _strict_int_or_none(trial.get(count_key), f"{nct_id}.{count_key}")
+        if count is not None and count < 0:
+            raise OutcomesLayoutError(f"{nct_id}.{count_key} must be a non-negative int or null")
+        if count is not None:
+            stated_counts.add(count)
+    if len(stated_counts) > 1:
+        raise OutcomesLayoutError(
+            f"{nct_id}: primary_outcomes_count and n_primary_outcomes are both given and differ (values not "
+            f"shown); conflicting counts are refused, not resolved"
+        )
+    primary_outcomes_count = next(iter(stated_counts), None)
 
     large_has_protocol = any(
         isinstance(d, Mapping) and bool(d.get("hasProtocol"))
@@ -3804,11 +4218,15 @@ def _build_trial_bundle(
                 f"material in the input is refused, never dropped"
             )
 
+    # The label names the trial, so a refusal says which record to look at;
+    # build_trial_bundle withholds every ID in it when the trial is, or may
+    # be, a holdout, or the message names one.
     check_trial_record_identity(
         record,
         expected_nct_id=nct_id,
         expected_in_audit=is_holdout,
         audit_nct_ids=audit_nct_ids,
+        label=f"{nct_id} trial record",
     )
     if explicit_cohorts is not None:
         # Explicit cohorts are published in the index row and the shard, so
@@ -3879,12 +4297,9 @@ def _build_trial_bundle(
         has_reported_results: bool | None = None
     else:
         reported_results = extract_reported_results(record, parsed_populations=populations_in)
-        if meta["primary_outcomes_count"] is not None:
-            primary_outcomes_count = meta["primary_outcomes_count"]
-        else:
-            reg_count = len(reported_results["registered_primary_outcomes"])
-            meas_count = len(reported_results["primary_outcome_measures"])
-            primary_outcomes_count = reg_count if reg_count > 0 else (meas_count if meas_count > 0 else None)
+        primary_outcomes_count = primary_outcomes_count_of(
+            meta["primary_outcomes_count"], reported_results, label=nct_id
+        )
 
         norm_profile = normalize_document_profile(profile_in, expected_nct_id=nct_id)
         norm_prov = normalize_longitudinal_provenance(provenance_in, in_audit=False)
@@ -3961,6 +4376,72 @@ def _build_trial_bundle(
     return index_row, shard_record
 
 
+def _normalize_stamp_block(block: Any, label: str) -> dict[str, Any]:
+    """One input's header stamps (``INPUT_STAMP_KEYS``), each checked and kept as given.
+
+    Method: ``extracted_at`` is an ISO-8601 timestamp, ``pipeline_commit`` and
+    ``source_pipeline_commit`` a 7..40 hex commit, ``schema_version`` an int
+    or a string, the others strings; any may be null (stated as absent). Any
+    other key, an object or list as a value, or an empty block is refused.
+    Messages name the key, never the value.
+    """
+    if not isinstance(block, Mapping) or not block:
+        raise OutcomesLayoutError(f"{label} must be a non-empty object of header stamps, got {type(block).__name__}")
+    out: dict[str, Any] = {}
+    for key, value in block.items():
+        if key not in INPUT_STAMP_KEYS:
+            raise OutcomesLayoutError(
+                f"{label} carries a key that is not a header stamp ({withhold_nct_ids(repr(key))}); the stamps are "
+                f"{list(INPUT_STAMP_KEYS)}"
+            )
+        if value is None:
+            out[key] = None
+        elif key == "extracted_at":
+            out[key] = validate_iso_timestamp(value, f"{label}.extracted_at")
+        elif key in ("pipeline_commit", "source_pipeline_commit"):
+            out[key] = validate_commit_stamp(value, allow_null=True, label=f"{label}.{key}")
+        elif key == "schema_version":
+            if type(value) not in (int, str):
+                raise OutcomesLayoutError(f"{label}.schema_version must be an int or a string, got {type(value).__name__}")
+            out[key] = value
+        elif type(value) is not str:
+            raise OutcomesLayoutError(f"{label}.{key} must be a string or null, got {type(value).__name__}")
+        else:
+            out[key] = value
+    return out
+
+
+def normalize_input_stamps(stamps: Mapping[str, Any] | None) -> dict[str, Any]:
+    """index.json's ``input_stamps``: each input's own container stamps, as given.
+
+    Method: keys are ``INPUT_STAMP_SOURCES``; ``locations`` holds a non-empty
+    list of stamp blocks (one per file that carries any), every other input
+    one block (``_normalize_stamp_block``). ``None`` is ``{}`` (no input
+    carried a stamp). The builder's own pair (``extracted_at``,
+    ``source_pipeline_commit``) is the index header's; these are the inputs'.
+    """
+    if stamps is None:
+        return {}
+    plain = plain_data(stamps, "input_stamps")
+    if not isinstance(plain, dict):
+        raise OutcomesLayoutError(f"input_stamps must be an object, got {type(plain).__name__}")
+    out: dict[str, Any] = {}
+    for source, block in plain.items():
+        if source not in INPUT_STAMP_SOURCES:
+            raise OutcomesLayoutError(
+                f"input_stamps names an input that is not one of {list(INPUT_STAMP_SOURCES)} "
+                f"({withhold_nct_ids(repr(source))})"
+            )
+        label = f"input_stamps.{source}"
+        if source == "locations":
+            if not isinstance(block, list) or not block:
+                raise OutcomesLayoutError(f"{label} must be a non-empty list of stamp blocks, got {type(block).__name__}")
+            out[source] = [_normalize_stamp_block(item, f"{label}[{pos}]") for pos, item in enumerate(block)]
+        else:
+            out[source] = _normalize_stamp_block(block, label)
+    return canonicalize_nested(out)
+
+
 def build_outcomes_documents(
     bundles: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
     *,
@@ -3969,16 +4450,21 @@ def build_outcomes_documents(
     shards: int = DEFAULT_OUTCOMES_SHARDS,
     component_versions: Mapping[str, str | None] | None = None,
     allow_null_commit: bool = False,
+    input_stamps: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[int, dict[str, Any]]]:
     """Assemble deterministic ``index.json`` and ``0..shards-1`` shard documents.
 
     Output is invariant to input ordering: ``index.json`` rows and every
     shard's ``data`` dict are sorted strictly ascending by ``nct_id``.
-    Top-level header keys keep ``"data"`` last.
+    Top-level header keys keep ``"data"`` last. ``input_stamps`` (each
+    input container's own stamps, ``normalize_input_stamps``) is published
+    in the index header beside the build's own ``extracted_at`` and
+    ``source_pipeline_commit``.
     """
     n_shards = _validate_shards(shards)
     ts = validate_iso_timestamp(extracted_at, "extracted_at")
     commit = validate_commit_stamp(source_pipeline_commit, allow_null=allow_null_commit)
+    stamps = normalize_input_stamps(input_stamps)
 
     by_nct: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
     for index_row_raw, shard_rec_raw in bundles:
@@ -4037,6 +4523,7 @@ def build_outcomes_documents(
         "total_trials": len(index_rows),
         "audit_holdout_trials": audit_holdout_trials,
         "component_versions": norm_versions,
+        "input_stamps": stamps,
         "data": index_rows,
     }
 
@@ -4365,13 +4852,17 @@ def _in_scope_record_problems(
     Method (red-team m3 round 2: --check read none of these, so a holdout's
     URL, a nested ``in_audit`` true, a nested holdout ``nct_id``, raw page
     text or a badge the shard contradicts all checked "ok"):
-    1. no key or string of the record or its index row names a trial of
-       ``held`` (the tree's holdouts and the manifest's) in any reading of
-       Module 4's audit scan; a hit stops the reading of this record;
-    2. ``reported_results`` is read as a trial record is on input
+    1. ``reported_results`` is read as a trial record is on input
        (``check_trial_record_identity``: trial-ID keys name this trial, every
        holdout flag is false) and each side section as a side input is
-       (``check_side_input_identity``: also URLs and mapping keys);
+       (``check_side_input_identity``: also URLs and mapping keys), in the
+       builder's order, so one value gets the exit a build gives it (skeptic
+       review of m3: a document URL or nested nct_id naming the holdout was
+       exit 1 in a build, from the identity rule, and exit 2 here, from the
+       audit scan run first);
+    2. no key or string of the record or its index row names a trial of
+       ``held`` (the tree's holdouts and the manifest's) in any reading of
+       Module 4's audit scan; a hit stops the reading of this record;
     3. each section is exactly what the builder writes for it: normalizing
        the stored section again (``extract_reported_results`` on the
        pre-built block, ``normalize_document_profile``,
@@ -4379,21 +4870,13 @@ def _in_scope_record_problems(
        key or value the builder never writes (raw page text, an extra key)
        is refused; the decision-rule block has its own checks
        (``_validate_shard_decision_rule_locations``);
-    4. the index row's ``document_badge`` and ``has_reported_results`` are
-       the ones the shard's sections give.
+    4. the index row's ``document_badge``, ``has_reported_results`` and
+       ``primary_outcomes_count`` are the ones the shard's sections give.
     Returns ``(problems, audit_leakage)``; messages name positions, not IDs.
     """
     problems: list[str] = []
     others = held - {nct_id}
     prefix = f"{rel}.data[{nct_id}]"
-    for label, obj in ((prefix, entry), (f"{INDEX_FILE}.data[{nct_id}]", idx_row)):
-        try:
-            _scan_for_audit_trials(obj, audit_nct_ids=others, label=label)
-        except AuditFirewallError as exc:
-            return [withhold_nct_ids(str(exc))], True
-        except OutcomesLayoutError as exc:
-            return [str(exc)], False
-
     leakage = False
     results = entry.get("reported_results")
     profile = entry.get("document_profile")
@@ -4420,33 +4903,62 @@ def _in_scope_record_problems(
             problems.append(str(exc))
     if problems:
         return problems, leakage
+    for label, obj in ((prefix, entry), (f"{INDEX_FILE}.data[{nct_id}]", idx_row)):
+        try:
+            _scan_for_audit_trials(obj, audit_nct_ids=others, label=label)
+        except AuditFirewallError as exc:
+            return [withhold_nct_ids(str(exc))], True
+        except OutcomesLayoutError as exc:
+            return [str(exc)], False
 
-    def _fixed_point(section: str, stored: Any, renormalize: Callable[[], Any]) -> None:
+    def _fixed_point(section: str, stored: Any, renormalize: Callable[[], Any]) -> bool:
+        """Whether ``stored`` is what renormalizing it gives (a problem is recorded when not)."""
         nonlocal leakage
         try:
             again = renormalize()
         except AuditFirewallError as exc:
             leakage = True
             problems.append(f"{prefix}.{section}: {withhold_nct_ids(str(exc))}")
-            return
+            return False
         except OutcomesLayoutError as exc:
             problems.append(f"{prefix}.{section} is not a section the builder writes: {exc}")
-            return
+            return False
         if canonicalize_nested(stored) != again:
             problems.append(
                 f"{prefix}.{section} is not what the builder writes for it (normalizing it again changes it: "
                 f"a key or value the builder never writes)"
             )
+            return False
+        return True
 
     if not isinstance(results, Mapping):
         problems.append(f"{prefix}.reported_results must be an object for an in-scope trial")
     else:
-        _fixed_point("reported_results", results, lambda: extract_reported_results({"reported_results": results}))
+        results_sound = _fixed_point(
+            "reported_results", results, lambda: extract_reported_results({"reported_results": results})
+        )
         if idx_row.get("has_reported_results") is not results.get("results_posted"):
             problems.append(
                 f"{INDEX_FILE}.data[{nct_id}].has_reported_results does not match its shard's "
                 f"reported_results.results_posted"
             )
+        # The index row's count is the one the builder computes from the
+        # shard's own outcomes (primary_outcomes_count_of), so location rows,
+        # bounded by it, cannot name an outcome the shard does not register
+        # (skeptic review of m3: the bound was the index row's count alone).
+        stored_count = idx_row.get("primary_outcomes_count")
+        if results_sound and (stored_count is None or type(stored_count) is int):
+            try:
+                expected_count = primary_outcomes_count_of(stored_count, results, label=f"{INDEX_FILE}.data[{nct_id}]")
+            except OutcomesLayoutError as exc:
+                problems.append(str(exc))
+            else:
+                if expected_count != stored_count:
+                    problems.append(
+                        f"{INDEX_FILE}.data[{nct_id}].primary_outcomes_count is not the count its shard's "
+                        f"reported_results give (the builder counts the registered primary outcomes, else the "
+                        f"posted primary measures)"
+                    )
     if profile is not None:
         _fixed_point(
             "document_profile", profile, lambda: normalize_document_profile(profile, expected_nct_id=nct_id)
@@ -4508,6 +5020,11 @@ def validate_outcomes_tree(
       to --check by --cohort-manifest): the tree holds exactly the manifest's
       trials, and every trial the manifest marks in_audit is a holdout stub
       (red-team m3 round 2: --check accepted the manifest and ignored it).
+    - ``input_stamps`` is what the builder writes for the inputs' stamps
+      (``normalize_input_stamps``), and each index row's
+      ``primary_outcomes_count`` the one its shard's outcomes give.
+    - ``<dir>.partial`` holds no backup retained by an interrupted or failed
+      swap (``_retained_backups``): the tree beside one may mix two builds.
     - Computes budget telemetry and flags hard GitHub/Pages size limits without
       touching ``tests/data_budget.json``.
     """
@@ -4531,6 +5048,22 @@ def validate_outcomes_tree(
     marker_problem = _bundle_marker_problem(root)
     if marker_problem is not None:
         found_problems.append(marker_problem)
+
+    # A swap interrupted where no rollback runs (SIGTERM, a cancelled job, a
+    # second interrupt inside the rollback) leaves the previous shards or
+    # index in <dir>.partial and the tree a mix of two builds (the previous
+    # index over the new shards), which a build then refuses to replace
+    # (check_output_target). Such a tree is not one the builder installed
+    # whole, so it fails here too (skeptic review of m3: it checked "ok").
+    staging = _staging_dir_for(Path(os.path.abspath(root)))
+    if os.path.isdir(staging) and not os.path.islink(staging):
+        retained = _retained_backups(Path(os.path.abspath(root)), staging)
+        if retained:
+            found_problems.append(
+                f"{staging} holds {', '.join(p.name for p in retained)}, kept by an interrupted or failed swap: "
+                f"{root} may hold an index and shards from two builds, so it is not a tree the builder installed "
+                f"whole; put the backup back or set it aside (as the next build's refusal says) and rebuild"
+            )
 
     index_path = root / INDEX_FILE
     if not index_path.is_file():
@@ -4638,6 +5171,20 @@ def validate_outcomes_tree(
                     f"{INDEX_FILE}.component_versions[{withhold_nct_ids(repr(name))}] must be a string or null, "
                     f"got {type(value).__name__}"
                 )
+
+    # input_stamps is exactly what the builder writes for the inputs' stamps.
+    stored_stamps = index_doc.get("input_stamps")
+    if not isinstance(stored_stamps, dict):
+        found_problems.append(f"{INDEX_FILE}.input_stamps must be an object")
+    else:
+        try:
+            if normalize_input_stamps(stored_stamps) != stored_stamps:
+                found_problems.append(
+                    f"{INDEX_FILE}.input_stamps is not what the builder writes for the inputs' stamps "
+                    f"(values not shown)"
+                )
+        except OutcomesLayoutError as exc:
+            found_problems.append(f"{INDEX_FILE}.{exc}")
 
     # Validate index rows.
     rows = index_doc.get("data")
