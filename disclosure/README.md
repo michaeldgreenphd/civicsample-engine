@@ -75,8 +75,8 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 # refuses a trial that appears more than once with different records (identical copies are fine),
 # refuses a study record that is not a valid CT.gov v2 study with an NCT ID (rather than freezing a
 # smaller batch) or that holds a part the build reads with the wrong type (`acquire.CTGOV_STUDY_PARTS`;
-# `statusModule: ["bad"]` froze a cache whose build raised), naming the part (a record with `hasResults: false` but a non-empty `resultsSection`, which contradicts
-# itself, included), refuses a --data-timestamp more than 14 hours after --fetched-at (CT.gov states no
+# `statusModule: ["bad"]` froze a cache whose build raised), naming the part (a record with `hasResults: false` but a non-empty `resultsSection` or a results
+# posting date, which contradicts itself, included), refuses a --data-timestamp more than 14 hours after --fetched-at (CT.gov states no
 # zone for dataTimestamp, so the largest real UTC offset is allowed),
 # and needs a new or empty --cache, so no earlier CT.gov version or other source's record is mixed in.
 # They also refuse openFDA drug-query records made with an earlier query form: re-run the openfda stage.

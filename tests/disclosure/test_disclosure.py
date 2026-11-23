@@ -336,8 +336,11 @@ def _study_with(base: dict[str, Any], path: tuple[str, ...], value: Any) -> dict
         # A part the build reads, of the wrong type, froze a cache the build could not read.
         ('file', _study_with(F.STUDIES['NCT09990005'], ('protocolSection', 'statusModule'), ['bad'])),
         ('list', _study_with(F.STUDIES['NCT09990005'], ('protocolSection', 'designModule', 'enrollmentInfo'), [1])),
-        # `hasResults: false` beside a posted results section contradicts itself.
+        # `hasResults: false` beside a posted results section, or a posting date, contradicts itself.
         ('file', _study_with(F.STUDIES['NCT09990001'], ('hasResults',), False)),
+        ('list', _study_with(F.STUDIES['NCT09990005'],
+                             ('protocolSection', 'statusModule', 'resultsFirstPostDateStruct'),
+                             {'date': '2021-05-01', 'type': 'ACTUAL'})),
     ],
 )
 @pytest.mark.parametrize('with_nct_list', [False, True])
@@ -2998,3 +3001,29 @@ def test_contradictory_results_flag_is_not_read_as_the_registry_negative(tmp_pat
     timeline = _timeline_of(built, nct)
     assert timeline['window_365d']['state'] != 'UNREPORTED_PAST_365D'
     assert timeline['discordance']['state'] == 'coverage_incomplete_or_awaiting_review'
+
+
+def test_results_posting_date_beside_hasresults_false_is_not_read_as_posted_and_unreported(tmp_path: Path) -> None:
+    # On 4e5a3da `hasResults: false` with a results posting date built as window `POSTED_WITHIN_365D`
+    # beside `ctgov_results` `no_candidate_in_completed_scope`: posted and unreported at once.
+    nct = 'NCT09990002'
+    study = copy.deepcopy(F.STUDIES[nct])
+    study['hasResults'] = False
+    study['protocolSection']['statusModule']['resultsFirstPostDateStruct'] = {'date': '2021-05-01', 'type': 'ACTUAL'}
+    assert A.ctgov_study_problem(study) == 'hasResults is false but statusModule.resultsFirstPostDateStruct has a date'
+    cache = F.acquire_fixture_cache(tmp_path / 'c')
+    cache.ctgov[f'ctgov/study/{nct}'] = dict(cache.ctgov[f'ctgov/study/{nct}'], body=study)
+    built = ART.build_artifacts(
+        cache,
+        reviews_path=ROOT / 'disclosure/reviews.csv',
+        statements_path=ROOT / 'disclosure/documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors/company_aliases.csv',
+        producer={'commit': None, 'uncommitted_changes': None},
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+        requested_nct_ids=[nct],
+    )
+    assert _cell_of(built, nct, 'ctgov_results')['state'] == 'search_incomplete_or_blocked'
+    timeline = _timeline_of(built, nct)
+    assert timeline['discordance']['state'] == 'coverage_incomplete_or_awaiting_review'
+    assert timeline['window_365d']['state'] != 'POSTED_WITHIN_365D'
