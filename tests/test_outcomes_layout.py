@@ -3851,3 +3851,62 @@ def test_redteam_m3_foreign_entry_inside_bundle_shards_not_deleted(tmp_path: pat
     with pytest.raises(ol.OutcomesLayoutError):
         ol.write_outcomes_tree(out, idx_v1, shards_v1)
     assert (notes / "keep.txt").read_text(encoding="utf-8") == "operator notes\n"
+
+
+# ── Round-1 fixes: behaviours added beyond the red-team cases ────────────────
+# Fictional IDs only (RT_OK ordinary, RT_HOLD the holdout), as above.
+
+def test_m3_fix_ordinary_trial_record_text_naming_holdout_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An ordinary trial's --trials record whose registry text names a holdout
+    (in any reading Module 4 takes for an ID) is refused as a firewall
+    violation (exit 2), nothing written, the ID not echoed: its text is
+    copied into the shard, and the holdout is never recorded there."""
+    study = _make_ctgov_study(RT_OK)
+    study["protocolSection"]["outcomesModule"]["primaryOutcomes"][0]["description"] = (
+        f"As in the parent study nct {RT_HOLD_DIGITS[:4]} {RT_HOLD_DIGITS[4:]}."
+    )
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)])
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=2)
+
+
+def test_m3_fix_family_folder_by_position_refused_without_markers(tmp_path: pathlib.Path) -> None:
+    """A folder named for a site data family directly under data/ is refused
+    even when it holds none of the family's marker files."""
+    family = tmp_path / "data" / "census"
+    family.mkdir(parents=True)
+    with pytest.raises(ol.OutcomesLayoutError, match="site data family folder"):
+        _valid_tree(family / "bundles")
+    with pytest.raises(ol.OutcomesLayoutError, match="site data family folder"):
+        ol.check_report_path(family / "r.json")
+    assert os.listdir(family) == []
+
+
+def test_m3_fix_retained_previous_index_refuses_until_resolved(tmp_path: pathlib.Path) -> None:
+    """A _previous_index.json left in the staging directory that differs from
+    the live index (an interrupted swap the rollback could not finish) refuses
+    every write and is named; one identical to the live index is a harmless
+    leftover and is removed by the next write."""
+    out = _valid_tree(tmp_path / "bundle")
+    work = pathlib.Path(f"{out}.partial")
+    work.mkdir()
+    (work / ol.STAGING_MARKER_FILE).write_text(ol._marker_text(ol.STAGING_MARKER), encoding="utf-8")
+    (work / ol.PREVIOUS_INDEX_FILE).write_text('{"older": "index"}\n', encoding="utf-8")
+    with pytest.raises(ol.RetainedBackupError, match=ol.PREVIOUS_INDEX_FILE):
+        _valid_tree(out)
+    assert (work / ol.PREVIOUS_INDEX_FILE).read_text(encoding="utf-8") == '{"older": "index"}\n'
+    (work / ol.PREVIOUS_INDEX_FILE).write_bytes((out / ol.INDEX_FILE).read_bytes())
+    _valid_tree(out)
+    assert not work.exists()
+
+
+def test_m3_fix_extract_reported_results_refuses_holdout_parsed_populations() -> None:
+    """Parsed populations that say they are a holdout's are refused by the
+    reported-results builder, as the study itself is."""
+    with pytest.raises(ol.AuditFirewallError):
+        ol.extract_reported_results(
+            _make_ctgov_study(RT_OK),
+            parsed_populations={"outcomes": [{"outcome_index": 0, "inAudit": True}]},
+        )

@@ -32,7 +32,13 @@ Invariants enforced here:
   5. ``in_audit is True`` requires ``document_badge`` and ``census_badge``
      to remain strictly ``"in_audit_holdout"`` with ``None``/``False`` counts.
   6. Cross-stream JSONL/mapping guard rejects any holdout ``nct_id`` present
-     in document or location inputs BEFORE creating or touching ``out_dir``.
+     in document or location inputs BEFORE creating or touching ``out_dir``:
+     every key must be a strict ID and outside the holdout, and every record
+     is read with ``check_side_input_identity`` against its key.
+  The holdout flag is read under every spelling Module 4 reads
+  (``inAudit``, ``IN_AUDIT``, ``in-audit``, ``is_in_audit``); only the exact
+  ``in_audit`` of the manifest (or the ``in_audit`` argument) admits a trial,
+  and every other spelling, anywhere in a record, can only refuse.
 - Absence is preserved as ``None`` (never coerced to ``0`` or ``""``).
 - Zero interference with ``src/dataset_folder.py::present_files`` (which only
   inspects ``demographics.part*.json.gz``, ``studies_tab.part*.json.gz``,
@@ -53,13 +59,16 @@ come 1:1 from the trial/manifest row, with masked badges and
 ``has_reported_results`` ``None``) plus a shard record holding only
 ``nct_id``, ``in_audit``, ``cohorts`` and ``shard``; its ``reported_results``,
 ``document_profile``, ``decision_rule_locations`` and
-``longitudinal_provenance`` are ``None``. Any side input for such a trial is
-refused rather than dropped.
+``longitudinal_provenance`` are ``None``. Any side input for such a trial,
+passed in or carried inline in its own record, is refused rather than
+dropped; the public section builders refuse a holdout's input too, and every
+refusal about a holdout withholds its ID.
 
 Writing (``write_outcomes_tree``) is allowlisted: the target must be absent,
 an empty directory, or a bundle this module wrote (identified by
-``outcomes_bundle.json``, which names the layout and its version). See
-``check_output_target`` for every refusal.
+``outcomes_bundle.json``, which names the layout and its version), and may
+not sit in any of the site's data families. See ``check_output_target`` for
+every refusal, and ``_swap_into_target`` for the swap and its rollback.
 """
 from __future__ import annotations
 
@@ -70,7 +79,9 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
+import unicodedata
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
@@ -87,6 +98,24 @@ from src.citation_verifier import (
     validate_status_citations,
     validate_strict_nct_id,
 )
+# Module 4's readings of trial IDs and holdout flags, shared rather than
+# restated (red-team m3 round 1 found this module reading fewer spellings than
+# Module 4 does): the holdout flag under any spelling a reader takes for it
+# (_is_in_audit_key: inAudit, IN_AUDIT, in-audit, is_in_audit), the URL keys it
+# reads trial IDs from, an NCT token in every reading (as written,
+# percent-decoded, NFKC-folded; and the loose readings: separators, look-alike
+# letters), and its audit-ID scan over every key, string and split
+# key/value reading. They are private to Module 4; importing them keeps one
+# definition of each reading.
+from src.citation_verifier import (
+    _URL_FIELD_KEYS as _M4_URL_FIELD_KEYS,
+    _is_in_audit_key,
+    _iter_embedded_nct_tokens,
+    _iter_loose_nct_candidates,
+    _scan_strings_for_audit_nct_tokens,
+    _strip_invisible,
+    _text_names_audit_trial,
+)
 
 LAYOUT_VERSION = 1
 SHARD_KEY = "nct_number_mod"
@@ -101,15 +130,44 @@ SHARD_FILE_TEMPLATE = "shards/{n}.json.gz"
 SHARD_CLASS = "outcomes_detail"
 SECTION_LABEL_REPORTED_RESULTS = "Primary results as posted"
 
-# Markers identifying other live data families (site/data/outcomes/,
-# site/data/results_structure/, site/data/) that write_outcomes_tree must
-# never write into or under. An index.json that is not a bundle's own index
-# (a directory without BUNDLE_MARKER_FILE) is refused the same way.
+# Markers identifying other live data families that write_outcomes_tree must
+# never write into or under. run.json, summary.json, records and records.json
+# mark site/data/ itself and its outcomes, results_structure, census and
+# devices families. The geography, sponsor and sex/gender families carry none
+# of those (red-team m3 round 1 wrote bundles and reports into copies of them),
+# so each is named by the files it does carry: geo/ by active_run.json, a
+# frozen geography run folder by CONTRACT.md and geo_dictionary.csv, sponsors/
+# by bridge_meta.json and bridge.csv.gz, sex_gender/ by methods.json, and the
+# audit folders of both by audit_summary.json. An index.json that is not a
+# bundle's own index (a directory without BUNDLE_MARKER_FILE) is refused the
+# same way. A report may not take any of these names either.
 FOREIGN_DIRECTORY_MARKERS: tuple[str, ...] = (
     "run.json",
     "summary.json",
     "records",
     "records.json",
+    "active_run.json",
+    "CONTRACT.md",
+    "geo_dictionary.csv",
+    "bridge_meta.json",
+    "bridge.csv.gz",
+    "methods.json",
+    "audit_summary.json",
+)
+
+# The site's data families, by folder name. A path with a folder of one of
+# these names directly under a folder named "data" (data/geo/..., data/
+# sponsors/...) is refused whatever files it holds, so a family whose marker
+# files are absent (or a family added later under one of these names) is not
+# written into either.
+SITE_DATA_FAMILIES: tuple[str, ...] = (
+    "outcomes",
+    "results_structure",
+    "sponsors",
+    "geo",
+    "sex_gender",
+    "census",
+    "devices",
 )
 
 # The bundle marker: write_outcomes_tree writes this file into every bundle,
@@ -126,9 +184,12 @@ STAGING_MARKER_FILE = "outcomes_bundle_staging.json"
 STAGING_MARKER: dict[str, Any] = {"staging_for": DEFAULT_OUT_DIR_NAME, "layout_version": LAYOUT_VERSION}
 
 # Inside <out_dir>.partial: the previous shards while the new ones are swapped
-# in. If putting them back fails, they stay here and every later run refuses
-# until a person has dealt with them.
+# in, and a hard link to (or copy of) the previous index.json, so that an
+# interrupt landing after the index rename can still put the previous index
+# back. If putting either back fails, it stays here and every later run
+# refuses until a person has dealt with it.
 PREVIOUS_SHARDS_DIR = "_previous_shards"
+PREVIOUS_INDEX_FILE = "_previous_index.json"
 FAILED_NEW_SHARDS_DIR = "_failed_new_shards"
 
 # Size guardrails matching scripts/check_site_contract.py (telemetry only;
@@ -351,6 +412,48 @@ FORBIDDEN_RAW_TEXT_KEYS: frozenset[str] = frozenset({
     "full_text",
 })
 
+# Keys naming a shard section or a side input, folded (``_folded_key``). A
+# holdout's stub carries none of these, so one found anywhere in a holdout's
+# own --trials or manifest record is holdout material in the input, refused
+# (AuditFirewallError) rather than dropped. CT.gov's own schema has none of
+# them, so the whole record is read, its native sections included.
+HOLDOUT_INLINE_SECTION_FORMS: frozenset[str] = frozenset({
+    "reportedresults",
+    "documentprofile",
+    "decisionrulelocations",
+    "longitudinalprovenance",
+    "analysispopulationparsed",
+    "parsedpopulations",
+    "populationparsed",
+})
+
+# Folded key forms read as naming a trial (``_folded_key``): one ID, or a list
+# of IDs. These are Module 4's named keys (nct_id, nctId, trial_nct_id;
+# nct_ids, trial_nct_ids) under any case, separator or invisible character.
+_TRIAL_ID_KEY_FORMS: frozenset[str] = frozenset({"nctid", "trialnctid"})
+_TRIAL_ID_LIST_KEY_FORMS: frozenset[str] = frozenset({"nctids", "trialnctids"})
+
+# Index-row fields that hold one scalar each: text (str or None), a whole
+# number (int, never bool, or None), a flag (bool) or a tri-state flag (bool
+# or None). The builder never writes an object or a list into any of them, and
+# --check refuses one (an object there would carry structured content, such
+# as results, past a holdout's stub).
+_INDEX_ROW_TEXT_FIELDS: tuple[str, ...] = (
+    "brief_title",
+    "study_type",
+    "phase",
+    "enrollment_type",
+    "primary_completion_date",
+    "results_first_post_date",
+    "lead_sponsor_name",
+    "sponsor_class",
+    "ecosystem_category",
+    "primary_condition",
+)
+_INDEX_ROW_INT_FIELDS: tuple[str, ...] = ("enrollment", "primary_outcomes_count")
+_INDEX_ROW_BOOL_FIELDS: tuple[str, ...] = ("protocol", "sap")
+_INDEX_ROW_TRISTATE_FIELDS: tuple[str, ...] = ("has_reported_results",)
+
 
 class OutcomesLayoutError(ValueError):
     """The outcomes layout, a shard, or a trial record violates the contract."""
@@ -377,6 +480,27 @@ def withhold_nct_ids(text: str) -> str:
     of an ID is withheld too.
     """
     return _NCT_LIKE_TOKEN_RE.sub("<NCT id withheld>", text)
+
+
+def is_holdout_flag_key(key: Any) -> bool:
+    """True when ``key`` spells the holdout flag as a reader takes it
+    (``in_audit``, ``inAudit``, ``IN_AUDIT``, ``in-audit``, ``is_in_audit``):
+    Module 4's ``_is_in_audit_key``, the one definition of that reading."""
+    return _is_in_audit_key(key)
+
+
+def withhold_if_names(text: str, nct_ids: AbstractSet[str]) -> str:
+    """Return ``text``, or ``withhold_nct_ids(text)`` when it names any of ``nct_ids``.
+
+    Method: a refusal about an ordinary trial may name it, but one that names
+    a holdout trial (in any reading Module 4 takes for an ID:
+    ``_text_names_audit_trial``, which includes lowercase, padded, percent-
+    encoded and look-alike renderings) has every NCT-like token withheld, so
+    the holdout's ID is never printed. ``nct_ids`` must hold strict IDs.
+    """
+    if nct_ids and _text_names_audit_trial(text, frozenset(nct_ids)):
+        return withhold_nct_ids(text)
+    return text
 
 
 def strict_nct_id(value: Any, label: str = "nct_id") -> str:
@@ -470,6 +594,42 @@ def encode_gz_bytes(doc: Mapping[str, Any]) -> bytes:
     return buf.getvalue()
 
 
+class RepeatedKeyError(AuditFirewallError):
+    """A JSON object repeats a key (``loads_refusing_repeated_keys``)."""
+
+
+def _refuse_repeated_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """``object_pairs_hook`` building an object and refusing a repeated key.
+
+    ``json.loads`` keeps the last of two equal keys, so
+    ``{"in_audit": true, ..., "in_audit": false}`` reads as in scope to it and
+    as a holdout to a reader that keeps the first. Which value such a file
+    means is not determined, and a repeated ``in_audit`` or ``nct_id`` can
+    hide a holdout trial, so it is refused as an audit firewall error. The key
+    is named only when it holds no NCT-like ID.
+    """
+    built: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in built:
+            raise RepeatedKeyError(
+                f"a JSON object repeats the key {withhold_nct_ids(repr(key))}; a JSON reader keeps one "
+                f"value and drops the other, and a repeated in_audit or nct_id can hide a holdout trial"
+            )
+        built[key] = value
+    return built
+
+
+def loads_refusing_repeated_keys(text: str) -> Any:
+    """``json.loads`` that refuses any object repeating a key (``RepeatedKeyError``).
+
+    The builder reads its inputs this way and ``validate_outcomes_tree`` reads
+    a tree on disk this way, so a tree whose index or shard repeats a key
+    (red-team m3 round 1: ``"in_audit":true,"in_audit":false`` on a holdout
+    carrying a full record passed --check) is refused on both sides.
+    """
+    return json.loads(text, object_pairs_hook=_refuse_repeated_keys)
+
+
 def inspect_gzip_header(raw: bytes) -> tuple[int, int]:
     """Return ``(mtime, os_byte)`` from a raw gzip byte stream."""
     if len(raw) < 10 or raw[:2] != b"\x1f\x8b":
@@ -485,14 +645,34 @@ def inspect_gzip_header(raw: bytes) -> tuple[int, int]:
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _git_environment() -> dict[str, str]:
+    """The caller's environment without any ``GIT_*`` variable.
+
+    Method: ``git -C <dir>`` still honours ``GIT_DIR``, ``GIT_WORK_TREE``,
+    ``GIT_INDEX_FILE`` and the rest of git's repository-location variables,
+    which a git hook (or any caller) may have set for another repository.
+    With ``GIT_DIR`` naming another repository, ``--show-toplevel`` answers
+    the ``-C`` directory and ``rev-parse HEAD`` that repository's commit, so
+    the same-repository check passed and another repository's commit was
+    stamped (red-team m3 round 1). Dropping every ``GIT_*`` variable makes git
+    discover the repository from ``repo_root`` alone.
+    """
+    return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+
+
 def _git_output(repo_root: Path, *args: str) -> str | None:
-    """Return ``git -C <repo_root> <args>`` stdout stripped, or ``None`` on any failure."""
+    """Return ``git -C <repo_root> <args>`` stdout stripped, or ``None`` on any failure.
+
+    Runs with ``_git_environment`` (no ``GIT_*`` variable), so the answer is
+    about the repository at ``repo_root`` and nothing the environment names.
+    """
     try:
         proc = subprocess.run(
             ["git", "-C", str(repo_root), *args],
             capture_output=True,
             text=True,
             check=True,
+            env=_git_environment(),
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -516,7 +696,10 @@ def resolve_pipeline_commit(
        would stamp that repository's commit. The answer counts only when
        ``git -C <repo_root> rev-parse --show-toplevel`` is ``repo_root``
        itself, so an engine copied into another repository without its own
-       ``.git`` does not borrow the enclosing repository's commit.
+       ``.git`` does not borrow the enclosing repository's commit. Both git
+       calls run without the caller's ``GIT_*`` variables
+       (``_git_environment``), so a ``GIT_DIR`` set for another repository
+       (inside a git hook) is not followed.
     3. Anything else is unresolvable and returns ``None``; the caller refuses
        to build rather than stamp ``null`` (see scripts/build_outcomes_shards.py).
 
@@ -846,6 +1029,13 @@ def assert_no_audit_leakage(
 enforce_audit_firewall = assert_no_audit_leakage
 
 
+def _strict_id_set(nct_ids: Any, label: str) -> frozenset[str]:
+    """Validate a set of trial IDs: a set (not a str or mapping) of strict IDs."""
+    if isinstance(nct_ids, (str, bytes, Mapping)) or not isinstance(nct_ids, AbstractSet):
+        raise OutcomesLayoutError(f"{label} must be a set of trial IDs, got {type(nct_ids).__name__}")
+    return frozenset(strict_nct_id(item, f"{label} entry") for item in nct_ids)
+
+
 def assert_no_audit_cross_stream_leakage(
     audit_nct_ids: AbstractSet[str],
     *,
@@ -857,15 +1047,30 @@ def assert_no_audit_cross_stream_leakage(
 ) -> None:
     """Vector 6: abort BEFORE touching output dirs if any audit NCT appears in
     any side stream (documents, locations, document profiles, provenance or
-    parsed populations).
+    parsed populations), as a key or anywhere in a record.
 
     A holdout trial is written as a stub (see the module notes), so a side
     record for one could only be dropped, and dropping it silently would hide
-    that the input carried holdout material. It is refused instead. The
-    message gives counts and stream names only, never a holdout trial's ID.
+    that the input carried holdout material. It is refused instead.
+
+    Method, in order (red-team m3 round 1 found the guard comparing exact keys
+    only, so a lowercase or padded key, or a record naming a holdout under
+    another trial's key, passed):
+    1. every key of every stream must be a strict ASCII ``^NCT[0-9]{8}$`` ID
+       (a malformed key is refused, never compared as written: ``nct...`` or
+       ``"NCT... "`` is the same trial to a reader); the audit set is checked
+       the same way;
+    2. a key that is an audit trial is a leak (counts and stream names only in
+       the message, never an ID);
+    3. every record is read with ``check_side_input_identity`` against its own
+       key, as a trial outside the holdout: a nested trial-ID key, URL or
+       mapping key naming another trial, a holdout flag that is not false, or
+       any key or string naming an audit trial in any reading is refused.
+    The check runs whether or not the audit set is empty: a record naming
+    another trial is refused either way.
     """
-    if not audit_nct_ids:
-        return
+    audit = _strict_id_set(audit_nct_ids, "audit_nct_ids")
+    streams: list[tuple[str, Mapping[str, Any]]] = []
     for stream_name, mapping in (
         ("locations", locations_by_nct),
         ("documents", documents_by_nct),
@@ -873,38 +1078,170 @@ def assert_no_audit_cross_stream_leakage(
         ("provenance", provenance_by_nct),
         ("population_parsed", population_parsed_by_nct),
     ):
-        if not mapping:
+        if mapping is None:
             continue
-        leaked = sum(1 for nct in mapping if nct in audit_nct_ids)
+        if not isinstance(mapping, Mapping):
+            raise OutcomesLayoutError(
+                f"{stream_name} stream must be a mapping keyed by trial ID, got {type(mapping).__name__}"
+            )
+        streams.append((stream_name, mapping))
+    for stream_name, mapping in streams:
+        for key in mapping:
+            strict_nct_id(key, f"{stream_name} stream key")
+    for stream_name, mapping in streams:
+        leaked = sum(1 for nct in mapping if nct in audit)
         if leaked:
             raise AuditFirewallError(
                 f"in_audit holdout leak (vector 6) — {leaked} audit holdout trial(s) present "
                 f"in {stream_name} stream (IDs withheld); aborting before touching output directory"
             )
+    for stream_name, mapping in streams:
+        for key, record in mapping.items():
+            check_side_input_identity(
+                record,
+                expected_nct_id=key,
+                expected_in_audit=False,
+                label=f"{stream_name} record",
+                audit_nct_ids=audit,
+            )
 
 
 # ── side-input identity: nested trial IDs and in_audit flags ─────────────────
 
-def _normalized_key(key: Any) -> str:
-    """Lower-case a key and drop ``_``, ``-`` and spaces (``inAudit`` -> ``inaudit``)."""
-    return re.sub(r"[\s_\-]", "", str(key)).lower()
+def _folded_key(key: Any) -> str:
+    """Fold a key the way Module 4 folds the holdout-flag key.
+
+    Method: NFKC folding, invisible and format characters removed
+    (``_strip_invisible``), case folded, and everything but the letters a-z
+    dropped. ``nct_id``, ``nctId``, ``NCT-ID``, ``"nct id"`` and ``nct`` +
+    U+200B + ``_id`` all fold to ``nctid``; ``in_audit`` and ``inAudit`` to
+    ``inaudit``. The fold is used only to recognise a key, never shown.
+    """
+    text = key if isinstance(key, str) else str(key)
+    folded = _strip_invisible(unicodedata.normalize("NFKC", text)).casefold()
+    return re.sub(r"[^a-z]", "", folded)
 
 
-def _iter_keyed_values(obj: Any, wanted: str, path: str = "") -> Iterator[tuple[str, Any]]:
-    """Yield ``(path, value)`` for every key anywhere in ``obj`` whose
-    ``_normalized_key`` equals ``wanted`` (so ``nct_id``, ``nctId`` and
-    ``NCT-ID`` are all read as the trial-ID key, and ``in_audit``, ``inAudit``
-    and ``IN-AUDIT`` as the holdout flag).
+# Module 4's URL keys (url, source_url, pdf_url, document_url, uri), folded.
+_URL_KEY_FORMS: frozenset[str] = frozenset(_folded_key(k) for k in _M4_URL_FIELD_KEYS)
+
+
+def _iter_mapping_entries(obj: Any, path: str = "") -> Iterator[tuple[str, Any, Any]]:
+    """Yield ``(path, key, value)`` for every mapping entry at any depth.
+
+    Lists and tuples are entered item by item, so nesting (a list of lists, a
+    mapping inside a list) hides nothing. ``path`` is the position of the
+    value (``documents[0].url``); it may contain a key that is itself a trial
+    ID, so callers withhold it before showing it.
     """
     if isinstance(obj, Mapping):
         for key, value in obj.items():
             sub = f"{path}.{key}" if path else str(key)
-            if _normalized_key(key) == wanted:
-                yield sub, value
-            yield from _iter_keyed_values(value, wanted, sub)
+            yield sub, key, value
+            yield from _iter_mapping_entries(value, sub)
     elif isinstance(obj, (list, tuple)):
         for idx, item in enumerate(obj):
-            yield from _iter_keyed_values(item, wanted, f"{path}[{idx}]")
+            yield from _iter_mapping_entries(item, f"{path}[{idx}]")
+
+
+def _refuse_other_trial_in_text(text: str, *, expected_nct_id: str, where: str) -> None:
+    """Refuse ``text`` (a URL or a mapping key) naming any trial but ``expected_nct_id``.
+
+    Method: Module 4's readings. Every token of ``_iter_embedded_nct_tokens``
+    (as written, percent-decoded, NFKC-folded) must be strict as written and
+    the expected trial; every bounded loose rendering of
+    ``_iter_loose_nct_candidates`` (``NCT 9900 0058``, a look-alike letter)
+    must be the expected trial. The message names the position only.
+    """
+    for token in _iter_embedded_nct_tokens(text):
+        if _strict_nct_id_or_none(token) is None:
+            raise OutcomesLayoutError(
+                f"{where} holds a malformed trial ID (expected strict ^NCT[0-9]{{8}}$); refused, never "
+                f"read as written"
+            )
+        if token != expected_nct_id:
+            raise OutcomesLayoutError(
+                f"{where} names a different trial than the record it is filed under; a record is never "
+                f"re-attributed"
+            )
+    for candidate, bounded in _iter_loose_nct_candidates(text):
+        if bounded and candidate != expected_nct_id:
+            raise OutcomesLayoutError(
+                f"{where} names a different trial than the record it is filed under; a record is never "
+                f"re-attributed"
+            )
+
+
+def _strict_nct_id_or_none(value: Any) -> str | None:
+    """``value`` when it is a strict ASCII ``^NCT[0-9]{8}$`` string, else ``None``."""
+    if type(value) is str and len(value) == 11 and NCT_RE.fullmatch(value):
+        return value
+    return None
+
+
+def _scan_for_audit_trials(obj: Any, *, audit_nct_ids: frozenset[str], label: str) -> None:
+    """Refuse ``obj`` when any key, string or split key/value reading names an audit trial.
+
+    Method: Module 4's ``_scan_strings_for_audit_nct_tokens`` (every reading:
+    as written, percent-decoded, NFKC-folded, loose, split across a key and
+    its value or neighbouring list items), re-raised as
+    ``AuditFirewallError`` with every NCT-like token withheld.
+    """
+    if not audit_nct_ids:
+        return
+    try:
+        _scan_strings_for_audit_nct_tokens(obj, context=label, audit_nct_ids=audit_nct_ids)
+    except CitationVerificationError as exc:
+        raise AuditFirewallError(withhold_nct_ids(str(exc))) from None
+
+
+def _refuse_named_ids_and_flags(
+    entries: Sequence[tuple[str, Any, Any]],
+    *,
+    expected_nct_id: str,
+    expected_in_audit: bool,
+    label: str,
+) -> None:
+    """Rules 1 and 2 of ``check_side_input_identity`` (and of trial records).
+
+    1. Every key read as a trial ID (``_TRIAL_ID_KEY_FORMS``, any case,
+       separator or invisible character) holds a strict ID equal to
+       ``expected_nct_id``; every key read as a list of trial IDs
+       (``_TRIAL_ID_LIST_KEY_FORMS``) holds a list of such IDs
+       (``OutcomesLayoutError``: exit 1 in the CLI).
+    2. Every key a reader takes for the holdout flag (Module 4's
+       ``_is_in_audit_key``: ``in_audit``, ``inAudit``, ``IN_AUDIT``,
+       ``in-audit``, ``is_in_audit``) holds the bool ``expected_in_audit``; a
+       non-bool or a disagreeing value is a conflicting holdout flag,
+       refused as ``AuditFirewallError`` (exit 2), never resolved either way.
+    Rule 1 runs over every entry before rule 2, so a malformed or foreign ID
+    is reported as such wherever it stands.
+    """
+    for where, key, value in entries:
+        form = _folded_key(key)
+        shown = f"{label}.{withhold_nct_ids(where)}"
+        if form in _TRIAL_ID_KEY_FORMS:
+            checked = strict_nct_id(value, shown)
+            if checked != expected_nct_id:
+                raise OutcomesLayoutError(
+                    f"{shown} names a different trial than the record it is filed under; a nested row "
+                    f"is never re-attributed"
+                )
+        elif form in _TRIAL_ID_LIST_KEY_FORMS:
+            if not isinstance(value, (list, tuple)):
+                raise OutcomesLayoutError(f"{shown} must be a list of trial IDs, got {type(value).__name__}")
+            for idx, item in enumerate(value):
+                if strict_nct_id(item, f"{shown}[{idx}]") != expected_nct_id:
+                    raise OutcomesLayoutError(
+                        f"{shown}[{idx}] names a different trial than the record it is filed under"
+                    )
+    for where, key, value in entries:
+        if _is_in_audit_key(key) and (type(value) is not bool or value is not expected_in_audit):
+            raise AuditFirewallError(
+                f"{label}.{withhold_nct_ids(where)} is a holdout flag holding "
+                f"{type(value).__name__} {value if type(value) is bool else '(not a bool)'}, but this "
+                f"trial is in_audit={expected_in_audit}; a conflicting holdout flag is refused"
+            )
 
 
 def check_side_input_identity(
@@ -913,32 +1250,98 @@ def check_side_input_identity(
     expected_nct_id: str,
     expected_in_audit: bool,
     label: str,
+    audit_nct_ids: AbstractSet[str] = frozenset(),
 ) -> None:
     """Refuse a side input (document profile, locations, provenance, parsed
     populations) that names another trial or contradicts the trial's
     ``in_audit``.
 
-    Method: every key read as a trial ID, at any depth, must hold a strict
-    ASCII ``^NCT[0-9]{8}$`` string equal to ``expected_nct_id``: a nested
-    document or location row naming another trial would otherwise be filed
-    under this one. Every key read as the holdout flag must be the bool
-    ``expected_in_audit``; a side record saying ``in_audit: true`` for a trial
-    the manifest marks false (or the reverse) is a conflict, refused as
-    ``AuditFirewallError`` rather than resolved either way. Messages name the
-    position, never the ID found there.
+    Method: a side record is filed under one trial and published in that
+    trial's shard, so every place a reader takes for a trial ID must name
+    that trial. Module 4's readings are applied (red-team m3 round 1 found
+    this check reading only keys that folded to ``nctid`` and ``inaudit``),
+    in this order, at any depth:
+    1. trial-ID keys and trial-ID list keys hold ``expected_nct_id``
+       (``_refuse_named_ids_and_flags`` rule 1; exit 1);
+    2. holdout flags under any spelling hold ``expected_in_audit``
+       (rule 2; ``AuditFirewallError``, exit 2);
+    3. URL keys (Module 4's ``url``, ``source_url``, ``pdf_url``,
+       ``document_url``, ``uri``, folded) name no trial but this one
+       (``_refuse_other_trial_in_text``: a CT.gov large-document URL names its
+       trial);
+    4. no mapping key names another trial (``{"<other ID>": {...}}`` files
+       material for that trial under this one);
+    5. no key, string or split key/value reading names a trial of
+       ``audit_nct_ids`` (other than this one) in any reading
+       (``AuditFirewallError``).
+    Free text that names a trial outside the holdout (a publication citing a
+    related trial) is not refused: it is not filed as that trial's material.
+    Messages name the position, never the ID found there.
     """
-    for where, value in _iter_keyed_values(obj, "nctid"):
-        checked = strict_nct_id(value, f"{label}.{withhold_nct_ids(where)}")
-        if checked != expected_nct_id:
-            raise OutcomesLayoutError(
-                f"{label}.{withhold_nct_ids(where)} names a different trial than the record it is "
-                f"filed under; a nested row is never re-attributed"
-            )
-    for where, value in _iter_keyed_values(obj, "inaudit"):
-        if type(value) is not bool or value is not expected_in_audit:
+    expected = strict_nct_id(expected_nct_id, f"{label}: expected nct_id")
+    expected_flag = _require_strict_bool(expected_in_audit, f"{label}: expected in_audit")
+    audit = _strict_id_set(audit_nct_ids, "audit_nct_ids")
+    entries = list(_iter_mapping_entries(obj))
+    _refuse_named_ids_and_flags(entries, expected_nct_id=expected, expected_in_audit=expected_flag, label=label)
+    for where, key, value in entries:
+        if _folded_key(key) in _URL_KEY_FORMS and isinstance(value, str):
+            _refuse_other_trial_in_text(value, expected_nct_id=expected, where=f"{label}.{withhold_nct_ids(where)}")
+    for where, key, _value in entries:
+        _refuse_other_trial_in_text(
+            key if isinstance(key, str) else str(key),
+            expected_nct_id=expected,
+            where=f"{label}.{withhold_nct_ids(where)} (a key)",
+        )
+    _scan_for_audit_trials(obj, audit_nct_ids=audit - {expected}, label=label)
+
+
+def check_trial_record_identity(
+    trial: Mapping[str, Any],
+    *,
+    expected_nct_id: str,
+    expected_in_audit: bool,
+    audit_nct_ids: AbstractSet[str] = frozenset(),
+    label: str = "trial record",
+) -> None:
+    """Refuse a trial record (a --trials or manifest row) that names another
+    trial under a trial-ID key or carries a conflicting holdout flag.
+
+    Method: rules 1 and 2 of ``check_side_input_identity`` at any depth (a
+    nested object stamped with another trial's ID, or a nested ``in_audit``
+    true in an in-scope trial's record, would otherwise be published in this
+    trial's shard; red-team m3 round 1), then, for a trial outside the
+    holdout, rule 5: no key or string names an audit trial in any reading. A
+    CT.gov record's URLs and free text name related trials for good reasons,
+    so rules 3 and 4 (other trials in URLs and keys) are not applied; Module 4
+    likewise reads registry text for audit IDs only. A holdout's own record is
+    not scanned for text: it is reduced to its stub and never published.
+    """
+    expected = strict_nct_id(expected_nct_id, f"{label}: expected nct_id")
+    expected_flag = _require_strict_bool(expected_in_audit, f"{label}: expected in_audit")
+    audit = _strict_id_set(audit_nct_ids, "audit_nct_ids")
+    _refuse_named_ids_and_flags(
+        list(_iter_mapping_entries(trial)),
+        expected_nct_id=expected,
+        expected_in_audit=expected_flag,
+        label=label,
+    )
+    if not expected_flag:
+        _scan_for_audit_trials(trial, audit_nct_ids=audit - {expected}, label=label)
+
+
+def _refuse_holdout_flags(obj: Any, *, label: str) -> None:
+    """Refuse ``obj`` when any holdout flag in it, at any depth and under any
+    spelling Module 4 reads (``_is_in_audit_key``), is not exactly False.
+
+    Used by the public section builders, which build a section that only an
+    in-scope trial carries: input that says it is a holdout's (or says
+    anything but False) is refused as ``AuditFirewallError``.
+    """
+    for where, key, value in _iter_mapping_entries(obj):
+        if _is_in_audit_key(key) and value is not False:
             raise AuditFirewallError(
-                f"{label}.{withhold_nct_ids(where)} is {value!r} but the cohort manifest marks this "
-                f"trial in_audit={expected_in_audit}; a conflicting holdout flag is refused"
+                f"{label}.{withhold_nct_ids(where)} is a holdout flag that is not false; a holdout's "
+                f"stub carries no {label}, so this input is refused"
             )
 
 
@@ -1115,7 +1518,16 @@ def extract_reported_results(
     Preserves verbatim strings (including ``pValue``, confidence intervals, and
     ``populationDescription``) without rounding or evaluative claims. Absence
     is kept as ``None``.
+
+    A holdout's stub carries no extracted results, so a study that says it is
+    a holdout's (a holdout flag under any spelling, at any depth, that is not
+    exactly False: ``_refuse_holdout_flags``) is refused with
+    ``AuditFirewallError`` before anything is read from it, as are the parsed
+    populations supplied with it.
     """
+    _refuse_holdout_flags(study, label="reported_results")
+    if parsed_populations is not None:
+        _refuse_holdout_flags(parsed_populations, label="reported_results")
     # Support pre-built reported_results dict passed directly.
     if isinstance(study.get("reported_results"), Mapping):
         pre = study["reported_results"]
@@ -1770,13 +2182,17 @@ def normalize_decision_rule_locations(
       the rows (``census_status_from_effective_pass``): a supplied status is
       never trusted;
     - ``no_document`` with a citation in any pass, and ``no_document`` when the
-      trial has posted documents.
+      trial has posted documents;
+    - input carrying a holdout flag (any spelling, any depth) that is not
+      exactly False (``AuditFirewallError``): a holdout's stub has no
+      locations block, so its rows are never normalized into one.
     """
     has_posted_docs_flag = _require_strict_bool(
         has_posted_documents, "decision_rule_locations.has_posted_documents"
     )
     if raw is None:
         return None
+    _refuse_holdout_flags(raw, label="decision_rule_locations")
 
     docs_by_filename: dict[str, Mapping[str, Any]] | None = None
     if isinstance(document_profile, Mapping):
@@ -1806,10 +2222,6 @@ def normalize_decision_rule_locations(
             if expected_nct_id is not None and grouped_nct != expected_nct_id:
                 raise OutcomesLayoutError("decision_rule_locations.nct_id names a different trial")
             expected_nct_id = grouped_nct
-        if "in_audit" in raw and type(raw["in_audit"]) is not bool:
-            raise AuditFirewallError(
-                f"decision_rule_locations.in_audit must be a bool, got {raw['in_audit']!r}"
-            )
         if "primary_pass" not in raw or not isinstance(raw["primary_pass"], Sequence) or isinstance(raw["primary_pass"], (str, bytes)):
             raise OutcomesLayoutError("decision_rule_locations dict must contain 'primary_pass' list")
         for pass_key in GROUPED_PASS_KEYS:
@@ -1919,17 +2331,28 @@ def normalize_longitudinal_provenance(
     ``primary_completion_to_results_delta`` into the unified shard keys
     ``{registry_milestones, posted_documents, publications, date_deltas}``
     without dropping dated milestones or precision metadata.
+
+    A holdout's stub carries no provenance: ``in_audit`` must be a strict
+    bool, and ``in_audit=True`` with a record, or a record carrying a holdout
+    flag (any spelling, any depth) that is not exactly False, is refused with
+    ``AuditFirewallError`` (red-team m3 round 1: the holdout's registry
+    milestones and posted documents were returned in full).
     """
+    holdout = _require_strict_bool(in_audit, "longitudinal_provenance.in_audit")
     if raw is None:
         return None
+    if holdout:
+        raise AuditFirewallError(
+            "in_audit holdout leak (stub) — a holdout trial carries no longitudinal_provenance; the "
+            "record is refused, not normalized"
+        )
     if not isinstance(raw, Mapping):
         raise OutcomesLayoutError(
             f"longitudinal_provenance must be an object or None, got {type(raw).__name__}"
         )
+    _refuse_holdout_flags(raw, label="longitudinal_provenance")
 
     _validate_date_precisions_recursive(raw)
-    if in_audit:
-        _check_provenance_pdf_leak(str(raw.get("nct_id") or "<trial>"), raw)
 
     # Support both Module 4 LongitudinalProvenanceRecord and direct Module 3 shape.
     registry_milestones = raw.get("registry_milestones")
@@ -1980,8 +2403,12 @@ def build_document_badge(
     in_audit: bool,
     document_profile: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    """Build ``index_row.document_badge`` with strict holdout masking."""
-    if in_audit:
+    """Build ``index_row.document_badge`` with strict holdout masking.
+
+    ``in_audit`` must be a strict bool (vector 1: never defaulted). Read by
+    truthiness, ``None`` or ``0`` unmasked the badge (red-team m3 round 1).
+    """
+    if _require_strict_bool(in_audit, "document_badge.in_audit"):
         return {
             "readability_status": "in_audit_holdout",
             "redaction_flags": None,
@@ -2016,8 +2443,12 @@ def build_census_badge(
     decision_rule_locations: Mapping[str, Any] | None,
     has_documents: bool,
 ) -> dict[str, Any]:
-    """Build ``index_row.census_badge`` with strict holdout masking."""
-    if in_audit:
+    """Build ``index_row.census_badge`` with strict holdout masking.
+
+    ``in_audit`` must be a strict bool (vector 1: never defaulted), as for
+    ``build_document_badge``.
+    """
+    if _require_strict_bool(in_audit, "census_badge.in_audit"):
         return {
             "census_status": "in_audit_holdout",
             "status_counts": None,
@@ -2055,27 +2486,65 @@ def trial_nct_id(trial: Mapping[str, Any]) -> str:
 
     When a record carries both, they must agree: a flat ``nct_id`` stamped
     onto another trial's CT.gov record is refused, not resolved either way.
+
+    Method: every top-level key a reader takes for the record's ID is read,
+    not only ``nct_id``: Module 4 reads a top-level ``nctId`` (and
+    ``trial_nct_id``) as the record's ID too, so a record carrying ``nct_id``
+    of one trial and ``nctId`` of another (red-team m3 round 1: built as the
+    first, with full results, though the second was a holdout) is refused.
+    Keys are recognised by ``_folded_key`` (any case, separator or invisible
+    character). A key holding ``None`` is read as absent; every other value
+    must be a strict ID, and all of them, with
+    ``protocolSection.identificationModule.nctId``, must name one trial.
     """
     proto = trial.get("protocolSection") if isinstance(trial.get("protocolSection"), Mapping) else {}
     ident = proto.get("identificationModule") if isinstance(proto.get("identificationModule"), Mapping) else {}
-    flat = trial.get("nct_id")
-    nested = ident.get("nctId")
-    if flat is None and nested is None:
+    sources: list[tuple[str, Any]] = [
+        (withhold_nct_ids(str(key)), value)
+        for key, value in trial.items()
+        if _folded_key(key) in _TRIAL_ID_KEY_FORMS and value is not None
+    ]
+    if ident.get("nctId") is not None:
+        sources.append(("protocolSection.identificationModule.nctId", ident.get("nctId")))
+    if not sources:
         raise OutcomesLayoutError("record carries no nct_id (neither nct_id nor identificationModule.nctId)")
-    flat_checked = strict_nct_id(flat, "nct_id") if flat is not None else None
-    nested_checked = (
-        strict_nct_id(nested, "protocolSection.identificationModule.nctId") if nested is not None else None
-    )
-    if flat_checked is not None and nested_checked is not None and flat_checked != nested_checked:
+    checked = [strict_nct_id(value, where) for where, value in sources]
+    if len(set(checked)) > 1:
         raise OutcomesLayoutError(
-            "record's nct_id and protocolSection.identificationModule.nctId name different trials"
+            f"record's trial-ID fields ({', '.join(where for where, _ in sources)}) name different "
+            f"trials; refused, not resolved either way"
         )
-    return flat_checked if flat_checked is not None else str(nested_checked)
+    return checked[0]
+
+
+def _text_or_none(value: Any, label: str) -> str | None:
+    """Return ``value`` when it is a ``str`` or ``None``, else raise.
+
+    Index fields are scalars copied 1:1. ``str()`` of an object placed in one
+    (``{"results": {"hr": "0.68"}}`` under ``brief_title``) published
+    structured content, a holdout's results included, through a holdout's
+    stub (red-team m3 round 1), so anything but a string or ``None`` is
+    refused. The message names the field and the type, never the value.
+    """
+    if value is None or type(value) is str:
+        return value
+    raise OutcomesLayoutError(
+        f"{label} must be a string or null, got {type(value).__name__}; an index field holds one "
+        f"scalar copied as is, never the text of an object"
+    )
 
 
 def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
     """Extract lightweight trial-index metadata from either a flat manifest row
     or a full CT.gov API v2 study object. Missing values stay ``None``.
+
+    Every text field is taken as written when it is a string and refused
+    otherwise (``_text_or_none``): an object or list is never turned into its
+    ``str()``. CT.gov's ``phases`` list is joined with ``/`` (each item must be
+    a string) and its first condition is the primary condition (a string, or
+    refused). ``brief_title`` falls back to ``title`` and then to ``""``, as
+    before. Messages name the trial; ``build_trial_bundle`` withholds the ID
+    when the trial is, or may be, a holdout.
     """
     proto = trial.get("protocolSection") if isinstance(trial.get("protocolSection"), Mapping) else {}
     ident = proto.get("identificationModule") if isinstance(proto.get("identificationModule"), Mapping) else {}
@@ -2094,22 +2563,27 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
     if brief_title is None:
         brief_title = ident.get("briefTitle")
     if brief_title is None:
-        brief_title = trial.get("title") or ""
+        brief_title = trial.get("title")
+    brief_title = _text_or_none(brief_title, f"{nct_id}.brief_title") or ""
 
-    study_type = trial.get("study_type") if "study_type" in trial else design.get("studyType")
+    study_type = _text_or_none(
+        trial.get("study_type") if "study_type" in trial else design.get("studyType"),
+        f"{nct_id}.study_type",
+    )
 
-    phase = trial.get("phase")
+    phase = _text_or_none(trial.get("phase"), f"{nct_id}.phase")
     if phase is None and "phases" in design:
         phases = design.get("phases")
         if isinstance(phases, Sequence) and not isinstance(phases, (str, bytes)) and phases:
-            phase = "/".join(str(p) for p in phases)
+            phase = "/".join(
+                str(_text_or_none(p, f"{nct_id}.designModule.phases[{i}]")) for i, p in enumerate(phases)
+            )
 
     raw_enrollment = trial.get("enrollment") if "enrollment" in trial else enroll_info.get("count")
     enrollment = _strict_int_or_none(raw_enrollment, f"{nct_id}.enrollment")
-    enrollment_type = (
-        trial.get("enrollment_type")
-        if "enrollment_type" in trial
-        else enroll_info.get("type")
+    enrollment_type = _text_or_none(
+        trial.get("enrollment_type") if "enrollment_type" in trial else enroll_info.get("type"),
+        f"{nct_id}.enrollment_type",
     )
 
     def _date_struct(key_flat: str, key_struct: str) -> str | None:
@@ -2131,18 +2605,18 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
         lead_sponsor_name = lead_sponsor.get("name")
     else:
         lead_sponsor_name = trial.get("sponsor")
-    sponsor_class = (
-        trial.get("sponsor_class")
-        if "sponsor_class" in trial
-        else lead_sponsor.get("class")
+    lead_sponsor_name = _text_or_none(lead_sponsor_name, f"{nct_id}.lead_sponsor_name")
+    sponsor_class = _text_or_none(
+        trial.get("sponsor_class") if "sponsor_class" in trial else lead_sponsor.get("class"),
+        f"{nct_id}.sponsor_class",
     )
-    ecosystem_category = trial.get("ecosystem_category")
+    ecosystem_category = _text_or_none(trial.get("ecosystem_category"), f"{nct_id}.ecosystem_category")
 
-    primary_condition = trial.get("primary_condition")
+    primary_condition = _text_or_none(trial.get("primary_condition"), f"{nct_id}.primary_condition")
     if primary_condition is None:
         conds = cond_mod.get("conditions")
         if isinstance(conds, Sequence) and not isinstance(conds, (str, bytes)) and conds:
-            primary_condition = str(conds[0])
+            primary_condition = _text_or_none(conds[0], f"{nct_id}.conditionsModule.conditions[0]")
 
     raw_poc = trial.get("primary_outcomes_count")
     if raw_poc is None and "n_primary_outcomes" in trial:
@@ -2168,21 +2642,44 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
 
     return {
         "nct_id": nct_id,
-        "brief_title": str(brief_title),
-        "study_type": str(study_type) if study_type is not None else None,
-        "phase": str(phase) if phase is not None else None,
+        "brief_title": brief_title,
+        "study_type": study_type,
+        "phase": phase,
         "enrollment": enrollment,
-        "enrollment_type": str(enrollment_type) if enrollment_type is not None else None,
+        "enrollment_type": enrollment_type,
         "primary_completion_date": primary_completion_date,
         "results_first_post_date": results_first_post_date,
-        "lead_sponsor_name": str(lead_sponsor_name) if lead_sponsor_name is not None else None,
-        "sponsor_class": str(sponsor_class) if sponsor_class is not None else None,
-        "ecosystem_category": str(ecosystem_category) if ecosystem_category is not None else None,
-        "primary_condition": str(primary_condition) if primary_condition is not None else None,
+        "lead_sponsor_name": lead_sponsor_name,
+        "sponsor_class": sponsor_class,
+        "ecosystem_category": ecosystem_category,
+        "primary_condition": primary_condition,
         "primary_outcomes_count": primary_outcomes_count,
         "protocol": protocol_flag,
         "sap": sap_flag,
     }
+
+
+def _declared_in_scope(trial: Mapping[str, Any], in_audit: Any) -> bool:
+    """True only when the caller and the record both say the trial is in scope.
+
+    The ``in_audit`` argument is exactly False (or absent with the record's
+    own ``in_audit`` exactly False), and every top-level holdout flag of the
+    record, under any spelling, is exactly False. Anything else means the
+    trial is, or may be, a holdout.
+    """
+    if in_audit is not False and not (in_audit is None and trial.get("in_audit") is False):
+        return False
+    return all(value is False for key, value in trial.items() if _is_in_audit_key(key))
+
+
+def _find_inline_sections(obj: Any) -> list[str]:
+    """Positions, at any depth, of keys naming a shard section or side input
+    (``HOLDOUT_INLINE_SECTION_FORMS``), with any NCT-like token withheld."""
+    return [
+        withhold_nct_ids(where)
+        for where, key, _value in _iter_mapping_entries(obj)
+        if _folded_key(key) in HOLDOUT_INLINE_SECTION_FORMS
+    ]
 
 
 def build_trial_bundle(
@@ -2196,30 +2693,92 @@ def build_trial_bundle(
     longitudinal_provenance: Mapping[str, Any] | None = None,
     population_parser: Callable[[Mapping[str, Any]], Any] | None = None,
     parsed_populations: Any = None,
+    audit_nct_ids: AbstractSet[str] = frozenset(),
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Construct and audit-check ``(index_row, shard_record)`` for one trial.
 
-    ``in_audit`` (when given) and the trial's own ``in_audit`` must agree. A
-    holdout trial (``in_audit`` true) is built as a stub: its index row holds
-    the fields that come 1:1 from the trial/manifest row, masked badges and
-    ``has_reported_results`` ``None``; its shard record holds ``nct_id``,
+    ``in_audit`` (when given) and the trial's own holdout flags, under every
+    spelling Module 4 reads (``inAudit``, ``IN_AUDIT``, ``in-audit``,
+    ``is_in_audit``), must agree; only the ``in_audit`` argument, or the
+    record's exact ``in_audit`` key when no argument is given, admits a trial.
+    A holdout trial (``in_audit`` true) is built as a stub: its index row
+    holds the fields that come 1:1 from the trial/manifest row, masked badges
+    and ``has_reported_results`` ``None``; its shard record holds ``nct_id``,
     ``in_audit``, ``cohorts`` and ``shard`` with every section ``None``. Its
     results are not extracted, its population parser is not called, and any
-    side input for it is refused (``AuditFirewallError``), never dropped.
-    For any other trial, every side input must name this trial wherever it
-    names one, and any holdout flag it carries must be false
-    (``check_side_input_identity``).
+    side input for it, passed in or carried inline in its own record
+    (``HOLDOUT_INLINE_SECTION_FORMS``), is refused (``AuditFirewallError``),
+    never dropped. Every record is checked with
+    ``check_trial_record_identity`` (a nested trial-ID key names this trial;
+    every nested holdout flag agrees), and for any other trial every side
+    input with ``check_side_input_identity``; ``audit_nct_ids`` (the build's
+    holdout set, when the caller knows it) adds the audit-ID scan to both.
+
+    When the trial is, or may be, a holdout (``_declared_in_scope`` is
+    false), or a message names a trial of ``audit_nct_ids``, every refusal
+    has its NCT-like tokens withheld: a refusal about a holdout's row (an
+    enrollment of the wrong type) printed its ID (red-team m3 round 1).
     """
+    withhold = not _declared_in_scope(trial, in_audit)
+    try:
+        audit = _strict_id_set(audit_nct_ids, "audit_nct_ids")
+    except OutcomesLayoutError as exc:
+        raise type(exc)(withhold_nct_ids(str(exc))) from None
+    try:
+        return _build_trial_bundle(
+            trial,
+            shards=shards,
+            in_audit=in_audit,
+            explicit_cohorts=explicit_cohorts,
+            document_profile=document_profile,
+            decision_rule_locations=decision_rule_locations,
+            longitudinal_provenance=longitudinal_provenance,
+            population_parser=population_parser,
+            parsed_populations=parsed_populations,
+            audit_nct_ids=audit,
+        )
+    except OutcomesLayoutError as exc:
+        message = str(exc)
+        shown = withhold_nct_ids(message) if withhold else withhold_if_names(message, audit)
+        if shown == message:
+            raise
+        raise type(exc)(shown) from None
+
+
+def _build_trial_bundle(
+    trial: Mapping[str, Any],
+    *,
+    shards: int,
+    in_audit: Any,
+    explicit_cohorts: Sequence[str] | None,
+    document_profile: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
+    decision_rule_locations: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
+    longitudinal_provenance: Mapping[str, Any] | None,
+    population_parser: Callable[[Mapping[str, Any]], Any] | None,
+    parsed_populations: Any,
+    audit_nct_ids: frozenset[str],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The body of ``build_trial_bundle`` (see there); messages may name the trial."""
     meta = _study_scalar_fields(trial)
     nct_id = meta["nct_id"]
     shard_id = outcomes_shard_of(nct_id, shards)
 
-    if in_audit is not None and "in_audit" in trial and trial["in_audit"] is not in_audit:
-        raise AuditFirewallError(
-            f"{nct_id}: in_audit argument ({in_audit!r}) disagrees with the trial's own "
-            f"in_audit ({trial['in_audit']!r})"
-        )
+    # The record's own top-level holdout flags, under every spelling: each a
+    # strict bool, and all agreeing with the trial's in_audit. They can only
+    # refuse; only the argument (or the exact in_audit key) admits.
+    own_flags = [(key, value) for key, value in trial.items() if _is_in_audit_key(key)]
+    for _key, value in own_flags:
+        if type(value) is not bool:
+            raise AuditFirewallError(
+                f"{nct_id}: the record carries a holdout flag that is not a bool "
+                f"({type(value).__name__}); its holdout status is unknown"
+            )
     raw_in_audit = in_audit if in_audit is not None else trial.get("in_audit")
+    if type(raw_in_audit) is bool and any(value is not raw_in_audit for _key, value in own_flags):
+        raise AuditFirewallError(
+            f"{nct_id}: in_audit is {raw_in_audit} but the record's own holdout flag "
+            f"(under some spelling of in_audit) disagrees; a conflicting holdout flag is refused"
+        )
     # Run initial firewall check on raw inputs (Vectors 1, 2, 3, 4).
     assert_no_audit_leakage(
         nct_id=nct_id,
@@ -2234,7 +2793,21 @@ def build_trial_bundle(
         raise AuditFirewallError(
             f"{nct_id}: in_audit holdout leak (stub) — parsed populations supplied for a holdout trial"
         )
+    if is_holdout:
+        inline = _find_inline_sections(trial)
+        if inline:
+            raise AuditFirewallError(
+                f"{nct_id}: in_audit holdout leak (stub) — the holdout's own record carries "
+                f"{len(inline)} side section(s) inline (e.g. {', '.join(inline[:3])}); holdout material "
+                f"in the input is refused, never dropped"
+            )
 
+    check_trial_record_identity(
+        trial,
+        expected_nct_id=nct_id,
+        expected_in_audit=is_holdout,
+        audit_nct_ids=audit_nct_ids,
+    )
     side_inputs: tuple[tuple[str, Any], ...] = (
         ("document_profile", document_profile),
         ("decision_rule_locations", decision_rule_locations),
@@ -2248,7 +2821,9 @@ def build_trial_bundle(
                 expected_nct_id=nct_id,
                 expected_in_audit=is_holdout,
                 label=side_label,
+                audit_nct_ids=audit_nct_ids,
             )
+
 
     cohorts = derive_cohorts(
         explicit_cohorts if explicit_cohorts is not None else trial.get("cohorts"),
@@ -2777,7 +3352,23 @@ def validate_outcomes_tree(
 
     index_bytes = index_path.stat().st_size
     try:
-        index_doc = json.loads(index_path.read_text(encoding="utf-8"))
+        index_doc = loads_refusing_repeated_keys(index_path.read_text(encoding="utf-8"))
+    except RepeatedKeyError as exc:
+        # A repeated key may hide a holdout (a first-key reader sees in_audit
+        # true on a record a last-key reader takes as in scope): a firewall
+        # problem, as on input.
+        if raise_on_audit_leakage:
+            raise
+        return ValidationResult(
+            ok=False,
+            problems=(*found_problems, f"{INDEX_FILE}: {exc}"),
+            warnings=(),
+            total_trials=0,
+            audit_holdout_trials=0,
+            shards=0,
+            audit_leakage_detected=True,
+            budget=None,
+        )
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         return ValidationResult(
             ok=False,
@@ -2844,6 +3435,12 @@ def validate_outcomes_tree(
     index_by_nct: dict[str, dict[str, Any]] = {}
     recomputed_cohorts: dict[str, int] = {}
     recomputed_holdouts = 0
+    # Trials whose index row or shard record does not say in_audit exactly
+    # False (true, missing, or not a bool): every problem naming one has its
+    # NCT-like tokens withheld on the way out, not only firewall problems
+    # (red-team m3 round 1: an invalid cohorts list on a holdout's row was
+    # reported with its ID).
+    possibly_held: set[str] = set()
 
     if not isinstance(rows, list):
         found_problems.append(f"{INDEX_FILE}.data must be a list")
@@ -2859,6 +3456,8 @@ def validate_outcomes_tree(
             except OutcomesLayoutError as exc:
                 found_problems.append(str(exc))
                 continue
+            if row.get("in_audit") is not False:
+                possibly_held.add(nct_id)
             if prev_nct is not None and nct_id <= prev_nct:
                 found_problems.append(
                     f"{INDEX_FILE}.data is not strictly sorted ascending by nct_id ({prev_nct} before {nct_id})"
@@ -2873,6 +3472,32 @@ def validate_outcomes_tree(
                 found_problems.append(
                     f"{INDEX_FILE}.data[{nct_id}] key mismatch (missing={missing}, extra={extra})"
                 )
+            # Scalar fields hold one scalar each (the builder writes nothing
+            # else): an object there would carry structured content, such as
+            # a holdout's results, past the stub. The value is never quoted.
+            for field in _INDEX_ROW_TEXT_FIELDS:
+                if field in row and row[field] is not None and type(row[field]) is not str:
+                    found_problems.append(
+                        f"{INDEX_FILE}.data[{nct_id}].{field} must be a string or null, got "
+                        f"{type(row[field]).__name__}"
+                    )
+            for field in _INDEX_ROW_INT_FIELDS:
+                if field in row and row[field] is not None and type(row[field]) is not int:
+                    found_problems.append(
+                        f"{INDEX_FILE}.data[{nct_id}].{field} must be an int or null, got "
+                        f"{type(row[field]).__name__}"
+                    )
+            for field in _INDEX_ROW_BOOL_FIELDS:
+                if field in row and type(row[field]) is not bool:
+                    found_problems.append(
+                        f"{INDEX_FILE}.data[{nct_id}].{field} must be a bool, got {type(row[field]).__name__}"
+                    )
+            for field in _INDEX_ROW_TRISTATE_FIELDS:
+                if field in row and row[field] is not None and type(row[field]) is not bool:
+                    found_problems.append(
+                        f"{INDEX_FILE}.data[{nct_id}].{field} must be a bool or null, got "
+                        f"{type(row[field]).__name__}"
+                    )
             try:
                 assert_no_audit_leakage(
                     nct_id=nct_id,
@@ -2978,7 +3603,13 @@ def validate_outcomes_tree(
                 if os_byte != 0xFF:
                     found_problems.append(f"{rel} gzip header OS byte is 0x{os_byte:02x}, expected 0xff")
                 decompressed = gzip.decompress(raw_bytes).decode("utf-8")
-                sdoc = json.loads(decompressed)
+                sdoc = loads_refusing_repeated_keys(decompressed)
+            except RepeatedKeyError as exc:
+                audit_leakage = True
+                if raise_on_audit_leakage:
+                    raise
+                found_problems.append(f"{rel}: {exc}")
+                continue
             except (OutcomesLayoutError, OSError, EOFError, UnicodeDecodeError, ValueError) as exc:
                 found_problems.append(f"{rel} is not readable gzipped UTF-8 JSON ({exc})")
                 continue
@@ -3042,8 +3673,11 @@ def validate_outcomes_tree(
                     seen_in_shards[nct_id] = n
 
                 if not isinstance(entry, dict):
+                    possibly_held.add(nct_id)
                     found_problems.append(f"{rel}.data[{nct_id}] is not an object")
                     continue
+                if entry.get("in_audit") is not False:
+                    possibly_held.add(nct_id)
                 if entry.get("nct_id") != nct_id:
                     found_problems.append(f"{rel}.data[{nct_id}].nct_id is {entry.get('nct_id')!r}")
                 if entry.get("shard") != n:
@@ -3160,9 +3794,10 @@ def validate_outcomes_tree(
     else:
         budget = None
 
+    held = frozenset(possibly_held)
     return ValidationResult(
         ok=len(found_problems) == 0,
-        problems=tuple(found_problems),
+        problems=tuple(withhold_if_names(problem, held) for problem in found_problems),
         warnings=tuple(warnings),
         total_trials=len(index_by_nct),
         audit_holdout_trials=recomputed_holdouts,
@@ -3229,11 +3864,12 @@ def absolute_output_path(path: str | os.PathLike[str]) -> Path:
 def _foreign_entries(directory: Path) -> list[str]:
     """Names in ``directory`` that mark another data family's directory.
 
-    ``run.json``, ``summary.json``, ``records`` and ``records.json`` mark the
-    site's dataset folder, its outcomes and results-structure families; an
-    ``index.json`` in a directory without this layout's bundle marker is
-    someone else's index. Entries are tested with ``lexists`` so a dangling
-    symlink counts too.
+    The names of ``FOREIGN_DIRECTORY_MARKERS`` mark the site's dataset folder
+    and each of its families (outcomes, results structure, census, devices,
+    geography and its frozen run folders, sponsors, sex/gender and their audit
+    folders); an ``index.json`` in a directory without this layout's bundle
+    marker is someone else's index. Entries are tested with ``lexists`` so a
+    dangling symlink counts too.
     """
     found = [name for name in FOREIGN_DIRECTORY_MARKERS if os.path.lexists(directory / name)]
     if os.path.lexists(directory / INDEX_FILE) and not is_bundle_dir(directory):
@@ -3241,9 +3877,26 @@ def _foreign_entries(directory: Path) -> list[str]:
     return found
 
 
+def _family_folder(path: Path) -> Path | None:
+    """The first of ``path`` and its ancestors that is a site data family folder
+    by position (a ``SITE_DATA_FAMILIES`` name directly under a folder named
+    ``data``), or ``None``."""
+    for candidate in (path, *path.parents):
+        if candidate.name in SITE_DATA_FAMILIES and candidate.parent.name == "data":
+            return candidate
+    return None
+
+
 def _check_ancestors(path: Path, *, what: str) -> None:
-    """Refuse when any ancestor of ``path`` is a symlink, marks another data
-    family, or is itself an outcomes bundle."""
+    """Refuse when ``path`` sits in a site data family folder by position, or
+    any ancestor of ``path`` is a symlink, marks another data family, or is
+    itself an outcomes bundle."""
+    family = _family_folder(path)
+    if family is not None:
+        raise OutcomesLayoutError(
+            f"refusing to write {what} {path}: it is inside {family}, a site data family folder "
+            f"({family.name!r} under 'data'); point it at a dedicated directory outside any dataset folder"
+        )
     for ancestor in path.parents:
         if os.path.islink(ancestor):
             raise OutcomesLayoutError(
@@ -3270,6 +3923,70 @@ def _staging_dir_for(target: Path) -> Path:
     return target.with_name(target.name + ".partial")
 
 
+def _check_bundle_entries(target: Path) -> None:
+    """Refuse an existing bundle holding anything this module does not write
+    where the swap would move or replace it.
+
+    Method: the swap replaces ``index.json`` and moves ``shards/`` into the
+    staging directory, which is then deleted. ``index.json`` must therefore be
+    a regular file, and ``shards/`` a real directory holding only regular
+    files named ``<n>.json.gz``: anything else in it (a directory of operator
+    notes, a symlink, a stray file) was not written here and would be deleted
+    with the old shards without a word (red-team m3 round 1), so the write is
+    refused and the entry kept. Sibling entries of the target are never
+    touched and are not checked.
+    """
+    index = target / INDEX_FILE
+    if os.path.lexists(index) and (os.path.islink(index) or not index.is_file()):
+        raise OutcomesLayoutError(f"refusing to replace {index}: it is not a regular file")
+    shards = target / SHARDS_DIR
+    if not os.path.lexists(shards):
+        return
+    if os.path.islink(shards) or not shards.is_dir():
+        raise OutcomesLayoutError(f"refusing to replace {shards}: it is not a directory this module wrote")
+    foreign = sorted(
+        entry.name
+        for entry in os.scandir(shards)
+        if entry.is_symlink() or not entry.is_file(follow_symlinks=False) or not SHARD_FILENAME_RE.fullmatch(entry.name)
+    )
+    if foreign:
+        raise OutcomesLayoutError(
+            f"refusing to replace {shards}: it holds {len(foreign)} entr{'y' if len(foreign) == 1 else 'ies'} "
+            f"this module never writes ({', '.join(withhold_nct_ids(name) for name in foreign[:5])}); the old "
+            f"shards are deleted after the swap, so move them out first (nothing was changed)"
+        )
+
+
+def _retained_backups(target: Path, work: Path) -> list[Path]:
+    """Backups in ``work`` left by an interrupted or failed swap that the target may still need.
+
+    ``_previous_shards`` always counts. ``_previous_index.json`` counts unless
+    the target's ``index.json`` holds the same bytes (then it is a leftover
+    link or copy of the current index and nothing is lost by removing it).
+    """
+    found: list[Path] = []
+    backup_shards = work / PREVIOUS_SHARDS_DIR
+    if os.path.lexists(backup_shards):
+        found.append(backup_shards)
+    backup_index = work / PREVIOUS_INDEX_FILE
+    if os.path.lexists(backup_index):
+        live_index = target / INDEX_FILE
+        same = False
+        try:
+            same = (
+                not os.path.islink(backup_index)
+                and backup_index.is_file()
+                and live_index.is_file()
+                and not os.path.islink(live_index)
+                and backup_index.read_bytes() == live_index.read_bytes()
+            )
+        except OSError:
+            same = False
+        if not same:
+            found.append(backup_index)
+    return found
+
+
 def check_output_target(out_dir: str | os.PathLike[str]) -> Path:
     """Refuse every output location this module may not write; return the
     absolute target when it may.
@@ -3280,12 +3997,16 @@ def check_output_target(out_dir: str | os.PathLike[str]) -> Path:
     - a target that is a symlink, a non-directory, a directory holding
       another family's markers (``_foreign_entries``), or a non-empty
       directory without the bundle marker; a bundle whose ``index.json``,
-      ``shards`` or marker is a symlink;
-    - an ancestor that is a symlink, marks another family, or is a bundle;
+      ``shards`` or marker is a symlink, or whose ``shards/`` holds anything
+      but regular ``<n>.json.gz`` files (``_check_bundle_entries``);
+    - a target inside a site data family folder by position
+      (``_family_folder``), and an ancestor that is a symlink, marks another
+      family, or is a bundle;
     - a ``<target>.partial`` that is a symlink or not a directory, that holds
-      a retained ``_previous_shards`` backup (named in the refusal; L3), or
-      that is non-empty without this module's staging marker. Only an empty
-      ``.partial`` or one holding the staging marker is this module's to remove.
+      a retained ``_previous_shards`` or ``_previous_index.json`` backup
+      (``_retained_backups``, named in the refusal; L3), or that is non-empty
+      without this module's staging marker. Only an empty ``.partial`` or one
+      holding the staging marker is this module's to remove.
     """
     target = absolute_output_path(out_dir)
     _check_ancestors(target, what="outcomes bundle")
@@ -3314,6 +4035,7 @@ def check_output_target(out_dir: str | os.PathLike[str]) -> Path:
         for managed in (INDEX_FILE, SHARDS_DIR, BUNDLE_MARKER_FILE):
             if os.path.islink(target / managed):
                 raise OutcomesLayoutError(f"refusing to replace symlinked bundle entry {target / managed}")
+        _check_bundle_entries(target)
 
     work = _staging_dir_for(target)
     if os.path.lexists(work):
@@ -3321,12 +4043,13 @@ def check_output_target(out_dir: str | os.PathLike[str]) -> Path:
             raise OutcomesLayoutError(f"refusing to use symlinked staging directory {work}")
         if not work.is_dir():
             raise OutcomesLayoutError(f"refusing to replace non-directory staging path {work}")
-        backup = work / PREVIOUS_SHARDS_DIR
-        if os.path.lexists(backup):
+        retained = _retained_backups(target, work)
+        if retained:
             raise RetainedBackupError(
-                f"refusing to run: {backup} holds previous shards retained after an earlier failed "
-                f"restore. Move them back to {target / SHARDS_DIR} (or set them aside) and delete {work} "
-                f"by hand; nothing was deleted"
+                f"refusing to run: {', '.join(str(p) for p in retained)} hold(s) the previous bundle's "
+                f"shards or index, retained after an earlier failed or interrupted restore. Move them back "
+                f"into {target} ({SHARDS_DIR}/ and {INDEX_FILE}) or set them aside, and delete {work} by "
+                f"hand; nothing was deleted"
             )
         if any(work.iterdir()) and not _holds_marker(work, STAGING_MARKER_FILE, STAGING_MARKER):
             raise OutcomesLayoutError(
@@ -3418,6 +4141,168 @@ def _remove_own_staging_dir(work: Path) -> None:
     work.rmdir()
 
 
+def _directory_identity(path: Path) -> tuple[int, int] | None:
+    """``(st_dev, st_ino)`` of the real directory at ``path`` (not followed), or
+    ``None`` when nothing is there; anything else at ``path`` is refused."""
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISDIR(st.st_mode):
+        raise OutcomesLayoutError(f"refusing to write {path}: it is not a directory (or is a symlink)")
+    return (st.st_dev, st.st_ino)
+
+
+def _is_same_directory(path: Path, identity: tuple[int, int]) -> bool:
+    """True when ``path`` is still the real directory ``identity`` names (never a symlink)."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISDIR(st.st_mode) and (st.st_dev, st.st_ino) == identity
+
+
+def _require_same_directory(path: Path, identity: tuple[int, int]) -> None:
+    """Refuse to rename into ``path`` unless it is still the directory checked."""
+    if not _is_same_directory(path, identity):
+        raise OutcomesLayoutError(
+            f"refusing to write into {path}: it is no longer the directory that was checked (replaced, "
+            f"or turned into a symlink, while the staged tree was prepared)"
+        )
+
+
+def _keep_previous_index(live_index: Path, backup: Path) -> None:
+    """Keep the previous ``index.json`` at ``backup``: a hard link to it (the
+    target keeps its index throughout), or a byte copy where hard links are not
+    supported."""
+    try:
+        os.link(live_index, backup, follow_symlinks=False)
+    except OSError:
+        shutil.copyfile(live_index, backup, follow_symlinks=False)
+
+
+def _swap_into_target(target: Path, work: Path, pre_identity: tuple[int, int] | None) -> None:
+    """Move the staged, validated tree from ``work`` into ``target``; on any
+    exception put ``target`` back exactly as it was, then re-raise.
+
+    Method:
+    1. Re-check (the staged tree took time to write and validate, and the
+       target or an ancestor may have been swapped meanwhile; red-team m3
+       round 1 wrote through a target that became a symlink after the check):
+       ``check_output_target`` again, then the target must be the directory
+       that was checked (``pre_identity``, compared by device and inode with
+       ``lstat``, so a symlink never matches), or, when it was absent, is
+       created with ``os.mkdir``, which refuses anything that has appeared
+       there, a symlink included. Every rename into the target is preceded by
+       the same identity check (``_require_same_directory``). The window
+       between that check and the rename is not closed: ``os.replace`` here
+       takes paths, not directory handles.
+    2. The swap, one rename per step: the bundle marker (when the target has
+       none), a hard link to the previous ``index.json`` kept as
+       ``_previous_index.json`` (``_keep_previous_index``; the target keeps
+       its index), the old ``shards/`` moved to ``_previous_shards``, the new
+       ``shards/`` moved in, the new ``index.json`` moved in.
+    3. On any exception, ``KeyboardInterrupt`` and ``SystemExit`` included,
+       the rollback reads the filesystem rather than flags set after each
+       rename: an interrupt can land after a rename has completed and before
+       the next statement runs (red-team m3 round 1: the previous index was
+       overwritten and kept nowhere, or the target was left with mixed
+       versions). A step is undone when its effect is there: the new index
+       when the staged one is gone (the previous index moved back, or the new
+       one removed when there was none), the new shards when the staged ones
+       are gone, the previous shards when they are in ``_previous_shards``
+       and the target has none, the marker when this call moved it in, the
+       target when this call created it and it is empty. An undo is skipped
+       (and reported) when the target is no longer the directory written
+       into. If the previous shards or index cannot be put back they stay in
+       ``work``, which is kept, and ``RetainedBackupError`` names them; every
+       later call refuses until a person has dealt with them. Otherwise the
+       original exception propagates, with any rollback problem as a note.
+    """
+    check_output_target(target)
+    dst_index = target / INDEX_FILE
+    dst_shards = target / SHARDS_DIR
+    dst_marker = target / BUNDLE_MARKER_FILE
+    work_index = work / INDEX_FILE
+    work_shards = work / SHARDS_DIR
+    work_marker = work / BUNDLE_MARKER_FILE
+    backup_shards = work / PREVIOUS_SHARDS_DIR
+    backup_index = work / PREVIOUS_INDEX_FILE
+
+    if pre_identity is not None:
+        _require_same_directory(target, pre_identity)
+    target_had_marker = pre_identity is not None and is_bundle_dir(target)
+    identity: tuple[int, int] | None = pre_identity
+    try:
+        if pre_identity is None:
+            try:
+                os.mkdir(target)
+            except FileExistsError:
+                raise OutcomesLayoutError(
+                    f"refusing to write {target}: it was absent when checked and something now exists "
+                    f"there (a directory or symlink made meanwhile); nothing was written"
+                ) from None
+            identity = _directory_identity(target)
+            if identity is None:
+                raise OutcomesLayoutError(f"{target} vanished right after it was created; nothing was written")
+        if not target_had_marker:
+            _require_same_directory(target, identity)
+            os.replace(work_marker, dst_marker)
+        if os.path.lexists(dst_index):
+            _keep_previous_index(dst_index, backup_index)
+        if os.path.lexists(dst_shards):
+            _require_same_directory(target, identity)
+            os.replace(dst_shards, backup_shards)
+        _require_same_directory(target, identity)
+        os.replace(work_shards, dst_shards)
+        _require_same_directory(target, identity)
+        os.replace(work_index, dst_index)
+    except BaseException as swap_exc:
+        undo_failures: list[str] = []
+
+        def _undo(description: str, action: Callable[[], None]) -> None:
+            if identity is None or not _is_same_directory(target, identity):
+                undo_failures.append(
+                    f"{description} skipped: {target} is not the directory this call wrote into"
+                )
+                return
+            try:
+                action()
+            except BaseException as undo_exc:  # noqa: BLE001 - recorded and reported below
+                undo_failures.append(f"{description} failed ({undo_exc})")
+
+        if not os.path.lexists(work_index):
+            if os.path.lexists(backup_index):
+                _undo("moving the previous index back", lambda: os.replace(backup_index, dst_index))
+            else:
+                _undo("removing the new index", lambda: dst_index.unlink())
+        if not os.path.lexists(work_shards) and os.path.lexists(dst_shards):
+            _undo("moving the new shards out", lambda: os.replace(dst_shards, work / FAILED_NEW_SHARDS_DIR))
+        if os.path.lexists(backup_shards) and not os.path.lexists(dst_shards):
+            _undo("moving the previous shards back", lambda: os.replace(backup_shards, dst_shards))
+        if not target_had_marker and not os.path.lexists(work_marker) and os.path.lexists(dst_marker):
+            _undo("removing the marker this call installed", lambda: dst_marker.unlink())
+        if pre_identity is None and os.path.isdir(target) and not os.path.islink(target):
+            try:
+                if (identity is None or _is_same_directory(target, identity)) and not any(os.scandir(target)):
+                    target.rmdir()
+            except BaseException as undo_exc:  # noqa: BLE001 - recorded and reported below
+                undo_failures.append(f"removing the target this call created failed ({undo_exc})")
+
+        retained = _retained_backups(target, work)
+        if retained:
+            raise RetainedBackupError(
+                f"writing {target} failed ({type(swap_exc).__name__}: {swap_exc}) and the previous "
+                f"bundle could not be put back ({'; '.join(undo_failures) or 'restore did not run'}). "
+                f"It is retained at {', '.join(str(p) for p in retained)}: move it back into {target} "
+                f"({SHARDS_DIR}/ to {dst_shards}, {PREVIOUS_INDEX_FILE} to {dst_index}) by hand, then delete "
+                f"{work}; until then every write to {target} refuses"
+            ) from swap_exc
+        if undo_failures:
+            swap_exc.add_note("rollback problems: " + "; ".join(undo_failures))
+        raise
+
+
 def write_outcomes_tree(
     out_dir: str | os.PathLike[str],
     index_doc: Mapping[str, Any],
@@ -3430,25 +4315,30 @@ def write_outcomes_tree(
     Method:
     1. ``check_output_target`` refuses every location this module may not
        write (L1) and a retained backup from an earlier failed restore (L3),
-       before anything is created or deleted. The audit firewall runs over
-       every row and shard next, still before touching the filesystem.
+       before anything is created or deleted; the target's identity (device
+       and inode, or absence) is recorded right after. The audit firewall
+       runs over every row and shard next, still before touching the
+       filesystem.
     2. The tree, its bundle marker and a staging marker are written into a
        freshly created ``<out_dir>.partial`` and checked with
        ``validate_outcomes_tree``.
-    3. The swap: the bundle marker (when the target has none), then
-       ``shards/`` (the old one moved to ``.partial/_previous_shards``), then
-       ``index.json``. Any exception in this window, ``KeyboardInterrupt`` and
-       ``SystemExit`` included, rolls back before it propagates: the new
-       shards move out, the old ones move back, a marker this call installed
-       is removed, and a target this call created is removed if empty. If the
-       old shards cannot be moved back they stay in ``_previous_shards``, the
-       staging directory is kept, and ``RetainedBackupError`` names the path
-       (every later call refuses until a person has dealt with it).
+    3. The swap (``_swap_into_target``): the target is re-checked and must
+       still be the directory recorded in step 1; then the bundle marker
+       (when the target has none), ``shards/`` (the old one moved to
+       ``.partial/_previous_shards``, the previous ``index.json`` kept as a
+       hard link in ``.partial/_previous_index.json``), then ``index.json``.
+       Any exception in this window, ``KeyboardInterrupt`` and ``SystemExit``
+       included, and one landing just after a rename, rolls the target back
+       to its exact previous state before it propagates. If the previous
+       shards or index cannot be put back they stay in the staging directory,
+       which is kept, and ``RetainedBackupError`` names them (every later
+       call refuses until a person has dealt with them).
     4. On the way out the staging directory is removed, marker last
        (``_remove_own_staging_dir``); a failure to remove it is returned as a
        warning, not hidden. Sibling files in the target are never touched.
     """
     target = check_output_target(out_dir)
+    pre_identity = _directory_identity(target)
 
     layout = index_doc.get("layout")
     if not isinstance(layout, Mapping):
@@ -3496,10 +4386,6 @@ def write_outcomes_tree(
     (work / STAGING_MARKER_FILE).write_text(_marker_text(STAGING_MARKER), encoding="utf-8")
     work_shards = work / SHARDS_DIR
     work_shards.mkdir()
-
-    target_existed_before = os.path.lexists(target)
-    target_had_marker = target_existed_before and is_bundle_dir(target)
-    backup_shards = work / PREVIOUS_SHARDS_DIR
     preserve_work = False
 
     try:
@@ -3521,65 +4407,10 @@ def write_outcomes_tree(
             raise OutcomesLayoutError(
                 f"staged outcomes tree failed validation; {target} untouched: {'; '.join(result.problems)}"
             )
-
-        dst_shards = target / SHARDS_DIR
-        dst_index = target / INDEX_FILE
-        dst_marker = target / BUNDLE_MARKER_FILE
-        installed_marker = False
-        moved_old_shards = False
-        installed_new_shards = False
-        installed_new_index = False
         try:
-            target.mkdir(exist_ok=True)
-            if not target_had_marker:
-                os.replace(work / BUNDLE_MARKER_FILE, dst_marker)
-                installed_marker = True
-            if os.path.lexists(dst_shards):
-                os.replace(dst_shards, backup_shards)
-                moved_old_shards = True
-            os.replace(work_shards, dst_shards)
-            installed_new_shards = True
-            os.replace(work / INDEX_FILE, dst_index)
-            installed_new_index = True
-        except BaseException as swap_exc:
-            if installed_new_index:
-                # The swap completed before the interruption landed; the
-                # target is the new, validated tree. Nothing to undo.
-                raise
-            undo_failures: list[str] = []
-            if installed_new_shards and os.path.lexists(dst_shards):
-                try:
-                    os.replace(dst_shards, work / FAILED_NEW_SHARDS_DIR)
-                except BaseException as undo_exc:  # noqa: BLE001 - recorded and reported below
-                    undo_failures.append(f"moving the new shards out failed ({undo_exc})")
-            if moved_old_shards and os.path.lexists(backup_shards) and not os.path.lexists(dst_shards):
-                try:
-                    os.replace(backup_shards, dst_shards)
-                except BaseException as undo_exc:  # noqa: BLE001 - recorded and reported below
-                    undo_failures.append(f"moving the previous shards back failed ({undo_exc})")
-            if installed_marker and not moved_old_shards and not os.path.lexists(dst_index):
-                try:
-                    dst_marker.unlink()
-                    if not target_existed_before and not any(target.iterdir()):
-                        target.rmdir()
-                except BaseException as undo_exc:  # noqa: BLE001 - recorded and reported below
-                    undo_failures.append(f"removing the marker this call installed failed ({undo_exc})")
-            elif not target_existed_before:
-                try:
-                    if os.path.lexists(target) and not any(target.iterdir()):
-                        target.rmdir()
-                except BaseException as undo_exc:  # noqa: BLE001 - recorded and reported below
-                    undo_failures.append(f"removing the target this call created failed ({undo_exc})")
-            if os.path.lexists(backup_shards):
-                preserve_work = True
-                raise RetainedBackupError(
-                    f"writing {target} failed ({type(swap_exc).__name__}: {swap_exc}) and the previous "
-                    f"shards could not be put back ({'; '.join(undo_failures) or 'restore did not run'}). "
-                    f"They are retained at {backup_shards}: move them back to {dst_shards} by hand, then "
-                    f"delete {work}; until then every write to {target} refuses"
-                ) from swap_exc
-            if undo_failures:
-                swap_exc.add_note("rollback problems: " + "; ".join(undo_failures))
+            _swap_into_target(target, work, pre_identity)
+        except RetainedBackupError:
+            preserve_work = True
             raise
     finally:
         cleanup_warning: str | None = None

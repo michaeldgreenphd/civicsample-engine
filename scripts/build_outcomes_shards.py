@@ -29,8 +29,13 @@ READS   --cohort-manifest  REQUIRED JSON/JSONL (plain or .gz): one row per trial
         Every option but --locations may be given once. Every ID anywhere in
         these inputs must be strict ASCII ^NCT[0-9]{8}$; a side record for a
         trial outside the manifest, for a holdout trial, naming another trial
-        in a nested row, or stating an in_audit that contradicts the manifest
-        is refused, never dropped. A JSON object repeating a key is refused.
+        (under a trial-ID key such as nct_id/nctId/trial_nct_id, in a URL, or
+        as a mapping key), naming a holdout trial anywhere, or carrying a
+        holdout flag (in_audit under any spelling: inAudit, IN_AUDIT,
+        in-audit, is_in_audit) that contradicts the manifest is refused,
+        never dropped. A --trials record is held to the same rule for its
+        trial-ID keys and holdout flags, and a holdout's own record may carry
+        no side section inline. A JSON object repeating a key is refused.
 WRITES  --out-dir (default <engine root>/data/outcomes_bundles, resolved from
         this file, not the working directory):
           index.json            multi-cohort trial catalog, sorted by nct_id
@@ -54,13 +59,14 @@ CHECKS  --check <dir> validates an existing outcomes directory on disk without
         modifying it (--allow-null-commit accepts a tree stamped null).
 EXITS   0 on success; 2 on any AuditFirewallError (in_audit holdout violation,
         aborted BEFORE touching --out-dir; trial IDs are withheld from the
-        message); 1 on any other contract, input, or validation error.
+        message); 1 on any other contract, input, or validation error. Any
+        refusal that names a holdout trial, of either kind, in a build or in
+        --check, has every trial ID in it withheld.
 """
 from __future__ import annotations
 
 import argparse
 import gzip
-import json
 import os
 import sys
 from collections.abc import Mapping, Sequence
@@ -99,34 +105,20 @@ class _StoreOnce(argparse.Action):
         setattr(namespace, self.dest, values)
 
 
-class _RepeatedKeyError(ol.AuditFirewallError):
-    """A JSON object in an input repeats a key."""
-
-
-def _refuse_repeated_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """``object_pairs_hook`` building an object and refusing a repeated key.
-
-    ``json.loads`` keeps the last of two equal keys, so
-    ``{"in_audit": true, ..., "in_audit": false}`` would read as in scope. Which
-    value such a file means is not determined, and a repeated ``in_audit`` or
-    ``nct_id`` can hide a holdout trial, so the file is refused (as an audit
-    firewall error; the key is named only when it holds no NCT-like ID).
-    """
-    built: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in built:
-            shown = ol.withhold_nct_ids(repr(key))
-            raise _RepeatedKeyError(
-                f"a JSON object repeats the key {shown}; a JSON reader keeps one value and drops "
-                f"the other, and a repeated in_audit or nct_id can hide a holdout trial"
-            )
-        built[key] = value
-    return built
+# A JSON object in an input repeats a key. The rule is the module's
+# (src.outcomes_layout.loads_refusing_repeated_keys), so inputs and a tree on
+# disk (--check) are read the same way.
+_RepeatedKeyError = ol.RepeatedKeyError
 
 
 def _loads_strict(text: str) -> Any:
-    """``json.loads`` with ``_refuse_repeated_keys``."""
-    return json.loads(text, object_pairs_hook=_refuse_repeated_keys)
+    """``json.loads`` refusing an object that repeats a key (``ol.loads_refusing_repeated_keys``)."""
+    return ol.loads_refusing_repeated_keys(text)
+
+
+def _is_holdout_flag_key(key: Any) -> bool:
+    """A key a reader takes for the holdout flag (``ol.is_holdout_flag_key``, Module 4's reading)."""
+    return ol.is_holdout_flag_key(key)
 
 
 def _read_text(path: Path) -> str:
@@ -340,12 +332,20 @@ def _merge_trials_and_manifest(
     """Merge ``--trials`` into the ``--cohort-manifest`` rows, keyed by ``nct_id``.
 
     Method: the manifest is the allowlist and the authority on ``in_audit``.
-    Every manifest row needs a strict bool ``in_audit``; a trial in
-    ``--trials`` that the manifest does not list is refused whatever it says
-    about itself; a trial's own ``in_audit``, when present, must be the same
-    bool. Manifest fields override trial fields, except ``protocol`` and
-    ``sap``, which are true when either source says so. ``manifest_cohort``
-    is added to every row's cohorts.
+    Every manifest row needs a strict bool under the exact key ``in_audit``
+    (the only key that admits a trial); any other spelling of the holdout
+    flag a reader takes for it (Module 4's ``_is_in_audit_key``: ``inAudit``,
+    ``IN_AUDIT``, ``in-audit``, ``is_in_audit``) on the same row must be the
+    same bool, or the row does not say which it means and is refused
+    (red-team m3 round 1: a row with ``in_audit`` false and ``inAudit`` true
+    was built in scope). A trial in ``--trials`` that the manifest does not
+    list is refused whatever it says about itself; a trial's own holdout
+    flags, under every spelling, when present, must be the manifest's bool
+    (red-team m3 round 1: ``inAudit: true`` on a --trials record was ignored).
+    Both conflicts are ``AuditFirewallError`` (exit 2). Manifest fields
+    override trial fields, except ``protocol`` and ``sap``, which are true
+    when either source says so. ``manifest_cohort`` is added to every row's
+    cohorts.
     """
     manifest_by_nct: dict[str, dict[str, Any]] = {}
     for row in manifest_rows:
@@ -356,6 +356,12 @@ def _merge_trials_and_manifest(
             raise ol.AuditFirewallError(
                 f"--cohort-manifest: in_audit must be an explicit bool on every row, got "
                 f"{type(row.get('in_audit')).__name__}"
+            )
+        if any(value is not row["in_audit"] for key, value in row.items() if _is_holdout_flag_key(key)):
+            raise ol.AuditFirewallError(
+                "--cohort-manifest: a row carries a second holdout flag (a spelling of in_audit such as "
+                "inAudit or is_in_audit) that is not the same bool as its in_audit; the row does not say "
+                "which it means and is refused"
             )
         manifest_by_nct[nct_id] = dict(row)
     if not manifest_by_nct:
@@ -381,10 +387,10 @@ def _merge_trials_and_manifest(
     for nct_id in sorted(manifest_by_nct):
         overlay = manifest_by_nct[nct_id]
         base = trials_by_nct.get(nct_id, {})
-        if "in_audit" in base and base["in_audit"] is not overlay["in_audit"]:
+        if any(value is not overlay["in_audit"] for key, value in base.items() if _is_holdout_flag_key(key)):
             raise ol.AuditFirewallError(
-                f"conflicting in_audit values between --trials ({base['in_audit']!r}) and "
-                f"--cohort-manifest ({overlay['in_audit']!r}) for one trial"
+                "conflicting holdout flags between --trials and --cohort-manifest for one trial: the "
+                "--trials record carries in_audit (under some spelling) that is not the manifest's bool"
             )
         combined = {**base, **overlay}
         for flag in ("protocol", "sap"):
@@ -395,7 +401,9 @@ def _merge_trials_and_manifest(
         if manifest_cohort is not None:
             own = combined.get("cohorts")
             if own is not None and (isinstance(own, (str, bytes)) or not isinstance(own, Sequence)):
-                raise ol.OutcomesLayoutError(f"cohorts must be a list of slugs, got {own!r}")
+                raise ol.OutcomesLayoutError(
+                    f"cohorts must be a list of slugs, got {type(own).__name__}"
+                )
             combined["cohorts"] = sorted(set(own or []) | {manifest_cohort})
         combined["nct_id"] = nct_id
         merged[nct_id] = combined
@@ -542,8 +550,37 @@ def _run_build(args: argparse.Namespace) -> int:
         trials_rows, trials_meta = _load_records_file(args.trials)
     manifest_rows, manifest_meta = _load_records_file(args.cohort_manifest)
     merged = _merge_trials_and_manifest(trials_rows, manifest_rows, manifest_cohort=args.manifest_cohort)
-    audit_nct_ids = {nct for nct, row in merged.items() if row["in_audit"] is True}
+    audit_nct_ids = frozenset(nct for nct, row in merged.items() if row["in_audit"] is True)
+    try:
+        return _build_and_write(args, merged, audit_nct_ids, commit, trials_meta, manifest_meta)
+    except ol.OutcomesLayoutError as exc:
+        # Every refusal from here on, not only firewall refusals, has its
+        # NCT-like tokens withheld when it names a holdout trial in any
+        # reading (red-team m3 round 1: "NCT...enrollment must be an int"
+        # printed a holdout's ID).
+        message = str(exc)
+        shown = ol.withhold_if_names(message, audit_nct_ids)
+        if shown == message:
+            raise
+        raise type(exc)(shown) from None
 
+
+def _build_and_write(
+    args: argparse.Namespace,
+    merged: Mapping[str, dict[str, Any]],
+    audit_nct_ids: frozenset[str],
+    commit: str,
+    trials_meta: Mapping[str, Any],
+    manifest_meta: Mapping[str, Any],
+) -> int:
+    """Read the side streams, build every trial's bundle and write the tree.
+
+    The vector-6 cross-stream firewall (every key, and every record read
+    against its key with ``ol.check_side_input_identity``) runs before any
+    bundle is built or ``--out-dir`` is touched; each bundle is built with
+    the build's holdout set, so a trial record or side input naming a holdout
+    anywhere is refused.
+    """
     docs_by_nct = _load_documents_stream(args.documents) if args.documents else {}
     locs_by_nct = _load_locations_streams(args.locations) if args.locations else {}
     prov_by_nct = _load_provenance_stream(args.provenance) if args.provenance else {}
@@ -604,6 +641,7 @@ def _run_build(args: argparse.Namespace) -> int:
                 decision_rule_locations=locs_by_nct.get(nct_id),
                 longitudinal_provenance=prov_by_nct.get(nct_id),
                 parsed_populations=pop_by_nct.get(nct_id),
+                audit_nct_ids=audit_nct_ids,
             )
         )
 
