@@ -1639,6 +1639,38 @@ def test_365d_window_needs_explicit_unposted_evidence_before_an_unreported_state
     assert T.classify_window_365d(later, date(2022, 1, 1))['state'] == 'UNREPORTED_PAST_365D'
 
 
+@pytest.mark.parametrize('has_results', ['<absent>', None, 'false', 0, True])
+def test_a_submitted_record_needs_explicit_unposted_evidence_before_it_is_called_pending(has_results: object) -> None:
+    as_of = date(2026, 11, 1)
+    study = F._make_study('NCT09990017', title='Submitted, results flag unclear', lead_sponsor='Fictional Sponsor',
+                          pcd=('2020-01-15', 'ACTUAL'), submit_date='2021-03-01')
+    if has_results == '<absent>':
+        study.pop('hasResults', None)
+    else:
+        study['hasResults'] = has_results
+    # A submission date alone does not show that results are still unposted.
+    window = T.classify_window_365d(study, as_of)
+    assert window['state'] == 'RESULTS_STATUS_INDETERMINATE', window
+    # Control: an explicit hasResults=false makes it pending.
+    study['hasResults'] = False
+    assert T.classify_window_365d(study, as_of)['state'] == 'PENDING_SUBMITTED_UNPOSTED'
+    # Control: a post date after a historical reference date shows results were unposted then.
+    later = F._make_study('NCT09990018', title='Submitted, posted later', lead_sponsor='Fictional Sponsor',
+                          pcd=('2020-01-15', 'ACTUAL'), submit_date='2021-03-01', has_results=True,
+                          post_date=('2025-06-01', 'ACTUAL'))
+    assert T.classify_window_365d(later, date(2022, 1, 1))['state'] == 'PENDING_SUBMITTED_UNPOSTED'
+
+
+def test_contract_refuses_a_pending_window_without_unposted_evidence(built_files: dict[str, Any]) -> None:
+    bad = copy.deepcopy(built_files)
+    nct = 'NCT09990003'  # PENDING_SUBMITTED_UNPOSTED in the fixture build, with hasResults=false
+    assert _timeline_of(bad, nct)['window_365d']['state'] == 'PENDING_SUBMITTED_UNPOSTED'
+    assert not [p for p in ART.check_contract(bad) if 'window_365d is' in p]
+    next(s for s in bad['studies.json']['studies'] if s['nct_id'] == nct)['has_results'] = None
+    assert any(f'{nct}: window_365d is PENDING_SUBMITTED_UNPOSTED but CT.gov hasResults is null' in p
+               for p in ART.check_contract(bad))
+
+
 def test_contract_refuses_an_unreported_window_without_unposted_evidence(built_files: dict[str, Any]) -> None:
     bad = copy.deepcopy(built_files)
     nct = 'NCT09990002'  # UNREPORTED_PAST_365D in the fixture build, with hasResults=false

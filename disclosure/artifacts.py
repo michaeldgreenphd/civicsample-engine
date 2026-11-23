@@ -1073,9 +1073,10 @@ def check_contract(
             )
         if wstate not in T.WINDOW_STATES_365D:
             problems.append(f'{nct}: invalid window_365d state {wstate!r}')
-        elif wstate in ('UNREPORTED_PAST_365D', 'UNREPORTED_WITHIN_365D'):
+        elif wstate in ('PENDING_SUBMITTED_UNPOSTED', 'UNREPORTED_PAST_365D', 'UNREPORTED_WITHIN_365D'):
             # Unposted on `as_of` needs evidence: hasResults=false, or a results-first-posted date
-            # (necessarily after `as_of`, else the window would be POSTED_*).
+            # (necessarily after `as_of`, else the window would be POSTED_*). "Submitted, not yet
+            # posted" states unposted status as much as the unreported states do.
             posted_later = (((tl.get('milestones') or {}).get('results_first_posted') or {}).get('precision')
                             not in (None, 'missing'))
             if has_results_by_nct.get(nct) is not False and not posted_later:

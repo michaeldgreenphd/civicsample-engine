@@ -485,6 +485,27 @@ def classify_window_365d(study: dict[str, Any] | None, as_of: date) -> dict[str,
                 'note': WINDOW_365D_NOTE,
             }
 
+    # Results were unposted on `as_of` only if the record says so: an explicit hasResults=false, or a
+    # resultsFirstPostDate later than `as_of` (a historical reference date, before results were posted;
+    # hasResults describes the record today; any earlier post date returned above). A record that omits
+    # hasResults or carries a non-boolean (a field-projected or hand-edited local record), or one with
+    # hasResults=true but neither a resultsSection nor a resultsFirstPostDate, says nothing definite, so
+    # it cannot be PENDING_SUBMITTED_UNPOSTED, UNREPORTED_PAST_365D or UNREPORTED_WITHIN_365D. The check
+    # runs before the submitted branch, since "submitted, not yet posted" asserts unposted status too.
+    has_results_flag = study.get('hasResults')
+    if has_results_flag is not False and post is None:
+        return {
+            'state': 'RESULTS_STATUS_INDETERMINATE',
+            'as_of': as_of.isoformat(),
+            'reason': (
+                'hasResults is true, but neither a resultsSection nor a resultsFirstPostDate is recorded'
+                if has_results_flag is True
+                else f'hasResults is {"absent" if has_results_flag is None else repr(has_results_flag)}, '
+                'not an explicit false, so the record does not show that results are unposted'
+            ),
+            'note': WINDOW_365D_NOTE,
+        }
+
     sub_raw = sm.get('resultsFirstSubmitDate')
     sub = parse_partial_date(sub_raw if isinstance(sub_raw, str) else None)
     if sub is not None:
@@ -502,26 +523,6 @@ def classify_window_365d(study: dict[str, Any] | None, as_of: date) -> dict[str,
                 'reason': f'partial resultsFirstSubmitDate ({sub.raw}) overlaps {as_of.isoformat()}',
                 'note': WINDOW_365D_NOTE,
             }
-
-    # Results were unposted on `as_of` only if the record says so: an explicit hasResults=false, or a
-    # resultsFirstPostDate later than `as_of` (a historical reference date, before results were posted;
-    # hasResults describes the record today). A record that omits hasResults or carries a non-boolean
-    # (a field-projected or hand-edited local record), or one with hasResults=true but neither a
-    # resultsSection nor a resultsFirstPostDate, says nothing definite, so it cannot be
-    # UNREPORTED_PAST_365D / UNREPORTED_WITHIN_365D.
-    has_results_flag = study.get('hasResults')
-    if has_results_flag is not False and post is None:
-        return {
-            'state': 'RESULTS_STATUS_INDETERMINATE',
-            'as_of': as_of.isoformat(),
-            'reason': (
-                'hasResults is true, but neither a resultsSection nor a resultsFirstPostDate is recorded'
-                if has_results_flag is True
-                else f'hasResults is {"absent" if has_results_flag is None else repr(has_results_flag)}, '
-                'not an explicit false, so the record does not show that results are unposted'
-            ),
-            'note': WINDOW_365D_NOTE,
-        }
 
     min_elapsed = (as_of - pcd.latest).days
     max_elapsed = (as_of - pcd.earliest).days
