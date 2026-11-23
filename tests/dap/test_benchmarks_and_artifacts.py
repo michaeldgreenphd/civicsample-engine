@@ -1931,6 +1931,29 @@ def test_weekly_sex_gender_rows_the_extractor_writes_for_every_status_load(tmp_p
     assert len(records) == 5
 
 
+@pytest.mark.parametrize("measured", [True, False])
+def test_weekly_sex_gender_participant_count_flag_follows_the_status(tmp_path: Path, measured: bool) -> None:
+    # On fe37485 a measured row with `is_participant_count: null` loaded, and `extract_sex_gender` left it
+    # out of female composition and the participant-weighted distributions; a `not_reported` row
+    # (no measure) with a flag loaded too. The parser sets the flag exactly when it selected a measure.
+    from src import sex_gender_table as sgt
+
+    weekly_doc = fx.build_weekly_full_records_doc()
+    if measured:
+        row = weekly_doc["data"][1]["sex_gender"]
+        assert row["sex_report_status"] == "reported"
+        row["is_participant_count"] = None
+        problem = "sex_gender.is_participant_count is None for status 'reported'"
+    else:
+        row = sgt.lean_row(sgt.build_row({"protocolSection": {"identificationModule": {"nctId": "NCT99000402"}}},
+                                         "2026-11-21"))
+        row["is_participant_count"] = True
+        weekly_doc["data"][1]["sex_gender"] = row
+        problem = "sex_gender.is_participant_count is True for status 'not_reported'"
+    with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem}")):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
 _DROP = object()  # remove the key instead of setting it
 
 
@@ -1949,6 +1972,11 @@ def _write_weekly(weekly_doc: dict[str, Any], tmp_path: Path) -> Path:
         (("race", "omb_totals", "american_indian_alaska_native"), _DROP,
          "race.omb_totals has no american_indian_alaska_native (the extractor writes every category key)"),
         (("race", "omb_totals", "white"), "60", "race.omb_totals.white is '60', not a non-negative integer"),
+        # On fe37485 an extra key loaded, and the shared-total and sex-total sums counted it.
+        (("sex", "totals", "corrupt"), 1000, "sex.totals.corrupt is not one of the extractor's categories"),
+        (("race", "omb_totals", "corrupt"), 1000, "race.omb_totals.corrupt is not one of the extractor's categories"),
+        (("ethnicity", "omb_totals", "corrupt"), 0,
+         "ethnicity.omb_totals.corrupt is not one of the extractor's categories"),
         (("race", "omb_totals", "white"), True, "race.omb_totals.white is True, not a non-negative integer"),
         (("race", "omb_totals", "white"), 60.5, "race.omb_totals.white is 60.5, not a non-negative integer"),
         (("race", "reported"), "yes", "race.reported is str, not bool"),

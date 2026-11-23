@@ -127,6 +127,18 @@ def is_results_posted(record: dict[str, Any]) -> bool:
     return any(isinstance(record.get(k), dict) for k in ("race", "ethnicity", "sex", "sex_gender"))
 
 
+def _reads_as_baseline_count(value: Any) -> bool:
+    """Whether ``src.utils.get_total_baseline_participants`` reads ``value`` as a count:
+    ``int(float(str(value).replace(",", "")))`` succeeds and the value is not None."""
+    if value is None:
+        return False
+    try:
+        int(float(str(value).replace(",", "")))
+    except (ValueError, TypeError, OverflowError):
+        return False
+    return True
+
+
 def _study_without_protocol_enrollment_padding(study: dict[str, Any]) -> dict[str, Any]:
     """Return a shallow view of a raw CT.gov study that prevents protocol enrollment
     from padding baseline ``unknown_not_reported`` when ``baselineCharacteristicsModule``
@@ -136,12 +148,21 @@ def _study_without_protocol_enrollment_padding(study: dict[str, Any]) -> dict[st
     population (from ``baselineCharacteristicsModule.denoms`` or the table's rows),
     never registered protocol ``enrollmentInfo.count`` (which can exceed the
     analyzed baseline cohort due to screen/randomization drop-off).
+
+    Enrollment is kept only when ``src.utils.get_total_baseline_participants`` is sure to return a
+    baseline count before its enrollment fallback: some ``Participants`` denominator whose last count
+    parses (it reads the overall group's count, else the last one, denominator by denominator). A
+    denominator present with counts that do not parse (``"NA"``) had been taken as usable, so the
+    race and ethnicity tables were balanced to registered enrollment.
     """
     baseline = (study.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}
     has_baseline_participants_denom = any(
         isinstance(d, dict)
         and str(d.get("units") or "").lower() == "participants"
-        and bool(d.get("counts"))
+        and isinstance(d.get("counts"), list)
+        and bool(d["counts"])
+        and isinstance(d["counts"][-1], dict)
+        and _reads_as_baseline_count(d["counts"][-1].get("value"))
         for d in (baseline.get("denoms") or [])
     )
     if has_baseline_participants_denom:

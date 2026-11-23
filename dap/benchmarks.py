@@ -1065,6 +1065,12 @@ def _demographic_child_problem(block: str, key: str, kind: str, value: Any) -> s
         for category in WEEKLY_TOTAL_KEYS[block]:
             if category not in value:
                 return f"{where} has no {category} (the extractor writes every category key)"
+        # ... and no other: `weekly_shared_total_problem` and `_sex_participant_total` sum every value, so an
+        # extra key (`"corrupt": 1000`) raised a block's total and the double-count threshold. All 80,890
+        # weekly records carry exactly these keys in all three blocks.
+        extra = sorted(set(value) - set(WEEKLY_TOTAL_KEYS[block]))
+        if extra:
+            return f"{where}.{extra[0]} is not one of the extractor's categories"
         for category, count in value.items():
             if not _is_extractor_count(count):
                 return f"{where}.{category} is {count!r}, not a non-negative integer"
@@ -1195,6 +1201,15 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
         if column in _SEX_GENDER_NON_BLANK_COLUMNS and not value.strip():
             return f"sex_gender.{column} is blank"
     row = rec["sex_gender"]
+    # `sgp.parse_trial` sets `is_participant_count` to a bool whenever it selected a measure, and only then:
+    # it stays None for `not_reported` (no measure) and `parse_error` (`sgt.parse_error_row`). A measured
+    # row with None was left out of female composition and the participant-weighted distributions, which
+    # need it True, with nothing reported. All 80,890 weekly rows are measured and carry a bool.
+    if (status in _NO_MEASURE_STATUSES) != (row["is_participant_count"] is None):
+        return (
+            f"sex_gender.is_participant_count is {row['is_participant_count']!r} for status {status!r} "
+            "(the parser sets it whenever it selected a measure, and only then)"
+        )
     if status in _NO_MEASURE_STATUSES:
         counted = next((c for c in _STATUS_COUNT_COLUMNS if row[c] is not None), None)
         if counted is not None:

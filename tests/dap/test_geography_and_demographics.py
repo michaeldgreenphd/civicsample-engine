@@ -311,6 +311,29 @@ def test_single_category_ethnicity_withholds_of_classified_and_keeps_denominator
     assert demo_unk["race"]["of_classified_withheld_reason"] == "classified_total_is_zero"
 
 
+@pytest.mark.parametrize(("value", "total"), [("NA", 80), ("N/A", 80), ("120", 120)])
+def test_an_unparsable_participants_denominator_never_balances_to_enrollment(value: str, total: int) -> None:
+    # On fe37485 a Participants denominator with counts that do not parse kept registered enrollment in
+    # the view, so get_total_baseline_participants fell back to it and both tables balanced to 120
+    # (40 padded unknowns) instead of their own 80 rows. A parsable denominator is read as before.
+    study = fx.make_raw_ctgov_study(
+        "NCT99000290",
+        locations=[{"facility": "S1", "state": "FL", "country": "United States"}],
+        enrollment=120,
+        baseline_denom=None,
+        measures=[
+            fx.make_measure("Race (NIH/OMB)", [("White", "50"), ("Black or African American", "30")]),
+            fx.make_measure("Ethnicity (NIH/OMB)", [("Hispanic or Latino", "20"), ("Not Hispanic or Latino", "60")]),
+        ],
+    )
+    study["resultsSection"]["baselineCharacteristicsModule"]["denoms"] = [
+        {"units": "Participants", "counts": [{"groupId": "BG000", "value": value}]}
+    ]
+    demo = extract_demographics(study)
+    assert demo["race"]["baseline_total"] == total
+    assert demo["ethnicity"]["baseline_total"] == total
+
+
 def test_two_denominators_unknown_bounds_and_direction_settled() -> None:
     # 20 reported out of 100, 15 unknown, 10 unmapped -> floor=0.20, ceiling=0.45
     unsettled = evaluate_unknown_bounds(20, 15, 10, 100, reference_median=0.30)

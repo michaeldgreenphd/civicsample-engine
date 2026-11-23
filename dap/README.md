@@ -53,7 +53,10 @@ modified.
      `unknown_bounds = [floor, (count + unknown + unmapped) / baseline_total]`,
      and `direction_settled` (`True` when both bounds lie strictly on the same
      side of the matched stratum reference median `p50`; `None` when no
-     reference median is available).
+     reference median is available). `baseline_total` is never registered
+     enrollment: a raw record keeps `enrollmentInfo` only when a
+     `Participants` baseline denominator's last count parses, so a denominator
+     of `"NA"` no longer balances the tables to enrollment.
    - **Denominator B (`of_classified`)**: `count / classified_total`; withheld
      as `None` whenever `single_category_ethnicity` holds or
      `classified_total == 0`.
@@ -160,8 +163,10 @@ reused as it stands, must carry a `sex_report_status` in `SEX_GENDER_STATES`
 and every lean column `sgt.lean_row` writes with its type
 (`WEEKLY_SEX_GENDER_COLUMNS`): a partial row published a reported trial with
 every flag and count empty, and a string count stopped the build. The
-types follow the producer by status: `is_participant_count` may be `None`
-(no measure found), and the `reported_*` flags only in a `parse_error` row,
+types follow the producer by status: `is_participant_count` is `None`
+exactly when no measure was read (`not_reported`, `parse_error`) and a
+boolean otherwise, since a measured row with `None` was left out of female
+composition; the `reported_*` flags may be `None` only in a `parse_error` row,
 which the extractor writes when the parser raises and which is kept. The three
 flags must also be the ones `sgp.derive_outcomes` gives for the row's status
 and counts (`WEEKLY_OUTCOME_COLUMNS`): `None` in a `parse_error` row, `False`
@@ -169,8 +174,9 @@ for every status but `reported`, and `reported_both` the conjunction of the
 other two. A `not_reported` row with `reported_sex: true` was counted as both.
 The `race` and `ethnicity` blocks must carry the children `dap/demographics.py`
 reads, of the kind the extractors write (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`):
-`reported` a boolean, `omb_totals` an object holding every OMB key as a
-non-negative integer, `raw_categories` objects with a string `original` and
+`reported` a boolean, `omb_totals` an object holding every OMB key, and no
+other, as a non-negative integer (an extra key was summed into the shared
+total; the `sex` block's `totals` follow the same rule), `raw_categories` objects with a string `original` and
 `omb_category`, a count and string `flags`, the race block's
 `quarantined_labels` objects with a string `original` and a count, its
 `unknown_inferred` a count, and `flags` a list of strings. The legacy `sex`
