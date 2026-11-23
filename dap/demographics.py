@@ -978,8 +978,9 @@ def whole_population_group_unidentified(record: dict[str, Any]) -> bool:
     so a table of arms with no Total group was published with its last arm's counts as
     the trial's. CT.gov ends a multi-group table with its Total group in all but one of
     the 55,810 multi-group trials of the 2026-11-15 weekly inputs (`src/utils.py`), and
-    in all 2,198 multi-group tables of the 3,133 stored ones. The sex/gender parser
-    picks its total by a sum check and flags a positional fallback, so it is not affected.
+    in all 2,198 multi-group tables of the 3,133 stored ones. The sex/gender parser picks
+    its total by a sum check, which falls back to an arm, so its composition is withheld
+    too (`_withhold_sex_composition`).
     """
     return whole_population_group_problem(record) is not None
 
@@ -1021,6 +1022,30 @@ ABSENT_BY_LABEL_DETAILS: frozenset[str] = frozenset(
 )
 
 
+def _withhold_sex_composition(sex_gender: dict[str, Any], group_problem: str) -> dict[str, Any]:
+    """The sex/gender row of a table with no one whole-population group, its composition withheld.
+
+    The vendored parser picks its total by a sum check (`sgp.choose_total`): with no Total column it
+    falls back to the last group, an arm, flagging the fallback in a field the lean row does not carry;
+    with two equal arms it reads one as the total, unflagged. So the arm's female share had been
+    published as the trial's and entered the pooled benchmarks while race and ethnicity were withheld.
+    The reporting state and the parsed counts are kept, as the parser read them; `percent_female`,
+    `female_share`, `of_parsed_total` and `of_classified` are withheld, with `composition_withheld_reason`
+    naming the group problem, and the counts give no participant total to the double-count check. None
+    of the stored raw trials has such a table. The parser's choice rule is not changed.
+    """
+    if sex_gender.get("is_participant_count") is not True:
+        return sex_gender
+    return {
+        **sex_gender,
+        "percent_female": None,
+        "female_share": None,
+        "of_parsed_total": None,
+        "of_classified": None,
+        "composition_withheld_reason": group_problem,
+    }
+
+
 def _whole_population_unidentified_block(detail: str) -> dict[str, Any]:
     """The race or ethnicity block of a table with no one whole-population group: no counts or shares."""
     return {
@@ -1050,6 +1075,9 @@ def extract_demographics(
     geo = geography if geography is not None else extract_geography(record)
     posted = is_results_posted(record)
     sex_gender = extract_sex_gender(record, snapshot_date=snapshot_date)
+    group_problem = whole_population_group_problem(record) if posted and "protocolSection" in record else None
+    if group_problem is not None:
+        sex_gender = _withhold_sex_composition(sex_gender, group_problem)
     sex_total = _sex_participant_total(record, sex_gender)
 
     weekly = _is_weekly_record(record)
@@ -1092,7 +1120,6 @@ def extract_demographics(
         reference_medians=refs.get("ethnicity"),
         baseline_participants=baseline_participants,
     )
-    group_problem = whole_population_group_problem(record) if posted and "protocolSection" in record else None
     if group_problem is not None:
         # No group stands for the whole trial, so neither extractor's counts are the trial's. Whether a
         # dimension has a measure at all does not depend on the group, so a dimension with none keeps its

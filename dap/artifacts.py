@@ -158,6 +158,16 @@ def run_identity(
     return sha256_bytes(dump([run_core, json_digests, trials_digest]))[:10]
 
 
+# Why a sex/gender composition may be withheld (`demographics.extract_sex_gender`,
+# `demographics._withhold_sex_composition`); `None` when it is not.
+WHOLE_POPULATION_GROUP_PROBLEMS: frozenset[str] = frozenset(
+    {"multi_group_baseline_without_total_group", "several_groups_titled_as_whole_population"}
+)
+SEX_COMPOSITION_WITHHELD_REASONS: frozenset[str | None] = frozenset(
+    {None, "participant_counts_not_whole", *WHOLE_POPULATION_GROUP_PROBLEMS}
+)
+
+
 def _count_item(
     metric_id: str,
     label: str,
@@ -389,6 +399,18 @@ def summarise(
             "posted_results_trials",
             denominators,
             "Posted-results trials with COUNT_OF_UNITS / non-participant sex tables (kept in reporting counts, excluded from composition).",
+        ),
+        _count_item(
+            "sex_gender_composition_withheld_no_whole_population_group",
+            "Posted trials whose sex/gender composition is withheld for want of one whole-population group",
+            sum(
+                1 for t in posted
+                if t["demographics"]["sex_gender"].get("composition_withheld_reason") in WHOLE_POPULATION_GROUP_PROBLEMS
+            ),
+            "posted_results_trials",
+            denominators,
+            "Posted-results trials whose baseline table has no group, or more than one, titled as the whole "
+            "population, so the parser's total may be an arm (kept in reporting counts, excluded from composition).",
         ),
         _count_item(
             "sex_gender_participant_counts_not_whole",
@@ -1148,8 +1170,13 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
             isinstance(sg.get(k), (int, float)) and not isinstance(sg.get(k), bool) and not float(sg[k]).is_integer()
             for k in ("n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender")
         )
+        # A table with no one whole-population group withholds it too, naming the group problem
+        # (`demographics._withhold_sex_composition`); the groups are not in the trial row, so that reason
+        # is checked only for its value, and counts that are not whole need some reason.
         withheld = sg.get("composition_withheld_reason")
-        if withheld != ("participant_counts_not_whole" if not_whole else None):
+        if withheld not in SEX_COMPOSITION_WITHHELD_REASONS or (not_whole and withheld is None) or (
+            withheld == "participant_counts_not_whole" and not not_whole
+        ):
             p.append(f"{nct}: sex_gender composition_withheld_reason {withheld!r} does not follow from its counts")
         if withheld is not None and any(
             sg.get(k) is not None for k in ("percent_female", "female_share", "of_parsed_total", "of_classified")

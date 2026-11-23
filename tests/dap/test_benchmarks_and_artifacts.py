@@ -1905,6 +1905,77 @@ def _arms_only_study(nct_id: str, measures: dict[str, dict[str, tuple[str, str]]
     return st
 
 
+_ARM_SEX = {"Sex: Female, Male": {"Female": ("30", "20"), "Male": ("20", "30")}}
+_SEX_WITHHELD = ("percent_female", "female_share", "of_parsed_total", "of_classified")
+
+
+@pytest.mark.parametrize(
+    ("measures", "reason"),
+    [
+        # On 79a8f5b the parser's total fell back to the last arm (Female 20 of 50), published as the trial's.
+        (_ARM_SEX, "multi_group_baseline_without_total_group"),
+        # Two equal arms: the parser's sum check reads one as the total, unflagged.
+        ({"Sex: Female, Male": {"Female": ("25", "25"), "Male": ("25", "25")}},
+         "multi_group_baseline_without_total_group"),
+    ],
+)
+def test_an_arm_only_sex_table_keeps_its_status_without_a_composition(
+    measures: dict[str, dict[str, tuple[str, str]]], reason: str
+) -> None:
+    sg = extract_demographics(_arms_only_study("NCT99800057", measures))["sex_gender"]
+    assert (sg["sex_report_status"], sg["is_participant_count"]) == ("reported", True)
+    assert sg["composition_withheld_reason"] == reason
+    assert all(sg[k] is None for k in _SEX_WITHHELD)
+
+
+def test_a_sex_table_with_two_whole_population_groups_has_no_composition() -> None:
+    st = _three_group_race_study("NCT99800058", ["Total", "Arm A", "Overall"])
+    module = st["resultsSection"]["baselineCharacteristicsModule"]
+    module["measures"].append({
+        "title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+        "classes": [{"categories": [
+            {"title": label, "measurements": [{"groupId": g["id"], "value": v} for g, v in zip(module["groups"], vals)]}
+            for label, vals in (("Female", ("50", "20", "50")), ("Male", ("50", "30", "50")))
+        ]}],
+    })
+    sg = extract_demographics(st)["sex_gender"]
+    assert sg["composition_withheld_reason"] == "several_groups_titled_as_whole_population"
+    assert all(sg[k] is None for k in _SEX_WITHHELD)
+
+
+def test_a_sex_table_with_a_total_group_and_an_arm_only_table_without_one_read_as_before() -> None:
+    # Controls, on both heads.
+    st = _arms_without_total("NCT99800059", _WITH_TOTAL)
+    st["resultsSection"]["baselineCharacteristicsModule"]["measures"].append(fx.make_measure(*_SEX_100))
+    assert extract_demographics(st)["sex_gender"]["female_share"] == 0.5
+    no_sex = extract_demographics(_arms_only_study("NCT99800060", _ARM_RACE))["sex_gender"]
+    assert (no_sex["sex_report_status"], no_sex.get("composition_withheld_reason")) == ("not_reported", None)
+
+
+def test_a_build_counts_and_checks_sex_compositions_withheld_for_the_group(tmp_path: Path) -> None:
+    # On 79a8f5b the arm's female share was published, the metric did not exist, and the contract had no
+    # reason to check.
+    studies = [*fx.build_fictional_cohort(), _arms_only_study("NCT99800061", {**_ARM_RACE, **_ARM_SEX})]
+    out = tmp_path / "out"
+    assert cli_build.main([
+        "--records-dir", str(fx.write_studies_dir(studies, tmp_path / "studies")),
+        "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")),
+        "--generated-at", "2026-11-21T00:00:00+00:00", "--out", str(out),
+    ]) == 0
+    loaded = artifacts.load_dir(out)
+    assert artifacts.check_contract(loaded) == []
+    metric = next(m for m in loaded["summary.json"]["metrics"]
+                  if m["id"] == "sex_gender_composition_withheld_no_whole_population_group")
+    assert metric["value"] == 1
+    sg = next(r for r in loaded["trial_rows"] if r["nct_id"] == "NCT99800061")["demographics"]["sex_gender"]
+    sg["female_share"] = 0.4
+    assert any("NCT99800061: sex_gender row with a withheld composition must stay out of composition" in x
+               for x in artifacts.check_contract(loaded))
+    sg.update(female_share=None, composition_withheld_reason="bogus")
+    assert any("NCT99800061: sex_gender composition_withheld_reason 'bogus' does not follow from its counts" in x
+               for x in artifacts.check_contract(loaded))
+
+
 def _three_group_race_study(nct_id: str, titles: list[str]) -> dict:
     """A raw study whose race table posts three groups (White 60/40/20, Asian 40/10/30 of 100/50/50)."""
     groups = [{"id": f"BG00{i}", "title": title} for i, title in enumerate(titles)]

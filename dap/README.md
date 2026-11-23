@@ -56,7 +56,12 @@ modified.
      multi-group tables has two. A dimension the table has no measure for keeps
      `table_absent_in_posted_results` (`ABSENT_BY_LABEL_DETAILS`, decided from
      titles and row labels, never a group's values), so it still counts as
-     omitted in the US-site audit. CT.gov posts such a table rarely (one of the
+     omitted in the US-site audit. Its sex/gender row keeps its reporting state
+     and parsed counts, but its composition is withheld with that
+     `composition_withheld_reason` (`_withhold_sex_composition`): the parser's sum
+     check falls back to an arm, whose female share had been published as the
+     trial's. `summary.json` counts such trials
+     (`sex_gender_composition_withheld_no_whole_population_group`). CT.gov posts such a table rarely (one of the
      55,810 multi-group trials in the 2026-11-15 weekly inputs, none of the
      2,198 stored multi-group tables). Weekly records carry the extractors'
      blocks without the groups, so this cannot be detected there.
