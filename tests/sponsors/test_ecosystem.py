@@ -2250,3 +2250,147 @@ def test_redteam_m2_odd_flags_in_attrs_and_cells_and_ids_only_in_cells_are_refus
         with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
             entry(ids_in_cells, shipped_rules, shipped_ecosystem_rules)
         _assert_refused(exc_info.value, "nct_id_malformed")
+
+
+# ---------------------------------------------------------------------------
+# 14. Holdout fixes for red team round 2: cases the fix covers beyond the red
+# team's own tests, and inputs that must still pass. Every id is fictional
+# (NCT99000001..NCT99999999); nothing touches the network, and no file is
+# read except the shipped rules.
+# ---------------------------------------------------------------------------
+
+
+def test_sponsor_names_that_look_bracketed_change_nothing(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Sponsor names are text cells. Only text that serializes a container
+    # with in_audit or nct_id in key position is read, so names in brackets
+    # or ending in ")" (and prose that mentions an audit) pass unchanged,
+    # with or without an in_audit column.
+    odd_names = [
+        ("NCT99000401", "OTHER", "lead", "[Practices in audit arm: audit and feedback]"),
+        ("NCT99000401", "OTHER", "collaborator", "Sponsor(Holdings)"),
+        ("NCT99000402", "OTHER", "lead", "{in audit}"),
+    ]
+    plain = frame(_HOLDOUT_ROWS + odd_names)
+    flagged = plain.copy()
+    flagged["in_audit"] = pd.Series([False] * len(flagged), dtype=object)
+    for name, entry in _FRAME_ENTRY_POINTS:
+        _assert_same(
+            entry(flagged, shipped_rules, shipped_ecosystem_rules),
+            entry(plain, shipped_rules, shipped_ecosystem_rules),
+        )
+    partition = eco.partition_ecosystem(plain, shipped_ecosystem_rules)
+    assert {name for *_, name in odd_names} <= partition["unreviewed"]
+
+
+def test_cells_that_cannot_be_read_are_refused_without_a_flag(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # A cell holding a one-shot iterator, or a bool that lost its name, may
+    # hold a flag: refused even when the frame carries no in_audit column.
+    for make in (
+        lambda n: (x for x in [{"nct_id": n, "in_audit": False}]),
+        lambda n: [n, False],
+    ):
+        held = _holdout_frame()
+        held["manifest"] = [make(n) for n in held["nct_id"]]
+        for name, entry in _FRAME_ENTRY_POINTS:
+            with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+                entry(held, shipped_rules, shipped_ecosystem_rules)
+            _assert_refused(exc_info.value, "in_audit_not_bool")
+
+
+def test_string_dtype_and_json_normalized_id_columns_are_read(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # A pandas string-dtype column of serialized manifests is read like an
+    # object column; a json_normalize "manifest.nct_id" column is an nct_id
+    # source that must agree with "nct_id" row by row.
+    as_text = _holdout_frame()
+    as_text["manifest"] = pd.Series(
+        [json.dumps({"nct_id": n, "in_audit": False}) for n in as_text["nct_id"]],
+        dtype="string",
+    )
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(as_text, shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "in_audit_not_bool")
+    flat = pd.json_normalize(
+        _redteam_nested_rows(lambda n: {"nct_id": "NCT99000109", "in_audit": False})
+    )
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(flat.copy(), shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "nct_id_malformed")
+    agreeing = pd.json_normalize(_redteam_nested_rows(lambda n: {"nct_id": n, "in_audit": False}))
+    for name, entry in _FRAME_ENTRY_POINTS:
+        _assert_same(
+            entry(agreeing.copy(), shipped_rules, shipped_ecosystem_rules),
+            entry(_holdout_frame(), shipped_rules, shipped_ecosystem_rules),
+        )
+
+
+def test_literal_universe_functions_keep_their_contract(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # A universe sr.literal_universe builds passes unchanged; a frame without
+    # its columns is a KeyError, as before; a hand-built universe carrying
+    # in_audit False beside the names (no nct_id) is refused as malformed.
+    uniq = sr.literal_universe(_holdout_frame())
+    matched = eco.match_ecosystem_literals(uniq, shipped_ecosystem_rules)
+    assert len(matched) >= 3
+    assert eco.check_cross_layer_conflicts(uniq, shipped_rules, shipped_ecosystem_rules) is None
+    with pytest.raises(KeyError):
+        eco.check_cross_layer_conflicts(uniq[["name"]], shipped_rules, shipped_ecosystem_rules)
+    with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+        eco.match_ecosystem_literals(uniq.assign(in_audit=False), shipped_ecosystem_rules)
+    _assert_refused(exc_info.value, "nct_id_malformed")
+
+
+def test_records_batch_rules_and_single_named_records(
+    monkeypatch: pytest.MonkeyPatch,
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Before any record is adapted: records carrying in_audit under
+    # different names are refused; a nested one-shot iterator is refused;
+    # a qualified True is reported as in_audit_true; a dataclass instance
+    # passed as the batch is a TypeError naming the function.
+    import dataclasses
+
+    def must_not_run(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("adapted a batch the holdout check should have refused")
+
+    monkeypatch.setattr(eco.adapter, "records_to_frame", must_not_run)
+    mixed = [
+        _stored_record(_REDTEAM_HOLDOUT_ID, in_audit=True),
+        _stored_record("NCT99000332", in_audit_y=False),
+    ]
+    with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+        _redteam_run(mixed, shipped_rules, shipped_ecosystem_rules)
+    _assert_refused(exc_info.value, "in_audit_not_bool")
+    lazy = _stored_record("NCT99000333", collaborators=(c for c in [{"name": "Pfizer"}]))
+    with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+        _redteam_run([lazy], shipped_rules, shipped_ecosystem_rules)
+    _assert_refused(exc_info.value, "in_audit_not_bool")
+    for key in ("in_audit_y", "manifest.in_audit", "is_in_audit"):
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            _redteam_run(
+                [_api_record(_REDTEAM_HOLDOUT_ID, **{key: True})],
+                shipped_rules,
+                shipped_ecosystem_rules,
+            )
+        _assert_refused(exc_info.value, "in_audit_true")
+
+    @dataclasses.dataclass
+    class Row:
+        nct_id: str
+
+    with pytest.raises(TypeError) as type_info:
+        _redteam_run(Row("NCT99000334"), shipped_rules, shipped_ecosystem_rules)
+    assert "attribute_study_sponsors" in str(type_info.value)

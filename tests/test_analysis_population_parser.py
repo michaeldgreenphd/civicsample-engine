@@ -2181,3 +2181,184 @@ def test_redteam_m2_odd_id_beside_a_nested_flag_is_refused(
     with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
         entry(record)
     assert exc_info.value.reason == "nct_id_malformed"
+
+
+# ---------------------------------------------------------------------------
+# 15. Holdout fixes for red team round 2: cases the fix covers beyond the red
+# team's own tests, and inputs that must still pass. Every id is fictional
+# (NCT99000001..NCT99999999); nothing touches the network or a file.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_qualified_names_and_unwalked_containers_report_in_audit_true(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # A True flag found under a qualified name or inside a container the
+    # scan now walks is reported as a holdout, not as an unreadable record.
+    for key in ("in_audit_y", "manifest.in_audit", "isInAudit", "ＩＳ＿ＩＮ＿ＡＵＤＩＴ"):
+        with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+            entry(_redteam_holdout_record(retained, **{key: True}))
+        assert exc_info.value.reason == "in_audit_true", key
+    manifest = {"nct_id": _HOLDOUT_NCT, "in_audit": True}
+    for container in (
+        types.SimpleNamespace(**manifest),
+        collections.deque([dict(manifest)]),
+        dict(manifest).items(),
+        [dict(manifest)],
+    ):
+        with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+            entry(_redteam_holdout_record(retained, manifest=container))
+        assert exc_info.value.reason == "in_audit_true", type(container).__name__
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_text_and_prose_that_must_not_refuse_a_clean_record(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Only text that serializes a container AND has in_audit (or nct_id) in
+    # key position is read. Prose, even bracketed prose that mentions an
+    # audit, and a serialized container without such a key change nothing.
+    plain = entry(_clean_record(retained))
+    for text in (
+        "[Practices in audit arm: audit and feedback]",
+        "{in audit}",
+        "Not in audit",
+        "Cohort(A)",
+        json.dumps({"cohort": "redteam", "note": "in audit arm"}),
+        "[Not Specified]",
+    ):
+        record = _clean_record(retained)
+        record["note"] = text
+        _assert_same_output(name, entry(record), plain)
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_serialized_flags_and_ids_are_refused_with_their_reason(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Text is never a bool, so a serialized in_audit is refused as
+    # "in_audit_not_bool" even when it says False (as a CSV's "False" is),
+    # also behind a BOM or in full-width braces. A record flagged False
+    # whose serialized manifest names an nct_id cannot have that id
+    # compared, so it is refused as "nct_id_malformed".
+    for text in (
+        json.dumps({"nct_id": _CLEAN_NCT, "in_audit": False}),
+        "﻿" + repr({"in_audit": False}),
+        "｛'in_audit': False｝",
+        f"namespace(nct_id='{_CLEAN_NCT}', in_audit=False)",
+    ):
+        record = _clean_record(retained)
+        record["manifest"] = text
+        with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+            entry(record)
+        assert exc_info.value.reason == "in_audit_not_bool", text
+    flagged = _clean_record(retained)
+    flagged["in_audit"] = False
+    flagged["manifest"] = json.dumps({"nct_id": _CLEAN_NCT})
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        entry(flagged)
+    assert exc_info.value.reason == "nct_id_malformed"
+    # Without a flag the same text relies on the caller and changes nothing.
+    unflagged = _clean_record(retained)
+    unflagged["manifest"] = json.dumps({"nct_id": _CLEAN_NCT})
+    _assert_same_output(name, entry(unflagged), entry(_clean_record(retained)))
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_unreadable_parts_are_refused_and_qualified_ids_are_compared(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # A part the scan cannot read without consuming it, or a bool that lost
+    # its name, may hold a flag: refused even without any flag. An nct_id
+    # under a json_normalize path name is an id; nctIdAliases is not.
+    for odd in (
+        (x for x in [{"in_audit": True}]),
+        iter([{"in_audit": True}]),
+        [_CLEAN_NCT, True],
+        ("manifest", False),
+    ):
+        record = _clean_record(retained)
+        record["manifest"] = odd
+        with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+            entry(record)
+        assert exc_info.value.reason == "in_audit_not_bool", type(odd).__name__
+    other = _clean_record(retained)
+    other["in_audit"] = False
+    other["manifest.nct_id"] = _HOLDOUT_NCT
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        entry(other)
+    assert exc_info.value.reason == "nct_id_malformed"
+    own = _clean_record(retained)
+    own["in_audit"] = False
+    own["manifest.nct_id"] = _CLEAN_NCT
+    own["nctIdAliases"] = [_HOLDOUT_NCT]
+    plain = _clean_record(retained)
+    plain["in_audit"] = False
+    plain["nctIdAliases"] = [_HOLDOUT_NCT]
+    _assert_same_output(name, entry(own), entry(plain))
+
+
+def test_batch_name_rule_runs_first_and_the_gap_rule_last() -> None:
+    # Records carrying in_audit under different names are refused before
+    # any is checked alone; a True beside an unflagged record is still
+    # reported as in_audit_true at its own position (the gap rule runs last).
+    mixed = [_study_carrying(_HOLDOUT_NCT, in_audit=True), _study_carrying(_CLEAN_NCT, in_audit_y=False)]
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        ap.parse_outcomes_frame(mixed)
+    assert exc_info.value.reason == "in_audit_not_bool"
+    gap = [_study_carrying(_CLEAN_NCT), _study_carrying(_HOLDOUT_NCT, in_audit=True)]
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        ap.parse_outcomes_frame(gap)
+    assert exc_info.value.reason == "in_audit_true"
+    assert "position 1" in str(exc_info.value)
+    merged_alike = [
+        _study_carrying(_CLEAN_NCT, in_audit_x=False, in_audit_y=False),
+        _study_carrying("NCT99000003", in_audit_x=False, in_audit_y=False),
+    ]
+    rows = ap.parse_outcomes_frame(merged_alike)
+    assert list(rows["nct_id"]) == [_CLEAN_NCT, "NCT99000003"]
+
+
+def test_record_shapes_without_names_and_scalars() -> None:
+    # A top-level plain sequence has no field names: refused. A scalar has
+    # no fields at all and is still recorded as a parse error, as before.
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        ap.parse_study_outcomes((_CLEAN_NCT, "x"))  # type: ignore[arg-type]
+    assert exc_info.value.reason == "in_audit_not_bool"
+    for scalar in (None, 7):
+        parsed = ap.parse_study_outcomes(scalar)  # type: ignore[arg-type]
+        assert parsed.parse_ok is False and parsed.nct_id is None
+        assert parsed.outcomes[0].parse_error_reason == "study_not_a_dict"
+    import dataclasses
+
+    @dataclasses.dataclass
+    class Row:
+        nct_id: str
+
+    with pytest.raises(TypeError):
+        ap.parse_outcomes_frame(Row(_CLEAN_NCT))  # type: ignore[arg-type]
+
+
+def test_snapshot_date_and_outcome_types_are_validated() -> None:
+    # The arguments are checked before the record is read, and messages
+    # never echo the value (which may be an audit id).
+    study = _study_carrying(_CLEAN_NCT)
+    assert ap.parse_study_outcomes(study, "2024-02-29").snapshot_date == "2024-02-29"
+    assert ap.parse_study_outcomes(study, None, (" primary ",)).n_outcomes_total == 1
+    assert ap.parse_study_outcomes(study, None, ["SECONDARY"]).n_outcomes_total == 0
+    bad_dates: list[Any] = ["2026-02-30", "2025-02-29", "20261120", "2026-11-20 ", _HOLDOUT_NCT]
+    for bad in bad_dates:
+        with pytest.raises(ValueError) as exc_info:
+            ap.parse_study_outcomes(study, bad)
+        assert _HOLDOUT_NCT not in str(exc_info.value)
+    for bad in ([_HOLDOUT_NCT], 20261120, b"2026-11-20"):
+        with pytest.raises(TypeError):
+            ap.parse_study_outcomes(study, bad)
+    for bad_types in ("PRIMARY", {"PRIMARY": 1}, 5, [None]):
+        with pytest.raises(TypeError):
+            ap.parse_study_outcomes(study, None, bad_types)
+    with pytest.raises(ValueError) as exc_info:
+        ap.build_outcomes_from_raw(_retained_carrying(_CLEAN_NCT), None, (_HOLDOUT_NCT,))
+    assert _HOLDOUT_NCT not in str(exc_info.value)
+    assert ap.OUTCOME_MEASURE_TYPES == ("PRIMARY", "SECONDARY", "OTHER_PRE_SPECIFIED", "POST_HOC")
