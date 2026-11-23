@@ -475,6 +475,13 @@ def test_submission_infos_are_read_where_ctgov_records_them() -> None:
     (_with_submission_infos([{'releaseDate': 20200810}]), 'submissionInfos_malformed_entry'),
     (_with_submission_infos([{'releaseDate': '2020-08-10', 'mcpReleaseN': '1'}]), 'submissionInfos_malformed_entry'),
     (_with_submission_infos([{'releaseDate': '2020-08-10', 'mcpReleaseN': True}]), 'submissionInfos_malformed_entry'),
+    # On cc83fa0 a date string was checked only as a string: a blank or unreadable one was counted.
+    (_with_submission_infos([{'releaseDate': '2020-08-10', 'unreleaseDate': ''}]), 'submissionInfos_malformed_entry'),
+    (_with_submission_infos([{'releaseDate': '2020-08-10', 'resetDate': 'garbage'}]),
+     'submissionInfos_malformed_entry'),
+    (_with_submission_infos([{'releaseDate': 'garbage'}]), 'submissionInfos_malformed_entry'),
+    (_with_submission_infos([{'releaseDate': '2020-08-10', 'resetDate': '0001-01-01'}]),
+     'submissionInfos_malformed_entry'),
     (_with_submission_infos({'releaseDate': '2020-08-10'}), 'submissionInfos_malformed_not_a_list'),
     ({'derivedSection': {'miscInfoModule': ['submissionTracking']}}, 'submissionInfos_parent_not_an_object'),
     ({'derivedSection': 'none'}, 'submissionInfos_parent_not_an_object'),
@@ -491,6 +498,53 @@ def test_submission_infos_with_null_fields_are_read() -> None:
         [{'releaseDate': '2020-08-10', 'unreleaseDate': None, 'resetDate': None, 'mcpReleaseN': None}, {}]))
     counts = (got['present'], got['cycle_count'], got['n_with_unrelease_date'], got['n_with_reset_date'])
     assert counts == (True, 2, 0, 0)
+
+
+def test_submission_infos_with_readable_dates_are_counted() -> None:
+    # Control, on both heads: CT.gov's day form, and a month, are dates.
+    got = T.extract_submission_infos(_with_submission_infos(
+        [{'releaseDate': '2020-08-10', 'unreleaseDate': '2020-08', 'resetDate': '2020-09-10'}]))
+    assert (got['present'], got['n_with_unrelease_date'], got['n_with_reset_date']) == (True, 1, 1)
+
+
+@pytest.mark.parametrize('value', ['0001-01-01', '1799-12-31', '2201-01-01'])
+def test_exact_dates_keep_to_the_years_the_other_forms_allow(value: str) -> None:
+    # On cc83fa0 the month and year forms kept to 1800-2200 but an exact or compact day did not.
+    assert T.parse_partial_date(value) is None
+    assert E.normalize_publication_date(value) == (None, 'missing')
+    assert E.normalize_publication_date(value.replace('-', '')) == (None, 'missing')
+    # Controls, on both heads: the bounds themselves.
+    assert T.parse_partial_date('1800-01-01') is not None and T.parse_partial_date('2200-12-31') is not None
+    assert E.normalize_publication_date('18000101') == ('1800-01-01', 'day')
+
+
+@pytest.mark.parametrize(('epubdate', 'expected'), [
+    # On cc83fa0 each became the RESULT reference's date and so NCT09990001's earliest results publication.
+    ('0001-01-01', '2021-03'),
+    ('00010101', '2021-03'),
+    # Control, on both heads: the fixture's own date.
+    ('2021 Feb 10', '2021-02-10'),
+])
+def test_a_pubmed_date_outside_the_supported_years_is_not_a_publication_date(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, epubdate: str, expected: str
+) -> None:
+    nct = 'NCT09990001'
+    monkeypatch.setitem(F.PUBMED_SUMMARIES, '99000001', dict(F.PUBMED_SUMMARIES['99000001'], epubdate=epubdate))
+    built = ART.build_artifacts(
+        F.acquire_fixture_cache(tmp_path / 'c'),
+        reviews_path=ROOT / 'disclosure/reviews.csv',
+        statements_path=ROOT / 'disclosure/documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors/company_aliases.csv',
+        producer={'commit': None, 'uncommitted_changes': None},
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+        requested_nct_ids=[nct],
+    )
+    ref = next(x for x in built['links.json']['links']
+               if x['nct_id'] == nct and x['source_route'] == 'registry_references' and x['target_id'] == '99000001')
+    # The PubMed entry's pubdate (2021 Mar) is read in place of an unusable epubdate.
+    assert ref['publication_or_action_date'] == expected
+    assert _timeline_of(built, nct)['milestones']['earliest_results_publication']['date'] == expected
 
 
 # ---------------------------------------------------------------- 4. Window 365d & discordance states
@@ -3834,7 +3888,8 @@ def test_study_record_problem_names_the_results_date_after_retrieval() -> None:
     # readers, which read it as missing), and a record without a readable fetched_at is not bounded.
     odd = _study_with(study, _RESULTS_DATE_PATHS['post'], 'not-a-date')
     assert A.ctgov_study_record_problem({**rec, 'body': odd}) == (
-        "statusModule.resultsFirstPostDateStruct.date 'not-a-date' is not a date (YYYY, YYYY-MM or YYYY-MM-DD)"
+        "statusModule.resultsFirstPostDateStruct.date 'not-a-date' is not a date "
+        "(YYYY, YYYY-MM or YYYY-MM-DD, 1800-2200)"
     )
     assert A.ctgov_study_record_problem({**rec, 'fetched_at': None}) is None
 
@@ -3893,6 +3948,10 @@ _STUDY_DATE_PATHS = {
         ('NCT09990002', 'pcd', 'June 2019', True),
         ('NCT09990002', 'cd', '20190601', True),
         ('NCT09990001', 'post', 'not-a-date', True),
+        # On cc83fa0 an exact date outside the years the month and year forms allow was read: an ACTUAL
+        # primary completion of 0001-01-01 was published as UNREPORTED_PAST_365D, 739,920 days past.
+        ('NCT09990002', 'pcd', '0001-01-01', True),
+        ('NCT09990002', 'cd', '2201-01-01', True),
         # Controls, on both heads: a readable submission date, and blank text, which reads as absent.
         ('NCT09990002', 'submit', '2021-03-01', False),
         ('NCT09990002', 'submit', '', False),
@@ -3922,7 +3981,8 @@ def test_an_unreadable_populated_date_is_read_as_a_failed_lookup(
         assert window['state'] == ('PENDING_SUBMITTED_UNPOSTED' if value.strip() else 'UNREPORTED_PAST_365D')
         return
     assert A.ctgov_study_problem(study) == (
-        f"statusModule.{'.'.join(_STUDY_DATE_PATHS[field][2:])} {value!r} is not a date (YYYY, YYYY-MM or YYYY-MM-DD)"
+        f"statusModule.{'.'.join(_STUDY_DATE_PATHS[field][2:])} {value!r} is not a date "
+        "(YYYY, YYYY-MM or YYYY-MM-DD, 1800-2200)"
     )
     assert row['registry_state'] == 'lookup_failed'
     assert window['state'] not in ('UNREPORTED_PAST_365D', 'UNREPORTED_WITHIN_365D', 'PENDING_SUBMITTED_UNPOSTED')

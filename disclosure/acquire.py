@@ -470,8 +470,8 @@ CTGOV_STUDY_DATES: tuple[tuple[str, ...], ...] = (
 
 def ctgov_date_span(value: str) -> tuple[date, date] | None:
     """The first and last day that CT.gov date `value` can denote, read as the build reads it
-    (`timeline.parse_partial_date`: `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, surrounding blanks stripped), or
-    None when no date is read from it.
+    (`timeline.parse_partial_date`: `YYYY`, `YYYY-MM` or `YYYY-MM-DD` in the years 1800 to 2200, surrounding
+    blanks stripped), or None when no date is read from it.
 
     The study check and the retrieval bound use this reader rather than a pattern of their own. The
     bound's pattern skipped `2100` and ` 2100-01-01`, which the build reads as days in 2100, so a
@@ -544,7 +544,7 @@ def ctgov_study_problem(body: Any) -> str | None:
     for date_path in CTGOV_STUDY_DATES:
         raw = _status_value(status_mod, date_path)
         if isinstance(raw, str) and raw.strip() and ctgov_date_span(raw) is None:
-            return f"statusModule.{'.'.join(date_path)} {raw!r} is not a date (YYYY, YYYY-MM or YYYY-MM-DD)"
+            return f"statusModule.{'.'.join(date_path)} {raw!r} is not a date (YYYY, YYYY-MM or YYYY-MM-DD, 1800-2200)"
     # Every module of a results section is an object (null reads as absent, as above): `{"participantFlowModule":
     # "broken"}` was read as posted results, so a verified CT.gov link and `verified_link` rested on a value
     # nothing could read. All 3,812 stored results sections hold only objects.

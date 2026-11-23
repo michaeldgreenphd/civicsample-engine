@@ -125,6 +125,11 @@ def parse_partial_date(raw: str | None) -> PartialDate | None:
     m_day = E.ISO_DAY_RE.match(s)
     if m_day:
         y, mo, d = int(m_day.group(1)), int(m_day.group(2)), int(m_day.group(3))
+        # The same years as the month and year forms below. An exact `0001-01-01` passed, so an ACTUAL
+        # primary completion in year 1 was published as UNREPORTED_PAST_365D, 739,920 days past. Every
+        # date in the 75,811 stored study entries falls in 1989 to 2100.
+        if not (1800 <= y <= 2200):
+            return None
         try:
             dt = date(y, mo, d)
             return PartialDate(raw=s, earliest=dt, latest=dt, precision='day')
@@ -352,6 +357,10 @@ SUBMISSION_INFOS_PATH: tuple[str, ...] = ('derivedSection', 'miscInfoModule', 's
 SUBMISSION_INFO_FIELDS: dict[str, type] = {
     'releaseDate': str, 'unreleaseDate': str, 'resetDate': str, 'mcpReleaseN': int,
 }
+# The date fields, each a date `parse_partial_date` reads when it is a string. A blank or unreadable one
+# (`unreleaseDate: ""`, `resetDate: "garbage"`) was counted in `n_with_unrelease_date` or
+# `n_with_reset_date` and published as a cycle date. All 94 stored values are `YYYY-MM-DD`, 2021 to 2026.
+SUBMISSION_INFO_DATES: tuple[str, ...] = ('releaseDate', 'unreleaseDate', 'resetDate')
 
 
 def _submission_infos_unread(reason: str) -> dict[str, Any]:
@@ -372,7 +381,8 @@ def extract_submission_infos(study: dict[str, Any] | None) -> dict[str, Any]:
     A history that cannot be read whole is published with no counts and a reason, never counted in
     part: a part on the path that is not an object (`submissionInfos_parent_not_an_object`), a value
     that is not a list (`submissionInfos_malformed_not_a_list`), or an entry that is not an object or
-    holds a field of `SUBMISSION_INFO_FIELDS` with another type (`submissionInfos_malformed_entry`).
+    holds a field of `SUBMISSION_INFO_FIELDS` with another type, or a date in `SUBMISSION_INFO_DATES` the
+    build cannot read (`submissionInfos_malformed_entry`).
     A dropped entry used to lower `cycle_count`, and a mistyped date was read as none, lowering
     `n_with_unrelease_date` or `n_with_reset_date`, with `absent_reason` null.
     """
@@ -392,6 +402,9 @@ def extract_submission_infos(study: dict[str, Any] | None) -> dict[str, Any]:
             item.get(field) is not None
             and (not isinstance(item[field], kind) or isinstance(item[field], bool))
             for field, kind in SUBMISSION_INFO_FIELDS.items()
+        ) or any(
+            isinstance(item.get(field), str) and parse_partial_date(item[field]) is None
+            for field in SUBMISSION_INFO_DATES
         ):
             return _submission_infos_unread('submissionInfos_malformed_entry')
     cycles = [

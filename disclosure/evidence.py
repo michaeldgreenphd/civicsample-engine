@@ -221,9 +221,14 @@ def normalize_publication_date(raw: str | None) -> tuple[str | None, str]:
     if not s:
         return None, 'missing'
 
+    # Exact and compact days keep to the same years as the month, year and PubMed forms below: a PubMed
+    # `epubdate` of `0001-01-01` (or `00010101`) became a RESULT reference's date, and so the trial's
+    # earliest results publication, 737,438 days before its primary completion.
     m_day = ISO_DAY_RE.match(s)
     if m_day:
         y, mo, d = int(m_day.group(1)), int(m_day.group(2)), int(m_day.group(3))
+        if not (1800 <= y <= 2200):
+            return None, 'missing'
         try:
             return date(y, mo, d).isoformat(), 'day'
         except ValueError:
@@ -232,6 +237,8 @@ def normalize_publication_date(raw: str | None) -> tuple[str | None, str]:
     m_compact = YYYYMMDD_RE.match(s)
     if m_compact:
         y, mo, d = int(m_compact.group(1)), int(m_compact.group(2)), int(m_compact.group(3))
+        if not (1800 <= y <= 2200):
+            return None, 'missing'
         try:
             return date(y, mo, d).isoformat(), 'day'
         except ValueError:
