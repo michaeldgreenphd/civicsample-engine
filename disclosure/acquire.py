@@ -842,26 +842,52 @@ def freeze_source(log: ResponseLog, out_archive: Path, source: str, frozen_at: s
     return meta
 
 
+def ctgov_ids_without_study_record(
+    nct_ids: Iterable[str],
+    ctgov_records: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Requested NCT IDs with no `ctgov/study/{id}` record in `ctgov_records`, sorted.
+
+    Any logged lookup counts, whatever its status: a 404 is `document_unavailable` and a transport
+    failure (status None) is `search_incomplete_or_blocked`. An ID with no record was never looked
+    up, so a cache whose manifest lists it describes a frame its CT.gov log does not cover (a raw
+    log acquired for another NCT list). The build would emit such a trial as `not_searched`, so the
+    cache is refused instead.
+    """
+    return sorted(i for i in set(nct_ids) if f'ctgov/study/{i}' not in ctgov_records)
+
+
 def freeze_cache(
     cache_dir: Path,
     requested_nct_ids: Iterable[str],
     *,
     frozen_at: str | None = None,
 ) -> dict[str, Any]:
-    """Freeze all acquired source logs under `cache_dir` and write `manifest.json` sidecar."""
+    """Freeze all acquired source logs under `cache_dir` and write `manifest.json` sidecar.
+
+    Refuses when any requested NCT ID has no CT.gov study response record in raw/ctgov.jsonl.
+    """
     ids = sorted(set(requested_nct_ids))
     if not ids or any(not NCT_RE.match(i) for i in ids):
         raise ValueError('freeze_cache requires at least one valid NCT ID')
     ctgov_raw = raw_log_path(cache_dir, 'ctgov')
     if not ctgov_raw.exists():
         raise CacheIntegrityError(f'{cache_dir}: cannot freeze cache without raw/ctgov.jsonl')
+    ctgov_log = ResponseLog(ctgov_raw)
+    unlooked = ctgov_ids_without_study_record(ids, ctgov_log.records)
+    if unlooked:
+        raise CacheIntegrityError(
+            f'{cache_dir}: {len(unlooked)} requested NCT ID(s) have no CT.gov study response in '
+            f'raw/ctgov.jsonl ({unlooked[:5]}); run the ctgov stage for them before freezing'
+        )
 
     stamp = frozen_at or now_utc()
     archives_meta: dict[str, dict[str, Any]] = {}
     for source in SOURCES:
         rpath = raw_log_path(cache_dir, source)
         if rpath.exists():
-            meta = freeze_source(ResponseLog(rpath), archive_path(cache_dir, source), source, stamp)
+            log = ctgov_log if source == 'ctgov' else ResponseLog(rpath)
+            meta = freeze_source(log, archive_path(cache_dir, source), source, stamp)
             archives_meta[source] = meta
 
     manifest: dict[str, Any] = {
@@ -931,7 +957,11 @@ def _read_verified_archive(
 
 
 def load_frozen_cache(cache_dir: Path) -> FrozenCache:
-    """Strictly verify and load a frozen disclosure cache for offline build execution."""
+    """Strictly verify and load a frozen disclosure cache for offline build execution.
+
+    Besides the archive hashes, every NCT ID the manifest requests must have a CT.gov study
+    response record (`ctgov_ids_without_study_record`).
+    """
     if not cache_dir.is_dir():
         raise CacheIntegrityError(f'{cache_dir}: cache directory does not exist')
 
@@ -1003,6 +1033,12 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
         loaded[source] = _read_verified_archive(archive_path(cache_dir, source), entry)
 
     assert loaded['ctgov'][1] is not None
+    unlooked = ctgov_ids_without_study_record(ids, loaded['ctgov'][0])
+    if unlooked:
+        raise CacheIntegrityError(
+            f'{cache_dir}: {len(unlooked)} requested NCT ID(s) in manifest.json have no CT.gov study '
+            f'response in ctgov.jsonl.gz ({unlooked[:5]}); the cache does not cover its own frame'
+        )
     return FrozenCache(
         cache_dir=cache_dir,
         manifest=manifest,

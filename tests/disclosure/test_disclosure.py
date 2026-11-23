@@ -1101,3 +1101,47 @@ def test_flooded_generic_query_cannot_hide_precise_querys_reviewable_candidate()
     assert len(cited) == 1
     assert cited[0]['automated_validation'] == 'identifier_confirmed'
     assert cited[0]['detail']['matched_drug'] == 'acetamigen'
+
+
+# ---------------------------------------------------------------- 11. Cache frame, producer digest, link identity
+
+def test_freeze_and_load_refuse_requested_ids_without_a_ctgov_study_record(
+    tmp_path: Path,
+    frozen_cache: A.FrozenCache,
+) -> None:
+    # A raw cache acquired for the fixture's NCT list, then frozen for a list that adds an unlooked-up ID.
+    cache = tmp_path / 'other_list_cache'
+    shutil.copytree(frozen_cache.cache_dir, cache)
+    manifest_before = (cache / 'manifest.json').read_bytes()
+    rc = cli_build.main([
+        'acquire', '--cache', str(cache),
+        '--nct-id', 'NCT09990001', '--nct-id', 'NCT09991234',
+        '--stage', 'freeze',
+    ])
+    assert rc == 1
+    assert (cache / 'manifest.json').read_bytes() == manifest_before
+    with pytest.raises(A.CacheIntegrityError, match=r"NCT09991234.*run the ctgov stage"):
+        A.freeze_cache(cache, ['NCT09990001', 'NCT09991234'], frozen_at=F.GENERATED_AT)
+
+    # Every logged lookup counts, whatever its status: NCT09990008 is a 404 record and freezes.
+    assert frozen_cache.ctgov['ctgov/study/NCT09990008']['status'] == 404
+    assert cli_build.main([
+        'acquire', '--cache', str(cache),
+        '--nct-id', 'NCT09990001', '--nct-id', 'NCT09990008',
+        '--stage', 'freeze',
+    ]) == 0
+    assert A.load_frozen_cache(cache).requested_nct_ids == ['NCT09990001', 'NCT09990008']
+
+    # A manifest edited (consistently) to list an ID with no CT.gov record is refused on load.
+    edited = tmp_path / 'edited_manifest_cache'
+    shutil.copytree(frozen_cache.cache_dir, edited)
+    manifest = json.loads((edited / 'manifest.json').read_text(encoding='utf-8'))
+    ids = sorted([*manifest['requested_nct_ids'], 'NCT09991234'])
+    manifest.update({
+        'requested_nct_ids': ids,
+        'n_requested_nct_ids': len(ids),
+        'requested_nct_ids_sha256': A.sha256_bytes('\n'.join(ids).encode('utf-8')),
+    })
+    (edited / 'manifest.json').write_text(json.dumps(manifest, indent=1, sort_keys=True) + '\n', encoding='utf-8')
+    with pytest.raises(A.CacheIntegrityError, match=r'NCT09991234.*does not cover its own frame'):
+        A.load_frozen_cache(edited)

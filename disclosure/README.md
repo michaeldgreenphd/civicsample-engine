@@ -58,6 +58,9 @@ python3 scripts/build_drug_disclosure.py acquire \
 python3 scripts/build_drug_disclosure.py freeze-local \
     --records /path/to/ctgov_records --cache build/disclosure_cache
 
+# Freezing (either way) and loading refuse a cache in which any requested NCT ID has no CT.gov
+# study response record (a raw log acquired for another NCT list): run the ctgov stage for it first.
+
 # 2. Offline deterministic build from frozen cache (runs contract check before writing):
 python3 scripts/build_drug_disclosure.py build \
     --cache build/disclosure_cache --out build/disclosure --as-of 2026-11-01
