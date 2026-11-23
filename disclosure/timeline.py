@@ -587,11 +587,18 @@ def _qualifying_results_publications(trial_links: list[dict[str, Any]]) -> list[
 
 
 def _unsettled_publication_candidates(trial_links: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Live literature/reference/statement links whose trial-results status is not yet settled."""
+    """Live literature/reference/statement links whose trial-results status is not yet settled.
+
+    A documentary statement reviewed as trial results whose quote was not confirmed in source
+    (`coverage.reviewed_unverified_statements`) is not counted: its review is settled and its source
+    check is what failed. `classify_discordance` keeps such a trial from settling on a negative
+    through the statements route's `search_incomplete_or_blocked` state instead.
+    """
     qualifying_ids = {lnk['link_id'] for lnk in _qualifying_results_publications(trial_links)}
+    reviewed_unverified_ids = {lnk['link_id'] for lnk in C.reviewed_unverified_statements(trial_links)}
     out: list[dict[str, Any]] = []
     for lnk in trial_links:
-        if lnk['link_id'] in qualifying_ids:
+        if lnk['link_id'] in qualifying_ids or lnk['link_id'] in reviewed_unverified_ids:
             continue
         if lnk['source_route'] not in ('registry_references', 'literature_search', 'documentary_statements'):
             continue
@@ -655,6 +662,15 @@ def classify_discordance(
     unsettled_pubs = _unsettled_publication_candidates(trial_links)
     fda_links = _qualifying_fda_links(trial_links)
     unsettled_fda = _unsettled_fda_candidates(trial_links)
+    # A live documentary statement that does not qualify keeps both negative states out of reach:
+    # one awaiting review (`candidate_awaiting_review`), or one a person reviewed as trial results
+    # whose quote was not confirmed in source (`search_incomplete_or_blocked`). The second is left out
+    # of `unsettled_pubs` because its review is settled, so it is checked here through the cell. A
+    # verified statement qualifies as a publication and is handled by `has_res_pub` first.
+    statement_unsettled = cells['documentary_statements'] in (
+        'candidate_awaiting_review',
+        'search_incomplete_or_blocked',
+    )
 
     has_res_pub = bool(res_pubs)
     has_fda = bool(fda_links)
@@ -678,6 +694,7 @@ def classify_discordance(
             cells['registry_references'] in ('no_candidate_in_completed_scope', 'available_document_insufficient')
             and cells['literature_search'] in ('no_candidate_in_completed_scope', 'available_document_insufficient')
             and not unsettled_pubs
+            and not statement_unsettled
         )
         if pub_routes_completed:
             return {
@@ -687,7 +704,10 @@ def classify_discordance(
             }
         return {
             'state': 'coverage_incomplete_or_awaiting_review',
-            'reason': 'CT.gov results posted, but literature routes were not completed or candidate publications await review',
+            'reason': (
+                'CT.gov results posted, but literature routes were not completed, candidate publications '
+                'await review, or a documentary statement reviewed as results is not quote-confirmed in source'
+            ),
             **flags,
         }
 
@@ -715,7 +735,7 @@ def classify_discordance(
         cells[r] in ('no_candidate_in_completed_scope', 'available_document_insufficient')
         for r in C.SEARCH_ROUTES
     )
-    if all_search_completed and not unsettled_pubs and not unsettled_fda and cells['documentary_statements'] != 'candidate_awaiting_review':
+    if all_search_completed and not unsettled_pubs and not unsettled_fda and not statement_unsettled:
         return {
             'state': 'unreported_across_completed_routes',
             'reason': 'all 4 search routes completed with no posted CT.gov results, no results publication, and no FDA link',
@@ -724,7 +744,10 @@ def classify_discordance(
 
     return {
         'state': 'coverage_incomplete_or_awaiting_review',
-        'reason': 'CT.gov unreported, with one or more external routes unsearched/incomplete or candidates awaiting review',
+        'reason': (
+            'CT.gov unreported, with one or more external routes unsearched/incomplete, candidates awaiting '
+            'review, or a documentary statement reviewed as results that is not quote-confirmed in source'
+        ),
         **flags,
     }
 

@@ -6,8 +6,10 @@ Usage:
 
 Verifies the input build against its `run.json` sha256 manifest and producer contract before
 selecting any file. `summary.json` is carried forward unchanged apart from `run_id` so the site
-computes zero aggregates. Set-aside rule rejections go to `evidence_set_aside.json` for on-demand
-loading. Writes via a sibling `.staging.` directory and refuses to overwrite any non-empty
+computes zero aggregates. Rule rejections that still stand after review go to
+`evidence_set_aside.json` for on-demand loading; one a person reviewed as
+`confirmed_same_trial_results` or `indeterminate` is live and stays in `evidence.json`.
+Writes via a sibling `.staging.` directory and refuses to overwrite any non-empty
 directory that is not already a complete `disclosure-` export.
 """
 from __future__ import annotations
@@ -27,6 +29,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from disclosure import artifacts as ART  # noqa: E402
+from disclosure import coverage as C  # noqa: E402
 from disclosure import evidence as E  # noqa: E402
 
 SITE_SCHEMA_VERSION = 1
@@ -191,8 +194,11 @@ def select_site_files(build: dict[str, Any]) -> dict[str, Any]:
     s_rid = site_run_id(run)
     stamp = {'schema_version': SITE_SCHEMA_VERSION, 'run_id': s_rid}
 
-    shown = [x for x in links if x['automated_validation'] != 'rejected_by_rule']
-    set_aside = [x for x in links if x['automated_validation'] == 'rejected_by_rule']
+    # Partition by the rule after review (`coverage.set_aside_by_rule`), not the automated status
+    # alone: a rule rejection a person reviewed as `confirmed_same_trial_results` or `indeterminate`
+    # is live in coverage and the timeline, so its record is published with the other evidence.
+    shown = [x for x in links if not C.set_aside_by_rule(x)]
+    set_aside = [x for x in links if C.set_aside_by_rule(x)]
 
     raw_sources = run.get('sources') or {}
     slim_sources = {

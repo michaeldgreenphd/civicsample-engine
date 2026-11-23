@@ -19,6 +19,7 @@ each `(nct_id, route)` cell takes exactly one of seven states with a human-reada
 """
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 from disclosure import acquire as A
@@ -58,6 +59,39 @@ SEARCH_ROUTES = (
     'openfda_drugsfda',
 )
 
+# States of the `documentary_statements` route that mean a statement is still live, so the route
+# counts toward the overall state and keeps the timeline from settling on a negative.
+STATEMENT_LIVE_STATES = ('verified_link', 'candidate_awaiting_review', 'search_incomplete_or_blocked')
+
+
+def reviewed_unverified_statements(links: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Documentary statements a person reviewed as trial results whose quote was not confirmed in source.
+
+    Such a statement cannot verify its route or count as a results publication (both need
+    `quote_confirmed_in_source`), but its review is settled, so it is not awaiting review either.
+    """
+    return [
+        x for x in links
+        if x['source_route'] == 'documentary_statements'
+        and x['review_status'] == 'confirmed_same_trial_results'
+        and x['automated_validation'] != 'quote_confirmed_in_source'
+    ]
+
+
+def statement_checks(links: list[dict[str, Any]]) -> dict[str, int]:
+    """Count `reviewed_unverified_statements` by the source check that failed.
+
+    The check is `detail.statement_check` as `evidence.documentary_statement_links` records it
+    (source_not_retrieved, locator_not_resolved or excerpt_not_found_at_locator); a link without
+    one is counted as `not_recorded` rather than dropped.
+    """
+    counts: Counter[str] = Counter()
+    for x in reviewed_unverified_statements(links):
+        detail = x.get('detail')
+        check = detail.get('statement_check') if isinstance(detail, dict) else None
+        counts[check if isinstance(check, str) and check else 'not_recorded'] += 1
+    return dict(counts)
+
 
 def _cell(route: str, state: str, reason: str, **detail: Any) -> dict[str, Any]:
     if route not in ROUTES:
@@ -75,6 +109,21 @@ def _cell(route: str, state: str, reason: str, **detail: Any) -> dict[str, Any]:
     }
 
 
+def set_aside_by_rule(link: dict[str, Any]) -> bool:
+    """Whether a mechanical rule rejection still stands after human review.
+
+    A `rejected_by_rule` link stays set aside unless a person reviews it as
+    `confirmed_same_trial_results` (it then counts, in coverage and in the timeline) or
+    `indeterminate` (it is then a live candidate awaiting a decision). `_active_links` and the site
+    export both use this rule, so a link the published coverage relies on is never published only
+    among the set-aside records.
+    """
+    return link['automated_validation'] == 'rejected_by_rule' and link['review_status'] not in (
+        'confirmed_same_trial_results',
+        'indeterminate',
+    )
+
+
 def _active_links(links: list[dict[str, Any]], *, treat_unreviewed_background_as_insufficient: bool = False) -> list[dict[str, Any]]:
     """Links that remain live candidates or verified links after rule and human review filters."""
     out: list[dict[str, Any]] = []
@@ -85,7 +134,7 @@ def _active_links(links: list[dict[str, Any]], *, treat_unreviewed_background_as
             continue
         if av == 'identifier_not_resolved' and rs != 'confirmed_same_trial_results':
             continue
-        if av == 'rejected_by_rule' and rs not in ('confirmed_same_trial_results', 'indeterminate'):
+        if set_aside_by_rule(lnk):
             continue
         if treat_unreviewed_background_as_insufficient and lnk['citation_type'] == 'BACKGROUND' and rs == 'unreviewed':
             continue
@@ -526,14 +575,43 @@ def documentary_statements_cell(nct_id: str, route_links: list[dict[str, Any]]) 
             n_statements=len(route_links),
             n_verified=len(verified),
         )
-    if live:
-        n_quote = sum(1 for x in live if x['automated_validation'] == 'quote_confirmed_in_source')
+    # Every live statement left here is either still awaiting a decision (unreviewed or held
+    # `indeterminate`) or was reviewed as trial results while its quote was not confirmed at its
+    # locator (a confirmed, quote-confirmed statement returned `verified_link` above). The second kind
+    # is not awaiting review: its review is settled and its source check is what failed.
+    awaiting = [x for x in live if x['review_status'] != 'confirmed_same_trial_results']
+    unverified = statement_checks(live)
+    if awaiting:
+        n_quote = sum(1 for x in awaiting if x['automated_validation'] == 'quote_confirmed_in_source')
+        also = (
+            f'; {sum(unverified.values())} more reviewed as trial results but not quote-confirmed in source'
+            if unverified else ''
+        )
         return _cell(
             route,
             'candidate_awaiting_review',
-            f'{len(live)} documentary statement(s) entered ({n_quote} quote-confirmed in source) awaiting human review',
+            f'{len(awaiting)} documentary statement(s) entered ({n_quote} quote-confirmed in source) awaiting '
+            f'human review{also}',
             n_statements=len(route_links),
             n_quote_confirmed=n_quote,
+            n_awaiting_review=len(awaiting),
+            n_reviewed_unverified=sum(unverified.values()),
+        )
+    if unverified:
+        # Reviewed as trial results, but the source check did not confirm the quote, so the statement
+        # cannot verify the route (nor count in the timeline). That is not a completed negative either:
+        # a person has said the trial's results were disclosed, and the check either could not run
+        # (source not retrieved, locator not resolved) or disagrees with them (excerpt not found at the
+        # locator), which needs the excerpt or locator corrected or the review changed.
+        checks = ', '.join(f'{k}: {v}' for k, v in sorted(unverified.items()))
+        return _cell(
+            route,
+            'search_incomplete_or_blocked',
+            f'{sum(unverified.values())} documentary statement(s) reviewed as trial results but not '
+            f'quote-confirmed in source ({checks})',
+            n_statements=len(route_links),
+            n_reviewed_unverified=sum(unverified.values()),
+            statement_checks=dict(sorted(unverified.items())),
         )
     if any(x['review_status'] == 'confirmed_background_only' for x in route_links):
         return _cell(
@@ -551,11 +629,17 @@ def documentary_statements_cell(nct_id: str, route_links: list[dict[str, Any]]) 
 
 
 def overall_coverage(cells: list[dict[str, Any]]) -> dict[str, Any]:
-    """Compute per-trial overall coverage across search routes (+ active documentary statements)."""
+    """Compute per-trial overall coverage across search routes (+ active documentary statements).
+
+    The statements route counts only while a statement is live: verified, awaiting review, or
+    reviewed as trial results without its quote confirmed (`search_incomplete_or_blocked`, the
+    only way that route reaches that state). Absent, rejected or background-only statements leave
+    the overall state to the search routes.
+    """
     considered = [
         c for c in cells
         if c['route'] in SEARCH_ROUTES
-        or (c['route'] == 'documentary_statements' and c['state'] in ('verified_link', 'candidate_awaiting_review'))
+        or (c['route'] == 'documentary_statements' and c['state'] in STATEMENT_LIVE_STATES)
     ]
     for state in OVERALL_PRECEDENCE:
         matching_routes = [c['route'] for c in considered if c['state'] == state]

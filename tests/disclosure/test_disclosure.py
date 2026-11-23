@@ -1718,14 +1718,157 @@ def test_documentary_statement_needs_its_quote_found_before_the_timeline_counts_
         'review_status': 'confirmed_same_trial_results',
         'publication_or_action_date': '2021-05-10',
     }
-    unquoted = dict(base, automated_validation='not_validated')
+    unquoted = dict(
+        base, automated_validation='not_validated', detail={'statement_check': 'excerpt_not_found_at_locator'}
+    )
     quoted = dict(base, automated_validation='quote_confirmed_in_source')
     # Confirmed by a person but its quote was not found at the locator: not a qualifying publication,
-    # matching the coverage cell, which reads it as awaiting review.
+    # and not awaiting review either (the review is settled; the source check failed).
     assert T._qualifying_results_publications([unquoted]) == []
-    assert C.documentary_statements_cell('NCT09990022', [unquoted])['state'] == 'candidate_awaiting_review'
+    assert C.documentary_statements_cell('NCT09990022', [unquoted])['state'] == 'search_incomplete_or_blocked'
     assert T._qualifying_results_publications([quoted]) == [quoted]
     assert C.documentary_statements_cell('NCT09990022', [quoted])['state'] == 'verified_link'
+
+
+_SEARCH_DONE = {r: 'no_candidate_in_completed_scope' for r in C.SEARCH_ROUTES}
+
+
+def _statement(link_id: str, review_status: str, check: str) -> dict[str, Any]:
+    return {
+        'link_id': link_id,
+        'nct_id': 'NCT09990022',
+        'source_route': 'documentary_statements',
+        'citation_type': 'DOCUMENTARY_STATEMENT',
+        'review_status': review_status,
+        'automated_validation': 'quote_confirmed_in_source' if check == 'quote_found_at_locator' else 'not_validated',
+        'publication_or_action_date': '2021-05-10',
+        'detail': {'statement_check': check},
+    }
+
+
+@pytest.mark.parametrize('check', ['source_not_retrieved', 'locator_not_resolved', 'excerpt_not_found_at_locator'])
+@pytest.mark.parametrize('ctgov_state', ['no_candidate_in_completed_scope', 'verified_link'])
+def test_a_statement_reviewed_as_results_but_not_quote_confirmed_is_not_called_pending_review(
+    check: str, ctgov_state: str
+) -> None:
+    stmt = _statement('link:00000000000000d2', 'confirmed_same_trial_results', check)
+    cell = C.documentary_statements_cell('NCT09990022', [stmt])
+    # The cell names the failed source check instead of calling a settled review pending.
+    assert cell['state'] == 'search_incomplete_or_blocked'
+    assert 'awaiting' not in cell['reason'] and check in cell['reason']
+    assert cell['detail']['statement_checks'] == {check: 1}
+    # The route still counts toward the overall state, which therefore never reads as a completed negative.
+    cells = [{'route': r, 'state': s} for r, s in {**_SEARCH_DONE, 'ctgov_results': ctgov_state}.items()] + [cell]
+    assert C.overall_coverage(cells)['state'] == ('verified_link' if ctgov_state == 'verified_link'
+                                                  else 'search_incomplete_or_blocked')
+    # Left out of the unsettled-review count, but the trial does not settle on a negative state.
+    assert T._unsettled_publication_candidates([stmt]) == []
+    disc = T.classify_discordance([stmt], {'routes': cells})
+    assert disc['n_unsettled_publication_candidates'] == 0
+    assert disc['has_linked_results_publication'] is False
+    assert disc['state'] == 'coverage_incomplete_or_awaiting_review'
+    # Control: without the statement the same routes settle on the negative states.
+    bare = [c for c in cells if c['route'] != 'documentary_statements'] + [
+        {'route': 'documentary_statements', 'state': 'not_searched'}]
+    assert T.classify_discordance([], {'routes': bare})['state'] == (
+        'ctgov_posted_no_linked_results_publication' if ctgov_state == 'verified_link'
+        else 'unreported_across_completed_routes')
+
+
+def test_statements_awaiting_review_keep_the_cell_pending_and_count_the_settled_ones_apart() -> None:
+    pending = _statement('link:00000000000000d3', 'unreviewed', 'quote_found_at_locator')
+    settled = _statement('link:00000000000000d4', 'confirmed_same_trial_results', 'source_not_retrieved')
+    cell = C.documentary_statements_cell('NCT09990022', [pending, settled])
+    assert cell['state'] == 'candidate_awaiting_review'
+    assert cell['detail']['n_awaiting_review'] == 1 and cell['detail']['n_reviewed_unverified'] == 1
+    assert cell['reason'].startswith('1 documentary statement(s) entered (1 quote-confirmed in source) awaiting')
+    assert [x['link_id'] for x in T._unsettled_publication_candidates([pending, settled])] == [pending['link_id']]
+
+
+@pytest.mark.parametrize(
+    ('review_status', 'set_aside'),
+    [('unreviewed', True), ('rejected_false_positive', True), ('confirmed_background_only', True),
+     ('confirmed_same_trial_results', False), ('indeterminate', False)],
+)
+def test_a_rule_rejection_is_set_aside_only_while_review_leaves_it_out_of_coverage(
+    review_status: str, set_aside: bool
+) -> None:
+    link = {
+        'automated_validation': 'rejected_by_rule',
+        'review_status': review_status,
+        'citation_type': 'LITERATURE_NCT_MENTION',
+    }
+    assert C.set_aside_by_rule(link) is set_aside
+    # The export's partition and the coverage filter are the same rule.
+    assert (C._active_links([link]) == []) is set_aside
+
+
+def test_reviewed_rule_rejections_and_unverified_statements_export_where_coverage_uses_them(
+    tmp_path: Path, frozen_cache: A.FrozenCache, built_files: dict[str, Any]
+) -> None:
+    rejected_07 = [x for x in built_files['links.json']['links']
+                   if x['nct_id'] == 'NCT09990007' and x['automated_validation'] == 'rejected_by_rule']
+    lit = next(x for x in rejected_07 if x['source_route'] == 'literature_search')
+    fda = [x for x in rejected_07 if x['source_route'] == 'openfda_drugsfda']
+    # A statement for NCT09990005 (otherwise unreported across completed routes) whose excerpt is not
+    # in the frozen CT.gov record at its locator.
+    stmt_csv = tmp_path / 'documentary_statements.csv'
+    with stmt_csv.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.STATEMENT_COLUMNS)
+        w.writerow(['stmt-005', 'NCT09990005', 'registry_record', 'protocolSection.descriptionModule.briefSummary',
+                    '2021-01', 'results were published in a journal that this record does not mention',
+                    'Curator Jane', 'Excerpt deliberately absent from the source'])
+    empty = tmp_path / 'reviews_empty.csv'
+    empty.write_text(','.join(E.REVIEW_COLUMNS) + '\n', encoding='utf-8')
+    probe = ART.build_artifacts(
+        frozen_cache, reviews_path=empty, statements_path=stmt_csv,
+        sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv', producer=cli_build.producer_metadata(),
+        generated_at=F.GENERATED_AT, as_of=date.fromisoformat(F.AS_OF),
+    )
+    stmt = next(x for x in probe['links.json']['links'] if x['source_route'] == 'documentary_statements')
+    assert stmt['detail']['statement_check'] == 'excerpt_not_found_at_locator'
+    assert _timeline_of(probe, 'NCT09990005')['discordance']['n_unsettled_publication_candidates'] == 1
+
+    rev_csv = tmp_path / 'reviews.csv'
+    with rev_csv.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.REVIEW_COLUMNS)
+        for link_id, nct, decision in (
+            (lit['link_id'], 'NCT09990007', 'confirmed_same_trial_results'),
+            (fda[0]['link_id'], 'NCT09990007', 'indeterminate'),
+            (fda[1]['link_id'], 'NCT09990007', 'rejected_false_positive'),
+            (stmt['link_id'], 'NCT09990005', 'confirmed_same_trial_results'),
+        ):
+            w.writerow([link_id, nct, 'Dr. Fictional', '2026-11-02', decision, 'Reviewed'])
+    build_dir = tmp_path / 'build'
+    assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(build_dir), '--as-of', F.AS_OF,
+                           '--generated-at', F.GENERATED_AT, '--reviews', str(rev_csv),
+                           '--statements', str(stmt_csv)]) == 0
+    files, _ = ART.load_dir(build_dir)
+    assert ART.check_contract(files) == []
+    # The confirmed rule rejection verifies its route; the indeterminate one is a live candidate.
+    assert _cell_of(files, 'NCT09990007', 'literature_search')['state'] == 'verified_link'
+    assert _cell_of(files, 'NCT09990007', 'openfda_drugsfda')['state'] == 'candidate_awaiting_review'
+    assert _timeline_of(files, 'NCT09990007')['discordance']['state'] == 'published_results_while_ctgov_unreported'
+    # The confirmed statement whose excerpt is absent: not pending review, and no negative state.
+    assert _cell_of(files, 'NCT09990005', 'documentary_statements')['state'] == 'search_incomplete_or_blocked'
+    assert _coverage_of(files, 'NCT09990005')['overall']['state'] == 'search_incomplete_or_blocked'
+    disc_05 = _timeline_of(files, 'NCT09990005')['discordance']
+    assert disc_05['state'] == 'coverage_incomplete_or_awaiting_review'
+    assert disc_05['n_unsettled_publication_candidates'] == 0
+
+    site = tmp_path / 'site' / 'disclosure'
+    assert cli_export.main([str(build_dir), str(site)]) == 0
+    shown = {r['link_id'] for r in json.loads((site / 'evidence.json').read_text(encoding='utf-8'))['records']}
+    aside_file = json.loads((site / 'evidence_set_aside.json').read_text(encoding='utf-8'))
+    aside = {r['link_id'] for r in aside_file['records']}
+    assert {lit['link_id'], fda[0]['link_id']} <= shown
+    assert not {lit['link_id'], fda[0]['link_id']} & aside
+    assert fda[1]['link_id'] in aside and fda[1]['link_id'] not in shown
+    assert len(aside) == len(rejected_07) - 2
+    run = json.loads((site / 'run.json').read_text(encoding='utf-8'))
+    assert run['records']['evidence_set_aside.json'] == len(rejected_07) - 2
 
 
 def test_as_of_after_the_frozen_ctgov_data_is_refused(
