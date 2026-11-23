@@ -1248,3 +1248,28 @@ def test_records_without_posted_results_are_still_accepted_as_complete(tmp_path:
     (rdir / "a.json").write_text(json.dumps(study), encoding="utf-8")
     records, _meta = benchmarks.load_study_records(rdir)
     assert len(records) == 1
+
+
+@pytest.mark.parametrize(
+    "module", ["identificationModule", "statusModule", "sponsorCollaboratorsModule", "conditionsModule", "designModule"]
+)
+@pytest.mark.parametrize("value", ["projected", ["x"], 7])
+def test_non_object_required_module_is_refused_not_a_traceback(tmp_path: Path, module: str, value: object) -> None:
+    complete = fx.make_raw_ctgov_study("NCT99800004")
+    broken = fx.make_raw_ctgov_study("NCT99800005")
+    broken["protocolSection"][module] = value
+    rdir = tmp_path / "records"
+    rdir.mkdir()
+    (rdir / "a.json").write_text(json.dumps(complete), encoding="utf-8")
+    (rdir / "b.json").write_text(json.dumps(broken), encoding="utf-8")
+    with pytest.raises(ValueError, match=f"lacks {module}"):
+        benchmarks.load_study_records(rdir)
+
+
+def test_core_metadata_reads_malformed_parts_as_empty() -> None:
+    study = fx.make_raw_ctgov_study("NCT99800006")
+    study["protocolSection"]["conditionsModule"]["conditions"] = "Asthma"  # a string, not a list
+    study["protocolSection"]["sponsorCollaboratorsModule"]["collaborators"] = {"name": "X"}
+    study["protocolSection"]["designModule"]["enrollmentInfo"] = "120"
+    core = benchmarks._extract_core_metadata(study)
+    assert core["conditions"] == [] and core["collaborators"] == [] and core["enrollment"] is None

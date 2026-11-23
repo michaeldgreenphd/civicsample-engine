@@ -343,18 +343,35 @@ def normalize_phase(record: dict[str, Any]) -> str:
     return "_".join(cleaned)
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    """``value`` when it is a JSON object, else ``{}`` (a missing or malformed part reads as empty)."""
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value: Any) -> list[Any]:
+    """``value`` when it is a JSON array, else ``[]`` (a string is never iterated as characters)."""
+    return value if isinstance(value, list) else []
+
+
 def _extract_core_metadata(record: dict[str, Any]) -> dict[str, Any]:
-    """Extract common trial identification, study type, conditions, and sponsor fields."""
+    """Extract common trial identification, study type, conditions, and sponsor fields.
+
+    Loaders call this on raw records before ``_require_complete_records`` has checked them (to name
+    a record in an error, or to reconcile returned NCT ids), so every part is read type-safely: a
+    module, sponsor or enrollment value that is not an object (``"identificationModule":
+    "projected"``) reads as empty instead of raising ``AttributeError``, and the completeness check
+    then refuses the record by name.
+    """
     protocol = record.get("protocolSection")
     if isinstance(protocol, dict):
-        id_mod = protocol.get("identificationModule") or {}
-        design_mod = protocol.get("designModule") or {}
-        status_mod = protocol.get("statusModule") or {}
-        cond_mod = protocol.get("conditionsModule") or {}
-        sponsor_mod = protocol.get("sponsorCollaboratorsModule") or {}
-        lead = sponsor_mod.get("leadSponsor") or {}
-        enr_info = design_mod.get("enrollmentInfo") or {}
-        raw_collabs = sponsor_mod.get("collaborators") or []
+        id_mod = _as_dict(protocol.get("identificationModule"))
+        design_mod = _as_dict(protocol.get("designModule"))
+        status_mod = _as_dict(protocol.get("statusModule"))
+        cond_mod = _as_dict(protocol.get("conditionsModule"))
+        sponsor_mod = _as_dict(protocol.get("sponsorCollaboratorsModule"))
+        lead = _as_dict(sponsor_mod.get("leadSponsor"))
+        enr_info = _as_dict(design_mod.get("enrollmentInfo"))
+        raw_collabs = _as_list(sponsor_mod.get("collaborators"))
         collaborators = [
             {
                 "name": str(c.get("name") or ""),
@@ -376,7 +393,7 @@ def _extract_core_metadata(record: dict[str, Any]) -> dict[str, Any]:
             "overall_status": status_mod.get("overallStatus") or None,
             "enrollment": enrollment,
             "enrollment_type": enr_info.get("type") or None,
-            "conditions": [str(c) for c in (cond_mod.get("conditions") or []) if isinstance(c, str)],
+            "conditions": [str(c) for c in _as_list(cond_mod.get("conditions")) if isinstance(c, str)],
             "lead_sponsor_name": lead.get("name") if lead.get("name") is not None else "Unknown",
             "sponsor_class": lead.get("class") if lead.get("class") is not None else "Unknown",
             "collaborators": collaborators,
