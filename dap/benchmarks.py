@@ -1170,6 +1170,29 @@ def _stratum_id(kind: str, parts: Iterable[str | None]) -> str:
     return f"stratum:{kind}:{digest}"
 
 
+def _mesh_display_terms(
+    trial_rows: list[dict[str, Any]],
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """One display term per MeSH descriptor ID, and every ID seen under more than one term.
+
+    Counts, per ID, the indexed trials carrying each term. The display term is
+    the one most trials carry, ties going to the lexicographically first, so the
+    choice is deterministic. IDs carried under several terms are returned with
+    all of them, sorted, so the conflict is recorded rather than hidden.
+    """
+    counts: dict[str, Counter[str]] = {}
+    for t in trial_rows:
+        if t["indication"]["mesh_state"] == "indexed" and t["indication"]["meshes"]:
+            for mid, mterm in {(m["id"], m["term"]) for m in t["indication"]["meshes"]}:
+                counts.setdefault(mid, Counter())[mterm] += 1
+    display = {
+        mid: sorted(c.items(), key=lambda item: (-item[1], item[0]))[0][0]
+        for mid, c in counts.items()
+    }
+    conflicts = {mid: sorted(c) for mid, c in sorted(counts.items()) if len(c) > 1}
+    return display, conflicts
+
+
 def _extract_medians_from_pooled(pooled: dict[str, Any]) -> tuple[dict[str, float], dict[str, float], float | None]:
     """Extract non-withheld ``p50`` medians from a pooled stratum dict."""
     race_meds: dict[str, float] = {}
@@ -1464,8 +1487,11 @@ def build_benchmarks(
     # Group trials into strata across the five deterministic stratum kinds.
     ontology_fp_groups: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
     ontology_bin_groups: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
-    mesh_fp_groups: dict[tuple[str, str, str, str, str, str], list[dict[str, Any]]] = {}
-    mesh_bin_groups: dict[tuple[str, str, str, str, str, str], list[dict[str, Any]]] = {}
+    # MeSH cells are keyed by descriptor ID alone, as their stratum_id is: grouping
+    # by (ID, term) split one descriptor into cells sharing a stratum_id whenever
+    # records carried it under two terms (raw records pulled across a MeSH rename).
+    mesh_fp_groups: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
+    mesh_bin_groups: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
     indication_ref_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
     for t in trial_rows:
@@ -1490,10 +1516,9 @@ def build_benchmarks(
                 if mid in seen_m:
                     continue
                 seen_m.add(mid)
-                mterm = m["term"]
-                mesh_fp_groups.setdefault((mid, mterm, pri, ph, era_key, fp), []).append(t)
+                mesh_fp_groups.setdefault((mid, pri, ph, era_key, fp), []).append(t)
                 if fp == "multinational_with_us_sites" and sbin is not None:
-                    mesh_bin_groups.setdefault((mid, mterm, pri, ph, era_key, sbin), []).append(t)
+                    mesh_bin_groups.setdefault((mid, pri, ph, era_key, sbin), []).append(t)
 
     strata_list: list[dict[str, Any]] = []
     primary_cell_by_key: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
@@ -1540,8 +1565,10 @@ def build_benchmarks(
             }
         )
 
+    mesh_terms, mesh_term_conflicts = _mesh_display_terms(trial_rows)
     for mkey in sorted(mesh_fp_groups):
-        mid, mterm, pri, ph, era_key, fp = mkey
+        mid, pri, ph, era_key, fp = mkey
+        mterm = mesh_terms[mid]
         sid = _stratum_id("mesh_footprint", (mid, pri, ph, era_key, fp))
         pooled = _pool_trial_group(mesh_fp_groups[mkey], min_cell_trials=min_cell_trials)
         strata_list.append(
@@ -1561,7 +1588,8 @@ def build_benchmarks(
         )
 
     for mkey in sorted(mesh_bin_groups):
-        mid, mterm, pri, ph, era_key, sbin = mkey
+        mid, pri, ph, era_key, sbin = mkey
+        mterm = mesh_terms[mid]
         sid = _stratum_id("mesh_us_share_bin", (mid, pri, ph, era_key, sbin))
         pooled = _pool_trial_group(mesh_bin_groups[mkey], min_cell_trials=min_cell_trials)
         strata_list.append(
@@ -1735,4 +1763,5 @@ def build_benchmarks(
             "sha256": classifier.sha256,
         },
         "sponsor_meta": sponsor_meta,
+        "mesh_descriptor_term_conflicts": mesh_term_conflicts,
     }

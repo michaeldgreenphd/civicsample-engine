@@ -296,6 +296,55 @@ def test_build_contract_and_byte_stable_run_identity(tmp_path: Path) -> None:
     assert quar_metric["value"] == 1
 
 
+def test_mesh_cells_are_one_per_descriptor_id_when_terms_differ(tmp_path: Path) -> None:
+    studies = fx.build_fictional_cohort()
+    old_term = "Diabetes Mellitus, Non-Insulin-Dependent"
+    for s in studies:
+        if s["protocolSection"]["identificationModule"]["nctId"] in ("NCT99000102", "NCT99000104"):
+            s["derivedSection"]["conditionBrowseModule"]["meshes"] = [{"id": "D003924", "term": old_term}]
+    studies_dir = fx.write_studies_dir(studies, tmp_path / "studies")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    out_dir = tmp_path / "build"
+    assert (
+        cli_build.main(
+            [
+                "--records-dir",
+                str(studies_dir),
+                "--sponsor-rules",
+                str(rules_path),
+                "--generated-at",
+                "2026-11-21T00:00:00+00:00",
+                "--out",
+                str(out_dir),
+            ]
+        )
+        == 0
+    )
+    assert cli_check.main([str(out_dir)]) == 0
+    strata_doc = json.loads((out_dir / "strata.json").read_text(encoding="utf-8"))
+    ids = [s["stratum_id"] for s in strata_doc["strata"]]
+    assert len(ids) == len(set(ids))
+
+    # One cell per descriptor ID: the six US-only Phase 3 post-FDORA trials pool together.
+    cells = [
+        s for s in strata_doc["strata"]
+        if s["stratum_kind"] == "mesh_footprint" and s["mesh_descriptor_id"] == "D003924"
+        and s["site_footprint_class"] == "us_only"
+    ]
+    assert len(cells) == 1 and cells[0]["pooled"]["n_trials"] == 6
+    # Display term: the one most trials carry (5 of 7 trials with D003924); the conflict is recorded.
+    assert cells[0]["mesh_descriptor_term"] == "Diabetes Mellitus, Type 2"
+    assert strata_doc["mesh_descriptor_term_conflicts"] == {"D003924": [old_term, "Diabetes Mellitus, Type 2"]}
+
+    # The contract refuses duplicate stratum_ids.
+    loaded = artifacts.load_dir(out_dir)
+    loaded["strata.json"]["strata"].append(copy.deepcopy(cells[0]))
+    assert any(
+        x == f"strata.json: 1 stratum_id(s) are not unique (first: {cells[0]['stratum_id']})"
+        for x in artifacts.check_contract(loaded)
+    )
+
+
 def test_site_parts_are_refused_as_study_input(tmp_path: Path) -> None:
     part = tmp_path / "demographics.part1.json.gz"
     part.write_bytes(gzip.compress(b'{"data": []}', mtime=0))

@@ -74,7 +74,7 @@ modified.
 |---|---|
 | `run.json` | Deterministic `run_id` (`dap-YYYY-MM-DD-<run_identity>`), input SHA-256s, producing commit, source SHA-256 and uncommitted-changes flag over every repository module the build imports (`dap/`, `src/`, `sponsors/`, `scripts/`), parameters, counting units, vocabularies, limitations, and byte-level `files` SHA-256s |
 | `summary.json` | Named `denominators`, headline `metrics`, and partition `breakdowns`; every count carries `value`, `numerator`, `denominator`, and `definition` |
-| `strata.json` | Indication (ontology + optional MeSH descriptor) x phase x regulatory era x footprint / US-share-bin cells with trial-weighted `p10..p90` (primary) and participant-weighted share (secondary), withholding cells `< min_cell_trials` (default 5) |
+| `strata.json` | Indication (ontology + optional MeSH descriptor) x phase x regulatory era x footprint / US-share-bin cells with trial-weighted `p10..p90` (primary) and participant-weighted share (secondary), withholding cells `< min_cell_trials` (default 5). MeSH cells are one per descriptor ID; an ID that records carry under several terms shows the term most trials carry (ties: lexicographically first) and is listed in `mesh_descriptor_term_conflicts` |
 | `sponsors.json` | Canonical (`current_owner`) and `as_registered` company peer scorecards and 3-state attribution summary |
 | `trials.jsonl.gz` | Deterministic `nct_id`-sorted per-trial records (kept with the engine build; omitted by `export_dap_benchmarks_site.py`) |
 

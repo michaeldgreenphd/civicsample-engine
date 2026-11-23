@@ -23,6 +23,7 @@ import json
 import re
 import shutil
 import tempfile
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -611,6 +612,9 @@ def build_artifact_family(
             "unit_basis": UNIT_BASIS,
             "min_cell_trials": min_cell_trials,
             "stratum_kinds": list(STRATUM_KINDS),
+            # MeSH descriptor IDs carried under more than one term; their cells
+            # show the display term benchmarks._mesh_display_terms chose. Normally {}.
+            "mesh_descriptor_term_conflicts": benchmark_result["mesh_descriptor_term_conflicts"],
             "strata": strata,
         },
         "sponsors.json": {
@@ -1009,6 +1013,11 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
         p.append(
             f"strata.json: ontology_us_share_bin n_trials sum ({ont_bin_sum}) != multinational count ({multinat_count})"
         )
+
+    id_counts = Counter(str(s.get("stratum_id")) for s in strata_list)
+    dup_ids = sorted(i for i, n in id_counts.items() if n > 1)
+    if dup_ids:
+        p.append(f"strata.json: {len(dup_ids)} stratum_id(s) are not unique (first: {dup_ids[0]})")
 
     for s in strata_list:
         sid = s.get("stratum_id")
