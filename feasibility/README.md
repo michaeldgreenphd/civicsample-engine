@@ -31,6 +31,13 @@ Written by `scripts/build_feasibility_benchmarks.py`:
 
 ## Running & verifying
 
+A `--demographics` container must carry both run stamps in the producer's format, with or
+without a sidecar: `extracted_at` a whole UTC ISO-8601 timestamp and `pipeline_commit` a 40-hex
+git revision (as `src/extract_all.py` writes them). A missing, blank or malformed stamp refuses
+the build, and the contract re-checks `inputs.records.source_extracted_at` /
+`source_pipeline_commit` on weekly builds, so the site export never republishes a stamp that
+names no run.
+
 `--condition-mesh` must come from the same run as the records it is joined to. With
 `--demographics`, every sidecar line's `extracted_at` and `pipeline_commit` must equal the
 full-record container's (both must be present), so the matching week's

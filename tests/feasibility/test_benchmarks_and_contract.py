@@ -1194,3 +1194,58 @@ def test_weekly_build_without_sidecar_still_needs_run_stamps(
     assert rc == 1
     assert f"carry no {stamp}" in capsys.readouterr().err
     assert not out_dir.exists()
+
+
+@pytest.mark.parametrize(
+    "stamp, value",
+    [
+        ("extracted_at", "not-a-time"),
+        ("extracted_at", "2026-11-15"),  # a date, no time
+        ("extracted_at", "2026-11-15T06:00:00"),  # naive
+        ("extracted_at", "2026-11-15T06:00:00+01:00"),  # not UTC
+        ("extracted_at", "2026-02-30T06:00:00+00:00"),  # impossible date
+        ("pipeline_commit", "garbage"),
+        ("pipeline_commit", "0123abc"),  # abbreviated
+        ("pipeline_commit", _WEEKLY_COMMIT.upper()),
+        ("pipeline_commit", 7),
+    ],
+)
+def test_weekly_build_refuses_malformed_run_stamps(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], stamp: str, value: object
+) -> None:
+    # Present but not in the producer's format (a whole UTC timestamp, a 40-hex revision): such a
+    # stamp names no extraction run, so the build is refused, with or without a sidecar.
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body[stamp] = value
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    out_dir = tmp_path / "refused"
+    rc = build_feasibility_benchmarks.main(
+        ["--demographics", str(demog_path), "--generated-at", "2026-11-21T12:00:00+00:00", "--out", str(out_dir)]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "run stamps cannot name the extraction run" in err and stamp in err
+    assert not out_dir.exists()
+
+
+def test_contract_and_export_refuse_edited_weekly_source_stamps(tmp_path: Path) -> None:
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    out_dir = tmp_path / "weekly_build"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 0
+    family, raw = artifacts.load_dir(out_dir)
+    assert not [p for p in artifacts.check_contract(family, raw) if "source stamp" in p]
+
+    for key, value in (("source_extracted_at", "not-a-time"), ("source_pipeline_commit", "garbage")):
+        edited = json.loads(json.dumps(family))
+        edited["run.json"]["inputs"]["records"][key] = value
+        assert any("inputs.records source stamp" in p for p in artifacts.check_contract(edited, raw)), key
+
+    # run.json is outside its own file hashes, so an edit on disk reaches the exporter, which refuses it.
+    run_path = out_dir / "run.json"
+    run = json.loads(run_path.read_text(encoding="utf-8"))
+    run["inputs"]["records"]["source_pipeline_commit"] = "garbage"
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    site_dir = tmp_path / "site"
+    assert export_feasibility_site.main([str(out_dir), str(site_dir)]) == 1
+    assert not (site_dir / "run.json").exists()

@@ -474,12 +474,20 @@ def load_studies_input(
     # or not a MeSH sidecar is supplied (the sidecar check needs them too).
     missing = [
         name for name, value in (("extracted_at", extracted_at), ("pipeline_commit", pipe_commit))
-        if not isinstance(value, str) or not value.strip()
+        if value is None or (isinstance(value, str) and not value.strip())
     ]
     if missing:
         raise ValueError(
             f"{target}: weekly full records carry no {' or '.join(missing)}, so the build could not "
             "name the extraction run that produced them"
+        )
+    # Present is not enough: the stamps must have the producer's format (a whole UTC timestamp and
+    # a 40-hex revision; see artifacts.weekly_source_stamp_problems), or they name no run.
+    malformed = artifacts.weekly_source_stamp_problems(extracted_at, pipe_commit)
+    if malformed:
+        raise ValueError(
+            f"{target}: weekly full-record run stamps cannot name the extraction run that produced "
+            f"them ({'; '.join(malformed)})"
         )
     file_sha = hashlib.sha256(target.read_bytes()).hexdigest()
     return records, {

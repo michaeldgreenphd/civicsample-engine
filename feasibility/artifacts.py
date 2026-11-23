@@ -78,6 +78,7 @@ CONDITION_MESH_STATES = (
     "not_provided",
 )
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+GIT_COMMIT_RE = re.compile(r"[0-9a-f]{40}")  # used with fullmatch
 NCT_RE = re.compile(r"^NCT\d{8}$")
 
 PERCENTILE_BLOCK_KEYS = (
@@ -615,22 +616,44 @@ def run_identity(
     return sha256_bytes(dump_canonical([manifest_body, json_digests, trials_digest]))[:10]
 
 
-def utc_timestamp_date(generated_at: str) -> str:
+def utc_timestamp_date(generated_at: str, label: str = "generated_at") -> str:
     """Validate a whole ISO-8601 UTC timestamp and return its `YYYY-MM-DD` date.
 
     `generated_at` is published and its date enters `run_id`, so the whole value is parsed, not
     just a prefix: an impossible date (`2026-02-30`), trailing text, a date without a time, a
-    naive time or a non-zero UTC offset is refused rather than published.
+    naive time or a non-zero UTC offset is refused rather than published. `label` names the field
+    in the error (the same rule checks the weekly container's `extracted_at`).
     """
     if not isinstance(generated_at, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T.+", generated_at):
-        raise ValueError(f"generated_at must be an ISO-8601 UTC timestamp, got {generated_at!r}")
+        raise ValueError(f"{label} must be an ISO-8601 UTC timestamp, got {generated_at!r}")
     try:
         parsed = datetime.fromisoformat(generated_at)
     except ValueError as exc:
-        raise ValueError(f"generated_at must be an ISO-8601 UTC timestamp, got {generated_at!r}") from exc
+        raise ValueError(f"{label} must be an ISO-8601 UTC timestamp, got {generated_at!r}") from exc
     if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
-        raise ValueError(f"generated_at must carry a UTC offset (Z or +00:00), got {generated_at!r}")
+        raise ValueError(f"{label} must carry a UTC offset (Z or +00:00), got {generated_at!r}")
     return generated_at[:10]
+
+
+def weekly_source_stamp_problems(extracted_at: Any, pipeline_commit: Any) -> list[str]:
+    """Why a weekly container's run stamps cannot name the run that produced it; `[]` when they can.
+
+    `src/extract_all.py` stamps the weekly container with `extracted_at` from
+    `datetime.now(timezone.utc).isoformat()` (e.g. `2026-11-22T14:24:57.167231+00:00`) and
+    `pipeline_commit` from `src/utils.pipeline_commit()` (`GITHUB_SHA` in CI, else
+    `git rev-parse HEAD`): a whole UTC timestamp and a 40-hex revision. These stamps are the build's
+    only link to the extraction run and pipeline revision behind its records, and they are copied
+    to the site export as `source_extracted_at` / `source_pipeline_commit`, so any other value
+    (absent, blank, unparseable, non-UTC, not a revision) is a problem, never published as-is.
+    """
+    problems: list[str] = []
+    try:
+        utc_timestamp_date(extracted_at, label="extracted_at")
+    except ValueError as exc:
+        problems.append(str(exc))
+    if not (isinstance(pipeline_commit, str) and GIT_COMMIT_RE.fullmatch(pipeline_commit)):
+        problems.append(f"pipeline_commit must be a 40-hex git revision, got {pipeline_commit!r}")
+    return problems
 
 
 def build_artifact_family(
@@ -855,7 +878,7 @@ def check_contract(
     # `commit` is a 40-hex revision, or null when git could not be read; `uncommitted_changes` is a
     # bool, or null (unverifiable) in that case. A null is allowed in a build but refused at export.
     commit = prod.get("commit")
-    if commit is not None and not (isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)):
+    if commit is not None and not (isinstance(commit, str) and GIT_COMMIT_RE.fullmatch(commit)):
         problems.append(f"run.json: producer.commit {commit!r} is neither a 40-hex revision nor null")
     dirty = prod.get("uncommitted_changes")
     if dirty is not None and not isinstance(dirty, bool):
@@ -865,6 +888,14 @@ def check_contract(
     rec_in = inputs.get("records") or {}
     if not HEX64_RE.fullmatch(str(rec_in.get("sha256"))):
         problems.append("run.json: inputs.records.sha256 is missing or not 64-hex")
+    # A weekly build carries its container's run stamps; the build refuses malformed ones, and this
+    # re-check catches a manifest edited afterwards (run.json is outside its own file hashes), so
+    # the site exporter, which runs this contract first, never republishes such stamps.
+    if rec_in.get("mode") == "weekly_full_records":
+        for stamp_problem in weekly_source_stamp_problems(
+            rec_in.get("source_extracted_at"), rec_in.get("source_pipeline_commit")
+        ):
+            problems.append(f"run.json: inputs.records source stamp: {stamp_problem}")
     if not HEX64_RE.fullmatch(str((inputs.get("sponsor_rules") or {}).get("sha256"))):
         problems.append("run.json: inputs.sponsor_rules.sha256 is missing or not 64-hex")
     if not HEX64_RE.fullmatch(str((inputs.get("termination_reviews") or {}).get("sha256"))):
