@@ -510,6 +510,26 @@ def ctgov_studies_answered_for_another_trial(ctgov_records: dict[str, dict[str, 
     return sorted(out)
 
 
+def _nonblank_str(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _epmc_hit_readable(hit: Any) -> bool:
+    """Whether a Europe PMC result can be inspected: an object with an identifier (`id`, which the
+    `resultType=core` search returns on every record, or a `pmid`, `pmcid` or `doi`) and a title.
+
+    A hit without them gave no record to look into: it became the placeholder target `epmc:<index>`, was
+    set aside for carrying no NCT token, and the route read `no_candidate_in_completed_scope`, a
+    completed negative that `unreported_across_completed_routes` builds on. The whole answer is now
+    unusable instead, so the route stays incomplete (the conservative side if a real record lacks one).
+    """
+    return (
+        isinstance(hit, dict)
+        and any(_nonblank_str(hit.get(k)) for k in ('id', 'pmid', 'pmcid', 'doi'))
+        and _nonblank_str(hit.get('title'))
+    )
+
+
 def epmc_search_valid(body: Any) -> bool:
     if not isinstance(body, dict):
         return False
@@ -520,7 +540,7 @@ def epmc_search_valid(body: Any) -> bool:
     if not isinstance(result_list, dict):
         return False
     results = result_list.get('result')
-    if not isinstance(results, list) or not all(isinstance(r, dict) for r in results):
+    if not isinstance(results, list) or not all(_epmc_hit_readable(r) for r in results):
         return False
     return hit_count >= len(results)
 
@@ -549,11 +569,18 @@ def pubmed_esummary_valid(body: Any, pmid: str) -> bool:
 
 
 def openfda_drugsfda_valid(body: Any) -> bool:
-    """openFDA answers 0 matches with HTTP 404; HTTP 200 must carry `results` and `meta.results.total`."""
+    """openFDA answers 0 matches with HTTP 404; HTTP 200 must carry `results` and `meta.results.total`.
+
+    Every Drugs@FDA result names its application (`application_number`, such as `NDA021436`). One
+    without it became the placeholder `app:<index>`, and an NCT token in its `notes` published a verified
+    FDA link with no identifiable application, so such an answer is unusable and the search incomplete.
+    """
     if not isinstance(body, dict):
         return False
     results = body.get('results')
     if not isinstance(results, list) or not results or not all(isinstance(r, dict) for r in results):
+        return False
+    if not all(_nonblank_str(r.get('application_number')) for r in results):
         return False
     meta_results = (body.get('meta') or {}).get('results') if isinstance(body.get('meta'), dict) else None
     total = meta_results.get('total') if isinstance(meta_results, dict) else None

@@ -3013,6 +3013,50 @@ def test_empty_pubmed_entry_is_a_failed_lookup_not_a_verified_link(tmp_path: Pat
     assert rec['status'] == A.UNUSABLE_200
 
 
+def test_openfda_result_without_an_application_number_is_an_incomplete_search() -> None:
+    # On 77e9a2d the result below became `app:0`, its NCT token made the link identifier_confirmed, and
+    # coverage published a verified FDA link with no identifiable application.
+    nct = 'NCT09990002'
+    study = F.STUDIES[nct]
+    body = {'meta': {'results': {'total': 1}}, 'results': [{'notes': f'Pivotal trial {nct}.'}]}
+    assert not A.openfda_drugsfda_valid(body)
+    for blank in ('', '  ', 7):
+        assert not A.openfda_drugsfda_valid({**body, 'results': [{'application_number': blank, 'notes': nct}]})
+    records = {f'openfda/nct/{nct}': {'status': 200, 'body': body}}  # a cache frozen before the rule
+    links = E.build_openfda_links(nct, study, records, E.trial_sponsor_match_keys(study))
+    assert not [x for x in links if x['automated_validation'] == 'identifier_confirmed']
+    cell = C.openfda_drugsfda_cell(nct, {'status': 200, 'body': study}, study, records, links, True)
+    assert cell['state'] == 'search_incomplete_or_blocked', cell
+    # Control: the same result with its application number is a valid answer.
+    assert A.openfda_drugsfda_valid({**body, 'results': [{'application_number': 'NDA990002', 'notes': nct}]})
+
+
+@pytest.mark.parametrize('hit', [
+    {},
+    {'title': 'A title but no identifier'},
+    {'id': 'EPMC1'},
+    {'id': '  ', 'title': 'Blank identifier'},
+    {'id': 'EPMC1', 'title': ''},
+])
+def test_unreadable_europe_pmc_hit_is_an_incomplete_search(hit: dict[str, Any]) -> None:
+    # On 77e9a2d `{}` became the placeholder `epmc:0`, was set aside for carrying no NCT token, and the
+    # route read no_candidate_in_completed_scope, a completed negative.
+    nct = 'NCT09990004'
+    body = {'hitCount': 1, 'resultList': {'result': [hit]}}
+    assert not A.epmc_search_valid(body)
+    records = {f'literature/epmc_nct/{nct}': {'status': 200, 'body': body}}  # a cache frozen before the rule
+    links = E.build_literature_search_links(nct, records)
+    assert links == []
+    cell = C.literature_search_cell(nct, records, links, True)
+    assert cell['state'] == 'search_incomplete_or_blocked', cell
+
+
+def test_readable_europe_pmc_hits_are_accepted() -> None:
+    for hit in ({'id': 'EPMC1', 'title': 'T'}, {'pmid': '31234570', 'title': 'T'}, {'doi': '10.1/x', 'title': 'T'}):
+        assert A.epmc_search_valid({'hitCount': 1, 'resultList': {'result': [hit]}})
+    assert A.epmc_search_valid({'hitCount': 0, 'resultList': {'result': []}})
+
+
 def test_resolved_and_unresolved_pubmed_entries_are_accepted() -> None:
     assert A.pubmed_esummary_valid({'result': {'31234570': {'uid': '31234570', 'title': 'x'}}}, '31234570')
     assert A.pubmed_esummary_valid({'result': {'31234570': {'uid': '31234570', 'error': 'cannot get'}}}, '31234570')
