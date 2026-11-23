@@ -1461,3 +1461,38 @@ def test_reviews_for_trials_outside_the_build_are_out_of_scope_not_orphaned(
     # The site export carries the out-of-scope count beside the orphan count.
     exported = cli_export.select_site_files(subset)
     assert exported['run.json']['reviews'] == {'n_rows': 4, 'n_applied': 1, 'n_orphaned': 1, 'n_out_of_scope': 2}
+
+
+# ---------------------------------------------------------------- 14. Activity, amount and micro-sign strengths
+
+@pytest.mark.parametrize(
+    ('raw', 'expected'),
+    [
+        # Activity and amount units, with their denominators.
+        ('Insulin 10 units/mL', 'insulin'),
+        ('Insulin 100 U/mL', 'insulin'),
+        ('Heparin 5000 units', 'heparin'),
+        ('Factor VIII 25 U/kg', 'factor viii'),
+        ('Potassium chloride 20 mEq/L', 'potassium chloride'),
+        ('DrugX 2 mmol/L', 'drugx'),
+        ('Drug 5 mcg/kg/min', 'drug'),
+        # Micro sign (U+00B5) and Greek mu (U+03BC), and combination-product strengths (tracked CT.gov labels).
+        ('Tiotropium 18\u00b5g once daily', 'tiotropium once daily'),
+        ('Formoterol Fumarate 12 \u03bcg (Foradil\u00ae Aerolizer\u00ae)', 'formoterol fumarate'),
+        ('BFF MDI 320/9.6 \u03bcg', 'bff mdi'),
+        ('Advair Diskus\u00ae 250/50 mcg', 'advair diskus'),
+        # Genuine name tokens stay: only a whole unit right after a number is strength.
+        ('Vitamin D3 1000 IU', 'vitamin d3'),
+        ('Insulin U-100', 'insulin u-100'),
+        ('Unituxin 17.5 mg/m2', 'unituxin'),
+        ('Packed red blood cell units', 'packed red blood cell units'),
+        ('Lutetium Lu 177 dotatate', 'lutetium lu 177 dotatate'),
+        ('5-FU', '5-fu'),
+        ('CHF 1535 100/6 \u00b5g pMDI', 'chf 1535 pmdi'),
+    ],
+)
+def test_normalize_drug_term_strips_activity_amount_and_micro_sign_strengths(
+    raw: str,
+    expected: str | None,
+) -> None:
+    assert A.normalize_drug_term(raw) == expected
