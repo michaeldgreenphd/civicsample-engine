@@ -426,7 +426,8 @@ def ctgov_study_problem(body: Any) -> str | None:
 
     It needs a `protocolSection` object with an `identificationModule` object whose `nctId` is an NCT
     ID, and every part in `CTGOV_STUDY_PARTS` (and every entry in `CTGOV_STUDY_LIST_ENTRIES`) must have
-    its type when present. All 3,371 distinct trials and all 75,811 study entries in the stored local
+    its type when present. `hasResults: false` with a non-empty `resultsSection` is refused as
+    contradictory. All 3,371 distinct trials and all 75,811 study entries in the stored local
     files pass.
     """
     if not isinstance(body, dict) or not isinstance(body.get('protocolSection'), dict):
@@ -457,6 +458,11 @@ def ctgov_study_problem(body: Any) -> str | None:
                 for field, types in entry_fields:
                     if entry.get(field) is not None and not _value_is(entry[field], types):
                         return f'{where}[{i}].{field} is {type(entry[field]).__name__}, not {types[0].__name__}'
+    # `hasResults: false` beside a non-empty results section contradicts itself: coverage read the flag
+    # as the registry's negative while the record holds posted results. #106 and #107 refuse it too;
+    # none of the stored records has this shape (all with the flag false carry no section).
+    if body.get('hasResults') is False and isinstance(body.get('resultsSection'), dict) and body['resultsSection']:
+        return 'hasResults is false but resultsSection is non-empty'
     return None
 
 

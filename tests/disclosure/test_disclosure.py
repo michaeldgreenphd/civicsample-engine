@@ -336,6 +336,8 @@ def _study_with(base: dict[str, Any], path: tuple[str, ...], value: Any) -> dict
         # A part the build reads, of the wrong type, froze a cache the build could not read.
         ('file', _study_with(F.STUDIES['NCT09990005'], ('protocolSection', 'statusModule'), ['bad'])),
         ('list', _study_with(F.STUDIES['NCT09990005'], ('protocolSection', 'designModule', 'enrollmentInfo'), [1])),
+        # `hasResults: false` beside a posted results section contradicts itself.
+        ('file', _study_with(F.STUDIES['NCT09990001'], ('hasResults',), False)),
     ],
 )
 @pytest.mark.parametrize('with_nct_list', [False, True])
@@ -2969,3 +2971,30 @@ def test_study_record_with_a_mistyped_part_reads_as_a_failed_lookup_not_a_crash(
     assert row['registry_state'] == 'lookup_failed'
     cov = next(c for c in built['coverage.json']['trials'] if c['nct_id'] == nct)
     assert all(cell['state'] != 'no_candidate_in_completed_scope' for cell in cov['routes']), cov
+
+
+def test_contradictory_results_flag_is_not_read_as_the_registry_negative(tmp_path: Path) -> None:
+    # On de5eca4 `hasResults: false` beside a non-empty resultsSection read as the CT.gov negative:
+    # `no_candidate_in_completed_scope`, `UNREPORTED_PAST_365D` and `published_results_while_ctgov_unreported`.
+    nct = 'NCT09990002'
+    study = _study_with(F.STUDIES[nct], ('hasResults',), False)
+    study['resultsSection'] = {'participantFlowModule': {'groups': [{'id': 'FG000', 'title': 'Arm A'}]}}
+    assert A.ctgov_study_problem(study) == 'hasResults is false but resultsSection is non-empty'
+    assert A.ctgov_study_problem({**study, 'resultsSection': {}}) is None  # an empty section is no results
+    cache = F.acquire_fixture_cache(tmp_path / 'c')
+    cache.ctgov[f'ctgov/study/{nct}'] = dict(cache.ctgov[f'ctgov/study/{nct}'], body=study)
+    built = ART.build_artifacts(
+        cache,
+        reviews_path=ROOT / 'disclosure/reviews.csv',
+        statements_path=ROOT / 'disclosure/documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors/company_aliases.csv',
+        producer={'commit': None, 'uncommitted_changes': None},
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+        requested_nct_ids=[nct],
+    )
+    assert next(s for s in built['studies.json']['studies'] if s['nct_id'] == nct)['registry_state'] == 'lookup_failed'
+    assert _cell_of(built, nct, 'ctgov_results')['state'] == 'search_incomplete_or_blocked'
+    timeline = _timeline_of(built, nct)
+    assert timeline['window_365d']['state'] != 'UNREPORTED_PAST_365D'
+    assert timeline['discordance']['state'] == 'coverage_incomplete_or_awaiting_review'
