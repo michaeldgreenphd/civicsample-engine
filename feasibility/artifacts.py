@@ -25,6 +25,7 @@ import re
 import shutil
 import tempfile
 from collections import Counter
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -609,6 +610,24 @@ def run_identity(
     return sha256_bytes(dump_canonical([manifest_body, json_digests, trials_digest]))[:10]
 
 
+def utc_timestamp_date(generated_at: str) -> str:
+    """Validate a whole ISO-8601 UTC timestamp and return its `YYYY-MM-DD` date.
+
+    `generated_at` is published and its date enters `run_id`, so the whole value is parsed, not
+    just a prefix: an impossible date (`2026-02-30`), trailing text, a date without a time, a
+    naive time or a non-zero UTC offset is refused rather than published.
+    """
+    if not isinstance(generated_at, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T.+", generated_at):
+        raise ValueError(f"generated_at must be an ISO-8601 UTC timestamp, got {generated_at!r}")
+    try:
+        parsed = datetime.fromisoformat(generated_at)
+    except ValueError as exc:
+        raise ValueError(f"generated_at must be an ISO-8601 UTC timestamp, got {generated_at!r}") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+        raise ValueError(f"generated_at must carry a UTC offset (Z or +00:00), got {generated_at!r}")
+    return generated_at[:10]
+
+
 def build_artifact_family(
     *,
     trials: Sequence[dict[str, Any]],
@@ -620,9 +639,7 @@ def build_artifact_family(
     min_cell_trials: int = DEFAULT_MIN_CELL_TRIALS,
 ) -> tuple[dict[str, Any], dict[str, bytes]]:
     """Assemble all schema-version-1 feasibility objects and their exact serialized byte payloads."""
-    date_part = generated_at[:10]
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_part):
-        raise ValueError(f"generated_at must begin with YYYY-MM-DD, got {generated_at!r}")
+    date_part = utc_timestamp_date(generated_at)
 
     strata_obj, sponsors_obj = build_strata_and_sponsors(
         trials,

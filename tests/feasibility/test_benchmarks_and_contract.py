@@ -795,3 +795,54 @@ def test_python311_ast_full_type_hints_and_zero_rng_hygiene() -> None:
                     assert arg.annotation is not None, (
                         f"{py_path}:{node.lineno} {node.name} parameter {arg.arg!r} missing type annotation"
                     )
+
+
+@pytest.mark.parametrize(
+    "condition, wrong",
+    [
+        ("Falls", ("Oncology", "Hematologic Malignancy")),
+        ("Trauma", ("Autoimmune and Inflammatory", "Rheumatoid Arthritis")),
+        ("Caregiver Burnout", ("Dermatology", "Wound and Ulcer")),
+    ],
+)
+def test_production_classifier_keeps_short_keywords_standing_alone(
+    monkeypatch: pytest.MonkeyPatch, condition: str, wrong: tuple[str, str]
+) -> None:
+    # The normal environment has rapidfuzz, so indication comes from src.condition_classifier.
+    assert benchmarks._HAS_RAPIDFUZZ and benchmarks._cond_cls is not None
+    monkeypatch.setattr(benchmarks, "_ONTOLOGY_CACHE", None)
+    assert benchmarks._classify_conditions_FallbackOrFull([condition]) != wrong
+    assert benchmarks._classify_conditions_FallbackOrFull(["Gliosarcoma"]) == ("Oncology", "Sarcoma")
+
+
+@pytest.mark.parametrize(
+    "generated_at",
+    [
+        "2026-02-30T12:00:00+00:00",   # impossible date
+        "2026-11-21garbage",           # trailing text after the date
+        "2026-11-21",                  # no time
+        "2026-11-21T12:00:00",         # naive time
+        "2026-11-21T12:00:00+05:00",   # not UTC
+        "not a timestamp",
+    ],
+)
+def test_generated_at_must_be_a_whole_utc_timestamp(generated_at: str) -> None:
+    with pytest.raises(ValueError, match="generated_at"):
+        artifacts.utc_timestamp_date(generated_at)
+
+
+@pytest.mark.parametrize("generated_at", ["2026-11-21T12:00:00+00:00", "2026-11-21T12:00:00Z"])
+def test_generated_at_accepts_utc(generated_at: str) -> None:
+    assert artifacts.utc_timestamp_date(generated_at) == "2026-11-21"
+
+
+def test_site_export_keeps_the_source_pipeline_commit(tmp_path: Path) -> None:
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    out_dir = tmp_path / "weekly_build"
+    site_dir = tmp_path / "weekly_site"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 0
+    assert export_feasibility_site.main([str(out_dir), str(site_dir)]) == 0
+    site_run = json.loads((site_dir / "run.json").read_text(encoding="utf-8"))
+    records = site_run["inputs"]["records"]
+    assert records["source_pipeline_commit"] == _WEEKLY_COMMIT
+    assert records["source_extracted_at"] == _WEEKLY_EXTRACTED_AT

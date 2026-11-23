@@ -154,7 +154,7 @@ def select_site_files(parsed_build: dict[str, Any]) -> dict[str, Any]:
             "inputs": {
                 "records": {
                     k: run["inputs"]["records"].get(k)
-                    for k in ("mode", "source", "n_records", "sha256", "source_extracted_at")
+                    for k in ("mode", "source", "n_records", "sha256", "source_extracted_at", "source_pipeline_commit")
                 },
                 "sponsor_rules_sha256": run["inputs"]["sponsor_rules"]["sha256"],
                 "termination_reviews_n_rows": run["inputs"]["termination_reviews"]["n_rows"],
