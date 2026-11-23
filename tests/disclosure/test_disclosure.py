@@ -2329,6 +2329,10 @@ def test_reviews_for_trials_outside_the_build_are_out_of_scope_not_orphaned(
         ('Heparin 10,000 U/mL', 'heparin'),
         ('Vitamin D3 1,000-4,000 IU', 'vitamin d3'),
         ('Ergocalciferol 1,250 mcg', 'ergocalciferol'),
+        # Every slash-separated component may be grouped too (`50,000/10,000 IU` left `drug 50 000`).
+        ('Drug 50,000/10,000 IU', 'drug'),
+        ('Pancrelipase 24,000/76,000/120,000 units', 'pancrelipase'),
+        ('ICI 182,780', 'ici 182 780'),  # a grouped number with no unit after it is a code, kept
     ],
 )
 def test_normalize_drug_term_strips_activity_amount_and_micro_sign_strengths(

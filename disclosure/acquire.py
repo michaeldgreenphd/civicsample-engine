@@ -539,9 +539,11 @@ def openfda_drugsfda_valid(body: Any) -> bool:
 # A dose range (`5-10 mg`, `5 to 10 mg`, `0.5–1.0 mg/kg`) is one strength: matched only up to its
 # last number, it left `prednisone 5-` or `prednisone 5 to` in the query phrase. A range is taken only
 # when a unit follows it, so codes such as `5-FU` and `Ro 09-1978/000` are kept.
+# One amount: plain or comma-grouped digits (`50,000`), with an optional decimal part. Used for the
+# leading amount, the end of a range and every slash-separated component (`24,000/76,000/120,000 units`).
+_DRUG_AMOUNT = r'(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?'
 DRUG_STRENGTH_RE = re.compile(
-    r'\b(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?'
-    r'(?:\s*(?:-|\u2013|\u2014|to)\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)?(?:\s*/\s*\d+(?:\.\d+)?)*\s*'
+    rf'\b{_DRUG_AMOUNT}(?:\s*(?:-|\u2013|\u2014|to)\s*{_DRUG_AMOUNT})?(?:\s*/\s*{_DRUG_AMOUNT})*\s*'
     r'(?:%|(?:units?|mmol|nmol|pmol|meq|mcg|[\u00b5\u03bc]g|ug|ng|mg|ml|iu|g|u)'
     r'(?:\s*/\s*(?:dose|day|hour|min|hr|h|mcg|[\u00b5\u03bc]g|kg|m2|m\u00b2|mg|ml|dl|ug|g|l))*)'
     r'(?=\W|$)',
