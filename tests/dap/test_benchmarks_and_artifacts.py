@@ -2038,6 +2038,47 @@ def test_weekly_sex_gender_statuses_the_counts_give_load(
     assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
 
 
+_SKIPPED_ROW = {"original": "Hispanic or Latino", "count": 4, "flags": []}
+
+
+@pytest.mark.parametrize(
+    ("block", "changes", "problem"),
+    [
+        # On 612c4b2 each loaded. A false ethnicity_rows_skipped (or shortfall flag) made
+        # _detect_combined_race_ethnicity quarantine the whole race table.
+        ("race", {"flags": ["ethnicity_rows_skipped"]}, "race.flags has ethnicity_rows_skipped"),
+        ("race", {"skipped_ethnicity_rows": [_SKIPPED_ROW]}, "race.flags lacks ethnicity_rows_skipped"),
+        ("race", {"flags": ["shortfall_is_ethnicity_rows"]}, "race.flags has shortfall_is_ethnicity_rows"),
+        ("race", {"unknown_ethnicity_only": 3, "flags": ["denominator_balanced"]},
+         "race.flags lacks shortfall_is_ethnicity_rows"),
+        ("race", {"flags": ["denominator_balanced"]}, "race.flags has denominator_balanced"),
+        ("race", {"unknown_inferred": 2}, "race.flags lacks denominator_balanced"),
+        ("race", {"flags": ["split_from_combined"]}, "race.flags has split_from_combined"),
+        ("race", {"flags": ["combined_race_ethnicity"]}, "race.flags has combined_race_ethnicity"),
+        ("race", {"flags": ["all_zero_rejection"]}, "race.flags has all_zero_rejection but the block is reported"),
+        ("ethnicity", {"flags": ["all_zero_rejection"]},
+         "ethnicity.flags has all_zero_rejection but the block is reported"),
+    ],
+)
+def test_weekly_block_flags_must_agree_with_their_fields(
+    tmp_path: Path, block: str, changes: dict[str, Any], problem: str
+) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1][block].update(changes)
+    with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem}")):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
+def test_weekly_block_flags_with_their_fields_load(tmp_path: Path) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    race = weekly_doc["data"][1]["race"]
+    race.update(skipped_ethnicity_rows=[_SKIPPED_ROW], unknown_ethnicity_only=3, unknown_inferred=2,
+                flags=["ethnicity_rows_skipped", "shortfall_is_ethnicity_rows", "denominator_balanced",
+                       "combined_race_ethnicity"])
+    race["raw_categories"][0]["flags"] = ["combined_race_ethnicity"]
+    assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
+
+
 def test_weekly_unmapped_rows_in_their_extractor_category_load(tmp_path: Path) -> None:
     weekly_doc = fx.build_weekly_full_records_doc()
     race, eth = weekly_doc["data"][1]["race"], weekly_doc["data"][1]["ethnicity"]

@@ -191,6 +191,14 @@ single-category ethnicity table. The container's `extracted_at` and
 40-hex commit; `weekly_source_stamp_problem`), in the build and the contract.
 `src.utils.pipeline_commit` writes null outside a checkout, so a null stamp is
 recorded, but the site exporter refuses to publish a weekly build with one.
+The race block's flags the analyzers trust must agree with the fields they
+describe (`weekly_block_flag_problem`): `ethnicity_rows_skipped` exactly when a
+recorded skipped row has a positive count, `shortfall_is_ethnicity_rows` exactly
+when `unknown_ethnicity_only` is positive, `denominator_balanced` exactly when a
+shortfall was folded into the unknowns, `split_from_combined` and
+`combined_race_ethnicity` exactly when a category entry carries them, and
+`all_zero_rejection` (race or ethnicity) only on an unreported block. A false
+`ethnicity_rows_skipped` quarantined the whole race table.
 A category entry flagged `unmapped` must be in the category the extractors give
 such rows (`other` for race, `unknown_not_reported` for ethnicity), since the
 analyzers subtract or drop flagged rows by that rule. A condition_mesh sidecar

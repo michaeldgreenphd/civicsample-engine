@@ -859,6 +859,49 @@ def _is_extractor_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def weekly_block_flag_problem(block: str, payload: dict[str, Any]) -> str | None:
+    """Why a weekly race or ethnicity block's flags contradict the fields they describe, or `None`.
+
+    The analyzers trust these block flags, and each follows from the block's own fields as
+    `src/race_extractor.py` writes them, so each must agree with them:
+      * `ethnicity_rows_skipped`: appended exactly when a recorded `skipped_ethnicity_rows` row has a
+        positive count. A false one made `_detect_combined_race_ethnicity` quarantine the whole race
+        table, removing its participants from the pooled race distributions.
+      * `shortfall_is_ethnicity_rows`: set with `unknown_ethnicity_only`, the shortfall the ethnicity rows
+        account for, and nowhere else (the same quarantine).
+      * `denominator_balanced`: appended exactly when a shortfall was folded into `unknown_inferred` or
+        `unknown_ethnicity_only`; it lets quarantined labels absorb inferred unknowns.
+      * `split_from_combined` and `combined_race_ethnicity`: set on category entries and copied to the
+        block with every counted entry's flags (`result["flags"].extend(cat["flags"])`), so a block
+        carries one exactly when an entry does (the quarantine and the `status_detail`).
+      * `all_zero_rejection` (race and ethnicity): set only when the all-zero rejection clears a block,
+        which leaves it unreported.
+    A field the 2026-11-08 extraction predates is read as absent, and so is its flag: none of the 80,890
+    records carries `ethnicity_rows_skipped` or `shortfall_is_ethnicity_rows`. Every block of that
+    extraction, and every block the current extractors write for the 3,130 stored trials with results,
+    keeps these rules.
+    """
+    flags = set(payload["flags"])
+    if "all_zero_rejection" in flags and payload["reported"]:
+        return f"{block}.flags has all_zero_rejection but the block is reported"
+    if block != "race":
+        return None
+    facts = {
+        "ethnicity_rows_skipped": any(row["count"] > 0 for row in payload.get("skipped_ethnicity_rows", [])),
+        "shortfall_is_ethnicity_rows": payload.get("unknown_ethnicity_only", 0) > 0,
+        "denominator_balanced": payload["unknown_inferred"] + payload.get("unknown_ethnicity_only", 0) > 0,
+        **{
+            f: any(f in entry["flags"] for entry in payload["raw_categories"])
+            for f in ("split_from_combined", "combined_race_ethnicity")
+        },
+    }
+    for flag, holds in facts.items():
+        if (flag in flags) != holds:
+            state = "has" if flag in flags else "lacks"
+            return f"race.flags {state} {flag}, which the block's own fields contradict (see weekly_block_flag_problem)"
+    return None
+
+
 def _demographic_child_problem(block: str, key: str, kind: str, value: Any) -> str | None:
     """Why one child of a weekly race, ethnicity or sex block is not of its kind
     (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`), or `None`."""
@@ -971,6 +1014,9 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
                 f"{block}.reported is {reported} but its {totals_key} sum to {total} "
                 "(the extractor reports a block exactly when its counts are not all zero)"
             )
+    for block in ("race", "ethnicity"):
+        if problem := weekly_block_flag_problem(block, rec[block]):
+            return problem
     status = rec["sex_gender"].get("sex_report_status")
     if status not in SEX_GENDER_STATES:
         return f"sex_gender.sex_report_status {status!r} is not one of SEX_GENDER_STATES"
