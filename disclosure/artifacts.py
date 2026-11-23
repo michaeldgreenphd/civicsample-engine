@@ -988,12 +988,14 @@ def check_contract(
                         for x in rl
                     )
                 else:
-                    ok = any(
-                        x['automated_validation'] == 'identifier_confirmed'
-                        and x['review_status'] not in ('rejected_false_positive', 'confirmed_background_only', 'indeterminate')
-                        and not (rname == 'registry_references' and x['citation_type'] == 'BACKGROUND' and x['review_status'] == 'unreviewed')
-                        for x in rl
+                    # The rule coverage itself applies (`coverage._verified_links` over the links
+                    # `coverage._active_links` keeps live), so the two cannot drift apart: an
+                    # identifier-confirmed link not held indeterminate, or a link a person reviewed as
+                    # `confirmed_same_trial_results` whatever the mechanical check said.
+                    live = C._active_links(
+                        rl, treat_unreviewed_background_as_insufficient=(rname == 'registry_references')
                     )
+                    ok = bool(C._verified_links(live))
                 if not ok:
                     problems.append(f'{nct}/{rname}: verified_link without a non-rejected confirmed link')
             if rname == 'literature_search' and run.get('sources', {}).get('literature') is None and st != 'not_searched':

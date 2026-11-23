@@ -460,6 +460,33 @@ def normalize_drug_term(raw: str) -> str | None:
     return cleaned
 
 
+# Separators between the components of a combination label (`Nivolumab + Ipilimumab`,
+# `Nivolumab/Relatlimab`, `Fluticasone Propionate and Salmeterol`, `Cisplatin or Carboplatin`).
+# Drugs@FDA may index each component as its own `products.active_ingredients.name`, or under its own
+# application, so the combined phrase alone can miss them. A component with no letter left (`000`
+# from `Ro 09-1978/000`) names no drug and gives no term. Labels are split only after parenthesised
+# text and strengths are removed, so a strength's `/` (`5 mg/mL`, `320/9.6 mcg`) never splits one. A
+# comma is not a separator: it occurs inside chemical names (`2,4-...`).
+DRUG_COMPONENT_SEPARATOR_RE = re.compile(r'\s*(?:\+|/|;|&|\bplus\b|\band\b|\bor\b|\bwith\b)\s*', re.IGNORECASE)
+
+
+def drug_label_terms(raw: str) -> list[str]:
+    """Query terms for one intervention label: the whole normalized label, plus each component of a
+    combination label (see `DRUG_COMPONENT_SEPARATOR_RE`) that normalizes to a term of its own."""
+    terms: list[str] = []
+    whole = normalize_drug_term(raw)
+    if whole:
+        terms.append(whole)
+    stripped = DRUG_STRENGTH_RE.sub(' ', re.sub(r'\([^)]*\)', ' ', raw or ''))
+    parts = [p for p in DRUG_COMPONENT_SEPARATOR_RE.split(stripped) if p and p.strip()]
+    if len(parts) > 1:
+        for part in parts:
+            term = normalize_drug_term(part)
+            if term and any(c.isalpha() for c in term) and term not in terms:
+                terms.append(term)
+    return terms
+
+
 def extract_drug_candidates(study: dict[str, Any] | None) -> list[str]:
     """Extract sorted distinct normalized drug/biologic candidate terms from a CT.gov v2 study."""
     if not isinstance(study, dict):
@@ -476,9 +503,7 @@ def extract_drug_candidates(study: dict[str, Any] | None) -> list[str]:
         itype = str(item.get('type') or '').upper()
         if itype not in ('DRUG', 'BIOLOGICAL', 'COMBINATION_PRODUCT'):
             continue
-        primary = normalize_drug_term(str(item.get('name') or ''))
-        if primary:
-            found.add(primary)
+        found.update(drug_label_terms(str(item.get('name') or '')))
         # Every registered alias is searched: the generic ingredient Drugs@FDA indexes may be any of
         # them (a label's first aliases are often brand or formulation names), and a capped list would
         # still let coverage report the planned drug search as complete.
@@ -486,9 +511,7 @@ def extract_drug_candidates(study: dict[str, Any] | None) -> list[str]:
         if isinstance(others, list):
             for other in others:
                 if isinstance(other, str):
-                    norm_other = normalize_drug_term(other)
-                    if norm_other:
-                        found.add(norm_other)
+                    found.update(drug_label_terms(other))
     return sorted(found)
 
 

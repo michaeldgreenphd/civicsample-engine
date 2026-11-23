@@ -1506,6 +1506,85 @@ def test_every_registered_intervention_alias_is_a_query_term() -> None:
     assert A.extract_drug_candidates(study) == ['brandix', 'brx-101', 'formulix', 'zorbatinib mesylate']
 
 
+def test_reviewed_build_with_human_confirmed_candidates_passes_the_contract(
+    tmp_path: Path,
+    frozen_cache: A.FrozenCache,
+    built_files: dict[str, Any],
+) -> None:
+    # One link a person can settle on each mechanical route: a name-matched openFDA candidate, a
+    # literature hit set aside by rule, and a registry PMID that did not resolve.
+    links = built_files['links.json']['links']
+    picks = {
+        'openfda_drugsfda': next(x for x in links if x['source_route'] == 'openfda_drugsfda'
+                                 and x['automated_validation'] == 'not_validated'),
+        'literature_search': next(x for x in links if x['source_route'] == 'literature_search'
+                                  and x['automated_validation'] == 'rejected_by_rule'),
+        'registry_references': next(x for x in links if x['source_route'] == 'registry_references'
+                                    and x['automated_validation'] == 'identifier_not_resolved'),
+    }
+    rev_csv = tmp_path / 'reviews.csv'
+    with rev_csv.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.REVIEW_COLUMNS)
+        for lnk in picks.values():
+            w.writerow([lnk['link_id'], lnk['nct_id'], 'Dr. Fictional', '2026-11-02',
+                        'confirmed_same_trial_results', 'same trial, results reported'])
+    reviewed = ART.build_artifacts(
+        frozen_cache,
+        reviews_path=rev_csv,
+        statements_path=ROOT / 'disclosure' / 'documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv',
+        producer=cli_build.producer_metadata(),
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+    )
+    # Coverage verifies each route on the human confirmation, and the contract accepts it.
+    assert ART.check_contract(reviewed) == []
+    for route, lnk in picks.items():
+        cell = _cell_of(reviewed, lnk['nct_id'], route)
+        assert cell['state'] == 'verified_link', (route, cell)
+        assert cell['detail']['n_human_confirmed_only'] >= 1
+    # End to end: the CLI build with these reviews is written, not refused.
+    out = tmp_path / 'reviewed_build'
+    assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(out), '--as-of', F.AS_OF,
+                           '--generated-at', F.GENERATED_AT, '--reviews', str(rev_csv)]) == 0
+    assert (out / 'run.json').exists()
+
+
+@pytest.mark.parametrize('pcd_type, expect', [(None, 'absent'), ('UNKNOWN', "unrecognized ('UNKNOWN')"),
+                                              ('ESTIMATED', 'ESTIMATED')])
+def test_365d_window_needs_an_explicit_actual_primary_completion(pcd_type: str | None, expect: str) -> None:
+    as_of = date(2026, 11, 1)
+    study = F._make_study('NCT09990014', title='Untyped completion', lead_sponsor='Fictional Sponsor',
+                          pcd=('2020-01-15', pcd_type))
+    window = T.classify_window_365d(study, as_of)
+    assert window['state'] == 'COMPLETION_DATE_MISSING_OR_FUTURE'
+    assert f'type is {expect}' in window['reason']
+    # Control: the same record with an ACTUAL completion is in an elapsed-window state.
+    actual = F._make_study('NCT09990014', title='Untyped completion', lead_sponsor='Fictional Sponsor',
+                           pcd=('2020-01-15', 'ACTUAL'))
+    assert T.classify_window_365d(actual, as_of)['state'] == 'UNREPORTED_PAST_365D'
+
+
+@pytest.mark.parametrize(
+    ('raw', 'expected'),
+    [
+        ('Nivolumab + Ipilimumab', ['nivolumab ipilimumab', 'nivolumab', 'ipilimumab']),
+        ('Nivolumab/Relatlimab', ['nivolumab relatlimab', 'nivolumab', 'relatlimab']),
+        ('Fluticasone Propionate and Salmeterol', ['fluticasone propionate and salmeterol',
+                                                   'fluticasone propionate', 'salmeterol']),
+        ('Cisplatin or Carboplatin and Pemetrexed', ['cisplatin or carboplatin and pemetrexed',
+                                                     'cisplatin', 'carboplatin', 'pemetrexed']),
+        ('Salmeterol/fluticasone (50/500 \u03bcg)', ['salmeterol fluticasone', 'salmeterol', 'fluticasone']),
+        ('DrugX 5 mg/mL', ['drugx']),  # a strength's slash never splits a label
+        ('Ro 09-1978/000', ['ro 09-1978 000', 'ro 09-1978']),  # a letterless component is no term
+        ('Zorbatinib + placebo', ['zorbatinib placebo', 'zorbatinib']),
+    ],
+)
+def test_combination_labels_also_query_each_component(raw: str, expected: list[str]) -> None:
+    assert A.drug_label_terms(raw) == expected
+
+
 def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:
     # hasResults=true with an empty resultsSection: the CT.gov route is `available_document_insufficient`.
     shell = F._make_study('NCT09990010', title='Results shell', lead_sponsor='Fictional Sponsor',

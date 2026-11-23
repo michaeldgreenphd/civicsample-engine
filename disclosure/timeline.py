@@ -406,11 +406,17 @@ def classify_window_365d(study: dict[str, Any] | None, as_of: date) -> dict[str,
             'reason': 'primaryCompletionDateStruct.date is absent or unparseable',
             'note': WINDOW_365D_NOTE,
         }
-    if pcd_type in ('ESTIMATED', 'ANTICIPATED'):
+    # Only an explicit ACTUAL type confirms that primary completion happened on this date. ESTIMATED or
+    # ANTICIPATED says it did not; a missing or unrecognized type (a field-projected or hand-edited
+    # record) says nothing, so it cannot open an elapsed-window state such as UNREPORTED_PAST_365D.
+    if pcd_type != 'ACTUAL':
+        type_desc = 'absent' if pcd_type is None else (
+            pcd_type if pcd_type in ('ESTIMATED', 'ANTICIPATED') else f'unrecognized ({pcd_type!r})'
+        )
         return {
             'state': 'COMPLETION_DATE_MISSING_OR_FUTURE',
             'as_of': as_of.isoformat(),
-            'reason': f'primaryCompletionDateStruct.type is {pcd_type} (not confirmed ACTUAL completion)',
+            'reason': f'primaryCompletionDateStruct.type is {type_desc} (not confirmed ACTUAL completion)',
             'note': WINDOW_365D_NOTE,
         }
     if pcd.earliest > as_of:
