@@ -1301,6 +1301,54 @@ def test_statement_locator_that_does_not_resolve_is_never_quote_confirmed() -> N
         assert E.link_problems(lnk) == [], sid
 
 
+def test_an_fda_link_no_submission_ties_to_the_trial_carries_no_action_date() -> None:
+    # On 21cb0e4 both links took the application's 2000 original approval as their action date, though no
+    # submission names the trial (its 2025 supplement included); a person's confirmation then made 2000
+    # the trial's earliest FDA action.
+    study = F._make_study('NCT09990009', title='Fictional study', lead_sponsor='Fictional Trial Sponsor Inc',
+                          drugs=['Zorbaprecise'])
+    app = {
+        'application_number': 'NDA777002',
+        'sponsor_name': 'Fictional Trial Sponsor Inc',
+        'products': [{'brand_name': 'ZORBAPRECISE'}],
+        'submissions': [
+            {'submission_type': 'ORIG', 'submission_status': 'AP', 'submission_status_date': '20000101'},
+            {'submission_type': 'SUPPL', 'submission_status': 'AP', 'submission_status_date': '20250601'},
+        ],
+    }
+    page = {'status': 200, 'body': {'meta': {'results': {'total': 1}}, 'results': [app]}}
+    for records, kind in (
+        ({'openfda/nct/NCT09990009': page}, 'OPENFDA_NCT_CITED'),
+        ({A.drug_query_key('zorbaprecise'): page}, 'OPENFDA_SPONSOR_DRUG_CANDIDATE'),
+    ):
+        (link,) = E.build_openfda_links('NCT09990009', study, records, E.trial_sponsor_match_keys(study))
+        assert link['citation_type'] == kind
+        assert (link['publication_or_action_date'], link['date_precision']) == (None, 'missing')
+        assert ('no submission of NDA777002 cites NCT09990009, so the link carries no FDA action date (its '
+                'original approval, or earliest dated action, is 2000-01-01)') in link['validation_reasons']
+
+
+def test_a_confirmed_sponsor_drug_candidate_gives_no_fda_action_date(
+    tmp_path: Path, frozen_cache: A.FrozenCache, built_files: dict[str, Any]
+) -> None:
+    # On 21cb0e4 confirming NCT09990006's candidate NDA990006 published its application's 2026-01-10 approval
+    # as the trial's earliest FDA action.
+    nct = 'NCT09990006'
+    link = next(x for x in built_files['links.json']['links']
+                if x['nct_id'] == nct and x['citation_type'] == 'OPENFDA_SPONSOR_DRUG_CANDIDATE')
+    rev_csv = tmp_path / 'reviews.csv'
+    with rev_csv.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.REVIEW_COLUMNS)
+        w.writerow([link['link_id'], nct, 'Dr. Fictional', '2026-11-01', 'confirmed_same_trial_results', 'same'])
+    reviewed = ART.build_artifacts(
+        frozen_cache, **{**_build_kwargs(), 'reviews_path': rev_csv, 'as_of': date.fromisoformat(F.AS_OF)}
+    )
+    fda = _timeline_of(reviewed, nct)['milestones']['earliest_fda_action']
+    assert fda.get('date') is None and fda.get('earliest_bound') is None
+    assert ART.check_contract(reviewed) == []
+
+
 def test_flooded_generic_query_cannot_hide_precise_querys_reviewable_candidate() -> None:
     study = F._make_study(
         'NCT09990009',

@@ -767,6 +767,20 @@ def _openfda_action_date(app: dict[str, Any], retrieved_day: str | None = None) 
     return chosen[0] if chosen else (None, 'missing')
 
 
+def _uncited_application_reason(app: dict[str, Any], nct_id: str, app_no: str, retrieved_day: str | None) -> str:
+    """Why a Drugs@FDA application link that no submission ties to the trial carries no action date.
+
+    A sponsor-and-drug candidate, or a direct NCT-query hit whose record holds no NCT ID, names no action the
+    trial supported. Such links were dated by the application's original approval (`_openfda_action_date`),
+    and a person's confirmation then made that date the trial's earliest FDA action: a 2000 approval beside
+    the 2025 supplement the trial supported gave a 2000 action. The date is named in the reason for the
+    reviewer and left out of the link, so a confirmed link counts as undated (`earliest_link_milestone`).
+    """
+    act_date, _ = _openfda_action_date(app, retrieved_day)
+    known = f' (its original approval, or earliest dated action, is {act_date})' if act_date else ''
+    return f'no submission of {app_no} cites {nct_id}, so the link carries no FDA action date{known}'
+
+
 _CITED_SUBMISSION_RX = re.compile(r'submissions\[(\d+)\]')
 
 
@@ -902,7 +916,6 @@ def build_openfda_links(
         nct_day = _retrieved_day(nct_rec)
         for idx, app in enumerate(nct_rec['body']['results']):
             app_no = squash_whitespace(str(app.get('application_number') or f'app:{idx}'))
-            act_date, prec = _openfda_action_date(app, nct_day)
             cited = _nct_citation(app, nct_id, app_no, nct_day)
             if cited is not None:
                 field_path, snippet, cited_date, cited_prec, reasons = cited
@@ -933,15 +946,16 @@ def build_openfda_links(
                         target_id_type='fda_application',
                         target_id=app_no,
                         citation_type='OPENFDA_NCT_CITED',
-                        publication_or_action_date=act_date,
-                        date_precision=prec,
+                        publication_or_action_date=None,
+                        date_precision='missing',
                         verbatim_excerpt=excerpt,
                         source_sha256=rec_sha,
                         locator={'json_path': f'results[{idx}].application_number', 'application_number': app_no},
                         automated_validation='rejected_by_rule',
                         validation_reasons=[
                             f'returned by openFDA search for {nct_id}, but exact {nct_id} token stands in '
-                            'no retrieved field of the application record'
+                            'no retrieved field of the application record',
+                            _uncited_application_reason(app, nct_id, app_no, nct_day),
                         ],
                         detail={'sponsor_name': app.get('sponsor_name')},
                     )
@@ -966,7 +980,6 @@ def build_openfda_links(
             app_no = squash_whitespace(str(app.get('application_number') or f'app:{drug}:{idx}'))
             if app_no in confirmed_apps:
                 continue
-            act_date, prec = _openfda_action_date(app, drug_day)
             cited = _nct_citation(app, nct_id, app_no, drug_day)
             if cited is not None:
                 # The same date rule as the direct NCT query: the cited submission's, never the original
@@ -1014,15 +1027,16 @@ def build_openfda_links(
                         target_id_type='fda_application',
                         target_id=app_no,
                         citation_type='OPENFDA_SPONSOR_DRUG_CANDIDATE',
-                        publication_or_action_date=act_date,
-                        date_precision=prec,
+                        publication_or_action_date=None,
+                        date_precision='missing',
                         verbatim_excerpt=excerpt,
                         source_sha256=rec_sha,
                         locator={'json_path': f'results[{idx}]', 'application_number': app_no, 'drug_query': drug},
                         automated_validation='not_validated',
                         validation_reasons=[
                             'candidate NDA/BLA matched by investigational drug term and normalized/curated sponsor '
-                            'agreement; openFDA Drugs@FDA metadata carries no NCT ID, so human review is required'
+                            'agreement; openFDA Drugs@FDA metadata carries no NCT ID, so human review is required',
+                            _uncited_application_reason(app, nct_id, app_no, drug_day),
                         ],
                         detail={
                             'matched_drug': drug,
@@ -1040,15 +1054,16 @@ def build_openfda_links(
                         target_id_type='fda_application',
                         target_id=app_no,
                         citation_type='OPENFDA_SPONSOR_DRUG_CANDIDATE',
-                        publication_or_action_date=act_date,
-                        date_precision=prec,
+                        publication_or_action_date=None,
+                        date_precision='missing',
                         verbatim_excerpt=excerpt,
                         source_sha256=rec_sha,
                         locator={'json_path': f'results[{idx}]', 'application_number': app_no, 'drug_query': drug},
                         automated_validation='rejected_by_rule',
                         validation_reasons=[
                             f'drug query {drug!r} matched {total} (>= {OPENFDA_DRUG_FLOOD_THRESHOLD}) openFDA '
-                            'applications and FDA applicant does not match trial sponsor/collaborator'
+                            'applications and FDA applicant does not match trial sponsor/collaborator',
+                            _uncited_application_reason(app, nct_id, app_no, drug_day),
                         ],
                         detail={
                             'matched_drug': drug,
@@ -1066,15 +1081,16 @@ def build_openfda_links(
                         target_id_type='fda_application',
                         target_id=app_no,
                         citation_type='OPENFDA_SPONSOR_DRUG_CANDIDATE',
-                        publication_or_action_date=act_date,
-                        date_precision=prec,
+                        publication_or_action_date=None,
+                        date_precision='missing',
                         verbatim_excerpt=excerpt,
                         source_sha256=rec_sha,
                         locator={'json_path': f'results[{idx}]', 'application_number': app_no, 'drug_query': drug},
                         automated_validation='not_validated',
                         validation_reasons=[
                             'candidate NDA/BLA matched on investigational drug term without sponsor agreement '
-                            '(possible licensing/acquisition or unrelated product); requires human review'
+                            '(possible licensing/acquisition or unrelated product); requires human review',
+                            _uncited_application_reason(app, nct_id, app_no, drug_day),
                         ],
                         detail={
                             'matched_drug': drug,
