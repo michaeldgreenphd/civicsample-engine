@@ -546,4 +546,3 @@ def test_r2_combined_non_age_traps_leave_chronological_age_not_mentioned() -> No
     assert row["free_text_age_cutoff_status"] == "not_mentioned"
     assert row["hidden_lower_age_bound"] is False
     assert row["hidden_upper_age_cap"] is False
-
