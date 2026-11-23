@@ -150,7 +150,10 @@ non-negative whole count, or in a percentage measure a number from 0 to 100 (`_d
 `sum_measurements` truncated 159.5, kept -1, and read 150% as 150 participants.
 Such a measure must also be a table of participants, posted as `COUNT_OF_PARTICIPANTS` or `NUMBER`
 (`DEMOGRAPHIC_PARAM_TYPES`): the extractors read a `COUNT_OF_UNITS` (sites, specimens) or `MEAN` table as
-participant counts. Its unit, free text in CT.gov, is not checked. The locations module and list, and every
+participant counts. Its unit must not name something other than people (`NONPARTICIPANT_UNIT_RX`, a list of
+plainly non-person nouns such as sites, specimens or eyes, since units are free text). A sex/gender table the
+parser reads as participant counts must hold non-negative whole counts in such a unit
+(`_sex_gender_count_problems`): Female 60.5 was published beside bounds counted from 60. The locations module and list, and every
 location and collaborator entry, are checked the same way (`LIST_ENTRY_FIELDS`): a skipped `null`
 location, or a module read as empty, would lower or zero the listed facilities and move the
 footprint class with nothing reported. Every collaborator must also carry a non-blank `name`: one

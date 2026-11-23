@@ -798,6 +798,7 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
         if not shape and not references and module.get("groups"):
             out += _unconverted_percentage_problems(module, root)
             out += _demographic_row_value_problems(module, root)
+            out += _sex_gender_count_problems(module, root)
     return out
 
 
@@ -916,6 +917,17 @@ def _unconverted_percentage_problems(module: dict[str, Any], root: str) -> list[
 # and ethnicity measures include misspellings of "participants" and once "caucasian"), so only the type is
 # checked. All 3,791 such measures in the real stored trials are COUNT_OF_PARTICIPANTS (3,490) or NUMBER (301).
 DEMOGRAPHIC_PARAM_TYPES: frozenset[str] = frozenset({"COUNT_OF_PARTICIPANTS", "NUMBER"})
+# Units that name something other than people, matched as whole words. A `NUMBER` table in "Sites" passed the
+# type check and its rows were read as participants. CT.gov units are free text, so this is a list of plainly
+# non-person nouns rather than a vocabulary of person units: the stored race and ethnicity units include
+# misspellings of "participants", "subjects" and once "caucasian", none of which it matches. The only
+# COUNT_OF_UNITS units in the stored baseline measures are "specimens" and "restorations".
+NONPARTICIPANT_UNIT_RX = re.compile(
+    r"\b(?:sites?|cent(?:er|re)s?|clinics?|hospitals?|practices?|specimens?|samples?|eyes?|lesions?|tooth|teeth"
+    r"|restorations?|joints?|limbs?|vessels?|tumou?rs?|nodules?|visits?|procedures?|events?|episodes?|clusters?"
+    r"|households?|schools?|communit(?:y|ies)|villages?|wards?|implants?|devices?|wounds?|ulcers?)\b",
+    re.IGNORECASE,
+)
 
 
 def _demographic_row_value_problems(module: dict[str, Any], root: str) -> list[str]:
@@ -944,6 +956,10 @@ def _demographic_row_value_problems(module: dict[str, Any], root: str) -> list[s
                 f"not {param!r})"
             )
             continue
+        unit = measure.get("unitOfMeasure")
+        if isinstance(unit, str) and NONPARTICIPANT_UNIT_RX.search(unit):
+            out.append(f"{root}.measures[{i}].unitOfMeasure (a unit of participants, not {unit!r})")
+            continue
         pct = src_utils.is_percentage_measure(measure)
         for j, cls in enumerate(_listed(measure.get("classes"))):
             rows = [(f"classes[{j}].categories[{k}]", cat) for k, cat in enumerate(_listed(cls.get("categories")))]
@@ -963,6 +979,35 @@ def _demographic_row_value_problems(module: dict[str, Any], root: str) -> list[s
                             f"{root}.measures[{i}].{where}.measurements[{m}].value (a count of participants, a "
                             f"non-negative whole number, not {value!r})"
                         )
+    return out
+
+
+def _sex_gender_count_problems(module: dict[str, Any], root: str) -> list[str]:
+    """A sex/gender table the parser reads as participant counts whose counts are not whole and
+    non-negative, or whose unit names something other than people (`NONPARTICIPANT_UNIT_RX`).
+
+    `sgp.parse_trial` keeps a count as posted, so Female 60.5 and Male 39.5 were published as such beside
+    bounds `extract_sex_gender` computed from the rounded 60 and 40, and -5 stopped the build with an
+    unnamed `ValueError` in `evaluate_unknown_bounds`. A `NUMBER` table in "Sites" was read as participants,
+    as for race. The parser's own reading decides which measure and counts are meant (`is_participant_count`,
+    the fullest sex/gender measure); a table it reads otherwise (percentages, a mean, `COUNT_OF_UNITS`) is
+    not checked, and one it cannot read is left to `extract_sex_gender`, which records `parse_error`. All
+    3,107 such tables in the real stored trials hold whole non-negative counts.
+    """
+    try:
+        parsed = sgp.parse_trial(module.get("measures"), None)
+    except Exception:  # noqa: BLE001 - extract_sex_gender reads the same failure as parse_error
+        return []
+    if parsed.is_participant_count is not True:
+        return []
+    where = f"{root}.measures (the sex/gender measure {parsed.measure_title!r}, read as participant counts"
+    out: list[str] = []
+    if isinstance(parsed.unit_of_measure, str) and NONPARTICIPANT_UNIT_RX.search(parsed.unit_of_measure):
+        out.append(f"{where}, in a unit of participants, not {parsed.unit_of_measure!r})")
+    for key in ("n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender"):
+        value = getattr(parsed, key)
+        if value is not None and not (math.isfinite(value) and value >= 0 and value == int(value)):
+            out.append(f"{where}, a non-negative whole {key}, not {value:g})")
     return out
 
 

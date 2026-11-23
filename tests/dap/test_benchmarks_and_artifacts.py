@@ -2132,6 +2132,71 @@ def test_a_race_table_must_be_a_table_of_participants(
         _load_pair(tmp_path, st)
 
 
+@pytest.mark.parametrize(
+    ("unit", "refused"),
+    [
+        # On db1a949 each loaded as a NUMBER table and was published as participant counts.
+        ("Sites", True),
+        ("specimens", True),
+        ("Number of eyes", True),
+        # Controls, on both heads: units the stored race and ethnicity tables use, misspellings and the odd
+        # "caucasian" included.
+        ("Participants", False),
+        ("particpants", False),
+        ("Subjects", False),
+        ("caucasian", False),
+    ],
+)
+def test_a_number_race_table_must_be_in_a_unit_of_participants(tmp_path: Path, unit: str, refused: bool) -> None:
+    st = _measured_study("NCT99800076")
+    measure = st["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]
+    measure.update(paramType="NUMBER", unitOfMeasure=unit)
+    if not refused:
+        assert len(_load_pair(tmp_path, st)) == 2
+        return
+    want = f"NCT99800076 lacks {_BASE}.measures[0].unitOfMeasure (a unit of participants, not {unit!r})"
+    with pytest.raises(ValueError, match=re.escape(want)):
+        _load_pair(tmp_path, st)
+
+
+def _sex_study(nct_id: str, female: str, male: str, **measure: str) -> dict:
+    sex = fx.make_measure("Sex: Female, Male", [("Female", female), ("Male", male)])
+    st = fx.make_raw_ctgov_study(nct_id, measures=[sex])
+    st["resultsSection"]["baselineCharacteristicsModule"]["measures"][0].update(measure)
+    return st
+
+
+_SEX_WHERE = "measures (the sex/gender measure 'Sex: Female, Male', read as participant counts"
+
+
+@pytest.mark.parametrize(
+    ("female", "male", "measure", "problem"),
+    [
+        # On db1a949 the first loaded and published n_female 60.5 beside bounds counted from 60; -5 stopped
+        # the build with an unnamed ValueError; and a NUMBER table of sites was read as participants.
+        ("60.5", "39.5", {}, f"{_SEX_WHERE}, a non-negative whole n_female, not 60.5)"),
+        ("-5", "45", {}, f"{_SEX_WHERE}, a non-negative whole n_female, not -5)"),
+        ("55", "45", {"paramType": "NUMBER", "unitOfMeasure": "Sites"},
+         f"{_SEX_WHERE}, in a unit of participants, not 'Sites')"),
+    ],
+)
+def test_a_sex_table_of_participant_counts_must_hold_whole_counts(
+    tmp_path: Path, female: str, male: str, measure: dict, problem: str
+) -> None:
+    with pytest.raises(ValueError, match=re.escape(f"NCT99800077 lacks {_BASE}.{problem}")):
+        _load_pair(tmp_path, _sex_study("NCT99800077", female, male, **measure))
+
+
+@pytest.mark.parametrize(
+    ("female", "male", "measure"),
+    [("55", "45", {}), ("60.5", "39.5", {"paramType": "NUMBER", "unitOfMeasure": "percentage of participants"})],
+)
+def test_sex_tables_the_parser_reads_load(tmp_path: Path, female: str, male: str, measure: dict) -> None:
+    # Controls, on both heads: whole counts, and fractional percentages, which the parser does not read as
+    # participant counts.
+    assert len(_load_pair(tmp_path, _sex_study("NCT99800078", female, male, **measure))) == 2
+
+
 def test_a_single_group_row_naming_its_group_twice_is_refused(tmp_path: Path) -> None:
     # On 9a955a7 it loaded, and with no Overall id the extractors read the last entry: White 10, not 60.
     bad = _measured_study("NCT99800022")
