@@ -45,6 +45,8 @@ SOURCE_SUMMARY_KEYS = (
     'last_fetched_at',
     'api_version',
     'data_timestamp',
+    'data_timestamp_first',
+    'data_timestamp_last',
 )
 
 
@@ -209,6 +211,7 @@ def select_site_files(build: dict[str, Any]) -> dict[str, Any]:
         'build_schema_version': run['schema_version'],
         'generated_at': run['generated_at'],
         'as_of': run['as_of'],
+        'as_of_source': run['as_of_source'],
         'scheduled': False,
         'method_version': run['method_version'],
         'producer': run['producer'],

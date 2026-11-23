@@ -197,20 +197,52 @@ def _study_record(nct_id: str, ctgov_rec: dict[str, Any] | None) -> dict[str, An
     }
 
 
-def _ctgov_version_info(ctgov_records: dict[str, dict[str, Any]]) -> dict[str, str | None]:
+# How run.json `as_of` was chosen: the `--as-of` argument, or a default (in fallback order) from the
+# cache's single CT.gov data timestamp, its last CT.gov fetch, or `generated_at`.
+AS_OF_SOURCES = ('as_of_argument', 'ctgov_data_timestamp', 'ctgov_last_fetched_at', 'generated_at')
+
+
+def _ctgov_version_info(ctgov_records: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """CT.gov `/version` answers held in the cache, for run.json `sources.ctgov`.
+
+    Acquisition logs one `ctgov/version/{day}` record per day it runs, and a resumed acquisition
+    keeps the earlier days' records and study responses, so one cache can mix CT.gov data refreshes.
+    `versions` lists every valid version record by `fetched_at`; `data_timestamp_first` and
+    `data_timestamp_last` are the earliest and latest `dataTimestamp` among them (ISO strings of one
+    format, so string order is time order); `api_version` and `data_timestamp` stay those of the
+    last-fetched record, as before.
+    """
     versions = sorted(
         (
             r for k, r in ctgov_records.items()
             if k.startswith('ctgov/version/') and r.get('status') == 200 and A.ctgov_version_valid(r.get('body'))
         ),
-        key=lambda r: str(r.get('fetched_at') or ''),
+        key=lambda r: (str(r.get('fetched_at') or ''), str(r.get('key') or '')),
     )
     if not versions:
-        return {'api_version': None, 'data_timestamp': None}
+        return {
+            'api_version': None,
+            'data_timestamp': None,
+            'data_timestamp_first': None,
+            'data_timestamp_last': None,
+            'versions': [],
+        }
     latest = versions[-1]['body']
+    stamps = sorted({str(v['body']['dataTimestamp']) for v in versions})
     return {
         'api_version': latest.get('apiVersion'),
         'data_timestamp': latest.get('dataTimestamp'),
+        'data_timestamp_first': stamps[0],
+        'data_timestamp_last': stamps[-1],
+        'versions': [
+            {
+                'key': v.get('key'),
+                'fetched_at': v.get('fetched_at'),
+                'api_version': v['body'].get('apiVersion'),
+                'data_timestamp': v['body'].get('dataTimestamp'),
+            }
+            for v in versions
+        ],
     }
 
 
@@ -479,12 +511,22 @@ def build_artifacts(
         raise ValueError('build_artifacts requires at least one included NCT ID')
 
     ver_info = _ctgov_version_info(cache.ctgov)
-    if as_of is None:
-        fallback_iso = (
-            (ver_info.get('data_timestamp') or '')[:10]
-            or (cache.ctgov_meta.get('last_fetched_at') or '')[:10]
-            or generated_at[:10]
+    if as_of is not None:
+        as_of_source = 'as_of_argument'
+    elif ver_info['data_timestamp_first'] != ver_info['data_timestamp_last']:
+        # Studies fetched on different days reflect different CT.gov data refreshes; no single date
+        # describes them all, so the reference date for the 365-day window must be stated.
+        raise ValueError(
+            f"cache holds CT.gov data timestamps from {ver_info['data_timestamp_first']} to "
+            f"{ver_info['data_timestamp_last']} ({len(ver_info['versions'])} version records); pass --as-of"
         )
+    else:
+        fallbacks = (
+            ('ctgov_data_timestamp', (ver_info.get('data_timestamp') or '')[:10]),
+            ('ctgov_last_fetched_at', (cache.ctgov_meta.get('last_fetched_at') or '')[:10]),
+            ('generated_at', generated_at[:10]),
+        )
+        as_of_source, fallback_iso = next((src, iso) for src, iso in fallbacks if iso)
         as_of = date.fromisoformat(fallback_iso)
 
     studies_by_nct = A.studies_from_ctgov_records(cache.ctgov, included_ids)
@@ -618,6 +660,7 @@ def build_artifacts(
         'method_version': METHOD_VERSION,
         'scheduled': False,
         'as_of': as_of.isoformat(),
+        'as_of_source': as_of_source,
         'producer': producer,
         'counting_units': COUNTING_UNITS,
         'scope': {
@@ -748,6 +791,39 @@ def _check_count_obj(
     return problems
 
 
+def _ctgov_version_problems(run: dict[str, Any], ctgov_src: dict[str, Any]) -> list[str]:
+    """Check run.json's recorded CT.gov version records, data-timestamp range and `as_of` choice.
+
+    The artifact family does not carry the CT.gov archive, so this checks that the recorded range
+    agrees with the recorded version records (which `_ctgov_version_info` read from the archive),
+    that the record count fits the archive's `n_records`, and that `as_of` was stated whenever the
+    range spans more than one data timestamp.
+    """
+    problems: list[str] = []
+    versions = ctgov_src.get('versions')
+    if not isinstance(versions, list) or not all(isinstance(v, dict) for v in versions):
+        return ['run.json sources.ctgov.versions must be a list of version records']
+    stamps = [str(v.get('data_timestamp')) for v in versions]
+    order = [(str(v.get('fetched_at') or ''), str(v.get('key') or '')) for v in versions]
+    if order != sorted(order):
+        problems.append('run.json sources.ctgov.versions are not ordered by fetched_at')
+    first, last = ctgov_src.get('data_timestamp_first'), ctgov_src.get('data_timestamp_last')
+    expected = (min(stamps), max(stamps), stamps[-1]) if stamps else (None, None, None)
+    if (first, last, ctgov_src.get('data_timestamp')) != expected:
+        problems.append('run.json sources.ctgov data_timestamp, _first or _last disagree with its version records')
+    n_records = ctgov_src.get('n_records')
+    if isinstance(n_records, int) and len(versions) > n_records:
+        problems.append('run.json sources.ctgov lists more version records than its archive holds')
+    as_of_source = run.get('as_of_source')
+    if as_of_source not in AS_OF_SOURCES:
+        problems.append(f'run.json as_of_source {as_of_source!r} is not one of {list(AS_OF_SOURCES)}')
+    elif first != last and as_of_source != 'as_of_argument':
+        problems.append('run.json as_of was defaulted although CT.gov data timestamps differ across version records')
+    elif as_of_source == 'ctgov_data_timestamp' and str(run.get('as_of')) != str(ctgov_src.get('data_timestamp'))[:10]:
+        problems.append('run.json as_of does not match the CT.gov data timestamp it was defaulted from')
+    return problems
+
+
 def check_contract(
     files: dict[str, Any],
     *,
@@ -813,6 +889,7 @@ def check_contract(
     ctgov_src = ((run.get('sources') or {}).get('ctgov') or {})
     if not HEX64_RE.match(str(ctgov_src.get('sha256_uncompressed') or '')):
         problems.append('run.json sources.ctgov is not pinned by sha256_uncompressed')
+    problems.extend(_ctgov_version_problems(run, ctgov_src))
 
     # Private key leak & statutory compliance language check
     all_keys, all_strings = _walk_keys_and_strings(files)

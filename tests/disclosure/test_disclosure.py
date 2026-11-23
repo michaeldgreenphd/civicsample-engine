@@ -1572,3 +1572,73 @@ def test_reviews_cannot_unpost_ctgov_results_or_make_the_trial_unreported(
     bad = copy.deepcopy(reviewed)
     _timeline_of(bad, 'NCT09990001')['discordance']['state'] = 'published_results_while_ctgov_unreported'
     assert any('hasResults=true, but discordance is' in p for p in ART.check_contract(bad))
+
+
+# ---------------------------------------------------------------- 16. CT.gov data-timestamp range, git provenance
+
+def test_resumed_acquisition_across_a_ctgov_refresh_records_the_range_and_needs_as_of(
+    tmp_path: Path,
+    built_files: dict[str, Any],
+    frozen_cache: A.FrozenCache,
+) -> None:
+    # The fixture cache holds one version record, so the default as_of is its data timestamp, as before.
+    single = ART.build_artifacts(
+        frozen_cache,
+        reviews_path=ROOT / 'disclosure' / 'reviews.csv',
+        statements_path=ROOT / 'disclosure' / 'documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv',
+        producer=cli_build.producer_metadata(),
+        generated_at=F.GENERATED_AT,
+    )
+    ct = single['run.json']['sources']['ctgov']
+    assert [v['key'] for v in ct['versions']] == ['ctgov/version/2026-11-01']
+    assert ct['data_timestamp_first'] == ct['data_timestamp_last'] == ct['data_timestamp'] == '2026-11-01T08:00:00'
+    assert (single['run.json']['as_of'], single['run.json']['as_of_source']) == ('2026-11-01', 'ctgov_data_timestamp')
+    assert built_files['run.json']['as_of_source'] == 'as_of_argument'
+
+    # Day 1 fetches NCT09990001; the acquisition resumes on day 2, after a CT.gov data refresh.
+    def refreshed_get(url: str, params: dict[str, Any] | None) -> A.Response:
+        if url == f'{A.CTGOV_API}/version':
+            return F._json_resp({'apiVersion': '2.0.5', 'dataTimestamp': '2026-11-02T08:00:00'})
+        return F.stub_get()(url, params)
+
+    cache = tmp_path / 'resumed_cache'
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(cache, 'ctgov'))
+    A.fetch_ctgov_studies(['NCT09990001'], log, F.stub_get(), throttle, day='2026-11-01')
+    A.fetch_ctgov_studies(['NCT09990001', 'NCT09990002'], log, refreshed_get, throttle, day='2026-11-02')
+    A.freeze_cache(cache, ['NCT09990001', 'NCT09990002'], frozen_at=F.GENERATED_AT)
+    resumed = A.load_frozen_cache(cache)
+
+    kwargs: dict[str, Any] = {
+        'reviews_path': ROOT / 'disclosure' / 'reviews.csv',
+        'statements_path': ROOT / 'disclosure' / 'documentary_statements.csv',
+        'sponsor_rules_path': ROOT / 'sponsors' / 'company_aliases.csv',
+        'producer': cli_build.producer_metadata(),
+        'generated_at': F.GENERATED_AT,
+    }
+    with pytest.raises(ValueError, match=r'2026-11-01T08:00:00 to 2026-11-02T08:00:00.*pass --as-of'):
+        ART.build_artifacts(resumed, **kwargs)
+    out = tmp_path / 'out'
+    assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--generated-at', F.GENERATED_AT]) == 1
+    assert not out.exists()
+
+    stated = ART.build_artifacts(resumed, **kwargs, as_of=date(2026, 11, 2))
+    assert ART.check_contract(stated) == []
+    ct2 = stated['run.json']['sources']['ctgov']
+    assert [(v['key'], v['data_timestamp']) for v in ct2['versions']] == [
+        ('ctgov/version/2026-11-01', '2026-11-01T08:00:00'),
+        ('ctgov/version/2026-11-02', '2026-11-02T08:00:00'),
+    ]
+    assert (ct2['data_timestamp_first'], ct2['data_timestamp_last'], ct2['data_timestamp']) == (
+        '2026-11-01T08:00:00', '2026-11-02T08:00:00', '2026-11-02T08:00:00',
+    )
+    assert stated['run.json']['as_of_source'] == 'as_of_argument'
+
+    # The contract refuses a defaulted as_of over a spanning range, and a range that disagrees with its records.
+    defaulted = copy.deepcopy(stated)
+    defaulted['run.json']['as_of_source'] = 'ctgov_data_timestamp'
+    assert any('as_of was defaulted although' in p for p in ART.check_contract(defaulted))
+    narrowed = copy.deepcopy(stated)
+    narrowed['run.json']['sources']['ctgov']['data_timestamp_first'] = '2026-11-02T08:00:00'
+    assert any('disagree with its version records' in p for p in ART.check_contract(narrowed))

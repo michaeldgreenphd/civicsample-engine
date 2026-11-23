@@ -75,6 +75,11 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 python3 scripts/build_drug_disclosure.py build \
     --cache build/disclosure_cache --out build/disclosure --as-of 2026-11-01
 # (build --records seeds an absent cache from local files like freeze-local, with the same required stamps.)
+# run.json sources.ctgov lists every CT.gov version record in the cache (`versions`, one per acquisition
+# day) and the range of their data timestamps (`data_timestamp_first`, `data_timestamp_last`). Without
+# --as-of, as_of defaults to the cache's CT.gov data timestamp (`as_of_source` records which default was
+# used); a cache whose version records span several data timestamps (an acquisition resumed across a
+# CT.gov data refresh) is refused unless --as-of is given.
 
 # 3. Producer contract check and atomic site export:
 python3 scripts/check_drug_disclosure_contract.py build/disclosure

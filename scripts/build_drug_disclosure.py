@@ -349,7 +349,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_bld.add_argument('--data-timestamp', help='Required with --records when seeding: ' + DATA_TIMESTAMP_HELP)
     p_bld.add_argument('--nct-list', type=Path, help='Optional subset of cached NCT IDs to include')
     p_bld.add_argument('--as-of', help='Reference date YYYY-MM-DD for 365-day window evaluation '
-                       "(default: the date of the cache's CT.gov data timestamp)")
+                       "(default: the date of the cache's CT.gov data timestamp; required when the "
+                       "cache's version records span several data timestamps)")
     p_bld.add_argument('--generated-at', help='Pin ISO 8601 timestamp for byte-identical run.json')
     p_bld.add_argument('--reviews', type=Path, default=ROOT / 'disclosure' / 'reviews.csv')
     p_bld.add_argument('--statements', type=Path, default=ROOT / 'disclosure' / 'documentary_statements.csv')
