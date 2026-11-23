@@ -1025,6 +1025,11 @@ def test_contrast_cardinality_and_shared_arm_non_independence() -> None:
 
 # ---------------------------------------------------------------- 5. build, run_identity, contract refusals, site export
 
+def _ids(studies: list[dict[str, Any]]) -> list[str]:
+    """The `ids` a cached response line records for the batch that returned `studies`."""
+    return [C.nct_id_of(s) or '' for s in studies]
+
+
 def _sample_studies() -> list[dict[str, Any]]:
     return [
         make_study(1, docs=[{'filename': 'Prot_SAP.pdf', 'uploadDate': '2024-01-01', 'hasProtocol': True, 'hasSap': True, 'hasIcf': False}]),
@@ -1425,15 +1430,15 @@ def test_local_sources_never_take_the_retrieval_date_from_registry_dates(tmp_pat
         return path
 
     partial = _cache('partial.jsonl.gz', [
-        {'fetched_at': '2026-11-15T10:00:00Z', 'body': {'studies': studies[:1]}},
-        {'body': {'studies': studies[1:]}},
+        {'ids': _ids(studies[:1]), 'fetched_at': '2026-11-15T10:00:00Z', 'body': {'studies': studies[:1]}},
+        {'ids': _ids(studies[1:]), 'body': {'studies': studies[1:]}},
     ])
     with pytest.raises(B.BuildError, match='1 line\\(s\\) lack a valid fetched_at'):
         B.load_responses_cache(partial)
     assert B.load_responses_cache(partial, snapshot_date='2026-11-20')[1]['retrieved_at'] == '2026-11-20T00:00:00+00:00'
     complete = _cache('complete.jsonl.gz', [
-        {'fetched_at': '2026-11-15T10:00:00Z', 'body': {'studies': studies[:1]}},
-        {'fetched_at': '2026-11-16T09:00:00Z', 'body': {'studies': studies[1:]}},
+        {'ids': _ids(studies[:1]), 'fetched_at': '2026-11-15T10:00:00Z', 'body': {'studies': studies[:1]}},
+        {'ids': _ids(studies[1:]), 'fetched_at': '2026-11-16T09:00:00Z', 'body': {'studies': studies[1:]}},
     ])
     assert B.load_responses_cache(complete)[1]['retrieved_at'] == '2026-11-16T00:00:00+00:00'
 
@@ -1455,7 +1460,7 @@ def test_acquisition_dates_must_be_real_calendar_dates(tmp_path: Path) -> None:
 
     cache = tmp_path / 'resp.jsonl.gz'
     cache.write_bytes(gzip.compress(
-        (json.dumps({'fetched_at': '2026-13-40T10:00:00Z', 'body': {'studies': studies}}) + '\n').encode('utf-8'), mtime=0
+        (json.dumps({'ids': _ids(studies), 'fetched_at': '2026-13-40T10:00:00Z', 'body': {'studies': studies}}) + '\n').encode('utf-8'), mtime=0
     ))
     with pytest.raises(B.BuildError, match='lack a valid fetched_at'):
         B.load_responses_cache(cache)
@@ -1525,11 +1530,101 @@ def test_fetch_rate_limiting_version_guard_and_responses_cache_cli(
     assert fetched_fam['summary.json']['tables']['retrieval_failures']['count']['numerator'] == 1
 
     resp_cache = tmp_path / 'raw_responses.jsonl.gz'
-    resp_line = json.dumps({'fetched_at': '2026-11-15T10:00:00Z', 'body': json.dumps({'studies': studies})}) + '\n'
+    resp_line = json.dumps({'ids': _ids(studies), 'fetched_at': '2026-11-15T10:00:00Z', 'body': json.dumps({'studies': studies})}) + '\n'
     resp_cache.write_bytes(gzip.compress(resp_line.encode('utf-8'), mtime=0))
     rc_out = tmp_path / 'rc_out'
     assert build_outcomes_comparability.main(['--responses-cache', str(resp_cache), '--out', str(rc_out)]) == 0
     assert check_outcomes_comparability_contract.main([str(rc_out)]) == 0
+
+
+def test_responses_cache_keeps_a_requested_trial_its_response_omits_as_a_retrieval_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression (PR #108 review): load_responses_cache rebuilt requested_ids from the studies the
+    # responses returned and left not_retrieved empty, so a trial a cached batch requested but its body
+    # omitted vanished from the frame instead of becoming a retrieval-failure record, shrinking every
+    # denominator. A returned study the line never requested was accepted as part of the frame.
+    studies = _sample_studies()[:2]
+    by_id = {C.nct_id_of(s): s for s in studies}
+
+    def _cache(name: str, lines: list[dict[str, Any]]) -> Path:
+        path = tmp_path / name
+        path.write_bytes(gzip.compress(''.join(json.dumps(x) + '\n' for x in lines).encode('utf-8'), mtime=0))
+        return path
+
+    def _line(ids: list[str] | None, returned: list[str], *, url_ids: list[str] | None = None, token: bool = False) -> dict[str, Any]:
+        body: dict[str, Any] = {'studies': [by_id[i] for i in returned]}
+        if token:
+            body['nextPageToken'] = 'tok'
+        line: dict[str, Any] = {'fetched_at': '2026-11-15T10:00:00Z', 'status': 200, 'body': json.dumps(body)}
+        if ids is not None:
+            line['ids'] = ids
+        if url_ids is not None:
+            line['url'] = (
+                'https://clinicaltrials.gov/api/v2/studies?filter.ids=' + ','.join(url_ids)
+                + '&pageSize=50&fields=NCTId,HasResults,ResultsSection'
+            )
+        return line
+
+    # The `ids` field: the omitted trial stays in the frame with the reason the fetch path writes.
+    asked = ['NCT99000001', 'NCT99000002', 'NCT99000098']
+    _, meta = B.load_responses_cache(_cache('ids.jsonl.gz', [_line(asked, ['NCT99000001', 'NCT99000002'], url_ids=asked)]))
+    assert meta['requested_ids'] == asked and meta['n_requested'] == 3 and meta['n_records'] == 2
+    assert meta['requested_ids_sha256'] == B.sha256('\n'.join(asked).encode('utf-8'))
+    assert meta['not_retrieved'] == [{'nct_id': 'NCT99000098', 'reason': 'not returned by registry for filter.ids'}]
+
+    # Without `ids`, the url's filter.ids; a response with nextPageToken says the trial may be on an uncached page.
+    _, meta_url = B.load_responses_cache(
+        _cache('url.jsonl.gz', [_line(None, ['NCT99000001'], url_ids=['NCT99000001', 'NCT99000099'], token=True)])
+    )
+    assert meta_url['requested_ids'] == ['NCT99000001', 'NCT99000099']
+    assert meta_url['not_retrieved'] == [{
+        'nct_id': 'NCT99000099',
+        'reason': 'not returned by registry for filter.ids (url.jsonl.gz line 1 carries nextPageToken; '
+        'the trial may be on a page the cache does not hold)',
+    }]
+
+    # A trial one line omits and another line returns is retrieved; a bare study line adds its own id.
+    _, meta_two = B.load_responses_cache(_cache('two.jsonl.gz', [
+        _line(['NCT99000001', 'NCT99000002'], ['NCT99000001']),
+        by_id['NCT99000002'],
+    ]), snapshot_date='2026-11-15')
+    assert meta_two['requested_ids'] == ['NCT99000001', 'NCT99000002'] and meta_two['not_retrieved'] == []
+
+    # Refused: a study the line did not request, a trial returned twice, a response line naming no
+    # requested ids, `ids` disagreeing with the url, and malformed ids.
+    refusals = {
+        'unrequested': ([_line(['NCT99000001'], ['NCT99000001', 'NCT99000002'])], 'returned study NCT99000002, which the line did not request'),
+        'twice': ([_line(['NCT99000001'], ['NCT99000001']), _line(['NCT99000001'], ['NCT99000001'])], 'duplicate study NCT99000001'),
+        'no_ids': ([_line(None, ['NCT99000001'])], 'records no requested ids'),
+        'no_url_ids': ([{**_line(None, ['NCT99000001']), 'url': 'https://clinicaltrials.gov/api/v2/studies?pageSize=50'}], 'records no requested ids'),
+        'disagree': ([_line(['NCT99000001'], ['NCT99000001'], url_ids=['NCT99000002'])], 'name different trials'),
+        'empty_ids': ([_line([], ['NCT99000001'])], 'not a non-empty list of valid NCT ids'),
+        'bad_ids': ([_line(['NCT1'], ['NCT99000001'])], 'not a non-empty list of valid NCT ids'),
+        'repeated_ids': ([_line(['NCT99000001', 'NCT99000001'], ['NCT99000001'])], 'repeats an NCT id'),
+    }
+    for name, (lines, message) in refusals.items():
+        with pytest.raises(B.BuildError, match=message):
+            B.load_responses_cache(_cache(f'{name}.jsonl.gz', lines))
+
+    # End to end: the omitted trial is a not_retrieved record counted in the retrieval failures and in
+    # every requested-trials denominator, and the build passes its contract.
+    monkeypatch.setattr(build_outcomes_comparability, 'ROOT', tmp_path)
+    for rel in build_outcomes_comparability.PRODUCER_PATHS:
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes((ROOT / rel).read_bytes())
+    out = tmp_path / 'rc_out'
+    cache = _cache('e2e.jsonl.gz', [_line(asked, ['NCT99000001', 'NCT99000002'], url_ids=asked, token=True)])
+    assert build_outcomes_comparability.main(['--responses-cache', str(cache), '--out', str(out)]) == 0
+    assert check_outcomes_comparability_contract.main([str(out)]) == 0
+    fam = B.load_dir(out)
+    rec = fam['records.json']['records']['NCT99000098']
+    assert rec['results_status'] == 'not_retrieved' and rec['retrieval']['status'] == 'failed'
+    assert rec['retrieval']['reason'].startswith('not returned by registry for filter.ids (e2e.jsonl.gz line 1 carries nextPageToken')
+    assert fam['summary.json']['denominators']['requested_trials']['n'] == 3
+    assert fam['summary.json']['tables']['retrieval_failures']['count']['numerator'] == 1
+    assert fam['run.json']['acquisition']['n_requested'] == 3 and fam['run.json']['acquisition']['n_records'] == 2
+    assert fam['run.json']['scope']['frame']['n'] == 3
 
 
 # ---------------------------------------------------------------- 6. code standards ratchets (CLAUDE.md)

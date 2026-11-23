@@ -21,6 +21,7 @@ import shutil
 import sys
 import tempfile
 import time
+import urllib.parse
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
@@ -377,6 +378,42 @@ def load_records_dir(records_dir: Path, snapshot_date: str | None = None) -> tup
     return ordered_studies, meta
 
 
+def _cache_line_requested_ids(outer: dict[str, Any], where: str) -> list[str]:
+    """The NCT ids one cached HTTP response line requested, or refuse the line.
+
+    The line's `ids` field is read first, else the `filter.ids` parameter of its `url`, the two
+    places `docs/audits/outcomes_results_structure/first_pass/scripts/fetch.py` records its batch.
+    When both are present they must name the same ids: neither is preferred silently. A line that
+    names no requested id at all is refused rather than read as having asked for exactly what it
+    returned, because then a trial the response left out would disappear from the frame instead of
+    becoming a retrieval failure (the build's denominators would shrink with nothing recorded).
+    """
+    def _valid(ids: Any, source: str) -> list[str]:
+        if not isinstance(ids, list) or not ids or not all(isinstance(i, str) and NCT.match(i) for i in ids):
+            raise BuildError(f'{where}: {source} is not a non-empty list of valid NCT ids')
+        if len(set(ids)) != len(ids):
+            raise BuildError(f'{where}: {source} repeats an NCT id')
+        return list(ids)
+
+    from_field = _valid(outer['ids'], '`ids`') if outer.get('ids') is not None else None
+    from_url: list[str] | None = None
+    if isinstance(outer.get('url'), str):
+        params = urllib.parse.parse_qs(urllib.parse.urlsplit(outer['url']).query, keep_blank_values=True)
+        if 'filter.ids' in params:
+            if len(params['filter.ids']) != 1:
+                raise BuildError(f'{where}: url carries filter.ids more than once')
+            from_url = _valid([i.strip() for i in params['filter.ids'][0].split(',')], 'url filter.ids')
+    if from_field is not None and from_url is not None and set(from_field) != set(from_url):
+        raise BuildError(f'{where}: `ids` and the url filter.ids name different trials')
+    requested = from_field if from_field is not None else from_url
+    if requested is None:
+        raise BuildError(
+            f'{where}: response line records no requested ids (no `ids` field and no filter.ids in its url), '
+            'so a requested trial the response omits could not be recorded as a retrieval failure'
+        )
+    return requested
+
+
 def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Load CT.gov API v2 studies from a frozen HTTP batch responses `.jsonl.gz` cache.
 
@@ -384,10 +421,23 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
     lines, which is acquisition metadata, but only when every line carries one. Registry dates
     (lastUpdatePostDate, resultsFirstPostDate) are never used: they say when a record was
     published, not when it was retrieved.
+
+    Each response line (`{"body": ...}`) is reconciled with the ids it requested
+    (`_cache_line_requested_ids`), as `fetch` reconciles each batch: the frame (`requested_ids`) is
+    every id any line requested; a requested id no line returned is listed in `not_retrieved` with
+    its reason, so the build keeps it as a retrieval-failure record; a returned study its line did
+    not request, or a trial returned twice, is refused. A bare study line (a stored record rather
+    than a response) requested nothing and contributes exactly the study it holds. A response line
+    that was never written to the cache cannot be detected from the cache alone; `--nct-list`
+    states the intended frame independently, and its ids missing here become retrieval failures.
     """
     if not cache_path.is_file():
         raise BuildError(f'{cache_path}: responses cache file does not exist')
     studies_by_nct: dict[str, dict[str, Any]] = {}
+    requested_ids: set[str] = set()
+    # First reason recorded for a requested id its line did not return; reconciled after every line is
+    # read, since another line may have requested and returned the same trial.
+    unreturned_reason: dict[str, str] = {}
     fetched_dates: list[str] = []
     n_lines_without_fetched_at = 0
     try:
@@ -407,20 +457,46 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
                     fetched_dates.append(fetched_date)
                 else:
                     n_lines_without_fetched_at += 1
+                where = f'{cache_path.name} line {line_no}'
+                line_requested: list[str] | None = None
+                missing_reason = ''
                 if isinstance(outer, dict) and 'body' in outer:
+                    line_requested = _cache_line_requested_ids(outer, where)
                     body = json.loads(outer['body']) if isinstance(outer['body'], str) else outer['body']
                     batch_studies = body.get('studies') or [] if isinstance(body, dict) else []
+                    # Same wording as `fetch` for an id the registry did not return. A response that
+                    # carries nextPageToken may hold the trial on a page the cache does not have, so
+                    # the reason says so instead of asserting that the registry returned nothing.
+                    if not isinstance(body, dict):
+                        missing_reason = f'{where}: response body is not a JSON object'
+                    elif body.get('nextPageToken'):
+                        missing_reason = (
+                            'not returned by registry for filter.ids '
+                            f'({where} carries nextPageToken; the trial may be on a page the cache does not hold)'
+                        )
+                    else:
+                        missing_reason = 'not returned by registry for filter.ids'
                 elif isinstance(outer, dict) and ('protocolSection' in outer or 'hasResults' in outer):
                     batch_studies = [outer]
                 else:
-                    raise BuildError(f'{cache_path.name} line {line_no}: unrecognized cache line shape')
+                    raise BuildError(f'{where}: unrecognized cache line shape')
+                returned_here: set[str] = set()
                 for s in batch_studies:
                     nct = C.nct_id_of(s)
                     if not nct or not NCT.match(nct):
-                        raise BuildError(f'{cache_path.name} line {line_no}: study lacks valid NCT id')
+                        raise BuildError(f'{where}: study lacks valid NCT id')
                     if nct in studies_by_nct:
                         raise BuildError(f'{cache_path.name}: duplicate study {nct}')
+                    if line_requested is not None and nct not in line_requested:
+                        raise BuildError(f'{where}: returned study {nct}, which the line did not request')
                     studies_by_nct[nct] = s
+                    returned_here.add(nct)
+                # A bare study line contributes the one study it holds; a response line contributes
+                # every id it requested, returned or not.
+                requested_ids.update(returned_here if line_requested is None else line_requested)
+                for n in line_requested or []:
+                    if n not in returned_here:
+                        unreturned_reason.setdefault(n, missing_reason)
     except (OSError, EOFError, ValueError) as exc:
         raise BuildError(f'{cache_path.name}: could not read responses cache ({exc})') from exc
 
@@ -430,6 +506,12 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
     ordered_ids = sorted(studies_by_nct)
     ordered_studies = [studies_by_nct[n] for n in ordered_ids]
     canonical_bytes = acquire.encode(ordered_studies)
+    # The frame is every requested id, retrieved or not (as in `fetch_record`); a requested id that
+    # no line returned is a retrieval failure with its reason, never dropped.
+    frame_ids = sorted(requested_ids)
+    not_retrieved = [
+        {'nct_id': n, 'reason': unreturned_reason[n]} for n in frame_ids if n not in studies_by_nct
+    ]
 
     if snapshot_date is not None:
         inferred_date = snapshot_date
@@ -454,11 +536,11 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
         'retrieved_at': f'{inferred_date}T00:00:00+00:00',
         'api_version': 'cached_v2',
         'data_timestamp': inferred_date,
-        'n_requested': len(ordered_ids),
+        'n_requested': len(frame_ids),
         'n_records': len(ordered_ids),
-        'not_retrieved': [],
-        'requested_ids': ordered_ids,
-        'requested_ids_sha256': sha256('\n'.join(ordered_ids).encode('utf-8')),
+        'not_retrieved': not_retrieved,
+        'requested_ids': frame_ids,
+        'requested_ids_sha256': sha256('\n'.join(frame_ids).encode('utf-8')),
         'sha256_uncompressed': sha256(canonical_bytes),
         'source_file_sha256': sha256(cache_path.read_bytes()),
         'archive': cache_path.name,

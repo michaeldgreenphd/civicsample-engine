@@ -455,7 +455,7 @@ def test_jsonl_readers_preserve_unicode_line_separators_when_ensure_ascii_is_fal
 
     # Test `load_responses_cache` with `ensure_ascii=False`
     resp_raw = (
-        json.dumps({'fetched_at': '2026-11-22T00:00:00Z', 'body': {'studies': [study]}}, ensure_ascii=False)
+        json.dumps({'ids': ['NCT99000303'], 'fetched_at': '2026-11-22T00:00:00Z', 'body': {'studies': [study]}}, ensure_ascii=False)
         + '\n'
     ).encode('utf-8')
     resp_path = tmp_path / 'unicode_resp.jsonl.gz'

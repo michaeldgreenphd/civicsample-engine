@@ -229,7 +229,11 @@ python3 scripts/build_outcomes_comparability.py --archive PATH \
     [--history-archive hist.jsonl.gz] --out build/outcomes_comparability
 
 # Build from a frozen CT.gov HTTP responses cache (retrieval date from its lines' fetched_at;
-# --snapshot-date YYYY-MM-DD is required when any line lacks one):
+# --snapshot-date YYYY-MM-DD is required when any line lacks one). Each response line must record
+# the ids it requested (`ids`, else its url's filter.ids, which must agree when both are present):
+# a requested trial no line returned stays in the frame as a not_retrieved record with its reason;
+# a study its line did not request, a trial returned twice, or a response line naming no requested
+# id is refused:
 python3 scripts/build_outcomes_comparability.py --responses-cache PATH --out build/outcomes_comparability
 
 # Fetch full CT.gov API v2 records (<= 2 req/s) and build:
