@@ -136,7 +136,8 @@ type either.
 Parts the build or the shared race, ethnicity and sex extractors read without a type check must
 have their API v2 type when present (the start and primary completion date structs,
 `enrollmentInfo`, and the baseline table's groups, denominators, measures, classes, categories and
-measurements; see `TYPED_PROTOCOL_PARTS` and `BASELINE_SHAPE`), so a malformed record is refused by
+measurements, a class's own measurements included, which the extractors read as a row when it has no
+categories; see `TYPED_PROTOCOL_PARTS` and `BASELINE_SHAPE`), so a malformed record is refused by
 name instead of stopping the build with a traceback. An `enrollmentInfo.count`, when present, must be a
 non-negative integer and a `type` CT.gov's `ACTUAL` or `ESTIMATED`: the build kept any integer, a
 negative one included, and read other values as no enrollment, while the shared sex/gender table read

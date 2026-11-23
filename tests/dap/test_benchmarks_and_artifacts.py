@@ -1933,6 +1933,66 @@ def test_build_refuses_an_infinite_enrollment_and_writes_nothing(tmp_path: Path,
     assert "NCT99800042 lacks designModule.enrollmentInfo.count (a non-negative integer)" in capsys.readouterr().err
 
 
+def _class_rows(st: dict) -> dict:
+    """The same study with its race measure posted as classes that carry their own measurements and no
+    categories, the row layout the race, ethnicity, sex and gender extractors fall back to."""
+    measure = st["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]
+    measure["classes"] = [
+        {"title": cat["title"], "measurements": cat["measurements"]}
+        for cls in measure["classes"] for cat in cls["categories"]
+    ]
+    return st
+
+
+def _first_class(st: dict) -> dict:
+    return st["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]
+
+
+@pytest.mark.parametrize(
+    ("edit", "problem"),
+    [
+        # On 48579d3 each loaded: a class's own measurements were not checked. `value: {}` read as 0, so the
+        # White row's 60 was published as 0 and balanced into unknown race, `omb_compatible`.
+        (lambda c: c["measurements"][0].update(value={}), "classes[0].measurements[0].value (a string)"),
+        (lambda c: c["measurements"][0].update(value="Infinity"), "classes[0].measurements[0].value"),
+        (lambda c: c["measurements"][0].pop("groupId"), "classes[0].measurements[0].groupId"),
+        (lambda c: c["measurements"][0].update(groupId="BG999"),
+         "classes[0].measurements[0].groupId (the id of one of the table's groups, not 'BG999')"),
+        (lambda c: c.update(measurements="corrupt"), "classes[0].measurements (a list)"),
+        (lambda c: c["measurements"].append({"groupId": "BG000", "value": "10"}),
+         "classes[0].measurements (one entry per group, not 2 for 'BG000')"),
+    ],
+)
+def test_class_level_rows_are_checked_like_category_rows(tmp_path: Path, edit: Any, problem: str) -> None:
+    bad = _class_rows(_measured_study("NCT99800053"))
+    edit(_first_class(bad))
+    with pytest.raises(ValueError, match=re.escape(f"NCT99800053 lacks {_BASE}.measures[0].{problem}")):
+        _load_pair(tmp_path, bad)
+
+
+def test_a_multi_group_class_level_row_must_carry_the_total(tmp_path: Path) -> None:
+    # On 48579d3 it loaded, and the extractors read the row's last entry, arm B's 20, as the trial's White.
+    bad = _class_rows(_arms_without_total("NCT99800054", _WITH_TOTAL))
+    _drop_total(_first_class(bad)["measurements"])
+    want = "classes[0].measurements (one entry for the whole-population group 'BG002', not 0)"
+    with pytest.raises(ValueError, match=re.escape(f"NCT99800054 lacks {_BASE}.measures[0].{want}")):
+        _load_pair(tmp_path, bad)
+
+
+def test_class_level_rows_as_the_extractors_read_them_load(tmp_path: Path) -> None:
+    # Controls, on both heads: class-level rows of a single-group table and of a table with a Total, read
+    # at the trial's own counts, and a class with neither categories nor measurements (67 stored classes).
+    single = _class_rows(_measured_study("NCT99800055"))
+    multi = _class_rows(_arms_without_total("NCT99800056", _WITH_TOTAL))
+    for st in (single, multi):
+        nct = st["protocolSection"]["identificationModule"]["nctId"]
+        st["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"].append({"title": "Unknown"})
+        loaded = _load_pair(tmp_path, st)
+        rec = next(r for r in loaded if r["protocolSection"]["identificationModule"]["nctId"] == nct)
+        race = extract_demographics(rec)["race"]
+        assert (race["table_status"], race["counts"]["white"], race["counts"]["asian"]) == ("omb_compatible", 60, 40)
+
+
 def test_a_single_group_row_naming_its_group_twice_is_refused(tmp_path: Path) -> None:
     # On 9a955a7 it loaded, and with no Overall id the extractors read the last entry: White 10, not 60.
     bad = _measured_study("NCT99800022")

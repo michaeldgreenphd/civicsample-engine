@@ -634,9 +634,14 @@ BASELINE_SHAPE: dict[str, Any] = {
         # A class title labels the rows of its categories when they carry none: a non-string one raised
         # `AttributeError` at `.strip()` in the race and ethnicity extractors. Every stored class title is
         # a string.
+        # A class with no categories is itself a row: the race, ethnicity, sex and gender extractors then
+        # read its own `measurements` (`sum_measurements(cls.get("measurements", []), ...)`). Those were
+        # not checked, so a class-level `value: {}` read as 0 and a White row of 60 was published as 0, its
+        # participants balanced into unknown race. None of the 20,723 stored classes carries `measurements`.
         "classes": {
             "title": str,
             "denoms": _BASELINE_DENOMS,
+            "measurements": _BASELINE_VALUE,
             "categories": {"title": str, "measurements": _BASELINE_VALUE},
         },
     },
@@ -913,6 +918,9 @@ def _baseline_group_reference_problems(module: dict[str, Any], root: str, *, sha
                 continue
             c_path = f"{m_path}.classes[{c_i}]"
             add_counts(cls.get("denoms"), f"{c_path}.denoms")
+            # A class's own measurements, the row the extractors read when it has no categories.
+            if "measurements" in cls:
+                lists.append((f"{c_path}.measurements", _listed(cls.get("measurements")), measure))
             for k_i, category in enumerate(_listed(cls.get("categories"))):
                 if isinstance(category, dict):
                     lists.append(
