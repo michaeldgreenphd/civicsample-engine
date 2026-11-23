@@ -1964,6 +1964,16 @@ def test_an_nct_cited_fda_link_takes_the_cited_submissions_date(
     assert (link['publication_or_action_date'], link['date_precision']) == (date, precision)
     if date is None:
         assert any('no FDA action date is tied to it' in r for r in link['validation_reasons'])
+    # The same application returned only by a drug-term query: on 8f53cd3 that branch still took the
+    # original approval date.
+    nct = 'NCT09990001'
+    study = F.STUDIES[nct]
+    drug = A.extract_drug_candidates(study)[0]
+    records = {A.drug_query_key(drug): {'status': 200, 'body': {'meta': {'results': {'total': 1}}, 'results': [app]}}}
+    links = E.build_openfda_links(nct, study, records, E.trial_sponsor_match_keys(study))
+    via_drug = next(x for x in links if x['automated_validation'] == 'identifier_confirmed')
+    assert via_drug['detail']['matched_drug'] == drug
+    assert (via_drug['publication_or_action_date'], via_drug['date_precision']) == (date, precision)
 
 
 @pytest.mark.parametrize('has_results', ['<absent>', None, 'false', 0, True])

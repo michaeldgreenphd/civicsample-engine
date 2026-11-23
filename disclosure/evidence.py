@@ -725,6 +725,18 @@ def _cited_submission_date(app: dict[str, Any], field_path: str) -> tuple[str | 
     return (norm, prec) if norm is not None else (None, 'missing')
 
 
+def _nct_cited_date_and_reasons(
+    app: dict[str, Any], nct_id: str, app_no: str, field_path: str
+) -> tuple[str | None, str, list[str]]:
+    """The date, precision and validation reasons of a link to a Drugs@FDA record carrying `nct_id`, for
+    the direct NCT query and the drug-term queries alike (`_cited_submission_date`)."""
+    date, precision = _cited_submission_date(app, field_path)
+    reasons = [f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({field_path})']
+    if date is None:
+        reasons.append(f'{nct_id} is not cited in a dated submission, so no FDA action date is tied to it')
+    return date, precision, reasons
+
+
 def _openfda_sponsors_norm(app: dict[str, Any]) -> set[str]:
     names: set[str] = set()
     sp = app.get('sponsor_name')
@@ -795,10 +807,7 @@ def build_openfda_links(
             if located is not None:
                 field_path, snippet = located
                 confirmed_apps.add(app_no)
-                cited_date, cited_prec = _cited_submission_date(app, field_path)
-                reasons = [f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({field_path})']
-                if cited_date is None:
-                    reasons.append(f'{nct_id} is not cited in a dated submission, so no FDA action date is tied to it')
+                cited_date, cited_prec, reasons = _nct_cited_date_and_reasons(app, nct_id, app_no, field_path)
                 out.append(
                     _new_link(
                         nct_id=nct_id,
@@ -861,6 +870,9 @@ def build_openfda_links(
             located = _find_exact_nct(app, nct_id)
             if located is not None:
                 field_path, snippet = located
+                # The same date rule as the direct NCT query: the cited submission's, never the original
+                # approval's (a trial cited in a 2025 supplement was given the 2000 approval date here).
+                cited_date, cited_prec, reasons = _nct_cited_date_and_reasons(app, nct_id, app_no, field_path)
                 pair_links.append(
                     _new_link(
                         nct_id=nct_id,
@@ -868,15 +880,13 @@ def build_openfda_links(
                         target_id_type='fda_application',
                         target_id=app_no,
                         citation_type='OPENFDA_NCT_CITED',
-                        publication_or_action_date=act_date,
-                        date_precision=prec,
+                        publication_or_action_date=cited_date,
+                        date_precision=cited_prec,
                         verbatim_excerpt=snippet,
                         source_sha256=rec_sha,
                         locator={'json_path': f'results[{idx}].{field_path}', 'application_number': app_no},
                         automated_validation='identifier_confirmed',
-                        validation_reasons=[
-                            f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({field_path})'
-                        ],
+                        validation_reasons=reasons,
                         detail={'matched_drug': drug, 'sponsor_name': app.get('sponsor_name')},
                     )
                 )
