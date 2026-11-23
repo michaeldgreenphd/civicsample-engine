@@ -2,9 +2,17 @@
 
 Every piece of cross-source evidence for a registered trial (`NCT_ID`) is represented as an
 immutable dictionary keyed by `link:<sha256[:16]>` (`make_link_id`), derived deterministically
-from `(nct_id, source_route, target_id_type, target_id, citation_type, locator_key, excerpt)`.
-If source text changes in a later fetch, its `link_id` changes so prior human reviews become
-explicitly `orphaned_reviews` rather than silently carrying onto altered text.
+from `(nct_id, source_route, target_id_type, target_id, citation_type, locator_key, excerpt,
+publication_or_action_date)`: everything the link presents as evidence to a reviewer. If any of it
+changes in a later fetch (altered text, or a record that gains or changes its publication or FDA
+action date while its excerpt stays the same), its `link_id` changes so prior human reviews become
+explicitly `orphaned_reviews` rather than silently carrying onto the changed evidence.
+
+The whole-response `source_sha256` is recorded on the link but deliberately kept out of its
+identity: a response also changes for reasons unrelated to the linked record (openFDA's
+`meta.last_updated` and the other applications a drug query returns, Europe PMC's other hits,
+any update to a CT.gov study record, a new row in `documentary_statements.csv`), and keying on it
+would orphan every review on every re-acquisition.
 
 Automated checks (`automated_validation`) verify mechanical facts only — whether a cited identifier
 exists and resolves, or whether a verbatim quote stands in a retrieved source. Unreviewed links are
@@ -277,7 +285,12 @@ def _new_link(
 ) -> dict[str, Any]:
     excerpt = squash_whitespace(verbatim_excerpt)
     locator_key = json.dumps(locator, sort_keys=True, separators=(',', ':'))
-    lid = make_link_id(nct_id, source_route, target_id_type, target_id, citation_type, locator_key, excerpt)
+    # The date is part of the identity (module docstring): a review keyed on `link_id` must not
+    # carry onto a record whose date, which the timeline reads, changed under the same excerpt.
+    lid = make_link_id(
+        nct_id, source_route, target_id_type, target_id, citation_type, locator_key, excerpt,
+        publication_or_action_date,
+    )
     return {
         'link_id': lid,
         'nct_id': nct_id,

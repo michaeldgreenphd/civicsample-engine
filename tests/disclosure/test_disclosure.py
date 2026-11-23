@@ -1206,3 +1206,46 @@ def test_producer_digest_and_dirty_check_cover_the_build_import_closure(
     status_call = next(c for c in calls if c[:2] == ['git', 'status'])
     assert status_call[status_call.index('--') + 1:] == paths
     assert info['source_sha256'] == cli_build.source_digest(ROOT, paths)
+
+
+def test_link_identity_changes_when_the_action_date_changes_under_the_same_excerpt() -> None:
+    study = F._make_study('NCT09990009', title='Fictional study', lead_sponsor='Fictional Trial Sponsor Inc')
+    app = {
+        'application_number': 'NDA777003',
+        'sponsor_name': 'Fictional Trial Sponsor Inc',
+        'note': 'Pivotal study NCT09990009',
+        'submissions': [{'submission_type': 'ORIG', 'submission_status': 'TA', 'submission_status_date': '20220301'}],
+    }
+
+    def links_for(application: dict[str, Any], meta_updated: str) -> list[dict[str, Any]]:
+        records = {
+            'openfda/nct/NCT09990009': {
+                'status': 200,
+                'body': {'meta': {'last_updated': meta_updated, 'results': {'total': 1}}, 'results': [application]},
+            },
+        }
+        return E.build_openfda_links('NCT09990009', study, records, E.trial_sponsor_match_keys(study))
+
+    before = links_for(app, '2026-11-01')
+    # The same application refetched after an unrelated openFDA data refresh: same identity.
+    refreshed = links_for(app, '2026-11-08')
+    assert before[0]['source_sha256'] != refreshed[0]['source_sha256']
+    assert before[0]['link_id'] == refreshed[0]['link_id']
+
+    # The application gains an approval: the excerpt and locator stay the same, the action date changes.
+    approved = {**app, 'submissions': [*app['submissions'], {
+        'submission_type': 'ORIG', 'submission_status': 'AP', 'submission_status_date': '20230115',
+    }]}
+    after = links_for(approved, '2026-11-08')
+    assert after[0]['verbatim_excerpt'] == before[0]['verbatim_excerpt']
+    assert after[0]['locator'] == before[0]['locator']
+    assert (before[0]['publication_or_action_date'], after[0]['publication_or_action_date']) == ('2022-03-01', '2023-01-15')
+    assert after[0]['link_id'] != before[0]['link_id']
+
+    # A review keyed on the old identity is reported as orphaned, never carried onto the changed record.
+    review = {before[0]['link_id']: {
+        'link_id': before[0]['link_id'], 'nct_id': 'NCT09990009', 'reviewer': 'R',
+        'reviewed_at': '2026-11-02', 'decision': 'confirmed_same_trial_results', 'notes': 'n',
+    }}
+    assert E.apply_reviews(after, review) == [before[0]['link_id']]
+    assert after[0]['review_status'] == 'unreviewed'
