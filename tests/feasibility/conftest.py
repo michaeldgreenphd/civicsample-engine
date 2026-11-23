@@ -31,7 +31,7 @@ def make_ctgov_study(
     outcome_measures: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Construct a fictional ClinicalTrials.gov API v2 study document."""
-    status_mod: dict[str, Any] = {"overallStatus": overall_status}
+    status_mod: dict[str, Any] = {"overallStatus": overall_status, "statusVerifiedDate": "2024-01"}
     if why_stopped is not None:
         status_mod["whyStopped"] = why_stopped
     if start_date is not None or start_type is not None:

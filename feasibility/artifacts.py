@@ -1086,7 +1086,14 @@ def check_contract(
         )
 
     # ---- Small-cell withholding checks across strata.json and sponsors.json
-    min_cell = int((run.get("parameters") or {}).get("min_cell_trials") or DEFAULT_MIN_CELL_TRIALS)
+    # A malformed threshold is a contract problem, never a crash: only a non-bool int >= 1 is used,
+    # and anything else is reported and replaced by the default so the remaining checks still run.
+    min_cell_raw = (run.get("parameters") or {}).get("min_cell_trials")
+    if isinstance(min_cell_raw, int) and not isinstance(min_cell_raw, bool) and min_cell_raw >= 1:
+        min_cell = min_cell_raw
+    else:
+        problems.append(f"run.json: parameters.min_cell_trials must be an integer >= 1 (got {min_cell_raw!r})")
+        min_cell = DEFAULT_MIN_CELL_TRIALS
     strata = parsed_family["strata.json"]
     if isinstance(strata.get("overall"), dict):
         problems.extend(_check_cell_withholding(strata["overall"], min_cell, "strata.overall"))

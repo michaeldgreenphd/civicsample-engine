@@ -1179,6 +1179,55 @@ def test_records_with_an_incomplete_results_part_are_refused(tmp_path: Path, edi
         _load_archive(apath)
 
 
+@pytest.mark.parametrize(
+    "drop", [("identificationModule", "briefTitle"), ("statusModule", "statusVerifiedDate"),
+             ("statusModule", "overallStatus"), ("designModule", "studyType")],
+)
+def test_records_missing_a_registration_field_inside_a_module_shell_are_refused(
+    tmp_path: Path, drop: tuple[str, str]
+) -> None:
+    complete = make_ctgov_study("NCT99600018")
+    shell = make_ctgov_study("NCT99600019")
+    shell["protocolSection"][drop[0]].pop(drop[1])
+    rdir = tmp_path / "records"
+    rdir.mkdir()
+    (rdir / "a.json").write_text(json.dumps(complete), encoding="utf-8")
+    (rdir / "b.json").write_text(json.dumps(shell), encoding="utf-8")
+    with pytest.raises(ValueError, match=f"NCT99600019 lacks {drop[0]}.{drop[1]}"):
+        build_feasibility_benchmarks.load_studies_input(demographics_path=None, records_dir=rdir, archive_path=None)
+
+
+def test_field_projected_record_keeping_every_module_shell_is_refused(tmp_path: Path) -> None:
+    # A bare record projected to NCT ID, status, sponsor, conditions, study type and hasResults: all five
+    # module objects are present, but dates, enrollment and locations are gone.
+    full = make_ctgov_study("NCT99600020", has_results=False)
+    ps = full["protocolSection"]
+    projected = {
+        "protocolSection": {
+            "identificationModule": {"nctId": "NCT99600020"},
+            "statusModule": {"overallStatus": ps["statusModule"]["overallStatus"]},
+            "sponsorCollaboratorsModule": {"leadSponsor": ps["sponsorCollaboratorsModule"]["leadSponsor"]},
+            "conditionsModule": {"conditions": ps["conditionsModule"].get("conditions", ["Asthma"])},
+            "designModule": {"studyType": ps["designModule"]["studyType"]},
+        },
+        "hasResults": False,
+    }
+    apath = tmp_path / "studies.jsonl.gz"
+    apath.write_bytes(gzip.compress((json.dumps(projected) + "\n").encode("utf-8"), mtime=0))
+    with pytest.raises(ValueError, match="identificationModule.briefTitle, statusModule.statusVerifiedDate"):
+        _load_archive(apath)
+
+
+@pytest.mark.parametrize("value", ["bad", "5", True, 2.5, None, 0, -3])
+def test_contract_reports_a_malformed_min_cell_threshold_without_raising(value: object) -> None:
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    family, _raw = _fixture_family(trials, sponsor_meta, review_meta)
+    edited = json.loads(json.dumps(family))
+    edited["run.json"]["parameters"]["min_cell_trials"] = value
+    problems = artifacts.check_contract(edited)
+    assert any("parameters.min_cell_trials must be an integer >= 1" in p for p in problems), problems
+
+
 def test_records_without_posted_results_are_still_accepted(tmp_path: Path) -> None:
     # hasResults false with no resultsSection is a complete record of a trial that posted nothing.
     study = make_ctgov_study("NCT99600017", has_results=False)

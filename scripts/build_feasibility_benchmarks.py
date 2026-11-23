@@ -249,6 +249,22 @@ REQUIRED_PROTOCOL_MODULES: tuple[str, ...] = (
     "designModule",
 )
 
+# Fields CT.gov holds on every registration, inside modules a projection can keep as shells: the brief
+# title, the overall status, the record-verification date ("Record Verification Date", a required
+# data element) and the study type. A field projection that names a module's fields one by one
+# (`fields=NCTId,OverallStatus,LeadSponsorName,Condition,StudyType`) still yields all five module
+# objects but drops most of these, so a record without any of them is refused as projected. Among the
+# stored CT.gov caches, the device-linkage projections lack `statusVerifiedDate` and the outcomes
+# second-pass projection lacks `briefTitle`; the unprojected records carry all four. This cannot
+# catch a projection that requests whole modules and omits others entirely (contactsLocationsModule,
+# derivedSection): such an absence is indistinguishable from a registration without them.
+REQUIRED_RECORD_FIELDS: tuple[tuple[str, str], ...] = (
+    ("identificationModule", "briefTitle"),
+    ("statusModule", "overallStatus"),
+    ("statusModule", "statusVerifiedDate"),
+    ("designModule", "studyType"),
+)
+
 
 def _require_complete_records(studies: list[dict[str, Any]], source: str) -> None:
     """Refuse API v2 study records missing any `REQUIRED_PROTOCOL_MODULES` (see the note above),
@@ -269,6 +285,11 @@ def _require_complete_records(studies: list[dict[str, Any]], source: str) -> Non
             incomplete[_study_nct_id(study) or f"index {idx}"] = ["protocolSection"]
             continue
         missing = [m for m in REQUIRED_PROTOCOL_MODULES if not isinstance(ps.get(m), dict)]
+        missing += [
+            f"{mod}.{field}" for mod, field in REQUIRED_RECORD_FIELDS
+            if isinstance(ps.get(mod), dict)
+            and not (isinstance(ps[mod].get(field), str) and ps[mod][field].strip())
+        ]
         has_results = study.get("hasResults")
         if not isinstance(has_results, bool):
             missing.append("hasResults (a boolean)")
