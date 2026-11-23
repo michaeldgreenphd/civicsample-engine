@@ -1530,6 +1530,66 @@ def test_local_freeze_refuses_differing_snapshots_of_one_trial_and_accepts_ident
     assert loaded.ctgov['ctgov/study/NCT09990004']['body'] == older
 
 
+def _study_without_protocol() -> dict[str, Any]:
+    return {k: v for k, v in F.STUDIES['NCT09990005'].items() if k != 'protocolSection'}
+
+
+@pytest.mark.parametrize(('name', 'content'), [
+    # On 30e1cae each was skipped, and the freeze went ahead with NCT09990004 alone.
+    ('broken.json', lambda: json.dumps(_study_without_protocol())),
+    ('page.json', lambda: json.dumps({'studies': {'NCT09990005': F.STUDIES['NCT09990005']}})),
+    ('id.json', lambda: json.dumps('NCT09990005')),
+    ('lines.jsonl', lambda: json.dumps(_study_without_protocol()) + '\n'),
+    ('lines.jsonl', lambda: json.dumps([F.STUDIES['NCT09990005']]) + '\n'),
+    ('log.jsonl', lambda: json.dumps({'key': 'ctgov/study/NCT09990005', 'status': 200, 'body': {'note': 'x'}}) + '\n'),
+    ('log.jsonl', lambda: json.dumps({'key': 'ctgov/study/NCT09990005', 'status': 200, 'body': None}) + '\n'),
+    ('log.jsonl',
+     lambda: json.dumps({'key': 'ctgov/study/NCT09990005', 'status': 'unusable_200', 'body': None}) + '\n'),
+    # A log line with no status cannot show its request was answered (on 30e1cae its study was frozen).
+    ('log.jsonl', lambda: json.dumps({'key': 'ctgov/study/NCT09990005', 'body': F.STUDIES['NCT09990005']}) + '\n'),
+])
+def test_local_freeze_refuses_an_object_that_is_no_study_page_or_version_answer(
+    tmp_path: Path, name: str, content: Any
+) -> None:
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'NCT09990004.json').write_text(json.dumps(F.STUDIES['NCT09990004']), encoding='utf-8')
+    (local_src / name).write_text(content(), encoding='utf-8')
+    cache = tmp_path / 'cache'
+    with pytest.raises(ValueError, match=rf'1 study record\(s\) are not valid .*\(first: {re.escape(name)} study 1: '):
+        A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
+    assert not A.raw_log_path(cache, 'ctgov').exists()
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(tmp_path / 'cli_cache'),
+                           *LOCAL_STAMP_ARGS]) == 1
+
+
+def test_local_freeze_reads_every_shape_the_stored_files_hold(tmp_path: Path) -> None:
+    # A study, a `studies` page, a list, a /version answer, and a response log whose failed requests
+    # (null, 400 and 404 statuses) and /version line hold no study, as in the stored local files.
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    st = F.STUDIES
+    (local_src / 'a_study.json').write_text(json.dumps(st['NCT09990001']), encoding='utf-8')
+    (local_src / 'b_page.json').write_text(json.dumps({'studies': [st['NCT09990002']], 'nextPageToken': 'x'}),
+                                           encoding='utf-8')
+    (local_src / 'c_list.json').write_text(json.dumps([st['NCT09990003']]), encoding='utf-8')
+    version = {'apiVersion': '2.0.3', 'dataTimestamp': '2026-11-01T08:00:00'}
+    (local_src / 'd_version.json').write_text(json.dumps(version), encoding='utf-8')
+    log_lines = [
+        {'key': 'ctgov/version/x', 'status': 200, 'body': version},
+        {'key': 'ctgov/study/NCT09990009', 'status': None, 'body': None, 'error': 'transport_or_timeout_error'},
+        {'key': 'q', 'status': 400, 'body': None},
+        {'key': 'ctgov/study/NCT09990008', 'status': 404, 'body': {'message': 'NCT09990008 not found'}},
+        {'key': 'ctgov/study/NCT09990004', 'status': 200, 'body': st['NCT09990004']},
+        {'key': 'page', 'status': 200, 'body': json.dumps({'studies': [st['NCT09990005']]})},
+    ]
+    (local_src / 'e_log.jsonl').write_text(''.join(json.dumps(x) + '\n' for x in log_lines), encoding='utf-8')
+    (local_src / 'f_lines.jsonl').write_text(json.dumps(st['NCT09990006']) + '\n', encoding='utf-8')
+    cache = tmp_path / 'cache'
+    A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
+    assert A.load_frozen_cache(cache).requested_nct_ids == [f'NCT0999000{i}' for i in range(1, 7)]
+
+
 def test_local_freeze_with_limit_still_compares_every_later_copy(tmp_path: Path) -> None:
     older = copy.deepcopy(F.STUDIES['NCT09990004'])
     newer = copy.deepcopy(older)
@@ -3076,6 +3136,12 @@ def test_openfda_result_without_an_application_number_is_an_incomplete_search() 
     {'id': 'EPMC1'},
     {'id': '  ', 'title': 'Blank identifier'},
     {'id': 'EPMC1', 'title': ''},
+    # On 30e1cae a mistyped identifier beside a readable `id` passed, and `_epmc_target` turned it into
+    # text and preferred it: the numeric pmid became the target of an identifier_confirmed link.
+    {'id': 'EPMC1', 'pmid': 31234570, 'title': 'T', 'abstractText': 'Results of NCT09990004.'},
+    {'id': 'EPMC1', 'pmcid': ['PMC1'], 'title': 'T', 'abstractText': 'Results of NCT09990004.'},
+    {'id': 'EPMC1', 'doi': {'value': '10.1/x'}, 'title': 'T', 'abstractText': 'Results of NCT09990004.'},
+    {'id': 7, 'pmid': '31234570', 'title': 'T', 'abstractText': 'Results of NCT09990004.'},
 ])
 def test_unreadable_europe_pmc_hit_is_an_incomplete_search(hit: dict[str, Any]) -> None:
     # On 77e9a2d `{}` became the placeholder `epmc:0`, was set aside for carrying no NCT token, and the
@@ -3091,7 +3157,9 @@ def test_unreadable_europe_pmc_hit_is_an_incomplete_search(hit: dict[str, Any]) 
 
 
 def test_readable_europe_pmc_hits_are_accepted() -> None:
-    for hit in ({'id': 'EPMC1', 'title': 'T'}, {'pmid': '31234570', 'title': 'T'}, {'doi': '10.1/x', 'title': 'T'}):
+    for hit in ({'id': 'EPMC1', 'title': 'T'}, {'pmid': '31234570', 'title': 'T'}, {'doi': '10.1/x', 'title': 'T'},
+                {'id': 'EPMC1', 'pmid': None, 'pmcid': None, 'doi': None, 'title': 'T'},
+                {'id': 'EPMC1', 'pmid': '', 'title': 'T'}):
         assert A.epmc_search_valid({'hitCount': 1, 'resultList': {'result': [hit]}})
     assert A.epmc_search_valid({'hitCount': 0, 'resultList': {'result': []}})
 

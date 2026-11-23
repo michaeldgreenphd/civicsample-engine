@@ -514,18 +514,27 @@ def _nonblank_str(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+# The Europe PMC identifier fields `evidence._epmc_target` reads, in its order of preference.
+EPMC_IDENTIFIER_FIELDS = ('pmid', 'pmcid', 'doi', 'id')
+
+
 def _epmc_hit_readable(hit: Any) -> bool:
     """Whether a Europe PMC result can be inspected: an object with an identifier (`id`, which the
-    `resultType=core` search returns on every record, or a `pmid`, `pmcid` or `doi`) and a title.
+    `resultType=core` search returns on every record, or a `pmid`, `pmcid` or `doi`) and a title, and
+    every identifier field it carries (`EPMC_IDENTIFIER_FIELDS`, other than an explicit null) a string.
 
     A hit without them gave no record to look into: it became the placeholder target `epmc:<index>`, was
     set aside for carrying no NCT token, and the route read `no_candidate_in_completed_scope`, a
     completed negative that `unreported_across_completed_routes` builds on. The whole answer is now
     unusable instead, so the route stays incomplete (the conservative side if a real record lacks one).
+    A mistyped identifier beside a readable one is refused too: `_epmc_target` turned a numeric `pmid`
+    into text and preferred it, so an exact NCT token made the route a verified link to an identifier
+    the source never wrote as one.
     """
     return (
         isinstance(hit, dict)
-        and any(_nonblank_str(hit.get(k)) for k in ('id', 'pmid', 'pmcid', 'doi'))
+        and any(_nonblank_str(hit.get(k)) for k in EPMC_IDENTIFIER_FIELDS)
+        and all(hit.get(k) is None or isinstance(hit[k], str) for k in EPMC_IDENTIFIER_FIELDS)
         and _nonblank_str(hit.get('title'))
     )
 
@@ -1177,12 +1186,51 @@ def fetch_openfda(
 
 # ---------------------------------------------------------------- local offline seeding
 
+def _is_ctgov_version_answer(obj: Any) -> bool:
+    """Whether `obj` is a CT.gov `/version` answer: an object holding exactly `apiVersion` and
+    `dataTimestamp`, as every one in the stored response logs does."""
+    return isinstance(obj, dict) and set(obj) == {'apiVersion', 'dataTimestamp'}
+
+
+def _studies_in_ctgov_answer(obj: Any) -> list[Any]:
+    """The study records one CT.gov answer holds: itself for a study, the entries of a `studies` page,
+    none for a `/version` answer.
+
+    Any other value is returned as a record of its own, so that `ctgov_study_problem` refuses it by
+    position. A study that lost its `protocolSection`, or a `studies` value that is not a list, used
+    to be skipped, and the freeze went ahead with a smaller batch than the one supplied, with nothing
+    reported (only an ID given with `--nct-list` was caught).
+    """
+    if isinstance(obj, dict) and 'protocolSection' not in obj and isinstance(obj.get('studies'), list):
+        return list(obj['studies'])
+    if _is_ctgov_version_answer(obj):
+        return []
+    return [obj]
+
+
+def _local_log_line_failed(line: dict[str, Any]) -> bool:
+    """Whether a response-log line records a request that got no answer: `status` null (a transport
+    error, as `ResponseLog` writes it) or an HTTP status other than 200 (a 404, a 400). Such a line
+    holds no study by design. A 200 line must hold a study, a `studies` page or a `/version` answer,
+    and a missing `status` or any other value (such as `unusable_200`, an answer that could not be
+    read) is refused rather than skipped."""
+    if 'status' not in line:
+        return False
+    status = line['status']
+    return status is None or (isinstance(status, int) and not isinstance(status, bool) and status != 200)
+
+
 def _iter_studies_from_local_file(path: Path) -> Iterable[Any]:
     """Yield raw CT.gov v2 study dicts from `.json`, `.json.gz`, `.jsonl`, or `.jsonl.gz`.
 
-    Every entry of a `studies` list, or of a top-level list, is yielded whatever its shape, since each
-    is meant to be a study: the caller refuses a malformed one rather than letting it drop out. A
-    top-level object that is not a study or study envelope (a version or other log line) is skipped.
+    A file, or each JSONL line, may be a study, a `studies` page, a list of studies (`.json` only), a
+    CT.gov `/version` answer (which holds none), or a response-log line (an object with a `body`,
+    whose answer is read the same way when its `status` is 200, and which holds none when the request
+    got no answer: `_local_log_line_failed`). Everything else is yielded as a record of its own,
+    whatever its shape, and so is every entry of a `studies` page or list: the caller refuses a
+    malformed one rather than letting it drop out. The stored local files hold only these shapes:
+    2,522 study files, a `studies` page, a list, 1,944 study lines, and log lines holding 9,933 pages,
+    54 studies, 11 text-body pages, 6 `/version` answers and 33 failed (400) requests.
     """
     name = path.name
     is_gz = name.endswith('.gz')
@@ -1193,27 +1241,22 @@ def _iter_studies_from_local_file(path: Path) -> Iterable[Any]:
             if not raw_line.strip():
                 continue
             obj = json.loads(raw_line.rstrip(b'\r').decode('utf-8'))
-            if isinstance(obj, dict) and 'protocolSection' in obj:
+            if not (isinstance(obj, dict) and 'body' in obj and 'protocolSection' not in obj):
+                yield from _studies_in_ctgov_answer(obj)
+            elif _local_log_line_failed(obj):
+                continue
+            elif obj.get('status') != 200:
                 yield obj
-            elif isinstance(obj, dict) and isinstance(obj.get('body'), str):
-                inner = json.loads(obj['body'])
-                if isinstance(inner, dict) and isinstance(inner.get('studies'), list):
-                    yield from inner['studies']
-            elif isinstance(obj, dict) and isinstance(obj.get('body'), dict):
+            else:
                 body = obj['body']
-                if 'protocolSection' in body:
-                    yield body
-                elif isinstance(body.get('studies'), list):
-                    yield from body['studies']
+                yield from _studies_in_ctgov_answer(json.loads(body) if isinstance(body, str) else body)
         return
 
     parsed = json.loads(raw.decode('utf-8'))
-    if isinstance(parsed, dict) and 'protocolSection' in parsed:
-        yield parsed
-    elif isinstance(parsed, dict) and isinstance(parsed.get('studies'), list):
-        yield from parsed['studies']
-    elif isinstance(parsed, list):
+    if isinstance(parsed, list):
         yield from parsed
+    else:
+        yield from _studies_in_ctgov_answer(parsed)
 
 
 def ingest_local_ctgov_records(
