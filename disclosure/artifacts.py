@@ -959,8 +959,37 @@ def check_contract(
     *,
     raw_file_hashes: dict[str, str] | None = None,
 ) -> list[str]:
-    """Validate all structural, provenance, domain, and recount invariants across the family."""
+    """Validate all structural, provenance, domain, and recount invariants across the family.
+
+    The checks read nested parts of each file as the build writes them. A malformed part they do not
+    test first (`"studies": 7` raised `TypeError`) stopped the contract CLI and the exporter with a
+    traceback, so any exception is reported as a problem beside those found before it: the contract
+    fails closed and never passes a build it could not read.
+    """
     problems: list[str] = []
+    try:
+        return _check_contract(files, raw_file_hashes, problems)
+    except Exception as exc:  # noqa: BLE001 - reported as a failure, never a pass
+        return problems + [
+            f'contract check stopped on a malformed artifact ({type(exc).__name__}: {exc}); the build is not valid'
+        ]
+
+
+# The per-trial collections the recounts iterate: file, key.
+TRIAL_COLLECTIONS: tuple[tuple[str, str], ...] = (
+    ('studies.json', 'studies'),
+    ('links.json', 'links'),
+    ('coverage.json', 'trials'),
+    ('timelines.json', 'timelines'),
+)
+
+
+def _check_contract(
+    files: dict[str, Any],
+    raw_file_hashes: dict[str, str] | None,
+    problems: list[str],
+) -> list[str]:
+    """`check_contract`'s checks, appending to `problems` as they go."""
     run = files.get('run.json')
     if not isinstance(run, dict):
         return ['run.json is missing or not an object']
@@ -1058,6 +1087,15 @@ def check_contract(
             problems.append(f'forbidden statutory non-compliance claim in artifact text: {s[:120]!r}')
             break
 
+    # Each per-trial collection must be a list of objects before it is iterated (`"studies": 7` raised
+    # `TypeError` in the recount below).
+    shapeless = [
+        f'{name}: `{key}` is not a list of objects'
+        for name, key in TRIAL_COLLECTIONS
+        if not (isinstance(files[name].get(key), list) and all(isinstance(x, dict) for x in files[name][key]))
+    ]
+    if shapeless:
+        return problems + shapeless
     studies = files['studies.json'].get('studies') or []
     links = files['links.json'].get('links') or []
     cov_rows = files['coverage.json'].get('trials') or []

@@ -3982,3 +3982,45 @@ def test_a_sibling_whose_root_is_not_an_object_fails_without_a_traceback(
     assert cli_check.main([str(bad)]) == 1
     files, _ = ART.load_dir(bad)
     assert 'summary.json: root JSON value is not an object' in ART.check_contract(files)
+
+
+@pytest.mark.parametrize(
+    ('name', 'key'),
+    [('studies.json', 'studies'), ('links.json', 'links'), ('coverage.json', 'trials'),
+     ('timelines.json', 'timelines')],
+)
+def test_a_per_trial_collection_that_is_not_a_list_is_reported(
+    built_files: dict[str, Any], name: str, key: str
+) -> None:
+    # On 70bc8fe `"studies": 7` passed the shape checks and the recount raised `TypeError`.
+    files = copy.deepcopy(built_files)
+    files[name][key] = 7
+    assert f'{name}: `{key}` is not a list of objects' in ART.check_contract(files)
+
+
+@pytest.mark.parametrize(
+    'path',
+    [('timelines.json', 'timelines', 0, 'milestones'), ('sponsors.json', 'partition_summary', 'literals')],
+)
+def test_any_other_malformed_part_fails_the_contract_without_a_traceback(
+    built_files: dict[str, Any], path: tuple[Any, ...]
+) -> None:
+    # On 70bc8fe each raised inside the contract. A single-value mutation over the fixture build (860 paths
+    # to depth 4) found 42 such raises; every one is now a reported failure beside the problems found before.
+    files = copy.deepcopy(built_files)
+    holder: Any = files
+    for key in path[:-1]:
+        holder = holder[key]
+    holder[path[-1]] = 7
+    problems = ART.check_contract(files)
+    assert any(p.startswith('contract check stopped on a malformed artifact') for p in problems), problems
+    assert any('canonical sha256 does not match run.json' in p for p in problems)
+
+
+def test_the_contract_cli_reports_a_malformed_collection(tmp_path: Path, built_dir: Path) -> None:
+    bad = tmp_path / 'bad_collection'
+    shutil.copytree(built_dir, bad)
+    studies = json.loads((bad / 'studies.json').read_text(encoding='utf-8'))
+    studies['studies'] = 7
+    (bad / 'studies.json').write_text(json.dumps(studies), encoding='utf-8')
+    assert cli_check.main([str(bad)]) == 1

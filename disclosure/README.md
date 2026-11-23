@@ -124,7 +124,9 @@ python3 scripts/build_drug_disclosure.py build \
 # was written: a year or month containing the generation day is accepted. generated_at stays out of
 # run_identity, so a rebuild at another time shares its identity and sibling files byte for byte;
 # run.json carries manifest_sha256, a digest of its own canonical content without that key, which the
-# contract recomputes, so an edited generated_at (or any other run.json field) is refused.
+# contract recomputes, so an edited generated_at (or any other run.json field) is refused. The contract
+# fails closed: a file whose root is not an object, a per-trial collection that is not a list of objects,
+# or any other part it cannot read is reported as a problem, never a traceback and never a pass.
 
 # 3. Producer contract check and atomic site export. run.json producer.commit and
 #    uncommitted_changes are null when git was missing or failed at build time (never false); such a
