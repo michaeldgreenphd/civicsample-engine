@@ -15,11 +15,23 @@ Key invariants:
   ``in_audit`` flag, audit-set, or allowlist check) and raises
   ``InvalidNctIdError`` immediately on any non-matching value without
   case-folding or whitespace stripping.
-- Hard ``in_audit`` holdout firewall: every entry point requires explicit
+- Hard ``in_audit`` holdout firewall: every verify entry point
+  (``verify_census_corpus``, ``verify_document_record``,
+  ``verify_location_record``, ``verify_citation``,
+  ``verify_trial_completeness``, ``enforce_audit_holdout``) requires explicit
   ``bool`` ``in_audit`` (or verified ``in_scope_nct_ids`` + ``audit_nct_ids``)
   and non-empty ``audit_nct_ids`` by default, raising
   ``AuditHoldoutViolationError`` unconditionally before reading or inspecting
-  document text whenever an audit or unlisted trial is referenced. The
+  document text whenever an audit or unlisted trial is referenced; page
+  providers are bound to a scope instead (below). The exported pure helpers
+  (``check_note_page_counts``, ``check_neutral_language``,
+  ``scan_neutral_language``, ``scan_neutral_language_record``,
+  ``match_quotation_on_page``, ``normalize_for_page_match``, ``has_ellipsis``,
+  ``validate_citation_shape``, ``validate_status_citations``,
+  ``validate_strict_nct_id``) take no holdout parameter, read no file and
+  refuse no trial: they check only what they are handed, so a caller hands
+  them only records and text of trials a verify entry point has admitted, as
+  ``verify_location_record`` does. The
   caller's ``in_audit`` covers the record's own trial only: any other ID
   reached from a record (``docs_by_nct`` keys, nested ``nct_ids``, completeness
   rows, ``expected_*`` keys, URL tokens) is admitted only by membership of
@@ -41,16 +53,24 @@ Key invariants:
   checked against the audit set and, when it stands on its own, the
   derived-ID rule. An ID split across a key and its value
   (``{"NCT": "0123 4567"}``), written as a JSON number, or split over
-  neighbouring list items is read joined (``_iter_split_nct_readings``).
+  neighbouring list items or neighbouring values of one mapping is read
+  joined (``_iter_split_nct_readings``). Not read: an ID with no NCT marker
+  (a bare 8-digit number under a key whose words do not include ``nct``,
+  ``identifier 01234567`` in prose) and markup encodings such as HTML
+  character references; the record's own ``nct_id``, ``docs_by_nct`` keys and
+  page requests, not this text scan, decide what is opened.
 - The holdout flag is read under every spelling a reader takes for it
   (``inAudit``, ``IN_AUDIT``, ``in-audit``; ``_is_in_audit_key``); outside the
   index's own ``in_audit`` key it can only refuse.
 - Refusals name positions, never an audit trial: no message quotes an audit
   ID, a key or path component naming one, or (``validate_strict_nct_id``) a
   malformed value or context holding an NCT-like token (a JSON number whose
-  digits read as an ID included). The phase-A prescan, which runs before the
-  audit set is checked, withholds any position holding an NCT-like ID; the
-  named-key walk withholds a position naming an audit trial.
+  digits read as an ID included). A trial outside ``in_scope_nct_ids``, or one
+  nothing establishes is outside the holdout, may be held out (the audit set
+  given can omit it), so its refusal does not quote its ID either. The
+  phase-A prescan, which runs before the audit set is checked, withholds any
+  position holding an NCT-like ID; the named-key walk withholds a position
+  naming an audit trial.
 - JSON input is parsed by ``_load_json_strict``: an object repeating a key
   (``"in_audit": true, ..., "in_audit": false``) is refused, never read
   last-key-wins.
@@ -63,8 +83,9 @@ Key invariants:
   A list-shaped map is firewalled like a mapping; a map declaring two trials
   or two sha256 values is refused; a JSONL row naming no document and a
   single-file root declaring no sha256 are refused, never dropped or served
-  as every document's text. Page text answers only a request for the text
-  source it holds (declared, else its root's: pdfkit for ``pages_dir``, ocr
+  as every document's text; a page-map file or JSONL row holding no pages is
+  refused, not read as absent text. Page text answers only a request for the
+  text source it holds (declared, else its root's: pdfkit for ``pages_dir``, ocr
   for ``ocr_dir``); generic ``ocr`` text answers only a request naming an OCR
   source (``_is_ocr_text_source``), never ``pdfplumber``; one directory may
   not be both roots, nor hold the other; ``DictPageTextProvider`` keys
@@ -106,7 +127,8 @@ Key invariants:
   matched after NFKC folding with invisible characters removed.
 - A quotation compared with no page text (no page provider) is recorded, not
   passed silently: it is counted in ``quotations_not_compared`` and, as not
-  matched on its page, in ``substring_mismatches``.
+  matched on its page, in ``substring_mismatches``, and the corpus report is
+  not ``ok`` (``verify`` without ``--pages-dir`` exits 1).
 """
 from __future__ import annotations
 
@@ -130,7 +152,7 @@ from typing import (
 import unicodedata
 from urllib.parse import unquote
 
-__version__: Final[str] = "1.5.0"
+__version__: Final[str] = "1.6.0"
 # 1.3.0: record-wide NCT token rule, NOT_FOUND needs a document and a complete search
 # record, neutral-language guard over every field, stricter page maps (see module notes).
 # 1.4.0: loose NCT readings (separators, look-alike letters, combining marks), holdout flag
@@ -142,7 +164,10 @@ __version__: Final[str] = "1.5.0"
 # neutral guard reads keys, page values must be page lists, generic OCR text answers OCR
 # requests only, shared pages/OCR roots refused, unknown-version trial maps verify nothing,
 # quotations without page text counted (quotations_not_compared).
-VERIFIER_RULES_VERSION: Final[str] = "1.5.0"
+# 1.6.0: a corpus with quotations compared with no page text is not ok; refusals of a trial
+# outside the verified scope do not name it; a page-map file holding no pages is refused; an
+# ID split over neighbouring values of one mapping is read joined.
+VERIFIER_RULES_VERSION: Final[str] = "1.6.0"
 
 STRICT_NCT_ID_RE: Final[re.Pattern[str]] = re.compile(r"^NCT[0-9]{8}$", re.ASCII)
 
@@ -516,6 +541,10 @@ class CorpusVerificationReport:
     the last of these: with no page provider (``verify`` without
     ``--pages-dir``) every citation is counted there, so a structure-only run
     says in its report that no quotation was checked against a page.
+
+    ``ok`` is True only when no issue is an error and ``quotations_not_compared``
+    is 0: a run that compared a quotation with no page text did not verify it,
+    so it is never ok, whatever else it found.
     """
 
     ok: bool
@@ -908,7 +937,17 @@ def _iter_split_nct_readings(node: Any, *, context: str) -> list[tuple[str, str]
     - ``"NCT <scalar>"`` for every scalar (key or value) below a key whose
       words include ``nct`` (``_key_names_nct``), at any depth
       (``{"NCT": {"id": "99888888"}}``, ``{"nct_id": 99888888}``);
-    - neighbouring scalars of one list, ``"<item> <next item>"``.
+    - neighbouring scalars of one list, ``"<item> <next item>"``, and
+      neighbouring scalar values of one mapping in the order written,
+      ``"<value> <next value>"`` (``{"p": "NCT", "d": "99888888"}``).
+
+    Not read, by design: an ID with no NCT marker at all (a bare 8-digit
+    number or string under a key whose words do not include ``nct``, such as
+    ``{"related_trial": 99888888}``, or prose such as ``identifier
+    99888888``), and markup encodings such as HTML character references
+    (``NCT&#57;...``). Such text does not refuse a record. What is opened
+    or served is decided by the record's own ``nct_id``, ``docs_by_nct`` keys
+    and page requests, each firewalled strictly, never by these readings.
 
     The texts are only ever searched for NCT renderings (the audit rule and,
     for the bounded readings, the derived-ID rule); they are never shown or
@@ -918,6 +957,9 @@ def _iter_split_nct_readings(node: Any, *, context: str) -> list[tuple[str, str]
 
     def _walk(obj: Any, path: str, under_nct_key: bool) -> None:
         if isinstance(obj, Mapping):
+            # Neighbouring scalar values of one mapping, in the order written, are joined as a
+            # list's neighbouring items are: {"p": "NCT", "d": "99888888"} reads NCT 99888888.
+            previous_value: tuple[str, str] | None = None
             for raw_k, val in obj.items():
                 key = str(raw_k)
                 child_path = f"{path}.{key}"
@@ -929,7 +971,13 @@ def _iter_split_nct_readings(node: Any, *, context: str) -> list[tuple[str, str]
                     readings.append((child_path, f"{key} {scalar}"))
                     if key_is_nct:
                         readings.append((child_path, f"NCT {scalar}"))
+                    if previous_value is not None:
+                        readings.append(
+                            (f"{path}.{previous_value[0]}..{key}", f"{previous_value[1]} {scalar}")
+                        )
+                    previous_value = (key, scalar)
                 else:
+                    previous_value = None
                     _walk(val, child_path, key_is_nct)
         elif isinstance(obj, (list, tuple)):
             previous: str | None = None
@@ -998,23 +1046,32 @@ def _check_url_trial(
     in_scope_nct_ids: frozenset[str] | None,
 ) -> None:
     """Admit a strict, non-audit trial ID read from a URL, or raise (rules (3) for URLs)."""
+    # A trial outside the verified scope may be held out, so these refusals do not name it.
     if in_scope_nct_ids is not None and tok not in in_scope_nct_ids:
         raise AuditHoldoutViolationError(
-            f"Audit holdout refusal in {context}: URL references unlisted trial {tok!r}."
+            f"Audit holdout refusal in {_withhold_nct_like_position(context)}: the URL "
+            f"references a trial absent from in_scope_nct_ids (it is not named: it may be "
+            f"held out)."
         )
     # Same rule as ``_enforce_derived_nct_holdout``: with no record trial to compare
     # against and no in-scope set, the audit set alone cannot show that a URL's trial
     # is outside the holdout (it lists the holdout, not the trials outside it).
     if in_scope_nct_ids is None and expected_nct_id is None:
         raise AuditHoldoutViolationError(
-            f"Audit holdout refusal in {context}: URL references trial {tok!r}, and "
-            f"neither a record nct_id nor in_scope_nct_ids establishes it is outside the "
-            f"holdout."
+            f"Audit holdout refusal in {_withhold_nct_like_position(context)}: the URL "
+            f"references a trial that neither a record nct_id nor in_scope_nct_ids "
+            f"establishes is outside the holdout (it is not named)."
         )
     if expected_nct_id is not None and tok != expected_nct_id:
+        # With in_scope_nct_ids the token is a member (checked above) and may be named; without
+        # it, nothing establishes that the other trial is outside the holdout.
+        shown_tok = repr(tok) if in_scope_nct_ids is not None else "a trial that is not named"
+        shown_ctx = (
+            context if in_scope_nct_ids is not None else _withhold_nct_like_position(context)
+        )
         raise AuditHoldoutViolationError(
-            f"Audit holdout refusal in {context}: URL NCT {tok!r} disagrees with "
-            f"record nct_id={expected_nct_id!r}."
+            f"Audit holdout refusal in {shown_ctx}: the URL names {shown_tok}, which disagrees "
+            f"with record nct_id={expected_nct_id!r}."
         )
 
 
@@ -1452,7 +1509,9 @@ def enforce_audit_holdout(
         )
 
     # Messages about a trial that is, or may be, held out never quote its ID (the overlap is
-    # counted, the flagged trial is not named): a log of the refusal must not record it.
+    # counted, the flagged trial is not named): a log of the refusal must not record it. A
+    # trial absent from in_scope_nct_ids is of unknown status (the index given may leave its
+    # holdout rows out), so it is not named either.
     if checked_scope_ids is not None and (checked_audit_ids & checked_scope_ids):
         overlap_count = len(checked_audit_ids & checked_scope_ids)
         raise AuditHoldoutViolationError(
@@ -1485,8 +1544,8 @@ def enforce_audit_holdout(
 
     if checked_scope_ids is not None and checked_nct not in checked_scope_ids:
         raise AuditHoldoutViolationError(
-            f"Audit holdout firewall refusal: trial {checked_nct!r} is absent from verified "
-            f"in-scope index rows."
+            "Audit holdout firewall refusal: a trial absent from the verified in-scope index "
+            "rows was requested (it is not named: it may be held out)."
         )
 
     _require_scope_for_empty_audit_set(
@@ -1569,11 +1628,13 @@ def _enforce_derived_nct_holdout(
         )
         return
     if verified_nct is None or checked != verified_nct:
+        # The position may hold the refused trial's ID (a page-map path, a key above the
+        # field), so any position holding an NCT-like ID is withheld.
         raise AuditHoldoutViolationError(
-            f"Audit holdout refusal in {_withhold_if_names_trial(context, audit_nct_ids)}: "
-            f"trial {checked!r} is not the record's own trial ({verified_nct!r}) and no "
+            f"Audit holdout refusal in {_withhold_nct_like_position(context)}: "
+            f"it names a trial that is not the record's own ({verified_nct!r}) and no "
             f"in_scope_nct_ids was supplied, so nothing establishes that it is outside the "
-            f"holdout."
+            f"holdout (it is not named)."
         )
 
 
@@ -1996,14 +2057,15 @@ def _check_page_request_trial(
     if in_scope_nct_ids is not None:
         if checked not in in_scope_nct_ids:
             raise AuditHoldoutViolationError(
-                f"Audit holdout refusal: page lookup for unlisted trial {checked!r}."
+                "Audit holdout refusal: page lookup for a trial absent from in_scope_nct_ids "
+                "(it is not named: it may be held out)."
             )
         return checked
     if checked not in admitted_nct_ids:
         raise AuditHoldoutViolationError(
-            f"Audit holdout refusal: page lookup for {checked!r}, but the provider has no "
-            f"in_scope_nct_ids and no verify entry point admitted that trial, so nothing "
-            f"establishes that it is outside the holdout."
+            "Audit holdout refusal: page lookup for a trial that no verify entry point "
+            "admitted, and the provider has no in_scope_nct_ids, so nothing establishes that "
+            "it is outside the holdout (it is not named)."
         )
     return checked
 
@@ -2246,7 +2308,8 @@ class DictPageTextProvider:
                     )
                 if self._in_scope_nct_ids is not None and nct_key not in self._in_scope_nct_ids:
                     raise AuditHoldoutViolationError(
-                        f"Unlisted trial {nct_key!r} in DictPageTextProvider is absent from in_scope_nct_ids."
+                        "A stored key of DictPageTextProvider names a trial absent from "
+                        "in_scope_nct_ids (it is not named: it may be held out)."
                     )
                 if not _is_safe_pdf_filename(key[1]):
                     raise CitationVerificationError(
@@ -3452,7 +3515,10 @@ class DirectoryPageTextProvider:
         first). A sha256-keyed map that declares another trial raises (as for a
         JSON file); a trial-keyed map that declares another sha256 is another
         version's text and is skipped; a ``<sha256>`` file whose payload
-        declares another sha256 contradicts itself and raises.
+        declares another sha256 contradicts itself and raises. A file that is
+        this document's map (by its name, sha256 and text source) but holds no
+        page structure raises, as a JSONL row holding no pages does, rather
+        than being read as absent text.
 
         ``version_known`` is True when the map is keyed by the requested sha256
         (a ``<sha256>`` name, a JSONL row's ``sha256``) or declares it. A
@@ -3528,9 +3594,15 @@ class DirectoryPageTextProvider:
             if not self._source_serves(map_source, text_source):
                 continue  # another text source's text: not what the citation claims
             loaded = self._parse_page_map_payload(payload, source_desc=str(candidate))
-            if loaded is not None:
-                loaded_version_known = keyed_by == "sha" or declared_sha == sha256
-                break
+            if loaded is None:
+                # The file is this document's map by its name and what it declares, yet holds
+                # no page structure (``text_pages`` for ``pages``, metadata alone, a bare
+                # string): it is malformed, not absent, and is refused as the same JSONL row is.
+                raise CitationVerificationError(
+                    f"Page map {candidate} holds no pages (no 'pages' and no page-number keys)."
+                )
+            loaded_version_known = keyed_by == "sha" or declared_sha == sha256
+            break
 
         self._cache[cache_key] = (loaded, loaded_version_known)
         return loaded, loaded_version_known
@@ -3659,7 +3731,8 @@ def _validate_pdf_root_firewall(
                 )
             if in_scope_nct_ids is not None and tok not in in_scope_nct_ids:
                 raise AuditHoldoutViolationError(
-                    f"Audit holdout refusal in {ctx}: path references unlisted trial {tok!r}."
+                    "Audit holdout refusal: a pdf_root path component names a trial absent "
+                    "from in_scope_nct_ids (path withheld: it may be held out)."
                 )
         for candidate, bounded in _iter_loose_nct_candidates(part):
             if bounded and part != candidate:
@@ -5715,8 +5788,11 @@ def verify_census_corpus(
                 )
 
     has_error = any(issue.severity == "error" for issue in all_issues)
+    # A quotation compared with no page text is not a verified one: a run without a page
+    # provider says how many there were (``quotations_not_compared``) and is not ok, so its
+    # exit code and its ``ok`` never read as "the quotations were found on their pages".
     return CorpusVerificationReport(
-        ok=not has_error,
+        ok=not has_error and quotations_not_compared == 0,
         verifier_rules_version=VERIFIER_RULES_VERSION,
         neutral_vocab_sha256=NEUTRAL_LANGUAGE_VOCAB_SHA256,
         documents_checked=len(documents),

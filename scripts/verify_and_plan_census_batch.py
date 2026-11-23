@@ -14,7 +14,9 @@ Subcommands:
   ``unstarted_target_pass`` (a ``--pass-role second`` pass with no rows yet),
   ``amended_doc_or_outcome_delta``, ``unreadable_recoverable_ocr``
   (``image_only_scan`` / ``garbled_cmap``), and
-  ``unreadable_terminal_redacted`` (``redacted_cci_ppd``, ``$0`` skip), computes
+  ``unreadable_terminal_redacted`` (``redacted_cci_ppd``, ``$0`` skip), and
+  ``unreadable_subtype_unknown`` (UNREADABLE, but nothing names the subtype:
+  neither terminal nor scheduled), computes
   pre-launch budget guards (``max_launchable_shards``, ``launch_approved``),
   and emits deterministic ``/swarm`` shard manifests.
 
@@ -44,17 +46,23 @@ sha256 is fingerprinted as present but unidentified (``DOC_SHA256_ABSENT``).
 
 Runtime dependencies:
 - Python 3.11+ standard library (``argparse``, ``datetime``, ``gzip``,
-  ``hashlib``, ``json``, ``pathlib``, ``re``, ``sys``, ``typing``) plus
+  ``hashlib``, ``json``, ``math``, ``os``, ``pathlib``, ``re``, ``sys``,
+  ``typing``) plus
   ``src.citation_verifier`` and ``src.utils.pipeline_commit`` (which invokes
   ``git`` via ``subprocess`` when ``GITHUB_SHA`` is unset). Performs zero
   network calls.
 
 Exit codes:
-- ``0``: Verification passed or batch plan approved within ``--budget-cap-usd``.
-- ``1``: Verification errors found, schema/outcome-count contract failure, or
-  projected batch spend exceeds budget cap.
+- ``0``: Verification passed (every quotation found on its page) or batch plan
+  approved within ``--budget-cap-usd``.
+- ``1``: Verification errors found, a quotation compared with no page text
+  (``verify`` without ``--pages-dir``: the report counts them in
+  ``quotations_not_compared`` and is not ok), schema/outcome-count contract
+  failure, or projected batch spend exceeds budget cap.
 - ``2``: CLI usage error (e.g. missing ``--index``, ``--ocr-dir`` without
-  ``--pages-dir``, an output path that is an input), strict NCT ID failure
+  ``--pages-dir``, an output path that is an input, an input or output path
+  that cannot be read or written: missing, a directory, unreadable), strict
+  NCT ID failure
   (``InvalidNctIdError``), ``in_audit`` / unlisted-trial firewall refusal
   (``AuditHoldoutViolationError``), or ``plan --nct-id`` scope refusal
   (``PlanScopeError``).
@@ -113,7 +121,9 @@ PLANNER_SCHEMA_VERSION: Final[int] = 1
 # second pass is unstarted_target_pass; profile documents need provenance stamps; malformed
 # cohorts raise; sha-less documents are fingerprinted as unidentified; repeated JSON keys and
 # multi-list indexes are refused; outputs may not overwrite inputs.
-PLANNER_RULES_VERSION: Final[str] = "1.5.0"
+# 1.6.0: an UNREADABLE trial whose subtype nothing names is unreadable_subtype_unknown, not
+# redacted_cci_ppd; a profile's readability_summary names the subtype when rows do not.
+PLANNER_RULES_VERSION: Final[str] = "1.6.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
 CostSchedule = Literal["sliced", "full", "conservative"]
@@ -700,8 +710,21 @@ def classify_unreadable_subtype(
     docs: Sequence[Mapping[str, Any]],
     locations: Sequence[Mapping[str, Any]],
     doc_cache_by_sha256: Mapping[str, Mapping[str, Any]],
-) -> Literal["image_only_scan", "redacted_cci_ppd", "garbled_cmap"]:
-    """Deterministically partition an UNREADABLE trial into one of 3 operational buckets."""
+) -> Literal["image_only_scan", "redacted_cci_ppd", "garbled_cmap"] | None:
+    """Deterministically name the subtype of an UNREADABLE trial, or None when nothing names one.
+
+    Method, first match wins: an explicit bucket (a row's or document's
+    ``unreadable_subtype``/``unreadable_recovery_bucket``, a
+    ``readability_status`` of ``garbled_cmap``/``image_only_scan``), garbled
+    over scan over redacted; then a note keyword (``_GARBLED_NOTE_RE``), a
+    document with no text on any page or a scan keyword (``_SCAN_NOTE_RE``),
+    redaction markers or a redaction keyword (``_REDACTED_NOTE_RE``), and
+    last a document with some pages without text (scan). When none of these
+    is present the subtype is unknown and None is returned: a row that says
+    only "unreadable" (or "OCR is needed", which serves a scan and a garbled
+    font alike) is no evidence of redaction, and ``redacted_cci_ppd`` is the
+    terminal ``$0`` bucket that is never scheduled again.
+    """
     explicit_buckets: set[str] = set()
     has_blank_pages = False
     has_pure_zero_text_doc = False
@@ -759,7 +782,7 @@ def classify_unreadable_subtype(
         return "redacted_cci_ppd"
     if has_blank_pages:
         return "image_only_scan"
-    return "redacted_cci_ppd"
+    return None
 
 
 def _trial_matches_cohort(row: Mapping[str, Any], cohort: str | None) -> bool:
@@ -1030,6 +1053,11 @@ def plan_incremental_cohort(
     settle. With ``pass_role`` a full non-primary pass (``second``), a trial
     with no rows of that pass is ``unstarted_target_pass`` (scheduled by
     ``resume-unstarted`` and ``incremental-delta``), not an amendment.
+
+    An UNREADABLE trial is filed by the subtype ``classify_unreadable_subtype``
+    names, else by its profile's ``readability_summary``; when neither names
+    one it is ``unreadable_subtype_unknown``: counted, listed under no
+    subtype, and neither terminal nor scheduled in any mode.
     """
     if type(text_source) is not str or not _is_non_empty_str(text_source):
         raise CitationVerificationError(
@@ -1291,6 +1319,7 @@ def plan_incremental_cohort(
         "amended_doc_or_outcome_delta": [],
         "unreadable_recoverable_ocr": [],
         "unreadable_terminal_redacted": [],
+        "unreadable_subtype_unknown": [],
     }
     # A full pass other than primary (``second``) is started per trial by its own rows; the
     # sparse passes (ocr_recovery, adjudication) cover chosen cells of the primary grid.
@@ -1362,6 +1391,18 @@ def plan_incremental_cohort(
                 unresolved_unreadable_rows or primary_locs,
                 doc_cache_by_sha256,
             )
+            if subtype is None and profile is not None:
+                # The profile's own readability summary names the subtype when the rows and
+                # documents do not (a trial with no rows yet is unreadable by its profile).
+                summary = profile.get("readability_summary")
+                if summary in {"image_only_scan", "garbled_cmap"}:
+                    subtype = summary
+            if subtype is None:
+                # Nothing names the subtype: recorded as unknown, neither the terminal $0
+                # bucket nor scheduled for recovery (which would spend on a guess). Setting
+                # ``unreadable_subtype`` on its rows or documents files it.
+                partitions["unreadable_subtype_unknown"].append(nct_id)
+                continue
             unreadable_by_subtype[subtype].append(nct_id)
             if subtype == "redacted_cci_ppd":
                 partitions["unreadable_terminal_redacted"].append(nct_id)
@@ -1648,8 +1689,9 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     ``--pages-dir`` (OCR maps would be dropped without a word, and every
     quotation compared with nothing), and a ``--report-out`` that is an input
     of the run. Without ``--pages-dir`` no quotation is compared with page
-    text: the report counts them (``quotations_not_compared``) and a warning
-    says so on stderr.
+    text: the report counts them (``quotations_not_compared``), is not ok, and
+    a warning says so on stderr, so the run exits 1 rather than pass
+    quotations nothing checked.
     """
     if not args.index:
         raise AuditHoldoutViolationError(
@@ -1799,7 +1841,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         print(
             f"WARNING: {report.quotations_not_compared} of {report.citations_checked} citation "
             f"quotation(s) were not compared with page text (no --pages-dir); the report checks "
-            f"their structure only.",
+            f"their structure only and is not ok.",
             file=sys.stderr,
         )
     return 0 if report.ok else 1
@@ -2045,7 +2087,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI entry point returning 0 (ok), 1 (gate fail), or 2 (firewall/NCT/scope/usage refusal)."""
+    """CLI entry point returning 0 (ok), 1 (gate fail), or 2 (firewall/NCT/scope/usage refusal).
+
+    A file that cannot be read or written (``OSError``: a mistyped path, a
+    directory, no permission, a corrupt gzip) means the run could not start or
+    finish as asked, so it is a usage error (2), never a verification result.
+    """
     parser = build_parser()
     try:
         args = parser.parse_args(list(argv) if argv is not None else None)
@@ -2070,6 +2117,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except CitationVerificationError as exc:
         print(f"ERROR [verification]: {exc}", file=sys.stderr)
         return 1
+    except OSError as exc:
+        print(f"ERROR [usage]: cannot read or write a file of this run: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

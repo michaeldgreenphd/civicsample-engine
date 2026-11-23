@@ -3447,3 +3447,214 @@ def test_m4_f442_repeated_json_key_in_page_map_refused(tmp_path: Path) -> None:
     )
     with pytest.raises(AuditHoldoutViolationError):
         DirectoryPageTextProvider(root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET)
+
+
+# ---------------------------------------------------------------------------
+# Round-5 fixes on m4 (fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+
+def test_m4_r5_corpus_without_page_text_is_not_ok() -> None:
+    """A corpus whose quotations were compared with no page text is not ok.
+
+    ``ok`` was ``not has_error`` alone, so a run with no page provider was ok
+    beside ``quotations_not_compared`` equal to every citation checked.
+    """
+    rows = [_make_location(nct_id=RT_SCOPE_ID, element=element) for element in ELEMENTS]
+    report = verify_census_corpus(
+        [_make_doc(nct_id=RT_SCOPE_ID)],
+        rows,
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+    )
+    assert report.quotations_not_compared == report.citations_checked == len(ELEMENTS)
+    assert report.ok is False
+    assert report.to_dict()["ok"] is False
+    # NO_DOCUMENT rows carry no quotation: nothing was left uncompared, so they stay ok.
+    no_doc_rows = [
+        _make_location(
+            nct_id=RT_SCOPE_ID,
+            element=element,
+            status="NO_DOCUMENT",
+            citations=[],
+            note="No protocol or SAP posted.",
+        )
+        for element in ELEMENTS
+    ]
+    no_doc = verify_census_corpus(
+        [],
+        no_doc_rows,
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+        expected_has_documents_by_nct={RT_SCOPE_ID: False},
+    )
+    assert no_doc.quotations_not_compared == 0 and no_doc.ok is True
+
+
+def test_m4_r5_refusals_do_not_quote_an_unlisted_trial(tmp_path: Path) -> None:
+    """A refusal of a trial outside the verified scope does not name it: it may be held out.
+
+    The audit set checked first holds only the holdout trials the caller
+    listed; a trial absent from the in-scope rows (an index built without its
+    holdout rows, a partial library scope) is of unknown status, and the
+    module's rule is that a trial that is, or may be, held out is not named.
+    """
+    digits = RT_UNLISTED_ID[3:]
+    doc = _make_doc(nct_id=RT_SCOPE_ID)
+    url = f"https://cdn.clinicaltrials.gov/large-docs/99/{RT_UNLISTED_ID}/Prot_000.pdf"
+    pdf_root = tmp_path / "r5_pdfs"
+    (pdf_root / RT_UNLISTED_ID).mkdir(parents=True)
+
+    def _enforce_unlisted() -> None:
+        enforce_audit_holdout(
+            RT_UNLISTED_ID, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+        )
+
+    def _note_without_scope() -> None:
+        verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID, note=f"Same protocol as {RT_UNLISTED_ID}."),
+            docs_by_nct={RT_SCOPE_ID: {"Prot_000.pdf": doc}},
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+
+    def _url_in_scope() -> None:
+        verify_document_record(
+            {**doc, "url": url}, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+        )
+
+    def _url_without_scope() -> None:
+        verify_document_record({**doc, "url": url}, in_audit=False, audit_nct_ids=RT_AUDIT_SET)
+
+    def _scoped_page_lookup() -> None:
+        DictPageTextProvider(
+            pages_by_sha256={SHA_A: _RT_M4_PAGES},
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+        ).get_page_text(RT_UNLISTED_ID, "Prot_000.pdf", SHA_A, 2)
+
+    def _unscoped_page_lookup() -> None:
+        DictPageTextProvider(
+            pages_by_sha256={SHA_A: _RT_M4_PAGES}, audit_nct_ids=RT_AUDIT_SET
+        ).get_page_text(RT_UNLISTED_ID, "Prot_000.pdf", SHA_A, 2)
+
+    def _stored_key() -> None:
+        DictPageTextProvider(
+            pages_by_key={(RT_UNLISTED_ID, "Prot_000.pdf", 2): "Some text."},
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+        )
+
+    def _pdf_root_component() -> None:
+        verify_document_record(
+            doc, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET, pdf_root=pdf_root
+        )
+
+    for call in (
+        _enforce_unlisted,
+        _note_without_scope,
+        _url_in_scope,
+        _url_without_scope,
+        _scoped_page_lookup,
+        _unscoped_page_lookup,
+        _stored_key,
+        _pdf_root_component,
+    ):
+        with pytest.raises(AuditHoldoutViolationError) as exc_info:
+            call()
+            pytest.fail(f"{call.__name__}: the unlisted trial was admitted")
+        assert digits not in str(exc_info.value), (
+            f"{call.__name__}: the refusal names the unlisted trial: {exc_info.value}"
+        )
+
+
+def test_m4_r5_module_docstring_names_the_helpers_without_holdout_parameters() -> None:
+    """The holdout-firewall invariant names each exported function that takes no holdout input.
+
+    It said "every entry point requires explicit bool in_audit", while
+    ``check_note_page_counts`` takes a trial ID and no holdout parameter and
+    returns findings for whatever trial it is given.
+    """
+    import inspect
+
+    doc = cv_mod.__doc__ or ""
+    start = doc.index("- Hard ``in_audit`` holdout firewall")
+    bullet = doc[start : doc.index("\n- ", start + 1)]
+    holdout_params = {"in_audit", "audit_nct_ids", "in_scope_nct_ids"}
+    for name in cv_mod.__all__:
+        obj = getattr(cv_mod, name)
+        if not inspect.isfunction(obj):
+            continue
+        if holdout_params & set(inspect.signature(obj).parameters):
+            continue
+        assert f"``{name}``" in bullet, (
+            f"{name} takes no holdout parameter and the firewall invariant does not say so"
+        )
+
+
+def test_m4_r5_page_map_file_without_pages_is_refused(tmp_path: Path) -> None:
+    """A page-map file holding no pages is refused, as the same JSONL row is.
+
+    ``_load_doc_pages`` moved past a parsed file with no page structure, so a
+    malformed map (``text_pages`` for ``pages``) was reported as missing page
+    text (``CITATION_PAGE_TEXT_UNAVAILABLE``) instead of being refused.
+    """
+    cases: dict[str, tuple[str, Any]] = {
+        "misnamed_key": (f"{SHA_A}.json", {"sha256": SHA_A, "text_pages": _RT_M4_PAGES}),
+        "metadata_only": (f"{SHA_A}.json", {"sha256": SHA_A}),
+        "trial_keyed": (
+            f"{RT_SCOPE_ID}/Prot_000.json",
+            {"nct_id": RT_SCOPE_ID, "sha256": SHA_A, "text_pages": _RT_M4_PAGES},
+        ),
+        "json_string": (f"{SHA_A}.json", "page text without any page structure"),
+    }
+    for name, (rel, payload) in cases.items():
+        root = tmp_path / f"r5_{name}"
+        _rt_m4_write_page_map(root, rel, payload)
+        with pytest.raises(CitationVerificationError):
+            DirectoryPageTextProvider(
+                root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+            ).get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+            pytest.fail(f"{name}: a page map holding no pages was read as absent text")
+
+    # Control: the same file with a ``pages`` list serves its page.
+    root = tmp_path / "r5_control"
+    _rt_m4_write_page_map(root, f"{SHA_A}.json", {"sha256": SHA_A, "pages": _RT_M4_PAGES})
+    provider = DirectoryPageTextProvider(
+        root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+    )
+    assert provider.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2) == _RT_M4_PAGES[1]
+
+
+def test_m4_r5_id_split_over_neighbouring_mapping_values_is_read_joined() -> None:
+    """An ID split over neighbouring values of one mapping is read joined, as a list's are.
+
+    ``["NCT", "99888888"]`` was read joined while ``{"p": "NCT", "d": "99888888"}``
+    was not, so a row naming the holdout trial that way was accepted.
+    """
+    digits = RT_AUDIT_ID[3:]
+    for extra in (
+        {"x": {"p": "NCT", "d": digits}},
+        {"x": {"p": "NCT", "d": int(digits)}},
+        {"x": {"p": "NCT No.", "d": digits}},
+    ):
+        with pytest.raises(AuditHoldoutViolationError) as exc_info:
+            _rt_f442_verify_location(_make_location(nct_id=RT_SCOPE_ID, extra=extra))
+            pytest.fail(f"{extra!r} was not read as the audit trial")
+        assert digits not in str(exc_info.value)
+    with pytest.raises(AuditHoldoutViolationError):
+        cv_mod._scan_strings_for_audit_nct_tokens(
+            {"label": "NCT", "number": digits}, context="study", audit_nct_ids=RT_AUDIT_SET
+        )
+    # An unlisted trial split the same way follows the derived-ID rule.
+    with pytest.raises(AuditHoldoutViolationError):
+        _rt_f442_verify_location(
+            _make_location(nct_id=RT_SCOPE_ID, extra={"x": {"p": "NCT", "d": RT_UNLISTED_ID[3:]}})
+        )
+    # Controls: an in-scope trial split the same way, and neighbouring values naming no trial.
+    assert _rt_f442_verify_location(
+        _make_location(nct_id=RT_SCOPE_ID, extra={"x": {"p": "NCT", "d": RT_SCOPE_ID_2[3:]}})
+    ) == []
+    assert _rt_f442_verify_location(
+        _make_location(nct_id=RT_SCOPE_ID, extra={"x": {"label": "Version", "d": "12345678"}})
+    ) == []

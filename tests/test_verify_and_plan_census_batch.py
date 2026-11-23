@@ -2474,7 +2474,13 @@ def test_redteam_m4_cli_pdf_root_symlink_into_audit_path_refused(tmp_path: Path)
     control_root = tmp_path / "pdf_control"
     (control_root / RT_SCOPE_ID).mkdir(parents=True)
     (control_root / RT_SCOPE_ID / "Prot_000.pdf").write_bytes(pdf_bytes)
-    assert main(["verify", *args, "--pdf-root", str(control_root)]) == 0
+    # Round 5: verify without page text is not ok (exit 1), so the control gives its pages.
+    control_pages = _rt_m4_pages_dir(
+        tmp_path / "pdf_control_pages", {f"{pdf_sha}.json": {"pages": _RT_M4_PAGES}}
+    )
+    assert main(
+        ["verify", *args, "--pdf-root", str(control_root), "--pages-dir", str(control_pages)]
+    ) == 0
 
     audit_store = tmp_path / "pdf_store" / RT_AUDIT_ID
     audit_store.mkdir(parents=True)
@@ -2800,7 +2806,11 @@ def test_redteam_m4_cli_obfuscated_audit_id_tokens_refused(tmp_path: Path) -> No
     look-alike letter or a variation selector passes, and the row is recorded.
     """
     clean_args = _rt_m4_inputs(tmp_path, "obf_control")
-    assert main(["verify", *clean_args]) == 0
+    # Round 5: verify without page text is not ok (exit 1), so the control gives its pages.
+    control_pages = _rt_m4_pages_dir(
+        tmp_path / "obf_verify_control_pages", {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}}
+    )
+    assert main(["verify", *clean_args, "--pages-dir", str(control_pages)]) == 0
     clean_cache = tmp_path / "obf_cache_control.jsonl"
     _write_jsonl(clean_cache, [{"sha256": SHA_1, "title": "Protocol version 2"}])
     assert main(["plan", *clean_args, "--doc-cache", str(clean_cache)]) == 0
@@ -3155,7 +3165,9 @@ def test_m4_r3_index_row_classic_nct_id_must_be_its_trial(tmp_path: Path) -> Non
     index_rows = _rt_index_rows()
     index_rows[0]["NCTId"] = RT_SCOPE_ID
     same = _rt_m4_inputs(tmp_path, "classic_same", index_rows=index_rows)
-    assert main(["verify", *same]) == 0
+    # Round 5: verify without page text is not ok (exit 1), so the control gives its pages.
+    pages = _rt_m4_pages_dir(tmp_path / "classic_pages", {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}})
+    assert main(["verify", *same, "--pages-dir", str(pages)]) == 0
     index_rows[0]["NCTId"] = [RT_SCOPE_ID, RT_SCOPE_ID_2]
     other = _rt_m4_inputs(tmp_path, "classic_other", index_rows=index_rows)
     assert main(["verify", *other]) == 2
@@ -3615,11 +3627,15 @@ def test_m4_f442_cli_plan_pages_dir(tmp_path: Path, capsys: pytest.CaptureFixtur
 def test_m4_f442_cli_verify_reports_quotations_not_compared(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """verify without --pages-dir counts the uncompared quotations and warns on stderr."""
+    """verify without --pages-dir counts the uncompared quotations, warns on stderr, and fails.
+
+    Round 5: exit 1, not 0, since no quotation was compared with its page
+    (``test_m4_r5_cli_verify_without_page_text_is_not_ok``).
+    """
     args = _rt_m4_inputs(tmp_path, "f442_verify_counts")
     report_path = tmp_path / "f442_verify_counts_report.json"
     capsys.readouterr()
-    assert main(["verify", *args, "--report-out", str(report_path)]) == 0
+    assert main(["verify", *args, "--report-out", str(report_path)]) == 1
     assert "were not compared with page text" in capsys.readouterr().err
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["quotations_not_compared"] == report["citations_checked"] == len(ELEMENTS)
@@ -3648,3 +3664,168 @@ def test_m4_f442_cli_index_row_list_key_must_hold_a_list(
     Path(args[1]).write_text(json.dumps({"rows": {"0": _rt_index_rows()[0]}}), encoding="utf-8")
     rc, _ = _rt_f442_run(["verify", *args], capsys)
     assert rc == 2
+
+
+# ---------------------------------------------------------------------------
+# Round-5 fixes on m4 (fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+
+def test_m4_r5_cli_verify_without_page_text_is_not_ok(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """verify without --pages-dir compares no quotation with any page, so it does not pass.
+
+    Before this fix the run exited 0 with ``ok`` true beside
+    ``substring_mismatches`` 7 and ``quotations_not_compared`` 7, while the
+    same rows with an empty --pages-dir exited 1: the run that knew less got
+    the quieter result. Quotations nothing checked are not verified ones.
+    """
+    for name, locations in (
+        ("r5_fabricated", _rt_f442_fabricated_locations()),
+        ("r5_true_quotes", None),
+    ):
+        args = _rt_m4_inputs(tmp_path, name, locations=locations)
+        report_path = tmp_path / f"{name}_report.json"
+        rc, printed = _rt_f442_run(["verify", *args, "--report-out", str(report_path)], capsys)
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        assert report["quotations_not_compared"] == report["citations_checked"] == len(ELEMENTS)
+        assert report["ok"] is False, f"{name}: no quotation was compared, yet the report is ok"
+        assert rc == 1, f"{name}: exit {rc} for a run that compared no quotation with its page"
+        assert "were not compared with page text" in printed
+
+    # Control: with page text, the true quotations verify (exit 0).
+    args = _rt_m4_inputs(tmp_path, "r5_true_quotes")
+    pages = _rt_m4_pages_dir(tmp_path / "r5_pages", {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}})
+    rc, _ = _rt_f442_run(["verify", *args, "--pages-dir", str(pages)], capsys)
+    assert rc == 0
+
+
+def test_m4_r5_unreadable_trial_without_subtype_evidence_is_not_filed_redacted() -> None:
+    """An UNREADABLE trial that nothing names a subtype for is unknown, not terminal redacted.
+
+    ``classify_unreadable_subtype`` returned ``redacted_cci_ppd`` when no
+    bucket, note keyword, redaction marker or blank page named a subtype, so a
+    row verify accepts ("unreadable; OCR is needed") was filed under the
+    ``$0`` terminal partition and never scheduled. With no evidence the
+    subtype is recorded as unknown: neither terminal nor scheduled, and
+    counted. A profile's ``readability_summary`` is evidence of the subtype of
+    a trial with no rows.
+    """
+    from src.citation_verifier import verify_location_record
+
+    assert (
+        classify_unreadable_subtype(
+            [{"filename": "Prot_000.pdf", "sha256": SHA_1}],
+            [{"status": "UNREADABLE", "note": ""}],
+            {},
+        )
+        is None
+    )
+
+    doc = _doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    locations = _complete_primary_locations(
+        RT_SCOPE_ID,
+        "Prot_000.pdf",
+        SHA_1,
+        unreadable_elements={"margin", "multiplicity"},
+        unreadable_note="The statistical section is unreadable; OCR is needed to read it.",
+    )
+    # Control: verify accepts the UNREADABLE rows and their note.
+    for loc in locations:
+        if loc["status"] == "UNREADABLE":
+            _, issues = verify_location_record(
+                loc,
+                docs_by_nct={RT_SCOPE_ID: {"Prot_000.pdf": doc}},
+                audit_nct_ids=frozenset({RT_AUDIT_ID}),
+                in_scope_nct_ids=frozenset({RT_SCOPE_ID}),
+            )
+            assert [i.code for i in issues if i.severity == "error"] == []
+
+    for mode in ("recover-unreadable", "incremental-delta"):
+        plan = plan_incremental_cohort(
+            _rt_index_rows(), documents=[doc], locations=locations, mode=mode
+        )
+        assert plan["partitions"]["unreadable_terminal_redacted"] == [], (
+            f"{mode}: a trial with no redaction evidence was filed as terminal redacted"
+        )
+        assert plan["unreadable_subtypes"]["redacted_cci_ppd"] == []
+        assert plan["partitions"].get("unreadable_subtype_unknown") == [RT_SCOPE_ID]
+        assert plan["partition_counts"].get("unreadable_subtype_unknown") == 1
+        assert plan["scheduled_trial_count"] == 0
+        assert plan["ocr_prepass_queue"] == []
+
+    # A trial with no rows whose profile says it is an image-only scan is recoverable.
+    profiles = {
+        RT_SCOPE_ID: {
+            "nct_id": RT_SCOPE_ID,
+            "in_audit": False,
+            "readability_summary": "image_only_scan",
+            "documents": [doc],
+        }
+    }
+    plan = plan_incremental_cohort(
+        _rt_index_rows(), profiles_by_nct=profiles, mode="recover-unreadable"
+    )
+    assert plan["partitions"]["unreadable_terminal_redacted"] == []
+    assert plan["partitions"]["unreadable_recoverable_ocr"] == [RT_SCOPE_ID]
+    assert plan["unreadable_subtypes"]["image_only_scan"] == [RT_SCOPE_ID]
+    assert plan["scheduled_trial_count"] == 1
+
+
+def test_m4_r5_cli_unreadable_input_is_a_usage_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An input path that cannot be read exits 2 (the run could not start), never 1.
+
+    Exit 1 means the inputs were read and failed verification or the budget;
+    a mistyped path used to escape ``main`` as a traceback with Python's exit 1.
+    """
+    args = _rt_m4_inputs(tmp_path, "r5_io")
+    missing = str(tmp_path / "r5_io" / "missing.jsonl")
+    cases = {
+        "verify, missing --index": ["verify", "--index", missing, *args[2:]],
+        "verify, --index is a directory": ["verify", "--index", str(tmp_path), *args[2:]],
+        "verify, missing --documents": ["verify", *args[:2], "--documents", missing, *args[4:]],
+        "verify, missing --locations": ["verify", *args[:4], "--locations", missing],
+        "plan, missing --index": ["plan", "--index", missing],
+        "plan, missing --documents": ["plan", *args[:2], "--documents", missing],
+    }
+    for name, argv in cases.items():
+        try:
+            rc, printed = _rt_f442_run(argv, capsys)
+        except OSError as exc:
+            pytest.fail(f"{name}: {type(exc).__name__} escaped main instead of exit 2")
+        assert rc == 2, f"{name}: exit {rc}"
+        assert "ERROR [usage]" in printed, f"{name}: {printed!r}"
+
+
+def test_m4_r5_runtime_dependency_lists_name_every_stdlib_import() -> None:
+    """Each m4 module's stated standard-library list names every stdlib module it imports."""
+    import ast
+    import re
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[1]
+    for rel in (
+        "scripts/verify_and_plan_census_batch.py",
+        "src/citation_verifier.py",
+        "src/longitudinal_provenance.py",
+    ):
+        tree = ast.parse((repo_root / rel).read_text(encoding="utf-8"))
+        imported: set[str] = set()
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                imported.add(node.module)
+        stdlib = {
+            name
+            for name in imported
+            if name.split(".")[0] in sys.stdlib_module_names and name != "__future__"
+        }
+        docstring = ast.get_docstring(tree) or ""
+        listed = re.search(r"standard library \(([^)]*)\)", docstring)
+        assert listed is not None, f"{rel}: no standard-library list in the module docstring"
+        named = set(re.findall(r"``([A-Za-z0-9_.]+)``", listed.group(1)))
+        assert stdlib - named == set(), f"{rel}: imports {sorted(stdlib - named)} unlisted"
