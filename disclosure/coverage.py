@@ -251,6 +251,16 @@ def ctgov_results_cell(
     )
 
 
+def _pubmed_lookup_settled(literature_records: dict[str, dict[str, Any]], pmid: str) -> bool:
+    """Whether the cache holds a final PubMed answer for `pmid`: a 404, or a 200 that
+    `A.pubmed_esummary_valid` accepts. A 200 holding no entry for the PMID, or an empty one, counts as
+    a failed lookup, also in a cache frozen before acquisition applied that rule."""
+    rec = literature_records.get(f'literature/pubmed_pmid/{pmid}') or {}
+    return rec.get('status') == 404 or (
+        rec.get('status') == 200 and A.pubmed_esummary_valid(rec.get('body'), pmid)
+    )
+
+
 def registry_references_cell(
     nct_id: str,
     ctgov_rec: dict[str, Any] | None,
@@ -324,10 +334,7 @@ def registry_references_cell(
     # candidate state (a person's `confirmed_same_trial_results` above still verifies the route).
     pmids = [r['pmid'] for r in refs if r['pmid'] and A.PMID_RE.match(r['pmid'])]
     if literature_acquired and pmids:
-        failed_pmids = [
-            p for p in pmids
-            if (literature_records.get(f'literature/pubmed_pmid/{p}') or {}).get('status') not in (200, 404)
-        ]
+        failed_pmids = [p for p in pmids if not _pubmed_lookup_settled(literature_records, p)]
         if failed_pmids:
             return _cell(
                 route,

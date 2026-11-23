@@ -526,13 +526,26 @@ def epmc_search_valid(body: Any) -> bool:
 
 
 def pubmed_esummary_valid(body: Any, pmid: str) -> bool:
+    """Whether an NCBI esummary answer settles the lookup of `pmid`.
+
+    NCBI's JSON esummary gives each requested ID an entry under `result`, keyed by the ID and carrying
+    it as `uid` (`{"uid": "99000001", "title": ...}`); an ID it cannot resolve gets an entry with an
+    `error` (`{"uid": ..., "error": "cannot get document summary"}`). An entry with neither, such as
+    `{}`, holds no evidence that the PMID resolved, yet it was settled and read as
+    `identifier_confirmed`, so a RESULT reference verified its route. It is now logged as unusable and
+    the lookup stays incomplete. An error entry is accepted with or without `uid` (its shape has not
+    been checked against the live API): it can only read as `identifier_not_resolved`, never verify.
+    """
     if not isinstance(body, dict):
         return False
     res = body.get('result')
     if not isinstance(res, dict):
         return False
     entry = res.get(pmid)
-    return isinstance(entry, dict)
+    if not isinstance(entry, dict):
+        return False
+    error = entry.get('error')
+    return entry.get('uid') == pmid or (isinstance(error, str) and bool(error.strip()))
 
 
 def openfda_drugsfda_valid(body: Any) -> bool:
@@ -1230,6 +1243,16 @@ def ingest_local_ctgov_records(
         raise ValueError(
             f'data_timestamp {data_timestamp!r} is later than fetched_at {fetched_at!r}: records retrieved '
             'then cannot reflect a later CT.gov refresh'
+        )
+    # The cache holds the records, so they cannot have been retrieved after it was frozen: a stated
+    # retrieval in 2100 for a cache frozen in 2026 published an impossible acquisition time, and its data
+    # timestamp (up to 14 hours later) became the default `as_of`. The freeze time is chosen here, before
+    # anything is written, and passed on to `freeze_cache`.
+    frozen_at = frozen_at or now_utc()
+    if datetime.fromisoformat(fetched_at) > datetime.fromisoformat(frozen_at):
+        raise ValueError(
+            f'fetched_at {fetched_at!r} is later than the freeze ({frozen_at!r}): records cannot be '
+            'retrieved after the cache that holds them is frozen'
         )
     if cache_dir.exists() and (not cache_dir.is_dir() or any(cache_dir.iterdir())):
         raise CacheIntegrityError(

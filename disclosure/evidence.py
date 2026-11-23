@@ -476,8 +476,10 @@ def build_registry_reference_links(
                         detail={'retractions': ref['retractions']},
                     )
                 )
-            elif pm_rec.get('status') == 200 and isinstance((pm_rec.get('body') or {}).get('result'), dict):
-                entry = pm_rec['body']['result'].get(pmid) or {}
+            # The acquisition rule (`A.pubmed_esummary_valid`), applied again to a cache frozen before it:
+            # an entry without a matching `uid` or an `error` is not evidence that the PMID resolved.
+            elif pm_rec.get('status') == 200 and A.pubmed_esummary_valid(pm_rec.get('body'), pmid):
+                entry = pm_rec['body']['result'][pmid]
                 if entry.get('error'):
                     out.append(
                         _new_link(

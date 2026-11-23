@@ -2969,7 +2969,10 @@ def test_unreadable_reference_entry_blocks_negative_states_but_not_a_verified_re
                           references=[{'pmid': '31234570', 'type': reference_type, 'citation': 'Fictional et al.'}])
     study['protocolSection']['referencesModule']['references'].append('PMID 31234571')
     ctgov_rec = {'status': 200, 'body': study}
-    lit = {'literature/pubmed_pmid/31234570': {'status': 200, 'body': {'result': {}}}}
+    # A resolved esummary answer carries the PMID's entry with its `uid` (an empty `result` is no
+    # evidence of resolution, test_empty_pubmed_entry_is_a_failed_lookup_not_a_verified_link).
+    entry = {'uid': '31234570', 'title': 'Fictional results.', 'pubdate': '2021 Mar'}
+    lit = {'literature/pubmed_pmid/31234570': {'status': 200, 'body': {'result': {'31234570': entry}}}}
     links = E.build_registry_reference_links(nct, ctgov_rec, lit)
     assert len(links) == 1
     cell = C.registry_references_cell(nct, ctgov_rec, links, lit, True)
@@ -2979,6 +2982,61 @@ def test_unreadable_reference_entry_blocks_negative_states_but_not_a_verified_re
     # A person's confirmation of the readable entry settles the route either way.
     confirmed = [dict(links[0], review_status='confirmed_same_trial_results')]
     assert C.registry_references_cell(nct, ctgov_rec, confirmed, lit, True)['state'] == 'verified_link'
+
+
+@pytest.mark.parametrize('body', [
+    {'result': {}},
+    {'result': {'31234570': {}}},
+    {'result': {'31234570': {'title': 'No uid'}}},
+    {'result': {'31234570': {'uid': '31234571', 'title': 'Another PMID'}}},
+])
+def test_empty_pubmed_entry_is_a_failed_lookup_not_a_verified_link(tmp_path: Path, body: dict[str, Any]) -> None:
+    # On 4acf4ae each was settled at acquisition and read as `identifier_confirmed`, so a RESULT reference
+    # made the route `verified_link` with no evidence that the PMID resolved.
+    nct = 'NCT09990027'
+    study = F._make_study(nct, title='Empty PubMed answer', lead_sponsor='Fictional Sponsor',
+                          references=[{'pmid': '31234570', 'type': 'RESULT', 'citation': 'Fictional et al.'}])
+    ctgov_rec = {'status': 200, 'body': study}
+    assert not A.pubmed_esummary_valid(body, '31234570')
+    lit = {'literature/pubmed_pmid/31234570': {'status': 200, 'body': body}}  # a cache frozen before the rule
+    links = E.build_registry_reference_links(nct, ctgov_rec, lit)
+    assert [x['automated_validation'] for x in links] == ['not_validated']
+    cell = C.registry_references_cell(nct, ctgov_rec, links, lit, True)
+    assert cell['state'] == 'search_incomplete_or_blocked', cell
+    assert cell['detail']['failed_pmids'] == ['31234570']
+    # At acquisition the answer is logged as unusable, never settled.
+    log = A.ResponseLog(A.raw_log_path(tmp_path / 'cache', 'literature'))
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    rec = A.logged_json(log, lambda url, params: F._json_resp(body), throttle,
+                        'literature/pubmed_pmid/31234570', A.NCBI_EUTILS, {'id': '31234570'},
+                        valid=lambda b: A.pubmed_esummary_valid(b, '31234570'))
+    assert rec['status'] == A.UNUSABLE_200
+
+
+def test_resolved_and_unresolved_pubmed_entries_are_accepted() -> None:
+    assert A.pubmed_esummary_valid({'result': {'31234570': {'uid': '31234570', 'title': 'x'}}}, '31234570')
+    assert A.pubmed_esummary_valid({'result': {'31234570': {'uid': '31234570', 'error': 'cannot get'}}}, '31234570')
+    assert A.pubmed_esummary_valid({'result': {'31234570': {'error': 'cannot get document summary'}}}, '31234570')
+    assert not A.pubmed_esummary_valid({'result': {'31234570': {'error': '  '}}}, '31234570')
+
+
+def test_local_freeze_refuses_a_retrieval_time_after_the_freeze(tmp_path: Path) -> None:
+    # On 4acf4ae a --fetched-at in 2100 froze, and the build's default as_of followed its data timestamp.
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'NCT09990004.json').write_text(json.dumps(F.STUDIES['NCT09990004']), encoding='utf-8')
+    cache = tmp_path / 'local_cache'
+    with pytest.raises(ValueError, match='is later than the freeze'):
+        A.ingest_local_ctgov_records(local_src, cache, fetched_at='2100-01-01T00:00:00Z',
+                                     data_timestamp='2099-12-31T10:00:00', frozen_at=F.GENERATED_AT)
+    assert not cache.exists()
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
+                           '--fetched-at', '2100-01-01T00:00:00Z', '--data-timestamp', '2099-12-31T10:00:00']) == 1
+    assert not cache.exists()
+    # Control: a retrieval time equal to the freeze is accepted.
+    manifest = A.ingest_local_ctgov_records(local_src, cache, fetched_at=F.GENERATED_AT,
+                                            data_timestamp='2026-11-01T08:00:00', frozen_at=F.GENERATED_AT)
+    assert manifest['frozen_at'] == F.GENERATED_AT
 
 
 @pytest.mark.parametrize('entry', [{}, {'type': 'RESULT'}, {'type': 'RESULT', 'citation': '   '}])
