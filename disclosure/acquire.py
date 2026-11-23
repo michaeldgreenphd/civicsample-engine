@@ -384,17 +384,85 @@ def ctgov_version_valid(body: Any) -> bool:
     )
 
 
-def ctgov_study_valid(body: Any) -> bool:
-    if not isinstance(body, dict):
-        return False
-    ps = body.get('protocolSection')
-    if not isinstance(ps, dict):
-        return False
-    ident = ps.get('identificationModule')
+# Every part of a CT.gov v2 study record the build reads, with the type it must have when present
+# (`None` counts as absent, as the readers' `or {}` treat it). A part of another type made a reader's
+# `.get` raise and stopped an offline build (`statusModule: ["bad"]`), or was read as absent. The
+# interventions and references modules are checked per route instead (`drug_planning_problem`,
+# `registry_references_problem`), and a non-boolean `hasResults` is insufficient evidence by design.
+_STR, _INT, _BOOL = (str,), (int,), (bool,)
+CTGOV_STUDY_PARTS: tuple[tuple[tuple[str, ...], type, tuple[tuple[str, tuple[type, ...]], ...]], ...] = (
+    (('protocolSection', 'identificationModule'), dict, (('briefTitle', _STR), ('officialTitle', _STR))),
+    (('protocolSection', 'statusModule'), dict,
+     (('overallStatus', _STR), ('resultsFirstSubmitDate', _STR), ('resultsFirstSubmitQcDate', _STR))),
+    (('protocolSection', 'statusModule', 'primaryCompletionDateStruct'), dict, (('date', _STR), ('type', _STR))),
+    (('protocolSection', 'statusModule', 'completionDateStruct'), dict, (('date', _STR), ('type', _STR))),
+    (('protocolSection', 'statusModule', 'resultsFirstPostDateStruct'), dict, (('date', _STR), ('type', _STR))),
+    (('protocolSection', 'designModule'), dict, (('studyType', _STR),)),
+    (('protocolSection', 'designModule', 'enrollmentInfo'), dict, (('count', _INT), ('type', _STR))),
+    (('protocolSection', 'designModule', 'phases'), list, ()),
+    (('protocolSection', 'conditionsModule'), dict, ()),
+    (('protocolSection', 'conditionsModule', 'conditions'), list, ()),
+    (('protocolSection', 'sponsorCollaboratorsModule'), dict, ()),
+    (('protocolSection', 'sponsorCollaboratorsModule', 'leadSponsor'), dict, (('name', _STR), ('class', _STR))),
+    (('protocolSection', 'sponsorCollaboratorsModule', 'collaborators'), list, ()),
+    (('protocolSection', 'oversightModule'), dict, (('isFdaRegulatedDrug', _BOOL),)),
+    (('resultsSection',), dict, ()),
+)
+# List parts whose entries the build reads, with the entry type and the entry fields read.
+CTGOV_STUDY_LIST_ENTRIES: dict[tuple[str, ...], tuple[type, tuple[tuple[str, tuple[type, ...]], ...]]] = {
+    ('protocolSection', 'designModule', 'phases'): (str, ()),
+    ('protocolSection', 'conditionsModule', 'conditions'): (str, ()),
+    ('protocolSection', 'sponsorCollaboratorsModule', 'collaborators'): (dict, (('name', _STR), ('class', _STR))),
+}
+
+
+def _value_is(value: Any, types: tuple[type, ...]) -> bool:
+    """`isinstance`, except that a bool is not an int (`True` is not an enrollment count)."""
+    return isinstance(value, types) and not (isinstance(value, bool) and bool not in types)
+
+
+def ctgov_study_problem(body: Any) -> str | None:
+    """Why `body` is not a CT.gov v2 study record the build can read, or None when it is.
+
+    It needs a `protocolSection` object with an `identificationModule` object whose `nctId` is an NCT
+    ID, and every part in `CTGOV_STUDY_PARTS` (and every entry in `CTGOV_STUDY_LIST_ENTRIES`) must have
+    its type when present. All 3,371 distinct trials and all 75,811 study entries in the stored local
+    files pass.
+    """
+    if not isinstance(body, dict) or not isinstance(body.get('protocolSection'), dict):
+        return 'no protocolSection object'
+    ident = body['protocolSection'].get('identificationModule')
     if not isinstance(ident, dict):
-        return False
+        return 'no identificationModule object'
     nct = ident.get('nctId')
-    return isinstance(nct, str) and NCT_RE.match(nct) is not None
+    if not (isinstance(nct, str) and NCT_RE.match(nct)):
+        return f'identificationModule.nctId {nct!r} is not an NCT ID'
+    for path, part_type, fields in CTGOV_STUDY_PARTS:
+        value: Any = body
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        if value is None:
+            continue
+        where = '.'.join(path)
+        if not isinstance(value, part_type):
+            return f'{where} is {type(value).__name__}, not {part_type.__name__}'
+        for field, types in fields:
+            if value.get(field) is not None and not _value_is(value[field], types):
+                return f'{where}.{field} is {type(value[field]).__name__}, not {types[0].__name__}'
+        if path in CTGOV_STUDY_LIST_ENTRIES:
+            entry_type, entry_fields = CTGOV_STUDY_LIST_ENTRIES[path]
+            for i, entry in enumerate(value):
+                if not isinstance(entry, entry_type):
+                    return f'{where}[{i}] is {type(entry).__name__}, not {entry_type.__name__}'
+                for field, types in entry_fields:
+                    if entry.get(field) is not None and not _value_is(entry[field], types):
+                        return f'{where}[{i}].{field} is {type(entry[field]).__name__}, not {types[0].__name__}'
+    return None
+
+
+def ctgov_study_valid(body: Any) -> bool:
+    """Whether `body` is a study record the build can read (`ctgov_study_problem`)."""
+    return ctgov_study_problem(body) is None
 
 
 def ctgov_study_answers(body: Any, nct_id: str) -> bool:
@@ -472,7 +540,8 @@ def openfda_drugsfda_valid(body: Any) -> bool:
 # last number, it left `prednisone 5-` or `prednisone 5 to` in the query phrase. A range is taken only
 # when a unit follows it, so codes such as `5-FU` and `Ro 09-1978/000` are kept.
 DRUG_STRENGTH_RE = re.compile(
-    r'\b\d+(?:\.\d+)?(?:\s*(?:-|\u2013|\u2014|to)\s*\d+(?:\.\d+)?)?(?:\s*/\s*\d+(?:\.\d+)?)*\s*'
+    r'\b(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?'
+    r'(?:\s*(?:-|\u2013|\u2014|to)\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)?(?:\s*/\s*\d+(?:\.\d+)?)*\s*'
     r'(?:%|(?:units?|mmol|nmol|pmol|meq|mcg|[\u00b5\u03bc]g|ug|ng|mg|ml|iu|g|u)'
     r'(?:\s*/\s*(?:dose|day|hour|min|hr|h|mcg|[\u00b5\u03bc]g|kg|m2|m\u00b2|mg|ml|dl|ug|g|l))*)'
     r'(?=\W|$)',
@@ -919,12 +988,9 @@ def studies_from_ctgov_records(ctgov_records: dict[str, dict[str, Any]], nct_ids
     for nct_id in sorted(set(nct_ids)):
         rec = ctgov_records.get(f'ctgov/study/{nct_id}')
         body = rec.get('body') if rec and rec.get('status') == 200 else None
-        own_id = (
-            (((body or {}).get('protocolSection') or {}).get('identificationModule') or {}).get('nctId')
-            if isinstance(body, dict)
-            else None
-        )
-        out[nct_id] = body if isinstance(body, dict) and own_id == nct_id else None
+        # Only a readable record that is the trial's own (`ctgov_study_answers`): the timeline and the
+        # sponsor context read it without further type checks.
+        out[nct_id] = body if ctgov_study_answers(body, nct_id) else None
     return out
 
 
@@ -1174,13 +1240,16 @@ def ingest_local_ctgov_records(
     # the limit are only skipped, never compared or frozen.
     limit_reached = False
     # A study record that is not a valid CT.gov v2 study (no protocolSection object, identification
-    # module or NCT ID) is refused, not skipped: skipping it froze a smaller batch than the one
-    # supplied, with nothing reported (with `--nct-list` only a listed trial's absence was caught).
+    # module or NCT ID, or a part the build reads of the wrong type: `ctgov_study_problem`) is refused,
+    # not skipped: skipping it froze a smaller batch than the one supplied, with nothing reported (with
+    # `--nct-list` only a listed trial's absence was caught), and freezing a mistyped part froze a cache
+    # the build could not read (`statusModule: ["bad"]` raised `AttributeError`).
     malformed: list[str] = []
     for file_path in files:
         for position, st in enumerate(_iter_studies_from_local_file(file_path), start=1):
-            if not ctgov_study_valid(st):
-                malformed.append(f'{file_path.name} study {position}')
+            problem = ctgov_study_problem(st)
+            if problem:
+                malformed.append(f'{file_path.name} study {position}: {problem}')
                 continue
             nct_id = st['protocolSection']['identificationModule']['nctId']
             if wanted is not None and nct_id not in wanted:
@@ -1195,8 +1264,8 @@ def ingest_local_ctgov_records(
                 conflicting.setdefault(nct_id, (first_seen_in[nct_id], file_path))
     if malformed:
         raise ValueError(
-            f'{source_path}: {len(malformed)} study record(s) are not valid CT.gov v2 study records with an '
-            f'NCT ID (first: {malformed[0]}); fix or remove them rather than freeze a smaller batch'
+            f'{source_path}: {len(malformed)} study record(s) are not valid CT.gov v2 study records the build '
+            f'can read (first: {malformed[0]}); fix or remove them rather than freeze a smaller batch'
         )
     if conflicting:
         first_id = sorted(conflicting)[0]

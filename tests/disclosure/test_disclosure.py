@@ -316,6 +316,16 @@ def test_an_edited_archive_sidecar_is_refused_at_load(
             A.load_frozen_cache(cache)
 
 
+def _study_with(base: dict[str, Any], path: tuple[str, ...], value: Any) -> dict[str, Any]:
+    """A deep copy of `base` with the part at `path` set to `value`."""
+    out = copy.deepcopy(base)
+    parent = out
+    for key in path[:-1]:
+        parent = parent[key]
+    parent[path[-1]] = value
+    return out
+
+
 @pytest.mark.parametrize(
     ('layout', 'bad'),
     [
@@ -323,6 +333,9 @@ def test_an_edited_archive_sidecar_is_refused_at_load(
         ('file', {'protocolSection': 'projected'}),
         ('list', 'NCT09990005'),
         ('list', {'hasResults': False}),
+        # A part the build reads, of the wrong type, froze a cache the build could not read.
+        ('file', _study_with(F.STUDIES['NCT09990005'], ('protocolSection', 'statusModule'), ['bad'])),
+        ('list', _study_with(F.STUDIES['NCT09990005'], ('protocolSection', 'designModule', 'enrollmentInfo'), [1])),
     ],
 )
 @pytest.mark.parametrize('with_nct_list', [False, True])
@@ -341,7 +354,7 @@ def test_freeze_local_refuses_malformed_study_records_instead_of_dropping_them(
         where = 'b.json study 2'
     ids = {'nct_ids': ['NCT09990004']} if with_nct_list else {}
     cache = tmp_path / 'cache'
-    with pytest.raises(ValueError, match=rf'1 study record\(s\) are not valid .*\(first: {re.escape(where)}\)'):
+    with pytest.raises(ValueError, match=rf'1 study record\(s\) are not valid .*\(first: {re.escape(where)}: '):
         A.ingest_local_ctgov_records(local_src, cache, **ids, **LOCAL_STAMPS)
     assert not (cache / 'manifest.json').exists()
     # Control: without the malformed record the batch freezes.
@@ -2311,6 +2324,11 @@ def test_reviews_for_trials_outside_the_build_are_out_of_scope_not_orphaned(
         ('Insulin 10-20 units', 'insulin'),
         ('5-FU 400 mg/m2', '5-fu'),
         ('Ro 09-1978/000', 'ro 09-1978 000'),
+        # A comma-grouped number is one strength (`50,000 IU` left `cholecalciferol 50` in the query).
+        ('Cholecalciferol 50,000 IU', 'cholecalciferol'),
+        ('Heparin 10,000 U/mL', 'heparin'),
+        ('Vitamin D3 1,000-4,000 IU', 'vitamin d3'),
+        ('Ergocalciferol 1,250 mcg', 'ergocalciferol'),
     ],
 )
 def test_normalize_drug_term_strips_activity_amount_and_micro_sign_strengths(
@@ -2900,3 +2918,50 @@ def test_reference_entry_with_a_mistyped_field_cannot_verify_the_route(entry: di
     cell = C.registry_references_cell(nct, ctgov_rec, links, lit, True)
     assert cell['state'] == 'search_incomplete_or_blocked', cell
     assert 'is not a string' in cell['reason']
+
+
+
+@pytest.mark.parametrize(
+    ('path', 'value', 'problem'),
+    [
+        (('protocolSection', 'statusModule'), ['bad'], 'protocolSection.statusModule is list, not dict'),
+        (('protocolSection', 'statusModule', 'primaryCompletionDateStruct'), '2021-03',
+         'primaryCompletionDateStruct is str, not dict'),
+        (('protocolSection', 'statusModule', 'completionDateStruct', 'date'), 20210301,
+         'completionDateStruct.date is int, not str'),
+        (('protocolSection', 'designModule', 'enrollmentInfo'), [240], 'enrollmentInfo is list, not dict'),
+        (('protocolSection', 'designModule', 'enrollmentInfo', 'count'), '240', 'enrollmentInfo.count is str, not int'),
+        (('protocolSection', 'designModule', 'enrollmentInfo', 'count'), True, 'enrollmentInfo.count is bool, not int'),
+        (('protocolSection', 'sponsorCollaboratorsModule', 'leadSponsor'), 'Fictional', 'leadSponsor is str, not dict'),
+        (('protocolSection', 'sponsorCollaboratorsModule', 'collaborators'), 7, 'collaborators is int, not list'),
+        (('protocolSection', 'sponsorCollaboratorsModule', 'collaborators'), ['CRO'],
+         'collaborators[0] is str, not dict'),
+        (('protocolSection', 'conditionsModule', 'conditions'), [7], 'conditions[0] is int, not str'),
+        (('protocolSection', 'oversightModule'), 'yes', 'oversightModule is str, not dict'),
+        (('resultsSection',), ['posted'], 'resultsSection is list, not dict'),
+    ],
+)
+def test_study_record_with_a_mistyped_part_reads_as_a_failed_lookup_not_a_crash(
+    tmp_path: Path, path: tuple[str, ...], value: Any, problem: str,
+) -> None:
+    # On fb74101 each of these raised (AttributeError / TypeError) in the timeline, evidence or study
+    # rows, so a frozen cache holding such a record could not be built.
+    nct = 'NCT09990001'
+    study = _study_with(F.STUDIES[nct], path, value)
+    assert problem in (A.ctgov_study_problem(study) or ''), A.ctgov_study_problem(study)
+    cache = F.acquire_fixture_cache(tmp_path / 'c')
+    cache.ctgov[f'ctgov/study/{nct}'] = dict(cache.ctgov[f'ctgov/study/{nct}'], body=study)
+    built = ART.build_artifacts(
+        cache,
+        reviews_path=ROOT / 'disclosure/reviews.csv',
+        statements_path=ROOT / 'disclosure/documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors/company_aliases.csv',
+        producer={'commit': None, 'uncommitted_changes': None},
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+        requested_nct_ids=[nct],
+    )
+    row = next(s for s in built['studies.json']['studies'] if s['nct_id'] == nct)
+    assert row['registry_state'] == 'lookup_failed'
+    cov = next(c for c in built['coverage.json']['trials'] if c['nct_id'] == nct)
+    assert all(cell['state'] != 'no_candidate_in_completed_scope' for cell in cov['routes']), cov
