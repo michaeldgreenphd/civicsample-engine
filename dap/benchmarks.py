@@ -571,6 +571,10 @@ LIST_ENTRY_FIELDS: dict[tuple[str, str], tuple[str, ...]] = {
     ("contactsLocationsModule", "locations"): ("country", "state"),
 }
 REQUIRED_STR = "required string"
+# The phase values a CT.gov registration holds. The 5,330 stored unprojected records use exactly these;
+# any other value (a typo such as PHASE_3, or a value CT.gov might add) is refused by name rather than
+# published as a phase stratum of its own, so a new CT.gov value would show up as a refusal here.
+CTGOV_PHASES: frozenset[str] = frozenset({"NA", "EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4"})
 BASELINE_SHAPE: dict[str, Any] = {
     "groups": {"title": str},
     "denoms": {"units": REQUIRED_STR, "counts": {}},
@@ -629,13 +633,13 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
                     for name in entry_fields or ()
                     if name in entry and not isinstance(entry[name], str)
                 ]
-        # normalize_phase turned any entry into text with str(), so [7] or [null] became a phase
-        # stratum of its own ("7", "NONE"). The stored records hold only CT.gov's six phase values.
+        # normalize_phase turned any entry into text with str() and kept any token, so [7], [null] or
+        # ["PHASE_3"] became a phase stratum of its own. Phases must be CT.gov's values (CTGOV_PHASES).
         design = protocol.get("designModule")
         if isinstance(design, dict) and "phases" in design:
             phases = design["phases"]
-            if not (isinstance(phases, list) and all(isinstance(p, str) and p.strip() for p in phases)):
-                out.append("designModule.phases (a list of non-blank strings)")
+            if not (isinstance(phases, list) and all(isinstance(p, str) and p in CTGOV_PHASES for p in phases)):
+                out.append("designModule.phases (a list of CT.gov phase values)")
         # The trial's key in every published file: a number such as 123 became the string "123".
         ident = protocol.get("identificationModule")
         if isinstance(ident, dict):
