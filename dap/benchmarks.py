@@ -1,0 +1,1538 @@
+"""Multi-site Diversity Action Plan (FDORA) stratification and sponsor peer benchmarks.
+
+Joins study records (weekly ``src/full_records.py`` containers or raw
+ClinicalTrials.gov API v2 study documents), optional ``condition_mesh.jsonl.gz``
+(``src/condition_mesh.py``), ``condition_ontology.json``, and read-only
+curated ``sponsors/`` attribution.
+
+Zero RNG, zero network calls, zero substring matching in sponsor attribution.
+"""
+from __future__ import annotations
+
+import calendar
+import gzip
+import hashlib
+import json
+import re
+from collections import Counter
+from datetime import date
+from pathlib import Path
+from typing import Any, Iterable
+
+import numpy as np
+from rapidfuzz import fuzz, process
+
+from dap import UNIT_BASIS
+from dap.demographics import (
+    ETHNICITY_CLASSIFIED_KEYS,
+    RACE_CLASSIFIED_KEYS,
+    SEX_GENDER_STATES,
+    TABLE_STATUSES,
+    attach_reference_medians,
+    extract_demographics,
+)
+from dap.geography import (
+    SITE_FOOTPRINT_CLASSES,
+    US_SITE_SHARE_BINS,
+    extract_geography,
+)
+from sponsors import adapter, audit_states, sponsor_roles
+from src import condition_mesh as cmesh
+from src import full_records
+
+ROOT: Path = Path(__file__).resolve().parents[1]
+DEFAULT_ONTOLOGY_PATH: Path = ROOT / "condition_ontology.json"
+DEFAULT_SPONSOR_RULES_PATH: Path = ROOT / "sponsors" / "company_aliases.csv"
+DEFAULT_MIN_CELL_TRIALS: int = 5
+
+# Statutory / regulatory milestones:
+# - 42 CFR Part 11 (FDAAA 801 Final Rule) effective date: 2017-01-18
+# - Food and Drug Omnibus Reform Act of 2022 (FDORA, Pub. L. 117-328,
+#   Section 3601 Diversity Action Plans) enactment date: 2022-12-29
+FINAL_RULE_EFFECTIVE_DATE: date = date(2017, 1, 18)
+FDORA_ENACTMENT_DATE: date = date(2022, 12, 29)
+
+REGULATORY_ERAS: tuple[str, ...] = (
+    "pre_2017_final_rule",
+    "post_2017_pre_fdora",
+    "post_2022_fdora",
+    "era_indeterminate",
+)
+
+SPONSOR_REVIEW_STATES: tuple[str, ...] = (
+    "attributed",
+    "reviewed_excluded",
+    "unreviewed",
+)
+
+STRATUM_KINDS: tuple[str, ...] = (
+    "ontology_footprint",
+    "ontology_us_share_bin",
+    "mesh_footprint",
+    "mesh_us_share_bin",
+    "indication_us_reference",
+)
+
+MESH_STATES_EXTENDED: tuple[str, ...] = tuple(cmesh.STATES) + ("mesh_sidecar_not_provided",)
+
+_SITE_PART_NAME_RX: re.Pattern[str] = re.compile(
+    r"^(?:demographics|studies_tab)\.part\d+\.json(?:\.gz)?$",
+    re.IGNORECASE,
+)
+_PARTIAL_DATE_RX: re.Pattern[str] = re.compile(
+    r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$"
+)
+_PUNCT_RE: re.Pattern[str] = re.compile(r"[^\w\s/-]")
+
+
+def sha256_file(path: Path) -> str:
+    """Compute SHA-256 hex digest of a file on disk."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+class OntologyClassifier:
+    """Deterministic condition classifier bound to an explicit ``condition_ontology.json`` file.
+
+    Reproduces ``src/condition_classifier.py`` exact-keyword + ``rapidfuzz``
+    matching without mutating module-level globals when custom ontology files
+    are supplied in tests.
+    """
+
+    def __init__(self, ontology_path: Path = DEFAULT_ONTOLOGY_PATH, fuzzy_threshold: int = 85) -> None:
+        self.ontology_path = ontology_path
+        self.fuzzy_threshold = fuzzy_threshold
+        raw = ontology_path.read_bytes()
+        self.sha256 = hashlib.sha256(raw).hexdigest()
+        doc = json.loads(raw.decode("utf-8"))
+        self.version = str((doc.get("metadata") or {}).get("version") or "unknown")
+        self._flat_lookup: dict[str, tuple[str, str]] = {}
+        for primary, secondaries in (doc.get("categories") or {}).items():
+            for secondary, keywords in secondaries.items():
+                for kw in keywords:
+                    self._flat_lookup[str(kw).lower()] = (str(primary), str(secondary))
+        self._all_keywords: list[str] = sorted(
+            self._flat_lookup.keys(),
+            key=lambda s: (-len(s), s),
+        )
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        cleaned = _PUNCT_RE.sub(" ", text.lower().strip())
+        return " ".join(cleaned.split())
+
+    def classify_one(self, condition: str) -> tuple[str, str]:
+        """Classify one condition string into ``(primary, secondary)``."""
+        if not condition or not condition.strip():
+            return ("Other", "Uncategorized")
+        norm = self._normalize(condition)
+        if not norm:
+            return ("Other", "Uncategorized")
+        for kw in self._all_keywords:
+            if kw in norm:
+                return self._flat_lookup[kw]
+        match = process.extractOne(
+            norm,
+            self._all_keywords,
+            scorer=fuzz.token_set_ratio,
+            score_cutoff=self.fuzzy_threshold,
+        )
+        if match is not None:
+            return self._flat_lookup[str(match[0])]
+        return ("Other", "Uncategorized")
+
+    def classify(self, conditions: Iterable[str]) -> dict[str, Any]:
+        """Classify a trial's condition list deterministically."""
+        cond_list = [str(c) for c in conditions if isinstance(c, str) and c.strip()]
+        if not cond_list:
+            return {
+                "primary_condition": "Other",
+                "secondary_condition": "Uncategorized",
+                "all_classifications": [],
+            }
+        all_cls: list[dict[str, str]] = []
+        primary_counts: dict[str, int] = {}
+        primary_to_secondary: dict[str, str] = {}
+        for cond in cond_list:
+            pri, sec = self.classify_one(cond)
+            all_cls.append({"condition": cond, "primary": pri, "secondary": sec})
+            primary_counts[pri] = primary_counts.get(pri, 0) + 1
+            if pri not in primary_to_secondary:
+                primary_to_secondary[pri] = sec
+        best_primary = max(primary_counts, key=lambda p: (primary_counts[p], p))
+        return {
+            "primary_condition": best_primary,
+            "secondary_condition": primary_to_secondary[best_primary],
+            "all_classifications": all_cls,
+        }
+
+
+def parse_partial_date_bounds(raw: str | None) -> tuple[date, date, str] | None:
+    """Parse ``YYYY-MM-DD``, ``YYYY-MM``, or ``YYYY`` into exact ``(min_date, max_date, precision)``.
+
+    Never fabricates ``-01`` days for partial dates: ``YYYY-MM`` spans the full
+    calendar month and ``YYYY`` spans ``YYYY-01-01`` through ``YYYY-12-31``.
+    Returns ``None`` when missing or malformed.
+    """
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    m = _PARTIAL_DATE_RX.match(text)
+    if not m:
+        return None
+    year = int(m.group(1))
+    month_s, day_s = m.group(2), m.group(3)
+    try:
+        if month_s is None:
+            return date(year, 1, 1), date(year, 12, 31), "year"
+        month = int(month_s)
+        if day_s is None:
+            last_day = calendar.monthrange(year, month)[1]
+            return date(year, month, 1), date(year, month, last_day), "month"
+        exact = date(year, month, int(day_s))
+        return exact, exact, "day"
+    except ValueError:
+        return None
+
+
+def classify_regulatory_era(record: dict[str, Any]) -> dict[str, Any]:
+    """Classify a trial's regulatory era from exact partial-date intervals.
+
+    Uses ``start_date`` (when enrollment commences, the statutory trigger for
+    FDORA Diversity Action Plans under 21 U.S.C. 355(z)(3)). If ``start_date``
+    is absent, a ``primary_completion_date`` wholly before ``2017-01-18``
+    bounds enrollment start to ``pre_2017_final_rule``; any partial date whose
+    ``[min_date, max_date]`` interval straddles ``2017-01-18`` or ``2022-12-29``
+    is classified as ``era_indeterminate`` rather than inventing a day.
+    """
+    protocol = record.get("protocolSection")
+    if isinstance(protocol, dict):
+        status_mod = protocol.get("statusModule") or {}
+        start_struct = status_mod.get("startDateStruct") or {}
+        pcomp_struct = status_mod.get("primaryCompletionDateStruct") or {}
+        start_raw = start_struct.get("date")
+        start_type = start_struct.get("type")
+        pcomp_raw = pcomp_struct.get("date")
+    else:
+        start_raw = record.get("start_date")
+        start_type = record.get("start_date_type")
+        pcomp_raw = record.get("primary_completion_date")
+
+    parsed_start = parse_partial_date_bounds(start_raw)
+    if parsed_start is not None:
+        lo, hi, precision = parsed_start
+        if hi < FINAL_RULE_EFFECTIVE_DATE:
+            era = "pre_2017_final_rule"
+            reason = "start_date_wholly_before_2017_01_18"
+        elif lo >= FINAL_RULE_EFFECTIVE_DATE and hi < FDORA_ENACTMENT_DATE:
+            era = "post_2017_pre_fdora"
+            reason = "start_date_wholly_within_2017_01_18_to_2022_12_28"
+        elif lo >= FDORA_ENACTMENT_DATE:
+            era = "post_2022_fdora"
+            reason = "start_date_on_or_after_2022_12_29"
+        elif lo < FINAL_RULE_EFFECTIVE_DATE <= hi:
+            era = "era_indeterminate"
+            reason = "partial_start_date_straddles_2017_01_18_cutoff"
+        else:
+            era = "era_indeterminate"
+            reason = "partial_start_date_straddles_2022_12_29_cutoff"
+        return {
+            "regulatory_era": era,
+            "date_basis": "start_date",
+            "date_raw": str(start_raw).strip(),
+            "date_type": str(start_type) if start_type else None,
+            "date_precision": precision,
+            "date_min": lo.isoformat(),
+            "date_max": hi.isoformat(),
+            "reason": reason,
+        }
+
+    parsed_pcomp = parse_partial_date_bounds(pcomp_raw)
+    if parsed_pcomp is not None and parsed_pcomp[1] < FINAL_RULE_EFFECTIVE_DATE:
+        lo, hi, precision = parsed_pcomp
+        return {
+            "regulatory_era": "pre_2017_final_rule",
+            "date_basis": "bounded_by_primary_completion_date",
+            "date_raw": str(pcomp_raw).strip(),
+            "date_type": None,
+            "date_precision": precision,
+            "date_min": lo.isoformat(),
+            "date_max": hi.isoformat(),
+            "reason": "missing_start_date_primary_completion_wholly_before_2017_01_18",
+        }
+
+    has_raw_start = isinstance(start_raw, str) and bool(start_raw.strip())
+    return {
+        "regulatory_era": "era_indeterminate",
+        "date_basis": None,
+        "date_raw": str(start_raw).strip() if has_raw_start else None,
+        "date_type": str(start_type) if start_type else None,
+        "date_precision": None,
+        "date_min": None,
+        "date_max": None,
+        "reason": "unparsable_start_date" if has_raw_start else "missing_start_date",
+    }
+
+
+def normalize_phase(record: dict[str, Any]) -> str:
+    """Normalize CT.gov study phase(s) across raw API v2 and weekly records."""
+    protocol = record.get("protocolSection")
+    raw_phases: list[str] = []
+    if isinstance(protocol, dict):
+        phases = (protocol.get("designModule") or {}).get("phases")
+        if isinstance(phases, list):
+            raw_phases = [str(p).strip().upper() for p in phases if str(p).strip()]
+    elif isinstance(record.get("phases"), list):
+        raw_phases = [str(p).strip().upper() for p in record["phases"] if str(p).strip()]
+    elif isinstance(record.get("phase"), str) and record["phase"].strip():
+        raw_phases = [
+            p.strip().upper().replace(" ", "_")
+            for p in re.split(r"[,;/]", record["phase"])
+            if p.strip()
+        ]
+
+    if not raw_phases:
+        return "PHASE_NOT_STATED"
+
+    cleaned: list[str] = []
+    for tok in raw_phases:
+        t = re.sub(r"[\s\-]+", "_", tok)
+        if t in ("N/A", "NOT_APPLICABLE"):
+            t = "NA"
+        if t not in cleaned:
+            cleaned.append(t)
+    order = {"EARLY_PHASE1": 0, "PHASE1": 1, "PHASE2": 2, "PHASE3": 3, "PHASE4": 4, "NA": 5}
+    cleaned.sort(key=lambda x: (order.get(x, 99), x))
+    return "_".join(cleaned)
+
+
+def _extract_core_metadata(record: dict[str, Any]) -> dict[str, Any]:
+    """Extract common trial identification, study type, conditions, and sponsor fields."""
+    protocol = record.get("protocolSection")
+    if isinstance(protocol, dict):
+        id_mod = protocol.get("identificationModule") or {}
+        design_mod = protocol.get("designModule") or {}
+        status_mod = protocol.get("statusModule") or {}
+        cond_mod = protocol.get("conditionsModule") or {}
+        sponsor_mod = protocol.get("sponsorCollaboratorsModule") or {}
+        lead = sponsor_mod.get("leadSponsor") or {}
+        enr_info = design_mod.get("enrollmentInfo") or {}
+        raw_collabs = sponsor_mod.get("collaborators") or []
+        collaborators = [
+            {
+                "name": str(c.get("name") or ""),
+                "class": str(c.get("class") or ""),
+            }
+            for c in raw_collabs
+            if isinstance(c, dict)
+        ]
+        enr_raw = enr_info.get("count")
+        enrollment: int | None = None
+        if isinstance(enr_raw, int) and not isinstance(enr_raw, bool):
+            enrollment = enr_raw
+        elif isinstance(enr_raw, (float, str)) and str(enr_raw).strip().isdigit():
+            enrollment = int(str(enr_raw).strip())
+        return {
+            "nct_id": str(id_mod.get("nctId") or "").strip(),
+            "brief_title": id_mod.get("briefTitle"),
+            "study_type": design_mod.get("studyType") or None,
+            "overall_status": status_mod.get("overallStatus") or None,
+            "enrollment": enrollment,
+            "enrollment_type": enr_info.get("type") or None,
+            "conditions": [str(c) for c in (cond_mod.get("conditions") or []) if isinstance(c, str)],
+            "lead_sponsor_name": lead.get("name") if lead.get("name") is not None else "Unknown",
+            "sponsor_class": lead.get("class") if lead.get("class") is not None else "Unknown",
+            "collaborators": collaborators,
+        }
+
+    enr_val = record.get("enrollment")
+    enrollment_w: int | None = None
+    if isinstance(enr_val, int) and not isinstance(enr_val, bool):
+        enrollment_w = enr_val
+    elif isinstance(enr_val, (float, str)) and str(enr_val).strip().isdigit():
+        enrollment_w = int(str(enr_val).strip())
+
+    enr_type = record.get("enrollment_type")
+    if enr_type == "N/A" or enr_type == "":
+        enr_type = None
+
+    raw_collabs_w = record.get("collaborators") or []
+    collaborators_w = [
+        {
+            "name": str(c.get("name") or ""),
+            "class": str(c.get("class") or ""),
+        }
+        for c in raw_collabs_w
+        if isinstance(c, dict)
+    ]
+    return {
+        "nct_id": str(record.get("nct_id") or "").strip(),
+        "brief_title": record.get("brief_title") or None,
+        "study_type": record.get("study_type") or None,
+        "overall_status": record.get("status") or record.get("overall_status") or None,
+        "enrollment": enrollment_w,
+        "enrollment_type": enr_type,
+        "conditions": [str(c) for c in (record.get("conditions") or []) if isinstance(c, str)],
+        "lead_sponsor_name": (
+            record["lead_sponsor_name"] if record.get("lead_sponsor_name") is not None else "Unknown"
+        ),
+        "sponsor_class": (
+            record["sponsor_class"] if record.get("sponsor_class") is not None else "Unknown"
+        ),
+        "collaborators": collaborators_w,
+    }
+
+
+def load_study_records(
+    path: Path,
+    *,
+    source_kind: str = "auto",
+    limit: int | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Load study records from weekly full-record JSON(.gz), a directory of raw
+    CT.gov v2 JSON(.gz) files, or a JSONL(.gz) archive of CT.gov v2 studies /
+    response logs.
+
+    Refuses ``demographics.part*.json.gz`` / ``studies_tab.part*.json.gz`` site
+    projections outright per ``AGENTS.md``.
+    """
+    if _SITE_PART_NAME_RX.match(path.name):
+        raise ValueError(
+            f"{path.name}: site dataset parts cannot substitute for full study records"
+        )
+    if not path.exists():
+        if source_kind == "full_records":
+            full_records.load(path)
+        raise ValueError(f"{path}: input path does not exist")
+
+    if path.is_dir():
+        candidates = sorted(
+            p for p in path.iterdir()
+            if p.is_file() and (p.name.endswith(".json") or p.name.endswith(".json.gz"))
+            and not _SITE_PART_NAME_RX.match(p.name)
+        )
+        if not candidates:
+            raise ValueError(f"{path}: directory contains no .json or .json.gz study files")
+        h = hashlib.sha256()
+        studies: list[dict[str, Any]] = []
+        for fpath in candidates:
+            raw = fpath.read_bytes()
+            h.update(fpath.name.encode("utf-8") + b"\0" + raw + b"\0")
+            text = gzip.decompress(raw).decode("utf-8") if fpath.name.endswith(".gz") else raw.decode("utf-8")
+            doc = json.loads(text)
+            if isinstance(doc, dict) and isinstance(doc.get("study"), dict):
+                doc = doc["study"]
+            if not isinstance(doc, dict):
+                raise ValueError(f"{fpath}: expected study JSON object")
+            studies.append(doc)
+        if limit is not None and limit > 0:
+            studies = studies[:limit]
+        return studies, {
+            "input_format": "records_directory",
+            "path": path.name,
+            "n_files": len(candidates),
+            "n_records": len(studies),
+            "sha256": h.hexdigest(),
+            "extracted_at": None,
+            "pipeline_commit": None,
+            "limit_applied": limit,
+        }
+
+    if source_kind == "full_records":
+        recs, extracted_at, pipeline_commit = full_records.load(path)
+        digest = sha256_file(path)
+        if limit is not None and limit > 0:
+            recs = recs[:limit]
+        return recs, {
+            "input_format": "full_records",
+            "path": path.name,
+            "n_records": len(recs),
+            "sha256": digest,
+            "extracted_at": extracted_at,
+            "pipeline_commit": pipeline_commit,
+            "limit_applied": limit,
+        }
+
+    digest = sha256_file(path)
+    is_jsonl = path.name.endswith(".jsonl") or path.name.endswith(".jsonl.gz")
+    opener = gzip.open if path.name.endswith(".gz") else open
+
+    if is_jsonl:
+        by_nct: dict[str, dict[str, Any]] = {}
+        ordered: list[dict[str, Any]] = []
+        # Read in binary mode so line splitting occurs strictly on 0x0A (b"\n"),
+        # never splitting mid-string on U+2028, U+2029, \x85, or bare \r.
+        with opener(path, "rb") as fh:
+            for line_no, raw_line in enumerate(fh, start=1):
+                if not raw_line.strip():
+                    continue
+                obj = json.loads(raw_line.decode("utf-8"))
+                if not isinstance(obj, dict):
+                    raise ValueError(f"{path}:{line_no}: expected JSON object")
+                # Support frozen CT.gov API v2 response-log lines (`{"body": ...}`).
+                if "body" in obj and "protocolSection" not in obj and "nct_id" not in obj:
+                    body = obj.get("body")
+                    if isinstance(body, str):
+                        body = json.loads(body) if body.strip() else {}
+                    if isinstance(body, dict):
+                        if isinstance(body.get("studies"), list):
+                            for s in body["studies"]:
+                                if isinstance(s, dict):
+                                    nct = _extract_core_metadata(s)["nct_id"]
+                                    if nct and nct not in by_nct:
+                                        by_nct[nct] = s
+                                        ordered.append(s)
+                        elif "protocolSection" in body:
+                            nct = _extract_core_metadata(body)["nct_id"]
+                            if nct and nct not in by_nct:
+                                by_nct[nct] = body
+                                ordered.append(body)
+                    continue
+                ordered.append(obj)
+        if not ordered:
+            raise ValueError(f"{path}: holds no study records")
+        if limit is not None and limit > 0:
+            ordered = ordered[:limit]
+        return ordered, {
+            "input_format": "jsonl_studies",
+            "path": path.name,
+            "n_records": len(ordered),
+            "sha256": digest,
+            "extracted_at": None,
+            "pipeline_commit": None,
+            "limit_applied": limit,
+        }
+
+    with opener(path, "rt", encoding="utf-8") as fh:
+        container = json.load(fh)
+
+    if isinstance(container, dict) and "data" in container:
+        recs, extracted_at, pipeline_commit = full_records.load(path)
+        if limit is not None and limit > 0:
+            recs = recs[:limit]
+        return recs, {
+            "input_format": "full_records",
+            "path": path.name,
+            "n_records": len(recs),
+            "sha256": digest,
+            "extracted_at": extracted_at,
+            "pipeline_commit": pipeline_commit,
+            "limit_applied": limit,
+        }
+
+    if isinstance(container, dict) and isinstance(container.get("studies"), list):
+        studies_list = [s for s in container["studies"] if isinstance(s, dict)]
+    elif isinstance(container, dict) and isinstance(container.get("records"), list):
+        studies_list = [s for s in container["records"] if isinstance(s, dict)]
+    elif isinstance(container, dict) and "protocolSection" in container:
+        studies_list = [container]
+    elif isinstance(container, list):
+        studies_list = [s for s in container if isinstance(s, dict)]
+    else:
+        raise ValueError(f"{path}: unrecognized study container format")
+
+    if not studies_list:
+        raise ValueError(f"{path}: holds no study records")
+    if limit is not None and limit > 0:
+        studies_list = studies_list[:limit]
+    return studies_list, {
+        "input_format": "json_studies",
+        "path": path.name,
+        "n_records": len(studies_list),
+        "sha256": digest,
+        "extracted_at": container.get("extracted_at") if isinstance(container, dict) else None,
+        "pipeline_commit": container.get("pipeline_commit") if isinstance(container, dict) else None,
+        "limit_applied": limit,
+    }
+
+
+def load_condition_mesh(
+    path: Path | None,
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any] | None]:
+    """Load optional ``condition_mesh.jsonl.gz`` sidecar keyed by ``nct_id``."""
+    if path is None:
+        return {}, None
+    if not path.exists():
+        raise ValueError(f"{path}: condition_mesh file not found")
+    digest = sha256_file(path)
+    opener = gzip.open if path.name.endswith(".gz") else open
+    by_nct: dict[str, dict[str, Any]] = {}
+    state_counts: Counter[str] = Counter()
+    with opener(path, "rb") as fh:
+        for line_no, raw_line in enumerate(fh, start=1):
+            if not raw_line.strip():
+                continue
+            row = json.loads(raw_line.decode("utf-8"))
+            if not isinstance(row, dict):
+                raise ValueError(f"{path}:{line_no}: expected JSON object")
+            nct_id = row.get("nct_id")
+            state = row.get("state")
+            if not isinstance(nct_id, str) or not nct_id:
+                raise ValueError(f"{path}:{line_no}: missing nct_id")
+            if state not in cmesh.STATES:
+                raise ValueError(f"{path}:{line_no}: invalid condition_mesh state {state!r}")
+            if nct_id in by_nct:
+                raise ValueError(f"{path}:{line_no}: duplicate condition_mesh nct_id {nct_id}")
+            by_nct[nct_id] = {
+                "state": state,
+                "meshes": row.get("meshes"),
+                "ancestors": row.get("ancestors"),
+                **({"problem": row["problem"]} if "problem" in row else {}),
+            }
+            state_counts[state] += 1
+    return by_nct, {
+        "path": path.name,
+        "sha256": digest,
+        "n_lines": len(by_nct),
+        "state_counts": {s: state_counts.get(s, 0) for s in cmesh.STATES},
+    }
+
+
+def _resolve_trial_mesh(
+    record: dict[str, Any],
+    nct_id: str,
+    mesh_sidecar: dict[str, dict[str, Any]],
+    has_sidecar: bool,
+) -> dict[str, Any]:
+    """Resolve MeSH descriptors for one trial from sidecar or raw ``derivedSection``."""
+    if nct_id in mesh_sidecar:
+        entry = mesh_sidecar[nct_id]
+        return {
+            "source": "condition_mesh_sidecar",
+            "state": entry["state"],
+            "meshes": entry.get("meshes"),
+            "ancestors": entry.get("ancestors"),
+            **({"problem": entry["problem"]} if "problem" in entry else {}),
+        }
+    if "derivedSection" in record or "protocolSection" in record:
+        selected = cmesh.select_condition_mesh(record)
+        return {
+            "source": "study_derived_section",
+            "state": selected["state"],
+            "meshes": selected["meshes"],
+            "ancestors": selected["ancestors"],
+            **({"problem": selected["problem"]} if "problem" in selected else {}),
+        }
+    return {
+        "source": "sidecar_missing_for_trial" if has_sidecar else "sidecar_not_provided",
+        "state": "mesh_sidecar_not_provided",
+        "meshes": None,
+        "ancestors": None,
+    }
+
+
+def attribute_sponsors(
+    core_records: list[dict[str, Any]],
+    rules_path: Path = DEFAULT_SPONSOR_RULES_PATH,
+) -> tuple[dict[str, dict[str, Any]], Any, dict[str, Any]]:
+    """Attribute lead and collaborator sponsors via ``sponsors/`` with zero substring matching.
+
+    Strictly preserves the three disjoint review states (``attributed``,
+    ``reviewed_excluded``, ``unreviewed``) from ``sponsors.audit_states.partition``.
+    """
+    rules_sha = sha256_file(rules_path)
+    rules = sponsor_roles.load_rules(str(rules_path))
+    frame, adapter_log = adapter.records_to_frame(core_records)
+    states = audit_states.partition(frame, rules)
+    index = sponsor_roles.build_index(frame, rules)
+
+    matched = audit_states.rule_matches(frame, rules)
+    canon_by_lit: dict[str, list[str]] = {}
+    entity_by_lit: dict[str, str] = {}
+    shared_by_lit: dict[str, bool] = {}
+    for _, mrow in matched.iterrows():
+        lit_name = str(mrow["name"])
+        canon = str(mrow["canonical"])
+        canon_list = canon_by_lit.setdefault(lit_name, [])
+        if canon not in canon_list:
+            canon_list.append(canon)
+        entity_by_lit[lit_name] = sponsor_roles.parsed_entity(lit_name)
+        if str(mrow["shared"]) == "yes":
+            shared_by_lit[lit_name] = True
+    for lit_list in canon_by_lit.values():
+        lit_list.sort()
+
+    def _state_of(literal: str) -> str:
+        if literal in states["attributed"]:
+            return "attributed"
+        if literal in states["reviewed_excluded"]:
+            return "reviewed_excluded"
+        return "unreviewed"
+
+    # Build trial-level lookup from `index` so `current_owner` and `as_registered`
+    # sets match `sponsor_roles.trials()` 1-for-1.
+    owner_by_nct_role: dict[tuple[str, str], set[str]] = {}
+    entity_by_nct_role: dict[tuple[str, str], set[str]] = {}
+    for _, idx_row in index.iterrows():
+        nct = str(idx_row["nct_id"])
+        role = str(idx_row["role"])
+        owner_by_nct_role.setdefault((nct, role), set()).add(str(idx_row["canonical"]))
+        entity_by_nct_role.setdefault((nct, role), set()).add(str(idx_row["entity"]))
+
+    per_trial: dict[str, dict[str, Any]] = {}
+    lead_state_counts: Counter[str] = Counter()
+    for rec in core_records:
+        nct_id = rec["nct_id"]
+        lead_lit_raw = rec.get("lead_sponsor_name")
+        lead_lit = "" if lead_lit_raw is None else str(lead_lit_raw)
+        lead_state = _state_of(lead_lit)
+        lead_state_counts[lead_state] += 1
+        lead_canons = list(canon_by_lit.get(lead_lit, []))
+        lead_entities = [entity_by_lit[lead_lit]] if lead_lit in entity_by_lit else []
+
+        collab_entries: list[dict[str, Any]] = []
+        for collab in rec.get("collaborators") or []:
+            cname_raw = collab.get("name")
+            if cname_raw is None or str(cname_raw).strip() == "":
+                continue
+            cname = str(cname_raw)
+            cstate = _state_of(cname)
+            collab_entries.append(
+                {
+                    "literal_name": cname,
+                    "agency_class": str(collab.get("class") or ""),
+                    "review_state": cstate,
+                    "canonical_companies": list(canon_by_lit.get(cname, [])),
+                    "registered_entities": [entity_by_lit[cname]] if cname in entity_by_lit else [],
+                    "shared": bool(shared_by_lit.get(cname, False)),
+                }
+            )
+
+        owners_lead = sorted(owner_by_nct_role.get((nct_id, "lead"), set()))
+        owners_collab = sorted(owner_by_nct_role.get((nct_id, "collaborator"), set()))
+        owners_any = sorted(set(owners_lead) | set(owners_collab))
+
+        ents_lead = sorted(entity_by_nct_role.get((nct_id, "lead"), set()))
+        ents_collab = sorted(entity_by_nct_role.get((nct_id, "collaborator"), set()))
+        ents_any = sorted(set(ents_lead) | set(ents_collab))
+
+        per_trial[nct_id] = {
+            "lead": {
+                "literal_name": lead_lit,
+                "agency_class": str(rec.get("sponsor_class") or ""),
+                "review_state": lead_state,
+                "canonical_companies": lead_canons,
+                "registered_entities": lead_entities,
+                "shared": bool(shared_by_lit.get(lead_lit, False)),
+            },
+            "collaborators": collab_entries,
+            "current_owner": {
+                "any": owners_any,
+                "lead": owners_lead,
+                "collaborator": owners_collab,
+            },
+            "as_registered": {
+                "any": ents_any,
+                "lead": ents_lead,
+                "collaborator": ents_collab,
+            },
+        }
+
+    meta = {
+        "rules_file": rules_path.name,
+        "rules_sha256": rules_sha,
+        "matching_method": "list_driven_exact_and_subsidiary_rules_zero_substring_matching",
+        "adapter_log": adapter_log.to_dict(),
+        "literal_counts_by_review_state": {
+            "attributed": len(states["attributed"]),
+            "reviewed_excluded": len(states["reviewed_excluded"]),
+            "unreviewed": len(states["unreviewed"]),
+        },
+        "trial_lead_counts_by_review_state": {
+            s: lead_state_counts.get(s, 0) for s in SPONSOR_REVIEW_STATES
+        },
+        "n_distinct_canonical_companies": int(index["canonical"].nunique()) if not index.empty else 0,
+        "n_distinct_registered_entities": int(index["entity"].nunique()) if not index.empty else 0,
+        "n_trials_any_attributed": int(index["nct_id"].nunique()) if not index.empty else 0,
+    }
+    return per_trial, index, meta
+
+
+def summarize_share_distribution(
+    entries: list[tuple[float, int, int]],
+    *,
+    min_cell_trials: int = DEFAULT_MIN_CELL_TRIALS,
+) -> dict[str, Any]:
+    """Compute trial-equally-weighted percentiles (primary) and participant-weighted share (secondary).
+
+    ``entries`` holds ``(trial_share, category_numerator, trial_denominator)``
+    for each qualifying trial in the cell. When ``len(entries) < min_cell_trials``,
+    percentiles and means are withheld as ``None`` while exact ``n_trials`` and
+    ``withheld_small_cell = True`` are reported.
+    """
+    if min_cell_trials < 1:
+        raise ValueError(f"min_cell_trials must be >= 1, got {min_cell_trials}")
+    n_trials = len(entries)
+    n_participants = sum(den for _, _, den in entries)
+    if n_trials < min_cell_trials:
+        return {
+            "n_trials": n_trials,
+            "n_participants": n_participants,
+            "min_cell_trials": min_cell_trials,
+            "withheld_small_cell": True,
+            "percentiles": None,
+            "trial_equal_mean": None,
+            "participant_weighted_share": None,
+        }
+
+    arr = np.array([val for val, _, _ in entries], dtype=float)
+    p10, p25, p50, p75, p90 = np.percentile(arr, [10, 25, 50, 75, 90], method="linear")
+    tot_num = sum(num for _, num, _ in entries)
+    weighted: float | None = (tot_num / n_participants) if n_participants > 0 else None
+    return {
+        "n_trials": n_trials,
+        "n_participants": n_participants,
+        "min_cell_trials": min_cell_trials,
+        "withheld_small_cell": False,
+        "percentiles": {
+            "p10": round(float(p10), 6),
+            "p25": round(float(p25), 6),
+            "p50": round(float(p50), 6),
+            "p75": round(float(p75), 6),
+            "p90": round(float(p90), 6),
+        },
+        "trial_equal_mean": round(float(arr.mean()), 6),
+        "participant_weighted_share": round(weighted, 6) if weighted is not None else None,
+    }
+
+
+def _pool_trial_group(
+    trials: list[dict[str, Any]],
+    *,
+    min_cell_trials: int,
+) -> dict[str, Any]:
+    """Pool race, ethnicity, sex/gender, and reporting status distributions for a group of trials."""
+    n_total = len(trials)
+    n_posted = sum(1 for t in trials if t["demographics"]["results_posted"])
+
+    race_status_counts = {
+        s: sum(1 for t in trials if t["demographics"]["race_table_status"] == s)
+        for s in TABLE_STATUSES
+    }
+    eth_status_counts = {
+        s: sum(1 for t in trials if t["demographics"]["ethnicity_table_status"] == s)
+        for s in TABLE_STATUSES
+    }
+    sg_status_counts = {
+        s: sum(1 for t in trials if t["demographics"]["sex_report_status"] == s)
+        for s in SEX_GENDER_STATES
+    }
+
+    # Pool OMB-compatible race distributions (quarantined combined tables are
+    # strictly excluded and tallied in `n_combined_race_ethnicity_quarantined`).
+    race_denom_a_trials = [
+        t for t in trials
+        if t["demographics"]["race"]["usable_for_omb_pooling"]
+        and isinstance(t["demographics"]["race"].get("of_baseline_total"), dict)
+    ]
+    race_denom_b_trials = [
+        t for t in race_denom_a_trials
+        if isinstance(t["demographics"]["race"].get("of_classified"), dict)
+    ]
+
+    race_of_baseline: dict[str, dict[str, Any]] = {}
+    race_of_classified: dict[str, dict[str, Any]] = {}
+    for cat in RACE_CLASSIFIED_KEYS:
+        a_entries = [
+            (
+                float(t["demographics"]["race"]["of_baseline_total"][cat]["floor"]),
+                int(t["demographics"]["race"]["counts"][cat]),
+                int(t["demographics"]["race"]["baseline_total"]),
+            )
+            for t in race_denom_a_trials
+        ]
+        b_entries = [
+            (
+                float(t["demographics"]["race"]["of_classified"][cat]),
+                int(t["demographics"]["race"]["counts"][cat]),
+                int(t["demographics"]["race"]["classified_total"]),
+            )
+            for t in race_denom_b_trials
+        ]
+        race_of_baseline[cat] = summarize_share_distribution(a_entries, min_cell_trials=min_cell_trials)
+        race_of_classified[cat] = summarize_share_distribution(b_entries, min_cell_trials=min_cell_trials)
+
+    # Pool ethnicity distributions: `single_category_ethnicity` participates in
+    # Denominator A (floor) and is strictly withheld from Denominator B.
+    eth_denom_a_trials = [
+        t for t in trials
+        if t["demographics"]["ethnicity"]["usable_for_omb_pooling"]
+        and isinstance(t["demographics"]["ethnicity"].get("of_baseline_total"), dict)
+    ]
+    eth_denom_b_trials = [
+        t for t in eth_denom_a_trials
+        if isinstance(t["demographics"]["ethnicity"].get("of_classified"), dict)
+    ]
+
+    eth_of_baseline: dict[str, dict[str, Any]] = {}
+    eth_of_classified: dict[str, dict[str, Any]] = {}
+    for cat in ETHNICITY_CLASSIFIED_KEYS:
+        a_entries = [
+            (
+                float(t["demographics"]["ethnicity"]["of_baseline_total"][cat]["floor"]),
+                int(t["demographics"]["ethnicity"]["counts"][cat]),
+                int(t["demographics"]["ethnicity"]["baseline_total"]),
+            )
+            for t in eth_denom_a_trials
+        ]
+        b_entries = [
+            (
+                float(t["demographics"]["ethnicity"]["of_classified"][cat]),
+                int(t["demographics"]["ethnicity"]["counts"][cat]),
+                int(t["demographics"]["ethnicity"]["classified_total"]),
+            )
+            for t in eth_denom_b_trials
+        ]
+        eth_of_baseline[cat] = summarize_share_distribution(a_entries, min_cell_trials=min_cell_trials)
+        eth_of_classified[cat] = summarize_share_distribution(b_entries, min_cell_trials=min_cell_trials)
+
+    # Sex composition: participant-count trials with reported_sex and f + m > 0.
+    sex_eligible = [
+        t for t in trials
+        if t["demographics"]["sex_gender"].get("female_share") is not None
+    ]
+    sex_entries = [
+        (
+            float(t["demographics"]["sex_gender"]["female_share"]),
+            int(round(float(t["demographics"]["sex_gender"]["n_female"] or 0.0))),
+            int(
+                round(
+                    float(t["demographics"]["sex_gender"]["n_female"] or 0.0)
+                    + float(t["demographics"]["sex_gender"]["n_male"] or 0.0)
+                )
+            ),
+        )
+        for t in sex_eligible
+    ]
+    female_dist = summarize_share_distribution(sex_entries, min_cell_trials=min_cell_trials)
+
+    # Facility share distribution across country-bearing trials in the group
+    fac_entries = [
+        (
+            float(t["geography"]["us_facility_share"]),
+            int(t["geography"]["n_us_facilities"]),
+            int(t["geography"]["n_facilities_with_country"]),
+        )
+        for t in trials
+        if t["geography"]["us_facility_share"] is not None
+    ]
+    us_fac_dist = summarize_share_distribution(fac_entries, min_cell_trials=min_cell_trials)
+
+    return {
+        "n_trials": n_total,
+        "n_posted_results": n_posted,
+        "min_cell_trials": min_cell_trials,
+        "withheld_small_cell": n_total < min_cell_trials,
+        "unit_basis": UNIT_BASIS,
+        "us_facility_share_distribution": us_fac_dist,
+        "race": {
+            "table_status_counts": race_status_counts,
+            "n_combined_race_ethnicity_quarantined": race_status_counts[
+                "combined_race_ethnicity_quarantined"
+            ],
+            "n_pooled_denominator_a": len(race_denom_a_trials),
+            "n_pooled_denominator_b": len(race_denom_b_trials),
+            "of_baseline_total": race_of_baseline,
+            "of_classified": race_of_classified,
+        },
+        "ethnicity": {
+            "table_status_counts": eth_status_counts,
+            "n_single_category_ethnicity": eth_status_counts["single_category_ethnicity"],
+            "n_pooled_denominator_a": len(eth_denom_a_trials),
+            "n_pooled_denominator_b": len(eth_denom_b_trials),
+            "of_baseline_total": eth_of_baseline,
+            "of_classified": eth_of_classified,
+        },
+        "sex_gender": {
+            "status_counts": sg_status_counts,
+            "n_reported_sex_true": sum(
+                1 for t in trials if t["demographics"]["sex_gender"].get("reported_sex") is True
+            ),
+            "n_reported_gender_true": sum(
+                1 for t in trials if t["demographics"]["sex_gender"].get("reported_gender") is True
+            ),
+            "n_participant_count_false": sum(
+                1 for t in trials if t["demographics"]["sex_gender"].get("is_participant_count") is False
+            ),
+            "female_share_of_mf": female_dist,
+        },
+    }
+
+
+def _stratum_id(kind: str, parts: Iterable[str | None]) -> str:
+    joined = "|".join("" if p is None else p for p in parts)
+    digest = hashlib.sha256(f"{kind}|{joined}".encode("utf-8")).hexdigest()[:12]
+    return f"stratum:{kind}:{digest}"
+
+
+def _extract_medians_from_pooled(pooled: dict[str, Any]) -> tuple[dict[str, float], dict[str, float], float | None]:
+    """Extract non-withheld ``p50`` medians from a pooled stratum dict."""
+    race_meds: dict[str, float] = {}
+    for cat, dist in pooled["race"]["of_baseline_total"].items():
+        if not dist["withheld_small_cell"] and isinstance(dist.get("percentiles"), dict):
+            race_meds[cat] = float(dist["percentiles"]["p50"])
+    eth_meds: dict[str, float] = {}
+    for cat, dist in pooled["ethnicity"]["of_baseline_total"].items():
+        if not dist["withheld_small_cell"] and isinstance(dist.get("percentiles"), dict):
+            eth_meds[cat] = float(dist["percentiles"]["p50"])
+    fem_dist = pooled["sex_gender"]["female_share_of_mf"]
+    fem_med: float | None = (
+        float(fem_dist["percentiles"]["p50"])
+        if not fem_dist["withheld_small_cell"] and isinstance(fem_dist.get("percentiles"), dict)
+        else None
+    )
+    return race_meds, eth_meds, fem_med
+
+
+def _percentile_rank_against(values: list[float], x: float) -> float:
+    """Mid-rank empirical percentile in ``[0.0, 1.0]`` of ``x`` against peer ``values``."""
+    n = len(values)
+    below = sum(1 for v in values if v < x)
+    equal = sum(1 for v in values if v == x)
+    return round((below + 0.5 * equal) / n, 6)
+
+
+def _build_role_scorecard(
+    company_trials: list[dict[str, Any]],
+    *,
+    ref_by_indication_phase: dict[tuple[str, str], dict[str, Any]],
+    peer_values_by_indication_phase: dict[tuple[str, str], dict[str, list[float]]],
+    min_cell_trials: int,
+) -> dict[str, Any]:
+    """Build one sponsor role scope (``any``, ``lead``, or ``collaborator``) scorecard."""
+    n_trials = len(company_trials)
+    footprint_counts = {
+        fp: sum(1 for t in company_trials if t["geography"]["site_footprint_class"] == fp)
+        for fp in SITE_FOOTPRINT_CLASSES
+    }
+    footprint_shares = {
+        fp: round(cnt / n_trials, 6) if n_trials > 0 else None
+        for fp, cnt in footprint_counts.items()
+    }
+    multinat = [
+        t for t in company_trials
+        if t["geography"]["site_footprint_class"] == "multinational_with_us_sites"
+    ]
+    n_multinat = len(multinat)
+    bin_counts = {
+        b: sum(1 for t in multinat if t["geography"]["us_site_share_bin"] == b)
+        for b in US_SITE_SHARE_BINS
+    }
+    bin_shares = {
+        b: round(cnt / n_multinat, 6) if n_multinat > 0 else None
+        for b, cnt in bin_counts.items()
+    }
+
+    era_counts = {
+        e: sum(1 for t in company_trials if t["regulatory_era"]["regulatory_era"] == e)
+        for e in REGULATORY_ERAS
+    }
+
+    us_site_trials = [
+        t for t in company_trials
+        if t["geography"]["site_footprint_class"] in ("us_only", "multinational_with_us_sites")
+    ]
+    posted_us = [t for t in us_site_trials if t["demographics"]["results_posted"]]
+
+    completeness = {
+        "n_us_site_trials": len(us_site_trials),
+        "n_posted_us_site_trials": len(posted_us),
+        "race_by_status": {
+            s: sum(1 for t in us_site_trials if t["demographics"]["race_table_status"] == s)
+            for s in TABLE_STATUSES
+        },
+        "ethnicity_by_status": {
+            s: sum(1 for t in us_site_trials if t["demographics"]["ethnicity_table_status"] == s)
+            for s in TABLE_STATUSES
+        },
+        "sex_gender_by_status": {
+            s: sum(1 for t in us_site_trials if t["demographics"]["sex_report_status"] == s)
+            for s in SEX_GENDER_STATES
+        },
+        "n_posted_us_omitted_race_table": sum(
+            1 for t in posted_us if t["demographics"]["us_site_omission_audit"]["omitted_race_table"] is True
+        ),
+        "n_posted_us_omitted_ethnicity_table": sum(
+            1 for t in posted_us if t["demographics"]["us_site_omission_audit"]["omitted_ethnicity_table"] is True
+        ),
+        "n_posted_us_omitted_race_or_ethnicity_table": sum(
+            1 for t in posted_us if t["demographics"]["us_site_omission_audit"]["omitted_race_or_ethnicity_table"] is True
+        ),
+        "n_posted_us_omitted_sex_table": sum(
+            1 for t in posted_us if t["demographics"]["us_site_omission_audit"]["omitted_sex_table"] is True
+        ),
+        "n_posted_us_reported_sex_true": sum(
+            1 for t in posted_us if t["demographics"]["sex_gender"]["reported_sex"] is True
+        ),
+        "n_posted_us_reported_gender_true": sum(
+            1 for t in posted_us if t["demographics"]["sex_gender"]["reported_gender"] is True
+        ),
+    }
+
+    us_pooled = _pool_trial_group(us_site_trials, min_cell_trials=min_cell_trials)
+
+    # Indication-matched DAP peer benchmarking across US-site trials whose
+    # (ontology_primary, phase) reference cell meets `min_cell_trials`.
+    indication_benchmarks: dict[str, dict[str, Any]] = {}
+    benchmark_targets: list[tuple[str, str, str]] = [
+        ("race", cat, f"race:{cat}") for cat in RACE_CLASSIFIED_KEYS
+    ] + [
+        ("ethnicity", cat, f"ethnicity:{cat}") for cat in ETHNICITY_CLASSIFIED_KEYS
+    ] + [("sex_gender", "female", "sex_gender:female")]
+
+    for dim, cat, key_label in benchmark_targets:
+        rank_entries: list[tuple[float, int, int]] = []
+        delta_vals: list[float] = []
+        n_above = 0
+        n_below = 0
+        n_unsettled = 0
+        for t in us_site_trials:
+            ip_key = (t["indication"]["primary_condition"], t["phase"])
+            ref_cell = ref_by_indication_phase.get(ip_key)
+            peer_map = peer_values_by_indication_phase.get(ip_key) or {}
+            peers = peer_map.get(key_label) or []
+            if ref_cell is None or len(peers) < min_cell_trials:
+                continue
+
+            if dim in ("race", "ethnicity"):
+                d_block = t["demographics"][dim]
+                if not d_block["usable_for_omb_pooling"] or not isinstance(d_block.get("of_baseline_total"), dict):
+                    continue
+                floor = float(d_block["of_baseline_total"][cat]["floor"])
+                ceiling = float(d_block["of_baseline_total"][cat]["ceiling"])
+                num = int(d_block["counts"][cat])
+                den = int(d_block["baseline_total"])
+                peer_p50 = float(ref_cell["pooled"][dim]["of_baseline_total"][cat]["percentiles"]["p50"])
+            else:
+                sg = t["demographics"]["sex_gender"]
+                if sg.get("female_share") is None:
+                    continue
+                floor = float(sg["female_share"])
+                ceiling = floor
+                num = int(round(float(sg.get("n_female") or 0.0)))
+                den = int(
+                    round(float(sg.get("n_female") or 0.0) + float(sg.get("n_male") or 0.0))
+                )
+                peer_p50 = float(ref_cell["pooled"]["sex_gender"]["female_share_of_mf"]["percentiles"]["p50"])
+
+            rank_entries.append((_percentile_rank_against(peers, floor), num, den))
+            delta_vals.append(floor - peer_p50)
+            if floor > peer_p50:
+                n_above += 1
+            elif ceiling < peer_p50:
+                n_below += 1
+            else:
+                n_unsettled += 1
+
+        rank_dist = summarize_share_distribution(rank_entries, min_cell_trials=min_cell_trials)
+        if len(delta_vals) >= min_cell_trials:
+            d_arr = np.array(delta_vals, dtype=float)
+            dp10, dp25, dp50, dp75, dp90 = np.percentile(d_arr, [10, 25, 50, 75, 90], method="linear")
+            delta_pcts: dict[str, float] | None = {
+                "p10": round(float(dp10), 6),
+                "p25": round(float(dp25), 6),
+                "p50": round(float(dp50), 6),
+                "p75": round(float(dp75), 6),
+                "p90": round(float(dp90), 6),
+            }
+        else:
+            delta_pcts = None
+
+        indication_benchmarks[key_label] = {
+            "n_benchmarked_trials": len(rank_entries),
+            "min_cell_trials": min_cell_trials,
+            "withheld_small_cell": len(rank_entries) < min_cell_trials,
+            "n_above_peer_median_settled": n_above,
+            "n_below_peer_median_settled": n_below,
+            "n_direction_unsettled_or_equal": n_unsettled,
+            "peer_percentile_rank": rank_dist["percentiles"],
+            "delta_vs_peer_median": delta_pcts,
+        }
+
+    return {
+        "n_trials": n_trials,
+        "unit_basis": UNIT_BASIS,
+        "footprint_mix": {
+            "counts": footprint_counts,
+            "shares": footprint_shares,
+            "multinational_us_share_bin_counts": bin_counts,
+            "multinational_us_share_bin_shares": bin_shares,
+        },
+        "regulatory_era_counts": era_counts,
+        "us_site_reporting_completeness": completeness,
+        "us_site_enrollment_distributions": {
+            "race": us_pooled["race"],
+            "ethnicity": us_pooled["ethnicity"],
+            "sex_gender": us_pooled["sex_gender"],
+        },
+        "indication_matched_benchmarking": indication_benchmarks,
+    }
+
+
+def build_benchmarks(
+    records: list[dict[str, Any]],
+    *,
+    mesh_sidecar: dict[str, dict[str, Any]] | None = None,
+    has_mesh_sidecar: bool = False,
+    ontology_path: Path = DEFAULT_ONTOLOGY_PATH,
+    sponsor_rules_path: Path = DEFAULT_SPONSOR_RULES_PATH,
+    min_cell_trials: int = DEFAULT_MIN_CELL_TRIALS,
+    snapshot_date: str = "1970-01-01",
+) -> dict[str, Any]:
+    """Build trial rows, stratified benchmarks, and canonical/registered sponsor scorecards."""
+    if not records:
+        raise ValueError("records must be non-empty")
+    if min_cell_trials < 1:
+        raise ValueError(f"min_cell_trials must be >= 1, got {min_cell_trials}")
+
+    classifier = OntologyClassifier(ontology_path)
+    sidecar = mesh_sidecar or {}
+
+    core_list: list[dict[str, Any]] = []
+    seen_ncts: set[str] = set()
+    ordered_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for idx, rec in enumerate(records):
+        core = _extract_core_metadata(rec)
+        nct_id = core["nct_id"]
+        if not nct_id:
+            raise ValueError(f"record at index {idx} is missing nct_id / protocolSection.identificationModule.nctId")
+        if nct_id in seen_ncts:
+            raise ValueError(f"duplicate nct_id {nct_id} in input study records")
+        seen_ncts.add(nct_id)
+        ordered_pairs.append((core, rec))
+
+    # Deterministic sort by nct_id across the entire build.
+    ordered_pairs.sort(key=lambda pair: pair[0]["nct_id"])
+    core_list = [pair[0] for pair in ordered_pairs]
+
+    sponsors_by_nct, sponsor_index, sponsor_meta = attribute_sponsors(core_list, sponsor_rules_path)
+
+    trial_rows: list[dict[str, Any]] = []
+    for core, rec in ordered_pairs:
+        nct_id = core["nct_id"]
+        geo = extract_geography(rec)
+        demo = extract_demographics(rec, geography=geo, snapshot_date=snapshot_date)
+        era = classify_regulatory_era(rec)
+        phase = normalize_phase(rec)
+        ont = classifier.classify(core["conditions"])
+        mesh_info = _resolve_trial_mesh(rec, nct_id, sidecar, has_mesh_sidecar or bool(sidecar))
+        mesh_ids = sorted(
+            {
+                str(m["id"])
+                for m in (mesh_info.get("meshes") or [])
+                if isinstance(m, dict) and isinstance(m.get("id"), str)
+            }
+        )
+        mesh_terms = [
+            {"id": str(m["id"]), "term": str(m["term"])}
+            for m in (mesh_info.get("meshes") or [])
+            if isinstance(m, dict) and isinstance(m.get("id"), str) and isinstance(m.get("term"), str)
+        ]
+
+        trial_rows.append(
+            {
+                "nct_id": nct_id,
+                "brief_title": core["brief_title"],
+                "study_type": core["study_type"],
+                "phase": phase,
+                "overall_status": core["overall_status"],
+                "enrollment": core["enrollment"],
+                "enrollment_type": core["enrollment_type"],
+                "regulatory_era": era,
+                "indication": {
+                    "conditions": core["conditions"],
+                    "primary_condition": ont["primary_condition"],
+                    "secondary_condition": ont["secondary_condition"],
+                    "all_classifications": ont["all_classifications"],
+                    "mesh_state": mesh_info["state"],
+                    "mesh_source": mesh_info["source"],
+                    "mesh_descriptor_ids": mesh_ids,
+                    "meshes": mesh_terms if mesh_info["meshes"] is not None else None,
+                    **({"mesh_problem": mesh_info["problem"]} if "problem" in mesh_info else {}),
+                },
+                "geography": geo,
+                "demographics": demo,
+                "sponsors": sponsors_by_nct[nct_id],
+            }
+        )
+
+    # Group trials into strata across the five deterministic stratum kinds.
+    ontology_fp_groups: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
+    ontology_bin_groups: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
+    mesh_fp_groups: dict[tuple[str, str, str, str, str, str], list[dict[str, Any]]] = {}
+    mesh_bin_groups: dict[tuple[str, str, str, str, str, str], list[dict[str, Any]]] = {}
+    indication_ref_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+
+    for t in trial_rows:
+        pri = t["indication"]["primary_condition"]
+        sec = t["indication"]["secondary_condition"]
+        ph = t["phase"]
+        era_key = t["regulatory_era"]["regulatory_era"]
+        fp = t["geography"]["site_footprint_class"]
+        sbin = t["geography"]["us_site_share_bin"]
+
+        ontology_fp_groups.setdefault((pri, sec, ph, era_key, fp), []).append(t)
+        if fp == "multinational_with_us_sites" and sbin is not None:
+            ontology_bin_groups.setdefault((pri, sec, ph, era_key, sbin), []).append(t)
+
+        if fp in ("us_only", "multinational_with_us_sites"):
+            indication_ref_groups.setdefault((pri, ph), []).append(t)
+
+        if t["indication"]["mesh_state"] == "indexed" and t["indication"]["meshes"]:
+            seen_m: set[str] = set()
+            for m in t["indication"]["meshes"]:
+                mid = m["id"]
+                if mid in seen_m:
+                    continue
+                seen_m.add(mid)
+                mterm = m["term"]
+                mesh_fp_groups.setdefault((mid, mterm, pri, ph, era_key, fp), []).append(t)
+                if fp == "multinational_with_us_sites" and sbin is not None:
+                    mesh_bin_groups.setdefault((mid, mterm, pri, ph, era_key, sbin), []).append(t)
+
+    strata_list: list[dict[str, Any]] = []
+    primary_cell_by_key: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
+    ref_by_indication_phase: dict[tuple[str, str], dict[str, Any]] = {}
+    peer_values_by_indication_phase: dict[tuple[str, str], dict[str, list[float]]] = {}
+
+    for key in sorted(ontology_fp_groups):
+        pri, sec, ph, era_key, fp = key
+        sid = _stratum_id("ontology_footprint", key)
+        pooled = _pool_trial_group(ontology_fp_groups[key], min_cell_trials=min_cell_trials)
+        cell = {
+            "stratum_id": sid,
+            "stratum_kind": "ontology_footprint",
+            "ontology_primary": pri,
+            "ontology_secondary": sec,
+            "mesh_descriptor_id": None,
+            "mesh_descriptor_term": None,
+            "phase": ph,
+            "regulatory_era": era_key,
+            "site_footprint_class": fp,
+            "us_site_share_bin": None,
+            "pooled": pooled,
+        }
+        primary_cell_by_key[key] = cell
+        strata_list.append(cell)
+
+    for key in sorted(ontology_bin_groups):
+        pri, sec, ph, era_key, sbin = key
+        sid = _stratum_id("ontology_us_share_bin", key)
+        pooled = _pool_trial_group(ontology_bin_groups[key], min_cell_trials=min_cell_trials)
+        strata_list.append(
+            {
+                "stratum_id": sid,
+                "stratum_kind": "ontology_us_share_bin",
+                "ontology_primary": pri,
+                "ontology_secondary": sec,
+                "mesh_descriptor_id": None,
+                "mesh_descriptor_term": None,
+                "phase": ph,
+                "regulatory_era": era_key,
+                "site_footprint_class": "multinational_with_us_sites",
+                "us_site_share_bin": sbin,
+                "pooled": pooled,
+            }
+        )
+
+    for mkey in sorted(mesh_fp_groups):
+        mid, mterm, pri, ph, era_key, fp = mkey
+        sid = _stratum_id("mesh_footprint", (mid, pri, ph, era_key, fp))
+        pooled = _pool_trial_group(mesh_fp_groups[mkey], min_cell_trials=min_cell_trials)
+        strata_list.append(
+            {
+                "stratum_id": sid,
+                "stratum_kind": "mesh_footprint",
+                "ontology_primary": pri,
+                "ontology_secondary": None,
+                "mesh_descriptor_id": mid,
+                "mesh_descriptor_term": mterm,
+                "phase": ph,
+                "regulatory_era": era_key,
+                "site_footprint_class": fp,
+                "us_site_share_bin": None,
+                "pooled": pooled,
+            }
+        )
+
+    for mkey in sorted(mesh_bin_groups):
+        mid, mterm, pri, ph, era_key, sbin = mkey
+        sid = _stratum_id("mesh_us_share_bin", (mid, pri, ph, era_key, sbin))
+        pooled = _pool_trial_group(mesh_bin_groups[mkey], min_cell_trials=min_cell_trials)
+        strata_list.append(
+            {
+                "stratum_id": sid,
+                "stratum_kind": "mesh_us_share_bin",
+                "ontology_primary": pri,
+                "ontology_secondary": None,
+                "mesh_descriptor_id": mid,
+                "mesh_descriptor_term": mterm,
+                "phase": ph,
+                "regulatory_era": era_key,
+                "site_footprint_class": "multinational_with_us_sites",
+                "us_site_share_bin": sbin,
+                "pooled": pooled,
+            }
+        )
+
+    for rkey in sorted(indication_ref_groups):
+        pri, ph = rkey
+        group_trials = indication_ref_groups[rkey]
+        sid = _stratum_id("indication_us_reference", rkey)
+        pooled = _pool_trial_group(group_trials, min_cell_trials=min_cell_trials)
+        rcell = {
+            "stratum_id": sid,
+            "stratum_kind": "indication_us_reference",
+            "ontology_primary": pri,
+            "ontology_secondary": None,
+            "mesh_descriptor_id": None,
+            "mesh_descriptor_term": None,
+            "phase": ph,
+            "regulatory_era": None,
+            "site_footprint_class": "us_only_or_multinational_with_us_sites",
+            "us_site_share_bin": None,
+            "pooled": pooled,
+        }
+        ref_by_indication_phase[rkey] = rcell
+        strata_list.append(rcell)
+
+        # Precompute peer value arrays for deterministic mid-rank percentile calculation.
+        peer_map: dict[str, list[float]] = {}
+        for cat in RACE_CLASSIFIED_KEYS:
+            peer_map[f"race:{cat}"] = [
+                float(t["demographics"]["race"]["of_baseline_total"][cat]["floor"])
+                for t in group_trials
+                if t["demographics"]["race"]["usable_for_omb_pooling"]
+                and isinstance(t["demographics"]["race"].get("of_baseline_total"), dict)
+            ]
+        for cat in ETHNICITY_CLASSIFIED_KEYS:
+            peer_map[f"ethnicity:{cat}"] = [
+                float(t["demographics"]["ethnicity"]["of_baseline_total"][cat]["floor"])
+                for t in group_trials
+                if t["demographics"]["ethnicity"]["usable_for_omb_pooling"]
+                and isinstance(t["demographics"]["ethnicity"].get("of_baseline_total"), dict)
+            ]
+        peer_map["sex_gender:female"] = [
+            float(t["demographics"]["sex_gender"]["female_share"])
+            for t in group_trials
+            if t["demographics"]["sex_gender"].get("female_share") is not None
+        ]
+        peer_values_by_indication_phase[rkey] = peer_map
+
+    # Attach non-withheld reference medians onto each trial's Denominator A bounds
+    # so `direction_settled` reflects its matched stratum median.
+    for t in trial_rows:
+        pkey = (
+            t["indication"]["primary_condition"],
+            t["indication"]["secondary_condition"],
+            t["phase"],
+            t["regulatory_era"]["regulatory_era"],
+            t["geography"]["site_footprint_class"],
+        )
+        pcell = primary_cell_by_key[pkey]
+        r_meds, e_meds, f_med = _extract_medians_from_pooled(pcell["pooled"])
+        chosen_id = pcell["stratum_id"]
+        withheld_flag = bool(pcell["pooled"]["withheld_small_cell"])
+
+        if not r_meds and not e_meds and f_med is None:
+            rkey = (t["indication"]["primary_condition"], t["phase"])
+            fallback = ref_by_indication_phase.get(rkey)
+            if fallback is not None and t["geography"]["site_footprint_class"] in (
+                "us_only",
+                "multinational_with_us_sites",
+            ):
+                r_meds, e_meds, f_med = _extract_medians_from_pooled(fallback["pooled"])
+                if r_meds or e_meds or f_med is not None:
+                    chosen_id = fallback["stratum_id"]
+                    withheld_flag = False
+
+        t["demographics"] = attach_reference_medians(
+            t["demographics"],
+            race_medians=r_meds or None,
+            ethnicity_medians=e_meds or None,
+            sex_female_median=f_med,
+            reference_stratum_id=chosen_id,
+            reference_withheld_small_cell=withheld_flag,
+        )
+
+    # Build canonical (`current_owner`) and `as_registered` company scorecards.
+    trial_by_nct = {t["nct_id"]: t for t in trial_rows}
+    canonicals = sorted(set(sponsor_index["canonical"].unique())) if not sponsor_index.empty else []
+    entities = sorted(set(sponsor_index["entity"].unique())) if not sponsor_index.empty else []
+
+    current_owner_scorecards: list[dict[str, Any]] = []
+    for canon in canonicals:
+        ent_df = sponsor_roles.entities(sponsor_index, canon)
+        constituents = [
+            {
+                "entity": str(erow["entity"]),
+                "n_trials": int(erow["n_trials"]),
+                "n_lead": int(erow["n_lead"]),
+                "n_collab": int(erow["n_collab"]),
+            }
+            for _, erow in ent_df.iterrows()
+        ]
+        by_role: dict[str, dict[str, Any]] = {}
+        for role in ("any", "lead", "collaborator"):
+            t_df = sponsor_roles.trials(sponsor_index, canon, role=role, view="current_owner")
+            matched_ncts = sorted(set(str(n) for n in t_df["nct_id"]))
+            role_trials = [trial_by_nct[n] for n in matched_ncts if n in trial_by_nct]
+            by_role[role] = _build_role_scorecard(
+                role_trials,
+                ref_by_indication_phase=ref_by_indication_phase,
+                peer_values_by_indication_phase=peer_values_by_indication_phase,
+                min_cell_trials=min_cell_trials,
+            )
+        current_owner_scorecards.append(
+            {
+                "company": canon,
+                "view": "current_owner",
+                "constituent_entities": constituents,
+                "by_role": by_role,
+            }
+        )
+
+    as_registered_scorecards: list[dict[str, Any]] = []
+    for ent in entities:
+        sub_idx = sponsor_index[sponsor_index["entity"] == ent]
+        owners = sorted(set(str(c) for c in sub_idx["canonical"].unique()))
+        by_role_ent: dict[str, dict[str, Any]] = {}
+        for role in ("any", "lead", "collaborator"):
+            t_df = sponsor_roles.trials(sponsor_index, ent, role=role, view="as_registered")
+            matched_ncts = sorted(set(str(n) for n in t_df["nct_id"]))
+            role_trials = [trial_by_nct[n] for n in matched_ncts if n in trial_by_nct]
+            by_role_ent[role] = _build_role_scorecard(
+                role_trials,
+                ref_by_indication_phase=ref_by_indication_phase,
+                peer_values_by_indication_phase=peer_values_by_indication_phase,
+                min_cell_trials=min_cell_trials,
+            )
+        as_registered_scorecards.append(
+            {
+                "entity": ent,
+                "view": "as_registered",
+                "canonical_owners": owners,
+                "by_role": by_role_ent,
+            }
+        )
+
+    return {
+        "trial_rows": trial_rows,
+        "strata": strata_list,
+        "sponsors": {
+            "attribution_summary": sponsor_meta,
+            "current_owner": current_owner_scorecards,
+            "as_registered": as_registered_scorecards,
+        },
+        "ontology_meta": {
+            "file": ontology_path.name,
+            "version": classifier.version,
+            "sha256": classifier.sha256,
+        },
+        "sponsor_meta": sponsor_meta,
+    }
