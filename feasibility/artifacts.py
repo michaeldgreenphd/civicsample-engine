@@ -81,6 +81,16 @@ HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT_RE = re.compile(r"[0-9a-f]{40}")  # used with fullmatch
 NCT_RE = re.compile(r"^NCT\d{8}$")
 
+# The benchmark cell lists `build_strata_and_sponsors` writes into strata.json and sponsors.json
+# (besides strata.json `overall`, a single cell object); the contract walks every cell in them.
+STRATA_CELL_LISTS = ("by_indication", "by_phase", "by_footprint_tier", "by_mesh_descriptor", "cross_strata")
+SPONSOR_CELL_LISTS = (
+    "by_sponsor_class",
+    "by_lead_review_state",
+    "by_canonical_company_lead",
+    "by_canonical_company_any_role",
+)
+
 PERCENTILE_BLOCK_KEYS = (
     "realized_primary_duration_days",
     "realized_primary_duration_months",
@@ -770,6 +780,34 @@ def _find_private_keys(obj: Any, path: str = "") -> list[str]:
     return leaks
 
 
+def _cell_entries(
+    container: dict[str, Any], key: str, where: str, problems: list[str]
+) -> list[tuple[int, dict[str, Any]]]:
+    """Return `(index, cell)` for every object in the cell list `container[key]`.
+
+    `build_strata_and_sponsors` always writes each cell collection as a list of cell objects
+    (possibly empty), so a missing key, a value that is not a list, or an entry that is not an
+    object can only come from an edited or corrupt file. Each is appended to `problems` rather
+    than passed on, so `_check_cell_withholding` (which reads cells with `.get`) never raises and
+    the contract reports a FAIL instead of a traceback. Non-object entries are left out of the
+    result, keeping their original indices on the entries that remain.
+    """
+    if key not in container:
+        problems.append(f"{where}.{key}: missing cell list")
+        return []
+    value = container[key]
+    if not isinstance(value, list):
+        problems.append(f"{where}.{key}: must be a list of cell objects, got {type(value).__name__}")
+        return []
+    entries: list[tuple[int, dict[str, Any]]] = []
+    for idx, cell in enumerate(value):
+        if isinstance(cell, dict):
+            entries.append((idx, cell))
+        else:
+            problems.append(f"{where}.{key}[{idx}]: cell must be a JSON object, got {type(cell).__name__}")
+    return entries
+
+
 def _check_cell_withholding(cell: dict[str, Any], min_cell_trials: int, where: str) -> list[str]:
     problems: list[str] = []
     n_trials = cell.get("n_trials")
@@ -936,7 +974,12 @@ def check_contract(
     if not isinstance(trials, list):
         return problems + [f"{TRIALS_FILE}: decoded trials is not a list"]
 
-    if isinstance(run_id, str) and RUN_ID_RE.fullmatch(run_id):
+    # run_identity reads every JSON file and trial row as an object (`.items()`). A file that is not
+    # one was reported above, and a row that is not one is reported by the per-trial loop below, so
+    # the digest is recomputed only when it can be, and the family fails on those problems instead.
+    json_objects = all(isinstance(parsed_family[name], dict) for name in JSON_FILES)
+    trial_objects = all(isinstance(t, dict) for t in trials)
+    if json_objects and trial_objects and isinstance(run_id, str) and RUN_ID_RE.fullmatch(run_id):
         expected_ident = run_identity(
             run,
             {name: parsed_family[name] for name in JSON_FILES},
@@ -1094,28 +1137,37 @@ def check_contract(
     else:
         problems.append(f"run.json: parameters.min_cell_trials must be an integer >= 1 (got {min_cell_raw!r})")
         min_cell = DEFAULT_MIN_CELL_TRIALS
+    # Every cell is checked only once it is known to be an object, inside a list that is one (see
+    # `_cell_entries`); a strata.json or sponsors.json that is not an object was reported above.
     strata = parsed_family["strata.json"]
-    if isinstance(strata.get("overall"), dict):
-        problems.extend(_check_cell_withholding(strata["overall"], min_cell, "strata.overall"))
-    for list_key in ("by_indication", "by_phase", "by_footprint_tier", "by_mesh_descriptor", "cross_strata"):
-        for idx, cell in enumerate(strata.get(list_key) or []):
-            problems.extend(_check_cell_withholding(cell, min_cell, f"strata.{list_key}[{idx}]"))
+    if isinstance(strata, dict):
+        if isinstance(strata.get("overall"), dict):
+            problems.extend(_check_cell_withholding(strata["overall"], min_cell, "strata.overall"))
+        else:
+            problems.append(
+                f"strata.overall: must be a cell object, got {type(strata.get('overall')).__name__}"
+            )
+        for list_key in STRATA_CELL_LISTS:
+            for idx, cell in _cell_entries(strata, list_key, "strata", problems):
+                problems.extend(_check_cell_withholding(cell, min_cell, f"strata.{list_key}[{idx}]"))
 
     sponsors = parsed_family["sponsors.json"]
-    lead_state_rows = sponsors.get("by_lead_review_state") or []
-    if [r.get("review_state") for r in lead_state_rows] != list(SPONSOR_REVIEW_STATES):
-        problems.append("sponsors.json: by_lead_review_state must list attributed, reviewed_excluded, unreviewed separately")
-    for list_key in (
-        "by_sponsor_class",
-        "by_lead_review_state",
-        "by_canonical_company_lead",
-        "by_canonical_company_any_role",
-    ):
-        for idx, cell in enumerate(sponsors.get(list_key) or []):
-            problems.extend(_check_cell_withholding(cell, min_cell, f"sponsors.{list_key}[{idx}]"))
+    if isinstance(sponsors, dict):
+        for list_key in SPONSOR_CELL_LISTS:
+            entries = _cell_entries(sponsors, list_key, "sponsors", problems)
+            if list_key == "by_lead_review_state" and [c.get("review_state") for _, c in entries] != list(
+                SPONSOR_REVIEW_STATES
+            ):
+                problems.append(
+                    "sponsors.json: by_lead_review_state must list attributed, reviewed_excluded, unreviewed separately"
+                )
+            for idx, cell in entries:
+                problems.extend(_check_cell_withholding(cell, min_cell, f"sponsors.{list_key}[{idx}]"))
 
     # ---- Summary schema & recount parity against trials.jsonl.gz
     summary = parsed_family["summary.json"]
+    if not isinstance(summary, dict):
+        return problems  # reported above as "summary.json: not a JSON object"
     den = summary.get("denominators") or {}
     for dname, dobj in den.items():
         if not isinstance(dobj, dict) or not isinstance(dobj.get("n"), int) or not dobj.get("definition"):
@@ -1136,6 +1188,8 @@ def check_contract(
         for ridx, row in enumerate(tobj["rows"]):
             problems.extend(_check_count_object(row, den, f"summary.tables.{tname}.rows[{ridx}]"))
 
+    if not trial_objects:
+        return problems  # each non-object row was reported by the per-trial loop; the recount reads objects
     recounted = summarize_trials(
         [{k: v for k, v in t.items() if k not in ("schema_version", "run_id")} for t in trials],
         min_cell_trials=min_cell,

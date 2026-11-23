@@ -69,7 +69,14 @@ def read_verified_build(build_dir: Path) -> dict[str, Any]:
     except (OSError, ValueError) as exc:
         raise ValueError(f"{build_dir}: cannot read build ({exc})") from exc
 
-    problems = artifacts.check_contract(parsed_family, raw_bytes)
+    # An exception check_contract did not anticipate is a refusal like any contract problem (main
+    # prints it and exits 1); it is raised before anything is staged, so nothing is written.
+    try:
+        problems = artifacts.check_contract(parsed_family, raw_bytes)
+    except Exception as exc:  # noqa: BLE001 - any unanticipated shape refuses the export
+        raise ValueError(
+            f"{build_dir}: contract check could not complete ({type(exc).__name__}: {exc})"
+        ) from exc
     if problems:
         raise ValueError(
             f"{build_dir}: build failed contract verification ({len(problems)} problem(s): {problems[0]})"

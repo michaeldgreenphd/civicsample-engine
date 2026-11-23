@@ -72,7 +72,9 @@ python3 scripts/build_feasibility_benchmarks.py --archive /path/to/full_records.
     --out build/feasibility
 
 # Verify producer contract (also re-parses run.json generated_at and checks every trial's
-# condition_mesh.state against the known states)
+# condition_mesh.state against the known states). A JSON file, cell list, cell or trial row of the
+# wrong type is a reported problem; an exception the checker did not anticipate is reported as
+# FAIL with exit 1, not a traceback, and the site exporter refuses the build the same way.
 python3 scripts/check_feasibility_contract.py build/feasibility
 
 # Export compact site files (stages atomically after verifying build SHA-256s)

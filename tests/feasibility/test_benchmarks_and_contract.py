@@ -1356,3 +1356,129 @@ def test_contract_and_export_refuse_edited_weekly_source_stamps(tmp_path: Path) 
     site_dir = tmp_path / "site"
     assert export_feasibility_site.main([str(out_dir), str(site_dir)]) == 1
     assert not (site_dir / "run.json").exists()
+
+
+# ---- Malformed benchmark cells are contract problems, never exceptions
+
+_MISSING = object()
+
+
+@pytest.mark.parametrize(
+    "fname, key, value, expected",
+    [
+        ("strata.json", "by_indication", [None], "strata.by_indication[0]: cell must be a JSON object, got NoneType"),
+        ("strata.json", "cross_strata", ["cell"], "strata.cross_strata[0]: cell must be a JSON object, got str"),
+        ("strata.json", "by_phase", {"PHASE3": {}}, "strata.by_phase: must be a list of cell objects, got dict"),
+        ("strata.json", "by_mesh_descriptor", 5, "strata.by_mesh_descriptor: must be a list of cell objects, got int"),
+        ("strata.json", "by_footprint_tier", _MISSING, "strata.by_footprint_tier: missing cell list"),
+        ("strata.json", "overall", None, "strata.overall: must be a cell object, got NoneType"),
+        ("strata.json", "overall", [], "strata.overall: must be a cell object, got list"),
+        ("sponsors.json", "by_sponsor_class", None, "sponsors.by_sponsor_class: must be a list of cell objects, got NoneType"),
+        (
+            "sponsors.json",
+            "by_canonical_company_lead",
+            [7],
+            "sponsors.by_canonical_company_lead[0]: cell must be a JSON object, got int",
+        ),
+        (
+            "sponsors.json",
+            "by_lead_review_state",
+            [None, "attributed"],
+            "sponsors.by_lead_review_state[1]: cell must be a JSON object, got str",
+        ),
+        (
+            "sponsors.json",
+            "by_lead_review_state",
+            "attributed",
+            "sponsors.by_lead_review_state: must be a list of cell objects, got str",
+        ),
+    ],
+)
+def test_contract_reports_malformed_benchmark_cells_without_raising(
+    fname: str, key: str, value: object, expected: str
+) -> None:
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    family, _raw = _fixture_family(trials, sponsor_meta, review_meta)
+    edited = json.loads(json.dumps(family))
+    if value is _MISSING:
+        del edited[fname][key]
+    else:
+        edited[fname][key] = value
+    problems = artifacts.check_contract(edited)  # must not raise
+    assert expected in problems, problems
+
+
+@pytest.mark.parametrize(
+    "fname, value, expected",
+    [
+        ("strata.json", [], "strata.json: not a JSON object"),
+        ("sponsors.json", None, "sponsors.json: not a JSON object"),
+        ("summary.json", "summary", "summary.json: not a JSON object"),
+    ],
+)
+def test_contract_reports_a_benchmark_file_that_is_not_an_object_without_raising(
+    fname: str, value: object, expected: str
+) -> None:
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    family, _raw = _fixture_family(trials, sponsor_meta, review_meta)
+    edited = json.loads(json.dumps(family))
+    edited[fname] = value
+    assert expected in artifacts.check_contract(edited)  # must not raise
+
+
+def test_contract_reports_a_trial_row_that_is_not_an_object_without_raising() -> None:
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    family, _raw = _fixture_family(trials, sponsor_meta, review_meta)
+    edited = json.loads(json.dumps(family))
+    edited["trials.jsonl.gz"][2] = None
+    assert "trials[2]: not a JSON object" in artifacts.check_contract(edited)  # must not raise
+
+
+def test_contract_cli_and_export_fail_on_a_malformed_cell_on_disk(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    _family, raw = _fixture_family(trials, sponsor_meta, review_meta)
+    build = tmp_path / "build"
+    artifacts.write_artifact_family(raw, build)
+    assert check_feasibility_contract.main([str(build)]) == 0
+
+    strata_path = build / "strata.json"
+    strata = json.loads(strata_path.read_text(encoding="utf-8"))
+    strata["by_indication"] = [None]
+    strata_path.write_text(json.dumps(strata), encoding="utf-8")
+    capsys.readouterr()
+    assert check_feasibility_contract.main([str(build)]) == 1
+    out = capsys.readouterr().out
+    assert "strata.by_indication[0]: cell must be a JSON object, got NoneType" in out
+    assert "FAIL:" in out
+
+    site = tmp_path / "site"
+    assert export_feasibility_site.main([str(build), str(site)]) == 1
+    assert "build failed contract verification" in capsys.readouterr().err
+    assert not site.exists()
+
+
+def test_contract_cli_and_export_report_an_unanticipated_exception(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    _family, raw = _fixture_family(trials, sponsor_meta, review_meta)
+    build = tmp_path / "build"
+    artifacts.write_artifact_family(raw, build)
+
+    def _crash(parsed_family: dict[str, Any], raw_bytes: dict[str, bytes] | None = None) -> list[str]:
+        raise RuntimeError("unanticipated shape")
+
+    monkeypatch.setattr(artifacts, "check_contract", _crash)
+    capsys.readouterr()
+    assert check_feasibility_contract.main([str(build)]) == 1
+    assert (
+        f"FAIL: contract check could not complete on {build}: RuntimeError: unanticipated shape"
+        in capsys.readouterr().out
+    )
+
+    site = tmp_path / "site"
+    assert export_feasibility_site.main([str(build), str(site)]) == 1
+    assert "contract check could not complete (RuntimeError: unanticipated shape)" in capsys.readouterr().err
+    assert not site.exists()

@@ -32,7 +32,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FAIL: could not load {args.path}: {exc}")
         return 1
 
-    problems = artifacts.check_contract(parsed_family, raw_bytes)
+    # A malformed build fails the check with a message, never a traceback: an exception
+    # check_contract did not anticipate (a field of an unexpected type deep inside a trial or the
+    # summary) is reported as a failure with its type and message.
+    try:
+        problems = artifacts.check_contract(parsed_family, raw_bytes)
+    except Exception as exc:  # noqa: BLE001 - any unanticipated shape is a FAIL, not a crash
+        print(f"FAIL: contract check could not complete on {args.path}: {type(exc).__name__}: {exc}")
+        return 1
     for problem in problems:
         print(problem)
     status = "FAIL" if problems else "PASS"
