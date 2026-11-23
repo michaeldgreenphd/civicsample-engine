@@ -42,6 +42,17 @@ Analytical invariants:
   the firewall when the cache is opened, and a malformed one is refused rather
   than dropped on the next rewrite. A manifest, census, page-map or cache JSON
   object that names a key twice is refused, never read last-wins.
+- Bytes are what their digest says. A PDF file is handed to a page extractor
+  only after it hashes to the requested sha256 and byte count, and a local
+  PDF is read only from its own trial's folder (``resolve_local_trial_pdf``
+  refuses a symlink leading out of it). A cached page map's holdout tag is
+  checked before the index entry for its digest is served.
+- Stored state is read strictly. ``document_index_by_sha256.jsonl`` entries
+  carry exactly their schema's keys and types (no ``int()``/``str()``
+  coercion; a null provenance stamp is not turned into text), and one
+  ``(sha256, indexer_rules_version)`` has one line. Census rows carry
+  type-checked fields only, one row per trial file, and a census ingest
+  writes to the cache only when it succeeds whole.
 - Non-collapsing readability taxonomy: all 7 DocumentReadabilityStatus values
   (machine_readable, partial_image_or_redacted, image_only_scan, garbled_cmap,
   extraction_failed, download_failed, no_document) remain distinct and are
@@ -65,6 +76,7 @@ Analytical invariants:
 from __future__ import annotations
 
 import calendar
+from contextlib import contextmanager
 import ctypes
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -84,6 +96,7 @@ from typing import (
     Any,
     Final,
     Iterable,
+    Iterator,
     Literal,
     Mapping,
     Protocol,
@@ -452,7 +465,10 @@ def validate_study_payload_nct_id(
     (d) membership in ``allowed_nct_ids`` when supplied, and
     (e) every retired id in ``identificationModule.nctIdAliases`` is strict
         ASCII and none is in ``audit_nct_ids`` (a merged registration is each
-        of the trials it absorbed).
+        of the trials it absorbed); and, when no holdout set is known (an
+        empty ``audit_nct_ids``) but an allowlist is, every alias is on the
+        allowlist, since an alias checked against an empty holdout set has
+        been checked against nothing.
     """
     if not isinstance(study, Mapping):
         raise DocumentIndexerError("study payload must be a Mapping.")
@@ -495,10 +511,18 @@ def validate_study_payload_nct_id(
     # so a payload whose alias list names a holdout trial IS that holdout
     # trial, whatever its surviving nctId: its documents are the holdout's
     # documents. Every alias must be a strict id (a malformed one cannot be
-    # checked) and none may be in the holdout set. An alias the manifest does
-    # not list is accepted: the allowlist governs the trial being indexed
-    # (nctId, checked above), and a merged registration's retired id need not
-    # appear in a manifest of surviving ids.
+    # checked) and none may be in the holdout set. With a holdout set known,
+    # an alias the manifest does not list is accepted: the allowlist governs
+    # the trial being indexed (nctId, checked above), and a merged
+    # registration's retired id need not appear in a manifest of surviving ids.
+    #
+    # With NO holdout set (a manifest carrying only in_audit=False rows, such
+    # as a filtered run list), the holdout check above compares each alias
+    # with nothing, so an unlisted alias may be a holdout trial the manifest
+    # simply did not mention. The allowlist is then the only list that can
+    # vouch for an alias: one not on it is refused. With neither set
+    # configured (library use with no firewall) aliases are accepted, as an
+    # untagged page map is.
     raw_aliases = id_mod.get("nctIdAliases") if isinstance(id_mod, Mapping) else None
     if raw_aliases is not None:
         if not isinstance(raw_aliases, list):
@@ -508,6 +532,11 @@ def validate_study_payload_nct_id(
                 "against the audit holdout."
             )
         validated_audit = _validate_nct_id_set(audit_nct_ids, label="audit_nct_ids")
+        alias_allowlist = (
+            _validate_nct_id_set(allowed_nct_ids, label="allowed_nct_ids")
+            if allowed_nct_ids is not None
+            else None
+        )
         for index, alias in enumerate(raw_aliases):
             try:
                 validated_alias = validate_nct_id(alias)
@@ -520,6 +549,18 @@ def validate_study_payload_nct_id(
                     f"Study payload nctIdAliases[{index}] is an audit holdout trial; a "
                     "merged registration is that trial too, so its documents are "
                     "blocked by the audit holdout firewall."
+                )
+            if (
+                not validated_audit
+                and alias_allowlist is not None
+                and validated_alias not in alias_allowlist
+            ):
+                raise AuditHoldoutError(
+                    f"Study payload nctIdAliases[{index}] is not on the in-scope allowlist "
+                    "and no audit holdout set is known (the manifest lists no "
+                    "in_audit=True row), so nothing shows the merged trial is not a "
+                    "holdout trial; its documents are blocked. Run with the manifest that "
+                    "marks the holdout."
                 )
 
     if validated_expected is not None and study_nct_id != validated_expected:
@@ -754,6 +795,94 @@ def require_own_large_doc_url(
     return url
 
 
+def resolve_local_trial_pdf(local_pdf_dir: Path, nct_id: str, filename: str) -> Path | None:
+    """Return the real path of ``<local_pdf_dir>/<nct_id>/<filename>``, None when there is no such file.
+
+    The path is built from the trial that passed the firewall, but what it
+    names on disk is up to the file system: a symlink (the file, or the
+    trial's whole folder) can lead into another trial's folder, a holdout
+    trial's included, and the file it reaches would then be read, hashed,
+    parsed and indexed as the in-scope trial's document, its digest recorded
+    in the index, page map, url_manifest.json and profile. So, before the file
+    is opened:
+
+    - ``local_pdf_dir`` must be an existing directory (a mistyped directory
+      would otherwise quietly find no local PDFs). It is itself resolved, so
+      the directory may be a link chosen by the caller.
+    - The trial folder ``<nct_id>`` must be a real directory, not a symlink.
+    - The file's fully resolved path must lie directly in that trial folder. A
+      link to a sibling file of the same trial stays in the folder and is
+      allowed; a link leading anywhere else, or one that cannot be resolved
+      (dangling, looping), is refused. The resolved path must be a regular file.
+
+    A refusal raises ``AuditHoldoutError`` (``DocumentIndexerError`` for a
+    missing directory or a non-file) and names neither the link's target nor
+    any trial: the target may be a holdout trial's file. A hard link cannot be
+    told apart from a copy by its path, so this check does not cover one.
+    """
+    nct = validate_nct_id(nct_id)
+    safe_filename = validate_safe_pdf_filename(filename)
+    root = Path(local_pdf_dir)
+    if not root.is_dir():
+        raise DocumentIndexerError(
+            "--local-pdf-dir is not an existing directory; a mistyped directory would "
+            "silently find no local PDFs."
+        )
+    root_real = root.resolve(strict=True)
+    trial_dir = root_real / nct
+    if not os.path.lexists(trial_dir):
+        return None
+    if trial_dir.is_symlink() or not trial_dir.is_dir():
+        raise AuditHoldoutError(
+            "A trial folder under --local-pdf-dir is a symlink or not a directory, so "
+            "its files may belong to another trial; local PDFs are read only from a "
+            "trial's own real folder (the link target is not printed)."
+        )
+    candidate = trial_dir / safe_filename
+    if not os.path.lexists(candidate):
+        return None
+    try:
+        resolved = candidate.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise AuditHoldoutError(
+            "A local PDF under --local-pdf-dir is a link that cannot be resolved; it is "
+            "not read (the link target is not printed)."
+        ) from None
+    if resolved.parent != trial_dir:
+        raise AuditHoldoutError(
+            "A local PDF under --local-pdf-dir resolves outside its trial's own folder "
+            "(a symlink into another trial's folder); it is not read, hashed or indexed "
+            "(the link target is not printed)."
+        )
+    if not resolved.is_file():
+        raise DocumentIndexerError(
+            "A local PDF under --local-pdf-dir is not a regular file; it is not read."
+        )
+    return resolved
+
+
+def validate_page_selection_bounds(min_selected_pages: Any, max_selected_pages: Any) -> None:
+    """Raise ``DocumentIndexerError`` unless ``1 <= min_selected_pages <= max_selected_pages`` (both int).
+
+    ``select_statistical_pages`` enforces the same rule, but only once a
+    document's pages are in hand: by then a live run has fetched the CT.gov
+    record, downloaded the PDF and written its blob, url_manifest.json entry
+    and page map. Entry points call this first, so bad bounds stop a run
+    before any fetch or cache write.
+    """
+    if type(min_selected_pages) is not int or min_selected_pages < 1:
+        raise DocumentIndexerError(
+            "min_selected_pages must be an int >= 1 "
+            f"(got {type(min_selected_pages).__name__} {min_selected_pages!r})."
+        )
+    if type(max_selected_pages) is not int or max_selected_pages < min_selected_pages:
+        raise DocumentIndexerError(
+            "max_selected_pages must be an int >= min_selected_pages "
+            f"(got {type(max_selected_pages).__name__} {max_selected_pages!r} with "
+            f"min_selected_pages={min_selected_pages})."
+        )
+
+
 def classify_doc_type(has_protocol: bool, has_sap: bool) -> DocType | None:
     """Map CT.gov largeDocs boolean flags to DocType, or None for standalone ICFs."""
     if has_protocol and has_sap:
@@ -778,6 +907,15 @@ def extract_in_scope_large_docs(
     Standalone ICFs (hasProtocol=False and hasSap=False) are excluded and counted
     in excluded_icf_count so absence of protocol/SAP is never confused with an
     unindexed trial.
+
+    A payload listing one ``filename`` in more than one ``largeDocs`` entry is
+    refused (``DocumentIndexerError``). A trial's posted file is one document
+    at one URL; two entries for it (say, one flagged as the protocol and one as
+    the SAP) would download it twice and record it as two documents, which a
+    consumer keyed by ``(nct_id, filename)`` resolves silently one way or the
+    other. CT.gov marks a combined protocol and SAP with both flags on one
+    entry, so a repeated filename is malformed rather than combined, and it is
+    not merged here. The message gives the entry positions, not the trial.
     """
     nct_id = validate_study_payload_nct_id(
         study,
@@ -796,6 +934,26 @@ def extract_in_scope_large_docs(
     raw_docs = large_mod.get("largeDocs") if isinstance(large_mod, Mapping) else []
     if not isinstance(raw_docs, Sequence) or isinstance(raw_docs, (str, bytes)):
         return [], 0
+
+    # One posted file, one entry (see the docstring). Compared after the same
+    # strip() the in-scope filename gets below, over every entry that names a
+    # file, ICFs included: a file listed as an ICF and again as a protocol
+    # would otherwise be both counted as excluded and indexed.
+    first_position: dict[str, int] = {}
+    for position, item in enumerate(raw_docs):
+        if not isinstance(item, Mapping):
+            continue
+        listed = item.get("filename")
+        if not isinstance(listed, str) or not listed.strip():
+            continue
+        key = listed.strip()
+        if key in first_position:
+            raise DocumentIndexerError(
+                f"Study payload largeDocs[{first_position[key]}] and largeDocs[{position}] "
+                "name the same posted file; one file listed twice would be downloaded "
+                "twice and recorded as two documents, so the payload is refused."
+            )
+        first_position[key] = position
 
     in_scope: list[dict[str, Any]] = []
     excluded_icf_count = 0
@@ -854,6 +1012,117 @@ def extract_in_scope_large_docs(
 
 
 # ---------------------------------------------------------------------------
+# Strict readers for stored index entries
+#
+# ``document_index_by_sha256.jsonl`` is read back by ``DocumentCacheStore`` and
+# rewritten whole by ``flush_index`` from what was read. Coercing a stored value
+# (``int(576.7)``, ``int("576")``, ``str(None)``) changes the record and then
+# writes the change back, with nothing said: a null ``extracted_at`` became the
+# provenance stamp ``"None"``. A key the reader ignores is dropped on the next
+# rewrite, and a missing one used to stop the run with a bare ``KeyError``. So
+# every stored field is type-checked exactly (``bool`` is not an int), every
+# object must carry exactly its schema's keys, and anything else raises
+# ``CacheIntegrityError`` naming the line and field, never the value.
+# ---------------------------------------------------------------------------
+
+
+def _stored_object(data: Any, expected: frozenset[str], *, origin: str) -> Mapping[str, Any]:
+    """Return ``data`` when it is a JSON object with exactly the ``expected`` keys; raise otherwise."""
+    if not isinstance(data, Mapping):
+        raise CacheIntegrityError(f"{origin} is {type(data).__name__}, not a JSON object.")
+    keys = set(data.keys())
+    missing = sorted(expected - keys)
+    extra = keys - expected
+    if missing or extra:
+        named_extra = sorted(
+            k for k in extra if isinstance(k, str) and _NAMEABLE_JSON_KEY_RE.fullmatch(k)
+        )
+        raise CacheIntegrityError(
+            f"{origin} does not carry exactly its schema's keys (missing {missing}; "
+            f"{len(extra)} unexpected, named: {named_extra}); a stored record is refused "
+            "rather than read with defaults or rewritten without its extra keys."
+        )
+    return data
+
+
+def _stored_int(value: Any, *, origin: str, field: str, minimum: int | None = None) -> int:
+    """Return ``value`` when it is an int (not a bool) of at least ``minimum``; never coerce."""
+    if type(value) is not int or (minimum is not None and value < minimum):
+        bound = f" >= {minimum}" if minimum is not None else ""
+        shown = f"int below {minimum}" if type(value) is int else type(value).__name__
+        raise CacheIntegrityError(
+            f"{origin} field {field!r} must be an int{bound} (got {shown}); it is not coerced."
+        )
+    return value
+
+
+def _stored_float(value: Any, *, origin: str, field: str) -> float:
+    """Return ``value`` as a float when it is a finite JSON number (int or float, not bool)."""
+    if type(value) not in (int, float) or not math.isfinite(value):
+        raise CacheIntegrityError(
+            f"{origin} field {field!r} must be a finite number (got {type(value).__name__})."
+        )
+    return float(value)
+
+
+def _stored_str(value: Any, *, origin: str, field: str, non_empty: bool = False) -> str:
+    """Return ``value`` when it is a str (non-empty after strip when ``non_empty``); never ``str()`` it."""
+    if type(value) is not str or (non_empty and not value.strip()):
+        need = "a non-empty str" if non_empty else "a str"
+        raise CacheIntegrityError(
+            f"{origin} field {field!r} must be {need} (got {type(value).__name__}); a "
+            "missing value is not turned into text."
+        )
+    return value
+
+
+def _stored_bool(value: Any, *, origin: str, field: str) -> bool:
+    """Return ``value`` when it is a JSON boolean; ``bool()`` of anything else is not taken."""
+    if type(value) is not bool:
+        raise CacheIntegrityError(
+            f"{origin} field {field!r} must be a boolean (got {type(value).__name__})."
+        )
+    return value
+
+
+def _stored_pages(value: Any, *, origin: str, field: str) -> list[int]:
+    """Return ``value`` when it is a JSON list of 1-based page numbers (ints >= 1)."""
+    if not isinstance(value, list):
+        raise CacheIntegrityError(
+            f"{origin} field {field!r} must be a list of page numbers (got {type(value).__name__})."
+        )
+    return [
+        _stored_int(page, origin=origin, field=f"{field}[{index}]", minimum=1)
+        for index, page in enumerate(value)
+    ]
+
+
+def _stored_choice(value: Any, allowed: Sequence[str], *, origin: str, field: str) -> str:
+    """Return ``value`` when it is one of ``allowed``; the value itself is not printed."""
+    if type(value) is not str or value not in allowed:
+        raise CacheIntegrityError(
+            f"{origin} field {field!r} is not one of the allowed values "
+            f"(got {type(value).__name__})."
+        )
+    return value
+
+
+_SELECTION_STRATEGIES: Final[tuple[SelectionStrategy, ...]] = (
+    "full_readable_within_budget",
+    "toc_and_headings",
+    "headings_and_keywords",
+    "fallback_leading_pages",
+    "no_readable_pages",
+)
+_CONTENT_READABILITY_STATUSES: Final[tuple[ContentReadabilityStatus, ...]] = (
+    "machine_readable",
+    "partial_image_or_redacted",
+    "image_only_scan",
+    "garbled_cmap",
+)
+
+
+# ---------------------------------------------------------------------------
 # Data models (Dataclasses & TypedDicts)
 # ---------------------------------------------------------------------------
 
@@ -880,17 +1149,51 @@ class GarbledCMapMetrics:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> GarbledCMapMetrics:
-        return cls(
-            text_bearing_pages=int(data["text_bearing_pages"]),
-            garbled_page_count=int(data["garbled_page_count"]),
-            garbled_page_ratio=float(data["garbled_page_ratio"]),
-            pages_garbled_cmap=tuple(int(p) for p in data["pages_garbled_cmap"]),
-            garbled_statistical_pages=tuple(
-                int(p) for p in data["garbled_statistical_pages"]
+    def from_dict(
+        cls, data: Mapping[str, Any], *, origin: str = "cmap_metrics"
+    ) -> GarbledCMapMetrics:
+        """Read a stored ``to_dict`` object strictly (exact keys and types; see the strict readers above)."""
+        obj = _stored_object(
+            data,
+            frozenset(
+                {
+                    "text_bearing_pages",
+                    "garbled_page_count",
+                    "garbled_page_ratio",
+                    "pages_garbled_cmap",
+                    "garbled_statistical_pages",
+                    "max_page_punct_ctrl_ratio",
+                    "min_page_common_word_ratio",
+                }
             ),
-            max_page_punct_ctrl_ratio=float(data["max_page_punct_ctrl_ratio"]),
-            min_page_common_word_ratio=float(data["min_page_common_word_ratio"]),
+            origin=origin,
+        )
+        return cls(
+            text_bearing_pages=_stored_int(
+                obj["text_bearing_pages"], origin=origin, field="text_bearing_pages", minimum=0
+            ),
+            garbled_page_count=_stored_int(
+                obj["garbled_page_count"], origin=origin, field="garbled_page_count", minimum=0
+            ),
+            garbled_page_ratio=_stored_float(
+                obj["garbled_page_ratio"], origin=origin, field="garbled_page_ratio"
+            ),
+            pages_garbled_cmap=tuple(
+                _stored_pages(obj["pages_garbled_cmap"], origin=origin, field="pages_garbled_cmap")
+            ),
+            garbled_statistical_pages=tuple(
+                _stored_pages(
+                    obj["garbled_statistical_pages"],
+                    origin=origin,
+                    field="garbled_statistical_pages",
+                )
+            ),
+            max_page_punct_ctrl_ratio=_stored_float(
+                obj["max_page_punct_ctrl_ratio"], origin=origin, field="max_page_punct_ctrl_ratio"
+            ),
+            min_page_common_word_ratio=_stored_float(
+                obj["min_page_common_word_ratio"], origin=origin, field="min_page_common_word_ratio"
+            ),
         )
 
 
@@ -916,28 +1219,44 @@ class RedactionSummary:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> RedactionSummary:
+    def from_dict(
+        cls, data: Mapping[str, Any], *, origin: str = "redaction"
+    ) -> RedactionSummary:
+        """Read a stored ``to_dict`` object strictly (exact keys and types; see the strict readers above)."""
+        page_fields = (
+            "pages_with_cci",
+            "pages_with_ppd",
+            "pages_with_redacted_tag",
+            "pages_header_stamp_only",
+            "pages_orphaned_stat_headings",
+            "unreadable_statistical_pages",
+        )
+        obj = _stored_object(
+            data, frozenset({"redaction_flags", *page_fields}), origin=origin
+        )
+        raw_flags = obj["redaction_flags"]
+        if not isinstance(raw_flags, list):
+            raise CacheIntegrityError(
+                f"{origin} field 'redaction_flags' must be a list (got {type(raw_flags).__name__})."
+            )
         flags: list[RedactionFlag] = []
-        for flag in data["redaction_flags"]:
-            if flag not in REDACTION_FLAGS:
-                raise DocumentIndexerError(f"Unknown redaction flag: {flag!r}")
-            flags.append(flag)
+        for index, flag in enumerate(raw_flags):
+            flags.append(
+                _stored_choice(  # type: ignore[arg-type]
+                    flag, REDACTION_FLAGS, origin=origin, field=f"redaction_flags[{index}]"
+                )
+            )
+        pages = {
+            name: tuple(_stored_pages(obj[name], origin=origin, field=name)) for name in page_fields
+        }
         return cls(
             redaction_flags=tuple(flags),
-            pages_with_cci=tuple(int(p) for p in data["pages_with_cci"]),
-            pages_with_ppd=tuple(int(p) for p in data["pages_with_ppd"]),
-            pages_with_redacted_tag=tuple(
-                int(p) for p in data["pages_with_redacted_tag"]
-            ),
-            pages_header_stamp_only=tuple(
-                int(p) for p in data["pages_header_stamp_only"]
-            ),
-            pages_orphaned_stat_headings=tuple(
-                int(p) for p in data["pages_orphaned_stat_headings"]
-            ),
-            unreadable_statistical_pages=tuple(
-                int(p) for p in data["unreadable_statistical_pages"]
-            ),
+            pages_with_cci=pages["pages_with_cci"],
+            pages_with_ppd=pages["pages_with_ppd"],
+            pages_with_redacted_tag=pages["pages_with_redacted_tag"],
+            pages_header_stamp_only=pages["pages_header_stamp_only"],
+            pages_orphaned_stat_headings=pages["pages_orphaned_stat_headings"],
+            unreadable_statistical_pages=pages["unreadable_statistical_pages"],
         )
 
 
@@ -959,19 +1278,27 @@ class DetectedSectionRange:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> DetectedSectionRange:
-        category = data["category"]
-        if category not in STATISTICAL_SECTION_KINDS:
-            raise DocumentIndexerError(f"Unknown section category: {category!r}")
-        source = data["source"]
-        if source not in ("toc", "body_heading", "synopsis_block"):
-            raise DocumentIndexerError(f"Unknown section source: {source!r}")
+    def from_dict(
+        cls, data: Mapping[str, Any], *, origin: str = "detected section"
+    ) -> DetectedSectionRange:
+        """Read a stored ``to_dict`` object strictly (exact keys and types; see the strict readers above)."""
+        obj = _stored_object(
+            data,
+            frozenset({"category", "heading", "source", "start_page", "end_page"}),
+            origin=origin,
+        )
+        category = _stored_choice(
+            obj["category"], STATISTICAL_SECTION_KINDS, origin=origin, field="category"
+        )
+        source = _stored_choice(
+            obj["source"], ("toc", "body_heading", "synopsis_block"), origin=origin, field="source"
+        )
         return cls(
-            category=category,
-            heading=str(data["heading"]),
-            source=source,
-            start_page=int(data["start_page"]),
-            end_page=int(data["end_page"]),
+            category=category,  # type: ignore[arg-type]
+            heading=_stored_str(obj["heading"], origin=origin, field="heading"),
+            source=source,  # type: ignore[arg-type]
+            start_page=_stored_int(obj["start_page"], origin=origin, field="start_page", minimum=1),
+            end_page=_stored_int(obj["end_page"], origin=origin, field="end_page", minimum=1),
         )
 
 
@@ -1003,24 +1330,70 @@ class SectionSliceResult:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> SectionSliceResult:
-        offset = data.get("printed_page_offset")
+    def from_dict(
+        cls, data: Mapping[str, Any], *, origin: str = "section_slice"
+    ) -> SectionSliceResult:
+        """Read a stored ``to_dict`` object strictly (exact keys and types; see the strict readers above).
+
+        ``printed_page_offset`` must be present: null (no offset) and an int
+        are both stored values; an absent key is not read as null.
+        """
+        obj = _stored_object(
+            data,
+            frozenset(
+                {
+                    "physical_pages",
+                    "pages_selected",
+                    "pages_deferred",
+                    "pages_without_text",
+                    "unreadable_statistical_pages",
+                    "has_toc",
+                    "toc_pages",
+                    "printed_page_offset",
+                    "detected_sections",
+                    "selection_strategy",
+                }
+            ),
+            origin=origin,
+        )
+        offset = obj["printed_page_offset"]
+        raw_sections = obj["detected_sections"]
+        if not isinstance(raw_sections, list):
+            raise CacheIntegrityError(
+                f"{origin} field 'detected_sections' must be a list "
+                f"(got {type(raw_sections).__name__})."
+            )
         return cls(
-            physical_pages=int(data["physical_pages"]),
-            pages_selected=[int(p) for p in data["pages_selected"]],
-            pages_deferred=[int(p) for p in data["pages_deferred"]],
-            pages_without_text=[int(p) for p in data["pages_without_text"]],
-            unreadable_statistical_pages=[
-                int(p) for p in data["unreadable_statistical_pages"]
-            ],
-            has_toc=bool(data["has_toc"]),
-            toc_pages=[int(p) for p in data["toc_pages"]],
-            printed_page_offset=int(offset) if offset is not None else None,
+            physical_pages=_stored_int(
+                obj["physical_pages"], origin=origin, field="physical_pages", minimum=0
+            ),
+            pages_selected=_stored_pages(obj["pages_selected"], origin=origin, field="pages_selected"),
+            pages_deferred=_stored_pages(obj["pages_deferred"], origin=origin, field="pages_deferred"),
+            pages_without_text=_stored_pages(
+                obj["pages_without_text"], origin=origin, field="pages_without_text"
+            ),
+            unreadable_statistical_pages=_stored_pages(
+                obj["unreadable_statistical_pages"],
+                origin=origin,
+                field="unreadable_statistical_pages",
+            ),
+            has_toc=_stored_bool(obj["has_toc"], origin=origin, field="has_toc"),
+            toc_pages=_stored_pages(obj["toc_pages"], origin=origin, field="toc_pages"),
+            printed_page_offset=(
+                None
+                if offset is None
+                else _stored_int(offset, origin=origin, field="printed_page_offset")
+            ),
             detected_sections=[
-                DetectedSectionRange.from_dict(item)
-                for item in data["detected_sections"]
+                DetectedSectionRange.from_dict(item, origin=f"{origin} detected_sections[{index}]")
+                for index, item in enumerate(raw_sections)
             ],
-            selection_strategy=data["selection_strategy"],
+            selection_strategy=_stored_choice(  # type: ignore[arg-type]
+                obj["selection_strategy"],
+                _SELECTION_STRATEGIES,
+                origin=origin,
+                field="selection_strategy",
+            ),
         )
 
 
@@ -1062,40 +1435,99 @@ class DocumentIndexEntry:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> DocumentIndexEntry:
-        sha = str(data["sha256"]).lower()
-        if not SHA256_RE.fullmatch(sha):
-            raise CacheIntegrityError(f"Invalid sha256 in index entry: {sha!r}")
-        status = data["readability_status"]
-        if status not in (
-            "machine_readable",
-            "partial_image_or_redacted",
-            "image_only_scan",
-            "garbled_cmap",
-        ):
-            raise CacheIntegrityError(f"Invalid content readability_status: {status!r}")
-        bucket = data.get("unreadable_recovery_bucket")
-        if bucket is not None and bucket not in UNREADABLE_RECOVERY_BUCKETS:
+    def from_dict(
+        cls, data: Mapping[str, Any], *, origin: str = "document index entry"
+    ) -> DocumentIndexEntry:
+        """Read one stored index entry strictly; ``CacheIntegrityError`` on anything ``to_dict`` would not write.
+
+        Exact keys at every level, exact types (no ``int()``/``str()``
+        coercion), a lowercase 64-hex ``sha256``, a positive ``byte_count``
+        and ``physical_pages``, non-empty provenance strings
+        (``extracted_at``, ``indexer_rules_version``, ``text_provider``) and a
+        ``pipeline_commit`` that is a non-empty str or null. ``origin`` names
+        the file and line in messages; no stored value is printed.
+        """
+        obj = _stored_object(
+            data,
+            frozenset(
+                {
+                    "sha256",
+                    "byte_count",
+                    "extracted_at",
+                    "pipeline_commit",
+                    "indexer_rules_version",
+                    "text_provider",
+                    "physical_pages",
+                    "pages_without_text",
+                    "readability_status",
+                    "unreadable_recovery_bucket",
+                    "cmap_metrics",
+                    "redaction",
+                    "version_label",
+                    "version_date_as_printed",
+                    "section_slice",
+                }
+            ),
+            origin=origin,
+        )
+        sha = obj["sha256"]
+        if type(sha) is not str or not SHA256_RE.fullmatch(sha):
             raise CacheIntegrityError(
-                f"Invalid unreadable_recovery_bucket: {bucket!r}"
+                f"{origin} field 'sha256' is not 64 lowercase hex characters "
+                f"(got {type(sha).__name__})."
             )
-        commit = data.get("pipeline_commit")
+        status = _stored_choice(
+            obj["readability_status"],
+            _CONTENT_READABILITY_STATUSES,
+            origin=origin,
+            field="readability_status",
+        )
+        bucket = obj["unreadable_recovery_bucket"]
+        if bucket is not None:
+            bucket = _stored_choice(
+                bucket,
+                UNREADABLE_RECOVERY_BUCKETS,
+                origin=origin,
+                field="unreadable_recovery_bucket",
+            )
+        commit = obj["pipeline_commit"]
+        if commit is not None:
+            commit = _stored_str(commit, origin=origin, field="pipeline_commit", non_empty=True)
         return cls(
             sha256=sha,
-            byte_count=int(data["byte_count"]),
-            extracted_at=str(data["extracted_at"]),
-            pipeline_commit=str(commit) if commit is not None else None,
-            indexer_rules_version=str(data["indexer_rules_version"]),
-            text_provider=str(data["text_provider"]),
-            physical_pages=int(data["physical_pages"]),
-            pages_without_text=tuple(int(p) for p in data["pages_without_text"]),
-            readability_status=status,
-            unreadable_recovery_bucket=bucket,
-            cmap_metrics=GarbledCMapMetrics.from_dict(data["cmap_metrics"]),
-            redaction=RedactionSummary.from_dict(data["redaction"]),
-            version_label=str(data["version_label"]),
-            version_date_as_printed=str(data["version_date_as_printed"]),
-            section_slice=SectionSliceResult.from_dict(data["section_slice"]),
+            byte_count=_stored_int(obj["byte_count"], origin=origin, field="byte_count", minimum=1),
+            extracted_at=_stored_str(
+                obj["extracted_at"], origin=origin, field="extracted_at", non_empty=True
+            ),
+            pipeline_commit=commit,
+            indexer_rules_version=_stored_str(
+                obj["indexer_rules_version"],
+                origin=origin,
+                field="indexer_rules_version",
+                non_empty=True,
+            ),
+            text_provider=_stored_str(
+                obj["text_provider"], origin=origin, field="text_provider", non_empty=True
+            ),
+            physical_pages=_stored_int(
+                obj["physical_pages"], origin=origin, field="physical_pages", minimum=1
+            ),
+            pages_without_text=tuple(
+                _stored_pages(obj["pages_without_text"], origin=origin, field="pages_without_text")
+            ),
+            readability_status=status,  # type: ignore[arg-type]
+            unreadable_recovery_bucket=bucket,  # type: ignore[arg-type]
+            cmap_metrics=GarbledCMapMetrics.from_dict(
+                obj["cmap_metrics"], origin=f"{origin} cmap_metrics"
+            ),
+            redaction=RedactionSummary.from_dict(obj["redaction"], origin=f"{origin} redaction"),
+            version_label=_stored_str(obj["version_label"], origin=origin, field="version_label"),
+            version_date_as_printed=_stored_str(
+                obj["version_date_as_printed"], origin=origin, field="version_date_as_printed"
+            ),
+            section_slice=SectionSliceResult.from_dict(
+                obj["section_slice"], origin=f"{origin} section_slice"
+            ),
         )
 
 
@@ -3637,26 +4069,133 @@ class DocumentCacheStore:
         self._entries: dict[tuple[str, str], DocumentIndexEntry] = {}
         self._sha_invariants: dict[str, tuple[int, int]] = {}
         self._url_manifest: dict[str, dict[str, Any]] = {}
+        # Writes held back by ``staged_writes`` (None when writing through):
+        # page-map bytes by path, and whether the index / url manifest need
+        # rewriting once the staged block succeeds.
+        self._staged_page_maps: dict[Path, bytes] | None = None
+        self._staged_index_dirty = False
+        self._staged_url_manifest_dirty = False
         self._load_existing()
 
     def _load_existing(self) -> None:
+        """Read the index and url manifest strictly; any refusal raises before anything is written.
+
+        Each index line is parsed with ``loads_strict_json`` (a repeated key is
+        refused, not read last-wins) and ``DocumentIndexEntry.from_dict``
+        (exact keys and types, no coercion). Two lines for one
+        ``(sha256, indexer_rules_version)`` are refused whether or not they
+        agree: ``flush_index`` writes one line per key, so a second line was
+        not written by this store and nothing says which one is meant. A
+        refusal raises ``CacheIntegrityError`` naming the file and line, and
+        the file is left byte for byte.
+        """
         if self.index_path.exists():
-            with self.index_path.open("r", encoding="utf-8") as handle:
-                for raw_line in handle:
-                    line = raw_line.strip()
-                    if not line:
-                        continue
-                    entry = DocumentIndexEntry.from_dict(json.loads(line))
-                    self._check_sha_invariants(
-                        entry.sha256, entry.byte_count, entry.physical_pages
+            origin_file = str(self.index_path)
+            try:
+                text = self.index_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                raise CacheIntegrityError(
+                    f"Document index {origin_file} cannot be read ({type(exc).__name__}); it is "
+                    "left as it is."
+                ) from None
+            # split("\n"), not splitlines(): the lines are the file's own, as a
+            # file iterator reads them, whatever other separators a value holds.
+            for line_no, raw_line in enumerate(text.split("\n"), start=1):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                where = f"Document index {origin_file}:{line_no}"
+                try:
+                    obj = loads_strict_json(line, origin=where, error_cls=CacheIntegrityError)
+                except json.JSONDecodeError as exc:
+                    raise CacheIntegrityError(
+                        f"{where} is not valid JSON ({exc.msg}); the file is left as it is."
+                    ) from None
+                entry = DocumentIndexEntry.from_dict(obj, origin=where)
+                key = (entry.sha256, entry.indexer_rules_version)
+                if key in self._entries:
+                    raise CacheIntegrityError(
+                        f"{where} repeats the (sha256, indexer_rules_version) of an earlier "
+                        "line; a second line for one key is refused, not read last-wins, and "
+                        "the file is left as it is."
                     )
-                    self._entries[(entry.sha256, entry.indexer_rules_version)] = entry
-                    self._sha_invariants[entry.sha256] = (
-                        entry.byte_count,
-                        entry.physical_pages,
-                    )
+                self._check_sha_invariants(
+                    entry.sha256, entry.byte_count, entry.physical_pages
+                )
+                self._entries[key] = entry
+                self._sha_invariants[entry.sha256] = (
+                    entry.byte_count,
+                    entry.physical_pages,
+                )
         if self.url_manifest_path.exists():
             self._url_manifest = self._load_url_manifest()
+
+    @contextmanager
+    def staged_writes(self) -> Iterator[None]:
+        """Hold every cache write made inside the block, and write them only if the block succeeds.
+
+        Used by ``ingest_legacy_census_documents``, whose promise is that a
+        refused ingest writes nothing: a row can still fail after earlier
+        trials were indexed (a local PDF whose digest disagrees, a page map
+        tagged with a holdout trial), and writing through would leave those
+        trials' page maps and index lines in the cache with no profile.
+
+        Inside the block, page maps, index entries and url_manifest records
+        are kept in memory, and every read (``load_cached_pages``,
+        ``get_entry``, ``lookup_url_manifest``) sees them. On a clean exit
+        they are written: page maps first, then url_manifest.json, then the
+        index, the same order an unstaged run writes a document in. On an
+        exception nothing is written and the in-memory index and manifest are
+        restored. (A write failing part-way through the commit, a full disk
+        say, can still leave some files written; that is an I/O failure, not
+        a refusal.) Blobs are not staged: ``save_blob`` writes through.
+        Blocks do not nest.
+        """
+        if self._staged_page_maps is not None:
+            raise DocumentIndexerError("DocumentCacheStore.staged_writes blocks do not nest.")
+        saved_entries = dict(self._entries)
+        saved_invariants = dict(self._sha_invariants)
+        saved_manifest = {url: dict(record) for url, record in self._url_manifest.items()}
+        self._staged_page_maps = {}
+        self._staged_index_dirty = False
+        self._staged_url_manifest_dirty = False
+        try:
+            yield
+        except BaseException:
+            self._entries = saved_entries
+            self._sha_invariants = saved_invariants
+            self._url_manifest = saved_manifest
+            self._staged_page_maps = None
+            self._staged_index_dirty = False
+            self._staged_url_manifest_dirty = False
+            raise
+        staged_maps = self._staged_page_maps
+        index_dirty = self._staged_index_dirty
+        manifest_dirty = self._staged_url_manifest_dirty
+        self._staged_page_maps = None
+        self._staged_index_dirty = False
+        self._staged_url_manifest_dirty = False
+        for path, data in sorted(staged_maps.items()):
+            atomic_write_bytes(path, data)
+        if manifest_dirty:
+            self._write_url_manifest()
+        if index_dirty:
+            self.flush_index()
+
+    def _read_page_map_object(self, path: Path) -> Any | None:
+        """Parse the page map at ``path`` (staged bytes first, then disk), or None when there is none.
+
+        A map naming any key twice (``nct_id`` or ``in_audit``, say) is
+        refused by ``loads_strict_json``, not read last-wins.
+        """
+        data: bytes | None = None
+        if self._staged_page_maps is not None:
+            data = self._staged_page_maps.get(path)
+        if data is None:
+            if not path.exists():
+                return None
+            data = path.read_bytes()
+        return loads_strict_json(gzip.decompress(data).decode("utf-8"), origin=str(path))
 
     @property
     def firewall_configured(self) -> bool:
@@ -3843,7 +4382,11 @@ class DocumentCacheStore:
             return self._entries[key]
         self._entries[key] = entry
         self._sha_invariants[entry.sha256] = (entry.byte_count, entry.physical_pages)
-        self.flush_index()
+        if self._staged_page_maps is not None:
+            # Inside staged_writes: the index is rewritten once, on success.
+            self._staged_index_dirty = True
+        else:
+            self.flush_index()
         return entry
 
     def flush_index(self) -> None:
@@ -3892,9 +4435,8 @@ class DocumentCacheStore:
         sanitized = [sanitize_page_text(p) for p in pages]
         self._check_sha_invariants(sha, byte_count, len(sanitized))
         path = self.page_map_path(sha)
-        if path.exists():
-            with gzip.open(path, "rt", encoding="utf-8") as handle:
-                existing = loads_strict_json(handle.read(), origin=str(path))
+        existing = self._read_page_map_object(path)
+        if existing is not None:
             if not isinstance(existing, Mapping):
                 raise CacheIntegrityError(
                     f"Existing cached page map {path} is not a JSON object."
@@ -3916,7 +4458,11 @@ class DocumentCacheStore:
         }
         if nct_id is not None:
             payload["nct_id"] = nct_id
-        atomic_write_bytes(path, encode_gz_json(payload))
+        if self._staged_page_maps is not None:
+            # Inside staged_writes: held in memory, written on success only.
+            self._staged_page_maps[path] = encode_gz_json(payload)
+        else:
+            atomic_write_bytes(path, encode_gz_json(payload))
         return path
 
     def load_cached_pages(
@@ -3937,11 +4483,10 @@ class DocumentCacheStore:
         if not SHA256_RE.fullmatch(sha):
             return None
         path = self.page_map_path(sha)
-        if not path.exists():
+        # A map naming nct_id or in_audit twice is refused, not read last-wins.
+        obj = self._read_page_map_object(path)
+        if obj is None:
             return None
-        with gzip.open(path, "rt", encoding="utf-8") as handle:
-            # A map naming nct_id or in_audit twice is refused, not read last-wins.
-            obj = loads_strict_json(handle.read(), origin=str(path))
         if not isinstance(obj, Mapping):
             raise CacheIntegrityError(f"Malformed cached page map {path}: expected JSON object")
         check_page_map_firewall(
@@ -4074,6 +4619,14 @@ class DocumentCacheStore:
             "verified_at": verified_at or utc_now_iso(),
             "pipeline_commit": pipeline_commit,
         }
+        if self._staged_page_maps is not None:
+            # Inside staged_writes: the file is rewritten once, on success.
+            self._staged_url_manifest_dirty = True
+            return
+        self._write_url_manifest()
+
+    def _write_url_manifest(self) -> None:
+        """Rewrite ``url_manifest.json`` whole from the records held in memory, sorted by URL."""
         payload = json.dumps(
             dict(sorted(self._url_manifest.items())),
             indent=2,
@@ -4105,7 +4658,28 @@ class DocumentCacheStore:
 
         Returns (entry, cache_hit) where cache_hit is True when an existing
         (sha256, indexer_rules_version) entry was reused without re-indexing.
+
+        Order, after the requesting trial passes the firewall and the page
+        bounds are checked (``validate_page_selection_bounds``, before any
+        write):
+
+        1. The cached page map for ``sha256``, when there is one, is read and
+           passes ``check_page_map_firewall`` BEFORE an index entry is served.
+           The index line is untagged; the map is what names the trial the
+           pages were extracted for. Serving the entry first let a digest
+           whose map is tagged with a holdout trial through as a cache hit,
+           while the same digest without an entry was refused.
+        2. An existing entry is served (cache hit) unless re-parsing.
+        3. Otherwise the cached pages are re-indexed, or the provider extracts
+           them. A ``pdf_path`` handed to the provider must hash to
+           ``sha256`` and ``byte_count`` first (``CacheIntegrityError``
+           otherwise, and the provider is not called): a cached blob or local
+           file whose bytes are not that digest's (damaged, or swapped for
+           another trial's document) would otherwise be parsed and cached as
+           that digest's pages. The error names the expected digest and the
+           file, never the digest the file actually has.
         """
+        validate_page_selection_bounds(min_selected_pages, max_selected_pages)
         combined_audit = self._audit_nct_ids | _validate_nct_id_set(
             audit_nct_ids, label="audit_nct_ids"
         )
@@ -4152,11 +4726,14 @@ class DocumentCacheStore:
         existing = self.get_entry(
             sha, indexer_rules_version, expected_byte_count=byte_count
         )
+        # Step 1: the map's holdout tag is checked whether or not an entry
+        # exists (load_cached_pages runs check_page_map_firewall before
+        # reading anything else in the map). It also serves step 3 below:
+        # cached pages enable zero-PDFKit/zero-HTTP rule-bump re-indexing.
+        cached_pages = self.load_cached_pages(sha, expected_byte_count=byte_count)
         if existing is not None and not reparse_cached_pages:
             return existing, True
 
-        # Try cached page map first (enables zero-PDFKit/zero-HTTP rule-bump re-indexing)
-        cached_pages = self.load_cached_pages(sha, expected_byte_count=byte_count)
         if cached_pages is not None:
             entry = index_document_pages(
                 cached_pages.pages,
@@ -4177,6 +4754,17 @@ class DocumentCacheStore:
             raise PageExtractionError(
                 f"No cached pages and no PageTextProvider supplied for sha256={sha}"
             )
+
+        if pdf_path is not None:
+            # No extractor sees bytes that are not ``sha``'s (step 3 above).
+            actual_sha, actual_bytes = sha256_file(Path(pdf_path))
+            if actual_sha != sha or actual_bytes != byte_count:
+                raise CacheIntegrityError(
+                    f"The PDF file {pdf_path} handed to the page extractor for sha256={sha} "
+                    "does not hash to that digest and byte count; it is not parsed or "
+                    "cached. Remove the damaged or substituted file (its own digest is "
+                    "not printed)."
+                )
 
         extracted = provider.extract_pages(
             sha256=sha,
@@ -4525,6 +5113,72 @@ def to_legacy_census_document_row(
     }
 
 
+def _census_timestamp(value: Any, *, where: str, field: str) -> str:
+    """Return ``value`` when it is an ISO-8601 timestamp string; ``DocumentIndexerError`` otherwise.
+
+    ``retrieved_at`` is a provenance stamp carried into the profile as the
+    census recorded it. A string that ``datetime.fromisoformat`` cannot read is
+    not a time at all (it could be a trial id), so it is refused rather than
+    carried. The value is not printed.
+    """
+    if type(value) is not str or not value.strip():
+        raise DocumentIndexerError(
+            f"Census row at {where} lacks a non-empty string {field!r}; legacy rows must "
+            "carry their own provenance and are not filled in."
+        )
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        raise DocumentIndexerError(
+            f"Census row at {where} field {field!r} is not an ISO-8601 timestamp; the row "
+            "is refused, not carried (the value is not printed)."
+        ) from None
+    return value
+
+
+def _census_optional_date(value: Any, *, where: str, field: str) -> str | None:
+    """Return a census date field: null, or a string ``parse_ctgov_date`` reads as a date.
+
+    ``upload_date`` and ``api_doc_date`` are copied into the profile and its
+    upload-timing facts. An object, a list, a number or a string that is not
+    a CT.gov date (it could be a trial id) is refused, not copied; null (or an
+    absent key) is recorded as absent. The value is not printed.
+    """
+    if value is None:
+        return None
+    if type(value) is not str:
+        raise DocumentIndexerError(
+            f"Census row at {where} field {field!r} must be a date string or null "
+            f"(got {type(value).__name__}); it is not copied into the profile."
+        )
+    if parse_ctgov_date(value)["date_precision"] == "unknown":
+        raise DocumentIndexerError(
+            f"Census row at {where} field {field!r} is not a CT.gov date (YYYY, YYYY-MM, "
+            "YYYY-MM-DD[...] or MM/DD/YYYY[ HH:MM]); the row is refused (the value is not "
+            "printed)."
+        )
+    return value
+
+
+def _census_http_status(value: Any, *, where: str) -> int | None:
+    """Return a census ``http_status``: null (no response), or an int HTTP status 100..599.
+
+    A string (``"200"``), a boolean (``true`` is not 200) or any other value is
+    refused: read loosely, ``"200"`` turned a downloaded document into
+    ``download_failed`` and a string was written into the profile as
+    ``legacy_http_status_<value>``. The value is not printed.
+    """
+    if value is None:
+        return None
+    if type(value) is not int or not 100 <= value <= 599:
+        shown = "int outside 100..599" if type(value) is int else type(value).__name__
+        raise DocumentIndexerError(
+            f"Census row at {where} field 'http_status' must be an int HTTP status or null "
+            f"(got {shown}); the row is refused."
+        )
+    return value
+
+
 def ingest_legacy_census_documents(
     documents_jsonl: Path,
     *,
@@ -4554,15 +5208,38 @@ def ingest_legacy_census_documents(
       ``AuditHoldoutError`` (never falls back to ``False``).
 
     Provenance is carried, never supplied: every row must have non-empty
-    ``url``, ``doc_type`` and ``retrieved_at`` (``DocumentIndexerError``
-    otherwise). The ingest time is the profile's ``extracted_at``, not any
-    document's ``retrieved_at``.
+    ``url`` and ``doc_type`` and an ISO-8601 ``retrieved_at``
+    (``DocumentIndexerError`` otherwise). The ingest time is the profile's
+    ``extracted_at``, not any document's ``retrieved_at``.
 
     The ``url`` must be the row trial's own posted ``filename``
     (``require_own_large_doc_url``; ``AuditHoldoutError`` otherwise), for a
     downloaded row and a failed one alike: a row's ``nct_id`` passing the
     firewall says nothing about a URL naming another trial, which the profile
     would carry. A row naming any key twice is refused (``loads_strict_json``).
+
+    Every other field the profile carries is type-checked in pass 1, never
+    copied as given (``DocumentIndexerError``): ``http_status`` is an int
+    HTTP status or null; ``upload_date`` and ``api_doc_date`` are CT.gov date
+    strings or null; a row with ``http_status`` 200 carries a 64-hex
+    ``sha256`` and a positive int ``bytes`` (a 200 row without a digest used
+    to become ``download_failed`` with no word). A trial's posted file is one
+    document: two rows for one ``(nct_id, filename)`` are refused, identical or
+    not, as the page-map loader refuses one trial's file mapped to two digests.
+
+    No cache writes unless the whole ingest succeeds. Pass 1 validates every
+    row before anything is read from disk or indexed. Pass 2 runs inside
+    ``DocumentCacheStore.staged_writes``: a failure there (a local PDF that
+    leaves its trial's folder or disagrees with its row's digest or byte
+    count, a page map tagged with a holdout trial, any integrity error) raises
+    and writes nothing, so no trial is left cached without a profile. A
+    document whose pages no provider can extract (``PageExtractionError``) is
+    not a failure of the ingest: it is recorded as ``extraction_failed`` with
+    its digest and byte count, as the live path records it.
+
+    Local PDFs are found with ``resolve_local_trial_pdf``, which refuses a file
+    (or trial folder) linking outside ``<local_pdf_dir>/<nct_id>/`` before it is
+    read. A local PDF's byte count must equal the row's ``bytes``.
 
     ``max_trials`` bounds the work, not only the output: every row is still
     validated in pass 1 (one bad row refuses the whole file), then only the
@@ -4573,6 +5250,7 @@ def ingest_legacy_census_documents(
         raise DocumentIndexerError(
             f"max_trials must be a positive int or None, got {type(max_trials).__name__}."
         )
+    validate_page_selection_bounds(min_selected_pages, max_selected_pages)
     validated_audit = _validate_nct_id_set(audit_nct_ids, label="audit_nct_ids")
     validated_allowed: frozenset[str] | None = (
         _validate_nct_id_set(allowed_nct_ids, label="allowed_nct_ids")
@@ -4589,10 +5267,11 @@ def ingest_legacy_census_documents(
     if not src_path.exists():
         raise DocumentIndexerError(f"Census documents JSONL does not exist: {src_path}")
 
-    # Pass 1 validates every row before anything is indexed, so a bad row stops
-    # the ingest with no cache writes. Firewall messages give the line number,
-    # never the row's id (which may be a holdout trial's).
+    # Pass 1 validates every row before anything is read from disk or indexed.
+    # Firewall messages give the line number, never the row's id (which may be
+    # a holdout trial's), and no message echoes a field's value.
     rows_by_nct: dict[str, list[dict[str, Any]]] = {}
+    first_line_of_file: dict[tuple[str, str], int] = {}
     with src_path.open("r", encoding="utf-8") as handle:
         for line_no, raw_line in enumerate(handle, start=1):
             line = raw_line.strip()
@@ -4654,7 +5333,7 @@ def ingest_legacy_census_documents(
             # to_legacy_census_document_row projects back out). A row without
             # one is refused: a default would put a document type, a URL or a
             # retrieval time into the output that the source never recorded.
-            for required in ("url", "doc_type", "retrieved_at"):
+            for required in ("url", "doc_type"):
                 value = row.get(required)
                 if type(value) is not str or not value.strip():
                     raise DocumentIndexerError(
@@ -4662,9 +5341,10 @@ def ingest_legacy_census_documents(
                         "legacy rows must carry their own provenance and are not "
                         "filled in."
                     )
+            _census_timestamp(row.get("retrieved_at"), where=where, field="retrieved_at")
             if row["doc_type"] not in ("protocol", "sap", "combined"):
                 raise DocumentIndexerError(
-                    f"Census row at {where} has invalid doc_type {row['doc_type']!r}."
+                    f"Census row at {where} has an invalid doc_type (the value is not printed)."
                 )
             # The url is the document the record will name. It must be this
             # row's own trial's posted file, whatever the row's http_status: a
@@ -4672,6 +5352,39 @@ def ingest_legacy_census_documents(
             require_own_large_doc_url(
                 row["url"], nct_id=nct_id, filename=row_filename, origin=f"Census row at {where}"
             )
+            # Every other field the profile carries is checked here, not
+            # copied as given (see the docstring).
+            http_status = _census_http_status(row.get("http_status"), where=where)
+            _census_optional_date(row.get("upload_date"), where=where, field="upload_date")
+            _census_optional_date(row.get("api_doc_date"), where=where, field="api_doc_date")
+            if http_status == 200:
+                raw_sha = row.get("sha256")
+                if type(raw_sha) is not str or not SHA256_RE.fullmatch(raw_sha.lower()):
+                    raise DocumentIndexerError(
+                        f"Census row at {where} has http_status 200 but no valid sha256 (64 "
+                        "hex characters); a downloaded document's digest is required, and "
+                        "the row is not recorded as a failed download instead."
+                    )
+                raw_bytes = row.get("bytes")
+                if type(raw_bytes) is not int or raw_bytes < 1:
+                    shown = "int below 1" if type(raw_bytes) is int else type(raw_bytes).__name__
+                    raise DocumentIndexerError(
+                        f"Census row at {where} has http_status 200 but 'bytes' is not a "
+                        f"positive int (got {shown})."
+                    )
+            # One posted file, one row. Two rows for it (whether or not they
+            # agree) are refused: both would be indexed and profiled as two
+            # documents, and a consumer keyed by (nct_id, filename) would pick
+            # one silently.
+            file_key = (nct_id, row_filename)
+            if file_key in first_line_of_file:
+                raise DocumentIndexerError(
+                    f"Census rows at lines {first_line_of_file[file_key]} and {line_no} of "
+                    f"{documents_jsonl} name the same trial's posted file; one file is one "
+                    "document, so the census is refused rather than recording it twice or "
+                    "choosing one row."
+                )
+            first_line_of_file[file_key] = line_no
             rows_by_nct.setdefault(nct_id, []).append(dict(row))
 
     stamp = extracted_at or utc_now_iso()
@@ -4684,104 +5397,142 @@ def ingest_legacy_census_documents(
     if max_trials is not None:
         selected_ncts = selected_ncts[:max_trials]
 
-    for nct_id in selected_ncts:
-        trial_docs: list[TrialDocumentRecord] = []
-        for row in sorted(rows_by_nct[nct_id], key=lambda r: str(r.get("filename", ""))):
-            filename = validate_safe_pdf_filename(row["filename"])
-            # url, doc_type and retrieved_at were checked present in pass 1;
-            # they are carried through as the census recorded them.
-            doc_type = row["doc_type"]
-            url = row["url"]
-            http_status = row.get("http_status")
-            sha = row.get("sha256")
-            byte_count = row.get("bytes")
-            retrieved_at = row["retrieved_at"]
+    # Pass 2: every cache write is staged and lands only if every trial is
+    # indexed and profiled (see the docstring).
+    with cache_store.staged_writes():
+        for nct_id in selected_ncts:
+            trial_docs: list[TrialDocumentRecord] = []
+            for row in sorted(rows_by_nct[nct_id], key=lambda r: str(r.get("filename", ""))):
+                filename = validate_safe_pdf_filename(row["filename"])
+                # Every field below passed pass 1 and is carried through as
+                # the census recorded it.
+                doc_type = row["doc_type"]
+                url = row["url"]
+                http_status: int | None = row.get("http_status")
+                retrieved_at = row["retrieved_at"]
+                upload_date: str | None = row.get("upload_date")
+                api_doc_date: str | None = row.get("api_doc_date")
 
-            if http_status != 200 or not isinstance(sha, str) or not SHA256_RE.fullmatch(sha.lower()):
+                if http_status != 200:
+                    trial_docs.append(
+                        build_trial_document_record(
+                            nct_id=nct_id,
+                            filename=filename,
+                            doc_type=doc_type,
+                            url=url,
+                            http_status=http_status,
+                            entry=None,
+                            download_error=f"legacy_http_status_{http_status}",
+                            api_doc_date=api_doc_date,
+                            upload_date=upload_date,
+                            retrieved_at=retrieved_at,
+                            cache_hit=False,
+                            in_audit=False,
+                            audit_nct_ids=validated_audit,
+                            allowed_nct_ids=validated_allowed,
+                        )
+                    )
+                    continue
+
+                sha = row["sha256"].lower()
+                byte_count: int = row["bytes"]
+                pdf_path: Path | None = None
+                if local_pdf_dir is not None:
+                    # Refuses a file (or trial folder) that links outside
+                    # <local_pdf_dir>/<nct_id>/ before anything is read.
+                    local = resolve_local_trial_pdf(local_pdf_dir, nct_id, filename)
+                    if local is not None:
+                        actual_sha, actual_bytes = sha256_file(local)
+                        if actual_sha != sha:
+                            raise CacheIntegrityError(
+                                f"Local PDF {filename} of an in-scope trial "
+                                f"does not hash to its census row's sha256={sha}; the census is "
+                                "refused (the file's own digest is not printed)."
+                            )
+                        if actual_bytes != byte_count:
+                            raise CacheIntegrityError(
+                                f"Local PDF {filename} of an in-scope trial has "
+                                f"{actual_bytes} bytes but its census row says {byte_count}; "
+                                "the row's byte count is not overridden silently."
+                            )
+                        pdf_path = local
+
+                try:
+                    entry, cache_hit = cache_store.get_or_index_document(
+                        sha256=sha,
+                        byte_count=byte_count,
+                        provider=provider,
+                        pdf_path=pdf_path,
+                        nct_id=nct_id,
+                        filename=filename,
+                        doc_type=doc_type,
+                        extracted_at=stamp,
+                        pipeline_commit=pipeline_commit,
+                        indexer_rules_version=indexer_rules_version,
+                        min_selected_pages=min_selected_pages,
+                        max_selected_pages=max_selected_pages,
+                        reparse_cached_pages=reparse_cached_pages,
+                        in_audit=False,
+                        audit_nct_ids=validated_audit,
+                        allowed_nct_ids=validated_allowed,
+                    )
+                except PageExtractionError as exc:
+                    # The digest and size are known (the census row carries
+                    # them); only the pages could not be extracted. Recorded
+                    # as extraction_failed, as the live path records it,
+                    # rather than aborting the ingest.
+                    trial_docs.append(
+                        build_trial_document_record(
+                            nct_id=nct_id,
+                            filename=filename,
+                            doc_type=doc_type,
+                            url=url,
+                            http_status=200,
+                            entry=None,
+                            extraction_error=f"page_extraction_error: {exc}",
+                            sha256=sha,
+                            byte_count=byte_count,
+                            api_doc_date=api_doc_date,
+                            upload_date=upload_date,
+                            retrieved_at=retrieved_at,
+                            cache_hit=False,
+                            in_audit=False,
+                            audit_nct_ids=validated_audit,
+                            allowed_nct_ids=validated_allowed,
+                        )
+                    )
+                    continue
+                indexed_entries[entry.sha256] = entry
                 trial_docs.append(
                     build_trial_document_record(
                         nct_id=nct_id,
                         filename=filename,
                         doc_type=doc_type,
                         url=url,
-                        http_status=http_status if type(http_status) is int else None,
-                        entry=None,
-                        download_error=f"legacy_http_status_{http_status}",
+                        http_status=200,
+                        entry=entry,
+                        api_doc_date=api_doc_date,
+                        upload_date=upload_date,
                         retrieved_at=retrieved_at,
-                        cache_hit=False,
+                        cache_hit=cache_hit,
                         in_audit=False,
                         audit_nct_ids=validated_audit,
                         allowed_nct_ids=validated_allowed,
                     )
                 )
-                continue
 
-            pdf_path: Path | None = None
-            if local_pdf_dir is not None:
-                candidate = Path(local_pdf_dir) / nct_id / filename
-                if candidate.exists():
-                    actual_sha, actual_bytes = sha256_file(candidate)
-                    if actual_sha != sha.lower():
-                        raise CacheIntegrityError(
-                            f"Local PDF {candidate} sha256={actual_sha} != documents.jsonl sha256={sha.lower()}"
-                        )
-                    byte_count = actual_bytes
-                    pdf_path = candidate
-
-            if type(byte_count) is not int or byte_count <= 0:
-                raise CacheIntegrityError(
-                    f"Invalid bytes={byte_count!r} for {nct_id}/{filename}"
-                )
-
-            entry, cache_hit = cache_store.get_or_index_document(
-                sha256=sha.lower(),
-                byte_count=byte_count,
-                provider=provider,
-                pdf_path=pdf_path,
-                nct_id=nct_id,
-                filename=filename,
-                doc_type=doc_type,
-                extracted_at=stamp,
-                pipeline_commit=pipeline_commit,
-                indexer_rules_version=indexer_rules_version,
-                min_selected_pages=min_selected_pages,
-                max_selected_pages=max_selected_pages,
-                reparse_cached_pages=reparse_cached_pages,
-                in_audit=False,
-                audit_nct_ids=validated_audit,
-                allowed_nct_ids=validated_allowed,
-            )
-            indexed_entries[entry.sha256] = entry
-            trial_docs.append(
-                build_trial_document_record(
-                    nct_id=nct_id,
-                    filename=filename,
-                    doc_type=doc_type,
-                    url=url,
-                    http_status=200,
-                    entry=entry,
-                    api_doc_date=row.get("api_doc_date"),
-                    upload_date=row.get("upload_date"),
-                    retrieved_at=retrieved_at,
-                    cache_hit=cache_hit,
+            profiles.append(
+                build_trial_document_profile(
+                    nct_id,
+                    documents=trial_docs,
+                    excluded_icf_count=0,
+                    extracted_at=stamp,
+                    pipeline_commit=pipeline_commit,
+                    indexer_rules_version=indexer_rules_version,
                     in_audit=False,
                     audit_nct_ids=validated_audit,
                     allowed_nct_ids=validated_allowed,
                 )
             )
-
-        profiles.append(
-            build_trial_document_profile(
-                nct_id,
-                documents=trial_docs,
-                excluded_icf_count=0,
-                extracted_at=stamp,
-                pipeline_commit=pipeline_commit,
-                indexer_rules_version=indexer_rules_version,
-                in_audit=False,
-                audit_nct_ids=validated_audit,
-                allowed_nct_ids=validated_allowed,
-            )
-        )
 
     return [indexed_entries[k] for k in sorted(indexed_entries)], profiles

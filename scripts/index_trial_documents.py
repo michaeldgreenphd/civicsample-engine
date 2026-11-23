@@ -34,6 +34,29 @@ Hard safety guarantees:
   it), ``--nct-id`` together with ``--ingest-census-jsonl``, a manifest or
   census JSON object naming a key twice, and a manifest object carrying more
   than one row list. A trial named twice with ``--nct-id`` is fetched once.
+- Options are checked before anything is fetched, read or written (exit 2):
+  ``--min-selected-pages``/``--max-selected-pages`` must satisfy
+  ``1 <= min <= max``; ``--rate-limit-sec`` must be a finite number >= 0 (no
+  clamping); ``--local-pdf-dir`` must be an existing directory; and neither
+  ``--profiles-out`` nor ``--index-out`` may name an input file (the
+  manifest, the census, a page map), the cache's own files or its pages/ and
+  blobs/ folders, an existing directory, or the other output. Paths are
+  compared after resolving links and ``..``.
+- A local PDF is read only from ``<local-pdf-dir>/<nct_id>/`` itself: a file
+  or trial folder that is a symlink leading outside it (into a holdout
+  trial's folder, say) is refused before it is opened (exit 2).
+- A study payload naming a filename in two largeDocs entries is refused, and
+  with no holdout set known an ``nctIdAliases`` entry must be on the
+  manifest's allowlist (exit 2).
+- The census ingest type-checks every field it carries (``http_status`` an
+  int or null, dates CT.gov date strings or null, ``retrieved_at`` an ISO-8601
+  timestamp, a 200 row with a digest and positive ``bytes``), refuses two
+  rows for one trial's file, records an unextractable document as
+  ``extraction_failed``, and writes nothing to the cache unless the whole
+  ingest succeeds.
+- The document index is read strictly: a repeated key, a coerced type, a
+  missing or extra field or two lines for one ``(sha256, rules version)``
+  stop the run with the file left as it is.
 - ``--limit`` with ``--ingest-census-jsonl`` bounds the trials indexed and
   cached, not only the profiles written.
 - A document URL (a download's, a census row's, a profile record's) must be
@@ -51,6 +74,9 @@ Hard safety guarantees:
   defaulting to 0.55s across processes.
 - Downloads PDFs atomically via .part staging and verifies the %PDF- header and
   positive byte count before committing to the content-addressed cache.
+  Redirects are not followed (a 3xx is a failed download) and a response
+  that reports one is refused; an existing blob is kept only if it hashes to
+  its digest, and no file is handed to a page extractor unless it does.
 """
 
 from __future__ import annotations
@@ -58,7 +84,9 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import hashlib
+import inspect
 import json
+import math
 import os
 from pathlib import Path
 import sys
@@ -98,10 +126,12 @@ from src.document_indexer import (  # noqa: E402
     ingest_legacy_census_documents,
     loads_strict_json,
     require_own_large_doc_url,
+    resolve_local_trial_pdf,
     resolve_pipeline_commit,
     sha256_file,
     utc_now_iso,
     validate_nct_id,
+    validate_page_selection_bounds,
     validate_safe_pdf_filename,
     validate_study_payload_nct_id,
 )
@@ -132,12 +162,27 @@ def _resolve_pipeline_commit() -> str | None:
     return commit
 
 
+def validate_rate_limit_sec(value: Any) -> float:
+    """Return ``value`` as a float when it is a finite number >= 0; raise ``DocumentIndexerError`` otherwise.
+
+    The limiter used to clamp with ``max(0.0, float(value))``: ``-1`` and
+    ``nan`` (``max(0.0, nan)`` is 0.0) both became "no rate limit" without a
+    word, and ``inf`` would sleep forever. 0 is an explicit choice and allowed.
+    """
+    if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+        raise DocumentIndexerError(
+            "rate limit must be a finite number of seconds >= 0 "
+            f"(got {type(value).__name__} {value!r}); it is not clamped."
+        )
+    return float(value)
+
+
 class GlobalRateLimiter:
     """Cross-process inter-request rate limiter backed by a POSIX flock lock file."""
 
     def __init__(self, lock_path: Path, min_interval_sec: float = DEFAULT_RATE_LIMIT_SEC) -> None:
         self.lock_path = Path(lock_path)
-        self.min_interval_sec = max(0.0, float(min_interval_sec))
+        self.min_interval_sec = validate_rate_limit_sec(min_interval_sec)
         self._last_local_ts: float = 0.0
 
     def wait(self) -> None:
@@ -204,6 +249,44 @@ def _merge_allowed_sets(
     return first if first is not None else second
 
 
+def _session_get_accepts_allow_redirects(session: Any) -> bool:
+    """True when ``session.get`` takes ``allow_redirects`` (a ``requests.Session`` always does).
+
+    An injected session (a test double, a wrapper) may have a narrower
+    ``get``. For one that does not take the keyword, redirects cannot be
+    switched off here, and ``download_pdf_atomic`` relies on the response's
+    ``url`` and ``history`` instead (see there).
+    """
+    if isinstance(session, requests.Session):
+        return True
+    try:
+        params = inspect.signature(session.get).parameters
+    except (TypeError, ValueError):
+        return False
+    return "allow_redirects" in params or any(
+        param.kind is inspect.Parameter.VAR_KEYWORD for param in params.values()
+    )
+
+
+def _response_was_redirected(resp: Any, requested_url: str) -> bool:
+    """True when the response says it came from anywhere but ``requested_url``.
+
+    ``requests`` reports the final URL in ``resp.url`` and the redirects it
+    followed in ``resp.history``. Either one showing a redirect means the bytes
+    are not the requested trial's posted file (they may be another trial's,
+    a holdout trial's included). ``resp.url`` is compared with the requested
+    URL as given and as ``requests`` re-quotes it. A response exposing
+    neither attribute (a minimal test double) shows no redirect.
+    """
+    history = getattr(resp, "history", None)
+    if history:
+        return True
+    final_url = getattr(resp, "url", None)
+    if final_url is None:
+        return False
+    return final_url not in (requested_url, requests.utils.requote_uri(requested_url))
+
+
 def download_pdf_atomic(
     url: str,
     dest_dir: Path,
@@ -224,6 +307,22 @@ def download_pdf_atomic(
     ``filename`` (``require_own_large_doc_url``). Checking the id alone let an
     in-scope id carry any URL, a holdout trial's document included, into the
     content-addressed cache. A refused URL raises ``AuditHoldoutError``.
+
+    The checked URL must also be the one the bytes come from. Redirects are
+    not followed (``allow_redirects=False`` whenever the session's ``get``
+    takes it), so a 3xx is a failed download (``http_status_3xx``), and a
+    response whose ``history`` or final ``url`` shows a redirect anyway is
+    refused (``redirected_response_refused``) before any byte is read or any
+    directory made. Neither error names the redirect target. A followed
+    redirect once let another trial's document be cached, parsed and profiled
+    under the requested trial.
+
+    The blob is content-addressed. When one already exists at the downloaded
+    digest's path, its bytes are hashed: if they are not that digest's (a
+    damaged file, or one swapped for another document), the verified download
+    replaces it and a warning naming the digest is printed. Keeping the
+    existing file and discarding the fresh bytes handed the extractor a file
+    that is not its digest's.
     """
     validated_nct = enforce_not_in_audit(
         nct_id,
@@ -239,8 +338,11 @@ def download_pdf_atomic(
     if rate_limiter is not None:
         rate_limiter.wait()
 
+    get_kwargs: dict[str, Any] = {"timeout": timeout_sec, "stream": True}
+    if _session_get_accepts_allow_redirects(session):
+        get_kwargs["allow_redirects"] = False
     try:
-        resp = session.get(url, timeout=timeout_sec, stream=True)
+        resp = session.get(url, **get_kwargs)
     except Exception as exc:
         return DownloadResult(
             ok=False,
@@ -252,6 +354,18 @@ def download_pdf_atomic(
         )
 
     status_code = getattr(resp, "status_code", None)
+    if _response_was_redirected(resp, url):
+        close = getattr(resp, "close", None)
+        if callable(close):
+            close()
+        return DownloadResult(
+            ok=False,
+            http_status=status_code if type(status_code) is int else None,
+            sha256=None,
+            byte_count=None,
+            local_path=None,
+            error="redirected_response_refused",
+        )
     if status_code != 200:
         return DownloadResult(
             ok=False,
@@ -310,9 +424,16 @@ def download_pdf_atomic(
         sha = digest.hexdigest()
         blob_path = dest_dir / sha[:2] / f"{sha}.pdf"
         blob_path.parent.mkdir(parents=True, exist_ok=True)
-        if blob_path.exists():
+        if blob_path.exists() and sha256_file(blob_path) == (sha, total_bytes):
+            # The existing blob is verified to be these bytes; keep it.
             part_path.unlink(missing_ok=True)
         else:
+            if blob_path.exists():
+                print(
+                    f"WARNING: cached blob for sha256={sha} did not hash to its digest; it "
+                    "was replaced with the verified download.",
+                    file=sys.stderr,
+                )
             os.replace(part_path, blob_path)
 
         return DownloadResult(
@@ -547,7 +668,15 @@ def index_trial_from_study(
     allowed_nct_ids: AbstractSet[str] | None = None,
     in_scope_nct_ids: AbstractSet[str] | None = None,
 ) -> TrialDocumentProfile:
-    """Index all in-scope largeDocs for a single CT.gov study JSON behind the in_audit firewall."""
+    """Index all in-scope largeDocs for a single CT.gov study JSON behind the in_audit firewall.
+
+    Page-selection bounds are checked before anything else, so bad bounds stop
+    the call before any cache lookup, download or write. A local PDF is taken
+    only through ``resolve_local_trial_pdf``, which refuses (``AuditHoldoutError``)
+    a file or trial folder linking outside ``<local_pdf_dir>/<nct_id>/`` before
+    it is read.
+    """
+    validate_page_selection_bounds(min_selected_pages, max_selected_pages)
     effective_allowed = _merge_allowed_sets(allowed_nct_ids, in_scope_nct_ids)
 
     # Hard firewall BEFORE inspecting documents, cache, local PDFs, or network:
@@ -610,11 +739,14 @@ def index_trial_from_study(
                     )
                     resolved_pdf_path = blob_path
 
-        # 2. Local PDF directory resolution without duplicating multi-MB files
+        # 2. Local PDF directory resolution without duplicating multi-MB files.
+        # A file or trial folder linking outside <local_pdf_dir>/<nct_id>/ (into
+        # a holdout trial's folder, say) is refused before it is opened.
         if resolved_sha is None and local_pdf_dir is not None:
-            candidate = Path(local_pdf_dir) / study_nct_id / filename
-            if candidate.exists():
-                prefix = candidate.read_bytes()[:1024]
+            candidate = resolve_local_trial_pdf(local_pdf_dir, study_nct_id, filename)
+            if candidate is not None:
+                with candidate.open("rb") as handle:
+                    prefix = handle.read(1024)
                 if not prefix or not has_pdf_magic(prefix):
                     download_error = "local_pdf_invalid_header_or_empty"
                     http_status = None
@@ -1045,6 +1177,89 @@ def _refuse_nothing_to_index(message: str) -> int:
     return 2
 
 
+def _refuse_usage(parser: argparse.ArgumentParser, message: str) -> int:
+    """Print usage and ``message`` to stderr, touch nothing, and return exit status 2."""
+    parser.print_usage(sys.stderr)
+    print(
+        f"index_trial_documents.py: error: {message}; nothing was fetched, read or written.",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def _names_same_file(first: Path, second: Path) -> bool:
+    """True when two paths name one file: equal once links and ``..`` are resolved, or one inode.
+
+    Paths are compared after ``Path.resolve`` (so ``sub/../manifest.jsonl``
+    and a symlink to the manifest both match it) and, when both exist, with
+    ``os.path.samefile`` (which also catches a hard link).
+    """
+    try:
+        if Path(first).resolve() == Path(second).resolve():
+            return True
+    except (OSError, RuntimeError):
+        pass
+    try:
+        return Path(first).exists() and Path(second).exists() and os.path.samefile(first, second)
+    except OSError:
+        return False
+
+
+def _is_within(path: Path, folder: Path) -> bool:
+    """True when ``path``, resolved, lies inside ``folder``, resolved."""
+    try:
+        return Path(path).resolve().is_relative_to(Path(folder).resolve())
+    except (OSError, RuntimeError):
+        return False
+
+
+def _output_path_conflicts(args: argparse.Namespace) -> list[str]:
+    """Name every way ``--profiles-out`` / ``--index-out`` would overwrite an input, the cache, or each other.
+
+    Nothing compared the output paths with the inputs: ``--profiles-out``
+    equal to ``--manifest`` replaced the manifest (and its in_audit=True rows,
+    the holdout set) with profiles and exited 0; equal to the census or a page
+    map it destroyed that input; ``--index-out`` equal to ``--profiles-out``
+    left an index the next run could not open, and equal to the manifest it
+    was parsed as an index. Checked here, before anything is fetched, read or
+    written: each output against every input file, the cache's own files and
+    its pages/ and blobs/ folders, an existing directory, and the other
+    output. Problems name the options, never the paths (which may hold ids).
+    """
+    inputs: list[tuple[str, Path]] = []
+    if args.manifest is not None:
+        inputs.append(("--manifest", args.manifest))
+    if args.ingest_census_jsonl is not None:
+        inputs.append(("--ingest-census-jsonl", args.ingest_census_jsonl))
+    for position, page_map in enumerate(args.page_map_jsonl or [], start=1):
+        inputs.append((f"--page-map-jsonl (#{position})", page_map))
+    cache_dir = Path(args.cache_dir)
+    inputs.append(("the cache's url_manifest.json", cache_dir / "url_manifest.json"))
+    inputs.append(("the cache's rate-limit lock file", cache_dir / ".ctgov_rate_limit.lock"))
+    folders: list[tuple[str, Path]] = [
+        ("the cache's pages/ folder", cache_dir / "pages"),
+        ("the cache's blobs/ folder", cache_dir / "blobs"),
+    ]
+
+    outputs: list[tuple[str, Path]] = [
+        ("--profiles-out", args.profiles_out),
+        ("--index-out", args.index_out),
+    ]
+    problems: list[str] = []
+    for out_name, out_path in outputs:
+        if Path(out_path).is_dir():
+            problems.append(f"{out_name} is an existing directory")
+        for in_name, in_path in inputs:
+            if _names_same_file(out_path, in_path):
+                problems.append(f"{out_name} names the same file as {in_name}")
+        for folder_name, folder in folders:
+            if _is_within(out_path, folder):
+                problems.append(f"{out_name} lies inside {folder_name}")
+    if _names_same_file(args.profiles_out, args.index_out):
+        problems.append("--profiles-out and --index-out name the same file")
+    return problems
+
+
 def run_cli(
     argv: Sequence[str] | None = None,
     *,
@@ -1109,6 +1324,27 @@ def run_cli(
             file=sys.stderr,
         )
         return 2
+    # Page bounds and the rate limit are checked here, like --limit. The
+    # bounds used to be checked only inside index_document_pages, after the
+    # CT.gov record was fetched and the PDF's blob, url_manifest.json entry
+    # and page map written (exit 1); -1 and nan for the rate limit meant no
+    # rate limit, with no word.
+    try:
+        validate_page_selection_bounds(args.min_selected_pages, args.max_selected_pages)
+        validate_rate_limit_sec(args.rate_limit_sec)
+    except DocumentIndexerError as exc:
+        return _refuse_usage(parser, str(exc).rstrip("."))
+    # A mistyped --local-pdf-dir would otherwise find no local PDF, silently.
+    if args.local_pdf_dir is not None and not Path(args.local_pdf_dir).is_dir():
+        return _refuse_usage(parser, "--local-pdf-dir is not an existing directory")
+    output_conflicts = _output_path_conflicts(args)
+    if output_conflicts:
+        return _refuse_usage(
+            parser,
+            "an output path would overwrite an input, the cache or the other output ("
+            + "; ".join(output_conflicts)
+            + ")",
+        )
 
     try:
         explicit_nct_ids = [

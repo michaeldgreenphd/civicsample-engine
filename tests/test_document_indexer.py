@@ -5001,3 +5001,260 @@ def test_redteam_m1_abbreviated_repeat_and_payload_flags_are_refused(
         capsys.readouterr()
         assert rc == 2, repr(value)
         assert not (tmp_path / f"{tag}_profiles.jsonl").exists()
+
+
+# ---------------------------------------------------------------------------
+# Group 14: Round-2 fixes, behaviour beyond the red-team probes
+#
+# The probes above assert that each bypass is closed. These pin the edges of
+# the fixes: what is still accepted, and the paths the probes do not drive.
+# Fictional ids only, fake sessions only, no network.
+# ---------------------------------------------------------------------------
+
+
+def test_m1_r2_local_pdf_resolution_edges(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A link to a sibling file in the same trial folder is used; a dangling link and a missing directory are refused."""
+    pdfs = tmp_path / "edge_pdfs"
+    (pdfs / _RT_A).mkdir(parents=True)
+    real = pdfs / _RT_A / "Prot_000_v2.pdf"
+    real.write_bytes(_make_minimal_pdf("Sibling file of the same trial"))
+    (pdfs / _RT_A / "Prot_000.pdf").symlink_to(real)
+    assert di.resolve_local_trial_pdf(pdfs, _RT_A, "Prot_000.pdf") == real.resolve()
+    assert di.resolve_local_trial_pdf(pdfs, _RT_B, "Prot_000.pdf") is None
+    assert di.resolve_local_trial_pdf(pdfs, _RT_A, "SAP_001.pdf") is None
+
+    (pdfs / _RT_A / "SAP_001.pdf").symlink_to(pdfs / _RT_A / "gone.pdf")
+    with pytest.raises(di.AuditHoldoutError):
+        di.resolve_local_trial_pdf(pdfs, _RT_A, "SAP_001.pdf")
+    with pytest.raises(di.DocumentIndexerError):
+        di.resolve_local_trial_pdf(tmp_path / "no_such_dir", _RT_A, "Prot_000.pdf")
+
+    api = _SpyAPIClient({_RT_A: _make_study(_RT_A, [])})
+    rc = cli_mod.run_cli(
+        [
+            "--manifest", str(_rt_manifest(tmp_path)),
+            "--nct-id", _RT_A,
+            "--local-pdf-dir", str(tmp_path / "no_such_dir"),
+            *_rt_outs(tmp_path, "edge_missing_dir"),
+        ],
+        api_client=api,
+        session=_FakeSession({}),
+    )
+    capsys.readouterr()
+    assert rc == 2 and api.requested_ncts == [] and _rt_written(tmp_path, "edge_missing_dir") == []
+
+
+def test_m1_r2_download_never_follows_or_accepts_a_redirect(tmp_path: Path) -> None:
+    """``allow_redirects=False`` reaches a requests session; a session that cannot take it is checked by url/history."""
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    other = di.build_ctgov_large_doc_url(_RT_B, "Prot_000.pdf")
+    pdf = _make_minimal_pdf("Redirect edges")
+    seen: list[dict[str, Any]] = []
+
+    class _RequestsSession(cli_mod.requests.Session):
+        def get(self, url: str, **kwargs: Any) -> Any:  # type: ignore[override]
+            seen.append(kwargs)
+            return _FakeResponse(302)
+
+    result = cli_mod.download_pdf_atomic(
+        url, tmp_path / "blobs_a", session=_RequestsSession(), nct_id=_RT_A, filename="Prot_000.pdf"
+    )
+    assert seen == [{"timeout": cli_mod.DEFAULT_TIMEOUT_SEC, "stream": True, "allow_redirects": False}]
+    assert not result.ok and result.error == "http_status_302" and result.http_status == 302
+
+    class _NarrowSession:
+        """A ``get`` without ``allow_redirects``: redirects cannot be switched off, so the response is checked."""
+
+        def __init__(self, response: Any) -> None:
+            self.response = response
+            self.calls = 0
+
+        def get(self, url: str, timeout: int = 60, stream: bool = True) -> Any:
+            self.calls += 1
+            return self.response
+
+    for label, response in (
+        ("history", _RedirectedResponse(200, pdf, url=url, history=[_FakeResponse(302)])),
+        ("final_url", _RedirectedResponse(200, pdf, url=other, history=[])),
+    ):
+        blobs = tmp_path / f"blobs_{label}"
+        session = _NarrowSession(response)
+        result = cli_mod.download_pdf_atomic(
+            url, blobs, session=session, nct_id=_RT_A, filename="Prot_000.pdf"
+        )
+        assert session.calls == 1
+        assert not result.ok and result.error == "redirected_response_refused", label
+        assert result.sha256 is None and not blobs.exists(), label
+        assert _RT_B not in (result.error or "")
+
+    same = _NarrowSession(_RedirectedResponse(200, pdf, url=url, history=[]))
+    result = cli_mod.download_pdf_atomic(
+        url, tmp_path / "blobs_same", session=same, nct_id=_RT_A, filename="Prot_000.pdf"
+    )
+    assert result.ok and result.sha256 == di.sha256_bytes(pdf)
+
+
+def test_m1_r2_census_dates_failed_rows_and_local_byte_counts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Census dates must be CT.gov dates; a failed row keeps its checked dates; a local PDF's size must match its row."""
+    pdf = _make_minimal_pdf("Census date and size edges")
+    sha = di.sha256_bytes(pdf)
+    manifest = _rt_manifest(tmp_path)
+
+    def _run(tag: str, rows: list[dict[str, Any]], extra: Sequence[str] = ()) -> int:
+        census = _write_jsonl(tmp_path / f"{tag}.jsonl", rows)
+        rc = cli_mod.run_cli(
+            ["--manifest", str(manifest), "--ingest-census-jsonl", str(census), "--offline", *extra, *_rt_outs(tmp_path, tag)],
+            provider=di.FixturePageTextProvider({sha: _rt_stat_pages()}),
+        )
+        capsys.readouterr()
+        return rc
+
+    assert _run("cd_text_date", [_rt_census_row(_RT_A, pdf, upload_date="uploaded " + _RT_AUDIT)]) == 1
+    assert _rt_written(tmp_path, "cd_text_date") == []
+    assert _run("cd_status_range", [_rt_census_row(_RT_A, pdf, http_status=42)]) == 1
+
+    accepted = [
+        _rt_census_row(_RT_A, pdf, upload_date="2020-01-02T10:00", api_doc_date="2019-12"),
+        _rt_census_row(
+            _RT_B, pdf, http_status=404, sha256=None, bytes=None, upload_date="01/02/2020 10:00", api_doc_date=None
+        ),
+    ]
+    assert _run("cd_ok", accepted) == 0
+    profiles = {
+        json.loads(line)["nct_id"]: json.loads(line)
+        for line in (tmp_path / "cd_ok_profiles.jsonl").read_text(encoding="utf-8").splitlines()
+    }
+    assert profiles[_RT_A]["documents"][0]["upload_date"] == "2020-01-02T10:00"
+    failed = profiles[_RT_B]["documents"][0]
+    assert failed["readability_status"] == "download_failed"
+    assert failed["download_error"] == "legacy_http_status_404"
+    assert failed["upload_date"] == "01/02/2020 10:00" and failed["api_doc_date"] is None
+
+    local = tmp_path / "cd_pdfs"
+    (local / _RT_A).mkdir(parents=True)
+    (local / _RT_A / "Prot_000.pdf").write_bytes(pdf)
+    assert _run("cd_local_ok", [_rt_census_row(_RT_A, pdf)], ["--local-pdf-dir", str(local)]) == 0
+    assert _run("cd_local_size", [_rt_census_row(_RT_A, pdf, bytes=len(pdf) + 1)], ["--local-pdf-dir", str(local)]) == 1
+    assert _rt_written(tmp_path, "cd_local_size") == []
+
+
+def test_m1_r2_staged_writes_commit_on_success_and_roll_back_on_error(tmp_path: Path) -> None:
+    """``staged_writes`` holds page maps, index lines and url records until the block succeeds."""
+    pdf = _make_minimal_pdf("Staged writes")
+    sha = di.sha256_bytes(pdf)
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    index = tmp_path / "staged_index.jsonl"
+    store = di.DocumentCacheStore(tmp_path / "staged_cache", index, audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A})
+
+    def _index_one() -> None:
+        entry, hit = store.get_or_index_document(
+            sha256=sha,
+            byte_count=len(pdf),
+            provider=di.FixturePageTextProvider({sha: _rt_stat_pages()}),
+            nct_id=_RT_A,
+            filename="Prot_000.pdf",
+            extracted_at=_RT_STAMP,
+        )
+        assert not hit and store.get_entry(sha) == entry
+        assert store.load_cached_pages(sha) is not None  # staged map is visible inside the block
+        store.record_url_manifest(url, sha256=sha, byte_count=len(pdf), api_size=None, api_upload_date=None)
+
+    with pytest.raises(RuntimeError):
+        with store.staged_writes():
+            _index_one()
+            raise RuntimeError("abort after the writes")
+    assert not (tmp_path / "staged_cache").exists() and not index.exists()
+    assert store.get_entry(sha) is None and store.lookup_url_manifest(url) is None
+
+    with store.staged_writes():
+        _index_one()
+        assert not index.exists()
+    assert index.exists() and store.page_map_path(sha).exists() and store.url_manifest_path.exists()
+    reopened = di.DocumentCacheStore(tmp_path / "staged_cache", index, audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A})
+    assert reopened.get_entry(sha) == store.get_entry(sha)
+
+
+def test_m1_r2_document_index_extra_keys_and_bool_counts_refused(tmp_path: Path) -> None:
+    """An index line with an unknown key (dropped on rewrite) or a bool where an int belongs is refused; a clean line loads."""
+    pdf = _make_minimal_pdf("Index strictness edges")
+    sha = di.sha256_bytes(pdf)
+    record = di.index_document_pages(
+        _rt_stat_pages(), sha256=sha, byte_count=len(pdf), text_provider="fixture", extracted_at=_RT_STAMP
+    ).to_dict()
+    assert di.DocumentIndexEntry.from_dict(record).to_dict() == record
+    slice_missing_offset = {k: v for k, v in record["section_slice"].items() if k != "printed_page_offset"}
+    variants = {
+        "extra_top_key": {**record, "note": "kept by nothing"},
+        "extra_nested_key": {**record, "redaction": {**record["redaction"], "note": 1}},
+        "bool_physical_pages": {**record, "physical_pages": True},
+        "missing_offset": {**record, "section_slice": slice_missing_offset},
+        "has_toc_int": {**record, "section_slice": {**record["section_slice"], "has_toc": 1}},
+        "uppercase_sha": {**record, "sha256": sha.upper()},
+    }
+    for label, bad in variants.items():
+        path = tmp_path / f"edge_index_{label}.jsonl"
+        path.write_text(json.dumps(bad) + "\n", encoding="utf-8")
+        before = path.read_bytes()
+        with pytest.raises(di.CacheIntegrityError):
+            di.DocumentCacheStore(tmp_path / f"edge_cache_{label}", path)
+        assert path.read_bytes() == before, label
+
+
+def test_m1_r2_output_paths_inside_the_cache_or_a_directory_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An output inside the cache's pages/ or blobs/, on url_manifest.json, or on an existing directory exits 2."""
+    cache = tmp_path / "op_cache"
+    for label, flag, target in (
+        ("index_in_pages", "--index-out", cache / "pages" / "x.jsonl"),
+        ("profiles_in_blobs", "--profiles-out", cache / "blobs" / "p.jsonl"),
+        ("index_is_url_manifest", "--index-out", cache / "url_manifest.json"),
+        ("profiles_is_dir", "--profiles-out", tmp_path),
+    ):
+        api = _SpyAPIClient({_RT_A: _make_study(_RT_A, [])})
+        rc = cli_mod.run_cli(
+            [
+                "--manifest", str(_rt_manifest(tmp_path)),
+                "--nct-id", _RT_A,
+                "--cache-dir", str(cache),
+                "--rate-limit-sec", "0",
+                flag, str(target),
+            ],
+            api_client=api,
+            session=_FakeSession({}),
+        )
+        capsys.readouterr()
+        assert rc == 2 and api.requested_ncts == [], label
+        assert not cache.exists(), label
+
+
+def test_m1_r2_payload_and_alias_edges() -> None:
+    """A file listed as an ICF and again as a protocol is refused; an alias on the allowlist passes an empty holdout set."""
+    study = _make_study(
+        _RT_A,
+        [
+            {"filename": "Prot_000.pdf", "hasProtocol": False, "hasSap": False, "hasIcf": True},
+            {"filename": "Prot_000.pdf ", "hasProtocol": True, "hasSap": False},
+        ],
+    )
+    with pytest.raises(di.DocumentIndexerError, match="same posted file"):
+        di.extract_in_scope_large_docs(study, allowed_nct_ids={_RT_A})
+
+    merged = _make_study(_RT_A, [])
+    merged["protocolSection"]["identificationModule"]["nctIdAliases"] = [_RT_B]
+    assert di.validate_study_payload_nct_id(merged, allowed_nct_ids={_RT_A, _RT_B}) == _RT_A
+    # No firewall configured at all (library use): nothing to check the alias against.
+    assert di.validate_study_payload_nct_id(merged) == _RT_A
+    with pytest.raises(di.AuditHoldoutError) as info:
+        di.validate_study_payload_nct_id(merged, allowed_nct_ids={_RT_A})
+    assert re.search(r"NCT[0-9]{8}", str(info.value)) is None
+
+
+def test_m1_r2_rate_limiter_refuses_unusable_intervals(tmp_path: Path) -> None:
+    """``GlobalRateLimiter`` refuses a negative, NaN or infinite interval instead of clamping it to 0."""
+    for value in (-1, float("nan"), float("inf"), True):
+        with pytest.raises(di.DocumentIndexerError):
+            cli_mod.GlobalRateLimiter(tmp_path / "lock", min_interval_sec=value)
+    assert cli_mod.GlobalRateLimiter(tmp_path / "lock", min_interval_sec=0).min_interval_sec == 0.0
