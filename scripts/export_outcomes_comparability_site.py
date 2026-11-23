@@ -5,7 +5,9 @@
 
 Reads only `BUILD_DIR` (offline; zero network calls), verifies every file listed in
 `BUILD_DIR/run.json` by raw byte SHA-256 and runs `comparability_build.check()` before selecting
-anything. Refuses tampered, partial, or inconsistent builds non-zero.
+anything. Refuses tampered, partial, or inconsistent builds non-zero, and any build whose producer
+`commit` is unknown or whose `uncommitted_changes` is null (unverifiable); `true` (a dirty working
+tree, recorded honestly) and `false` are both exported.
 
 Site files written (`SITE_SCHEMA_VERSION = 1`, staged atomically and verified by SHA-256):
   - `run.json`: site manifest carrying `run_id = <build_run_id>-<site_content_digest[:8]>`, `build_run_id`,
@@ -156,6 +158,17 @@ def _slim_index_row(rec: dict[str, Any]) -> dict[str, Any]:
 def select(build: dict[str, Any]) -> dict[str, Any]:
     """Select and reconcile site artifacts from a verified comparability build."""
     run = build['run.json']
+    # Only a build with verifiable provenance is published: its producing commit must be known and its
+    # working-tree state read (True, a dirty tree recorded honestly, or False). A null commit or a null
+    # (unverifiable) `uncommitted_changes` would publish numbers no one can trace to a revision.
+    prod = run.get('producer') or {}
+    if not (isinstance(prod.get('commit'), str) and B.GIT_COMMIT.match(prod['commit'])) or not isinstance(
+        prod.get('uncommitted_changes'), bool
+    ):
+        raise ValueError(
+            f"build producer commit {prod.get('commit')!r} with uncommitted_changes {prod.get('uncommitted_changes')!r}: "
+            'a build whose producing commit or working-tree state is unknown is not exported'
+        )
     summary = build['summary.json']
     records_map = build['records.json']['records']
 

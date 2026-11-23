@@ -57,16 +57,31 @@ def source_digest(root: Path = ROOT) -> str:
 
 
 def producer(root: Path = ROOT) -> dict[str, Any]:
-    """Current repository commit, dirty flag over `PRODUCER_PATHS`, and `source_sha256`."""
-    commit_proc = subprocess.run(
-        ['git', 'rev-parse', 'HEAD'], cwd=root, capture_output=True, text=True, check=False
-    )
-    status_proc = subprocess.run(
-        ['git', 'status', '--porcelain', '--', *PRODUCER_PATHS],
-        cwd=root, capture_output=True, text=True, check=False,
-    )
-    commit = commit_proc.stdout.strip() if commit_proc.returncode == 0 and commit_proc.stdout.strip() else None
-    dirty = bool(status_proc.stdout.strip()) if status_proc.returncode == 0 else False
+    """Current repository commit, dirty flag over `PRODUCER_PATHS`, and `source_sha256`.
+
+    `uncommitted_changes` is True or False only when git could read both the commit and the status
+    of `PRODUCER_PATHS`. When git is missing, the source has no `.git`, or either probe fails, the
+    commit is None and `uncommitted_changes` is None (unverifiable), never False: a build from an
+    unidentified or unverifiable source must not read as clean. Such a build may still be written for
+    local diagnostics; the site exporter refuses it (it accepts True and False). Same convention as
+    the feasibility and DAP builds.
+    """
+    commit: str | None = None
+    dirty: bool | None = None
+    try:
+        commit_proc = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=root, capture_output=True, text=True, check=False
+        )
+        if commit_proc.returncode == 0 and commit_proc.stdout.strip():
+            commit = commit_proc.stdout.strip()
+            status_proc = subprocess.run(
+                ['git', 'status', '--porcelain', '--', *PRODUCER_PATHS],
+                cwd=root, capture_output=True, text=True, check=False,
+            )
+            if status_proc.returncode == 0:
+                dirty = bool(status_proc.stdout.strip())
+    except OSError:
+        commit, dirty = None, None
     return {
         'repository': 'civicsample-engine',
         'commit': commit,
@@ -201,6 +216,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f'refused: {exc}', file=sys.stderr)
         return 1
 
+    prod = files['run.json']['producer']
+    if prod['commit'] is None or prod['uncommitted_changes'] is None:
+        print(
+            f"note: producer commit {prod['commit']!r}, uncommitted_changes {prod['uncommitted_changes']!r}; "
+            'written for local use only, the site exporter refuses a build whose commit or working-tree '
+            'state is unknown',
+            file=sys.stderr,
+        )
     den = files['summary.json']['denominators']
     sc = files['run.json']['scope']
     print(f"scope: frame {sc['frame']['n']}, included {sc['included']['n']}, excluded {sc['excluded']['n']}")

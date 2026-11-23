@@ -1082,6 +1082,10 @@ def test_cli_archive_exclude_history_and_site_export_atomic_staging(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(B, 'fetch', lambda *a, **k: pytest.fail('network called during offline test'))
+    # The exporter refuses a build whose commit or working-tree state is unknown; pin the producer so
+    # the test does not depend on whether the checkout running it has git.
+    clean = {'repository': 'civicsample-engine', 'commit': 'c' * 40, 'uncommitted_changes': False, 'source_sha256': '1' * 64}
+    monkeypatch.setattr(build_outcomes_comparability, 'producer', lambda *a, **k: dict(clean))
     studies = _sample_studies()
     ids = sorted(C.nct_id_of(s) or '' for s in studies)
     lines = {C.nct_id_of(s) or '': acquire.encode([s]) for s in studies}
@@ -1204,6 +1208,57 @@ def test_primary_only_history_is_counted_as_indeterminate_and_contract_refuses_a
     bad = copy.deepcopy(fam)
     bad['records.json']['records']['NCT99000001']['outcome_history']['version_history']['diffs'][1]['state'] = 'primary_added'
     assert any('without recorded historical secondaries' in p for p in B.check(bad))
+
+
+def test_unverifiable_git_provenance_is_never_clean_and_is_not_exported(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: a failed `git status` (or a source copy without .git) recorded
+    # uncommitted_changes False, so a build with no verifiable revision read as clean; a missing git
+    # binary raised instead. Now the dirty state is None unless both probes succeed.
+    class _Proc:
+        def __init__(self, returncode: int, stdout: str) -> None:
+            self.returncode, self.stdout = returncode, stdout
+
+    def _git(rev_parse: _Proc, status: _Proc) -> Any:
+        def run(cmd: list[str], **_kw: Any) -> _Proc:
+            return rev_parse if cmd[1] == 'rev-parse' else status
+        return run
+
+    def _no_git(*_a: Any, **_kw: Any) -> _Proc:
+        raise FileNotFoundError('git')
+
+    sub = build_outcomes_comparability.subprocess
+    monkeypatch.setattr(sub, 'run', _git(_Proc(0, 'a' * 40 + '\n'), _Proc(128, '')))
+    assert build_outcomes_comparability.producer()['commit'] == 'a' * 40
+    assert build_outcomes_comparability.producer()['uncommitted_changes'] is None
+    monkeypatch.setattr(sub, 'run', _git(_Proc(128, ''), _Proc(0, '')))
+    assert {k: build_outcomes_comparability.producer()[k] for k in ('commit', 'uncommitted_changes')} == {
+        'commit': None, 'uncommitted_changes': None,
+    }
+    monkeypatch.setattr(sub, 'run', _no_git)
+    assert build_outcomes_comparability.producer()['uncommitted_changes'] is None
+    monkeypatch.setattr(sub, 'run', _git(_Proc(0, 'a' * 40), _Proc(0, ' M outcomes/comparability.py\n')))
+    assert build_outcomes_comparability.producer()['uncommitted_changes'] is True
+    monkeypatch.undo()
+
+    # The contract accepts an unverifiable local build (commit and dirty state both null) and refuses
+    # one that claims to be clean, or carries a malformed commit; the exporter refuses a build whose
+    # commit or working-tree state is unknown and exports a clean or an honestly dirty one.
+    fam = _family(_sample_studies())
+    export_outcomes_comparability_site.select(fam)
+
+    def _with_producer(commit: Any, dirty: Any) -> dict[str, Any]:
+        f = copy.deepcopy(fam)
+        f['run.json']['producer'].update(commit=commit, uncommitted_changes=dirty)
+        return f
+
+    assert not [p for p in B.check(_with_producer(None, None)) if 'producer' in p]
+    assert any('not verifiable without a commit' in p for p in B.check(_with_producer(None, False)))
+    assert any('neither null nor a git commit id' in p for p in B.check(_with_producer('HEAD', False)))
+    for commit, dirty in ((None, None), ('c' * 40, None)):
+        with pytest.raises(ValueError, match='commit or working-tree state is unknown is not exported'):
+            export_outcomes_comparability_site.select(_with_producer(commit, dirty))
+    dirty_export = export_outcomes_comparability_site.select(_with_producer('c' * 40, True))
+    assert dirty_export['run.json']['producer']['uncommitted_changes'] is True
 
 
 def test_site_run_id_follows_the_exported_bytes_not_only_the_build(monkeypatch: pytest.MonkeyPatch) -> None:

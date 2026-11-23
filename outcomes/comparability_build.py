@@ -43,6 +43,7 @@ MAX_TRIES = 5
 
 RUN_ID = re.compile(r'^outcomes-comparability-\d{4}-\d{2}-\d{2}-[0-9a-f]{10}$')
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
+GIT_COMMIT = re.compile(r'^(?:[0-9a-f]{40}|[0-9a-f]{64})$')
 NCT = re.compile(r'^NCT\d{8}$')
 
 PRIVATE_KEYS = frozenset({
@@ -1350,6 +1351,14 @@ def check(files: dict[str, Any]) -> list[str]:
     prod = run.get('producer') or {}
     if not HEX64.match(str(prod.get('source_sha256') or '')):
         p.append('run.json producer lacks a 64-hex source_sha256')
+    # The commit may be unknown (None) for a local build, but then the dirty state is unverifiable
+    # (None) too: a build never reads as clean without the revision it was checked against.
+    prod_commit = prod.get('commit')
+    prod_dirty = prod.get('uncommitted_changes')
+    if prod_commit is not None and not (isinstance(prod_commit, str) and GIT_COMMIT.match(prod_commit)):
+        p.append(f'run.json producer commit {prod_commit!r} is neither null nor a git commit id')
+    if not (prod_dirty is None or isinstance(prod_dirty, bool)) or (prod_commit is None and prod_dirty is not None):
+        p.append(f'run.json producer uncommitted_changes {prod_dirty!r} is not verifiable without a commit')
     acq = run.get('acquisition') or {}
     if not HEX64.match(str(acq.get('sha256_uncompressed') or '')):
         p.append('run.json acquisition lacks a 64-hex sha256_uncompressed')

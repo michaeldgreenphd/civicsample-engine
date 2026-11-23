@@ -199,7 +199,12 @@ refused, never reported as `meta_verified`.
   `acquisition` (`sha256_uncompressed`), `history_archive`, `scope`, `vocabularies`, and `files`
   SHA-256 map. The run-id date is the date of `acquisition.retrieved_at`; every acquisition or
   snapshot date is parsed as a real calendar date (`calendar_date`), and `check()` re-parses
-  `retrieved_at` and requires the run-id date to equal its date.
+  `retrieved_at` and requires the run-id date to equal its date. `producer.uncommitted_changes` is
+  true or false only when git read both the commit and the status of the producing files; otherwise
+  `commit` and `uncommitted_changes` are both null (unverifiable, never false). Such a build is
+  written for local use; the site exporter refuses a build whose `commit` is null or whose
+  `uncommitted_changes` is null, and exports one whose `uncommitted_changes` is true (a dirty tree,
+  recorded honestly) or false.
 - `summary.json`: Every count object carries `value`, `numerator`, `denominator` (a named key in
   `summary.json["denominators"]`), and `definition`. `comparability_build.check()` recounts
   `summary.json` from `records.json` and refuses any discrepancy.
