@@ -18,6 +18,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import parse_qs, urlsplit
 
 import numpy as np
 from rapidfuzz import fuzz, process
@@ -88,6 +89,7 @@ _PARTIAL_DATE_RX: re.Pattern[str] = re.compile(
     r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$"
 )
 _PUNCT_RE: re.Pattern[str] = re.compile(r"[^\w\s/-]")
+_NCT_ID_RX: re.Pattern[str] = re.compile(r"NCT\d{8}")
 # Ontology keywords this short collide with fragments of unrelated words when
 # tested as substrings: 'ra' in 'Trauma', 'all' in 'Falls', 'ms' in
 # 'Behavioral Symptoms', 'skin' in 'Dyskinesia', 'burn' in 'Burnout'. They
@@ -435,6 +437,92 @@ def _require_study_objects(entries: list[Any], where: str) -> list[dict[str, Any
     return entries
 
 
+def _requested_nct_ids(envelope: dict[str, Any]) -> list[str] | None:
+    """NCT ids a cached request asked for: its ``ids`` field, else the ``url``'s
+    ``filter.ids`` or its single-study path (``/studies/NCT########``)."""
+    ids = envelope.get("ids")
+    if isinstance(ids, list) and ids and all(isinstance(i, str) for i in ids):
+        return ids
+    url = envelope.get("url")
+    if isinstance(url, str):
+        parts = urlsplit(url)
+        values = parse_qs(parts.query).get("filter.ids")
+        if values:
+            return [i for v in values for i in v.split(",") if i]
+        last = parts.path.rstrip("/").rsplit("/", 1)[-1]
+        if _NCT_ID_RX.fullmatch(last):
+            return [last]
+    return None
+
+
+def _response_log_studies(envelope: dict[str, Any], where: str) -> list[dict[str, Any]]:
+    """Studies from one cached CT.gov API v2 response line, refusing a failed, altered or short one.
+
+    Method (as feasibility benchmarks' ``_response_envelope_studies``): the
+    cached-response writers in this repository
+    (``docs/audits/outcomes_results_structure/first_pass/scripts/fetch.py``,
+    ``.../second_pass/scripts/ctgov.py``) store one line per request with its
+    ``status``, ``body_sha256`` and unparsed ``body``, and the requested ids in
+    ``ids`` and/or the ``url``'s ``filter.ids``. A line whose request failed,
+    whose body is null, blank, altered or holds no study, or that answered
+    fewer or other trials than it asked for would otherwise contribute nothing
+    with nothing said while the input sha256 still covers it. So ``status``
+    must be 200, ``body_sha256`` (when present) must match the body text, the
+    body must hold at least one study object, every study a valid NCT id, and
+    the returned ids must equal the requested ids: none missing, extra or
+    repeated. A line naming no requested ids is refused, as a short answer
+    could not be detected.
+    """
+    status = envelope.get("status")
+    if status != 200:
+        raise ValueError(
+            f"{where}: cached response status {status!r}, not 200; a failed request is not an empty batch"
+        )
+    body = envelope.get("body")
+    want_sha = envelope.get("body_sha256")
+    if want_sha is not None:
+        if not isinstance(body, str) or hashlib.sha256(body.encode("utf-8")).hexdigest() != want_sha:
+            raise ValueError(f"{where}: response body does not match its body_sha256")
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except ValueError as exc:
+            raise ValueError(f"{where}: response body is not JSON") from exc
+    if isinstance(body, dict) and "protocolSection" in body:
+        studies = [body]
+    elif isinstance(body, dict) and isinstance(body.get("studies"), list):
+        studies = _require_study_objects(body["studies"], f"{where}: body.studies")
+    else:
+        studies = []
+    if not studies:
+        raise ValueError(f"{where}: response body holds no study ({type(body).__name__})")
+
+    requested = _requested_nct_ids(envelope)
+    if requested is None:
+        raise ValueError(
+            f"{where}: response names no requested NCT ids (no ids, no filter.ids in url), "
+            "so a response missing trials could not be detected"
+        )
+    returned = [_extract_core_metadata(s)["nct_id"] for s in studies]
+    problems: list[str] = []
+    if any(not _NCT_ID_RX.fullmatch(n) for n in returned):
+        problems.append("a study without a valid NCT id")
+    if len(set(returned)) != len(returned):
+        problems.append("repeated NCT ids")
+    missing = sorted(set(requested) - set(returned))
+    extra = sorted(set(returned) - set(requested))
+    if missing:
+        problems.append(f"{len(missing)} requested trial(s) missing (first: {', '.join(missing[:5])})")
+    if extra:
+        problems.append(f"{len(extra)} unrequested trial(s) (first: {', '.join(extra[:5])})")
+    if problems:
+        raise ValueError(
+            f"{where}: response for {len(set(requested))} requested trials returned "
+            f"{len(studies)} studies with {'; '.join(problems)}"
+        )
+    return studies
+
+
 def load_study_records(
     path: Path,
     *,
@@ -511,7 +599,7 @@ def load_study_records(
     opener = gzip.open if path.name.endswith(".gz") else open
 
     if is_jsonl:
-        by_nct: dict[str, dict[str, Any]] = {}
+        first_line_by_nct: dict[str, int] = {}
         ordered: list[dict[str, Any]] = []
         # Read in binary mode so line splitting occurs strictly on 0x0A (b"\n"),
         # never splitting mid-string on U+2028, U+2029, \x85, or bare \r.
@@ -522,23 +610,18 @@ def load_study_records(
                 obj = json.loads(raw_line.decode("utf-8"))
                 if not isinstance(obj, dict):
                     raise ValueError(f"{path}:{line_no}: expected JSON object")
-                # Support frozen CT.gov API v2 response-log lines (`{"body": ...}`).
+                # Frozen CT.gov API v2 response-log lines (`{"body": ...}`): every
+                # line must be a whole, successful answer (_response_log_studies),
+                # and a trial returned by two lines is refused, not deduplicated.
                 if "body" in obj and "protocolSection" not in obj and "nct_id" not in obj:
-                    body = obj.get("body")
-                    if isinstance(body, str):
-                        body = json.loads(body) if body.strip() else {}
-                    if isinstance(body, dict):
-                        if isinstance(body.get("studies"), list):
-                            for s in _require_study_objects(body["studies"], f"{path}:{line_no}: body.studies"):
-                                nct = _extract_core_metadata(s)["nct_id"]
-                                if nct and nct not in by_nct:
-                                    by_nct[nct] = s
-                                    ordered.append(s)
-                        elif "protocolSection" in body:
-                            nct = _extract_core_metadata(body)["nct_id"]
-                            if nct and nct not in by_nct:
-                                by_nct[nct] = body
-                                ordered.append(body)
+                    for s in _response_log_studies(obj, f"{path}:{line_no}"):
+                        nct = _extract_core_metadata(s)["nct_id"]
+                        if nct in first_line_by_nct:
+                            raise ValueError(
+                                f"{path}:{line_no}: {nct} was already returned on line {first_line_by_nct[nct]}"
+                            )
+                        first_line_by_nct[nct] = line_no
+                        ordered.append(s)
                     continue
                 ordered.append(obj)
         if not ordered:

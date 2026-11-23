@@ -4,8 +4,10 @@ from __future__ import annotations
 import ast
 import copy
 import gzip
+import hashlib
 import importlib.util
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -365,7 +367,7 @@ def test_containers_with_non_object_entries_are_refused_not_filtered(
         "full_records": ("weekly.json", weekly, "data: 1 of 6 entries"),
         "response_log": (
             "log.jsonl",
-            {"body": json.dumps({"studies": [a, None, b]})},
+            {"status": 200, "ids": ["NCT99000951", "NCT99000952"], "body": json.dumps({"studies": [a, None, b]})},
             ":1: body.studies: 1 of 3 entries",
         ),
     }
@@ -385,6 +387,57 @@ def test_containers_with_non_object_entries_are_refused_not_filtered(
     )
     assert rc == 1 and not out_dir.exists()
     assert "(first: index 1 is NoneType); refusing the input" in capsys.readouterr().err
+
+
+def test_response_log_lines_must_be_whole_successful_answers(tmp_path: Path) -> None:
+    a, b, c = (fx.make_raw_ctgov_study(n) for n in ("NCT99000961", "NCT99000962", "NCT99000963"))
+    base_url = "https://clinicaltrials.gov/api/v2/studies"
+
+    def env(body: Any, **fields: Any) -> dict[str, Any]:
+        """A cached response line as first_pass/scripts/fetch.py writes it."""
+        text = body if isinstance(body, str) or body is None else json.dumps(body)
+        line: dict[str, Any] = {"status": 200, "body": text, **fields}
+        if isinstance(text, str) and "body_sha256" not in fields:
+            line["body_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        return line
+
+    def load(lines: list[dict[str, Any]], name: str) -> list[dict[str, Any]]:
+        path = tmp_path / f"{name}.jsonl"
+        path.write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
+        return benchmarks.load_study_records(path)[0]
+
+    good = env({"studies": [a, b]}, ids=["NCT99000961", "NCT99000962"])
+    # Requested ids from `ids`, from the url's filter.ids, or from a single-study path.
+    loaded = load(
+        [good, env({"studies": [c]}, url=f"{base_url}?filter.ids=NCT99000963&pageSize=50")], "ok_filter"
+    )
+    assert [s["protocolSection"]["identificationModule"]["nctId"] for s in loaded] == [
+        "NCT99000961",
+        "NCT99000962",
+        "NCT99000963",
+    ]
+    assert len(load([good, env(c, url=f"{base_url}/NCT99000963")], "ok_single")) == 3
+
+    no_nct = copy.deepcopy(c)
+    no_nct["protocolSection"]["identificationModule"].pop("nctId")
+    bad_lines: dict[str, tuple[dict[str, Any], str]] = {
+        "null_body": (env(None, ids=["NCT99000963"]), "holds no study"),
+        "blank_body": (env("", ids=["NCT99000963"]), "response body is not JSON"),
+        "body_without_studies": (env({"totalCount": 1}, ids=["NCT99000963"]), "holds no study"),
+        "empty_studies": (env({"studies": []}, ids=["NCT99000963"]), "holds no study"),
+        "failed_request": (env({"studies": [c]}, ids=["NCT99000963"], status=500), "status 500, not 200"),
+        "altered_body": (env({"studies": [c]}, ids=["NCT99000963"], body_sha256="0" * 64), "body_sha256"),
+        "no_requested_ids": (env({"studies": [c]}, url=base_url), "names no requested NCT ids"),
+        "short_answer": (env({"studies": [c]}, ids=["NCT99000963", "NCT99000964"]), "1 requested trial(s) missing"),
+        "extra_answer": (env({"studies": [c, a]}, ids=["NCT99000963"]), "1 unrequested trial(s)"),
+        "study_without_nct": (env({"studies": [no_nct]}, ids=["NCT99000963"]), "without a valid NCT id"),
+        "repeated_in_line": (env({"studies": [c, c]}, ids=["NCT99000963"]), "repeated NCT ids"),
+        "repeated_across_lines": (env({"studies": [a]}, ids=["NCT99000961"]), "already returned on line 1"),
+    }
+    for name, (bad, message) in bad_lines.items():
+        with pytest.raises(ValueError, match=re.escape(message)) as err:
+            load([good, bad], name)
+        assert f"{name}.jsonl:2" in str(err.value), (name, str(err.value))
 
 
 def test_weekly_full_records_container_supported(tmp_path: Path) -> None:

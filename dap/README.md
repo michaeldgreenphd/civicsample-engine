@@ -87,6 +87,19 @@ source SHA-256 over the exporter's own import closure). The site `run_id` is
 build made with `--limit` (diagnostic only; `inputs.study_records.limit_applied`
 is not null) passes the contract but is never exported.
 
+## Study record inputs
+
+`--records` and `--records-dir` take raw CT.gov API v2 study documents: one
+study, a `studies`/`records` list, a top-level list, a JSONL file of studies,
+or a JSONL log of cached API responses (one `{"status", "body", "body_sha256",
+"ids" or "url"}` line per request, as
+`docs/audits/outcomes_results_structure/first_pass/scripts/fetch.py` writes).
+Nothing is skipped: a non-object entry refuses the input, and each response
+line must be a whole, successful answer (status 200, a body matching
+`body_sha256`, at least one study, returned NCT ids equal to the requested
+ones, and no trial returned twice across lines), or the build is refused,
+naming the line.
+
 ## Condition MeSH sidecar (`--condition-mesh`)
 
 The optional `condition_mesh.jsonl.gz` (`src/condition_mesh.py`) replaces each
