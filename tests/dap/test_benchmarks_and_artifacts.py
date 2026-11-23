@@ -532,11 +532,11 @@ def test_weekly_records_with_a_phase_outside_ctgov_values_are_refused(
 
 
 def test_weekly_records_with_ctgov_phase_strings_load(tmp_path: Path) -> None:
-    # Control: the weekly extractor's own forms, multi-phase and empty, and a missing key, pass.
+    # Control: the weekly extractor's own forms, multi-phase and empty, pass. (A missing key is refused
+    # since round 24: src/utils.py writes `phase` on every record.)
     weekly_doc = fx.build_weekly_full_records_doc()
     weekly_doc["data"][0]["phase"] = "PHASE1, PHASE2"
     weekly_doc["data"][1]["phase"] = ""
-    weekly_doc["data"][2].pop("phase", None)
     weekly_path = tmp_path / "demographics.json.gz"
     weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
     assert len(benchmarks.load_study_records(weekly_path, source_kind="full_records")[0]) == 5
@@ -579,6 +579,9 @@ _WEEKLY_SITE = {"facility": "US1", "state": "MA", "country": "United States"}
         ("sex_gender", "reported", "sex_gender is str, not an object"),
         ("sex_gender", {"sex_report_status": "BANANA"},
          "sex_gender.sex_report_status 'BANANA' is not one of SEX_GENDER_STATES"),
+        # A partial row was reused as it stood: a reported trial with every flag and count empty.
+        ("sex_gender", {"sex_report_status": "reported"},
+         "sex_gender has no reported_sex (sgt.lean_row always writes it)"),
     ],
 )
 def test_weekly_records_with_malformed_list_fields_are_refused(
@@ -596,7 +599,8 @@ def test_weekly_records_with_malformed_list_fields_are_refused(
 @pytest.mark.parametrize("source_kind", ["full_records", "auto"])
 @pytest.mark.parametrize(
     "key",
-    ["study_sites", "collaborators", "conditions", "lead_sponsor_name", "sponsor_class", "enrollment", "sex_gender"],
+    ["study_sites", "collaborators", "conditions", "lead_sponsor_name", "sponsor_class", "enrollment", "sex_gender",
+     "phase"],
 )
 def test_weekly_records_missing_a_list_field_are_refused(tmp_path: Path, source_kind: str, key: str) -> None:
     # On 1e05c40 a missing key was skipped and read as an empty list: no sites, or ontology Other.
@@ -1773,3 +1777,30 @@ def test_raw_records_snapshot_date_still_defaults_to_the_build_date(tmp_path: Pa
                            "--generated-at", "2026-11-23T09:00:00Z", "--out", str(tmp_path / "raw")]) == 0
     run = json.loads((tmp_path / "raw" / "run.json").read_text(encoding="utf-8"))
     assert run["parameters"]["snapshot_date"] == "2026-11-23"
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "problem"),
+    [
+        ("n_female", "50", "sex_gender.n_female is str, not int or float or NoneType"),
+        ("n_male", True, "sex_gender.n_male is bool, not int or float or NoneType"),
+        ("reported_sex", "yes", "sex_gender.reported_sex is str, not bool"),
+        ("is_participant_count", None, "sex_gender.is_participant_count is NoneType, not bool"),
+        ("parser_rules_version", None, "sex_gender.parser_rules_version is NoneType, not str"),
+        ("uninformative_reason", 7, "sex_gender.uninformative_reason is int, not str or NoneType"),
+    ],
+)
+def test_weekly_sex_gender_row_needs_every_lean_column_with_its_type(
+    tmp_path: Path, column: str, value: object, problem: str
+) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1]["sex_gender"][column] = value
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    message = f"(first: NCT99000402 {problem})"
+    with pytest.raises(ValueError, match=re.escape(message)):
+        benchmarks.load_study_records(weekly_path, source_kind="full_records")
+    weekly_doc["data"][1]["sex_gender"].pop(column)
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    with pytest.raises(ValueError, match=re.escape(f"sex_gender has no {column} (sgt.lean_row always writes it)")):
+        benchmarks.load_study_records(weekly_path, source_kind="full_records")

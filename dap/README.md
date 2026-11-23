@@ -144,8 +144,12 @@ list lowered the exact site counts. Every site must carry a non-blank
 must be present with the producer's type (`WEEKLY_SCALAR_FIELDS`): `nct_id`,
 `study_type`, `status`, `lead_sponsor_name` and `sponsor_class` non-blank
 strings, `brief_title`, the dates and `enrollment_type` strings, `enrollment`
-an integer, and `race`, `ethnicity`, `sex`, `gender` and `sex_gender` objects,
-the last with a `sex_report_status` in `SEX_GENDER_STATES`. A missing or
+an integer, `phase` a string (its values checked as above), and `race`,
+`ethnicity`, `sex`, `gender` and `sex_gender` objects. `sex_gender`, the row
+reused as it stands, must carry a `sex_report_status` in `SEX_GENDER_STATES`
+and every lean column `sgt.lean_row` writes with its type
+(`WEEKLY_SEX_GENDER_COLUMNS`): a partial row published a reported trial with
+every flag and count empty, and a string count stopped the build. A missing or
 mistyped one was read as an "Unknown" sponsor, no enrollment, a block not
 reported, or a sex/gender row re-parsed as `parse_error`. All 80,890 records
 of the 2026-11-08 weekly extraction pass.

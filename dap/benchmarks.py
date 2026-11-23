@@ -40,6 +40,7 @@ from dap.geography import (
 from sponsors import adapter, audit_states, sponsor_roles
 from src import condition_mesh as cmesh
 from src import full_records
+from src import sex_gender_table as sgt
 
 ROOT: Path = Path(__file__).resolve().parents[1]
 DEFAULT_ONTOLOGY_PATH: Path = ROOT / "condition_ontology.json"
@@ -675,7 +676,8 @@ def _require_weekly_phases(records: list[dict[str, Any]], source: str) -> None:
     one with "phase": "BANANA" became a phase stratum of its own. The value must be exactly "" or,
     split the way `normalize_phase` splits it, consist only of `CTGOV_PHASES` values: an empty piece
     (`","`, `" / "`, `"PHASE1,,PHASE2"`) is refused too, since `normalize_phase` would drop it and read
-    a separator-only value as no phase stated. A missing key still reads as no phase.
+    a separator-only value as no phase stated. A missing key is refused by `_require_weekly_lists`
+    (`src/utils.py` writes `phase` on every record; read as absent, it published `PHASE_NOT_STATED`).
     """
     bad: list[str] = []
     for idx, rec in enumerate(records):
@@ -702,6 +704,28 @@ WEEKLY_LIST_FIELDS: dict[str, tuple[type, tuple[str, ...]]] = {
     "collaborators": (dict, ("name", "class")),
     "conditions": (str, ()),
 }
+# The lean sex/gender row `src/extract_all.py` writes (`sgt.lean_row`): every column is present, with
+# these types (`None` where listed). `extract_sex_gender` reuses the row as it stands, so a partial row
+# such as `{"sex_report_status": "reported"}` would publish a reported trial with every flag and count
+# empty. In the 2026-11-08 extraction all 80,890 rows carry exactly these 14 columns with these types.
+_NUM_OR_NONE: tuple[type, ...] = (int, float, type(None))
+WEEKLY_SEX_GENDER_COLUMNS: dict[str, tuple[type, ...]] = {
+    "sex_report_status": (str,),
+    "reported_sex": (bool,),
+    "reported_gender": (bool,),
+    "reported_both": (bool,),
+    "n_female": _NUM_OR_NONE,
+    "n_male": _NUM_OR_NONE,
+    "n_unknown": _NUM_OR_NONE,
+    "n_gender_diverse": _NUM_OR_NONE,
+    "n_ambiguous_gender": _NUM_OR_NONE,
+    "is_participant_count": (bool,),
+    "uninformative_reason": (str, type(None)),
+    "declared_not_collected": (bool,),
+    "enrollment_minus_parsed": _NUM_OR_NONE,
+    "parser_rules_version": (str,),
+}
+assert list(WEEKLY_SEX_GENDER_COLUMNS) == list(sgt.LEAN_COLUMNS), "keep in step with sgt.LEAN_COLUMNS"
 # Entry fields `src/utils.py` always writes as non-blank strings: it keeps a site only for a location
 # with a country.
 WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {"study_sites": ("country",)}
@@ -711,6 +735,7 @@ WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {"study_sites": ("cou
 # reported, or a sex/gender row re-parsed as `parse_error`.
 WEEKLY_SCALAR_FIELDS: dict[str, tuple[type, bool]] = {
     "nct_id": (str, True),
+    "phase": (str, False),  # its values are checked by `_require_weekly_phases`
     "brief_title": (str, False),
     "study_type": (str, True),
     "status": (str, True),
@@ -745,8 +770,9 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     every site carries a non-blank `country`.
 
     The other fields read (`WEEKLY_SCALAR_FIELDS`) must be present with their type (a bool is not an
-    enrollment), non-blank where the producer never writes them blank, and `sex_gender` must carry a
-    `sex_report_status` in `SEX_GENDER_STATES`, the row `extract_sex_gender` reuses. All 80,890 weekly
+    enrollment), non-blank where the producer never writes them blank, and `sex_gender`, the row
+    `extract_sex_gender` reuses, must carry a `sex_report_status` in `SEX_GENDER_STATES` and every
+    lean column with its type (`WEEKLY_SEX_GENDER_COLUMNS`). All 80,890 weekly
     records pass (80,097 `reported`, 727 `uninformative`, 66 `explicit_unknown_only`).
     """
     for key, (field_type, non_blank) in WEEKLY_SCALAR_FIELDS.items():
@@ -761,6 +787,12 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     status = rec["sex_gender"].get("sex_report_status")
     if status not in SEX_GENDER_STATES:
         return f"sex_gender.sex_report_status {status!r} is not one of SEX_GENDER_STATES"
+    for column, types in WEEKLY_SEX_GENDER_COLUMNS.items():
+        if column not in rec["sex_gender"]:
+            return f"sex_gender has no {column} (sgt.lean_row always writes it)"
+        value = rec["sex_gender"][column]
+        if not isinstance(value, types) or (isinstance(value, bool) and bool not in types):
+            return f"sex_gender.{column} is {type(value).__name__}, not {' or '.join(t.__name__ for t in types)}"
     for key, (entry_type, fields) in WEEKLY_LIST_FIELDS.items():
         if key not in rec:
             return f"has no {key} (src/utils.py always writes it)"
