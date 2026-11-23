@@ -527,4 +527,3 @@ def test_resolver_missing_level_keys_handled_with_explicit_reason() -> None:
     assert res["by_level"]["us"]["all_us_facilities_resolved"] is True
     assert res["by_level"]["cbsa"]["all_us_facilities_resolved"] is False
     assert res["by_level"]["cbsa"]["unresolved_reasons"] == {"level_not_returned_by_resolver": 1}
-

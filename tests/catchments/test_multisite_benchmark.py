@@ -1055,4 +1055,3 @@ def test_pool_multisite_cohort_validates_level_and_dimension_and_pools_ethnicity
         ms_benchmark.pool_multisite_cohort(trials_out, level="tract")
     with pytest.raises(ValueError, match="unsupported dimension"):
         ms_benchmark.pool_multisite_cohort(trials_out, dimension="age")
-

@@ -474,4 +474,3 @@ def test_equal_facility_proxy_handles_reversed_ethnicity_category_order() -> Non
         estimates, {"01": 1, "02": 1}, categories=("not_hispanic_latino", "hispanic_latino")
     )
     assert proxy["pct"] == {"not_hispanic_latino": 60.0, "hispanic_latino": 40.0}
-
