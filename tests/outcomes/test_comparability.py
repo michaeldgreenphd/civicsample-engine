@@ -1171,6 +1171,27 @@ class _FakeResp:
         return json.loads(self.content)
 
 
+def test_site_run_id_follows_the_exported_bytes_not_only_the_build(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression: the site run id hashed only the build's files, so re-exporting an unchanged build
+    # after an exporter change produced different site bytes under the same run id.
+    fam = _family(_sample_studies())
+    first = export_outcomes_comparability_site.select(fam)
+    again = export_outcomes_comparability_site.select(fam)
+    s_run_id = first['run.json']['run_id']
+    assert s_run_id.startswith(fam['run.json']['run_id'] + '-') and again['run.json']['run_id'] == s_run_id
+    assert {obj['run_id'] for obj in first.values()} == {s_run_id}
+
+    original_row = export_outcomes_comparability_site._slim_index_row
+
+    def changed_row(rec: dict[str, Any]) -> dict[str, Any]:
+        return {**original_row(rec), 'exporter_change': True}
+
+    monkeypatch.setattr(export_outcomes_comparability_site, '_slim_index_row', changed_row)
+    changed = export_outcomes_comparability_site.select(fam)
+    assert changed['run.json']['build_run_id'] == first['run.json']['build_run_id']
+    assert changed['run.json']['run_id'] != s_run_id
+
+
 def test_fetch_rate_limiting_version_guard_and_responses_cache_cli(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

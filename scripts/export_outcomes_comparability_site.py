@@ -8,7 +8,7 @@ Reads only `BUILD_DIR` (offline; zero network calls), verifies every file listed
 anything. Refuses tampered, partial, or inconsistent builds non-zero.
 
 Site files written (`SITE_SCHEMA_VERSION = 1`, staged atomically and verified by SHA-256):
-  - `run.json`: site manifest carrying `run_id = <build_run_id>-<files_digest[:8]>`, `build_run_id`,
+  - `run.json`: site manifest carrying `run_id = <build_run_id>-<site_content_digest[:8]>`, `build_run_id`,
     `build_files`, `vocabularies`, `scope`, `history_archive`, and byte SHA-256s of all site files.
   - `summary.json`: the build's `summary.json` unchanged apart from `run_id` (browser computes no
     aggregate).
@@ -83,10 +83,17 @@ def read_build(build: Path) -> dict[str, Any]:
     return files
 
 
-def site_run_id(run: dict[str, Any]) -> str:
-    """Append an 8-hex digest of the build's file SHA-256 map to `build_run_id`."""
-    digest = sha256_bytes(json.dumps(sorted(run['files'].items())).encode('utf-8'))
-    return f"{run['run_id']}-{digest[:8]}"
+def site_run_id(run: dict[str, Any], site_files: dict[str, Any]) -> str:
+    """`build_run_id` with an 8-hex digest of the selected site content appended.
+
+    The digest covers every site file as `select` builds it (`run.json` included, which carries the
+    build's file SHA-256s as `build_files`), leaving out only the `run_id` each file is then stamped
+    with. The id therefore follows from the exported bytes, not only from the build: re-exporting an
+    unchanged build after an exporter change (`_slim_index_row`, `select`) gives a new id, and the
+    same build exported by the same code keeps its id.
+    """
+    content = {name: {k: v for k, v in obj.items() if k != 'run_id'} for name, obj in site_files.items()}
+    return f"{run['run_id']}-{sha256_bytes(dump(content))[:8]}"
 
 
 def _metric_numerator(summary: dict[str, Any], metric_id: str) -> int:
@@ -151,7 +158,6 @@ def select(build: dict[str, Any]) -> dict[str, Any]:
     run = build['run.json']
     summary = build['summary.json']
     records_map = build['records.json']['records']
-    s_run_id = site_run_id(run)
 
     rows = [_slim_index_row(records_map[nct]) for nct in sorted(records_map)]
 
@@ -173,7 +179,7 @@ def select(build: dict[str, Any]) -> dict[str, Any]:
     ):
         raise ValueError('index has_shared_arm_contrasts count disagrees with summary.json')
 
-    stamp = {'schema_version': SITE_SCHEMA_VERSION, 'run_id': s_run_id}
+    stamp = {'schema_version': SITE_SCHEMA_VERSION}
     site_files: dict[str, Any] = {
         'summary.json': {**summary, **stamp},
         'index.json': {
@@ -206,6 +212,10 @@ def select(build: dict[str, Any]) -> dict[str, Any]:
         'limitations': run['limitations'],
         'build_files': run['files'],
     }
+    # Stamp the site run id last: it is a digest of the content selected above.
+    s_run_id = site_run_id(run, site_files)
+    for obj in site_files.values():
+        obj['run_id'] = s_run_id
     return site_files
 
 
