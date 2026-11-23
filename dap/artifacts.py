@@ -897,7 +897,7 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
         if not isinstance(nct, str) or not nct:
             p.append("trials.jsonl.gz: trial row missing nct_id")
             continue
-        if not re.fullmatch(r"NCT\d{8}", nct):
+        if not re.fullmatch(r"NCT[0-9]{8}", nct):  # ASCII digits only (\d matches other scripts)
             # The published key every NCT join and link uses; the build refuses such input, and an
             # edited trials file is refused here.
             p.append(f"trials.jsonl.gz: trial row nct_id {nct!r} is not NCT followed by eight digits")

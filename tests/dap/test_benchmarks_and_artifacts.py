@@ -793,12 +793,13 @@ def test_contract_checker_refuses_tampered_or_invariant_violating_builds(tmp_pat
     assert any("single_category_ethnicity must withhold of_classified" in x for x in probs_sc)
 
     # 3b. A trial key that is not an NCT ID (the build refuses such input; an edited file is refused here)
-    tampered_nct = copy.deepcopy(base_loaded)
-    tampered_nct["trial_rows"][0]["nct_id"] = "123"
-    assert any(
-        "trial row nct_id '123' is not NCT followed by eight digits" in x
-        for x in artifacts.check_contract(tampered_nct)
-    )
+    for bad_key in ("123", "NCT\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668"):  # Arabic-Indic digits
+        tampered_nct = copy.deepcopy(base_loaded)
+        tampered_nct["trial_rows"][0]["nct_id"] = bad_key
+        assert any(
+            f"trial row nct_id {bad_key!r} is not NCT followed by eight digits" in x
+            for x in artifacts.check_contract(tampered_nct)
+        )
 
     # 4. Domain invariant: combined_race_ethnicity_quarantined leaking OMB counts
     tampered_q = copy.deepcopy(base_loaded)
@@ -1424,7 +1425,10 @@ def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
         benchmarks.load_study_records(plain)
 
 
-@pytest.mark.parametrize("nct", [123, "NCT123", "nct99800022", " NCT99800022"])
+@pytest.mark.parametrize(
+    "nct",
+    [123, "NCT123", "nct99800022", " NCT99800022", "NCT\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668"],
+)
 def test_records_with_a_malformed_nct_id_are_refused(tmp_path: Path, nct: object) -> None:
     # The trial's key in every published file; a number such as 123 was published as "123".
     bad = _measured_study("NCT99800022")
@@ -1435,10 +1439,13 @@ def test_records_with_a_malformed_nct_id_are_refused(tmp_path: Path, nct: object
         benchmarks.load_study_records(plain)
 
 
-def test_record_with_results_but_has_results_false_is_refused(tmp_path: Path) -> None:
-    # demographics read the section as posted results whatever the flag said; the record is contradictory.
+@pytest.mark.parametrize("section", ["full", {}, None])
+def test_record_with_results_but_has_results_false_is_refused(tmp_path: Path, section: object) -> None:
+    # demographics read any dict-valued section, {} included, as posted results whatever the flag said.
     bad = _measured_study("NCT99800025")
     bad["hasResults"] = False
+    if section != "full":
+        bad["resultsSection"] = section
     plain = tmp_path / "studies.jsonl"
     plain.write_text(json.dumps(_measured_study("NCT99800026")) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match=r"first: NCT99800025 lacks resultsSection \(hasResults is false\)"):

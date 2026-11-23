@@ -89,7 +89,9 @@ _PARTIAL_DATE_RX: re.Pattern[str] = re.compile(
     r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$"
 )
 _PUNCT_RE: re.Pattern[str] = re.compile(r"[^\w\s/-]")
-_NCT_ID_RX: re.Pattern[str] = re.compile(r"NCT\d{8}")
+# ASCII digits only: Python's \d also matches other scripts' digits (NCT followed by Arabic-Indic
+# digits would pass), which no ClinicalTrials.gov ID, join or link uses.
+_NCT_ID_RX: re.Pattern[str] = re.compile(r"NCT[0-9]{8}")
 # Ontology keywords this short collide with fragments of unrelated words when
 # tested as substrings: 'ra' in 'Trauma', 'all' in 'Falls', 'ms' in
 # 'Behavioral Symptoms', 'skin' in 'Dyskinesia', 'burn' in 'Burnout'. They
@@ -685,10 +687,11 @@ def _require_complete_records(studies: list[dict[str, Any]], source: str) -> Non
             results_sec = study.get("resultsSection")
             if not isinstance(results_sec, dict) or not results_sec:
                 missing.append("resultsSection (hasResults is true)")
-        elif study.get("resultsSection"):
-            # The flag says no results were posted, yet a section is present: the result readers
-            # disagree on it (one trusts the flag, another reads the section), so the record is
-            # contradictory and refused. None of the 5,330 stored unprojected records has this shape.
+        elif "resultsSection" in study:
+            # The flag says no results were posted, yet a section is present. demographics.
+            # is_results_posted reads any dict-valued section, an empty {} included, as posted
+            # results, so the record is contradictory and refused. All 822 stored unprojected
+            # records with hasResults false lack the key altogether.
             missing.append("resultsSection (hasResults is false)")
         if missing:
             incomplete[key] = missing
