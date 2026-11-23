@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Literal
 from urllib.parse import urlsplit
 
 CTGOV_API = 'https://clinicaltrials.gov/api/v2'
@@ -82,14 +82,17 @@ class FrozenCache:
     openfda_meta: dict[str, Any] | None
 
 
-def timestamp_problem(value: Any, label: str, *, require_utc: bool) -> str | None:
-    """Why `value` is not a whole ISO 8601 date and time, or None when it is.
+def timestamp_problem(value: Any, label: str, *, offset: Literal['utc', 'none']) -> str | None:
+    """Why `value` is not a whole ISO 8601 date and time in the stated form, or None when it is.
 
     `datetime.fromisoformat` alone accepts a bare date (`2026-11-01`), which names no instant, so a
-    date and an hour:minute time are required and the whole value must parse. With `require_utc` the
-    value must also carry a zero UTC offset (`Z` or `+00:00`): acquisition and generation times are
-    stamped in UTC. CT.gov's own `dataTimestamp` carries no offset (`2026-11-13T10:00:06`), so a data
-    timestamp is checked with `require_utc=False`.
+    date and an hour:minute time are required and the whole value must parse. `offset='utc'` also
+    requires a zero UTC offset (`Z` or `+00:00`): acquisition and generation times are stamped in UTC.
+    `offset='none'` requires no offset at all, the form of CT.gov's own `dataTimestamp`
+    (`2026-11-13T10:00:06`). Data timestamps are compared as strings and cut to their first ten
+    characters for `as_of`, so a zoned value (`2026-11-01T23:30:00-05:00`, which is 2 November in
+    UTC) would give the wrong day and break the ordering; it is refused rather than converted,
+    because CT.gov never states one.
     """
     if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*', value):
         return f'{label} must be a whole ISO 8601 date and time, got {value!r}'
@@ -97,8 +100,10 @@ def timestamp_problem(value: Any, label: str, *, require_utc: bool) -> str | Non
         parsed = datetime.fromisoformat(value)
     except ValueError:
         return f'{label} must be a whole ISO 8601 date and time, got {value!r}'
-    if require_utc and (parsed.tzinfo is None or parsed.utcoffset() != timedelta(0)):
+    if offset == 'utc' and (parsed.tzinfo is None or parsed.utcoffset() != timedelta(0)):
         return f'{label} must carry a UTC offset (Z or +00:00), got {value!r}'
+    if offset == 'none' and parsed.tzinfo is not None:
+        return f"{label} must carry no UTC offset, as CT.gov's dataTimestamp does not, got {value!r}"
     return None
 
 
@@ -885,8 +890,8 @@ def ingest_local_ctgov_records(
     # fetched_at is an acquisition instant, stamped in UTC like live acquisition's; data_timestamp
     # follows CT.gov's dataTimestamp, a whole date and time with no offset (see timestamp_problem).
     for problem in (
-        timestamp_problem(fetched_at, 'fetched_at', require_utc=True),
-        timestamp_problem(data_timestamp, 'data_timestamp', require_utc=False),
+        timestamp_problem(fetched_at, 'fetched_at', offset='utc'),
+        timestamp_problem(data_timestamp, 'data_timestamp', offset='none'),
     ):
         if problem:
             raise ValueError(problem)

@@ -492,7 +492,7 @@ def generated_at_problem(value: Any) -> str | None:
     prefix: an impossible date, trailing text, a date without a time, a naive time or a non-zero UTC
     offset is refused (the rule the feasibility and DAP builds apply; see `A.timestamp_problem`).
     """
-    return A.timestamp_problem(value, 'generated_at', require_utc=True)
+    return A.timestamp_problem(value, 'generated_at', offset='utc')
 
 
 def build_artifacts(

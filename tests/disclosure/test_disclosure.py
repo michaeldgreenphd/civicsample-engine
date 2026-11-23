@@ -1753,6 +1753,10 @@ def test_generated_at_must_be_a_whole_utc_timestamp(
         ('2026-11-01T12:00:00+01:00', '2026-11-01T08:00:00', 'fetched_at must carry a UTC offset'),
         ('2026-11-01T12:00:00+00:00', '2026-11-01', 'data_timestamp must be a whole'),
         ('2026-11-01T12:00:00+00:00', 'yesterday', 'data_timestamp must be a whole'),
+        # CT.gov's dataTimestamp has no offset; a zoned value's first ten characters can name the
+        # wrong day (23:30 at -05:00 is 2 November in UTC)
+        ('2026-11-01T12:00:00+00:00', '2026-11-01T23:30:00-05:00', 'data_timestamp must carry no UTC offset'),
+        ('2026-11-01T12:00:00+00:00', '2026-11-01T08:00:00Z', 'data_timestamp must carry no UTC offset'),
     ],
 )
 def test_local_freeze_stamps_must_be_whole_timestamps(
@@ -1768,8 +1772,8 @@ def test_local_freeze_stamps_must_be_whole_timestamps(
                            '--fetched-at', fetched_at, '--data-timestamp', data_timestamp]) == 1
     assert not A.raw_log_path(cache, 'ctgov').exists()
     # Control: a UTC fetch time and CT.gov's offset-free data timestamp are accepted.
-    assert A.timestamp_problem('2026-11-01T12:00:00Z', 'fetched_at', require_utc=True) is None
-    assert A.timestamp_problem('2026-11-13T10:00:06', 'data_timestamp', require_utc=False) is None
+    assert A.timestamp_problem('2026-11-01T12:00:00Z', 'fetched_at', offset='utc') is None
+    assert A.timestamp_problem('2026-11-13T10:00:06', 'data_timestamp', offset='none') is None
 
 
 def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:
