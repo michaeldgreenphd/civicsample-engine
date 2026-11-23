@@ -140,32 +140,39 @@ def source_digest(root: Path = ROOT, paths: list[str] | None = None) -> str:
     return h.hexdigest()
 
 
+def _git_stdout(root: Path, *args: str) -> str | None:
+    """stdout of `git <args>` run in `root`, or None when git is missing or the command fails."""
+    try:
+        proc = subprocess.run(['git', *args], cwd=root, capture_output=True, text=True)
+    except OSError:
+        return None
+    return proc.stdout if proc.returncode == 0 else None
+
+
 def producer_metadata(root: Path = ROOT) -> dict[str, Any]:
     """Producer repository, HEAD commit (when git metadata is reachable), and `source_sha256`.
 
     The digest and the `git status` dirty check cover the same list (`producer_paths`), checked
     in `root`; the dirty check also names the `disclosure` directory, so a deleted tracked file
     there counts as an uncommitted change.
+
+    Git provenance is recorded only when it is known. If git is missing, `rev-parse` fails or does
+    not print a 40-hex commit, or `status` fails, both `commit` and `uncommitted_changes` are None,
+    never a commit beside an unknown dirty state and never False. The build may still be written
+    for local diagnostics; the site exporter refuses it. A dirty tree is recorded as True.
     """
     paths = producer_paths(root)
-    rev = subprocess.run(
-        ['git', 'rev-parse', 'HEAD'],
-        cwd=root,
-        capture_output=True,
-        text=True,
-    )
-    commit = rev.stdout.strip() if rev.returncode == 0 and rev.stdout.strip() else None
+    head = _git_stdout(root, 'rev-parse', 'HEAD')
+    commit: str | None = head.strip() if head is not None and ART.GIT_COMMIT_RE.match(head.strip()) else None
     dirty: bool | None = None
     if commit is not None:
         # The `disclosure` directory pathspec also reports a tracked file deleted from the working
         # tree, which `paths` (files present on disk) cannot name; such a deletion changes the digest.
-        st = subprocess.run(
-            ['git', 'status', '--porcelain', '--', 'disclosure', *paths],
-            cwd=root,
-            capture_output=True,
-            text=True,
-        )
-        dirty = bool(st.stdout.strip()) if st.returncode == 0 else None
+        status = _git_stdout(root, 'status', '--porcelain', '--', 'disclosure', *paths)
+        if status is None:
+            commit = None
+        else:
+            dirty = bool(status.strip())
     return {
         'repository': 'civicsample-engine',
         'commit': commit,

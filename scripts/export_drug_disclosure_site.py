@@ -73,11 +73,22 @@ class _StringTable:
 
 
 def read_verified_build(build_dir: Path) -> dict[str, Any]:
-    """Load `build_dir` and enforce full manifest sha256 and contract verification."""
+    """Load `build_dir` and enforce full manifest sha256, contract and git-provenance verification.
+
+    A build whose producer `commit` or `uncommitted_changes` is null was made where git provenance
+    could not be established; it may be inspected locally but is never exported to the site. A
+    dirty tree (`uncommitted_changes: true`) is honest provenance and is exported.
+    """
     files, raw_hashes = ART.load_dir(build_dir)
     problems = ART.check_contract(files, raw_file_hashes=raw_hashes)
     if problems:
         raise ValueError(f'{build_dir} failed contract check ({len(problems)} problem(s)): {problems[0]}')
+    producer = files['run.json'].get('producer') or {}
+    if producer.get('commit') is None or producer.get('uncommitted_changes') is None:
+        raise ValueError(
+            f'{build_dir}: producer commit or uncommitted_changes is null (git provenance unknown); '
+            'rebuild where git can report them before exporting'
+        )
     return files
 
 

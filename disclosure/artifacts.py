@@ -54,6 +54,7 @@ FORBIDDEN_COMPLIANCE_RE = re.compile(
     re.IGNORECASE,
 )
 RUN_ID_RE = re.compile(r'^disclosure-\d{4}-\d{2}-\d{2}-[0-9a-f]{10}$')
+GIT_COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
 HEX64_RE = re.compile(r'^[0-9a-f]{64}$')
 
 
@@ -882,6 +883,15 @@ def check_contract(
     prod = run.get('producer') or {}
     if not HEX64_RE.match(str(prod.get('source_sha256') or '')):
         problems.append('run.json producer.source_sha256 is missing or invalid')
+    # Git provenance is a 40-hex commit with a bool dirty flag, or unknown (both null); never false
+    # without a commit. The site exporter additionally refuses the unknown case.
+    commit, dirty = prod.get('commit'), prod.get('uncommitted_changes')
+    if commit is not None and not GIT_COMMIT_RE.match(str(commit)):
+        problems.append(f'run.json producer.commit {commit!r} must be a 40-hex commit or null')
+    if dirty is not None and not isinstance(dirty, bool):
+        problems.append(f'run.json producer.uncommitted_changes {dirty!r} must be true, false or null')
+    if commit is None and dirty is not None:
+        problems.append('run.json producer.uncommitted_changes must be null when producer.commit is null')
     curated = ((run.get('inputs') or {}).get('curated') or {})
     for cname in ('reviews.csv', 'documentary_statements.csv', 'company_aliases.csv'):
         if not HEX64_RE.match(str((curated.get(cname) or {}).get('sha256') or '')):

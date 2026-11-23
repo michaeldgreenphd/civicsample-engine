@@ -1206,7 +1206,7 @@ def test_producer_digest_and_dirty_check_cover_the_build_import_closure(
 
     class _Done:
         returncode = 0
-        stdout = 'abc123\n'
+        stdout = 'a' * 40 + '\n'
 
     def _fake_run(cmd: list[str], **_kwargs: Any) -> _Done:
         calls.append(list(cmd))
@@ -1642,3 +1642,65 @@ def test_resumed_acquisition_across_a_ctgov_refresh_records_the_range_and_needs_
     narrowed = copy.deepcopy(stated)
     narrowed['run.json']['sources']['ctgov']['data_timestamp_first'] = '2026-11-02T08:00:00'
     assert any('disagree with its version records' in p for p in ART.check_contract(narrowed))
+
+
+def test_unknown_git_provenance_is_null_builds_locally_and_is_never_exported(
+    tmp_path: Path,
+    frozen_cache: A.FrozenCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Proc:
+        def __init__(self, returncode: int, stdout: str) -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+
+    def git_missing(cmd: list[str], **_kwargs: Any) -> _Proc:
+        raise FileNotFoundError(2, "No such file or directory: 'git'")
+
+    def git_answers(head: tuple[int, str], status: tuple[int, str]) -> Any:
+        def run(cmd: list[str], **_kwargs: Any) -> _Proc:
+            return _Proc(*(head if cmd[1] == 'rev-parse' else status))
+        return run
+
+    commit = 'c' * 40
+    cases: list[tuple[Any, Any, Any]] = [
+        (git_missing, None, None),
+        (git_answers((128, ''), (0, '')), None, None),                     # not a repository
+        (git_answers((0, 'not-a-commit\n'), (0, '')), None, None),        # unusable rev-parse output
+        (git_answers((0, commit + '\n'), (128, '')), None, None),         # status fails: no half provenance
+        (git_answers((0, commit + '\n'), (0, '')), commit, False),
+        (git_answers((0, commit + '\n'), (0, ' M disclosure/acquire.py\n')), commit, True),
+    ]
+    for fake, want_commit, want_dirty in cases:
+        monkeypatch.setattr(cli_build.subprocess, 'run', fake)
+        info = cli_build.producer_metadata()
+        assert (info['commit'], info['uncommitted_changes']) == (want_commit, want_dirty)
+
+    # With git missing the build is still written for local diagnostics, and passes the contract...
+    monkeypatch.setattr(cli_build.subprocess, 'run', git_missing)
+    unknown = tmp_path / 'unknown_build'
+    assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(unknown),
+                           '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT]) == 0
+    assert cli_check.main([str(unknown)]) == 0
+    run = json.loads((unknown / 'run.json').read_text(encoding='utf-8'))
+    assert (run['producer']['commit'], run['producer']['uncommitted_changes']) == (None, None)
+    # ...but the site export refuses it and writes nothing.
+    site = tmp_path / 'site'
+    assert cli_export.main([str(unknown), str(site)]) == 1
+    assert not site.exists()
+
+    # A dirty tree is honest provenance and exports.
+    monkeypatch.setattr(cli_build.subprocess, 'run', git_answers((0, commit + '\n'), (0, ' M x\n')))
+    dirty = tmp_path / 'dirty_build'
+    assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(dirty),
+                           '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT]) == 0
+    assert cli_export.main([str(dirty), str(site)]) == 0
+
+    # The contract accepts a 40-hex commit or null, and a bool or null dirty flag, never false without a commit.
+    files, _ = ART.load_dir(unknown)
+    bad_commit = copy.deepcopy(files)
+    bad_commit['run.json']['producer']['commit'] = 'abc123'
+    assert any('must be a 40-hex commit or null' in p for p in ART.check_contract(bad_commit))
+    false_without_commit = copy.deepcopy(files)
+    false_without_commit['run.json']['producer']['uncommitted_changes'] = False
+    assert any('must be null when producer.commit is null' in p for p in ART.check_contract(false_without_commit))

@@ -81,7 +81,9 @@ python3 scripts/build_drug_disclosure.py build \
 # used); a cache whose version records span several data timestamps (an acquisition resumed across a
 # CT.gov data refresh) is refused unless --as-of is given.
 
-# 3. Producer contract check and atomic site export:
+# 3. Producer contract check and atomic site export. run.json producer.commit and
+#    uncommitted_changes are null when git was missing or failed at build time (never false); such a
+#    build can be inspected locally, but the export refuses it. A dirty tree (true) is exported.
 python3 scripts/check_drug_disclosure_contract.py build/disclosure
 python3 scripts/export_drug_disclosure_site.py build/disclosure /tmp/site_disclosure
 
