@@ -21,7 +21,11 @@ no ``in_audit``, so membership of that set, read from the index, is what admits
 a trial; no call writes a literal ``in_audit=False`` on a trial's behalf. A
 ``--doc-cache`` entry names no trial of its own, so it is admitted only when
 its sha256 is a document of an in-scope trial and none of its keys or strings
-names an audit, unlisted or malformed NCT ID. ``--documents``, ``--locations``
+names an audit, unlisted or malformed NCT ID; an entry that does name a trial
+must name one whose document has that sha256, and two different rows for one
+sha256 raise. An in-scope index row may not name an audit trial in any key or
+string (an alias included), and its classic ``NCTId`` must be its ``nct_id``.
+``--documents``, ``--locations``
 and ``--profiles`` rows follow the same token rule under every key and string,
 with the row's own trial also admitted. ``verify --pages-dir`` hands the page
 provider the ``(nct_id, sha256)`` pairs of the in-scope documents, so no
@@ -69,6 +73,7 @@ from src.citation_verifier import (  # noqa: E402
     _is_non_empty_str,
     _prescan_nested_nct_fields,
     _scan_record_strings_for_nct_tokens,
+    _scan_strings_for_audit_nct_tokens,
     _validate_nested_firewall_metadata,
     AuditHoldoutViolationError,
     CitationVerificationError,
@@ -88,7 +93,10 @@ from src.utils import pipeline_commit  # noqa: E402
 
 PLANNER_SCHEMA_VERSION: Final[int] = 1
 # 1.3.0: cached_complete only for trials whose every row verify accepts; unknown modes refused.
-PLANNER_RULES_VERSION: Final[str] = "1.3.0"
+# 1.4.0: conflicting --doc-cache rows for one sha256 raise; an entry declaring a trial must
+# declare one whose document has its sha256; in-scope index rows are read for audit IDs in
+# every key and string and their classic NCTId must be their nct_id.
+PLANNER_RULES_VERSION: Final[str] = "1.4.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
 CostSchedule = Literal["sliced", "full", "conservative"]
@@ -157,6 +165,20 @@ def _partition_index_firewall(
     """Validate every index row's strict NCT ID and explicit ``bool`` ``in_audit`` flag.
 
     Returns ``(audit_nct_ids, in_scope_by_nct, allow_empty_audit_set)``.
+
+    Method: the exact key ``in_audit`` of each row is the index's flag and the
+    only thing that admits a trial. An in-scope row is then read as the
+    record of its trial: (1) the named-key walk, in which the holdout flag
+    under any other spelling (``inAudit``, ``IN_AUDIT``) can only refuse;
+    (2) its own-ID fields, the classic API's ``NCTId`` (a string or a list of
+    strings), must be the row's ``nct_id``; (3) no key or string of the row,
+    ``nctIdAliases`` at any depth included, may name an audit trial in any
+    reading (``_scan_strings_for_audit_nct_tokens``), since a row whose alias
+    is an audit ID is a holdout trial under another number, as
+    ``assemble_longitudinal_provenance`` refuses it. Other trials named in an
+    index row's text are not refused: index rows carry registry text (titles)
+    that names related trials for good reasons. Messages name rows by
+    position, never by the ID of a row that is, or may be, held out.
     """
     if len(index_rows) == 0:
         raise AuditHoldoutViolationError(
@@ -184,14 +206,18 @@ def _partition_index_firewall(
         nct_id = validated_ncts[idx]
         if nct_id in seen_ncts:
             raise AuditHoldoutViolationError(
-                f"Duplicate nct_id {nct_id!r} in {source_label} at row {idx}."
+                f"Duplicate nct_id in {source_label} at row {idx} (the trial is not named: "
+                f"it may be held out)."
             )
         seen_ncts.add(nct_id)
 
         if "in_audit" not in row or type(row["in_audit"]) is not bool:
+            shown_flag = (
+                "<missing>" if "in_audit" not in row else type(row["in_audit"]).__name__
+            )
             raise AuditHoldoutViolationError(
-                f"{source_label}[{idx}] ({nct_id!r}) must carry an explicit bool in_audit, "
-                f"got {row.get('in_audit', '<missing>')!r}."
+                f"{source_label}[{idx}] must carry an explicit bool in_audit, got {shown_flag} "
+                f"(the trial is not named: its holdout status is unknown)."
             )
         if row["in_audit"] is True:
             audit_ids.add(nct_id)
@@ -206,15 +232,42 @@ def _partition_index_firewall(
     frozen_audit = frozenset(audit_ids)
     frozen_scope = frozenset(in_scope_by_nct.keys())
     for nct_id, row in sorted(in_scope_by_nct.items()):
+        row_context = f"{source_label}[{nct_id}]"
+        _scan_strings_for_audit_nct_tokens(row, context=row_context, audit_nct_ids=frozen_audit)
         _validate_nested_firewall_metadata(
             row,
-            context=f"{source_label}[{nct_id}]",
+            context=row_context,
             expected_nct_id=nct_id,
             audit_nct_ids=frozen_audit,
             in_scope_nct_ids=frozen_scope,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        _check_index_row_classic_nct_id(row, nct_id=nct_id, context=row_context)
     return frozen_audit, in_scope_by_nct, allow_empty_audit_set
+
+
+def _check_index_row_classic_nct_id(
+    row: Mapping[str, Any], *, nct_id: str, context: str
+) -> None:
+    """Require an index row's classic-API ``NCTId`` (a string or list of strings) to be its trial.
+
+    ``nctId`` and ``nct_id`` are already own-ID keys of the named-key walk; the
+    classic API's ``NCTId`` names the same trial and, read as free text only,
+    could name another while the row is admitted under ``nct_id``.
+    """
+    if "NCTId" not in row:
+        return
+    classic = row["NCTId"]
+    values = classic if isinstance(classic, list) else [classic]
+    if not values:
+        raise CitationVerificationError(f"{context}.NCTId is an empty list; it names no trial.")
+    for idx, value in enumerate(values):
+        checked = validate_strict_nct_id(value, context=f"{context}.NCTId[{idx}]")
+        if checked != nct_id:
+            raise AuditHoldoutViolationError(
+                f"{context}.NCTId[{idx}]={checked!r} is not the row's nct_id; one index row "
+                f"names one trial."
+            )
 
 
 def load_index_rows(path: Path) -> list[dict[str, Any]]:
@@ -391,18 +444,21 @@ def _validate_doc_cache_entry(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
-) -> str:
-    """Firewall one doc-cache entry and return its sha256.
+) -> tuple[str, frozenset[str]]:
+    """Firewall one doc-cache entry and return its sha256 and the trials it declares.
 
     Method: entries of ``document_index_by_sha256.jsonl`` are content-addressed
     and usually name no trial at all, so a trial cannot be read off the entry.
     The entry must therefore (1) carry a valid lowercase 64-hex ``sha256``, the
     only thing that can tie it to a document (``plan_incremental_cohort`` then
     requires that sha to be a document of an in-scope trial); (2) pass the
-    named-key checks (``nct_id``-style keys, ``in_audit``, URL keys); and (3)
-    hold no audit, unlisted or malformed NCT token in any other key or string.
+    named-key checks (``nct_id``-style keys, the holdout flag, URL keys); and
+    (3) hold no audit, unlisted or malformed NCT token in any other key or
+    string. The trials it names under ID keys (``nct_id``, ``nct_ids``, at any
+    depth) are returned: when it names any, ``plan_incremental_cohort``
+    requires them to be trials whose documents have that sha256.
     """
-    _validate_nested_firewall_metadata(
+    declared = _validate_nested_firewall_metadata(
         row,
         context=context,
         expected_nct_id=None,
@@ -423,7 +479,7 @@ def _validate_doc_cache_entry(
             f"{context} has no valid lowercase 64-hex sha256 (got {sha!r}), so it cannot be "
             f"tied to a document of an in-scope trial."
         )
-    return sha
+    return sha, frozenset(declared)
 
 
 def _load_doc_cache_by_sha256(
@@ -436,8 +492,12 @@ def _load_doc_cache_by_sha256(
     """Load ``--doc-cache`` rows keyed by sha256, firewalling each row as it is keyed.
 
     A row without a valid sha256 is refused rather than skipped
-    (``_validate_doc_cache_entry``). Rows sharing a sha256 keep the last one
-    read, as before.
+    (``_validate_doc_cache_entry``). Two rows for one sha256 must be identical:
+    rows that differ (one says ``image_only_scan``, the other
+    ``redacted_cci_ppd``) leave no way to tell which describes the document,
+    and keeping the last one read would let line order decide whether a trial
+    is recovered by OCR or skipped at $0, so they raise. An identical repeat is
+    kept once.
     """
     if path is None:
         return {}
@@ -445,15 +505,24 @@ def _load_doc_cache_by_sha256(
     for idx, row in enumerate(rows):
         _prescan_nested_nct_fields(row, context=f"{path}[{idx}]")
     by_sha: dict[str, dict[str, Any]] = {}
+    first_line_by_sha: dict[str, int] = {}
     for idx, row in enumerate(rows):
-        sha = _validate_doc_cache_entry(
+        sha, _ = _validate_doc_cache_entry(
             row,
             context=f"{path}[{idx}]",
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        if sha in by_sha:
+            if by_sha[sha] != row:
+                raise CitationVerificationError(
+                    f"{path}[{idx}] and {path}[{first_line_by_sha[sha]}] are different doc-cache "
+                    f"rows for sha256 {sha!r}; which describes the document is not determined."
+                )
+            continue
         by_sha[sha] = row
+        first_line_by_sha[sha] = idx
     return by_sha
 
 
@@ -989,17 +1058,18 @@ def plan_incremental_cohort(
     # a document of an in-scope trial (from ``documents`` or a profile's documents, both
     # firewalled above). An entry that no in-scope document points at is refused, since
     # nothing shows whose content it is.
-    in_scope_doc_shas: set[str] = {
-        doc["sha256"] for doc in documents if type(doc.get("sha256")) is str
-    }
-    for prof_row in profiles_by_nct.values():
+    # Each in-scope document sha256, with the trials whose documents carry it.
+    trials_by_doc_sha: dict[str, set[str]] = {}
+    for doc in documents:
+        if type(doc.get("sha256")) is str:
+            trials_by_doc_sha.setdefault(doc["sha256"], set()).add(doc["nct_id"])
+    for prof_key, prof_row in profiles_by_nct.items():
         prof_docs = prof_row.get("documents")
         if isinstance(prof_docs, list):
-            in_scope_doc_shas.update(
-                pdoc["sha256"]
-                for pdoc in prof_docs
-                if isinstance(pdoc, Mapping) and type(pdoc.get("sha256")) is str
-            )
+            for pdoc in prof_docs:
+                if isinstance(pdoc, Mapping) and type(pdoc.get("sha256")) is str:
+                    trials_by_doc_sha.setdefault(pdoc["sha256"], set()).add(prof_key)
+    in_scope_doc_shas: set[str] = set(trials_by_doc_sha)
     for sha_key, cache_row in doc_cache_by_sha256.items():
         if not isinstance(cache_row, Mapping):
             raise CitationVerificationError(
@@ -1012,7 +1082,7 @@ def plan_incremental_cohort(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
-        entry_sha = _validate_doc_cache_entry(
+        entry_sha, entry_trials = _validate_doc_cache_entry(
             cache_row,
             context=f"doc_cache_by_sha256[{sha_key!r}]",
             audit_nct_ids=audit_nct_ids,
@@ -1029,6 +1099,17 @@ def plan_incremental_cohort(
                 f"doc_cache_by_sha256 entry sha256={entry_sha!r} is not the sha256 of any "
                 f"document of an in-scope trial in documents or profiles, so it cannot be tied "
                 f"to an in-scope trial."
+            )
+        # An entry that names a trial must name one whose document has its sha256: an entry
+        # declaring trial B applied to trial A's document would move A between partitions
+        # (OCR recovery or the terminal $0 skip) on another trial's description, as a page
+        # map declaring another trial is refused.
+        foreign_trials = entry_trials - trials_by_doc_sha[entry_sha]
+        if foreign_trials:
+            raise AuditHoldoutViolationError(
+                f"doc_cache_by_sha256 entry sha256={entry_sha!r} declares "
+                f"{len(foreign_trials)} trial(s) whose documents do not have that sha256; it "
+                f"describes another trial's document."
             )
 
     for prof_key in sorted(profiles_by_nct.keys(), key=str):

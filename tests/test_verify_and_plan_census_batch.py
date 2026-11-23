@@ -3091,3 +3091,30 @@ def test_redteam_m4_cli_pre_grouped_lines_and_non_list_citations_rejected(tmp_pa
             planned_at="2026-11-23T00:00:00+00:00",
         )
         assert plan["partitions"]["cached_complete"] == [], repr(citations)
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for the round-3 fixes beyond the red-team cases
+# (fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+
+def test_m4_r3_index_row_classic_nct_id_must_be_its_trial(tmp_path: Path) -> None:
+    """An in-scope index row's classic ``NCTId`` naming another trial is refused (exit 2)."""
+    index_rows = _rt_index_rows()
+    index_rows[0]["NCTId"] = RT_SCOPE_ID
+    same = _rt_m4_inputs(tmp_path, "classic_same", index_rows=index_rows)
+    assert main(["verify", *same]) == 0
+    index_rows[0]["NCTId"] = [RT_SCOPE_ID, RT_SCOPE_ID_2]
+    other = _rt_m4_inputs(tmp_path, "classic_other", index_rows=index_rows)
+    assert main(["verify", *other]) == 2
+    assert main(["plan", *other]) == 2
+
+
+def test_m4_r3_identical_doc_cache_rows_are_kept_once(tmp_path: Path) -> None:
+    """Two identical --doc-cache rows for one sha256 are one row; only differing rows raise."""
+    args = _rt_m4_inputs(tmp_path, "dup_cache_identical")
+    cache = tmp_path / "dup_cache_identical.jsonl"
+    row = {"sha256": SHA_1, "unreadable_recovery_bucket": "image_only_scan"}
+    _write_jsonl(cache, [row, dict(row)])
+    assert main(["plan", *args, "--doc-cache", str(cache)]) == 0

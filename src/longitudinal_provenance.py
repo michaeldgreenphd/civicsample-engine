@@ -34,7 +34,11 @@ Key invariants:
   an audit trial (``_scan_strings_for_audit_nct_tokens``). Extracted documents
   are document rows: each must name the study in ``nct_id`` (CT.gov large-doc
   filenames are generic, so a filename alone ties a row to no trial), and any
-  other trial they name follows the derived-ID rule.
+  other trial they name follows the derived-ID rule, and two rows for one
+  filename raise rather than the later one winning.
+- A ``largeDocs`` entry's ``hasProtocol``/``hasSap`` must be bools: a missing,
+  ``null`` or string flag raises, so a document of unstated type is never
+  counted as a standalone ICF or typed by truthiness.
 - ``to_outcomes_layout_provenance`` takes the same firewall basis
   (``in_audit`` or ``in_scope_nct_ids``, plus ``audit_nct_ids``) as assembly; a
   record read back from disk carries no proof of where it came from.
@@ -65,6 +69,7 @@ from typing import (
 from src.citation_verifier import (
     _MISSING,
     _prescan_nested_nct_fields,
+    _refuse_own_in_audit_flags,
     _scan_record_strings_for_nct_tokens,
     _scan_strings_for_audit_nct_tokens,
     _validate_nct_set,
@@ -76,12 +81,15 @@ from src.citation_verifier import (
     validate_strict_nct_id,
 )
 
-__version__: Final[str] = "1.2.0"
+__version__: Final[str] = "1.3.0"
 LONGITUDINAL_SCHEMA_VERSION: Final[int] = 1
 PROVENANCE_SCHEMA_VERSION: Final[int] = LONGITUDINAL_SCHEMA_VERSION
 # 1.2.0: identification fields and audit tokens firewalled, extracted documents must name
 # the study, and the layout projection takes a firewall basis.
-PROVENANCE_RULES_VERSION: Final[str] = "1.2.0"
+# 1.3.0: largeDocs flags must be bools (missing, null or string flags raise instead of
+# typing a document as an ICF), two extracted rows for one filename raise, audit tokens are
+# read in their loose forms, and the holdout flag under any spelling refuses.
+PROVENANCE_RULES_VERSION: Final[str] = "1.3.0"
 
 DatePrecision = Literal["day", "month", "year", "unknown"]
 DocType = Literal["protocol", "sap", "combined"]
@@ -598,6 +606,31 @@ def _doc_type_from_flags(has_protocol: bool, has_sap: bool) -> DocType | None:
     return None
 
 
+def _require_large_doc_flag(raw_doc: Mapping[str, Any], key: str, *, doc_idx: int) -> bool:
+    """Return a ``largeDocs`` entry's ``hasProtocol``/``hasSap`` flag, which must be a bool.
+
+    Method: the flags decide whether a posted document is a protocol, a SAP,
+    both, or a standalone ICF that is counted and left out of ``large_docs``.
+    A missing or ``null`` flag says nothing, and reading it as False would
+    count a document of unstated type as an ICF and drop it; a string such as
+    ``"false"`` is not a flag, and its truthiness would make it True. Either
+    stops assembly with the entry's position, so absence stays absence rather
+    than a guessed type (the registry's API v2 states both flags as booleans).
+    """
+    if key not in raw_doc:
+        raise CitationVerificationError(
+            f"study.documentSection.largeDocumentModule.largeDocs[{doc_idx}] has no {key!r}; "
+            f"the document's type is not stated, so it is neither typed nor counted as an ICF."
+        )
+    flag = raw_doc[key]
+    if type(flag) is not bool:
+        raise CitationVerificationError(
+            f"study.documentSection.largeDocumentModule.largeDocs[{doc_idx}].{key} is "
+            f"{type(flag).__name__}, not a bool; the document's type is not stated."
+        )
+    return flag
+
+
 def _choose_higher_precision_date(current: ParsedDate, candidate: ParsedDate) -> ParsedDate:
     if PRECISION_RANK[candidate["date_precision"]] > PRECISION_RANK[current["date_precision"]]:
         return candidate
@@ -654,21 +687,30 @@ def _extract_large_docs(
     if not isinstance(raw_docs, list):
         raw_docs = []
 
+    # Extracted rows are joined to largeDocs by filename. Two rows for one filename (two
+    # sha256 values, two version labels) leave no way to tell which is the posted file, so
+    # assembly stops, as verify_census_corpus reports DUPLICATE_DOCUMENT_RECORD, instead of
+    # letting the later row win.
     extracted_by_filename: dict[str, Mapping[str, Any]] = {}
-    for ext_doc in extracted_documents or ():
+    for ext_idx, ext_doc in enumerate(extracted_documents or ()):
         fn = ext_doc.get("filename")
         if isinstance(fn, str) and fn:
+            if fn in extracted_by_filename:
+                raise CitationVerificationError(
+                    f"extracted_documents[{ext_idx}] is a second row for filename {fn!r}; "
+                    f"which document version the study posted is not determined."
+                )
             extracted_by_filename[fn] = ext_doc
 
     milestones: list[DocumentVersionMilestone] = []
     excluded_icf_count = 0
     seen_filenames: set[str] = set()
 
-    for raw_doc in raw_docs:
+    for doc_idx, raw_doc in enumerate(raw_docs):
         if not isinstance(raw_doc, Mapping):
             continue
-        has_protocol = bool(raw_doc.get("hasProtocol"))
-        has_sap = bool(raw_doc.get("hasSap"))
+        has_protocol = _require_large_doc_flag(raw_doc, "hasProtocol", doc_idx=doc_idx)
+        has_sap = _require_large_doc_flag(raw_doc, "hasSap", doc_idx=doc_idx)
         doc_type = _doc_type_from_flags(has_protocol, has_sap)
         if doc_type is None:
             # Standalone ICF (hasProtocol=False, hasSap=False) excluded from large_docs.
@@ -1262,17 +1304,10 @@ def assemble_longitudinal_provenance(
     _prescan_side_stream(pubmed_records, stream_name="pubmed_records")
     _prescan_side_stream(europe_pmc_records, stream_name="europe_pmc_records")
 
-    # Step 2 (F1): Hard holdout firewall BEFORE any provider call or document parse.
-    if "in_audit" in study:
-        study_flag = study["in_audit"]
-        if type(study_flag) is not bool:
-            raise AuditHoldoutViolationError(
-                f"study for {nct_id!r} carries non-bool in_audit={study_flag!r}."
-            )
-        if study_flag is True:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout violation: study {nct_id!r} carries in_audit=True."
-            )
+    # Step 2 (F1): Hard holdout firewall BEFORE any provider call or document parse. The
+    # study's own flag, under any spelling (``inAudit``, ``IN_AUDIT``), can only refuse,
+    # and the message does not name a trial that says it is held out.
+    _refuse_own_in_audit_flags(study, record_label="study")
 
     # The study's own in_audit (checked above) can only refuse. It never stands in for the
     # caller's in_audit or in_scope_nct_ids, which come from the index: a study record is
@@ -1424,12 +1459,7 @@ def to_outcomes_layout_provenance(
         else None
     )
     _prescan_nested_nct_fields(record, context="provenance")
-    if "in_audit" in record:
-        raw_flag = record.get("in_audit")
-        if type(raw_flag) is not bool or raw_flag is True:
-            raise AuditHoldoutViolationError(
-                f"Provenance record for {checked_nct!r} carries forbidden in_audit={raw_flag!r}."
-            )
+    _refuse_own_in_audit_flags(record, record_label="provenance record")
     enforce_audit_holdout(
         checked_nct,
         in_audit=in_audit,

@@ -2959,3 +2959,92 @@ def test_redteam_m4_directory_provider_refuses_malformed_ids(tmp_path: Path) -> 
                 in_scope_nct_ids=RT_SCOPE_SET,
                 referenced_documents={(bad, SHA_A)},
             )
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for the round-3 fixes beyond the red-team cases
+# (fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+
+def test_m4_r3_loose_renderings_of_other_trials_follow_the_derived_id_rule() -> None:
+    """A loose rendering names the trial its canonical ID is; only an audit ID needs no bound.
+
+    ``NCT 99800099`` (an unlisted trial) is refused like ``NCT99800099``; the
+    row's own trial written ``NCT-99800001`` is admitted; a word ending in
+    ``nct`` followed by digits that are no audit ID is not a trial at all.
+    """
+    docs = _rt_m4_scoped_docs()
+
+    def _verify_note(note: str) -> list[Any]:
+        _, issues = verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID, note=note),
+            docs_by_nct=docs,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+        )
+        return issues
+
+    with pytest.raises(AuditHoldoutViolationError):
+        _verify_note(f"Same protocol as NCT {RT_UNLISTED_ID[3:]}.")
+    assert _verify_note(f"Protocol of NCT-{RT_SCOPE_ID[3:]}.") == []
+    assert _verify_note("Two distinct 12345678 identifiers were listed.") == []
+
+
+def test_m4_r3_strict_id_errors_withhold_nct_like_values() -> None:
+    """``validate_strict_nct_id`` does not quote a malformed value that holds an NCT-like token."""
+    for bad in (RT_AUDIT_ID.lower(), f"{RT_AUDIT_ID} ", f"NCT {RT_AUDIT_ID[3:]}"):
+        with pytest.raises(InvalidNctIdError) as exc_info:
+            validate_strict_nct_id(bad, context="location.nct_id")
+        assert RT_AUDIT_ID[3:] not in str(exc_info.value)
+    with pytest.raises(InvalidNctIdError) as exc_info:
+        validate_strict_nct_id("not-an-id", context="location.nct_id")
+    assert "'not-an-id'" in str(exc_info.value)
+
+
+def test_m4_r3_page_map_declaring_two_trials_versions_or_sources_is_refused(
+    tmp_path: Path,
+) -> None:
+    """One page map is one document version's text, from one source, of one trial."""
+    scope = {RT_SCOPE_ID, RT_SCOPE_ID_2}
+    payloads: dict[str, Any] = {
+        "two_trials": [
+            {"physical_page": 1, "text": "a", "nct_id": RT_SCOPE_ID},
+            {"physical_page": 2, "text": "b", "nct_id": RT_SCOPE_ID_2},
+        ],
+        "two_sha256": {"sha256": SHA_A, "pages": [{"physical_page": 1, "text": "a", "sha256": SHA_B}]},
+        "two_sources": {
+            "text_source": "pdfkit",
+            "pages": [{"physical_page": 1, "text": "a", "text_source": "ocr"}],
+        },
+    }
+    for name, payload in payloads.items():
+        root = tmp_path / f"r3_fix_{name}"
+        _rt_m4_write_page_map(root, f"{SHA_A}.json", payload)
+        with pytest.raises(CitationVerificationError):
+            prov = DirectoryPageTextProvider(root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=scope)
+            prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 1)
+            pytest.fail(f"{name}: the page map was served")
+
+
+def test_m4_r3_jsonl_row_without_pages_is_refused(tmp_path: Path) -> None:
+    """A JSONL row naming a document but holding no pages is refused, not skipped."""
+    root = tmp_path / "r3_fix_no_pages"
+    _rt_m4_write_page_map(root, "maps.jsonl", {"sha256": SHA_A, "note": "no pages here"})
+    with pytest.raises(CitationVerificationError):
+        DirectoryPageTextProvider(root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET)
+
+
+def test_m4_r3_dict_provider_keys_without_a_source_answer_pdfkit_only() -> None:
+    """``(sha256, page)`` and ``(nct_id, filename, page)`` keys are pdfkit text."""
+    prov = DictPageTextProvider(
+        {(SHA_A, 2): "Page two.", (RT_SCOPE_ID, "Prot_000.pdf", 3): "Page three."},
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+    )
+    assert prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2) == "Page two."
+    assert prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 3) == "Page three."
+    assert prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2, text_source="ocr") is None
+    assert prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 3, text_source="ocr") is None
+    with pytest.raises(AuditHoldoutViolationError):
+        prov.get_page_text(RT_SCOPE_ID, f"{RT_AUDIT_ID}.pdf", SHA_A, 2)

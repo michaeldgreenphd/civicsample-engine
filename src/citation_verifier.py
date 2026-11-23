@@ -33,13 +33,30 @@ Key invariants:
   (``_check_embedded_text_ncts``): an audit ID refuses, a malformed token
   refuses, and any other trial is admitted only as the record's own trial or
   a member of ``in_scope_nct_ids``. Registry and publication text is read for
-  audit IDs only (``_scan_strings_for_audit_nct_tokens``).
+  audit IDs only (``_scan_strings_for_audit_nct_tokens``). Every reading
+  counts: as written, percent-decoded, NFKC-folded, and the loose reading of
+  ``_iter_loose_nct_candidates`` (``NCT 0123 4567``, ``NCT-...``, ``NCT_...``,
+  a look-alike letter, a variation selector), whose canonical ID is checked
+  against the audit set and, when it stands on its own, the derived-ID rule.
+- The holdout flag is read under every spelling a reader takes for it
+  (``inAudit``, ``IN_AUDIT``, ``in-audit``; ``_is_in_audit_key``); outside the
+  index's own ``in_audit`` key it can only refuse.
+- Refusals name positions, never an audit trial: no message quotes an audit
+  ID, a key or path component naming one, or (``validate_strict_nct_id``) a
+  malformed value or context holding an NCT-like token.
 - Page providers serve a public ``get_page_text`` request only for a trial in
   the bound scope or admitted by a verify entry point; the audit set alone
   admits nothing. ``DirectoryPageTextProvider`` refuses symlinks, firewalls
   its roots as given and as resolved, never opens a ``<sha256>`` map that no
   referenced document names (when given ``referenced_documents``), and serves
   a map only when the trial and sha256 it declares agree with the request.
+  A list-shaped map is firewalled like a mapping; a map declaring two trials
+  or two sha256 values is refused; a JSONL row naming no document and a
+  single-file root declaring no sha256 are refused, never dropped or served
+  as every document's text. Page text answers only a request for the text
+  source it holds (declared, else its root's: pdfkit for ``pages_dir``, ocr
+  for ``ocr_dir``); ``DictPageTextProvider`` keys without a source are
+  pdfkit, and no key may name an audit trial.
   Page numbers are ASCII digits, once each; ``null`` page text is absence.
   ``--pdf-root`` likewise refuses links and reads only files inside the root.
 - Document presence is tri-state (True / False / None for "the index does not
@@ -63,11 +80,15 @@ Key invariants:
   With nothing unsearched, ``NOT_FOUND`` still needs ``pages_searched == "all"``
   or a per-document mapping that, with blank pages, covers every supplied
   document; and it needs at least one supplied document (as ``UNREADABLE``
-  does), so it cannot stand in for ``NO_DOCUMENT``.
+  does), so it cannot stand in for ``NO_DOCUMENT``, and a page of one that
+  could be searched (retrieved, known page count, a page with text), so it
+  cannot stand in for ``UNREADABLE``.
 - Deterministic neutral-language guard: flags evaluative trial-outcome,
   p-value spin, and regulatory-compliance claims in every string of a
-  location row (``note``, ``summary``, nested objects), exempting only
-  verbatim source text (``quotation``, ``statement_verbatim``).
+  location row (``note``, ``summary``, nested objects, keys named
+  ``quotation``), exempting only each citation's ``quotation`` (verbatim
+  text matched against the cited page). Text is matched after NFKC folding
+  with invisible characters removed.
 """
 from __future__ import annotations
 
@@ -81,6 +102,7 @@ from typing import (
     AbstractSet,
     Any,
     Final,
+    Iterable,
     Literal,
     Mapping,
     Protocol,
@@ -90,10 +112,14 @@ from typing import (
 import unicodedata
 from urllib.parse import unquote
 
-__version__: Final[str] = "1.3.0"
+__version__: Final[str] = "1.4.0"
 # 1.3.0: record-wide NCT token rule, NOT_FOUND needs a document and a complete search
 # record, neutral-language guard over every field, stricter page maps (see module notes).
-VERIFIER_RULES_VERSION: Final[str] = "1.3.0"
+# 1.4.0: loose NCT readings (separators, look-alike letters, combining marks), holdout flag
+# under any spelling, list page maps firewalled, page text served only for its own text
+# source and named document, NOT_FOUND needs a searchable page, neutral guard exempts only
+# citation quotations and folds invisible characters, refusals never quote an audit ID.
+VERIFIER_RULES_VERSION: Final[str] = "1.4.0"
 
 STRICT_NCT_ID_RE: Final[re.Pattern[str]] = re.compile(r"^NCT[0-9]{8}$", re.ASCII)
 
@@ -220,6 +246,56 @@ _EMBEDDED_NCT_TOKEN_RE: Final[re.Pattern[str]] = re.compile(
     r"nct[0-9]{7,10}",
     re.IGNORECASE | re.ASCII,
 )
+# The loose reading (``_iter_loose_nct_candidates``) runs over ``_nct_skeleton`` text, which
+# is lower-case ASCII letters and digits plus whatever else the text holds. Between the
+# letters of the prefix, after it, and between digits it allows up to three characters that
+# are neither a letter nor a digit ("NCT 9988 8888", "N.C.T.-99888888", "NCT_99888888"),
+# and it takes the first eight digits as the ID.
+_LOOSE_NCT_RE: Final[re.Pattern[str]] = re.compile(
+    r"n[^a-z0-9]{0,3}c[^a-z0-9]{0,3}t[^a-z0-9]{0,3}((?:[0-9][^a-z0-9]{0,3}){7}[0-9])"
+)
+# Letters that render like the letters of the ``NCT`` prefix, or like the digits 0 and 1,
+# but are other code points (Cyrillic, Greek, Coptic, Cherokee, Lisu, Latin small capitals).
+# NFKD does not fold them; the skeleton maps each to the Latin letter a reader sees, and
+# then ``o`` to 0 and ``i``/``l`` to 1, as a reader of "NCTO1234567" does.
+_NCT_LOOKALIKE_TRANS: Final[dict[int, str]] = str.maketrans(
+    {
+        "\u039d": "n",  # GREEK CAPITAL LETTER NU
+        "\u0274": "n",  # LATIN LETTER SMALL CAPITAL N
+        "\u2c9a": "n",  # COPTIC CAPITAL LETTER NI
+        "\ua4e0": "n",  # LISU LETTER NA
+        "\u0421": "c",  # CYRILLIC CAPITAL LETTER ES
+        "\u0441": "c",  # CYRILLIC SMALL LETTER ES
+        "\u03f9": "c",  # GREEK CAPITAL LUNATE SIGMA SYMBOL
+        "\u03f2": "c",  # GREEK LUNATE SIGMA SYMBOL
+        "\u1d04": "c",  # LATIN LETTER SMALL CAPITAL C
+        "\u13df": "c",  # CHEROKEE LETTER TLI
+        "\u2ca4": "c",  # COPTIC CAPITAL LETTER SIMA
+        "\ua4da": "c",  # LISU LETTER CA
+        "\u0422": "t",  # CYRILLIC CAPITAL LETTER TE
+        "\u0442": "t",  # CYRILLIC SMALL LETTER TE
+        "\u03a4": "t",  # GREEK CAPITAL LETTER TAU
+        "\u03c4": "t",  # GREEK SMALL LETTER TAU
+        "\u1d1b": "t",  # LATIN LETTER SMALL CAPITAL T
+        "\u13a2": "t",  # CHEROKEE LETTER I
+        "\u2ca6": "t",  # COPTIC CAPITAL LETTER TAU
+        "\ua4d4": "t",  # LISU LETTER TA
+        "\u041e": "o",  # CYRILLIC CAPITAL LETTER O
+        "\u043e": "o",  # CYRILLIC SMALL LETTER O
+        "\u039f": "o",  # GREEK CAPITAL LETTER OMICRON
+        "\u03bf": "o",  # GREEK SMALL LETTER OMICRON
+        "\u0406": "i",  # CYRILLIC CAPITAL LETTER BYELORUSSIAN-UKRAINIAN I
+        "\u0456": "i",  # CYRILLIC SMALL LETTER BYELORUSSIAN-UKRAINIAN I
+        "\u04c0": "i",  # CYRILLIC LETTER PALOCHKA
+        "\u0399": "i",  # GREEK CAPITAL LETTER IOTA
+        "\u03b9": "i",  # GREEK SMALL LETTER IOTA
+    }
+)
+_DIGIT_LOOKALIKE_TRANS: Final[dict[int, str]] = str.maketrans({"o": "0", "i": "1", "l": "1"})
+# Spellings of the holdout flag key that a reader takes for ``in_audit`` (``inAudit``,
+# ``IN_AUDIT``, ``in-audit``, ``"in_audit "``, ``is_in_audit``): compared after NFKC folding,
+# removal of invisible characters, case folding and removal of everything but a-z.
+_IN_AUDIT_KEY_FORMS: Final[frozenset[str]] = frozenset({"inaudit", "isinaudit"})
 _NCT_FIELD_KEYS: Final[frozenset[str]] = frozenset({"nct_id", "nctId", "trial_nct_id"})
 _NCT_LIST_KEYS: Final[frozenset[str]] = frozenset({"nct_ids", "trial_nct_ids"})
 _URL_FIELD_KEYS: Final[frozenset[str]] = frozenset(
@@ -515,10 +591,27 @@ def validate_strict_nct_id(value: Any, *, context: str = "nct_id") -> str:
     ``STRICT_NCT_ID_RE.fullmatch(value)`` so trailing newlines, leading/trailing
     spaces, lowercase prefixes, zero-width characters, string subclasses, and
     non-ASCII digits are unconditionally rejected with ``InvalidNctIdError``.
+
+    The message does not quote a value, or a context, that holds an NCT-like
+    token in any reading (``_holds_nct_like_text``): a malformed rendering of
+    an audit trial's ID (``nct9...``, ``"NCT9... "``) is still that trial's ID,
+    and this function does not know the audit set, so it withholds every such
+    value rather than log one.
     """
     if type(value) is not str or len(value) != 11 or STRICT_NCT_ID_RE.fullmatch(value) is None:
+        shown_context = (
+            "<position withheld: it holds an NCT-like ID>"
+            if _holds_nct_like_text(context)
+            else context
+        )
+        shown_value = (
+            f"<{len(value)}-character string holding an NCT-like token, withheld>"
+            if isinstance(value, str) and _holds_nct_like_text(value)
+            else repr(value)
+        )
         raise InvalidNctIdError(
-            f"Invalid {context} {value!r}: expected strict 11-character ASCII ^NCT[0-9]{{8}}$."
+            f"Invalid {shown_context} {shown_value}: expected strict 11-character ASCII "
+            f"^NCT[0-9]{{8}}$."
         )
     return value
 
@@ -557,6 +650,171 @@ def _iter_embedded_nct_tokens(text: str) -> list[str]:
     return [match.group(0) for variant in variants for match in _EMBEDDED_NCT_TOKEN_RE.finditer(variant)]
 
 
+def _nct_skeleton(text: str) -> str:
+    """Fold ``text`` to what a reader sees, for the loose NCT reading only.
+
+    Method: NFKD decomposition (fullwidth and other compatibility forms become
+    ASCII, accented letters become letter plus mark), then every combining
+    mark (category M*, which includes variation selectors) and every format or
+    control character (Cf, Cc; tab and line breaks are kept as separators) is
+    dropped, the look-alike letters of ``_NCT_LOOKALIKE_TRANS`` are mapped to
+    Latin, the text is case-folded, every Unicode decimal digit becomes its
+    ASCII digit, and ``o``/``i``/``l`` become 0/1/1. The result is used only
+    to find NCT-like renderings, never shown or stored.
+    """
+    kept: list[str] = []
+    for ch in unicodedata.normalize("NFKD", text):
+        category = unicodedata.category(ch)
+        if category.startswith("M"):
+            continue
+        if category in {"Cf", "Cc"} and ch not in "\t\n\r":
+            continue
+        kept.append(ch)
+    folded = "".join(kept).translate(_NCT_LOOKALIKE_TRANS).casefold()
+    digits_ascii = "".join(
+        str(unicodedata.decimal(ch)) if ch.isdecimal() and not ch.isascii() else ch
+        for ch in folded
+    )
+    return digits_ascii.translate(_DIGIT_LOOKALIKE_TRANS)
+
+
+def _iter_loose_nct_candidates(text: str) -> list[tuple[str, bool]]:
+    """Return ``(canonical ID, bounded)`` for every NCT rendering a reader would take for one.
+
+    Method: ``_EMBEDDED_NCT_TOKEN_RE`` finds ``nct`` immediately followed by
+    digits; registry and publication text also writes ``NCT 0123 4567``,
+    ``NCT-01234567`` or ``NCT_01234567``, and a look-alike letter (Cyrillic
+    Es, U+0421) or a variation selector inside the token hides it from that rule.
+    The text, as written and (when it holds ``%``) percent-decoded, is folded by
+    ``_nct_skeleton`` and searched with ``_LOOSE_NCT_RE``; each match gives
+    ``"NCT"`` plus its first eight digits. ``bounded`` is True when no letter or
+    digit comes right before the ``n`` and no digit right after the eighth
+    digit: such a match reads as an ID on its own, so the derived-ID rule may
+    apply to it. An unbounded match ("distinct 12345678", a ninth digit) is
+    used only for the audit-ID rule, where a false match needs the exact eight
+    digits of a holdout trial.
+    """
+    readings = [text]
+    if "%" in text:
+        readings.append(unquote(text))
+    found: list[tuple[str, bool]] = []
+    for reading in readings:
+        skeleton = _nct_skeleton(reading)
+        for match in _LOOSE_NCT_RE.finditer(skeleton):
+            digits = re.sub(r"[^0-9]", "", match.group(1))
+            start, end = match.start(), match.end(1)
+            bounded = (start == 0 or not skeleton[start - 1].isalnum()) and (
+                end == len(skeleton) or not skeleton[end].isdigit()
+            )
+            found.append((f"NCT{digits}", bounded))
+    return found
+
+
+def _text_names_audit_trial(text: str, audit_nct_ids: frozenset[str]) -> bool:
+    """True when ``text``, in any reading, names a trial of ``audit_nct_ids``.
+
+    The readings are those of ``_iter_embedded_nct_tokens`` (as written,
+    percent-decoded, NFKC-folded; a token counts when its upper-cased form is
+    an audit ID) and of ``_iter_loose_nct_candidates`` (separators, look-alike
+    letters, combining marks). This is rule (1) of the token rule, and it runs
+    before any rule whose message could quote the text.
+    """
+    if not audit_nct_ids:
+        return False
+    for raw_tok in _iter_embedded_nct_tokens(text):
+        upper_tok = raw_tok.upper()
+        if STRICT_NCT_ID_RE.fullmatch(upper_tok) is not None and upper_tok in audit_nct_ids:
+            return True
+    return any(candidate in audit_nct_ids for candidate, _ in _iter_loose_nct_candidates(text))
+
+
+def _holds_nct_like_text(text: str) -> bool:
+    """True when ``text`` holds anything a reading of the token rule takes for an NCT ID."""
+    return bool(_iter_embedded_nct_tokens(text)) or bool(_iter_loose_nct_candidates(text))
+
+
+def _withhold_if_names_trial(text: str, audit_nct_ids: frozenset[str]) -> str:
+    """Return ``text`` for an error message, or a placeholder when it names an audit trial.
+
+    Error messages name positions (a record label, a key path, a file path),
+    and a key or a path component can itself be an audit trial's ID. Such a
+    position is replaced by a placeholder, so that no message, and no log that
+    keeps it, records the ID.
+    """
+    if _text_names_audit_trial(text, audit_nct_ids):
+        return "<position withheld: it names an audit-holdout trial>"
+    return text
+
+
+def _is_in_audit_key(key: Any) -> bool:
+    """True when ``key`` spells the holdout flag (``in_audit``, ``inAudit``, ``IN_AUDIT``, ...).
+
+    Method: a record that says it is held out says so under whatever spelling
+    its writer used, and a reader takes ``inAudit``, ``IN_AUDIT``,
+    ``in-audit`` or ``"in_audit "`` for the flag. Keys are compared after NFKC
+    folding, removal of invisible characters, case folding and removal of
+    everything but the letters a-z, against ``_IN_AUDIT_KEY_FORMS``. Only the
+    exact key ``in_audit`` of an index row admits a trial (in the CLI); every
+    other spelling, like a record's own flag, can only refuse.
+    """
+    if type(key) is not str:
+        return False
+    folded = _strip_invisible(unicodedata.normalize("NFKC", key)).casefold()
+    return re.sub(r"[^a-z]", "", folded) in _IN_AUDIT_KEY_FORMS
+
+
+def _refuse_own_in_audit_flags(record: Mapping[str, Any], *, record_label: str) -> None:
+    """Refuse a record whose own top-level holdout flag, under any spelling, is not False.
+
+    A record's own flag is reported by the data under check, so it can only
+    refuse: ``True`` (the record says it is held out) or a non-bool value (it
+    says something other than False) stops the call. The message names the
+    record and the key, never the trial: a record that says it is held out is
+    a holdout trial's record.
+    """
+    for raw_key, flag in record.items():
+        if not _is_in_audit_key(raw_key):
+            continue
+        if type(flag) is not bool:
+            raise AuditHoldoutViolationError(
+                f"{record_label} carries a non-bool holdout flag ({type(flag).__name__}) under "
+                f"a key spelling in_audit."
+            )
+        if flag is True:
+            raise AuditHoldoutViolationError(
+                f"Audit holdout violation: {record_label} says it is held out (a key spelling "
+                f"in_audit is true)."
+            )
+
+
+def _check_url_trial(
+    tok: str,
+    *,
+    context: str,
+    expected_nct_id: str | None,
+    in_scope_nct_ids: frozenset[str] | None,
+) -> None:
+    """Admit a strict, non-audit trial ID read from a URL, or raise (rules (3) for URLs)."""
+    if in_scope_nct_ids is not None and tok not in in_scope_nct_ids:
+        raise AuditHoldoutViolationError(
+            f"Audit holdout refusal in {context}: URL references unlisted trial {tok!r}."
+        )
+    # Same rule as ``_enforce_derived_nct_holdout``: with no record trial to compare
+    # against and no in-scope set, the audit set alone cannot show that a URL's trial
+    # is outside the holdout (it lists the holdout, not the trials outside it).
+    if in_scope_nct_ids is None and expected_nct_id is None:
+        raise AuditHoldoutViolationError(
+            f"Audit holdout refusal in {context}: URL references trial {tok!r}, and "
+            f"neither a record nct_id nor in_scope_nct_ids establishes it is outside the "
+            f"holdout."
+        )
+    if expected_nct_id is not None and tok != expected_nct_id:
+        raise AuditHoldoutViolationError(
+            f"Audit holdout refusal in {context}: URL NCT {tok!r} disagrees with "
+            f"record nct_id={expected_nct_id!r}."
+        )
+
+
 def _check_embedded_url_ncts(
     url_text: str,
     *,
@@ -565,34 +823,38 @@ def _check_embedded_url_ncts(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str] | None,
 ) -> None:
-    """Reject audit, unlisted, malformed, or mismatched NCT tokens embedded inside URLs."""
+    """Reject audit, unlisted, malformed, or mismatched NCT tokens embedded inside URLs.
+
+    Method: the audit rule runs first, over every reading
+    (``_text_names_audit_trial``), and its message names the position only
+    (``_withhold_if_names_trial``), never the trial. Then each token of the
+    plain readings must be strict as written, and each strict token, like each
+    bounded loose rendering (``NCT%2099800001``), must be the record's own trial
+    or, with ``in_scope_nct_ids``, a member of it.
+    """
+    if _text_names_audit_trial(url_text, audit_nct_ids):
+        raise AuditHoldoutViolationError(
+            f"Audit holdout violation in {_withhold_if_names_trial(context, audit_nct_ids)}: "
+            f"the URL names an audit-holdout trial."
+        )
     for raw_tok in _iter_embedded_nct_tokens(url_text):
-        upper_tok = raw_tok.upper()
-        if STRICT_NCT_ID_RE.fullmatch(upper_tok) is not None and upper_tok in audit_nct_ids:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout violation in {context}: URL references holdout trial {upper_tok!r}."
-            )
         if STRICT_NCT_ID_RE.fullmatch(raw_tok) is None:
             raise InvalidNctIdError(
                 f"Malformed NCT token {raw_tok!r} in {context}: expected strict ^NCT[0-9]{{8}}$."
             )
-        if in_scope_nct_ids is not None and raw_tok not in in_scope_nct_ids:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout refusal in {context}: URL references unlisted trial {raw_tok!r}."
-            )
-        # Same rule as ``_enforce_derived_nct_holdout``: with no record trial to compare
-        # against and no in-scope set, the audit set alone cannot show that a URL's trial
-        # is outside the holdout (it lists the holdout, not the trials outside it).
-        if in_scope_nct_ids is None and expected_nct_id is None:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout refusal in {context}: URL references trial {raw_tok!r}, and "
-                f"neither a record nct_id nor in_scope_nct_ids establishes it is outside the "
-                f"holdout."
-            )
-        if expected_nct_id is not None and raw_tok != expected_nct_id:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout refusal in {context}: URL NCT {raw_tok!r} disagrees with "
-                f"record nct_id={expected_nct_id!r}."
+        _check_url_trial(
+            raw_tok,
+            context=context,
+            expected_nct_id=expected_nct_id,
+            in_scope_nct_ids=in_scope_nct_ids,
+        )
+    for candidate, bounded in _iter_loose_nct_candidates(url_text):
+        if bounded:
+            _check_url_trial(
+                candidate,
+                context=context,
+                expected_nct_id=expected_nct_id,
+                in_scope_nct_ids=in_scope_nct_ids,
             )
 
 
@@ -612,22 +874,29 @@ def _check_embedded_text_ncts(
     (``"Same protocol as NCT..."``), which the named-key walk in
     ``_validate_nested_firewall_metadata`` never reads. Each token, in every
     reading ``_iter_embedded_nct_tokens`` gives, is therefore checked in this
-    order: (1) a token whose upper-cased form is in ``audit_nct_ids`` is a
-    holdout violation, and the message names its position, not the trial;
-    (2) a token that is not strict ``^NCT[0-9]{8}$`` as written is malformed
-    (``InvalidNctIdError``); (3) any other token is an ID reached from the
-    record, so it follows ``_enforce_derived_nct_holdout``: admitted when it is
-    the record's own trial or, with ``in_scope_nct_ids``, a member of it, and
-    refused otherwise. Rule (3) can refuse a record whose text names an
-    unlisted trial for a legitimate reason; that refusal is loud (exit 2 in the
-    CLI) and deliberate, since a silent pass is the failure this guards.
+    order: (1) text that names an audit trial in any reading, those above or
+    the loose ones of ``_iter_loose_nct_candidates`` (``NCT 9...``,
+    ``NCT-9...``, a look-alike letter, a variation selector), is a holdout
+    violation, and the message names its position, not the trial; this runs
+    over the whole text before rules (2) and (3), whose messages quote a
+    token; (2) a token that is not strict ``^NCT[0-9]{8}$`` as written is
+    malformed (``InvalidNctIdError``); (3) any other token, and the canonical
+    ID of every bounded loose rendering, is an ID reached from the record, so
+    it follows ``_enforce_derived_nct_holdout``: admitted when it is the
+    record's own trial or, with ``in_scope_nct_ids``, a member of it, and
+    refused otherwise. A loose rendering is not refused as malformed by rule
+    (2): prose writes ``NCT 0123 4567`` for good reasons, and the holdout rules
+    (1) and (3) read its canonical ID. Rule (3) can refuse a record whose text
+    names an unlisted trial for a legitimate reason; that refusal is loud
+    (exit 2 in the CLI) and deliberate, since a silent pass is the failure this
+    guards.
     """
+    if _text_names_audit_trial(text, audit_nct_ids):
+        raise AuditHoldoutViolationError(
+            f"Audit holdout violation in {_withhold_if_names_trial(context, audit_nct_ids)}: "
+            f"the text names an audit-holdout trial."
+        )
     for raw_tok in _iter_embedded_nct_tokens(text):
-        upper_tok = raw_tok.upper()
-        if STRICT_NCT_ID_RE.fullmatch(upper_tok) is not None and upper_tok in audit_nct_ids:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout violation in {context}: the text names an audit-holdout trial."
-            )
         if STRICT_NCT_ID_RE.fullmatch(raw_tok) is None:
             raise InvalidNctIdError(
                 f"Malformed NCT token {raw_tok!r} in {context}: expected strict ^NCT[0-9]{{8}}$."
@@ -640,6 +909,16 @@ def _check_embedded_text_ncts(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+    for candidate, bounded in _iter_loose_nct_candidates(text):
+        if bounded:
+            _enforce_derived_nct_holdout(
+                candidate,
+                verified_nct=expected_nct_id,
+                context=context,
+                audit_nct_ids=audit_nct_ids,
+                in_scope_nct_ids=in_scope_nct_ids,
+                allow_empty_audit_set=allow_empty_audit_set,
+            )
 
 
 def _scan_record_strings_for_nct_tokens(
@@ -717,15 +996,15 @@ def _scan_strings_for_audit_nct_tokens(
     can be copied into an output (reference citations are), and the holdout
     forbids recording anything that names a holdout trial, so a token whose
     upper-cased form, in any reading, is an audit ID stops the call. The
-    message names the position only.
+    readings include the loose ones (``NCT 0123 4567``, look-alike letters;
+    ``_text_names_audit_trial``). The message names the position only.
     """
     if isinstance(node, str):
-        for raw_tok in _iter_embedded_nct_tokens(node):
-            upper_tok = raw_tok.upper()
-            if STRICT_NCT_ID_RE.fullmatch(upper_tok) is not None and upper_tok in audit_nct_ids:
-                raise AuditHoldoutViolationError(
-                    f"Audit holdout violation in {context}: the text names an audit-holdout trial."
-                )
+        if _text_names_audit_trial(node, audit_nct_ids):
+            raise AuditHoldoutViolationError(
+                f"Audit holdout violation in {_withhold_if_names_trial(context, audit_nct_ids)}: "
+                f"the text names an audit-holdout trial."
+            )
     elif isinstance(node, Mapping):
         for raw_k, val in node.items():
             key = str(raw_k)
@@ -815,14 +1094,18 @@ def _validate_nested_firewall_metadata(
                             allow_empty_audit_set=allow_empty_audit_set,
                         )
                         discovered_ncts.append(checked)
-                elif key == "in_audit":
+                elif _is_in_audit_key(raw_k):
+                    # Any spelling a reader takes for the flag (``inAudit``, ``IN_AUDIT``,
+                    # ``in-audit``): metadata can only refuse, so True or a non-bool refuses.
+                    safe_ctx = _withhold_if_names_trial(child_ctx, audit_nct_ids)
                     if type(val) is not bool:
                         raise AuditHoldoutViolationError(
-                            f"{child_ctx} carries non-bool in_audit={val!r}."
+                            f"{safe_ctx} carries a non-bool holdout flag "
+                            f"({type(val).__name__})."
                         )
                     if val is True:
                         raise AuditHoldoutViolationError(
-                            f"Audit holdout violation: {child_ctx} carries in_audit=True."
+                            f"Audit holdout violation: {safe_ctx} says it is held out."
                         )
                 elif key in _URL_FIELD_KEYS and isinstance(val, str):
                     _check_embedded_url_ncts(
@@ -879,33 +1162,36 @@ def enforce_audit_holdout(
             f"allow_empty_audit_set must be bool, got {type(allow_empty_audit_set).__name__}."
         )
 
+    # Messages about a trial that is, or may be, held out never quote its ID (the overlap is
+    # counted, the flagged trial is not named): a log of the refusal must not record it.
     if checked_scope_ids is not None and (checked_audit_ids & checked_scope_ids):
-        overlap = sorted(checked_audit_ids & checked_scope_ids)
+        overlap_count = len(checked_audit_ids & checked_scope_ids)
         raise AuditHoldoutViolationError(
-            f"Audit holdout violation: in_scope_nct_ids overlaps audit_nct_ids: {overlap}."
+            f"Audit holdout violation: in_scope_nct_ids overlaps audit_nct_ids "
+            f"({overlap_count} trial(s))."
         )
 
     if in_audit is not _MISSING:
         if type(in_audit) is not bool:
             raise AuditHoldoutViolationError(
-                f"in_audit must be an explicit bool for {checked_nct!r}, got {in_audit!r} "
-                f"({type(in_audit).__name__})."
+                f"in_audit must be an explicit bool, got {type(in_audit).__name__}; the trial "
+                f"is not named, since its holdout status is unknown."
             )
         if in_audit is True:
             raise AuditHoldoutViolationError(
-                f"Audit holdout violation: trial {checked_nct!r} has in_audit=True and may not be "
-                f"inspected, verified, or scheduled for census extraction."
+                "Audit holdout violation: the trial has in_audit=True and may not be "
+                "inspected, verified, or scheduled for census extraction."
             )
     elif checked_scope_ids is None:
         raise AuditHoldoutViolationError(
-            f"Missing explicit bool in_audit (and no verified in_scope_nct_ids supplied) "
-            f"for {checked_nct!r}."
+            "Missing explicit bool in_audit (and no verified in_scope_nct_ids supplied); the "
+            "trial is not named, since its holdout status is unknown."
         )
 
     if checked_nct in checked_audit_ids:
         raise AuditHoldoutViolationError(
-            f"Audit holdout violation: trial {checked_nct!r} is in audit_nct_ids and may not be "
-            f"inspected, verified, or scheduled for census extraction."
+            "Audit holdout violation: the trial is in audit_nct_ids and may not be "
+            "inspected, verified, or scheduled for census extraction."
         )
 
     if checked_scope_ids is not None and checked_nct not in checked_scope_ids:
@@ -980,6 +1266,11 @@ def _enforce_derived_nct_holdout(
       the holdout, not the trials known to be outside it.
     """
     checked = validate_strict_nct_id(derived_nct, context=context)
+    if checked in audit_nct_ids:
+        raise AuditHoldoutViolationError(
+            f"Audit holdout violation in {_withhold_if_names_trial(context, audit_nct_ids)}: "
+            f"it names an audit-holdout trial."
+        )
     if in_scope_nct_ids is not None:
         enforce_audit_holdout(
             checked,
@@ -988,10 +1279,6 @@ def _enforce_derived_nct_holdout(
             allow_empty_audit_set=allow_empty_audit_set,
         )
         return
-    if checked in audit_nct_ids:
-        raise AuditHoldoutViolationError(
-            f"Audit holdout violation in {context}: trial {checked!r} is in audit_nct_ids."
-        )
     if verified_nct is None or checked != verified_nct:
         raise AuditHoldoutViolationError(
             f"Audit holdout refusal in {context}: trial {checked!r} is not the record's own "
@@ -1024,17 +1311,9 @@ def _enforce_record_firewall(
     # A record's own ``in_audit`` is reported by the data under check, so it can only
     # refuse (True or non-bool). It never stands in for the caller's flag or in-scope set,
     # which come from the index: a worker or a stale file writing ``in_audit: false`` must
-    # not admit a record that the index would hold out.
-    if "in_audit" in record:
-        row_flag = record["in_audit"]
-        if type(row_flag) is not bool:
-            raise AuditHoldoutViolationError(
-                f"{record_label} for {checked_nct!r} carries non-bool in_audit={row_flag!r}."
-            )
-        if row_flag is True:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout violation: {record_label} for {checked_nct!r} has in_audit=True."
-            )
+    # not admit a record that the index would hold out. Every spelling a reader takes for
+    # the flag (``inAudit``, ``IN_AUDIT``, ``in-audit``) is read the same way.
+    _refuse_own_in_audit_flags(record, record_label=record_label)
 
     enforce_audit_holdout(
         checked_nct,
@@ -1283,12 +1562,23 @@ def match_quotation_on_page(quotation: str, page_text: str) -> MatchTier:
 
 
 def scan_neutral_language(text: str) -> list[NeutralLanguageFlag]:
-    """Scan commentary text for evaluative, spin, or compliance-inference claims."""
+    """Scan commentary text for evaluative, spin, or compliance-inference claims.
+
+    Method: the rules match words, and a character that renders as nothing (a
+    zero-width space, a soft hyphen, a word joiner: category Cf) or a
+    compatibility form (a fullwidth letter) inside a word defeats a word
+    pattern while the reader sees the claim. The text is therefore matched
+    after the folding the NCT token rule uses, NFKC with invisible characters
+    removed (``_strip_invisible``). ``span`` and ``matched_text`` refer to that
+    folded text, which is the input itself whenever the input holds no such
+    character.
+    """
     if not text:
         return []
+    folded = _strip_invisible(unicodedata.normalize("NFKC", text))
     flags: list[NeutralLanguageFlag] = []
     for rule, regex in _COMPILED_NEUTRAL_RULES:
-        for match in regex.finditer(text):
+        for match in regex.finditer(folded):
             flags.append(
                 NeutralLanguageFlag(
                     rule_id=rule.rule_id,
@@ -1332,6 +1622,29 @@ def scan_neutral_language_record(
 
     _walk(record, _prefix)
     return findings
+
+
+def _neutral_language_scan_view(loc: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a location row with only its citations' ``quotation`` strings removed.
+
+    Method: ``scan_neutral_language_record`` exempts keys by name at any depth,
+    so a row's own top-level or nested ``quotation`` (or ``statement_verbatim``)
+    would escape the guard although nothing verifies it against a page. A
+    citation's ``quotation`` is the only string checked against the cited
+    page's text, so it is the only one left out: the view copies the row and
+    drops ``quotation`` from each mapping in a ``citations`` list, and the
+    caller scans the view with no exempt key.
+    """
+    view = dict(loc)
+    citations = loc.get("citations")
+    if isinstance(citations, list):
+        view["citations"] = [
+            {key: val for key, val in cit.items() if key != "quotation"}
+            if isinstance(cit, Mapping)
+            else cit
+            for cit in citations
+        ]
+    return view
 
 
 def _validate_admitted_nct_ids(
@@ -1378,7 +1691,7 @@ def _check_page_request_trial(
     checked = validate_strict_nct_id(nct_id, context=f"{context}.nct_id")
     if checked in audit_nct_ids:
         raise AuditHoldoutViolationError(
-            f"Audit holdout violation: refusing page lookup for {checked!r}."
+            "Audit holdout violation: refusing a page lookup for an audit-holdout trial."
         )
     if in_scope_nct_ids is not None:
         if checked not in in_scope_nct_ids:
@@ -1393,6 +1706,23 @@ def _check_page_request_trial(
             f"establishes that it is outside the holdout."
         )
     return checked
+
+
+def _refuse_request_naming_audit_trial(
+    filename: Any, text_source: Any, *, audit_nct_ids: frozenset[str]
+) -> None:
+    """Refuse a page request whose filename or text source names an audit-holdout trial.
+
+    The requested trial is firewalled by ``_check_page_request_trial``; the
+    other strings of a request choose which stored text is read (a map's file
+    name, a key), so one naming an audit trial is refused before any lookup.
+    """
+    for label, value in (("filename", filename), ("text_source", text_source)):
+        if type(value) is str and _text_names_audit_trial(value, audit_nct_ids):
+            raise AuditHoldoutViolationError(
+                f"Audit holdout violation: the page request's {label} names an "
+                f"audit-holdout trial."
+            )
 
 
 def _validate_page_text_value(value: Any, *, context: str) -> str | None:
@@ -1411,7 +1741,16 @@ def _validate_page_text_value(value: Any, *, context: str) -> str | None:
 
 
 class DictPageTextProvider:
-    """In-memory ``PageTextProvider`` for deterministic offline tests and fixtures."""
+    """In-memory ``PageTextProvider`` for deterministic offline tests and fixtures.
+
+    Stored keys are firewalled like the directory provider's file names: no
+    element of a key (a sha256, a filename, a text source) may name an
+    audit-holdout trial in any reading, and any other trial a filename or text
+    source names follows the derived-ID rule (``_check_embedded_text_ncts``).
+    A key without a text source (``(sha256, page)``, ``(nct_id, filename,
+    page)``) is ``pdfkit`` text and answers only ``pdfkit`` requests, as
+    ``pages_by_sha256`` does; OCR text is keyed with its source.
+    """
 
     def __init__(
         self,
@@ -1445,9 +1784,17 @@ class DictPageTextProvider:
                 "DictPageTextProvider requires non-empty audit_nct_ids unless allow_empty_audit_set=True."
             )
         self._admitted_nct_ids: frozenset[str] = frozenset()
+        raw_pages_by_key = dict(pages_by_key or {})
+        raw_pages_by_sha256 = dict(pages_by_sha256 or {})
+        raw_ocr_pages_by_sha256 = dict(ocr_pages_by_sha256 or {})
+        # Keys are firewalled before any message can quote one (the values' error messages
+        # name their key), so a key naming an audit trial is refused by position only.
+        self._validate_key_sets(
+            raw_pages_by_key.keys(), raw_pages_by_sha256.keys(), raw_ocr_pages_by_sha256.keys()
+        )
         self._pages_by_key: dict[Any, str | None] = {
             k: _validate_page_text_value(v, context=f"DictPageTextProvider.pages_by_key[{k!r}]")
-            for k, v in (pages_by_key or {}).items()
+            for k, v in raw_pages_by_key.items()
         }
         self._pages_by_sha256: dict[str, tuple[str | None, ...]] = {
             k: tuple(
@@ -1456,7 +1803,7 @@ class DictPageTextProvider:
                 )
                 for idx, page in enumerate(v)
             )
-            for k, v in (pages_by_sha256 or {}).items()
+            for k, v in raw_pages_by_sha256.items()
         }
         self._ocr_pages_by_sha256: dict[str, tuple[str | None, ...]] = {
             k: tuple(
@@ -1465,18 +1812,41 @@ class DictPageTextProvider:
                 )
                 for idx, page in enumerate(v)
             )
-            for k, v in (ocr_pages_by_sha256 or {}).items()
+            for k, v in raw_ocr_pages_by_sha256.items()
         }
-        self._validate_stored_keys()
+
+    def _refuse_audit_named_key(self, key: Any, *, context: str) -> None:
+        """Refuse a stored key any string element of which names an audit-holdout trial."""
+        elements = key if isinstance(key, tuple) else (key,)
+        for element in elements:
+            if type(element) is str and _text_names_audit_trial(element, self._audit_nct_ids):
+                raise AuditHoldoutViolationError(
+                    f"Audit holdout violation in {context}: a stored page key names an "
+                    f"audit-holdout trial."
+                )
+
+    def _check_key_text(self, value: Any, *, context: str, expected_nct_id: str | None) -> None:
+        """Apply the record token rule to a filename or text-source element of a stored key.
+
+        As the directory provider reads a map's file name
+        (``_check_path_part_for_embedded_nct``), a key's filename or text source
+        that names a trial must name one the firewall admits: the key's own
+        trial or, with ``in_scope_nct_ids``, a member of it. A malformed token
+        is refused (``_check_embedded_text_ncts``).
+        """
+        if type(value) is not str:
+            return
+        _check_embedded_text_ncts(
+            value,
+            context=context,
+            expected_nct_id=expected_nct_id,
+            audit_nct_ids=self._audit_nct_ids,
+            in_scope_nct_ids=self._in_scope_nct_ids,
+            allow_empty_audit_set=self._allow_empty_audit_set,
+        )
 
     def _validate_sha256_map_key(self, raw_sha: Any, *, context: str) -> None:
-        if type(raw_sha) is str:
-            cleaned = _strip_invisible(unicodedata.normalize("NFKC", raw_sha)).strip()
-            if STRICT_NCT_ID_RE.fullmatch(cleaned.upper()) is not None:
-                if cleaned.upper() in self._audit_nct_ids:
-                    raise AuditHoldoutViolationError(
-                        f"Audit holdout violation in {context}: {raw_sha!r}."
-                    )
+        self._refuse_audit_named_key(raw_sha, context=context)
         if (
             type(raw_sha) is not str
             or len(raw_sha) != 64
@@ -1487,16 +1857,36 @@ class DictPageTextProvider:
             )
 
     def _validate_stored_keys(self) -> None:
-        for sha_k in self._pages_by_sha256:
+        self._validate_key_sets(
+            self._pages_by_key.keys(),
+            self._pages_by_sha256.keys(),
+            self._ocr_pages_by_sha256.keys(),
+        )
+
+    def _validate_key_sets(
+        self,
+        page_keys: Iterable[Any],
+        sha_keys: Iterable[Any],
+        ocr_sha_keys: Iterable[Any],
+    ) -> None:
+        """Firewall and shape-check every stored key, audit names first.
+
+        Method: the audit rule runs over every key before any other check,
+        because the shape errors quote the key (``{key!r}``) and a key naming
+        an audit trial must be refused without being quoted.
+        """
+        for key in page_keys:
+            self._refuse_audit_named_key(key, context="DictPageTextProvider.pages_by_key")
+        for sha_k in sha_keys:
             self._validate_sha256_map_key(
                 sha_k, context="DictPageTextProvider.pages_by_sha256 key"
             )
-        for sha_k in self._ocr_pages_by_sha256:
+        for sha_k in ocr_sha_keys:
             self._validate_sha256_map_key(
                 sha_k, context="DictPageTextProvider.ocr_pages_by_sha256 key"
             )
 
-        for key in self._pages_by_key:
+        for key in page_keys:
             if not isinstance(key, tuple) or len(key) not in (2, 3, 4):
                 raise CitationVerificationError(
                     f"Unsupported DictPageTextProvider key shape: {key!r}."
@@ -1517,11 +1907,17 @@ class DictPageTextProvider:
                     raise CitationVerificationError(
                         f"Invalid (sha256, page, text_source) key in DictPageTextProvider: {key!r}."
                     )
+                self._check_key_text(
+                    key[2],
+                    context="DictPageTextProvider.pages_by_key text_source",
+                    expected_nct_id=None,
+                )
             elif len(key) in (3, 4):
                 nct_key = validate_strict_nct_id(key[0], context="DictPageTextProvider.nct_id")
                 if nct_key in self._audit_nct_ids:
                     raise AuditHoldoutViolationError(
-                        f"Audit holdout violation in DictPageTextProvider: {nct_key!r} is in audit_nct_ids."
+                        "Audit holdout violation in DictPageTextProvider: a stored key's trial "
+                        "is in audit_nct_ids."
                     )
                 if self._in_scope_nct_ids is not None and nct_key not in self._in_scope_nct_ids:
                     raise AuditHoldoutViolationError(
@@ -1538,6 +1934,17 @@ class DictPageTextProvider:
                 if len(key) == 4 and not _is_non_empty_str(key[3]):
                     raise CitationVerificationError(
                         f"Invalid text_source in DictPageTextProvider key: {key!r}."
+                    )
+                self._check_key_text(
+                    key[1],
+                    context="DictPageTextProvider.pages_by_key filename",
+                    expected_nct_id=nct_key,
+                )
+                if len(key) == 4:
+                    self._check_key_text(
+                        key[3],
+                        context="DictPageTextProvider.pages_by_key text_source",
+                        expected_nct_id=nct_key,
                     )
 
     def bind_firewall(
@@ -1618,14 +2025,20 @@ class DictPageTextProvider:
             admitted_nct_ids=self._admitted_nct_ids,
             context="page_text",
         )
+        _refuse_request_naming_audit_trial(
+            filename, text_source, audit_nct_ids=self._audit_nct_ids
+        )
         if not _is_strict_int(physical_page) or physical_page < 1:
             return None
-        for key in (
+        lookup_keys: list[tuple[Any, ...]] = [
             (sha256, physical_page, text_source),
             (checked_nct, filename, physical_page, text_source),
-            (sha256, physical_page),
-            (checked_nct, filename, physical_page),
-        ):
+        ]
+        if text_source == "pdfkit":
+            # A key without a text source is pdfkit text (as ``pages_by_sha256`` is): it
+            # never answers a request for another source's text.
+            lookup_keys.extend([(sha256, physical_page), (checked_nct, filename, physical_page)])
+        for key in lookup_keys:
             if key in self._pages_by_key:
                 return self._pages_by_key[key]
 
@@ -1737,9 +2150,7 @@ class DirectoryPageTextProvider:
         self.unreferenced_maps_not_opened: int = 0
         self._cache: dict[tuple[str, str, str, str], Mapping[int, str] | None] = {}
         self._jsonl_pages: dict[tuple[str, str], _PageMap] = {}
-        self._jsonl_default_pages: dict[tuple[str, str], _PageMap] = {}
         self._jsonl_trial_pages: dict[tuple[str, str, str], _PageMap] = {}
-        self._jsonl_default_trial_pages: dict[tuple[str, str, str], _PageMap] = {}
         self._preflight_scan_all()
 
     def _validate_referenced_documents(
@@ -1826,9 +2237,7 @@ class DirectoryPageTextProvider:
             self._allow_empty_audit_set = allow_empty_audit_set
             self._cache.clear()
             self._jsonl_pages.clear()
-            self._jsonl_default_pages.clear()
             self._jsonl_trial_pages.clear()
-            self._jsonl_default_trial_pages.clear()
             self.unreferenced_maps_not_opened = 0
             if self._referenced_documents is not None:
                 self._referenced_documents = self._validate_referenced_documents(
@@ -1858,21 +2267,42 @@ class DirectoryPageTextProvider:
         )
         return checked
 
+    def _refuse_audit_named_path_part(self, part: str) -> None:
+        """Refuse a path component that names an audit-holdout trial in any reading.
+
+        Runs before any other check of the component, and the message names
+        neither the component nor its path: both would record the trial's ID.
+        """
+        if _text_names_audit_trial(part, self._audit_nct_ids):
+            raise AuditHoldoutViolationError(
+                "Audit holdout violation: a page-map path component names an audit-holdout "
+                "trial (path withheld)."
+            )
+
     def _check_path_part_for_embedded_nct(self, part: str, *, context: str) -> None:
-        """Scan a path component for exact or obfuscated NCT tokens."""
+        """Scan a path component for exact or obfuscated NCT tokens.
+
+        Order: (1) a component naming an audit trial in any reading, loose ones
+        included (``NCT 9...``, a look-alike letter), is refused by position
+        only; (2) a component holding an NCT-like token must be exactly that
+        strict token (``NCT99800001``, never ``x_NCT99800001`` or
+        ``NCT 99800001``); (3) the token follows the layout rule
+        (``_check_layout_nct_allowed``).
+        """
+        self._refuse_audit_named_path_part(part)
         folded = _strip_invisible(unicodedata.normalize("NFKC", part))
         for match in _EMBEDDED_NCT_TOKEN_RE.finditer(folded):
             tok = match.group(0)
-            upper = tok.upper()
-            if STRICT_NCT_ID_RE.fullmatch(upper) is not None and upper in self._audit_nct_ids:
-                raise AuditHoldoutViolationError(
-                    f"Audit holdout violation in {context}: path references holdout trial {upper!r}."
-                )
             if part != tok or STRICT_NCT_ID_RE.fullmatch(tok) is None:
                 raise InvalidNctIdError(
                     f"Malformed or obfuscated NCT path component {part!r} in {context}."
                 )
             self._check_layout_nct_allowed(tok, context=context)
+        for candidate, bounded in _iter_loose_nct_candidates(part):
+            if bounded and part != candidate:
+                raise InvalidNctIdError(
+                    f"Malformed or obfuscated NCT path component {part!r} in {context}."
+                )
 
     @staticmethod
     def _page_map_metadata(payload: Any) -> Any:
@@ -1886,6 +2316,18 @@ class DirectoryPageTextProvider:
         a ``pages`` mapping, the strings of a ``pages`` list, the ``text`` of
         page objects, and the values of top-level page-number keys.
         """
+        def _page_objects_meta(items: list[Any]) -> list[Any]:
+            return [
+                {str(k): v for k, v in item.items() if str(k) != "text"}
+                if isinstance(item, Mapping)
+                else None
+                for item in items
+            ]
+
+        if isinstance(payload, list):
+            # A list payload is a list of pages (``_parse_page_map_payload``): its page
+            # objects' keys other than ``text`` are metadata, as under ``pages``.
+            return _page_objects_meta(payload)
         if not isinstance(payload, Mapping):
             return None
         meta: dict[str, Any] = {}
@@ -1893,12 +2335,12 @@ class DirectoryPageTextProvider:
             key = str(raw_k)
             if key == "pages":
                 if isinstance(val, list):
-                    meta[key] = [
-                        {str(k): v for k, v in item.items() if str(k) != "text"}
-                        if isinstance(item, Mapping)
-                        else None
-                        for item in val
-                    ]
+                    meta[key] = _page_objects_meta(val)
+                elif isinstance(val, Mapping):
+                    # The keys of a ``pages`` mapping are read (a key naming a trial is
+                    # refused before the page-number check could quote it); its values are
+                    # page text.
+                    meta[key] = {str(k): None for k in val}
                 continue
             if type(raw_k) is str and _PAGE_LIKE_KEY_RE.fullmatch(raw_k) is not None:
                 continue
@@ -1908,12 +2350,16 @@ class DirectoryPageTextProvider:
     def _validate_payload_firewall(self, payload: Any, *, source_desc: str) -> str | None:
         """Firewall a page-map payload and return the trial it declares, if any.
 
-        The named-key walk (``nct_id``, ``nctId``, ``nct_ids``, ``in_audit``,
-        URL keys) covers the whole payload; every other key and string of its
+        The named-key walk (``nct_id``, ``nctId``, ``nct_ids``, the holdout
+        flag under any spelling, URL keys) covers the whole payload, a mapping
+        or a list of page objects alike; every other key and string of its
         metadata (``_page_map_metadata``) is read with the derived-ID rule of
-        ``_check_embedded_text_ncts``.
+        ``_check_embedded_text_ncts``. The trials the payload names under ID
+        keys, at any depth, are what it declares: one trial is returned, none
+        gives ``None``, and two different trials raise, since one map is one
+        document's text and cannot be two trials'.
         """
-        if not isinstance(payload, Mapping):
+        if not isinstance(payload, (Mapping, list)):
             return None
         discovered = _validate_nested_firewall_metadata(
             payload,
@@ -1931,11 +2377,13 @@ class DirectoryPageTextProvider:
             in_scope_nct_ids=self._in_scope_nct_ids,
             allow_empty_audit_set=self._allow_empty_audit_set,
         )
-        if "nct_id" in payload:
-            return str(payload["nct_id"])
-        if "nctId" in payload:
-            return str(payload["nctId"])
-        return discovered[0] if len(set(discovered)) == 1 else None
+        declared = sorted(set(discovered))
+        if len(declared) > 1:
+            raise CitationVerificationError(
+                f"{source_desc} declares {len(declared)} different trials {declared}; one page "
+                f"map is one document's text."
+            )
+        return declared[0] if declared else None
 
     @staticmethod
     def _declared_sha256(payload: Any, *, source_desc: str) -> str | None:
@@ -1945,14 +2393,33 @@ class DirectoryPageTextProvider:
         its document version in any other form cannot be compared with the
         request, so it is refused rather than ignored.
         """
-        if not isinstance(payload, Mapping) or "sha256" not in payload:
-            return None
-        raw = payload["sha256"]
-        if type(raw) is not str or _SHA256_RE.fullmatch(raw) is None:
+        declared: list[Any] = []
+        page_objects: list[Any] = []
+        if isinstance(payload, list):
+            page_objects = payload
+        elif isinstance(payload, Mapping):
+            if "sha256" in payload:
+                declared.append(payload["sha256"])
+            if isinstance(payload.get("pages"), list):
+                page_objects = payload["pages"]
+        # Page objects may declare the document too; every declaration must agree, or the
+        # map does not say which document version it is.
+        for item in page_objects:
+            if isinstance(item, Mapping) and "sha256" in item:
+                declared.append(item["sha256"])
+        for raw in declared:
+            if type(raw) is not str or _SHA256_RE.fullmatch(raw) is None:
+                raise CitationVerificationError(
+                    f"{source_desc} declares sha256={raw!r}, which is not 64 lowercase hex "
+                    f"characters."
+                )
+        distinct = set(declared)
+        if len(distinct) > 1:
             raise CitationVerificationError(
-                f"{source_desc} declares sha256={raw!r}, which is not 64 lowercase hex characters."
+                f"{source_desc} declares {len(distinct)} different sha256 values; one page map "
+                f"is one document version's text."
             )
-        return raw
+        return declared[0] if declared else None
 
     @staticmethod
     def _is_jsonl_path(path: Path) -> bool:
@@ -2003,6 +2470,54 @@ class DirectoryPageTextProvider:
                 f"{existing.source_desc} and {entry.source_desc}."
             )
 
+    @staticmethod
+    def _effective_text_source(
+        payload: Any, *, default_source_bucket: str, source_desc: str
+    ) -> str:
+        """Return the text source a page map holds: the one it declares, else its root's.
+
+        The map may declare ``text_source`` at its top level and on its page
+        objects (a list payload, or a ``pages`` list), as for ``sha256``. Each
+        declaration must be a non-empty string, and all must agree; anything
+        else does not say which source the text is, and is refused rather than
+        read as the root's default.
+        """
+        declared: list[Any] = []
+        page_objects: list[Any] = []
+        if isinstance(payload, list):
+            page_objects = payload
+        elif isinstance(payload, Mapping):
+            if "text_source" in payload:
+                declared.append(payload["text_source"])
+            if isinstance(payload.get("pages"), list):
+                page_objects = payload["pages"]
+        for item in page_objects:
+            if isinstance(item, Mapping) and "text_source" in item:
+                declared.append(item["text_source"])
+        for raw in declared:
+            if not _is_non_empty_str(raw):
+                raise CitationVerificationError(
+                    f"{source_desc} declares text_source={raw!r}, which is not a non-empty "
+                    f"string."
+                )
+        if len(set(declared)) > 1:
+            raise CitationVerificationError(
+                f"{source_desc} declares {len(set(declared))} different text sources; one page "
+                f"map holds one source's text."
+            )
+        return declared[0] if declared else default_source_bucket
+
+    @staticmethod
+    def _source_serves(map_source: str, requested: str) -> bool:
+        """True when a map holding ``map_source`` text may answer a ``requested`` source.
+
+        Exact match, or a generic ``ocr`` map for a request of a named OCR
+        source (``ocr_tesseract``). ``pdfkit`` requests take ``pdfkit`` text
+        only, and no OCR request takes ``pdfkit`` text: a citation claimed from
+        one source is never verified on another's text.
+        """
+        return map_source == requested or (requested != "pdfkit" and map_source == "ocr")
+
     def _ingest_jsonl_file(self, path: Path, *, default_source_bucket: str) -> None:
         opener = gzip.open if path.suffix == ".gz" else open
         try:
@@ -2033,14 +2548,29 @@ class DirectoryPageTextProvider:
                             f"of this run names; a content-addressed map that no in-scope "
                             f"document ties to a trial may hold any trial's text."
                         )
+                    fn = row.get("filename")
+                    names_trial_document = row_nct is not None and isinstance(fn, str) and bool(fn)
+                    # A row is kept under the document it names: its sha256, or its trial and
+                    # filename. A row that names neither is no document's text: no request
+                    # could find it, and like a row for an unreferenced sha256 it may hold any
+                    # trial's text, so it is refused loudly once read rather than dropped.
+                    if declared_sha is None and not names_trial_document:
+                        raise AuditHoldoutViolationError(
+                            f"{source_desc}: page-map row names no document (no sha256, and no "
+                            f"nct_id with a filename); it cannot be any request's text and may "
+                            f"hold any trial's."
+                        )
                     parsed_pages = self._parse_page_map_payload(row, source_desc=source_desc)
                     if parsed_pages is None:
-                        continue
-                    row_ts = row.get("text_source")
-                    bucket = (
-                        row_ts
-                        if isinstance(row_ts, str) and row_ts
-                        else default_source_bucket
+                        raise CitationVerificationError(
+                            f"{source_desc}: page-map row holds no pages (no 'pages' and no "
+                            f"page-number keys)."
+                        )
+                    # The row's text source is the one it declares, else its root's (pdfkit
+                    # for pages_dir, ocr for ocr_dir). It is filed under that source only:
+                    # another source's text never answers a request (``_source_serves``).
+                    bucket = self._effective_text_source(
+                        row, default_source_bucket=default_source_bucket, source_desc=source_desc
                     )
                     entry = _PageMap(
                         pages=parsed_pages,
@@ -2050,24 +2580,20 @@ class DirectoryPageTextProvider:
                     )
                     if declared_sha is not None:
                         self._store_page_map(self._jsonl_pages, (declared_sha, bucket), entry)
-                        if bucket != default_source_bucket:
-                            self._jsonl_default_pages.setdefault(
-                                (declared_sha, default_source_bucket), entry
-                            )
-                    fn = row.get("filename")
-                    if row_nct is not None and isinstance(fn, str) and fn:
+                    if names_trial_document:
                         self._store_page_map(
                             self._jsonl_trial_pages, (row_nct, fn, bucket), entry
                         )
-                        if bucket != default_source_bucket:
-                            self._jsonl_default_trial_pages.setdefault(
-                                (row_nct, fn, default_source_bucket), entry
-                            )
         except json.JSONDecodeError as exc:
             raise CitationVerificationError(f"Malformed JSON in {path}: {exc}") from exc
 
     def _validate_file_name_layout(self, entry: Path, *, root: Path) -> str | None:
-        """Enforce strict directory/filename layout whitelist inside ``root``."""
+        """Enforce strict directory/filename layout whitelist inside ``root``.
+
+        The whole file name is read for an audit trial first: the checks below
+        quote the entry's path in their messages.
+        """
+        self._refuse_audit_named_path_part(entry.name)
         stem = self._strip_map_extensions(entry.name)
         if entry.parent == root:
             if self._is_jsonl_path(entry):
@@ -2130,10 +2656,15 @@ class DirectoryPageTextProvider:
         return checked_dir_nct
 
     def _check_root_path_parts(self, path: Path, *, label: str) -> None:
-        """Firewall every component of a page-map root path that holds an NCT-like token."""
+        """Firewall every component of a page-map root path that holds an NCT-like token.
+
+        Every component is read for an audit trial before any other check, since
+        the other checks quote the root path (``label``) in their messages.
+        """
         for part in path.parts:
-            folded = _strip_invisible(unicodedata.normalize("NFKC", part))
-            if _EMBEDDED_NCT_TOKEN_RE.search(folded) is None:
+            self._refuse_audit_named_path_part(part)
+        for part in path.parts:
+            if not _holds_nct_like_text(part):
                 continue
             if part == path.name and path.is_file() and "__" in part:
                 stem = self._strip_map_extensions(part)
@@ -2219,6 +2750,8 @@ class DirectoryPageTextProvider:
                     raise AuditHoldoutViolationError(
                         f"Page map {root} path NCT {expected_nct!r} disagrees with payload {payload_nct!r}."
                     )
+                if expected_nct is None and not self._is_sha_stem(stem):
+                    self._check_anonymous_file_root(root, payload)
             else:
                 raise CitationVerificationError(
                     f"Unsupported page-map file extension on {root}."
@@ -2226,7 +2759,11 @@ class DirectoryPageTextProvider:
             return
 
         for entry in sorted(root.rglob("*")):
-            # Before any is_dir()/is_file(), which follow links: a link is never read.
+            # The name first (no filesystem access, and every later message quotes the
+            # path), then links before any is_dir()/is_file(), which follow links: a link is
+            # never read. Directories sort before their entries, so each ancestor of an
+            # entry has been read already.
+            self._refuse_audit_named_path_part(entry.name)
             self._refuse_symlink(entry, root=root)
             if entry.is_dir():
                 if entry.parent != root:
@@ -2268,6 +2805,31 @@ class DirectoryPageTextProvider:
                 raise CitationVerificationError(
                     f"Unexpected non-JSON file {entry} inside page-map directory {root}."
                 )
+
+    def _check_anonymous_file_root(self, root: Path, payload: Any) -> None:
+        """Require a single-file root that its name does not key to declare its document.
+
+        Method: ``_candidate_paths`` offers a single-file root whose name is
+        neither ``<sha256>`` nor ``<NCT>__<doc>`` (nor under an ``<NCT>``
+        directory) for every request, keyed only by what its payload declares.
+        A payload that declares no sha256 would be served as the text of every
+        document of every trial, so it is refused here; one that declares a
+        sha256 is served only for that document version, and with referenced
+        documents that sha256 must be one of this run's (as for a JSONL row).
+        """
+        declared_sha = self._declared_sha256(payload, source_desc=str(root))
+        if declared_sha is None:
+            raise CitationVerificationError(
+                f"Single-file page-map root {root} is named for no document and declares no "
+                f"sha256; it would be served as every document's text. Name it <sha256>.json "
+                f"or declare the sha256 of its document."
+            )
+        if self._referenced_sha256s is not None and declared_sha not in self._referenced_sha256s:
+            raise AuditHoldoutViolationError(
+                f"Single-file page-map root {root} declares a sha256 that no in-scope document "
+                f"of this run names; a content-addressed map that no in-scope document ties to "
+                f"a trial may hold any trial's text."
+            )
 
     def _preflight_scan_all(self) -> None:
         self._scan_root(self._pages_dir, default_source_bucket="pdfkit")
@@ -2496,50 +3058,62 @@ class DirectoryPageTextProvider:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        bucket_fallback = "pdfkit" if text_source == "pdfkit" else "ocr"
-        for jsonl_key in ((sha256, text_source), (sha256, bucket_fallback)):
-            sha_entry = self._jsonl_pages.get(jsonl_key) or self._jsonl_default_pages.get(jsonl_key)
+        # JSONL rows are filed under the source they hold; a request takes its own source,
+        # or for a named OCR source a generic ``ocr`` row (``_source_serves``).
+        sources = (text_source,) if text_source in ("pdfkit", "ocr") else (text_source, "ocr")
+        for source in sources:
+            sha_entry = self._jsonl_pages.get((sha256, source))
             if sha_entry is not None:
                 self._check_map_trial(
                     sha_entry.declared_nct_id, nct_id, source_desc=sha_entry.source_desc
                 )
                 self._cache[cache_key] = sha_entry.pages
                 return sha_entry.pages
-        for trial_key in ((nct_id, filename, text_source), (nct_id, filename, bucket_fallback)):
-            trial_entry = self._jsonl_trial_pages.get(trial_key) or self._jsonl_default_trial_pages.get(
-                trial_key
-            )
+        for source in sources:
+            trial_entry = self._jsonl_trial_pages.get((nct_id, filename, source))
             if trial_entry is not None and trial_entry.declared_sha256 in (None, sha256):
                 self._cache[cache_key] = trial_entry.pages
                 return trial_entry.pages
 
-        search_dirs: list[Path] = []
-        if text_source != "pdfkit" and self._ocr_dir is not None:
-            search_dirs.append(self._ocr_dir)
-        else:
-            search_dirs.append(self._pages_dir)
+        # Files: OCR requests read ``ocr_dir`` when there is one. With none, ``pages_dir`` is
+        # read, but a file is served only when the source it holds (declared, else the
+        # root's: pdfkit for pages_dir, ocr for ocr_dir) serves the request, so pdfkit maps
+        # never answer an OCR request and OCR maps never answer a pdfkit one.
+        base_dir = (
+            self._ocr_dir
+            if text_source != "pdfkit" and self._ocr_dir is not None
+            else self._pages_dir
+        )
+        root_source = "ocr" if base_dir is self._ocr_dir else "pdfkit"
 
         loaded: Mapping[int, str] | None = None
-        for base_dir in search_dirs:
-            for candidate, keyed_by in self._candidate_paths(base_dir, nct_id, filename, sha256):
-                if not self._is_readable_map_file(candidate, base_dir=base_dir):
-                    continue
-                payload = self._read_json_file(candidate)
-                payload_nct = self._validate_payload_firewall(
-                    payload, source_desc=str(candidate)
+        for candidate, keyed_by in self._candidate_paths(base_dir, nct_id, filename, sha256):
+            if not self._is_readable_map_file(candidate, base_dir=base_dir):
+                continue
+            payload = self._read_json_file(candidate)
+            payload_nct = self._validate_payload_firewall(payload, source_desc=str(candidate))
+            self._check_map_trial(payload_nct, nct_id, source_desc=str(candidate))
+            declared_sha = self._declared_sha256(payload, source_desc=str(candidate))
+            if keyed_by == "file_root" and declared_sha is None:
+                # Checked at preflight too; the file may have changed since. A map that
+                # names no document would be every document's text.
+                raise CitationVerificationError(
+                    f"Single-file page-map root {candidate} declares no sha256, so it is no "
+                    f"one document's text."
                 )
-                self._check_map_trial(payload_nct, nct_id, source_desc=str(candidate))
-                declared_sha = self._declared_sha256(payload, source_desc=str(candidate))
-                if declared_sha is not None and declared_sha != sha256:
-                    if keyed_by == "sha":
-                        raise CitationVerificationError(
-                            f"Page map {candidate} is named for sha256 {sha256!r} but declares "
-                            f"sha256={declared_sha!r}."
-                        )
-                    continue  # another version of the document: not this one's text
-                loaded = self._parse_page_map_payload(payload, source_desc=str(candidate))
-                if loaded is not None:
-                    break
+            if declared_sha is not None and declared_sha != sha256:
+                if keyed_by == "sha":
+                    raise CitationVerificationError(
+                        f"Page map {candidate} is named for sha256 {sha256!r} but declares "
+                        f"sha256={declared_sha!r}."
+                    )
+                continue  # another version of the document: not this one's text
+            map_source = self._effective_text_source(
+                payload, default_source_bucket=root_source, source_desc=str(candidate)
+            )
+            if not self._source_serves(map_source, text_source):
+                continue  # another text source's text: not what the citation claims
+            loaded = self._parse_page_map_payload(payload, source_desc=str(candidate))
             if loaded is not None:
                 break
 
@@ -2576,6 +3150,9 @@ class DirectoryPageTextProvider:
             in_scope_nct_ids=self._in_scope_nct_ids,
             admitted_nct_ids=self._admitted_nct_ids,
             context="page_text",
+        )
+        _refuse_request_naming_audit_trial(
+            filename, text_source, audit_nct_ids=self._audit_nct_ids
         )
         if not _is_strict_int(physical_page) or physical_page < 1:
             return None
@@ -2615,15 +3192,19 @@ def _validate_pdf_root_firewall(
         return
     root = Path(pdf_root)
 
+    def _refuse_audit_parts(parts: Sequence[str]) -> None:
+        # Every component is read for an audit trial before any message can quote the path.
+        for part in parts:
+            if _text_names_audit_trial(part, audit_nct_ids):
+                raise AuditHoldoutViolationError(
+                    "Audit holdout violation: a pdf_root path component names an "
+                    "audit-holdout trial (path withheld)."
+                )
+
     def _check_part(part: str, ctx: str) -> None:
         folded = _strip_invisible(unicodedata.normalize("NFKC", part))
         for match in _EMBEDDED_NCT_TOKEN_RE.finditer(folded):
             tok = match.group(0)
-            upper = tok.upper()
-            if STRICT_NCT_ID_RE.fullmatch(upper) is not None and upper in audit_nct_ids:
-                raise AuditHoldoutViolationError(
-                    f"Audit holdout violation in {ctx}: path references holdout trial {upper!r}."
-                )
             if part != tok or STRICT_NCT_ID_RE.fullmatch(tok) is None:
                 raise InvalidNctIdError(
                     f"Malformed or obfuscated NCT path component {part!r} in {ctx}."
@@ -2632,22 +3213,31 @@ def _validate_pdf_root_firewall(
                 raise AuditHoldoutViolationError(
                     f"Audit holdout refusal in {ctx}: path references unlisted trial {tok!r}."
                 )
+        for candidate, bounded in _iter_loose_nct_candidates(part):
+            if bounded and part != candidate:
+                raise InvalidNctIdError(
+                    f"Malformed or obfuscated NCT path component {part!r} in {ctx}."
+                )
 
-    for part in root.parts:
-        _check_part(part, f"pdf_root({root})")
+    _refuse_audit_parts(root.parts)
+    resolved_root: Path | None = None
     if root.exists() or root.is_symlink():
         resolved_root = root.resolve()
-        if resolved_root != root:
-            for part in resolved_root.parts:
-                _check_part(part, f"pdf_root({root} -> {resolved_root})")
+        _refuse_audit_parts(resolved_root.parts)
+    for part in root.parts:
+        _check_part(part, f"pdf_root({root})")
+    if resolved_root is not None and resolved_root != root:
+        for part in resolved_root.parts:
+            _check_part(part, f"pdf_root({root} -> {resolved_root})")
     if root.exists() and root.is_dir():
         for entry in sorted(root.rglob("*")):
+            rel_parts = entry.relative_to(root).parts
+            _refuse_audit_parts(rel_parts)
             if entry.is_symlink():
                 raise AuditHoldoutViolationError(
                     f"Symlink {entry} under pdf_root {root} is refused: the path firewall reads "
                     f"names, and a link may point into any trial's path."
                 )
-            rel_parts = entry.relative_to(root).parts
             for part in rel_parts:
                 _check_part(part, f"pdf_root_entry({entry})")
 
@@ -3475,6 +4065,27 @@ def check_note_page_counts(
     return warnings
 
 
+def _document_has_searchable_page(doc: Any) -> bool:
+    """True when a document row shows at least one page whose text could be searched.
+
+    The row must say the document was retrieved (``http_status`` 200), give
+    its page count as an int >= 1, and leave at least one page of
+    ``1..physical_pages`` out of ``pages_without_text``. Anything the row does
+    not establish (no page count, a malformed ``pages_without_text``) is not
+    taken as searchable.
+    """
+    if not isinstance(doc, Mapping) or doc.get("http_status") != 200:
+        return False
+    pages = doc.get("physical_pages")
+    if not _is_strict_int(pages) or pages < 1:
+        return False
+    blank = doc.get("pages_without_text", [])
+    if not isinstance(blank, list):
+        return False
+    blank_pages = {p for p in blank if _is_strict_int(p) and 1 <= p <= pages}
+    return len(blank_pages) < pages
+
+
 def _is_non_empty_pages_not_searched(pages_not_searched: Any) -> bool:
     if isinstance(pages_not_searched, list):
         return len(pages_not_searched) > 0
@@ -4106,6 +4717,31 @@ def verify_location_record(
             )
         )
 
+    if (
+        status_raw == "NOT_FOUND"
+        and docs_for_nct
+        and not any(_document_has_searchable_page(doc) for doc in docs_for_nct.values())
+    ):
+        # A supplied document counts as searched only when it has a page that could be
+        # read: retrieved (http_status 200), with a known page count, and with a page
+        # outside pages_without_text. With none, nothing was searched, and NOT_FOUND
+        # would stand in for UNREADABLE (whose evidence rules it would skip).
+        issues.append(
+            VerificationIssue(
+                code="NOT_FOUND_WITHOUT_SEARCHABLE_PAGE",
+                severity="error",
+                nct_id=nct_id,
+                location_key=loc_key,
+                filename=None,
+                physical_page=None,
+                message=(
+                    "status='NOT_FOUND' asserts a search, but no supplied document has a page "
+                    "that could be searched (not retrieved, unknown page count, or every page "
+                    "without text); use UNREADABLE."
+                ),
+            )
+        )
+
     if status_raw == "UNREADABLE":
         issues.extend(_verify_unreadable_validity(nct_id, loc_key, loc, docs_for_nct))
 
@@ -4139,10 +4775,13 @@ def verify_location_record(
             counts["substring_mismatches"] += 1
 
     # The guard covers every string of the row, not only ``note``: location rows accept
-    # extra keys, and commentary under ``summary``, ``rationale`` or a nested object is
-    # still commentary. Only verbatim source text (``quotation``, ``statement_verbatim``)
-    # is exempt, the default of scan_neutral_language_record.
-    for flag_path, flag in scan_neutral_language_record(loc):
+    # extra keys, and commentary under ``summary``, ``rationale``, a nested object, or a
+    # key named ``quotation`` or ``statement_verbatim`` is still commentary. Only the
+    # ``quotation`` of each ``citations`` entry is exempt: it is verbatim source text, and
+    # it is the one string verify_citation matches against the cited page.
+    for flag_path, flag in scan_neutral_language_record(
+        _neutral_language_scan_view(loc), exempt_keys=frozenset()
+    ):
         counts["neutral_language_flags"] += 1
         issues.append(
             VerificationIssue(
@@ -4406,9 +5045,9 @@ def verify_census_corpus(
             "never admits it."
         )
     if checked_audit_ids & checked_scope_ids:
-        overlap = sorted(checked_audit_ids & checked_scope_ids)
         raise AuditHoldoutViolationError(
-            f"Audit holdout violation: in_scope_nct_ids overlaps audit_nct_ids: {overlap}."
+            f"Audit holdout violation: in_scope_nct_ids overlaps audit_nct_ids "
+            f"({len(checked_audit_ids & checked_scope_ids)} trial(s))."
         )
     _require_scope_for_empty_audit_set(
         checked_audit_ids,
