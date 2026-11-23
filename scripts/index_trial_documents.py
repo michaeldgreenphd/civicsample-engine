@@ -908,7 +908,9 @@ def _index_study_documents(
     firewall and was read strictly, inside its staged block; ``audit_nct_ids``
     and ``allowed_nct_ids`` are the merged firewall sets. Each document is
     resolved from the url_manifest fast path, a local PDF (size-checked
-    against the payload), or a download, then indexed through the cache.
+    against the payload), or a download (size-checked against the payload
+    when it gives a size; a mismatch is ``download_size_mismatch``), then
+    indexed through the cache.
     """
     effective_allowed = allowed_nct_ids
     trial_records: list[TrialDocumentRecord] = []
@@ -1010,7 +1012,29 @@ def _index_study_documents(
                 if dl.blob_created and dl.local_path is not None:
                     # A new blob is removed again if this staged block fails.
                     cache_store.note_blob_created(dl.local_path)
-                if dl.ok and dl.sha256 is not None and dl.byte_count is not None:
+                if (
+                    dl.ok
+                    and dl.byte_count is not None
+                    and api_size is not None
+                    and dl.byte_count != api_size
+                ):
+                    # A 200 %PDF- response whose length is not the payload's size
+                    # is not the posted document (the local-PDF branch above
+                    # refuses the same mismatch). It is a failed download of this
+                    # document only, never indexed or recorded in url_manifest
+                    # (can_skip_download would serve that digest on every later
+                    # run). A blob this download created is removed, as nothing
+                    # refers to it; one that existed before is kept. With no
+                    # payload size (api_size None) there is nothing to compare
+                    # against, and the download is taken below as before.
+                    download_error = "download_size_mismatch"
+                    if dl.blob_created and dl.local_path is not None:
+                        dl.local_path.unlink(missing_ok=True)
+                        try:
+                            dl.local_path.parent.rmdir()  # the shard folder, if now empty
+                        except OSError:
+                            pass
+                elif dl.ok and dl.sha256 is not None and dl.byte_count is not None:
                     resolved_sha = dl.sha256
                     resolved_bytes = dl.byte_count
                     resolved_pdf_path = dl.local_path

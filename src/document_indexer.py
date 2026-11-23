@@ -5066,7 +5066,11 @@ class DocumentCacheStore:
         """Return cached sha256 when url_manifest matches non-null (api_size, api_upload_date).
 
         The url passes ``_check_url_firewall`` (serving) first, so a holdout or
-        unlisted trial's record is never served.
+        unlisted trial's record is never served. The record's ``byte_count``
+        must also equal ``api_size``: a record an earlier version wrote for a
+        download whose length was not the payload's size (which
+        ``record_url_manifest`` now refuses) still loads, but is not trusted,
+        so the document is downloaded again rather than that digest reused.
         """
         self._check_url_firewall(url, origin="url_manifest lookup", serving=True)
         if api_size is None or api_upload_date is None:
@@ -5076,6 +5080,7 @@ class DocumentCacheStore:
             return None
         if (
             rec.get("api_size") == api_size
+            and rec.get("byte_count") == api_size
             and rec.get("api_upload_date") == api_upload_date
             and isinstance(rec.get("sha256"), str)
             and SHA256_RE.fullmatch(rec["sha256"])
@@ -5103,7 +5108,11 @@ class DocumentCacheStore:
         read, so no record is lost by the rewrite. The new record is checked
         with the loader's own rule (``_validated_url_manifest_record``) before
         it is kept, so this store never writes a record it would refuse to
-        read back.
+        read back. A record whose non-null ``api_size`` is not its
+        ``byte_count`` is refused too (``CacheIntegrityError``): bytes of
+        another length are not the payload's posted document, and a record of
+        them would be served by ``can_skip_download`` on every later run. With
+        ``api_size`` None there is nothing to compare against.
         """
         self._check_url_firewall(url, origin="url_manifest record", serving=True)
         sha = sha256.lower() if type(sha256) is str else sha256
@@ -5125,6 +5134,16 @@ class DocumentCacheStore:
             },
             origin="New url_manifest record",
         )
+        # Checked on write only, after the loader's rule has made api_size an
+        # int or None (so only ints are printed). A url_manifest.json an earlier
+        # version wrote with a mismatch still loads, whole, and
+        # can_skip_download does not trust that record.
+        if record["api_size"] is not None and record["api_size"] != record["byte_count"]:
+            raise CacheIntegrityError(
+                f"url_manifest record refused: byte_count {record['byte_count']} is not the "
+                f"CT.gov payload size {record['api_size']}, so the bytes are not taken as the "
+                "posted document."
+            )
         self._url_manifest[url] = record
         if self._staged_page_maps is not None:
             # Inside staged_writes: the file is rewritten once, on success.
@@ -5186,13 +5205,17 @@ class DocumentCacheStore:
            same digest without an entry was refused.
         2. An existing entry is served (cache hit) unless re-parsing.
         3. Otherwise the cached pages are re-indexed, or the provider extracts
-           them. A ``pdf_path`` handed to the provider must hash to
-           ``sha256`` and ``byte_count`` first (``CacheIntegrityError``
-           otherwise, and the provider is not called): a cached blob or local
-           file whose bytes are not that digest's (damaged, or swapped for
-           another trial's document) would otherwise be parsed and cached as
-           that digest's pages. The error names the expected digest and the
-           file, never the digest the file actually has.
+           them.
+
+        A supplied ``pdf_path`` must hash to ``sha256`` and ``byte_count``
+        after step 1 and before step 2 (``CacheIntegrityError`` otherwise:
+        no entry is served, nothing is re-indexed, the provider is not
+        called): a cached blob or local file whose bytes are not that
+        digest's (damaged, or swapped for another trial's document) would
+        otherwise be a successful cache hit for that digest, or be parsed and
+        cached as its pages. The error names the expected digest and the
+        file, never the digest the file actually has. With ``pdf_path`` None
+        no file is hashed.
         """
         validate_page_selection_bounds(min_selected_pages, max_selected_pages)
         combined_audit, combined_allowed = self.merge_firewall_sets(audit_nct_ids, allowed_nct_ids)
@@ -5245,6 +5268,17 @@ class DocumentCacheStore:
             audit_nct_ids=combined_audit,
             allowed_nct_ids=combined_allowed,
         )
+        if pdf_path is not None:
+            # Checked before any of steps 2 and 3 (see the docstring); with
+            # pdf_path None no file is read.
+            actual_sha, actual_bytes = sha256_file(Path(pdf_path))
+            if actual_sha != sha or actual_bytes != byte_count:
+                raise CacheIntegrityError(
+                    f"The PDF file {pdf_path} handed to the page extractor for sha256={sha} "
+                    "does not hash to that digest and byte count; it is not parsed or "
+                    "cached. Remove the damaged or substituted file (its own digest is "
+                    "not printed)."
+                )
         if existing is not None and not reparse_cached_pages:
             return existing, True
 
@@ -5268,17 +5302,6 @@ class DocumentCacheStore:
             raise PageExtractionError(
                 f"No cached pages and no PageTextProvider supplied for sha256={sha}"
             )
-
-        if pdf_path is not None:
-            # No extractor sees bytes that are not ``sha``'s (step 3 above).
-            actual_sha, actual_bytes = sha256_file(Path(pdf_path))
-            if actual_sha != sha or actual_bytes != byte_count:
-                raise CacheIntegrityError(
-                    f"The PDF file {pdf_path} handed to the page extractor for sha256={sha} "
-                    "does not hash to that digest and byte count; it is not parsed or "
-                    "cached. Remove the damaged or substituted file (its own digest is "
-                    "not printed)."
-                )
 
         extracted = provider.extract_pages(
             sha256=sha,

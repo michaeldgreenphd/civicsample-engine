@@ -6814,3 +6814,236 @@ def test_m1_r4_platform_gated_checks_are_reported_when_not_run() -> None:
     assert gated == [], f"checks gated on sys.platform pass silently where they do not run: {gated}"
     marks = getattr(globals().get("test_macos_pdfkit_extraction"), "pytestmark", [])
     assert [m.name for m in marks] == ["skipif"], "real PDFKit extraction is not a skipif test"
+
+
+# ---------------------------------------------------------------------------
+# Round 5: two review findings on the size and digest checks of a downloaded
+# or cached PDF. Each test failed until the module was fixed. Fictional
+# NCT990000xx ids only, fake providers and sessions only, no network.
+# ---------------------------------------------------------------------------
+
+_R5_UPLOAD = "01/02/2020 10:00"
+
+
+def _r5_doc(filename: str, size: int | None, *, sap: bool = False) -> dict[str, Any]:
+    """One largeDocs entry with the given posted ``size`` (left out when None) and a fixed uploadDate."""
+    doc: dict[str, Any] = {"filename": filename, "hasProtocol": not sap, "hasSap": sap, "uploadDate": _R5_UPLOAD}
+    if size is not None:
+        doc["size"] = size
+    return doc
+
+
+def test_m1_r5_download_whose_size_is_not_the_payload_size_is_a_failed_download(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A 200 ``%PDF-`` response whose byte count is not the payload's ``size`` is a failed download.
+
+    The download branch took any 200 response starting ``%PDF-``, indexed it
+    and recorded it in ``url_manifest.json`` with ``byte_count`` differing
+    from ``api_size``; ``can_skip_download`` compares only ``api_size`` and
+    the upload date with the record, so every later run reused that digest
+    without downloading again. The local-PDF branch already refuses a size
+    mismatch. Correct: the document is ``download_failed`` with
+    ``download_error='download_size_mismatch'`` (counted like any other
+    failed download, the rest of the trial indexed), nothing of those bytes is
+    indexed or recorded, and a blob the download created is removed while a
+    blob that existed before is kept. With no payload size there is nothing
+    to compare against and the download is taken as before.
+    """
+    served = _make_minimal_pdf("A response whose length is not the posted size")
+    sap = _make_minimal_pdf("The trial's statistical analysis plan")
+    bad_sha, sap_sha = di.sha256_bytes(served), di.sha256_bytes(sap)
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    sap_url = di.build_ctgov_large_doc_url(_RT_A, "SAP_001.pdf")
+    study = _make_study(
+        _RT_A, [_r5_doc("Prot_000.pdf", len(served) + 5), _r5_doc("SAP_001.pdf", len(sap), sap=True)]
+    )
+
+    # Through the CLI: one bad response does not stop the run, and it is counted.
+    provider = di.FixturePageTextProvider({bad_sha: _rt_stat_pages(), sap_sha: _rt_stat_pages()})
+    rc = cli_mod.run_cli(
+        ["--manifest", str(_rt_manifest(tmp_path)), "--nct-id", _RT_A, *_rt_outs(tmp_path, "sm")],
+        api_client=_SpyAPIClient({_RT_A: study}),
+        session=_R3Session({url: served, sap_url: sap}),
+        provider=provider,
+    )
+    err = capsys.readouterr().err
+    assert rc == 0, err
+    written = json.loads((tmp_path / "sm_profiles.jsonl").read_text(encoding="utf-8"))
+    docs = {d["filename"]: d for d in written["documents"]}
+    prot = docs["Prot_000.pdf"]
+    assert (prot["readability_status"], prot["download_error"]) == ("download_failed", "download_size_mismatch")
+    assert (prot["sha256"], prot["bytes"], prot["physical_pages"]) == (None, None, None)
+    assert docs["SAP_001.pdf"]["sha256"] == sap_sha
+    assert docs["SAP_001.pdf"]["readability_status"] == "machine_readable"
+    assert "download_failed=1" in err
+    assert [call[0] for call in provider.calls] == [sap_sha], "the wrong-size bytes were handed to the extractor"
+    cache = tmp_path / "sm_cache"
+    assert [p.name for p in cache.rglob("*") if bad_sha in p.name] == [], "a blob or map of the wrong-size bytes kept"
+    assert _r3_leaks(tmp_path, "sm", bad_sha) == []
+    recorded = json.loads((cache / "url_manifest.json").read_text(encoding="utf-8"))
+    assert sorted(recorded) == [sap_url]
+
+    # A blob already holding those bytes before the download is not removed.
+    store = di.DocumentCacheStore(tmp_path / "pre_cache", tmp_path / "pre_index.jsonl")
+    blob = store.save_blob(bad_sha, served)
+    profile = cli_mod.index_trial_from_study(
+        study, cache_store=store, provider=provider, session=_R3Session({url: served, sap_url: sap})
+    )
+    prot = {d["filename"]: d for d in profile["documents"]}["Prot_000.pdf"]
+    assert prot["download_error"] == "download_size_mismatch"
+    assert blob.read_bytes() == served, "a blob that existed before the download was removed"
+    assert store.lookup_url_manifest(url) is None
+    assert store.get_entry(bad_sha) is None
+
+    # With no payload size there is nothing to compare against: indexed and recorded as before.
+    store = di.DocumentCacheStore(tmp_path / "ns_cache", tmp_path / "ns_index.jsonl")
+    profile = cli_mod.index_trial_from_study(
+        _make_study(_RT_A, [_r5_doc("Prot_000.pdf", None)]),
+        cache_store=store,
+        provider=provider,
+        session=_R3Session({url: served}),
+    )
+    assert profile["documents"][0]["sha256"] == bad_sha
+    record = store.lookup_url_manifest(url)
+    assert record is not None and (record["byte_count"], record["api_size"]) == (len(served), None)
+
+
+def test_m1_r5_url_manifest_refuses_a_byte_count_that_is_not_the_payload_size(tmp_path: Path) -> None:
+    """``record_url_manifest`` refuses a record whose non-null ``api_size`` differs from its ``byte_count``.
+
+    The store wrote such a record, so any caller could launder bytes of the
+    wrong size into the manifest that ``can_skip_download`` serves. Correct:
+    ``CacheIntegrityError``, nothing recorded or written; a null ``api_size``
+    (nothing to compare against) and an equal one are recorded as before.
+    """
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    store = di.DocumentCacheStore(
+        tmp_path / "rs_cache", tmp_path / "rs_index.jsonl", audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A}
+    )
+    base: dict[str, Any] = {"sha256": "a" * 64, "byte_count": 10, "api_upload_date": "2021-04-01T10:00", "verified_at": _RT_STAMP}
+    for api_size in (9, 11, 0):
+        with pytest.raises(di.CacheIntegrityError):
+            store.record_url_manifest(url, **base, api_size=api_size)
+        assert store.lookup_url_manifest(url) is None, api_size
+        assert not store.url_manifest_path.exists(), api_size
+    with store.staged_writes():
+        with pytest.raises(di.CacheIntegrityError):
+            store.record_url_manifest(url, **base, api_size=11)
+        assert store.lookup_url_manifest(url) is None
+    assert not store.url_manifest_path.exists()
+    store.record_url_manifest(url, **base, api_size=None)
+    assert store.lookup_url_manifest(url) == {**base, "api_size": None, "pipeline_commit": None}
+    store.record_url_manifest(url, **base, api_size=10)
+    assert store.lookup_url_manifest(url) == {**base, "api_size": 10, "pipeline_commit": None}
+
+
+def test_m1_r5_url_manifest_record_of_the_wrong_size_is_not_trusted(tmp_path: Path) -> None:
+    """``can_skip_download`` does not serve a record whose ``byte_count`` is not the payload's ``size``.
+
+    A url_manifest.json written by earlier code can hold a record whose
+    ``api_size`` and upload date match the payload while its ``byte_count``
+    (the bytes actually taken) does not. ``can_skip_download`` compared only
+    ``api_size`` and the upload date, so the wrong digest was served forever
+    with no request. Correct: no skip; the document is downloaded again, and
+    a record whose byte count is the payload size is still trusted.
+    """
+    stale = _make_minimal_pdf("Bytes an earlier run accepted at the wrong size")
+    posted = _make_minimal_pdf("The trial's posted protocol at its posted size, as sized")
+    assert len(stale) != len(posted)
+    stale_sha, posted_sha = di.sha256_bytes(stale), di.sha256_bytes(posted)
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    cache, index = tmp_path / "wt_cache", tmp_path / "wt_index.jsonl"
+    di.DocumentCacheStore(cache, index).save_blob(stale_sha, stale)
+    (cache / "url_manifest.json").write_text(
+        json.dumps(
+            {
+                url: {
+                    "sha256": stale_sha,
+                    "byte_count": len(stale),
+                    "api_size": len(posted),
+                    "api_upload_date": _R5_UPLOAD,
+                    "verified_at": _RT_STAMP,
+                    "pipeline_commit": None,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = di.DocumentCacheStore(cache, index)
+    assert store.can_skip_download(url, api_size=len(posted), api_upload_date=_R5_UPLOAD) is None
+
+    session = _R3Session({url: posted})
+    provider = di.FixturePageTextProvider({stale_sha: _rt_stat_pages(), posted_sha: _rt_stat_pages()})
+    profile = cli_mod.index_trial_from_study(
+        _make_study(_RT_A, [_r5_doc("Prot_000.pdf", len(posted))]),
+        cache_store=store,
+        provider=provider,
+        session=session,
+    )
+    assert session.requested_urls == [url]
+    assert profile["documents"][0]["sha256"] == posted_sha
+    assert [call[0] for call in provider.calls] == [posted_sha]
+    assert store.can_skip_download(url, api_size=len(posted), api_upload_date=_R5_UPLOAD) == posted_sha
+
+
+def test_m1_r5_cache_hit_checks_a_supplied_pdf_path_against_the_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An existing index entry is served for a ``pdf_path`` only when that file hashes to the digest and size.
+
+    ``get_or_index_document`` returned a cached entry before the sha256 and
+    byte-count check that guards a fresh index, so a damaged or substituted
+    ``blobs/<sha>.pdf`` handed in by the url_manifest fast path was a
+    successful cache hit. Correct: the same ``CacheIntegrityError`` the fresh
+    path raises (naming neither the file's own digest), a verified file is
+    still a cache hit, and with ``pdf_path=None`` no file is hashed.
+    """
+    pdf = _make_minimal_pdf("The digest's own protocol bytes")
+    sha = di.sha256_bytes(pdf)
+    substitute = _make_minimal_pdf("Another document put in the blob slot")
+    provider = di.FixturePageTextProvider({sha: _rt_stat_pages()})
+    store = di.DocumentCacheStore(
+        tmp_path / "ph_cache", tmp_path / "ph_index.jsonl", audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A}
+    )
+    call: dict[str, Any] = {"sha256": sha, "byte_count": len(pdf), "provider": provider, "nct_id": _RT_A}
+    _, hit = store.get_or_index_document(**call, extracted_at=_RT_STAMP)
+    assert hit is False
+    for label, data in {"substituted": substitute, "truncated": pdf[:-16]}.items():
+        bad = tmp_path / f"{label}.pdf"
+        bad.write_bytes(data)
+        with pytest.raises(di.CacheIntegrityError) as info:
+            store.get_or_index_document(**call, pdf_path=bad)
+        assert "does not hash to that digest" in str(info.value), label
+        assert di.sha256_bytes(data) not in str(info.value), label
+    good = tmp_path / "good.pdf"
+    good.write_bytes(pdf)
+    assert store.get_or_index_document(**call, pdf_path=good)[1] is True
+    assert len(provider.calls) == 1
+
+    # The url_manifest fast path hands the cached blob in: a substituted blob is refused.
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    live = di.DocumentCacheStore(tmp_path / "pf_cache", tmp_path / "pf_index.jsonl")
+    live.put_entry(_r3_entry(pdf))
+    blob = live.blob_path(sha)
+    blob.parent.mkdir(parents=True)
+    blob.write_bytes(substitute)
+    live.record_url_manifest(
+        url, sha256=sha, byte_count=len(pdf), api_size=len(pdf), api_upload_date=_R5_UPLOAD, verified_at=_RT_STAMP
+    )
+    session = _R3Session({url: pdf})
+    with pytest.raises(di.CacheIntegrityError):
+        cli_mod.index_trial_from_study(
+            _make_study(_RT_A, [_r5_doc("Prot_000.pdf", len(pdf))]),
+            cache_store=live,
+            provider=provider,
+            session=session,
+        )
+    assert session.requested_urls == []
+
+    # No pdf_path: the entry is served without hashing any file.
+    def _no_hashing(path: Path) -> tuple[str, int]:
+        raise AssertionError(f"hashed {path} with pdf_path=None")
+
+    monkeypatch.setattr(di, "sha256_file", _no_hashing)
+    assert store.get_or_index_document(**call)[1] is True
