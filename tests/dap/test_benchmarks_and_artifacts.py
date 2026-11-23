@@ -303,6 +303,41 @@ def test_site_parts_are_refused_as_study_input(tmp_path: Path) -> None:
         benchmarks.load_study_records(part)
 
 
+def test_containers_with_non_object_entries_are_refused_not_filtered(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    a, b = (fx.make_raw_ctgov_study(n) for n in ("NCT99000951", "NCT99000952"))
+    weekly = fx.build_weekly_full_records_doc()
+    weekly["data"].insert(2, None)
+    containers: dict[str, tuple[str, Any, str]] = {
+        "studies": ("studies.json", {"studies": [a, None, b]}, "studies: 1 of 3 entries"),
+        "records": ("records.json", {"records": [a, "x", b]}, "records: 1 of 3 entries"),
+        "top_list": ("list.json", [a, [1], b, 5], "top-level list: 2 of 4 entries"),
+        "full_records": ("weekly.json", weekly, "data: 1 of 6 entries"),
+        "response_log": (
+            "log.jsonl",
+            {"body": json.dumps({"studies": [a, None, b]})},
+            ":1: body.studies: 1 of 3 entries",
+        ),
+    }
+    for name, (fname, doc, where) in containers.items():
+        path = tmp_path / fname
+        text = json.dumps(doc) + ("\n" if fname.endswith(".jsonl") else "")
+        path.write_text(text, encoding="utf-8")
+        with pytest.raises(ValueError, match="not study objects") as err:
+            benchmarks.load_study_records(path)
+        assert where in str(err.value), (name, str(err.value))
+
+    # The CLI refuses the input and writes nothing.
+    out_dir = tmp_path / "out"
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    rc = cli_build.main(
+        ["--records", str(tmp_path / "studies.json"), "--sponsor-rules", str(rules_path), "--out", str(out_dir)]
+    )
+    assert rc == 1 and not out_dir.exists()
+    assert "(first: index 1 is NoneType); refusing the input" in capsys.readouterr().err
+
+
 def test_weekly_full_records_container_supported(tmp_path: Path) -> None:
     weekly_doc = fx.build_weekly_full_records_doc()
     weekly_path = tmp_path / "demographics.json.gz"

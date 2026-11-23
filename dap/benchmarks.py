@@ -418,6 +418,23 @@ def _extract_core_metadata(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _require_study_objects(entries: list[Any], where: str) -> list[dict[str, Any]]:
+    """Return ``entries`` when every element is a JSON object; refuse the whole input otherwise.
+
+    Dropping a malformed element (``null``, a string, a list) would publish
+    benchmarks for a smaller cohort while the input sha256 still covers it and
+    ``n_records`` pretends it never existed, so the input is refused, naming
+    the count and the first bad index.
+    """
+    bad = [i for i, entry in enumerate(entries) if not isinstance(entry, dict)]
+    if bad:
+        raise ValueError(
+            f"{where}: {len(bad)} of {len(entries)} entries are not study objects "
+            f"(first: index {bad[0]} is {type(entries[bad[0]]).__name__}); refusing the input"
+        )
+    return entries
+
+
 def load_study_records(
     path: Path,
     *,
@@ -475,6 +492,7 @@ def load_study_records(
 
     if source_kind == "full_records":
         recs, extracted_at, pipeline_commit = full_records.load(path)
+        recs = _require_study_objects(recs, f"{path}: data")
         digest = sha256_file(path)
         if limit is not None and limit > 0:
             recs = recs[:limit]
@@ -511,12 +529,11 @@ def load_study_records(
                         body = json.loads(body) if body.strip() else {}
                     if isinstance(body, dict):
                         if isinstance(body.get("studies"), list):
-                            for s in body["studies"]:
-                                if isinstance(s, dict):
-                                    nct = _extract_core_metadata(s)["nct_id"]
-                                    if nct and nct not in by_nct:
-                                        by_nct[nct] = s
-                                        ordered.append(s)
+                            for s in _require_study_objects(body["studies"], f"{path}:{line_no}: body.studies"):
+                                nct = _extract_core_metadata(s)["nct_id"]
+                                if nct and nct not in by_nct:
+                                    by_nct[nct] = s
+                                    ordered.append(s)
                         elif "protocolSection" in body:
                             nct = _extract_core_metadata(body)["nct_id"]
                             if nct and nct not in by_nct:
@@ -543,6 +560,7 @@ def load_study_records(
 
     if isinstance(container, dict) and "data" in container:
         recs, extracted_at, pipeline_commit = full_records.load(path)
+        recs = _require_study_objects(recs, f"{path}: data")
         if limit is not None and limit > 0:
             recs = recs[:limit]
         return recs, {
@@ -556,13 +574,13 @@ def load_study_records(
         }
 
     if isinstance(container, dict) and isinstance(container.get("studies"), list):
-        studies_list = [s for s in container["studies"] if isinstance(s, dict)]
+        studies_list = _require_study_objects(container["studies"], f"{path}: studies")
     elif isinstance(container, dict) and isinstance(container.get("records"), list):
-        studies_list = [s for s in container["records"] if isinstance(s, dict)]
+        studies_list = _require_study_objects(container["records"], f"{path}: records")
     elif isinstance(container, dict) and "protocolSection" in container:
         studies_list = [container]
     elif isinstance(container, list):
-        studies_list = [s for s in container if isinstance(s, dict)]
+        studies_list = _require_study_objects(container, f"{path}: top-level list")
     else:
         raise ValueError(f"{path}: unrecognized study container format")
 
