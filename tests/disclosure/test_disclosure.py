@@ -1385,6 +1385,96 @@ def test_local_freeze_refuses_differing_snapshots_of_one_trial_and_accepts_ident
     assert loaded.ctgov['ctgov/study/NCT09990004']['body'] == older
 
 
+def test_local_freeze_with_limit_still_compares_every_later_copy(tmp_path: Path) -> None:
+    older = copy.deepcopy(F.STUDIES['NCT09990004'])
+    newer = copy.deepcopy(older)
+    newer['protocolSection']['identificationModule']['officialTitle'] = 'Amended official title'
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'a_first.json').write_text(json.dumps(older), encoding='utf-8')
+    (local_src / 'b_other.json').write_text(json.dumps(F.STUDIES['NCT09990005']), encoding='utf-8')
+    (local_src / 'c_later.json').write_text(json.dumps(newer), encoding='utf-8')
+
+    # --limit 1 selects NCT09990004 from the first file; its differing copy two files later is still
+    # compared, so the freeze is refused rather than keeping whichever snapshot sorted first.
+    cache = tmp_path / 'cache_limited'
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), '--limit', '1',
+                           *LOCAL_STAMP_ARGS]) == 1
+    assert not A.raw_log_path(cache, 'ctgov').exists()
+    with pytest.raises(ValueError, match=r'NCT09990004 in a_first\.json and c_later\.json'):
+        A.ingest_local_ctgov_records(local_src, cache, limit=1, **LOCAL_STAMPS)
+
+    # With an identical later copy the limit applies as before: one trial, the one first in order.
+    (local_src / 'c_later.json').write_text(json.dumps(older), encoding='utf-8')
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), '--limit', '1',
+                           *LOCAL_STAMP_ARGS]) == 0
+    assert A.load_frozen_cache(cache).requested_nct_ids == ['NCT09990004']
+
+
+def test_missing_or_non_boolean_has_results_is_insufficient_never_a_ctgov_negative(
+    built_files: dict[str, Any],
+) -> None:
+    base = F._make_study('NCT09990011', title='No hasResults field', lead_sponsor='Fictional Sponsor')
+    assert C.ctgov_results_cell('NCT09990011', {'status': 200, 'body': base}, [])['state'] == (
+        'no_candidate_in_completed_scope'
+    )  # control: an explicit hasResults=false is the registry's negative
+    for value in ('<absent>', None, 'false', 0):
+        study = copy.deepcopy(base)
+        if value == '<absent>':
+            study.pop('hasResults', None)
+        else:
+            study['hasResults'] = value
+        cell = C.ctgov_results_cell('NCT09990011', {'status': 200, 'body': study}, [])
+        assert cell['state'] == 'available_document_insufficient', value
+        assert cell['detail']['has_results'] is None
+        assert 'no boolean hasResults' in cell['reason']
+
+    # The contract refuses a "CT.gov unreported" discordance on a trial whose hasResults is unknown.
+    bad = copy.deepcopy(built_files)
+    nct = 'NCT09990001'
+    next(s for s in bad['studies.json']['studies'] if s['nct_id'] == nct)['has_results'] = None
+    _timeline_of(bad, nct)['discordance']['state'] = 'unreported_across_completed_routes'
+    assert any(f'{nct}: CT.gov record has hasResults=null, but discordance is' in p for p in ART.check_contract(bad))
+
+
+def test_human_confirmed_links_verify_their_route_like_the_timeline() -> None:
+    nct = 'NCT09990012'
+
+    def link(route: str, validation: str, review: str, citation_type: str = 'RESULT') -> dict[str, Any]:
+        return {
+            'link_id': 'link:00000000000000c1',
+            'nct_id': nct,
+            'source_route': route,
+            'citation_type': citation_type,
+            'automated_validation': validation,
+            'review_status': review,
+            'publication_or_action_date': '2021-05-10',
+        }
+
+    epmc = {f'literature/epmc_nct/{nct}': {'status': 200, 'body': {'hitCount': 1, 'resultList': {'result': [{}]}}}}
+    human = link('literature_search', 'not_validated', 'confirmed_same_trial_results')
+    cell = C.literature_search_cell(nct, epmc, [human], True)
+    # Settled by review, and the timeline counts it as a results publication: never "awaiting review".
+    assert cell['state'] == 'verified_link'
+    assert cell['detail']['n_human_confirmed_only'] == 1
+    assert T._qualifying_results_publications([human]) == [human]
+    # Controls: the same link unreviewed, or held indeterminate, is still awaiting review.
+    for review in ('unreviewed', 'indeterminate'):
+        assert C.literature_search_cell(nct, epmc, [link('literature_search', 'not_validated', review)], True)[
+            'state'] == 'candidate_awaiting_review'
+    # A mechanically confirmed link stays verified with no human-only count.
+    mech = C.literature_search_cell(nct, epmc, [link('literature_search', 'identifier_confirmed', 'unreviewed')], True)
+    assert mech['state'] == 'verified_link' and mech['detail']['n_human_confirmed_only'] == 0
+
+    # The same rule on the openFDA route: a human-confirmed name-matched candidate is verified.
+    study = F._make_study(nct, title='Human-confirmed FDA', lead_sponsor='Fictional Sponsor', drugs=['lumirafenib'])
+    fda = link('openfda_drugsfda', 'not_validated', 'confirmed_same_trial_results', 'OPENFDA_DRUG_NAME_MATCH')
+    fda_cell = C.openfda_drugsfda_cell(nct, {'status': 200, 'body': study}, study,
+                                       {f'openfda/nct/{nct}': {'status': 404, 'body': None}}, [fda], True)
+    assert fda_cell['state'] == 'verified_link'
+    assert T._qualifying_fda_links([fda]) == [fda]
+
+
 def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:
     # hasResults=true with an empty resultsSection: the CT.gov route is `available_document_insufficient`.
     shell = F._make_study('NCT09990010', title='Results shell', lead_sponsor='Fictional Sponsor',

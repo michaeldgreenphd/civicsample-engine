@@ -93,6 +93,28 @@ def _active_links(links: list[dict[str, Any]], *, treat_unreviewed_background_as
     return out
 
 
+def _verified_links(live: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Live links that settle a route as `verified_link`.
+
+    A link verifies its route when it is identifier-confirmed mechanically and not held
+    `indeterminate` by review, or when a person has reviewed it as `confirmed_same_trial_results`
+    whatever the mechanical check said (`_active_links` keeps such a link live). The second case
+    matches `timeline._qualifying_results_publications` and `timeline._qualifying_fda_links`, which
+    count every `confirmed_same_trial_results` link; reporting that link as `candidate_awaiting_review`
+    would call a settled review pending while the timeline already relies on it.
+    """
+    return [
+        x for x in live
+        if x['review_status'] == 'confirmed_same_trial_results'
+        or (x['automated_validation'] == 'identifier_confirmed' and x['review_status'] != 'indeterminate')
+    ]
+
+
+def _human_confirmed_only(verified: list[dict[str, Any]]) -> int:
+    """How many verified links rest on human confirmation alone (no mechanical identifier match)."""
+    return sum(1 for x in verified if x['automated_validation'] != 'identifier_confirmed')
+
+
 def ctgov_results_cell(
     nct_id: str,
     ctgov_rec: dict[str, Any] | None,
@@ -160,6 +182,18 @@ def ctgov_results_cell(
             'study record sets hasResults=true, but resultsSection is absent or empty',
             has_results=True,
         )
+    # Only an explicit hasResults=false is the registry's own negative. A record that omits the field
+    # or carries a non-boolean (a field-projected or hand-edited local record passes
+    # `ctgov_study_valid`) says nothing about whether results were posted, so it is insufficient
+    # evidence, never `no_candidate_in_completed_scope`, and cannot enable a "CT.gov unreported" state.
+    if has_results is not False:
+        return _cell(
+            route,
+            'available_document_insufficient',
+            f'study record carries no boolean hasResults (got {has_results!r}); whether results were '
+            'posted cannot be read from it',
+            has_results=None,
+        )
     return _cell(
         route,
         'no_candidate_in_completed_scope',
@@ -204,16 +238,18 @@ def registry_references_cell(
         )
 
     live = _active_links(route_links, treat_unreviewed_background_as_insufficient=True)
-    confirmed = [x for x in live if x['automated_validation'] == 'identifier_confirmed' and x['review_status'] != 'indeterminate']
+    confirmed = _verified_links(live)
     if confirmed:
         reviewed = sum(1 for x in confirmed if x['review_status'] != 'unreviewed')
+        human_only = _human_confirmed_only(confirmed)
         return _cell(
             route,
             'verified_link',
-            f'{len(confirmed)} non-background registry reference PMID(s) resolved on PubMed '
-            f'({reviewed} human-reviewed)',
+            f'{len(confirmed) - human_only} non-background registry reference PMID(s) resolved on PubMed '
+            f'and {human_only} confirmed by human review only ({reviewed} human-reviewed)',
             n_references=len(refs),
             n_verified_links=len(confirmed),
+            n_human_confirmed_only=human_only,
         )
     if live:
         return _cell(
@@ -273,14 +309,17 @@ def literature_search_cell(
     valid_200 = status == 200 and A.epmc_search_valid(body)
 
     live = _active_links(route_links)
-    confirmed = [x for x in live if x['automated_validation'] == 'identifier_confirmed' and x['review_status'] != 'indeterminate']
+    confirmed = _verified_links(live)
     if confirmed:
         reviewed = sum(1 for x in confirmed if x['review_status'] != 'unreviewed')
+        human_only = _human_confirmed_only(confirmed)
         return _cell(
             route,
             'verified_link',
-            f'{len(confirmed)} Europe PMC publication(s) carry an exact {nct_id} token ({reviewed} human-reviewed)',
+            f'{len(confirmed) - human_only} Europe PMC publication(s) carry an exact {nct_id} token and '
+            f'{human_only} were confirmed by human review only ({reviewed} human-reviewed)',
             n_verified_links=len(confirmed),
+            n_human_confirmed_only=human_only,
         )
     if live:
         return _cell(
@@ -363,15 +402,17 @@ def openfda_drugsfda_cell(
         return _cell(route, 'not_searched', f'openFDA Drugs@FDA was not searched for {nct_id}')
 
     live = _active_links(route_links)
-    confirmed = [x for x in live if x['automated_validation'] == 'identifier_confirmed' and x['review_status'] != 'indeterminate']
+    confirmed = _verified_links(live)
     if confirmed:
         reviewed = sum(1 for x in confirmed if x['review_status'] != 'unreviewed')
+        human_only = _human_confirmed_only(confirmed)
         return _cell(
             route,
             'verified_link',
-            f'{len(confirmed)} openFDA Drugs@FDA application record(s) carry an exact {nct_id} citation '
-            f'({reviewed} human-reviewed)',
+            f'{len(confirmed) - human_only} openFDA Drugs@FDA application record(s) carry an exact {nct_id} '
+            f'citation and {human_only} were confirmed by human review only ({reviewed} human-reviewed)',
             n_verified_links=len(confirmed),
+            n_human_confirmed_only=human_only,
         )
     if live:
         return _cell(

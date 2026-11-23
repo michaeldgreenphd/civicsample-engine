@@ -1015,9 +1015,14 @@ def check_contract(
         nct = str(tl.get('nct_id'))
         wstate = (tl.get('window_365d') or {}).get('state')
         dstate = (tl.get('discordance') or {}).get('state')
-        # A record with hasResults=true never establishes that CT.gov is unreported, whatever the reviews say.
-        if has_results_by_nct.get(nct) is True and dstate in T.CTGOV_UNREPORTED_DISCORDANCE:
-            problems.append(f'{nct}: CT.gov record has hasResults=true, but discordance is {dstate!r}')
+        # Only a record with an explicit hasResults=false establishes that CT.gov is unreported: true never
+        # does, whatever the reviews say, and a missing or non-boolean value (null in studies.json) is
+        # insufficient evidence.
+        if has_results_by_nct.get(nct) is not False and dstate in T.CTGOV_UNREPORTED_DISCORDANCE:
+            problems.append(
+                f'{nct}: CT.gov record has hasResults={json.dumps(has_results_by_nct.get(nct))}, '
+                f'but discordance is {dstate!r}'
+            )
         if wstate not in T.WINDOW_STATES_365D:
             problems.append(f'{nct}: invalid window_365d state {wstate!r}')
         if dstate not in T.DISCORDANCE_STATES:

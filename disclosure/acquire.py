@@ -820,6 +820,11 @@ def ingest_local_ctgov_records(
     # resolved by file or line order, and the one kept would be stamped with the caller's
     # `fetched_at`/`data_timestamp` whether or not it is the snapshot those describe.
     conflicting: dict[str, tuple[Path, Path]] = {}
+    # `--limit N` (without an NCT list) selects the first N distinct trials in file and line order,
+    # but every file is still read to the end: a differing copy of a selected trial may come after
+    # the Nth new ID, and stopping there would freeze whichever snapshot sorted first. Trials beyond
+    # the limit are only skipped, never compared or frozen.
+    limit_reached = False
     for file_path in files:
         for st in _iter_studies_from_local_file(file_path):
             if not ctgov_study_valid(st):
@@ -828,14 +833,13 @@ def ingest_local_ctgov_records(
             if wanted is not None and nct_id not in wanted:
                 continue
             if nct_id not in studies:
+                if limit_reached:
+                    continue
                 studies[nct_id] = st
                 first_seen_in[nct_id] = file_path
-                if limit is not None and wanted is None and len(studies) >= limit:
-                    break
+                limit_reached = limit is not None and wanted is None and len(studies) >= limit
             elif canonical_json_bytes(st) != canonical_json_bytes(studies[nct_id]):
                 conflicting.setdefault(nct_id, (first_seen_in[nct_id], file_path))
-        if limit is not None and wanted is None and len(studies) >= limit:
-            break
     if conflicting:
         first_id = sorted(conflicting)[0]
         first_a, first_b = conflicting[first_id]
