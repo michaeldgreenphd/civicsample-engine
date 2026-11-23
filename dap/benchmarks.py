@@ -1814,6 +1814,29 @@ def _requested_nct_ids(envelope: dict[str, Any]) -> list[str] | None:
     return None
 
 
+def search_page_problem(container: dict[str, Any]) -> str | None:
+    """Why a saved CT.gov API v2 search response is not the whole result, or ``None``.
+
+    ``src/api_client.py`` follows ``nextPageToken`` until the search returns none. One page saved as it
+    came, its token still set, was read as the whole cohort: the build recorded the page's length as
+    ``n_records``, with no ``limit_applied``, and passed its contract. ``totalCount`` (returned with
+    ``countTotal=true``) must equal the studies held. The one stored search container (648 studies,
+    ``totalCount`` 648) carries no token. A JSONL response log is read line by line, every page of it,
+    and is not checked here.
+    """
+    token = container.get("nextPageToken")
+    if token not in (None, ""):
+        return (
+            f"the studies container carries nextPageToken {token!r}: it is one page of a paginated CT.gov "
+            "search, not the whole result; fetch every page"
+        )
+    total = container.get("totalCount")
+    held = len(container["studies"])
+    if total is not None and (isinstance(total, bool) or not isinstance(total, int) or total != held):
+        return f"the studies container states totalCount {total!r} but holds {held} studies"
+    return None
+
+
 def _response_log_studies(envelope: dict[str, Any], where: str) -> list[dict[str, Any]]:
     """Studies from one cached CT.gov API v2 response line, refusing a failed, altered or short one.
 
@@ -2043,6 +2066,8 @@ def load_study_records(
 
     if isinstance(container, dict) and isinstance(container.get("studies"), list):
         studies_list = _require_study_objects(container["studies"], f"{path}: studies")
+        if page_problem := search_page_problem(container):
+            raise ValueError(f"{path}: {page_problem}")
     elif isinstance(container, dict) and isinstance(container.get("records"), list):
         studies_list = _require_study_objects(container["records"], f"{path}: records")
     elif isinstance(container, dict) and "protocolSection" in container:

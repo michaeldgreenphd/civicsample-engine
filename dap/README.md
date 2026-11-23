@@ -140,6 +140,11 @@ blocks are reused only on a weekly full record (`_is_weekly_record`); on a raw A
 extra fields, and a stale `race: {"reported": false}` had hidden a posted race table. No stored raw
 record carries any of them.
 
+**A search must be whole.** A saved CT.gov search response (`{"studies": [...]}`) that still
+carries a `nextPageToken`, or whose `totalCount` differs from the studies it holds, is one page of
+the search and is refused (`search_page_problem`): it had built as the whole cohort. A JSONL
+response log is read page by page and is not affected.
+
 **Records must be complete.** A response requested with a `fields=` projection
 is refused, and so is any raw study missing a protocol module CT.gov requires
 on every registration: `identificationModule`, `statusModule`,

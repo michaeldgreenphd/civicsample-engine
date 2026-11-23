@@ -876,6 +876,34 @@ def test_a_stamped_raw_container_accepts_its_own_sidecar(tmp_path: Path) -> None
     assert benchmarks.check_condition_mesh_provenance(mesh_map, mesh_meta, records, study_meta) is not None
 
 
+def _search_container(tmp_path: Path, **page: Any) -> Path:
+    path = tmp_path / "search.json"
+    path.write_text(json.dumps({"studies": fx.build_fictional_cohort(), **page}), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize(
+    ("page", "problem"),
+    [
+        # On 582a6fe each loaded as the whole cohort, with n_records the page's length.
+        ({"nextPageToken": "NF0g5JKFkfg"},
+         "the studies container carries nextPageToken 'NF0g5JKFkfg': it is one page of a paginated CT.gov search"),
+        ({"totalCount": 648}, "the studies container states totalCount 648 but holds 11 studies"),
+        ({"totalCount": "11"}, "the studies container states totalCount '11' but holds 11 studies"),
+    ],
+)
+def test_one_page_of_a_search_is_not_a_cohort(tmp_path: Path, page: dict[str, Any], problem: str) -> None:
+    with pytest.raises(ValueError, match=re.escape(problem)):
+        benchmarks.load_study_records(_search_container(tmp_path, **page))
+
+
+@pytest.mark.parametrize("page", [{}, {"totalCount": 11}, {"nextPageToken": None}, {"nextPageToken": ""}])
+def test_a_complete_search_loads(tmp_path: Path, page: dict[str, Any]) -> None:
+    # Controls, on both heads: the last page carries no token, and totalCount matches.
+    records, meta = benchmarks.load_study_records(_search_container(tmp_path, **page))
+    assert (len(records), meta["n_records"]) == (11, 11)
+
+
 def test_raw_records_mesh_sidecar_checks_coverage_and_one_run(tmp_path: Path) -> None:
     studies = fx.build_fictional_cohort()
     records, study_meta = benchmarks.load_study_records(fx.write_studies_dir(studies, tmp_path / "studies"))
