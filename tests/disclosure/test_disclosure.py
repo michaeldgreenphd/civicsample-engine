@@ -2095,6 +2095,36 @@ def test_a_pmid_locator_reads_only_that_pmids_esummary_entry(
     assert _pmid_statement_check(locator, excerpt, result) == check
 
 
+def _epmc_link_date(**year_fields: Any) -> tuple[str | None, str]:
+    hit = {'id': 'EPMC9901', 'title': 'Results of NCT09990001', 'abstractText': 'Primary results of NCT09990001.'}
+    hit.update(year_fields)
+    body = {'hitCount': 1, 'resultList': {'result': [hit]}}
+    records = {'literature/epmc_nct/NCT09990001': {'status': 200, 'body': body}}
+    link = next(x for x in E.build_literature_search_links('NCT09990001', records)
+                if x['automated_validation'] == 'identifier_confirmed')
+    return link['publication_or_action_date'], link['date_precision']
+
+
+@pytest.mark.parametrize(
+    ('fields', 'expected'),
+    [
+        # On 9e87b0c a compact day in a year field became that day: 2025-01-02, a published milestone.
+        ({'pubYear': 20250102}, (None, 'missing')),
+        ({'pubYear': '20250102'}, (None, 'missing')),
+        ({'journalInfo': {'yearOfPublication': 20250102}}, (None, 'missing')),
+        # A malformed pubYear no longer hides a readable journal year behind it.
+        ({'pubYear': '20250102', 'journalInfo': {'yearOfPublication': 2025}}, ('2025', 'year')),
+        # controls: a year, as text or a number, in either field
+        ({'pubYear': '2025'}, ('2025', 'year')),
+        ({'pubYear': 2025}, ('2025', 'year')),
+        ({'journalInfo': {'yearOfPublication': 2021}}, ('2021', 'year')),
+        ({'pubYear': True}, (None, 'missing')),
+    ],
+)
+def test_a_europe_pmc_year_field_is_read_only_as_a_year(fields: dict[str, Any], expected: tuple) -> None:
+    assert _epmc_link_date(**fields) == expected
+
+
 @pytest.mark.parametrize('has_results', ['<absent>', None, 'false', 0, True])
 def test_365d_window_needs_explicit_unposted_evidence_before_an_unreported_state(has_results: object) -> None:
     as_of = date(2026, 11, 1)

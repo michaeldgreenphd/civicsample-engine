@@ -593,19 +593,35 @@ def _epmc_target(hit: dict[str, Any], fallback_idx: int) -> tuple[str, str]:
     return 'literature_record', rec_id
 
 
+def _epmc_year(value: Any) -> str | None:
+    """A Europe PMC year field as `YYYY`, or None: four digits, as a string or an integer.
+
+    The field was turned into text and passed to `normalize_publication_date`, which also reads the
+    compact day `YYYYMMDD`, so `pubYear: 20250102` became the day 2025-01-02 and could be published as a
+    trial's earliest results publication. A year field names a year and nothing finer.
+    """
+    if isinstance(value, bool):
+        return None
+    text = str(value) if isinstance(value, int) else value.strip() if isinstance(value, str) else ''
+    return text if re.fullmatch(r'[0-9]{4}', text) else None
+
+
 def _epmc_date(hit: dict[str, Any]) -> tuple[str | None, str]:
+    """A Europe PMC hit's publication date: its first or electronic publication date, else the year of
+    `pubYear` or `journalInfo.yearOfPublication` (`_epmc_year`), else missing."""
     for key in ('firstPublicationDate', 'electronicPublicationDate'):
         val = hit.get(key)
         if isinstance(val, str) and val.strip():
             norm, prec = normalize_publication_date(val)
             if norm is not None:
                 return norm, prec
-    pub_year = hit.get('pubYear') or ((hit.get('journalInfo') or {}).get('yearOfPublication')
-                                      if isinstance(hit.get('journalInfo'), dict) else None)
-    if pub_year is not None:
-        norm, prec = normalize_publication_date(str(pub_year))
-        if norm is not None:
-            return norm, prec
+    journal = hit.get('journalInfo')
+    for raw in (hit.get('pubYear'), journal.get('yearOfPublication') if isinstance(journal, dict) else None):
+        year = _epmc_year(raw)
+        if year is not None:
+            norm, prec = normalize_publication_date(year)
+            if norm is not None:
+                return norm, prec
     return None, 'missing'
 
 
