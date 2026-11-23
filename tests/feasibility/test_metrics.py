@@ -469,3 +469,46 @@ def test_repeated_period1_milestone_type_withholds_retention(milestone_index: in
     ret = extract_period1_retention(study)
     assert ret["flow_status"] == "malformed_participant_flow"
     assert ret.get("period1_completion_rate") is None
+
+
+def _flow_edit(edit: str) -> dict:
+    """The fixture study with one part of its participant flow given the wrong type."""
+    study = make_ctgov_study("NCT99100090")
+    flow = study["resultsSection"]["participantFlowModule"]
+    p0 = flow["periods"][0]
+    if edit == "group_title_list":
+        flow["groups"][0]["title"] = ["Active Arm"]
+    elif edit == "group_title_number":
+        flow["groups"][0]["title"] = 7
+    elif edit == "drop_withdraws_number":
+        p0["dropWithdraws"] = 3
+    elif edit == "milestones_number":
+        p0["milestones"] = 2
+    elif edit == "achievements_number":
+        p0["milestones"][0]["achievements"] = 60
+    elif edit == "reasons_number":
+        p0["dropWithdraws"][0]["reasons"] = 6
+    elif edit == "reason_group_id_list":
+        p0["dropWithdraws"][0]["reasons"][0]["groupId"] = ["FG000"]
+    return study
+
+
+@pytest.mark.parametrize(
+    "edit",
+    ["group_title_list", "group_title_number", "drop_withdraws_number", "milestones_number", "achievements_number"],
+)
+def test_mistyped_flow_parts_withhold_the_flow_instead_of_raising(edit: str) -> None:
+    # Each raised AttributeError or TypeError, so one malformed record stopped the whole build.
+    ret = extract_period1_retention(_flow_edit(edit))
+    assert ret["flow_status"] == "malformed_participant_flow"
+    assert ret["completion_rate_status"] == "withheld_missing_started_or_completed"
+
+
+@pytest.mark.parametrize("edit", ["reasons_number", "reason_group_id_list"])
+def test_mistyped_withdrawal_reasons_withhold_only_that_tally(edit: str) -> None:
+    # The arm counts of "Adverse Event" are unknown, so its tally is None; the completion rate and
+    # the other reason's tally still stand.
+    ret = extract_period1_retention(_flow_edit(edit))
+    assert ret["flow_status"] == "ok"
+    assert ret["period1_completion_rate"] == 105 / 120
+    assert ret["drop_withdraw_reasons"] == {"Adverse Event": None, "Withdrawal by Subject": 9}

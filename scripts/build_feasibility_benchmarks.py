@@ -214,7 +214,8 @@ def _study_nct_id(study: dict[str, Any]) -> str | None:
     """NCT id of a CT.gov API v2 study (`protocolSection.identificationModule.nctId`) or weekly record."""
     if isinstance(study.get("nct_id"), str):
         return study["nct_id"]
-    ident = (study.get("protocolSection") or {}).get("identificationModule") or {}
+    ps = study.get("protocolSection")
+    ident = ps.get("identificationModule") if isinstance(ps, dict) else None
     nct = ident.get("nctId") if isinstance(ident, dict) else None
     return nct if isinstance(nct, str) else None
 
@@ -319,10 +320,40 @@ def _missing_condition_and_sponsor_payloads(ps: dict[str, Any]) -> list[str]:
     return missing
 
 
+# Parts the build reads that are optional on a registration but must have their API v2 type when
+# present: `(module, field, expected type)`, with `module` None for a field of `protocolSection`.
+# `feasibility.metrics.extract_trial_metrics` reads them with `.get` or iterates them, so a list
+# date struct or a string `locations` raised there and one record stopped the whole build. A part
+# of the wrong type is refused by name, like a missing module, rather than read as absent.
+TYPED_OPTIONAL_PARTS: tuple[tuple[str | None, str, type], ...] = (
+    ("statusModule", "startDateStruct", dict),
+    ("statusModule", "primaryCompletionDateStruct", dict),
+    ("statusModule", "completionDateStruct", dict),
+    ("designModule", "enrollmentInfo", dict),
+    ("sponsorCollaboratorsModule", "collaborators", list),
+    (None, "contactsLocationsModule", dict),
+    ("contactsLocationsModule", "locations", list),
+)
+
+
+def _mistyped_optional_parts(ps: dict[str, Any]) -> list[str]:
+    """Name the `TYPED_OPTIONAL_PARTS` present in the protocol section `ps` with the wrong type."""
+    out: list[str] = []
+    for mod, field, kind in TYPED_OPTIONAL_PARTS:
+        holder = ps if mod is None else ps.get(mod)
+        if not isinstance(holder, dict) or holder.get(field) is None:
+            continue
+        if not isinstance(holder[field], kind):
+            where = field if mod is None else f"{mod}.{field}"
+            out.append(f"{where} ({'an object' if kind is dict else 'a list'})")
+    return out
+
+
 def _require_complete_records(studies: list[dict[str, Any]], source: str) -> None:
     """Refuse API v2 study records missing any `REQUIRED_PROTOCOL_MODULES` (see the notes above),
     any `REQUIRED_RECORD_FIELDS` inside them, their conditions or their lead sponsor's
-    `REQUIRED_LEAD_SPONSOR_FIELDS`, or whose results part is incomplete.
+    `REQUIRED_LEAD_SPONSOR_FIELDS`, any of the `TYPED_OPTIONAL_PARTS` present with the wrong type,
+    or whose results part is incomplete.
 
     A complete API v2 record always carries the top-level boolean `hasResults`, and a record with
     `hasResults: true` carries its posted `resultsSection`. A record without the flag, with a
@@ -345,6 +376,7 @@ def _require_complete_records(studies: list[dict[str, Any]], source: str) -> Non
             and not (isinstance(ps[mod].get(field), str) and ps[mod][field].strip())
         ]
         missing += _missing_condition_and_sponsor_payloads(ps)
+        missing += _mistyped_optional_parts(ps)
         has_results = study.get("hasResults")
         if not isinstance(has_results, bool):
             missing.append("hasResults (a boolean)")

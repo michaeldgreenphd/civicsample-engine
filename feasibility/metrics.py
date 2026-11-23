@@ -593,7 +593,10 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
     # `flow_status = "ok"`, so one malformed group withholds the whole flow instead.
     group_list = list(raw_groups or [])
     if any(
-        not isinstance(g, dict) or not isinstance(g.get("id"), str) or not g["id"].strip()
+        not isinstance(g, dict)
+        or not isinstance(g.get("id"), str)
+        or not g["id"].strip()
+        or not isinstance(g.get("title"), (str, type(None)))  # the "Total" test strips it
         for g in group_list
     ) or len({g["id"] for g in group_list}) != len(group_list):
         # (a repeated group id would read its milestone count once per occurrence and double it)
@@ -620,6 +623,16 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
     p0_title = p0.get("title")
     base["period1_title"] = p0_title.strip() if isinstance(p0_title, str) and p0_title.strip() else None
 
+    # Period 1's lists must be lists when present: iterating a number raised, and one malformed
+    # record stopped the whole build. A malformed list withholds the flow like a malformed group.
+    if any(
+        p0.get(part) is not None and not isinstance(p0.get(part), list)
+        for part in ("dropWithdraws", "milestones")
+    ):
+        base["flow_status"] = "malformed_participant_flow"
+        base["completion_rate_status"] = "withheld_missing_started_or_completed"
+        return base
+
     # Extract verbatim dropWithdraws reason tallies across non-Total flow groups in Period 1.
     # A reason's tally is the sum over every retained arm, so it is published only when each
     # `dropWithdraws` entry for that reason gives exactly one valid count (>= 0) for EVERY retained
@@ -636,11 +649,14 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
         dw_tallies.setdefault(label, 0)
         dw_complete.setdefault(label, True)
         arm_counts: dict[str, float] = {}
-        entry_ok = True
-        for entry in dw.get("reasons") or []:
-            if not isinstance(entry, dict) or entry.get("groupId") not in arm_id_set:
+        reasons = dw.get("reasons")
+        # A `reasons` that is not a list gives no arm counts, so the tally is withheld (None).
+        entry_ok = reasons is None or isinstance(reasons, list)
+        for entry in reasons if isinstance(reasons, list) else []:
+            gid = entry.get("groupId") if isinstance(entry, dict) else None
+            # A non-string id (a list cannot even be looked up in a set) counts for no arm.
+            if not isinstance(gid, str) or gid not in arm_id_set:
                 continue
-            gid = entry["groupId"]
             val = parse_num(entry.get("numSubjects"))
             if val is None or val < 0 or gid in arm_counts:
                 entry_ok = False
@@ -668,8 +684,13 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
             base["completion_rate_status"] = "withheld_missing_started_or_completed"
             return base
         if mtype in ("STARTED", "COMPLETED"):
+            achievements = ms.get("achievements")
+            if achievements is not None and not isinstance(achievements, list):
+                base["flow_status"] = "malformed_participant_flow"
+                base["completion_rate_status"] = "withheld_missing_started_or_completed"
+                return base
             ach: dict[str, Any] = {}
-            for a in ms.get("achievements") or []:
+            for a in achievements or []:
                 if not isinstance(a, dict) or not isinstance(a.get("groupId"), str):
                     continue
                 if a["groupId"] in ach and a["groupId"] in arm_id_set:

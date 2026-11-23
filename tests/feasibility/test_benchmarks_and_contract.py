@@ -1294,6 +1294,55 @@ def test_records_missing_condition_or_lead_sponsor_payloads_are_refused(
         _load_archive(epath)
 
 
+@pytest.mark.parametrize(
+    "path, value, expect",
+    [
+        (("statusModule", "startDateStruct"), ["2020-01-15"], "statusModule.startDateStruct (an object)"),
+        (("statusModule", "primaryCompletionDateStruct"), "2021-01-15",
+         "statusModule.primaryCompletionDateStruct (an object)"),
+        (("statusModule", "completionDateStruct"), 7, "statusModule.completionDateStruct (an object)"),
+        (("designModule", "enrollmentInfo"), 120, "designModule.enrollmentInfo (an object)"),
+        (("sponsorCollaboratorsModule", "collaborators"), {"name": "X"},
+         "sponsorCollaboratorsModule.collaborators (a list)"),
+        (("contactsLocationsModule",), "Boston", "contactsLocationsModule (an object)"),
+        (("contactsLocationsModule", "locations"), True, "contactsLocationsModule.locations (a list)"),
+    ],
+)
+def test_records_with_mistyped_optional_parts_are_refused(
+    tmp_path: Path, path: tuple[str, ...], value: object, expect: str
+) -> None:
+    # extract_trial_metrics read these with .get or iterated them, so each raised and one record
+    # stopped the whole build; now the record is refused by name before anything is built.
+    complete = make_ctgov_study("NCT99600031")
+    bad = make_ctgov_study("NCT99600032")
+    holder = bad["protocolSection"]
+    for key in path[:-1]:
+        holder = holder[key]
+    holder[path[-1]] = value
+    want = (
+        r"1 of 2 study records lack required protocol modules or results parts "
+        rf"\(first: NCT99600032 lacks {re.escape(expect)}\)"
+    )
+    rdir = tmp_path / "records"
+    rdir.mkdir()
+    (rdir / "a.json").write_text(json.dumps(complete), encoding="utf-8")
+    (rdir / "b.json").write_text(json.dumps(bad), encoding="utf-8")
+    with pytest.raises(ValueError, match=want):
+        build_feasibility_benchmarks.load_studies_input(demographics_path=None, records_dir=rdir, archive_path=None)
+    apath = tmp_path / "studies.jsonl.gz"
+    apath.write_bytes(gzip.compress((json.dumps(complete) + "\n" + json.dumps(bad) + "\n").encode("utf-8"), mtime=0))
+    with pytest.raises(ValueError, match=want):
+        _load_archive(apath)
+
+
+def test_record_with_a_non_object_protocol_section_is_refused_by_position(tmp_path: Path) -> None:
+    # Naming the record used to read protocolSection.identificationModule and raised AttributeError.
+    bad = make_ctgov_study("NCT99600033")
+    bad["protocolSection"] = 5
+    with pytest.raises(ValueError, match=r"first: index 1 lacks protocolSection\)"):
+        build_feasibility_benchmarks._require_complete_records([make_ctgov_study("NCT99600034"), bad], "x")
+
+
 def test_records_with_condition_and_lead_sponsor_payloads_are_accepted(tmp_path: Path) -> None:
     # Control for the refusals above: an untouched fixture record, with a single condition, a lead
     # sponsor of class OTHER and no collaborators, loads through every raw shape and reads back as such.
