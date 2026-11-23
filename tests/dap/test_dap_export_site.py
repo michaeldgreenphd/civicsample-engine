@@ -93,7 +93,7 @@ def test_site_manifest_carries_verified_condition_mesh_provenance(tmp_path: Path
     stamps = {
         "snapshot_date": "2026-11-21",
         "extracted_at": "2026-11-21T00:00:00+00:00",
-        "pipeline_commit": "deadbeef1234",
+        "pipeline_commit": "deadbeef1234" + "0" * 28,
     }
     raw = b"".join(
         (json.dumps({**cmesh.select_condition_mesh(s), **stamps}) + "\n").encode("utf-8") for s in studies
@@ -123,7 +123,7 @@ def test_site_manifest_carries_verified_condition_mesh_provenance(tmp_path: Path
     site_mesh = json.loads((site_dir / "run.json").read_text(encoding="utf-8"))["inputs"]["condition_mesh"]
     assert site_mesh == {k: build_mesh[k] for k in ("n_lines", "sha256", *site_export.MESH_PROVENANCE_KEYS)}
     assert site_mesh["extracted_at"] == "2026-11-21T00:00:00+00:00"
-    assert site_mesh["pipeline_commit"] == "deadbeef1234"
+    assert site_mesh["pipeline_commit"] == "deadbeef1234" + "0" * 28
     assert site_mesh["snapshot_date"] == "2026-11-21"
     assert site_mesh["provenance_check"] == "cohort_covered_and_one_run_only"
     assert site_mesh["n_cohort_trials"] == len(studies)

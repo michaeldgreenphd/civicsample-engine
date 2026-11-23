@@ -34,6 +34,7 @@ from dap.benchmarks import (
     REGULATORY_ERAS,
     SPONSOR_REVIEW_STATES,
     STRATUM_KINDS,
+    snapshot_date_problem,
     weekly_source_stamp_problem,
 )
 from dap.demographics import (
@@ -610,23 +611,6 @@ def utc_timestamp_date(generated_at: Any) -> str:
     ):
         raise ValueError(f"generated_at must carry a UTC offset (Z or +00:00), got {generated_at!r}")
     return generated_at[:10]
-
-
-def snapshot_date_problem(value: Any) -> str | None:
-    """Why ``value`` is not a ``YYYY-MM-DD`` calendar date, or ``None`` when it is.
-
-    ``--snapshot-date`` asserts the registry snapshot the raw sex/gender measures
-    were parsed from (``sgt.build_row`` stamps it on each row, which the trial
-    projection does not keep), so it is recorded in ``run.json`` parameters,
-    where it also enters the run identity, and must name a real day.
-    """
-    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
-        return f"snapshot_date must be a YYYY-MM-DD date, got {value!r}"
-    try:
-        date.fromisoformat(value)
-    except ValueError:
-        return f"snapshot_date must be a real calendar date, got {value!r}"
-    return None
 
 
 def resolve_snapshot_date(

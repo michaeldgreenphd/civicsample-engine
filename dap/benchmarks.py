@@ -844,6 +844,8 @@ WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS: dict[str, dict[str, tuple[str, bool]]] = {
 # participants with nothing reported. All 80,890 weekly records keep the rule (44,879 + 1,685 race,
 # 32,072 ethnicity and 78,726 sex blocks reported, every other block with zero totals).
 WEEKLY_BLOCK_TOTALS: dict[str, str] = {"race": "omb_totals", "ethnicity": "omb_totals", "sex": "totals"}
+# The category the extractors give a row they cannot map (flag `unmapped`).
+_UNMAPPED_CATEGORY: dict[str, str] = {"race": "other", "ethnicity": "unknown_not_reported"}
 # The category keys each block's totals always hold (the extractors start from all of them at 0).
 WEEKLY_TOTAL_KEYS: dict[str, tuple[str, ...]] = {
     "race": (*RACE_CLASSIFIED_KEYS, "unknown_not_reported"),
@@ -899,6 +901,17 @@ def _demographic_child_problem(block: str, key: str, kind: str, value: Any) -> s
         flags = entry.get("flags")
         if kind == "categories" and not (isinstance(flags, list) and all(isinstance(f, str) for f in flags)):
             return f"{at}.flags is missing or not a list of strings"
+        # `unmapped` is the one flag the analyzers read whose category the extractors fix: a race row they
+        # cannot map is written as `other`, an ethnicity row as `unknown_not_reported`. The race analyzer
+        # subtracts flagged counts from `other` and the ethnicity analyzer drops flagged rows from the
+        # categories present, so `unmapped` on another category (`white`) lowered an unrelated total or
+        # changed the table's status. (`split_from_combined` and `combined_race_ethnicity` appear on every
+        # category.) All 6,136 race and 148 ethnicity unmapped entries of the 2026-11-08 extraction keep it.
+        if kind == "categories" and "unmapped" in flags and entry["omb_category"] != _UNMAPPED_CATEGORY[block]:
+            return (
+                f"{at} is flagged unmapped in category {entry['omb_category']!r}; the extractor writes "
+                f"unmapped rows only as {_UNMAPPED_CATEGORY[block]!r}"
+            )
     return None
 
 
@@ -1021,6 +1034,7 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
 
 
 _GIT_COMMIT_RX: re.Pattern[str] = re.compile(r"[0-9a-f]{40}")
+_HEX64_RX: re.Pattern[str] = re.compile(r"[0-9a-f]{64}")
 
 
 def weekly_source_stamp_problem(extracted_at: Any, pipeline_commit: Any) -> str | None:
@@ -1151,7 +1165,7 @@ def _response_log_studies(envelope: dict[str, Any], where: str) -> list[dict[str
     whose body is null, blank, altered or holds no study, or that answered
     fewer or other trials than it asked for would otherwise contribute nothing
     with nothing said while the input sha256 still covers it. So ``status``
-    must be 200, ``body_sha256`` (when present) must match the body text, the
+    must be 200, the body must be text and ``body_sha256`` a 64-hex hash matching it, the
     body must hold at least one study object, every study a valid NCT id, and
     the returned ids must equal the requested ids: none missing, extra or
     repeated. A line naming no requested ids is refused, as a short answer
@@ -1170,11 +1184,17 @@ def _response_log_studies(envelope: dict[str, Any], where: str) -> list[dict[str
             "lacks the modules these benchmarks read (conditions, sponsors, locations, derivedSection) and "
             "would publish every trial as Other / no listed facilities / no sponsor. Use complete study records."
         )
+    # Every producer of these logs (the audit fetchers and feasibility's) stores the unparsed body text
+    # with its sha256, so both are required: a line without the hash, or with a parsed body, was read
+    # without showing that its records are the cached response.
     body = envelope.get("body")
     want_sha = envelope.get("body_sha256")
-    if want_sha is not None:
-        if not isinstance(body, str) or hashlib.sha256(body.encode("utf-8")).hexdigest() != want_sha:
-            raise ValueError(f"{where}: response body does not match its body_sha256")
+    if not isinstance(body, str):
+        raise ValueError(f"{where}: response body is {type(body).__name__}, not the unparsed response text")
+    if not (isinstance(want_sha, str) and _HEX64_RX.fullmatch(want_sha)):
+        raise ValueError(f"{where}: body_sha256 {want_sha!r} is not a 64-hex sha256 of the response body")
+    if hashlib.sha256(body.encode("utf-8")).hexdigest() != want_sha:
+        raise ValueError(f"{where}: response body does not match its body_sha256")
     if isinstance(body, str):
         try:
             body = json.loads(body)
@@ -1425,6 +1445,29 @@ def condition_mesh_line_problem(row: dict[str, Any]) -> str | None:
     for key in MESH_RUN_STAMP_KEYS:
         if key in row and row[key] is not None and not isinstance(row[key], str):
             return f"{key} is neither a string nor null"
+    # A string stamp must also have the producer's form: the registry day, and the container's
+    # extraction time and commit (`weekly_source_stamp_problem`). A raw-record build has no container to
+    # check them against, so `snapshot_date: "corrupt"` or `pipeline_commit: "banana"` was published.
+    if row.get("snapshot_date") is not None and (problem := snapshot_date_problem(row["snapshot_date"])):
+        return problem
+    return weekly_source_stamp_problem(row.get("extracted_at"), row.get("pipeline_commit"))
+
+
+def snapshot_date_problem(value: Any) -> str | None:
+    """Why ``value`` is not a ``YYYY-MM-DD`` calendar date, or ``None`` when it is.
+
+    ``--snapshot-date`` asserts the registry snapshot the raw sex/gender measures
+    were parsed from (``sgt.build_row`` stamps it on each row, which the trial
+    projection does not keep), so it is recorded in ``run.json`` parameters,
+    where it also enters the run identity, and must name a real day. The same rule
+    holds for a condition_mesh sidecar line's ``snapshot_date``.
+    """
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        return f"snapshot_date must be a YYYY-MM-DD date, got {value!r}"
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return f"snapshot_date must be a real calendar date, got {value!r}"
     return None
 
 

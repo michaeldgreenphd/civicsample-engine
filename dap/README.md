@@ -190,7 +190,14 @@ single-category ethnicity table. The container's `extracted_at` and
 `pipeline_commit` must each be null or well formed (a whole UTC timestamp, a
 40-hex commit; `weekly_source_stamp_problem`), in the build and the contract.
 `src.utils.pipeline_commit` writes null outside a checkout, so a null stamp is
-recorded, but the site exporter refuses to publish a weekly build with one. `unknown_ethnicity_only`, `skipped_ethnicity_rows` and
+recorded, but the site exporter refuses to publish a weekly build with one.
+A category entry flagged `unmapped` must be in the category the extractors give
+such rows (`other` for race, `unknown_not_reported` for ethnicity), since the
+analyzers subtract or drop flagged rows by that rule. A condition_mesh sidecar
+line's string stamps must have the producer's form too: `snapshot_date` a real
+`YYYY-MM-DD` day, `extracted_at` and `pipeline_commit` as above. A cached
+CT.gov response line must carry its unparsed body text and that text's 64-hex
+`body_sha256`, which must match. `unknown_ethnicity_only`, `skipped_ethnicity_rows` and
 `not_hispanic_from_race_rows` postdate the 2026-11-08 extraction, so they are
 checked only when present. A missing or
 mistyped one was read as an "Unknown" sponsor, no enrollment, a block not

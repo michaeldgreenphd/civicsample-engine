@@ -366,6 +366,7 @@ def test_containers_with_non_object_entries_are_refused_not_filtered(
     a, b = (fx.make_raw_ctgov_study(n) for n in ("NCT99000951", "NCT99000952"))
     weekly = fx.build_weekly_full_records_doc()
     weekly["data"].insert(2, None)
+    log_body = json.dumps({"studies": [a, None, b]})
     containers: dict[str, tuple[str, Any, str]] = {
         "studies": ("studies.json", {"studies": [a, None, b]}, "studies: 1 of 3 entries"),
         "records": ("records.json", {"records": [a, "x", b]}, "records: 1 of 3 entries"),
@@ -373,7 +374,8 @@ def test_containers_with_non_object_entries_are_refused_not_filtered(
         "full_records": ("weekly.json", weekly, "data: 1 of 6 entries"),
         "response_log": (
             "log.jsonl",
-            {"status": 200, "ids": ["NCT99000951", "NCT99000952"], "body": json.dumps({"studies": [a, None, b]})},
+            {"status": 200, "ids": ["NCT99000951", "NCT99000952"], "body": log_body,
+             "body_sha256": hashlib.sha256(log_body.encode("utf-8")).hexdigest()},
             ":1: body.studies: 1 of 3 entries",
         ),
     }
@@ -427,7 +429,15 @@ def test_response_log_lines_must_be_whole_successful_answers(tmp_path: Path) -> 
     no_nct = copy.deepcopy(c)
     no_nct["protocolSection"]["identificationModule"].pop("nctId")
     bad_lines: dict[str, tuple[dict[str, Any], str]] = {
-        "null_body": (env(None, ids=["NCT99000963"]), "holds no study"),
+        "null_body": (env(None, ids=["NCT99000963"]), "response body is NoneType, not the unparsed response text"),
+        # Every producer writes the body text's sha256 (round 31): a line without it, or with a parsed
+        # body, loaded on 05bd8c4.
+        "no_hash": (env({"studies": [c]}, ids=["NCT99000963"], body_sha256=None),
+                    "body_sha256 None is not a 64-hex sha256 of the response body"),
+        "short_hash": (env({"studies": [c]}, ids=["NCT99000963"], body_sha256="abc"),
+                       "body_sha256 'abc' is not a 64-hex sha256 of the response body"),
+        "parsed_body": ({"status": 200, "body": {"studies": [c]}, "ids": ["NCT99000963"]},
+                        "response body is dict, not the unparsed response text"),
         "blank_body": (env("", ids=["NCT99000963"]), "response body is not JSON"),
         "body_without_studies": (env({"totalCount": 1}, ids=["NCT99000963"]), "holds no study"),
         "empty_studies": (env({"studies": []}, ids=["NCT99000963"]), "holds no study"),
@@ -742,7 +752,7 @@ def test_weekly_mesh_sidecar_must_match_records_run_and_cover_cohort(
 
     # Another commit's sidecar, even one line of it -> refused.
     mixed = _weekly_mesh_lines(cohort)
-    mixed[2]["pipeline_commit"] = "0123abcd"
+    mixed[2]["pipeline_commit"] = "0123abcd" + "0" * 32
     rc, out_mixed = _build_weekly_with_mesh(tmp_path, mixed, "mixed")
     err = capsys.readouterr().err
     assert rc == 1 and not out_mixed.exists()
@@ -812,6 +822,12 @@ def test_mesh_sidecar_line_state_must_agree_with_its_payload(tmp_path: Path) -> 
         "list_extracted_at": line(state="no_derived", extracted_at=["2026-11-15T06:00:00+00:00"]),
         "object_pipeline_commit": line(state="no_derived", pipeline_commit={"sha": "x"}),
         "number_snapshot_date": line(state="no_derived", snapshot_date=20261115),
+        # Round 31: a string stamp must have the producer's form; on 05bd8c4 each was published as provenance.
+        "corrupt_snapshot_date": line(state="no_derived", snapshot_date="corrupt"),
+        "impossible_snapshot_date": line(state="no_derived", snapshot_date="2026-02-30"),
+        "naive_extracted_at": line(state="no_derived", extracted_at="2026-11-15T06:00:00"),
+        "text_extracted_at": line(state="no_derived", extracted_at="not-a-time"),
+        "short_pipeline_commit": line(state="no_derived", pipeline_commit="banana"),
     }
     for name, bad in bad_lines.items():
         path = _write_mesh_sidecar(tmp_path / f"bad_{name}.jsonl.gz", [bad])
@@ -850,7 +866,7 @@ def test_raw_records_mesh_sidecar_checks_coverage_and_one_run(tmp_path: Path) ->
 
     # Lines from two extraction runs -> refused.
     two_runs = [
-        dict(line, snapshot_date="2026-11-21", extracted_at="2026-11-21T00:00:00+00:00", pipeline_commit="aaa")
+        dict(line, snapshot_date="2026-11-21", extracted_at="2026-11-21T00:00:00+00:00", pipeline_commit="a" * 40)
         for line in lines
     ]
     two_runs[0]["extracted_at"] = "2026-11-14T00:00:00+00:00"
@@ -1884,6 +1900,13 @@ def _write_weekly(weekly_doc: dict[str, Any], tmp_path: Path) -> Path:
         # An unknown category emptied `_analyze_ethnicity_block`'s categories present.
         (("ethnicity", "raw_categories", 0, "omb_category"), "corrupt",
          "ethnicity.raw_categories[0].omb_category 'corrupt' is not one of the extractor's categories"),
+        # `unmapped` only in the category the extractors give unmapped rows (round 31).
+        (("race", "raw_categories", 0, "flags"), ["unmapped"],
+         "race.raw_categories[0] is flagged unmapped in category 'white'; the extractor writes unmapped rows "
+         "only as 'other'"),
+        (("ethnicity", "raw_categories", 0, "flags"), ["unmapped"],
+         "ethnicity.raw_categories[0] is flagged unmapped in category 'hispanic_latino'; the extractor writes "
+         "unmapped rows only as 'unknown_not_reported'"),
         (("race", "raw_categories", 0, "omb_category"), "hispanic_latino",
          "race.raw_categories[0].omb_category 'hispanic_latino' is not one of the extractor's categories"),
     ],
@@ -2013,6 +2036,26 @@ def test_weekly_sex_gender_statuses_the_counts_give_load(
     row.update(changes, sex_report_status=status)
     row.update(reported_sex=False, reported_gender=status == "reported", reported_both=False)
     assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
+
+
+def test_weekly_unmapped_rows_in_their_extractor_category_load(tmp_path: Path) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    race, eth = weekly_doc["data"][1]["race"], weekly_doc["data"][1]["ethnicity"]
+    race["raw_categories"].append({"omb_category": "other", "original": "Klingon", "count": 0,
+                                   "flags": ["unmapped"]})
+    eth["raw_categories"].append({"omb_category": "unknown_not_reported", "original": "Martian", "count": 0,
+                                  "flags": ["unmapped"]})
+    assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
+
+
+def test_mesh_sidecar_line_with_producer_form_stamps_loads(tmp_path: Path) -> None:
+    line = {"schema_version": "1.0", "nct_id": "NCT99000820", "state": "no_derived", "meshes": None,
+            "ancestors": None, "snapshot_date": "2026-11-21", "extracted_at": "2026-11-21T06:00:00.123456+00:00",
+            "pipeline_commit": "0" * 40}
+    mesh_map, _ = benchmarks.load_condition_mesh(_write_mesh_sidecar(tmp_path / "ok.jsonl.gz", [line]))
+    assert mesh_map["NCT99000820"]["pipeline_commit"] == "0" * 40
+    nulls = {**line, "snapshot_date": None, "extracted_at": None, "pipeline_commit": None}
+    benchmarks.load_condition_mesh(_write_mesh_sidecar(tmp_path / "nulls.jsonl.gz", [nulls]))
 
 
 def test_weekly_sex_gender_row_reporting_gender_loads(tmp_path: Path) -> None:
