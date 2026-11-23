@@ -591,7 +591,10 @@ def utc_timestamp_date(generated_at: Any) -> str:
     ``generated_at`` is published and its date enters ``run_id``, so the whole
     value is parsed, not just a prefix (as feasibility's ``utc_timestamp_date``):
     an impossible date (``2026-99-99``), trailing text, a date without a time, a
-    naive time or a non-zero UTC offset is refused rather than published.
+    naive time or a non-zero UTC offset is refused rather than published. The
+    offset is also checked as text: RFC 3339 writes ``-00:00`` for an unknown
+    local offset, which ``fromisoformat`` reads as zero, so only ``Z`` or
+    ``+00:00`` is accepted.
     """
     if not isinstance(generated_at, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T.+", generated_at):
         raise ValueError(f"generated_at must be an ISO-8601 UTC timestamp, got {generated_at!r}")
@@ -599,7 +602,11 @@ def utc_timestamp_date(generated_at: Any) -> str:
         parsed = datetime.fromisoformat(generated_at)
     except ValueError as exc:
         raise ValueError(f"generated_at must be an ISO-8601 UTC timestamp, got {generated_at!r}") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+    if (
+        parsed.tzinfo is None
+        or parsed.utcoffset() != timedelta(0)
+        or not re.search(r"(?:Z|\+00:00)\Z", generated_at)
+    ):
         raise ValueError(f"generated_at must carry a UTC offset (Z or +00:00), got {generated_at!r}")
     return generated_at[:10]
 

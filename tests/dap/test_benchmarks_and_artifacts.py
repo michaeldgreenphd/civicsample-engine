@@ -1037,6 +1037,7 @@ def test_generated_at_must_be_a_whole_utc_timestamp(
             "2026-11-21",  # no time
             "2026-11-21T12:00:00",  # naive
             "2026-11-21T12:00:00+01:00",  # not UTC
+            "2026-11-21T12:00:00-00:00",  # RFC 3339: offset unknown, not a stated UTC time
         )
     ):
         capsys.readouterr()
@@ -1054,6 +1055,7 @@ def test_generated_at_must_be_a_whole_utc_timestamp(
         ("2026-11-22T00:00:00+00:00", "run.json: run_id date 2026-11-21 != generated_at date 2026-11-22"),
         ("2026-99-99T00:00:00+00:00", "run.json: generated_at must be an ISO-8601 UTC timestamp"),
         ("2026-11-21T12:00:00+05:30", "run.json: generated_at must carry a UTC offset"),
+        ("2026-11-21T12:00:00-00:00", "run.json: generated_at must carry a UTC offset"),
     ):
         tampered = copy.deepcopy(loaded)
         tampered["run.json"]["generated_at"] = edited
