@@ -34,6 +34,14 @@ Analytical invariants:
   refused. ``DocumentCacheStore`` tags the maps it writes with the trial that
   passed the firewall. Only with no firewall configured at all (library use
   with no audit set and no allowlist) is an untagged map loaded.
+- Every document is tied to the trial that passed the firewall. A record's,
+  census row's or download's URL must be the canonical CT.gov URL of that
+  trial's own posted file; a study payload whose ``nctIdAliases`` names a
+  holdout trial is that trial and is refused; page maps serve pages only for
+  the digest they were extracted from; every ``url_manifest.json`` entry passes
+  the firewall when the cache is opened, and a malformed one is refused rather
+  than dropped on the next rewrite. A manifest, census, page-map or cache JSON
+  object that names a key twice is refused, never read last-wins.
 - Non-collapsing readability taxonomy: all 7 DocumentReadabilityStatus values
   (machine_readable, partial_image_or_redacted, image_only_scan, garbled_cmap,
   extraction_failed, download_failed, no_document) remain distinct and are
@@ -273,6 +281,49 @@ class PageExtractionError(DocumentIndexerError):
     """Raised when a PDF container cannot be opened or no PageTextProvider can service it."""
 
 
+# A repeated key is named in an error message only when it has the shape of a
+# schema field name: lowercase ASCII letters and underscores. Such a key cannot
+# hold a trial id (ids are upper-case letters and digits); any other key (a
+# URL keying url_manifest.json, an id used as a key) may, and is not printed.
+_NAMEABLE_JSON_KEY_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z_]{1,32}$", re.ASCII)
+
+
+def loads_strict_json(
+    text: str,
+    *,
+    origin: str,
+    error_cls: type[DocumentIndexerError] = AuditHoldoutError,
+) -> Any:
+    """Parse JSON text, refusing any object, at any depth, that names one key twice.
+
+    ``json.loads`` keeps the last of a repeated key, so a manifest row written
+    ``{"in_audit": true, "in_audit": false}`` reads as False, and a row naming
+    ``nct_id`` twice reads as whichever id came last. The file holds both
+    values and nothing says which was meant, so the firewall cannot choose
+    between them: the input is refused instead of read last-wins.
+
+    ``error_cls`` is ``AuditHoldoutError`` (the default) for inputs that decide
+    what may be indexed (manifests, census rows, page maps) and
+    ``CacheIntegrityError`` for cache bookkeeping. The message names ``origin``
+    and the repeated key only under ``_NAMEABLE_JSON_KEY_RE``. Malformed JSON
+    still raises ``json.JSONDecodeError`` for the caller to report.
+    """
+
+    def _refuse_repeated_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in out:
+                shown = repr(key) if _NAMEABLE_JSON_KEY_RE.fullmatch(key) else "a key"
+                raise error_cls(
+                    f"JSON object at {origin} names {shown} more than once; a repeated "
+                    "key is ambiguous and is refused, not read last-wins."
+                )
+            out[key] = value
+        return out
+
+    return json.loads(text, object_pairs_hook=_refuse_repeated_keys)
+
+
 # ---------------------------------------------------------------------------
 # Hard in_audit holdout guard & core helpers
 # ---------------------------------------------------------------------------
@@ -397,8 +448,11 @@ def validate_study_payload_nct_id(
     (a) strict ASCII ``^NCT[0-9]{8}$`` on the study's ``nctId`` (no strip/upper),
     (b) exact equality with ``expected_nct_id`` when supplied,
     (c) absence from ``audit_nct_ids`` and strict ``in_audit is False`` (both caller
-        flag and any ``study['in_audit']`` field), and
-    (d) membership in ``allowed_nct_ids`` when supplied.
+        flag and any ``study['in_audit']`` field),
+    (d) membership in ``allowed_nct_ids`` when supplied, and
+    (e) every retired id in ``identificationModule.nctIdAliases`` is strict
+        ASCII and none is in ``audit_nct_ids`` (a merged registration is each
+        of the trials it absorbed).
     """
     if not isinstance(study, Mapping):
         raise DocumentIndexerError("study payload must be a Mapping.")
@@ -435,6 +489,38 @@ def validate_study_payload_nct_id(
         audit_nct_ids=audit_nct_ids,
         allowed_nct_ids=allowed_nct_ids,
     )
+
+    # (e) The payload's retired ids. CT.gov merges duplicate registrations of
+    # one study and keeps the retired ids in identificationModule.nctIdAliases,
+    # so a payload whose alias list names a holdout trial IS that holdout
+    # trial, whatever its surviving nctId: its documents are the holdout's
+    # documents. Every alias must be a strict id (a malformed one cannot be
+    # checked) and none may be in the holdout set. An alias the manifest does
+    # not list is accepted: the allowlist governs the trial being indexed
+    # (nctId, checked above), and a merged registration's retired id need not
+    # appear in a manifest of surviving ids.
+    raw_aliases = id_mod.get("nctIdAliases") if isinstance(id_mod, Mapping) else None
+    if raw_aliases is not None:
+        if not isinstance(raw_aliases, list):
+            raise AuditHoldoutError(
+                "Study payload nctIdAliases is "
+                f"{type(raw_aliases).__name__}, not a list, so it cannot be checked "
+                "against the audit holdout."
+            )
+        validated_audit = _validate_nct_id_set(audit_nct_ids, label="audit_nct_ids")
+        for index, alias in enumerate(raw_aliases):
+            try:
+                validated_alias = validate_nct_id(alias)
+            except InvalidNctIdError as exc:
+                raise InvalidNctIdError(
+                    f"Study payload nctIdAliases[{index}]: {exc}"
+                ) from None
+            if validated_alias in validated_audit:
+                raise AuditHoldoutError(
+                    f"Study payload nctIdAliases[{index}] is an audit holdout trial; a "
+                    "merged registration is that trial too, so its documents are "
+                    "blocked by the audit holdout firewall."
+                )
 
     if validated_expected is not None and study_nct_id != validated_expected:
         # Neither id is printed: the payload's id is unverified and may be a
@@ -610,6 +696,62 @@ def build_ctgov_large_doc_url(nct_id: str, filename: str) -> str:
     nct = validate_nct_id(nct_id)
     fname = validate_safe_pdf_filename(filename)
     return f"{CT_GOV_LARGE_DOCS_BASE_URL}/{nct[-2:]}/{nct}/{fname}"
+
+
+_LARGE_DOC_URL_RE: Final[re.Pattern[str]] = re.compile(
+    r"^https://cdn\.clinicaltrials\.gov/large-docs/[0-9]{2}/(NCT[0-9]{8})/([^/]+)$",
+    re.ASCII,
+)
+
+
+def parse_ctgov_large_doc_url(url: Any) -> tuple[str, str] | None:
+    """Return ``(nct_id, filename)`` for a canonical CT.gov document URL, else None.
+
+    A URL is canonical when it is exactly what ``build_ctgov_large_doc_url``
+    returns for the id and filename it names (same scheme, host, two-digit
+    directory, id and basename; no query, fragment or trailing text). This is
+    how a URL is tied to the trial it belongs to: a URL in any other form
+    cannot be attributed, and callers under a configured firewall refuse it.
+    """
+    if type(url) is not str:
+        return None
+    match = _LARGE_DOC_URL_RE.fullmatch(url)
+    if match is None:
+        return None
+    nct, filename = match.group(1), match.group(2)
+    try:
+        if build_ctgov_large_doc_url(nct, filename) != url:
+            return None
+    except DocumentIndexerError:
+        return None
+    return nct, filename
+
+
+def require_own_large_doc_url(
+    url: Any,
+    *,
+    nct_id: str,
+    filename: str,
+    origin: str,
+) -> str:
+    """Return ``url`` if it is ``nct_id``'s own posted ``filename``; raise ``AuditHoldoutError`` otherwise.
+
+    The document a record describes, or a download fetches, is fixed by the
+    trial and filename that passed the firewall: its URL is
+    ``build_ctgov_large_doc_url(nct_id, filename)``. Any other URL (another
+    trial's document, a different file, another host) would put a document
+    the firewall never checked under an in-scope trial, so it is refused. The
+    message names ``origin`` only; the URL is not printed, since it may name a
+    holdout trial.
+    """
+    expected = build_ctgov_large_doc_url(nct_id, filename)
+    if type(url) is not str or url != expected:
+        raise AuditHoldoutError(
+            f"{origin} carries a document url that is not the canonical CT.gov URL "
+            "of this trial's own posted file; a record or download may not name "
+            "another trial's document (the url is not printed)."
+        )
+    return url
 
 
 def classify_doc_type(has_protocol: bool, has_sap: bool) -> DocType | None:
@@ -2688,8 +2830,13 @@ class JsonlPageMapProvider:
     the requesting trial; ``nct_id=None`` is refused, as
     ``DocumentCacheStore.get_or_index_document`` refuses it.
 
+    Pages are served for the digest they were extracted from and no other: a
+    lookup for a digest with no pages is a miss, never another digest's pages
+    found through the row's ``(nct_id, filename)``.
+
     Strict loading, no silent skips: a configured path that does not exist, a
-    line that is not JSON or not an object, a ``sha256`` that is not 64 hex
+    line that is not JSON or not an object (or that names a key twice), a
+    ``sha256`` that is not 64 hex
     characters, ``pages`` that is not a list of strings, an invalid ``filename``
     or ``text_source``, and two rows giving one ``(sha256, text_source)``
     different pages all raise. Staging is all-or-nothing: if any configured file
@@ -2719,9 +2866,12 @@ class JsonlPageMapProvider:
                 "allowed_nct_ids and audit_nct_ids."
             )
         self._loaded = False
-        # Keyed by (sha256_lower, text_source) -> tuple[str, ...]
+        # Keyed by (sha256_lower, text_source) -> tuple[str, ...]; the only
+        # index pages are served from (see _lookup_pages).
         self._by_sha_source: dict[tuple[str, str], tuple[str, ...]] = {}
-        # Secondary lookup by (nct_id, filename, text_source) -> sha256_lower
+        # (nct_id, filename, text_source) -> sha256_lower. Load-time consistency
+        # check only (one trial's file may not map to two digests across the
+        # configured rows); never used to serve pages.
         self._by_trial_file: dict[tuple[str, str, str], str] = {}
 
     def _validate_page_map_row(self, obj: Mapping[str, Any], *, origin: str) -> str | None:
@@ -2786,7 +2936,8 @@ class JsonlPageMapProvider:
                 continue
             where = f"{origin}:{line_no}"
             try:
-                obj = json.loads(line)
+                # A row naming nct_id or in_audit twice is refused, not read last-wins.
+                obj = loads_strict_json(line, origin=where)
             except json.JSONDecodeError as exc:
                 raise DocumentIndexerError(
                     f"Page map at {where} is not valid JSON: {exc.msg}"
@@ -2850,10 +3001,10 @@ class JsonlPageMapProvider:
             try:
                 if cand.suffix == ".gz":
                     with gzip.open(cand, "rt", encoding="utf-8") as handle:
-                        obj = json.load(handle)
+                        obj = loads_strict_json(handle.read(), origin=str(cand))
                 else:
                     with cand.open("r", encoding="utf-8") as handle:
-                        obj = json.load(handle)
+                        obj = loads_strict_json(handle.read(), origin=str(cand))
             except (OSError, EOFError, json.JSONDecodeError) as exc:
                 raise CacheIntegrityError(
                     f"Cached page map {cand} cannot be read: {type(exc).__name__}"
@@ -2886,10 +3037,20 @@ class JsonlPageMapProvider:
         filename: str | None = None,
         text_source: str = "pdfkit",
     ) -> tuple[str, ...] | None:
-        """Serve pages by sha256 (or trial+filename) after checking the requesting trial."""
-        validated_nct: str | None = None
+        """Serve the pages extracted from ``sha256``'s bytes, after checking the requesting trial.
+
+        Pages are served by digest only. A document is its bytes, and a page
+        map's pages describe the bytes of the digest they were extracted from;
+        serving another digest's pages under the requested one (as a former
+        ``(nct_id, filename)`` fallback did when the requested digest had no
+        pages) labels text with a content address it does not describe, and
+        lets a mislabelled row's text (a holdout trial's, say) reach an
+        in-scope document's cache entry. A digest with no pages here is a miss
+        (None), which ``extract_pages`` reports as ``PageExtractionError``.
+        ``filename`` is validated but does not select pages.
+        """
         if nct_id is not None:
-            validated_nct = enforce_not_in_audit(
+            enforce_not_in_audit(
                 nct_id,
                 in_audit=False,
                 audit_nct_ids=self._audit_nct_ids,
@@ -2900,18 +3061,13 @@ class JsonlPageMapProvider:
                 "Explicit nct_id is required for a page-map lookup when allowed_nct_ids "
                 "is enforced."
             )
+        if filename:
+            validate_safe_pdf_filename(filename)
         self._ensure_loaded()
         sha = sha256.lower()
         pages = self._by_sha_source.get((sha, text_source))
         if pages is not None:
             return pages
-        if validated_nct is not None and filename:
-            safe_fn = validate_safe_pdf_filename(filename)
-            mapped_sha = self._by_trial_file.get((validated_nct, safe_fn, text_source))
-            if mapped_sha is not None:
-                pages = self._by_sha_source.get((mapped_sha, text_source))
-                if pages is not None:
-                    return pages
         return self._load_from_cache_dir(sha, text_source=text_source)
 
     def extract_pages(
@@ -3352,7 +3508,16 @@ class MacOSPDFKitProvider:
 
 
 class ChainedPageTextProvider:
-    """Checks cache page maps -> JSONL page maps -> macOS PDFKit in order."""
+    """Checks cache page maps -> JSONL page maps -> macOS PDFKit in order.
+
+    Firewall: before the cache store answers a request, the requesting trial
+    is checked against the store's own holdout set and allowlist
+    (``DocumentCacheStore.enforce_requester``), the same check the store's
+    ``get_page_text`` and ``JsonlPageMapProvider`` apply. Without it a request
+    made for a holdout trial, for an unlisted one, or (under an allowlist) for
+    no named trial was answered from the cache, which checks only the tag of
+    the map it reads.
+    """
 
     def __init__(
         self,
@@ -3380,6 +3545,9 @@ class ChainedPageTextProvider:
     ) -> ExtractedDocumentPages:
         if nct_id is not None:
             validate_nct_id(nct_id)
+        if self._cache_store is not None:
+            # Requester first: nothing is read for a refused trial.
+            self._cache_store.enforce_requester(nct_id)
         self.validate_loaded()
         if self._cache_store is not None:
             cached = self._cache_store.load_cached_pages(sha256)
@@ -3488,14 +3656,128 @@ class DocumentCacheStore:
                         entry.physical_pages,
                     )
         if self.url_manifest_path.exists():
-            with self.url_manifest_path.open("r", encoding="utf-8") as handle:
-                loaded = json.load(handle)
-            if isinstance(loaded, dict):
-                self._url_manifest = {
-                    str(k): dict(v)
-                    for k, v in loaded.items()
-                    if isinstance(v, Mapping)
-                }
+            self._url_manifest = self._load_url_manifest()
+
+    @property
+    def firewall_configured(self) -> bool:
+        """True when this store has a holdout set or an allowlist (the rule ``check_page_map_firewall`` uses)."""
+        return bool(self._audit_nct_ids) or self._allowed_nct_ids is not None
+
+    def enforce_requester(self, nct_id: str | None) -> str | None:
+        """Check the trial asking for cached pages against this store's firewall.
+
+        A named trial must be strict ASCII, not in the holdout set and, under an
+        allowlist, on it (``enforce_not_in_audit``). An unnamed request
+        (``nct_id=None``) is refused whenever an allowlist is configured, as
+        ``JsonlPageMapProvider`` and ``get_or_index_document`` refuse it, and
+        accepted otherwise (library use with no allowlist), where the map's own
+        tag is still checked when it is read. Returns the validated id or None.
+        """
+        if nct_id is not None:
+            return enforce_not_in_audit(
+                nct_id,
+                in_audit=False,
+                audit_nct_ids=self._audit_nct_ids,
+                allowed_nct_ids=self._allowed_nct_ids,
+            )
+        if self._allowed_nct_ids is not None:
+            raise AuditHoldoutError(
+                "Explicit nct_id is required for a cached page lookup when "
+                "allowed_nct_ids is enforced."
+            )
+        return None
+
+    def _check_url_firewall(self, url: Any, *, origin: str, serving: bool) -> None:
+        """Apply the holdout firewall to one url_manifest.json key (a document URL).
+
+        Only under a configured firewall (``firewall_configured``); with none,
+        any key is accepted, as an untagged page map is. Under one:
+
+        - the key must be a canonical CT.gov document URL
+          (``parse_ctgov_large_doc_url``); any other key cannot be tied to a
+          trial, so nothing shows it is not a holdout trial's, and it is
+          refused, as an untagged page map is;
+        - the trial it names must not be in the holdout set;
+        - when ``serving`` (a lookup or a new record, as opposed to loading the
+          file), the trial must also be on the allowlist. An entry for a trial
+          this run's manifest does not list is kept when the file is loaded
+          (one cache may serve several manifests) and carried unchanged
+          through a whole-file rewrite, but it is never served, and this store
+          never records a new one.
+
+        Messages name ``origin`` only, never the URL, which names a trial.
+        """
+        if not self.firewall_configured:
+            return
+        parsed = parse_ctgov_large_doc_url(url)
+        if parsed is None:
+            raise AuditHoldoutError(
+                f"{origin} is not keyed by a canonical CT.gov document URL, so it cannot "
+                "be tied to a trial and checked against the audit holdout."
+            )
+        url_nct, _filename = parsed
+        if url_nct in self._audit_nct_ids:
+            raise AuditHoldoutError(
+                f"{origin} records a document of an audit holdout trial; a cache holding "
+                "audit holdout records is refused and left as it is (remove the entry "
+                "by hand, outside this tool)."
+            )
+        if serving and self._allowed_nct_ids is not None and url_nct not in self._allowed_nct_ids:
+            raise AuditHoldoutError(
+                f"{origin} is for a trial not in allowed_nct_ids; unlisted trials' "
+                "cache records are not served or written."
+            )
+
+    def _load_url_manifest(self) -> dict[str, dict[str, Any]]:
+        """Read ``url_manifest.json`` whole, raising on anything this store would otherwise drop.
+
+        The file is a JSON object mapping a document URL to the record
+        ``record_url_manifest`` writes. Every ``record_url_manifest`` rewrites
+        the whole file from what was loaded here, so a record this loader
+        skipped would be deleted on the next write with no message. Nothing is
+        skipped instead: unreadable JSON, a repeated key, a root that is not an
+        object, a record that is not an object or lacks a valid ``sha256``
+        (64 lowercase hex) and positive int ``byte_count`` raise
+        ``CacheIntegrityError``, and each key passes ``_check_url_firewall``
+        (``AuditHoldoutError``), firewall first. A raise happens before any
+        write, so the file is left byte for byte. Entries are named by their
+        1-based position in the file, never by URL.
+        """
+        origin = str(self.url_manifest_path)
+        try:
+            text = self.url_manifest_path.read_text(encoding="utf-8")
+            loaded = loads_strict_json(text, origin=origin, error_cls=CacheIntegrityError)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise CacheIntegrityError(
+                f"Cache URL manifest {origin} cannot be read as JSON ({type(exc).__name__}); "
+                "it is left as it is."
+            ) from None
+        if not isinstance(loaded, dict):
+            raise CacheIntegrityError(
+                f"Cache URL manifest {origin} is a JSON {type(loaded).__name__}, not an object "
+                "keyed by document URL; it is left as it is rather than overwritten."
+            )
+        manifest: dict[str, dict[str, Any]] = {}
+        for position, (url, record) in enumerate(loaded.items(), start=1):
+            where = f"Cache URL manifest {origin} entry {position}"
+            self._check_url_firewall(url, origin=where, serving=False)
+            if not isinstance(record, Mapping):
+                raise CacheIntegrityError(
+                    f"{where} is {type(record).__name__}, not a JSON object; the file is left "
+                    "as it is rather than overwritten without it."
+                )
+            rec_sha = record.get("sha256")
+            if type(rec_sha) is not str or not SHA256_RE.fullmatch(rec_sha):
+                raise CacheIntegrityError(
+                    f"{where} has no valid sha256 (64 lowercase hex characters)."
+                )
+            rec_bytes = record.get("byte_count")
+            if type(rec_bytes) is not int or rec_bytes <= 0:
+                raise CacheIntegrityError(
+                    f"{where} has no positive int byte_count (got {type(rec_bytes).__name__})."
+                )
+            manifest[url] = dict(record)
+        return manifest
 
     def _check_sha_invariants(
         self,
@@ -3612,7 +3894,11 @@ class DocumentCacheStore:
         path = self.page_map_path(sha)
         if path.exists():
             with gzip.open(path, "rt", encoding="utf-8") as handle:
-                existing = json.load(handle)
+                existing = loads_strict_json(handle.read(), origin=str(path))
+            if not isinstance(existing, Mapping):
+                raise CacheIntegrityError(
+                    f"Existing cached page map {path} is not a JSON object."
+                )
             if existing.get("byte_count") != byte_count or existing.get("physical_pages") != len(sanitized):
                 raise CacheIntegrityError(
                     f"Existing cached page map for {sha} disagrees with byte_count/physical_pages."
@@ -3654,7 +3940,8 @@ class DocumentCacheStore:
         if not path.exists():
             return None
         with gzip.open(path, "rt", encoding="utf-8") as handle:
-            obj = json.load(handle)
+            # A map naming nct_id or in_audit twice is refused, not read last-wins.
+            obj = loads_strict_json(handle.read(), origin=str(path))
         if not isinstance(obj, Mapping):
             raise CacheIntegrityError(f"Malformed cached page map {path}: expected JSON object")
         check_page_map_firewall(
@@ -3692,12 +3979,8 @@ class DocumentCacheStore:
         text_source: str = "pdfkit",
     ) -> str | None:
         """Direct single-page lookup with the ``PageTextProvider`` signature (Module 4 match untested here)."""
-        enforce_not_in_audit(
-            nct_id,
-            in_audit=False,
-            audit_nct_ids=self._audit_nct_ids,
-            allowed_nct_ids=self._allowed_nct_ids,
-        )
+        validate_nct_id(nct_id)
+        self.enforce_requester(nct_id)
         cached = self.load_cached_pages(sha256, text_source=text_source)
         if cached is None:
             return None
@@ -3723,6 +4006,8 @@ class DocumentCacheStore:
         return path if path.exists() else None
 
     def lookup_url_manifest(self, url: str) -> dict[str, Any] | None:
+        """Return a copy of ``url``'s record, after ``_check_url_firewall`` (serving); None when there is none."""
+        self._check_url_firewall(url, origin="url_manifest lookup", serving=True)
         entry = self._url_manifest.get(url)
         return dict(entry) if entry is not None else None
 
@@ -3733,7 +4018,12 @@ class DocumentCacheStore:
         api_size: int | None,
         api_upload_date: str | None,
     ) -> str | None:
-        """Return cached sha256 when url_manifest matches non-null (api_size, api_upload_date)."""
+        """Return cached sha256 when url_manifest matches non-null (api_size, api_upload_date).
+
+        The url passes ``_check_url_firewall`` (serving) first, so a holdout or
+        unlisted trial's record is never served.
+        """
+        self._check_url_firewall(url, origin="url_manifest lookup", serving=True)
         if api_size is None or api_upload_date is None:
             return None
         rec = self._url_manifest.get(url)
@@ -3759,9 +4049,22 @@ class DocumentCacheStore:
         verified_at: str | None = None,
         pipeline_commit: str | None = None,
     ) -> None:
+        """Record ``url``'s verified digest and rewrite ``url_manifest.json`` whole.
+
+        The url passes ``_check_url_firewall`` (serving) before anything is
+        changed, so this store never writes a record for a holdout, unlisted or
+        unattributable URL. The rewrite carries every record loaded by
+        ``_load_url_manifest``, which refuses (rather than drops) any it cannot
+        read, so no record is lost by the rewrite.
+        """
+        self._check_url_firewall(url, origin="url_manifest record", serving=True)
         sha = sha256.lower()
         if not SHA256_RE.fullmatch(sha):
             raise CacheIntegrityError(f"Invalid sha256 for url_manifest: {sha256!r}")
+        if type(byte_count) is not int or byte_count <= 0:
+            raise CacheIntegrityError(
+                f"url_manifest byte_count must be a positive int, got {type(byte_count).__name__}."
+            )
         self._check_sha_invariants(sha, byte_count)
         self._url_manifest[url] = {
             "sha256": sha,
@@ -3881,6 +4184,14 @@ class DocumentCacheStore:
             nct_id=nct_id,
             filename=filename,
         )
+        # The pages are cached under ``sha``, a content address for the bytes
+        # they describe; a provider reporting another digest's pages is refused
+        # before anything is written.
+        if type(extracted.sha256) is not str or extracted.sha256.lower() != sha:
+            raise CacheIntegrityError(
+                f"Page provider {extracted.provider_name!r} returned pages for a different "
+                f"digest than the requested sha256={sha}; they are not cached under it."
+            )
         # The map is tagged with the trial that just passed the firewall above,
         # so a later run can check it against the holdout before reusing it.
         self.save_cached_pages(
@@ -3985,6 +4296,11 @@ def build_trial_document_record(
 
     A page count is recorded only when pages were extracted; an unknown count is
     None, never 0, so a total over documents cannot quietly absorb it.
+
+    In every shape ``url`` must be the trial's own posted ``filename``
+    (``require_own_large_doc_url``): the record binds a document to the trial
+    that passed the firewall, and a URL naming another trial would carry that
+    trial's id and document into the profile.
     """
     validated_nct = enforce_not_in_audit(
         nct_id,
@@ -3993,6 +4309,9 @@ def build_trial_document_record(
         allowed_nct_ids=allowed_nct_ids,
     )
     safe_filename = validate_safe_pdf_filename(filename)
+    require_own_large_doc_url(
+        url, nct_id=validated_nct, filename=safe_filename, origin="Trial document record"
+    )
     timing = compute_upload_timing(
         upload_date,
         primary_completion_date=primary_completion_date,
@@ -4220,6 +4539,7 @@ def ingest_legacy_census_documents(
     min_selected_pages: int = 10,
     max_selected_pages: int = 25,
     reparse_cached_pages: bool = False,
+    max_trials: int | None = None,
 ) -> tuple[list[DocumentIndexEntry], list[TrialDocumentProfile]]:
     """Offline-ingest legacy rule-census documents.jsonl rows into DocumentCacheStore.
 
@@ -4237,7 +4557,22 @@ def ingest_legacy_census_documents(
     ``url``, ``doc_type`` and ``retrieved_at`` (``DocumentIndexerError``
     otherwise). The ingest time is the profile's ``extracted_at``, not any
     document's ``retrieved_at``.
+
+    The ``url`` must be the row trial's own posted ``filename``
+    (``require_own_large_doc_url``; ``AuditHoldoutError`` otherwise), for a
+    downloaded row and a failed one alike: a row's ``nct_id`` passing the
+    firewall says nothing about a URL naming another trial, which the profile
+    would carry. A row naming any key twice is refused (``loads_strict_json``).
+
+    ``max_trials`` bounds the work, not only the output: every row is still
+    validated in pass 1 (one bad row refuses the whole file), then only the
+    first ``max_trials`` trials in ``nct_id`` order (the order profiles are
+    written in) are indexed, cached and profiled. None indexes every trial.
     """
+    if max_trials is not None and (type(max_trials) is not int or max_trials < 1):
+        raise DocumentIndexerError(
+            f"max_trials must be a positive int or None, got {type(max_trials).__name__}."
+        )
     validated_audit = _validate_nct_id_set(audit_nct_ids, label="audit_nct_ids")
     validated_allowed: frozenset[str] | None = (
         _validate_nct_id_set(allowed_nct_ids, label="allowed_nct_ids")
@@ -4265,7 +4600,8 @@ def ingest_legacy_census_documents(
                 continue
             where = f"{documents_jsonl}:{line_no}"
             try:
-                row = json.loads(line)
+                # A row naming nct_id, in_audit or url twice is refused, not read last-wins.
+                row = loads_strict_json(line, origin=where)
             except json.JSONDecodeError as exc:
                 raise DocumentIndexerError(
                     f"Census row at {where} is not valid JSON: {exc.msg}"
@@ -4312,7 +4648,7 @@ def ingest_legacy_census_documents(
                         f"Census row at {where} is for a trial not in allowed_nct_ids; "
                         "unlisted trials are blocked by the audit holdout firewall."
                     )
-            validate_safe_pdf_filename(row.get("filename"))  # type: ignore[arg-type]
+            row_filename = validate_safe_pdf_filename(row.get("filename"))  # type: ignore[arg-type]
             # The census documents.jsonl schema requires url, doc_type and
             # retrieved_at on every row (they are among the 14 keys
             # to_legacy_census_document_row projects back out). A row without
@@ -4330,13 +4666,25 @@ def ingest_legacy_census_documents(
                 raise DocumentIndexerError(
                     f"Census row at {where} has invalid doc_type {row['doc_type']!r}."
                 )
+            # The url is the document the record will name. It must be this
+            # row's own trial's posted file, whatever the row's http_status: a
+            # failed row's url is carried into the profile just the same.
+            require_own_large_doc_url(
+                row["url"], nct_id=nct_id, filename=row_filename, origin=f"Census row at {where}"
+            )
             rows_by_nct.setdefault(nct_id, []).append(dict(row))
 
     stamp = extracted_at or utc_now_iso()
     indexed_entries: dict[str, DocumentIndexEntry] = {}
     profiles: list[TrialDocumentProfile] = []
 
-    for nct_id in sorted(rows_by_nct):
+    # The trials this call indexes, chosen after the whole file has passed
+    # pass 1 and before any cache write (see max_trials above).
+    selected_ncts = sorted(rows_by_nct)
+    if max_trials is not None:
+        selected_ncts = selected_ncts[:max_trials]
+
+    for nct_id in selected_ncts:
         trial_docs: list[TrialDocumentRecord] = []
         for row in sorted(rows_by_nct[nct_id], key=lambda r: str(r.get("filename", ""))):
             filename = validate_safe_pdf_filename(row["filename"])

@@ -28,6 +28,17 @@ Hard safety guarantees:
   without creating, touching, or truncating output or cache paths. So does any
   run left with no trial to index: a manifest whose rows are all
   ``in_audit=True``, ``--limit`` below 1, or an empty census file.
+- Ambiguous input is refused with exit 2 before anything is read or written,
+  never resolved one way: an option that takes one value given twice (a
+  second ``--manifest`` used to replace the first, and its holdout set with
+  it), ``--nct-id`` together with ``--ingest-census-jsonl``, a manifest or
+  census JSON object naming a key twice, and a manifest object carrying more
+  than one row list. A trial named twice with ``--nct-id`` is fetched once.
+- ``--limit`` with ``--ingest-census-jsonl`` bounds the trials indexed and
+  cached, not only the profiles written.
+- A document URL (a download's, a census row's, a profile record's) must be
+  the canonical CT.gov URL of that trial's own posted file; a CT.gov payload
+  whose ``nctIdAliases`` names a holdout trial is that trial and is refused.
 - A trial whose CT.gov record cannot be fetched (HTTP or network error) is
   named on ``stderr`` and skipped; the other trials' profiles are written and
   the run exits 1.
@@ -85,6 +96,8 @@ from src.document_indexer import (  # noqa: E402
     extract_in_scope_large_docs,
     has_pdf_magic,
     ingest_legacy_census_documents,
+    loads_strict_json,
+    require_own_large_doc_url,
     resolve_pipeline_commit,
     sha256_file,
     utc_now_iso,
@@ -204,7 +217,14 @@ def download_pdf_atomic(
     audit_nct_ids: AbstractSet[str] = frozenset(),
     allowed_nct_ids: AbstractSet[str] | None = None,
 ) -> DownloadResult:
-    """Download a PDF atomically via a .part file and verify %PDF- header and non-zero size."""
+    """Download a PDF atomically via a .part file and verify %PDF- header and non-zero size.
+
+    Firewall, before any request or directory is made: ``nct_id`` passes
+    ``enforce_not_in_audit``, and ``url`` must be that trial's own posted
+    ``filename`` (``require_own_large_doc_url``). Checking the id alone let an
+    in-scope id carry any URL, a holdout trial's document included, into the
+    content-addressed cache. A refused URL raises ``AuditHoldoutError``.
+    """
     validated_nct = enforce_not_in_audit(
         nct_id,
         in_audit=in_audit,
@@ -212,6 +232,9 @@ def download_pdf_atomic(
         allowed_nct_ids=allowed_nct_ids,
     )
     safe_filename = validate_safe_pdf_filename(filename)
+    require_own_large_doc_url(
+        url, nct_id=validated_nct, filename=safe_filename, origin="download_pdf_atomic"
+    )
 
     if rate_limiter is not None:
         rate_limiter.wait()
@@ -323,6 +346,14 @@ def load_manifest_rows(
     before checking ``in_audit``, rejects missing or non-``bool`` ``in_audit`` rows,
     and refuses an empty ``audit_nct_ids`` set whenever the manifest contains any
     ``in_audit == True`` rows.
+
+    Ambiguous manifests are refused with ``AuditHoldoutError``, never read one
+    way: a JSON object (a row or the wrapper) that names any key twice
+    (``json.loads`` would keep the last, so ``{"in_audit": true, "in_audit":
+    false}`` read as False), and a wrapper object carrying more than one of
+    ``data``, ``rows``, ``trials`` or a top-level ``nct_id`` (only the first was
+    read, so a holdout row in a second list was never seen). Other top-level
+    keys (``run_id``, ``schema_version``) are allowed and ignored.
     """
     path = Path(manifest_path)
     if not path.exists():
@@ -359,13 +390,26 @@ def load_manifest_rows(
     parsed_single_json = False
     if raw_text.startswith("{") or raw_text.startswith("["):
         try:
-            parsed = json.loads(raw_text)
+            # A repeated key anywhere raises AuditHoldoutError here; only a
+            # JSONDecodeError (e.g. "Extra data" in a JSONL file) falls through
+            # to line-by-line reading, where each line is parsed strictly too.
+            parsed = loads_strict_json(raw_text, origin=f"manifest {path}")
             parsed_single_json = True
         except json.JSONDecodeError:
             parsed_single_json = False
 
     if parsed_single_json:
         if isinstance(parsed, Mapping):
+            # A wrapper holds exactly one source of rows. Reading the first of
+            # several and ignoring the rest let a holdout row under a second
+            # list go unseen, so more than one is refused.
+            row_sources = [key for key in ("data", "rows", "trials", "nct_id") if key in parsed]
+            if len(row_sources) > 1:
+                raise AuditHoldoutError(
+                    f"Manifest {path} JSON object carries more than one of 'data', 'rows', "
+                    f"'trials' and a top-level 'nct_id' ({', '.join(row_sources)}); a manifest "
+                    "holds one row list, so it is ambiguous and refused."
+                )
             if "data" in parsed:
                 rows = _extract_mapping_list(parsed["data"], "data")
             elif "rows" in parsed:
@@ -390,7 +434,7 @@ def load_manifest_rows(
             if not line:
                 continue
             try:
-                obj = json.loads(line)
+                obj = loads_strict_json(line, origin=f"line {line_no} of manifest {path}")
             except json.JSONDecodeError as exc:
                 raise DocumentIndexerError(
                     f"Malformed JSON on line {line_no} of manifest {path}: {exc}"
@@ -829,7 +873,44 @@ def build_default_provider(
     return ChainedPageTextProvider(providers, cache_store=cache_store)
 
 
+_REPEATED_OPTIONS_ATTR = "_repeated_single_value_options"
+_SEEN_OPTIONS_ATTR = "_seen_single_value_options"
+
+
+class _StoreOnceAction(argparse.Action):
+    """Store a single-value option and record, rather than silently resolve, a repeat.
+
+    argparse's default ``store`` keeps the last of a repeated option, so
+    ``--manifest canon.jsonl --manifest other.jsonl`` read only other.jsonl and
+    dropped the holdout set of canon.jsonl without a word, and a repeated
+    ``--ingest-census-jsonl`` ingested only the last file. Every option that
+    takes one value uses this action instead: the option strings given more
+    than once are collected on the namespace, and ``run_cli`` refuses the run
+    (exit 2, before anything is read or written). Multi-value options
+    (``--nct-id``, ``--page-map-jsonl``) keep ``append``.
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: Any,
+        option_string: str | None = None,
+    ) -> None:
+        seen: set[str] = getattr(namespace, _SEEN_OPTIONS_ATTR, None) or set()
+        if self.dest in seen:
+            repeated: list[str] = getattr(namespace, _REPEATED_OPTIONS_ATTR, None) or []
+            name = self.option_strings[0]
+            if name not in repeated:
+                repeated.append(name)
+            setattr(namespace, _REPEATED_OPTIONS_ATTR, repeated)
+        seen.add(self.dest)
+        setattr(namespace, _SEEN_OPTIONS_ATTR, seen)
+        setattr(namespace, self.dest, values)
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser; every single-value option refuses a repeat (``_StoreOnceAction``)."""
     epilog = (
         "Dependencies & platform notes:\n"
         "  - Imports requests and tqdm (requirements.txt) plus src.api_client.CTGovAPIClient.\n"
@@ -850,11 +931,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help=(
             "Explicit NCT ID(s) to index (requires --manifest; raises AuditHoldoutError "
-            "exit 2 if in_audit=True or unlisted in manifest)."
+            "exit 2 if in_audit=True or unlisted in manifest; cannot be combined with "
+            "--ingest-census-jsonl; a repeated id is fetched once)."
         ),
     )
     parser.add_argument(
         "--manifest",
+        action=_StoreOnceAction,
         type=Path,
         default=None,
         help=(
@@ -865,6 +948,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ingest-census-jsonl",
+        action=_StoreOnceAction,
         type=Path,
         default=None,
         help=(
@@ -874,6 +958,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--local-pdf-dir",
+        action=_StoreOnceAction,
         type=Path,
         default=None,
         help="Directory holding pre-downloaded {nct_id}/{filename} PDFs.",
@@ -887,26 +972,31 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--cache-dir",
+        action=_StoreOnceAction,
         type=Path,
         default=Path("data/document_cache"),
         help="Root directory for content-addressed document cache.",
     )
     parser.add_argument(
         "--index-out",
+        action=_StoreOnceAction,
         type=Path,
         default=Path("data/document_index_by_sha256.jsonl"),
         help="Output path for sha256-keyed DocumentIndexEntry JSONL.",
     )
     parser.add_argument(
         "--profiles-out",
+        action=_StoreOnceAction,
         type=Path,
         default=Path("data/trial_document_profiles.jsonl"),
         help="Output path for TrialDocumentProfile JSONL.",
     )
-    parser.add_argument("--min-selected-pages", type=int, default=10)
-    parser.add_argument("--max-selected-pages", type=int, default=25)
-    parser.add_argument("--rate-limit-sec", type=float, default=DEFAULT_RATE_LIMIT_SEC)
-    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--min-selected-pages", action=_StoreOnceAction, type=int, default=10)
+    parser.add_argument("--max-selected-pages", action=_StoreOnceAction, type=int, default=25)
+    parser.add_argument(
+        "--rate-limit-sec", action=_StoreOnceAction, type=float, default=DEFAULT_RATE_LIMIT_SEC
+    )
+    parser.add_argument("--limit", action=_StoreOnceAction, type=int, default=None)
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--force-download", action="store_true")
     parser.add_argument("--reparse-cached-pages", action="store_true")
@@ -973,7 +1063,35 @@ def run_cli(
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
+    # A single-value option given twice is refused before anything is read
+    # (see _StoreOnceAction): the earlier value would otherwise be dropped
+    # without a word, and for --manifest that drops a holdout set.
+    repeated_options: list[str] = getattr(args, _REPEATED_OPTIONS_ATTR, None) or []
+    if repeated_options:
+        parser.print_usage(sys.stderr)
+        print(
+            "index_trial_documents.py: error: "
+            f"{', '.join(repeated_options)} may be given at most once; a repeated value "
+            "would silently replace the earlier one. Nothing was read or written.",
+            file=sys.stderr,
+        )
+        return 2
+
     has_nct_arg = any(group for group in (args.nct_id or []))
+    if has_nct_arg and args.ingest_census_jsonl is not None:
+        # --nct-id selects trials to fetch live; --ingest-census-jsonl takes its
+        # trials from the census file. The ingest used to run every census row
+        # and ignore --nct-id after firewall-checking it, so a run that named
+        # one trial indexed, cached and profiled all of them. One run takes one
+        # source of trials; filter the census file to restrict an ingest.
+        parser.print_usage(sys.stderr)
+        print(
+            "index_trial_documents.py: error: --nct-id cannot be combined with "
+            "--ingest-census-jsonl (the ingest takes its trials from the census file); "
+            "nothing was read or written.",
+            file=sys.stderr,
+        )
+        return 2
     if not has_nct_arg and args.manifest is None and args.ingest_census_jsonl is None:
         parser.print_usage(sys.stderr)
         print(
@@ -1023,6 +1141,20 @@ def run_cli(
                 allowed_nct_ids=in_scope_nct_ids,
             )
 
+        # A trial named more than once (--nct-id A --nct-id A, or --nct-id A A)
+        # is fetched and profiled once: two profile lines for one trial would be
+        # resolved silently by a consumer keyed by nct_id. Every copy has passed
+        # the firewall above, so first-seen order is kept and the repeat count
+        # (not the ids) is reported.
+        unique_nct_ids = list(dict.fromkeys(explicit_nct_ids))
+        if len(unique_nct_ids) != len(explicit_nct_ids):
+            print(
+                f"NOTE: {len(explicit_nct_ids) - len(unique_nct_ids)} repeated --nct-id "
+                f"value(s) ignored; {len(unique_nct_ids)} trial(s) will each be fetched once.",
+                file=sys.stderr,
+            )
+        explicit_nct_ids = unique_nct_ids
+
         # A manifest whose every row is in_audit=True leaves nothing any mode
         # may index. Refuse before a cache store or provider is built.
         if not in_scope_nct_ids:
@@ -1068,6 +1200,11 @@ def run_cli(
         profiles: list[TrialDocumentProfile] = []
 
         if args.ingest_census_jsonl is not None:
+            # --limit bounds the ingest's work, not only its output: the whole
+            # census file is still validated, then only the first --limit
+            # trials (nct_id order) are indexed, cached and profiled. Trimming
+            # the profiles after the ingest left the cache and index holding
+            # documents of trials with no profile in the run's output.
             _, census_profiles = ingest_legacy_census_documents(
                 args.ingest_census_jsonl,
                 cache_store=cache_store,
@@ -1081,9 +1218,8 @@ def run_cli(
                 min_selected_pages=args.min_selected_pages,
                 max_selected_pages=args.max_selected_pages,
                 reparse_cached_pages=args.reparse_cached_pages,
+                max_trials=args.limit,
             )
-            if args.limit is not None:
-                census_profiles = census_profiles[: args.limit]
             if not census_profiles:
                 # An empty census file yields no rows, so nothing was indexed
                 # or cached; the previous profiles file is left as it was.

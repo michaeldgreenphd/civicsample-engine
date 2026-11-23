@@ -3844,3 +3844,328 @@ def test_redteam_m1_nested_or_wrapped_ids_are_refused(
             ).validate_loaded()
         assert _RT_AUDIT not in str(info.value)
     assert not (tmp_path / "nest_lib_cache").exists()
+
+
+# ---------------------------------------------------------------------------
+# Group 12: Round 1 fixes carried to sibling entry points
+#
+# The red-team tests above pin each reported bypass. These pin the same rule
+# where the fix reached further: every single-value option, duplicate keys in
+# every JSON input, the other kinds of url_manifest.json entry, the record
+# builder's url, the shape of a payload's alias list, the digest a provider
+# reports, and the ingest's max_trials argument. Fictional ids only.
+# ---------------------------------------------------------------------------
+
+
+def _m1_url_record(sha_char: str) -> dict[str, Any]:
+    """A url_manifest.json record as record_url_manifest writes it, for a fictional digest."""
+    return {
+        "sha256": sha_char * 64,
+        "byte_count": 10,
+        "api_size": 10,
+        "api_upload_date": "01/01/2020 10:00",
+        "verified_at": _RT_STAMP,
+        "pipeline_commit": None,
+    }
+
+
+def test_m1_fix_every_single_value_option_refuses_a_repeat(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Any option that takes one value, given twice, exits 2 naming the option, with no fetch or write.
+
+    The rule is general, not only --manifest and --ingest-census-jsonl: argparse
+    keeps the last of any repeated single-value option, so each would drop its
+    earlier value without a word. A repeated --nct-id is not refused; it is
+    fetched once and the repeat is counted on stderr without naming the id.
+    """
+    manifest = _rt_manifest(tmp_path)
+    other = tmp_path / "rep_other"
+    repeats: list[tuple[str, list[str]]] = [
+        ("--manifest", ["--manifest", str(manifest)]),
+        ("--cache-dir", ["--cache-dir", str(other / "cache")]),
+        ("--index-out", ["--index-out", str(other / "index.jsonl")]),
+        ("--profiles-out", ["--profiles-out", str(other / "profiles.jsonl")]),
+        ("--rate-limit-sec", ["--rate-limit-sec", "0"]),
+        ("--limit", ["--limit", "1", "--limit", "2"]),
+        ("--min-selected-pages", ["--min-selected-pages", "5", "--min-selected-pages", "6"]),
+        ("--max-selected-pages", ["--max-selected-pages", "20", "--max-selected-pages", "21"]),
+        ("--local-pdf-dir", ["--local-pdf-dir", str(other / "a"), "--local-pdf-dir", str(other / "b")]),
+    ]
+    for index, (flag, extra) in enumerate(repeats):
+        tag = f"rep_{index}"
+        api = _SpyAPIClient({_RT_A: _make_study(_RT_A, [])})
+        rc = cli_mod.run_cli(
+            ["--manifest", str(manifest), "--nct-id", _RT_A, *_rt_outs(tmp_path, tag), *extra],
+            api_client=api,
+            session=_FakeSession({}),
+        )
+        err = capsys.readouterr().err
+        assert rc == 2, flag
+        assert flag in err
+        assert api.requested_ncts == []
+        assert _rt_written(tmp_path, tag) == []
+        assert not other.exists()
+
+    api = _SpyAPIClient({_RT_A: _make_study(_RT_A, [])})
+    rc = cli_mod.run_cli(
+        ["--manifest", str(manifest), "--nct-id", _RT_A, _RT_A, "--nct-id", _RT_A, *_rt_outs(tmp_path, "rep_ids")],
+        api_client=api,
+        session=_FakeSession({}),
+    )
+    err = capsys.readouterr().err
+    assert rc == 0
+    assert api.requested_ncts == [_RT_A]
+    assert "2 repeated --nct-id value(s) ignored" in err
+    assert re.search(r"NCT[0-9]{8}", err) is None
+
+
+def test_m1_fix_duplicate_keys_refused_in_census_page_map_and_cached_map_inputs(tmp_path: Path) -> None:
+    """A census row, a page-map row or a cached page map naming a key twice is refused, not read last-wins."""
+    pdf = _make_minimal_pdf("Duplicate keys elsewhere")
+    sha = di.sha256_bytes(pdf)
+    audit, allowed = {_RT_AUDIT}, {_RT_A, _RT_B}
+
+    body = json.dumps(_rt_census_row(_RT_A, pdf))[1:-1]
+    census = tmp_path / "dup_census.jsonl"
+    census.write_text("{" + body + ', "in_audit": true, "in_audit": false}\n', encoding="utf-8")
+    provider = di.FixturePageTextProvider({sha: _clean_stat_pages(2)})
+    store = di.DocumentCacheStore(
+        tmp_path / "dk_cache", tmp_path / "dk_index.jsonl", audit_nct_ids=audit, allowed_nct_ids=allowed
+    )
+    with pytest.raises(di.AuditHoldoutError) as info:
+        di.ingest_legacy_census_documents(
+            census, cache_store=store, provider=provider, audit_nct_ids=audit, allowed_nct_ids=allowed
+        )
+    assert "'in_audit'" in str(info.value)
+    assert provider.calls == []
+    assert not (tmp_path / "dk_cache").exists() and not (tmp_path / "dk_index.jsonl").exists()
+
+    page_map = tmp_path / "dup_pm.jsonl"
+    page_map.write_text(
+        f'{{"nct_id": "{_RT_AUDIT}", "nct_id": "{_RT_A}", "sha256": "{"e" * 64}", "pages": ["x"]}}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(di.AuditHoldoutError) as info:
+        di.JsonlPageMapProvider([page_map], audit_nct_ids=audit, allowed_nct_ids=allowed).validate_loaded()
+    assert re.search(r"NCT[0-9]{8}", str(info.value)) is None
+
+    cache_dir = tmp_path / "dkc_cache"
+    map_path = cache_dir / "pages" / sha[:2] / f"{sha}.json.gz"
+    map_path.parent.mkdir(parents=True)
+    map_text = (
+        f'{{"sha256": "{sha}", "nct_id": "{_RT_AUDIT}", "nct_id": "{_RT_A}", '
+        f'"byte_count": {len(pdf)}, "physical_pages": 1, "pages": ["holdout page"]}}'
+    )
+    map_path.write_bytes(gzip.compress(map_text.encode("utf-8")))
+    before = map_path.read_bytes()
+    cached_store = di.DocumentCacheStore(
+        cache_dir, tmp_path / "dkc_index.jsonl", audit_nct_ids=audit, allowed_nct_ids=allowed
+    )
+    with pytest.raises(di.AuditHoldoutError):
+        cached_store.load_cached_pages(sha)
+    with pytest.raises(di.AuditHoldoutError):
+        di.JsonlPageMapProvider(
+            [], cache_pages_dir=cache_dir / "pages", audit_nct_ids=audit, allowed_nct_ids=allowed
+        ).get_page_text(_RT_A, "Prot_000.pdf", sha, 1)
+    assert map_path.read_bytes() == before
+
+
+def test_m1_fix_manifest_wrapper_with_a_row_list_and_a_top_level_row_is_refused(tmp_path: Path) -> None:
+    """A wrapper holding a row list and a top-level ``nct_id`` row is two sources of rows: refused."""
+    path = tmp_path / "rows_and_row.json"
+    path.write_text(
+        json.dumps({"nct_id": _RT_AUDIT, "in_audit": True, "rows": [{"nct_id": _RT_A, "in_audit": False}]}),
+        encoding="utf-8",
+    )
+    with pytest.raises(di.AuditHoldoutError) as info:
+        cli_mod.load_manifest_rows(path)
+    assert re.search(r"NCT[0-9]{8}", str(info.value)) is None
+
+
+def test_m1_fix_url_manifest_entries_pass_the_firewall_and_are_never_dropped(tmp_path: Path) -> None:
+    """url_manifest.json under a configured firewall, and its malformed variants under any store.
+
+    An unattributable key is refused (it cannot be checked against the holdout);
+    an unlisted trial's entry is kept and carried unchanged through a rewrite
+    but never served; no holdout, unlisted or unattributable record is written;
+    unreadable JSON, a repeated URL key and a record without a valid digest or
+    size are refused with the file left byte for byte.
+    """
+    audit, allowed = {_RT_AUDIT}, {_RT_A, _RT_B}
+    url_a = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    url_unlisted = di.build_ctgov_large_doc_url(_RT_UNLISTED, "Prot_000.pdf")
+    url_audit = di.build_ctgov_large_doc_url(_RT_AUDIT, "Prot_000.pdf")
+
+    bad_key_cache = tmp_path / "umf_bad_key"
+    bad_key_cache.mkdir()
+    bad_key_path = bad_key_cache / "url_manifest.json"
+    bad_key_path.write_text(json.dumps({"https://example.org/Prot_000.pdf": _m1_url_record("a")}), encoding="utf-8")
+    before = bad_key_path.read_bytes()
+    with pytest.raises(di.AuditHoldoutError):
+        di.DocumentCacheStore(
+            bad_key_cache, tmp_path / "umf_bad_key_index.jsonl", audit_nct_ids=audit, allowed_nct_ids=allowed
+        )
+    assert bad_key_path.read_bytes() == before
+    # With no firewall configured (library use), the same file loads, as an untagged page map does.
+    di.DocumentCacheStore(bad_key_cache, tmp_path / "umf_bad_key_index.jsonl")
+
+    kept_cache = tmp_path / "umf_unlisted"
+    kept_cache.mkdir()
+    kept_path = kept_cache / "url_manifest.json"
+    kept_path.write_text(json.dumps({url_unlisted: _m1_url_record("b")}), encoding="utf-8")
+    before = kept_path.read_bytes()
+    store = di.DocumentCacheStore(
+        kept_cache, tmp_path / "umf_unlisted_index.jsonl", audit_nct_ids=audit, allowed_nct_ids=allowed
+    )
+    with pytest.raises(di.AuditHoldoutError):
+        store.lookup_url_manifest(url_unlisted)
+    with pytest.raises(di.AuditHoldoutError):
+        store.can_skip_download(url_unlisted, api_size=10, api_upload_date="01/01/2020 10:00")
+    for refused_url in (url_unlisted, url_audit, url_a + "?v=2"):
+        with pytest.raises(di.AuditHoldoutError) as info:
+            store.record_url_manifest(refused_url, sha256="c" * 64, byte_count=3, api_size=3, api_upload_date=None)
+        assert re.search(r"NCT[0-9]{8}", str(info.value)) is None
+    assert kept_path.read_bytes() == before
+    store.record_url_manifest(url_a, sha256="c" * 64, byte_count=3, api_size=3, api_upload_date=None)
+    written = json.loads(kept_path.read_text(encoding="utf-8"))
+    assert written[url_unlisted] == _m1_url_record("b")
+    assert written[url_a]["sha256"] == "c" * 64
+
+    record_a = json.dumps(_m1_url_record("a"))
+    malformed = {
+        "not_json": "{not json",
+        "repeated_url_key": f'{{"{url_a}": {record_a}, "{url_a}": {json.dumps(_m1_url_record("b"))}}}',
+        "bad_sha256": json.dumps({url_a: {**_m1_url_record("a"), "sha256": "XYZ"}}),
+        "zero_bytes": json.dumps({url_a: {**_m1_url_record("a"), "byte_count": 0}}),
+        "bool_bytes": json.dumps({url_a: {**_m1_url_record("a"), "byte_count": True}}),
+    }
+    for label, text in malformed.items():
+        cache = tmp_path / f"umf_{label}"
+        cache.mkdir()
+        path = cache / "url_manifest.json"
+        path.write_text(text, encoding="utf-8")
+        before = path.read_bytes()
+        for firewall in ({}, {"audit_nct_ids": audit, "allowed_nct_ids": allowed}):
+            with pytest.raises(di.CacheIntegrityError) as info:
+                di.DocumentCacheStore(cache, tmp_path / f"umf_{label}_index.jsonl", **firewall)
+            assert re.search(r"NCT[0-9]{8}", str(info.value)) is None, label
+        assert path.read_bytes() == before, label
+
+
+def test_m1_fix_document_urls_are_tied_to_their_trial() -> None:
+    """parse_ctgov_large_doc_url accepts only the canonical form; the record builder refuses any other url."""
+    own = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    assert di.parse_ctgov_large_doc_url(own) == (_RT_A, "Prot_000.pdf")
+    for variant in (
+        own.replace("/61/", "/62/"),
+        own.replace("https://", "http://"),
+        own + "?v=2",
+        own + "#page=2",
+        own + "\n",
+        own.replace("cdn.clinicaltrials.gov", "cdn.clinicaltrials.gov.example.org"),
+        own.replace("Prot_000.pdf", "Prot_000.txt"),
+        None,
+        [own],
+    ):
+        assert di.parse_ctgov_large_doc_url(variant) is None, variant
+
+    common: dict[str, Any] = {
+        "nct_id": _RT_A,
+        "filename": "Prot_000.pdf",
+        "doc_type": "protocol",
+        "http_status": 404,
+        "entry": None,
+        "audit_nct_ids": {_RT_AUDIT},
+        "allowed_nct_ids": {_RT_A},
+    }
+    for foreign in (
+        di.build_ctgov_large_doc_url(_RT_AUDIT, "Prot_000.pdf"),
+        di.build_ctgov_large_doc_url(_RT_A, "SAP_001.pdf"),
+        own + "?v=2",
+    ):
+        with pytest.raises(di.AuditHoldoutError) as info:
+            di.build_trial_document_record(url=foreign, **common)
+        assert re.search(r"NCT[0-9]{8}", str(info.value)) is None
+    assert di.build_trial_document_record(url=own, **common)["readability_status"] == "download_failed"
+
+
+def test_m1_fix_study_alias_list_must_be_a_list_of_strict_ids() -> None:
+    """A malformed nctIdAliases cannot be checked and is refused; a non-holdout alias is accepted."""
+    digits = _RT_AUDIT[3:]
+    for aliases, expected in (
+        (_RT_AUDIT, di.AuditHoldoutError),
+        ({"id": _RT_AUDIT}, di.AuditHoldoutError),
+        ([_RT_AUDIT.lower()], di.InvalidNctIdError),
+        ([_RT_AUDIT + " "], di.InvalidNctIdError),
+        ([_RT_UNLISTED, _RT_AUDIT], di.AuditHoldoutError),
+    ):
+        study = _make_study(_RT_A, [])
+        study["protocolSection"]["identificationModule"]["nctIdAliases"] = aliases
+        with pytest.raises(expected) as info:
+            di.validate_study_payload_nct_id(
+                study, expected_nct_id=_RT_A, audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A, _RT_B}
+            )
+        assert digits not in str(info.value)
+
+    study = _make_study(_RT_A, [])
+    study["protocolSection"]["identificationModule"]["nctIdAliases"] = [_RT_UNLISTED]
+    assert (
+        di.validate_study_payload_nct_id(
+            study, expected_nct_id=_RT_A, audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A, _RT_B}
+        )
+        == _RT_A
+    )
+
+
+class _WrongDigestProvider(di.FixturePageTextProvider):
+    """A provider that labels the pages it extracts with a digest other than the one requested."""
+
+    def extract_pages(
+        self,
+        *,
+        sha256: str,
+        pdf_path: Path | None = None,
+        nct_id: str | None = None,
+        filename: str | None = None,
+    ) -> di.ExtractedDocumentPages:
+        got = super().extract_pages(sha256=sha256, pdf_path=pdf_path, nct_id=nct_id, filename=filename)
+        return di.ExtractedDocumentPages(
+            sha256="f" * 64, physical_pages=got.physical_pages, pages=got.pages, provider_name="wrong_digest"
+        )
+
+
+def test_m1_fix_pages_reported_for_another_digest_are_not_cached(tmp_path: Path) -> None:
+    """get_or_index_document refuses a provider's pages when they are labelled with another digest."""
+    sha = "a" * 64
+    store = di.DocumentCacheStore(
+        tmp_path / "wd_cache", tmp_path / "wd_index.jsonl", audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A}
+    )
+    provider = _WrongDigestProvider({sha: _clean_stat_pages(2)})
+    with pytest.raises(di.CacheIntegrityError):
+        store.get_or_index_document(sha256=sha, byte_count=5, provider=provider, nct_id=_RT_A)
+    assert len(provider.calls) == 1
+    assert store.load_cached_pages(sha) is None and store.load_cached_pages("f" * 64) is None
+    assert not store.index_path.exists()
+
+
+def test_m1_fix_ingest_max_trials_must_be_a_positive_int(tmp_path: Path) -> None:
+    """max_trials other than None or an int >= 1 is refused before any row is read or indexed."""
+    pdf = _make_minimal_pdf("Max trials")
+    census = _write_jsonl(tmp_path / "mt_census.jsonl", [_rt_census_row(_RT_A, pdf)])
+    provider = di.FixturePageTextProvider({di.sha256_bytes(pdf): _clean_stat_pages(2)})
+    store = di.DocumentCacheStore(
+        tmp_path / "mt_cache", tmp_path / "mt_index.jsonl", audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A}
+    )
+    for bad in (0, -1, True, 1.0, "1"):
+        with pytest.raises(di.DocumentIndexerError):
+            di.ingest_legacy_census_documents(
+                census,
+                cache_store=store,
+                provider=provider,
+                audit_nct_ids={_RT_AUDIT},
+                allowed_nct_ids={_RT_A},
+                max_trials=bad,  # type: ignore[arg-type]
+            )
+    assert provider.calls == []
+    assert not (tmp_path / "mt_cache").exists()
