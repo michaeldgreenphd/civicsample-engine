@@ -643,6 +643,10 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
     dw_complete: dict[str, bool] = {}
     for dw in p0.get("dropWithdraws") or []:
         if not isinstance(dw, dict):
+            # A malformed entry names no reason and no counts. Dropping it would make the published
+            # reasons look complete, so it is kept as an unknown reason with a withheld tally.
+            dw_tallies["UNSPECIFIED_REASON"] = None
+            dw_complete["UNSPECIFIED_REASON"] = False
             continue
         raw_label = dw.get("type")
         label = raw_label.strip() if isinstance(raw_label, str) and raw_label.strip() else "UNSPECIFIED_REASON"
@@ -675,7 +679,10 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
     milestones: dict[str, dict[str, Any]] = {}
     for ms in p0.get("milestones") or []:
         if not isinstance(ms, dict):
-            continue
+            # It could be a second STARTED or COMPLETED (see below), so no single count can be trusted.
+            base["flow_status"] = "malformed_participant_flow"
+            base["completion_rate_status"] = "withheld_missing_started_or_completed"
+            return base
         mtype = ms.get("type")
         if mtype in ("STARTED", "COMPLETED") and mtype in milestones:
             # A second STARTED or COMPLETED milestone in Period 1 leaves no single count; using
@@ -692,7 +699,11 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
             ach: dict[str, Any] = {}
             for a in achievements or []:
                 if not isinstance(a, dict) or not isinstance(a.get("groupId"), str):
-                    continue
+                    # It could be a retained arm's second count (see below); skipping it would keep
+                    # the other one as if it were the only count.
+                    base["flow_status"] = "malformed_participant_flow"
+                    base["completion_rate_status"] = "withheld_missing_started_or_completed"
+                    return base
                 if a["groupId"] in ach and a["groupId"] in arm_id_set:
                     # A retained arm counted twice in one milestone has no single count; keeping
                     # either value would publish an arbitrary STARTED / COMPLETED.

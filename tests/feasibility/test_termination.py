@@ -311,6 +311,8 @@ def _cnt(*values: object) -> list:
         ([_primary("A", [{"groupId": "OG000", "value": "0"}, {"groupId": "OG000", "value": "0"}])],
          "results_posted_primary_denom_incomplete"),
         ([{**_primary("A", _cnt("0", "0")), "groups": []}], "results_posted_primary_denom_incomplete"),
+        # a measure that is not an object could be a primary one
+        (["Primary outcome", _primary("A", _cnt("0", "0"))], "results_posted_primary_denom_incomplete"),
         # malformed ids and units are incomplete or unmatched, never an exception that stops the build
         ([_primary("A", [{"groupId": ["OG000"], "value": "0"}, {"groupId": "OG001", "value": "0"}])],
          "results_posted_primary_denom_incomplete"),

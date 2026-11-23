@@ -490,12 +490,24 @@ def _flow_edit(edit: str) -> dict:
         p0["dropWithdraws"][0]["reasons"] = 6
     elif edit == "reason_group_id_list":
         p0["dropWithdraws"][0]["reasons"][0]["groupId"] = ["FG000"]
+    elif edit == "milestone_entry_not_object":
+        p0["milestones"].append("COMPLETED")
+    elif edit == "achievement_entry_not_object":
+        p0["milestones"][0]["achievements"].append(["FG000", "60"])
+    elif edit == "achievement_group_id_list":
+        p0["milestones"][1]["achievements"].append({"groupId": ["FG001"], "numSubjects": "51"})
+    elif edit == "drop_withdraw_entry_not_object":
+        p0["dropWithdraws"].append("Lost to Follow-up")
     return study
 
 
 @pytest.mark.parametrize(
     "edit",
-    ["group_title_list", "group_title_number", "drop_withdraws_number", "milestones_number", "achievements_number"],
+    [
+        "group_title_list", "group_title_number", "drop_withdraws_number", "milestones_number", "achievements_number",
+        # a skipped entry could have been a second STARTED / COMPLETED or an arm's second count
+        "milestone_entry_not_object", "achievement_entry_not_object", "achievement_group_id_list",
+    ],
 )
 def test_mistyped_flow_parts_withhold_the_flow_instead_of_raising(edit: str) -> None:
     # Each raised AttributeError or TypeError, so one malformed record stopped the whole build.
@@ -512,3 +524,10 @@ def test_mistyped_withdrawal_reasons_withhold_only_that_tally(edit: str) -> None
     assert ret["flow_status"] == "ok"
     assert ret["period1_completion_rate"] == 105 / 120
     assert ret["drop_withdraw_reasons"] == {"Adverse Event": None, "Withdrawal by Subject": 9}
+
+
+def test_a_malformed_withdrawal_entry_is_an_unknown_reason_not_a_dropped_one() -> None:
+    # Skipped, it would vanish from the published reasons, which would then look complete.
+    ret = extract_period1_retention(_flow_edit("drop_withdraw_entry_not_object"))
+    assert ret["flow_status"] == "ok"
+    assert ret["drop_withdraw_reasons"] == {"Adverse Event": 6, "UNSPECIFIED_REASON": None, "Withdrawal by Subject": 9}

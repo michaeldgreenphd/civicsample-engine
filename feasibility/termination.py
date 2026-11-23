@@ -468,6 +468,10 @@ def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
     # docs/audits/outcomes_results_structure/, every one of the 4,670 primary denominator rows lists
     # exactly its measure's group ids, in order.
     all_complete = True
+    # An outcome measure that is not an object could be a primary one, so zero analysed is not
+    # established for every primary outcome.
+    if any(not isinstance(m, dict) for m in measures):
+        all_complete = False
     for measure in primary_measures:
         denoms = measure.get("denoms")
         row = _participants_denom_row(denoms if isinstance(denoms, list) else [])
