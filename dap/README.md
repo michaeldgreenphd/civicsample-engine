@@ -50,7 +50,10 @@ modified.
      extractors recognise as the whole population (`src.utils.get_overall_group_id`
      finds no Total group) is `whole_population_group_unidentified` for race and
      ethnicity, with no counts or shares: the extractors would read its last
-     group, an arm, as the trial. CT.gov posts such a table rarely (one of the
+     group, an arm, as the trial. A dimension the table has no measure for keeps
+     `table_absent_in_posted_results` (`ABSENT_BY_LABEL_DETAILS`, decided from
+     titles and row labels, never a group's values), so it still counts as
+     omitted in the US-site audit. CT.gov posts such a table rarely (one of the
      55,810 multi-group trials in the 2026-11-15 weekly inputs, none of the
      2,198 stored multi-group tables). Weekly records carry the extractors'
      blocks without the groups, so this cannot be detected there.

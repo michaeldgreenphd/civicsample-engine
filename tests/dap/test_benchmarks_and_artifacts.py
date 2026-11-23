@@ -1807,10 +1807,11 @@ def test_a_table_of_arms_without_a_total_group_reads_no_counts(tmp_path: Path) -
     loaded = artifacts.load_dir(out)
     assert artifacts.check_contract(loaded) == []
     row = next(r for r in loaded["trial_rows"] if r["nct_id"] == "NCT99800051")
-    for dim in ("race", "ethnicity"):
-        block = row["demographics"][dim]
-        assert row["demographics"][f"{dim}_table_status"] == "whole_population_group_unidentified"
-        assert (block["counts"], block["baseline_total"], block["of_baseline_total"]) == (None, None, None)
+    block = row["demographics"]["race"]
+    assert row["demographics"]["race_table_status"] == "whole_population_group_unidentified"
+    assert (block["counts"], block["baseline_total"], block["of_baseline_total"]) == (None, None, None)
+    # The table has no ethnicity measure, which no choice of group changes (round 53).
+    assert row["demographics"]["ethnicity_table_status"] == "table_absent_in_posted_results"
     # The contract refuses counts under the status.
     row["demographics"]["race"]["counts"] = {"white": 20}
     problems = artifacts.check_contract(loaded)
@@ -1826,6 +1827,61 @@ def test_a_table_of_arms_with_a_total_group_reads_the_total() -> None:
 
 
 _WITH_TOTAL = [*_ARMS, {"id": "BG002", "title": "Total"}]
+
+
+def _arms_only_study(nct_id: str, measures: dict[str, dict[str, tuple[str, str]]]) -> dict:
+    """A raw study whose baseline table posts arms A and B and no Total group, one measure per title."""
+    us_site = {"facility": "Site US-1", "city": "Boston", "state": "MA", "country": "United States"}
+    st = fx.make_raw_ctgov_study(nct_id, locations=[us_site], measures=[{
+        "title": title, "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+        "classes": [{"categories": [
+            {"title": label, "measurements": [{"groupId": g["id"], "value": pair[k]} for k, g in enumerate(_ARMS)]}
+            for label, pair in rows.items()
+        ]}],
+    } for title, rows in measures.items()])
+    module = st["resultsSection"]["baselineCharacteristicsModule"]
+    module["groups"] = _ARMS
+    module["denoms"][0]["counts"] = [{"groupId": g["id"], "value": "50"} for g in _ARMS]
+    return st
+
+
+_ARM_RACE = {"Race (NIH/OMB)": {"White": ("40", "20"), "Asian": ("10", "30")}}
+_ARM_ETH = {"Ethnicity (NIH/OMB)": {"Hispanic or Latino": ("5", "10"), "Not Hispanic or Latino": ("45", "40")}}
+_ARM_AGE = {"Age, Customized": {"18-64 years": ("30", "35"), ">=65 years": ("20", "15")}}
+
+
+@pytest.mark.parametrize(
+    ("measures", "race", "ethnicity"),
+    [
+        # On 6003e1e both dimensions became whole_population_group_unidentified, so a table without an
+        # ethnicity (or any demographic) measure no longer counted as omitting one.
+        (_ARM_RACE, "whole_population_group_unidentified", "table_absent_in_posted_results"),
+        (_ARM_AGE, "table_absent_in_posted_results", "table_absent_in_posted_results"),
+        ({**_ARM_AGE, **_ARM_ETH}, "table_absent_in_posted_results", "whole_population_group_unidentified"),
+    ],
+)
+def test_an_arm_only_table_keeps_a_dimension_it_has_no_measure_for_absent(
+    measures: dict[str, dict[str, tuple[str, str]]], race: str, ethnicity: str
+) -> None:
+    demo = extract_demographics(_arms_only_study("NCT99800053", measures))
+    assert (demo["race"]["table_status"], demo["ethnicity"]["table_status"]) == (race, ethnicity)
+    audit = demo["us_site_omission_audit"]
+    assert audit["omitted_race_table"] is (race == "table_absent_in_posted_results")
+    assert audit["omitted_ethnicity_table"] is (ethnicity == "table_absent_in_posted_results")
+
+
+@pytest.mark.parametrize(
+    "measures",
+    [
+        # Controls, on both heads: both measures present, and a race table all zero in its last arm, whose
+        # all-zero rejection is read at an arm's values and so says nothing about the trial.
+        {**_ARM_RACE, **_ARM_ETH},
+        {"Race (NIH/OMB)": {"White": ("40", "0"), "Asian": ("10", "0")}, **_ARM_ETH},
+    ],
+)
+def test_an_arm_only_table_with_a_measure_reads_unidentified(measures: dict[str, dict[str, tuple[str, str]]]) -> None:
+    demo = extract_demographics(_arms_only_study("NCT99800054", measures))
+    assert demo["race"]["table_status"] == demo["ethnicity"]["table_status"] == "whole_population_group_unidentified"
 
 
 def _drop_total(entries: list[dict]) -> None:

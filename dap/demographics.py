@@ -978,6 +978,17 @@ def whole_population_group_unidentified(record: dict[str, Any]) -> bool:
     return src_utils.get_overall_group_id(record) is None
 
 
+# The absent details the extractors decide from measure titles and row labels alone, never from a group's
+# values: no race-titled (or race-carrying sex/gender-titled) measure, a race-titled table holding only
+# ethnicity rows, and no ethnicity-titled measure (or only a race table under one). `race_extractor`
+# sets `reported` for every table it counts and `ethnicity_extractor` on accepting one, before any value
+# is read. An all-zero rejection is read at a group's values, so in a table without a whole-population
+# group it is not a finding about the trial and becomes unidentified.
+ABSENT_BY_LABEL_DETAILS: frozenset[str] = frozenset(
+    {"no_race_measure", "race_titled_table_held_ethnicity_rows_only", "no_ethnicity_measure"}
+)
+
+
 def _whole_population_unidentified_block() -> dict[str, Any]:
     """The race or ethnicity block of a table with no whole-population group: no counts or shares."""
     return {
@@ -1034,25 +1045,29 @@ def extract_demographics(
         else None
     )
     refs = reference_medians or {}
+    race_info = _analyze_race_block(
+        raw_race,
+        results_posted=posted,
+        sex_total=sex_total,
+        reference_medians=refs.get("race"),
+        baseline_participants=baseline_participants,
+    )
+    eth_info = _analyze_ethnicity_block(
+        raw_eth,
+        results_posted=posted,
+        sex_total=sex_total,
+        reference_medians=refs.get("ethnicity"),
+        baseline_participants=baseline_participants,
+    )
     if posted and "protocolSection" in record and whole_population_group_unidentified(record):
-        # No group stands for the whole trial, so neither extractor's counts are the trial's.
-        race_info = _whole_population_unidentified_block()
-        eth_info = _whole_population_unidentified_block()
-    else:
-        race_info = _analyze_race_block(
-            raw_race,
-            results_posted=posted,
-            sex_total=sex_total,
-            reference_medians=refs.get("race"),
-            baseline_participants=baseline_participants,
-        )
-        eth_info = _analyze_ethnicity_block(
-            raw_eth,
-            results_posted=posted,
-            sex_total=sex_total,
-            reference_medians=refs.get("ethnicity"),
-            baseline_participants=baseline_participants,
-        )
+        # No group stands for the whole trial, so neither extractor's counts are the trial's. Whether a
+        # dimension has a measure at all does not depend on the group, so a dimension with none keeps its
+        # absent status (`ABSENT_BY_LABEL_DETAILS`) and still counts as omitted in the US-site audit: an
+        # arm-only table with a race measure and no ethnicity measure had marked both unidentified.
+        if race_info["status_detail"] not in ABSENT_BY_LABEL_DETAILS:
+            race_info = _whole_population_unidentified_block()
+        if eth_info["status_detail"] not in ABSENT_BY_LABEL_DETAILS:
+            eth_info = _whole_population_unidentified_block()
 
     omission_audit = build_us_site_omission_audit(
         geo,
