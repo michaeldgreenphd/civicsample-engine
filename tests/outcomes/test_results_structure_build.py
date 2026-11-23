@@ -306,6 +306,26 @@ def test_the_check_refuses_a_count_or_version_of_the_wrong_json_type(family: dic
         k = next(k for k, v in counts.items() if v == 1)
         counts[k] = True
     assert has(problems(state_count), 'subgroup states for age must count all five values')
+    # Review counts are recounted too: the fixture applies 2 review rows (Codex, PR 104).
+    assert has(problems(lambda f: f['summary.json']['reviews'].update(n_review_rows_applied=2.0)),
+               'summary.json reviews is not what records.json gives')
+    # Counts in run.json that cannot be recounted must at least be counts (Codex, PR 104).
+    not_counts = 'run.json counts that are not non-negative integers'
+    for where, key, wrong in (('scope.frame', 'n', True), ('scope.frame', 'n', 8.0), ('acquisition', 'n_retries', False),
+                              ('acquisition', 'n_requests', -1), ('parameters', 'n_requested', 7.0), ('parameters', 'batch_size', True),
+                              ('reviews', 'n_rows', 2.0)):
+        def put(f: dict[str, Any], where: str = where, key: str = key, wrong: Any = wrong) -> None:
+            node = f['run.json']
+            for part in where.split('.'):
+                node = node[part]
+            node[key] = wrong
+        assert has(problems(put), f"{not_counts}: ['{where}.{key}']"), (where, key, wrong)
+    # A fetch count the archive did not record is null, which records the absence and is accepted;
+    # the frame count is computed by every build and may not be null.
+    assert not has(problems(lambda f: f['run.json']['acquisition'].update(n_retries=None)), not_counts)
+    assert has(problems(lambda f: f['run.json']['scope']['frame'].update(n=None)), f"{not_counts}: ['scope.frame.n']")
+    # A float that is not a count (seconds between requests) is left alone.
+    assert not has(problems(lambda f: f['run.json']['acquisition'].update(min_seconds_between_requests=0.75)), not_counts)
     # The values of the right type still pass.
     assert B.check(copy.deepcopy(family)) == []
 

@@ -839,6 +839,20 @@ def check(files: dict[str, Any]) -> list[str]:
         p.append('run.json has no scope (frame, included, excluded)')
         return p
     ex = scope['excluded']
+    # Counts that come from fetching or reviewing, not from the records, so the recount below cannot
+    # reproduce them: each must at least be a count. (summarize copies scope.frame.n into the summary,
+    # so the recount would echo a wrong-typed value back unchanged; Codex, PR 104.) The frame count is
+    # computed by every build and is required. The fetch and review counts are copied from the
+    # archive's metadata, which can lack them (an archive fetched before they were recorded); a None
+    # there records that absence and is accepted, never read as zero.
+    provenance = {'scope.frame.n': (scope.get('frame') or {}).get('n')}
+    for block in ('acquisition', 'parameters', 'reviews'):
+        for k, v in (run.get(block) or {}).items():
+            if (k.startswith('n_') or k == 'batch_size') and v is not None:
+                provenance[f'{block}.{k}'] = v
+    bad = sorted(k for k, v in provenance.items() if not _count(v))
+    if bad:
+        p.append(f'run.json counts that are not non-negative integers: {bad}')
     if not _same(scope['included']['n'], len(records)):
         p.append('scope: the included count is not the number of records')
     if not _same(ex['n'], len(ex['nct_ids'])) or (ex['n'] > 0 and not ex['reason']):
@@ -848,7 +862,9 @@ def check(files: dict[str, Any]) -> list[str]:
     recount = summarize(records, {'unkeyed_lines': summary['tables']['retrieval_failures'].get('unkeyed_archive_lines', []),
                                   'unrequested_records': summary['tables']['retrieval_failures'].get('unrequested_records', []),
                                   'reviews_not_matched': (summary.get('reviews') or {}).get('not_matched', [])}, scope)
-    for key in ('scope', 'denominators', 'metrics', 'subgroup_states', 'signals', 'tables'):
+    # Every block of summary.json that summarize() builds; reviews is counted from the records' signal
+    # reviews, with not_matched passed through from the summary (Codex, PR 104).
+    for key in ('scope', 'denominators', 'metrics', 'subgroup_states', 'signals', 'tables', 'reviews'):
         if not _same(recount[key], summary.get(key)):
             p.append(f'summary.json {key} is not what records.json gives')
     den = summary.get('denominators') or {}
