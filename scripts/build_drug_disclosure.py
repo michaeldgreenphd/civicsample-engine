@@ -14,7 +14,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
+import importlib.util
 import subprocess
 import sys
 from datetime import date
@@ -34,28 +36,115 @@ PRODUCER_SCRIPTS = (
     'scripts/export_drug_disclosure_site.py',
 )
 
+# Repository directories whose modules count as producing code.
+PRODUCER_DIRS: tuple[str, ...] = ('disclosure', 'src', 'sponsors', 'scripts')
+
+
+def _loaded_repo_modules(root: Path) -> dict[str, Path]:
+    """Module name -> resolved source file for every loaded module under `PRODUCER_DIRS`."""
+    root_resolved = root.resolve()
+    loaded: dict[str, Path] = {}
+    for name, module in list(sys.modules.items()):
+        fname = getattr(module, '__file__', None)
+        if not isinstance(fname, str) or not fname.endswith('.py'):
+            continue  # builtins, extension modules, namespace packages
+        path = Path(fname).resolve()
+        if not path.is_relative_to(root_resolved):
+            continue
+        if path.relative_to(root_resolved).parts[0] in PRODUCER_DIRS:
+            loaded[name] = path
+    return loaded
+
+
+def _imported_module_names(path: Path, package: str | None) -> set[str]:
+    """Every module name an import statement in `path` can bind, parent packages included.
+
+    `from pkg import name` yields both `pkg` and `pkg.name` because `name` may be a submodule;
+    names that are not loaded modules are simply never matched. Relative imports resolve against
+    `package`; imports inside functions and `try` blocks count, since the build may run them.
+    """
+    tree = ast.parse(path.read_bytes(), filename=str(path))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        targets: list[str] = []
+        if isinstance(node, ast.Import):
+            targets = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ''
+            if node.level:
+                if not package:
+                    continue  # a relative import outside a package cannot run
+                base = importlib.util.resolve_name('.' * node.level + base, package)
+            targets = [base] + [f'{base}.{alias.name}' for alias in node.names]
+        for target in targets:
+            parts = target.split('.')
+            names.update('.'.join(parts[: i + 1]) for i in range(len(parts)))
+    return names
+
+
+def _import_closure(root: Path) -> list[str]:
+    """Sorted paths, relative to `root`, of the repo modules this script's imports reach.
+
+    Method: the repo-local entries of `sys.modules` (files under `PRODUCER_DIRS`) are the modules
+    actually loaded. Starting from this script, follow each file's import statements to the loaded
+    modules they name. Following imports rather than taking every repo-local entry keeps the list
+    independent of what else the process loaded (a test session imports many unrelated modules).
+    The closure reaches `disclosure/` and the `sponsors/` attribution modules (`adapter`,
+    `audit_states`, `sponsor_roles`) whenever pandas let them load; without pandas the stdlib
+    mirror in `disclosure/timeline.py` runs instead and they are, correctly, absent.
+    """
+    loaded = _loaded_repo_modules(root)
+    entry = Path(__file__).resolve()
+    seen: set[Path] = set()
+    pending: list[tuple[Path, str | None]] = [(entry, __package__)]
+    while pending:
+        path, package = pending.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        for name in _imported_module_names(path, package):
+            dep = loaded.get(name)
+            if dep is not None and dep not in seen:
+                pending.append((dep, getattr(sys.modules[name], '__package__', None)))
+    root_resolved = root.resolve()
+    # relative_to raises if `root` is not the checkout this script was imported from.
+    return sorted(p.relative_to(root_resolved).as_posix() for p in seen)
+
 
 def producer_paths(root: Path = ROOT) -> list[str]:
-    """Every producing code and curated CSV path hashed into `producer.source_sha256`."""
+    """Every producing code and curated CSV path hashed into `producer.source_sha256`.
+
+    The union of the build's import closure (`_import_closure`, which adds the `sponsors/`
+    modules the build executes) and the files this family always hashed: every file under
+    `disclosure/` (its modules, curated CSVs and README) and the three CLI scripts, of which the
+    contract and export scripts run after the build rather than inside it. `source_digest` and
+    the `git status` dirty check in `producer_metadata` use this one list. Call it after the build
+    modules are imported, so imports made at run time are loaded.
+    """
     pkg_files = [
         str(p.relative_to(root).as_posix())
         for p in (root / 'disclosure').rglob('*')
         if p.is_file() and '__pycache__' not in p.parts and not p.name.endswith('.pyc')
     ]
     scripts = [rel for rel in PRODUCER_SCRIPTS if (root / rel).is_file()]
-    return sorted(pkg_files + scripts)
+    return sorted(set(pkg_files) | set(scripts) | set(_import_closure(root)))
 
 
-def source_digest(root: Path = ROOT) -> str:
-    """Deterministic sha256 over all producing files path-by-path."""
+def source_digest(root: Path = ROOT, paths: list[str] | None = None) -> str:
+    """Deterministic sha256 over the producing files (default `producer_paths()`) read from `root`."""
     h = hashlib.sha256()
-    for rel in producer_paths(root):
+    for rel in producer_paths() if paths is None else paths:
         h.update(rel.encode('utf-8') + b'\0' + (root / rel).read_bytes() + b'\0')
     return h.hexdigest()
 
 
 def producer_metadata(root: Path = ROOT) -> dict[str, Any]:
-    """Producer repository, HEAD commit (when git metadata is reachable), and `source_sha256`."""
+    """Producer repository, HEAD commit (when git metadata is reachable), and `source_sha256`.
+
+    The digest and the `git status` dirty check cover the same list (`producer_paths`), checked
+    in `root`.
+    """
+    paths = producer_paths(root)
     rev = subprocess.run(
         ['git', 'rev-parse', 'HEAD'],
         cwd=root,
@@ -66,7 +155,7 @@ def producer_metadata(root: Path = ROOT) -> dict[str, Any]:
     dirty: bool | None = None
     if commit is not None:
         st = subprocess.run(
-            ['git', 'status', '--porcelain', '--', 'disclosure', *PRODUCER_SCRIPTS],
+            ['git', 'status', '--porcelain', '--', *paths],
             cwd=root,
             capture_output=True,
             text=True,
@@ -76,7 +165,7 @@ def producer_metadata(root: Path = ROOT) -> dict[str, Any]:
         'repository': 'civicsample-engine',
         'commit': commit,
         'uncommitted_changes': dirty,
-        'source_sha256': source_digest(root),
+        'source_sha256': source_digest(root, paths),
     }
 
 

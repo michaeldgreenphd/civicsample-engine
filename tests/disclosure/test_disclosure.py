@@ -1145,3 +1145,64 @@ def test_freeze_and_load_refuse_requested_ids_without_a_ctgov_study_record(
     (edited / 'manifest.json').write_text(json.dumps(manifest, indent=1, sort_keys=True) + '\n', encoding='utf-8')
     with pytest.raises(A.CacheIntegrityError, match=r'NCT09991234.*does not cover its own frame'):
         A.load_frozen_cache(edited)
+
+
+def test_producer_digest_and_dirty_check_cover_the_build_import_closure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = cli_build.producer_paths()
+    # The sponsors/ attribution modules the build executes, beside disclosure/ and the CLI scripts.
+    for dep in (
+        'scripts/build_drug_disclosure.py',
+        'scripts/check_drug_disclosure_contract.py',
+        'scripts/export_drug_disclosure_site.py',
+        'disclosure/__init__.py',
+        'disclosure/acquire.py',
+        'disclosure/artifacts.py',
+        'disclosure/coverage.py',
+        'disclosure/evidence.py',
+        'disclosure/timeline.py',
+        'disclosure/reviews.csv',
+        'disclosure/documentary_statements.csv',
+        'sponsors/__init__.py',
+        'sponsors/adapter.py',
+        'sponsors/audit_states.py',
+        'sponsors/sponsor_roles.py',
+    ):
+        assert dep in paths, dep
+    assert paths == sorted(set(paths))
+    # A repo module this process loaded that the build does not import stays out, so the digest
+    # does not depend on what else the process imported.
+    importlib.import_module('sponsors.baseline')
+    loaded = {p.relative_to(ROOT).as_posix() for p in cli_build._loaded_repo_modules(ROOT).values()}
+    assert 'sponsors/baseline.py' in loaded
+    assert cli_build.producer_paths() == paths
+    assert 'sponsors/baseline.py' not in paths
+    assert not any(p.startswith('tests/') for p in paths)
+
+    # The digest covers every listed file: a change to a sponsors/ dependency moves it.
+    for rel in paths:
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes((ROOT / rel).read_bytes())
+    same = cli_build.source_digest(tmp_path)
+    assert same == cli_build.source_digest(ROOT)
+    (tmp_path / 'sponsors' / 'adapter.py').write_bytes((ROOT / 'sponsors' / 'adapter.py').read_bytes() + b'\n# changed\n')
+    assert cli_build.source_digest(tmp_path) != same
+
+    # The dirty check asks git about exactly the same list.
+    calls: list[list[str]] = []
+
+    class _Done:
+        returncode = 0
+        stdout = 'abc123\n'
+
+    def _fake_run(cmd: list[str], **_kwargs: Any) -> _Done:
+        calls.append(list(cmd))
+        return _Done()
+
+    monkeypatch.setattr(cli_build.subprocess, 'run', _fake_run)
+    info = cli_build.producer_metadata(ROOT)
+    status_call = next(c for c in calls if c[:2] == ['git', 'status'])
+    assert status_call[status_call.index('--') + 1:] == paths
+    assert info['source_sha256'] == cli_build.source_digest(ROOT, paths)
