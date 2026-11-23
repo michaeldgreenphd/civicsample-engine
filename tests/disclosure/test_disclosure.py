@@ -130,9 +130,9 @@ def test_resumable_log_truncates_interrupted_line_and_reuses_settled_answers(tmp
     log_path = A.raw_log_path(tmp_path / 'cache', 'ctgov')
 
     log1 = A.ResponseLog(log_path)
-    A.fetch_ctgov_studies(['NCT09990001', 'NCT09990008'], log1, get, throttle, day='2026-11-01')
+    A.fetch_ctgov_studies(['NCT09990001', 'NCT09990008'], log1, get, throttle, run_stamp='2026-11-01T06:00:00+00:00')
     first_count = len(calls)
-    assert first_count == 3  # version + 2 studies (200 and 404 are both final)
+    assert first_count == 4  # version, 2 studies (200 and 404 are both final), version again
 
     # Simulate an interrupted process appending a truncated JSON line without '\n'
     with log_path.open('ab') as fh:
@@ -140,9 +140,13 @@ def test_resumable_log_truncates_interrupted_line_and_reuses_settled_answers(tmp
 
     log2 = A.ResponseLog(log_path)
     assert 'ctgov/study/NCT09990002' not in log2.records
-    A.fetch_ctgov_studies(['NCT09990001', 'NCT09990002', 'NCT09990008'], log2, get, throttle, day='2026-11-01')
-    # Only NCT09990002 is fetched on resume; version, NCT09990001 (200), and NCT09990008 (404) are reused
-    assert len(calls) == first_count + 1
+    A.fetch_ctgov_studies(
+        ['NCT09990001', 'NCT09990002', 'NCT09990008'], log2, get, throttle, run_stamp='2026-11-01T12:00:00+00:00'
+    )
+    # Only NCT09990002 is fetched on resume; NCT09990001 (200) and NCT09990008 (404) are reused. The
+    # resumed run observes the CT.gov version again, before and after, as every run does.
+    assert len(calls) == first_count + 3
+    assert sum(c.startswith(f'{A.CTGOV_API}/version?') for c in calls[first_count:]) == 2
 
 
 def test_unicode_line_separators_in_jsonl_logs_local_jsonl_and_frozen_archives(tmp_path: Path) -> None:
@@ -557,7 +561,7 @@ def test_transport_timeout_status_none_logs_search_incomplete_and_retries_on_res
     fda_log = A.ResponseLog(A.raw_log_path(cache_dir, 'openfda'))
 
     # Run 1: NCT09990001 fails all 4 attempts with status=None
-    res1 = A.fetch_ctgov_studies(['NCT09990001'], ct_log, flaky_get, throttle, day='2026-11-01')
+    res1 = A.fetch_ctgov_studies(['NCT09990001'], ct_log, flaky_get, throttle, run_stamp='2026-11-01')
     assert res1 == {'studies_answered': 0, 'studies_unanswered': 1}
     assert ct_log.get('ctgov/study/NCT09990001') is not None
     assert ct_log.get('ctgov/study/NCT09990001')['status'] is None  # type: ignore[index]
@@ -586,7 +590,7 @@ def test_transport_timeout_status_none_logs_search_incomplete_and_retries_on_res
         assert _cell_of(built_timeout, 'NCT09990001', route)['state'] == 'search_incomplete_or_blocked', route
 
     # Run 2 (resume): because status=None is unsettled, fetch_ctgov_studies retries and succeeds!
-    res2 = A.fetch_ctgov_studies(['NCT09990001'], ct_log, flaky_get, throttle, day='2026-11-01')
+    res2 = A.fetch_ctgov_studies(['NCT09990001'], ct_log, flaky_get, throttle, run_stamp='2026-11-01')
     assert res2 == {'studies_answered': 1, 'studies_unanswered': 0}
     assert ct_log.settled('ctgov/study/NCT09990001') is not None
     assert ct_log.settled('ctgov/study/NCT09990001')['status'] == 200  # type: ignore[index]
@@ -1953,7 +1957,7 @@ def test_local_freeze_refuses_an_existing_cache_instead_of_mixing_its_records(
     # A cache from a live acquisition holds a later CT.gov version record and literature/openFDA logs.
     cache = tmp_path / 'live_cache'
     shutil.copytree(frozen_cache.cache_dir, cache)
-    assert frozen_cache.ctgov['ctgov/version/2026-11-01']['body']['dataTimestamp'] == '2026-11-01T08:00:00'
+    assert frozen_cache.ctgov['ctgov/version/2026-11-01/begin']['body']['dataTimestamp'] == '2026-11-01T08:00:00'
     before = {p.relative_to(cache).as_posix(): p.read_bytes() for p in cache.rglob('*') if p.is_file()}
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), *historical]) == 1
     with pytest.raises(A.CacheIntegrityError, match='new or empty cache directory'):
@@ -2032,7 +2036,7 @@ def test_resumed_acquisition_across_a_ctgov_refresh_records_the_range_and_needs_
         generated_at=F.GENERATED_AT,
     )
     ct = single['run.json']['sources']['ctgov']
-    assert [v['key'] for v in ct['versions']] == ['ctgov/version/2026-11-01']
+    assert [v['key'] for v in ct['versions']] == ['ctgov/version/2026-11-01/begin', 'ctgov/version/2026-11-01/end']
     assert ct['data_timestamp_first'] == ct['data_timestamp_last'] == ct['data_timestamp'] == '2026-11-01T08:00:00'
     assert (single['run.json']['as_of'], single['run.json']['as_of_source']) == ('2026-11-01', 'ctgov_data_timestamp')
     assert built_files['run.json']['as_of_source'] == 'as_of_argument'
@@ -2046,8 +2050,8 @@ def test_resumed_acquisition_across_a_ctgov_refresh_records_the_range_and_needs_
     cache = tmp_path / 'resumed_cache'
     throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
     log = A.ResponseLog(A.raw_log_path(cache, 'ctgov'))
-    A.fetch_ctgov_studies(['NCT09990001'], log, F.stub_get(), throttle, day='2026-11-01')
-    A.fetch_ctgov_studies(['NCT09990001', 'NCT09990002'], log, refreshed_get, throttle, day='2026-11-02')
+    A.fetch_ctgov_studies(['NCT09990001'], log, F.stub_get(), throttle, run_stamp='2026-11-01')
+    A.fetch_ctgov_studies(['NCT09990001', 'NCT09990002'], log, refreshed_get, throttle, run_stamp='2026-11-02')
     A.freeze_cache(cache, ['NCT09990001', 'NCT09990002'], frozen_at=F.GENERATED_AT)
     resumed = A.load_frozen_cache(cache)
 
@@ -2068,8 +2072,10 @@ def test_resumed_acquisition_across_a_ctgov_refresh_records_the_range_and_needs_
     assert ART.check_contract(stated) == []
     ct2 = stated['run.json']['sources']['ctgov']
     assert [(v['key'], v['data_timestamp']) for v in ct2['versions']] == [
-        ('ctgov/version/2026-11-01', '2026-11-01T08:00:00'),
-        ('ctgov/version/2026-11-02', '2026-11-02T08:00:00'),
+        ('ctgov/version/2026-11-01/begin', '2026-11-01T08:00:00'),
+        ('ctgov/version/2026-11-01/end', '2026-11-01T08:00:00'),
+        ('ctgov/version/2026-11-02/begin', '2026-11-02T08:00:00'),
+        ('ctgov/version/2026-11-02/end', '2026-11-02T08:00:00'),
     ]
     assert (ct2['data_timestamp_first'], ct2['data_timestamp_last'], ct2['data_timestamp']) == (
         '2026-11-01T08:00:00', '2026-11-02T08:00:00', '2026-11-02T08:00:00',
@@ -2083,6 +2089,63 @@ def test_resumed_acquisition_across_a_ctgov_refresh_records_the_range_and_needs_
     narrowed = copy.deepcopy(stated)
     narrowed['run.json']['sources']['ctgov']['data_timestamp_first'] = '2026-11-02T08:00:00'
     assert any('disagree with its version records' in p for p in ART.check_contract(narrowed))
+
+
+def _version_stamps(cache: A.FrozenCache) -> list[str]:
+    return sorted({r['body']['dataTimestamp'] for k, r in cache.ctgov.items() if k.startswith('ctgov/version/')})
+
+
+def _build_kwargs() -> dict[str, Any]:
+    return {
+        'reviews_path': ROOT / 'disclosure' / 'reviews.csv',
+        'statements_path': ROOT / 'disclosure' / 'documentary_statements.csv',
+        'sponsor_rules_path': ROOT / 'sponsors' / 'company_aliases.csv',
+        'producer': cli_build.producer_metadata(),
+        'generated_at': F.GENERATED_AT,
+    }
+
+
+def test_same_day_resume_after_a_ctgov_refresh_records_both_data_timestamps(tmp_path: Path) -> None:
+    # Both runs take their default stamps, so they fall on the same UTC day. Keyed one version record
+    # per day, the resume reused the morning's version and the refresh went unrecorded.
+    def refreshed_get(url: str, params: dict[str, Any] | None) -> A.Response:
+        if url == f'{A.CTGOV_API}/version':
+            return F._json_resp({'apiVersion': '2.0.5', 'dataTimestamp': '2026-11-01T20:00:00'})
+        return F.stub_get()(url, params)
+
+    cache = tmp_path / 'same_day_cache'
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(cache, 'ctgov'))
+    A.fetch_ctgov_studies(['NCT09990001'], log, F.stub_get(), throttle)
+    A.fetch_ctgov_studies(['NCT09990001', 'NCT09990002'], log, refreshed_get, throttle)
+    A.freeze_cache(cache, ['NCT09990001', 'NCT09990002'], frozen_at=F.GENERATED_AT)
+    resumed = A.load_frozen_cache(cache)
+    assert _version_stamps(resumed) == ['2026-11-01T08:00:00', '2026-11-01T20:00:00']
+    with pytest.raises(ValueError, match=r'2026-11-01T08:00:00 to 2026-11-01T20:00:00.*pass --as-of'):
+        ART.build_artifacts(resumed, **_build_kwargs())
+
+
+def test_ctgov_refresh_during_one_run_records_both_data_timestamps(tmp_path: Path) -> None:
+    # CT.gov refreshes once the first study has been served: the version observed after the last
+    # study request records it, so the run's studies are not all attributed to the first timestamp.
+    served: list[str] = []
+
+    def refreshing_get(url: str, params: dict[str, Any] | None) -> A.Response:
+        if url == f'{A.CTGOV_API}/version':
+            stamp = '2026-11-01T20:00:00' if served else '2026-11-01T08:00:00'
+            return F._json_resp({'apiVersion': '2.0.5', 'dataTimestamp': stamp})
+        served.append(url)
+        return F.stub_get()(url, params)
+
+    cache = tmp_path / 'mid_run_cache'
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    A.fetch_ctgov_studies(['NCT09990001', 'NCT09990002'], A.ResponseLog(A.raw_log_path(cache, 'ctgov')),
+                          refreshing_get, throttle)
+    A.freeze_cache(cache, ['NCT09990001', 'NCT09990002'], frozen_at=F.GENERATED_AT)
+    frozen = A.load_frozen_cache(cache)
+    assert _version_stamps(frozen) == ['2026-11-01T08:00:00', '2026-11-01T20:00:00']
+    with pytest.raises(ValueError, match=r'2026-11-01T08:00:00 to 2026-11-01T20:00:00.*pass --as-of'):
+        ART.build_artifacts(frozen, **_build_kwargs())
 
 
 def test_unknown_git_provenance_is_null_builds_locally_and_is_never_exported(

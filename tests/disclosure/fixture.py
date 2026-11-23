@@ -387,7 +387,7 @@ def acquire_fixture_cache(cache_dir: Path, get: A.Get | None = None) -> A.Frozen
     lit_log = A.ResponseLog(A.raw_log_path(cache_dir, 'literature'))
     fda_log = A.ResponseLog(A.raw_log_path(cache_dir, 'openfda'))
 
-    A.fetch_ctgov_studies(NCT_IDS, ct_log, transport, throttle, day='2026-11-01')
+    A.fetch_ctgov_studies(NCT_IDS, ct_log, transport, throttle, run_stamp='2026-11-01')
     studies_by_nct = A.studies_from_ctgov_records(ct_log.records, NCT_IDS)
     A.fetch_literature(NCT_IDS, studies_by_nct, lit_log, transport, throttle)
     A.fetch_openfda(NCT_IDS, studies_by_nct, fda_log, transport, throttle)

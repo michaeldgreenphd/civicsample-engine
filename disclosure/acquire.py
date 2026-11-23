@@ -642,20 +642,36 @@ def fetch_ctgov_studies(
     log: ResponseLog,
     get: Get,
     throttle: Throttle,
-    day: str | None = None,
+    run_stamp: str | None = None,
 ) -> dict[str, int]:
-    """Fetch `/api/v2/version` and `/api/v2/studies/{nct_id}` for every requested NCT ID."""
-    stamp_day = day or now_utc()[:10]
-    logged_json(
-        log,
-        get,
-        throttle,
-        f'ctgov/version/{stamp_day}',
-        f'{CTGOV_API}/version',
-        None,
-        tag={'day': stamp_day},
-        valid=ctgov_version_valid,
-    )
+    """Fetch `/api/v2/studies/{nct_id}` for every requested NCT ID, observing `/api/v2/version`
+    before the first study request and after the last.
+
+    Each run records its own two version observations, keyed `ctgov/version/{run_stamp}/begin` and
+    `.../end` (names that sort in time order when both share a `fetched_at` second), with
+    `run_stamp` this run's start time in UTC to the microsecond unless a caller (a test) names one.
+    Study answers settled by an earlier run are reused, but the version is never reused: a run that
+    resumes after a CT.gov data refresh, on the same UTC day or later, or that spans one, records
+    the new `dataTimestamp` beside the old, so the cache's range of data timestamps shows the mix
+    and the build requires `--as-of` (see `artifacts._ctgov_version_info`). Earlier versions keyed
+    one record per UTC day reused the morning's version for a resume later that day, attributing
+    studies fetched after a refresh to the stale timestamp.
+    """
+    stamp = run_stamp or datetime.now(timezone.utc).isoformat(timespec='microseconds')
+
+    def observe_version(phase: str) -> None:
+        logged_json(
+            log,
+            get,
+            throttle,
+            f'ctgov/version/{stamp}/{phase}',
+            f'{CTGOV_API}/version',
+            None,
+            tag={'run_stamp': stamp, 'phase': phase},
+            valid=ctgov_version_valid,
+        )
+
+    observe_version('begin')
     answered = 0
     unanswered = 0
     for nct_id in sorted(set(nct_ids)):
@@ -675,6 +691,7 @@ def fetch_ctgov_studies(
             answered += 1
         else:
             unanswered += 1
+    observe_version('end')
     return {'studies_answered': answered, 'studies_unanswered': unanswered}
 
 

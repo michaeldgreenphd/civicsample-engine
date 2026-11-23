@@ -206,8 +206,9 @@ AS_OF_SOURCES = ('as_of_argument', 'ctgov_data_timestamp', 'ctgov_last_fetched_a
 def _ctgov_version_info(ctgov_records: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """CT.gov `/version` answers held in the cache, for run.json `sources.ctgov`.
 
-    Acquisition logs one `ctgov/version/{day}` record per day it runs, and a resumed acquisition
-    keeps the earlier days' records and study responses, so one cache can mix CT.gov data refreshes.
+    Acquisition logs two `ctgov/version/{run_stamp}/begin|end` records per run (a local freeze one
+    `ctgov/version/{day}` record), and a resumed acquisition keeps the earlier runs' records and study
+    responses, so one cache can mix CT.gov data refreshes.
     `versions` lists every valid version record by `fetched_at`; `data_timestamp_first` and
     `data_timestamp_last` are the earliest and latest `dataTimestamp` among them (ISO strings of one
     format, so string order is time order); `api_version` and `data_timestamp` stay those of the
