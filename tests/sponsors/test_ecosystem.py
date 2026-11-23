@@ -2977,3 +2977,619 @@ def test_redteam_m2_round3_attempts_that_are_refused(
     )
     with pytest.raises(TypeError):
         _redteam_run([zero_d], shipped_rules, shipped_ecosystem_rules)
+
+
+# ---------------------------------------------------------------------------
+# 15. Red team round 4 (test_redteam_m2_*). Each test asserts the correct
+# behaviour, which is refusal, for one attack on an entry point that
+# enforces the holdout; a test that fails here names a bypass still open at
+# fc7bc78 and is not a test to loosen. Tests for attempts that are already
+# refused say so ("Attack (refused)"). Every id is fictional
+# (NCT99000001..NCT99999999); nothing touches the network, no file is read
+# except the shipped rules, and none is written except under pytest's
+# tmp_path (the sqlite rows come from an in-memory database).
+# ---------------------------------------------------------------------------
+
+
+def _redteam4_row_flags() -> list[bool]:
+    """in_audit for each row of _HOLDOUT_ROWS: True for the holdout's two rows."""
+    return [nct_id == _REDTEAM_HOLDOUT_ID for nct_id, _, _, _ in _HOLDOUT_ROWS]
+
+
+def _redteam4_not_refused(cases: list[tuple[str, Callable[[], Any]]]) -> list[str]:
+    """Labels of the calls that do not raise EcosystemAuditHoldoutError.
+
+    Method: each call runs on its own. One that returns is listed by its
+    label; one that raises another exception is listed with that
+    exception's type name (stopped, but not as a holdout, so a caller
+    catching that type would go on). Messages are never formatted.
+    """
+    missed: list[str] = []
+    for label, call in cases:
+        try:
+            call()
+        except eco.EcosystemAuditHoldoutError:
+            continue
+        except Exception as exc:  # noqa: BLE001 - reported by type only
+            missed.append(f"{label} ({type(exc).__name__})")
+            continue
+        missed.append(label)
+    return missed
+
+
+def _redteam4_frame_calls(
+    label: str, held: pd.DataFrame, ind: pd.DataFrame, er: pd.DataFrame
+) -> list[tuple[str, Callable[[], Any]]]:
+    """Every frame entry point called on ``held`` itself (a copy would drop instance attributes)."""
+    return [
+        (f"{label} -> {name}", lambda entry=entry: entry(held, ind, er))
+        for name, entry in _FRAME_ENTRY_POINTS
+    ]
+
+
+def _redteam4_index_calls(label: str, held: pd.DataFrame) -> list[tuple[str, Callable[[], Any]]]:
+    """Every index entry point called on ``held`` itself."""
+    return [(f"{label} -> {name}", lambda entry=entry: entry(held)) for name, entry in _INDEX_ENTRY_POINTS]
+
+
+def _redteam4_universe_calls(
+    label: str, held: pd.DataFrame, ind: pd.DataFrame, er: pd.DataFrame
+) -> list[tuple[str, Callable[[], Any]]]:
+    """The two entry points that take a literal universe, called on ``held`` itself."""
+    return [
+        (f"{label} -> match_ecosystem_literals", lambda: eco.match_ecosystem_literals(held, er)),
+        (f"{label} -> check_cross_layer_conflicts", lambda: eco.check_cross_layer_conflicts(held, ind, er)),
+    ]
+
+
+def _redteam4_record_calls(
+    label: str, value: Any, ind: pd.DataFrame, er: pd.DataFrame, key: Any = "manifest"
+) -> list[tuple[str, Callable[[], Any]]]:
+    """attribute_study_sponsors on the holdout as a stored record and as a CT.gov dict, ``value`` under ``key``."""
+    calls: list[tuple[str, Callable[[], Any]]] = []
+    for make in (_stored_record, _api_record):
+        record = make(_REDTEAM_HOLDOUT_ID)
+        record[key] = value
+        calls.append(
+            (f"{label} -> {make.__name__}", lambda record=record: _redteam_run([record], ind, er))
+        )
+    return calls
+
+
+def _redteam4_per_row(value_of: Callable[[str, bool], Any]) -> pd.Series:
+    """An object column holding ``value_of(nct_id, in_audit)`` for each row of _HOLDOUT_ROWS."""
+    return pd.Series(
+        [value_of(nct_id, flag) for (nct_id, _, _, _), flag in zip(_HOLDOUT_ROWS, _redteam4_row_flags())],
+        dtype=object,
+    )
+
+
+def test_redteam_m2_round4_in_audit_on_the_frame_object_is_refused(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (MEDIUM-LOW): in_audit held by the frame object rather than a
+    # column, index level, cell or attrs. The pandas pitfall
+    # ``sponsors.in_audit = sponsors.nct_id.isin(audit_ids)`` sets an
+    # attribute, not a column (pandas only warns); a DataFrame subclass
+    # carries it through ``_metadata``, pandas' documented way to give a
+    # frame its own properties, or as a class attribute; a frame's column
+    # axis can carry the manifest as its name. _refuse_audit_holdout_frame
+    # reads columns, index levels, cells and attrs, never the frame's own
+    # attributes (the record scan reads them, _beside_items). Observed:
+    # every frame, index and literal-universe entry point attributes or
+    # counts the holdout. Correct: refused.
+    import warnings
+
+    pitfall = _holdout_frame()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        pitfall.in_audit = pitfall["nct_id"] == _REDTEAM_HOLDOUT_ID
+    assert "in_audit" not in pitfall.columns
+
+    class ManifestFrame(pd.DataFrame):
+        _metadata = ["in_audit"]
+
+        @property
+        def _constructor(self) -> type[ManifestFrame]:
+            return ManifestFrame
+
+    subclassed = ManifestFrame(_holdout_frame())
+    subclassed.in_audit = True
+
+    class FlaggedFrame(pd.DataFrame):
+        in_audit = True
+
+    axis_named = _holdout_frame()
+    axis_named.columns.name = json.dumps({"nct_id": _REDTEAM_HOLDOUT_ID, "in_audit": True})
+
+    idx = _index_with_in_audit(shipped_rules, shipped_ecosystem_rules, None)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        idx.in_audit = idx["nct_id"] == _REDTEAM_HOLDOUT_ID
+    universe = sr.literal_universe(_holdout_frame())
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        universe.in_audit = True
+
+    cases: list[tuple[str, Callable[[], Any]]] = []
+    for label, held in (
+        ("frame.in_audit = mask", pitfall),
+        ("DataFrame subclass, _metadata in_audit", subclassed),
+        ("DataFrame subclass, class attribute in_audit", FlaggedFrame(_holdout_frame())),
+        ("columns.name holding the manifest", axis_named),
+    ):
+        cases.extend(_redteam4_frame_calls(label, held, shipped_rules, shipped_ecosystem_rules))
+    cases.extend(_redteam4_index_calls("index.in_audit = mask", idx))
+    cases.extend(
+        _redteam4_universe_calls("universe.in_audit = True", universe, shipped_rules, shipped_ecosystem_rules)
+    )
+    assert _redteam4_not_refused(cases) == []
+
+
+def _redteam4_xml_manifest(nct_id: str, flag: bool) -> Any:
+    """One trial's manifest as an ElementTree element: one child element per field."""
+    import xml.etree.ElementTree as ET
+
+    element = ET.Element("manifest")
+    ET.SubElement(element, "nct_id").text = nct_id
+    ET.SubElement(element, "in_audit").text = str(flag).lower()
+    return element
+
+
+def _redteam4_name_as_value_manifests(nct_id: str, flag: bool) -> list[tuple[str, Any]]:
+    """One trial's flag held where its name is a value, not a key or field name.
+
+    Method: DataFrame.melt (long format) gives {"variable": "in_audit",
+    "value": True}; a key/value list is how many JSON APIs carry metadata;
+    to_dict("split") of a manifest read with dtype=str lists "in_audit"
+    under "columns" and "True" in "data"; ElementTree and minidom hold
+    in_audit as a child element's tag.
+    """
+    import xml.dom.minidom
+    import xml.etree.ElementTree as ET
+
+    manifest = {"nct_id": nct_id, "in_audit": flag}
+    frame_ = pd.DataFrame([manifest])
+    return [
+        ("DataFrame.melt records", frame_.melt(id_vars="nct_id").to_dict("records")),
+        ("key/value list", [{"key": key, "value": value} for key, value in manifest.items()]),
+        ("to_dict('split') of a dtype=str manifest", frame_.astype(str).to_dict("split")),
+        ("ElementTree.Element", _redteam4_xml_manifest(nct_id, flag)),
+        (
+            "xml.dom.minidom.Document",
+            xml.dom.minidom.parseString(ET.tostring(_redteam4_xml_manifest(nct_id, flag), encoding="unicode")),
+        ),
+    ]
+
+
+def test_redteam_m2_round4_flag_whose_name_is_a_value_is_refused(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (LOW-MEDIUM): the manifest in long format. The sponsor frame
+    # (and the index) merged on nct_id with manifest.melt(id_vars="nct_id")
+    # gain columns "variable" ("in_audit") and "value" (the bool): a bool
+    # column under a text name is a leaf, and "in_audit" is a plain cell
+    # string. The same long form, a key/value list, to_dict("split") of a
+    # dtype=str manifest and XML (ElementTree, minidom) as a record's
+    # manifest or in frame.attrs. Observed: every entry point attributes
+    # or counts the holdout. Correct: refused.
+    manifest = pd.DataFrame({"nct_id": [_REDTEAM_HOLDOUT_ID, _REDTEAM3_OTHER_ID], "in_audit": [True, False]})
+    melted = manifest.melt(id_vars="nct_id")
+    merged = _holdout_frame().merge(melted, on="nct_id")
+    assert set(merged["variable"]) == {"in_audit"} and merged["value"].any()
+    in_attrs = _holdout_frame()
+    in_attrs.attrs["manifest"] = melted.to_dict("records")
+    idx = _index_with_in_audit(shipped_rules, shipped_ecosystem_rules, None).merge(melted, on="nct_id")
+    cases: list[tuple[str, Callable[[], Any]]] = []
+    cases.extend(_redteam4_frame_calls("frame merged with a melted manifest", merged, shipped_rules, shipped_ecosystem_rules))
+    cases.extend(_redteam4_frame_calls("melted manifest in frame.attrs", in_attrs, shipped_rules, shipped_ecosystem_rules))
+    cases.extend(_redteam4_index_calls("index merged with a melted manifest", idx))
+    for label, value in _redteam4_name_as_value_manifests(_REDTEAM_HOLDOUT_ID, True):
+        cases.extend(_redteam4_record_calls(label, value, shipped_rules, shipped_ecosystem_rules))
+    assert _redteam4_not_refused(cases) == []
+
+
+def _redteam4_sqlite_row(nct_id: str, flag: bool) -> Any:
+    """A manifest row as a sqlite3.Row from an in-memory database (no file is opened).
+
+    sqlite stores a bool as the integer 1 or 0, so the row holds
+    (nct_id, 1): fields with names (Row.keys()) but no items(), and an int,
+    not a bool, where the flag was.
+    """
+    import sqlite3
+
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("CREATE TABLE manifest (nct_id TEXT, in_audit BOOLEAN)")
+        connection.execute("INSERT INTO manifest VALUES (?, ?)", (nct_id, flag))
+        return connection.execute("SELECT nct_id, in_audit FROM manifest").fetchone()
+    finally:
+        connection.close()
+
+
+def test_redteam_m2_round4_sqlite_rows_carrying_in_audit_are_refused(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (LOW-MEDIUM): manifest rows read from SQLite with
+    # row_factory=sqlite3.Row, kept as a record's manifest or as a frame
+    # column. sqlite3.Row has keys() and [] but no items(), so the scan
+    # walks it by position: a str and the int 1 (sqlite's True), both
+    # leaves. Observed: attributed and counted. Correct: refused
+    # (in_audit is 1, not a bool).
+    column = _redteam4_per_row(_redteam4_sqlite_row)
+    cases: list[tuple[str, Callable[[], Any]]] = []
+    cases.extend(
+        _redteam4_record_calls(
+            "nested sqlite3.Row", _redteam4_sqlite_row(_REDTEAM_HOLDOUT_ID, True), shipped_rules, shipped_ecosystem_rules
+        )
+    )
+    cases.extend(
+        _redteam4_frame_calls(
+            "column of sqlite3.Row", _holdout_frame().assign(manifest=column), shipped_rules, shipped_ecosystem_rules
+        )
+    )
+    assert _redteam4_not_refused(cases) == []
+
+
+def _redteam4_stdlib_serialized_manifests(nct_id: str, flag: bool) -> list[tuple[str, Any]]:
+    """One trial's manifest serialized by the standard library or by pandas.
+
+    Method: each form keeps the name in_audit legible (nothing compressed
+    or base64-encoded), but none puts it where _text_keys reads a key:
+    percent-encoding writes ":" as "%3A"; html.escape writes the key's
+    quotes as "&quot;"; plistlib and ElementTree write the key as an
+    element; pickle writes it between opcodes; to_json(orient="split")
+    writes it as an item of the "columns" list.
+    """
+    import html
+    import pickle
+    import plistlib
+    import urllib.parse
+    import xml.etree.ElementTree as ET
+
+    manifest = {"nct_id": nct_id, "in_audit": flag}
+    as_json = json.dumps(manifest)
+    return [
+        ("urllib.parse.urlencode of a JSON manifest", urllib.parse.urlencode({"manifest": as_json})),
+        ("urllib.parse.quote of a JSON manifest", urllib.parse.quote(as_json)),
+        ("html.escape of a JSON manifest", html.escape(as_json)),
+        ("plistlib.dumps (XML bytes)", plistlib.dumps(manifest)),
+        ("ElementTree.tostring", ET.tostring(_redteam4_xml_manifest(nct_id, flag), encoding="unicode")),
+        ("pickle.dumps", pickle.dumps(manifest)),
+        ("DataFrame.to_json(orient='split')", pd.DataFrame([manifest]).to_json(orient="split")),
+    ]
+
+
+def test_redteam_m2_round4_stdlib_serialized_manifests_are_refused(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (LOW): the manifest serialized by urllib.parse (urlencode,
+    # quote), html.escape, plistlib, ElementTree, pickle or pandas
+    # to_json(orient="split"), as a record's manifest and as a frame
+    # column (each row its own trial's manifest). Observed: attributed and
+    # counted. Correct: refused, as the JSON, repr, YAML and "key=value"
+    # forms are.
+    cases: list[tuple[str, Callable[[], Any]]] = []
+    per_row = [
+        _redteam4_stdlib_serialized_manifests(nct_id, flag)
+        for (nct_id, _, _, _), flag in zip(_HOLDOUT_ROWS, _redteam4_row_flags())
+    ]
+    for pos, (label, held_value) in enumerate(
+        _redteam4_stdlib_serialized_manifests(_REDTEAM_HOLDOUT_ID, True)
+    ):
+        cases.extend(_redteam4_record_calls(label, held_value, shipped_rules, shipped_ecosystem_rules))
+        column = pd.Series([forms[pos][1] for forms in per_row], dtype=object)
+        cases.extend(
+            _redteam4_frame_calls(
+                f"column of {label}", _holdout_frame().assign(manifest=column), shipped_rules, shipped_ecosystem_rules
+            )
+        )
+    assert _redteam4_not_refused(cases) == []
+
+
+def test_redteam_m2_round4_int_enum_key_or_label_naming_in_audit_is_refused(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (LOW; round 3's "enum key holding the CSV string 'True'",
+    # still open for int-valued enums): an IntEnum or IntFlag member named
+    # IN_AUDIT as a record key holding "True" or 1, or as a frame column
+    # label holding "True"/"False" strings or 1/0. _name_texts returns no
+    # text for any int before it reaches str(), so the name is not read.
+    # Observed: attributed and counted. Correct: refused (the values are
+    # not bools), as a plain Enum key is.
+    import enum
+
+    class IntKey(enum.IntEnum):
+        IN_AUDIT = 1
+
+    class FlagKey(enum.IntFlag):
+        IN_AUDIT = 1
+
+    flags = _redteam4_row_flags()
+    cases: list[tuple[str, Callable[[], Any]]] = []
+    for key in (IntKey.IN_AUDIT, FlagKey.IN_AUDIT):
+        for value in ("True", 1):
+            cases.extend(
+                _redteam4_record_calls(
+                    f"{type(key).__name__} key holding {value!r}", value, shipped_rules, shipped_ecosystem_rules, key=key
+                )
+            )
+        for values in ([str(flag) for flag in flags], [int(flag) for flag in flags]):
+            held = _holdout_frame()
+            held[key] = values
+            cases.extend(
+                _redteam4_frame_calls(
+                    f"{type(key).__name__} column of {type(values[0]).__name__}",
+                    held,
+                    shipped_rules,
+                    shipped_ecosystem_rules,
+                )
+            )
+    assert _redteam4_not_refused(cases) == []
+
+
+# Names for in_audit that no folding step maps to it: Cyrillic і (U+0456)
+# and dotless ı (U+0131) for "i" (not compatibility characters, so not the
+# documented mathematical-alphanumeric gap) and a dot as the separator.
+_REDTEAM4_LOOKALIKE_NAMES: list[str] = ["іn_audit", "ın_audit", "in.audit"]
+
+
+def test_redteam_m2_round4_lookalike_in_audit_names_are_refused(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (LOW): in_audit True under a name that differs from in_audit
+    # by a homoglyph or a dot (a record key, a frame column of bools), and
+    # a manifest whose key is quoted with typographic quotes or backticks.
+    # None is in the module docstring's list of what the scan cannot see.
+    # Observed: attributed and counted. Correct: refused.
+    flags = _redteam4_row_flags()
+    cases: list[tuple[str, Callable[[], Any]]] = []
+    for name in _REDTEAM4_LOOKALIKE_NAMES:
+        cases.extend(
+            _redteam4_record_calls(f"key {name!r}", True, shipped_rules, shipped_ecosystem_rules, key=name)
+        )
+        held = _holdout_frame()
+        held[name] = flags
+        cases.extend(_redteam4_frame_calls(f"column {name!r}", held, shipped_rules, shipped_ecosystem_rules))
+    for label, text in (
+        ("key in typographic quotes", "{“in_audit”: true}"),
+        ("key in backticks", "`in_audit`: true"),
+    ):
+        cases.extend(_redteam4_record_calls(label, text, shipped_rules, shipped_ecosystem_rules))
+    assert _redteam4_not_refused(cases) == []
+
+
+def test_redteam_m2_round4_tagged_number_cells_are_refused(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (LOW): an object column of int (or float) subclass values,
+    # each carrying its row's in_audit as an attribute. pandas infers the
+    # column as "integer" ("floating"), which _SCALAR_INFERRED_DTYPES skips
+    # without reading a cell; the record scan refuses the same value
+    # (_beside_items), and round 3 made the frame path read a str
+    # subclass's attributes. Observed: attributed and counted. Correct:
+    # refused.
+    class TaggedInt(int):
+        pass
+
+    class TaggedFloat(float):
+        pass
+
+    def tagged(kind: type, flag: bool) -> Any:
+        value = kind(1)
+        value.in_audit = flag
+        return value
+
+    cases: list[tuple[str, Callable[[], Any]]] = []
+    for kind in (TaggedInt, TaggedFloat):
+        column = _redteam4_per_row(lambda _nct_id, flag, kind=kind: tagged(kind, flag))
+        assert pd.api.types.infer_dtype(column) in ("integer", "floating")
+        cases.extend(
+            _redteam4_frame_calls(
+                f"object column of {kind.__name__}",
+                _holdout_frame().assign(rank=column),
+                shipped_rules,
+                shipped_ecosystem_rules,
+            )
+        )
+    assert _redteam4_not_refused(cases) == []
+
+
+def test_redteam_m2_round4_output_is_stamped_with_the_id_that_was_checked(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (LOW; needs a str subclass): rows and a record of the clean
+    # trial, in_audit False, whose nct_id is a str subclass with content
+    # NCT99000102 and str() NCT99000101 (the holdout). The check reads the
+    # raw value (canonical, every id agrees); the index keeps the object,
+    # and trial_cohorts and any str() of the index stamp the holdout's id.
+    # Observed: trial_cohorts returns NCT99000101. Correct: refused, or the
+    # output stamped with exactly the plain str that was checked.
+    class Shown(str):
+        def __str__(self) -> str:
+            return _REDTEAM_HOLDOUT_ID
+
+    rows = [
+        (Shown(_REDTEAM3_OTHER_ID), agency, role, name)
+        for nct_id, agency, role, name in _HOLDOUT_ROWS
+        if nct_id == _REDTEAM3_OTHER_ID
+    ]
+    framed = pd.DataFrame(rows, columns=["nct_id", "agency_class", "lead_or_collaborator", "name"], dtype=object)
+    framed["in_audit"] = False
+    record = _stored_record(Shown(_REDTEAM3_OTHER_ID), in_audit=False)
+    built: list[tuple[str, Callable[[], pd.DataFrame]]] = [
+        ("frame", lambda: eco.build_unified_index(framed, shipped_rules, shipped_ecosystem_rules)),
+        ("record", lambda: _redteam_run([record], shipped_rules, shipped_ecosystem_rules)[0]),
+    ]
+    stamped: dict[str, list[str]] = {}
+    for label, build in built:
+        try:
+            index = build()
+        except eco.EcosystemAuditHoldoutError:
+            continue
+        stamped[label] = sorted(
+            "holdout id" if str(key) == _REDTEAM_HOLDOUT_ID else type(key).__name__
+            for key in [*eco.trial_cohorts(index), *index["nct_id"]]
+            if not (type(key) is str and key == _REDTEAM3_OTHER_ID)
+        )
+    assert all(not wrong for wrong in stamped.values()), stamped
+
+
+def test_redteam_m2_round4_audit_id_set_passed_positionally_is_not_echoed(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (LOW): the audit id set (a tuple or frozenset, so hashable)
+    # passed where a sector or a role is expected. sector_trials and
+    # trial_cohorts raise EcosystemRuleValidationError with ``got
+    # {sector!r}`` / ``got {role!r}``, so the message, and any log or
+    # traceback that keeps it, records the holdout ids; the module's own
+    # refusals and the parser's argument checks name types only. Observed:
+    # the messages contain NCT99000101. Correct: raise, naming no id.
+    audit_ids = (_REDTEAM_HOLDOUT_ID, "nct99000101")
+    idx = _index_with_in_audit(shipped_rules, shipped_ecosystem_rules, None)
+    sp = _holdout_frame()
+    calls: list[tuple[str, Callable[[], Any]]] = [
+        ("sector_trials(sector=ids)", lambda: eco.sector_trials(idx, audit_ids)),  # type: ignore[arg-type]
+        ("sector_trials(role=ids)", lambda: eco.sector_trials(idx, "nih", audit_ids)),  # type: ignore[arg-type]
+        ("trial_cohorts(role=ids)", lambda: eco.trial_cohorts(idx, audit_ids)),  # type: ignore[arg-type]
+        ("trial_cohorts(role=frozenset(ids))", lambda: eco.trial_cohorts(idx, frozenset(audit_ids))),  # type: ignore[arg-type]
+        ("organization_trials(role=ids)", lambda: eco.organization_trials(idx, "National Cancer Institute (NCI)", audit_ids)),  # type: ignore[arg-type]
+        ("audit_ecosystem(canonical=ids)", lambda: eco.audit_ecosystem(sp, shipped_ecosystem_rules, audit_ids, "cancer")),  # type: ignore[arg-type]
+    ]
+    echoed: list[str] = []
+    for label, call in calls:
+        with pytest.raises(Exception) as exc_info:
+            call()
+        if "nct99" in str(exc_info.value).lower():
+            echoed.append(label)
+    assert echoed == []
+
+
+# NCT ids written so _NCT_ID_ANYWHERE_RE ("NCT", any non-word separators,
+# eight ASCII or Unicode digits, IGNORECASE) does not see them: full-width
+# letters (IGNORECASE does not fold width), a zero-width space or a
+# Cyrillic С inside "NCT", and separators between the digits.
+_REDTEAM4_DISGUISED_IDS: list[tuple[str, str]] = [
+    ("full-width NCT", "ＮＣＴ99000101"),
+    ("zero-width space inside NCT", "N​CT99000101"),
+    ("Cyrillic Es (U+0421) in NCT", "NСT99000101"),
+    ("hyphen between the digits", "NCT9900-0101"),
+]
+
+
+def test_redteam_m2_round4_write_ecosystem_baseline_refuses_a_disguised_nct_id(
+    tmp_path: Path,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (LOW): a baseline block of the right shape whose organization
+    # name, or fixture_meta "file", is a holdout id written with full-width
+    # letters, a zero-width space or a Cyrillic letter in "NCT", or a
+    # hyphen between the digits. The parser and the frame check refuse such
+    # ids as possible holdouts in disguise; this check reads "NCT" then
+    # eight digits only. Observed: the file is written with the id.
+    # Correct: ValueError and nothing written.
+    block = eco.compute_ecosystem_baseline(_holdout_frame(), shipped_ecosystem_rules)
+    written: list[str] = []
+    attempts = [
+        (label, disguised, part)
+        for label, disguised in _REDTEAM4_DISGUISED_IDS
+        for part in ("organizations", "fixture_meta")
+    ]
+    for number, (label, disguised, part) in enumerate(attempts):
+        path = tmp_path / f"expected_ecosystem_counts-{number}.json"
+        trial_block = json.loads(json.dumps(block))
+        meta = {"file": "sponsors_fixture_ecosystem.csv"}
+        if part == "organizations":
+            trial_block["organizations"][disguised] = {"any": 1, "lead": 1, "collaborator": 0}
+        else:
+            meta["file"] = f"records/{disguised}.json"
+        try:
+            eco.write_ecosystem_baseline("0" * 64, trial_block, [], meta, path=str(path))
+        except ValueError:
+            pass
+        if path.exists():
+            written.append(f"{label} in {part}")
+    assert written == []
+
+
+def test_redteam_m2_round4_attempts_that_are_refused(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack (refused): a Series row given in_audit by attribute assignment
+    # (the pandas pitfall, read by _beside_items), an int subclass with an
+    # in_audit attribute in a record, an email header "In-Audit" and a
+    # query string as a record's manifest; a frame whose cells hold
+    # to_json(orient="table"), whose attrs hold the manifest DataFrame, a
+    # get_dummies frame (in_audit_True), and an IntEnum column label
+    # holding bools (unnamed bools). Expected and observed: every call
+    # raises EcosystemAuditHoldoutError.
+    import email.message
+    import enum
+    import warnings
+
+    class TaggedInt(int):
+        pass
+
+    tagged = TaggedInt(1)
+    tagged.in_audit = True  # type: ignore[attr-defined]
+    header = email.message.Message()
+    header["In-Audit"] = "true"
+    row = pd.Series(_stored_record(_REDTEAM_HOLDOUT_ID))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        row.in_audit = True  # the attribute, not a label: pandas warns and sets it
+
+    class IntKey(enum.IntEnum):
+        IN_AUDIT = 1
+
+    flags = _redteam4_row_flags()
+    manifest = pd.DataFrame({"nct_id": [n for n, _, _, _ in _HOLDOUT_ROWS], "in_audit": flags})
+    table_cells = _holdout_frame().assign(
+        manifest=_redteam4_per_row(
+            lambda nct_id, flag: pd.DataFrame([{"nct_id": nct_id, "in_audit": flag}]).to_json(orient="table")
+        )
+    )
+    in_attrs = _holdout_frame()
+    in_attrs.attrs["manifest"] = manifest
+    dummies = pd.get_dummies(_holdout_frame().assign(in_audit=flags), columns=["in_audit"])
+    int_label = _holdout_frame()
+    int_label[IntKey.IN_AUDIT] = flags
+    cases: list[tuple[str, Callable[[], Any]]] = [
+        ("Series row with an in_audit attribute", lambda: _redteam_run([row], shipped_rules, shipped_ecosystem_rules)),
+    ]
+    cases.extend(_redteam4_record_calls("int subclass with an in_audit attribute", tagged, shipped_rules, shipped_ecosystem_rules, key="rank"))
+    cases.extend(_redteam4_record_calls("email header In-Audit", header, shipped_rules, shipped_ecosystem_rules))
+    cases.extend(
+        _redteam4_record_calls(
+            "query string", f"nct_id={_REDTEAM_HOLDOUT_ID}&in_audit=True", shipped_rules, shipped_ecosystem_rules
+        )
+    )
+    for label, held in (
+        ("cells of to_json(orient='table')", table_cells),
+        ("manifest DataFrame in attrs", in_attrs),
+        ("get_dummies of in_audit", dummies),
+        ("IntEnum column label holding bools", int_label),
+    ):
+        cases.extend(_redteam4_frame_calls(label, held, shipped_rules, shipped_ecosystem_rules))
+    assert _redteam4_not_refused(cases) == []
+    # A sqlite3.Row manifest in frame.attrs: the check itself raises
+    # TypeError (pandas deep-copies attrs when the check reads a column, and
+    # a sqlite3.Row cannot be copied), so nothing is attributed, though not
+    # as a holdout refusal (as round 3's 0-d object array).
+    sqlite_attrs = _holdout_frame()
+    sqlite_attrs.attrs["manifest"] = _redteam4_sqlite_row(_REDTEAM_HOLDOUT_ID, True)
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises((eco.EcosystemAuditHoldoutError, TypeError)):
+            entry(sqlite_attrs, shipped_rules, shipped_ecosystem_rules)
+        assert name

@@ -2787,3 +2787,403 @@ def test_redteam_m2_round3_mixed_batch_with_an_index_named_row_is_refused() -> N
     with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
         ap.parse_outcomes_frame([_study_carrying(_CLEAN_NCT, in_audit=False), row])
     assert exc_info.value.reason == "in_audit_not_bool"
+
+
+# ---------------------------------------------------------------------------
+# 18. Red team, M2 round 4 (test_redteam_m2_*). Each test asserts the
+# CORRECT behaviour, which is refusal, for one attack on an entry point that
+# enforces the holdout; a test that fails here names a bypass that is still
+# open at fc7bc78 and is not a test to loosen. Tests for attempts that are
+# already refused, or for a claim that holds, say so ("Attack (refused)",
+# "Claim under test"). Every id is fictional (NCT99000001..NCT99999999);
+# nothing touches the network or a file (the sqlite rows come from an
+# in-memory database).
+# ---------------------------------------------------------------------------
+
+
+def _redteam4_manifest(nct_id: str = _HOLDOUT_NCT, flag: bool = True) -> dict[str, Any]:
+    """The two keys of a site index.json row (data/outcomes/index.json) the holdout rule reads."""
+    return {"nct_id": nct_id, "in_audit": flag}
+
+
+def _redteam4_not_refused(entry: Callable[[Any], Any], cases: list[tuple[str, Any]]) -> list[str]:
+    """Labels of the cases ``entry`` does not refuse with PopulationAuditHoldoutError.
+
+    Method: each case is passed to ``entry`` on its own. A case that returns
+    is listed by its label; one that raises another exception is listed with
+    that exception's type name (it was stopped, but not as a holdout, so a
+    caller catching that type would go on). Messages are never formatted.
+    """
+    missed: list[str] = []
+    for label, held in cases:
+        try:
+            entry(held)
+        except ap.PopulationAuditHoldoutError:
+            continue
+        except Exception as exc:  # noqa: BLE001 - reported by type only
+            missed.append(f"{label} ({type(exc).__name__})")
+            continue
+        missed.append(label)
+    return missed
+
+
+def _redteam4_xml_manifest() -> Any:
+    """The holdout's manifest as an ElementTree element: one child element per field."""
+    import xml.etree.ElementTree as ET
+
+    element = ET.Element("manifest")
+    for key, value in _redteam4_manifest().items():
+        ET.SubElement(element, key).text = str(value).lower()
+    return element
+
+
+def _redteam4_stdlib_serialized_manifests() -> list[tuple[str, Any]]:
+    """The holdout's manifest serialized by the standard library or by pandas.
+
+    Method: each form keeps the name in_audit legible in the text (nothing
+    is compressed or base64-encoded), but none puts it where _text_keys
+    reads a key: percent-encoding writes ":" as "%3A"; html.escape writes
+    the key's quotes as "&quot;", so ";" stands before ":"; plistlib and
+    ElementTree write the key as an element; pickle writes it between
+    opcodes; DataFrame.to_json(orient="split") writes it as an item of the
+    "columns" list (JSON, which the module docstring says it reads).
+    """
+    import html
+    import pickle
+    import plistlib
+    import urllib.parse
+    import xml.etree.ElementTree as ET
+
+    pd = pytest.importorskip("pandas")
+    manifest = _redteam4_manifest()
+    as_json = json.dumps(manifest)
+    return [
+        ("urllib.parse.urlencode of a JSON manifest", urllib.parse.urlencode({"manifest": as_json})),
+        ("urllib.parse.quote of a JSON manifest", urllib.parse.quote(as_json)),
+        ("html.escape of a JSON manifest", html.escape(as_json)),
+        ("plistlib.dumps (XML bytes)", plistlib.dumps(manifest)),
+        ("ElementTree.tostring", ET.tostring(_redteam4_xml_manifest(), encoding="unicode")),
+        ("pickle.dumps", pickle.dumps(manifest)),
+        ("DataFrame.to_json(orient='split')", pd.DataFrame([manifest]).to_json(orient="split")),
+    ]
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_round4_stdlib_serialized_manifest_is_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack (LOW): the holdout's manifest {"nct_id": ..., "in_audit": True}
+    # under "manifest", serialized by urllib.parse (urlencode, quote),
+    # html.escape, plistlib, ElementTree, pickle or pandas
+    # to_json(orient="split"). Observed: every form is parsed in full under
+    # NCT99000001 by all four entry points. Correct: refused, as the JSON,
+    # repr, YAML and "key=value" forms of the same manifest are.
+    cases = [
+        (label, _redteam_holdout_record(retained, manifest=text))
+        for label, text in _redteam4_stdlib_serialized_manifests()
+    ]
+    assert _redteam4_not_refused(entry, cases) == []
+
+
+def _redteam4_name_as_value_manifests() -> list[tuple[str, Any]]:
+    """The holdout's flag held where its name is a value, not a key or field name.
+
+    Method: DataFrame.melt (long format) gives {"variable": "in_audit",
+    "value": True}; a key/value list ({"key": "in_audit", "value": True})
+    is how many JSON APIs carry metadata; DataFrame.to_dict("split") of a
+    manifest read as text (dtype=str) lists "in_audit" under "columns" and
+    "True" in "data"; an ElementTree element and a minidom document hold
+    in_audit as a child element's tag. The scan reads the names of keys,
+    fields and attributes, so the True sits under "value" (a text name: a
+    leaf) or by position as text, and "in_audit" is a plain string.
+    """
+    import xml.dom.minidom
+    import xml.etree.ElementTree as ET
+
+    pd = pytest.importorskip("pandas")
+    manifest = _redteam4_manifest()
+    frame = pd.DataFrame([manifest])
+    return [
+        ("DataFrame.melt records", frame.melt(id_vars="nct_id").to_dict("records")),
+        ("key/value list", [{"key": key, "value": value} for key, value in manifest.items()]),
+        ("DataFrame.to_dict('split') of a dtype=str manifest", frame.astype(str).to_dict("split")),
+        ("ElementTree.Element", _redteam4_xml_manifest()),
+        (
+            "xml.dom.minidom.Document",
+            xml.dom.minidom.parseString(ET.tostring(_redteam4_xml_manifest(), encoding="unicode")),
+        ),
+    ]
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_round4_flag_whose_name_is_a_value_is_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack (LOW-MEDIUM): the holdout's manifest under "manifest" in long
+    # format (DataFrame.melt), as a key/value list, as to_dict("split") of a
+    # manifest read with dtype=str, or as XML (ElementTree, minidom). The
+    # name in_audit is a value there, so no flag is found and nothing is
+    # unreadable. Observed: parsed in full under NCT99000001. Correct:
+    # refused.
+    cases = [
+        (label, _redteam_holdout_record(retained, manifest=value))
+        for label, value in _redteam4_name_as_value_manifests()
+    ]
+    assert _redteam4_not_refused(entry, cases) == []
+
+
+def _redteam4_sqlite_row(nct_id: str, flag: bool) -> Any:
+    """A manifest row as a sqlite3.Row from an in-memory database (no file is opened).
+
+    sqlite stores a bool as the integer 1 or 0, so the row holds
+    (nct_id, 1): fields with names (Row.keys()) but no items(), and an int,
+    not a bool, where the flag was.
+    """
+    import sqlite3
+
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("CREATE TABLE manifest (nct_id TEXT, in_audit BOOLEAN)")
+        connection.execute("INSERT INTO manifest VALUES (?, ?)", (nct_id, flag))
+        return connection.execute("SELECT nct_id, in_audit FROM manifest").fetchone()
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_round4_nested_sqlite_row_is_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack (LOW-MEDIUM): the holdout's manifest row read from SQLite with
+    # row_factory=sqlite3.Row and kept under "manifest". sqlite3.Row has
+    # keys() and [] but no items(), so _keyed_items does not see its names
+    # and the scan walks it by position: a str and the int 1 (sqlite's
+    # True), both leaves. (At the top level the same row is refused as a
+    # record whose fields have no names.) Observed: parsed in full under
+    # NCT99000001. Correct: refused (in_audit is 1, not a bool).
+    held = _redteam_holdout_record(retained, manifest=_redteam4_sqlite_row(_HOLDOUT_NCT, True))
+    assert _redteam4_not_refused(entry, [("nested sqlite3.Row", held)]) == []
+
+
+def test_redteam_m2_round4_parse_outcomes_frame_single_sqlite_row_is_refused() -> None:
+    # Attack (LOW): the holdout's manifest row (a sqlite3.Row) passed where
+    # a batch is expected. The single-record guard knows mappings,
+    # namedtuples, numpy records and dataclasses, not sqlite3.Row, so the
+    # row is iterated: its id (a str) and its flag (the int 1) each become
+    # a "study_not_a_dict" parse-error row. Observed: a two-row frame of
+    # parse errors. Correct: TypeError or a holdout refusal, as for a
+    # single dict or namedtuple.
+    with pytest.raises((ap.PopulationAuditHoldoutError, TypeError)):
+        ap.parse_outcomes_frame(_redteam4_sqlite_row(_HOLDOUT_NCT, True))
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_round4_int_enum_key_naming_in_audit_is_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack (LOW; round 3's "enum key holding the CSV string 'True'",
+    # still open for int-valued enums): a key that is an IntEnum or IntFlag
+    # member named IN_AUDIT, holding the CSV string "True" or sqlite's 1.
+    # _name_texts returns no text for any int before it reaches str(), so
+    # the key names nothing and its value is a leaf. Observed: parsed in
+    # full under NCT99000001. Correct: refused (the value is not a bool),
+    # as Key.IN_AUDIT of a plain Enum is.
+    import enum
+
+    class IntKey(enum.IntEnum):
+        IN_AUDIT = 1
+
+    class FlagKey(enum.IntFlag):
+        IN_AUDIT = 1
+
+    cases: list[tuple[str, Any]] = []
+    for key in (IntKey.IN_AUDIT, FlagKey.IN_AUDIT):
+        for value in ("True", 1):
+            held = _redteam_holdout_record(retained)
+            held[key] = value  # type: ignore[index]
+            cases.append((f"{type(key).__name__} key holding {value!r}", held))
+    assert _redteam4_not_refused(entry, cases) == []
+
+
+# Names an editor or a keyboard layout writes for in_audit that no folding
+# step maps to it: Cyrillic і (U+0456) and dotless ı (U+0131) for "i" (not
+# compatibility characters, so not the documented mathematical-alphanumeric
+# gap), a dot as the separator, and a key quoted with typographic quotes or
+# backticks (a word processor, Markdown), which _KEY_RE does not take as
+# quotes, so no key run ends at the ":".
+_REDTEAM4_LOOKALIKE_MANIFESTS: list[tuple[str, Any]] = [
+    ("Cyrillic i (U+0456) key", {"іn_audit": True}),
+    ("dotless i (U+0131) key", {"ın_audit": True}),
+    ("dot-separated key", {"in.audit": True}),
+    ("key in typographic quotes", '{“nct_id”: “NCT99000001”, “in_audit”: true}'),
+    ("key in backticks", "`in_audit`: true"),
+]
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_round4_lookalike_in_audit_names_are_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack (LOW): in_audit True under a name that differs from in_audit
+    # by a homoglyph or a dot, or as a key quoted with typographic quotes
+    # or backticks in text. None of these is in the module docstring's list
+    # of what the scan cannot see. Observed: parsed in full under
+    # NCT99000001. Correct: refused.
+    cases = [
+        (label, _redteam_holdout_record(retained, manifest=value))
+        for label, value in _REDTEAM4_LOOKALIKE_MANIFESTS
+    ]
+    assert _redteam4_not_refused(entry, cases) == []
+
+
+def _redteam4_stamped_ids(out: Any) -> list[Any]:
+    """The nct_id(s) an entry point's output is stamped with, as stored there."""
+    if isinstance(out, ap.TrialAnalysisPopulations):
+        return [out.nct_id]
+    if isinstance(out, dict):
+        return [out.get("nct_id")]
+    return list(out["nct_id"])
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_round4_output_is_stamped_with_the_id_that_was_checked(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack (LOW; needs a str subclass): the record says in_audit False for
+    # the clean trial, and its nctId (top-level nct_id for a retained
+    # record) is a str subclass whose content is NCT99000002 but whose
+    # str() is NCT99000001. The check reads the raw value (canonical, equal
+    # to every other id in the record); _nct_of and build_outcomes_from_raw
+    # then stamp str(value). Observed: the output is stamped NCT99000001,
+    # the holdout. Correct: refused, or stamped with exactly the plain str
+    # that was checked.
+    class Shown(str):
+        def __str__(self) -> str:
+            return _HOLDOUT_NCT
+
+    make = _retained_carrying if retained else _study_carrying
+    held = make(Shown(_CLEAN_NCT), in_audit=False)
+    try:
+        out = entry(held)
+    except ap.PopulationAuditHoldoutError:
+        return
+    stamped = _redteam4_stamped_ids(out)
+    assert all(type(value) is str and value == _CLEAN_NCT for value in stamped), [
+        "holdout id" if str(value) == _HOLDOUT_NCT else type(value).__name__ for value in stamped
+    ]
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_round4_attempts_that_are_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack (refused): the manifest as an email.message.Message header
+    # ("In-Audit"), a configparser section, TOML text, a query string of
+    # the manifest itself, pandas to_json in the "table", "records",
+    # "index" and "columns" orients, to_dict("tight") and to_dict("split")
+    # with bools; an int subclass carrying in_audit as an attribute; a
+    # Series row given in_audit by attribute assignment (the pandas
+    # attribute-instead-of-column pitfall); an IntEnum key holding True
+    # (an unnamed bool); and the sqlite3.Row itself as the record. Expected
+    # and observed: each raises PopulationAuditHoldoutError.
+    import configparser
+    import email.message
+    import enum
+    import warnings
+
+    pd = pytest.importorskip("pandas")
+    manifest = _redteam4_manifest()
+    frame = pd.DataFrame([manifest])
+    header = email.message.Message()
+    header["In-Audit"] = "true"
+    section = configparser.ConfigParser()
+    section.read_string("[manifest]\nin_audit = true\n")
+
+    class TaggedInt(int):
+        pass
+
+    tagged = TaggedInt(1)
+    tagged.in_audit = True  # type: ignore[attr-defined]
+
+    class IntKey(enum.IntEnum):
+        IN_AUDIT = 1
+
+    int_key = _redteam_holdout_record(retained)
+    int_key[IntKey.IN_AUDIT] = True  # type: ignore[index]
+    row = pd.Series(_redteam_holdout_record(retained))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        row.in_audit = True  # the attribute, not a label: pandas warns and sets it
+    cases: list[tuple[str, Any]] = [
+        ("email.message.Message", _redteam_holdout_record(retained, manifest=header)),
+        ("configparser.ConfigParser", _redteam_holdout_record(retained, manifest=section)),
+        ("TOML text", _redteam_holdout_record(retained, manifest=f'nct_id = "{_HOLDOUT_NCT}"\nin_audit = true\n')),
+        ("query string", _redteam_holdout_record(retained, manifest=f"nct_id={_HOLDOUT_NCT}&in_audit=True")),
+        *[
+            (f"to_json(orient={orient!r})", _redteam_holdout_record(retained, manifest=frame.to_json(orient=orient)))
+            for orient in ("table", "records", "index", "columns")
+        ],
+        ("to_dict('tight')", _redteam_holdout_record(retained, manifest=frame.to_dict("tight"))),
+        ("to_dict('split') with bools", _redteam_holdout_record(retained, manifest=frame.to_dict("split"))),
+        ("int subclass with an in_audit attribute", _redteam_holdout_record(retained, rank=tagged)),
+        ("Series row with an in_audit attribute", row),
+        ("IntEnum key holding True", int_key),
+        ("sqlite3.Row as the record", _redteam4_sqlite_row(_HOLDOUT_NCT, True)),
+    ]
+    assert _redteam4_not_refused(entry, cases) == []
+
+
+@pytest.mark.xfail(
+    strict=False,
+    reason=(
+        "declared unseen in the module docstring (a table rendered as text whose "
+        "header names in_audit); kept so the gap stays visible"
+    ),
+)
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_round4_manifest_rendered_as_a_text_table_is_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack (declared limitation, not a new finding): the manifest as a
+    # Markdown table, DataFrame.to_html, to_csv and to_string. Observed:
+    # parsed in full under NCT99000001. Correct: refused.
+    pd = pytest.importorskip("pandas")
+    frame = pd.DataFrame([_redteam4_manifest()])
+    markdown = f"| nct_id | in_audit |\n|---|---|\n| {_HOLDOUT_NCT} | true |"
+    cases = [
+        ("Markdown table", _redteam_holdout_record(retained, manifest=markdown)),
+        ("to_html", _redteam_holdout_record(retained, manifest=frame.to_html())),
+        ("to_csv", _redteam_holdout_record(retained, manifest=frame.to_csv(index=False))),
+        ("to_string", _redteam_holdout_record(retained, manifest=frame.to_string())),
+    ]
+    assert _redteam4_not_refused(entry, cases) == []
+
+
+def test_redteam_m2_round4_dc38220_bundle_parses_before_any_holdout_branch() -> None:
+    # Claim under test (module docstring; holds): at dc38220,
+    # build_trial_bundle takes in_audit from its argument and reads the
+    # trial mapping's own in_audit only when that argument is None, and it
+    # calls extract_reported_results(trial, ...) (which runs an injected
+    # population_parser) as a statement of its own body, outside any branch
+    # on the flag. So a holdout passed with in_audit=True and a trial
+    # mapping without the key reaches the parser, which sees no flag. Only
+    # source code is read. Expected and observed: the claim holds.
+    layout = ast.parse(_redteam_git_show("dc38220", "src/outcomes_layout.py"))
+    funcs = {node.name: node for node in layout.body if isinstance(node, ast.FunctionDef)}
+    bundle = funcs["build_trial_bundle"]
+    assert any(
+        isinstance(node, ast.Assign)
+        and ast.unparse(node)
+        == "raw_in_audit = in_audit if in_audit is not None else trial.get('in_audit')"
+        for node in bundle.body
+    )
+    calls = [
+        node.value
+        for node in bundle.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and ast.unparse(node.value.func) == "extract_reported_results"
+    ]
+    assert len(calls) == 1 and ast.unparse(calls[0].args[0]) == "trial"
+    assert {kw.arg for kw in calls[0].keywords} >= {"population_parser"}
