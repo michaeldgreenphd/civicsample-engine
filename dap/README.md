@@ -166,8 +166,15 @@ non-negative integer, `raw_categories` objects with a string `original` and
 `unknown_inferred` a count, and `flags` a list of strings. The legacy `sex`
 block needs a boolean `reported` and `totals` holding `female`, `male` and
 `unknown` as counts, since the race double-count check falls back to them when
-the sex/gender row gives no participant total. A malformed child was read as
-absent or zero: `omb_totals: "corrupt"` published a reported table as absent. `unknown_ethnicity_only`, `skipped_ethnicity_rows` and
+the sex/gender row gives no participant total. The `gender` block needs a
+boolean `reported`, since `is_results_posted` reads every block's `reported` by
+truthiness. A malformed child was read as absent or zero: `omb_totals: "corrupt"`
+published a reported table as absent, and `"reported": "false"` published a
+trial without results as posted. For the same reason `results_date` must be
+exactly `""` or a date `parse_partial_date_bounds` reads. The sex/gender row's
+numbers must be finite (JSON `1e309` parses as infinity and raised
+`OverflowError` in the build) and its five participant counts non-negative;
+`enrollment_minus_parsed` may be negative. `unknown_ethnicity_only`, `skipped_ethnicity_rows` and
 `not_hispanic_from_race_rows` postdate the 2026-11-08 extraction, so they are
 checked only when present. A missing or
 mistyped one was read as an "Unknown" sponsor, no enrollment, a block not

@@ -1789,6 +1789,10 @@ def test_raw_records_snapshot_date_still_defaults_to_the_build_date(tmp_path: Pa
         ("reported_gender", None, "sex_gender.reported_gender is NoneType, not bool"),  # only parse_error may
         ("parser_rules_version", None, "sex_gender.parser_rules_version is NoneType, not str"),
         ("uninformative_reason", 7, "sex_gender.uninformative_reason is int, not str or NoneType"),
+        # JSON `Infinity`, `NaN` or `1e309` parse as non-finite floats, which passed the type check.
+        ("n_female", float("inf"), "sex_gender.n_female is inf, not a finite number"),
+        ("enrollment_minus_parsed", float("nan"), "sex_gender.enrollment_minus_parsed is nan, not a finite number"),
+        ("n_male", -1.0, "sex_gender.n_male is -1.0, a negative count"),
     ],
 )
 def test_weekly_sex_gender_row_needs_every_lean_column_with_its_type(
@@ -1871,6 +1875,9 @@ def _write_weekly(weekly_doc: dict[str, Any], tmp_path: Path) -> Path:
         (("sex", "totals"), "corrupt", "sex.totals is str, not an object"),
         (("sex", "totals", "female"), 50.5, "sex.totals.female is 50.5, not a non-negative integer"),
         (("sex", "reported"), None, "sex.reported is NoneType, not bool"),
+        # `is_results_posted` reads every block's `reported` by truthiness: "false" read as posted results.
+        (("sex", "reported"), "false", "sex.reported is str, not bool"),
+        (("gender", "reported"), "false", "gender.reported is str, not bool"),
     ],
 )
 def test_weekly_race_and_ethnicity_children_need_the_extractors_kind(
@@ -1949,4 +1956,40 @@ def test_weekly_sex_gender_outcome_flags_must_be_the_derived_ones(
 def test_weekly_sex_gender_row_reporting_gender_loads(tmp_path: Path) -> None:
     weekly_doc = fx.build_weekly_full_records_doc()
     weekly_doc["data"][1]["sex_gender"].update(n_gender_diverse=2.0, reported_gender=True, reported_both=True)
+    assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
+
+
+def test_weekly_sex_gender_count_written_as_1e309_is_refused(tmp_path: Path) -> None:
+    # On d97d844 it loaded, and `extract_sex_gender` raised `OverflowError` on the infinite count.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1]["sex_gender"]["n_female"] = 12345.5
+    text = json.dumps(weekly_doc).replace("12345.5", "1e309")
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(text.encode("utf-8"), mtime=0))
+    problem = "sex_gender.n_female is inf, not a finite number"
+    with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem})")):
+        benchmarks.load_study_records(weekly_path, source_kind="full_records")
+
+
+def test_weekly_negative_enrollment_gap_loads(tmp_path: Path) -> None:
+    # `enrollment_minus_parsed` is negative in 896 of the 80,890 weekly rows: more parsed than enrolled.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1]["sex_gender"]["enrollment_minus_parsed"] = -5.0
+    assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
+
+
+@pytest.mark.parametrize("value", ["corrupt", " ", "2026-02-30", "2024-10-01T00:00"])
+def test_weekly_results_date_must_be_blank_or_a_date(tmp_path: Path, value: str) -> None:
+    # On d97d844 each loaded, and `is_results_posted` read the non-empty value as posted results.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1]["results_date"] = value
+    problem = f"results_date {value!r} is neither \"\" nor a date (any other value reads as posted results)"
+    with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem})")):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
+@pytest.mark.parametrize("value", ["", "2024-10", "2024-10-01"])
+def test_weekly_results_date_blank_or_a_date_loads(tmp_path: Path, value: str) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1]["results_date"] = value
     assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
