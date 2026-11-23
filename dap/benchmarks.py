@@ -767,13 +767,16 @@ WEEKLY_SCALAR_FIELDS: dict[str, tuple[type, bool]] = {
     "gender": (dict, False),
     "sex_gender": (dict, False),
 }
-# The children of the weekly `race` and `ethnicity` blocks that `dap/demographics.py` reads, the kind
-# `src/race_extractor.py` and `src/ethnicity_extractor.py` write for each, and whether it is required.
-# `_analyze_race_block` and `_analyze_ethnicity_block` read a malformed child as absent or zero:
-# `omb_totals: "corrupt"` became `{}` and a reported table was published as absent, and a missing OMB key,
-# entry count or flag list read as 0 or none, so reported participants left the pooled distributions and
-# strata with nothing reported. The kinds: "count" a non-negative int (the extractors write integer
-# counts), "totals" an object holding every key of `WEEKLY_OMB_TOTAL_KEYS` as a count, "categories" a list
+# The children of the weekly `race`, `ethnicity` and legacy `sex` blocks that `dap/demographics.py` reads,
+# the kind `src/race_extractor.py`, `src/ethnicity_extractor.py` and `src/sex_extractor.py` write for each,
+# and whether it is required. `_analyze_race_block` and `_analyze_ethnicity_block` read a malformed child
+# as absent or zero: `omb_totals: "corrupt"` became `{}` and a reported table was published as absent, and
+# a missing OMB key, entry count or flag list read as 0 or none, so reported participants left the pooled
+# distributions and strata with nothing reported. `_sex_participant_total` falls back to the sex block's
+# `totals` when the sex/gender row gives no participant total (842 of the 80,890 weekly records, 131 of
+# them with a reported sex block), and a malformed one skipped the double-count check on the race table.
+# The kinds: "count" a non-negative int (the extractors write integer counts), "totals" an object holding
+# every key of `WEEKLY_TOTAL_KEYS` for its block as a count, "categories" a list
 # of objects with a string `original` and `omb_category`, a count and a list of string `flags`, "rows" a
 # list of objects with a string `original` and a count, and "strings" a list of strings.
 # `unknown_ethnicity_only`, `skipped_ethnicity_rows` and `not_hispanic_from_race_rows` were added to the
@@ -798,20 +801,26 @@ WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS: dict[str, dict[str, tuple[str, bool]]] = {
         "raw_categories": ("categories", True),
         "flags": ("strings", True),
     },
+    "sex": {
+        "reported": ("bool", True),
+        "totals": ("totals", True),
+    },
 }
-WEEKLY_OMB_TOTAL_KEYS: dict[str, tuple[str, ...]] = {
+# The category keys each block's totals always hold (the extractors start from all of them at 0).
+WEEKLY_TOTAL_KEYS: dict[str, tuple[str, ...]] = {
     "race": (*RACE_CLASSIFIED_KEYS, "unknown_not_reported"),
     "ethnicity": (*ETHNICITY_CLASSIFIED_KEYS, "unknown_not_reported"),
+    "sex": ("female", "male", "unknown"),
 }
 
 
 def _is_extractor_count(value: Any) -> bool:
-    """Whether `value` is a count as the race and ethnicity extractors write one: a non-negative int."""
+    """Whether `value` is a count as the demographic extractors write one: a non-negative int."""
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def _demographic_child_problem(block: str, key: str, kind: str, value: Any) -> str | None:
-    """Why one child of a weekly race or ethnicity block is not of its kind
+    """Why one child of a weekly race, ethnicity or sex block is not of its kind
     (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`), or `None`."""
     where = f"{block}.{key}"
     if kind == "bool":
@@ -821,12 +830,12 @@ def _demographic_child_problem(block: str, key: str, kind: str, value: Any) -> s
     if kind == "totals":
         if not isinstance(value, dict):
             return f"{where} is {type(value).__name__}, not an object"
-        for omb in WEEKLY_OMB_TOTAL_KEYS[block]:
-            if omb not in value:
-                return f"{where} has no {omb} (the extractor writes every OMB key)"
-        for omb, count in value.items():
+        for category in WEEKLY_TOTAL_KEYS[block]:
+            if category not in value:
+                return f"{where} has no {category} (the extractor writes every category key)"
+        for category, count in value.items():
             if not _is_extractor_count(count):
-                return f"{where}.{omb} is {count!r}, not a non-negative integer"
+                return f"{where}.{category} is {count!r}, not a non-negative integer"
         return None
     if not isinstance(value, list):
         return f"{where} is {type(value).__name__}, not a list"
@@ -868,10 +877,10 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     enrollment), non-blank where the producer never writes them blank, and `sex_gender`, the row
     `extract_sex_gender` reuses, must carry a `sex_report_status` in `SEX_GENDER_STATES` and every
     lean column with its type (`WEEKLY_SEX_GENDER_COLUMNS`), with the outcome flags
-    `sgp.derive_outcomes` gives for its status and counts (`WEEKLY_OUTCOME_COLUMNS`). The `race` and
-    `ethnicity` blocks must carry the children `dap/demographics.py` reads, each of the kind the
-    extractors write (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`). All 80,890 weekly records pass (80,097
-    `reported`, 727 `uninformative`, 66 `explicit_unknown_only`).
+    `sgp.derive_outcomes` gives for its status and counts (`WEEKLY_OUTCOME_COLUMNS`). The `race`,
+    `ethnicity` and legacy `sex` blocks must carry the children `dap/demographics.py` reads, each of
+    the kind the extractors write (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`). All 80,890 weekly records pass
+    (80,097 `reported`, 727 `uninformative`, 66 `explicit_unknown_only`).
     """
     for key, (field_type, non_blank) in WEEKLY_SCALAR_FIELDS.items():
         if key not in rec:

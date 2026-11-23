@@ -163,9 +163,11 @@ reads, of the kind the extractors write (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`):
 non-negative integer, `raw_categories` objects with a string `original` and
 `omb_category`, a count and string `flags`, the race block's
 `quarantined_labels` objects with a string `original` and a count, its
-`unknown_inferred` a count, and `flags` a list of strings. A malformed child was
-read as absent or zero: `omb_totals: "corrupt"` published a reported table as
-absent. `unknown_ethnicity_only`, `skipped_ethnicity_rows` and
+`unknown_inferred` a count, and `flags` a list of strings. The legacy `sex`
+block needs a boolean `reported` and `totals` holding `female`, `male` and
+`unknown` as counts, since the race double-count check falls back to them when
+the sex/gender row gives no participant total. A malformed child was read as
+absent or zero: `omb_totals: "corrupt"` published a reported table as absent. `unknown_ethnicity_only`, `skipped_ethnicity_rows` and
 `not_hispanic_from_race_rows` postdate the 2026-11-08 extraction, so they are
 checked only when present. A missing or
 mistyped one was read as an "Unknown" sponsor, no enrollment, a block not

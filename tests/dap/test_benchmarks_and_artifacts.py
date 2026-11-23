@@ -1839,11 +1839,11 @@ def _write_weekly(weekly_doc: dict[str, Any], tmp_path: Path) -> Path:
 @pytest.mark.parametrize(
     ("path", "value", "problem"),
     [
-        # On 28a5001 each loaded, and `_analyze_race_block` / `_analyze_ethnicity_block` read the child as
-        # absent or zero: a reported table published as absent, or its counts lowered.
+        # On 28a5001 each loaded, and `dap/demographics.py` read the child as absent or zero: a reported
+        # table published as absent, its counts lowered, or the double-count check skipped.
         (("race", "omb_totals"), "corrupt", "race.omb_totals is str, not an object"),
         (("race", "omb_totals", "american_indian_alaska_native"), _DROP,
-         "race.omb_totals has no american_indian_alaska_native (the extractor writes every OMB key)"),
+         "race.omb_totals has no american_indian_alaska_native (the extractor writes every category key)"),
         (("race", "omb_totals", "white"), "60", "race.omb_totals.white is '60', not a non-negative integer"),
         (("race", "omb_totals", "white"), True, "race.omb_totals.white is True, not a non-negative integer"),
         (("race", "omb_totals", "white"), 60.5, "race.omb_totals.white is 60.5, not a non-negative integer"),
@@ -1862,11 +1862,15 @@ def _write_weekly(weekly_doc: dict[str, Any], tmp_path: Path) -> Path:
         (("race", "skipped_ethnicity_rows"), None, "race.skipped_ethnicity_rows is NoneType, not a list"),
         (("race", "unknown_ethnicity_only"), "3", "race.unknown_ethnicity_only is '3', not a non-negative integer"),
         (("ethnicity", "omb_totals"), {},
-         "ethnicity.omb_totals has no hispanic_latino (the extractor writes every OMB key)"),
+         "ethnicity.omb_totals has no hispanic_latino (the extractor writes every category key)"),
         (("ethnicity", "raw_categories", 1, "omb_category"), None,
          "ethnicity.raw_categories[1].omb_category is missing or not a string"),
         (("ethnicity", "not_hispanic_from_race_rows"), -1,
          "ethnicity.not_hispanic_from_race_rows is -1, not a non-negative integer"),
+        # `_sex_participant_total` falls back to the legacy sex totals for the race double-count check.
+        (("sex", "totals"), "corrupt", "sex.totals is str, not an object"),
+        (("sex", "totals", "female"), 50.5, "sex.totals.female is 50.5, not a non-negative integer"),
+        (("sex", "reported"), None, "sex.reported is NoneType, not bool"),
     ],
 )
 def test_weekly_race_and_ethnicity_children_need_the_extractors_kind(
