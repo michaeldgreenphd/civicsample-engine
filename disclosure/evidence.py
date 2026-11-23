@@ -854,6 +854,7 @@ def build_openfda_links(
                 f"{app_no} | applicant={app.get('sponsor_name') or 'unknown'} | "
                 f"drug_query={drug} | brands={', '.join(brand_names[:3]) or 'none'}"
             )
+            is_anda = app_no.upper().startswith('ANDA')
             if sponsor_agrees:
                 out.append(
                     _new_link(
@@ -876,6 +877,31 @@ def build_openfda_links(
                             'matched_drug': drug,
                             'sponsor_name': app.get('sponsor_name'),
                             'sponsor_agreement': True,
+                            'query_total_applications': total,
+                        },
+                    )
+                )
+            elif is_anda:
+                out.append(
+                    _new_link(
+                        nct_id=nct_id,
+                        source_route='openfda_drugsfda',
+                        target_id_type='fda_application',
+                        target_id=app_no,
+                        citation_type='OPENFDA_SPONSOR_DRUG_CANDIDATE',
+                        publication_or_action_date=act_date,
+                        date_precision=prec,
+                        verbatim_excerpt=excerpt,
+                        source_sha256=rec_sha,
+                        locator={'json_path': f'results[{idx}]', 'application_number': app_no, 'drug_query': drug},
+                        automated_validation='rejected_by_rule',
+                        validation_reasons=[
+                            'abbreviated generic application (ANDA) whose applicant does not match trial sponsor/collaborator'
+                        ],
+                        detail={
+                            'matched_drug': drug,
+                            'sponsor_name': app.get('sponsor_name'),
+                            'sponsor_agreement': False,
                             'query_total_applications': total,
                         },
                     )

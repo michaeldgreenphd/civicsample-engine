@@ -428,15 +428,24 @@ def extract_drug_candidates(study: dict[str, Any] | None) -> list[str]:
 def drug_query_key(drug_norm: str) -> str:
     slug = re.sub(r'[^a-z0-9]+', '-', drug_norm).strip('-')[:40] or 'drug'
     digest = sha256_bytes(drug_norm.encode('utf-8'))[:8]
-    return f'openfda/drug/{slug}-{digest}'
+    return f'openfda/drug_v2/{slug}-{digest}'
 
 
 def drug_query_params(drug_norm: str) -> dict[str, str]:
+    """Build openFDA Drugs@FDA search query using space-separated OR terms and NDA/BLA filter.
+
+    Spaces inside `params['search']` encode to `+` (openFDA's OR operator); literal `+` would
+    percent-encode to `%2B` (Lucene unary MUST) and fail on branded innovator NDAs and BLAs.
+    """
     quoted = '"' + drug_norm.replace('"', ' ') + '"'
-    search = (
-        f'openfda.generic_name:{quoted}+openfda.brand_name:{quoted}'
-        f'+products.brand_name:{quoted}+products.active_ingredients.name:{quoted}'
-    )
+    terms = ' '.join((
+        f'openfda.generic_name:{quoted}',
+        f'openfda.brand_name:{quoted}',
+        f'openfda.substance_name:{quoted}',
+        f'products.brand_name:{quoted}',
+        f'products.active_ingredients.name:{quoted}',
+    ))
+    search = f'({terms}) AND (application_number:NDA* application_number:BLA*)'
     return {'search': search, 'limit': '100'}
 
 

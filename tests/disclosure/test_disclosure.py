@@ -117,6 +117,76 @@ def test_throttle_enforces_at_most_two_requests_per_second_per_host() -> None:
     assert slept == [0.35]
 
 
+def test_openfda_drug_query_encoding_and_unrelated_anda_rule_rejection() -> None:
+    import urllib.parse
+
+    params = A.drug_query_params('pembrolizumab')
+    search = params['search']
+    assert '+' not in search
+    assert 'openfda.substance_name:"pembrolizumab"' in search
+    assert 'AND (application_number:NDA* application_number:BLA*)' in search
+    encoded = urllib.parse.urlencode(params)
+    assert '%2B' not in encoded
+
+    # Non-flooded (total=1) third-party generic ANDA without sponsor agreement -> rejected_by_rule
+    study = F.STUDIES['NCT09990005']  # drug: talobrutinib, lead: Fictional BioTherapeutics GmbH
+    dkey = A.drug_query_key('talobrutinib')
+    fda_records: dict[str, dict[str, Any]] = {
+        'openfda/nct/NCT09990005': {
+            'key': 'openfda/nct/NCT09990005',
+            'status': 404,
+            'http_status': 404,
+            'response_sha256': 'a' * 64,
+            'body': {'error': {'code': 'NOT_FOUND'}},
+        },
+        dkey: {
+            'key': dkey,
+            'status': 200,
+            'http_status': 200,
+            'response_sha256': 'b' * 64,
+            'body': {
+                'meta': {'results': {'total': 2}},
+                'results': [
+                    {
+                        'application_number': 'ANDA205001',
+                        'sponsor_name': 'THIRD PARTY GENERICS LTD',
+                        'products': [{'brand_name': 'TALOBRUTINIB'}],
+                        'submissions': [{'submission_type': 'ORIG', 'submission_status': 'AP', 'submission_status_date': '20240115'}],
+                    },
+                    {
+                        'application_number': 'BLA761999',
+                        'sponsor_name': 'ACQUIRER BIOPHARMA INC',
+                        'products': [{'brand_name': 'TALOBRUX'}],
+                        'submissions': [{'submission_type': 'ORIG', 'submission_status': 'AP', 'submission_status_date': '20230510'}],
+                    },
+                ],
+            },
+        },
+    }
+    match_keys = E.trial_sponsor_match_keys(study)
+    links = E.build_openfda_links('NCT09990005', study, fda_records, match_keys)
+    by_app = {x['target_id']: x for x in links}
+    assert by_app['ANDA205001']['automated_validation'] == 'rejected_by_rule'
+    assert 'abbreviated generic application (ANDA)' in by_app['ANDA205001']['validation_reasons'][0]
+    # Innovator BLA without sponsor agreement remains a candidate awaiting review (`not_validated`)
+    assert by_app['BLA761999']['automated_validation'] == 'not_validated'
+
+    # If ONLY the unrelated ANDA returned, coverage is `no_candidate_in_completed_scope` (never `candidate_awaiting_review`)
+    anda_only_links = [by_app['ANDA205001']]
+    fda_only_anda = copy.deepcopy(fda_records)
+    fda_only_anda[dkey]['body']['meta']['results']['total'] = 1
+    fda_only_anda[dkey]['body']['results'] = [fda_records[dkey]['body']['results'][0]]
+    cell = C.openfda_drugsfda_cell(
+        'NCT09990005',
+        {'status': 200, 'body': study},
+        study,
+        fda_only_anda,
+        anda_only_links,
+        True,
+    )
+    assert cell['state'] == 'no_candidate_in_completed_scope'
+
+
 def test_resumable_log_truncates_interrupted_line_and_reuses_settled_answers(tmp_path: Path) -> None:
     calls: list[str] = []
     get = F.stub_get(calls)
