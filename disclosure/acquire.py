@@ -19,6 +19,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import math
 import re
 import shlex
 import time
@@ -162,9 +163,18 @@ class Throttle:
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        if min_interval < MIN_FLOOR_SECONDS:
+        # Finite as well as bounded: NaN compares false with everything, so `nan < floor` passed and
+        # every later `remaining > 0` was false, sending requests with no wait at all; infinity
+        # would wait forever.
+        if (
+            isinstance(min_interval, bool)
+            or not isinstance(min_interval, (int, float))
+            or not math.isfinite(min_interval)
+            or min_interval < MIN_FLOOR_SECONDS
+        ):
             raise ValueError(
-                f'min_interval ({min_interval}) must be >= {MIN_FLOOR_SECONDS}s (<= 2 requests/second)'
+                f'min_interval ({min_interval}) must be a finite number >= {MIN_FLOOR_SECONDS}s '
+                '(<= 2 requests/second)'
             )
         self.min_interval = min_interval
         self._sleep = sleep
@@ -934,6 +944,10 @@ def ingest_local_ctgov_records(
     so its default `as_of`), and earlier literature or openFDA logs would be frozen with records they
     were never acquired for. Live `acquire` keeps resuming an existing cache; only this path refuses.
     """
+    # A limit of 0 or less used to freeze one record anyway (the cap was checked only after a record
+    # was kept), so it must be a positive whole number when given.
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 1):
+        raise ValueError(f'limit must be a positive whole number of records, got {limit!r}')
     # fetched_at is an acquisition instant, stamped in UTC like live acquisition's; data_timestamp
     # follows CT.gov's dataTimestamp, a whole date and time with no offset (see timestamp_problem).
     for problem in (

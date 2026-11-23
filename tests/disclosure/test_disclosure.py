@@ -124,6 +124,32 @@ def test_throttle_enforces_at_most_two_requests_per_second_per_host() -> None:
     assert slept == [0.35]
 
 
+@pytest.mark.parametrize('interval', [float('nan'), float('inf'), 0.4, True])
+def test_throttle_refuses_a_non_finite_or_too_short_interval(tmp_path: Path, interval: float) -> None:
+    # NaN compared false with the floor and with every remaining wait, so requests went unthrottled.
+    with pytest.raises(ValueError, match='must be a finite number >= 0.5s'):
+        A.Throttle(min_interval=interval)
+    if interval is not True:
+        assert cli_build.main(['acquire', '--cache', str(tmp_path / 'c'), '--nct-id', 'NCT09990001',
+                               '--min-interval', str(interval)]) == 1
+        assert not (tmp_path / 'c').exists()
+
+
+@pytest.mark.parametrize('limit', [0, -1])
+def test_local_freeze_refuses_a_limit_below_one(tmp_path: Path, limit: int) -> None:
+    # The cap was checked only after a record was kept, so --limit 0 froze one record.
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'NCT09990004.json').write_text(json.dumps(F.STUDIES['NCT09990004']), encoding='utf-8')
+    cache = tmp_path / 'cache'
+    with pytest.raises(ValueError, match=f'limit must be a positive whole number of records, got {limit}'):
+        A.ingest_local_ctgov_records(local_src, cache, limit=limit, **LOCAL_STAMPS)
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), '--limit', str(limit),
+                           '--fetched-at', LOCAL_STAMPS['fetched_at'], '--data-timestamp',
+                           LOCAL_STAMPS['data_timestamp']]) == 1
+    assert not A.raw_log_path(cache, 'ctgov').exists()
+
+
 def test_resumable_log_truncates_interrupted_line_and_reuses_settled_answers(tmp_path: Path) -> None:
     calls: list[str] = []
     get = F.stub_get(calls)
