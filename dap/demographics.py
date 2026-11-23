@@ -1032,6 +1032,29 @@ def _reads_as_number(value: Any) -> bool:
     return value is not None
 
 
+def _selected_sex_measure(record: dict[str, Any]) -> tuple[Any, dict[str, Any]] | None:
+    """The vendored parser's reading of a raw record's baseline measures and the measure it selected."""
+    module = (record.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}
+    measures = module.get("measures") if isinstance(module, dict) else None
+    if not isinstance(measures, list):
+        return None
+    try:
+        parsed = sgp.parse_trial(measures, None)
+    except Exception:  # noqa: BLE001 - extract_sex_gender already read the same failure
+        return None
+    measure = next((m for m in measures if isinstance(m, dict) and m.get("title") == parsed.measure_title), None)
+    return None if measure is None else (parsed, measure)
+
+
+def _sex_counts_miss_denominator(sex_gender: dict[str, Any], baseline_participants: int | None) -> bool:
+    """Whether the parsed sex/gender counts fail to add up to the table's own Participants denominator."""
+    counted = sum(
+        float(sex_gender.get(k) or 0.0)
+        for k in ("n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender")
+    )
+    return baseline_participants is None or round(counted) != baseline_participants
+
+
 def _sex_counts_miss_whole_population(
     record: dict[str, Any], sex_gender: dict[str, Any], baseline_participants: int | None
 ) -> bool:
@@ -1049,19 +1072,11 @@ def _sex_counts_miss_whole_population(
     if sex_gender.get("is_participant_count") is not True:
         return False
     overall = src_utils.get_overall_group_id(record)
-    module = (record.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}
-    measures = module.get("measures") if isinstance(module, dict) else None
-    if overall is None or not isinstance(measures, list):
-        return False
-    try:
-        title = sgp.parse_trial(measures, None).measure_title
-    except Exception:  # noqa: BLE001 - extract_sex_gender already read the same failure
-        return False
-    measure = next((m for m in measures if isinstance(m, dict) and m.get("title") == title), None)
-    if measure is None:
+    selected = _selected_sex_measure(record)
+    if overall is None or selected is None:
         return False
     missing = False
-    for cls in measure.get("classes") or []:
+    for cls in selected[1].get("classes") or []:
         for cat in (cls.get("categories") or []) if isinstance(cls, dict) else []:
             rows = cat.get("measurements") if isinstance(cat, dict) else None
             entries = [e for e in rows or [] if isinstance(e, dict)]
@@ -1070,13 +1085,34 @@ def _sex_counts_miss_whole_population(
                 whole and _reads_as_number(whole[0].get("value"))
             ):
                 missing = True
-    if not missing:
+    return missing and _sex_counts_miss_denominator(sex_gender, baseline_participants)
+
+
+def _sex_counts_from_one_class_of_several(
+    record: dict[str, Any], sex_gender: dict[str, Any], baseline_participants: int | None
+) -> bool:
+    """Whether the sex/gender counts the parser read are one class's of several rather than the trial's.
+
+    A standard-layout sex measure (the categories are the sex labels) can post several classes: study
+    parts, periods, cohorts, subgroups or populations, each holding the same rows. The vendored parser
+    reads only the first class (`flag_multiclass_timepoint`, a field the lean row does not carry), so a
+    subgroup's share had been published as the trial's: NCT04911296's first age band (Female 29, Male 21
+    of 150), NCT05209932's child participants (62 and 69 of 233, its parents in the second class),
+    NCT04680273's Part 1 (6 women of 16, a share of 1.0). The counts are taken for the trial's when they
+    add up to the table's own Participants denominator, as when the first class is "All Patients"
+    (NCT03043872, 987) or a period everyone entered (NCT03323749, 218). Otherwise the composition is
+    withheld rather than read from another class: no class title says which is the trial's population,
+    and the class that adds up to the denominator can be a population pooled with another trial
+    (NCT02163759: its own 358 first, then "GA28948 & GA28949 Pooled Population", 716). Of the 3,096
+    stored raw trials with a baseline measure, 22 have such a measure and 14 are withheld. The parser
+    is not changed.
+    """
+    if sex_gender.get("is_participant_count") is not True:
         return False
-    counted = sum(
-        float(sex_gender.get(k) or 0.0)
-        for k in ("n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender")
-    )
-    return baseline_participants is None or round(counted) != baseline_participants
+    selected = _selected_sex_measure(record)
+    if selected is None or selected[0].flag_multiclass_timepoint is not True:
+        return False
+    return _sex_counts_miss_denominator(sex_gender, baseline_participants)
 
 
 def _withhold_sex_composition(sex_gender: dict[str, Any], group_problem: str) -> dict[str, Any]:
@@ -1089,7 +1125,10 @@ def _withhold_sex_composition(sex_gender: dict[str, Any], group_problem: str) ->
     The reporting state and the parsed counts are kept, as the parser read them; `percent_female`,
     `female_share`, `of_parsed_total` and `of_classified` are withheld, with `composition_withheld_reason`
     naming the group problem, and the counts give no participant total to the double-count check. None
-    of the stored raw trials has such a table. The parser's choice rule is not changed.
+    of the stored raw trials has such a table. The parser's choice rule is not changed. The same applies
+    when the parser read an arm beside a blank whole-population entry (`_sex_counts_miss_whole_population`)
+    or the first of several classes (`_sex_counts_from_one_class_of_several`): such counts are not the
+    trial's, so a race or ethnicity table is bounded by the baseline table's own denominator instead.
     """
     if sex_gender.get("is_participant_count") is not True:
         return sex_gender
@@ -1149,6 +1188,10 @@ def extract_demographics(
         record, sex_gender, baseline_participants
     ):
         sex_gender = _withhold_sex_composition(sex_gender, "whole_population_sex_counts_missing")
+    elif posted and "protocolSection" in record and _sex_counts_from_one_class_of_several(
+        record, sex_gender, baseline_participants
+    ):
+        sex_gender = _withhold_sex_composition(sex_gender, "sex_counts_from_one_class_of_several")
     sex_total = _sex_participant_total(record, sex_gender)
 
     weekly = _is_weekly_record(record)

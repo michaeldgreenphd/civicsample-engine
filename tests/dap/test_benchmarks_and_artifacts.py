@@ -2693,6 +2693,58 @@ def test_sex_counts_that_make_up_the_whole_population_keep_their_composition() -
     assert (sg["female_share"], sg.get("composition_withheld_reason")) == (0.55, None)
 
 
+def _sex_by_class(classes: list[tuple[str, int, int]]) -> dict:
+    """A standard-layout "Sex: Female, Male" measure for group BG000, one class per (title, female, male)."""
+    return {"title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+            "classes": [{"title": title, "categories": [
+                {"title": "Female", "measurements": [{"groupId": "BG000", "value": str(f)}]},
+                {"title": "Male", "measurements": [{"groupId": "BG000", "value": str(m)}]}]}
+                for title, f, m in classes]}
+
+
+# NCT04911296's "Sex: Female, Male": three age bands, then the Total class, of 150 participants.
+_AGE_BANDS = [("21 - 50 years", 29, 21), ("51 - 65 years", 28, 22), ("66 - 75 years", 28, 22)]
+
+
+def test_sex_counts_of_the_first_of_several_classes_have_no_composition() -> None:
+    # On cbd9455 the parser read only the first class, the first age band (Female 29, Male 21 of 150), and
+    # its share, 0.58, was published as the trial's.
+    st = fx.make_raw_ctgov_study("NCT99800064", baseline_denom=150,
+                                 measures=[_sex_by_class([*_AGE_BANDS, ("Total", 85, 65)])])
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["sex_report_status"], sg["n_female"], sg["n_male"]) == ("reported", 29, 21)
+    assert sg["composition_withheld_reason"] == "sex_counts_from_one_class_of_several"
+    assert all(sg[k] is None for k in _SEX_WITHHELD)
+
+
+def test_a_first_class_that_makes_up_the_table_keeps_its_composition() -> None:
+    # Control, on both heads: the Total class posted first (as "All Patients" is in NCT03043872) makes up
+    # the table's 150.
+    st = fx.make_raw_ctgov_study("NCT99800065", baseline_denom=150,
+                                 measures=[_sex_by_class([("Total", 85, 65), *_AGE_BANDS])])
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["female_share"], sg.get("composition_withheld_reason")) == (85 / 150, None)
+
+
+def test_a_build_counts_and_checks_a_sex_composition_read_from_one_class(tmp_path: Path) -> None:
+    # On cbd9455 the first age band's share was published and the metric was 0.
+    studies = [*fx.build_fictional_cohort(), fx.make_raw_ctgov_study(
+        "NCT99800066", baseline_denom=150, measures=[_sex_by_class([*_AGE_BANDS, ("Total", 85, 65)])])]
+    out = tmp_path / "out"
+    assert cli_build.main([
+        "--records-dir", str(fx.write_studies_dir(studies, tmp_path / "studies")),
+        "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")),
+        "--generated-at", "2026-11-21T00:00:00+00:00", "--out", str(out),
+    ]) == 0
+    loaded = artifacts.load_dir(out)
+    assert artifacts.check_contract(loaded) == []
+    metric = next(m for m in loaded["summary.json"]["metrics"]
+                  if m["id"] == "sex_gender_composition_withheld_whole_population_unread")
+    assert metric["value"] == 1
+    sg = next(r for r in loaded["trial_rows"] if r["nct_id"] == "NCT99800066")["demographics"]["sex_gender"]
+    assert (sg["composition_withheld_reason"], sg["female_share"]) == ("sex_counts_from_one_class_of_several", None)
+
+
 def test_a_measurement_without_its_value_is_refused(tmp_path: Path) -> None:
     bad = _measured_study("NCT99800022")
     bad["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"][0][

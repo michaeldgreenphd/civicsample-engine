@@ -71,6 +71,28 @@ modified.
      55,810 multi-group trials in the 2026-11-15 weekly inputs, none of the
      2,198 stored multi-group tables). Weekly records carry the extractors'
      blocks without the groups, so this cannot be detected there.
+   - A standard-layout sex measure (the categories are the sex labels) can post
+     several classes: study parts, periods, cohorts, subgroups or populations.
+     The vendored parser reads only the first (`flag_multiclass_timepoint`, a
+     field the lean row does not carry). When that class's counts do not make up
+     the table's Participants denominator, the composition is withheld the same
+     way (`sex_counts_from_one_class_of_several`,
+     `_sex_counts_from_one_class_of_several`) and counted in the same metric:
+     NCT04911296's first age band (Female 29, Male 21 of 150) and NCT05209932's
+     child participants (131 of 233, its parents in the second class) had been
+     published as the trial's. A first class that makes up the denominator, such
+     as "All Patients" (NCT03043872), keeps its composition. No other class is
+     read in its place: no title says which is the trial's population, and the
+     class that makes up the denominator can be one pooled with another trial
+     (NCT02163759). Of the 3,096 stored raw trials with a baseline measure, 22
+     have such a measure and 14 are withheld. As with the other withheld
+     compositions, the counts no longer bound the race and ethnicity tables,
+     which the baseline table's own denominator bounds instead: 8 stored race and
+     7 ethnicity tables that had been withheld as exceeding the first class's sex
+     total are now read. Weekly records carry the lean row
+     without the flag, so this cannot be detected there; the 2026-10-25
+     sex/gender table holds 537 reported participant-count rows read from the
+     first of several classes.
    - Race measures containing Hispanic/Latino or combined race+ethnicity rows
      are classified `combined_race_ethnicity_quarantined`, excluded from all
      pooled OMB race distributions, and counted explicitly.
