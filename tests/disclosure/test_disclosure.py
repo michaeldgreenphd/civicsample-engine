@@ -12,6 +12,7 @@ import json
 import re
 import shutil
 import sys
+import urllib.parse
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -1250,3 +1251,44 @@ def test_link_identity_changes_when_the_action_date_changes_under_the_same_excer
     }}
     assert E.apply_reviews(after, review) == [before[0]['link_id']]
     assert after[0]['review_status'] == 'unreviewed'
+
+
+# ---------------------------------------------------------------- 12. openFDA OR query, local-input gaps, ambiguous CT.gov
+
+def test_openfda_drug_query_joins_fields_with_or_and_refuses_records_from_the_old_form(
+    tmp_path: Path,
+    frozen_cache: A.FrozenCache,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    params = A.drug_query_params('lidocaine cream')
+    # Both transports form-encode params; the separator must survive as a space (`+`), never `%2B`.
+    encoded = urllib.parse.urlencode(params)
+    assert '%2B' not in encoded
+    assert '+OR+' in encoded
+    decoded = urllib.parse.parse_qs(encoded)['search'][0]
+    assert decoded.split(' OR ') == [f'{field}:"lidocaine cream"' for field in A.OPENFDA_DRUG_FIELDS]
+
+    # A cache whose drug-query records were made with another query form is refused, at load and at freeze.
+    cache = tmp_path / 'old_form_cache'
+    shutil.copytree(frozen_cache.cache_dir, cache)
+
+    def next_form(drug_norm: str) -> dict[str, str]:
+        return {'search': f'products.brand_name:"{drug_norm}"', 'limit': '100'}
+
+    monkeypatch.setattr(A, 'drug_query_params', next_form)
+    with pytest.raises(A.CacheIntegrityError, match='earlier query form'):
+        A.load_frozen_cache(cache)
+    with pytest.raises(A.CacheIntegrityError, match='earlier query form'):
+        A.freeze_cache(cache, F.NCT_IDS, frozen_at=F.GENERATED_AT)
+
+    # Re-running the openfda stage re-fetches exactly those records; a stale record for a term no
+    # requested trial has any more is never read and does not block the freeze.
+    fda_log = A.ResponseLog(A.raw_log_path(cache, 'openfda'))
+    fda_log.put({**fda_log.records[A.drug_query_key('lumirafenib')], 'key': A.drug_query_key('obsoleteterm'),
+                 'tag': {'drug_norm': 'obsoleteterm'}})
+    studies = A.studies_from_ctgov_records(frozen_cache.ctgov, F.NCT_IDS)
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    A.fetch_openfda(F.NCT_IDS, studies, fda_log, F.stub_get(), throttle)
+    assert fda_log.records[A.drug_query_key('lumirafenib')]['params'] == next_form('lumirafenib')
+    A.freeze_cache(cache, F.NCT_IDS, frozen_at=F.GENERATED_AT)
+    assert A.load_frozen_cache(cache).openfda[A.drug_query_key('floodedgeneric')]['params'] == next_form('floodedgeneric')

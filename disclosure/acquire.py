@@ -444,13 +444,54 @@ def drug_query_key(drug_norm: str) -> str:
     return f'openfda/drug/{slug}-{digest}'
 
 
+# Drugs@FDA fields a drug term may appear in; generic and brand names often differ, so a match in
+# any one field is enough.
+OPENFDA_DRUG_FIELDS = (
+    'openfda.generic_name',
+    'openfda.brand_name',
+    'products.brand_name',
+    'products.active_ingredients.name',
+)
+
+
 def drug_query_params(drug_norm: str) -> dict[str, str]:
+    """openFDA `search` matching `drug_norm` as a phrase in ANY of `OPENFDA_DRUG_FIELDS`.
+
+    The clauses are joined with an explicit ` OR `, not `+`. The HTTP client form-encodes the
+    value, so a space is sent as `+` (which openFDA decodes back to a space) while a literal `+`
+    is sent as `%2B` and reaches the query parser as `+`, the "required clause" prefix. The old
+    `field:"x"+field:"x"` form therefore required every field after the first to match, and an
+    application naming the drug in only one or two fields was missed. Changing this string
+    changes the request, so `stale_openfda_drug_queries` refuses records made with the old form.
+    """
     quoted = '"' + drug_norm.replace('"', ' ') + '"'
-    search = (
-        f'openfda.generic_name:{quoted}+openfda.brand_name:{quoted}'
-        f'+products.brand_name:{quoted}+products.active_ingredients.name:{quoted}'
-    )
+    search = ' OR '.join(f'{field}:{quoted}' for field in OPENFDA_DRUG_FIELDS)
     return {'search': search, 'limit': '100'}
+
+
+def stale_openfda_drug_queries(
+    openfda_records: dict[str, dict[str, Any]],
+    ctgov_records: dict[str, dict[str, Any]],
+    nct_ids: Iterable[str],
+) -> list[str]:
+    """Keys of the drug-query records the build will read whose request differs from today's form.
+
+    The build reads `drug_query_key(drug)` for each candidate term of each requested trial. A record
+    there made with an earlier query form (`params` != `drug_query_params(drug)`) answers a different
+    question, so a cache holding one is refused at freeze and load rather than read as this query's
+    answer. Records for terms no requested trial has any more are never read and are ignored; a
+    missing record is left to coverage, which reports the query as not answered. `acquire` re-fetches
+    stale records on its own, since `logged_json` reuses a record only when its params match.
+    """
+    ids = sorted(set(nct_ids))
+    stale: set[str] = set()
+    for study in studies_from_ctgov_records(ctgov_records, ids).values():
+        for drug in extract_drug_candidates(study):
+            key = drug_query_key(drug)
+            rec = openfda_records.get(key)
+            if rec is not None and rec.get('params') != drug_query_params(drug):
+                stale.add(key)
+    return sorted(stale)
 
 
 def extract_registry_references(study: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -757,7 +798,6 @@ def ingest_local_ctgov_records(
     requested = sorted(wanted) if wanted is not None else sorted(studies)
     if not requested:
         raise ValueError(f'{source_path}: yielded zero valid CT.gov v2 study records')
-
     log = ResponseLog(raw_log_path(cache_dir, 'ctgov'))
     ver_body = {'apiVersion': '2.0.local', 'dataTimestamp': data_timestamp}
     ver_bytes = canonical_json_bytes(ver_body)
@@ -865,7 +905,9 @@ def freeze_cache(
 ) -> dict[str, Any]:
     """Freeze all acquired source logs under `cache_dir` and write `manifest.json` sidecar.
 
-    Refuses when any requested NCT ID has no CT.gov study response record in raw/ctgov.jsonl.
+    Refuses when any requested NCT ID has no CT.gov study response record in raw/ctgov.jsonl, or
+    when a drug-query record the build will read in raw/openfda.jsonl was made with an earlier
+    query form.
     """
     ids = sorted(set(requested_nct_ids))
     if not ids or any(not NCT_RE.match(i) for i in ids):
@@ -880,13 +922,22 @@ def freeze_cache(
             f'{cache_dir}: {len(unlooked)} requested NCT ID(s) have no CT.gov study response in '
             f'raw/ctgov.jsonl ({unlooked[:5]}); run the ctgov stage for them before freezing'
         )
+    openfda_raw = raw_log_path(cache_dir, 'openfda')
+    openfda_log = ResponseLog(openfda_raw) if openfda_raw.exists() else None
+    stale = stale_openfda_drug_queries(openfda_log.records, ctgov_log.records, ids) if openfda_log is not None else []
+    if stale:
+        raise CacheIntegrityError(
+            f'{cache_dir}: {len(stale)} openFDA drug-query record(s) in raw/openfda.jsonl were made with '
+            f'an earlier query form ({stale[:3]}); run the openfda stage again before freezing'
+        )
 
     stamp = frozen_at or now_utc()
     archives_meta: dict[str, dict[str, Any]] = {}
     for source in SOURCES:
         rpath = raw_log_path(cache_dir, source)
         if rpath.exists():
-            log = ctgov_log if source == 'ctgov' else ResponseLog(rpath)
+            preloaded = {'ctgov': ctgov_log, 'openfda': openfda_log}.get(source)
+            log = preloaded if preloaded is not None else ResponseLog(rpath)
             meta = freeze_source(log, archive_path(cache_dir, source), source, stamp)
             archives_meta[source] = meta
 
@@ -960,7 +1011,8 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
     """Strictly verify and load a frozen disclosure cache for offline build execution.
 
     Besides the archive hashes, every NCT ID the manifest requests must have a CT.gov study
-    response record (`ctgov_ids_without_study_record`).
+    response record (`ctgov_ids_without_study_record`), and every openFDA drug-query record the
+    build will read must have been made with today's query form (`stale_openfda_drug_queries`).
     """
     if not cache_dir.is_dir():
         raise CacheIntegrityError(f'{cache_dir}: cache directory does not exist')
@@ -1038,6 +1090,12 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
         raise CacheIntegrityError(
             f'{cache_dir}: {len(unlooked)} requested NCT ID(s) in manifest.json have no CT.gov study '
             f'response in ctgov.jsonl.gz ({unlooked[:5]}); the cache does not cover its own frame'
+        )
+    stale = stale_openfda_drug_queries(loaded['openfda'][0], loaded['ctgov'][0], ids)
+    if stale:
+        raise CacheIntegrityError(
+            f'{cache_dir}: {len(stale)} openFDA drug-query record(s) in openfda.jsonl.gz were made with an '
+            f'earlier query form ({stale[:3]}); run `acquire --stage openfda --stage freeze` to refresh them'
         )
     return FrozenCache(
         cache_dir=cache_dir,
