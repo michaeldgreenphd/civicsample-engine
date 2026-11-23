@@ -3876,6 +3876,51 @@ def test_results_date_after_retrieval_is_read_as_a_failed_lookup(
     assert json.dumps(value.strip()) not in json.dumps(built, default=str)
 
 
+_CYCLES = ('derivedSection', 'miscInfoModule', 'submissionTracking', 'submissionInfos')
+
+
+@pytest.mark.parametrize(
+    ('entry', 'field', 'value', 'refused'),
+    [
+        # On 71f99b9 each was published as a QC cycle event of a record fetched on 1 November 2026.
+        (1, 'releaseDate', '2100-01-01', True),
+        (0, 'unreleaseDate', '2026-11-03', True),
+        (0, 'resetDate', '2027', True),
+        # Controls, on both heads: the 2nd had begun at UTC+14, and a month containing the retrieval day.
+        (0, 'resetDate', '2026-11-02', False),
+        (1, 'releaseDate', '2026-11', False),
+    ],
+)
+def test_a_qc_cycle_date_after_retrieval_is_read_as_a_failed_lookup(
+    tmp_path: Path, entry: int, field: str, value: str, refused: bool
+) -> None:
+    nct = 'NCT09990001'
+    study = _study_with(F.STUDIES[nct], (*_CYCLES, entry, field), value)
+    fetched_at = '2026-11-01T10:00:00+00:00'
+    problem = A.ctgov_study_record_problem({'status': 200, 'fetched_at': fetched_at, 'body': study})
+    cache = F.acquire_fixture_cache(tmp_path / 'c')
+    cache.ctgov[f'ctgov/study/{nct}'] = dict(cache.ctgov[f'ctgov/study/{nct}'], body=study, fetched_at=fetched_at)
+    built = ART.build_artifacts(
+        cache,
+        reviews_path=ROOT / 'disclosure/reviews.csv',
+        statements_path=ROOT / 'disclosure/documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors/company_aliases.csv',
+        producer={'commit': None, 'uncommitted_changes': None},
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+        requested_nct_ids=[nct],
+    )
+    row = next(x for x in built['studies.json']['studies'] if x['nct_id'] == nct)
+    cycles = _timeline_of(built, nct)['submission_infos']
+    if not refused:
+        assert problem is None
+        assert row['registry_state'] == 'retrieved' and (cycles['present'], cycles['cycle_count']) == (True, 2)
+        return
+    assert problem == f"{'.'.join(_CYCLES)}[{entry}].{field} ({value}) is after the record was retrieved ({fetched_at})"
+    assert row['registry_state'] == 'lookup_failed'
+    assert cycles['present'] is False and json.dumps(value) not in json.dumps(built, default=str)
+
+
 def test_study_record_problem_names_the_results_date_after_retrieval() -> None:
     study = _study_with(F.STUDIES['NCT09990001'], _RESULTS_DATE_PATHS['post'], '2026-11-03')
     rec = {'key': 'ctgov/study/NCT09990001', 'status': 200, 'fetched_at': '2026-11-01T10:00:00+00:00', 'body': study}

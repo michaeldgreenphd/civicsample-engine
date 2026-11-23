@@ -593,8 +593,9 @@ CTGOV_RESULTS_DATES: tuple[tuple[str, ...], ...] = (
 
 
 def ctgov_results_date_after(body: dict[str, Any], fetched_at: str) -> str | None:
-    """The first results date (`CTGOV_RESULTS_DATES`) in study `body` that starts after a record
-    retrieved at `fetched_at` (a UTC timestamp) can hold, as `statusModule.<field> (<date>)`, else None.
+    """The first results date (`CTGOV_RESULTS_DATES`, then the QC review cycles' dates) in study `body`
+    that starts after a record retrieved at `fetched_at` (a UTC timestamp) can hold, as `<path> (<date>)`,
+    else None.
 
     `body` must pass `ctgov_study_problem`, which refuses a populated date the build cannot read. CT.gov
     states no time zone for these days, so the bound is the calendar day at `fetched_at` in the zone
@@ -609,6 +610,22 @@ def ctgov_results_date_after(body: dict[str, Any], fetched_at: str) -> str | Non
         span = ctgov_date_span(value) if isinstance(value, str) else None
         if span is not None and span[0] > bound:
             return f"statusModule.{'.'.join(path)} ({value.strip()})"
+    # A QC cycle's release, unrelease or reset is an event of the same results review, so it too names a day
+    # that had begun when the record was served: on 71f99b9 a `releaseDate` of 2100-01-01 in a record
+    # fetched in 2026 was published as a cycle. The timeline's own path and fields are read (imported when
+    # called: `timeline` imports this module), and a malformed history is left to the timeline to report.
+    # The latest stored cycle date is 2026-10-30.
+    from disclosure.timeline import SUBMISSION_INFO_DATES, SUBMISSION_INFOS_PATH
+
+    node: Any = body
+    for key in SUBMISSION_INFOS_PATH:
+        node = node.get(key) if isinstance(node, dict) else None
+    for i, entry in enumerate(node if isinstance(node, list) else []):
+        for field in SUBMISSION_INFO_DATES:
+            value = entry.get(field) if isinstance(entry, dict) else None
+            span = ctgov_date_span(value) if isinstance(value, str) else None
+            if span is not None and span[0] > bound:
+                return f"{'.'.join(SUBMISSION_INFOS_PATH)}[{i}].{field} ({value.strip()})"
     return None
 
 
