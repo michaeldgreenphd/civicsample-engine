@@ -1322,6 +1322,18 @@ def test_records_missing_condition_or_lead_sponsor_payloads_are_refused(
          "sponsorCollaboratorsModule.collaborators[0] (an object)"),
         (("sponsorCollaboratorsModule", "collaborators"), [{"name": ["Fictional CRO"], "class": "INDUSTRY"}],
          "sponsorCollaboratorsModule.collaborators[0].name (a string)"),
+        # an explicit null is a present part of the wrong type, not an absent one
+        (("contactsLocationsModule", "locations", 0, "country"), None,
+         "contactsLocationsModule.locations[0].country (a string)"),
+        (("sponsorCollaboratorsModule", "collaborators"), [{"name": None, "class": "INDUSTRY"}],
+         "sponsorCollaboratorsModule.collaborators[0].name (a string)"),
+        (("sponsorCollaboratorsModule", "collaborators"), [{"name": "Fictional CRO", "class": None}],
+         "sponsorCollaboratorsModule.collaborators[0].class (a string)"),
+        (("statusModule", "startDateStruct"), None, "statusModule.startDateStruct (an object)"),
+        # phases: str() turned these into strata of their own
+        (("designModule", "phases"), [7], "designModule.phases (a list of non-blank strings)"),
+        (("designModule", "phases"), [None], "designModule.phases (a list of non-blank strings)"),
+        (("designModule", "phases"), "PHASE3", "designModule.phases (a list of non-blank strings)"),
     ],
 )
 def test_records_with_mistyped_optional_parts_are_refused(

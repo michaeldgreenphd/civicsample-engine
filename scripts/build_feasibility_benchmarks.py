@@ -348,12 +348,21 @@ LIST_ENTRY_FIELDS: dict[tuple[str, str], tuple[str, ...]] = {
 
 
 def _mistyped_optional_parts(ps: dict[str, Any]) -> list[str]:
-    """Name the `TYPED_OPTIONAL_PARTS` present in the protocol section `ps` with the wrong type, and
-    the malformed entries of the `LIST_ENTRY_FIELDS` lists."""
+    """Name the `TYPED_OPTIONAL_PARTS` present in the protocol section `ps` with the wrong type, the
+    malformed entries of the `LIST_ENTRY_FIELDS` lists, and phases that are not a list of non-blank
+    strings. A part is present when its key is, so an explicit null is refused like any other wrong
+    type (the 5,330 stored unprojected records hold no explicit null anywhere)."""
     out: list[str] = []
+    design = ps.get("designModule")
+    if isinstance(design, dict) and "phases" in design:
+        # normalize_phase turned every entry into text with str(), so [7] or [null] became a phase
+        # stratum of its own; the stored records hold only CT.gov's six phase values.
+        phases = design["phases"]
+        if not (isinstance(phases, list) and all(isinstance(p, str) and p.strip() for p in phases)):
+            out.append("designModule.phases (a list of non-blank strings)")
     for mod, field, kind in TYPED_OPTIONAL_PARTS:
         holder = ps if mod is None else ps.get(mod)
-        if not isinstance(holder, dict) or holder.get(field) is None:
+        if not isinstance(holder, dict) or field not in holder:
             continue
         where = field if mod is None else f"{mod}.{field}"
         if not isinstance(holder[field], kind):
@@ -366,10 +375,12 @@ def _mistyped_optional_parts(ps: dict[str, Any]) -> list[str]:
             if not isinstance(entry, dict):
                 out.append(f"{where}[{i}] (an object)")
                 continue
+            # Key presence, not a non-null value: an explicit null read as a facility without a
+            # country or a collaborator without a name.
             out += [
                 f"{where}[{i}].{name} (a string)"
                 for name in entry_fields
-                if entry.get(name) is not None and not isinstance(entry[name], str)
+                if name in entry and not isinstance(entry[name], str)
             ]
     return out
 
