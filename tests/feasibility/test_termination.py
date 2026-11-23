@@ -302,6 +302,15 @@ def _cnt(*values: object) -> list:
         ([_primary("A", _cnt("0") + ["not an object"])], "results_posted_primary_denom_incomplete"),
         ([_primary("A", _cnt("0", "0")), _primary("B", None)], "results_posted_primary_denom_incomplete"),
         ([_primary("A", _cnt("0", "0")), _primary("B", [])], "results_posted_primary_denom_incomplete"),
+        # counts must match the measure's groups one to one (both measures list OG000 and OG001)
+        ([_primary("A", _cnt("0"))], "results_posted_primary_denom_incomplete"),
+        ([_primary("A", _cnt("0", "0") + [{"groupId": "OG000", "value": "0"}])],
+         "results_posted_primary_denom_incomplete"),
+        ([_primary("A", [{"groupId": "OG000", "value": "0"}, {"groupId": "OG009", "value": "0"}])],
+         "results_posted_primary_denom_incomplete"),
+        ([_primary("A", [{"groupId": "OG000", "value": "0"}, {"groupId": "OG000", "value": "0"}])],
+         "results_posted_primary_denom_incomplete"),
+        ([{**_primary("A", _cnt("0", "0")), "groups": []}], "results_posted_primary_denom_incomplete"),
         # controls: complete zeros, one positive count anywhere, no numeric count at all
         ([_primary("A", _cnt("0", "0")), _primary("B", _cnt("0", "0"))], "empty_results_shell_zero_analysed"),
         ([_primary("A", _cnt("0", "NA")), _primary("B", _cnt("5", "0"))], "results_with_analysed_primary"),

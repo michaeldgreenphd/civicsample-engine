@@ -398,6 +398,21 @@ def _participants_denom_row(denoms: list[dict[str, Any]]) -> dict[str, Any] | No
     return valid[0] if valid else None
 
 
+def _counts_cover_groups(groups: Any, counts: list[Any]) -> bool:
+    """True when `counts` holds exactly one entry per id in the measure's `groups` and no other.
+
+    A measure whose `groups` is not a non-empty list of objects with distinct non-blank string ids
+    cannot show which groups its denominator should cover, so it is not complete either.
+    """
+    if not isinstance(groups, list) or not groups:
+        return False
+    group_ids = [g.get("id") if isinstance(g, dict) else None for g in groups]
+    if not all(isinstance(g, str) and g.strip() for g in group_ids) or len(set(group_ids)) != len(group_ids):
+        return False
+    count_ids = [c.get("groupId") if isinstance(c, dict) else None for c in counts]
+    return len(count_ids) == len(set(count_ids)) and set(count_ids) == set(group_ids)
+
+
 def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
     """Classify results availability and primary-outcome denominator presence on a stopped study.
 
@@ -405,11 +420,13 @@ def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
       - `"results_with_analysed_primary"`: posted results with >= 1 PRIMARY measure carrying a
         numeric group denominator > 0.
       - `"empty_results_shell_zero_analysed"`: posted results where every PRIMARY measure carries a
-        complete denominator row (each group count numeric and >= 0) and every count is 0.
+        complete denominator row (one count for each of its groups, each numeric and >= 0) and every
+        count is 0.
       - `"results_posted_primary_denom_incomplete"` (rules 1.3.0): no PRIMARY denominator is > 0,
-        at least one is 0, and at least one PRIMARY measure lacks a denominator row or has a group
-        count that is missing, non-numeric or negative, so zero analysed is not established for
-        every primary outcome. Rules 1.2.0 dropped such counts and read the rest as an empty shell.
+        at least one is 0, and at least one PRIMARY measure lacks a denominator row, has a group
+        count that is missing, non-numeric or negative, or has counts that do not match its groups
+        one to one, so zero analysed is not established for every primary outcome.
+        Rules 1.2.0 dropped such counts and read the rest as an empty shell.
       - `"results_posted_no_primary_denom"`: results posted, but no PRIMARY outcome measure carries
         a numeric denominator (or weekly projection lacks `resultsSection`).
 
@@ -437,7 +454,11 @@ def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
 
     numeric_counts: list[float] = []
     # A primary measure is complete when it has a denominator row whose counts are a non-empty list
-    # of group entries, each numeric and >= 0. Anything else leaves its analysed count unknown.
+    # of group entries, each numeric and >= 0, with exactly one entry for each of the measure's
+    # `groups` ids (none missing, repeated or unexpected). Anything else leaves its analysed count
+    # unknown. On the 2,200 cached records with posted outcome measures under
+    # docs/audits/outcomes_results_structure/, every one of the 4,670 primary denominator rows lists
+    # exactly its measure's group ids, in order.
     all_complete = True
     for measure in primary_measures:
         denoms = measure.get("denoms")
@@ -446,6 +467,8 @@ def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
         if not isinstance(counts, list) or not counts:
             all_complete = False
             continue
+        if not _counts_cover_groups(measure.get("groups"), counts):
+            all_complete = False
         for entry in counts:
             value = entry.get("value") if isinstance(entry, dict) else None
             val = parse_num(value)
