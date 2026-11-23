@@ -674,6 +674,14 @@ _SITE = {"facility": "Hospital A", "country": "United States"}
         ("status", "", "status is blank"),
         ("start_date", None, "start_date is NoneType, not str"),
         ("why_stopped", None, "why_stopped is NoneType, not str"),
+        # On 1fb8452 any non-empty results_date read as posted results.
+        ("results_date", "N/A",
+         "results_date 'N/A' is neither \"\" nor a date (any other value reads as posted results)"),
+        ("results_date", "garbage",
+         "results_date 'garbage' is neither \"\" nor a date (any other value reads as posted results)"),
+        ("results_date", " ", "results_date ' ' is neither \"\" nor a date (any other value reads as posted results)"),
+        ("results_date", "2024-02-30",
+         "results_date '2024-02-30' is neither \"\" nor a date (any other value reads as posted results)"),
     ],
 )
 def test_weekly_records_with_malformed_list_fields_are_refused(
@@ -721,6 +729,31 @@ def test_weekly_list_fields_the_extractor_writes_are_accepted(tmp_path: Path) ->
     )
     demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
     assert _build_weekly(demog_path, mesh_path, tmp_path / "ok") == 0
+
+
+@pytest.mark.parametrize(
+    ("results_date", "state", "flow_status"),
+    [
+        ("", "results_not_posted", "no_posted_results"),
+        ("2022-03-01", "results_posted_no_primary_denom", "flow_module_not_in_input_projection"),
+        ("2022-03", "results_posted_no_primary_denom", "flow_module_not_in_input_projection"),
+    ],
+)
+def test_weekly_results_dates_the_extractor_writes_are_accepted(
+    tmp_path: Path, results_date: str, state: str, flow_status: str
+) -> None:
+    # "" (no results posted) or a registry date; a stopped trial's results state follows it.
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body["data"][2].update(status="TERMINATED", why_stopped="Low accrual", results_date=results_date)
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    out_dir = tmp_path / "ok"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 0
+    assert check_feasibility_contract.main([str(out_dir)]) == 0
+    rows = [json.loads(line) for line in gzip.decompress((out_dir / artifacts.TRIALS_FILE).read_bytes()).splitlines()]
+    row = next(r for r in rows if r["nct_id"] == "NCT99300003")
+    assert row["termination"]["stopped_study_results_state"] == state
+    assert row["retention"]["flow_status"] == flow_status
 
 
 def test_weekly_phase_forms_the_extractor_writes_are_accepted(tmp_path: Path) -> None:

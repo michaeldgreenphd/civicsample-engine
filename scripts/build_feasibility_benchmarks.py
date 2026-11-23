@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from feasibility import artifacts, benchmarks, termination  # noqa: E402
+from feasibility import artifacts, benchmarks, metrics, termination  # noqa: E402
 from src import condition_mesh as cmesh  # noqa: E402
 from src import full_records  # noqa: E402
 
@@ -749,7 +749,7 @@ WEEKLY_SCALAR_FIELDS: dict[str, tuple[type, bool]] = {
     "start_date": (str, False),
     "primary_completion_date": (str, False),
     "completion_date": (str, False),
-    "results_date": (str, False),
+    "results_date": (str, False),  # "" or a date, checked in `_weekly_list_problem`
     "enrollment": (int, False),
     "enrollment_type": (str, False),
     "lead_sponsor_name": (str, True),
@@ -761,7 +761,11 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     """Why one weekly record cannot be read whole, or `None`.
 
     Scalars: every key in `WEEKLY_SCALAR_FIELDS` must be present with its type (a bool is not an
-    enrollment), and non-blank where the producer never writes it blank. Lists, as follows.
+    enrollment), and non-blank where the producer never writes it blank. `results_date` must be
+    exactly "" or a date `metrics.parse_date_bounds` reads: the weekly projection carries no
+    `resultsSection`, so `termination.classify_stopped_study_results_state` and the flow status read
+    any non-empty value as posted results, and `"N/A"`, `" "` or `"2024-02-30"` moved a stopped trial
+    from `results_not_posted` to `results_posted_no_primary_denom`. Lists, as follows.
 
     `extract_trial_row` keeps only object sites, countries and collaborators and only string
     conditions, so a `null` or mistyped entry would drop out: fewer listed facilities, another
@@ -773,7 +777,8 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     Other. All 80,890 records of the 2026-11-08 weekly extraction carry the four keys as lists of such
     entries (1,485,097 sites, 194,168 countries, 48,077 collaborators, 142,169 conditions), none with
     an empty `conditions`, and every site and country entry carries a non-blank `country`; all 80,890
-    carry every scalar field with its type (no blank status, study type, sponsor name or class).
+    carry every scalar field with its type (no blank status, study type, sponsor name or class), and
+    every `results_date` is a full date (the pull holds only trials with posted results).
     """
     for key, (scalar_type, non_blank) in WEEKLY_SCALAR_FIELDS.items():
         if key not in rec:
@@ -783,6 +788,9 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
             return f"{key} is {type(value).__name__}, not {scalar_type.__name__}"
         if non_blank and not value.strip():
             return f"{key} is blank"
+    results_date = rec["results_date"]
+    if results_date != "" and metrics.parse_date_bounds(results_date)["state"] != "ok":
+        return f"results_date {results_date!r} is neither \"\" nor a date (any other value reads as posted results)"
     for key, (entry_type, fields) in WEEKLY_LIST_FIELDS.items():
         if key not in rec:
             return f"has no {key} (src/utils.py always writes it)"
