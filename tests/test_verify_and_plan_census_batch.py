@@ -1,6 +1,7 @@
 """Offline unit and CLI tests for scripts/verify_and_plan_census_batch.py."""
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -2247,3 +2248,454 @@ def test_followup_zero_audit_manifest_still_refuses_unlisted_trials(tmp_path: Pa
         assert main(verify_args) == 2
         assert main(["plan", "--index", str(index_path), "--documents", str(docs_path)]) == 2
         assert main(["plan", "--index", str(index_path), "--nct-id", outside_id]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Round-2 red team on m4 (fictional NCT99800001..NCT99899999 only).
+#
+# Each test asserts the behaviour the module's own rules call for. Tests for a
+# bypass fail until the module is fixed; tests for an attempt that held pass.
+# ---------------------------------------------------------------------------
+
+_RT_M4_QUOTE = "Primary endpoint analyzed in the ITT population."
+_RT_M4_PAGES: list[str] = [f"Page {n}." for n in range(1, 11)]
+_RT_M4_PAGES[1] = _RT_M4_QUOTE
+
+
+def _rt_m4_inputs(
+    root: Path,
+    name: str,
+    *,
+    documents: list[dict[str, Any]] | None = None,
+    locations: list[dict[str, Any]] | None = None,
+    index_rows: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    """Write one case's index/documents/locations and return the common verify arguments."""
+    case = root / name
+    case.mkdir(parents=True, exist_ok=True)
+    index_path = case / "index.json"
+    index_path.write_text(
+        json.dumps({"data": _rt_index_rows() if index_rows is None else index_rows}),
+        encoding="utf-8",
+    )
+    docs_path = case / "documents.jsonl"
+    locs_path = case / "locations.jsonl"
+    _write_jsonl(
+        docs_path,
+        [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)] if documents is None else documents,
+    )
+    _write_jsonl(
+        locs_path,
+        _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        if locations is None
+        else locations,
+    )
+    return ["--index", str(index_path), "--documents", str(docs_path), "--locations", str(locs_path)]
+
+
+def _rt_m4_pages_dir(root: Path, entries: dict[str, Any]) -> Path:
+    """Write page maps (``{relative path: payload}``) under ``root`` and return it."""
+    for rel, payload in entries.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            payload if isinstance(payload, str) else json.dumps(payload), encoding="utf-8"
+        )
+    return root
+
+
+def test_redteam_m4_cli_audit_id_under_unrecognised_key(tmp_path: Path) -> None:
+    """verify and plan accept rows naming the audit trial under keys the walk does not know.
+
+    The doc-cache rows are scanned in every key and string
+    (``_scan_strings_for_nct_tokens``); --locations rows (verify and plan) and
+    --documents rows (plan) are checked only under the three NCT keys and
+    five URL keys, and a nested list under ``pages`` is skipped.
+    """
+    audit_url = f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID}/Prot_000.pdf"
+    vectors: dict[str, Any] = {
+        "NCTId": RT_AUDIT_ID,
+        "nctIdAliases": [RT_AUDIT_ID],
+        "trial": RT_AUDIT_ID,
+        "href": audit_url,
+        "pages": [[{"nct_id": RT_AUDIT_ID}]],
+    }
+    for key, value in vectors.items():
+        locs = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        locs[0][key] = value
+        loc_args = _rt_m4_inputs(tmp_path, f"loc_{key}", locations=locs)
+        assert main(["verify", *loc_args]) == 2, f"verify accepted a location row with {key}"
+        assert main(["plan", *loc_args]) == 2, f"plan accepted a location row with {key}"
+
+        doc_args = _rt_m4_inputs(
+            tmp_path,
+            f"doc_{key}",
+            documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1, extra={key: value})],
+        )
+        assert main(["plan", *doc_args]) == 2, f"plan accepted a document row with {key}"
+        assert main(["verify", *doc_args]) == 2, (
+            f"verify read a document row with {key} instead of refusing it"
+        )
+
+
+def test_redteam_m4_cli_pages_dir_does_not_parse_unreferenced_page_maps(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--pages-dir preflight opens and parses every page map, including content no document names.
+
+    A ``<sha256>.json`` whose sha256 is no in-scope document's names no trial,
+    so it may be an audit trial's document text; the doc-cache rule refuses
+    exactly such an entry. A malformed one shows the parse: verify fails
+    with ``Malformed JSON`` in a file it had no reason to open.
+    """
+    args = _rt_m4_inputs(tmp_path, "unreferenced")
+    clean = _rt_m4_pages_dir(tmp_path / "pages_clean", {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}})
+    assert main(["verify", *args, "--pages-dir", str(clean)]) == 0
+    capsys.readouterr()
+
+    with_unreferenced = _rt_m4_pages_dir(
+        tmp_path / "pages_unreferenced",
+        {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}, f"{SHA_5}.json": "{not json"},
+    )
+    rc = main(["verify", *args, "--pages-dir", str(with_unreferenced)])
+    err = capsys.readouterr().err
+    assert "Malformed JSON" not in err, "verify parsed a page map no in-scope document names"
+    assert rc in (0, 2)
+
+
+def test_redteam_m4_cli_page_map_symlink_into_audit_path_refused(tmp_path: Path) -> None:
+    """A page map reached through a symlink into an audit trial's path is served.
+
+    The layout checks read the names under --pages-dir (and the root's own
+    path), never the resolved target, so a file link, a per-trial directory
+    link, or a root link into ``.../<audit NCT>/...`` passes and its text
+    verifies the citations.
+    """
+    args = _rt_m4_inputs(tmp_path, "symlink_pages")
+    audit_store = tmp_path / "store" / RT_AUDIT_ID
+    audit_store.mkdir(parents=True)
+    (audit_store / "Prot_000.json").write_text(json.dumps({"pages": _RT_M4_PAGES}), encoding="utf-8")
+    (audit_store / f"{SHA_1}.json").write_text(json.dumps({"pages": _RT_M4_PAGES}), encoding="utf-8")
+
+    file_link = tmp_path / "pages_file_link"
+    file_link.mkdir()
+    (file_link / f"{SHA_1}.json").symlink_to(audit_store / f"{SHA_1}.json")
+    dir_link = tmp_path / "pages_dir_link"
+    dir_link.mkdir()
+    (dir_link / RT_SCOPE_ID).symlink_to(audit_store, target_is_directory=True)
+    root_link = tmp_path / "pages_root_link"
+    root_link.symlink_to(audit_store, target_is_directory=True)
+
+    for name, pages_dir in (("file", file_link), ("directory", dir_link), ("root", root_link)):
+        assert main(["verify", *args, "--pages-dir", str(pages_dir)]) == 2, (
+            f"verify served page text through a {name} symlink into an audit trial's path"
+        )
+
+
+def test_redteam_m4_cli_pdf_root_symlink_into_audit_path_refused(tmp_path: Path) -> None:
+    """--pdf-root hashes a PDF reached through a symlink into an audit trial's path.
+
+    ``_validate_pdf_root_firewall`` checks path components relative to the
+    root, and ``verify_document_record`` then reads the bytes through the link.
+    """
+    pdf_bytes = b"%PDF-1.4 fictional red-team document"
+    pdf_sha = hashlib.sha256(pdf_bytes).hexdigest()
+    args = _rt_m4_inputs(
+        tmp_path,
+        "symlink_pdf",
+        documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", pdf_sha, extra={"bytes": len(pdf_bytes)})],
+        locations=_complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", pdf_sha),
+    )
+    control_root = tmp_path / "pdf_control"
+    (control_root / RT_SCOPE_ID).mkdir(parents=True)
+    (control_root / RT_SCOPE_ID / "Prot_000.pdf").write_bytes(pdf_bytes)
+    assert main(["verify", *args, "--pdf-root", str(control_root)]) == 0
+
+    audit_store = tmp_path / "pdf_store" / RT_AUDIT_ID
+    audit_store.mkdir(parents=True)
+    (audit_store / "Prot_000.pdf").write_bytes(pdf_bytes)
+    file_link_root = tmp_path / "pdf_file_link"
+    (file_link_root / RT_SCOPE_ID).mkdir(parents=True)
+    (file_link_root / RT_SCOPE_ID / "Prot_000.pdf").symlink_to(audit_store / "Prot_000.pdf")
+    dir_link_root = tmp_path / "pdf_dir_link"
+    dir_link_root.mkdir()
+    (dir_link_root / RT_SCOPE_ID).symlink_to(audit_store, target_is_directory=True)
+
+    for name, pdf_root in (("file", file_link_root), ("directory", dir_link_root)):
+        assert main(["verify", *args, "--pdf-root", str(pdf_root)]) == 2, (
+            f"verify read a PDF through a {name} symlink into an audit trial's path"
+        )
+
+
+def test_redteam_m4_cli_not_found_without_documents(tmp_path: Path) -> None:
+    """verify passes NOT_FOUND rows for a trial with no supplied document.
+
+    The same trial's NO_DOCUMENT rows are refused when presence is unknown
+    (NO_DOCUMENT_PRESENCE_UNKNOWN); NOT_FOUND claims a search of documents
+    the corpus does not hold and is accepted whatever the index flags say.
+    """
+    not_found = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    for row in not_found:
+        row["status"] = "NOT_FOUND"
+        row["citations"] = []
+
+    def _index(flags: dict[str, Any]) -> list[dict[str, Any]]:
+        rows = _rt_index_rows()
+        rows[0].pop("protocol")
+        rows[0].pop("sap")
+        rows[0].update(flags)
+        return rows
+
+    cases: dict[str, dict[str, Any]] = {
+        "flags_both_false": {"protocol": False, "sap": False},
+        "flags_missing": {},
+        "protocol_true": {"protocol": True, "sap": False},
+    }
+    for name, flags in cases.items():
+        args = _rt_m4_inputs(
+            tmp_path, f"nf_{name}", documents=[], locations=not_found, index_rows=_index(flags)
+        )
+        assert main(["verify", *args, "--check-completeness"]) == 1, (
+            f"{name}: NOT_FOUND verified for a trial with no supplied document"
+        )
+
+
+def test_redteam_m4_plan_cached_complete_only_for_rows_that_verify() -> None:
+    """plan files a trial as cached_complete (never re-run) although verify rejects its rows.
+
+    ``_verified_pass_doc_fingerprints`` checks the grid, status-to-citation
+    counts and citation shape only: NOT_FOUND with unsearched pages
+    (verify: NOT_FOUND_WITH_UNSEARCHED_PAGES), ``"all"`` contradicting
+    ``pages_not_searched`` (SEARCH_COVERAGE_CONTRADICTION), rows missing
+    required keys (LOCATION_MISSING_KEYS) and extra rows with an unknown pass
+    holding a ``[None]`` citation (INVALID_PASS, INVALID_CITATION_TYPE) all
+    leave the trial cached_complete.
+    """
+    documents = [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)]
+    control = plan_incremental_cohort(
+        _rt_index_rows(),
+        documents=documents,
+        locations=_complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1),
+        planned_at="2026-11-23T00:00:00+00:00",
+    )
+    assert control["partitions"]["cached_complete"] == [RT_SCOPE_ID]
+
+    def _rows(update: dict[str, Any], drop: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+        rows = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        for row in rows:
+            row.update(update)
+            for key in drop:
+                row.pop(key)
+        return rows
+
+    unknown_pass = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    unknown_pass.append({**unknown_pass[0], "pass": "bogus", "citations": [None]})
+    vectors: dict[str, list[dict[str, Any]]] = {
+        "not_found_with_unsearched_pages": _rows(
+            {
+                "status": "NOT_FOUND",
+                "citations": [],
+                "pages_searched": {"Prot_000.pdf": list(range(1, 9))},
+                "pages_not_searched": {"Prot_000.pdf": [9, 10]},
+            }
+        ),
+        "all_contradicts_unsearched": _rows(
+            {"status": "NOT_FOUND", "citations": [], "pages_not_searched": {"Prot_000.pdf": [9, 10]}}
+        ),
+        "missing_required_keys": _rows({}, drop=("pages_searched", "note", "worker")),
+        "extra_row_unknown_pass": unknown_pass,
+    }
+    for name, rows in vectors.items():
+        try:
+            plan = plan_incremental_cohort(
+                _rt_index_rows(),
+                documents=documents,
+                locations=rows,
+                planned_at="2026-11-23T00:00:00+00:00",
+            )
+        except CitationVerificationError:
+            continue
+        assert RT_SCOPE_ID not in plan["partitions"]["cached_complete"], (
+            f"{name}: rows verify rejects were filed as cached_complete"
+        )
+
+
+def test_redteam_m4_plan_unknown_mode_refused() -> None:
+    """plan_incremental_cohort reads any unknown mode as incremental-delta.
+
+    The CLI restricts --mode to three choices, but the library entry point
+    falls through to the ``else`` branch: ``"recover_unreadable"`` (one
+    character off) schedules unstarted and amended trials on the primary pass
+    instead of OCR recoveries, with no error.
+    """
+    for bad_mode in ("recover_unreadable", "resume-unstarted ", "RESUME-UNSTARTED", ""):
+        with pytest.raises(CitationVerificationError):
+            plan_incremental_cohort(
+                _rt_index_rows(),
+                documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+                mode=bad_mode,  # type: ignore[arg-type]
+                planned_at="2026-11-23T00:00:00+00:00",
+            )
+            pytest.fail(f"plan accepted mode={bad_mode!r}")
+
+
+def test_redteam_m4_cli_index_in_audit_variants_refused(tmp_path: Path) -> None:
+    """Attempt that held: an index row whose in_audit is not a JSON bool stops verify and plan."""
+    for idx, flag in enumerate(("<missing>", None, "false", "False", 0, 1, "true", [], {})):
+        rows = _rt_index_rows()
+        if flag == "<missing>":
+            rows[0].pop("in_audit")
+        else:
+            rows[0]["in_audit"] = flag
+        args = _rt_m4_inputs(tmp_path, f"flag_{idx}", index_rows=rows)
+        assert main(["verify", *args]) == 2, f"verify accepted in_audit={flag!r}"
+        assert main(["plan", "--index", args[1]]) == 2, f"plan accepted in_audit={flag!r}"
+
+
+def test_redteam_m4_cli_malformed_index_ids_refused(tmp_path: Path) -> None:
+    """Attempt that held: lowercase, padded or zero-width IDs in the index itself stop both commands."""
+    for idx, bad in enumerate(
+        ("nct99800001", "NCT99800001 ", " NCT99800001", "NCT99800001​", "NCT٩٩800001")
+    ):
+        rows = _rt_index_rows()
+        rows[0]["nct_id"] = bad
+        args = _rt_m4_inputs(tmp_path, f"bad_index_id_{idx}", index_rows=rows)
+        assert main(["verify", *args]) == 2, f"verify accepted index nct_id={bad!r}"
+        assert main(["plan", "--index", args[1]]) == 2, f"plan accepted index nct_id={bad!r}"
+        # An ID that exists only in a nested field, with no top-level nct_id, is refused too.
+        nested = _rt_index_rows()
+        nested[0].pop("nct_id")
+        nested[0]["protocolSection"] = {"identificationModule": {"nctId": RT_SCOPE_ID}}
+        nested_args = _rt_m4_inputs(tmp_path, f"nested_index_id_{idx}", index_rows=nested)
+        assert main(["plan", "--index", nested_args[1]]) == 2
+
+
+def test_redteam_m4_cli_empty_audit_set_still_scoped(tmp_path: Path) -> None:
+    """Attempt that held: with no in_audit=True row, scope membership alone refuses other trials."""
+    in_scope_only = [_rt_index_rows()[0]]
+    for outside_id in (RT_AUDIT_ID, RT_UNLISTED_ID):
+        args = _rt_m4_inputs(
+            tmp_path,
+            f"empty_audit_locs_{outside_id}",
+            locations=_complete_primary_locations(outside_id, "Prot_000.pdf", SHA_1),
+            index_rows=in_scope_only,
+        )
+        assert main(["verify", *args]) == 2
+        assert main(["plan", *args]) == 2
+
+        clean_args = _rt_m4_inputs(
+            tmp_path, f"empty_audit_pages_{outside_id}", index_rows=in_scope_only
+        )
+        for layout in (f"{outside_id}/Prot_000.json", f"{outside_id}__Prot_000.json"):
+            pages_dir = _rt_m4_pages_dir(
+                tmp_path / f"pages_{outside_id}_{layout.replace('/', '_')}",
+                {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}, layout: {"pages": _RT_M4_PAGES}},
+            )
+            assert main(["verify", *clean_args, "--pages-dir", str(pages_dir)]) == 2, layout
+
+
+def test_redteam_m4_cli_doc_cache_audit_ids_in_any_form_refused(tmp_path: Path) -> None:
+    """Attempt that held: --doc-cache refuses an audit ID under any key, in a nested list, or in a URL."""
+    args = _rt_m4_inputs(tmp_path, "doc_cache_forms")
+    plan_args = ["plan", args[0], args[1], args[2], args[3]]
+    rows: dict[str, dict[str, Any]] = {
+        "NCTId": {"sha256": SHA_1, "NCTId": RT_AUDIT_ID},
+        "pages_list_of_lists": {"sha256": SHA_1, "pages": [[{"nct_id": RT_AUDIT_ID}]]},
+        "href": {"sha256": SHA_1, "href": f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID}/x.pdf"},
+        "lowercase_in_text": {"sha256": SHA_1, "title": f"See {RT_AUDIT_ID.lower()}"},
+        "zero_width_in_text": {"sha256": SHA_1, "title": f"See {RT_AUDIT_ID[:5]}​{RT_AUDIT_ID[5:]}"},
+    }
+    for name, row in rows.items():
+        cache_path = tmp_path / f"cache_{name}.jsonl"
+        _write_jsonl(cache_path, [row])
+        assert main([*plan_args, "--doc-cache", str(cache_path)]) == 2, name
+
+
+def test_redteam_m4_cli_expected_k_variants_refused_by_verify(tmp_path: Path) -> None:
+    """Attempt that held: verify checks every in-scope row's expected_k even without --check-completeness."""
+    for idx, bad_k in enumerate(("<missing>", 0, -1, True, False, None, "1", 1.0)):
+        rows = _rt_index_rows()
+        rows[0].pop("primary_outcomes_count")
+        if bad_k != "<missing>":
+            rows[0]["primary_outcomes_count"] = bad_k
+        args = _rt_m4_inputs(tmp_path, f"bad_k_{idx}", index_rows=rows)
+        assert main(["verify", *args]) == 1, f"verify accepted primary_outcomes_count={bad_k!r}"
+        assert main(["plan", "--index", args[1]]) == 1, f"plan accepted primary_outcomes_count={bad_k!r}"
+
+
+def test_redteam_m4_cli_check_completeness_and_index_rows(tmp_path: Path) -> None:
+    """Attempt that held: a corpus trial without an index row is refused; an index trial without rows is missing."""
+    unlisted_args = _rt_m4_inputs(
+        tmp_path,
+        "completeness_unlisted",
+        locations=_complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        + _complete_primary_locations(RT_UNLISTED_ID, "Prot_000.pdf", SHA_1),
+    )
+    assert main(["verify", *unlisted_args, "--check-completeness"]) == 2
+
+    index_rows = _rt_index_rows() + [
+        {
+            "nct_id": RT_SCOPE_ID_2,
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "primary_outcomes_count": 1,
+        }
+    ]
+    args = _rt_m4_inputs(tmp_path, "completeness_rowless", index_rows=index_rows)
+    report_path = tmp_path / "completeness_rowless" / "report.json"
+    rc = main(["verify", *args, "--check-completeness", "--report-out", str(report_path)])
+    assert rc == 1
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    missing = [i for i in report["issues"] if i["code"] == "TRIAL_GRID_MISSING_CELL"]
+    assert {i["nct_id"] for i in report["issues"]} == {RT_SCOPE_ID_2}
+    assert len(missing) == len(ELEMENTS)
+
+
+def test_redteam_m4_cli_bad_citation_shapes_and_status_rows(tmp_path: Path) -> None:
+    """Attempt that held: [None], ["x"], [{}] and citation-less NOT_APPLICABLE fail verify and are re-run by plan."""
+    cases: dict[str, tuple[dict[str, Any], set[str]]] = {
+        "none": ({"citations": [None]}, {"INVALID_CITATION_TYPE"}),
+        "string": ({"citations": ["x"]}, {"INVALID_CITATION_TYPE"}),
+        "empty_object": ({"citations": [{}]}, {"CITATION_MISSING_KEYS", "CITATION_UNKNOWN_DOCUMENT"}),
+        "not_applicable_no_citation": (
+            {"status": "NOT_APPLICABLE", "citations": []},
+            {"STATUS_REQUIRES_CITATION"},
+        ),
+    }
+    for name, (update, codes) in cases.items():
+        locs = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        locs[0].update(update)
+        args = _rt_m4_inputs(tmp_path, f"shape_{name}", locations=locs)
+        report_path = tmp_path / f"shape_{name}" / "report.json"
+        assert main(["verify", *args, "--report-out", str(report_path)]) == 1, name
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        assert codes <= {i["code"] for i in report["issues"]}, name
+
+        plan = plan_incremental_cohort(
+            _rt_index_rows(),
+            documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+            locations=locs,
+            planned_at="2026-11-23T00:00:00+00:00",
+        )
+        assert plan["partitions"]["cached_complete"] == [], name
+        assert plan["partitions"]["amended_doc_or_outcome_delta"] == [RT_SCOPE_ID], name
+
+
+def test_redteam_m4_cli_mixed_nct_id_targets_refused(tmp_path: Path) -> None:
+    """Attempt that held: one unlisted, audit or out-of-cohort --nct-id among valid ones stops plan."""
+    rows = _rt_index_rows() + [
+        {
+            "nct_id": RT_SCOPE_ID_2,
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "cohorts": ["other_cohort"],
+            "primary_outcomes_count": 1,
+        }
+    ]
+    args = _rt_m4_inputs(tmp_path, "mixed_targets", index_rows=rows)
+    base = ["plan", "--index", args[1], "--cohort", "rt_cohort", "--nct-id", RT_SCOPE_ID]
+    assert main(base) == 0
+    for extra in (RT_UNLISTED_ID, RT_AUDIT_ID, RT_SCOPE_ID_2):
+        assert main([*base, "--nct-id", extra]) == 2, extra

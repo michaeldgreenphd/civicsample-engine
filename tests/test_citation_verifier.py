@@ -2114,3 +2114,431 @@ def test_followup_missing_has_documents_entry_is_unknown_not_false() -> None:
             in_scope_nct_ids=scope,
             expected_has_documents_by_nct={RT_SCOPE_ID: "no"},  # type: ignore[dict-item]
         )
+
+
+# ---------------------------------------------------------------------------
+# Round-2 red team on m4 (fictional NCT99800001..NCT99899999 only).
+#
+# Each test asserts the behaviour the module's own rules call for. Tests for a
+# bypass fail until the module is fixed; tests for an attempt that held pass.
+# ---------------------------------------------------------------------------
+
+_RT_M4_PAGES: list[str] = [
+    "Page one.",
+    "The primary efficacy analysis will use the ITT population.",
+    "Page three.",
+    "Page four.",
+    "Page five.",
+]
+
+
+def _rt_m4_scoped_docs() -> dict[str, dict[str, dict[str, Any]]]:
+    return {RT_SCOPE_ID: {"Prot_000.pdf": _make_doc(nct_id=RT_SCOPE_ID)}}
+
+
+def _rt_m4_write_page_map(root: Path, rel: str, payload: Any) -> None:
+    target = root / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if rel.endswith(".jsonl"):
+        rows = payload if isinstance(payload, list) else [payload]
+        target.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    else:
+        target.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_redteam_m4_pages_list_of_lists_hides_nested_trial_ids(tmp_path: Path) -> None:
+    """Under any ``pages`` key both NCT walks recurse into Mapping items only.
+
+    ``_prescan_nested_nct_fields`` and ``_validate_nested_firewall_metadata``
+    skip a list nested in a ``pages`` list, so an audit ``nct_id``, an
+    ``in_audit: true`` or an audit URL one level deeper is never firewalled.
+    """
+    audit_url = f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID}/Prot_000.pdf"
+    hidden: dict[str, dict[str, Any]] = {
+        "audit_nct_id": {"pages": [[{"nct_id": RT_AUDIT_ID}]]},
+        "in_audit_true": {"pages": [[{"in_audit": True}]]},
+        "audit_url_nested": {"meta": {"pages": [[{"url": audit_url}]]}},
+    }
+    for name, extra in hidden.items():
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_location_record(
+                _make_location(nct_id=RT_SCOPE_ID, extra=extra),
+                docs_by_nct=_rt_m4_scoped_docs(),
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+            )
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_document_record(
+                _make_doc(nct_id=RT_SCOPE_ID, extra=extra),
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+                strict_keys=False,
+            )
+
+    # A page-map payload goes through the same walk.
+    p_dir = tmp_path / "pages_list_of_lists"
+    _rt_m4_write_page_map(
+        p_dir, "maps.jsonl", {"sha256": SHA_A, "pages": [[{"nct_id": RT_AUDIT_ID}]]}
+    )
+    with pytest.raises(AuditHoldoutViolationError):
+        DirectoryPageTextProvider(
+            p_dir, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+        )
+
+
+def test_redteam_m4_record_audit_id_under_unrecognised_key() -> None:
+    """An audit trial named under a key outside the three NCT keys and five URL keys passes.
+
+    ``NCTId`` is the classic ClinicalTrials.gov field name (``src/api_client.py``
+    requests it) and ``nctIdAliases`` / ``secondaryIdInfos[].id`` are API v2
+    identification fields. The doc-cache path already refuses an ID under any
+    key or in free text (``_scan_strings_for_nct_tokens``); the record entry
+    points do not.
+    """
+    audit_url = f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID}/Prot_000.pdf"
+    vectors: dict[str, Any] = {
+        "NCTId": RT_AUDIT_ID,
+        "nctIdAliases": [RT_AUDIT_ID],
+        "NCT_ID": RT_AUDIT_ID,
+        "trial": RT_AUDIT_ID,
+        "secondaryIdInfos": [{"id": RT_AUDIT_ID, "type": "OTHER"}],
+        "href": audit_url,
+        "download_url": audit_url,
+        "pdfUrl": audit_url,
+        "note": f"Same protocol as {RT_AUDIT_ID}.",
+    }
+    for key, value in vectors.items():
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_location_record(
+                _make_location(nct_id=RT_SCOPE_ID, extra={key: value}),
+                docs_by_nct=_rt_m4_scoped_docs(),
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+            )
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_document_record(
+                _make_doc(nct_id=RT_SCOPE_ID, extra={key: value}),
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+                strict_keys=False,
+            )
+
+
+def test_redteam_m4_page_text_of_another_document_version_not_served(tmp_path: Path) -> None:
+    """Page text whose own sha256 is not the cited document's is never served for it.
+
+    ``_load_doc_pages`` falls back from the sha256 key to ``(nct_id, filename)``
+    (JSONL rows, per-trial directories, ``<NCT>__<doc>`` files) without
+    comparing the payload's declared sha256, so a superseded version's text
+    verifies a citation of the current version. A ``<sha256>.json`` file whose
+    payload declares a different sha256 is served on its name alone.
+    """
+    superseded = {"sha256": SHA_B, "pages": _RT_M4_PAGES}
+    layouts: dict[str, tuple[str, Any]] = {
+        "jsonl_trial_fallback": (
+            "maps.jsonl",
+            {**superseded, "nct_id": RT_SCOPE_ID, "filename": "Prot_000.pdf"},
+        ),
+        "per_trial_directory": (f"{RT_SCOPE_ID}/Prot_000.json", superseded),
+        "prefixed_file": (f"{RT_SCOPE_ID}__Prot_000.json", superseded),
+        "sha_named_file_declaring_other_sha": (f"{SHA_A}.json", superseded),
+    }
+    for name, (rel, payload) in layouts.items():
+        root = tmp_path / name
+        _rt_m4_write_page_map(root, rel, payload)
+        prov = DirectoryPageTextProvider(
+            root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+        )
+        try:
+            served = prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+        except CitationVerificationError:
+            served = None
+        assert served is None, (
+            f"{name}: text of a page map declaring sha256 {SHA_B[:8]}... was served for "
+            f"a citation of sha256 {SHA_A[:8]}..."
+        )
+
+
+def test_redteam_m4_jsonl_page_row_naming_another_trial_not_served(tmp_path: Path) -> None:
+    """A JSONL page row that declares another trial is served by sha256 for this one.
+
+    The JSON-file path refuses the same disagreement (``Page map ... declares
+    nct_id=..., expected ...``); ``_ingest_jsonl_file`` keys the row by sha256
+    and the lookup never compares the row's nct_id with the request.
+    """
+    scope = {RT_SCOPE_ID, RT_SCOPE_ID_2}
+    json_root = tmp_path / "json_other_trial"
+    _rt_m4_write_page_map(
+        json_root, f"{SHA_A}.json", {"nct_id": RT_SCOPE_ID_2, "pages": _RT_M4_PAGES}
+    )
+    json_prov = DirectoryPageTextProvider(
+        json_root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=scope
+    )
+    with pytest.raises(CitationVerificationError):
+        json_prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+
+    jsonl_root = tmp_path / "jsonl_other_trial"
+    _rt_m4_write_page_map(
+        jsonl_root,
+        "maps.jsonl",
+        {"sha256": SHA_A, "nct_id": RT_SCOPE_ID_2, "filename": "Prot_000.pdf", "pages": _RT_M4_PAGES},
+    )
+    jsonl_prov = DirectoryPageTextProvider(
+        jsonl_root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=scope
+    )
+    with pytest.raises(CitationVerificationError):
+        jsonl_prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+
+
+def test_redteam_m4_null_page_text_is_absence_not_the_string_none(tmp_path: Path) -> None:
+    """A page whose text is JSON null is absent; ``str(None)`` makes it the text ``'None'``.
+
+    ``_parse_page_map_payload`` applies ``str()`` to every value, so a quotation
+    ``"None"`` (a common table cell, e.g. an interim boundary of "None")
+    verifies as an exact match on a page that has no text at all.
+    """
+    payloads: dict[str, Any] = {
+        "top_level_list": ["Page one.", None],
+        "pages_mapping": {"pages": {"1": "Page one.", "2": None}},
+        "pages_list_of_objects": {"pages": [{"physical_page": 2, "text": None}]},
+    }
+    for name, payload in payloads.items():
+        root = tmp_path / f"null_{name}"
+        _rt_m4_write_page_map(root, f"{SHA_A}.json", payload)
+        prov = DirectoryPageTextProvider(
+            root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+        )
+        served = prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+        assert served is None, f"{name}: null page text served as {served!r}"
+
+
+def test_redteam_m4_ambiguous_page_numbers_in_page_map_refused(tmp_path: Path) -> None:
+    """Two entries for one page, or a page number that is not plain ASCII digits, is refused.
+
+    ``int(str(key))`` maps ``"02"`` onto page 2 (the later entry silently wins),
+    reads ``"2_0"`` as page 20, and accepts non-ASCII digits (``"\\u0662"`` is
+    page 2); duplicate ``physical_page`` objects also overwrite silently.
+    """
+    payloads: dict[str, Any] = {
+        "duplicate_2_and_02": {"pages": {"2": "Page two.", "02": "Other text."}},
+        "underscore_key": {"pages": {"2_0": "Page twenty."}},
+        "arabic_indic_digit": {"pages": {"٢": "Page two."}},
+        "duplicate_page_objects": {
+            "pages": [
+                {"physical_page": 2, "text": "Page two."},
+                {"physical_page": 2, "text": "Other text."},
+            ]
+        },
+        "top_level_duplicate_keys": {"2": "Page two.", "02": "Other text."},
+    }
+    for name, payload in payloads.items():
+        root = tmp_path / f"ambiguous_{name}"
+        _rt_m4_write_page_map(root, f"{SHA_A}.json", payload)
+        with pytest.raises(CitationVerificationError):
+            prov = DirectoryPageTextProvider(
+                root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+            )
+            prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+            prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 20)
+            pytest.fail(f"{name}: ambiguous page map served without error")
+
+
+def test_redteam_m4_not_found_needs_a_complete_search_record() -> None:
+    """NOT_FOUND passes on a partial search when ``pages_not_searched`` is left empty.
+
+    The partition check (searched + not searched + blank == 1..N) runs only
+    when ``pages_not_searched`` is non-empty, so a worker that lists 2 of 5
+    pages as searched, or gives no search record at all, and omits the rest
+    is accepted as an exhaustive NOT_FOUND.
+    """
+    docs = _rt_m4_scoped_docs()
+
+    def _codes(pages_searched: Any) -> list[str]:
+        _, issues = verify_location_record(
+            _make_location(
+                nct_id=RT_SCOPE_ID,
+                status="NOT_FOUND",
+                citations=[],
+                pages_searched=pages_searched,
+                pages_not_searched=[],
+            ),
+            docs_by_nct=docs,
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+        return [i.code for i in issues]
+
+    # Controls: an exhaustive search record verifies.
+    assert _codes("all") == []
+    assert _codes({"Prot_000.pdf": [1, 2, 3, 4, 5]}) == []
+
+    for partial in ({"Prot_000.pdf": [1, 2]}, {}, None, [], "some"):
+        assert _codes(partial) != [], f"NOT_FOUND accepted with pages_searched={partial!r}"
+
+
+def test_redteam_m4_not_found_needs_a_supplied_document() -> None:
+    """NOT_FOUND verifies for a trial with no supplied document, whatever the index says.
+
+    NO_DOCUMENT with unknown presence is reported (NO_DOCUMENT_PRESENCE_UNKNOWN)
+    and UNREADABLE requires a document, but NOT_FOUND, which asserts that
+    posted documents were searched, needs none: writing NOT_FOUND instead of
+    NO_DOCUMENT sidesteps the tri-state presence check.
+    """
+    for manifest in (False, None, True):
+        _, issues = verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID, status="NOT_FOUND", citations=[]),
+            docs_by_nct={},
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+            manifest_has_documents=manifest,
+        )
+        assert issues != [], (
+            f"NOT_FOUND accepted with no supplied document (manifest_has_documents={manifest!r})"
+        )
+
+    # Control: with the trial's document supplied, an exhaustive NOT_FOUND verifies.
+    _, control = verify_location_record(
+        _make_location(nct_id=RT_SCOPE_ID, status="NOT_FOUND", citations=[]),
+        docs_by_nct=_rt_m4_scoped_docs(),
+        in_audit=False,
+        audit_nct_ids=RT_AUDIT_SET,
+    )
+    assert control == []
+
+
+def test_redteam_m4_neutral_language_guard_covers_every_commentary_field() -> None:
+    """Only ``note`` is scanned; evaluative commentary under any other key passes.
+
+    Location rows accept extra keys without a check, and
+    ``scan_neutral_language_record`` (which exempts only verbatim
+    ``quotation``/``statement_verbatim``) is never applied to them.
+    """
+    claim = "The trial failed to meet its primary endpoint."
+    _, flagged_note = verify_location_record(
+        _make_location(nct_id=RT_SCOPE_ID, note=claim),
+        docs_by_nct=_rt_m4_scoped_docs(),
+        in_audit=False,
+        audit_nct_ids=RT_AUDIT_SET,
+    )
+    assert "NEUTRAL_LANGUAGE_NL01" in {i.code for i in flagged_note}
+
+    for extra in ({"summary": claim}, {"rationale": claim}, {"review": {"comment": claim}}):
+        _, issues = verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID, extra=extra),
+            docs_by_nct=_rt_m4_scoped_docs(),
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+        assert issues != [], f"evaluative commentary accepted under {sorted(extra)}"
+
+
+def test_redteam_m4_unscoped_provider_serves_no_unlisted_trial(tmp_path: Path) -> None:
+    """``get_page_text`` is public and takes no in_audit; unscoped, it serves any non-audit trial.
+
+    The module's invariant is that every entry point needs an explicit
+    in_audit or verified in_scope_nct_ids, and that the audit set alone
+    does not show a trial is outside the holdout. A provider built with an
+    audit set and no scope serves page text for a trial no index lists.
+    """
+    p_dir = tmp_path / "unscoped_pages"
+    _rt_m4_write_page_map(p_dir, f"{SHA_A}.json", {"pages": _RT_M4_PAGES})
+    providers: dict[str, Any] = {
+        "directory": DirectoryPageTextProvider(p_dir, audit_nct_ids=RT_AUDIT_SET),
+        "dict": DictPageTextProvider(
+            pages_by_sha256={SHA_A: _RT_M4_PAGES}, audit_nct_ids=RT_AUDIT_SET
+        ),
+    }
+    for name, prov in providers.items():
+        with pytest.raises(AuditHoldoutViolationError):
+            prov.get_page_text(RT_UNLISTED_ID, "Prot_000.pdf", SHA_A, 2)
+            pytest.fail(f"{name} provider served an unlisted trial's page text")
+
+
+def test_redteam_m4_bad_citation_shapes_and_status_citation_matrix() -> None:
+    """Attempt that held: malformed citation lists and the F5 status matrix are reported."""
+    docs = _rt_m4_scoped_docs()
+
+    def _loc_codes(
+        status: str, citations: list[Any], docs_by_nct: Any, manifest: bool | None
+    ) -> set[str]:
+        _, issues = verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID, status=status, citations=citations),
+            docs_by_nct=docs_by_nct,
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+            manifest_has_documents=manifest,
+        )
+        return {i.code for i in issues}
+
+    assert "INVALID_CITATION_TYPE" in _loc_codes("FOUND", [None], docs, None)
+    assert "INVALID_CITATION_TYPE" in _loc_codes("FOUND", ["x"], docs, None)
+    assert {"CITATION_MISSING_KEYS", "CITATION_UNKNOWN_DOCUMENT"} <= _loc_codes(
+        "FOUND", [{}], docs, None
+    )
+
+    cit = [_make_citation()]
+    assert _loc_codes("NOT_APPLICABLE", [], docs, None) == {"STATUS_REQUIRES_CITATION"}
+    assert _loc_codes("NOT_APPLICABLE", cit, docs, None) == set()
+    assert "CITATIONS_WITHOUT_POSTED_DOCUMENT" in _loc_codes("NOT_APPLICABLE", cit, {}, False)
+    assert _loc_codes("NO_DOCUMENT", [], docs, None) == {"NO_DOCUMENT_WITH_POSTED_DOCUMENT"}
+    assert _loc_codes("NO_DOCUMENT", [], {}, True) == {"NO_DOCUMENT_WITH_POSTED_DOCUMENT"}
+    assert _loc_codes("NO_DOCUMENT", [], {}, None) == {"NO_DOCUMENT_PRESENCE_UNKNOWN"}
+    assert _loc_codes("NO_DOCUMENT", [], {}, False) == set()
+    assert "STATUS_FORBIDS_CITATIONS" in _loc_codes("NO_DOCUMENT", cit, {}, False)
+
+
+def test_redteam_m4_unknown_pass_keys_are_reported() -> None:
+    """Attempt that held: a row with an unknown pass is an error and never a grid pass."""
+    grid = [_make_location(nct_id=RT_SCOPE_ID, element=e) for e in ELEMENTS]
+    for bogus in ("bogus", "Primary", "primary ", ""):
+        rows = grid + [_make_location(nct_id=RT_SCOPE_ID, pass_name=bogus)]
+        report = verify_census_corpus(
+            [_make_doc(nct_id=RT_SCOPE_ID)],
+            rows,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            expected_outcomes_by_nct={RT_SCOPE_ID: 1},
+            expected_has_documents_by_nct={RT_SCOPE_ID: True},
+        )
+        assert report.ok is False
+        assert {i.code for i in report.issues} == {"INVALID_PASS"}, bogus
+        with pytest.raises(CitationVerificationError):
+            verify_trial_completeness(
+                RT_SCOPE_ID,
+                rows,
+                expected_primary_outcomes=1,
+                pass_name=bogus,
+                in_audit=False,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+
+
+def test_redteam_m4_expected_k_variants_in_library_entry_points() -> None:
+    """Attempt that held: expected_k missing, 0, negative, bool, str or float is refused."""
+    grid = [_make_location(nct_id=RT_SCOPE_ID, element=e) for e in ELEMENTS]
+    for bad_k in (0, -1, True, False, None, "1", 1.0):
+        with pytest.raises(CitationVerificationError):
+            verify_census_corpus(
+                [_make_doc(nct_id=RT_SCOPE_ID)],
+                grid,
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+                expected_outcomes_by_nct={RT_SCOPE_ID: bad_k},  # type: ignore[dict-item]
+            )
+        issues = verify_trial_completeness(
+            RT_SCOPE_ID,
+            grid,
+            expected_primary_outcomes=bad_k,  # type: ignore[arg-type]
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+        assert [i.code for i in issues] == ["INVALID_EXPECTED_OUTCOMES_COUNT"], bad_k
+    # A corpus trial missing from a supplied map is refused, not skipped.
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_census_corpus(
+            [_make_doc(nct_id=RT_SCOPE_ID)],
+            grid,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            expected_outcomes_by_nct={},
+        )

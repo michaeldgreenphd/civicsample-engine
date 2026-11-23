@@ -632,3 +632,97 @@ def test_followup_study_own_in_audit_false_never_admits_and_provider_untouched()
             audit_nct_ids=RT_AUDIT_SET,
             pubmed_records=[{"pmid": "34000002", "nct_ids": [RT_SCOPE_ID, RT_UNLISTED_ID]}],
         )
+
+
+# ---------------------------------------------------------------------------
+# Round-2 red team on m4 (fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+
+def test_redteam_m4_provenance_alias_and_secondary_ids_are_firewalled() -> None:
+    """A study naming the audit trial in a CT.gov identification field is assembled.
+
+    ``_resolve_study_nct_id`` reads only ``nctId``/``nct_id``, and the nested
+    walk knows only ``nct_id``/``nctId``/``trial_nct_id`` and
+    ``nct_ids``/``trial_nct_ids``. API v2 ``identificationModule.nctIdAliases``
+    (obsolete registrations of the same trial), ``secondaryIdInfos[].id``, and
+    the classic API's ``NCTId`` list all pass, and the provider is then called.
+    """
+    spy = _SpyPublicationProvider([])
+
+    def _alias(study: dict[str, Any]) -> None:
+        study["protocolSection"]["identificationModule"]["nctIdAliases"] = [RT_AUDIT_ID]
+
+    def _secondary(study: dict[str, Any]) -> None:
+        study["protocolSection"]["identificationModule"]["secondaryIdInfos"] = [
+            {"id": RT_AUDIT_ID, "type": "OTHER", "domain": "ClinicalTrials.gov"}
+        ]
+
+    def _classic(study: dict[str, Any]) -> None:
+        study["NCTId"] = [RT_AUDIT_ID]
+
+    for name, mutate in (("nctIdAliases", _alias), ("secondaryIdInfos", _secondary), ("NCTId", _classic)):
+        study = _sample_study(nct_id=RT_SCOPE_ID)
+        mutate(study)
+        with pytest.raises(AuditHoldoutViolationError):
+            assemble_longitudinal_provenance(
+                study,
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+                publication_provider=spy,
+            )
+            pytest.fail(f"study naming the audit trial under {name} was assembled")
+    assert spy.calls == []
+
+
+def test_redteam_m4_provenance_extracted_document_must_name_the_study() -> None:
+    """An extracted document without ``nct_id`` is joined to the study by filename alone.
+
+    ClinicalTrials.gov large-document filenames are generic (``Prot_000.pdf``),
+    so a record that names no trial attaches its sha256 and version label to
+    whichever study shares the filename. The doc-cache path refuses an entry
+    that nothing ties to an in-scope trial; this side stream does not.
+    """
+    anonymous_sha = "b" * 64
+    with pytest.raises(CitationVerificationError):
+        assemble_longitudinal_provenance(
+            _sample_study(nct_id=RT_SCOPE_ID),
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            extracted_documents=[
+                {"filename": "Prot_000.pdf", "sha256": anonymous_sha, "version_label": "v9"}
+            ],
+        )
+        pytest.fail("an extracted document naming no trial was merged into the study")
+
+    # Control: the same document naming the study is merged.
+    record = assemble_longitudinal_provenance(
+        _sample_study(nct_id=RT_SCOPE_ID),
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+        extracted_documents=[
+            {"nct_id": RT_SCOPE_ID, "filename": "Prot_000.pdf", "sha256": anonymous_sha}
+        ],
+    )
+    assert record["large_docs"][0]["sha256"] == anonymous_sha
+
+
+def test_redteam_m4_layout_projection_needs_a_firewall_basis() -> None:
+    """``to_outcomes_layout_provenance`` projects a record for any trial.
+
+    It takes no audit set, scope or in_audit, so a provenance record read back
+    from JSONL (the shape the existing round-trip test writes) for an audit
+    trial is projected into the outcomes-bundle layout; only a record's own
+    ``in_audit`` can stop it, and the module's rule is that a record's own
+    flag never admits.
+    """
+    valid = assemble_longitudinal_provenance(
+        _sample_study(nct_id=RT_SCOPE_ID),
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+    )
+    tampered = json.loads(json.dumps(valid))
+    tampered["nct_id"] = RT_AUDIT_ID
+    with pytest.raises(AuditHoldoutViolationError):
+        to_outcomes_layout_provenance(tampered)  # type: ignore[arg-type]
+        pytest.fail("an audit trial's provenance record was projected")
