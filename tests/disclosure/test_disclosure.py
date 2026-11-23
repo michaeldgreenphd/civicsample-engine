@@ -2125,6 +2125,64 @@ def test_a_europe_pmc_year_field_is_read_only_as_a_year(fields: dict[str, Any], 
     assert _epmc_link_date(**fields) == expected
 
 
+def _fda_link_fetched_2026_11_01(app: dict[str, Any], via_drug: bool) -> dict[str, Any]:
+    nct = 'NCT09990001'
+    study = F.STUDIES[nct]
+    key = A.drug_query_key(A.extract_drug_candidates(study)[0]) if via_drug else f'openfda/nct/{nct}'
+    records = {key: {'status': 200, 'fetched_at': '2026-11-01T12:00:00+00:00',
+                     'body': {'meta': {'results': {'total': 1}}, 'results': [app]}}}
+    keys = E.trial_sponsor_match_keys(study) if via_drug else set()
+    return next(x for x in E.build_openfda_links(nct, study, records, keys)
+                if x['automated_validation'] == 'identifier_confirmed')
+
+
+_SUPPL_2100 = {'submission_type': 'SUPPL', 'submission_number': '90', 'submission_status': 'AP',
+               'submission_status_date': '21000102', 'submission_public_notes': 'Supported by NCT09990001.'}
+
+
+@pytest.mark.parametrize('via_drug', [False, True])
+@pytest.mark.parametrize(
+    ('submissions', 'date'),
+    [
+        # On 5f38a29 the future date was the link's, and so the trial's earliest FDA action.
+        ([_SUPPL_2100], None),
+        # controls: a real action beside the future one is used, and so is a date on the fetch day
+        ([_SUPPL_2100, _SUPPL_2025], '2025-06-10'),
+        ([{**_SUPPL_2025, 'submission_status_date': '20261101'}], '2026-11-01'),
+    ],
+)
+def test_an_fda_action_dated_after_its_record_was_fetched_is_not_used(
+    submissions: list[dict[str, Any]], date: str | None, via_drug: bool
+) -> None:
+    link = _fda_link_fetched_2026_11_01({'application_number': 'NDA990001', 'submissions': submissions}, via_drug)
+    assert link['publication_or_action_date'] == date
+
+
+@pytest.mark.parametrize('via_drug', [False, True])
+def test_an_fda_action_dated_after_its_record_was_fetched_is_named(via_drug: bool) -> None:
+    app = {'application_number': 'NDA990001', 'submissions': [_SUPPL_2100, _SUPPL_2025]}
+    reasons = _fda_link_fetched_2026_11_01(app, via_drug)['validation_reasons']
+    assert ('NCT09990001 is cited in a submission dated 2100-01-02 (submissions[0].submission_public_notes), '
+            'after the record was retrieved on 2026-11-01, so that date is not used') in reasons
+
+
+def test_a_candidate_fda_action_dated_after_its_record_was_fetched_is_not_used() -> None:
+    # On 5f38a29 `_openfda_action_date` (which dates candidates) took no fetch day and returned 2100-01-02.
+    app = {'submissions': [{**_ORIG_2000, 'submission_status_date': '21000102'}]}
+    assert E._openfda_action_date(app, '2026-11-01') == (None, 'missing')
+    assert E._openfda_action_date(app) == ('2100-01-02', 'day')  # with no fetch day there is no bound
+
+
+def test_contract_refuses_an_fda_action_dated_after_generated_at(built_files: dict[str, Any]) -> None:
+    bad = copy.deepcopy(built_files)
+    target = next(x for x in bad['links.json']['links'] if x['source_route'] == 'openfda_drugsfda'
+                  and x['publication_or_action_date'])
+    assert ART.check_contract(bad) == []
+    target['publication_or_action_date'] = '2100-01-02'
+    assert any(f"{target['link_id']}: FDA action dated 2100-01-02, after generated_at" in p
+               for p in ART.check_contract(bad))
+
+
 @pytest.mark.parametrize('has_results', ['<absent>', None, 'false', 0, True])
 def test_365d_window_needs_explicit_unposted_evidence_before_an_unreported_state(has_results: object) -> None:
     as_of = date(2026, 11, 1)

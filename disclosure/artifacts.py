@@ -1059,12 +1059,12 @@ def check_contract(
             problems.append(
                 f"{x.get('link_id')}: review dated {reviewed_at}, after generated_at {generated!r}"
             )
+        # A curated statement, or an FDA action, cannot postdate the build (literature dates are not bounded
+        # here: a journal issue can carry a later year than its online publication).
         stated = x.get('publication_or_action_date')
-        if (
-            x.get('source_route') == 'documentary_statements' and isinstance(stated, str)
-            and isinstance(generated, str) and stated > generated[:10]
-        ):
-            problems.append(f"{x.get('link_id')}: statement dated {stated}, after generated_at {generated!r}")
+        kind = {'documentary_statements': 'statement', 'openfda_drugsfda': 'FDA action'}.get(str(x.get('source_route')))
+        if kind and isinstance(stated, str) and isinstance(generated, str) and stated > generated[:10]:
+            problems.append(f"{x.get('link_id')}: {kind} dated {stated}, after generated_at {generated!r}")
         if x.get('nct_id') not in known_studies:
             problems.append(f"{x.get('link_id')}: nct_id {x.get('nct_id')!r} is not in studies.json")
         if x.get('review_status') != 'unreviewed':

@@ -713,10 +713,23 @@ def _submission_date(sub: Any) -> tuple[str | None, str]:
     return (norm, prec) if norm is not None else (None, 'missing')
 
 
-def _openfda_action_date(app: dict[str, Any]) -> tuple[str | None, str]:
+def _retrieved_day(rec: dict[str, Any]) -> str | None:
+    """The `YYYY-MM-DD` day a cached record was fetched, from its `fetched_at`, or None."""
+    fetched = rec.get('fetched_at')
+    return fetched[:10] if isinstance(fetched, str) and ISO_DAY_RE.match(fetched[:10]) else None
+
+
+def _after_retrieval(date_text: str, retrieved_day: str | None) -> bool:
+    """Whether a normalized date starts after the day its record was retrieved. A year or month that
+    contains that day is a prefix of it and sorts before it, so it is not after."""
+    return retrieved_day is not None and date_text > retrieved_day
+
+
+def _openfda_action_date(app: dict[str, Any], retrieved_day: str | None = None) -> tuple[str | None, str]:
     """Select original approval (`ORIG` + `AP`) date, else earliest `AP` date, else earliest submission date.
 
-    A submission without a readable date (`_submission_date`) takes no part in the choice."""
+    A submission without a readable date (`_submission_date`), or dated after `retrieved_day`, the day
+    the record was fetched (`_after_retrieval`), takes no part in the choice."""
     subs = app.get('submissions')
     if not isinstance(subs, list) or not subs:
         return None, 'missing'
@@ -727,7 +740,7 @@ def _openfda_action_date(app: dict[str, Any]) -> tuple[str | None, str]:
         if not isinstance(sub, dict):
             continue
         norm, prec = _submission_date(sub)
-        if norm is None:
+        if norm is None or _after_retrieval(norm, retrieved_day):
             continue
         any_dated.append((norm, prec))
         if str(sub.get('submission_status') or '').upper() == 'AP':
@@ -759,7 +772,7 @@ def _cited_submission_date(app: dict[str, Any], field_path: str) -> tuple[str | 
 
 
 def _nct_citation(
-    app: dict[str, Any], nct_id: str, app_no: str
+    app: dict[str, Any], nct_id: str, app_no: str, retrieved_day: str | None = None
 ) -> tuple[str, str, str | None, str, list[str]] | None:
     """Where a Drugs@FDA record cites `nct_id` and the FDA action tied to it, for the direct NCT query and
     the drug-term queries alike: `(field_path, excerpt, date, precision, validation_reasons)`, or None
@@ -773,24 +786,33 @@ def _nct_citation(
     locator and date; equal dates keep traversal order. The dates are normalized strings, so a year or
     month sorts before any day inside it, that is, by its earliest possible day. Only when no citing
     submission is dated does the link fall back to the first mention, with a missing date.
+
+    A submission dated after `retrieved_day`, the day the record was fetched, is no action the record
+    can show: `2100-01-02` in a record fetched in 2026 was published as the trial's earliest FDA action.
+    Such a date is not used, and the link's reasons name it (`_after_retrieval`).
     """
     mentions = list(_iter_exact_nct(app, nct_id))
     if not mentions:
         return None
     dated: list[tuple[str, int, str, str, str]] = []
+    future: list[str] = []
     for order, (path, excerpt) in enumerate(mentions):
         cited_date, precision = _cited_submission_date(app, path)
-        if cited_date is not None:
+        if cited_date is not None and _after_retrieval(cited_date, retrieved_day):
+            future.append(f'{nct_id} is cited in a submission dated {cited_date} ({path}), after the record was '
+                          f'retrieved on {retrieved_day}, so that date is not used')
+        elif cited_date is not None:
             dated.append((cited_date, order, path, excerpt, precision))
     if not dated:
         path, excerpt = mentions[0]
         return path, excerpt, None, 'missing', [
             f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({path})',
+            *future,
             f'{nct_id} is not cited in a submission with a readable action date (a `submission_status_date` '
             'string), so no FDA action date is tied to it',
         ]
     cited_date, _, path, excerpt, precision = min(dated)
-    reasons = [f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({path})']
+    reasons = [f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({path})', *future]
     # A dated path starts with its submission, `submissions[i].`, so the prefix counts submissions.
     n_dated = len({p.split('.', 1)[0] for _, _, p, _, _ in dated})
     if n_dated > 1:
@@ -861,10 +883,11 @@ def build_openfda_links(
     nct_rec = openfda_records.get(f'openfda/nct/{nct_id}')
     if nct_rec is not None and nct_rec.get('status') == 200 and A.openfda_drugsfda_valid(nct_rec.get('body')):
         rec_sha = _record_sha256(nct_rec)
+        nct_day = _retrieved_day(nct_rec)
         for idx, app in enumerate(nct_rec['body']['results']):
             app_no = squash_whitespace(str(app.get('application_number') or f'app:{idx}'))
-            act_date, prec = _openfda_action_date(app)
-            cited = _nct_citation(app, nct_id, app_no)
+            act_date, prec = _openfda_action_date(app, nct_day)
+            cited = _nct_citation(app, nct_id, app_no, nct_day)
             if cited is not None:
                 field_path, snippet, cited_date, cited_prec, reasons = cited
                 confirmed_apps.add(app_no)
@@ -920,14 +943,15 @@ def build_openfda_links(
         if drec is None or drec.get('status') != 200 or not A.openfda_drugsfda_valid(drec.get('body')):
             continue
         rec_sha = _record_sha256(drec)
+        drug_day = _retrieved_day(drec)
         total = int(drec['body']['meta']['results']['total'])
         flooded = total >= OPENFDA_DRUG_FLOOD_THRESHOLD
         for idx, app in enumerate(drec['body']['results']):
             app_no = squash_whitespace(str(app.get('application_number') or f'app:{drug}:{idx}'))
             if app_no in confirmed_apps:
                 continue
-            act_date, prec = _openfda_action_date(app)
-            cited = _nct_citation(app, nct_id, app_no)
+            act_date, prec = _openfda_action_date(app, drug_day)
+            cited = _nct_citation(app, nct_id, app_no, drug_day)
             if cited is not None:
                 # The same date rule as the direct NCT query: the cited submission's, never the original
                 # approval's (a trial cited in a 2025 supplement was given the 2000 approval date here).
