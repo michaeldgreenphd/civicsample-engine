@@ -1382,7 +1382,11 @@ def test_select_statistical_pages_invariants() -> None:
 
 
 def test_providers_linux_and_macos(tmp_path: Path) -> None:
-    """Exercise Fixture/Jsonl/Chained providers, UTF-16 surrogate sanitization, and macOS PDFKit."""
+    """Exercise Fixture/Jsonl/Chained providers and UTF-16 surrogate sanitization on any platform.
+
+    Real macOS PDFKit extraction is ``test_macos_pdfkit_extraction``, which
+    ``pytest -rs`` lists as skipped where it does not run.
+    """
     # Unpaired UTF-16 surrogate sanitization -> U+FFFD valid UTF-8 JSON round-trip
     raw_with_surrogate = "Primary endpoint \ud800 text \udfff end"
     sanitized = di.sanitize_page_text(raw_with_surrogate)
@@ -1426,29 +1430,35 @@ def test_providers_linux_and_macos(tmp_path: Path) -> None:
     with pytest.raises(di.PageExtractionError, match="page-map-jsonl"):
         chain.extract_pages(sha256="c" * 64)
 
-    # Conditional macOS PDFKit smoke test on minimal 1-page valid ASCII %PDF-1.4 fixture
-    if sys.platform == "darwin":
-        pdf_path = tmp_path / "smoke.pdf"
-        pdf_bytes = _make_minimal_pdf("Statistical Analysis Plan Alpha 0.05")
-        pdf_path.write_bytes(pdf_bytes)
-        pdf_sha = di.sha256_bytes(pdf_bytes)
 
-        # CLI helper mode (compiled without -fmodules)
-        pdfkit_cli = di.MacOSPDFKitProvider(
-            compile_dir=tmp_path / "pdfkit_bin",
-            allow_ctypes_fallback=False,
-        )
-        res_cli = pdfkit_cli.extract_pages(sha256=pdf_sha, pdf_path=pdf_path)
-        assert res_cli.provider_name == "macos_pdfkit_cli"
-        assert res_cli.physical_pages == 1
-        assert "Statistical Analysis Plan" in res_cli.pages[0]
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="real MacOSPDFKitProvider extraction (clang helper and ctypes) needs macOS PDFKit; "
+    "not run on this platform",
+)
+def test_macos_pdfkit_extraction(tmp_path: Path) -> None:
+    """macOS PDFKit smoke test on a minimal 1-page valid ASCII %PDF-1.4 fixture; reported as skipped elsewhere."""
+    pdf_path = tmp_path / "smoke.pdf"
+    pdf_bytes = _make_minimal_pdf("Statistical Analysis Plan Alpha 0.05")
+    pdf_path.write_bytes(pdf_bytes)
+    pdf_sha = di.sha256_bytes(pdf_bytes)
 
-        # Ctypes fallback mode
-        pdfkit_ctypes = di.MacOSPDFKitProvider(prefer_ctypes=True)
-        res_ctypes = pdfkit_ctypes.extract_pages(sha256=pdf_sha, pdf_path=pdf_path)
-        assert res_ctypes.provider_name == "macos_pdfkit_ctypes"
-        assert res_ctypes.physical_pages == 1
-        assert "Statistical Analysis Plan" in res_ctypes.pages[0]
+    # CLI helper mode (compiled without -fmodules)
+    pdfkit_cli = di.MacOSPDFKitProvider(
+        compile_dir=tmp_path / "pdfkit_bin",
+        allow_ctypes_fallback=False,
+    )
+    res_cli = pdfkit_cli.extract_pages(sha256=pdf_sha, pdf_path=pdf_path)
+    assert res_cli.provider_name == "macos_pdfkit_cli"
+    assert res_cli.physical_pages == 1
+    assert "Statistical Analysis Plan" in res_cli.pages[0]
+
+    # Ctypes fallback mode
+    pdfkit_ctypes = di.MacOSPDFKitProvider(prefer_ctypes=True)
+    res_ctypes = pdfkit_ctypes.extract_pages(sha256=pdf_sha, pdf_path=pdf_path)
+    assert res_ctypes.provider_name == "macos_pdfkit_ctypes"
+    assert res_ctypes.physical_pages == 1
+    assert "Statistical Analysis Plan" in res_ctypes.pages[0]
 
 
 # ---------------------------------------------------------------------------
@@ -2410,10 +2420,14 @@ def test_page_map_untagged_rows_refused_whenever_firewall_configured(tmp_path: P
         scoped_store.load_cached_pages(sha)
     with pytest.raises(di.AuditHoldoutError):
         scoped_store.get_page_text(_ALLOWED_NCT, "Prot_000.pdf", sha, 1)
+    holdout_only = di.JsonlPageMapProvider(
+        cache_pages_dir=cache_dir / "pages", audit_nct_ids={_AUDIT_NCT}
+    )
     with pytest.raises(di.AuditHoldoutError, match="names no nct_id"):
-        di.JsonlPageMapProvider(
-            cache_pages_dir=cache_dir / "pages", audit_nct_ids={_AUDIT_NCT}
-        ).extract_pages(sha256=sha)
+        holdout_only.extract_pages(sha256=sha, nct_id=_ALLOWED_NCT)
+    # An unnamed request under a holdout set is refused before any map is read.
+    with pytest.raises(di.AuditHoldoutError, match="Explicit nct_id"):
+        holdout_only.extract_pages(sha256=sha)
 
     # Maps the store writes for a trial carry that trial's tag, so a configured
     # store can reuse them.
@@ -6601,3 +6615,202 @@ def test_m1_r3_rate_limit_lock_with_unreadable_text_waits_one_interval(
     slept.clear()
     cli_mod.GlobalRateLimiter(lock, min_interval_sec=0.5).wait()
     assert slept == []
+
+
+# ---------------------------------------------------------------------------
+# Round 4: problems confirmed by an independent verifier. Each test failed
+# until the module (or this file) was fixed. Fictional NCT990000xx ids only,
+# fake providers and sessions only, no network.
+# ---------------------------------------------------------------------------
+
+
+def test_m1_r4_call_level_holdout_set_reaches_cached_page_map_tags(tmp_path: Path) -> None:
+    """A holdout set passed per call refuses a cached page map tagged with that holdout, as the store's own set does.
+
+    ``get_or_index_document`` merged the call's sets with the store's for the
+    requester check only; ``load_cached_pages`` checked each cached map's tag
+    against the store's own sets. On a store built with no sets, a map tagged
+    with the call's holdout trial was served to an in-scope trial with the
+    same bytes (``text_provider='cached_page_map'``), with or without an index
+    entry, through ``get_or_index_document``, ``index_trial_from_study`` and
+    ``ingest_legacy_census_documents``, while a store built with the same sets
+    refused it. Correct: ``AuditHoldoutError`` in every case, no provider
+    call, and the index left as it was.
+    """
+    pdf = _make_minimal_pdf("Call-level holdout set and a tagged cached map")
+    sha = di.sha256_bytes(pdf)
+    call_sets: dict[str, Any] = {"audit_nct_ids": {_RT_AUDIT}, "allowed_nct_ids": {_RT_A, _RT_B}}
+    census = _write_jsonl(tmp_path / "cl_census.jsonl", [_rt_census_row(_RT_A, pdf)])
+    for layout in ("sharded", "flat_json"):
+        for with_entry in (False, True):
+            for mode in ("store", "study", "census"):
+                tag = f"cl_{layout}_{int(with_entry)}_{mode}"
+                store = di.DocumentCacheStore(tmp_path / f"{tag}_cache", tmp_path / f"{tag}_index.jsonl")
+                if layout == "sharded":
+                    # A store with no sets writes a map tagged with any trial.
+                    store.save_cached_pages(sha, byte_count=len(pdf), pages=_rt_stat_pages(), nct_id=_RT_AUDIT)
+                else:
+                    store.pages_dir.mkdir(parents=True)
+                    (store.pages_dir / f"{sha}.json").write_text(
+                        json.dumps({"sha256": sha, "nct_id": _RT_AUDIT, "pages": _rt_stat_pages()}),
+                        encoding="utf-8",
+                    )
+                if with_entry:
+                    store.put_entry(_r3_entry(pdf))
+                index_before = store.index_path.read_bytes() if store.index_path.exists() else None
+                provider = di.FixturePageTextProvider({sha: _rt_stat_pages()})
+                with pytest.raises(di.AuditHoldoutError):
+                    if mode == "store":
+                        store.get_or_index_document(
+                            sha256=sha, byte_count=len(pdf), provider=provider,
+                            nct_id=_RT_A, filename="Prot_000.pdf", **call_sets,
+                        )
+                    elif mode == "study":
+                        cli_mod.index_trial_from_study(
+                            _rt_study(_RT_A, pdf),
+                            cache_store=store,
+                            provider=provider,
+                            session=_R3Session({di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf"): pdf}),
+                            **call_sets,
+                        )
+                    else:
+                        di.ingest_legacy_census_documents(
+                            census, cache_store=store, provider=provider, **call_sets
+                        )
+                assert provider.calls == [], tag
+                index_after = store.index_path.read_bytes() if store.index_path.exists() else None
+                assert index_after == index_before, f"{tag}: index written from a holdout-tagged map"
+
+
+def test_m1_r4_unnamed_page_map_request_is_refused_under_a_holdout_set(tmp_path: Path) -> None:
+    """``JsonlPageMapProvider`` refuses ``nct_id=None`` under a holdout set alone, as it does under an allowlist.
+
+    The module docstring says that under a configured firewall every request
+    for pages names its trial. The provider refused an unnamed request only
+    under an allowlist: with ``audit_nct_ids`` alone it served the pages (from
+    a ``--page-map-jsonl`` row or a cached ``pages/<sha>.json``), and so did a
+    ``ChainedPageTextProvider`` with no cache store wrapping it. Correct:
+    ``AuditHoldoutError``, no later provider in the chain is asked, and a
+    request naming an in-scope trial is still served.
+    """
+    pdf = _make_minimal_pdf("Unnamed page-map request under a holdout set")
+    sha = di.sha256_bytes(pdf)
+    row = {"nct_id": _RT_A, "sha256": sha, "text_source": "pdfkit", "pages": _rt_stat_pages()}
+    jsonl = _write_jsonl(tmp_path / "un_maps.jsonl", [row])
+    pages_dir = tmp_path / "un_pages"
+    pages_dir.mkdir()
+    (pages_dir / f"{sha}.json").write_text(json.dumps(row), encoding="utf-8")
+    providers = {
+        "jsonl": di.JsonlPageMapProvider([jsonl], audit_nct_ids={_RT_AUDIT}),
+        "cache_dir": di.JsonlPageMapProvider(cache_pages_dir=pages_dir, audit_nct_ids={_RT_AUDIT}),
+    }
+    for label, provider in providers.items():
+        with pytest.raises(di.AuditHoldoutError):
+            provider.extract_pages(sha256=sha)
+        fallback = di.FixturePageTextProvider({sha: _rt_stat_pages()})
+        with pytest.raises(di.AuditHoldoutError):
+            di.ChainedPageTextProvider([provider, fallback]).extract_pages(sha256=sha)
+        assert fallback.calls == [], label
+        named = provider.extract_pages(sha256=sha, nct_id=_RT_A)
+        assert named.pages == tuple(_rt_stat_pages()), label
+
+
+def test_m1_r4_stamps_with_eight_digits_in_a_row_are_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A ``retrieved_at`` or ``verified_at`` stamp holding 8 digits in a row is refused, not copied.
+
+    Both stamps were checked with ``datetime.fromisoformat`` alone, which on
+    Python 3.11 reads the basic form ``YYYYMMDD`` and fractional seconds of
+    any length. ``"99000101"`` (a trial id's digits) passed as 9900-01-01 and
+    was written into the profile, though ``validate_safe_pdf_filename``
+    refuses the same digits as reading as a trial id. Correct: the census row
+    is refused (nonzero exit, nothing written), and a url_manifest.json record
+    carrying such a stamp makes the cache refused (no fetch, the file left
+    byte for byte). The stamp this module writes (``utc_now_iso``) passes.
+    """
+    digits = "99000101"
+    stamps = {
+        "basic_date": digits,
+        "basic_datetime": f"{digits}T000000",
+        "long_fraction": f"2026-11-14T00:00:00.{digits}+00:00",
+    }
+    pdf = _make_minimal_pdf("Eight digits in a provenance stamp")
+    pdf_b = _make_minimal_pdf("Another trial recorded beside the stamp")
+    for label, stamp in stamps.items():
+        census = _write_jsonl(
+            tmp_path / f"st_{label}.jsonl", [_rt_census_row(_RT_A, pdf, retrieved_at=stamp)]
+        )
+        tag = f"st_census_{label}"
+        rc = cli_mod.run_cli(
+            [
+                "--manifest", str(_rt_manifest(tmp_path)),
+                "--ingest-census-jsonl", str(census),
+                "--offline",
+                *_rt_outs(tmp_path, tag),
+            ],
+            provider=di.FixturePageTextProvider({di.sha256_bytes(pdf): _rt_stat_pages()}),
+        )
+        err = capsys.readouterr().err
+        assert _r3_leaks(tmp_path, tag, digits) == [], f"{label}: rc={rc}, stamp carried into output"
+        assert rc != 0, f"{label}: census retrieved_at with 8 digits in a row accepted"
+        assert _rt_written(tmp_path, tag) == [], label
+        assert digits not in err
+
+        tag = f"st_um_{label}"
+        cache = tmp_path / f"{tag}_cache"
+        cache.mkdir()
+        manifest_path = cache / "url_manifest.json"
+        manifest_path.write_text(
+            json.dumps(
+                {di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf"): {**_m1_url_record("a"), "verified_at": stamp}},
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        before = manifest_path.read_bytes()
+        session = _R3Session({di.build_ctgov_large_doc_url(_RT_B, "Prot_000.pdf"): pdf_b})
+        rc = cli_mod.run_cli(
+            ["--manifest", str(_rt_manifest(tmp_path)), "--nct-id", _RT_B, *_rt_outs(tmp_path, tag)],
+            api_client=_SpyAPIClient({_RT_B: _rt_study(_RT_B, pdf_b)}),
+            session=session,
+            provider=di.FixturePageTextProvider({di.sha256_bytes(pdf_b): _rt_stat_pages()}),
+        )
+        err = capsys.readouterr().err
+        assert manifest_path.read_bytes() == before, f"{label}: rc={rc}, stamp rewritten"
+        assert rc != 0, f"{label}: url_manifest verified_at with 8 digits in a row accepted"
+        assert session.requested_urls == [], label
+        assert digits not in err
+    # The module's own stamps (6-digit microseconds at most) still pass.
+    di._validated_url_manifest_record(
+        {**_m1_url_record("a"), "verified_at": di.utc_now_iso()}, origin="probe"
+    )
+
+
+def test_m1_r4_platform_gated_checks_are_reported_when_not_run() -> None:
+    """No test here gates checks on ``sys.platform`` with a plain ``if``; platform-only checks are ``skipif`` tests.
+
+    ``test_providers_linux_and_macos`` held the real PDFKit extraction checks
+    (clang helper and ctypes) inside ``if sys.platform == "darwin":``, so on
+    Linux CI the test passed without running them and ``pytest -rs`` said
+    nothing. Correct: those checks are their own test, marked ``skipif`` with
+    a reason, which ``-rs`` lists as skipped wherever it does not run.
+    """
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    gated: list[str] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.FunctionDef) and node.name.startswith("test_")):
+            continue
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.If) and any(
+                isinstance(part, ast.Attribute)
+                and part.attr == "platform"
+                and isinstance(part.value, ast.Name)
+                and part.value.id == "sys"
+                for part in ast.walk(inner.test)
+            ):
+                gated.append(f"{node.name}:{inner.lineno}")
+    assert gated == [], f"checks gated on sys.platform pass silently where they do not run: {gated}"
+    marks = getattr(globals().get("test_macos_pdfkit_extraction"), "pytestmark", [])
+    assert [m.name for m in marks] == ["skipif"], "real PDFKit extraction is not a skipif test"

@@ -31,15 +31,24 @@ Analytical invariants:
   type and length.
 - Every entry point that is handed a ``DocumentCacheStore`` runs under the
   store's holdout set and allowlist merged with its own arguments
-  (``DocumentCacheStore.merge_firewall_sets``), so a store built with a
-  holdout set refuses that trial whatever the call's defaulted arguments say.
+  (``DocumentCacheStore.merge_firewall_sets``), for the requesting trial and
+  for the tag of every cached page map it reads, so a store built with a
+  holdout set refuses that trial whatever the call's defaulted arguments say,
+  and a holdout set passed to the call refuses a cached map tagged with it.
+  ``url_manifest.json`` is checked entry by entry when the store opens it,
+  against the store's own sets only (a call's sets do not exist yet); the
+  URLs a call looks up or records are its own trial's, which passed the
+  merged check. Build the store with the run's sets (``run_cli`` does) to
+  have that file checked against them.
 - No written file carries a holdout id from any field. A posted filename is a
   plain ASCII basename (``validate_safe_pdf_filename``: no ``%``, no
   separators, nothing that reads as a trial id); a date copied into a record
   is a whole CT.gov date string, never text after one, an object's
   ``str()`` or anything else (``parse_ctgov_date``,
-  ``validate_ctgov_date_field``); a manifest marks a holdout wherever in the
-  file it says ``in_audit: true``.
+  ``validate_ctgov_date_field``); a timestamp read from input (a census
+  ``retrieved_at``, a url_manifest ``verified_at``) holds nothing that reads
+  as a trial id, so no basic-form ``YYYYMMDD``; a manifest marks a holdout
+  wherever in the file it says ``in_audit: true``.
 - Under a configured firewall every request for pages names its trial: an
   unnamed request (``nct_id=None``) is refused before anything is extracted
   or written, as an untagged page map is refused.
@@ -3496,7 +3505,7 @@ class JsonlPageMapProvider:
 
     Firewall: every page map passes ``check_page_map_firewall`` before any of its
     pages are kept, so with a holdout set or an allowlist configured every row
-    must name the trial it belongs to. Under an allowlist a lookup must also name
+    must name the trial it belongs to. Under either set a lookup must also name
     the requesting trial; ``nct_id=None`` is refused, as
     ``DocumentCacheStore.get_or_index_document`` refuses it.
 
@@ -3719,11 +3728,12 @@ class JsonlPageMapProvider:
         (None), which ``extract_pages`` reports as ``PageExtractionError``.
         ``filename`` is validated but does not select pages.
 
-        An unnamed lookup (``nct_id=None``) is refused under an allowlist.
-        Under a holdout set alone it reads only maps that pass
-        ``check_page_map_firewall`` (tagged, and not with a holdout trial);
-        ``ChainedPageTextProvider`` and ``DocumentCacheStore`` refuse an
-        unnamed request under either set before any provider is reached.
+        An unnamed lookup (``nct_id=None``) is refused under a holdout set or
+        an allowlist, before any map is loaded or opened: nothing shows the
+        pages are not asked for on a holdout trial's behalf, the rule an
+        untagged map is held to (``DocumentCacheStore.enforce_requester``
+        applies the same one). A ``ChainedPageTextProvider`` over this provider
+        therefore refuses it too, with or without a cache store.
         """
         if nct_id is not None:
             enforce_not_in_audit(
@@ -3732,10 +3742,10 @@ class JsonlPageMapProvider:
                 audit_nct_ids=self._audit_nct_ids,
                 allowed_nct_ids=self._allowed_nct_ids,
             )
-        elif self._allowed_nct_ids is not None:
+        elif self._audit_nct_ids or self._allowed_nct_ids is not None:
             raise AuditHoldoutError(
-                "Explicit nct_id is required for a page-map lookup when allowed_nct_ids "
-                "is enforced."
+                "Explicit nct_id is required for a page-map lookup when a holdout set or "
+                "allowed_nct_ids is configured."
             )
         if filename:
             validate_safe_pdf_filename(filename)
@@ -4298,7 +4308,9 @@ def _validated_url_manifest_record(record: Any, *, origin: str) -> dict[str, Any
     coercion: ``sha256`` 64 lowercase hex; ``byte_count`` a positive int (not
     a bool); ``api_size`` null or a non-negative int; ``api_upload_date`` null
     or a CT.gov date string (``parse_ctgov_date``); ``verified_at`` an
-    ISO-8601 timestamp (``datetime.fromisoformat``); ``pipeline_commit`` null
+    ISO-8601 timestamp (``datetime.fromisoformat``) with nothing in it that
+    reads as a trial id (``_TRIAL_ID_IN_FILENAME_RE``: 8 digits in a row, as
+    the basic form ``YYYYMMDD`` has); ``pipeline_commit`` null
     or a lowercase-hex commit id (7 to 64 characters). Anything else raises
     ``CacheIntegrityError`` naming ``origin`` and the field, never the value:
     every field is written back whole by the next rewrite, so a field read
@@ -4333,10 +4345,15 @@ def _validated_url_manifest_record(record: Any, *, origin: str) -> dict[str, Any
         if type(verified_at) is not str or not verified_at.strip():
             raise ValueError("not a non-empty string")
         datetime.fromisoformat(verified_at)
+        # A stamp holding 8 digits in a row (Python 3.11 reads YYYYMMDD and
+        # long fractional seconds) reads as a trial id, as in a filename.
+        if _TRIAL_ID_IN_FILENAME_RE.search(verified_at):
+            raise ValueError("reads as a trial id")
     except ValueError:
         raise CacheIntegrityError(
-            f"{origin} field 'verified_at' must be an ISO-8601 timestamp (got "
-            f"{type(verified_at).__name__} that is not one); the value is not printed."
+            f"{origin} field 'verified_at' must be an ISO-8601 timestamp with no 8 digits "
+            f"in a row (got {type(verified_at).__name__} that is not one); the value is "
+            "not printed."
         ) from None
     commit = obj["pipeline_commit"]
     if commit is not None and (type(commit) is not str or not _URL_MANIFEST_COMMIT_RE.fullmatch(commit)):
@@ -4934,13 +4951,18 @@ class DocumentCacheStore:
         *,
         expected_byte_count: int | None = None,
         text_source: str = "pdfkit",
+        audit_nct_ids: AbstractSet[str] = frozenset(),
+        allowed_nct_ids: AbstractSet[str] | None = None,
     ) -> ExtractedDocumentPages | None:
         """Load this store's cached page map for ``sha256``, or None when there is none.
 
         The map passes ``check_page_map_firewall`` with this store's audit set
-        and allowlist before anything else in it is read, so under a configured
-        firewall an untagged map (one written before maps were tagged, or placed
-        in ``pages/`` by hand) is refused rather than served.
+        and allowlist merged with the call's (``merge_firewall_sets``) before
+        anything else in it is read, so under a configured firewall an
+        untagged map (one written before maps were tagged, or placed in
+        ``pages/`` by hand) is refused rather than served, and a holdout set
+        handed to ``get_or_index_document`` refuses a map tagged with that
+        holdout as a store built with it does.
 
         Maps at the flat locations ``pages/<sha>.json.gz`` and
         ``pages/<sha>.json``, which ``JsonlPageMapProvider`` serves, pass the
@@ -4950,6 +4972,7 @@ class DocumentCacheStore:
         entry) refuses a digest whose map at any location names a holdout
         trial, with or without an index entry.
         """
+        audit, allowed = self.merge_firewall_sets(audit_nct_ids, allowed_nct_ids)
         sha = sha256.lower()
         if not SHA256_RE.fullmatch(sha):
             return None
@@ -4960,10 +4983,7 @@ class DocumentCacheStore:
             if not isinstance(flat_obj, Mapping):
                 raise CacheIntegrityError(f"Malformed cached page map {flat}: expected JSON object")
             check_page_map_firewall(
-                flat_obj,
-                origin=str(flat),
-                audit_nct_ids=self._audit_nct_ids,
-                allowed_nct_ids=self._allowed_nct_ids,
+                flat_obj, origin=str(flat), audit_nct_ids=audit, allowed_nct_ids=allowed
             )
         path = self.page_map_path(sha)
         # A map naming nct_id or in_audit twice is refused, not read last-wins.
@@ -4972,12 +4992,7 @@ class DocumentCacheStore:
             return None
         if not isinstance(obj, Mapping):
             raise CacheIntegrityError(f"Malformed cached page map {path}: expected JSON object")
-        check_page_map_firewall(
-            obj,
-            origin=str(path),
-            audit_nct_ids=self._audit_nct_ids,
-            allowed_nct_ids=self._allowed_nct_ids,
-        )
+        check_page_map_firewall(obj, origin=str(path), audit_nct_ids=audit, allowed_nct_ids=allowed)
         if obj.get("sha256") != sha:
             raise CacheIntegrityError(
                 f"Page map file {path} contains mismatched sha256={obj.get('sha256')!r}"
@@ -5156,9 +5171,10 @@ class DocumentCacheStore:
         write):
 
         The firewall is this store's merged with the call's
-        (``merge_firewall_sets``). Under any configured firewall the request
-        must name its trial: ``nct_id=None`` is refused before anything is read,
-        extracted or written.
+        (``merge_firewall_sets``), for the requesting trial and for the tag of
+        every cached page map in step 1 alike. Under any configured firewall
+        the request must name its trial: ``nct_id=None`` is refused before
+        anything is read, extracted or written.
 
         1. Every cached page map for ``sha256`` (the sharded one this store
            writes and the flat ``pages/<sha>.json(.gz)`` ones a page-map
@@ -5219,9 +5235,16 @@ class DocumentCacheStore:
         )
         # Step 1: the map's holdout tag is checked whether or not an entry
         # exists (load_cached_pages runs check_page_map_firewall before
-        # reading anything else in the map). It also serves step 3 below:
-        # cached pages enable zero-PDFKit/zero-HTTP rule-bump re-indexing.
-        cached_pages = self.load_cached_pages(sha, expected_byte_count=byte_count)
+        # reading anything else in the map), against the merged sets, so a
+        # holdout set handed to this call refuses a map tagged with it. It
+        # also serves step 3 below: cached pages enable zero-PDFKit/zero-HTTP
+        # rule-bump re-indexing.
+        cached_pages = self.load_cached_pages(
+            sha,
+            expected_byte_count=byte_count,
+            audit_nct_ids=combined_audit,
+            allowed_nct_ids=combined_allowed,
+        )
         if existing is not None and not reparse_cached_pages:
             return existing, True
 
@@ -5631,7 +5654,13 @@ def _census_timestamp(value: Any, *, where: str, field: str) -> str:
     ``retrieved_at`` is a provenance stamp carried into the profile as the
     census recorded it. A string that ``datetime.fromisoformat`` cannot read is
     not a time at all (it could be a trial id), so it is refused rather than
-    carried. The value is not printed.
+    carried. So is a string it does read that holds 8 digits in a row
+    (``_TRIAL_ID_IN_FILENAME_RE``, the rule ``validate_safe_pdf_filename``
+    holds a filename to): on Python 3.11 it reads the basic form
+    ``YYYYMMDD`` and fractional seconds of any length, so a trial id's
+    digits passed as a date. The extended form this module writes
+    (``utc_now_iso``, at most 6 digits in a row) passes. The value is not
+    printed.
     """
     if type(value) is not str or not value.strip():
         raise DocumentIndexerError(
@@ -5640,10 +5669,13 @@ def _census_timestamp(value: Any, *, where: str, field: str) -> str:
         )
     try:
         datetime.fromisoformat(value)
+        if _TRIAL_ID_IN_FILENAME_RE.search(value):
+            raise ValueError("reads as a trial id")
     except ValueError:
         raise DocumentIndexerError(
-            f"Census row at {where} field {field!r} is not an ISO-8601 timestamp; the row "
-            "is refused, not carried (the value is not printed)."
+            f"Census row at {where} field {field!r} is not an ISO-8601 timestamp, or holds "
+            "8 digits in a row (which read as a trial id); the row is refused, not carried "
+            "(the value is not printed)."
         ) from None
     return value
 

@@ -809,9 +809,14 @@ def index_trial_from_study(
     url_manifest.json as the verified content of this trial's CT.gov URL.
 
     The firewall is ``cache_store``'s merged with this call's arguments
-    (``DocumentCacheStore.merge_firewall_sets``), so a store built with a
-    holdout set refuses that trial even when this call's own sets are left at
-    their defaults. The payload's document module and dates are read
+    (``DocumentCacheStore.merge_firewall_sets``), for the trial and for the
+    tag of every cached page map read for its documents, so a store built
+    with a holdout set refuses that trial even when this call's own sets are
+    left at their defaults, and a holdout set passed here refuses a cached
+    map tagged with it. ``url_manifest.json`` is checked entry by entry when
+    the store opens it, against the store's own sets only; the URLs this
+    call looks up and records are the trial's own, built from the id that
+    passed the merged check. The payload's document module and dates are read
     strictly (``extract_in_scope_large_docs``, ``_extract_study_dates``)
     before any cache lookup or request.
 
@@ -933,7 +938,16 @@ def _index_study_documents(
                     cache_store.get_entry(manifest_sha, indexer_rules_version)
                     is not None
                 )
-                has_pages = cache_store.load_cached_pages(manifest_sha) is not None
+                # The map's tag is checked against the merged sets, as
+                # get_or_index_document checks it below.
+                has_pages = (
+                    cache_store.load_cached_pages(
+                        manifest_sha,
+                        audit_nct_ids=audit_nct_ids,
+                        allowed_nct_ids=effective_allowed,
+                    )
+                    is not None
+                )
                 blob_path = cache_store.get_blob_path(manifest_sha)
                 if has_entry or has_pages or blob_path is not None:
                     resolved_sha = manifest_sha
