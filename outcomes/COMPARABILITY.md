@@ -144,6 +144,12 @@ attrition contrast.
   - Within-measure `shared_arm_contrast_groups` flags pairwise contrasts that reuse a common
     comparator or experimental `OG` (`non_independent: true`, `statistically_independent_within_measure: false`),
     preventing downstream meta-analyses from treating shared-control contrasts as independent.
+  - Each analysis carries `independence_state` (`CONTRAST_INDEPENDENCE_STATES`): `independent`
+    (`statistically_independent_within_measure: true`), `shares_arm` (`false`),
+    `indeterminate_unresolved_group_ids` (`null`: a pairwise contrast naming a group id that is not
+    one of the measure's arm `OG`s, or an otherwise unshared pairwise contrast reusing a group id such
+    a contrast names), and `not_pairwise` (`null`). Counted in `summary.json`
+    `state_breakdowns.analysis_contrast_independence`; indeterminate is never counted as independent.
 
 ---
 

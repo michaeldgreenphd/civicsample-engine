@@ -939,6 +939,15 @@ def summarize(
         'other_explicit': 'Explicit OTHER hypothesis enum.',
         'not_stated': 'Hypothesis type not stated in nonInferiorityType or nonInferiorityComment.',
     }
+    independence_defs = {
+        'independent': 'Pairwise contrast with resolved group ids sharing no arm with another pairwise contrast of its measure.',
+        'shares_arm': 'Pairwise contrast reusing an arm of another pairwise contrast of its measure (not independent).',
+        'indeterminate_unresolved_group_ids': (
+            'Pairwise contrast naming a group id that is not one of the measure\'s arm OGs, or reusing a group id '
+            'such a contrast names: independence cannot be settled (never counted as independent).'
+        ),
+        'not_pairwise': 'Analysis does not name exactly two distinct group ids; independence does not apply.',
+    }
     card_defs = {
         'empty': 'analyses[].groupIds carries zero valid group identifiers.',
         'single_arm': 'analyses[].groupIds references exactly one distinct group identifier.',
@@ -1046,6 +1055,14 @@ def summarize(
             lambda a: a['hypothesis_clarity']['state'],
             'primary_analyses',
             hyp_defs,
+        ),
+        'analysis_contrast_independence': _breakdown(
+            'contrast_independence',
+            C.CONTRAST_INDEPENDENCE_STATES,
+            all_analyses,
+            lambda a: a.get('independence_state'),
+            'primary_analyses',
+            independence_defs,
         ),
         'analysis_group_ids_cardinality': _breakdown(
             'cardinality',
@@ -1288,6 +1305,7 @@ def build(
             'intercurrent_event_states': list(C.INTERCURRENT_EVENT_STATES),
             'hypothesis_clarity_states': list(C.HYPOTHESIS_CLARITY_STATES),
             'cardinality_states': list(C.CARDINALITY_STATES),
+            'contrast_independence_states': list(C.CONTRAST_INDEPENDENCE_STATES),
             'protocol_to_results_states': list(OH.PROTOCOL_TO_RESULTS_STATES),
             'version_history_states': list(OH.VERSION_HISTORY_STATES),
             'history_diff_states': list(OH.HISTORY_DIFF_STATES),
@@ -1534,6 +1552,18 @@ def check(files: dict[str, Any]) -> list[str]:
             for a in pm.get('analyses') or []:
                 if a.get('group_ids_cardinality_state') not in C.CARDINALITY_STATES:
                     p.append(f'{n}: invalid group_ids_cardinality_state')
+                # Independence is claimed only for a pairwise contrast whose group ids all resolve.
+                ind_state = a.get('independence_state')
+                pairwise = a.get('group_ids_cardinality_state') == 'pairwise_two_arm'
+                expected_flag = {'independent': True, 'shares_arm': False}.get(str(ind_state))
+                if ind_state not in C.CONTRAST_INDEPENDENCE_STATES:
+                    p.append(f'{n}: invalid independence_state {ind_state!r}')
+                elif (
+                    a.get('statistically_independent_within_measure') is not expected_flag
+                    or (ind_state == 'not_pairwise') == pairwise
+                    or (ind_state in ('independent', 'shares_arm') and bool(a.get('unresolved_group_ids')))
+                ):
+                    p.append(f'{n}: independence_state {ind_state!r} disagrees with the analysis it describes')
                 hc = a.get('hypothesis_clarity') or {}
                 h_state = hc.get('state')
                 if h_state not in C.HYPOTHESIS_CLARITY_STATES:

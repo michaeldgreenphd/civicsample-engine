@@ -126,6 +126,15 @@ CARDINALITY_STATES = (
     'multi_arm_joint',
 )
 
+# Whether one analysis is statistically independent of the measure's other pairwise contrasts
+# (`statistically_independent_within_measure` is True, False, None, None respectively).
+CONTRAST_INDEPENDENCE_STATES = (
+    'independent',
+    'shares_arm',
+    'indeterminate_unresolved_group_ids',
+    'not_pairwise',
+)
+
 FIELDS_INSPECTED = (
     'protocolSection.identificationModule.(nctId,briefTitle)',
     'protocolSection.designModule.(studyType,phases,designInfo.allocation,enrollmentInfo)',
@@ -1624,6 +1633,7 @@ def _inspect_measure_contrasts_and_analyses(
             'intercurrent_event_signal': a_ice,
             'differential_attrition': attrition_obj,
             'shares_arm_with_analysis_indices': [],
+            'independence_state': 'independent' if card_state == 'pairwise_two_arm' else 'not_pairwise',
             'statistically_independent_within_measure': True if card_state == 'pairwise_two_arm' else None,
         })
 
@@ -1664,7 +1674,26 @@ def _inspect_measure_contrasts_and_analyses(
 
     for ai, peers in peers_by_ai.items():
         analysis_rows[ai]['shares_arm_with_analysis_indices'] = sorted(peers)
+        analysis_rows[ai]['independence_state'] = 'shares_arm'
         analysis_rows[ai]['statistically_independent_within_measure'] = False
+
+    # Shared-arm detection sees only contrasts whose group ids all resolve to the measure's arm OGs.
+    # A pairwise contrast naming an undeclared group id may share it, or one of its declared arms,
+    # with another contrast, so its independence is indeterminate (None), never True; so is that of
+    # an otherwise unshared pairwise contrast reusing a group id such a contrast names. A definite
+    # `shares_arm` among resolved contrasts stands.
+    unresolved_pairwise_gids = {
+        gid
+        for r in analysis_rows
+        if r['group_ids_cardinality_state'] == 'pairwise_two_arm' and r['unresolved_group_ids']
+        for gid in r['distinct_group_ids']
+    }
+    for r in analysis_rows:
+        if r['independence_state'] == 'independent' and (
+            r['unresolved_group_ids'] or set(r['distinct_group_ids']) & unresolved_pairwise_gids
+        ):
+            r['independence_state'] = 'indeterminate_unresolved_group_ids'
+            r['statistically_independent_within_measure'] = None
 
     cardinality_counts = {
         s: sum(1 for r in analysis_rows if r['group_ids_cardinality_state'] == s)

@@ -1210,6 +1210,46 @@ def test_primary_only_history_is_counted_as_indeterminate_and_contract_refuses_a
     assert any('without recorded historical secondaries' in p for p in B.check(bad))
 
 
+def test_contrasts_naming_undeclared_groups_are_never_marked_independent() -> None:
+    # Regression: pairwise analyses naming an undeclared group (OG999) were left out of shared-arm
+    # detection yet still marked statistically independent, although they visibly reuse OG999.
+    pm_a = make_primary_measure(
+        og_titles=('Zorbatinib 5 mg', 'Zorbatinib 10 mg', 'Zorbatinib 20 mg', 'Placebo'),
+        og_counts=('50', '50', '50', '50'),
+        analyses=[
+            {'groupIds': ['OG000', 'OG999']},
+            {'groupIds': ['OG001', 'OG999']},
+            {'groupIds': ['OG002', 'OG000']},  # resolved, but reuses OG000 with an unresolved contrast
+            {'groupIds': ['OG003']},
+        ],
+    )
+    pm_b = make_primary_measure(analyses=[{'groupIds': ['OG000', 'OG001']}])
+    study = make_study(46, measures=[pm_a, pm_b])
+    rec = C.inspect_study(study)
+    rows_a = rec['primary_measures'][0]['analyses']
+    assert [r['statistically_independent_within_measure'] for r in rows_a] == [None, None, None, None]
+    assert [r['independence_state'] for r in rows_a] == [
+        'indeterminate_unresolved_group_ids',
+        'indeterminate_unresolved_group_ids',
+        'indeterminate_unresolved_group_ids',
+        'not_pairwise',
+    ]
+    row_b = rec['primary_measures'][1]['analyses'][0]
+    assert row_b['independence_state'] == 'independent' and row_b['statistically_independent_within_measure'] is True
+
+    fam = _family([study])
+    assert B.check(fam) == []
+    counts = fam['summary.json']['state_breakdowns']['analysis_contrast_independence']['counts']
+    assert {k: v['numerator'] for k, v in counts.items()} == {
+        'independent': 1, 'shares_arm': 0, 'indeterminate_unresolved_group_ids': 3, 'not_pairwise': 1,
+    }
+    assert fam['run.json']['vocabularies']['contrast_independence_states'] == list(C.CONTRAST_INDEPENDENCE_STATES)
+    bad = copy.deepcopy(fam)
+    bad_row = bad['records.json']['records']['NCT99000046']['primary_measures'][0]['analyses'][0]
+    bad_row.update(independence_state='independent', statistically_independent_within_measure=True)
+    assert any("independence_state 'independent' disagrees" in p for p in B.check(bad))
+
+
 def test_unverifiable_git_provenance_is_never_clean_and_is_not_exported(monkeypatch: pytest.MonkeyPatch) -> None:
     # Regression: a failed `git status` (or a source copy without .git) recorded
     # uncommitted_changes False, so a build with no verifiable revision read as clean; a missing git
