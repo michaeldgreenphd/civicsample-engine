@@ -256,6 +256,48 @@ python scripts/verify_and_plan_census_batch.py plan \
   While the existing census cannot be given, leave out `--documents` and
   `--locations` and pass `census-work/index_not_in_census.json` as
   `--index`, so the census's trials are not scheduled again.
+- `plan` refuses (exit 2, no plan) a `--profiles` line whose `nct_id` is
+  not an `in_audit: false` row of `--index`, and a `--doc-cache` line whose
+  `sha256` is not that of a document in a profile (or `--documents` row) of
+  an in-scope trial. Step 1 wrote both files from the full `$INDEX`, and
+  each run of it rewrites the profiles but keeps every earlier line of the
+  document index. So with `index_not_in_census.json` as `--index`, filter
+  both files to it first, copying each kept line unchanged, and pass the
+  copies as `--profiles census-work/profiles_not_in_census.jsonl` and
+  `--doc-cache census-work/doc_cache_not_in_census.jsonl`:
+
+  ```bash
+  python - census-work/index_not_in_census.json \
+    data/trial_document_profiles.jsonl data/document_index_by_sha256.jsonl \
+    census-work/profiles_not_in_census.jsonl \
+    census-work/doc_cache_not_in_census.jsonl <<'EOF'
+  import json, sys
+  index, profiles, cache, profiles_out, cache_out = sys.argv[1:6]
+  keep = {r["nct_id"] for r in json.load(open(index))["rows"] if r["in_audit"] is False}
+  shas = set()
+  with open(profiles, "rb") as src, open(profiles_out, "wb") as out:
+      for line in src:
+          row = json.loads(line) if line.strip() else {}
+          if row.get("nct_id") in keep:
+              out.write(line)
+              shas.update(d["sha256"] for d in row["documents"] if d["sha256"])
+  with open(cache, "rb") as src, open(cache_out, "wb") as out:
+      for line in src:
+          if line.strip() and json.loads(line)["sha256"] in shas:
+              out.write(line)
+  EOF
+  ```
+
+  Leave out `--pages-dir` in this case as well. Without `--locations` it
+  changes nothing in the plan, and a document that a kept trial shares with
+  a census trial can have its page map tagged with the census trial (rule 2
+  of section 1), which `plan` refuses against this index (exit 2).
+- At m1 `69edfb3` and m4 `dab323c`, `plan` refuses the profiles step 1
+  writes, whatever the `--index`: their document records carry no
+  `model_id` or `profile_version`, which `plan` requires of a profile's
+  documents as it does of a `--documents` row (exit 1, no plan; run on
+  fictional M1 output). Which branch should change is not settled; until
+  one does, step 2 cannot take step 1's profiles as they are.
 - `--mode resume-unstarted` schedules `unstarted_primary` and
   `unstarted_target_pass` trials; `recover-unreadable` schedules
   `unreadable_recoverable_ocr`; `incremental-delta` (the default) also
@@ -405,6 +447,10 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
    compute anything else for them.
 3. Run step 1 with `--manifest` set to that file, then step 2 with the
    manifest as `--index`, `--cohort <slug>` and `--mode incremental-delta`.
+   Filter `--profiles` and `--doc-cache` to the manifest first with step 2's
+   filter (the manifest as its first argument, two new output paths under
+   `census-work/`) and pass the copies: the document index still holds the
+   lines of every earlier step 1 run, and `plan` refuses them (exit 2).
    Documents with identical bytes are downloaded and extracted once by M1's
    content-addressed cache, but see rule 2 of section 1 for what that means
    for verification.

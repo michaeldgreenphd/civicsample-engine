@@ -134,6 +134,10 @@ M2 leaves it to its callers.
   `--profiles` and `--doc-cache`, and every `--nct-id`, is checked against it
   before any page map is opened; a refusal exits 2
   (`AuditHoldoutViolationError`, `InvalidNctIdError` or `PlanScopeError`).
+  `plan` also refuses (exit 2) a `--profiles` row whose trial is not in that
+  set and a `--doc-cache` row whose `sha256` is not that of a document of an
+  in-scope trial, so M1 output written from a larger index is refused
+  against a smaller one; the playbook's step 2 filters it first.
   `verify --pages-dir` gives the page provider only the `(nct_id, sha256)`
   pairs of in-scope documents, so no other page map is opened.
 - **Library.** `verify_census_corpus`, `verify_document_record`,
@@ -205,8 +209,11 @@ any branch covers it.
   `DOCUMENT_REQUIRED_KEYS`). `verify` reports a row without them as
   `LOCATION_MISSING_KEYS` or `DOCUMENT_MISSING_KEYS` and exits 1. `plan`
   stops with exit 1 and writes no plan when any `--documents` or
-  `--locations` row lacks `model_id`. Both were run on fictional rows with and
-  without these keys.
+  `--locations` row, or any document of a `--profiles` row, lacks
+  `model_id`. Both were run on fictional rows with and without these keys.
+  M1's profiles carry neither `model_id` nor `profile_version` on their
+  documents, so `plan` refuses them as M1 writes them (run on fictional M1
+  output).
 - **The existing census records model ids at worker level only.** None of
   its 782 document rows or 5,229 location rows carries `model_id`,
   `prompt_version` or `profile_version`. Its `manifest.json` names a
