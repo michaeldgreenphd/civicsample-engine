@@ -657,6 +657,23 @@ _SITE = {"facility": "Hospital A", "country": "United States"}
         ("conditions", ["Hypertension", 7], "conditions[1] is int, not a string"),
         ("conditions", ["Hypertension", "   "], "conditions[1] is blank"),
         ("conditions", [], "conditions is empty"),
+        # src/utils.py keeps a site only for a location with a country.
+        ("study_sites", [{"facility": "Hospital A", "country": ""}],
+         "study_sites[0].country is missing or blank (src/utils.py keeps only sites with one)"),
+        ("study_sites", [{"facility": "Hospital A"}],
+         "study_sites[0].country is missing or blank (src/utils.py keeps only sites with one)"),
+        ("countries", [{"country": "  "}],
+         "countries[0].country is missing or blank (src/utils.py keeps only sites with one)"),
+        # Scalars the build reads, with the producer's type.
+        ("lead_sponsor_name", None, "lead_sponsor_name is NoneType, not str"),
+        ("lead_sponsor_name", ["Pfizer"], "lead_sponsor_name is list, not str"),
+        ("lead_sponsor_name", " ", "lead_sponsor_name is blank"),
+        ("sponsor_class", 7, "sponsor_class is int, not str"),
+        ("enrollment", "150", "enrollment is str, not int"),
+        ("enrollment", True, "enrollment is bool, not int"),
+        ("status", "", "status is blank"),
+        ("start_date", None, "start_date is NoneType, not str"),
+        ("why_stopped", None, "why_stopped is NoneType, not str"),
     ],
 )
 def test_weekly_records_with_malformed_list_fields_are_refused(
@@ -669,11 +686,15 @@ def test_weekly_records_with_malformed_list_fields_are_refused(
     out_dir = tmp_path / "refused"
     assert _build_weekly(demog_path, mesh_path, out_dir) == 1
     err = capsys.readouterr().err
-    assert f"1 of 5 weekly records carry a malformed list field (first: NCT99300003 {problem})" in err, err
+    assert f"1 of 5 weekly records carry a missing or malformed field (first: NCT99300003 {problem})" in err, err
     assert not out_dir.exists()
 
 
-@pytest.mark.parametrize("key", ["study_sites", "countries", "collaborators", "conditions"])
+@pytest.mark.parametrize(
+    "key",
+    ["study_sites", "countries", "collaborators", "conditions", "lead_sponsor_name", "sponsor_class", "enrollment",
+     "status", "start_date"],
+)
 def test_weekly_records_missing_a_list_field_are_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], key: str
 ) -> None:
