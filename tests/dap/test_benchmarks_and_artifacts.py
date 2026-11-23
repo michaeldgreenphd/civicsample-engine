@@ -561,6 +561,7 @@ _WEEKLY_SITE = {"facility": "US1", "state": "MA", "country": "United States"}
         ("collaborators", ["Fictional CRO"], "collaborators[0] is str, not an object"),
         ("collaborators", [{"name": "Fictional CRO", "class": None}],
          "collaborators[0].class is NoneType, not a string"),
+        ("conditions", [], "conditions is empty"),
     ],
 )
 def test_weekly_records_with_malformed_list_fields_are_refused(
@@ -575,13 +576,25 @@ def test_weekly_records_with_malformed_list_fields_are_refused(
         benchmarks.load_study_records(weekly_path, source_kind=source_kind)
 
 
+@pytest.mark.parametrize("source_kind", ["full_records", "auto"])
+@pytest.mark.parametrize("key", ["study_sites", "collaborators", "conditions"])
+def test_weekly_records_missing_a_list_field_are_refused(tmp_path: Path, source_kind: str, key: str) -> None:
+    # On 1e05c40 a missing key was skipped and read as an empty list: no sites, or ontology Other.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1].pop(key)
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    message = f"(first: NCT99000402 has no {key} (src/utils.py always writes it))"
+    with pytest.raises(ValueError, match=re.escape(message)):
+        benchmarks.load_study_records(weekly_path, source_kind=source_kind)
+
+
 def test_weekly_list_fields_the_extractor_writes_load(tmp_path: Path) -> None:
-    # Control: two sites and a collaborator as src/utils.py writes them, and a missing key, pass.
+    # Control: two sites and a collaborator as src/utils.py writes them pass.
     weekly_doc = fx.build_weekly_full_records_doc()
     weekly_doc["data"][0]["study_sites"] = [_WEEKLY_SITE, {"facility": "CA1", "city": "", "state": "", "zip": "",
                                                            "country": "Canada"}]
     weekly_doc["data"][0]["collaborators"] = [{"name": "Fictional CRO", "class": "INDUSTRY"}]
-    weekly_doc["data"][2].pop("collaborators", None)
     weekly_path = tmp_path / "demographics.json.gz"
     weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
     assert len(benchmarks.load_study_records(weekly_path, source_kind="full_records")[0]) == 5

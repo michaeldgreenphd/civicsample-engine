@@ -711,17 +711,21 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     conditions (a `"Cancer"` string was read one character at a time) and object collaborators, and
     `geography.extract_raw_locations` only object sites, so a malformed value moved the indication to
     Other, or lowered the exact site counts (`n_us_facilities`, `country_counts`), with nothing
-    reported. A key that is present must hold a list (explicit `null` included) whose entries have
-    their type, with the fields read strings when present and conditions non-blank. A missing key is
-    read as before. All 80,890 records of the 2026-11-08 weekly extraction hold the three as lists of
-    such entries (1,485,097 sites, 48,077 collaborators, 142,169 conditions).
+    reported. Each key must be present (`src/utils.py` always writes all three, so a missing one,
+    read as an empty list, would drop every site or condition) and hold a list, explicit `null`
+    included, whose entries have their type, with the fields read strings when present. `conditions`
+    must be non-empty, as on the raw path, since an empty list reads as ontology Other. All 80,890
+    records of the 2026-11-08 weekly extraction carry the three keys as lists of such entries
+    (1,485,097 sites, 48,077 collaborators, 142,169 conditions), none with an empty `conditions`.
     """
     for key, (entry_type, fields) in WEEKLY_LIST_FIELDS.items():
         if key not in rec:
-            continue
+            return f"has no {key} (src/utils.py always writes it)"
         value = rec[key]
         if not isinstance(value, list):
             return f"{key} is {type(value).__name__}, not a list"
+        if entry_type is str and not value:
+            return f"{key} is empty"
         for i, entry in enumerate(value):
             if not isinstance(entry, entry_type):
                 kind = "an object" if entry_type is dict else "a string"

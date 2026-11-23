@@ -131,13 +131,15 @@ location and collaborator entry, are checked the same way (`LIST_ENTRY_FIELDS`):
 location, or a module read as empty, would lower or zero the listed facilities and move the
 footprint class with nothing reported.
 Weekly full records never pass these checks, so their own lists are checked
-when present (`WEEKLY_LIST_FIELDS`): `study_sites` and `collaborators` must be
-lists of objects, with `country`, `state`, `name` and `class` strings when
-present, and `conditions` a list of non-blank strings, an explicit `null`
-included. A `conditions` string was read one character at a time, a dropped
-condition could move the indication to Other, and a dropped site lowered the
-exact site counts. A missing key is read as before. All 80,890 records of the
-2026-11-08 weekly extraction pass.
+too (`WEEKLY_LIST_FIELDS`): `study_sites`, `collaborators` and `conditions`
+must be present, as `src/utils.py` always writes them; `study_sites` and
+`collaborators` must be lists of objects, with `country`, `state`, `name` and
+`class` strings when present; and `conditions` must be a non-empty list of
+non-blank strings, as on the raw path, an explicit `null` refused throughout. A
+`conditions` string was read one character at a time, a dropped or missing
+condition list moved the indication to Other, and a dropped or missing site
+list lowered the exact site counts. All 80,890 records of the 2026-11-08
+weekly extraction pass.
 `contactsLocationsModule` and `derivedSection` are not required: their absence
 is a real "no listed facilities" / `no_derived`, so a whole-module projection
 that omits them cannot be told apart record by record.
