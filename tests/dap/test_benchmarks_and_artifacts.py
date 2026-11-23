@@ -1663,6 +1663,22 @@ _DROP_KEY = object()  # remove the key instead of setting it
         (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), 7, f"{_BASE}.groups[0].id (a string)"),
         (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), " ",
          f"{_BASE}.groups[0].id (a non-blank string)"),
+        # On 7e9f383 a group without a title, or a count naming no group, loaded; get_overall_group_id
+        # finds Overall by title, and an unmatched groupId falls back to the last measurement.
+        (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "title"), _DROP_KEY,
+         f"{_BASE}.groups[0].title (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "title"), "",
+         f"{_BASE}.groups[0].title (a non-blank string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "categories", 0,
+          "measurements", 0, "groupId"), "BG009",
+         f"{_BASE}.measures[0].classes[0].categories[0].measurements[0].groupId"
+         " (the id of one of the table's groups, not 'BG009')"),
+        (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "counts", 0, "groupId"), "BG009",
+         f"{_BASE}.denoms[0].counts[0].groupId (the id of one of the table's groups, not 'BG009')"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "denoms"),
+         [{"units": "Participants", "counts": [{"groupId": "BG009", "value": "60"}]}],
+         f"{_BASE}.measures[0].classes[0].denoms[0].counts[0].groupId"
+         " (the id of one of the table's groups, not 'BG009')"),
     ],
 )
 def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(

@@ -608,9 +608,10 @@ _BASELINE_VALUE: dict[str, Any] = {"groupId": REQUIRED_STR, "value": FINITE_TEXT
 # and 10,154 class-level) are whole numbers, 6 of them comma-grouped (`"15,581"`).
 COUNT_TEXT = "required string reading as a non-negative whole number or none"
 _BASELINE_DENOM_COUNT: dict[str, Any] = {"groupId": REQUIRED_STR, "value": COUNT_TEXT}
-# A baseline group's id: `src.utils.get_overall_group_id` returns None for an Overall group without one,
-# and `get_total_baseline_participants` and `sum_measurements` then read the last group's value, an arm's
-# counts in place of the trial's when Overall is not last. All 10,321 stored baseline groups carry one.
+# A baseline group's id and title: `src.utils.get_overall_group_id` finds the Overall group by its title
+# and returns its id, so a group without either left it None, and `get_total_baseline_participants` and
+# `sum_measurements` then read the last group's value, an arm's counts in place of the trial's when
+# Overall is not last. All 10,321 stored baseline groups carry both.
 REQUIRED_ID = "required non-blank string"
 # A denominator list: the table's own, or a measure's or class's Number Analyzed, which
 # `table_selection.number_analyzed` reads through `get_measure_denom` with `.get` and no type check (a
@@ -619,7 +620,7 @@ REQUIRED_ID = "required non-blank string"
 # 10,560 counts carry `groupId` and `value` as strings.
 _BASELINE_DENOMS: dict[str, Any] = {"units": REQUIRED_STR, "counts": _BASELINE_DENOM_COUNT}
 BASELINE_SHAPE: dict[str, Any] = {
-    "groups": {"id": REQUIRED_ID, "title": str},
+    "groups": {"id": REQUIRED_ID, "title": REQUIRED_ID},
     "denoms": _BASELINE_DENOMS,
     "measures": {
         "title": REQUIRED_STR,
@@ -755,7 +756,60 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
         for name, fields in BASELINE_SHAPE.items():
             if name in module:
                 out += _object_list_problems(module[name], f"{root}.{name}", fields)
+        out += _baseline_group_reference_problems(module, root)
     return out
+
+
+def _listed(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _baseline_group_reference_problems(module: dict[str, Any], root: str) -> list[str]:
+    """Every measurement and denominator count of a baseline table with `groups` must name one of them.
+
+    `src.utils._get_measurement_value` reads the Overall group's value by `groupId` and falls back to the
+    last measurement when none matches, so a misspelt Overall id on a measurement or count put an arm's
+    count in the trial's place throughout the pooled distributions. All 153,232 references in the 3,133
+    stored baseline tables (measurements and table, measure-level and class-level denominator counts)
+    name a declared group. A malformed entry, or a group without a non-blank string id, is reported by
+    `BASELINE_SHAPE`; the lookup runs only when every group has one, so that fault is not repeated once
+    per reference, and only a string `groupId` is looked up.
+    """
+    groups = module.get("groups")
+    if not isinstance(groups, list) or not all(
+        isinstance(g, dict) and isinstance(g.get("id"), str) and g["id"].strip() for g in groups
+    ):
+        return []
+    declared = {g["id"] for g in groups}
+    refs: list[tuple[str, Any]] = []
+
+    def add_counts(denoms: Any, path: str) -> None:
+        for i, denom in enumerate(_listed(denoms)):
+            if isinstance(denom, dict):
+                refs.extend((f"{path}[{i}].counts[{j}]", x) for j, x in enumerate(_listed(denom.get("counts"))))
+
+    add_counts(module.get("denoms"), f"{root}.denoms")
+    for m_i, measure in enumerate(_listed(module.get("measures"))):
+        if not isinstance(measure, dict):
+            continue
+        m_path = f"{root}.measures[{m_i}]"
+        add_counts(measure.get("denoms"), f"{m_path}.denoms")
+        for c_i, cls in enumerate(_listed(measure.get("classes"))):
+            if not isinstance(cls, dict):
+                continue
+            c_path = f"{m_path}.classes[{c_i}]"
+            add_counts(cls.get("denoms"), f"{c_path}.denoms")
+            for k_i, category in enumerate(_listed(cls.get("categories"))):
+                if isinstance(category, dict):
+                    refs.extend(
+                        (f"{c_path}.categories[{k_i}].measurements[{x_i}]", x)
+                        for x_i, x in enumerate(_listed(category.get("measurements")))
+                    )
+    return [
+        f"{path}.groupId (the id of one of the table's groups, not {x['groupId']!r})"
+        for path, x in refs
+        if isinstance(x, dict) and isinstance(x.get("groupId"), str) and x["groupId"] not in declared
+    ]
 
 
 def _require_weekly_phases(records: list[dict[str, Any]], source: str) -> None:
