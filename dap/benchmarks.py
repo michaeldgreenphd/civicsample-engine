@@ -909,8 +909,18 @@ def _unconverted_percentage_problems(module: dict[str, Any], root: str) -> list[
     return out
 
 
+# The CT.gov parameter types a race or ethnicity table of participants is posted in: a count of participants,
+# or a number (a count or a percentage, by its unit). The extractors read every row as participants whatever
+# the type, so a table of `COUNT_OF_UNITS` (sites, specimens) or a `MEAN` was published as participant counts;
+# the sex/gender parser already treats those types as non-participant. Units are free text (the stored race
+# and ethnicity measures include misspellings of "participants" and once "caucasian"), so only the type is
+# checked. All 3,791 such measures in the real stored trials are COUNT_OF_PARTICIPANTS (3,490) or NUMBER (301).
+DEMOGRAPHIC_PARAM_TYPES: frozenset[str] = frozenset({"COUNT_OF_PARTICIPANTS", "NUMBER"})
+
+
 def _demographic_row_value_problems(module: dict[str, Any], root: str) -> list[str]:
-    """Values in the rows the race and ethnicity extractors read that are neither counts nor percentages.
+    """Race and ethnicity measures the extractors read that are not a table of participants
+    (`DEMOGRAPHIC_PARAM_TYPES`), and values in their rows that are neither counts nor percentages.
 
     `sum_measurements` truncates a count (`int(num)`), keeps a negative one, and converts a percentage only
     from 0 to 100, reading any other as a count. So a White count of 159.5 lost half a participant to
@@ -926,6 +936,13 @@ def _demographic_row_value_problems(module: dict[str, Any], root: str) -> list[s
     out: list[str] = []
     for i, measure in enumerate(_listed(module.get("measures"))):
         if not _read_at_whole_population(measure, overall, True):
+            continue
+        param = measure.get("paramType")
+        if param not in DEMOGRAPHIC_PARAM_TYPES:
+            out.append(
+                f"{root}.measures[{i}].paramType (COUNT_OF_PARTICIPANTS or NUMBER, a table of participants, "
+                f"not {param!r})"
+            )
             continue
         pct = src_utils.is_percentage_measure(measure)
         for j, cls in enumerate(_listed(measure.get("classes"))):

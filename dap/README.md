@@ -147,7 +147,10 @@ the measure, on every class or in the table's denominators: registered enrollmen
 baseline, so without one the extractors read the percentages as counts (`_unconverted_percentage_problems`).
 In the race and ethnicity measures the extractors read, every value that reads as a number must be a
 non-negative whole count, or in a percentage measure a number from 0 to 100 (`_demographic_row_value_problems`):
-`sum_measurements` truncated 159.5, kept -1, and read 150% as 150 participants. The locations module and list, and every
+`sum_measurements` truncated 159.5, kept -1, and read 150% as 150 participants.
+Such a measure must also be a table of participants, posted as `COUNT_OF_PARTICIPANTS` or `NUMBER`
+(`DEMOGRAPHIC_PARAM_TYPES`): the extractors read a `COUNT_OF_UNITS` (sites, specimens) or `MEAN` table as
+participant counts. Its unit, free text in CT.gov, is not checked. The locations module and list, and every
 location and collaborator entry, are checked the same way (`LIST_ENTRY_FIELDS`): a skipped `null`
 location, or a module read as empty, would lower or zero the listed facilities and move the
 footprint class with nothing reported. Every collaborator must also carry a non-blank `name`: one

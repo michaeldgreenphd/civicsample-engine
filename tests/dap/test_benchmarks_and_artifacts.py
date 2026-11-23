@@ -2101,6 +2101,37 @@ def test_race_values_the_extractors_read_load(tmp_path: Path, layout: str, value
     assert len(_load_pair(tmp_path, _set(st, _WHITE, value))) == 2
 
 
+@pytest.mark.parametrize(
+    ("param", "unit", "refused"),
+    [
+        # On 9df0a41 each loaded and was published as participant counts, `omb_compatible`.
+        ("COUNT_OF_UNITS", "sites", True),
+        ("MEAN", "participants", True),
+        (None, "participants", True),
+        # Controls, on both heads: the two types the stored race and ethnicity tables use.
+        ("COUNT_OF_PARTICIPANTS", "Participants", False),
+        ("NUMBER", "participants", False),
+    ],
+)
+def test_a_race_table_must_be_a_table_of_participants(
+    tmp_path: Path, param: str | None, unit: str, refused: bool
+) -> None:
+    st = _measured_study("NCT99800075")
+    measure = st["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]
+    measure["unitOfMeasure"] = unit
+    if param is None:
+        measure.pop("paramType", None)
+    else:
+        measure["paramType"] = param
+    if not refused:
+        assert len(_load_pair(tmp_path, st)) == 2
+        return
+    want = (f"NCT99800075 lacks {_BASE}.measures[0].paramType (COUNT_OF_PARTICIPANTS or NUMBER, a table of "
+            f"participants, not {param!r})")
+    with pytest.raises(ValueError, match=re.escape(want)):
+        _load_pair(tmp_path, st)
+
+
 def test_a_single_group_row_naming_its_group_twice_is_refused(tmp_path: Path) -> None:
     # On 9a955a7 it loaded, and with no Overall id the extractors read the last entry: White 10, not 60.
     bad = _measured_study("NCT99800022")
