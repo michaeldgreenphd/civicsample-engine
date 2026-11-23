@@ -90,6 +90,15 @@ Hard safety guarantees:
   Redirects are not followed (a 3xx is a failed download) and a response
   that reports one is refused; an existing blob is kept only if it hashes to
   its digest, and no file is handed to a page extractor unless it does.
+- A downloaded PDF whose byte count is not the payload's ``size`` is a failed
+  download of that document (``download_error`` ``download_size_mismatch``),
+  counted with the other failed downloads, and the run goes on. Its bytes are
+  not indexed or recorded in ``url_manifest.json``, and a blob the download
+  created is removed (one that was already there is kept). With no payload
+  ``size`` there is nothing to compare against and the download is taken. A
+  ``url_manifest.json`` record skips the download only when its byte count,
+  ``size`` and upload date are the payload's; a record that does not describe
+  the bytes a run then verifies and indexes is replaced by one that does.
 """
 
 from __future__ import annotations
@@ -1123,8 +1132,24 @@ def _index_study_documents(
             )
             continue
 
-        # Ensure url_manifest records local-PDF hits too when API size/uploadDate exist
-        if cache_store.lookup_url_manifest(url) is None:
+        # The url_manifest record is made to describe the bytes just verified and
+        # indexed (a local-PDF hit too). A record that does not (none yet, one an
+        # earlier version wrote at the wrong size, one for an older upload date)
+        # is replaced, or the URL keeps no record of the digest it is profiled
+        # with (can_skip_download trusts neither of those two), and an offline
+        # run with no local folder finds no digest for it. A record that
+        # already does (the fast path's, or the one the download branch just
+        # wrote) is left as it is, so verified_at is not rewritten every run.
+        # Where api_size is non-null the bytes here are of that size (the local
+        # and download branches checked it, can_skip_download required it), so
+        # record_url_manifest's size check cannot refuse this record.
+        existing_rec = cache_store.lookup_url_manifest(url)
+        if existing_rec is None or (
+            existing_rec.get("sha256"),
+            existing_rec.get("byte_count"),
+            existing_rec.get("api_size"),
+            existing_rec.get("api_upload_date"),
+        ) != (resolved_sha, resolved_bytes, api_size, upload_date):
             cache_store.record_url_manifest(
                 url,
                 sha256=resolved_sha,

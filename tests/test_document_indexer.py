@@ -7124,3 +7124,107 @@ def test_m1_r6_unreadable_pdf_path_is_a_cache_integrity_error(
     assert "DOCUMENT INDEXER ERROR" in err and "could not be read" in err, err
     assert session.requested_urls == []
     assert {p: p.read_bytes() for p in _rt_written(tmp_path, "uc") if p.is_file()} == before
+
+
+# ---------------------------------------------------------------------------
+# Round 7: two skeptics' reproduced defects in the round-5 changes. Each test
+# failed until the module was fixed. Fictional NCT990000xx ids only, fake
+# providers and sessions only, no network.
+# ---------------------------------------------------------------------------
+
+
+def _r7_write_url_manifest(cache: Path, url: str, record: dict[str, Any]) -> None:
+    """Write ``cache/url_manifest.json`` holding one record, as an earlier version of the code wrote it."""
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / "url_manifest.json").write_text(json.dumps({url: record}), encoding="utf-8")
+
+
+def test_m1_r7_local_pdf_resolve_replaces_an_untrusted_url_manifest_record(tmp_path: Path) -> None:
+    """A verified local-PDF resolve replaces a url_manifest record that does not describe those bytes.
+
+    Round 5 made ``can_skip_download`` refuse a record whose ``byte_count`` is
+    not the payload's ``size`` (written by earlier code), but the record was
+    written after indexing only when the URL had none, so a document then
+    resolved from ``--local-pdf-dir`` left the untrusted record in place: the
+    URL never got a record of the verified digest, and a later offline run
+    with no local folder reported ``offline_cache_miss`` although that
+    digest's entry was cached. A record for an older upload date was left in
+    place the same way. Correct: the record is replaced by one of the bytes
+    just verified and indexed, which ``can_skip_download`` trusts, so the
+    offline run is a cache hit; a record that already describes them is left
+    as it is (its ``verified_at`` is not rewritten on every run).
+    """
+    stale = _make_minimal_pdf("Bytes an earlier run accepted at the wrong size")
+    posted = _make_minimal_pdf("The trial's posted protocol at its posted size, as sized")
+    assert len(stale) != len(posted)
+    stale_sha, posted_sha = di.sha256_bytes(stale), di.sha256_bytes(posted)
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    study = _make_study(_RT_A, [_r5_doc("Prot_000.pdf", len(posted))])
+    local = tmp_path / "local"
+    (local / _RT_A).mkdir(parents=True)
+    (local / _RT_A / "Prot_000.pdf").write_bytes(posted)
+    provider = di.FixturePageTextProvider({posted_sha: _rt_stat_pages()})
+    untrusted = {
+        # The kind of record earlier code wrote for a 200 %PDF- body of the wrong size.
+        "wrong_size": {"sha256": stale_sha, "byte_count": len(stale), "api_size": len(posted), "api_upload_date": _R5_UPLOAD},
+        # A record of the document as posted before its current upload date.
+        "older_upload": {"sha256": stale_sha, "byte_count": len(stale), "api_size": len(stale), "api_upload_date": "01/01/2019 10:00"},
+    }
+    for label, old in untrusted.items():
+        cache, index = tmp_path / f"{label}_cache", tmp_path / f"{label}_index.jsonl"
+        _r7_write_url_manifest(cache, url, {**old, "verified_at": _RT_STAMP, "pipeline_commit": None})
+        store = di.DocumentCacheStore(cache, index)
+        assert store.can_skip_download(url, api_size=len(posted), api_upload_date=_R5_UPLOAD) is None, label
+        profile = cli_mod.index_trial_from_study(
+            study, cache_store=store, provider=provider, session=_R3Session({}), local_pdf_dir=local,
+            extracted_at="2026-11-20T00:00:00Z",
+        )
+        assert profile["documents"][0]["sha256"] == posted_sha, label
+        store.flush_index()
+        expected = {
+            "sha256": posted_sha,
+            "byte_count": len(posted),
+            "api_size": len(posted),
+            "api_upload_date": _R5_UPLOAD,
+            "verified_at": "2026-11-20T00:00:00Z",
+            "pipeline_commit": None,
+        }
+        assert store.lookup_url_manifest(url) == expected, label
+
+        # A fresh store, offline, with no local folder: the verified digest is served from the cache.
+        offline_store = di.DocumentCacheStore(cache, index)
+        assert offline_store.can_skip_download(url, api_size=len(posted), api_upload_date=_R5_UPLOAD) == posted_sha
+        doc = cli_mod.index_trial_from_study(study, cache_store=offline_store, provider=provider, offline=True)[
+            "documents"
+        ][0]
+        assert (doc["sha256"], doc["download_error"], doc["cache_hit"]) == (posted_sha, None, True), (label, doc)
+
+        # Resolved from the local folder again: the record already describes the bytes and is not rewritten.
+        again = di.DocumentCacheStore(cache, index)
+        cli_mod.index_trial_from_study(
+            study, cache_store=again, provider=provider, session=_R3Session({}), local_pdf_dir=local,
+            extracted_at="2026-11-21T00:00:00Z",
+        )
+        assert again.lookup_url_manifest(url) == expected, label
+        assert json.loads((cache / "url_manifest.json").read_text(encoding="utf-8")) == {url: expected}, label
+    assert [call[0] for call in provider.calls] == [posted_sha, posted_sha], "stale bytes reached the extractor"
+
+
+def test_m1_r7_cli_help_states_the_download_size_rule() -> None:
+    """``--help`` (the module docstring) states how a download of the wrong size is handled.
+
+    Round 5 made a 200 ``%PDF-`` response whose byte count is not the
+    payload's non-null ``size`` a per-document failed download, but the help
+    text an operator reads said only that a download's ``%PDF-`` header and
+    positive byte count are checked, and gave the size rule for a local PDF
+    (exit 1) alone. Correct: the help names ``download_size_mismatch``, says
+    the run goes on and that the bytes are neither indexed nor recorded, and
+    says what happens when the payload gives no size.
+    """
+    help_text = cli_mod.build_arg_parser().format_help()
+    for text in (cli_mod.__doc__ or "", help_text):
+        flat = " ".join(text.split())
+        assert "download_size_mismatch" in flat
+        assert "the run goes on" in flat
+        assert "not indexed or recorded in ``url_manifest.json``" in flat
+        assert "With no payload ``size`` there is nothing to compare against" in flat
