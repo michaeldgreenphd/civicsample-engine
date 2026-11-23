@@ -468,6 +468,55 @@ def test_contract_checker_refuses_tampered_or_invariant_violating_builds(tmp_pat
     assert any("withhold percentiles" in x for x in probs_small)
 
 
+def test_contract_reports_non_integer_min_cell_trials_instead_of_raising(tmp_path: Path) -> None:
+    studies_dir = fx.write_studies_dir(fx.build_fictional_cohort(), tmp_path / "studies")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    valid = tmp_path / "valid"
+    assert (
+        cli_build.main(
+            [
+                "--records-dir",
+                str(studies_dir),
+                "--sponsor-rules",
+                str(rules_path),
+                "--generated-at",
+                "2026-11-21T00:00:00+00:00",
+                "--out",
+                str(valid),
+            ]
+        )
+        == 0
+    )
+    base_loaded = artifacts.load_dir(valid)
+    assert artifacts.check_contract(base_loaded) == []
+
+    for bad_value in ("five", "5", True, 2.5, None, 0):
+        tampered = copy.deepcopy(base_loaded)
+        tampered["run.json"]["parameters"]["min_cell_trials"] = bad_value
+        problems = artifacts.check_contract(tampered)  # must not raise
+        want = f"run.json: parameters.min_cell_trials must be an integer >= 1 (got {bad_value!r})"
+        assert want in problems, (bad_value, problems)
+        # The fallback threshold is the build's own default (5): no cell is misjudged.
+        assert not any("withhold percentiles" in x or "must publish percentiles" in x for x in problems)
+
+    # The remaining checks still run after the problem: a leaked small cell is reported too.
+    tampered_both = copy.deepcopy(base_loaded)
+    tampered_both["run.json"]["parameters"]["min_cell_trials"] = "five"
+    small_cell = next(
+        s for s in tampered_both["strata.json"]["strata"] if s["pooled"]["n_trials"] < 5
+    )
+    small_cell["pooled"]["us_facility_share_distribution"]["percentiles"] = {
+        "p10": 0.1,
+        "p25": 0.2,
+        "p50": 0.3,
+        "p75": 0.4,
+        "p90": 0.5,
+    }
+    probs_both = artifacts.check_contract(tampered_both)
+    assert "run.json: parameters.min_cell_trials must be an integer >= 1 (got 'five')" in probs_both
+    assert any("withhold percentiles" in x for x in probs_both)
+
+
 def test_unicode_line_separators_in_jsonl_roundtrip(tmp_path: Path) -> None:
     """U+2028, U+2029, \\x85, \\x0b, \\x0c inside JSON strings must never split JSONL lines."""
     tricky_title = "Phase 3 Study\u2028LineSep\u2029ParaSep\x85NextLine\x0bVT\x0cFF"

@@ -820,9 +820,17 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
                 f"run.json: run_id suffix {run_id[-10:]!r} != recomputed run_identity {expected_ident!r}"
             )
 
-    min_cell = int(((run.get("parameters") or {}).get("min_cell_trials")) or 0)
-    if min_cell < 1:
-        p.append("run.json: parameters.min_cell_trials must be >= 1")
+    # Only a real integer >= 1 is a threshold. A string, float, bool (an int
+    # subclass) or absent value is reported as a contract problem rather than
+    # coerced or raised out of the checker; the remaining checks then run
+    # against the default threshold so every other problem is still reported.
+    raw_min_cell = (run.get("parameters") or {}).get("min_cell_trials")
+    if isinstance(raw_min_cell, int) and not isinstance(raw_min_cell, bool) and raw_min_cell >= 1:
+        min_cell = raw_min_cell
+    else:
+        p.append(
+            f"run.json: parameters.min_cell_trials must be an integer >= 1 (got {raw_min_cell!r})"
+        )
         min_cell = 5
 
     # Check per-trial invariants
