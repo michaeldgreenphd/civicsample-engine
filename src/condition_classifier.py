@@ -21,14 +21,48 @@ logger = logging.getLogger(__name__)
 _ontology = None
 _flat_lookup = None          # keyword -> (primary, secondary)
 _all_keywords = None         # ordered list of keywords for fuzzy matching
+_short_patterns: Optional[dict] = None   # short keyword -> whole-word pattern
 
 ONTOLOGY_PATH = Path(__file__).resolve().parent.parent / "condition_ontology.json"
 DEFAULT_FUZZY_THRESHOLD = 85
 
+# Keywords this short are mostly acronyms ("ra", "ms", "pe", "ed", "gi",
+# "all", "sti", "dic", "skin", "burn", "afib"). Found inside a longer word
+# they name a different condition: "Trauma" holds "ra" (rheumatoid
+# arthritis), "Falls" holds "all" (a leukaemia), "Sedation" holds "ed",
+# "Dyskinesia" holds "skin", "Burnout" holds "burn". Such a keyword matches
+# only as a whole word, with an optional plural "s"/"es" ("MS", "AIDS").
+# Longer keywords keep matching anywhere in the text, because inside a
+# compound term they still name its condition ("Gliosarcoma" holds
+# "sarcoma", "Bronchopulmonary" holds "pulmonary", "Colonoscopy" holds
+# "colon"). The threshold of 4 was chosen on the published records of
+# 2026-11-15 (142,369 condition mentions): keywords of up to 4 characters
+# account for nearly all matches inside unrelated words, and a threshold of
+# 3 left "Burnout" -> burn wound and "Dyskinesia" -> dermatology in place.
+SHORT_KEYWORD_MAX_LEN = 4
 
-def _load_ontology():
+
+def _short_keyword_pattern(kw: str) -> "re.Pattern[str]":
+    """Whole-word pattern for a short keyword, allowing a plural "s"/"es"."""
+    return re.compile(r"(?<!\w)" + re.escape(kw) + r"(?:s|es)?(?!\w)")
+
+
+def _keyword_matches(kw: str, norm: str) -> bool:
+    """Whether a keyword occurs in normalised condition text.
+
+    Short keywords (SHORT_KEYWORD_MAX_LEN characters or fewer) must stand as
+    a whole word; longer keywords may sit inside a longer word. See the note
+    on SHORT_KEYWORD_MAX_LEN for why.
+    """
+    pattern = (_short_patterns or {}).get(kw)
+    if pattern is not None:
+        return pattern.search(norm) is not None
+    return kw in norm
+
+
+def _load_ontology() -> None:
     """Load and index the ontology file into fast lookup structures."""
-    global _ontology, _flat_lookup, _all_keywords
+    global _ontology, _flat_lookup, _all_keywords, _short_patterns
 
     with open(ONTOLOGY_PATH) as f:
         _ontology = json.load(f)
@@ -41,6 +75,10 @@ def _load_ontology():
 
     # Sort keywords longest-first so longer phrases match before short ones
     _all_keywords = sorted(_flat_lookup.keys(), key=len, reverse=True)
+    _short_patterns = {
+        kw: _short_keyword_pattern(kw)
+        for kw in _all_keywords if len(kw) <= SHORT_KEYWORD_MAX_LEN
+    }
     logger.info(f"Loaded condition ontology: {len(_ontology['categories'])} primary categories, "
                 f"{len(_flat_lookup)} keywords")
 
@@ -84,9 +122,9 @@ def classify_condition(condition: str,
 
     norm = _normalize(condition)
 
-    # --- Step A: exact / substring keyword match (longest-first) -----------
+    # --- Step A: keyword match, longest-first (short keywords whole-word) --
     for kw in _all_keywords:
-        if kw in norm:
+        if _keyword_matches(kw, norm):
             return _flat_lookup[kw]
 
     # --- Step B: fuzzy match on the whole condition string -----------------
