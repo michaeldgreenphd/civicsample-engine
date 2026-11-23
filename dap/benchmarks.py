@@ -2196,10 +2196,16 @@ def check_condition_mesh_provenance(
     nothing could then show the two files are one pull. The container has no
     ``snapshot_date``; the sidecar's is recorded, not matched.
 
-    Other inputs (a records directory, JSON or JSONL archives of API v2
-    studies) carry no extraction stamps to match, so only coverage and the
-    one-run check apply; the sidecar's stamps are recorded as found (``None``
-    when its lines carry none) and ``provenance_reason`` says why.
+    A raw ``studies`` or ``records`` container may carry the same stamps
+    (``load_study_records`` checks their form and publishes them). Whichever
+    it supplies must equal every line's: they were published beside a sidecar
+    from another extraction as provenance-checked. No stored raw container
+    carries either stamp.
+
+    Other inputs (a records directory, JSONL archives of API v2 studies, a
+    container without stamps) carry no extraction stamps to match, so only
+    coverage and the one-run check apply; the sidecar's stamps are recorded as
+    found (``None`` when its lines carry none) and ``provenance_reason`` says why.
     """
     if mesh_meta is None:
         return None
@@ -2236,6 +2242,21 @@ def check_condition_mesh_provenance(
                 f"extracted_at={rec_pair[0]!r}, pipeline_commit={rec_pair[1]!r}"
             )
 
+    supplied = {} if weekly else {
+        k: study_meta.get(k) for k in ("extracted_at", "pipeline_commit") if study_meta.get(k) is not None
+    }
+    if supplied:
+        stale = [n for n in sorted(mesh_sidecar) if any(mesh_sidecar[n].get(k) != v for k, v in supplied.items())]
+        if stale:
+            first = mesh_sidecar[stale[0]]
+            raise ValueError(
+                f"{where}: {len(stale)} of {len(mesh_sidecar)} condition_mesh lines are not from the study "
+                f"records' extraction: {stale[0]} has "
+                + ", ".join(f"{k}={first.get(k)!r}" for k in supplied)
+                + f", but {study_meta.get('path')} has "
+                + ", ".join(f"{k}={v!r}" for k, v in supplied.items())
+            )
+
     triples = sorted(
         {tuple(entry.get(k) for k in MESH_RUN_STAMP_KEYS) for entry in mesh_sidecar.values()},
         key=repr,
@@ -2251,6 +2272,12 @@ def check_condition_mesh_provenance(
     if weekly:
         check = "full_records_run_stamps_matched_and_cohort_covered"
         reason = "every line's extracted_at and pipeline_commit equal the full records' container stamps"
+    elif supplied:
+        check = "study_records_run_stamps_matched_and_cohort_covered"
+        reason = (
+            f"every line's {' and '.join(supplied)} equal the {study_meta.get('input_format')} container's; "
+            "checked that every cohort trial has a line and all lines carry one run's stamps"
+        )
     else:
         check = "cohort_covered_and_one_run_only"
         reason = (

@@ -844,6 +844,38 @@ def test_mesh_sidecar_line_state_must_agree_with_its_payload(tmp_path: Path) -> 
             benchmarks.load_condition_mesh(path)
 
 
+def _stamped_raw_container(tmp_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any], list[str]]:
+    studies = fx.build_fictional_cohort()
+    path = tmp_path / "studies.json"
+    path.write_text(json.dumps({"studies": studies, "extracted_at": fx.WEEKLY_EXTRACTED_AT,
+                                "pipeline_commit": fx.WEEKLY_PIPELINE_COMMIT}), encoding="utf-8")
+    records, study_meta = benchmarks.load_study_records(path)
+    return records, study_meta, [s["protocolSection"]["identificationModule"]["nctId"] for s in studies]
+
+
+def test_a_stamped_raw_container_refuses_a_sidecar_from_another_extraction(tmp_path: Path) -> None:
+    # On 9c076fc the container's stamps were published beside this sidecar as provenance-checked.
+    records, study_meta, cohort = _stamped_raw_container(tmp_path)
+    other = _weekly_mesh_lines(cohort, extracted_at="2026-11-08T06:00:00+00:00")
+    mesh_map, mesh_meta = benchmarks.load_condition_mesh(_write_mesh_sidecar(tmp_path / "other.jsonl.gz", other))
+    with pytest.raises(ValueError, match="condition_mesh lines are not from the study records' extraction"):
+        benchmarks.check_condition_mesh_provenance(mesh_map, mesh_meta, records, study_meta)
+    # The same pull is accepted and says which stamps it matched.
+    same_map, same_meta = benchmarks.load_condition_mesh(
+        _write_mesh_sidecar(tmp_path / "same.jsonl.gz", _weekly_mesh_lines(cohort)))
+    checked = benchmarks.check_condition_mesh_provenance(same_map, same_meta, records, study_meta)
+    assert checked is not None
+    assert checked["provenance_check"] == "study_records_run_stamps_matched_and_cohort_covered"
+
+
+def test_a_stamped_raw_container_accepts_its_own_sidecar(tmp_path: Path) -> None:
+    # Control, on both heads.
+    records, study_meta, cohort = _stamped_raw_container(tmp_path)
+    mesh_map, mesh_meta = benchmarks.load_condition_mesh(
+        _write_mesh_sidecar(tmp_path / "same.jsonl.gz", _weekly_mesh_lines(cohort)))
+    assert benchmarks.check_condition_mesh_provenance(mesh_map, mesh_meta, records, study_meta) is not None
+
+
 def test_raw_records_mesh_sidecar_checks_coverage_and_one_run(tmp_path: Path) -> None:
     studies = fx.build_fictional_cohort()
     records, study_meta = benchmarks.load_study_records(fx.write_studies_dir(studies, tmp_path / "studies"))
@@ -1843,6 +1875,44 @@ def _arms_only_study(nct_id: str, measures: dict[str, dict[str, tuple[str, str]]
     module["groups"] = _ARMS
     module["denoms"][0]["counts"] = [{"groupId": g["id"], "value": "50"} for g in _ARMS]
     return st
+
+
+def _three_group_race_study(nct_id: str, titles: list[str]) -> dict:
+    """A raw study whose race table posts three groups (White 60/40/20, Asian 40/10/30 of 100/50/50)."""
+    groups = [{"id": f"BG00{i}", "title": title} for i, title in enumerate(titles)]
+    values = {"White": ("60", "40", "20"), "Asian": ("40", "10", "30")}
+    st = fx.make_raw_ctgov_study(nct_id, measures=[{
+        "title": "Race (NIH/OMB)", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+        "classes": [{"categories": [
+            {"title": label,
+             "measurements": [{"groupId": g["id"], "value": values[label][k]} for k, g in enumerate(groups)]}
+            for label in values
+        ]}],
+    }])
+    module = st["resultsSection"]["baselineCharacteristicsModule"]
+    module["groups"] = groups
+    module["denoms"][0]["counts"] = [
+        {"groupId": g["id"], "value": ("100", "50", "50")[k]} for k, g in enumerate(groups)
+    ]
+    return st
+
+
+@pytest.mark.parametrize(
+    ("titles", "status"),
+    [
+        # On 9c076fc the first group titled as the whole population was read (rule order), whatever the other held.
+        (["Total", "Arm A", "Overall"], "whole_population_group_unidentified"),
+        (["Arm A", "Overall", "Total"], "whole_population_group_unidentified"),
+        # Controls, on both heads: one Total group, and NCT03410693's shape, whose arms only contain "Overall".
+        (["Arm A", "Arm B", "Total"], "omb_compatible"),
+        (["Rx_Overall Population", "Chemo_Overall Population", "Total"], "omb_compatible"),
+    ],
+)
+def test_a_table_with_two_whole_population_groups_reads_unidentified(titles: list[str], status: str) -> None:
+    race = extract_demographics(_three_group_race_study("NCT99800055", titles))["race"]
+    assert race["table_status"] == status
+    if status == "whole_population_group_unidentified":
+        assert (race["counts"], race["status_detail"]) == (None, "several_groups_titled_as_whole_population")
 
 
 _ARM_RACE = {"Race (NIH/OMB)": {"White": ("40", "20"), "Asian": ("10", "30")}}

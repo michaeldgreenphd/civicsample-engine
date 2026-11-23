@@ -970,12 +970,33 @@ def whole_population_group_unidentified(record: dict[str, Any]) -> bool:
     in all 2,198 multi-group tables of the 3,133 stored ones. The sex/gender parser
     picks its total by a sum check and flags a positional fallback, so it is not affected.
     """
+    return whole_population_group_problem(record) is not None
+
+
+def whole_population_group_problem(record: dict[str, Any]) -> str | None:
+    """Why no one group of a raw record's multi-group baseline table is the whole population, or None.
+
+    `multi_group_baseline_without_total_group`: none is recognised (above).
+    `several_groups_titled_as_whole_population`: more than one group passes the test
+    `src.utils.get_overall_group_id` applies (the last group's title starting with "total", or a title
+    exactly in `_WHOLE_POPULATION_GROUP_TITLES`), so its choice is a matter of rule order: in
+    `[Total, Arm A, Overall]` it read the first, whatever the other held. None of the 2,171 stored
+    multi-group tables has two such groups (NCT03410693's arms are titled "... Overall Population",
+    which only the looser `is_overall_group_title` matches, and its last group, "Total", is read).
+    """
     results = record.get("resultsSection")
     module = results.get("baselineCharacteristicsModule") if isinstance(results, dict) else None
     groups = module.get("groups") if isinstance(module, dict) else None
     if not (isinstance(groups, list) and len(groups) > 1 and all(isinstance(g, dict) for g in groups)):
-        return False
-    return src_utils.get_overall_group_id(record) is None
+        return None
+    if src_utils.get_overall_group_id(record) is None:
+        return "multi_group_baseline_without_total_group"
+    titles = [str(g.get("title") or "").strip().lower() for g in groups]
+    candidates = {
+        i for i, title in enumerate(titles)
+        if title in src_utils._WHOLE_POPULATION_GROUP_TITLES or (i == len(titles) - 1 and title.startswith("total"))
+    }
+    return "several_groups_titled_as_whole_population" if len(candidates) > 1 else None
 
 
 # The absent details the extractors decide from measure titles and row labels alone, never from a group's
@@ -989,8 +1010,8 @@ ABSENT_BY_LABEL_DETAILS: frozenset[str] = frozenset(
 )
 
 
-def _whole_population_unidentified_block() -> dict[str, Any]:
-    """The race or ethnicity block of a table with no whole-population group: no counts or shares."""
+def _whole_population_unidentified_block(detail: str) -> dict[str, Any]:
+    """The race or ethnicity block of a table with no one whole-population group: no counts or shares."""
     return {
         "table_status": "whole_population_group_unidentified",
         "usable_for_omb_pooling": False,
@@ -1003,7 +1024,7 @@ def _whole_population_unidentified_block() -> dict[str, Any]:
         "of_baseline_total": None,
         "of_classified": None,
         "of_classified_withheld_reason": "whole_population_group_unidentified",
-        "status_detail": "multi_group_baseline_without_total_group",
+        "status_detail": detail,
     }
 
 
@@ -1059,15 +1080,16 @@ def extract_demographics(
         reference_medians=refs.get("ethnicity"),
         baseline_participants=baseline_participants,
     )
-    if posted and "protocolSection" in record and whole_population_group_unidentified(record):
+    group_problem = whole_population_group_problem(record) if posted and "protocolSection" in record else None
+    if group_problem is not None:
         # No group stands for the whole trial, so neither extractor's counts are the trial's. Whether a
         # dimension has a measure at all does not depend on the group, so a dimension with none keeps its
         # absent status (`ABSENT_BY_LABEL_DETAILS`) and still counts as omitted in the US-site audit: an
         # arm-only table with a race measure and no ethnicity measure had marked both unidentified.
         if race_info["status_detail"] not in ABSENT_BY_LABEL_DETAILS:
-            race_info = _whole_population_unidentified_block()
+            race_info = _whole_population_unidentified_block(group_problem)
         if eth_info["status_detail"] not in ABSENT_BY_LABEL_DETAILS:
-            eth_info = _whole_population_unidentified_block()
+            eth_info = _whole_population_unidentified_block(group_problem)
 
     omission_audit = build_us_site_omission_audit(
         geo,

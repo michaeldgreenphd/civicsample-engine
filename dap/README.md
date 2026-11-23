@@ -50,7 +50,10 @@ modified.
      extractors recognise as the whole population (`src.utils.get_overall_group_id`
      finds no Total group) is `whole_population_group_unidentified` for race and
      ethnicity, with no counts or shares: the extractors would read its last
-     group, an arm, as the trial. A dimension the table has no measure for keeps
+     group, an arm, as the trial. So is a table where more than one group passes
+     that test (`several_groups_titled_as_whole_population`, as in
+     `[Total, Arm A, Overall]`, read by rule order); none of the 2,171 stored
+     multi-group tables has two. A dimension the table has no measure for keeps
      `table_absent_in_posted_results` (`ABSENT_BY_LABEL_DETAILS`, decided from
      titles and row labels, never a group's values), so it still counts as
      omitted in the US-site audit. CT.gov posts such a table rarely (one of the
@@ -341,8 +344,12 @@ does not belong to its study records (`benchmarks.check_condition_mesh_provenanc
   so every line must equal the records' pair. Another week's or another
   commit's sidecar is refused, as are records without both stamps.
 - **Raw API v2 inputs (`--records-dir`, or `--records` given study documents
-  or a JSONL archive):** they carry no extraction stamps, so only coverage and
-  the one-run check apply.
+  or a JSONL archive):** a `studies` or `records` container may carry
+  `extracted_at` and `pipeline_commit`; whichever it supplies must equal every
+  line's (`study_records_run_stamps_matched_and_cohort_covered`), since they
+  had been published beside a sidecar from another extraction. Inputs without
+  stamps (no stored raw container carries any) get only coverage and the
+  one-run check.
 
 `run.json` `inputs.condition_mesh` records the sidecar's three stamps (null
 when its lines carry none), `provenance_check`, `provenance_reason`,
