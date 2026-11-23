@@ -53,13 +53,24 @@ it is handed. A trial whose ``in_audit`` is true in the site's
 data/outcomes/index.json must not be parsed, retained or recorded. Which
 entry point guards that:
 
-  Enforce when the record carries an ``in_audit`` key (raise
+  Enforce when the record carries ``in_audit`` (raise
   PopulationAuditHoldoutError; see _refuse_audit_holdout_record):
-      parse_study_outcomes, parse_outcomes_frame (per study),
-      select_raw_outcome_populations, build_outcomes_from_raw.
-    A record that carries ``in_audit`` is refused when the value is True,
-    when it is not a bool, or when the record's nct_id is not exactly
-    ``^NCT[0-9]{8}$``. A bare CT.gov API v2 study dict carries no
+      parse_study_outcomes, parse_outcomes_frame (the whole batch, before
+      any study is parsed), select_raw_outcome_populations,
+      build_outcomes_from_raw.
+    "Carries" means a key or field that reads as in_audit once case,
+    spaces, hyphens and underscores are ignored ("inAudit", "IN_AUDIT",
+    "in-audit" count), at any depth (beside the nctId, on protocolSection,
+    in a merged ``manifest`` sub-record, in a pandas object's ``attrs``), in
+    a dict or in any other mapping-like record (collections.UserDict,
+    types.MappingProxyType, a pandas Series), a namedtuple (a
+    ``df.itertuples()`` row) or a dataclass instance. Such a
+    record is refused when any flag is True, when any is not exactly a
+    bool, when the nct_id the entry point would stamp is not exactly
+    ``^NCT[0-9]{8}$``, or when another nct_id the record carries for itself
+    disagrees with it. parse_outcomes_frame also refuses a batch in which
+    only some studies carry ``in_audit``, and a single record passed where
+    a batch is expected. A bare CT.gov API v2 study dict carries no
     ``in_audit``; for it these four rely on their caller, as below.
   Rely on the caller (the input carries no ``in_audit`` and no entry point
   receives an audit id set):
@@ -69,10 +80,28 @@ entry point guards that:
       normalize_population_text and population_audit (description text),
       structural_checks (parsed outputs, which carry no ``in_audit``).
   Callers today: none in code. The only importer in this repository is
-  tests/test_analysis_population_parser.py. PR #97's outcomes-shard builder
-  (scripts/build_outcomes_shards.py --population-parsed, on its own branch)
-  reads this module's serialized output from a file without importing it;
-  whoever writes that file must leave holdout trials out of it.
+  tests/test_analysis_population_parser.py. PR #97 (dc38220, on its own
+  branch) reaches this module's output in two ways, and neither has a
+  holdout backstop on the reading side:
+    * scripts/build_outcomes_shards.py --population-parsed reads this
+      module's serialized output from a file without importing it, and
+      passes ``pop_by_nct.get(nct_id)`` to src/outcomes_layout.py
+      build_trial_bundle as ``parsed_populations`` for every merged trial,
+      holdouts included. Its cross-stream firewall
+      (assert_no_audit_cross_stream_leakage) is called with the documents,
+      locations and provenance streams only, never the population stream,
+      and ``analysis_population_parsed`` is not in FORBIDDEN_AUDIT_KEYS.
+    * build_trial_bundle(trial, in_audit=..., population_parser=...) hands
+      an injected parser to extract_reported_results, which calls
+      ``population_parser(study)`` for any trial with a resultsSection,
+      holdouts included. If that parser is parse_study_outcomes, it refuses
+      only when the trial mapping itself carries ``in_audit``;
+      build_trial_bundle takes ``in_audit`` as a separate argument, so a
+      trial mapping without the key is parsed in full.
+  So whoever writes the --population-parsed file, or injects this parser,
+  must leave holdout trials out. The backstop (refusing a holdout's
+  population record and parser call) belongs on that consumer branch, and
+  its test there: this module may not import it.
 """
 
 from __future__ import annotations
@@ -197,45 +226,212 @@ def _is_canonical_nct_id(value: Any) -> bool:
     return isinstance(value, str) and _CANONICAL_NCT_ID_RE.fullmatch(value) is not None
 
 
+# How a key or column name is folded before it is compared with "in_audit" or
+# "nct_id". Assumption: a name that differs from those only by case, spacing,
+# hyphens, dashes or underscores (a camelCase merge, a spreadsheet header, a
+# stray space), by full-width forms of ASCII, or by invisible characters
+# (soft hyphen, zero-width space/joiners, word joiner, BOM) and combining
+# accents a copy-paste adds, was meant as that name. Treating it as such is
+# fail-closed: an unrecognised holdout flag is the failure this guards against,
+# while a false match can only refuse a record. Twin of the same rule in
+# sponsors/ecosystem.py; the two modules import nothing from each other.
+_NAME_IGNORED_RE: re.Pattern[str] = re.compile(
+    r"[\s_\-\u00ad\u0300-\u036f\u200b-\u200d\u2010-\u2015\u2060\u2212\ufe63\ufeff]+"
+)
+_FULLWIDTH_TO_ASCII: dict[int, int] = {code: code - 0xFEE0 for code in range(0xFF01, 0xFF5F)}
+_IN_AUDIT_NAME: str = "inaudit"
+_NCT_ID_NAME: str = "nctid"
+
+
+def _folded_name(name: Any) -> str | None:
+    """``name`` folded for comparison (see _NAME_IGNORED_RE), or None if not text.
+
+    bytes are decoded as latin-1, which never fails, so a bytes key cannot
+    hide a flag; any other non-str name (an int label, None) is not text.
+    """
+    if isinstance(name, (bytes, bytearray)):
+        name = bytes(name).decode("latin-1")
+    if not isinstance(name, str):
+        return None
+    return _NAME_IGNORED_RE.sub("", name.translate(_FULLWIDTH_TO_ASCII)).casefold()
+
+
+def _name_reads_as(name: Any, folded_target: str) -> bool:
+    """True when ``name`` (or any part of a tuple name) folds to ``folded_target``."""
+    if isinstance(name, tuple):
+        return any(_name_reads_as(part, folded_target) for part in name)
+    return _folded_name(name) == folded_target
+
+
+def _is_mapping_like(value: Any) -> bool:
+    """True for anything that answers ``keys()``, ``items()`` and ``[]`` like a dict.
+
+    Method: duck-typed, not ``isinstance(value, dict)`` or
+    ``isinstance(value, collections.abc.Mapping)``. A dict subclass, a
+    collections.UserDict, a types.MappingProxyType and a pandas Series (the
+    row ``df.iterrows()`` yields, whose ``in``, ``.get`` and ``.items()`` read
+    its index labels) all qualify, and so does a DataFrame; a Series is not
+    a Mapping, so the ABC alone would miss it. Text and classes are excluded.
+    """
+    return (
+        not isinstance(value, (str, bytes, bytearray, type))
+        and callable(getattr(value, "keys", None))
+        and callable(getattr(value, "items", None))
+        and hasattr(value, "__getitem__")
+    )
+
+
+@dataclass(frozen=True)
+class _InAuditScan:
+    """What _scan_in_audit found in one record.
+
+    ``flags``: every value stored under a key that reads as in_audit, at any
+    depth. ``sibling_ids``: the values of keys that read as nct_id in the
+    same mapping as such a flag (the id that flag describes).
+    """
+
+    flags: tuple[Any, ...]
+    sibling_ids: tuple[Any, ...]
+
+
+def _keyed_items(node: Any) -> list[tuple[Any, Any]] | None:
+    """(name, value) pairs of a record whose fields have names, else None.
+
+    Method: a mapping-like value gives its items; a namedtuple (what
+    ``df.itertuples()`` yields) gives its fields through ``_asdict()``, and a
+    dataclass instance through its ``__dataclass_fields__``. Without this a
+    namedtuple would be walked as a plain tuple, its values without their
+    names, and a flag in it would be missed.
+    """
+    if _is_mapping_like(node):
+        return list(node.items())
+    if isinstance(node, tuple) and callable(getattr(node, "_asdict", None)):
+        return list(node._asdict().items())
+    fields = getattr(type(node), "__dataclass_fields__", None)
+    if isinstance(fields, dict) and not isinstance(node, type):
+        return [(name, getattr(node, name, None)) for name in fields]
+    return None
+
+
+def _scan_in_audit(record: Any) -> _InAuditScan:
+    """Find every in_audit flag in ``record``, at any depth and under any spelling.
+
+    Method: an explicit-stack walk (no recursion limit) through every record
+    with named fields (_keyed_items: mapping-like values, namedtuples,
+    dataclass instances), the ``attrs`` metadata dict of a pandas object,
+    and every list, tuple, set and numpy object array. Each container is
+    visited once; ``visited`` keeps a reference to it as well as its id(),
+    because a DataFrame's ``items()`` builds a fresh Series per column and a
+    released object's id() can be reused, which would otherwise skip an
+    unvisited container. Strings and numbers are leaves; an iterator or
+    generator is not walked, since reading it would consume it. Assumption:
+    a CT.gov API v2 study, a retained raw record and a stored sponsor record
+    have no key that reads as in_audit, so a flag found anywhere was put
+    there by a manifest merge and marks the record (a flag on
+    identificationModule beside the nctId, on protocolSection, or in a
+    merged manifest sub-record all count).
+    """
+    flags: list[Any] = []
+    sibling_ids: list[Any] = []
+    stack: list[Any] = [record]
+    visited: dict[int, Any] = {}
+    while stack:
+        node = stack.pop()
+        if node is None or isinstance(node, (str, bytes, bytearray, int, float)):
+            continue
+        if id(node) in visited:
+            continue
+        items = _keyed_items(node)
+        if items is not None:
+            visited[id(node)] = node
+            flagged = False
+            ids_here: list[Any] = []
+            for key, value in items:
+                if _name_reads_as(key, _IN_AUDIT_NAME):
+                    flags.append(value)
+                    flagged = True
+                elif _name_reads_as(key, _NCT_ID_NAME):
+                    ids_here.append(value)
+                stack.append(value)
+            if flagged:
+                sibling_ids.extend(ids_here)
+            attrs = getattr(node, "attrs", None)  # pandas Series/DataFrame metadata
+            if isinstance(attrs, dict):
+                stack.append(attrs)
+        elif isinstance(node, (list, tuple, set, frozenset)):
+            visited[id(node)] = node
+            stack.extend(node)
+        elif getattr(getattr(node, "dtype", None), "kind", None) == "O" and callable(
+            getattr(node, "tolist", None)
+        ):
+            visited[id(node)] = node
+            stack.append(node.tolist())
+    return _InAuditScan(flags=tuple(flags), sibling_ids=tuple(sibling_ids))
+
+
 def _refuse_audit_holdout_record(
     record: Any,
     where: str,
-    raw_nct_id_of: Callable[[dict[str, Any]], Any],
-) -> None:
+    raw_nct_id_of: Callable[[Any], Any],
+) -> bool:
     """Refuse a record that carries ``in_audit`` unless it is a canonical non-holdout.
 
-    Method: a record with no ``in_audit`` key is passed through unchanged
-    (the caller is responsible for it; see the module docstring). A record
-    WITH the key is checked in this order, before anything else in it is
-    read: the value must be exactly a bool (``type(v) is bool``: 0/1,
-    "True"/"false", None and numpy bools are all refused, never coerced);
-    True is refused; then the nct_id the entry point would stamp on its
-    output, read raw by ``raw_nct_id_of`` (no str() coercion), must be
-    exactly ``^NCT[0-9]{8}$``. Non-dict input is left to the entry point's
-    own handling, which already records it as a parse error.
+    Returns whether the record carries ``in_audit``, so a batch entry point
+    can refuse a batch in which only some records do.
+
+    Method: the record is scanned for in_audit flags at any depth and under
+    any spelling (_scan_in_audit), whatever its type: a dict, any other
+    mapping-like value (UserDict, MappingProxyType, a pandas Series), or a
+    list. A record with no flag is passed through unchanged (the caller is
+    responsible for it; see the module docstring). A record WITH a flag is
+    checked in this order, before anything else in it is read: every flag
+    must be exactly a bool (``type(v) is bool``: 0/1, "True"/"false", None
+    and numpy bools are all refused, never coerced); any True is refused;
+    then the nct_id the entry point would stamp on its output, read raw by
+    ``raw_nct_id_of`` (no str() coercion; None for a record that is not
+    mapping-like), must be exactly ``^NCT[0-9]{8}$``; and every other id the
+    record carries for itself (a top-level key that reads as nct_id, or an
+    nct_id beside a flag) must equal it, because a flag merged onto another
+    trial's payload describes a different trial. A disagreement is refused
+    as "nct_id_malformed", never resolved.
     """
-    if not isinstance(record, dict) or "in_audit" not in record:
-        return
-    flag = record["in_audit"]
-    if type(flag) is not bool:
-        raise PopulationAuditHoldoutError(
-            "in_audit_not_bool",
-            f"{where}: in_audit must be exactly True or False, got "
-            f"{type(flag).__name__}; refusing the record rather than guessing",
-        )
-    if flag:
+    scan = _scan_in_audit(record)
+    if not scan.flags:
+        return False
+    for flag in scan.flags:
+        if type(flag) is not bool:
+            raise PopulationAuditHoldoutError(
+                "in_audit_not_bool",
+                f"{where}: in_audit must be exactly True or False, got "
+                f"{type(flag).__name__}; refusing the record rather than guessing",
+            )
+    if any(scan.flags):
         raise PopulationAuditHoldoutError(
             "in_audit_true",
             f"{where}: record is an in_audit holdout trial; it must not be "
             "parsed, retained or recorded",
         )
-    raw_nct = raw_nct_id_of(record)
+    raw_nct = raw_nct_id_of(record) if _is_mapping_like(record) else None
     if not _is_canonical_nct_id(raw_nct):
         raise PopulationAuditHoldoutError(
             "nct_id_malformed",
             f"{where}: in_audit is False but the nct_id ({type(raw_nct).__name__}) "
             "is not exactly ^NCT[0-9]{8}$ (ASCII, case-sensitive, unstripped)",
         )
+    own_ids = [value for key, value in list(record.items()) if _name_reads_as(key, _NCT_ID_NAME)]
+    disagreeing = [
+        other
+        for other in [*own_ids, *scan.sibling_ids]
+        if not (isinstance(other, str) and other == raw_nct)
+    ]
+    if disagreeing:
+        raise PopulationAuditHoldoutError(
+            "nct_id_malformed",
+            f"{where}: in_audit is False but {len(disagreeing)} other nct_id "
+            "value(s) in the record disagree with the id it would be stamped "
+            "with; refusing rather than choosing one",
+        )
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -1661,20 +1857,26 @@ def _nct_of(study: dict[str, Any]) -> str | None:
     return None if val is None else str(val)
 
 
-def _raw_nct_of_study(study: dict[str, Any]) -> Any:
+def _raw_nct_of_study(study: Any) -> Any:
     """protocolSection.identificationModule.nctId exactly as stored (no str()).
 
     Used only by the holdout check, which must see the value before _nct_of's
-    str() coercion could turn a non-string into something id-shaped. Any
-    missing or non-dict level yields None, which that check refuses.
+    str() coercion could turn a non-string into something id-shaped. ``study``
+    is any mapping-like record (the check calls this only for one), read
+    through ``.get``. Any missing or non-dict nested level yields None, which
+    that check refuses.
     """
     proto = study.get("protocolSection")
     ident = proto.get("identificationModule") if isinstance(proto, dict) else None
     return ident.get("nctId") if isinstance(ident, dict) else None
 
 
-def _raw_nct_of_retained(raw: dict[str, Any]) -> Any:
-    """Top-level ``nct_id`` of a retained raw outcome record, exactly as stored."""
+def _raw_nct_of_retained(raw: Any) -> Any:
+    """Top-level ``nct_id`` of a retained raw outcome record, exactly as stored.
+
+    ``raw`` is any mapping-like record (the holdout check calls this only for
+    one), read through ``.get``.
+    """
     return raw.get("nct_id")
 
 
@@ -1761,18 +1963,38 @@ def parse_study_outcomes(
 ) -> TrialAnalysisPopulations:
     """Parse all (or filtered) outcome measures from a raw CT.gov API v2 study dict.
 
-    Audit holdout: ENFORCES when ``study`` carries an ``in_audit`` key (a
-    manifest-merged record does). Raises PopulationAuditHoldoutError, before
-    reading anything else in the record, if in_audit is True
+    Audit holdout: ENFORCES when ``study`` carries ``in_audit`` (a
+    manifest-merged record does), at any depth and under any spelling, and
+    whether ``study`` is a dict or another mapping-like value (UserDict,
+    MappingProxyType, a pandas Series). Raises PopulationAuditHoldoutError,
+    before reading anything else in the record, if any in_audit is True
     (reason "in_audit_true"), is not exactly a bool ("in_audit_not_bool"),
     or is False while protocolSection.identificationModule.nctId is not
-    exactly ^NCT[0-9]{8}$ ("nct_id_malformed"). A refused record gets no
-    parse-error record either: that would record the trial. A bare CT.gov
-    study dict carries no ``in_audit``; for it this function relies on its
-    caller to exclude holdout trials. Callers today: none in code (see the
-    module docstring).
+    exactly ^NCT[0-9]{8}$ or another nct_id the record carries (top-level
+    ``nct_id``, or one beside the flag) disagrees with it
+    ("nct_id_malformed"). A refused record gets no parse-error record
+    either: that would record the trial. A bare CT.gov study dict carries
+    no ``in_audit``; for it this function relies on its caller to exclude
+    holdout trials. Callers today: none in code (see the module docstring).
     """
     _refuse_audit_holdout_record(study, "parse_study_outcomes", _raw_nct_of_study)
+    return _parse_checked_study(study, snapshot_date, outcome_types)
+
+
+def _parse_checked_study(
+    study: Any,
+    snapshot_date: str | None,
+    outcome_types: tuple[str, ...] | None,
+) -> TrialAnalysisPopulations:
+    """parse_study_outcomes' body, for a study its caller has already checked.
+
+    Callers: parse_study_outcomes (after _refuse_audit_holdout_record) and
+    parse_outcomes_frame (after checking every study of its batch). It does
+    no holdout check of its own, so nothing else may call it. Non-dict input
+    the check let through (no flag, or in_audit False with a canonical id,
+    including a mapping-like value that is not a dict) is recorded as the
+    parse error "study_not_a_dict", as before.
+    """
     if not isinstance(study, dict):
         return parse_error_trial_outcomes(
             nct_id=None,
@@ -1809,13 +2031,13 @@ def parse_study_outcomes(
 def select_raw_outcome_populations(study: dict[str, Any]) -> dict[str, Any]:
     """Extract the minimal raw outcome + flow payload for offline re-parse parity.
 
-    Audit holdout: ENFORCES when ``study`` carries an ``in_audit`` key, with
-    the same checks and PopulationAuditHoldoutError reasons as
-    parse_study_outcomes, so a holdout trial's raw outcomes are never
-    retained. A bare CT.gov study dict carries no ``in_audit``; for it this
-    function relies on its caller to exclude holdout trials. Callers today:
-    none in code (see the module docstring). The returned payload carries
-    no ``in_audit`` key.
+    Audit holdout: ENFORCES when ``study`` carries ``in_audit`` (at any depth,
+    under any spelling, in a dict or any mapping-like value), with the same
+    checks and PopulationAuditHoldoutError reasons as parse_study_outcomes,
+    so a holdout trial's raw outcomes are never retained. A bare CT.gov
+    study dict carries no ``in_audit``; for it this function relies on its
+    caller to exclude holdout trials. Callers today: none in code (see the
+    module docstring). The returned payload carries no ``in_audit`` key.
     """
     _refuse_audit_holdout_record(
         study, "select_raw_outcome_populations", _raw_nct_of_study
@@ -1853,10 +2075,13 @@ def build_outcomes_from_raw(
 ) -> TrialAnalysisPopulations:
     """Re-parse a retained raw outcome record; exact parity with parse_study_outcomes.
 
-    Audit holdout: ENFORCES when ``raw`` carries an ``in_audit`` key. Raises
-    PopulationAuditHoldoutError if in_audit is True ("in_audit_true"), is
-    not exactly a bool ("in_audit_not_bool"), or is False while the
-    record's top-level ``nct_id`` is not exactly ^NCT[0-9]{8}$
+    Audit holdout: ENFORCES when ``raw`` carries ``in_audit`` (at any depth,
+    for example in a merged ``manifest`` sub-record or on
+    participant_flow_module, under any spelling, in a dict or any
+    mapping-like value). Raises PopulationAuditHoldoutError if any in_audit
+    is True ("in_audit_true"), is not exactly a bool ("in_audit_not_bool"),
+    or is False while the record's top-level ``nct_id`` is not exactly
+    ^NCT[0-9]{8}$ or an nct_id beside a flag disagrees with it
     ("nct_id_malformed"). A record from select_raw_outcome_populations
     carries no ``in_audit``; for it this function relies on its caller to
     exclude holdout trials. Callers today: none in code (see the module
@@ -2108,20 +2333,50 @@ def parse_outcomes_frame(
     nowhere else in the module, so that the parser itself can be imported
     and used without it.
 
-    Audit holdout: ENFORCES per study through parse_study_outcomes. The
-    first study that carries ``in_audit`` and is refused raises
-    PopulationAuditHoldoutError (reasons as there) and no frame is
-    returned, so no row for any study escapes. Studies with no ``in_audit``
-    key rely on the caller to exclude holdout trials. Callers today: none
-    in code (see the module docstring).
+    Audit holdout: ENFORCES on the batch as a whole, before any study is
+    parsed. Every study is checked as parse_study_outcomes checks one
+    (reasons as there); the first refused study raises
+    PopulationAuditHoldoutError and no frame is returned, so no row for any
+    study escapes. A batch in which some studies carry ``in_audit`` and
+    others do not is refused too ("in_audit_not_bool"): it is what a
+    manifest left join produces when a study finds no manifest row, and such
+    a study is unknown, not clean (the sponsor frame path of
+    sponsors/ecosystem.py refuses the same gap as a NaN in its in_audit
+    column). ``studies`` must be an iterable of records: a single study
+    (any mapping-like value, which iterates over its keys) or a string is
+    refused with TypeError before anything in it is read. A batch in which
+    no study carries ``in_audit`` relies on the caller to exclude holdout
+    trials. Callers today: none in code (see the module docstring).
     """
     import pandas as pd  # lazy: the module's only pandas use (see DEPENDS above)
 
-    rows: list[dict[str, Any]] = []
-    for study in studies:
-        parsed = parse_study_outcomes(
-            study, snapshot_date=snapshot_date, outcome_types=outcome_types
+    if isinstance(studies, (str, bytes, bytearray)) or _is_mapping_like(studies):
+        raise TypeError(
+            "parse_outcomes_frame expects an iterable of study records, got a "
+            f"single {type(studies).__name__}; pass one study inside a list"
         )
+    study_list: list[Any] = list(studies)
+    carrying = [
+        _refuse_audit_holdout_record(
+            study,
+            f"parse_outcomes_frame (parse_study_outcomes check, study at position {pos})",
+            _raw_nct_of_study,
+        )
+        for pos, study in enumerate(study_list)
+    ]
+    n_carrying = sum(carrying)
+    if 0 < n_carrying < len(study_list):
+        raise PopulationAuditHoldoutError(
+            "in_audit_not_bool",
+            f"parse_outcomes_frame: {n_carrying} of {len(study_list)} studies carry "
+            f"in_audit and {len(study_list) - n_carrying} do not (first at position "
+            f"{carrying.index(False)}); in a manifest-merged batch a study without "
+            "in_audit is unknown, not clean, so the batch is refused",
+        )
+
+    rows: list[dict[str, Any]] = []
+    for study in study_list:
+        parsed = _parse_checked_study(study, snapshot_date, outcome_types)
         for out in parsed.outcomes:
             row = out.to_dict()
             row["nct_id"] = parsed.nct_id

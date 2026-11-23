@@ -1450,3 +1450,182 @@ def test_redteam_m2_parser_has_no_in_code_caller_on_this_branch() -> None:
             if any(n.endswith("analysis_population_parser") for n in names):
                 importers.append(str(rel))
     assert importers == []
+
+
+# ---------------------------------------------------------------------------
+# 13. Holdout fixes for red team round 1: cases the fix covers beyond the
+# red team's own tests, and inputs that must still pass. Every id is
+# fictional (NCT99000001..NCT99999999); nothing touches the network or a file.
+# ---------------------------------------------------------------------------
+
+
+def _assert_same_output(name: str, a: Any, b: Any) -> None:
+    """Equal entry-point outputs (a DataFrame for parse_outcomes_frame)."""
+    if name == "parse_outcomes_frame":
+        assert a.equals(b)
+    else:
+        assert a == b
+
+
+def _clean_record(retained: bool) -> dict[str, Any]:
+    """The fictional clean trial as a study dict, or as a retained raw record."""
+    return _retained_carrying(_CLEAN_NCT) if retained else _study_carrying(_CLEAN_NCT)
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+@pytest.mark.parametrize(
+    "key",
+    [
+        "ｉｎ＿ａｕｄｉｔ",  # full-width letters and underscore
+        "in\u200b_audit",  # zero-width space
+        "\ufeffin_audit",  # byte-order mark
+        "in\u00adaudit",  # soft hyphen
+        "in_au\u0301dit",  # combining acute accent
+        "In Audit",
+        b"in_audit",  # a bytes key, as a msgpack or raw decoder may give
+    ],
+)
+def test_in_audit_invisible_fullwidth_and_bytes_spellings_are_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool, key: Any
+) -> None:
+    # The name folding ignores more than case, spaces, hyphens and
+    # underscores: full-width ASCII, invisible characters and combining
+    # accents, and it reads bytes keys as text.
+    held = _redteam_holdout_record(retained)
+    held[key] = True
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        entry(held)
+    assert exc_info.value.reason == "in_audit_true"
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_nested_flag_beside_another_trials_id_is_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # A merged manifest sub-record that says in_audit False for a different
+    # trial describes that trial, not this one: refused, not resolved. The
+    # same sub-record naming this trial is accepted and changes nothing.
+    other = _clean_record(retained)
+    other["manifest"] = {"nct_id": _HOLDOUT_NCT, "in_audit": False}
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        entry(other)
+    assert exc_info.value.reason == "nct_id_malformed"
+    same = _clean_record(retained)
+    same["manifest"] = {"nct_id": _CLEAN_NCT, "in_audit": False}
+    _assert_same_output(name, entry(same), entry(_clean_record(retained)))
+
+
+@pytest.mark.parametrize(("name", "entry"), _STUDY_ENTRY_POINTS)
+def test_nct_id_aliases_are_not_conflicting_ids(
+    name: str, entry: Callable[[dict[str, Any]], Any]
+) -> None:
+    # CT.gov keeps a trial's obsolete ids in identificationModule.nctIdAliases.
+    # That key does not read as nct_id, so a flagged record carrying aliases
+    # is not refused as an id disagreement.
+    with_aliases = _study_carrying(_CLEAN_NCT, in_audit=False)
+    with_aliases["protocolSection"]["identificationModule"]["nctIdAliases"] = ["NCT99000009"]
+    without = _study_carrying(_CLEAN_NCT, in_audit=False)
+    without["protocolSection"]["identificationModule"]["nctIdAliases"] = ["NCT99000009"]
+    del without["in_audit"]
+    _assert_same_output(name, entry(with_aliases), entry(without))
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_record_that_is_a_list_carrying_a_flag_is_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # A flag is found whatever the record's type. A list carrying in_audit
+    # True is a holdout; one carrying False has no id the entry point would
+    # stamp, so it is refused as malformed rather than recorded.
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        entry([{"nct_id": _HOLDOUT_NCT, "in_audit": True}])
+    assert exc_info.value.reason == "in_audit_true"
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        entry([{"nct_id": _CLEAN_NCT, "in_audit": False}])
+    assert exc_info.value.reason == "nct_id_malformed"
+
+
+def test_parse_outcomes_frame_batch_gap_is_refused_in_either_order() -> None:
+    # The study without in_audit may come first; the batch is still refused,
+    # and no study of it is parsed. A batch in which no study carries
+    # in_audit is unchanged (it relies on the caller).
+    studies = [_study_carrying(_HOLDOUT_NCT), _study_carrying(_CLEAN_NCT, in_audit=False)]
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        ap.parse_outcomes_frame(iter(studies))
+    assert exc_info.value.reason == "in_audit_not_bool"
+    assert "position 0" in str(exc_info.value)
+    assert _HOLDOUT_NCT not in str(exc_info.value)
+    plain = ap.parse_outcomes_frame([_study_carrying(_CLEAN_NCT), _study_carrying("NCT99000003")])
+    assert list(plain["nct_id"]) == [_CLEAN_NCT, "NCT99000003"]
+
+
+def test_parse_outcomes_frame_refuses_input_that_is_not_a_batch() -> None:
+    # Iterating a mapping (dict, UserDict, Series, DataFrame) or a string
+    # yields keys or characters, not studies, so each is refused with
+    # TypeError before anything in it is read, holdout or not.
+    pd = pytest.importorskip("pandas")
+    clean = _study_carrying(_CLEAN_NCT, in_audit=False)
+    for single in (
+        clean,
+        collections.UserDict(clean),
+        types.MappingProxyType(clean),
+        pd.Series(clean),
+        pd.DataFrame([{"nct_id": _CLEAN_NCT, "in_audit": False}]),
+        _CLEAN_NCT,
+        _CLEAN_NCT.encode(),
+    ):
+        with pytest.raises(TypeError):
+            ap.parse_outcomes_frame(single)  # type: ignore[arg-type]
+
+
+def test_cyclic_record_is_scanned_without_looping() -> None:
+    # The scan visits each container once, so a record that contains itself
+    # terminates: parsed when it carries no flag, refused when it does.
+    study = _study_carrying(_CLEAN_NCT)
+    study["self"] = study
+    assert ap.parse_study_outcomes(study).nct_id == _CLEAN_NCT
+    study["self_list"] = [study]
+    study["protocolSection"]["identificationModule"]["in_audit"] = True
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        ap.parse_study_outcomes(study)
+    assert exc_info.value.reason == "in_audit_true"
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_namedtuple_dataclass_and_attrs_records_carrying_in_audit_are_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # df.itertuples() yields namedtuples, whose field names a plain tuple walk
+    # would lose; a dataclass instance holds its fields as attributes; a
+    # pandas Series row can carry the flag in its attrs metadata. Each is
+    # read by name, so a holdout is refused rather than recorded as a
+    # "not a dict" parse error.
+    import dataclasses
+
+    pd = pytest.importorskip("pandas")
+
+    @dataclasses.dataclass
+    class HeldRecord:
+        nct_id: str
+        in_audit: bool
+
+    held = _redteam_holdout_record(retained, in_audit=True)
+    row = next(pd.DataFrame([held]).itertuples(index=False))
+    with_attrs = pd.Series(_redteam_holdout_record(retained))
+    with_attrs.attrs["in_audit"] = True
+    for record in (row, HeldRecord(_HOLDOUT_NCT, True), with_attrs):
+        with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+            entry(record)
+        assert exc_info.value.reason == "in_audit_true", type(record).__name__
+    study_rows = pd.DataFrame(
+        [_study_carrying(_HOLDOUT_NCT, in_audit=True), _study_carrying(_CLEAN_NCT, in_audit=False)]
+    )
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        ap.parse_outcomes_frame(study_rows.itertuples(index=False))
+    assert exc_info.value.reason == "in_audit_true"
+    # A namedtuple flagged False is not mapping-like, so no id is read from
+    # it: refused as malformed rather than recorded as a parse error.
+    clean_row = next(study_rows.iloc[[1]].itertuples(index=False))
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        ap.parse_study_outcomes(clean_row)
+    assert exc_info.value.reason == "nct_id_malformed"

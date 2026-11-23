@@ -1393,3 +1393,244 @@ def test_redteam_m2_missing_values_in_typed_columns_are_refused(
         with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
             entry(ids, shipped_rules, shipped_ecosystem_rules)
         _assert_refused(exc_info.value, "nct_id_malformed")
+
+
+# ---------------------------------------------------------------------------
+# 13. Holdout fixes for red team round 1: cases the fix covers beyond the
+# red team's own tests, and inputs that must still pass. Every id is
+# fictional (NCT99000001..NCT99999999); no test touches the network, and
+# none reads a file other than the shipped rules fixtures.
+# ---------------------------------------------------------------------------
+
+
+_INVISIBLE_AND_WIDE_KEYS: list[Any] = [
+    "ｉｎ＿ａｕｄｉｔ",  # full-width letters and underscore
+    "in\u200b_audit",  # zero-width space
+    "\ufeffin_audit",  # byte-order mark
+    "In Audit",
+    b"in_audit",  # a bytes key or column label
+]
+
+
+@pytest.mark.parametrize("key", _INVISIBLE_AND_WIDE_KEYS)
+def test_in_audit_invisible_fullwidth_and_bytes_spellings_are_refused(
+    key: Any,
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    for make in (_stored_record, _api_record):
+        rec = make("NCT99000330")
+        rec[key] = True
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            _redteam_run([rec], shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "in_audit_true")
+    held = _holdout_frame([True] * 4).rename(columns={"in_audit": key})
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(held, shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "in_audit_true")
+
+
+def test_frame_cells_carrying_in_audit_are_checked(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # pd.DataFrame(records) from manifest-merged records keeps a nested
+    # manifest as a column of dicts. A flag inside a cell is checked like a
+    # row-level one: True is a holdout, a non-bool is refused, flags found
+    # only inside cells cannot describe every row, and an nct_id beside a
+    # flag must be its row's. Rows 0-1 are NCT99000101, rows 2-3 NCT99000102.
+    def with_cells(row_flags: list[Any] | None, cells: list[Any]) -> pd.DataFrame:
+        sp = _holdout_frame(row_flags)
+        sp["manifest"] = pd.Series(cells, dtype=object)
+        return sp
+
+    cases: list[tuple[pd.DataFrame, str]] = [
+        (with_cells([False] * 4, [None, None, {"nct_id": "NCT99000102", "in_audit": True}, None]), "in_audit_true"),
+        (with_cells([False] * 4, [[{"in_audit": True}], None, None, None]), "in_audit_true"),
+        (with_cells([False] * 4, [{"in_audit": "False"}, None, None, None]), "in_audit_not_bool"),
+        (with_cells(None, [{"in_audit": False}] * 4), "in_audit_not_bool"),
+        (with_cells([False] * 4, [None, None, {"nct_id": "NCT99000101", "in_audit": False}, None]), "nct_id_malformed"),
+    ]
+    for sp, reason in cases:
+        for name, entry in _FRAME_ENTRY_POINTS:
+            with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+                entry(sp, shipped_rules, shipped_ecosystem_rules)
+            _assert_refused(exc_info.value, reason)
+    # Cells whose flags are False and whose ids match their rows pass, and the
+    # literal partition is the one the plain frame gives.
+    agreeing = with_cells(
+        [False] * 4,
+        [{"nct_id": "NCT99000101", "in_audit": False}, None, None, {"nct_id": "NCT99000102", "in_audit": False}],
+    )
+    assert eco.partition_ecosystem(agreeing, shipped_ecosystem_rules) == eco.partition_ecosystem(
+        _holdout_frame(), shipped_ecosystem_rules
+    )
+
+
+def test_frame_nct_id_sources_must_agree(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Two columns (or a column and an index level) whose names read as
+    # nct_id are both read; where they disagree on a row the frame is
+    # refused rather than one of them chosen.
+    disagree = _holdout_frame([False] * 4)
+    disagree["NCT ID"] = pd.Series(
+        ["NCT99000101", "NCT99000101", "NCT99000101", "NCT99000102"], dtype=object
+    )
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(disagree, shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "nct_id_malformed")
+        assert "row position 2" in str(exc_info.value)
+    # set_index("nct_id", drop=False) keeps the id in both places, agreeing.
+    both = _holdout_frame([False] * 4).set_index("nct_id", drop=False)
+    assert eco.partition_ecosystem(both, shipped_ecosystem_rules) == eco.partition_ecosystem(
+        _holdout_frame(), shipped_ecosystem_rules
+    )
+
+
+def test_frame_and_index_entry_points_refuse_non_dataframe_input(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # The holdout check needs a frame's columns and row index, so any other
+    # input is refused: with TypeError when it carries no flag, as a holdout
+    # when it does (even inside a list of row dicts).
+    clean = _holdout_frame()
+    for bad in ({c: clean[c] for c in clean.columns}, clean.to_dict("records"), clean.iloc[0], [], None):
+        for name, entry in _FRAME_ENTRY_POINTS:
+            with pytest.raises(TypeError):
+                entry(bad, shipped_rules, shipped_ecosystem_rules)
+        for name, entry in _INDEX_ENTRY_POINTS:
+            with pytest.raises(TypeError):
+                entry(bad)
+    as_rows = _holdout_frame([False, False, True, False]).to_dict("records")
+    odd_mapping = {c: clean[c] for c in clean.columns}
+    odd_mapping["in_audit"] = ["False"] * 4
+    for bad, reason in ((as_rows, "in_audit_true"), (odd_mapping, "in_audit_not_bool")):
+        for name, entry in _FRAME_ENTRY_POINTS:
+            with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+                entry(bad, shipped_rules, shipped_ecosystem_rules)
+            _assert_refused(exc_info.value, reason)
+
+
+def test_attribute_study_sponsors_accepts_clean_non_dict_records(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # A UserDict, a MappingProxyType or a pandas Series row carrying
+    # in_audit False with a canonical id is attributed exactly as the dict.
+    def records(wrap: Any) -> list[Any]:
+        return [
+            wrap(_stored_record("NCT99000331", in_audit=False)),
+            wrap(_api_record("NCT99000332", in_audit=False)),
+        ]
+
+    plain = _redteam_run(records(dict), shipped_rules, shipped_ecosystem_rules)
+    for _wrapper_name, wrap in _redteam_mapping_wrappers():
+        wrapped = _redteam_run(records(wrap), shipped_rules, shipped_ecosystem_rules)
+        pd.testing.assert_frame_equal(wrapped[0], plain[0])
+        assert wrapped[1] == plain[1]
+
+
+def test_attribute_study_sponsors_refuses_a_manifest_flag_for_another_trial(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # A nested manifest whose nct_id is another trial's describes that
+    # trial; refused. One naming this trial changes nothing. CT.gov's
+    # nctIdAliases does not read as nct_id, so it is no disagreement.
+    for make in (_stored_record, _api_record):
+        other = make("NCT99000333", manifest={"nct_id": "NCT99000334", "in_audit": False})
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            _redteam_run([other], shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "nct_id_malformed")
+        same = make("NCT99000333", manifest={"nct_id": "NCT99000333", "in_audit": False})
+        got = _redteam_run([same], shipped_rules, shipped_ecosystem_rules)
+        want = _redteam_run([make("NCT99000333")], shipped_rules, shipped_ecosystem_rules)
+        pd.testing.assert_frame_equal(got[0], want[0])
+        assert got[1] == want[1]
+    aliased = _api_record("NCT99000335", in_audit=False)
+    aliased["protocolSection"]["identificationModule"]["nctIdAliases"] = ["NCT99000336"]
+    got = _redteam_run([aliased], shipped_rules, shipped_ecosystem_rules)
+    assert eco.trial_cohorts(got[0])["NCT99000335"] == ["academic_medical_center", "industry"]
+
+
+def test_attribute_study_sponsors_batch_gap_is_refused_in_either_order(
+    monkeypatch: pytest.MonkeyPatch,
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # The record without in_audit may come first; the batch is still refused
+    # before anything is adapted.
+    def must_not_run(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("adapted a batch with a record missing in_audit")
+
+    monkeypatch.setattr(eco.adapter, "records_to_frame", must_not_run)
+    batch = [_stored_record("NCT99000337"), _api_record("NCT99000338", in_audit=False)]
+    with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+        _redteam_run(iter(batch), shipped_rules, shipped_ecosystem_rules)
+    _assert_refused(exc_info.value, "in_audit_not_bool")
+    assert "position 0" in str(exc_info.value)
+
+
+def test_attribute_study_sponsors_refuses_input_that_is_not_a_batch(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Iterating a mapping or a string yields keys or characters, not records.
+    clean = _stored_record("NCT99000339", in_audit=False)
+    for single in (
+        clean,
+        collections.UserDict(clean),
+        pd.Series(clean),
+        pd.DataFrame([clean]),
+        "NCT99000339",
+    ):
+        with pytest.raises(TypeError):
+            _redteam_run(single, shipped_rules, shipped_ecosystem_rules)
+
+
+def test_namedtuple_and_attrs_holdouts_are_refused(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # df.itertuples() rows are namedtuples; their field names are read, so a
+    # flag in one is found. A True in a frame's attrs metadata refuses the
+    # frame; a non-bool there is refused as one.
+    rows = list(pd.DataFrame([_stored_record("NCT99000340", in_audit=True)]).itertuples(index=False))
+    with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+        _redteam_run(rows, shipped_rules, shipped_ecosystem_rules)
+    _assert_refused(exc_info.value, "in_audit_true")
+    for flag, reason in ((True, "in_audit_true"), ("yes", "in_audit_not_bool")):
+        held = _holdout_frame()
+        held.attrs["in_audit"] = flag
+        for name, entry in _FRAME_ENTRY_POINTS:
+            with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+                entry(held, shipped_rules, shipped_ecosystem_rules)
+            _assert_refused(exc_info.value, reason)
+        idx = _index_with_in_audit(shipped_rules, shipped_ecosystem_rules, None)
+        idx.attrs["manifest"] = {"in_audit": flag}
+        for name, entry in _INDEX_ENTRY_POINTS:
+            with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+                entry(idx)
+            _assert_refused(exc_info.value, reason)
+
+
+def test_a_false_flag_in_attrs_does_not_refuse_frames_derived_from_a_clean_one(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # pandas copies attrs onto derived frames (copy, merge, concat), so the
+    # index built from a clean flagged frame can inherit attrs in_audit False
+    # without its row-level column. That False alone is ignored, so the
+    # clean pipeline gives what the unflagged one gives.
+    flagged = _holdout_frame([False] * 4)
+    flagged.attrs["in_audit"] = False
+    baseline = eco.compute_ecosystem_baseline(flagged, shipped_ecosystem_rules)
+    assert baseline == eco.compute_ecosystem_baseline(_holdout_frame(), shipped_ecosystem_rules)
+    idx = eco.build_unified_index(flagged, shipped_rules, shipped_ecosystem_rules)
+    plain_idx = eco.build_unified_index(_holdout_frame(), shipped_rules, shipped_ecosystem_rules)
+    assert eco.trial_cohorts(idx) == eco.trial_cohorts(plain_idx)
