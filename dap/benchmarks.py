@@ -707,7 +707,10 @@ WEEKLY_LIST_FIELDS: dict[str, tuple[type, tuple[str, ...]]] = {
 # The lean sex/gender row `src/extract_all.py` writes (`sgt.lean_row`): every column is present, with
 # these types (`None` where listed). `extract_sex_gender` reuses the row as it stands, so a partial row
 # such as `{"sex_report_status": "reported"}` would publish a reported trial with every flag and count
-# empty. In the 2026-11-08 extraction all 80,890 rows carry exactly these 14 columns with these types.
+# empty. `is_participant_count` is `None` when no sex/gender measure was found (`not_reported`) or the
+# input could not be read, and the three `reported_*` outcomes are `None` only in a `parse_error` row
+# (`sgt.parse_error_row`), which the extractor writes when the parser raises. In the 2026-11-08
+# extraction all 80,890 rows carry exactly these 14 columns with these types (none is `parse_error`).
 _NUM_OR_NONE: tuple[type, ...] = (int, float, type(None))
 WEEKLY_SEX_GENDER_COLUMNS: dict[str, tuple[type, ...]] = {
     "sex_report_status": (str,),
@@ -719,13 +722,15 @@ WEEKLY_SEX_GENDER_COLUMNS: dict[str, tuple[type, ...]] = {
     "n_unknown": _NUM_OR_NONE,
     "n_gender_diverse": _NUM_OR_NONE,
     "n_ambiguous_gender": _NUM_OR_NONE,
-    "is_participant_count": (bool,),
+    "is_participant_count": (bool, type(None)),
     "uninformative_reason": (str, type(None)),
     "declared_not_collected": (bool,),
     "enrollment_minus_parsed": _NUM_OR_NONE,
     "parser_rules_version": (str,),
 }
 assert list(WEEKLY_SEX_GENDER_COLUMNS) == list(sgt.LEAN_COLUMNS), "keep in step with sgt.LEAN_COLUMNS"
+# Columns `sgt.parse_error_row` leaves `None`, the outcome flags of a row whose input was not read.
+_PARSE_ERROR_NULLABLE: frozenset[str] = frozenset({"reported_sex", "reported_gender", "reported_both"})
 # Entry fields `src/utils.py` always writes as non-blank strings: it keeps a site only for a location
 # with a country.
 WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {"study_sites": ("country",)}
@@ -788,6 +793,8 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     if status not in SEX_GENDER_STATES:
         return f"sex_gender.sex_report_status {status!r} is not one of SEX_GENDER_STATES"
     for column, types in WEEKLY_SEX_GENDER_COLUMNS.items():
+        if status == "parse_error" and column in _PARSE_ERROR_NULLABLE:
+            types = (*types, type(None))
         if column not in rec["sex_gender"]:
             return f"sex_gender has no {column} (sgt.lean_row always writes it)"
         value = rec["sex_gender"][column]

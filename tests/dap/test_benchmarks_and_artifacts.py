@@ -1785,7 +1785,8 @@ def test_raw_records_snapshot_date_still_defaults_to_the_build_date(tmp_path: Pa
         ("n_female", "50", "sex_gender.n_female is str, not int or float or NoneType"),
         ("n_male", True, "sex_gender.n_male is bool, not int or float or NoneType"),
         ("reported_sex", "yes", "sex_gender.reported_sex is str, not bool"),
-        ("is_participant_count", None, "sex_gender.is_participant_count is NoneType, not bool"),
+        ("is_participant_count", "yes", "sex_gender.is_participant_count is str, not bool or NoneType"),
+        ("reported_gender", None, "sex_gender.reported_gender is NoneType, not bool"),  # only parse_error may
         ("parser_rules_version", None, "sex_gender.parser_rules_version is NoneType, not str"),
         ("uninformative_reason", 7, "sex_gender.uninformative_reason is int, not str or NoneType"),
     ],
@@ -1804,3 +1805,23 @@ def test_weekly_sex_gender_row_needs_every_lean_column_with_its_type(
     weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
     with pytest.raises(ValueError, match=re.escape(f"sex_gender has no {column} (sgt.lean_row always writes it)")):
         benchmarks.load_study_records(weekly_path, source_kind="full_records")
+
+
+@pytest.mark.parametrize("make_row", ["parse_error", "not_reported"])
+def test_weekly_sex_gender_rows_the_extractor_writes_for_every_status_load(tmp_path: Path, make_row: str) -> None:
+    # On 99f072f a `parse_error` row (`sgt.parse_error_row`: outcome flags None) and a `not_reported` row
+    # (`is_participant_count` None) were refused, although src/extract_all.py writes both.
+    from src import sex_gender_table as sgt
+
+    if make_row == "parse_error":
+        row = sgt.lean_row(sgt.parse_error_row("NCT99000402", 100, "2026-11-21"))
+    else:
+        row = sgt.lean_row(sgt.build_row({"protocolSection": {"identificationModule": {"nctId": "NCT99000402"}}},
+                                         "2026-11-21"))
+    assert row["sex_report_status"] == make_row
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1]["sex_gender"] = row
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    records, _ = benchmarks.load_study_records(weekly_path, source_kind="full_records")
+    assert len(records) == 5

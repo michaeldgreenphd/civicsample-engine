@@ -149,7 +149,10 @@ an integer, `phase` a string (its values checked as above), and `race`,
 reused as it stands, must carry a `sex_report_status` in `SEX_GENDER_STATES`
 and every lean column `sgt.lean_row` writes with its type
 (`WEEKLY_SEX_GENDER_COLUMNS`): a partial row published a reported trial with
-every flag and count empty, and a string count stopped the build. A missing or
+every flag and count empty, and a string count stopped the build. The
+types follow the producer by status: `is_participant_count` may be `None`
+(no measure found), and the `reported_*` flags only in a `parse_error` row,
+which the extractor writes when the parser raises and which is kept. A missing or
 mistyped one was read as an "Unknown" sponsor, no enrollment, a block not
 reported, or a sex/gender row re-parsed as `parse_error`. All 80,890 records
 of the 2026-11-08 weekly extraction pass.
