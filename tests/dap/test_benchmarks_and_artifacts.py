@@ -792,6 +792,14 @@ def test_contract_checker_refuses_tampered_or_invariant_violating_builds(tmp_pat
     probs_sc = artifacts.check_contract(tampered_sc)
     assert any("single_category_ethnicity must withhold of_classified" in x for x in probs_sc)
 
+    # 3b. A trial key that is not an NCT ID (the build refuses such input; an edited file is refused here)
+    tampered_nct = copy.deepcopy(base_loaded)
+    tampered_nct["trial_rows"][0]["nct_id"] = "123"
+    assert any(
+        "trial row nct_id '123' is not NCT followed by eight digits" in x
+        for x in artifacts.check_contract(tampered_nct)
+    )
+
     # 4. Domain invariant: combined_race_ethnicity_quarantined leaking OMB counts
     tampered_q = copy.deepcopy(base_loaded)
     q_row = next(
@@ -1360,6 +1368,17 @@ def _measured_study(nct_id: str) -> dict:
          "sponsorCollaboratorsModule.collaborators[0] (an object)"),
         (("protocolSection", "sponsorCollaboratorsModule", "collaborators"), [{"name": ["Fictional CRO"]}],
          "sponsorCollaboratorsModule.collaborators[0].name (a string)"),
+        # an explicit null is a present field of the wrong type, not an absent one
+        (("protocolSection", "contactsLocationsModule", "locations", 0, "country"), None,
+         "contactsLocationsModule.locations[0].country (a string)"),
+        (("protocolSection", "contactsLocationsModule", "locations", 0, "state"), None,
+         "contactsLocationsModule.locations[0].state (a string)"),
+        (("protocolSection", "sponsorCollaboratorsModule", "collaborators"), [{"name": None, "class": "INDUSTRY"}],
+         "sponsorCollaboratorsModule.collaborators[0].name (a string)"),
+        # phases: str() turned these into strata of their own
+        (("protocolSection", "designModule", "phases"), [7], "designModule.phases (a list of non-blank strings)"),
+        (("protocolSection", "designModule", "phases"), [None], "designModule.phases (a list of non-blank strings)"),
+        (("protocolSection", "designModule", "phases"), "PHASE3", "designModule.phases (a list of non-blank strings)"),
         (("resultsSection", "baselineCharacteristicsModule"), None, f"{_BASE} (an object)"),
         (("resultsSection", "baselineCharacteristicsModule", "denoms"), 0, f"{_BASE}.denoms (a list)"),
         (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "units"), None,
@@ -1402,6 +1421,17 @@ def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
     plain = tmp_path / "studies.jsonl"
     plain.write_text(json.dumps(complete) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match=want):
+        benchmarks.load_study_records(plain)
+
+
+@pytest.mark.parametrize("nct", [123, "NCT123", "nct99800022", " NCT99800022"])
+def test_records_with_a_malformed_nct_id_are_refused(tmp_path: Path, nct: object) -> None:
+    # The trial's key in every published file; a number such as 123 was published as "123".
+    bad = _measured_study("NCT99800022")
+    bad["protocolSection"]["identificationModule"]["nctId"] = nct
+    plain = tmp_path / "studies.jsonl"
+    plain.write_text(json.dumps(_measured_study("NCT99800021")) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"lacks identificationModule\.nctId \(NCT followed by eight digits\)"):
         benchmarks.load_study_records(plain)
 
 

@@ -897,6 +897,10 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
         if not isinstance(nct, str) or not nct:
             p.append("trials.jsonl.gz: trial row missing nct_id")
             continue
+        if not re.fullmatch(r"NCT\d{8}", nct):
+            # The published key every NCT join and link uses; the build refuses such input, and an
+            # edited trials file is refused here.
+            p.append(f"trials.jsonl.gz: trial row nct_id {nct!r} is not NCT followed by eight digits")
         nct_ids.append(nct)
         if row.get("schema_version") != SCHEMA_VERSION or row.get("run_id") != run_id:
             p.append(f"{nct}: trial row schema_version or run_id mismatch")

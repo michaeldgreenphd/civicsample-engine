@@ -602,7 +602,8 @@ def _object_list_problems(value: Any, path: str, fields: dict[str, Any]) -> list
 
 
 def _mistyped_parts(study: dict[str, Any]) -> list[str]:
-    """Name the `TYPED_PROTOCOL_PARTS` and baseline-table parts of `study` with the wrong type."""
+    """Name the parts of `study` with the wrong type: the `TYPED_PROTOCOL_PARTS` and their
+    `LIST_ENTRY_FIELDS` entries, the phases, the NCT ID, and the baseline table (`BASELINE_SHAPE`)."""
     protocol = study.get("protocolSection")
     out: list[str] = []
     if isinstance(protocol, dict):
@@ -619,11 +620,26 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
                 if not isinstance(entry, dict):
                     out.append(f"{where}[{i}] (an object)")
                     continue
+                # Key presence, not a non-null value: an explicit null read as a facility without a
+                # country or a collaborator without a name.
                 out += [
                     f"{where}[{i}].{name} (a string)"
                     for name in entry_fields or ()
-                    if entry.get(name) is not None and not isinstance(entry[name], str)
+                    if name in entry and not isinstance(entry[name], str)
                 ]
+        # normalize_phase turned any entry into text with str(), so [7] or [null] became a phase
+        # stratum of its own ("7", "NONE"). The stored records hold only CT.gov's six phase values.
+        design = protocol.get("designModule")
+        if isinstance(design, dict) and "phases" in design:
+            phases = design["phases"]
+            if not (isinstance(phases, list) and all(isinstance(p, str) and p.strip() for p in phases)):
+                out.append("designModule.phases (a list of non-blank strings)")
+        # The trial's key in every published file: a number such as 123 became the string "123".
+        ident = protocol.get("identificationModule")
+        if isinstance(ident, dict):
+            nct = ident.get("nctId")
+            if not (isinstance(nct, str) and _NCT_ID_RX.fullmatch(nct)):
+                out.append("identificationModule.nctId (NCT followed by eight digits)")
     results = study.get("resultsSection")
     if isinstance(results, dict) and "baselineCharacteristicsModule" in results:
         root = "resultsSection.baselineCharacteristicsModule"
