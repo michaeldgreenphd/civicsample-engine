@@ -535,6 +535,35 @@ def test_rule_t_untitled_total_and_malformed_sections_never_coerce_to_zero() -> 
     assert rec_non_dict['results_status'] == 'unknown' and rec_non_dict['parse']['status'] == 'failed'
 
 
+def test_rule_t_refuses_to_pick_one_of_several_baseline_total_columns() -> None:
+    # Regression: with two baseline groups titled "Total", Rule T took the first by array position and
+    # reported state ok, so baseline_total and every funnel difference used whichever came first.
+    rec = C.inspect_study(
+        make_study(
+            45,
+            baseline=make_baseline(titles=('Zorbatinib 10 mg', 'Placebo', 'Total', 'Total'), counts=('99', '98', '150', '197')),
+        )
+    )
+    bt = rec['denominator_funnel']['baseline_total']
+    assert bt['state'] == 'multiple_total_groups' and bt['value'] is None
+    assert bt['method'] is None and bt['total_group_id'] is None
+    assert [g['is_total_group'] for g in bt['groups']] == [False, False, True, True]
+    assert rec['denominator_funnel']['baseline_minus_period1_started'] is None
+    pm = rec['primary_measures'][0]
+    assert pm['analysed_minus_baseline_total'] is None and pm['analysed_over_baseline_total'] is None
+    # The arms stay separated from both Total columns, so they still align to their own baseline groups.
+    assert [a['matched_target_id'] for a in pm['og_to_bg_alignment']['og_alignments']] == ['BG000', 'BG001']
+
+    fam = _family([make_study(45, baseline=make_baseline(
+        titles=('Zorbatinib 10 mg', 'Placebo', 'Total', 'Total'), counts=('99', '98', '150', '197')))])
+    assert B.check(fam) == []
+    assert fam['run.json']['vocabularies']['baseline_total_states'] == list(C.BASELINE_TOTAL_STATES)
+    bad = copy.deepcopy(fam)
+    bad_bt = bad['records.json']['records']['NCT99000045']['denominator_funnel']['baseline_total']
+    bad_bt.update(state='ok', value=150, method='titled_total', total_group_id='BG002')
+    assert any("2 Total-titled groups is 'ok'" in p for p in B.check(bad))
+
+
 def test_cross_pass_two_to_one_target_collision_downgrades_both_ogs_to_ambiguous() -> None:
     # Regression (Finding 2): OG000 matches BG000 via normalized_title ("Zorbatinib 10 mg") while
     # OG001 matches BG000 via title_to_description_equivalence ("Experimental Arm"). Both colliding
@@ -556,6 +585,20 @@ def test_cross_pass_two_to_one_target_collision_downgrades_both_ogs_to_ambiguous
     assert [a['candidate_target_ids'] for a in aligned['og_alignments']] == [['BG000'], ['BG000']]
     assert aligned['matched_target_ids'] == []
     assert [g['group_id'] for g in aligned['unmatched_target_groups']] == ['BG000', 'BG001']
+
+
+def _family(studies: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build an in-memory artifact family from fictional studies with fixed provenance."""
+    ids = [C.nct_id_of(s) or '' for s in studies]
+    recs, probs = B.build_records(studies, ids, {})
+    acq = {
+        'source': 'fictional', 'mode': 'archive', 'retrieved_at': '2026-11-15T10:00:00+00:00',
+        'api_version': '2.0.5', 'data_timestamp': '2026-11-15T09:00:00', 'n_requested': len(ids),
+        'n_records': len(ids), 'requested_ids_sha256': 'a' * 64, 'sha256_uncompressed': 'b' * 64,
+        'archive': 'records-fictional.jsonl.gz',
+    }
+    prod = {'repository': 'civicsample-engine', 'commit': 'c' * 40, 'uncommitted_changes': False, 'source_sha256': '1' * 64}
+    return B.build(recs, probs, acq, prod, {'source': 'archive'}, B.build_scope(ids, ids), generated_at='2026-11-15T12:00:00+00:00')
 
 
 def test_sole_total_og_is_never_an_arm_and_measure_records_no_arm_groups() -> None:
@@ -608,16 +651,7 @@ def test_sole_total_og_is_never_an_arm_and_measure_records_no_arm_groups() -> No
     assert pm_two['og_to_bg_alignment'] is None
 
     # The build counts no Total OG as an arm, and the contract refuses an alignment that does.
-    studies = [make_study(40, measures=[arms, sole_total])]
-    ids = [C.nct_id_of(s) or '' for s in studies]
-    recs, probs = B.build_records(studies, ids, {})
-    acq = {
-        'source': 'fictional', 'mode': 'archive', 'retrieved_at': '2026-11-15T10:00:00+00:00',
-        'api_version': '2.0.5', 'data_timestamp': '2026-11-15T09:00:00', 'n_requested': 1, 'n_records': 1,
-        'requested_ids_sha256': 'a' * 64, 'sha256_uncompressed': 'b' * 64, 'archive': 'records-fictional.jsonl.gz',
-    }
-    prod = {'repository': 'civicsample-engine', 'commit': 'c' * 40, 'uncommitted_changes': False, 'source_sha256': '1' * 64}
-    fam = B.build(recs, probs, acq, prod, {'source': 'archive'}, B.build_scope(ids, ids), generated_at='2026-11-15T12:00:00+00:00')
+    fam = _family([make_study(40, measures=[arms, sole_total])])
     assert B.check(fam) == []
     assert fam['summary.json']['denominators']['primary_measure_ogs']['n'] == 2
     arm_groups = fam['summary.json']['state_breakdowns']['primary_measure_arm_groups']['counts']

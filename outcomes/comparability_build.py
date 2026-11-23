@@ -1392,6 +1392,19 @@ def check(files: dict[str, Any]) -> list[str]:
         if st != 'posted':
             continue
 
+        bt = (r.get('denominator_funnel') or {}).get('baseline_total')
+        if bt is not None:
+            if bt.get('state') not in C.BASELINE_TOTAL_STATES:
+                p.append(f'{n}: invalid baseline_total state {bt.get("state")!r}')
+            elif (bt.get('state') == 'ok') != (bt.get('value') is not None):
+                p.append(f'{n}: baseline_total value disagrees with its state {bt.get("state")!r}')
+            # Rule T never picks one of several Total-titled baseline groups by position.
+            n_titled_total = sum(1 for g in bt.get('groups') or [] if C.normalize_label(g.get('title')) == 'total')
+            if (bt.get('state') == 'ok' and n_titled_total > 1) or (
+                bt.get('state') == 'multiple_total_groups' and n_titled_total < 2
+            ):
+                p.append(f'{n}: baseline_total with {n_titled_total} Total-titled groups is {bt.get("state")!r}')
+
         arm_al = r.get('arm_alignment')
         if arm_al is not None:
             if arm_al.get('extra_baseline_groups_outside_primary') != bool(arm_al.get('extra_baseline_groups')):

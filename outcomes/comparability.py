@@ -50,6 +50,7 @@ BASELINE_TOTAL_STATES = (
     'no_groups',
     'non_numeric_count',
     'no_posted_results',
+    'multiple_total_groups',
 )
 
 MEASURE_DENOM_STATES = (
@@ -651,6 +652,21 @@ def extract_baseline_total(bmod: dict[str, Any] | None, posted: bool) -> dict[st
     # Identify Total group index even when counts are incomplete if explicitly titled "Total",
     # so non-Total baseline arms stay cleanly separated for arm alignment.
     titled_indices = [i for i, g in enumerate(groups) if normalize_label(g.get('title')) == 'total']
+    if len(titled_indices) > 1:
+        # Two or more groups titled "Total" leave Rule T no single Total column: choosing one by array
+        # position could report the wrong population, and summing them could double count. Every
+        # Total-titled group stays out of the arms, and the baseline total is recorded as absent.
+        return {
+            'value': None, 'state': 'multiple_total_groups', 'method': None, 'reason': 'multiple_total_groups',
+            'total_group_id': None, 'arms_sum': None, 'total_equals_arms_sum': None,
+            'reported_units': units_seen,
+            'groups': [
+                {'group_id': g['id'], 'title': g.get('title'), 'description': g.get('description'),
+                 'is_total_group': (i in titled_indices), 'count': plain_num(vals[i])}
+                for i, g in enumerate(groups)
+            ],
+            'population_description': pop_clean, 'source_field': source,
+        }
     if any(v is None for v in vals):
         tot_idx = titled_indices[0] if titled_indices else None
         return {

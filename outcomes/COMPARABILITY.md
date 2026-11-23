@@ -59,7 +59,10 @@ it modifies no weekly dataset or existing `outcomes/` cohort.
     `last_equals_sum_untitled_total` (3+ groups where the trailing untitled group equals the sum of
     earlier groups), or `non_total_group_sum` when no Total column exists. Never sums Total + arms.
   - States (`BASELINE_TOTAL_STATES`): `ok`, `baseline_absent`, `no_denoms`,
-    `unit_not_participants`, `no_groups`, `non_numeric_count`, `no_posted_results`.
+    `unit_not_participants`, `no_groups`, `non_numeric_count`, `no_posted_results`,
+    `multiple_total_groups`. Two or more groups titled `"Total"` give `multiple_total_groups` with
+    `value = None`: no Total column is chosen by array position and none are summed; every
+    Total-titled group stays out of the arms.
 - **Primary outcome measures (`primary_measures[]`)**:
   - Preserves `title`, `type` (`"PRIMARY"`), `unitOfMeasure`, `paramType`, `dispersionType`,
     `timeFrame`, and `populationDescription` verbatim.
