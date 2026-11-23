@@ -620,25 +620,38 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
     base["period1_title"] = p0_title.strip() if isinstance(p0_title, str) and p0_title.strip() else None
 
     # Extract verbatim dropWithdraws reason tallies across non-Total flow groups in Period 1.
+    # A reason's tally is the sum over every retained arm, so it is published only when each
+    # `dropWithdraws` entry for that reason gives exactly one valid count (>= 0) for EVERY retained
+    # arm. An arm whose count is missing, "NA", negative or repeated makes the tally `None`: a sum
+    # over some arms would read as the complete total.
     arm_id_set = set(arm_ids)
     dw_tallies: dict[str, int | float | None] = {}
-    dw_has_numeric: dict[str, bool] = {}
+    dw_complete: dict[str, bool] = {}
     for dw in p0.get("dropWithdraws") or []:
         if not isinstance(dw, dict):
             continue
         raw_label = dw.get("type")
         label = raw_label.strip() if isinstance(raw_label, str) and raw_label.strip() else "UNSPECIFIED_REASON"
         dw_tallies.setdefault(label, 0)
-        dw_has_numeric.setdefault(label, False)
+        dw_complete.setdefault(label, True)
+        arm_counts: dict[str, float] = {}
+        entry_ok = True
         for entry in dw.get("reasons") or []:
             if not isinstance(entry, dict) or entry.get("groupId") not in arm_id_set:
                 continue
+            gid = entry["groupId"]
             val = parse_num(entry.get("numSubjects"))
-            if val is not None and val >= 0:
-                prev = dw_tallies[label] or 0
-                dw_tallies[label] = plain_number(float(prev) + val)
-                dw_has_numeric[label] = True
-        if not dw_has_numeric[label]:
+            if val is None or val < 0 or gid in arm_counts:
+                entry_ok = False
+                continue
+            arm_counts[gid] = val
+        if not entry_ok or set(arm_counts) != arm_id_set:
+            dw_complete[label] = False
+        elif dw_complete[label]:
+            prev = dw_tallies[label] or 0
+            dw_tallies[label] = plain_number(float(prev) + sum(arm_counts.values()))
+    for label, complete in dw_complete.items():
+        if not complete:
             dw_tallies[label] = None
     base["drop_withdraw_reasons"] = dict(sorted(dw_tallies.items()))
 

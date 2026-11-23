@@ -390,3 +390,39 @@ def test_one_malformed_flow_group_withholds_retention(bad_group: object) -> None
     assert ret["completion_rate_status"] == "withheld_missing_started_or_completed"
     assert ret.get("period1_completion_rate") is None
     assert ret.get("period1_started") is None
+
+
+@pytest.mark.parametrize(
+    "placebo_count, expected",
+    [
+        ("2", 6),        # both arms valid: 4 + 2
+        ("NA", None),    # one arm non-numeric: no partial total
+        ("-1", None),    # negative count
+        (None, None),    # arm missing from the reason
+    ],
+)
+def test_withdrawal_reason_tally_needs_every_arm(placebo_count: str | None, expected: int | None) -> None:
+    import copy
+
+    study = copy.deepcopy(make_ctgov_study("NCT99100061"))
+    dws = study["resultsSection"]["participantFlowModule"]["periods"][0]["dropWithdraws"]
+    reasons = [{"groupId": "FG000", "numSubjects": "4"}]
+    if placebo_count is not None:
+        reasons.append({"groupId": "FG001", "numSubjects": placebo_count})
+    dws[:] = [{"type": "Adverse Event", "reasons": reasons}]
+    ret = extract_period1_retention(study)
+    assert ret["flow_status"] == "ok"
+    assert ret["drop_withdraw_reasons"] == {"Adverse Event": expected}
+
+
+def test_withdrawal_reason_tally_sums_repeated_labels_only_when_all_complete() -> None:
+    import copy
+
+    study = copy.deepcopy(make_ctgov_study("NCT99100062"))
+    dws = study["resultsSection"]["participantFlowModule"]["periods"][0]["dropWithdraws"]
+    full = [{"groupId": "FG000", "numSubjects": "1"}, {"groupId": "FG001", "numSubjects": "2"}]
+    dws[:] = [{"type": "Other", "reasons": full}, {"type": "Other", "reasons": full}]
+    assert extract_period1_retention(study)["drop_withdraw_reasons"] == {"Other": 6}
+    dws[1] = {"type": "Other", "reasons": [{"groupId": "FG000", "numSubjects": "1"},
+                                           {"groupId": "FG000", "numSubjects": "1"}]}
+    assert extract_period1_retention(study)["drop_withdraw_reasons"] == {"Other": None}
