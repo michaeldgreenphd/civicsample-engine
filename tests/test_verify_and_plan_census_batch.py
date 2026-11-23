@@ -3383,6 +3383,7 @@ def test_redteam_m4_cli_verify_without_page_text_is_not_silent(
         payload["exact_ws_matches"]
         + payload["unicode_nfkc_hyphen_matches"]
         + payload["substring_mismatches"]
+        + payload["quotations_not_compared"]
     )
     recorded = [issue for issue in payload["issues"] if issue["location_key"] is not None]
     assert rc != 0 or matched + len(recorded) >= payload["citations_checked"], (
@@ -3690,6 +3691,8 @@ def test_m4_r5_cli_verify_without_page_text_is_not_ok(
         rc, printed = _rt_f442_run(["verify", *args, "--report-out", str(report_path)], capsys)
         report = json.loads(report_path.read_text(encoding="utf-8"))
         assert report["quotations_not_compared"] == report["citations_checked"] == len(ELEMENTS)
+        # A quotation nothing compared has not been found to mismatch.
+        assert report["substring_mismatches"] == 0, f"{name}: uncompared quotations counted as mismatches"
         assert report["ok"] is False, f"{name}: no quotation was compared, yet the report is ok"
         assert rc == 1, f"{name}: exit {rc} for a run that compared no quotation with its page"
         assert "were not compared with page text" in printed

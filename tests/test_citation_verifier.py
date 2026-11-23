@@ -3216,7 +3216,10 @@ def test_redteam_m4_verify_without_page_text_records_unchecked_quotations() -> N
         expected_has_documents_by_nct={RT_SCOPE_ID: True},
     )
     matched = (
-        report.exact_ws_matches + report.unicode_nfkc_hyphen_matches + report.substring_mismatches
+        report.exact_ws_matches
+        + report.unicode_nfkc_hyphen_matches
+        + report.substring_mismatches
+        + report.quotations_not_compared
     )
     recorded = [i for i in report.issues if i.location_key is not None]
     assert report.citations_checked == len(ELEMENTS)
