@@ -530,7 +530,14 @@ def build_artifacts(
         dups = [lid for lid, cnt in Counter(x['link_id'] for x in links).items() if cnt > 1]
         raise ValueError(f'duplicate link_id collision: {dups[:5]}')
 
-    orphaned_reviews = E.apply_reviews(links, reviews)
+    # A review whose link_id matches no built link is an orphan only when its trial was built: its
+    # evidence changed or vanished. A review for a trial outside this build (`--nct-list` subset, or
+    # a trial not in the cache) says nothing about its evidence, so it is reported separately as out
+    # of scope. n_rows = n_applied + len(orphaned_link_ids) + len(out_of_scope_link_ids).
+    unmatched_reviews = E.apply_reviews(links, reviews)
+    included_set = set(included_ids)
+    orphaned_reviews = [lid for lid in unmatched_reviews if reviews[lid]['nct_id'] in included_set]
+    out_of_scope_reviews = [lid for lid in unmatched_reviews if reviews[lid]['nct_id'] not in included_set]
     links.sort(key=lambda x: (x['nct_id'], x['source_route'], x['target_id'], x['link_id']))
 
     links_by_trial: dict[str, list[dict[str, Any]]] = {n: [] for n in included_ids}
@@ -646,8 +653,9 @@ def build_artifacts(
         },
         'reviews': {
             'n_rows': len(reviews),
-            'n_applied': len(reviews) - len(orphaned_reviews),
+            'n_applied': len(reviews) - len(orphaned_reviews) - len(out_of_scope_reviews),
             'orphaned_link_ids': orphaned_reviews,
+            'out_of_scope_link_ids': out_of_scope_reviews,
         },
         'vocabularies': {
             'source_routes': list(E.SOURCE_ROUTES),
@@ -850,8 +858,21 @@ def check_contract(
         if x.get('review_status') != 'unreviewed':
             n_reviewed += 1
         links_by_trial_route.setdefault((str(x.get('nct_id')), str(x.get('source_route'))), []).append(x)
-    if n_reviewed != ((run.get('reviews') or {}).get('n_applied')):
+    run_reviews = run.get('reviews') or {}
+    if n_reviewed != run_reviews.get('n_applied'):
         problems.append('number of reviewed links differs from run.json reviews.n_applied')
+    orphaned_ids = run_reviews.get('orphaned_link_ids')
+    out_of_scope_ids = run_reviews.get('out_of_scope_link_ids')
+    if not isinstance(orphaned_ids, list) or not isinstance(out_of_scope_ids, list):
+        problems.append('run.json reviews must list orphaned_link_ids and out_of_scope_link_ids')
+    else:
+        if set(orphaned_ids) & set(out_of_scope_ids):
+            problems.append('run.json reviews lists a link_id as both orphaned and out of scope')
+        if set(orphaned_ids + out_of_scope_ids) & set(link_ids):
+            problems.append('run.json reviews lists an applied link_id as orphaned or out of scope')
+        n_applied = run_reviews.get('n_applied')
+        if not isinstance(n_applied, int) or run_reviews.get('n_rows') != n_applied + len(orphaned_ids) + len(out_of_scope_ids):
+            problems.append('run.json reviews.n_rows != n_applied + orphaned + out of scope')
 
     # Coverage invariants
     for cov in cov_rows:

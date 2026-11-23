@@ -223,6 +223,7 @@ def select_site_files(build: dict[str, Any]) -> dict[str, Any]:
             'n_rows': run['reviews']['n_rows'],
             'n_applied': run['reviews']['n_applied'],
             'n_orphaned': len(run['reviews']['orphaned_link_ids']),
+            'n_out_of_scope': len(run['reviews']['out_of_scope_link_ids']),
         },
         'records': {
             'trials.json': len(trial_rows),

@@ -485,6 +485,7 @@ def test_human_review_overrides_statements_orphans_and_private_key_stripping(
         'n_rows': 5,
         'n_applied': 4,
         'orphaned_link_ids': ['link:0000000000000000'],
+        'out_of_scope_link_ids': [],
     }
     assert _timeline_of(reviewed_build, 'NCT09990006')['discordance']['state'] == 'published_results_while_ctgov_unreported'
     assert _timeline_of(reviewed_build, 'NCT09990002')['discordance']['state'] == 'unreported_across_completed_routes'
@@ -1407,3 +1408,56 @@ def test_local_freeze_requires_stated_timestamps_and_freezes_at_the_real_time(tm
     assert run['sources']['ctgov']['data_timestamp'] == '2025-06-30T09:00:00'
     timelines = json.loads((out / 'timelines.json').read_text(encoding='utf-8'))['timelines']
     assert {t['window_365d']['as_of'] for t in timelines} == {'2025-06-30'}
+
+
+def test_reviews_for_trials_outside_the_build_are_out_of_scope_not_orphaned(
+    tmp_path: Path,
+    built_files: dict[str, Any],
+    frozen_cache: A.FrozenCache,
+) -> None:
+    res_02 = next(
+        x for x in built_files['links.json']['links']
+        if x['nct_id'] == 'NCT09990002' and x['source_route'] == 'registry_references'
+    )
+    epmc_06 = next(
+        x for x in built_files['links.json']['links']
+        if x['nct_id'] == 'NCT09990006' and x['source_route'] == 'literature_search'
+    )
+    rev_csv = tmp_path / 'reviews.csv'
+    with rev_csv.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.REVIEW_COLUMNS)
+        w.writerow([res_02['link_id'], 'NCT09990002', 'Dr. Fictional', '2026-11-02', 'confirmed_same_trial_results', 'in scope'])
+        w.writerow([epmc_06['link_id'], 'NCT09990006', 'Dr. Fictional', '2026-11-02', 'confirmed_same_trial_results', 'excluded trial'])
+        w.writerow(['link:0000000000000000', 'NCT09990002', 'Dr. Fictional', '2026-11-02', 'indeterminate', 'changed evidence'])
+        w.writerow(['link:1111111111111111', 'NCT09999999', 'Dr. Fictional', '2026-11-02', 'indeterminate', 'trial not in cache'])
+
+    subset = ART.build_artifacts(
+        frozen_cache,
+        reviews_path=rev_csv,
+        statements_path=ROOT / 'disclosure' / 'documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv',
+        producer=cli_build.producer_metadata(),
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+        requested_nct_ids=['NCT09990001', 'NCT09990002'],
+    )
+    assert subset['run.json']['reviews'] == {
+        'n_rows': 4,
+        'n_applied': 1,
+        'orphaned_link_ids': ['link:0000000000000000'],
+        'out_of_scope_link_ids': sorted([epmc_06['link_id'], 'link:1111111111111111']),
+    }
+    assert subset['links.json']['orphaned_reviews'] == ['link:0000000000000000']
+    assert ART.check_contract(subset) == []
+
+    # The contract keeps the four counts reconciled and the two lists disjoint.
+    bad = copy.deepcopy(subset)
+    bad['run.json']['reviews']['out_of_scope_link_ids'] = ['link:0000000000000000']
+    probs = ART.check_contract(bad)
+    assert any('both orphaned and out of scope' in p for p in probs)
+    assert any('n_rows != n_applied + orphaned + out of scope' in p for p in probs)
+
+    # The site export carries the out-of-scope count beside the orphan count.
+    exported = cli_export.select_site_files(subset)
+    assert exported['run.json']['reviews'] == {'n_rows': 4, 'n_applied': 1, 'n_orphaned': 1, 'n_out_of_scope': 2}
