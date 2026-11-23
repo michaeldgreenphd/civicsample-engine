@@ -2303,6 +2303,14 @@ def test_reviews_for_trials_outside_the_build_are_out_of_scope_not_orphaned(
         ('Lutetium Lu 177 dotatate', 'lutetium lu 177 dotatate'),
         ('5-FU', '5-fu'),
         ('CHF 1535 100/6 \u00b5g pMDI', 'chf 1535 pmdi'),
+        # A dose range is one strength (it left `prednisone 5-` in the query); codes stay.
+        ('Prednisone 5-10 mg', 'prednisone'),
+        ('Prednisone 5 to 10 mg', 'prednisone'),
+        ('Seladelpar 5\u201310 mg', 'seladelpar'),
+        ('Metformin: Glucophage, 500-2500mg/day', 'metformin glucophage'),
+        ('Insulin 10-20 units', 'insulin'),
+        ('5-FU 400 mg/m2', '5-fu'),
+        ('Ro 09-1978/000', 'ro 09-1978 000'),
     ],
 )
 def test_normalize_drug_term_strips_activity_amount_and_micro_sign_strengths(

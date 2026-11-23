@@ -468,8 +468,11 @@ def openfda_drugsfda_valid(body: Any) -> bool:
 # before a space), so a unit is stripped only as a whole token right after a number: `mg/mL` goes
 # whole rather than as `mg` leaving `ml`, and `D3` in `Vitamin D3`, the `U` of `Insulin U-100` or a
 # name such as `Unituxin` are never touched. Dosage-form and route words go next (see below).
+# A dose range (`5-10 mg`, `5 to 10 mg`, `0.5–1.0 mg/kg`) is one strength: matched only up to its
+# last number, it left `prednisone 5-` or `prednisone 5 to` in the query phrase. A range is taken only
+# when a unit follows it, so codes such as `5-FU` and `Ro 09-1978/000` are kept.
 DRUG_STRENGTH_RE = re.compile(
-    r'\b\d+(?:\.\d+)?(?:\s*/\s*\d+(?:\.\d+)?)*\s*'
+    r'\b\d+(?:\.\d+)?(?:\s*(?:-|\u2013|\u2014|to)\s*\d+(?:\.\d+)?)?(?:\s*/\s*\d+(?:\.\d+)?)*\s*'
     r'(?:%|(?:units?|mmol|nmol|pmol|meq|mcg|[\u00b5\u03bc]g|ug|ng|mg|ml|iu|g|u)'
     r'(?:\s*/\s*(?:dose|day|hour|min|hr|h|mcg|[\u00b5\u03bc]g|kg|m2|m\u00b2|mg|ml|dl|ug|g|l))*)'
     r'(?=\W|$)',
