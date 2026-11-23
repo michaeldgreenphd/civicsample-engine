@@ -271,6 +271,11 @@ def cmd_freeze_local(args: argparse.Namespace) -> int:
 
 def cmd_build(args: argparse.Namespace) -> int:
     try:
+        # Checked before anything else, so a typo cannot seed a cache from --records first.
+        if args.generated_at is not None:
+            gen_problem = ART.generated_at_problem(args.generated_at)
+            if gen_problem:
+                raise ValueError(gen_problem)
         subset_ids = A.read_nct_list(args.nct_list) if args.nct_list else None
         if args.records is not None and not (args.cache / 'manifest.json').exists():
             if args.fetched_at is None or args.data_timestamp is None:

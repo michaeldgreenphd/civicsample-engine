@@ -20,7 +20,7 @@ import re
 import shutil
 import tempfile
 from collections import Counter
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -485,6 +485,24 @@ def run_identity(run: dict[str, Any], files: dict[str, Any]) -> str:
     return sha256_bytes(dump([manifest_body, sibling_digests]))
 
 
+def generated_at_problem(value: Any) -> str | None:
+    """Why `value` is not a whole ISO 8601 UTC timestamp, or None when it is.
+
+    `generated_at` is published as the build's generation time, so the whole value is parsed, not a
+    prefix: an impossible date, trailing text, a date without a time, a naive time or a non-zero UTC
+    offset is refused (the rule the feasibility and DAP builds apply).
+    """
+    if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T.+', value):
+        return f'generated_at must be an ISO 8601 UTC timestamp, got {value!r}'
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return f'generated_at must be an ISO 8601 UTC timestamp, got {value!r}'
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+        return f'generated_at must carry a UTC offset (Z or +00:00), got {value!r}'
+    return None
+
+
 def build_artifacts(
     cache: A.FrozenCache,
     *,
@@ -497,6 +515,9 @@ def build_artifacts(
     requested_nct_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build the complete schema-version-1 disclosure artifact family strictly from `FrozenCache`."""
+    gen_problem = generated_at_problem(generated_at)
+    if gen_problem:
+        raise ValueError(gen_problem)
     reviews, reviews_sha = E.read_reviews(reviews_path)
     statements, statements_sha = E.read_statements(statements_path)
 
@@ -870,6 +891,11 @@ def check_contract(
     rid = run.get('run_id')
     if not isinstance(rid, str) or not RUN_ID_RE.match(rid):
         problems.append(f'run.json run_id {rid!r} is malformed')
+    # generated_at sits outside run_identity and run.json outside its own file hashes, so an edited
+    # value would pass every other check; it is parsed whole again here.
+    gen_problem = generated_at_problem(run.get('generated_at'))
+    if gen_problem:
+        problems.append(f'run.json {gen_problem}')
     rident = run.get('run_identity')
     if not isinstance(rident, str) or not HEX64_RE.match(rident):
         problems.append(f'run.json run_identity {rident!r} must be a 64-hex sha256')

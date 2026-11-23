@@ -1719,6 +1719,32 @@ def test_as_of_after_the_frozen_ctgov_data_is_refused(
     assert any('is after the earliest CT.gov data timestamp' in p for p in ART.check_contract(bad))
 
 
+@pytest.mark.parametrize('value', ['not-a-timestamp', '2026-02-30T12:00:00+00:00', '2026-11-01',
+                                   '2026-11-01T12:00:00', '2026-11-01T12:00:00+01:00', '2026-11-01T12:00:00Zjunk'])
+def test_generated_at_must_be_a_whole_utc_timestamp(
+    tmp_path: Path, frozen_cache: A.FrozenCache, built_files: dict[str, Any], value: str
+) -> None:
+    kwargs: dict[str, Any] = {
+        'reviews_path': ROOT / 'disclosure' / 'reviews.csv',
+        'statements_path': ROOT / 'disclosure' / 'documentary_statements.csv',
+        'sponsor_rules_path': ROOT / 'sponsors' / 'company_aliases.csv',
+        'producer': cli_build.producer_metadata(),
+        'as_of': date.fromisoformat(F.AS_OF),
+    }
+    with pytest.raises(ValueError, match='generated_at must'):
+        ART.build_artifacts(frozen_cache, generated_at=value, **kwargs)
+    out = tmp_path / 'out'
+    assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(out), '--as-of', F.AS_OF,
+                           '--generated-at', value]) == 1
+    assert not out.exists()
+    bad = copy.deepcopy(built_files)
+    bad['run.json']['generated_at'] = value
+    assert any('run.json generated_at must' in p for p in ART.check_contract(bad))
+    # Control: Z and +00:00 are both accepted.
+    assert ART.generated_at_problem('2026-11-01T12:00:00Z') is None
+    assert ART.generated_at_problem(F.GENERATED_AT) is None
+
+
 def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:
     # hasResults=true with an empty resultsSection: the CT.gov route is `available_document_insufficient`.
     shell = F._make_study('NCT09990010', title='Results shell', lead_sponsor='Fictional Sponsor',
