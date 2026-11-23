@@ -71,6 +71,12 @@ The optional `condition_mesh.jsonl.gz` (`src/condition_mesh.py`) replaces each
 trial's own `derivedSection` MeSH descriptors, so the build refuses one that
 does not belong to its study records (`benchmarks.check_condition_mesh_provenance`):
 
+- **Every line:** it must keep the `src/condition_mesh.py` contract
+  (`benchmarks.condition_mesh_line_problem`): its `schema_version`, `meshes`
+  and `ancestors` null or lists of `{id, term}`, and a state that agrees with
+  them (`indexed` has descriptors, `not_indexed` none, `no_module` and
+  `no_derived` no lists, `malformed` a `problem`). The loader refuses the
+  first line that does not.
 - **Every input:** the sidecar must hold a line for every input trial (lines
   for other trials, e.g. under `--limit`, are allowed and counted), and all its
   lines must carry one `(snapshot_date, extracted_at, pipeline_commit)` triple.

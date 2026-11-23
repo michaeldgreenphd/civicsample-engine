@@ -581,11 +581,50 @@ def load_study_records(
     }
 
 
+def condition_mesh_line_problem(row: dict[str, Any]) -> str | None:
+    """Why one sidecar line breaks the ``src/condition_mesh.py`` contract, or ``None``.
+
+    The contract is what ``select_condition_mesh`` writes: ``schema_version``
+    is ``cmesh.SCHEMA_VERSION``; ``meshes`` and ``ancestors`` are both present,
+    each null or a list of ``{"id": str, "term": str}`` (``cmesh._terms``, the
+    producer's own rule); and the state matches its payload:
+      indexed      ``meshes`` holds at least one descriptor
+      not_indexed  ``meshes`` is null or empty
+      no_module,
+      no_derived   ``meshes`` and ``ancestors`` are both null
+      malformed    a non-empty ``problem`` string; either list may be null
+    Only ``malformed`` carries ``problem``. A line that disagrees would be
+    counted under its declared state while contributing other descriptors.
+    """
+    if row.get("schema_version") != cmesh.SCHEMA_VERSION:
+        return f"schema_version {row.get('schema_version')!r} is not {cmesh.SCHEMA_VERSION!r}"
+    for key in ("meshes", "ancestors"):
+        if key not in row:
+            return f"no {key} key (null records an absent list)"
+        if row[key] is not None and cmesh._terms(row[key]) is None:
+            return f"{key} is neither null nor a list of id/term pairs"
+    state = row["state"]
+    if state == "indexed" and not row["meshes"]:
+        return "state indexed without at least one meshes descriptor"
+    if state == "not_indexed" and row["meshes"]:
+        return "state not_indexed with meshes descriptors"
+    if state in ("no_module", "no_derived") and (row["meshes"] is not None or row["ancestors"] is not None):
+        return f"state {state} with a meshes or ancestors list"
+    if state == "malformed":
+        if not isinstance(row.get("problem"), str) or not row["problem"].strip():
+            return "state malformed without a problem description"
+    elif "problem" in row:
+        return f"state {state} carries a problem field"
+    return None
+
+
 def load_condition_mesh(
     path: Path | None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any] | None]:
     """Load optional ``condition_mesh.jsonl.gz`` sidecar keyed by ``nct_id``.
 
+    Every line must keep the ``src/condition_mesh.py`` contract
+    (``condition_mesh_line_problem``); the first that does not raises.
     Each entry keeps the line's ``MESH_RUN_STAMP_KEYS`` (``None`` when a line
     carries none) next to its MeSH fields; ``check_condition_mesh_provenance``
     checks them against the study records before the build uses the sidecar.
@@ -611,6 +650,12 @@ def load_condition_mesh(
                 raise ValueError(f"{path}:{line_no}: missing nct_id")
             if state not in cmesh.STATES:
                 raise ValueError(f"{path}:{line_no}: invalid condition_mesh state {state!r}")
+            line_problem = condition_mesh_line_problem(row)
+            if line_problem is not None:
+                raise ValueError(
+                    f"{path}:{line_no}: {nct_id}: condition_mesh line breaks the "
+                    f"src/condition_mesh.py contract: {line_problem}"
+                )
             if nct_id in by_nct:
                 raise ValueError(f"{path}:{line_no}: duplicate condition_mesh nct_id {nct_id}")
             by_nct[nct_id] = {

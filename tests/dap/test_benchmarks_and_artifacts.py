@@ -437,6 +437,52 @@ def test_weekly_mesh_sidecar_must_match_records_run_and_cover_cohort(
         benchmarks.check_condition_mesh_provenance(loaded_mesh, mesh_meta, records, unstamped_meta)
 
 
+def test_mesh_sidecar_line_state_must_agree_with_its_payload(tmp_path: Path) -> None:
+    good_terms = [{"id": "D003924", "term": "Diabetes Mellitus, Type 2"}]
+    base = fx.make_raw_ctgov_study("NCT99000801")
+    modules: dict[str, dict[str, Any]] = {
+        "indexed": {"meshes": good_terms, "ancestors": []},
+        "not_indexed": {"meshes": []},
+        "malformed": {"meshes": good_terms, "ancestors": [{"id": 1}]},
+    }
+    producer_studies: dict[str, dict[str, Any]] = {
+        **{st: {**base, "derivedSection": {"conditionBrowseModule": mod}} for st, mod in modules.items()},
+        "no_module": {**base, "derivedSection": {}},
+        "no_derived": base,
+    }
+    # Everything src/condition_mesh.py writes, one line per state, loads.
+    for i, (state, study) in enumerate(producer_studies.items()):
+        line = cmesh.select_condition_mesh(study)
+        assert line["state"] == state
+        line["nct_id"] = f"NCT9900081{i}"
+        ok_path = _write_mesh_sidecar(tmp_path / f"ok_{state}.jsonl.gz", [line])
+        mesh_map, _ = benchmarks.load_condition_mesh(ok_path)
+        assert mesh_map[line["nct_id"]]["state"] == state
+
+    def line(**fields: Any) -> dict[str, Any]:
+        return {"schema_version": "1.0", "nct_id": "NCT99000820", "meshes": None, "ancestors": None, **fields}
+
+    bad_lines = {
+        "indexed_null_meshes": line(state="indexed"),
+        "indexed_empty_meshes": line(state="indexed", meshes=[]),
+        "indexed_malformed_meshes": line(state="indexed", meshes=[{"id": "D1"}]),
+        "indexed_meshes_not_list": line(state="indexed", meshes={"id": "D1", "term": "x"}),
+        "not_indexed_with_descriptors": line(state="not_indexed", meshes=good_terms),
+        "no_module_with_list": line(state="no_module", meshes=[]),
+        "no_derived_with_ancestors": line(state="no_derived", ancestors=good_terms),
+        "malformed_without_problem": line(state="malformed"),
+        "malformed_blank_problem": line(state="malformed", problem=" "),
+        "indexed_with_problem": line(state="indexed", meshes=good_terms, problem="x"),
+        "bad_ancestors": line(state="indexed", meshes=good_terms, ancestors=["D1"]),
+        "wrong_schema_version": line(state="no_derived", schema_version="2.0"),
+        "missing_meshes_key": {k: v for k, v in line(state="no_derived").items() if k != "meshes"},
+    }
+    for name, bad in bad_lines.items():
+        path = _write_mesh_sidecar(tmp_path / f"bad_{name}.jsonl.gz", [bad])
+        with pytest.raises(ValueError, match=r":1: NCT99000820: condition_mesh line breaks"):
+            benchmarks.load_condition_mesh(path)
+
+
 def test_raw_records_mesh_sidecar_checks_coverage_and_one_run(tmp_path: Path) -> None:
     studies = fx.build_fictional_cohort()
     records, study_meta = benchmarks.load_study_records(fx.write_studies_dir(studies, tmp_path / "studies"))
