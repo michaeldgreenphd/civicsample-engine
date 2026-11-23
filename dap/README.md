@@ -126,7 +126,10 @@ Parts the build or the shared race, ethnicity and sex extractors read without a 
 have their API v2 type when present (the start and primary completion date structs,
 `enrollmentInfo`, and the baseline table's groups, denominators, measures, classes, categories and
 measurements; see `TYPED_PROTOCOL_PARTS` and `BASELINE_SHAPE`), so a malformed record is refused by
-name instead of stopping the build with a traceback.
+name instead of stopping the build with a traceback. The locations module and list, and every
+location and collaborator entry, are checked the same way (`LIST_ENTRY_FIELDS`): a skipped `null`
+location, or a module read as empty, would lower or zero the listed facilities and move the
+footprint class with nothing reported.
 `contactsLocationsModule` and `derivedSection` are not required: their absence
 is a real "no listed facilities" / `no_derived`, so a whole-module projection
 that omits them cannot be told apart record by record.

@@ -545,15 +545,29 @@ def _missing_condition_and_sponsor_payloads(protocol: dict[str, Any]) -> list[st
 # AttributeError, TypeError or KeyError, so one malformed record stopped the whole build with a
 # traceback. A part of the wrong type is refused by name, like a missing module, rather than read as
 # absent; the shared extractors are not changed.
-#   * `TYPED_PROTOCOL_PARTS`: (module, field, type) that must have that type when present.
+#   * `TYPED_PROTOCOL_PARTS`: (module, field, type) that must have that type when present; module
+#     None names a field of `protocolSection` itself.
+#   * `LIST_ENTRY_FIELDS`: lists among those whose entries must be objects, with the named fields
+#     strings when present. `geography.extract_raw_locations` skipped a non-object location and read
+#     a non-object `contactsLocationsModule` as no locations, so a malformed record lowered or zeroed
+#     its listed facilities (and moved its footprint class) with nothing reported; a non-string
+#     `country` read as a facility without a country, and a non-string collaborator name became the
+#     text of a list.
 #   * `BASELINE_SHAPE`: the baseline table, when present. Each key names a list of objects; inside
 #     an object, `str` means a string when present, `REQUIRED_STR` a string that must be present,
 #     and a nested dict another list of objects.
-TYPED_PROTOCOL_PARTS: tuple[tuple[str, str, type], ...] = (
+TYPED_PROTOCOL_PARTS: tuple[tuple[str | None, str, type], ...] = (
     ("statusModule", "startDateStruct", dict),
     ("statusModule", "primaryCompletionDateStruct", dict),
     ("designModule", "enrollmentInfo", dict),
+    ("sponsorCollaboratorsModule", "collaborators", list),
+    (None, "contactsLocationsModule", dict),
+    ("contactsLocationsModule", "locations", list),
 )
+LIST_ENTRY_FIELDS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("sponsorCollaboratorsModule", "collaborators"): ("name", "class"),
+    ("contactsLocationsModule", "locations"): ("country", "state"),
+}
 REQUIRED_STR = "required string"
 BASELINE_SHAPE: dict[str, Any] = {
     "groups": {"title": str},
@@ -593,9 +607,23 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
     out: list[str] = []
     if isinstance(protocol, dict):
         for mod, field, kind in TYPED_PROTOCOL_PARTS:
-            holder = protocol.get(mod)
-            if isinstance(holder, dict) and field in holder and not isinstance(holder[field], kind):
-                out.append(f"{mod}.{field} (an object)")
+            holder = protocol if mod is None else protocol.get(mod)
+            if not isinstance(holder, dict) or field not in holder:
+                continue
+            where = field if mod is None else f"{mod}.{field}"
+            if not isinstance(holder[field], kind):
+                out.append(f"{where} ({'an object' if kind is dict else 'a list'})")
+                continue
+            entry_fields = LIST_ENTRY_FIELDS.get((mod, field)) if mod is not None else None
+            for i, entry in enumerate(holder[field] if entry_fields else []):
+                if not isinstance(entry, dict):
+                    out.append(f"{where}[{i}] (an object)")
+                    continue
+                out += [
+                    f"{where}[{i}].{name} (a string)"
+                    for name in entry_fields or ()
+                    if entry.get(name) is not None and not isinstance(entry[name], str)
+                ]
     results = study.get("resultsSection")
     if isinstance(results, dict) and "baselineCharacteristicsModule" in results:
         root = "resultsSection.baselineCharacteristicsModule"

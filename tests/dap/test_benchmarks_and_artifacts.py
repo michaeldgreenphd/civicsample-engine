@@ -1325,9 +1325,14 @@ _BASE = "resultsSection.baselineCharacteristicsModule"
 
 
 def _measured_study(nct_id: str) -> dict:
-    """The fixture study with race and sex baseline measures, so every baseline part is present."""
+    """The fixture study with locations, a collaborator and race and sex baseline measures."""
     return fx.make_raw_ctgov_study(
         nct_id,
+        locations=[
+            {"facility": "Fictional Site A", "city": "Boston", "state": "Massachusetts", "country": "United States"},
+            {"facility": "Fictional Site B", "city": "Toronto", "country": "Canada"},
+        ],
+        collaborators=[{"name": "Fictional CRO", "class": "INDUSTRY"}],
         measures=[
             fx.make_measure("Race (NIH/OMB)", [("White", "60"), ("Asian", "40")]),
             fx.make_measure("Sex: Female, Male", [("Female", "55"), ("Male", "45")]),
@@ -1341,6 +1346,20 @@ def _measured_study(nct_id: str) -> dict:
         (("protocolSection", "statusModule", "startDateStruct"), "2023-04-15",
          "statusModule.startDateStruct (an object)"),
         (("protocolSection", "designModule", "enrollmentInfo"), 120, "designModule.enrollmentInfo (an object)"),
+        # locations and collaborators: a skipped or coerced entry changed the listed facilities or sponsors
+        (("protocolSection", "contactsLocationsModule"), "Boston", "contactsLocationsModule (an object)"),
+        (("protocolSection", "contactsLocationsModule", "locations"), {"country": "United States"},
+         "contactsLocationsModule.locations (a list)"),
+        (("protocolSection", "contactsLocationsModule", "locations", 0), None,
+         "contactsLocationsModule.locations[0] (an object)"),
+        (("protocolSection", "contactsLocationsModule", "locations", 0, "country"), ["United States"],
+         "contactsLocationsModule.locations[0].country (a string)"),
+        (("protocolSection", "contactsLocationsModule", "locations", 0, "state"), 7,
+         "contactsLocationsModule.locations[0].state (a string)"),
+        (("protocolSection", "sponsorCollaboratorsModule", "collaborators"), ["Fictional CRO"],
+         "sponsorCollaboratorsModule.collaborators[0] (an object)"),
+        (("protocolSection", "sponsorCollaboratorsModule", "collaborators"), [{"name": ["Fictional CRO"]}],
+         "sponsorCollaboratorsModule.collaborators[0].name (a string)"),
         (("resultsSection", "baselineCharacteristicsModule"), None, f"{_BASE} (an object)"),
         (("resultsSection", "baselineCharacteristicsModule", "denoms"), 0, f"{_BASE}.denoms (a list)"),
         (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "units"), None,
