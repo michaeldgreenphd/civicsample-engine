@@ -44,6 +44,7 @@ from src import ethnicity_extractor, race_extractor
 from src import full_records
 from src import sex_gender_parser as sgp
 from src import sex_gender_table as sgt
+from src import table_selection
 from src import utils as src_utils
 
 ROOT: Path = Path(__file__).resolve().parents[1]
@@ -791,8 +792,11 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
             if name in module:
                 shape += _object_list_problems(module[name], f"{root}.{name}", fields)
         out += shape
-        out += _baseline_group_reference_problems(module, root, shape_ok=not shape and bool(module.get("groups")))
+        references = _baseline_group_reference_problems(module, root, shape_ok=not shape and bool(module.get("groups")))
+        out += references
         out += _unlabelled_row_problems(module, root)
+        if not shape and not references and module.get("groups"):
+            out += _unconverted_percentage_problems(module, root)
     return out
 
 
@@ -860,7 +864,7 @@ def _listed(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
-def _read_at_whole_population(measure: Any, overall: str, shape_ok: bool) -> bool:
+def _read_at_whole_population(measure: Any, overall: str | None, shape_ok: bool) -> bool:
     """Whether the race or ethnicity extractors read `measure`'s rows at the whole-population group: a
     race- or ethnicity-titled measure, or a sex-titled one the race extractor reads as race (its own test,
     run only on a table that passed the shape check, since it reads every row)."""
@@ -870,6 +874,38 @@ def _read_at_whole_population(measure: Any, overall: str, shape_ok: bool) -> boo
     if race_extractor.is_race_table(title) or ethnicity_extractor.is_ethnicity_table(title):
         return True
     return shape_ok and race_extractor.is_sex_titled_race_table(measure, overall)
+
+
+def _unconverted_percentage_problems(module: dict[str, Any], root: str) -> list[str]:
+    """Race and ethnicity measures posted in percentages that the extractors would read as counts.
+
+    The extractors convert a percentage against the measure's own Number Analyzed, else a class-level one
+    every class repeats, else the table's Participants count (`table_selection.percentage_denominator`, with
+    `get_total_baseline_participants` as the fallback), and `sum_measurements` reads a percentage with no
+    denominator as a count. DAP drops registered enrollment from that fallback
+    (`demographics._study_without_protocol_enrollment_padding`), so a percentage table with none of the three
+    was published as counts: White 60%, Asian 40% of a table whose Participants count is "NA" read as White
+    60, Asian 40 of 100. The fallback is computed here from the table alone, which is what remains of it once
+    enrollment is dropped. Run only on a table that passed the shape and group-reference checks. None of
+    the 5,304 real stored trials reads any race or ethnicity row as a percentage.
+    """
+    groups = module["groups"]
+    table = {"resultsSection": {"baselineCharacteristicsModule": module}}
+    overall = src_utils.get_overall_group_id(table) if len(groups) > 1 else None
+    fallback = src_utils.get_total_baseline_participants(table, overall)
+    out: list[str] = []
+    for i, measure in enumerate(_listed(module.get("measures"))):
+        if not _read_at_whole_population(measure, overall, True):
+            continue
+        view, _ = table_selection.total_class_view(measure, overall)
+        if src_utils.is_percentage_measure(view) and not table_selection.percentage_denominator(
+            view, overall, fallback
+        ):
+            out.append(
+                f"{root}.measures[{i}].denoms (a Participants count to convert the measure's percentages against, "
+                "on the measure, on every class or in the table's denoms)"
+            )
+    return out
 
 
 def _baseline_group_reference_problems(module: dict[str, Any], root: str, *, shape_ok: bool = False) -> list[str]:

@@ -1993,6 +1993,60 @@ def test_class_level_rows_as_the_extractors_read_them_load(tmp_path: Path) -> No
         assert (race["table_status"], race["counts"]["white"], race["counts"]["asian"]) == ("omb_compatible", 60, 40)
 
 
+def _percentage_table(nct_id: str, table_denom: str, *, measure_denom: str | None = None,
+                      title: str = "Race (NIH/OMB)") -> dict:
+    """A single-group study of 200 whose race (or ethnicity) table posts percentages, 60 and 40."""
+    labels = (("Hispanic or Latino", "60"), ("Not Hispanic or Latino", "40")) if "Ethnic" in title else (
+        ("White", "60"), ("Asian", "40"))
+    st = fx.make_raw_ctgov_study(nct_id, enrollment=200, baseline_denom=200,
+                                 measures=[fx.make_measure("Sex: Female, Male", [("Female", "110"), ("Male", "90")])])
+    module = st["resultsSection"]["baselineCharacteristicsModule"]
+    measure = fx.make_measure(title, list(labels))
+    measure.update(paramType="NUMBER", unitOfMeasure="percentage of participants")
+    if measure_denom is not None:
+        measure["denoms"] = [{"units": "Participants", "counts": [{"groupId": "BG000", "value": measure_denom}]}]
+    module["measures"].insert(0, measure)
+    module["denoms"][0]["counts"][0]["value"] = table_denom
+    return st
+
+
+@pytest.mark.parametrize("title", ["Race (NIH/OMB)", "Ethnicity (NIH/OMB)"])
+def test_a_percentage_table_with_nothing_to_convert_against_is_refused(tmp_path: Path, title: str) -> None:
+    # On d0488fd it loaded: with the table's Participants count "NA" and no Number Analyzed on the measure,
+    # DAP's view had no denominator left (registered enrollment is dropped), so 60% and 40% of 200 were
+    # published as 60 and 40 participants of 100.
+    bad = _percentage_table("NCT99800063", "NA", title=title)
+    want = (f"NCT99800063 lacks {_BASE}.measures[0].denoms (a Participants count to convert the measure's "
+            "percentages against, on the measure, on every class or in the table's denoms)")
+    with pytest.raises(ValueError, match=re.escape(want)):
+        _load_pair(tmp_path, bad)
+
+
+@pytest.mark.parametrize(
+    ("table_denom", "measure_denom"),
+    [("200", None), ("NA", "200")],
+)
+def test_a_percentage_table_with_a_denominator_converts(
+    tmp_path: Path, table_denom: str, measure_denom: str | None
+) -> None:
+    # Controls, on both heads: the table's own count, or the measure's Number Analyzed, converts 60% and 40%.
+    st = _percentage_table("NCT99800064", table_denom, measure_denom=measure_denom)
+    loaded = _load_pair(tmp_path, st)
+    rec = next(r for r in loaded if r["protocolSection"]["identificationModule"]["nctId"] == "NCT99800064")
+    race = extract_demographics(rec)["race"]
+    assert (race["counts"]["white"], race["counts"]["asian"], race["baseline_total"]) == (120, 80, 200)
+
+
+def test_a_count_table_beside_an_unparsed_participants_count_loads(tmp_path: Path) -> None:
+    # Control, on both heads: counts need no conversion, so a table whose Participants count is "NA" (the
+    # round-38 shape) still loads and reads its counts.
+    st = _measured_study("NCT99800065")
+    st["resultsSection"]["baselineCharacteristicsModule"]["denoms"][0]["counts"][0]["value"] = "NA"
+    loaded = _load_pair(tmp_path, st)
+    rec = next(r for r in loaded if r["protocolSection"]["identificationModule"]["nctId"] == "NCT99800065")
+    assert extract_demographics(rec)["race"]["counts"]["white"] == 60
+
+
 def test_a_single_group_row_naming_its_group_twice_is_refused(tmp_path: Path) -> None:
     # On 9a955a7 it loaded, and with no Overall id the extractors read the last entry: White 10, not 60.
     bad = _measured_study("NCT99800022")

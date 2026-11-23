@@ -141,7 +141,10 @@ categories; see `TYPED_PROTOCOL_PARTS` and `BASELINE_SHAPE`), so a malformed rec
 name instead of stopping the build with a traceback. An `enrollmentInfo.count`, when present, must be a
 non-negative integer and a `type` CT.gov's `ACTUAL` or `ESTIMATED`: the build kept any integer, a
 negative one included, and read other values as no enrollment, while the shared sex/gender table read
-`"Infinity"` as an infinite count and wrote `enrollment_minus_parsed` as the non-JSON token `Infinity`. The locations module and list, and every
+`"Infinity"` as an infinite count and wrote `enrollment_minus_parsed` as the non-JSON token `Infinity`.
+A race or ethnicity measure posted in percentages must have a Participants count to convert against, on
+the measure, on every class or in the table's denominators: registered enrollment is not used as a
+baseline, so without one the extractors read the percentages as counts (`_unconverted_percentage_problems`). The locations module and list, and every
 location and collaborator entry, are checked the same way (`LIST_ENTRY_FIELDS`): a skipped `null`
 location, or a module read as empty, would lower or zero the listed facilities and move the
 footprint class with nothing reported. Every collaborator must also carry a non-blank `name`: one
