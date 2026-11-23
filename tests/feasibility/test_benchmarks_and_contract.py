@@ -851,6 +851,20 @@ def test_site_export_keeps_the_source_pipeline_commit(tmp_path: Path) -> None:
     assert records["source_extracted_at"] == _WEEKLY_EXTRACTED_AT
 
 
+def test_site_export_names_the_termination_review_file_by_digest(tmp_path: Path) -> None:
+    # Two review files with the same number of rows can publish different classifications, so the
+    # site manifest carries the build's review-file digest, not only its row count.
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    out_dir = tmp_path / "weekly_build"
+    site_dir = tmp_path / "weekly_site"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 0
+    assert export_feasibility_site.main([str(out_dir), str(site_dir)]) == 0
+    build_reviews = json.loads((out_dir / "run.json").read_text(encoding="utf-8"))["inputs"]["termination_reviews"]
+    site_inputs = json.loads((site_dir / "run.json").read_text(encoding="utf-8"))["inputs"]
+    assert site_inputs["termination_reviews_sha256"] == build_reviews["sha256"]
+    assert site_inputs["termination_reviews_n_rows"] == build_reviews["n_rows"]
+
+
 # ---- Producer digest: the build's import closure plus the data files it reads
 
 
