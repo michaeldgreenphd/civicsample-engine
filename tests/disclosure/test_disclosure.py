@@ -2032,6 +2032,19 @@ def _study_with_arms(arms: Any) -> dict[str, Any]:
          'interventions[0] has a blank type or name'),
         ({'status': 200}, {'interventions': [{'type': '', 'name': 'Zorbatinib'}]},
          'interventions[0] has a blank type or name'),
+        # On fd8b149 a drug label that normalizes to no term planned no query either, and the route read
+        # no_candidate_in_completed_scope over the NCT query alone (as for NCT01371006's "low dose").
+        ({'status': 200}, {'interventions': [{'type': 'DRUG', 'name': 'Tablets'}]},
+         "interventions[0] ('Tablets') names no drug term the openFDA search can query"),
+        ({'status': 200}, {'interventions': [{'type': 'DRUG', 'name': 'low dose'}]},
+         "interventions[0] ('low dose') names no drug term the openFDA search can query"),
+        ({'status': 200}, {'interventions': [{'type': 'BIOLOGICAL', 'name': 'FF', 'otherNames': ['FF (MgSt)']}]},
+         "interventions[0] ('FF') names no drug term the openFDA search can query"),
+        ({'status': 200}, {'interventions': [{'type': ' drug ', 'name': 'Tablets'}]},
+         "interventions[0] ('Tablets') names no drug term the openFDA search can query"),
+        ({'status': 200},
+         {'interventions': [{'type': 'BEHAVIORAL', 'name': 'Diet'}, {'type': 'DRUG', 'name': 'Tablets'}]},
+         "interventions[1] ('Tablets') names no drug term the openFDA search can query"),
     ],
 )
 def test_openfda_route_is_incomplete_when_drug_queries_cannot_be_planned(
@@ -2044,12 +2057,32 @@ def test_openfda_route_is_incomplete_when_drug_queries_cannot_be_planned(
 
 
 @pytest.mark.parametrize('arms', ['<absent>', {}, {'interventions': []},
-                                  {'interventions': [{'type': 'BEHAVIORAL', 'name': 'Exercise'}]}])
+                                  {'interventions': [{'type': 'BEHAVIORAL', 'name': 'Exercise'}]},
+                                  # Placebo, sham and control arms name no drug to search (on both heads).
+                                  {'interventions': [{'type': 'DRUG', 'name': 'Placebo'}]},
+                                  {'interventions': [{'type': 'DRUG', 'name': 'Placebo Tablets'}]},
+                                  {'interventions': [{'type': 'DRUG', 'name': 'Normal saline'}]}])
 def test_a_record_that_registers_no_drug_is_a_completed_openfda_search(arms: Any) -> None:
     cell = _openfda_cell_without_candidates({'status': 200}, _study_with_arms(arms))
     assert cell['state'] == 'no_candidate_in_completed_scope', cell
     # A CT.gov 404 is the registry's own answer: no record, so nothing to plan.
     assert _openfda_cell_without_candidates({'status': 404}, None)['state'] == 'document_unavailable'
+
+
+def test_a_padded_drug_type_plans_its_query() -> None:
+    # On fd8b149 extraction read ` Drug ` as no drug type and planned no query, while the planning check
+    # (which strips it) found nothing wrong, so the route completed over the NCT query alone.
+    study = _study_with_arms({'interventions': [{'type': ' Drug ', 'name': 'Zorbatinib'}]})
+    assert A.drug_planning_problem(study) is None
+    assert A.extract_drug_candidates(study) == ['zorbatinib']
+
+
+def test_a_drug_named_by_an_alias_is_planned() -> None:
+    # Control, on both heads: a label that normalizes away beside an alias that names the drug plans the
+    # alias's query.
+    study = _study_with_arms({'interventions': [{'type': 'DRUG', 'name': 'Tablets', 'otherNames': ['Zorbatinib']}]})
+    assert A.drug_planning_problem(study) is None
+    assert A.extract_drug_candidates(study) == ['zorbatinib']
 
 
 def _nct_cited_link(app: dict[str, Any]) -> dict[str, Any]:

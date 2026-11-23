@@ -901,6 +901,14 @@ def normalize_drug_term(raw: str) -> str | None:
     the abbreviations in `DOSAGE_FORM_ABBREVIATIONS` (see the notes there), and last any schedule or
     dose-level qualifier at either end (`_strip_end_qualifiers`).
     """
+    cleaned = _clean_drug_label(raw)
+    if len(cleaned) < 3 or _is_placebo_term(cleaned):
+        return None
+    return cleaned
+
+
+def _clean_drug_label(raw: str) -> str:
+    """`normalize_drug_term`'s cleaning of a label, before the placebo and length tests."""
     cleaned = re.sub(r'\([^)]*\)', ' ', raw or '')
     cleaned = DRUG_STRENGTH_RE.sub(' ', cleaned)
     cleaned = re.sub(r'[^A-Za-z0-9\- ]+', ' ', cleaned)
@@ -911,12 +919,20 @@ def normalize_drug_term(raw: str) -> str | None:
         if t not in DOSAGE_FORM_WORDS
         and not (t in DOSAGE_FORM_ABBREVIATIONS and not (tokens[i + 1:i + 2] or [''])[0][:1].isdigit())
     )
-    cleaned = _strip_end_qualifiers(cleaned)
-    if len(cleaned) < 3 or cleaned in PLACEBO_TERMS:
-        return None
-    if any(cleaned.startswith(prefix) for prefix in ('placebo ', 'sham ', 'matching placebo')):
-        return None
-    return cleaned
+    return _strip_end_qualifiers(cleaned)
+
+
+def _is_placebo_term(cleaned: str) -> bool:
+    """Whether a cleaned label names a placebo, sham or control arm rather than a drug."""
+    return cleaned in PLACEBO_TERMS or any(
+        cleaned.startswith(prefix) for prefix in ('placebo ', 'sham ', 'matching placebo')
+    )
+
+
+def is_placebo_label(raw: str) -> bool:
+    """Whether an intervention label names a placebo, sham or control arm (`PLACEBO_TERMS`), as
+    `normalize_drug_term` decides it."""
+    return _is_placebo_term(_clean_drug_label(raw))
 
 
 # Separators between the components of a combination label (`Nivolumab + Ipilimumab`,
@@ -944,6 +960,18 @@ def drug_label_terms(raw: str) -> list[str]:
             if term and any(c.isalpha() for c in term) and term not in terms:
                 terms.append(term)
     return terms
+
+
+# The intervention types whose labels plan openFDA drug queries.
+DRUG_INTERVENTION_TYPES: frozenset[str] = frozenset({'DRUG', 'BIOLOGICAL', 'COMBINATION_PRODUCT'})
+
+
+def is_drug_intervention_type(raw: object) -> bool:
+    """Whether an intervention `type` plans openFDA drug queries. `extract_drug_candidates` and
+    `drug_planning_problem` both read the type here: when they read it differently (` DRUG ` padded),
+    the check took a drug as planned that extraction skipped. All 132,953 intervention entries in the
+    75,811 stored local CT.gov entries carry an exact upper-case enum value."""
+    return isinstance(raw, str) and raw.strip().upper() in DRUG_INTERVENTION_TYPES
 
 
 def drug_planning_problem(study: dict[str, Any] | None) -> str | None:
@@ -985,6 +1013,16 @@ def drug_planning_problem(study: dict[str, Any] | None) -> str | None:
         others = item.get('otherNames', [])
         if not isinstance(others, list) or not all(isinstance(o, str) for o in others):
             return f'interventions[{i}].otherNames is not a list of strings'
+        # A drug whose name and aliases all normalize to no term ("Tablets", "low dose") is searched by no
+        # query, so the route completed over the NCT query alone and could read as a negative. A placebo,
+        # sham or control label names no drug to search and is not a problem.
+        labels = [item['name'], *others]
+        if (
+            is_drug_intervention_type(item['type'])
+            and not any(drug_label_terms(label) for label in labels)
+            and not any(is_placebo_label(label) for label in labels)
+        ):
+            return f'interventions[{i}] ({item["name"]!r}) names no drug term the openFDA search can query'
     return None
 
 
@@ -1003,8 +1041,7 @@ def extract_drug_candidates(study: dict[str, Any] | None) -> list[str]:
     for item in interventions:
         if not isinstance(item, dict):
             continue
-        itype = str(item.get('type') or '').upper()
-        if itype not in ('DRUG', 'BIOLOGICAL', 'COMBINATION_PRODUCT'):
+        if not is_drug_intervention_type(item.get('type')):
             continue
         found.update(drug_label_terms(str(item.get('name') or '')))
         # Every registered alias is searched: the generic ingredient Drugs@FDA indexes may be any of
