@@ -294,6 +294,42 @@ def test_history_archive_supports_nested_protocol_section_and_refuses_tampering(
         OH.load_history_archive(p_bad_id)
 
 
+@pytest.mark.parametrize(
+    ('sidecar', 'message'),
+    [
+        ({}, 'lacks sha256_uncompressed'),
+        ({'n_records': 1}, 'lacks sha256_uncompressed'),
+        ({'sha256_uncompressed': 'CORRECT'}, 'lacks an integer n_records'),
+        ({'sha256_uncompressed': 'CORRECT', 'n_records': True}, 'lacks an integer n_records'),
+        ([], 'not a JSON object'),
+    ],
+    ids=['empty', 'count_only', 'sha_only', 'boolean_count', 'not_an_object'],
+)
+def test_history_sidecar_must_pin_bytes_and_count_before_meta_verified(
+    tmp_path: Path, sidecar: Any, message: str
+) -> None:
+    # Regression: a sidecar lacking sha256_uncompressed and/or n_records skipped both checks and the
+    # loader still reported `meta_verified: true` for an archive nothing pinned.
+    path = _write_history_archive(
+        tmp_path / 'hist.jsonl.gz',
+        [{'nct_id': 'NCT99000505', 'primaryOutcomes': [{'measure': 'HbA1c', 'timeFrame': 'Week 24'}]}],
+        with_meta=True,
+    )
+    meta_path = path.with_name(path.name + '.meta.json')
+    full = json.loads(meta_path.read_text(encoding='utf-8'))
+    if isinstance(sidecar, dict) and sidecar.get('sha256_uncompressed') == 'CORRECT':
+        sidecar = {**sidecar, 'sha256_uncompressed': full['sha256_uncompressed']}
+    meta_path.write_text(json.dumps(sidecar), encoding='utf-8')
+    with pytest.raises(OH.HistoryArchiveError, match=message):
+        OH.load_history_archive(path)
+
+    # The complete sidecar verifies; with no sidecar at all the archive loads unverified.
+    meta_path.write_text(json.dumps(full), encoding='utf-8')
+    assert OH.load_history_archive(path)[1]['meta_verified'] is True
+    meta_path.unlink()
+    assert OH.load_history_archive(path)[1]['meta_verified'] is False
+
+
 _ID_404 = {'nctId': 'NCT99000404'}
 _SEC_ONLY = {'secondaryOutcomes': [{'measure': 'Change in Body Weight', 'timeFrame': 'Week 24'}]}
 

@@ -428,9 +428,10 @@ def _parse_history_entry(raw: dict[str, Any], line_no: int) -> tuple[str, dict[s
 def load_history_archive(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     """Load a frozen `jsonl.gz` archive of historical study-version snapshots keyed by `nct_id`.
 
-    If `<archive>.meta.json` is present alongside `path`, verifies `sha256_uncompressed` and
-    `n_records` before returning. Raises `HistoryArchiveError` on corrupt gzip, malformed JSON,
-    duplicate `nct_id` rows, or metadata checksum mismatch.
+    If `<archive>.meta.json` is present alongside `path`, it must carry both `sha256_uncompressed`
+    and `n_records`, and both must match the archive before `meta_verified` is set. Raises
+    `HistoryArchiveError` on corrupt gzip, malformed JSON, duplicate `nct_id` rows, a sidecar that is
+    not an object or lacks either field, or a metadata checksum or count mismatch.
     """
     if not path.is_file():
         raise HistoryArchiveError(f'{path}: historical archive file does not exist')
@@ -448,8 +449,18 @@ def load_history_archive(path: Path) -> tuple[dict[str, dict[str, Any]], dict[st
             meta = json.loads(meta_path.read_text(encoding='utf-8'))
         except (OSError, ValueError) as exc:
             raise HistoryArchiveError(f'{meta_path.name}: unreadable metadata JSON ({exc})') from exc
+        # A sidecar is only worth `meta_verified` when it pins both the bytes and the record count:
+        # an empty or partial sidecar is refused rather than presenting an unpinned archive as
+        # verified (and silently ignoring it would hide a broken provenance file).
+        if not isinstance(meta, dict):
+            raise HistoryArchiveError(f'{meta_path.name}: metadata is not a JSON object')
         expected_sha = meta.get('sha256_uncompressed')
-        if expected_sha is not None and expected_sha != uncompressed_sha:
+        expected_n = meta.get('n_records')
+        if not isinstance(expected_sha, str):
+            raise HistoryArchiveError(f'{meta_path.name}: metadata lacks sha256_uncompressed')
+        if not isinstance(expected_n, int) or isinstance(expected_n, bool):
+            raise HistoryArchiveError(f'{meta_path.name}: metadata lacks an integer n_records')
+        if expected_sha != uncompressed_sha:
             raise HistoryArchiveError(
                 f'{path.name}: uncompressed bytes do not match {meta_path.name} sha256_uncompressed'
             )
@@ -478,7 +489,7 @@ def load_history_archive(path: Path) -> tuple[dict[str, dict[str, Any]], dict[st
             raise HistoryArchiveError(f'{path.name} line {line_no}: duplicate historical snapshot for {nct}')
         snapshots[nct] = snap
 
-    if meta_verified and 'n_records' in meta and meta.get('n_records') != non_empty_lines:
+    if meta_verified and meta.get('n_records') != non_empty_lines:
         raise HistoryArchiveError(
             f"{path.name}: record count ({non_empty_lines}) does not match metadata ({meta.get('n_records')})"
         )

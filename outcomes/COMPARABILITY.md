@@ -171,7 +171,9 @@ Supports an optional frozen `jsonl.gz` archive keyed by `nct_id` carrying initia
 whose `primaryOutcomes` is absent or null (flat, under `protocolSection.outcomesModule`, or under a
 top-level `outcomesModule`, including a nested row with no `outcomesModule`) is refused with
 `HistoryArchiveError` rather than read as an empty registration; `[]` records a version that
-registered none.
+registered none. A `<archive>.meta.json` sidecar, when present, must carry both
+`sha256_uncompressed` and `n_records` and match the archive on both; an empty or partial sidecar is
+refused, never reported as `meta_verified`.
 
 - Record states (`VERSION_HISTORY_STATES`): `history_archive_not_provided` (cleanly recorded with
   `diffs = None` when no archive is supplied), `trial_not_in_history_archive`, `evaluated`,
