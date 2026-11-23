@@ -78,7 +78,8 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 # `statusModule: ["bad"]` froze a cache whose build raised), naming the part (a record with
 # `hasResults: false` but a non-empty `resultsSection` or a results posting date, which contradicts
 # itself, included), refuses an object in a local file that is none of a study, a `studies` page, a
-# list of studies, a CT.gov /version answer or a response-log line (a study that lost its
+# list of studies, a CT.gov /version answer or a response-log record, as a JSONL line or a whole
+# .json file (a study that lost its
 # protocolSection, a `studies` value that is not a list), and a log line whose status is neither 200
 # nor a failed request (null or another HTTP status), or whose 200 answer is none of those, all of
 # which were skipped, refuses a --data-timestamp more than 14 hours after --fetched-at (CT.gov states no

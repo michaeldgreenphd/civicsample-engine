@@ -1422,11 +1422,29 @@ def _local_log_line_failed(line: dict[str, Any]) -> bool:
     return status is None or (isinstance(status, int) and not isinstance(status, bool) and status != 200)
 
 
+def _studies_in_local_object(obj: Any) -> Iterable[Any]:
+    """The study records one object of a local file holds: a response-log line's answer when its `status`
+    is 200, none when the request got no answer (`_local_log_line_failed`), the line itself for any other
+    status (refused by the caller), and otherwise the object read as a CT.gov answer
+    (`_studies_in_ctgov_answer`). A JSONL line and a whole `.json` file are read the same way: a `.json`
+    file holding one log record was read as a study and refused for its missing `protocolSection`, and a
+    failed one was refused rather than skipped."""
+    if not (isinstance(obj, dict) and 'body' in obj and 'protocolSection' not in obj):
+        yield from _studies_in_ctgov_answer(obj)
+    elif _local_log_line_failed(obj):
+        return
+    elif obj.get('status') != 200:
+        yield obj
+    else:
+        body = obj['body']
+        yield from _studies_in_ctgov_answer(json.loads(body) if isinstance(body, str) else body)
+
+
 def _iter_studies_from_local_file(path: Path) -> Iterable[Any]:
     """Yield raw CT.gov v2 study dicts from `.json`, `.json.gz`, `.jsonl`, or `.jsonl.gz`.
 
     A file, or each JSONL line, may be a study, a `studies` page, a list of studies (`.json` only), a
-    CT.gov `/version` answer (which holds none), or a response-log line (an object with a `body`,
+    CT.gov `/version` answer (which holds none), or a response-log record (an object with a `body`,
     whose answer is read the same way when its `status` is 200, and which holds none when the request
     got no answer: `_local_log_line_failed`). Everything else is yielded as a record of its own,
     whatever its shape, and so is every entry of a `studies` page or list: the caller refuses a
@@ -1442,23 +1460,14 @@ def _iter_studies_from_local_file(path: Path) -> Iterable[Any]:
         for raw_line in raw.split(b'\n'):
             if not raw_line.strip():
                 continue
-            obj = json.loads(raw_line.rstrip(b'\r').decode('utf-8'))
-            if not (isinstance(obj, dict) and 'body' in obj and 'protocolSection' not in obj):
-                yield from _studies_in_ctgov_answer(obj)
-            elif _local_log_line_failed(obj):
-                continue
-            elif obj.get('status') != 200:
-                yield obj
-            else:
-                body = obj['body']
-                yield from _studies_in_ctgov_answer(json.loads(body) if isinstance(body, str) else body)
+            yield from _studies_in_local_object(json.loads(raw_line.rstrip(b'\r').decode('utf-8')))
         return
 
     parsed = json.loads(raw.decode('utf-8'))
     if isinstance(parsed, list):
         yield from parsed
     else:
-        yield from _studies_in_ctgov_answer(parsed)
+        yield from _studies_in_local_object(parsed)
 
 
 def ingest_local_ctgov_records(

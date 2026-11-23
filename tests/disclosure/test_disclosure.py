@@ -1650,6 +1650,10 @@ def _study_without_protocol() -> dict[str, Any]:
      lambda: json.dumps({'key': 'ctgov/study/NCT09990005', 'status': 'unusable_200', 'body': None}) + '\n'),
     # A log line with no status cannot show its request was answered (on 30e1cae its study was frozen).
     ('log.jsonl', lambda: json.dumps({'key': 'ctgov/study/NCT09990005', 'body': F.STUDIES['NCT09990005']}) + '\n'),
+    # The same log records as a whole `.json` file are refused too (on both heads).
+    ('log.json', lambda: json.dumps({'key': 'ctgov/study/NCT09990005', 'status': 200, 'body': {'note': 'x'}})),
+    ('log.json', lambda: json.dumps({'key': 'ctgov/study/NCT09990005', 'status': 'unusable_200', 'body': None})),
+    ('log.json', lambda: json.dumps({'key': 'ctgov/study/NCT09990005', 'body': F.STUDIES['NCT09990005']})),
 ])
 def test_local_freeze_refuses_an_object_that_is_no_study_page_or_version_answer(
     tmp_path: Path, name: str, content: Any
@@ -1691,6 +1695,27 @@ def test_local_freeze_reads_every_shape_the_stored_files_hold(tmp_path: Path) ->
     cache = tmp_path / 'cache'
     A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
     assert A.load_frozen_cache(cache).requested_nct_ids == [f'NCT0999000{i}' for i in range(1, 7)]
+
+
+@pytest.mark.parametrize('name', ['log.json', 'log.json.gz'])
+def test_local_freeze_reads_a_response_log_record_in_a_json_file(tmp_path: Path, name: str) -> None:
+    # On 42f2858 a `.json` file holding one response-log record was read as a study and refused for its
+    # missing protocolSection, and a failed record was refused rather than skipped; the same records as
+    # JSONL lines were read.
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'a_study.json').write_text(json.dumps(F.STUDIES['NCT09990001']), encoding='utf-8')
+    records = {
+        name: {'key': 'ctgov/study/NCT09990004', 'status': 200, 'body': F.STUDIES['NCT09990004']},
+        f'page_{name}': {'key': 'page', 'status': 200, 'body': json.dumps({'studies': [F.STUDIES['NCT09990005']]})},
+        f'failed_{name}': {'key': 'ctgov/study/NCT09990008', 'status': 404, 'body': {'message': 'not found'}},
+    }
+    for file_name, record in records.items():
+        data = json.dumps(record).encode('utf-8')
+        (local_src / file_name).write_bytes(gzip.compress(data) if file_name.endswith('.gz') else data)
+    cache = tmp_path / 'cache'
+    A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
+    assert A.load_frozen_cache(cache).requested_nct_ids == ['NCT09990001', 'NCT09990004', 'NCT09990005']
 
 
 def test_local_freeze_with_limit_still_compares_every_later_copy(tmp_path: Path) -> None:
