@@ -59,22 +59,31 @@ entry point guards that:
       any study is parsed), select_raw_outcome_populations,
       build_outcomes_from_raw.
     "Carries" means a key, field, attribute or label whose name contains
-    in_audit once case, spaces, hyphens, underscores, full-width forms and
-    characters that print as nothing (bidi marks and isolates, zero-width
-    and other format characters, variation selectors, tag characters,
-    combining marks) are ignored ("inAudit", "IN_AUDIT", "in-audit" count,
-    and so do qualified names: the pandas merge suffixes
-    in_audit_x/in_audit_y, a json_normalize path "manifest.in_audit",
-    "manifest_in_audit", "is_in_audit"; a key that is not text, such as an
-    enum member, is read as its str() and its value), at any depth (beside
+    in_audit once case, spaces, dots, hyphens, underscores, full-width
+    forms, letters that print like ASCII letters (Cyrillic, Greek and
+    Armenian lookalikes, dotless i, small capitals, Roman numerals,
+    modifier and subscript letters, letterlike symbols, and the
+    mathematical, circled, parenthesized, squared and regional-indicator
+    alphabets: the hand-written table _TO_ASCII) and characters that print
+    as nothing (bidi marks and isolates, zero-width and other format
+    characters, variation selectors, tag characters, combining marks) are
+    ignored ("inAudit", "IN_AUDIT", "in-audit", "in.audit" count, and so do
+    qualified names: the pandas merge suffixes in_audit_x/in_audit_y, a
+    json_normalize path "manifest.in_audit", "manifest_in_audit",
+    "is_in_audit"; a key that is not text, such as an enum member, is read
+    as its name (an IntEnum's or IntFlag's too, whose str() is a number),
+    its str() and its value), at any depth (beside
     the nctId, on protocolSection, in a merged ``manifest`` sub-record, in a
     pandas object's ``attrs``, a named row-index level or a bare Index's
     name), in a dict, any other mapping-like record
     (collections.UserDict, types.MappingProxyType, a collections.ChainMap,
     whose shadowed layers are read too, a pandas Series), a namedtuple (a
     ``df.itertuples()`` row), a numpy record (a ``df.to_records()`` row), a
-    dataclass instance, a plain object, or any sized container (list, tuple,
-    set, deque, dict view, numpy object array); and beside those, as an
+    keyed row (a sqlite3.Row: its ``keys()`` name its values), an XML
+    element (ElementTree: its tag, text, attributes and child elements, a
+    child's tag naming it; a minidom node is a plain object), a dataclass
+    instance, a plain object, or any sized container (list, tuple, set,
+    deque, dict view, numpy object array); and beside those, as an
     instance attribute, a property or a class attribute of a value of any
     type that is not a builtin (a dict, str, dataclass or namedtuple
     subclass), or inside a callable (a functools.partial's arguments, a
@@ -84,15 +93,25 @@ entry point guards that:
     (escaped keys, Python 3.11's OrderedDict repr, a dict items view, a
     list of pairs, a tuple-keyed dict, a pandas Series repr), JSON encoded
     twice, a CSV round trip of a dict column, YAML, "manifest=" followed by
-    JSON, and a key in prose ("in_audit=True"), whether held as str or as
-    bytes (UTF-8, latin-1, UTF-16, UTF-32) or a memoryview of them
-    (_text_mentions). An nct_id is a name that contains nct_id or "NCT
+    JSON, a key in typographic quotes or backticks, a key in prose
+    ("in_audit=True"), and any of these percent-encoded (urlencode, quote)
+    or HTML-escaped; and so is text that holds the name in_audit itself as
+    a word, or is that name, since the name became a value and the flag
+    stands elsewhere without it (long format from DataFrame.melt, a
+    key/value list, the "columns" of to_dict("split") or
+    to_json(orient="split"), an XML tag or a plist key, a pickle, prose
+    that names the flag, a text table whose header names it); whether held
+    as str or as bytes (UTF-8, latin-1, UTF-16, UTF-32) or a memoryview of
+    them (_text_mentions). An nct_id is a name that contains nct_id or "NCT
     Number" once so folded (nct_id_y or nct_id_m from a merge, nctNumber,
     manifest.nct_id), never nctIdAliases. Such a record is refused when any
     flag is True, when any is not exactly a bool, when the nct_id the entry
-    point would stamp is not exactly ``^NCT[0-9]{8}$``, or when any other
+    point would stamp is not exactly a str (a subclass's __str__ or __eq__
+    could say another id) matching ``^NCT[0-9]{8}$``, or when any other
     nct_id the record carries, at any depth, disagrees with it (a manifest
-    joined by position brings another trial's id under nct_id_m). Any
+    joined by position brings another trial's id under nct_id_m). Output
+    is stamped with the stored characters as a plain str (_plain_text),
+    never with what a str subclass's __str__ says. Any
     record is refused when part of it cannot be read (fields without
     names, such as a plain tuple row or a namedtuple field renamed to "_N";
     a bool outside a named field, used as a key, or left as the row label
@@ -102,17 +121,21 @@ entry point guards that:
     attribute that raises when read), since that part may hold a flag
     (_scan_in_audit). parse_outcomes_frame also refuses a batch in which
     only some studies carry ``in_audit``, or carry it under different
-    names, and a single record passed where a batch is expected. Every
+    names, and a single record (a sqlite3.Row among them) passed where a
+    batch is expected. Every
     entry point also refuses a snapshot_date that is not a YYYY-MM-DD date
     and outcome_types outside CT.gov's vocabulary, so an audit id set
     passed positionally fails loudly. A bare CT.gov API v2 study dict
     carries no ``in_audit``; for it these four rely on their caller, as
-    below. What the scan cannot see: a flag named in prose without ":" or
-    "=" after it ("flagged in_audit"), a table rendered as text whose
-    header names in_audit (a CSV line, DataFrame.to_string), a name written
-    in compatibility letters other than full-width ASCII (mathematical
-    alphanumerics: this module may not import unicodedata), a function's
-    globals, and anything a caller removed before the call.
+    below. What the scan cannot see: the name written as separate words in
+    a value ("flagged in audit", a text table whose header reads "In
+    Audit" beside other columns), or run into a longer word as a value
+    ("ISINAUDIT"; as a key it is read); a lookalike letter that _TO_ASCII
+    does not list (this module may not import unicodedata, so the table is
+    hand-written, not Unicode's confusables data); text that is
+    compressed, base64-encoded or encrypted, or any binary serialization
+    that writes the name in pieces; a function's globals; and anything a
+    caller removed before the call.
   Rely on the caller (the input carries no ``in_audit`` and no entry point
   receives an audit id set):
       parse_error_trial_outcomes (an nct_id), parse_outcome_measure,
@@ -266,15 +289,37 @@ class PopulationAuditHoldoutError(Exception):
 
 
 def _is_canonical_nct_id(value: Any) -> bool:
-    """True iff value is a str that is exactly ^NCT[0-9]{8}$ (no coercion)."""
-    return isinstance(value, str) and _CANONICAL_NCT_ID_RE.fullmatch(value) is not None
+    """True iff value is exactly a str (not a subclass) that is exactly ^NCT[0-9]{8}$.
+
+    No coercion. A str subclass is refused even when its content is
+    canonical: its __str__, __eq__ or __hash__ can say another id than the
+    one checked (str() of it could stamp a holdout's id), so the id checked
+    would not be the id stamped or compared.
+    """
+    return type(value) is str and _CANONICAL_NCT_ID_RE.fullmatch(value) is not None
+
+
+def _plain_text(value: Any) -> str:
+    """``value`` as the plain str it holds: a str subclass's content, else str(value).
+
+    Used wherever an nct_id is stamped, so the output carries exactly the
+    characters that were stored (and checked), never what a str subclass's
+    __str__ says.
+    """
+    if isinstance(value, str):
+        return str.__str__(value)
+    return str(value)
 
 
 # How a key or column name is folded before it is compared with "in_audit" or
 # "nct_id". Assumption: a name that differs from those only by case, spacing,
-# hyphens, dashes or underscores (a camelCase merge, a spreadsheet header, a
-# stray space), by full-width forms of ASCII, or by characters that print as
-# nothing, was meant as that name. "Print as nothing" is _INVISIBLE_RE (the
+# hyphens, dashes, dots or underscores (a camelCase merge, a spreadsheet
+# header, a stray space, a dotted path), by full-width forms of ASCII, by
+# letters that print like ASCII letters (_TO_ASCII: Cyrillic, Greek and
+# Armenian lookalikes, dotless i, small capitals, Roman numerals, modifier
+# and subscript letters, letterlike symbols, and the mathematical, circled,
+# parenthesized, squared and regional-indicator alphabets), or by characters
+# that print as nothing, was meant as that name. "Print as nothing" is _INVISIBLE_RE (the
 # Unicode Default_Ignorable_Code_Point set: soft hyphen, combining grapheme
 # joiner, Arabic letter mark, Hangul fillers, Mongolian free variation
 # selectors and vowel separator, zero-width space/joiners, left-to-right and
@@ -286,9 +331,11 @@ def _is_canonical_nct_id(value: Any) -> bool:
 # fail-closed: an unrecognised holdout flag is the failure this guards
 # against, while a false match can only refuse a record. This module keeps to
 # the standard-library imports its tests pin, which exclude unicodedata, so
-# compatibility forms other than full-width ASCII (mathematical alphanumeric
-# letters, circled letters) are not folded. Twin of the same rule in
-# sponsors/ecosystem.py; the two modules import nothing from each other.
+# lookalikes and compatibility forms are folded by the hand-written table
+# _TO_ASCII (built by _ascii_lookalikes), not by Unicode's confusables or
+# NFKC data: a lookalike that table does not list is not folded. Twin of the
+# same rule in sponsors/ecosystem.py; the two modules import nothing from
+# each other.
 _INVISIBLE_RE: re.Pattern[str] = re.compile(
     "["
     "\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f"
@@ -298,12 +345,129 @@ _INVISIBLE_RE: re.Pattern[str] = re.compile(
     "\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff"
     "]+"
 )
-# Separators a name is folded without: whitespace, underscore, hyphen, the
-# Unicode dashes, the minus sign and the small hyphen-minus.
-_NAME_IGNORED_RE: re.Pattern[str] = re.compile(r"[\s_\-\u2010-\u2015\u2212\ufe63]+")
+# Separators a name is folded without: whitespace, underscore, dot (a
+# json_normalize path, "in.audit"), hyphen, the Unicode dashes, the minus
+# sign and the small hyphen-minus.
+_NAME_IGNORED_RE: re.Pattern[str] = re.compile(r"[\s_.\-\u2010-\u2015\u2212\ufe63]+")
 _SPACE_RE: re.Pattern[str] = re.compile(r"\s+")
 _FULLWIDTH_TO_ASCII: dict[int, int] = {code: code - 0xFEE0 for code in range(0xFF01, 0xFF5F)}
-_FULLWIDTH_RE: re.Pattern[str] = re.compile("[！-～]")
+# (lookalike, the ASCII character it imitates) pairs, written out because
+# unicodedata may not be imported: letters that print like Latin ones
+# (Cyrillic, Greek, Armenian, Latin letters outside ASCII, small capitals,
+# Roman numerals, letterlike symbols, modifier and subscript letters), and
+# the typographic quotes, primes and accent that stand where a key's quote
+# would (a word processor's or Markdown's), mapped to ASCII " and '.
+_LOOKALIKE_PAIRS: str = (
+    # Cyrillic capitals
+    "\u0410A\u0412B\u0415E\u0405S\u0406I\u0408J\u041aK\u041cM"
+    "\u041dH\u041eO\u0420P\u0421C\u0422T\u0423Y\u0425X\u04aeY"
+    "\u04baH\u04c0I\u051aQ\u051cW"
+    # Cyrillic small letters
+    "\u0430a\u0435e\u043eo\u0440p\u0441c\u0443y\u0445x\u0455s"
+    "\u0456i\u0458j\u04bbh\u0501d\u051bq\u051dw\u04cfl\u04afy"
+    "\u0475v"
+    # Greek capitals
+    "\u0391A\u0392B\u0395E\u0396Z\u0397H\u0399I\u039aK\u039cM"
+    "\u039dN\u039fO\u03a1P\u03a4T\u03a5Y\u03a7X\u03f9C\u037fJ"
+    # Greek small letters
+    "\u03b1a\u03b9i\u03bfo\u03bdv\u03c5u\u03c1p\u03bak\u03c4t"
+    "\u03f2c\u03f3j"
+    # dotless i and j, dotted capital I, Latin and IPA letters, small capitals
+    "\u0131i\u0237j\u0130I\u0251a\u0261g\u0269i\u026ai\u029fl"
+    "\u0274n\u0280r\u028fy\u1d00a\u1d04c\u1d05d\u1d07e\u1d0aj"
+    "\u1d0bk\u1d0dm\u1d0fo\u1d18p\u1d1bt\u1d1cu\u1d20v\u1d21w"
+    "\u1d22z\ua731s"
+    # Armenian
+    "\u0578n\u057du\u0585o\u0570h\u0555O\u054dU"
+    # Roman numerals
+    "\u2160I\u2164V\u2169X\u216cL\u216dC\u216eD\u216fM\u2170i"
+    "\u2174v\u2179x\u217cl\u217dc\u217ed\u217fm"
+    # letterlike symbols
+    "\u210eh\u210ag\u2113l\u212fe\u2134o\u2110I\u2111I\u2112L"
+    "\u211bR\u211cR\u211dR\u212cB\u2130E\u2131F\u2133M\u2102C"
+    "\u210dH\u2115N\u2119P\u211aQ\u2124Z\u212dC\u210cH\u2128Z"
+    "\u2148i\u2149j\u2146d\u2147e\u2145D"
+    # modifier (superscript) letters
+    "\u1d43a\u1d47b\u1d9cc\u1d48d\u1d49e\u1da0f\u1d4dg\u02b0h"
+    "\u2071i\u02b2j\u1d4fk\u02e1l\u1d50m\u207fn\u1d52o\u1d56p"
+    "\u02b3r\u02e2s\u1d57t\u1d58u\u1d5bv\u02b7w\u02e3x\u02b8y"
+    "\u1dbbz"
+    # subscript letters
+    "\u2090a\u2091e\u2095h\u1d62i\u2c7cj\u2096k\u2097l\u2098m"
+    "\u2099n\u2092o\u209ap\u1d63r\u209bs\u209ct\u1d64u\u1d65v"
+    "\u2093x"
+    # typographic double quotes and primes
+    "\u201c\"\u201d\"\u201e\"\u201f\"\u2033\"\u2036\"\u301d\""
+    "\u301e\"\u301f\""
+    # typographic single quotes, primes and the acute accent
+    "\u2018'\u2019'\u201a'\u201b'\u2032'\u2035'\u00b4'"
+)
+
+
+def _ascii_lookalikes() -> dict[int, int]:
+    """Code point -> the ASCII code point it prints like (a str.translate table).
+
+    Method: full-width ASCII (_FULLWIDTH_TO_ASCII); the written-out pairs
+    of _LOOKALIKE_PAIRS; superscript and subscript digits; and, by
+    arithmetic on their fixed layouts, the compatibility alphabets: the 13
+    mathematical alphabets (from U+1D400, each A-Z then a-z; the reserved
+    holes among them map too, harmlessly, since they are unassigned), the
+    mathematical dotless i and j, the 5 mathematical digit styles (from
+    U+1D7CE), circled letters (U+24B6, U+24D0), parenthesized small letters
+    (U+249C), squared, negative circled and negative squared capitals
+    (U+1F130, U+1F150, U+1F170), regional indicator letters (U+1F1E6), and
+    circled, parenthesized, full-stop and dingbat digits (one to nine, and
+    the circled zeros).
+    """
+    upper = list(range(0x41, 0x5B))
+    lower = list(range(0x61, 0x7B))
+    digits = list(range(0x31, 0x3A))  # 1-9: the numbered forms start at one
+    table: dict[int, int] = dict(_FULLWIDTH_TO_ASCII)
+    for pos in range(0, len(_LOOKALIKE_PAIRS), 2):
+        table[ord(_LOOKALIKE_PAIRS[pos])] = ord(_LOOKALIKE_PAIRS[pos + 1])
+    for offset, code in enumerate((0x2070, 0xB9, 0xB2, 0xB3, *range(0x2074, 0x207A))):
+        table[code] = 0x30 + offset  # superscript 0-9
+    for offset in range(10):
+        table[0x2080 + offset] = 0x30 + offset  # subscript 0-9
+    for base in range(0x1D400, 0x1D6A4, 52):
+        for offset, code in enumerate(upper + lower):
+            table[base + offset] = code
+    table[0x1D6A4] = ord("i")
+    table[0x1D6A5] = ord("j")
+    for base in range(0x1D7CE, 0x1D800, 10):
+        for offset in range(10):
+            table[base + offset] = 0x30 + offset
+    alphabets = (
+        (0x24B6, upper), (0x24D0, lower), (0x249C, lower), (0x1F130, upper),
+        (0x1F150, upper), (0x1F170, upper), (0x1F1E6, upper),
+        (0x2460, digits), (0x2474, digits), (0x2488, digits),
+        (0x2776, digits), (0x2780, digits), (0x278A, digits),
+    )
+    for base, letters in alphabets:
+        for offset, code in enumerate(letters):
+            table[base + offset] = code
+    for zero in (0x24EA, 0x24FF, 0x1F10B, 0x1F10C):  # circled and dingbat zeros
+        table[zero] = 0x30
+    return table
+
+
+def _char_class(codes: Iterable[int]) -> str:
+    """A regex character class matching exactly the code points ``codes``, as ranges."""
+    ordered = sorted(set(codes))
+    parts: list[str] = []
+    start = prev = ordered[0]
+    for code in ordered[1:] + [-1]:
+        if code == prev + 1:
+            prev = code
+            continue
+        parts.append(f"\\U{start:08x}" if start == prev else f"\\U{start:08x}-\\U{prev:08x}")
+        start = prev = code
+    return "[" + "".join(parts) + "]"
+
+
+_TO_ASCII: dict[int, int] = _ascii_lookalikes()
+# Matches any character _TO_ASCII maps, so text without one is not copied.
+_TO_ASCII_RE: re.Pattern[str] = re.compile(_char_class(_TO_ASCII))
 # ASCII control characters that are not whitespace, and DEL.
 _ASCII_CONTROLS: dict[int, None] = {
     code: None for code in (*range(0x20), 0x7F) if not chr(code).isspace()
@@ -311,12 +475,12 @@ _ASCII_CONTROLS: dict[int, None] = {
 _ASCII_CONTROL_RE: re.Pattern[str] = re.compile(
     "[" + "".join(f"\\x{code:02x}" for code in _ASCII_CONTROLS) + "]"
 )
-# The bytes an ASCII text is folded without (whitespace, "_", "-", and the
-# controls above): the byte-level twin of _NAME_IGNORED_RE plus
+# The bytes an ASCII text is folded without (whitespace, "_", ".", "-", and
+# the controls above): the byte-level twin of _NAME_IGNORED_RE plus
 # _visible_text, for the fast in_audit test on ASCII text (_may_name_in_audit).
 _ASCII_FOLD_DELETE: bytes = bytes(
     code for code in range(0x80)
-    if chr(code).isspace() or chr(code) in "_-" or code in _ASCII_CONTROLS
+    if chr(code).isspace() or chr(code) in "_.-" or code in _ASCII_CONTROLS
 )
 _IN_AUDIT_NAME: str = "inaudit"
 _NCT_ID_NAMES: tuple[str, ...] = ("nctid", "nctnumber")
@@ -332,21 +496,24 @@ _NO_NAME: object = object()
 
 
 def _visible_text(text: str) -> str:
-    """``text`` with full-width ASCII mapped to ASCII and invisible characters dropped.
+    """``text`` with lookalikes mapped to ASCII and invisible characters dropped.
 
     Whitespace is kept: it separates the words and keys of text. Method:
-    pure-ASCII text loses only its control characters; other text loses
-    _INVISIBLE_RE's characters and then, when anything that is neither
-    printable nor whitespace is left, each such character (a format,
-    control, private-use or unassigned code point, by str.isprintable()).
-    Each step first searches, so text it would not change is not copied.
+    pure-ASCII text loses only its control characters; other text has
+    every character _TO_ASCII lists (full-width forms, letters that print
+    like ASCII letters, compatibility alphabets, typographic quotes) mapped
+    to the ASCII character it prints like, then loses _INVISIBLE_RE's
+    characters and then, when anything that is neither printable nor
+    whitespace is left, each such character (a format, control,
+    private-use or unassigned code point, by str.isprintable()). Each step
+    first searches, so text it would not change is not copied.
     """
     if text.isascii():
         if _ASCII_CONTROL_RE.search(text) is None:
             return text
         return text.translate(_ASCII_CONTROLS)
-    if _FULLWIDTH_RE.search(text) is not None:
-        text = text.translate(_FULLWIDTH_TO_ASCII)
+    if _TO_ASCII_RE.search(text) is not None:
+        text = text.translate(_TO_ASCII)
     if _INVISIBLE_RE.search(text) is not None:
         text = _INVISIBLE_RE.sub("", text)
     if not text.isprintable() and not _SPACE_RE.sub(" ", text).isprintable():
@@ -419,11 +586,14 @@ def _name_texts(name: Any) -> list[str]:
 
     Method: text is itself and a bytes-like name is decoded
     (_decoded_texts); a tuple name (a MultiIndex label, a tuple key) is read
-    part by part. None, _NO_NAME, a bool and a number have no text. Any
-    other object (an enum member, a custom key type) is read as its str()
-    and, when it has a text ``value`` (an enum member's), as that too:
-    str(Key.IN_AUDIT) is "Key.IN_AUDIT", so an enum key that names in_audit
-    reads as it whatever it holds.
+    part by part. None, _NO_NAME, a bool and a plain number (exactly int,
+    float or complex) have no text. Any other object is read as its own
+    text ``name`` when it has one (an enum member's: an IntEnum or IntFlag
+    member is an int whose str() is only its number, "1", so its name is
+    the one text that says what it is), and then, unless it is a number,
+    as its str() and, when it has a text ``value`` (a plain Enum member's),
+    as that too: str(Key.IN_AUDIT) is "Key.IN_AUDIT". So an enum key or
+    label that names in_audit reads as it whatever it holds.
     """
     if name is None or name is _NO_NAME or _is_bool_like(name):
         return []
@@ -431,9 +601,15 @@ def _name_texts(name: Any) -> list[str]:
         return _decoded_texts(name)
     if isinstance(name, tuple):
         return [text for part in name for text in _name_texts(part)]
-    if isinstance(name, (int, float, complex)):
+    if type(name) in (int, float, complex):
         return []
-    texts = [str(name)]
+    texts: list[str] = []
+    own_name = getattr(name, "name", None)
+    if isinstance(own_name, (str, bytes, bytearray)):
+        texts.extend(_decoded_texts(own_name))
+    if isinstance(name, (int, float, complex)):
+        return texts  # a number subclass: its str() is a number, not a name
+    texts.append(str(name))
     value = getattr(name, "value", None)
     if isinstance(value, (str, bytes, bytearray)):
         texts.extend(_decoded_texts(value))
@@ -531,8 +707,11 @@ def _holds_bool(name: Any) -> bool:
 # ("Row(...)"). Read after _visible_text, so full-width forms are ASCII.
 _SERIALIZED_CLOSERS: dict[str, str] = {"{": "}", "[": "]"}
 _REPR_HEAD_RE: re.Pattern[str] = re.compile(r"[^\W\d][\w.]*\(")
-# A quoted string (double or single quotes, backslash escapes inside).
-_QUOTED: str = r""""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"""
+# A quoted string (double, single or back quotes, backslash escapes inside).
+# Typographic quotes have been mapped to ASCII ones by _visible_text; a
+# backtick quotes a name in Markdown and in SQL.
+_QUOTE_CHARS: str = "\"'`"
+_QUOTED: str = r""""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`"""
 _QUOTED_RE: re.Pattern[str] = re.compile(_QUOTED, re.DOTALL)
 # The characters of a bare key besides \w: the dot of a json_normalize path
 # and the hyphens and dashes names are folded without.
@@ -573,9 +752,47 @@ _SIMPLE_ESCAPES: dict[str, str] = {
     "n": "\n", "t": "\t", "r": "\r", "f": "\f", "v": "\v", "b": "\b", "a": "\a", "0": "\0",
 }
 _SURROGATE_RE: re.Pattern[str] = re.compile("[\ud800-\udfff]")
-# How many times text is unquoted and unescaped before it is given up on
-# (_text_layers); text still changing after that is read as a flag.
-_MAX_TEXT_LAYERS: int = 8
+# How many layers text may be read as, its encodings undone one at a time
+# (_text_layers), before it is given up on; text still giving new layers
+# after that is read as a flag.
+_MAX_TEXT_LAYERS: int = 16
+# A run of percent-encoded bytes, as urllib.parse.quote and urlencode write
+# them (":" as %3A, '"' as %22) (_percent_decoded).
+_PERCENT_RE: re.Pattern[str] = re.compile(r"(?:%[0-9A-Fa-f]{2})+")
+# A character reference, as html.escape and XML writers write them: decimal
+# or hex (the ";" optional, as HTML parsers accept), or named (_entities_decoded).
+_ENTITY_RE: re.Pattern[str] = re.compile(
+    r"&(?:#([0-9]{1,8});?|#[xX]([0-9A-Fa-f]{1,8});?|([A-Za-z][A-Za-z0-9]{1,31});)"
+)
+# The named references that write ASCII punctuation, quotes and the space
+# (HTML5 names; html.escape writes only quot, amp, lt and gt, and #x27).
+_NAMED_ENTITIES: dict[str, str] = {
+    "quot": '"', "apos": "'", "amp": "&", "lt": "<", "gt": ">", "nbsp": " ",
+    "colon": ":", "equals": "=", "comma": ",", "semi": ";", "period": ".",
+    "lowbar": "_", "underbar": "_", "hyphen": "-", "dash": "-", "grave": "`",
+    "lsquo": "'", "rsquo": "'", "ldquo": '"', "rdquo": '"', "lpar": "(",
+    "rpar": ")", "lsqb": "[", "rsqb": "]", "lbrack": "[", "rbrack": "]",
+    "lcub": "{", "rcub": "}", "lbrace": "{", "rbrace": "}", "sol": "/",
+    "bsol": "\\", "num": "#", "excl": "!", "quest": "?",
+}
+# Control characters (C0 other than tab, newline and the like, DEL, C1).
+# _visible_text drops them, which can join the words either side of one;
+# the in_audit word rule reads them as spaces instead (a pickle writes each
+# key between opcode bytes) (_names_in_audit_as_a_value).
+_CONTROL_CHARS_RE: re.Pattern[str] = re.compile("[\x00-\x08\x0e-\x1f\x7f-\x9f]")
+# The name in_audit standing as a word of text, where a value holds it once
+# the name became a value (a melted manifest's "variable", a key/value
+# list's "key", a "columns" list, an XML tag, a plist <key>): "in" in any
+# case where a word starts (after no letter), or "In" after a small letter
+# (camelCase, isInAudit), or "in" after a capital (a pickle opcode letter
+# before it, "Vin_audit"); then any underscores, dots, hyphens or dashes;
+# then "audit". Read on visible text, so lookalike letters are ASCII. Words
+# of prose stay apart: "in audit" has a space between them, and in
+# "domain_audit" or "MAIN-AUDIT" the "in" ends a longer word.
+_IN_AUDIT_WORD_RE: re.Pattern[str] = re.compile(
+    r"(?:(?<![^\W\d_])|(?<=[a-z])(?=I)|(?<=[A-Z])(?=i))"
+    r"[iI][nN][_.\-\u2010-\u2015\u2212\ufe63]*[aA][uU][dD][iI][tT]"
+)
 
 
 def _escape_value(match: re.Match[str]) -> str:
@@ -612,34 +829,98 @@ def _unescaped(text: str) -> str:
     return decoded
 
 
+def _percent_run(match: re.Match[str]) -> str:
+    """One run of %XX bytes matched by _PERCENT_RE, decoded as UTF-8 (undecodable bytes dropped)."""
+    return bytes.fromhex(match.group(0).replace("%", "")).decode("utf-8", "ignore")
+
+
+def _percent_decoded(text: str) -> str:
+    """``text`` with its percent-encoded bytes decoded and "+" read as a space.
+
+    Decoded by pattern (this module may not import urllib). "+" is a space
+    in a form-encoded query (urlencode), and reading every "+" of text that
+    holds percent escapes as a space can only make a key more legible.
+    """
+    return _PERCENT_RE.sub(_percent_run, text).replace("+", " ")
+
+
+def _entity_value(match: re.Match[str]) -> str:
+    """The text one character reference matched by _ENTITY_RE stands for.
+
+    A numeric reference gives its character (nothing for a surrogate or one
+    beyond U+10FFFF); a named one in _NAMED_ENTITIES (any case) gives its
+    character; any other is left as written.
+    """
+    number = match.group(1)
+    hex_number = match.group(2)
+    if number is not None or hex_number is not None:
+        code = int(number) if number is not None else int(hex_number, 16)
+        return chr(code) if code <= 0x10FFFF and not 0xD800 <= code <= 0xDFFF else ""
+    return _NAMED_ENTITIES.get(match.group(3).lower(), match.group(0))
+
+
+def _entities_decoded(text: str) -> str:
+    """``text`` with its character references decoded by pattern (_entity_value; no html import)."""
+    return _ENTITY_RE.sub(_entity_value, text)
+
+
+def _layer_successors(layer: str) -> list[str]:
+    """What visible text ``layer`` reads as once one encoding is undone, made visible and stripped.
+
+    Each reading is made only when ``layer`` shows its encoding:
+      * unquoted and unescaped: one pair of matching outer quotes removed
+        (JSON encoded twice, or the repr() of a JSON string, is one quoted
+        string) and backslash escapes decoded (_unescaped: json.dumps writes
+        every non-ASCII character of a key as \\uXXXX and repr() every
+        unprintable one as \\xXX or \\uXXXX);
+      * percent-decoded (_percent_decoded: urllib.parse.quote and urlencode
+        write ":" as %3A and '"' as %22);
+      * reference-decoded (_entities_decoded: html.escape writes '"' as
+        &quot;, so ";" would stand before a key's ":").
+    A reading that equals ``layer`` stripped, or another reading, is left out.
+    """
+    current = layer.strip()
+    readings: list[str] = []
+    quoted = len(current) >= 2 and current[0] == current[-1] and current[0] in _QUOTE_CHARS
+    if quoted or "\\" in current:
+        inner = current[1:-1] if quoted else current
+        readings.append(_unescaped(inner) if "\\" in inner else inner)
+    if "%" in current and _PERCENT_RE.search(current) is not None:
+        readings.append(_percent_decoded(current))
+    if "&" in current and _ENTITY_RE.search(current) is not None:
+        readings.append(_entities_decoded(current))
+    successors: list[str] = []
+    for reading in readings:
+        visible = _visible_text(reading).strip()
+        if visible != current and visible not in successors:
+            successors.append(visible)
+    return successors
+
+
 def _text_layers(text: str) -> tuple[list[str], bool]:
-    """``text`` made visible, then what it reads as unquoted and unescaped, layer by layer.
+    """``text`` made visible, then every text it reads as with its encodings undone, as layers.
 
     Returns (layers, settled). Method: the first layer is _visible_text of
-    ``text``; each next one is the previous one stripped, with one pair of
-    matching outer quotes removed (JSON encoded twice, or the repr() of a
-    JSON string, is one quoted string), its backslash escapes decoded
-    (_unescaped: json.dumps writes every non-ASCII character of a key as
-    \\uXXXX and repr() every unprintable one as \\xXX or \\uXXXX) and made
-    visible again. Layers stop when one changes nothing (settled) or after
-    _MAX_TEXT_LAYERS (not settled).
+    ``text``; each reading of a layer (_layer_successors: unquoted and
+    unescaped, percent-decoded, reference-decoded) not seen before is a
+    further layer, itself read the same way, breadth first, so a manifest
+    JSON-encoded, then percent-encoded, then quoted is read at every stage.
+    Layers stop when no reading is new (settled) or when there would be
+    more than _MAX_TEXT_LAYERS (not settled).
     """
     layers = [_visible_text(text)]
-    for _ in range(_MAX_TEXT_LAYERS):
-        current = layers[-1].strip()
-        inner = current
-        quoted = len(inner) >= 2 and inner[0] == inner[-1] and inner[0] in "\"'"
-        if not quoted and "\\" not in inner:
-            return layers, True  # nothing to unquote or unescape: settled
-        if quoted:
-            inner = inner[1:-1]
-        if "\\" in inner:
-            inner = _unescaped(inner)
-        inner = _visible_text(inner).strip()
-        if inner == current:
-            return layers, True
-        layers.append(inner)
-    return layers, False
+    seen = {layers[0].strip()}
+    pos = 0
+    while pos < len(layers):
+        for reading in _layer_successors(layers[pos]):
+            if reading in seen:
+                continue
+            if len(layers) >= _MAX_TEXT_LAYERS:
+                return layers, False
+            seen.add(reading)
+            layers.append(reading)
+        pos += 1
+    return layers, True
 
 
 def _serializes_a_container(text: str) -> bool:
@@ -701,34 +982,77 @@ def _text_keys(layer: str) -> list[str]:
         raw.extend(part.group(0) for part in _QUOTED_RE.finditer(match.group(0)))
     keys: list[str] = []
     for key in raw:
-        if len(key) >= 2 and key[0] == key[-1] and key[0] in "\"'":
+        if len(key) >= 2 and key[0] == key[-1] and key[0] in _QUOTE_CHARS:
             key = key[1:-1]
         keys.append(_unescaped(key) if "\\" in key else key)
     return keys + _series_repr_labels(layer)
 
 
-def _text_mentions(text: Any) -> tuple[bool, bool]:
+def _names_in_audit_as_a_value(decoded: str, layers: list[str]) -> bool:
+    """True when text holds the name in_audit as a value: a word of it, or all of it.
+
+    Method: each layer (_text_layers), and ``decoded`` with its control
+    characters read as spaces (_CONTROL_CHARS_RE), is tested with
+    _IN_AUDIT_WORD_RE, and each layer as a whole, folded (_fold_text), is
+    compared with "inaudit" (a spreadsheet header "In Audit" melted into a
+    value). A text whose folded whole lacks "inaudit" is let go after the
+    cheap test (_may_name_in_audit). So the name is read where a value
+    holds it: a melted manifest's "variable", a key/value list's "key", a
+    "columns" list (to_dict("split"), to_json(orient="split")), an XML tag
+    or plist <key> (ElementTree.tostring, plistlib), a pickle, and also
+    prose that names the flag ("flagged in_audit") or a text table whose
+    header does (to_csv, to_string, Markdown). Assumption: no CT.gov API v2
+    text, retained-record value or sponsor name holds such a word (the
+    words "in audit" apart, or an "in" ending a longer word, are not one);
+    fail-closed, since a false match can only refuse a record.
+    """
+    candidates = list(layers)
+    if _CONTROL_CHARS_RE.search(decoded) is not None:
+        candidates.append(_visible_text(_CONTROL_CHARS_RE.sub(" ", decoded)))
+    for layer in candidates:
+        if not _may_name_in_audit(layer):
+            continue
+        if _IN_AUDIT_WORD_RE.search(layer) is not None:
+            return True
+        if _fold_text(layer.strip()) == _IN_AUDIT_NAME:
+            return True
+    return False
+
+
+def _text_mentions(text: Any, as_value: bool = True) -> tuple[bool, bool]:
     """(mentions in_audit, mentions nct_id) for a str, bytes, bytearray or memoryview.
 
-    Method: text is not parsed (this module calls no parser of JSON or
-    Python literals). It is decoded (_decoded_texts) and read layer by layer
-    (_text_layers), and each layer's keys (_text_keys: a key before ":" or
-    "=", the first item of a bracketed pair, the parts of a tuple key, the
-    labels of a pandas Series repr) are read with the name rules
+    ``as_value`` is False for text that is itself a key or field name: its
+    name is read by _name_kind, so only a manifest serialized inside it
+    counts here, not the name in_audit it may spell.
+
+    Method: text is not parsed (this module calls no parser of JSON, Python
+    literals, URLs, HTML or XML). It is decoded (_decoded_texts) and read
+    layer by layer (_text_layers: unquoted, unescaped, percent-decoded,
+    reference-decoded), and each layer's keys (_text_keys: a key before ":"
+    or "=", the first item of a bracketed pair, the parts of a tuple key,
+    the labels of a pandas Series repr) are read with the name rules
     (_name_kind), so the same names count in text as in a dict.
       * A key that reads as in_audit is a mention wherever the text holds
-        it: a JSON or repr manifest (escaped, encoded twice, as pairs), a
-        YAML line, "manifest=" followed by JSON, a Series repr, and a key
-        in prose such as "in_audit=True". A layer whose folded text
-        (_fold_text) does not contain "inaudit" cannot hold one and is let
-        go after a few string passes. Text still changing after
-        _MAX_TEXT_LAYERS layers is read as a mention (fail-closed).
+        it: a JSON or repr manifest (escaped, encoded twice, as pairs, its
+        key in typographic quotes or backticks), a YAML line, "manifest="
+        followed by JSON, a Series repr, a key in prose such as
+        "in_audit=True", and any of those percent-encoded (urlencode,
+        quote) or HTML-escaped. A layer whose folded text (_fold_text) does
+        not contain "inaudit" cannot hold one and is let go after a few
+        string passes. Text still giving new layers after _MAX_TEXT_LAYERS
+        is read as a mention (fail-closed).
+      * As a value (``as_value``), text that holds the name in_audit as a
+        word, or is that name, is a mention too
+        (_names_in_audit_as_a_value): the name became a value (long
+        format, key/value lists, XML, plist, pickle), and the flag stands
+        elsewhere, unnamed.
       * A key that reads as nct_id is a mention only in a layer that
         serializes a container (_serializes_a_container) or is a Series
         repr, so a sentence such as "see nctId: NCT..." in a description
         does not make a flagged record's ids disagree.
-    Words that are not keys give (False, False): "Not in audit" and
-    "[Practices in audit arm: ...]" mention nothing.
+    Words that are neither keys nor the name give (False, False): "Not in
+    audit" and "[Practices in audit arm: ...]" mention nothing.
     """
     if not isinstance(text, (str, bytes, bytearray, memoryview)):
         return False, False
@@ -736,6 +1060,8 @@ def _text_mentions(text: Any) -> tuple[bool, bool]:
     for decoded in _decoded_texts(text):
         layers, settled = _text_layers(decoded)
         in_audit = in_audit or not settled
+        if as_value and not in_audit:
+            in_audit = _names_in_audit_as_a_value(decoded, layers)
         for layer in layers:
             if ":" not in layer and "=" not in layer and "," not in layer:
                 continue  # every key form needs one of these (_text_keys)
@@ -809,6 +1135,42 @@ def _is_named_record(value: Any) -> bool:
     return isinstance(fields, dict) and not isinstance(value, type)
 
 
+def _is_keyed_record(value: Any) -> bool:
+    """A record naming its fields by ``keys()`` and reading them by ``[]``, without ``items()``.
+
+    sqlite3.Row is one (a row read with ``row_factory=sqlite3.Row``): its
+    ``keys()`` are the column names, ``row[name]`` a value, and iterating it
+    yields the values by position, without their names. Duck-typed, so a
+    driver's row type of the same shape qualifies too. Text and classes are
+    excluded; a mapping-like value (_is_mapping_like) is read by its
+    ``items()`` instead.
+    """
+    return (
+        not isinstance(value, (str, bytes, bytearray, type))
+        and callable(getattr(value, "keys", None))
+        and _has_method(value, "__getitem__")
+        and not _is_mapping_like(value)
+    )
+
+
+def _is_xml_element(value: Any) -> bool:
+    """An XML element as xml.etree.ElementTree (and lxml) builds one, duck-typed.
+
+    It answers ``keys()``, ``items()`` and ``[]``, so it would pass for a
+    mapping, but those read only its XML attributes: its tag, text and
+    child elements (where an element tree keeps the fields of a record)
+    are elsewhere (``tag``, ``text``, ``tail``, iteration). Read by
+    _keyed_items.
+    """
+    return (
+        not isinstance(value, type)
+        and isinstance(getattr(value, "attrib", None), dict)
+        and hasattr(value, "tag")
+        and hasattr(value, "text")
+        and callable(getattr(value, "iter", None))
+    )
+
+
 # A placeholder stored among a scan's ids for an nct_id held inside text
 # (_text_mentions): it equals no id, so a record that carries in_audit and
 # such text is refused as "nct_id_malformed" rather than compared by guess.
@@ -872,10 +1234,24 @@ def _keyed_items(node: Any) -> list[tuple[Any, Any]] | None:
     for a Series, its own name (_pandas_axis_items). The field
     ``df.itertuples()`` names "Index" holds the row label, not a field, so
     its value has no name (_NO_NAME): after ``set_index("in_audit")`` it is
-    the flag itself.
+    the flag itself. An XML element (_is_xml_element) gives its tag (under
+    "tag"), text and tail, its attributes, and each child element under the
+    child's tag, so ``<in_audit>true</in_audit>`` is a field named
+    in_audit; a keyed record such as sqlite3.Row (_is_keyed_record) gives
+    ``(name, row[name])`` for each of its ``keys()``.
     """
+    if _is_xml_element(node):
+        return [
+            ("tag", node.tag),
+            ("text", node.text),
+            ("tail", getattr(node, "tail", None)),
+            *list(node.attrib.items()),
+            *((child.tag, child) for child in list(node)),
+        ]
     if _is_mapping_like(node):
         return list(node.items()) + _pandas_axis_items(node)
+    if _is_keyed_record(node):
+        return [(key, node[key]) for key in list(node.keys())]
     if any(
         klass.__name__ in ("dict_items", "odict_items", "ItemsView")
         for klass in type(node).__mro__
@@ -1098,13 +1474,14 @@ def _scan_in_audit(record: Any) -> _InAuditScan:
         reached by position or under a non-text key has lost its name and
         could be a flag, so it is unreadable;
       * a number or range: a leaf;
-      * a node with named fields (_keyed_items: mapping-like values, dict
-        items views, namedtuples, numpy structured scalars, dataclass
-        instances, plus a pandas object's named axes and a Series' own
-        name): every name that reads as in_audit gives a flag and every
-        name that reads as nct_id an id (_name_kind: case, separators,
-        invisible characters and qualifiers ignored; an enum key read as
-        its str() and value); a key that is a bool, or a tuple holding
+      * a node with named fields (_keyed_items: XML elements, mapping-like
+        values, keyed rows such as sqlite3.Row, dict items views,
+        namedtuples, numpy structured scalars, dataclass instances, plus a
+        pandas object's named axes and a Series' own name): every name that
+        reads as in_audit gives a flag and every name that reads as nct_id
+        an id (_name_kind: case, separators, lookalike letters, invisible
+        characters and qualifiers ignored; an enum key read as its name,
+        str() and value); a key that is a bool, or a tuple holding
         one, is unreadable (_holds_bool); a namedtuple field that pandas or
         namedtuple(rename=True) renamed to "_N" has lost its name, so it is
         unreadable; a pandas object's ``attrs`` are walked;
@@ -1214,7 +1591,10 @@ def _scan_in_audit(record: Any) -> _InAuditScan:
                     if key_in_audit:
                         flags.append(value)
                         flag_names.add(_folded_name(key) or "")
-                        if isinstance(key, (str, bytes, bytearray)) and _text_mentions(key)[0]:
+                        if (
+                            isinstance(key, (str, bytes, bytearray))
+                            and _text_mentions(key, as_value=False)[0]
+                        ):
                             flags.append(key)  # the name itself is a serialized flag
                     elif key_nct_id:
                         ids.append(value)
@@ -1242,10 +1622,12 @@ def _check_scanned_record(
          serialized text are all refused, never coerced) ("in_audit_not_bool");
          no flag may be True ("in_audit_true"); the nct_id the entry point
          would stamp, read raw by ``raw_nct_id_of`` (no str() coercion; None
-         for a record that is not mapping-like), must be exactly
+         for a record that is not mapping-like), must be exactly a str (not
+         a subclass, whose __str__ or __eq__ could say another id) matching
          ``^NCT[0-9]{8}$``; and every nct_id the record carries at any
          depth (a top-level key, one beside a flag, one in a nested
-         sub-record, one inside serialized text) must equal it, because a
+         sub-record, one inside serialized text) must be exactly a str
+         equal to it, because a
          manifest row merged onto another trial's payload describes a
          different trial ("nct_id_malformed", never resolved);
       2. flag or not: nothing in it may be unreadable (_scan_in_audit), since
@@ -1271,10 +1653,10 @@ def _check_scanned_record(
             raise PopulationAuditHoldoutError(
                 "nct_id_malformed",
                 f"{where}: in_audit is False but the nct_id ({type(raw_nct).__name__}) "
-                "is not exactly ^NCT[0-9]{8}$ (ASCII, case-sensitive, unstripped)",
+                "is not exactly ^NCT[0-9]{8}$ (a plain str: ASCII, case-sensitive, unstripped)",
             )
-        disagreeing = [
-            other for other in scan.ids if not (isinstance(other, str) and other == raw_nct)
+        disagreeing = [  # exactly str: a subclass's __eq__ could agree with anything
+            other for other in scan.ids if not (type(other) is str and other == raw_nct)
         ]
         if disagreeing:
             raise PopulationAuditHoldoutError(
@@ -2852,9 +3234,14 @@ def parse_outcome_measure(
 
 
 def _nct_of(study: dict[str, Any]) -> str | None:
+    """The nctId a parsed study is stamped with: the stored text, as a plain str.
+
+    _plain_text, not str(): str() of a str subclass runs its __str__, which
+    can say another trial's id than the content the holdout check read.
+    """
     ident = (study.get("protocolSection") or {}).get("identificationModule") or {}
     val = ident.get("nctId")
-    return None if val is None else str(val)
+    return None if val is None else _plain_text(val)
 
 
 def _raw_nct_of_study(study: Any) -> Any:
@@ -3113,7 +3500,8 @@ def build_outcomes_from_raw(
             reason="raw_not_a_dict",
         )
     return _parse_outcomes_payload(
-        nct_id=None if raw.get("nct_id") is None else str(raw.get("nct_id")),
+        # _plain_text, not str(): stamped with exactly the stored characters.
+        nct_id=None if raw.get("nct_id") is None else _plain_text(raw.get("nct_id")),
         enrollment=raw.get("enrollment"),
         has_results_section=bool(raw.get("has_results_section")),
         participant_flow_module=(
@@ -3368,8 +3756,9 @@ def parse_outcomes_frame(
     clean (the sponsor frame path of sponsors/ecosystem.py refuses the same
     gap as a NaN in its in_audit column). ``studies`` must be an iterable
     of records: a single study (any mapping-like value, which iterates over
-    its keys; a namedtuple, numpy record or dataclass instance, which
-    iterates over its field values) or a string is refused with TypeError
+    its keys; a keyed row such as sqlite3.Row, a namedtuple, numpy record or
+    dataclass instance, which iterates over its field values) or a string
+    is refused with TypeError
     before anything in it is read. A batch in which no study carries ``in_audit`` relies on
     the caller to exclude holdout trials. Callers today: none in code (see
     the module docstring).
@@ -3381,6 +3770,7 @@ def parse_outcomes_frame(
     if (
         isinstance(studies, (str, bytes, bytearray))
         or _is_mapping_like(studies)
+        or _is_keyed_record(studies)
         or _is_named_record(studies)
     ):
         raise TypeError(
