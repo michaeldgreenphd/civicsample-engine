@@ -24,6 +24,7 @@ import re
 import shutil
 import tempfile
 from collections import Counter
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -584,6 +585,25 @@ def summarise(
     }
 
 
+def utc_timestamp_date(generated_at: Any) -> str:
+    """Validate a whole ISO-8601 UTC timestamp and return its ``YYYY-MM-DD`` date.
+
+    ``generated_at`` is published and its date enters ``run_id``, so the whole
+    value is parsed, not just a prefix (as feasibility's ``utc_timestamp_date``):
+    an impossible date (``2026-99-99``), trailing text, a date without a time, a
+    naive time or a non-zero UTC offset is refused rather than published.
+    """
+    if not isinstance(generated_at, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T.+", generated_at):
+        raise ValueError(f"generated_at must be an ISO-8601 UTC timestamp, got {generated_at!r}")
+    try:
+        parsed = datetime.fromisoformat(generated_at)
+    except ValueError as exc:
+        raise ValueError(f"generated_at must be an ISO-8601 UTC timestamp, got {generated_at!r}") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+        raise ValueError(f"generated_at must carry a UTC offset (Z or +00:00), got {generated_at!r}")
+    return generated_at[:10]
+
+
 def build_artifact_family(
     benchmark_result: dict[str, Any],
     *,
@@ -594,9 +614,7 @@ def build_artifact_family(
     generated_at: str,
 ) -> dict[str, Any]:
     """Assemble the complete schema-version-1 DAP artifact family in memory."""
-    date_part = generated_at[:10]
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_part):
-        raise ValueError(f"generated_at must start with YYYY-MM-DD, got {generated_at!r}")
+    date_part = utc_timestamp_date(generated_at)
 
     base_trials: list[dict[str, Any]] = [
         {"schema_version": SCHEMA_VERSION, **row}
@@ -775,6 +793,17 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
     run_id = run.get("run_id")
     if not isinstance(run_id, str) or not RUN_ID_RX.match(run_id):
         p.append(f"run.json: malformed run_id {run_id!r}")
+    # generated_at is outside run_identity and run.json is outside its own files
+    # hashes, so an edited value would pass every other check: parse it whole
+    # again and require its date to be the run_id's (build_artifact_family
+    # derives the run_id date from it).
+    try:
+        generated_date = utc_timestamp_date(run.get("generated_at"))
+    except ValueError as exc:
+        p.append(f"run.json: {exc}")
+    else:
+        if isinstance(run_id, str) and RUN_ID_RX.match(run_id) and run_id[4:14] != generated_date:
+            p.append(f"run.json: run_id date {run_id[4:14]} != generated_at date {generated_date}")
     if run.get("scheduled") is not False:
         p.append("run.json: scheduled must be False (manual build)")
     if run.get("unit_basis") != UNIT_BASIS:

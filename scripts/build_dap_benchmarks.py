@@ -253,7 +253,12 @@ def main(argv: list[str] | None = None) -> int:
         source_kind = "full_records"
 
     generated_at = args.generated_at or now_utc_iso()
-    snapshot_date = args.snapshot_date or generated_at[:10]
+    try:
+        generated_date = artifacts.utc_timestamp_date(generated_at)  # refuse a bad value before building
+    except ValueError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
+    snapshot_date = args.snapshot_date or generated_date
 
     try:
         records, study_meta = benchmarks.load_study_records(

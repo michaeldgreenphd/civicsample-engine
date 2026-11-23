@@ -975,6 +975,57 @@ def test_contract_reports_non_object_trial_rows_and_cli_never_tracebacks(
     assert f"FAIL: contract check could not complete on {valid}: RuntimeError: unanticipated shape" in out
 
 
+def test_generated_at_must_be_a_whole_utc_timestamp(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    studies_dir = fx.write_studies_dir(fx.build_fictional_cohort(), tmp_path / "studies")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+
+    def build(generated_at: str, name: str) -> int:
+        return cli_build.main(
+            [
+                "--records-dir",
+                str(studies_dir),
+                "--sponsor-rules",
+                str(rules_path),
+                "--generated-at",
+                generated_at,
+                "--out",
+                str(tmp_path / name),
+            ]
+        )
+
+    for i, bad in enumerate(
+        (
+            "2026-99-99T12:00:00+00:00",  # impossible date
+            "2026-02-30T12:00:00+00:00",
+            "2026-11-21T12:00:00+00:00junk",  # trailing text
+            "2026-11-21",  # no time
+            "2026-11-21T12:00:00",  # naive
+            "2026-11-21T12:00:00+01:00",  # not UTC
+        )
+    ):
+        capsys.readouterr()
+        assert build(bad, f"bad{i}") == 1, bad
+        assert "refused: generated_at must" in capsys.readouterr().err, bad
+        assert not (tmp_path / f"bad{i}").exists(), bad
+
+    assert build("2026-11-21T12:00:00Z", "zulu") == 0
+    loaded = artifacts.load_dir(tmp_path / "zulu")
+    assert loaded["run.json"]["run_id"].startswith("dap-2026-11-21-")
+    assert artifacts.check_contract(loaded) == []
+
+    # The contract re-parses generated_at and ties it to the run_id date.
+    for edited, message in (
+        ("2026-11-22T00:00:00+00:00", "run.json: run_id date 2026-11-21 != generated_at date 2026-11-22"),
+        ("2026-99-99T00:00:00+00:00", "run.json: generated_at must be an ISO-8601 UTC timestamp"),
+        ("2026-11-21T12:00:00+05:30", "run.json: generated_at must carry a UTC offset"),
+    ):
+        tampered = copy.deepcopy(loaded)
+        tampered["run.json"]["generated_at"] = edited
+        assert any(x.startswith(message) for x in artifacts.check_contract(tampered)), edited
+
+
 def test_unicode_line_separators_in_jsonl_roundtrip(tmp_path: Path) -> None:
     """U+2028, U+2029, \\x85, \\x0b, \\x0c inside JSON strings must never split JSONL lines."""
     tricky_title = "Phase 3 Study\u2028LineSep\u2029ParaSep\x85NextLine\x0bVT\x0cFF"
