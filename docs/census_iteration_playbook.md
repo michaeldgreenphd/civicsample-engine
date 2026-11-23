@@ -97,16 +97,28 @@ Never `git add` anything under these paths.
 
   Without the census rows, `plan` cannot tell which trials the census has
   done and schedules every in-scope trial in `--index`. To plan only the
-  trials the census has not covered, give it an index without them; the
-  holdout rows stay in, so the holdout set is still enforced:
+  trials the census has not covered, give it a copy of the index in which
+  those trials, and no others, carry the cohort `not_in_census`, and pass
+  `--cohort not_in_census` (step 2). Every row stays in the copy. The holdout
+  rows stay in, so the holdout set is still enforced. The census's rows stay
+  in, unscheduled, so that its trials stay in scope: `plan` refuses (exit 2)
+  input whose text names a trial outside the in-scope rows of `--index`, and
+  the text M1 indexes from a remaining trial's document can name a census
+  trial (a section heading, say, in a document both trials post or in the
+  remaining trial's own):
 
   ```bash
   python - "$INDEX" census-work/rule-census-20261114/locations.jsonl \
-    > census-work/index_not_in_census.json <<'EOF'
+    > census-work/index_cohort_not_in_census.json <<'EOF'
   import json, sys
   index, census = sys.argv[1:3]
   done = {json.loads(line)["nct_id"] for line in open(census) if line.strip()}
-  rows = [r for r in json.load(open(index))["rows"] if r["nct_id"] not in done]
+  rows = json.load(open(index))["rows"]
+  for r in rows:
+      if r["in_audit"] is False and r["nct_id"] not in done:
+          if "cohorts" in r or "cohort" in r:
+              sys.exit("an index row already names a cohort; stop")
+          r["cohorts"] = ["not_in_census"]
   print(json.dumps({"rows": rows}))
   EOF
   ```
@@ -253,27 +265,46 @@ python scripts/verify_and_plan_census_batch.py plan \
 ```
 
 - `<corpus>` is a set of rows that carries the F6 stamps (section 0.3).
-  While the existing census cannot be given, leave out `--documents` and
-  `--locations` and pass `census-work/index_not_in_census.json` as
-  `--index`, so the census's trials are not scheduled again.
-- `plan` refuses (exit 2, no plan) a `--profiles` line whose `nct_id` is
-  not an `in_audit: false` row of `--index`, and a `--doc-cache` line whose
-  `sha256` is not that of a document in a profile (or `--documents` row) of
-  an in-scope trial. Step 1 wrote both files from the full `$INDEX`, and
-  each run of it rewrites the profiles but keeps every earlier line of the
-  document index. So with `index_not_in_census.json` as `--index`, filter
-  both files to it first, copying each kept line unchanged, and pass the
-  copies as `--profiles census-work/profiles_not_in_census.jsonl` and
-  `--doc-cache census-work/doc_cache_not_in_census.jsonl`:
+  While the existing census cannot be given, leave out `--documents`,
+  `--locations` and `--pages-dir` (without `--locations` it changes nothing
+  in the plan), pass `census-work/index_cohort_not_in_census.json` as
+  `--index` and add `--cohort not_in_census`, so the census's trials are not
+  scheduled again.
+- `plan` refuses (exit 2, no plan) three kinds of line in `--profiles` and
+  `--doc-cache`: (1) a profile whose `nct_id` is not an `in_audit: false`
+  row of `--index`; (2) a document-index line whose `sha256` is not that of
+  a document in a profile (or `--documents` row) of an in-scope trial; and
+  (3) a line of either file whose text names any trial that is not an
+  `in_audit: false` row of `--index`, other than a profile's own trial. The
+  text includes what M1 copied from the document, such as a section heading
+  in `section_slice.detected_sections`.
+- Each run of step 1 rewrites the profiles but keeps every earlier line of
+  the document index. After a run with `--nct-id` or another `--manifest`,
+  the document index holds lines of type (2), and the profiles hold only
+  that run's trials: `plan` then schedules the other trials of `--index`
+  without their documents (the shard's `doc_set_fingerprints` records an
+  empty document set for them). Run step 1 over the whole `--index` again
+  before planning it.
+- Before each `plan`, filter both files to the `--index` it is given,
+  copying each kept line unchanged, and pass the copies as
+  `--profiles census-work/profiles_for_plan.jsonl` and
+  `--doc-cache census-work/doc_cache_for_plan.jsonl`. The command below is
+  the census case; for another `--index`, give that file as its first
+  argument. Run it from the root of the checkout: it reads the index with
+  M4's `load_index_rows`, as `plan` does, so it takes the same forms (rows
+  under `rows`, `data` or `trials`, a bare list, JSONL) and refuses what
+  `plan` refuses:
 
   ```bash
-  python - census-work/index_not_in_census.json \
+  python - census-work/index_cohort_not_in_census.json \
     data/trial_document_profiles.jsonl data/document_index_by_sha256.jsonl \
-    census-work/profiles_not_in_census.jsonl \
-    census-work/doc_cache_not_in_census.jsonl <<'EOF'
+    census-work/profiles_for_plan.jsonl \
+    census-work/doc_cache_for_plan.jsonl <<'EOF'
   import json, sys
+  from pathlib import Path
+  from scripts.verify_and_plan_census_batch import load_index_rows
   index, profiles, cache, profiles_out, cache_out = sys.argv[1:6]
-  keep = {r["nct_id"] for r in json.load(open(index))["rows"] if r["in_audit"] is False}
+  keep = {r["nct_id"] for r in load_index_rows(Path(index)) if r["in_audit"] is False}
   shas = set()
   with open(profiles, "rb") as src, open(profiles_out, "wb") as out:
       for line in src:
@@ -288,10 +319,15 @@ python scripts/verify_and_plan_census_batch.py plan \
   EOF
   ```
 
-  Leave out `--pages-dir` in this case as well. Without `--locations` it
-  changes nothing in the plan, and a document that a kept trial shares with
-  a census trial can have its page map tagged with the census trial (rule 2
-  of section 1), which `plan` refuses against this index (exit 2).
+  The filter does not remove lines of type (3). Keeping the census's rows
+  in `index_cohort_not_in_census.json` is what keeps type (3) from arising
+  for a census trial. If `plan` still exits 2 after the filter, the
+  indexed text of an in-scope trial's document names a trial outside the
+  in-scope rows of `--index` (a holdout trial among them), and the refusal
+  does not name that trial. No branch offers a way past it. Leaving the line
+  out of the copy would hide from `plan` the readability fields it reads to
+  name an `UNREADABLE` subtype (`classify_unreadable_subtype`), so take it to
+  the investigator rather than drop the line.
 - At m1 `69edfb3` and m4 `dab323c`, `plan` refuses the profiles step 1
   writes, whatever the `--index`: their document records carry no
   `model_id` or `profile_version`, which `plan` requires of a profile's
@@ -302,8 +338,12 @@ python scripts/verify_and_plan_census_batch.py plan \
   `unstarted_target_pass` trials; `recover-unreadable` schedules
   `unreadable_recoverable_ocr`; `incremental-delta` (the default) also
   schedules `amended_doc_or_outcome_delta`.
-- Leave out `--cohort` with the site index: its rows carry no `cohorts` or
-  `cohort` field, so any `--cohort` would select none of them.
+- Leave out `--cohort` with the site index itself: its rows carry no
+  `cohorts` or `cohort` field, so any `--cohort` would select none of them.
+  Section 0.3's copy and a section 5 manifest carry one. With `--cohort`,
+  `excluded_in_audit_count` counts only the holdout rows that belong to
+  that cohort, so it is 0 for both, whose holdout rows name no cohort. Those
+  trials are still refused wherever they appear.
 - Without `--pages-dir`, a complete trial is filed as
   `complete_quotations_unchecked` rather than `cached_complete`, because its
   quotations were not found on their pages.
@@ -450,7 +490,10 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
    Filter `--profiles` and `--doc-cache` to the manifest first with step 2's
    filter (the manifest as its first argument, two new output paths under
    `census-work/`) and pass the copies: the document index still holds the
-   lines of every earlier step 1 run, and `plan` refuses them (exit 2).
+   lines of every earlier step 1 run, and `plan` refuses them (exit 2). The
+   filter reads the manifest in any form `--index` takes. A document whose
+   indexed text names a trial outside the manifest's `in_audit: false` rows
+   is refused as in step 2 (type 3), whatever is filtered.
    Documents with identical bytes are downloaded and extracted once by M1's
    content-addressed cache, but see rule 2 of section 1 for what that means
    for verification.

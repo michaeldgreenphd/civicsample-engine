@@ -135,9 +135,13 @@ M2 leaves it to its callers.
   before any page map is opened; a refusal exits 2
   (`AuditHoldoutViolationError`, `InvalidNctIdError` or `PlanScopeError`).
   `plan` also refuses (exit 2) a `--profiles` row whose trial is not in that
-  set and a `--doc-cache` row whose `sha256` is not that of a document of an
-  in-scope trial, so M1 output written from a larger index is refused
-  against a smaller one; the playbook's step 2 filters it first.
+  set, a `--doc-cache` row whose `sha256` is not that of a document of an
+  in-scope trial, and a row of either whose text names a trial outside that
+  set (other than a profile's own), such as a section heading M1 copied from
+  the document. So M1 output written from a larger index is refused against
+  a smaller one. The playbook's step 2 keeps the existing census's trials in
+  `--index` when it plans the others, and filters out rows of the first two
+  kinds; nothing lifts the third.
   `verify --pages-dir` gives the page provider only the `(nct_id, sha256)`
   pairs of in-scope documents, so no other page map is opened.
 - **Library.** `verify_census_corpus`, `verify_document_record`,
