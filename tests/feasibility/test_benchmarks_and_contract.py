@@ -135,6 +135,35 @@ def test_sponsor_three_states_deduplication_and_small_cell_withholding() -> None
     assert onc["realized_primary_duration_months"]["p50"] is None
 
 
+@pytest.mark.parametrize(
+    ("condition", "expected"),
+    [
+        # Short keywords (<= 4 chars) inside a longer word no longer hit ('all', 'als', 'ra', 'burn').
+        ("Falls", ("Other", "Uncategorized")),
+        ("Trauma", ("Other", "Uncategorized")),
+        ("Caregiver Burnout", ("Other", "Uncategorized")),
+        # Short keywords standing alone, or with a plural suffix, still match.
+        ("ALL", ("Oncology", "Hematologic Malignancy")),
+        ("Rheumatoid Arthritis (RA)", ("Autoimmune and Inflammatory", "Rheumatoid Arthritis")),
+        ("TIAs", ("Neurology", "Stroke and Cerebrovascular")),
+        ("Severe Burns", ("Dermatology", "Wound and Ulcer")),
+        # Longer keywords keep the substring test, so compounds and plurals still classify.
+        ("Neoplasms", ("Oncology", "Other Oncology")),
+        ("Gliosarcoma", ("Oncology", "Sarcoma")),
+        ("Metastatic Breast Cancers", ("Oncology", "Breast Cancer")),
+    ],
+)
+def test_condition_fallback_short_keywords_stand_alone(
+    monkeypatch: pytest.MonkeyPatch,
+    condition: str,
+    expected: tuple[str, str],
+) -> None:
+    # Exercise the stdlib fallback used when rapidfuzz (src.condition_classifier) is absent.
+    monkeypatch.setattr(benchmarks, "_HAS_RAPIDFUZZ", False)
+    monkeypatch.setattr(benchmarks, "_ONTOLOGY_CACHE", None)
+    assert benchmarks._classify_conditions_FallbackOrFull([condition]) == expected
+
+
 def test_build_contract_tamper_refusals_and_site_export(tmp_path: Path) -> None:
     records_dir = tmp_path / "records"
     records_dir.mkdir()

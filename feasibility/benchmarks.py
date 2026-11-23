@@ -97,7 +97,12 @@ _SUBSIDIARY_RE = re.compile(
     re.IGNORECASE,
 )
 _ONT_PUNCT_RE = re.compile(r"[^\w\s/-]")
-_ONTOLOGY_CACHE: tuple[dict[str, tuple[str, str]], list[str]] | None = None
+# Ontology keywords of at most this many characters match only standing alone (see
+# `_classify_conditions_FallbackOrFull`); the same rule as `src/condition_classifier.py`.
+_SHORT_KEYWORD_MAX_LEN = 4
+_ONTOLOGY_CACHE: (
+    tuple[dict[str, tuple[str, str]], list[tuple[str, re.Pattern[str] | None]]] | None
+) = None
 
 
 def _normalize_sponsor_name(name: str) -> str:
@@ -314,8 +319,18 @@ def _attribute_sponsors(
 
 
 def _classify_conditions_FallbackOrFull(conditions: list[str]) -> tuple[str, str]:
-    """Classify conditions via `src.condition_classifier` when installed, else exact keyword lookup
-    over `condition_ontology.json`.
+    """Classify conditions via `src.condition_classifier` when installed, else keyword lookup
+    over `condition_ontology.json` (no fuzzy step).
+
+    Fallback method, the same "short keywords stand alone" rule as `src/condition_classifier.py`:
+    keywords are tried longest first and the first hit wins. A keyword of at most
+    `_SHORT_KEYWORD_MAX_LEN` (4) characters (abbreviations such as `all`, `ra`, `als`, `burn`)
+    matches only as a whole word or phrase with an optional plural `s`/`es`, so `Falls`, `Trauma`
+    and `Caregiver Burnout` no longer read as ALL leukemia, rheumatoid arthritis or a burn wound.
+    A longer keyword keeps the substring test, so compounds still classify (`Gliosarcoma` ->
+    `sarcoma`, `Neoplasms` -> `neoplasm`). The threshold is the classifier's: its measurement on
+    published data found that whole-word matching for every keyword loses such compounds, while
+    nearly all wrong substring hits come from keywords of 4 characters or fewer.
     """
     global _ONTOLOGY_CACHE
     if _HAS_RAPIDFUZZ and _cond_cls is not None:
@@ -329,7 +344,15 @@ def _classify_conditions_FallbackOrFull(conditions: list[str]) -> tuple[str, str
             for sec, kws in secs.items():
                 for kw in kws:
                     lookup[kw.lower()] = (pri, sec)
-        ordered = sorted(lookup.keys(), key=len, reverse=True)
+        ordered = [
+            (
+                kw,
+                re.compile(r"(?<!\w)" + re.escape(kw) + r"(?:s|es)?(?!\w)")
+                if len(kw) <= _SHORT_KEYWORD_MAX_LEN
+                else None,
+            )
+            for kw in sorted(lookup.keys(), key=len, reverse=True)
+        ]
         _ONTOLOGY_CACHE = (lookup, ordered)
 
     if not conditions:
@@ -341,8 +364,9 @@ def _classify_conditions_FallbackOrFull(conditions: list[str]) -> tuple[str, str
         norm = " ".join(_ONT_PUNCT_RE.sub(" ", cond.lower().strip()).split())
         matched_pair = ("Other", "Uncategorized")
         if norm:
-            for kw in ordered:
-                if kw in norm:
+            for kw, short_kw_re in ordered:
+                hit = short_kw_re.search(norm) is not None if short_kw_re is not None else kw in norm
+                if hit:
                     matched_pair = lookup[kw]
                     break
         pri, sec = matched_pair
