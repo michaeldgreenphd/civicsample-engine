@@ -1062,6 +1062,21 @@ def align_ogs_to_target_groups(
         if y['nd']:
             tg_by_desc.setdefault(y['nd'], []).append(y)
 
+    # Target side of the pooling/subset rule (COMPARABILITY.md §2.2: "an `OG` or target label carries
+    # pooling/subset cues"). A target group whose own normalized title or description carries a cue
+    # (`Combined safety population`, `Per-protocol set`) is read exactly as the OG side is read (title
+    # and description, same `_POOLED_OR_SUBSET_CUE_RE`). It becomes a candidate of every OG below
+    # left without a title/description match, which is then `pooled_or_subset_suspected` (never
+    # aligned); being a candidate is what makes it a pooled counterpart, so it is not reported among
+    # `extra_baseline_groups`. As with embedded-title candidates, a target another OG matched is not
+    # removed from the list (it is accounted for either way). An OG with an exact unique or ambiguous
+    # title match is untouched: the rule applies only where there is no title match at all, so when
+    # every OG matches exactly a cue-bearing target stays unmatched and can be an extra cohort.
+    cue_target_ids = [
+        y['id'] for y in tg_norm
+        if _POOLED_OR_SUBSET_CUE_RE.search(f"{y['nt']} {y['nd']}".strip())
+    ]
+
     alignments: list[dict[str, Any]] = []
     claimed_targets: set[str] = set()
 
@@ -1143,9 +1158,9 @@ def align_ogs_to_target_groups(
                 if nt and (_contains_whole_phrase(y['nt'], nt) or _contains_whole_phrase(y['nd'], nt))
             ]
             cue_hit = bool(_POOLED_OR_SUBSET_CUE_RE.search(f'{nt} {nd}'.strip()))
-            if contained_targets or containing_targets or cue_hit:
+            if contained_targets or containing_targets or cue_hit or cue_target_ids:
                 state = 'pooled_or_subset_suspected'
-                candidates = sorted(set(contained_targets + containing_targets))
+                candidates = sorted(set(contained_targets + containing_targets + cue_target_ids))
 
         alignments.append({
             'og_id': x['id'],

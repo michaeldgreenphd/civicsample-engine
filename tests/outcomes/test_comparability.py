@@ -588,6 +588,88 @@ def test_cross_pass_two_to_one_target_collision_downgrades_both_ogs_to_ambiguous
     assert [g['group_id'] for g in aligned['unmatched_target_groups']] == ['BG000', 'BG001']
 
 
+def test_target_label_pooling_cue_makes_an_unmatched_og_pooled_and_accounts_the_target() -> None:
+    # Regression (PR #108 review): the pooling/subset cue check read only the OG's own title and
+    # description, although COMPARABILITY.md §2.2 makes an OG `pooled_or_subset_suspected` when it has
+    # "no exact unique match, and an `OG` or target label carries pooling/subset cues". An
+    # "All Participants" OG beside a baseline group titled "Combined Safety Population" stayed
+    # `no_title_match`, the pooled group was no OG's candidate, and it was reported among
+    # `extra_baseline_groups` as a cohort outside every primary measure.
+    pooled_baseline = make_baseline(
+        titles=('Zorbatinib 10 mg', 'Placebo', 'Combined Safety Population', 'Total'),
+        counts=('99', '98', '197', '197'),
+    )
+    with_all = make_primary_measure(og_titles=('Zorbatinib 10 mg', 'Placebo', 'All Participants'), og_counts=('95', '85', '180'))
+    flow = make_flow(titles=('Zorbatinib 10 mg', 'Placebo', 'Per-Protocol Set'), started=('100', '100', '180'), completed=('92', '85', '170'))
+    study = make_study(72, flow=flow, baseline=pooled_baseline, measures=[with_all])
+    rec = C.inspect_study(study)
+    pm = rec['primary_measures'][0]
+    bg = [(a['og_id'], a['state'], a['matched_target_id'], a['candidate_target_ids']) for a in pm['og_to_bg_alignment']['og_alignments']]
+    assert bg == [
+        ('OG000', 'exact_unique_title_match', 'BG000', ['BG000']),
+        ('OG001', 'exact_unique_title_match', 'BG001', ['BG001']),
+        ('OG002', 'pooled_or_subset_suspected', None, ['BG002']),
+    ]
+    assert pm['has_extra_baseline_groups_outside_measure'] is False and pm['extra_baseline_groups_outside_measure'] == []
+    aa = rec['arm_alignment']
+    assert aa['extra_baseline_groups_outside_primary'] is False and aa['extra_baseline_groups'] == []
+    assert aa['og_to_bg_state_counts']['pooled_or_subset_suspected'] == 1 and aa['og_to_bg_state_counts']['no_title_match'] == 0
+    # The flow side reads the same rule: a "Per-Protocol Set" flow group is the unmatched OG's candidate.
+    fg = [(a['og_id'], a['state'], a['candidate_target_ids']) for a in pm['og_to_fg_alignment']['og_alignments']]
+    assert fg[2] == ('OG002', 'pooled_or_subset_suspected', ['FG002'])
+    assert aa['og_to_fg_state_counts']['pooled_or_subset_suspected'] == 1 and aa['og_to_fg_state_counts']['no_title_match'] == 0
+
+    # A target is read as an OG is: a cue in its description alone counts.
+    desc_baseline = make_baseline(
+        titles=('Zorbatinib 10 mg', 'Placebo', 'Safety Population', 'Total'),
+        counts=('99', '98', '197', '197'),
+        descriptions=(None, None, 'Participants of both arms, pooled.', None),
+    )
+    rec_desc = C.inspect_study(make_study(73, baseline=desc_baseline, measures=[with_all]))
+    pm_desc = rec_desc['primary_measures'][0]
+    assert pm_desc['og_to_bg_alignment']['og_alignments'][2]['state'] == 'pooled_or_subset_suspected'
+    assert pm_desc['og_to_bg_alignment']['og_alignments'][2]['candidate_target_ids'] == ['BG002']
+    assert rec_desc['arm_alignment']['extra_baseline_groups_outside_primary'] is False
+
+    # Without any cue on either side the unmatched OG stays `no_title_match`, and the unaccounted
+    # baseline group is still an extra cohort.
+    plain_baseline = make_baseline(
+        titles=('Zorbatinib 10 mg', 'Placebo', 'Open-Label Extension Cohort', 'Total'),
+        counts=('99', '98', '40', '237'),
+    )
+    rec_plain = C.inspect_study(make_study(74, baseline=plain_baseline, measures=[with_all]))
+    assert rec_plain['primary_measures'][0]['og_to_bg_alignment']['og_alignments'][2]['state'] == 'no_title_match'
+    assert [g['title'] for g in rec_plain['arm_alignment']['extra_baseline_groups']] == ['Open-Label Extension Cohort']
+
+    # The rule needs an OG with no title match. When every OG has an exact unique match, no OG is
+    # pooled, and the documented extra-cohort rule (no aligned or pooled counterpart) still reports
+    # the pooled baseline group; a target's own cue does not by itself account for it.
+    rec_exact = C.inspect_study(make_study(75, baseline=pooled_baseline, measures=[make_primary_measure()]))
+    assert [a['state'] for a in rec_exact['primary_measures'][0]['og_to_bg_alignment']['og_alignments']] == [
+        'exact_unique_title_match',
+        'exact_unique_title_match',
+    ]
+    assert [g['title'] for g in rec_exact['arm_alignment']['extra_baseline_groups']] == ['Combined Safety Population']
+
+    # An OG with an ambiguous title match keeps its state and candidates; only title-less matches change.
+    ogs = [{'group_id': 'OG000', 'title': 'Zorbatinib', 'description': None}]
+    bgs = [
+        {'group_id': 'BG000', 'title': 'Zorbatinib', 'description': None, 'count': 50},
+        {'group_id': 'BG001', 'title': 'Zorbatinib', 'description': None, 'count': 50},
+        {'group_id': 'BG002', 'title': 'Pooled Zorbatinib', 'description': None, 'count': 100},
+    ]
+    amb = C.align_ogs_to_target_groups(ogs, bgs, 'baselineCharacteristicsModule')['og_alignments'][0]
+    assert (amb['state'], amb['candidate_target_ids']) == ('ambiguous_duplicate_titles', ['BG000', 'BG001'])
+
+    # The summary counts the new state and the contract recount agrees.
+    fam = _family([study])
+    assert B.check(fam) == []
+    bg_counts = fam['summary.json']['state_breakdowns']['og_to_bg_alignment']['counts']
+    assert bg_counts['pooled_or_subset_suspected']['numerator'] == 1 and bg_counts['no_title_match']['numerator'] == 0
+    extra = next(m for m in fam['summary.json']['metrics'] if m['id'] == 'extra_baseline_groups_outside_primary')
+    assert extra['numerator'] == 0
+
+
 def _family(
     studies: list[dict[str, Any]],
     history_snapshots: dict[str, dict[str, Any]] | None = None,
