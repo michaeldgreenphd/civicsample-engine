@@ -24,7 +24,7 @@ import re
 import shutil
 import tempfile
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -611,6 +611,23 @@ def utc_timestamp_date(generated_at: Any) -> str:
     return generated_at[:10]
 
 
+def snapshot_date_problem(value: Any) -> str | None:
+    """Why ``value`` is not a ``YYYY-MM-DD`` calendar date, or ``None`` when it is.
+
+    ``--snapshot-date`` asserts the registry snapshot the raw sex/gender measures
+    were parsed from (``sgt.build_row`` stamps it on each row, which the trial
+    projection does not keep), so it is recorded in ``run.json`` parameters,
+    where it also enters the run identity, and must name a real day.
+    """
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        return f"snapshot_date must be a YYYY-MM-DD date, got {value!r}"
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return f"snapshot_date must be a real calendar date, got {value!r}"
+    return None
+
+
 def build_artifact_family(
     benchmark_result: dict[str, Any],
     *,
@@ -619,9 +636,13 @@ def build_artifact_family(
     producer: dict[str, Any],
     min_cell_trials: int,
     generated_at: str,
+    snapshot_date: str,
 ) -> dict[str, Any]:
     """Assemble the complete schema-version-1 DAP artifact family in memory."""
     date_part = utc_timestamp_date(generated_at)
+    problem = snapshot_date_problem(snapshot_date)
+    if problem:
+        raise ValueError(problem)
 
     base_trials: list[dict[str, Any]] = [
         {"schema_version": SCHEMA_VERSION, **row}
@@ -659,6 +680,7 @@ def build_artifact_family(
         "producer": producer,
         "parameters": {
             "min_cell_trials": min_cell_trials,
+            "snapshot_date": snapshot_date,
             "final_rule_effective_date": "2017-01-18",
             "fdora_enactment_date": "2022-12-29",
         },
@@ -896,6 +918,9 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
             f"run.json: parameters.min_cell_trials must be an integer >= 1 (got {raw_min_cell!r})"
         )
         min_cell = 5
+    snap_problem = snapshot_date_problem((run.get("parameters") or {}).get("snapshot_date"))
+    if snap_problem:
+        p.append(f"run.json: parameters.{snap_problem}")
 
     # Check per-trial invariants
     nct_ids: list[str] = []

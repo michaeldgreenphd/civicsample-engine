@@ -110,6 +110,12 @@ def test_short_ontology_keywords_match_only_standing_alone() -> None:
     for condition, pair in expected.items():
         assert clf.classify_one(condition) == pair, condition
 
+    # The fuzzy step offers only longer keywords (as in #109's src/condition_classifier.py): a
+    # near-miss of a short acronym is a different word ("Fall" scores 85.7 against "all").
+    assert all(len(kw) > 4 for kw in clf._fuzzy_keywords)
+    assert clf.classify_one("Fall") != lookup["all"]
+    assert clf.classify_one("Schizophernia") == lookup["schizophrenia"]  # a typo in a long keyword
+
     # Longest-first order still holds: 'heart failure' wins over 'heart'.
     assert lookup["heart failure"] != lookup["heart"]
     assert clf.classify_one("Congestive Heart Failure") == lookup["heart failure"]
@@ -718,6 +724,10 @@ def test_mesh_sidecar_line_state_must_agree_with_its_payload(tmp_path: Path) -> 
         "bad_ancestors": line(state="indexed", meshes=good_terms, ancestors=["D1"]),
         "wrong_schema_version": line(state="no_derived", schema_version="2.0"),
         "missing_meshes_key": {k: v for k, v in line(state="no_derived").items() if k != "meshes"},
+        # a list or object stamp reached the one-run check, where it raised TypeError (unhashable)
+        "list_extracted_at": line(state="no_derived", extracted_at=["2026-11-15T06:00:00+00:00"]),
+        "object_pipeline_commit": line(state="no_derived", pipeline_commit={"sha": "x"}),
+        "number_snapshot_date": line(state="no_derived", snapshot_date=20261115),
     }
     for name, bad in bad_lines.items():
         path = _write_mesh_sidecar(tmp_path / f"bad_{name}.jsonl.gz", [bad])
@@ -1064,6 +1074,36 @@ def test_generated_at_must_be_a_whole_utc_timestamp(
         tampered = copy.deepcopy(loaded)
         tampered["run.json"]["generated_at"] = edited
         assert any(x.startswith(message) for x in artifacts.check_contract(tampered)), edited
+
+
+def test_snapshot_date_is_validated_recorded_and_part_of_the_run_identity(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # --snapshot-date stamped only the parsed sex/gender rows, which the trial projection drops, so the
+    # asserted snapshot left no trace: two builds with different dates were byte-identical.
+    studies_dir = fx.write_studies_dir(fx.build_fictional_cohort(), tmp_path / "studies")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+
+    def build(snapshot_date: str, name: str) -> int:
+        return cli_build.main(["--records-dir", str(studies_dir), "--sponsor-rules", str(rules_path),
+                               "--generated-at", "2026-11-21T12:00:00Z", "--snapshot-date", snapshot_date,
+                               "--out", str(tmp_path / name)])
+
+    for i, bad in enumerate(("2026-02-30", "garbage", "2026-11-01T00:00:00", "2026-11")):
+        capsys.readouterr()
+        assert build(bad, f"bad{i}") == 1, bad
+        assert "refused: snapshot_date must" in capsys.readouterr().err, bad
+        assert not (tmp_path / f"bad{i}").exists(), bad
+
+    assert build("2024-06-01", "june") == 0 and build("2024-07-01", "july") == 0
+    june, july = artifacts.load_dir(tmp_path / "june"), artifacts.load_dir(tmp_path / "july")
+    assert june["run.json"]["parameters"]["snapshot_date"] == "2024-06-01"
+    assert june["run.json"]["run_id"] != july["run.json"]["run_id"]
+    assert artifacts.check_contract(june) == []
+    for edited in ("2024-02-30", None):
+        tampered = copy.deepcopy(june)
+        tampered["run.json"]["parameters"]["snapshot_date"] = edited
+        assert any(x.startswith("run.json: parameters.snapshot_date must") for x in artifacts.check_contract(tampered))
 
 
 def test_unicode_line_separators_in_jsonl_roundtrip(tmp_path: Path) -> None:

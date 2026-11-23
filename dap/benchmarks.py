@@ -99,7 +99,11 @@ _NCT_ID_RX: re.Pattern[str] = re.compile(r"NCT[0-9]{8}")
 # because compounds carry real matches ('sarcoma' in 'Gliosarcoma', 'leukemia'
 # in 'Erythroleukemia'); measured on 142,369 published condition mentions,
 # nearly all wrong substring matches came from keywords of <= 4 characters.
-# The same rule applies in src/condition_classifier.py; the two must agree.
+# The same rule applies in src/condition_classifier.py; the two must agree. It
+# arrives there with #109, which also leaves short keywords out of the fuzzy
+# step (a near-miss of a 2-4 letter acronym is a different word: "Fall" scores
+# 85.7 against "all", a leukaemia keyword); this classifier follows both parts.
+# Until #109 is merged, the weekly classifier on main still matches substrings.
 _SHORT_KEYWORD_MAX_LEN: int = 4
 
 
@@ -147,6 +151,10 @@ class OntologyClassifier:
             for kw in self._all_keywords
             if len(kw) <= _SHORT_KEYWORD_MAX_LEN
         }
+        # The fuzzy step offers only the longer keywords (see _SHORT_KEYWORD_MAX_LEN).
+        self._fuzzy_keywords: list[str] = [
+            kw for kw in self._all_keywords if len(kw) > _SHORT_KEYWORD_MAX_LEN
+        ]
 
     @staticmethod
     def _normalize(text: str) -> str:
@@ -170,7 +178,7 @@ class OntologyClassifier:
                 return self._flat_lookup[kw]
         match = process.extractOne(
             norm,
-            self._all_keywords,
+            self._fuzzy_keywords,
             scorer=fuzz.token_set_ratio,
             score_cutoff=self.fuzzy_threshold,
         )
@@ -1031,6 +1039,12 @@ def condition_mesh_line_problem(row: dict[str, Any]) -> str | None:
             return "state malformed without a problem description"
     elif "problem" in row:
         return f"state {state} carries a problem field"
+    # The run stamps are strings, or null when the producer could not read them
+    # (src/utils.pipeline_commit returns None outside a checkout). A list or
+    # object would otherwise reach the one-run check, where it cannot be hashed.
+    for key in MESH_RUN_STAMP_KEYS:
+        if key in row and row[key] is not None and not isinstance(row[key], str):
+            return f"{key} is neither a string nor null"
     return None
 
 

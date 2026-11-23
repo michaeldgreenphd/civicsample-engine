@@ -259,6 +259,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
     snapshot_date = args.snapshot_date or generated_date
+    problem = artifacts.snapshot_date_problem(snapshot_date)  # refuse before building, like generated_at
+    if problem:
+        print(f"refused: {problem}", file=sys.stderr)
+        return 1
 
     try:
         records, study_meta = benchmarks.load_study_records(
@@ -284,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
             producer=producer_info(ROOT),
             min_cell_trials=args.min_cell_trials,
             generated_at=generated_at,
+            snapshot_date=snapshot_date,
         )
     except (ValueError, OSError, KeyError) as exc:
         print(f"refused: {exc}", file=sys.stderr)

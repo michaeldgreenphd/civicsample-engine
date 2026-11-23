@@ -151,7 +151,8 @@ does not belong to its study records (`benchmarks.check_condition_mesh_provenanc
   first line that does not.
 - **Every input:** the sidecar must hold a line for every input trial (lines
   for other trials, e.g. under `--limit`, are allowed and counted), and all its
-  lines must carry one `(snapshot_date, extracted_at, pipeline_commit)` triple.
+  lines must carry one `(snapshot_date, extracted_at, pipeline_commit)` triple,
+  each stamp a string or null.
 - **Weekly full records (`--demographics`, or `--records` given a full-record
   container):** `src/extract_all.py` stamps the `demographics.json` container
   and every sidecar line with the same `extracted_at` and `pipeline_commit`,
@@ -175,3 +176,8 @@ python3 scripts/check_dap_benchmarks_contract.py build/dap
 python3 scripts/export_dap_benchmarks_site.py build/dap ../clinical-trial-populations/data/dap
 python3 -m pytest tests/dap -q
 ```
+
+`--snapshot-date YYYY-MM-DD` names the registry snapshot the raw sex/gender
+measures were parsed from (default: the `--generated-at` date). It must be a
+real calendar day, is recorded as `run.json` `parameters.snapshot_date` (so it
+enters the run identity and the site manifest), and the contract re-checks it.
