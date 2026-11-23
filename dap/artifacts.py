@@ -453,6 +453,10 @@ def summarise(
         "combined_race_ethnicity_quarantined": "Baseline race measure containing Hispanic/Latino or combined labels; quarantined from OMB pooling.",
         "single_category_ethnicity": "Baseline ethnicity measure reporting only one OMB category row; Denominator B is withheld.",
         "non_standard_categories_present": "Baseline table containing unmapped, quarantined, extra non-OMB, or double-counted categories.",
+        "whole_population_group_unidentified": (
+            "Baseline table with several groups and none recognised as the whole population (no Total group); "
+            "no counts or shares are read, since any one group would be an arm."
+        ),
         "table_absent_in_posted_results": "Trial has posted results with no usable baseline table for this dimension.",
         "results_not_posted": "Trial has no posted results section on ClinicalTrials.gov.",
     }
@@ -1072,6 +1076,14 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
                     or dblock.get("of_classified") is not None
                 ):
                     p.append(f"{nct}: combined_race_ethnicity_quarantined must exclude counts/shares from OMB pooling")
+            if st == "whole_population_group_unidentified" and (
+                dblock.get("usable_for_omb_pooling") is not False
+                or any(
+                    dblock.get(k) is not None
+                    for k in ("counts", "baseline_total", "of_baseline_total", "of_classified")
+                )
+            ):
+                p.append(f"{nct}: whole_population_group_unidentified must carry no counts, total or shares")
             if st == "single_category_ethnicity" and dblock.get("of_classified") is not None:
                 p.append(f"{nct}: single_category_ethnicity must withhold of_classified as None")
             if dblock.get("classified_total") == 0 and dblock.get("of_classified") is not None:

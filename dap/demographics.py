@@ -7,7 +7,7 @@ full-record dicts (``src/full_records.py``), without modifying
 
 Key analytical invariants
 -------------------------
-1. **Six-state table-structure classification** (``race_table_status`` and
+1. **Seven-state table-structure classification** (``race_table_status`` and
    ``ethnicity_table_status``):
    - ``omb_compatible``
    - ``combined_race_ethnicity_quarantined``: Hispanic/Latino (or combined
@@ -20,6 +20,10 @@ Key analytical invariants
      Denominator B (``of_classified``) is withheld as ``None``.
    - ``non_standard_categories_present``: unmapped, quarantined, extra
      non-OMB category keys, or non-exclusive double-counted rows are present.
+   - ``whole_population_group_unidentified``: a raw record's baseline table
+     has several groups and none the extractors recognise as the whole
+     population, so no counts are read (see
+     ``whole_population_group_unidentified``).
    - ``table_absent_in_posted_results``: results are posted on CT.gov, with
      no usable table for this dimension.
    - ``results_not_posted``: trial has no posted results section on CT.gov.
@@ -59,6 +63,7 @@ from typing import Any
 
 from dap.geography import extract_geography
 from src import ethnicity_extractor, race_extractor
+from src import utils as src_utils
 from src import sex_gender_table as sgt
 
 TABLE_STATUSES: tuple[str, ...] = (
@@ -66,6 +71,7 @@ TABLE_STATUSES: tuple[str, ...] = (
     "combined_race_ethnicity_quarantined",
     "single_category_ethnicity",
     "non_standard_categories_present",
+    "whole_population_group_unidentified",
     "table_absent_in_posted_results",
     "results_not_posted",
 )
@@ -904,6 +910,44 @@ def attach_reference_medians(
     return updated
 
 
+def whole_population_group_unidentified(record: dict[str, Any]) -> bool:
+    """Whether a raw record's baseline table has several groups and none that
+    `src.utils.get_overall_group_id` recognises as the whole population.
+
+    The race and ethnicity extractors read each row at that group, and without one
+    `_get_measurement_value` and `get_total_baseline_participants` read the last group,
+    so a table of arms with no Total group was published with its last arm's counts as
+    the trial's. CT.gov ends a multi-group table with its Total group in all but one of
+    the 55,810 multi-group trials of the 2026-11-15 weekly inputs (`src/utils.py`), and
+    in all 2,198 multi-group tables of the 3,133 stored ones. The sex/gender parser
+    picks its total by a sum check and flags a positional fallback, so it is not affected.
+    """
+    results = record.get("resultsSection")
+    module = results.get("baselineCharacteristicsModule") if isinstance(results, dict) else None
+    groups = module.get("groups") if isinstance(module, dict) else None
+    if not (isinstance(groups, list) and len(groups) > 1 and all(isinstance(g, dict) for g in groups)):
+        return False
+    return src_utils.get_overall_group_id(record) is None
+
+
+def _whole_population_unidentified_block() -> dict[str, Any]:
+    """The race or ethnicity block of a table with no whole-population group: no counts or shares."""
+    return {
+        "table_status": "whole_population_group_unidentified",
+        "usable_for_omb_pooling": False,
+        "quarantined_from_omb_pooling": False,
+        "baseline_total": None,
+        "classified_total": None,
+        "unknown_count": None,
+        "unmapped_count": None,
+        "counts": None,
+        "of_baseline_total": None,
+        "of_classified": None,
+        "of_classified_withheld_reason": "whole_population_group_unidentified",
+        "status_detail": "multi_group_baseline_without_total_group",
+    }
+
+
 def extract_demographics(
     record: dict[str, Any],
     *,
@@ -932,18 +976,23 @@ def extract_demographics(
         raw_eth = None
 
     refs = reference_medians or {}
-    race_info = _analyze_race_block(
-        raw_race,
-        results_posted=posted,
-        sex_total=sex_total,
-        reference_medians=refs.get("race"),
-    )
-    eth_info = _analyze_ethnicity_block(
-        raw_eth,
-        results_posted=posted,
-        sex_total=sex_total,
-        reference_medians=refs.get("ethnicity"),
-    )
+    if posted and "protocolSection" in record and whole_population_group_unidentified(record):
+        # No group stands for the whole trial, so neither extractor's counts are the trial's.
+        race_info = _whole_population_unidentified_block()
+        eth_info = _whole_population_unidentified_block()
+    else:
+        race_info = _analyze_race_block(
+            raw_race,
+            results_posted=posted,
+            sex_total=sex_total,
+            reference_medians=refs.get("race"),
+        )
+        eth_info = _analyze_ethnicity_block(
+            raw_eth,
+            results_posted=posted,
+            sex_total=sex_total,
+            reference_medians=refs.get("ethnicity"),
+        )
 
     omission_audit = build_us_site_omission_audit(
         geo,

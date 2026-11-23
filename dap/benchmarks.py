@@ -40,6 +40,7 @@ from dap.geography import (
 )
 from sponsors import adapter, audit_states, sponsor_roles
 from src import condition_mesh as cmesh
+from src import ethnicity_extractor, race_extractor
 from src import full_records
 from src import sex_gender_parser as sgp
 from src import sex_gender_table as sgt
@@ -627,7 +628,11 @@ BASELINE_SHAPE: dict[str, Any] = {
         "paramType": str,
         "unitOfMeasure": str,
         "denoms": _BASELINE_DENOMS,
+        # A class title labels the rows of its categories when they carry none: a non-string one raised
+        # `AttributeError` at `.strip()` in the race and ethnicity extractors. Every stored class title is
+        # a string.
         "classes": {
+            "title": str,
             "denoms": _BASELINE_DENOMS,
             "categories": {"title": str, "measurements": _BASELINE_VALUE},
         },
@@ -762,6 +767,67 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
             if name in module:
                 out += _object_list_problems(module[name], f"{root}.{name}", fields)
         out += _baseline_group_reference_problems(module, root)
+        out += _unlabelled_row_problems(module, root)
+    return out
+
+
+# The race and ethnicity extractors label a row the same way (`race_extractor._labelled_measurements`,
+# `ethnicity_extractor`'s measure walk); `_row_label` follows them, so their measurement words must agree.
+assert race_extractor._MEASUREMENT_LABELS == ethnicity_extractor._MEASUREMENT_LABELS
+
+
+def _row_label(cls: dict[str, Any], cat: dict[str, Any] | None) -> str | None:
+    """The label the race and ethnicity extractors give a baseline row: a category's title, or its
+    class's title when the category's is blank or a measurement word such as "Count"; a class without
+    categories is a row labelled by its own title. None when a title it reads is present but not a
+    string, which `BASELINE_SHAPE` reports, so the row is not reported twice."""
+    for holder in (cls, cat):
+        if holder is not None and "title" in holder and not isinstance(holder["title"], str):
+            return None
+    cls_title = (cls.get("title") or "").strip()
+    if cat is None:
+        return cls_title
+    cat_title = (cat.get("title") or "").strip()
+    if cat_title.lower() in race_extractor._MEASUREMENT_LABELS:
+        return cls_title
+    return cat_title or cls_title
+
+
+def _unlabelled_row_problems(module: dict[str, Any], root: str) -> list[str]:
+    """Rows without a label in a baseline measure whose other rows carry one.
+
+    The race and ethnicity extractors drop a row with no label, so its participants left the table and,
+    when the denominator was balanced, were counted as unknown race: a White 60, Asian 30 table with an
+    unlabelled row of 10 published `unknown_not_reported: 10` as `omb_compatible`. A measure whose rows
+    are all unlabelled is kept: it holds no category to read, and the extractors find no table in it, as
+    for the 141 stored "Race and Ethnicity Not Collected" measures, each a single unlabelled count. The
+    rule covers every measure, since the race extractor also reads some sex-titled tables; no stored
+    measure of any title mixes labelled and unlabelled rows (3,819 race or ethnicity measures, 11,419
+    others).
+    """
+    out: list[str] = []
+    for i, measure in enumerate(_listed(module.get("measures"))):
+        if not isinstance(measure, dict):
+            continue
+        rows: list[tuple[str, str | None]] = []
+        for j, cls in enumerate(_listed(measure.get("classes"))):
+            if not isinstance(cls, dict):
+                continue
+            cats = cls.get("categories")
+            if isinstance(cats, list) and cats:
+                rows += [
+                    (f"classes[{j}].categories[{k}]", _row_label(cls, cat))
+                    for k, cat in enumerate(cats)
+                    if isinstance(cat, dict)
+                ]
+            else:
+                rows.append((f"classes[{j}]", _row_label(cls, None)))
+        if any(label for _, label in rows):
+            out += [
+                f"{root}.measures[{i}].{where}.title (a row label, as the measure's other rows carry)"
+                for where, label in rows
+                if label == ""
+            ]
     return out
 
 

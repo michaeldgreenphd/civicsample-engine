@@ -32,6 +32,7 @@ if not hasattr(fx, "make_raw_ctgov_study"):
 import build_dap_benchmarks as cli_build  # noqa: E402
 import check_dap_benchmarks_contract as cli_check  # noqa: E402
 from dap import artifacts, benchmarks  # noqa: E402
+from dap.demographics import extract_demographics  # noqa: E402
 from src import condition_mesh as cmesh  # noqa: E402
 
 
@@ -1527,6 +1528,8 @@ def _measured_study(nct_id: str) -> dict:
 
 
 _DROP_KEY = object()  # remove the key instead of setting it
+_RACE_CLASS = ("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0)
+_ROW_LABEL = "(a row label, as the measure's other rows carry)"
 
 
 @pytest.mark.parametrize(
@@ -1686,6 +1689,16 @@ _DROP_KEY = object()  # remove the key instead of setting it
         (("resultsSection", "baselineCharacteristicsModule", "groups"),
          [{"id": "BG000", "title": "Arm A"}, {"id": "BG000", "title": "Total"}],
          f"{_BASE}.groups[1].id (an id no other group has, not 'BG000' again)"),
+        # On e179bb7 a class title of another type loaded (the extractors raised on it at `.strip()` when a
+        # category title was blank or "Count"), and a row without a label was dropped into the unknown.
+        ((*_RACE_CLASS, "title"), 7, f"{_BASE}.measures[0].classes[0].title (a string)"),
+        ((*_RACE_CLASS, "title"), None, f"{_BASE}.measures[0].classes[0].title (a string)"),
+        ((*_RACE_CLASS, "categories", 1, "title"), _DROP_KEY,
+         f"{_BASE}.measures[0].classes[0].categories[1].title {_ROW_LABEL}"),
+        ((*_RACE_CLASS, "categories", 1, "title"), "Count",
+         f"{_BASE}.measures[0].classes[0].categories[1].title {_ROW_LABEL}"),
+        ((*_RACE_CLASS, "categories", 1, "title"), "  ",
+         f"{_BASE}.measures[0].classes[0].categories[1].title {_ROW_LABEL}"),
     ],
 )
 def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
@@ -1721,6 +1734,91 @@ def test_baseline_values_in_registry_forms_load(tmp_path: Path, text: str) -> No
     plain = tmp_path / "studies.jsonl"
     plain.write_text(json.dumps(_measured_study("NCT99800021")) + "\n" + json.dumps(st) + "\n", encoding="utf-8")
     assert len(benchmarks.load_study_records(plain)[0]) == 2
+
+
+@pytest.mark.parametrize("layout", ["class_labelled", "lone_unlabelled_count"])
+def test_class_labelled_rows_and_a_lone_unlabelled_count_load(tmp_path: Path, layout: str) -> None:
+    # Controls for the row-label rule: rows labelled by their class (a "Count" category under a titled
+    # class) are read, and a measure whose only row is unlabelled, as CT.gov's "Race and Ethnicity Not
+    # Collected" count, has no labelled row beside it to lose.
+    st = _measured_study("NCT99800022")
+    measures = st["resultsSection"]["baselineCharacteristicsModule"]["measures"]
+    if layout == "class_labelled":
+        measures[0]["classes"] = [
+            {"title": label, "categories": [{"title": "Count", "measurements": [{"groupId": "BG000", "value": n}]}]}
+            for label, n in (("White", "60"), ("Asian", "40"))
+        ]
+    else:
+        measures.append({
+            "title": "Race and Ethnicity Not Collected",
+            "paramType": "COUNT_OF_PARTICIPANTS",
+            "unitOfMeasure": "Participants",
+            "classes": [{"categories": [{"measurements": [{"groupId": "BG000", "value": "0"}]}]}],
+        })
+    plain = tmp_path / "studies.jsonl"
+    plain.write_text(json.dumps(_measured_study("NCT99800021")) + "\n" + json.dumps(st) + "\n", encoding="utf-8")
+    records = benchmarks.load_study_records(plain)[0]
+    race = extract_demographics(records[1])["race"]
+    assert (race["table_status"], race["counts"]["white"], race["counts"]["asian"]) == ("omb_compatible", 60, 40)
+
+
+def _arms_without_total(nct_id: str, groups: list[dict[str, str]]) -> dict:
+    """A raw study whose race table posts arms A (White 40, Asian 10) and B (White 20, Asian 30), and
+    a Total group (White 60, Asian 40) only when `groups` lists a third group."""
+    values = {"White": ("40", "20", "60"), "Asian": ("10", "30", "40")}
+    st = fx.make_raw_ctgov_study(nct_id, measures=[{
+        "title": "Race (NIH/OMB)",
+        "paramType": "COUNT_OF_PARTICIPANTS",
+        "unitOfMeasure": "Participants",
+        "classes": [{"categories": [
+            {"title": label, "measurements": [
+                {"groupId": g["id"], "value": values[label][k]} for k, g in enumerate(groups)
+            ]}
+            for label in values
+        ]}],
+    }])
+    module = st["resultsSection"]["baselineCharacteristicsModule"]
+    module["groups"] = groups
+    module["denoms"][0]["counts"] = [
+        {"groupId": g["id"], "value": ("50", "50", "100")[k]} for k, g in enumerate(groups)
+    ]
+    return st
+
+
+_ARMS = [{"id": "BG000", "title": "Arm A"}, {"id": "BG001", "title": "Arm B"}]
+
+
+def test_a_table_of_arms_without_a_total_group_reads_no_counts(tmp_path: Path) -> None:
+    # On e179bb7 the extractors read the last group, so arm B (White 20, Asian 30 of 50) was published as
+    # the trial's race table, `omb_compatible`, and the contract passed.
+    studies = [*fx.build_fictional_cohort(), _arms_without_total("NCT99800051", _ARMS)]
+    studies_dir = fx.write_studies_dir(studies, tmp_path / "studies")
+    out = tmp_path / "out"
+    assert cli_build.main([
+        "--records-dir", str(studies_dir),
+        "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")),
+        "--generated-at", "2026-11-21T00:00:00+00:00",
+        "--out", str(out),
+    ]) == 0
+    loaded = artifacts.load_dir(out)
+    assert artifacts.check_contract(loaded) == []
+    row = next(r for r in loaded["trial_rows"] if r["nct_id"] == "NCT99800051")
+    for dim in ("race", "ethnicity"):
+        block = row["demographics"][dim]
+        assert row["demographics"][f"{dim}_table_status"] == "whole_population_group_unidentified"
+        assert (block["counts"], block["baseline_total"], block["of_baseline_total"]) == (None, None, None)
+    # The contract refuses counts under the status.
+    row["demographics"]["race"]["counts"] = {"white": 20}
+    problems = artifacts.check_contract(loaded)
+    assert any("whole_population_group_unidentified must carry no counts" in x for x in problems)
+
+
+def test_a_table_of_arms_with_a_total_group_reads_the_total() -> None:
+    # Control, on both heads: with the Total group last, the trial's counts are the Total's.
+    st = _arms_without_total("NCT99800052", [*_ARMS, {"id": "BG002", "title": "Total"}])
+    race = extract_demographics(st)["race"]
+    assert (race["table_status"], race["counts"]["white"], race["counts"]["asian"]) == ("omb_compatible", 60, 40)
+    assert race["baseline_total"] == 100
 
 
 def test_a_measurement_without_its_value_is_refused(tmp_path: Path) -> None:

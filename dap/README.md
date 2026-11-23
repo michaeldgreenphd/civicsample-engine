@@ -42,10 +42,18 @@ modified.
      build therefore has no US-site trials, US-share bins or indication US
      references; site-mix benchmarks need raw CT.gov API v2 records
      (`--records`, `--records-dir`), which keep every location.
-3. **Six-state baseline table structure & two denominators** (following
+3. **Seven-state baseline table structure & two denominators** (following
    `census/`):
    - `race_table_status` and `ethnicity_table_status` in
-     `{"omb_compatible", "combined_race_ethnicity_quarantined", "single_category_ethnicity", "non_standard_categories_present", "table_absent_in_posted_results", "results_not_posted"}`.
+     `{"omb_compatible", "combined_race_ethnicity_quarantined", "single_category_ethnicity", "non_standard_categories_present", "whole_population_group_unidentified", "table_absent_in_posted_results", "results_not_posted"}`.
+   - A raw record whose baseline table has several groups and none the
+     extractors recognise as the whole population (`src.utils.get_overall_group_id`
+     finds no Total group) is `whole_population_group_unidentified` for race and
+     ethnicity, with no counts or shares: the extractors would read its last
+     group, an arm, as the trial. CT.gov posts such a table rarely (one of the
+     55,810 multi-group trials in the 2026-11-15 weekly inputs, none of the
+     2,198 stored multi-group tables). Weekly records carry the extractors'
+     blocks without the groups, so this cannot be detected there.
    - Race measures containing Hispanic/Latino or combined race+ethnicity rows
      are classified `combined_race_ethnicity_quarantined`, excluded from all
      pooled OMB race distributions, and counted explicitly.
@@ -149,7 +157,11 @@ title and returns its id, so without either the last arm's counts stood in for t
 measurement and denominator count must name one of the table's group ids: an unmatched `groupId` on
 the Overall value also fell back to the last measurement. A baseline table must list its groups (a
 non-empty `groups`), and no two groups may share an id: a repeated id made every reference look valid
-while the first match, possibly an arm, was read.
+while the first match, possibly an arm, was read. A class `title` must be a string when present (a
+number raised `AttributeError` in the extractors), and in a measure whose rows carry labels every row
+must carry one, in its category title or its class title: the extractors drop an unlabelled row, so its
+participants were counted as unknown race. A measure with no labelled row at all, such as CT.gov's
+"Race and Ethnicity Not Collected" count, is kept.
 Weekly full records never pass these checks, so their own lists are checked
 too (`WEEKLY_LIST_FIELDS`): `study_sites`, `collaborators` and `conditions`
 must be present, as `src/utils.py` always writes them; `study_sites` and
