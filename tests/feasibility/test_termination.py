@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_rules_version_and_curated_csv_is_header_only() -> None:
-    assert TERMINATION_RULES_VERSION == "1.4.2"
+    assert TERMINATION_RULES_VERSION == "1.4.3"
     csv_path = ROOT / "feasibility" / "termination_reviews.csv"
     raw_lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert raw_lines == [",".join(REVIEW_COLUMNS)]
@@ -367,10 +367,32 @@ def _cnt(*values: object) -> list:
          "results_posted_primary_denom_incomplete"),
         ([_primary("A", [{"groupId": {"id": "OG000"}, "value": "0"}, {"groupId": "OG001", "value": "0"}])],
          "results_posted_primary_denom_incomplete"),
+        # rules 1.4.3: a row whose units name no unit could be the Participants row, so its zeros no
+        # longer make an empty shell (1.4.2 read it as an unnamed row: empty_results_shell_zero_analysed)
         ([{**_primary("A", None), "denoms": [{"units": ["Participants"], "counts": _cnt("0", "0")}]}],
-         "empty_results_shell_zero_analysed"),
+         "results_posted_primary_denom_incomplete"),
         ([{**_primary("A", None), "denoms": [{"units": 5, "counts": _cnt("0", "NA")}]}],
          "results_posted_primary_denom_incomplete"),
+        # rules 1.4.3: a malformed denominator entry beside an all-zero Participants row could be another
+        # Participants row; on 1.4.2 it was skipped and the measure read as an empty shell
+        ([{**_primary("A", _cnt("0", "0")), "denoms": [{"units": "Participants", "counts": _cnt("0", "0")}, None]}],
+         "results_posted_primary_denom_incomplete"),
+        ([{**_primary("A", _cnt("0", "0")),
+           "denoms": [{"units": "Participants", "counts": _cnt("0", "0")}, "Participants: 12"]}],
+         "results_posted_primary_denom_incomplete"),
+        ([{**_primary("A", _cnt("0", "0")),
+           "denoms": [{"units": "Participants", "counts": _cnt("0", "0")}, {"counts": _cnt("5", "0")}]}],
+         "results_posted_primary_denom_incomplete"),
+        ([{**_primary("A", _cnt("0", "0")),
+           "denoms": [{"units": "Participants", "counts": _cnt("0", "0")}, {"units": " ", "counts": _cnt("5", "0")}]}],
+         "results_posted_primary_denom_incomplete"),
+        # controls: a row in another named unit leaves the shell standing; a positive Participants count wins
+        ([{**_primary("A", _cnt("0", "0")),
+           "denoms": [{"units": "Participants", "counts": _cnt("0", "0")},
+                      {"units": "Eyes", "counts": _cnt("4", "2")}]}],
+         "empty_results_shell_zero_analysed"),
+        ([{**_primary("A", _cnt("0", "0")), "denoms": [{"units": "Participants", "counts": _cnt("3", "0")}, None]}],
+         "results_with_analysed_primary"),
         # rules 1.4.0: two Participants rows; the first no longer decides by order
         ([{**_primary("A", None), "denoms": [{"units": "Participants", "counts": _cnt("0", "0")},
                                               {"units": "Participants", "counts": _cnt("4", "6")}]}],

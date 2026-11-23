@@ -31,7 +31,7 @@ from typing import Any
 
 from feasibility.metrics import is_num, parse_num
 
-TERMINATION_RULES_VERSION = "1.4.2"
+TERMINATION_RULES_VERSION = "1.4.3"
 # CT.gov's outcome measure types. The 2,200 cached records with posted outcome measures under
 # docs/audits/outcomes_results_structure/ hold only these four (4,688 PRIMARY, 13,388 SECONDARY,
 # 689 OTHER_PRE_SPECIFIED, 71 POST_HOC).
@@ -524,6 +524,16 @@ def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
     for measure in primary_measures:
         denoms = measure.get("denoms")
         rows = _participants_denom_rows(denoms if isinstance(denoms, list) else [])
+        # A denominator entry that is not an object, or names no unit (`units` missing, blank or not a
+        # string), could be another Participants row holding unknown or positive counts, so zero
+        # analysed is not established (rules 1.4.3). `_participants_denom_rows` skips such an entry,
+        # and on rules 1.4.2 an all-zero Participants row beside `null`, or beside a unitless row
+        # counting 5, read as `empty_results_shell_zero_analysed`. All 4,803 denominator entries of
+        # the 4,670 primary measures in the cached records are objects with a non-blank `units`.
+        if isinstance(denoms, list) and not all(
+            isinstance(d, dict) and isinstance(d.get("units"), str) and d["units"].strip() for d in denoms
+        ):
+            all_complete = False
         # No row, or more than one Participants row, leaves the measure's analysed count unsettled:
         # every row's counts are still read, so a positive count anywhere shows analysed participants,
         # but zeros never make an empty shell unless they are the measure's one denominator row.
