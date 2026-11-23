@@ -983,16 +983,18 @@ def _demographic_row_value_problems(module: dict[str, Any], root: str) -> list[s
 
 
 def _sex_gender_count_problems(module: dict[str, Any], root: str) -> list[str]:
-    """A sex/gender table the parser reads as participant counts whose counts are not whole and
-    non-negative, or whose unit names something other than people (`NONPARTICIPANT_UNIT_RX`).
+    """A sex/gender table the parser reads as participant counts with a negative or non-finite count,
+    or whose unit names something other than people (`NONPARTICIPANT_UNIT_RX`).
 
-    `sgp.parse_trial` keeps a count as posted, so Female 60.5 and Male 39.5 were published as such beside
-    bounds `extract_sex_gender` computed from the rounded 60 and 40, and -5 stopped the build with an
-    unnamed `ValueError` in `evaluate_unknown_bounds`. A `NUMBER` table in "Sites" was read as participants,
-    as for race. The parser's own reading decides which measure and counts are meant (`is_participant_count`,
-    the fullest sex/gender measure); a table it reads otherwise (percentages, a mean, `COUNT_OF_UNITS`) is
-    not checked, and one it cannot read is left to `extract_sex_gender`, which records `parse_error`. All
-    3,107 such tables in the real stored trials hold whole non-negative counts.
+    -5 stopped the build with an unnamed `ValueError` in `evaluate_unknown_bounds`, and a `NUMBER` table
+    in "Sites" was read as participants, as for race. A count that is not whole (Female 60.5, Male 39.5)
+    is not refused here: the weekly extraction holds one such real table (NCT01507090, Female 51.7 and
+    Male 48.3 of 642 enrolled), so refusing it would refuse a whole build. `extract_sex_gender` withholds
+    such a table's composition with a reason, on both input paths. The parser's own reading decides which
+    measure and counts are meant (`is_participant_count`, the fullest sex/gender measure); a table it reads
+    otherwise (percentages, a mean, `COUNT_OF_UNITS`) is not checked, and one it cannot read is left to
+    `extract_sex_gender`, which records `parse_error`. All 3,107 such tables in the real stored trials
+    hold whole non-negative counts.
     """
     try:
         parsed = sgp.parse_trial(module.get("measures"), None)
@@ -1006,8 +1008,8 @@ def _sex_gender_count_problems(module: dict[str, Any], root: str) -> list[str]:
         out.append(f"{where}, in a unit of participants, not {parsed.unit_of_measure!r})")
     for key in ("n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender"):
         value = getattr(parsed, key)
-        if value is not None and not (math.isfinite(value) and value >= 0 and value == int(value)):
-            out.append(f"{where}, a non-negative whole {key}, not {value:g})")
+        if value is not None and not (math.isfinite(value) and value >= 0):
+            out.append(f"{where}, a non-negative {key}, not {value:g})")
     return out
 
 
@@ -1215,7 +1217,9 @@ _PARSE_ERROR_NULLABLE: frozenset[str] = frozenset(WEEKLY_OUTCOME_COLUMNS)
 # JSON such as `1e309` or `Infinity` parses as a float infinity, which passed the type check and raised
 # `OverflowError` in `extract_sex_gender` (`int(round(...))`), or was written out as `Infinity`.
 # `enrollment_minus_parsed`, the gap between registered enrollment and the parsed table, may be negative
-# (896 of the 80,890 weekly rows); no row has a negative or non-finite count.
+# (896 of the 80,890 weekly rows); no row has a negative or non-finite count. A count that is not whole
+# is not refused: NCT01507090's participant-count row reads Female 51.7 and Male 48.3 (1 of the 80,755
+# participant-count rows), and `extract_sex_gender` withholds such a row's composition with a reason.
 _SEX_GENDER_COUNT_COLUMNS: frozenset[str] = frozenset(
     {"n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender"}
 )
@@ -2628,6 +2632,12 @@ def _pool_trial_group(
             ),
             "n_participant_count_false": sum(
                 1 for t in trials if t["demographics"]["sex_gender"].get("is_participant_count") is False
+            ),
+            # Participant-count tables whose counts are not whole: kept in the status counts above, out of
+            # `female_share_of_mf` (`extract_sex_gender` withholds their composition).
+            "n_participant_counts_not_whole": sum(
+                1 for t in trials
+                if t["demographics"]["sex_gender"].get("composition_withheld_reason") == "participant_counts_not_whole"
             ),
             "female_share_of_mf": female_dist,
         },

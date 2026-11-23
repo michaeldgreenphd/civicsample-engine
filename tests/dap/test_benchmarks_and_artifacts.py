@@ -2172,15 +2172,14 @@ _SEX_WHERE = "measures (the sex/gender measure 'Sex: Female, Male', read as part
 @pytest.mark.parametrize(
     ("female", "male", "measure", "problem"),
     [
-        # On db1a949 the first loaded and published n_female 60.5 beside bounds counted from 60; -5 stopped
-        # the build with an unnamed ValueError; and a NUMBER table of sites was read as participants.
-        ("60.5", "39.5", {}, f"{_SEX_WHERE}, a non-negative whole n_female, not 60.5)"),
-        ("-5", "45", {}, f"{_SEX_WHERE}, a non-negative whole n_female, not -5)"),
+        # On db1a949 -5 stopped the build with an unnamed ValueError, and a NUMBER table of sites was read
+        # as participants. (A count that is not whole loads, its composition withheld: see below.)
+        ("-5", "45", {}, f"{_SEX_WHERE}, a non-negative n_female, not -5)"),
         ("55", "45", {"paramType": "NUMBER", "unitOfMeasure": "Sites"},
          f"{_SEX_WHERE}, in a unit of participants, not 'Sites')"),
     ],
 )
-def test_a_sex_table_of_participant_counts_must_hold_whole_counts(
+def test_a_sex_table_of_participant_counts_must_hold_non_negative_counts_of_people(
     tmp_path: Path, female: str, male: str, measure: dict, problem: str
 ) -> None:
     with pytest.raises(ValueError, match=re.escape(f"NCT99800077 lacks {_BASE}.{problem}")):
@@ -2195,6 +2194,74 @@ def test_sex_tables_the_parser_reads_load(tmp_path: Path, female: str, male: str
     # Controls, on both heads: whole counts, and fractional percentages, which the parser does not read as
     # participant counts.
     assert len(_load_pair(tmp_path, _sex_study("NCT99800078", female, male, **measure))) == 2
+
+
+_COMPOSITION = ("percent_female", "female_share", "of_parsed_total", "of_classified")
+
+
+def test_raw_participant_counts_that_are_not_whole_load_without_a_composition(tmp_path: Path) -> None:
+    # On c74130d the record was refused, and with it the whole build; the weekly extraction holds one such
+    # real table (NCT01507090, Female 51.7 and Male 48.3 of 642 enrolled). It keeps its status and counts.
+    rows = _load_pair(tmp_path, _sex_study("NCT99800077", "60.5", "39.5"))
+    study = next(r for r in rows if r["protocolSection"]["identificationModule"]["nctId"] == "NCT99800077")
+    sg = extract_demographics(study)["sex_gender"]
+    assert (sg["sex_report_status"], sg["is_participant_count"], sg["n_female"], sg["n_male"]) == (
+        "reported", True, 60.5, 39.5)
+    assert sg["composition_withheld_reason"] == "participant_counts_not_whole"
+    assert all(sg[k] is None for k in _COMPOSITION)
+
+
+def _weekly_sex_row_built(tmp_path: Path, **changes: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build the weekly fixture with NCT99000402's sex_gender row changed; its built row and the build."""
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1]["sex_gender"].update(changes)
+    rc, out = _build_weekly(tmp_path, "weekly", doc=weekly_doc, snapshot_date="2026-11-21")
+    assert rc == 0
+    built = artifacts.load_dir(out)
+    row = next(t for t in built["trial_rows"] if t["nct_id"] == "NCT99000402")
+    return row["demographics"]["sex_gender"], built
+
+
+def test_weekly_participant_counts_that_are_not_whole_are_left_out_of_composition(tmp_path: Path) -> None:
+    # On c74130d the row loaded and published female_share 0.605 beside bounds and a Denominator B counted
+    # from the rounded 60 and 40, and entered the participant-weighted pooling as 100 people.
+    sg, built = _weekly_sex_row_built(tmp_path, n_female=60.5, n_male=39.5)
+    assert (sg["sex_report_status"], sg["reported_sex"]) == ("reported", True)
+    assert sg["composition_withheld_reason"] == "participant_counts_not_whole"
+    assert all(sg[k] is None for k in _COMPOSITION)
+    metric = next(m for m in built["summary.json"]["metrics"] if m["id"] == "sex_gender_participant_counts_not_whole")
+    assert metric["value"] == 1
+    assert artifacts.check_contract(built) == []
+
+
+def test_weekly_non_participant_fractions_stay_out_of_composition_without_a_reason(tmp_path: Path) -> None:
+    # Control, on both heads: 135 weekly rows are not participant counts, 19 of them with fractional values;
+    # they leave composition as before and carry no withheld reason.
+    sg, built = _weekly_sex_row_built(tmp_path, n_female=60.5, n_male=39.5, is_participant_count=False)
+    assert sg.get("composition_withheld_reason") is None
+    assert all(sg[k] is None for k in ("percent_female", "female_share", "of_parsed_total"))
+    assert artifacts.check_contract(built) == []
+
+
+@pytest.mark.parametrize(
+    ("changes", "problem"),
+    [
+        # On c74130d the contract accepted counts that are not whole published with a composition.
+        ({"n_female": 60.5, "n_male": 39.5},
+         "NCT99000402: sex_gender composition_withheld_reason None does not follow from its counts"),
+        ({"composition_withheld_reason": "participant_counts_not_whole"},
+         "NCT99000402: sex_gender row with a withheld composition must stay out of composition"),
+    ],
+)
+def test_contract_requires_a_sex_composition_to_follow_from_whole_counts(
+    tmp_path: Path, changes: dict[str, Any], problem: str
+) -> None:
+    rc, out = _build_weekly(tmp_path, "weekly", snapshot_date="2026-11-21")
+    assert rc == 0
+    built = artifacts.load_dir(out)
+    assert artifacts.check_contract(built) == []
+    next(t for t in built["trial_rows"] if t["nct_id"] == "NCT99000402")["demographics"]["sex_gender"].update(changes)
+    assert problem in artifacts.check_contract(built)
 
 
 def test_a_single_group_row_naming_its_group_twice_is_refused(tmp_path: Path) -> None:

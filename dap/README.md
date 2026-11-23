@@ -152,8 +152,16 @@ Such a measure must also be a table of participants, posted as `COUNT_OF_PARTICI
 (`DEMOGRAPHIC_PARAM_TYPES`): the extractors read a `COUNT_OF_UNITS` (sites, specimens) or `MEAN` table as
 participant counts. Its unit must not name something other than people (`NONPARTICIPANT_UNIT_RX`, a list of
 plainly non-person nouns such as sites, specimens or eyes, since units are free text). A sex/gender table the
-parser reads as participant counts must hold non-negative whole counts in such a unit
-(`_sex_gender_count_problems`): Female 60.5 was published beside bounds counted from 60. The locations module and list, and every
+parser reads as participant counts must hold non-negative counts in such a unit
+(`_sex_gender_count_problems`): -5 stopped the build unnamed. A count that is not whole loads, on this
+path and the weekly one, and `extract_sex_gender` withholds that trial's composition (`percent_female`,
+`female_share`, `of_parsed_total`, `of_classified`) with `composition_withheld_reason`
+`participant_counts_not_whole`, keeping its reporting status; the contract enforces both. Female 60.5
+had been published beside bounds counted from 60, and NCT01507090's weekly row (Female 51.7, Male 48.3,
+of 642 enrolled: percentages entered as counts) entered its stratum's female-share distribution as 100
+people. Refusing it would refuse the whole weekly input; it is 1 of the 80,755 participant-count rows of
+the 2026-11-08 extraction, and `summary.json` counts such trials
+(`sex_gender_participant_counts_not_whole`). The locations module and list, and every
 location and collaborator entry, are checked the same way (`LIST_ENTRY_FIELDS`): a skipped `null`
 location, or a module read as empty, would lower or zero the listed facilities and move the
 footprint class with nothing reported. Every collaborator must also carry a non-blank `name`: one

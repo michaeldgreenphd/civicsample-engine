@@ -47,7 +47,11 @@ Key analytical invariants
    ``sex_gender_table.build_row`` on raw API v2 studies), strictly preserving
    all five states (``reported``, ``explicit_unknown_only``, ``uninformative``,
    ``not_reported``, ``parse_error``) and keeping ``enrollment_minus_parsed``
-   strictly separate from ``n_unknown``.
+   strictly separate from ``n_unknown``. A table read as participant counts
+   whose counts are not whole keeps its status, and its composition
+   (``percent_female``, ``female_share``, ``of_parsed_total``, ``of_classified``)
+   is withheld with ``composition_withheld_reason`` set to
+   ``participant_counts_not_whole``.
 
 4. **US-site race/ethnicity omission audit**:
    Explicitly tracks trials with >= 1 US facility (``us_only`` or
@@ -275,14 +279,28 @@ def extract_sex_gender(
     reported_gender = row.get("reported_gender")
     reported_both = row.get("reported_both")
 
-    pf = sgt.percent_female(row)
+    # A table the parser reads as participant counts holds whole people. NCT01507090's weekly row reads
+    # Female 51.7 and Male 48.3 beside an enrollment of 642: percentages entered as counts. It published
+    # percent_female 51.7 and female_share 0.517 beside bounds and a Denominator B counted from the
+    # rounded 52 and 48, and entered the participant-weighted pooling as 100 people. Such a row keeps its
+    # reporting status and counts as posted, and its composition is withheld with a reason, as for a
+    # non-participant table; refusing it would refuse the whole weekly input. It is 1 of the 80,755
+    # participant-count rows of the 2026-11-08 weekly extraction. Negative and non-finite counts are
+    # refused at load (`benchmarks._sex_gender_count_problems`, `benchmarks.weekly_record_problem`).
+    counts_not_whole = is_participant_count is True and any(
+        isinstance(v, (int, float)) and not isinstance(v, bool) and not float(v).is_integer()
+        for v in (n_female, n_male, n_unknown, n_gender_diverse, n_ambiguous_gender)
+    )
+    composition_withheld_reason = "participant_counts_not_whole" if counts_not_whole else None
+
+    pf = None if counts_not_whole else sgt.percent_female(row)
     female_share: float | None = (pf / 100.0) if pf is not None else None
 
     # Parsed sex table Denominator A & B using ONLY parsed buckets (never
-    # enrollment_minus_parsed). Computed only for participant-count sex tables.
+    # enrollment_minus_parsed). Computed only for participant-count sex tables of whole counts.
     of_parsed_total: dict[str, dict[str, Any]] | None = None
     of_classified_sex: dict[str, float] | None = None
-    if reported_sex is True and is_participant_count is True:
+    if reported_sex is True and is_participant_count is True and not counts_not_whole:
         f_cnt = int(round(float(n_female or 0.0)))
         m_cnt = int(round(float(n_male or 0.0)))
         u_cnt = int(round(float(n_unknown or 0.0)))
@@ -320,12 +338,19 @@ def extract_sex_gender(
         "female_share": female_share,
         "of_parsed_total": of_parsed_total,
         "of_classified": of_classified_sex,
+        "composition_withheld_reason": composition_withheld_reason,
     }
 
 
 def _sex_participant_total(record: dict[str, Any], sex_gender: dict[str, Any]) -> int | None:
-    """Participant count from the sex table when available, for double-count detection."""
-    if sex_gender.get("is_participant_count") is True and sex_gender.get("sex_report_status") in (
+    """Participant count from the sex table when available, for double-count detection.
+
+    A table whose counts are not whole (`composition_withheld_reason`) gives no participant total, so it
+    falls back to the legacy block as a non-participant table does.
+    """
+    if sex_gender.get("is_participant_count") is True and sex_gender.get(
+        "composition_withheld_reason"
+    ) is None and sex_gender.get("sex_report_status") in (
         "reported",
         "explicit_unknown_only",
     ):

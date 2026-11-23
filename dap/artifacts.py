@@ -391,6 +391,18 @@ def summarise(
             "Posted-results trials with COUNT_OF_UNITS / non-participant sex tables (kept in reporting counts, excluded from composition).",
         ),
         _count_item(
+            "sex_gender_participant_counts_not_whole",
+            "Posted trials whose sex/gender participant counts are not whole",
+            sum(
+                1 for t in posted
+                if t["demographics"]["sex_gender"].get("composition_withheld_reason") == "participant_counts_not_whole"
+            ),
+            "posted_results_trials",
+            denominators,
+            "Posted-results trials whose sex table reads as participant counts that are not whole numbers, such as "
+            "percentages entered as counts (kept in reporting counts, excluded from composition).",
+        ),
+        _count_item(
             "trials_any_attributed_sponsor",
             "Trials with at least one attributed canonical sponsor",
             sum(1 for t in trial_rows if bool(t["sponsors"]["current_owner"]["any"])),
@@ -1129,6 +1141,20 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
             sg.get("percent_female") is not None or sg.get("female_share") is not None
         ):
             p.append(f"{nct}: non-participant sex_gender row must stay out of composition")
+        # A participant-count table whose counts are not whole carries no composition, and says why
+        # (`extract_sex_gender`); a build before that rule published NCT01507090's 51.7/48.3 as
+        # percent_female 51.7 beside a Denominator B counted from the rounded 52 and 48.
+        not_whole = sg.get("is_participant_count") is True and any(
+            isinstance(sg.get(k), (int, float)) and not isinstance(sg.get(k), bool) and not float(sg[k]).is_integer()
+            for k in ("n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender")
+        )
+        withheld = sg.get("composition_withheld_reason")
+        if withheld != ("participant_counts_not_whole" if not_whole else None):
+            p.append(f"{nct}: sex_gender composition_withheld_reason {withheld!r} does not follow from its counts")
+        if withheld is not None and any(
+            sg.get(k) is not None for k in ("percent_female", "female_share", "of_parsed_total", "of_classified")
+        ):
+            p.append(f"{nct}: sex_gender row with a withheld composition must stay out of composition")
         if isinstance(sg.get("of_parsed_total"), dict):
             parsed_sum = int(
                 round(
