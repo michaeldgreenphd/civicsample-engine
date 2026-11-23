@@ -599,7 +599,11 @@ def classify_discordance(
     cells = {c['route']: c['state'] for c in trial_cov['routes']}
     ctgov_state = cells['ctgov_results']
     ctgov_posted = ctgov_state == 'verified_link'
-    ctgov_confirmed_unreported = ctgov_state in ('no_candidate_in_completed_scope', 'available_document_insufficient')
+    # Only a completed negative establishes that CT.gov has no posted results. The CT.gov route's
+    # `available_document_insufficient` means the record sets hasResults=true while its resultsSection
+    # is absent or empty: ambiguity, not absence, so it leaves the trial
+    # `coverage_incomplete_or_awaiting_review` rather than enabling the "while CT.gov unreported" states.
+    ctgov_confirmed_unreported = ctgov_state == 'no_candidate_in_completed_scope'
 
     res_pubs = _qualifying_results_publications(trial_links)
     unsettled_pubs = _unsettled_publication_candidates(trial_links)

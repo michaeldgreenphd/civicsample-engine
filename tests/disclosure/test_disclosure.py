@@ -1323,3 +1323,39 @@ def test_freeze_local_refuses_requested_ids_absent_from_the_local_records(tmp_pa
     assert {k: v['status'] for k, v in loaded.ctgov.items() if k.startswith('ctgov/study/')} == {
         'ctgov/study/NCT09990004': 200,
     }
+
+
+def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:
+    # hasResults=true with an empty resultsSection: the CT.gov route is `available_document_insufficient`.
+    shell = F._make_study('NCT09990010', title='Results shell', lead_sponsor='Fictional Sponsor',
+                          has_results=True, empty_results_shell=True)
+    ct_cell = C.ctgov_results_cell('NCT09990010', {'status': 200, 'body': shell}, [])
+    assert ct_cell['state'] == 'available_document_insufficient'
+
+    pub = _qualifying_result_ref('link:00000000000000b1', '2021-05-10')
+    fda = {
+        'link_id': 'link:00000000000000b2',
+        'source_route': 'openfda_drugsfda',
+        'citation_type': 'OPENFDA_NCT_CITED',
+        'automated_validation': 'identifier_confirmed',
+        'review_status': 'unreviewed',
+        'publication_or_action_date': '2022-01-01',
+    }
+
+    def coverage(ctgov_state: str) -> dict[str, Any]:
+        states = {route: 'no_candidate_in_completed_scope' for route in C.ROUTES}
+        states['ctgov_results'] = ctgov_state
+        states['documentary_statements'] = 'not_searched'
+        return {'routes': [{'route': r, 'state': st} for r, st in states.items()]}
+
+    for links, unreported_state in (([pub], 'published_results_while_ctgov_unreported'),
+                                    ([fda], 'fda_cited_while_ctgov_unreported')):
+        ambiguous = T.classify_discordance(links, coverage('available_document_insufficient'))
+        assert ambiguous['state'] == 'coverage_incomplete_or_awaiting_review'
+        assert 'available_document_insufficient' in ambiguous['reason']
+        # Control: a completed CT.gov negative still yields the discordance label.
+        assert T.classify_discordance(links, coverage('no_candidate_in_completed_scope'))['state'] == unreported_state
+    # Nor does the ambiguous record count toward "unreported across completed routes".
+    assert T.classify_discordance([], coverage('available_document_insufficient'))['state'] == (
+        'coverage_incomplete_or_awaiting_review'
+    )
