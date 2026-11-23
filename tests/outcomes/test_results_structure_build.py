@@ -324,6 +324,11 @@ def test_the_check_refuses_a_count_or_version_of_the_wrong_json_type(family: dic
     # the frame count is computed by every build and may not be null.
     assert not has(problems(lambda f: f['run.json']['acquisition'].update(n_retries=None)), not_counts)
     assert has(problems(lambda f: f['run.json']['scope']['frame'].update(n=None)), f"{not_counts}: ['scope.frame.n']")
+    # Only the acquisition counts may be null. The parameter and review counts are written as ints by
+    # the builders, so a null there is refused (Codex, PR 104).
+    for where, key in (('parameters', 'n_requested'), ('parameters', 'batch_size'), ('reviews', 'n_rows')):
+        assert has(problems(lambda f, where=where, key=key: f['run.json'][where].update({key: None})),
+                   f"{not_counts}: ['{where}.{key}']"), (where, key)
     # A float that is not a count (seconds between requests) is left alone.
     assert not has(problems(lambda f: f['run.json']['acquisition'].update(min_seconds_between_requests=0.75)), not_counts)
     # The values of the right type still pass.

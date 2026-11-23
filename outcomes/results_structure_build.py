@@ -841,14 +841,20 @@ def check(files: dict[str, Any]) -> list[str]:
     ex = scope['excluded']
     # Counts that come from fetching or reviewing, not from the records, so the recount below cannot
     # reproduce them: each must at least be a count. (summarize copies scope.frame.n into the summary,
-    # so the recount would echo a wrong-typed value back unchanged; Codex, PR 104.) The frame count is
-    # computed by every build and is required. The fetch and review counts are copied from the
-    # archive's metadata, which can lack them (an archive fetched before they were recorded); a None
-    # there records that absence and is accepted, never read as zero.
+    # so the recount would echo a wrong-typed value back unchanged; Codex, PR 104.)
+    #   - The frame count is computed by every build: required.
+    #   - The parameter and review counts (parameters.n_requested and batch_size, reviews.n_rows) are
+    #     written as ints by the builders: when present, each must be a count, and None is refused.
+    #   - The acquisition counts are copied from the archive's metadata with .get(), and an archive
+    #     fetched before they were recorded lacks them: a None there records that absence and is
+    #     accepted, never read as zero. This is the only place a None count is accepted (Codex, PR 104).
     provenance = {'scope.frame.n': (scope.get('frame') or {}).get('n')}
-    for block in ('acquisition', 'parameters', 'reviews'):
+    for k, v in (run.get('acquisition') or {}).items():
+        if k.startswith('n_') and v is not None:
+            provenance[f'acquisition.{k}'] = v
+    for block in ('parameters', 'reviews'):
         for k, v in (run.get(block) or {}).items():
-            if (k.startswith('n_') or k == 'batch_size') and v is not None:
+            if k.startswith('n_') or k == 'batch_size':
                 provenance[f'{block}.{k}'] = v
     bad = sorted(k for k, v in provenance.items() if not _count(v))
     if bad:
