@@ -197,7 +197,9 @@ refused, never reported as `meta_verified`.
 - `run.json`: Manifest with `schema_version: 1`, `run_id` (`outcomes-comparability-YYYY-MM-DD-<10hex>`),
   `producer` (`commit`, `uncommitted_changes`, `source_sha256`), `method` (`spec_sha256`),
   `acquisition` (`sha256_uncompressed`), `history_archive`, `scope`, `vocabularies`, and `files`
-  SHA-256 map.
+  SHA-256 map. The run-id date is the date of `acquisition.retrieved_at`; every acquisition or
+  snapshot date is parsed as a real calendar date (`calendar_date`), and `check()` re-parses
+  `retrieved_at` and requires the run-id date to equal its date.
 - `summary.json`: Every count object carries `value`, `numerator`, `denominator` (a named key in
   `summary.json["denominators"]`), and `definition`. `comparability_build.check()` recounts
   `summary.json` from `records.json` and refuses any discrepancy.

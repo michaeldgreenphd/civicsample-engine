@@ -21,7 +21,7 @@ import shutil
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
@@ -77,6 +77,23 @@ def dump(obj: Any) -> bytes:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+
+def calendar_date(value: Any) -> str | None:
+    """`value` when it is a real ISO calendar date `YYYY-MM-DD`, else None.
+
+    The shape check alone accepts impossible dates (`2026-99-99`, `2026-02-30`) that would then be
+    published as `acquisition.retrieved_at` and embedded in a run id that still matches `RUN_ID`, so
+    the value is also parsed as a calendar date. Every acquisition or snapshot date accepted by the
+    loaders, the CLI, `build()` and `check()` goes through this one test.
+    """
+    if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+        return None
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return None
+    return value
 
 
 def read_nct_list(path: Path) -> list[str]:
@@ -310,8 +327,8 @@ def load_records_dir(records_dir: Path, snapshot_date: str | None = None) -> tup
             f'{records_dir}: a records directory records no retrieval date; '
             'supply --snapshot-date YYYY-MM-DD (the date the records were retrieved)'
         )
-    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', snapshot_date):
-        raise BuildError(f'snapshot_date {snapshot_date!r} must be YYYY-MM-DD')
+    if calendar_date(snapshot_date) is None:
+        raise BuildError(f'snapshot_date {snapshot_date!r} must be a real YYYY-MM-DD calendar date')
     candidates = sorted(
         p for p in records_dir.iterdir()
         if p.is_file() and (p.name.endswith('.json.gz') or (p.name.endswith('.json') and not p.name.endswith('.meta.json')))
@@ -381,11 +398,12 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
                     continue
                 line = raw_line.decode('utf-8')
                 outer = json.loads(line)
-                if (
-                    isinstance(outer, dict) and isinstance(outer.get('fetched_at'), str)
-                    and re.match(r'^\d{4}-\d{2}-\d{2}', outer['fetched_at'])
-                ):
-                    fetched_dates.append(outer['fetched_at'][:10])
+                fetched_date = (
+                    calendar_date(outer['fetched_at'][:10])
+                    if isinstance(outer, dict) and isinstance(outer.get('fetched_at'), str) else None
+                )
+                if fetched_date is not None:
+                    fetched_dates.append(fetched_date)
                 else:
                     n_lines_without_fetched_at += 1
                 if isinstance(outer, dict) and 'body' in outer:
@@ -416,14 +434,14 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
         inferred_date = snapshot_date
     elif n_lines_without_fetched_at:
         raise BuildError(
-            f'{cache_path.name}: {n_lines_without_fetched_at} line(s) lack a fetched_at date, so the cache '
+            f'{cache_path.name}: {n_lines_without_fetched_at} line(s) lack a valid fetched_at date, so the cache '
             'does not record when it was retrieved; supply --snapshot-date YYYY-MM-DD'
         )
     else:
         inferred_date = max(fetched_dates)
 
-    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', inferred_date):
-        raise BuildError(f'snapshot_date {inferred_date!r} must be YYYY-MM-DD')
+    if calendar_date(inferred_date) is None:
+        raise BuildError(f'snapshot_date {inferred_date!r} must be a real YYYY-MM-DD calendar date')
 
     meta = {
         'source': 'frozen CT.gov API v2 responses cache',
@@ -1207,8 +1225,8 @@ def build(
 ) -> dict[str, Any]:
     """Assemble `{filename: parsed_object}` for the comparability artifact family (`schema_version = 1`)."""
     retrieved_at = str(acquisition.get('retrieved_at') or '')[:10]
-    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', retrieved_at):
-        raise BuildError('acquisition record has no YYYY-MM-DD retrieved_at date')
+    if calendar_date(retrieved_at) is None:
+        raise BuildError('acquisition record has no real YYYY-MM-DD retrieved_at date')
 
     spec_path = ROOT / 'outcomes' / 'COMPARABILITY.md'
     spec_sha = sha256(spec_path.read_bytes()) if spec_path.is_file() else None
@@ -1335,6 +1353,24 @@ def check(files: dict[str, Any]) -> list[str]:
     acq = run.get('acquisition') or {}
     if not HEX64.match(str(acq.get('sha256_uncompressed') or '')):
         p.append('run.json acquisition lacks a 64-hex sha256_uncompressed')
+    # An edited retrieved_at, or run-id date, would pass the RUN_ID shape: parse retrieved_at whole as
+    # an ISO timestamp, require its date to be a real calendar date, and require the run id to carry
+    # that same date (build() derives the run-id date from it).
+    acq_retrieved = acq.get('retrieved_at')
+    acq_date: str | None = None
+    if isinstance(acq_retrieved, str):
+        try:
+            datetime.fromisoformat(acq_retrieved)
+        except ValueError:
+            pass
+        else:
+            acq_date = calendar_date(acq_retrieved[:10])
+    if acq_date is None:
+        p.append(f'run.json acquisition.retrieved_at {acq_retrieved!r} is not a real ISO timestamp')
+    elif isinstance(run.get('run_id'), str) and RUN_ID.match(run['run_id']):
+        rid_date = run['run_id'][len('outcomes-comparability-'):][:10]
+        if rid_date != acq_date:
+            p.append(f'run.json run_id date {rid_date} != acquisition.retrieved_at date {acq_date}')
 
     listed = run.get('files') or {}
     expected_siblings = {'summary.json', 'records.json'}

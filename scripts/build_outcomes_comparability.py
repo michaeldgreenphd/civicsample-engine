@@ -98,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
         ap.error('--exclude-list and --exclude-reason must be supplied together')
     if args.exclude_list and (args.fetch or not args.nct_list):
         ap.error('--exclude-list requires a local source (--archive, --records-dir, or --responses-cache) and --nct-list')
+    if args.snapshot_date is not None and B.calendar_date(args.snapshot_date) is None:
+        ap.error(f'--snapshot-date {args.snapshot_date!r} is not a real YYYY-MM-DD calendar date')
 
     try:
         # Validate optional historical archive upfront before making any network calls.

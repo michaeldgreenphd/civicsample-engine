@@ -1031,7 +1031,7 @@ def test_contract_checker_refuses_tampering_private_keys_and_broken_invariants(t
 
     # 2. Tampered run_id even with matching file sha256s -> run_identity refusal
     bad_rid = copy.deepcopy(base)
-    fake_id = 'outcomes-comparability-2026-11-10-0000000000'
+    fake_id = base['run.json']['run_id'][:-10] + '0000000000'  # same date, forged identity
     for k in ('run.json', 'summary.json', 'records.json'):
         bad_rid[k]['run_id'] = fake_id
     bad_rid['run.json']['files'] = {k: B.sha256(B.dump(bad_rid[k])) for k in ('summary.json', 'records.json')}
@@ -1251,7 +1251,7 @@ def test_local_sources_never_take_the_retrieval_date_from_registry_dates(tmp_pat
         {'fetched_at': '2026-11-15T10:00:00Z', 'body': {'studies': studies[:1]}},
         {'body': {'studies': studies[1:]}},
     ])
-    with pytest.raises(B.BuildError, match='1 line\\(s\\) lack a fetched_at'):
+    with pytest.raises(B.BuildError, match='1 line\\(s\\) lack a valid fetched_at'):
         B.load_responses_cache(partial)
     assert B.load_responses_cache(partial, snapshot_date='2026-11-20')[1]['retrieved_at'] == '2026-11-20T00:00:00+00:00'
     complete = _cache('complete.jsonl.gz', [
@@ -1259,6 +1259,49 @@ def test_local_sources_never_take_the_retrieval_date_from_registry_dates(tmp_pat
         {'fetched_at': '2026-11-16T09:00:00Z', 'body': {'studies': studies[1:]}},
     ])
     assert B.load_responses_cache(complete)[1]['retrieved_at'] == '2026-11-16T00:00:00+00:00'
+
+
+def test_acquisition_dates_must_be_real_calendar_dates(tmp_path: Path) -> None:
+    # Regression: only the YYYY-MM-DD shape was checked, so an impossible date such as 2026-99-99 was
+    # published as acquisition.retrieved_at and embedded in a run id that still matched RUN_ID.
+    studies = _sample_studies()
+    rec_dir = tmp_path / 'records_in'
+    rec_dir.mkdir()
+    for s in studies:
+        (rec_dir / f'{C.nct_id_of(s)}.json').write_text(json.dumps(s), encoding='utf-8')
+    for bad in ('2026-99-99', '2026-02-29', '2026-11-31'):
+        with pytest.raises(B.BuildError, match='real YYYY-MM-DD calendar date'):
+            B.load_records_dir(rec_dir, snapshot_date=bad)
+    with pytest.raises(SystemExit):
+        build_outcomes_comparability.main(['--records-dir', str(rec_dir), '--snapshot-date', '2026-99-99', '--out', str(tmp_path / 'o')])
+    assert not (tmp_path / 'o').exists()
+
+    cache = tmp_path / 'resp.jsonl.gz'
+    cache.write_bytes(gzip.compress(
+        (json.dumps({'fetched_at': '2026-13-40T10:00:00Z', 'body': {'studies': studies}}) + '\n').encode('utf-8'), mtime=0
+    ))
+    with pytest.raises(B.BuildError, match='lack a valid fetched_at'):
+        B.load_responses_cache(cache)
+    with pytest.raises(B.BuildError, match='real YYYY-MM-DD calendar date'):
+        B.load_responses_cache(cache, snapshot_date='2026-02-30')
+    assert B.load_responses_cache(cache, snapshot_date='2028-02-29')[1]['retrieved_at'] == '2028-02-29T00:00:00+00:00'
+
+    fam = _family(studies)
+    with pytest.raises(B.BuildError, match='real YYYY-MM-DD retrieved_at'):
+        B.build({}, {}, {**fam['run.json']['acquisition'], 'retrieved_at': '2026-99-99T00:00:00+00:00'},
+                fam['run.json']['producer'], {}, fam['run.json']['scope'])
+
+    # The contract re-parses an edited manifest: an impossible retrieved_at, or a run-id date that
+    # is not the retrieved_at date.
+    assert B.check(fam) == []
+    bad_acq = copy.deepcopy(fam)
+    bad_acq['run.json']['acquisition']['retrieved_at'] = '2026-99-99T10:00:00+00:00'
+    assert any("retrieved_at '2026-99-99T10:00:00+00:00' is not a real ISO timestamp" in p for p in B.check(bad_acq))
+    bad_rid = copy.deepcopy(fam)
+    bad_rid['run.json']['run_id'] = bad_rid['run.json']['run_id'].replace('2026-11-15', '2026-11-16')
+    assert any('run_id date 2026-11-16 != acquisition.retrieved_at date 2026-11-15' in p for p in B.check(bad_rid))
+    assert B.calendar_date('2028-02-29') == '2028-02-29'
+    assert [B.calendar_date(v) for v in ('2026-1-01', '20261115', None, 20261115)] == [None, None, None, None]
 
 
 def test_fetch_rate_limiting_version_guard_and_responses_cache_cli(
