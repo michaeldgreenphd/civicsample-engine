@@ -152,7 +152,22 @@ and every lean column `sgt.lean_row` writes with its type
 every flag and count empty, and a string count stopped the build. The
 types follow the producer by status: `is_participant_count` may be `None`
 (no measure found), and the `reported_*` flags only in a `parse_error` row,
-which the extractor writes when the parser raises and which is kept. A missing or
+which the extractor writes when the parser raises and which is kept. The three
+flags must also be the ones `sgp.derive_outcomes` gives for the row's status
+and counts (`WEEKLY_OUTCOME_COLUMNS`): `None` in a `parse_error` row, `False`
+for every status but `reported`, and `reported_both` the conjunction of the
+other two. A `not_reported` row with `reported_sex: true` was counted as both.
+The `race` and `ethnicity` blocks must carry the children `dap/demographics.py`
+reads, of the kind the extractors write (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`):
+`reported` a boolean, `omb_totals` an object holding every OMB key as a
+non-negative integer, `raw_categories` objects with a string `original` and
+`omb_category`, a count and string `flags`, the race block's
+`quarantined_labels` objects with a string `original` and a count, its
+`unknown_inferred` a count, and `flags` a list of strings. A malformed child was
+read as absent or zero: `omb_totals: "corrupt"` published a reported table as
+absent. `unknown_ethnicity_only`, `skipped_ethnicity_rows` and
+`not_hispanic_from_race_rows` postdate the 2026-11-08 extraction, so they are
+checked only when present. A missing or
 mistyped one was read as an "Unknown" sponsor, no enrollment, a block not
 reported, or a sex/gender row re-parsed as `parse_error`. All 80,890 records
 of the 2026-11-08 weekly extraction pass.

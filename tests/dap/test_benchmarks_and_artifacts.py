@@ -1825,3 +1825,124 @@ def test_weekly_sex_gender_rows_the_extractor_writes_for_every_status_load(tmp_p
     weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
     records, _ = benchmarks.load_study_records(weekly_path, source_kind="full_records")
     assert len(records) == 5
+
+
+_DROP = object()  # remove the key instead of setting it
+
+
+def _write_weekly(weekly_doc: dict[str, Any], tmp_path: Path) -> Path:
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    return weekly_path
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "problem"),
+    [
+        # On 28a5001 each loaded, and `_analyze_race_block` / `_analyze_ethnicity_block` read the child as
+        # absent or zero: a reported table published as absent, or its counts lowered.
+        (("race", "omb_totals"), "corrupt", "race.omb_totals is str, not an object"),
+        (("race", "omb_totals", "american_indian_alaska_native"), _DROP,
+         "race.omb_totals has no american_indian_alaska_native (the extractor writes every OMB key)"),
+        (("race", "omb_totals", "white"), "60", "race.omb_totals.white is '60', not a non-negative integer"),
+        (("race", "omb_totals", "white"), True, "race.omb_totals.white is True, not a non-negative integer"),
+        (("race", "omb_totals", "white"), 60.5, "race.omb_totals.white is 60.5, not a non-negative integer"),
+        (("race", "reported"), "yes", "race.reported is str, not bool"),
+        (("race", "reported"), _DROP, "race has no reported (the extractor always writes it)"),
+        (("race", "unknown_inferred"), None, "race.unknown_inferred is None, not a non-negative integer"),
+        (("race", "flags"), "denominator_balanced", "race.flags is str, not a list"),
+        (("race", "flags"), [None], "race.flags[0] is NoneType, not a string"),
+        (("race", "raw_categories", 0, "count"), _DROP,
+         "race.raw_categories[0].count is missing or not a non-negative integer"),
+        (("race", "raw_categories", 0, "flags"), None,
+         "race.raw_categories[0].flags is missing or not a list of strings"),
+        (("race", "quarantined_labels"), [["Other", 3]], "race.quarantined_labels[0] is list, not an object"),
+        (("race", "quarantined_labels"), [{"original": "Other", "count": -2}],
+         "race.quarantined_labels[0].count is missing or not a non-negative integer"),
+        (("race", "skipped_ethnicity_rows"), None, "race.skipped_ethnicity_rows is NoneType, not a list"),
+        (("race", "unknown_ethnicity_only"), "3", "race.unknown_ethnicity_only is '3', not a non-negative integer"),
+        (("ethnicity", "omb_totals"), {},
+         "ethnicity.omb_totals has no hispanic_latino (the extractor writes every OMB key)"),
+        (("ethnicity", "raw_categories", 1, "omb_category"), None,
+         "ethnicity.raw_categories[1].omb_category is missing or not a string"),
+        (("ethnicity", "not_hispanic_from_race_rows"), -1,
+         "ethnicity.not_hispanic_from_race_rows is -1, not a non-negative integer"),
+    ],
+)
+def test_weekly_race_and_ethnicity_children_need_the_extractors_kind(
+    tmp_path: Path, path: tuple[Any, ...], value: object, problem: str
+) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    target = weekly_doc["data"][1]
+    for step in path[:-1]:
+        target = target[step]
+    if value is _DROP:
+        del target[path[-1]]
+    else:
+        target[path[-1]] = value
+    message = f"1 of 5 weekly records carry a missing or malformed field (first: NCT99000402 {problem})"
+    with pytest.raises(ValueError, match=re.escape(message)):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
+def test_weekly_race_and_ethnicity_blocks_of_both_extractor_versions_load(tmp_path: Path) -> None:
+    # The 2026-11-08 extraction predates `unknown_ethnicity_only`, `skipped_ethnicity_rows` and
+    # `not_hispanic_from_race_rows`, so its blocks lack them; the current extractors write them.
+    from src.ethnicity_extractor import extract_ethnicity_data
+    from src.race_extractor import extract_race_data
+
+    legacy = fx.build_weekly_full_records_doc()
+    for rec in legacy["data"]:
+        rec["race"].pop("skipped_ethnicity_rows")
+        assert "unknown_ethnicity_only" not in rec["race"] and "not_hispanic_from_race_rows" not in rec["ethnicity"]
+    assert len(benchmarks.load_study_records(_write_weekly(legacy, tmp_path), source_kind="full_records")[0]) == 5
+
+    current = fx.build_weekly_full_records_doc()
+    # NCT99000106 to NCT99000111: reported tables, one combined race/ethnicity table with flags, and
+    # three with no race or ethnicity table.
+    posted = [st for st in fx.build_fictional_cohort() if st.get("resultsSection")][-5:]
+    for rec, study in zip(current["data"], posted, strict=True):
+        rec["race"], rec["ethnicity"] = extract_race_data(study), extract_ethnicity_data(study)
+    assert all("skipped_ethnicity_rows" in rec["race"] for rec in current["data"])
+    assert any(rec["race"]["reported"] and rec["race"]["flags"] for rec in current["data"])
+    assert any(not rec["race"]["reported"] for rec in current["data"])
+    assert len(benchmarks.load_study_records(_write_weekly(current, tmp_path), source_kind="full_records")[0]) == 5
+
+
+@pytest.mark.parametrize(
+    ("make_row", "column", "value", "derived"),
+    [
+        # On 28a5001 each loaded and `extract_sex_gender` reused the row as it stood: a trial counted as
+        # both not reported and reporting sex, as reporting both without reporting gender, and so on.
+        ("not_reported", "reported_sex", True, False),
+        ("not_reported", "reported_both", True, False),
+        ("parse_error", "reported_gender", False, None),
+        ("reported", "reported_sex", False, True),  # the fixture row has 50 female and 50 male
+        ("reported", "reported_gender", True, False),  # and no gender-diverse or ambiguous count
+        ("reported", "reported_both", True, False),
+    ],
+)
+def test_weekly_sex_gender_outcome_flags_must_be_the_derived_ones(
+    tmp_path: Path, make_row: str, column: str, value: bool, derived: bool | None
+) -> None:
+    from src import sex_gender_table as sgt
+
+    weekly_doc = fx.build_weekly_full_records_doc()
+    if make_row == "parse_error":
+        weekly_doc["data"][1]["sex_gender"] = sgt.lean_row(sgt.parse_error_row("NCT99000402", 100, "2026-11-21"))
+    elif make_row == "not_reported":
+        weekly_doc["data"][1]["sex_gender"] = sgt.lean_row(
+            sgt.build_row({"protocolSection": {"identificationModule": {"nctId": "NCT99000402"}}}, "2026-11-21"))
+    row = weekly_doc["data"][1]["sex_gender"]
+    assert row["sex_report_status"] == make_row and row[column] is derived
+    row[column] = value
+    problem = (f"sex_gender.{column} is {value!r}, but sgp.derive_outcomes gives {derived!r} "
+               f"for status {make_row!r} and the row's counts")
+    with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem})")):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
+def test_weekly_sex_gender_row_reporting_gender_loads(tmp_path: Path) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1]["sex_gender"].update(n_gender_diverse=2.0, reported_gender=True, reported_both=True)
+    assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5

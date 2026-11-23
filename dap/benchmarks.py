@@ -40,6 +40,7 @@ from dap.geography import (
 from sponsors import adapter, audit_states, sponsor_roles
 from src import condition_mesh as cmesh
 from src import full_records
+from src import sex_gender_parser as sgp
 from src import sex_gender_table as sgt
 
 ROOT: Path = Path(__file__).resolve().parents[1]
@@ -729,8 +730,17 @@ WEEKLY_SEX_GENDER_COLUMNS: dict[str, tuple[type, ...]] = {
     "parser_rules_version": (str,),
 }
 assert list(WEEKLY_SEX_GENDER_COLUMNS) == list(sgt.LEAN_COLUMNS), "keep in step with sgt.LEAN_COLUMNS"
+# The outcome flags `sgp.derive_outcomes` writes into the row, and the lean columns it derives them from
+# (with `sex_report_status`). `sgt._row_from_parsed` composes every row the extractor writes from
+# `derive_outcomes` (never with `strict_sex_only`) and `p.to_dict()`, so a row's flags are what
+# `derive_outcomes` gives for its own status and counts: `None` for `parse_error`, `False` for every other
+# status but `reported`, `reported_both` the conjunction of the other two. `extract_sex_gender` reuses the
+# row as it stands, so a `not_reported` row with `reported_sex: true` was counted as both not reported and
+# reported sex. All 80,890 rows of the 2026-11-08 extraction carry exactly the derived flags.
+WEEKLY_OUTCOME_COLUMNS: tuple[str, ...] = ("reported_sex", "reported_gender", "reported_both")
+_OUTCOME_INPUT_COLUMNS: tuple[str, ...] = ("n_female", "n_male", "n_gender_diverse", "n_ambiguous_gender")
 # Columns `sgt.parse_error_row` leaves `None`, the outcome flags of a row whose input was not read.
-_PARSE_ERROR_NULLABLE: frozenset[str] = frozenset({"reported_sex", "reported_gender", "reported_both"})
+_PARSE_ERROR_NULLABLE: frozenset[str] = frozenset(WEEKLY_OUTCOME_COLUMNS)
 # Entry fields `src/utils.py` always writes as non-blank strings: it keeps a site only for a location
 # with a country.
 WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {"study_sites": ("country",)}
@@ -757,6 +767,86 @@ WEEKLY_SCALAR_FIELDS: dict[str, tuple[type, bool]] = {
     "gender": (dict, False),
     "sex_gender": (dict, False),
 }
+# The children of the weekly `race` and `ethnicity` blocks that `dap/demographics.py` reads, the kind
+# `src/race_extractor.py` and `src/ethnicity_extractor.py` write for each, and whether it is required.
+# `_analyze_race_block` and `_analyze_ethnicity_block` read a malformed child as absent or zero:
+# `omb_totals: "corrupt"` became `{}` and a reported table was published as absent, and a missing OMB key,
+# entry count or flag list read as 0 or none, so reported participants left the pooled distributions and
+# strata with nothing reported. The kinds: "count" a non-negative int (the extractors write integer
+# counts), "totals" an object holding every key of `WEEKLY_OMB_TOTAL_KEYS` as a count, "categories" a list
+# of objects with a string `original` and `omb_category`, a count and a list of string `flags`, "rows" a
+# list of objects with a string `original` and a count, and "strings" a list of strings.
+# `unknown_ethnicity_only`, `skipped_ethnicity_rows` and `not_hispanic_from_race_rows` were added to the
+# extractors after the 2026-11-08 extraction, whose records lack them; a record extracted before a field
+# existed has no such key ("not looked at", which `_detect_combined_race_ethnicity` handles), so each is
+# checked only when present. All 80,890 records of that extraction pass.
+WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS: dict[str, dict[str, tuple[str, bool]]] = {
+    "race": {
+        "reported": ("bool", True),
+        "omb_totals": ("totals", True),
+        "unknown_inferred": ("count", True),
+        "unknown_ethnicity_only": ("count", False),
+        "raw_categories": ("categories", True),
+        "quarantined_labels": ("rows", True),
+        "skipped_ethnicity_rows": ("rows", False),
+        "flags": ("strings", True),
+    },
+    "ethnicity": {
+        "reported": ("bool", True),
+        "omb_totals": ("totals", True),
+        "not_hispanic_from_race_rows": ("count", False),
+        "raw_categories": ("categories", True),
+        "flags": ("strings", True),
+    },
+}
+WEEKLY_OMB_TOTAL_KEYS: dict[str, tuple[str, ...]] = {
+    "race": (*RACE_CLASSIFIED_KEYS, "unknown_not_reported"),
+    "ethnicity": (*ETHNICITY_CLASSIFIED_KEYS, "unknown_not_reported"),
+}
+
+
+def _is_extractor_count(value: Any) -> bool:
+    """Whether `value` is a count as the race and ethnicity extractors write one: a non-negative int."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _demographic_child_problem(block: str, key: str, kind: str, value: Any) -> str | None:
+    """Why one child of a weekly race or ethnicity block is not of its kind
+    (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`), or `None`."""
+    where = f"{block}.{key}"
+    if kind == "bool":
+        return None if isinstance(value, bool) else f"{where} is {type(value).__name__}, not bool"
+    if kind == "count":
+        return None if _is_extractor_count(value) else f"{where} is {value!r}, not a non-negative integer"
+    if kind == "totals":
+        if not isinstance(value, dict):
+            return f"{where} is {type(value).__name__}, not an object"
+        for omb in WEEKLY_OMB_TOTAL_KEYS[block]:
+            if omb not in value:
+                return f"{where} has no {omb} (the extractor writes every OMB key)"
+        for omb, count in value.items():
+            if not _is_extractor_count(count):
+                return f"{where}.{omb} is {count!r}, not a non-negative integer"
+        return None
+    if not isinstance(value, list):
+        return f"{where} is {type(value).__name__}, not a list"
+    for i, entry in enumerate(value):
+        at = f"{where}[{i}]"
+        if kind == "strings":
+            if not isinstance(entry, str):
+                return f"{at} is {type(entry).__name__}, not a string"
+            continue
+        if not isinstance(entry, dict):
+            return f"{at} is {type(entry).__name__}, not an object"
+        for field in ("original", "omb_category") if kind == "categories" else ("original",):
+            if not isinstance(entry.get(field), str):
+                return f"{at}.{field} is missing or not a string"
+        if not _is_extractor_count(entry.get("count")):
+            return f"{at}.count is missing or not a non-negative integer"
+        flags = entry.get("flags")
+        if kind == "categories" and not (isinstance(flags, list) and all(isinstance(f, str) for f in flags)):
+            return f"{at}.flags is missing or not a list of strings"
+    return None
 
 
 def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
@@ -777,8 +867,11 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     The other fields read (`WEEKLY_SCALAR_FIELDS`) must be present with their type (a bool is not an
     enrollment), non-blank where the producer never writes them blank, and `sex_gender`, the row
     `extract_sex_gender` reuses, must carry a `sex_report_status` in `SEX_GENDER_STATES` and every
-    lean column with its type (`WEEKLY_SEX_GENDER_COLUMNS`). All 80,890 weekly
-    records pass (80,097 `reported`, 727 `uninformative`, 66 `explicit_unknown_only`).
+    lean column with its type (`WEEKLY_SEX_GENDER_COLUMNS`), with the outcome flags
+    `sgp.derive_outcomes` gives for its status and counts (`WEEKLY_OUTCOME_COLUMNS`). The `race` and
+    `ethnicity` blocks must carry the children `dap/demographics.py` reads, each of the kind the
+    extractors write (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`). All 80,890 weekly records pass (80,097
+    `reported`, 727 `uninformative`, 66 `explicit_unknown_only`).
     """
     for key, (field_type, non_blank) in WEEKLY_SCALAR_FIELDS.items():
         if key not in rec:
@@ -789,6 +882,14 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
             return f"{key} is {type(value).__name__}, not {kind}"
         if non_blank and not value.strip():
             return f"{key} is blank"
+    for block, fields in WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS.items():
+        for key, (kind, required) in fields.items():
+            if key not in rec[block]:
+                if required:
+                    return f"{block} has no {key} (the extractor always writes it)"
+                continue
+            if problem := _demographic_child_problem(block, key, kind, rec[block][key]):
+                return problem
     status = rec["sex_gender"].get("sex_report_status")
     if status not in SEX_GENDER_STATES:
         return f"sex_gender.sex_report_status {status!r} is not one of SEX_GENDER_STATES"
@@ -800,6 +901,14 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
         value = rec["sex_gender"][column]
         if not isinstance(value, types) or (isinstance(value, bool) and bool not in types):
             return f"sex_gender.{column} is {type(value).__name__}, not {' or '.join(t.__name__ for t in types)}"
+    row = rec["sex_gender"]
+    derived = sgp.derive_outcomes(sgp.ParsedTrial(**{c: row[c] for c in _OUTCOME_INPUT_COLUMNS}), status)
+    for column in WEEKLY_OUTCOME_COLUMNS:
+        if row[column] is not derived[column]:
+            return (
+                f"sex_gender.{column} is {row[column]!r}, but sgp.derive_outcomes gives {derived[column]!r} "
+                f"for status {status!r} and the row's counts"
+            )
     for key, (entry_type, fields) in WEEKLY_LIST_FIELDS.items():
         if key not in rec:
             return f"has no {key} (src/utils.py always writes it)"
