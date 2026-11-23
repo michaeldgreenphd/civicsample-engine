@@ -36,7 +36,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FAIL: could not read {args.path}: {exc}")
         return 1
 
-    problems = artifacts.check_contract(loaded)
+    # A malformed build fails the check with a message, never a traceback: an
+    # exception check_contract did not anticipate is reported as a failure.
+    try:
+        problems = artifacts.check_contract(loaded)
+    except Exception as exc:
+        print(f"FAIL: contract check could not complete on {args.path}: {type(exc).__name__}: {exc}")
+        return 1
     for problem in problems:
         print(problem)
     status = "FAIL" if problems else "PASS"

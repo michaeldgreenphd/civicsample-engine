@@ -813,6 +813,16 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
     trial_rows = loaded.get("trial_rows")
     if not isinstance(trial_rows, list) or not trial_rows:
         return p + ["trials.jsonl.gz: missing or empty"]
+    # load_dir accepts any JSON value per line (null, a string, a list); every
+    # check below, run_identity included, reads rows as objects, so a family
+    # with a non-object row is reported and refused here.
+    non_objects = [i for i, row in enumerate(trial_rows) if not isinstance(row, dict)]
+    if non_objects:
+        first = non_objects[0]
+        return p + [
+            f"trials.jsonl.gz: {len(non_objects)} row(s) are not JSON objects "
+            f"(first: row {first + 1} is {type(trial_rows[first]).__name__})"
+        ]
 
     if all(isinstance(loaded.get(j), dict) for j in JSON_FILES):
         expected_ident = run_identity(

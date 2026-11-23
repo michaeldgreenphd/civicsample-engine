@@ -722,6 +722,55 @@ def test_contract_reports_non_integer_facility_counts_instead_of_raising(tmp_pat
     assert cli_check.main([str(bad_disk)]) == 1
 
 
+def test_contract_reports_non_object_trial_rows_and_cli_never_tracebacks(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    studies_dir = fx.write_studies_dir(fx.build_fictional_cohort(), tmp_path / "studies")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    valid = tmp_path / "valid"
+    assert (
+        cli_build.main(
+            [
+                "--records-dir",
+                str(studies_dir),
+                "--sponsor-rules",
+                str(rules_path),
+                "--generated-at",
+                "2026-11-21T00:00:00+00:00",
+                "--out",
+                str(valid),
+            ]
+        )
+        == 0
+    )
+    base_loaded = artifacts.load_dir(valid)
+
+    # JSON-valid non-object rows are reported, not dereferenced.
+    for bad in (None, "text", [1, 2], 5):
+        tampered = copy.deepcopy(base_loaded)
+        tampered["trial_rows"][3] = bad
+        problems = artifacts.check_contract(tampered)  # must not raise
+        assert f"trials.jsonl.gz: 1 row(s) are not JSON objects (first: row 4 is {type(bad).__name__})" in problems
+
+    # On disk, through load_dir and the CLI: exit 1 with the problem, no traceback.
+    bad_disk = tmp_path / "bad_disk"
+    shutil.copytree(valid, bad_disk)
+    raw = gzip.decompress((valid / "trials.jsonl.gz").read_bytes())
+    (bad_disk / "trials.jsonl.gz").write_bytes(gzip.compress(b"null\n" + raw, mtime=0))
+    capsys.readouterr()
+    assert cli_check.main([str(bad_disk)]) == 1
+    assert "1 row(s) are not JSON objects (first: row 1 is NoneType)" in capsys.readouterr().out
+
+    # Any exception the checker did not anticipate is a reported failure, not a traceback.
+    def _crash(loaded: dict[str, Any]) -> list[str]:
+        raise RuntimeError("unanticipated shape")
+
+    monkeypatch.setattr(cli_check.artifacts, "check_contract", _crash)
+    assert cli_check.main([str(valid)]) == 1
+    out = capsys.readouterr().out
+    assert f"FAIL: contract check could not complete on {valid}: RuntimeError: unanticipated shape" in out
+
+
 def test_unicode_line_separators_in_jsonl_roundtrip(tmp_path: Path) -> None:
     """U+2028, U+2029, \\x85, \\x0b, \\x0c inside JSON strings must never split JSONL lines."""
     tricky_title = "Phase 3 Study\u2028LineSep\u2029ParaSep\x85NextLine\x0bVT\x0cFF"
