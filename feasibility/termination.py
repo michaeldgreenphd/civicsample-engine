@@ -514,7 +514,12 @@ def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
     # An outcome measure that is not an object, or whose `type` is not one of CT.gov's four (missing,
     # null, a number or another string), could be a primary one, so zero analysed is not established
     # for every primary outcome (rules 1.4.2; 1.4.1 dropped such a measure from the primary filter).
-    if any(not isinstance(m, dict) or m.get("type") not in OUTCOME_MEASURE_TYPES for m in measures):
+    # A list or object `type` is unhashable, so it is tested as a string first (a set lookup raised
+    # `TypeError` and stopped the build).
+    if any(
+        not isinstance(m, dict) or not isinstance(m.get("type"), str) or m["type"] not in OUTCOME_MEASURE_TYPES
+        for m in measures
+    ):
         all_complete = False
     for measure in primary_measures:
         denoms = measure.get("denoms")

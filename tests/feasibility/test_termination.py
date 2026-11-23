@@ -354,6 +354,11 @@ def _cnt(*values: object) -> list:
          "results_posted_primary_denom_incomplete"),
         ([_primary("A", _cnt("0", "0")), {**_primary("B", None), "type": "primary"}],
          "results_posted_primary_denom_incomplete"),
+        # an unhashable type is incomplete too, never a TypeError from the set lookup (raised on 4384603)
+        ([_primary("A", _cnt("0", "0")), {**_primary("B", None), "type": ["PRIMARY"]}],
+         "results_posted_primary_denom_incomplete"),
+        ([_primary("A", _cnt("0", "0")), {**_primary("B", None), "type": {"value": "PRIMARY"}}],
+         "results_posted_primary_denom_incomplete"),
         # control: a typed secondary measure leaves the zero-analysed shell standing
         ([_primary("A", _cnt("0", "0")), {**_primary("B", _cnt("3", "4")), "type": "SECONDARY"}],
          "empty_results_shell_zero_analysed"),
