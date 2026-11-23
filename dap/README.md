@@ -85,7 +85,11 @@ source SHA-256 over the exporter's own import closure). The site `run_id` is
 `<build run_id>-<8 hex>`, the hex being a digest of the exported content minus
 `run_id`: a changed exporter or commit gives a new id for the same build. A
 build made with `--limit` (diagnostic only; `inputs.study_records.limit_applied`
-is not null) passes the contract but is never exported.
+is not null) passes the contract but is never exported. Nor is a build, or an
+exporter run, without readable git provenance: when git is missing or a git
+command fails, `commit` and/or `uncommitted_changes` are recorded as null (never
+false) and the build is still written for local diagnostics, but the exporter
+refuses it. A dirty tree (`uncommitted_changes: true`) is published as recorded.
 
 ## Study record inputs
 

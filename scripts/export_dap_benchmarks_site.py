@@ -101,6 +101,23 @@ def exporter_info() -> dict[str, Any]:
     return build_dap_benchmarks.producer_info(ROOT, entry=Path(__file__))
 
 
+def require_git_provenance(block: Any, where: str) -> None:
+    """Refuse a provenance block that cannot name its commit or say whether its files were modified.
+
+    ``build_dap_benchmarks.producer_info`` records ``null`` (never ``false``)
+    when git is unavailable or a git command fails. Such a build may be kept for
+    local diagnostics but is not published. ``uncommitted_changes: true`` is
+    honest provenance (a dirty tree, recorded as such) and is accepted.
+    """
+    block = block if isinstance(block, dict) else {}
+    commit, dirty = block.get("commit"), block.get("uncommitted_changes")
+    if not isinstance(commit, str) or not commit or not isinstance(dirty, bool):
+        raise ValueError(
+            f"{where}: commit {commit!r}, uncommitted_changes {dirty!r}: no readable git provenance; "
+            "only builds made in a git checkout, exported from one, are published"
+        )
+
+
 def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
     """Project verified build artifacts onto static site files without altering counts."""
     run = loaded["run.json"]
@@ -133,6 +150,9 @@ def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
             f"run.json: inputs.study_records.limit_applied is {study_in.get('limit_applied', '<missing>')!r}; "
             "a --limit build is diagnostic only and is not exported to the site (rebuild without --limit)"
         )
+    require_git_provenance(run.get("producer"), "run.json: producer")
+    exporter = exporter_info()
+    require_git_provenance(exporter, "exporter")
     mesh_in = inputs.get("condition_mesh")
     ont_in = inputs.get("condition_ontology") or {}
     sp_in = inputs.get("sponsor_rules") or {}
@@ -163,7 +183,7 @@ def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
         "method_version": run["method_version"],
         "unit_basis": UNIT_BASIS,
         "producer": run["producer"],
-        "exporter": exporter_info(),
+        "exporter": exporter,
         "parameters": run["parameters"],
         "counting_units": run["counting_units"],
         "vocabularies": run["vocabularies"],

@@ -126,33 +126,33 @@ def source_digest(root: Path = ROOT, paths: list[str] | None = None) -> str:
     return h.hexdigest()
 
 
+def _git_stdout(args: list[str], root: Path) -> str | None:
+    """Stdout of ``git <args>`` run in ``root``, or ``None`` when git is missing or the command fails."""
+    try:
+        proc = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, check=False)
+    except OSError:
+        return None  # no git binary (or not runnable): provenance unknown, not an error
+    return proc.stdout if proc.returncode == 0 else None
+
+
 def producer_info(root: Path = ROOT, entry: Path | None = None) -> dict[str, Any]:
     """Git commit, working-tree cleanliness of producing paths, and code SHA-256.
 
     The digest and the ``git status`` dirty check cover the same list: the
     import closure of this build (or of ``entry``; see ``producer_paths``),
-    checked in ``root``.
+    checked in ``root``. When git is unavailable or a git command fails,
+    ``commit`` and/or ``uncommitted_changes`` are ``None``, never a guessed
+    value (in particular never ``False``). Such a build is still written for
+    local diagnostics; ``export_dap_benchmarks_site.py`` refuses to publish it.
     """
     paths = producer_paths(entry=entry)
-    commit_proc = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    commit = commit_proc.stdout.strip() if commit_proc.returncode == 0 and commit_proc.stdout.strip() else None
+    rev = _git_stdout(["rev-parse", "HEAD"], root)
+    commit = rev.strip() if rev is not None and rev.strip() else None
     dirty: bool | None = None
     if commit is not None:
-        status_proc = subprocess.run(
-            ["git", "status", "--porcelain", "--", *paths],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if status_proc.returncode == 0:
-            dirty = bool(status_proc.stdout.strip())
+        status = _git_stdout(["status", "--porcelain", "--", *paths], root)
+        if status is not None:
+            dirty = bool(status.strip())
     return {
         "repository": "civicsample-engine",
         "commit": commit,

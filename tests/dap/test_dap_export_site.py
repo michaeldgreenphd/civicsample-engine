@@ -219,6 +219,69 @@ def test_limited_diagnostic_build_is_never_exported(
         site_export.select_site_files(loaded)
 
 
+def test_build_without_git_records_null_provenance_and_is_never_exported(
+    verified_build: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    studies_dir = fx.write_studies_dir(fx.build_fictional_cohort(), tmp_path / "studies")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+
+    class _Proc:
+        def __init__(self, returncode: int, stdout: str) -> None:
+            self.returncode, self.stdout = returncode, stdout
+
+    def no_git(cmd: list[str], **_kwargs: Any) -> _Proc:
+        raise FileNotFoundError("git")
+
+    def status_fails(cmd: list[str], **_kwargs: Any) -> _Proc:
+        return _Proc(0, "a" * 40 + "\n") if cmd[1] == "rev-parse" else _Proc(128, "")
+
+    for name, fake, want in (("no_git", no_git, (None, None)), ("status_fails", status_fails, ("a" * 40, None))):
+        out = tmp_path / name
+        with monkeypatch.context() as m:
+            m.setattr(cli_build.subprocess, "run", fake)
+            rc = cli_build.main(
+                [
+                    "--records-dir",
+                    str(studies_dir),
+                    "--sponsor-rules",
+                    str(rules_path),
+                    "--generated-at",
+                    "2026-11-21T12:00:00+00:00",
+                    "--out",
+                    str(out),
+                ]
+            )
+        # Null, never false; the build is still written for local diagnostics and passes the contract.
+        assert rc == 0, name
+        producer = json.loads((out / "run.json").read_text(encoding="utf-8"))["producer"]
+        assert (producer["commit"], producer["uncommitted_changes"]) == want, name
+        assert artifacts.check_contract(artifacts.load_dir(out)) == [], name
+        # The site exporter refuses to publish it.
+        with pytest.raises(ValueError, match="run.json: producer: .*no readable git provenance"):
+            site_export.export_site(out, tmp_path / f"site_{name}" / "dap")
+        assert not (tmp_path / f"site_{name}").exists()
+
+    # The contract allows only a 40-hex commit or null, and true/false/null cleanliness.
+    loaded = artifacts.load_dir(verified_build)
+    for field, bad, message in (
+        ("commit", "abc123", "producer.commit must be a 40-hex git commit or null (got 'abc123')"),
+        ("uncommitted_changes", "no", "producer.uncommitted_changes must be true, false or null (got 'no')"),
+    ):
+        tampered = copy.deepcopy(loaded)
+        tampered["run.json"]["producer"][field] = bad
+        assert f"run.json: {message}" in artifacts.check_contract(tampered)
+
+    # The exporter's own block: null refuses, a dirty tree (true) is accepted.
+    real = site_export.exporter_info()
+    monkeypatch.setattr(site_export, "exporter_info", lambda: {**real, "uncommitted_changes": None})
+    with pytest.raises(ValueError, match="exporter: .*no readable git provenance"):
+        site_export.export_site(verified_build, tmp_path / "site_exporter_null" / "dap")
+    dirty = {**real, "commit": "b" * 40, "uncommitted_changes": True}
+    monkeypatch.setattr(site_export, "exporter_info", lambda: dirty)
+    manifest = site_export.export_site(verified_build, tmp_path / "site_dirty" / "dap")
+    assert manifest["exporter"]["uncommitted_changes"] is True
+
+
 def test_tampered_or_incomplete_build_is_refused_and_leaves_site_intact(
     verified_build: Path, tmp_path: Path
 ) -> None:

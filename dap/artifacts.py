@@ -52,6 +52,7 @@ SIBLING_FILES: tuple[str, ...] = ("summary.json", "strata.json", "sponsors.json"
 
 RUN_ID_RX: re.Pattern[str] = re.compile(r"^dap-\d{4}-\d{2}-\d{2}-[0-9a-f]{10}$")
 HEX64_RX: re.Pattern[str] = re.compile(r"^[0-9a-f]{64}$")
+GIT_COMMIT_RX: re.Pattern[str] = re.compile(r"^[0-9a-f]{40}$")
 
 COUNTING_UNITS: dict[str, str] = {
     "trial": "One distinct ClinicalTrials.gov study record (keyed by nct_id).",
@@ -782,6 +783,14 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
     prod = run.get("producer") or {}
     if not HEX64_RX.match(str(prod.get("source_sha256") or "")):
         p.append("run.json: producer.source_sha256 must be a 64-hex sha256")
+    # Git provenance is null (never a guessed false) when git was unavailable; such a
+    # build is valid for local diagnostics and only the site exporter refuses it.
+    commit = prod.get("commit", "<missing>")
+    if commit is not None and not (isinstance(commit, str) and GIT_COMMIT_RX.match(commit)):
+        p.append(f"run.json: producer.commit must be a 40-hex git commit or null (got {commit!r})")
+    dirty = prod.get("uncommitted_changes", "<missing>")
+    if dirty is not None and not isinstance(dirty, bool):
+        p.append(f"run.json: producer.uncommitted_changes must be true, false or null (got {dirty!r})")
 
     inputs = run.get("inputs") or {}
     for req_in in ("study_records", "condition_ontology", "sponsor_rules"):
