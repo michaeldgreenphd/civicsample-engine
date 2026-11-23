@@ -3118,3 +3118,392 @@ def test_m4_r3_identical_doc_cache_rows_are_kept_once(tmp_path: Path) -> None:
     row = {"sha256": SHA_1, "unreadable_recovery_bucket": "image_only_scan"}
     _write_jsonl(cache, [row, dict(row)])
     assert main(["plan", *args, "--doc-cache", str(cache)]) == 0
+
+
+# ---------------------------------------------------------------------------
+# Red team on m4 at f442dac (after the round-3 fixes; fictional
+# NCT99800001..NCT99899999 only).
+#
+# Each test asserts the behaviour the module's own rules call for. Tests for a
+# bypass fail until the module is fixed; tests for an attempt that held pass.
+# ---------------------------------------------------------------------------
+
+_RT_F442_FABRICATED = "This sentence appears on no page of the protocol."
+
+
+def _rt_f442_index_rows() -> list[dict[str, Any]]:
+    """``_rt_index_rows`` with a second in-scope trial, so a row may name another listed trial."""
+    rows = _rt_index_rows()
+    rows.insert(1, {**rows[0], "nct_id": RT_SCOPE_ID_2})
+    return rows
+
+
+def _rt_f442_run(argv: list[str], capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
+    """Run the CLI and return its exit code and everything it printed."""
+    capsys.readouterr()
+    rc = main(argv)
+    captured = capsys.readouterr()
+    return rc, captured.out + captured.err
+
+
+def _rt_f442_fabricated_locations() -> list[dict[str, Any]]:
+    """A complete primary grid whose every quotation appears on no page."""
+    rows = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    for row in rows:
+        for cit in row["citations"]:
+            cit["quotation"] = _RT_F442_FABRICATED
+    return rows
+
+
+def test_redteam_m4_cli_refusals_do_not_quote_an_audit_id_on_the_key_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """verify and plan print the audit trial's ID when it is a key above a field that fails.
+
+    The prescan and the named-key walk run before the key scan that would
+    refuse the audit-named key, and their messages print the key path:
+    ``locations[0].NCT99888888.nct_ids must be a list``. The library planner
+    also prints ``doc_cache_by_sha256`` and ``profiles_by_nct`` keys, and an
+    ``nct_id`` given as a JSON number is printed by ``repr``. Each input must
+    still be refused; no output may carry the audit trial's digits.
+    """
+    digits = RT_AUDIT_ID[3:]
+
+    def _locs(extra: dict[str, Any]) -> list[dict[str, Any]]:
+        rows = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        rows[0].update(extra)
+        return rows
+
+    cases = {
+        "nct_ids_not_a_list": {RT_AUDIT_ID: {"nct_ids": "x"}},
+        "nct_id_disagrees": {RT_AUDIT_ID: {"nct_id": RT_SCOPE_ID_2}},
+        "url_names_other_trial": {RT_AUDIT_ID: {"source_url": f"https://example.org/{RT_SCOPE_ID_2}"}},
+        "nct_id_as_a_number": {"related": {"nct_id": int(digits)}},
+    }
+    for name, extra in cases.items():
+        args = _rt_m4_inputs(
+            tmp_path, f"f442_keypath_{name}", locations=_locs(extra), index_rows=_rt_f442_index_rows()
+        )
+        for command in ("verify", "plan"):
+            rc, printed = _rt_f442_run([command, *args], capsys)
+            assert rc != 0, f"{command}/{name}: the row was accepted"
+            assert digits not in printed, f"{command}/{name}: the output quotes the audit trial's ID"
+
+    for name, kwargs in {
+        "doc_cache_key": {"doc_cache_by_sha256": {RT_AUDIT_ID: "x"}},
+        "profiles_key": {"profiles_by_nct": {RT_AUDIT_ID: "x"}},
+        "profiles_nested": {"profiles_by_nct": {RT_AUDIT_ID: {"nct_ids": "x"}}},
+    }.items():
+        with pytest.raises(CitationVerificationError) as exc_info:
+            plan_incremental_cohort(
+                _rt_index_rows(),
+                documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+                planned_at="2026-11-23T00:00:00+00:00",
+                **kwargs,
+            )
+        assert digits not in str(exc_info.value), f"{name}: the refusal quotes the audit trial's ID"
+
+
+def test_redteam_m4_cli_audit_id_split_between_key_and_value_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``{"NCT": "99888888"}`` in a --locations row or a --doc-cache row passes (exit 0).
+
+    Neither the key nor the value is an NCT-like token on its own, and a
+    JSON number is never read; the row and the plan are written with the
+    holdout trial named in them.
+    """
+    digits = RT_AUDIT_ID[3:]
+    for name, extra in {"string_value": {"NCT": digits}, "number_value": {"NCT": int(digits)}}.items():
+        locs = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        locs[0].update(extra)
+        args = _rt_m4_inputs(tmp_path, f"f442_split_{name}", locations=locs)
+        for command in ("verify", "plan"):
+            rc, _ = _rt_f442_run([command, *args], capsys)
+            assert rc == 2, f"{command}/{name}: a row naming the audit trial as key + value gave exit {rc}"
+
+        cache = tmp_path / f"f442_split_cache_{name}.jsonl"
+        _write_jsonl(cache, [{"sha256": SHA_1, **extra}])
+        clean = _rt_m4_inputs(tmp_path, f"f442_split_clean_{name}")
+        rc, _ = _rt_f442_run(["plan", *clean, "--doc-cache", str(cache)], capsys)
+        assert rc == 2, f"doc-cache/{name}: a cache row naming the audit trial as key + value gave exit {rc}"
+
+
+def test_redteam_m4_cli_duplicate_json_keys_do_not_admit_a_holdout_trial(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A JSON object with a repeated key is read last-key-wins, and that admits the holdout trial.
+
+    ``json.loads`` keeps the last of two equal keys. An index row reading
+    ``"in_audit": true, ..., "in_audit": false`` is therefore in scope, and a
+    --documents row for that trial verifies and is planned; a --documents row
+    whose first ``nct_id`` is the audit trial and whose second is an in-scope
+    trial is read as the in-scope trial's. The file says the trial is held
+    out; nothing reports the conflict.
+    """
+    digits = RT_AUDIT_ID[3:]
+    scope_row, audit_row = _rt_index_rows()
+    audit_text = json.dumps(audit_row)
+    assert audit_text.endswith("}")
+    dup_audit_text = audit_text[:-1] + ', "in_audit": false}'
+    index_text = '{"data": [' + json.dumps(scope_row) + ", " + dup_audit_text + "]}"
+
+    args = _rt_m4_inputs(tmp_path, "f442_dup_in_audit")
+    Path(args[1]).write_text(index_text, encoding="utf-8")
+    _write_jsonl(
+        Path(args[3]),
+        [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1), _doc(RT_AUDIT_ID, "Prot_000.pdf", SHA_2)],
+    )
+    for command in ("verify", "plan"):
+        rc, printed = _rt_f442_run([command, *args], capsys)
+        assert rc == 2, f"{command}: an index row with in_audit true then false was admitted (exit {rc})"
+        assert digits not in printed, f"{command}: the output names the holdout trial"
+
+    doc_text = json.dumps(_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1))
+    dup_doc_text = '{"nct_id": "' + RT_AUDIT_ID + '", ' + doc_text[1:]
+    args = _rt_m4_inputs(tmp_path, "f442_dup_nct_id")
+    Path(args[3]).write_text(dup_doc_text + "\n", encoding="utf-8")
+    rc, _ = _rt_f442_run(["verify", *args], capsys)
+    assert rc == 2, f"a document row naming the audit trial in a repeated nct_id key verified (exit {rc})"
+
+
+def test_redteam_m4_cli_index_with_several_row_lists_is_not_read_in_part(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An index object holding both ``data`` and ``rows`` is read from ``data`` alone.
+
+    ``load_index_rows`` takes the first list among ``data``, ``rows`` and
+    ``trials`` without looking at the others, so the holdout row under
+    ``rows`` is never read: the audit set is empty, ``allow_empty_audit_set``
+    is derived True, and a document of the holdout trial is refused only as
+    "unlisted", with its ID printed. The payload must be refused, or every
+    list read.
+    """
+    digits = RT_AUDIT_ID[3:]
+    payload = {"data": [_rt_index_rows()[0]], "rows": _rt_index_rows()}
+    args = _rt_m4_inputs(tmp_path, "f442_data_and_rows")
+    Path(args[1]).write_text(json.dumps(payload), encoding="utf-8")
+    try:
+        rows = load_index_rows(Path(args[1]))
+    except CitationVerificationError:
+        rows = None
+    assert rows is None or any(row.get("in_audit") is True for row in rows), (
+        "the holdout row under 'rows' was dropped and the index read as having no holdout"
+    )
+
+    _write_jsonl(
+        Path(args[3]),
+        [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1), _doc(RT_AUDIT_ID, "Prot_000.pdf", SHA_2)],
+    )
+    rc, printed = _rt_f442_run(["verify", *args], capsys)
+    assert rc == 2
+    assert digits not in printed, "the refusal names the holdout trial it was never told about"
+
+
+def test_redteam_m4_cli_verify_without_page_text_is_not_silent(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """verify exits 0 on quotations that appear on no page when --pages-dir is not given.
+
+    Without a page provider no quotation is compared with any text and the
+    report carries no issue saying so (``citations_checked`` 7, every match
+    count 0, ``ok`` true). ``--ocr-dir`` given without ``--pages-dir`` is
+    dropped without a word (``_cmd_verify`` builds a provider only for
+    ``--pages-dir``), so an OCR map that does not hold the quotation fails
+    nothing either.
+    """
+    args = _rt_m4_inputs(tmp_path, "f442_no_pages", locations=_rt_f442_fabricated_locations())
+    report_path = tmp_path / "f442_no_pages_report.json"
+    rc, _ = _rt_f442_run(["verify", *args, "--report-out", str(report_path)], capsys)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    matched = (
+        payload["exact_ws_matches"]
+        + payload["unicode_nfkc_hyphen_matches"]
+        + payload["substring_mismatches"]
+    )
+    recorded = [issue for issue in payload["issues"] if issue["location_key"] is not None]
+    assert rc != 0 or matched + len(recorded) >= payload["citations_checked"], (
+        f"exit {rc}: {payload['citations_checked']} quotations were compared with no page text "
+        f"and nothing in the report says so"
+    )
+
+    ocr = _rt_m4_pages_dir(tmp_path / "f442_ocr_only", {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}})
+    rc, _ = _rt_f442_run(["verify", *args, "--ocr-dir", str(ocr)], capsys)
+    assert rc != 0, "--ocr-dir without --pages-dir was ignored and fabricated quotations verified"
+
+
+def test_redteam_m4_plan_cached_complete_needs_quotations_found_on_their_pages(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """plan files rows whose quotations appear on no page as cached_complete (never re-run).
+
+    ``_trial_rows_verify`` runs ``verify_location_record`` with no page
+    provider ("planning reads no page text"), so the round-2 rule "cached_complete
+    only for rows verify accepts" holds for structure and not for the
+    quotations: ``verify --pages-dir`` rejects these rows (exit 1) while plan
+    never schedules them again.
+    """
+    args = _rt_m4_inputs(tmp_path, "f442_fabricated", locations=_rt_f442_fabricated_locations())
+    pages = _rt_m4_pages_dir(tmp_path / "f442_fabricated_pages", {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}})
+    rc, _ = _rt_f442_run(["verify", *args, "--pages-dir", str(pages)], capsys)
+    assert rc == 1, "control: verify with page text rejects the fabricated quotations"
+
+    plan = plan_incremental_cohort(
+        _rt_index_rows(),
+        documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+        locations=_rt_f442_fabricated_locations(),
+        planned_at="2026-11-23T00:00:00+00:00",
+    )
+    assert RT_SCOPE_ID not in plan["partitions"]["cached_complete"], (
+        "rows whose quotations verify rejects were filed as cached_complete"
+    )
+
+
+def test_redteam_m4_cli_outputs_never_overwrite_inputs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--report-out`` and ``--out-plan`` replace an input file named as the output (exit 0).
+
+    ``_write_json`` writes wherever it is told. ``verify --report-out`` equal
+    to ``--locations`` replaces the census rows (LLM output that costs money
+    to produce) with the report; ``plan --out-plan`` equal to ``--index``
+    replaces the holdout index with the plan. Neither is refused.
+    """
+    for command, flag, target_idx in (
+        ("verify", "--report-out", 5),
+        ("verify", "--report-out", 1),
+        ("plan", "--out-plan", 1),
+        ("plan", "--out-plan", 3),
+    ):
+        args = _rt_m4_inputs(tmp_path, f"f442_overwrite_{command}_{target_idx}")
+        target = Path(args[target_idx])
+        before = target.read_bytes()
+        rc, _ = _rt_f442_run([command, *args, flag, str(target)], capsys)
+        assert target.read_bytes() == before, (
+            f"{command} {flag} {args[target_idx - 1]}: the input file was overwritten (exit {rc})"
+        )
+
+
+def test_redteam_m4_plan_document_without_sha256_is_not_fingerprinted_as_no_document() -> None:
+    """A document row with no sha256 is left out of its trial's fingerprint without a word.
+
+    ``compute_doc_sha256_tuple`` skips a document whose ``sha256`` is missing
+    or null, so a trial whose only document has none is planned with the
+    fingerprint of the empty document set: the shard manifest records "no
+    documents" for a trial whose document is present but unidentified.
+    """
+    empty_fingerprint = compute_doc_set_fingerprint(())
+    for name, mutate in {
+        "missing": lambda d: d.pop("sha256"),
+        "null": lambda d: d.update({"sha256": None}),
+    }.items():
+        doc = _doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        mutate(doc)
+        try:
+            plan = plan_incremental_cohort(
+                _rt_index_rows(), documents=[doc], planned_at="2026-11-23T00:00:00+00:00"
+            )
+        except CitationVerificationError:
+            continue
+        fingerprints = {
+            nct: fp for shard in plan["shards"] for nct, fp in shard["doc_set_fingerprints"].items()
+        }
+        assert fingerprints.get(RT_SCOPE_ID) != empty_fingerprint, (
+            f"{name} sha256: the trial was fingerprinted as having no document"
+        )
+
+
+def test_redteam_m4_plan_profile_documents_need_provenance_stamps(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--profiles documents replace the trial's documents but need no provenance stamp.
+
+    ``plan_incremental_cohort`` refuses a --documents row without
+    ``model_id``/``profile_version`` (F6), and its docstring promises stamps
+    "across all input streams"; a profile's ``documents`` list, which is what
+    the trial is then planned and fingerprinted on, is never checked.
+    """
+    bare_doc = {"nct_id": RT_SCOPE_ID, "filename": "Prot_000.pdf", "sha256": SHA_1}
+    with pytest.raises(CitationVerificationError):
+        plan_incremental_cohort(
+            _rt_index_rows(), documents=[bare_doc], planned_at="2026-11-23T00:00:00+00:00"
+        )
+    with pytest.raises(CitationVerificationError):
+        plan_incremental_cohort(
+            _rt_index_rows(),
+            profiles_by_nct={RT_SCOPE_ID: {"nct_id": RT_SCOPE_ID, "documents": [bare_doc]}},
+            planned_at="2026-11-23T00:00:00+00:00",
+        )
+        pytest.fail("a profile's unstamped documents were planned")
+
+    args = _rt_m4_inputs(tmp_path, "f442_profile_stamps")
+    profiles = tmp_path / "f442_profiles.jsonl"
+    _write_jsonl(profiles, [{"nct_id": RT_SCOPE_ID, "documents": [bare_doc]}])
+    rc, _ = _rt_f442_run(["plan", "--index", args[1], "--profiles", str(profiles)], capsys)
+    assert rc == 1, f"plan --profiles with unstamped documents gave exit {rc}"
+
+
+def test_redteam_m4_plan_malformed_cohorts_field_is_refused() -> None:
+    """An index row whose ``cohorts`` is not a list is dropped from a --cohort plan, uncounted.
+
+    ``_trial_matches_cohort`` reads a non-list ``cohorts`` as no cohort, so
+    the trial is in no partition and no exclusion count: the plan reports
+    nothing scheduled and nothing excluded for an in-scope trial of that
+    cohort.
+    """
+    for name, cohorts in {"string": "rt_cohort", "mapping": {"rt_cohort": True}}.items():
+        index_rows = _rt_index_rows()
+        index_rows[0]["cohorts"] = cohorts
+        try:
+            plan = plan_incremental_cohort(
+                index_rows,
+                documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+                cohort="rt_cohort",
+                planned_at="2026-11-23T00:00:00+00:00",
+            )
+        except CitationVerificationError:
+            continue
+        accounted = [nct for ids in plan["partitions"].values() for nct in ids]
+        assert RT_SCOPE_ID in accounted, f"{name} cohorts: the trial vanished from the plan"
+
+
+def test_redteam_m4_plan_unstarted_second_pass_is_not_an_amendment() -> None:
+    """With ``pass_role="second"`` a trial whose second pass never ran is filed as amended.
+
+    The partition loop sends every trial with primary rows and no cache hit
+    for the target pass to ``amended_doc_or_outcome_delta``; nothing was
+    amended (same documents, same outcome count). ``--mode resume-unstarted``
+    then schedules no second-pass run at all.
+    """
+    kwargs: dict[str, Any] = {
+        "documents": [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+        "locations": _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1),
+        "pass_role": "second",
+        "planned_at": "2026-11-23T00:00:00+00:00",
+    }
+    plan = plan_incremental_cohort(_rt_index_rows(), mode="incremental-delta", **kwargs)
+    assert RT_SCOPE_ID not in plan["partitions"]["amended_doc_or_outcome_delta"], (
+        "an unstarted second pass was reported as a document or outcome amendment"
+    )
+    resume = plan_incremental_cohort(_rt_index_rows(), mode="resume-unstarted", **kwargs)
+    scheduled = [nct for shard in resume["shards"] for nct in shard["nct_ids"]]
+    assert RT_SCOPE_ID in scheduled, "resume-unstarted scheduled no unstarted second pass"
+
+
+def test_redteam_m4_plan_stale_profile_does_not_cache_an_amended_document() -> None:
+    """Attempt that held: a profile still naming the old sha256 does not make a trial cached_complete.
+
+    --documents says Prot_000.pdf is now SHA_2 while the profile and the rows
+    cite SHA_1; the cache lookup is built from --documents, so the trial is
+    re-run.
+    """
+    plan = plan_incremental_cohort(
+        _rt_index_rows(),
+        documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_2)],
+        locations=_complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1),
+        profiles_by_nct={
+            RT_SCOPE_ID: {"nct_id": RT_SCOPE_ID, "documents": [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)]}
+        },
+        planned_at="2026-11-23T00:00:00+00:00",
+    )
+    assert RT_SCOPE_ID not in plan["partitions"]["cached_complete"]

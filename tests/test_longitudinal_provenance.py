@@ -877,3 +877,153 @@ def test_redteam_m4_provenance_malformed_ids_and_unscoped_empty_audit_set() -> N
             in_audit=False,
             allow_empty_audit_set=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# Red team on m4 at f442dac (after the round-3 fixes; fictional
+# NCT99800001..NCT99899999 only).
+#
+# Each test asserts the behaviour the module's own rules call for. Tests for a
+# bypass fail until the module is fixed; tests for an attempt that held pass.
+# ---------------------------------------------------------------------------
+
+
+def _rt_f442_assemble(study: dict[str, Any], **kwargs: Any) -> Any:
+    """Assemble ``study`` for ``RT_SCOPE_ID`` behind the scoped firewall."""
+    return assemble_longitudinal_provenance(
+        study, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET, **kwargs
+    )
+
+
+def test_redteam_m4_provenance_audit_id_renderings_in_study_text_refused() -> None:
+    """Registry text naming the holdout trial in forms the token rule misses is copied into the record.
+
+    ``_scan_strings_for_audit_nct_tokens`` reads each key and string alone and
+    its loose reading allows at most three separators, so a reference citing
+    ``NCT    99888888`` or ``NCT No. 99888888`` is assembled and its text
+    copied into ``linked_publications[].citation_text``, and
+    ``{"NCT": "99888888"}`` in the identification module passes. A reader
+    takes each for the holdout trial.
+    """
+    digits = RT_AUDIT_ID[3:]
+    for name, citation in {
+        "four_spaces": f"Extension of NCT    {digits}.",
+        "nct_no": f"Extension of NCT No. {digits}.",
+    }.items():
+        study = _sample_study(nct_id=RT_SCOPE_ID)
+        study["protocolSection"]["referencesModule"]["references"].append(
+            {"citation": citation, "type": "BACKGROUND"}
+        )
+        with pytest.raises(AuditHoldoutViolationError):
+            _rt_f442_assemble(study)
+            pytest.fail(f"{name}: a reference naming the holdout trial was copied into the record")
+
+    study = _sample_study(nct_id=RT_SCOPE_ID)
+    study["protocolSection"]["identificationModule"]["orgStudyIdInfo"] = {"NCT": digits}
+    with pytest.raises(AuditHoldoutViolationError):
+        _rt_f442_assemble(study)
+        pytest.fail("a study naming the holdout trial as key + value was assembled")
+
+
+def test_redteam_m4_provenance_conflicting_publication_ids_are_not_merged_silently() -> None:
+    """Two records with one DOI and two PMIDs (or one PMID and two DOIs) merge, keeping the first.
+
+    ``_resolve_bucket`` joins a record to an existing publication by PMID,
+    else DOI, else citation text, and ``bucket["pmid"] or pmid`` keeps the
+    first value: PubMed's PMID 40000001 and Europe PMC's PMID 40000002 for
+    DOI 10.1000/xyz become one publication with PMID 40000001, and the second
+    identifier (and title) is gone from the record without trace. Conflicting
+    identifiers must raise, or both stay in the record.
+    """
+    cases = {
+        "two_pmids_one_doi": (
+            [{"pmid": "40000001", "doi": "10.1000/xyz", "title": "A"}],
+            [{"pmid": "40000002", "doi": "10.1000/xyz", "title": "B"}],
+            ("pmid", {"40000001", "40000002"}),
+        ),
+        "two_dois_one_pmid": (
+            [{"pmid": "40000003", "doi": "10.1000/aaa"}],
+            [{"pmid": "40000003", "doi": "10.1000/bbb"}],
+            ("doi", {"10.1000/aaa", "10.1000/bbb"}),
+        ),
+    }
+    for name, (pubmed, epmc, (field, expected)) in cases.items():
+        try:
+            record = _rt_f442_assemble(
+                _sample_study(nct_id=RT_SCOPE_ID), pubmed_records=pubmed, europe_pmc_records=epmc
+            )
+        except CitationVerificationError:
+            continue
+        kept = {pub[field] for pub in record["linked_publications"]}
+        assert expected <= kept, f"{name}: a conflicting {field} was dropped by record order"
+
+
+def test_redteam_m4_provenance_large_docs_are_never_dropped_silently() -> None:
+    """Posted documents vanish from the record when an entry is malformed.
+
+    ``_extract_large_docs`` skips a ``largeDocs`` entry that is not an object
+    and a protocol or SAP entry with no ``filename``, reads a ``largeDocs``
+    object (not a list) as no documents, and skips an extracted document whose
+    ``doc_type`` is outside the vocabulary (``"Protocol"``). None of these is
+    counted (``excluded_standalone_icf_count`` counts ICFs only) or refused,
+    so the record says the trial posted fewer documents than it did.
+    """
+    def _append(entry: Any) -> dict[str, Any]:
+        study = _sample_study(nct_id=RT_SCOPE_ID)
+        study["documentSection"]["largeDocumentModule"]["largeDocs"].append(entry)
+        return study
+
+    as_object = _sample_study(nct_id=RT_SCOPE_ID)
+    module = as_object["documentSection"]["largeDocumentModule"]
+    module["largeDocs"] = {str(i): doc for i, doc in enumerate(module["largeDocs"])}
+    studies = {
+        "protocol_without_filename": _append(
+            {"label": "Study Protocol v2", "hasProtocol": True, "hasSap": False, "uploadDate": "01/04/2021 10:00"}
+        ),
+        "entry_not_an_object": _append("Prot_009.pdf"),
+        "largeDocs_object": as_object,
+    }
+    for name, study in studies.items():
+        with pytest.raises(CitationVerificationError):
+            _rt_f442_assemble(study)
+            pytest.fail(f"{name}: a posted document was dropped from the record")
+
+    with pytest.raises(CitationVerificationError):
+        _rt_f442_assemble(
+            _sample_study(nct_id=RT_SCOPE_ID),
+            extracted_documents=[
+                {"nct_id": RT_SCOPE_ID, "filename": "Prot_777.pdf", "sha256": "c" * 64, "doc_type": "Protocol"}
+            ],
+        )
+        pytest.fail("an extracted document with doc_type 'Protocol' was dropped from the record")
+
+
+def test_redteam_m4_provenance_pmid_is_ascii_digits() -> None:
+    """A PMID written in fullwidth digits is recorded as-is.
+
+    ``_clean_pmid`` accepts ``str.isdigit()``, which is true for fullwidth and
+    other Unicode digits, so ``"４００００１"`` is kept unnormalised: it never
+    joins the same publication's ASCII PMID and is written to the record as an
+    identifier PubMed does not issue.
+    """
+    try:
+        record = _rt_f442_assemble(
+            _sample_study(nct_id=RT_SCOPE_ID),
+            pubmed_records=[{"pmid": "４０００００１", "title": "Fullwidth PMID"}],
+        )
+    except CitationVerificationError:
+        return
+    pmids = [pub["pmid"] for pub in record["linked_publications"] if pub["pmid"] is not None]
+    assert all(pmid.isascii() for pmid in pmids), f"non-ASCII PMID recorded: {pmids!r}"
+
+
+def test_redteam_m4_provenance_publication_record_naming_another_trial_refused() -> None:
+    """Attempt that held: a publication record naming another trial under ``nct_id`` is refused.
+
+    The named-key walk requires a side-stream ``nct_id`` to be the study's own.
+    """
+    with pytest.raises(AuditHoldoutViolationError):
+        _rt_f442_assemble(
+            _sample_study(nct_id=RT_SCOPE_ID),
+            pubmed_records=[{"pmid": "40000009", "nct_id": RT_UNLISTED_ID}],
+        )

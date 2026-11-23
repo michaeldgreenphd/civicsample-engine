@@ -3048,3 +3048,295 @@ def test_m4_r3_dict_provider_keys_without_a_source_answer_pdfkit_only() -> None:
     assert prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 3, text_source="ocr") is None
     with pytest.raises(AuditHoldoutViolationError):
         prov.get_page_text(RT_SCOPE_ID, f"{RT_AUDIT_ID}.pdf", SHA_A, 2)
+
+
+# ---------------------------------------------------------------------------
+# Red team on m4 at f442dac (after the round-3 fixes; fictional
+# NCT99800001..NCT99899999 only).
+#
+# Each test asserts the behaviour the module's own rules call for. Tests for a
+# bypass fail until the module is fixed; tests for an attempt that held pass.
+# ---------------------------------------------------------------------------
+
+_RT_F442_SCOPE: frozenset[str] = frozenset({RT_SCOPE_ID, RT_SCOPE_ID_2})
+_RT_F442_CLAIM = "Treatment achieved statistical significance."
+
+
+def _rt_f442_verify_location(loc: dict[str, Any]) -> list[str]:
+    """Verify one row of ``RT_SCOPE_ID`` against its one document; return the issue codes."""
+    _, issues = verify_location_record(
+        loc,
+        docs_by_nct=_rt_m4_scoped_docs(),
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=_RT_F442_SCOPE,
+    )
+    return [i.code for i in issues]
+
+
+def test_redteam_m4_refusals_do_not_quote_an_audit_id_on_the_key_path() -> None:
+    """A refusal quotes the audit trial's ID when the ID is a key above the field that fails.
+
+    The module's rule is that refusals name positions, never an audit trial
+    (``_withhold_if_names_trial``). The named-key walk
+    (``_validate_nested_firewall_metadata``) and the phase-A prescan run before
+    the key scan that would refuse the audit-named key, and four of their
+    messages print the key path unwithheld: an ``nct_id`` disagreeing with the
+    record, an ``nct_ids`` that is not a list, a URL naming another trial, and
+    (via ``validate_strict_nct_id``'s ``repr``) an ``nct_id`` written as the
+    audit trial's number. Each record below must still be refused, but no
+    message may carry the audit trial's digits.
+    """
+    digits = RT_AUDIT_ID[3:]
+    nested: dict[str, dict[str, Any]] = {
+        "nct_id_disagrees": {RT_AUDIT_ID: {"nct_id": RT_SCOPE_ID_2}},
+        "nct_ids_not_a_list": {RT_AUDIT_ID: {"nct_ids": "x"}},
+        "url_names_other_trial": {RT_AUDIT_ID: {"url": f"https://example.org/{RT_SCOPE_ID_2}"}},
+        "nct_id_as_a_number": {"related": {"nct_id": int(digits)}},
+    }
+    for name, extra in nested.items():
+        callers = {
+            "location": lambda: _rt_f442_verify_location(
+                _make_location(nct_id=RT_SCOPE_ID, extra=extra)
+            ),
+            "document": lambda: verify_document_record(
+                _make_doc(nct_id=RT_SCOPE_ID, extra=extra),
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=_RT_F442_SCOPE,
+                strict_keys=False,
+            ),
+            "citation": lambda: verify_citation(
+                RT_SCOPE_ID,
+                (0, "margin", "primary"),
+                {**_make_citation(), **extra},
+                docs_by_filename=_rt_m4_scoped_docs()[RT_SCOPE_ID],
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=_RT_F442_SCOPE,
+            ),
+        }
+        for record, call in callers.items():
+            with pytest.raises(CitationVerificationError) as exc_info:
+                call()
+            assert digits not in str(exc_info.value), (
+                f"{record}/{name}: the refusal quotes the audit trial's ID"
+            )
+
+
+def test_redteam_m4_malformed_id_under_an_audit_named_key_is_withheld() -> None:
+    """Attempt that held: a malformed ``nct_id`` below an audit-named key is refused unquoted.
+
+    ``validate_strict_nct_id`` withholds a context holding an NCT-like token,
+    so this path names neither the key nor the value.
+    """
+    with pytest.raises(InvalidNctIdError) as exc_info:
+        _rt_f442_verify_location(
+            _make_location(nct_id=RT_SCOPE_ID, extra={RT_AUDIT_ID: {"nct_id": RT_SCOPE_ID.lower()}})
+        )
+    assert RT_AUDIT_ID[3:] not in str(exc_info.value)
+
+
+def test_redteam_m4_audit_id_split_between_key_and_value_refused() -> None:
+    """A row naming the audit trial as ``{"NCT": "<8 digits>"}`` passes every token check.
+
+    Keys and string values are each read on their own
+    (``_scan_record_strings_for_nct_tokens``): the key ``"NCT"`` holds no
+    digits and the value holds no prefix, so neither is an NCT-like token, and
+    a JSON number is never read at all. A reader takes ``{"NCT": 99888888}``
+    for the holdout trial, and the row is written to the census output.
+    """
+    digits = RT_AUDIT_ID[3:]
+    for name, extra in {
+        "string_value": {"NCT": digits},
+        "number_value": {"NCT": int(digits)},
+        "nested": {"related_trial": {"nct": digits}},
+    }.items():
+        with pytest.raises(AuditHoldoutViolationError):
+            _rt_f442_verify_location(_make_location(nct_id=RT_SCOPE_ID, extra=extra))
+            pytest.fail(f"{name}: a location row naming the audit trial as key + value verified")
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_document_record(
+                _make_doc(nct_id=RT_SCOPE_ID, extra=extra),
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=_RT_F442_SCOPE,
+                strict_keys=False,
+            )
+            pytest.fail(f"{name}: a document row naming the audit trial as key + value was read")
+
+
+def test_redteam_m4_audit_id_renderings_beyond_three_separators_refused() -> None:
+    """The loose NCT reading stops at three separator characters and at ``No.``/``number``.
+
+    ``_LOOSE_NCT_RE`` allows ``[^a-z0-9]{0,3}`` between ``NCT`` and the digits,
+    so four spaces or tabs (justified PDF text), ``NCT No. 99888888`` and
+    ``NCT number 99888888`` (publication prose) pass; so do dingbat digits
+    (U+2776..U+277F), which NFKD does not fold and ``isdecimal`` rejects. A
+    reader takes each for the holdout trial.
+    """
+    digits = RT_AUDIT_ID[3:]
+    dingbats = "".join(chr(0x2775 + int(d)) for d in digits)  # U+2776 is dingbat 1
+    renderings = {
+        "four_spaces": f"NCT    {digits}",
+        "four_tabs": f"NCT\t\t\t\t{digits}",
+        "nct_no": f"NCT No. {digits}",
+        "nct_number": f"NCT number {digits}",
+        "dingbat_digits": f"NCT{dingbats}",
+    }
+    for name, text in renderings.items():
+        with pytest.raises(AuditHoldoutViolationError):
+            _rt_f442_verify_location(
+                _make_location(nct_id=RT_SCOPE_ID, note=f"Same protocol as {text}.")
+            )
+            pytest.fail(f"{name}: a note naming the audit trial as {text!r} verified")
+
+
+def test_redteam_m4_verify_without_page_text_records_unchecked_quotations() -> None:
+    """With no page provider every citation's quotation is checked against nothing, silently.
+
+    ``verify_citation`` matches a quotation only when a provider is given; with
+    none it returns no tier and no issue, and the report is ``ok``. The
+    citation's ``quotation`` is also the one string exempt from the
+    neutral-language guard, so an evaluative claim placed there is checked by
+    neither rule. Absence of a check must be recorded: each citation counted
+    as checked needs a match tier or an issue saying it was not compared with
+    page text.
+    """
+    rows = [
+        _make_location(
+            nct_id=RT_SCOPE_ID,
+            element=element,
+            citations=[_make_citation(quotation=_RT_F442_CLAIM)],
+        )
+        for element in ELEMENTS
+    ]
+    report = verify_census_corpus(
+        [_make_doc(nct_id=RT_SCOPE_ID)],
+        rows,
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+        expected_outcomes_by_nct={RT_SCOPE_ID: 1},
+        expected_has_documents_by_nct={RT_SCOPE_ID: True},
+    )
+    matched = (
+        report.exact_ws_matches + report.unicode_nfkc_hyphen_matches + report.substring_mismatches
+    )
+    recorded = [i for i in report.issues if i.location_key is not None]
+    assert report.citations_checked == len(ELEMENTS)
+    assert matched + len(recorded) >= report.citations_checked, (
+        f"{report.citations_checked} quotations were compared with no page text and the report "
+        f"is ok={report.ok} with no issue saying so"
+    )
+
+
+def test_redteam_m4_dict_provider_refuses_text_where_a_page_sequence_is_expected() -> None:
+    """A string or mapping under ``pages_by_sha256`` is split into one-character or key pages.
+
+    ``pages_by_sha256`` is ``Mapping[str, Sequence[str]]`` and the constructor
+    enumerates each value: a string is a sequence of characters, so page 1 is
+    ``"T"`` and a one-letter quotation on page 2 verifies; a mapping's pages
+    are its keys. Neither is a list of pages, and it is coerced, not refused.
+    """
+    for name, value in {
+        "string": "The primary efficacy analysis will use the ITT population.",
+        "mapping": {"1": "Page one.", "2": "Page two."},
+    }.items():
+        for kwarg in ("pages_by_sha256", "ocr_pages_by_sha256"):
+            with pytest.raises(CitationVerificationError):
+                DictPageTextProvider(
+                    **{kwarg: {SHA_A: value}},  # type: ignore[arg-type]
+                    audit_nct_ids=RT_AUDIT_SET,
+                    in_scope_nct_ids=RT_SCOPE_SET,
+                )
+                pytest.fail(f"{kwarg} {name}: a non-list page value was split into pages")
+
+
+def test_redteam_m4_generic_ocr_text_does_not_answer_a_non_ocr_source(tmp_path: Path) -> None:
+    """Generic OCR text answers any request whose source is not ``pdfkit``.
+
+    ``_source_serves`` treats every source other than ``pdfkit`` as a named
+    OCR source, and ``DictPageTextProvider`` serves ``ocr_pages_by_sha256`` to
+    any non-pdfkit request, so a citation claimed from ``pdfplumber`` text is
+    verified on OCR text. Passing one directory as both ``--pages-dir`` and
+    ``--ocr-dir`` files each map under both sources, so pdfkit text answers an
+    OCR request. The rule is that a citation claimed from one source is never
+    verified on another's text.
+    """
+    dict_prov = DictPageTextProvider(
+        ocr_pages_by_sha256={SHA_A: _RT_M4_PAGES},
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+    )
+    # Control: a named OCR source takes generic OCR text.
+    assert dict_prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2, text_source="ocr_tesseract")
+    assert dict_prov.get_page_text(
+        RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2, text_source="pdfplumber"
+    ) is None, "OCR text answered a pdfplumber request (dict provider)"
+
+    pages, ocr = tmp_path / "pages", tmp_path / "ocr"
+    _rt_m4_write_page_map(ocr, f"{SHA_A}.json", {"pages": _RT_M4_PAGES})
+    pages.mkdir()
+    dir_prov = DirectoryPageTextProvider(
+        pages, ocr_dir=ocr, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+    )
+    assert dir_prov.get_page_text(
+        RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2, text_source="pdfplumber"
+    ) is None, "OCR text answered a pdfplumber request (directory provider)"
+
+    shared = tmp_path / "shared"
+    _rt_m4_write_page_map(shared, f"{SHA_A}.json", {"pages": _RT_M4_PAGES})
+    try:
+        shared_prov = DirectoryPageTextProvider(
+            shared, ocr_dir=shared, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+        )
+        served = shared_prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2, text_source="ocr")
+    except CitationVerificationError:
+        served = None
+    assert served is None, "one directory as pages_dir and ocr_dir served pdfkit text as OCR text"
+
+
+def test_redteam_m4_undeclared_trial_map_not_served_for_another_version(tmp_path: Path) -> None:
+    """A trial-keyed page map that declares no sha256 is served for every document version.
+
+    ``_load_doc_pages`` skips a ``<NCT>/<doc>.json`` map only when it declares
+    a different sha256; one that declares none is served (its docstring calls
+    the version unknown). The v1 text of ``Prot_000.pdf`` therefore verifies a
+    citation of v2 (another sha256, same filename): the round-2 superseded-
+    version bypass stays open for every map written without a sha256.
+    """
+    root = tmp_path / "f442_undeclared"
+    v1_pages = ["v1 page one.", "The v1 analysis used the per-protocol population."]
+    _rt_m4_write_page_map(root, f"{RT_SCOPE_ID}/Prot_000.json", {"pages": v1_pages})
+    prov = DirectoryPageTextProvider(
+        root,
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+        referenced_documents={(RT_SCOPE_ID, SHA_B)},
+    )
+    docs_v2 = {RT_SCOPE_ID: {"Prot_000.pdf": _make_doc(nct_id=RT_SCOPE_ID, sha256=SHA_B)}}
+    _, issues = verify_location_record(
+        _make_location(
+            nct_id=RT_SCOPE_ID,
+            citations=[_make_citation(sha256=SHA_B, quotation=v1_pages[1])],
+        ),
+        docs_by_nct=docs_v2,
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+        page_text_provider=prov,
+    )
+    assert any(i.severity == "error" for i in issues), (
+        "a page map of unknown version verified a citation of document version SHA_B"
+    )
+
+
+def test_redteam_m4_neutral_language_claim_written_as_a_key_is_flagged() -> None:
+    """An evaluative claim written as a key of a location row escapes the guard.
+
+    ``scan_neutral_language_record`` walks values only. Location rows accept
+    extra keys, and every key and string is written to the census output, so
+    ``{"assessment": {"Treatment achieved statistical significance.": true}}``
+    is commentary the guard never reads.
+    """
+    codes = _rt_f442_verify_location(
+        _make_location(nct_id=RT_SCOPE_ID, extra={"assessment": {_RT_F442_CLAIM: True}})
+    )
+    assert any(code.startswith("NEUTRAL_LANGUAGE_") for code in codes), (
+        "an evaluative claim written as a key was not flagged"
+    )
