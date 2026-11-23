@@ -3777,10 +3777,14 @@ _RESULTS_DATE_PATHS = {
         ('qc', '2100-01-01', True),
         ('post', '2026-11-03', True),
         ('post', '2026-12', True),
-        # Controls: fetched at 10:00 UTC on 1 November, the 2nd had begun at UTC+14, and a month
+        # Read by the build as days in 2100, but skipped by a7cfb9f's pattern for the bound.
+        ('post', '2100', True),
+        ('post', ' 2100-01-01', True),
+        # Controls: fetched at 10:00 UTC on 1 November, the 2nd had begun at UTC+14, and a month or year
         # that contains the retrieval day is not after it.
         ('post', '2026-11-02', False),
         ('post', '2026-11', False),
+        ('post', '2026', False),
     ],
 )
 def test_results_date_after_retrieval_is_read_as_a_failed_lookup(
@@ -3815,7 +3819,7 @@ def test_results_date_after_retrieval_is_read_as_a_failed_lookup(
     assert results_links == []
     assert _cell_of(built, nct, 'ctgov_results')['state'] == 'search_incomplete_or_blocked'
     assert _timeline_of(built, nct)['window_365d']['state'] != 'PENDING_SUBMITTED_UNPOSTED'
-    assert value not in json.dumps(built, default=str)
+    assert json.dumps(value.strip()) not in json.dumps(built, default=str)
 
 
 def test_study_record_problem_names_the_results_date_after_retrieval() -> None:
@@ -3826,10 +3830,12 @@ def test_study_record_problem_names_the_results_date_after_retrieval() -> None:
         'statusModule.resultsFirstPostDateStruct.date (2026-11-03) is after the record was retrieved '
         '(2026-11-01T10:00:00+00:00)'
     )
-    # Text that is not a day or a month is left to the readers, which treat it as missing, and a record
-    # without a readable fetched_at is not bounded.
+    # Text the build reads as no date is refused by the study check itself (on a7cfb9f it was left to the
+    # readers, which read it as missing), and a record without a readable fetched_at is not bounded.
     odd = _study_with(study, _RESULTS_DATE_PATHS['post'], 'not-a-date')
-    assert A.ctgov_study_record_problem({**rec, 'body': odd}) is None
+    assert A.ctgov_study_record_problem({**rec, 'body': odd}) == (
+        "statusModule.resultsFirstPostDateStruct.date 'not-a-date' is not a date (YYYY, YYYY-MM or YYYY-MM-DD)"
+    )
     assert A.ctgov_study_record_problem({**rec, 'fetched_at': None}) is None
 
 
@@ -3867,6 +3873,77 @@ def test_freeze_local_refuses_a_results_date_after_the_stated_retrieval(
                        r'is after the stated fetched_at'):
         A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
     assert not (cache / 'manifest.json').exists()
+
+
+_STUDY_DATE_PATHS = {
+    **_RESULTS_DATE_PATHS,
+    'pcd': ('protocolSection', 'statusModule', 'primaryCompletionDateStruct', 'date'),
+    'cd': ('protocolSection', 'statusModule', 'completionDateStruct', 'date'),
+}
+
+
+@pytest.mark.parametrize(
+    ('nct', 'field', 'value', 'refused'),
+    [
+        # NCT09990002 has hasResults=false and an ACTUAL 2021-03-01 primary completion: on a7cfb9f an unreadable
+        # submission date was read as none, and the window published UNREPORTED_PAST_365D.
+        ('NCT09990002', 'submit', 'not-a-date', True),
+        ('NCT09990002', 'submit', '2025-99-99', True),
+        ('NCT09990002', 'qc', '2025-13', True),
+        ('NCT09990002', 'pcd', 'June 2019', True),
+        ('NCT09990002', 'cd', '20190601', True),
+        ('NCT09990001', 'post', 'not-a-date', True),
+        # Controls, on both heads: a readable submission date, and blank text, which reads as absent.
+        ('NCT09990002', 'submit', '2021-03-01', False),
+        ('NCT09990002', 'submit', '', False),
+        ('NCT09990002', 'submit', '   ', False),
+    ],
+)
+def test_an_unreadable_populated_date_is_read_as_a_failed_lookup(
+    tmp_path: Path, nct: str, field: str, value: str, refused: bool
+) -> None:
+    study = _study_with(F.STUDIES[nct], _STUDY_DATE_PATHS[field], value)
+    cache = F.acquire_fixture_cache(tmp_path / 'c')
+    cache.ctgov[f'ctgov/study/{nct}'] = dict(cache.ctgov[f'ctgov/study/{nct}'], body=study)
+    built = ART.build_artifacts(
+        cache,
+        reviews_path=ROOT / 'disclosure/reviews.csv',
+        statements_path=ROOT / 'disclosure/documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors/company_aliases.csv',
+        producer={'commit': None, 'uncommitted_changes': None},
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+        requested_nct_ids=[nct],
+    )
+    row = next(s for s in built['studies.json']['studies'] if s['nct_id'] == nct)
+    window = _timeline_of(built, nct)['window_365d']
+    if not refused:
+        assert row['registry_state'] == 'retrieved'
+        assert window['state'] == ('PENDING_SUBMITTED_UNPOSTED' if value.strip() else 'UNREPORTED_PAST_365D')
+        return
+    assert A.ctgov_study_problem(study) == (
+        f"statusModule.{'.'.join(_STUDY_DATE_PATHS[field][2:])} {value!r} is not a date (YYYY, YYYY-MM or YYYY-MM-DD)"
+    )
+    assert row['registry_state'] == 'lookup_failed'
+    assert window['state'] not in ('UNREPORTED_PAST_365D', 'UNREPORTED_WITHIN_365D', 'PENDING_SUBMITTED_UNPOSTED')
+    assert _cell_of(built, nct, 'ctgov_results')['state'] == 'search_incomplete_or_blocked'
+    assert not [p for p in ART.check_contract(built) if nct in p]
+
+
+def test_live_study_answer_with_an_unreadable_date_is_unusable(tmp_path: Path) -> None:
+    # On a7cfb9f it was settled as a 200 answer, and the window read the trial as unreported.
+    study = _study_with(F.STUDIES['NCT09990002'], _STUDY_DATE_PATHS['submit'], 'not-a-date')
+
+    def get(url: str, params: dict[str, Any] | None) -> A.Response:
+        if url == f'{A.CTGOV_API}/studies/NCT09990002':
+            return F._json_resp(study)
+        return F.stub_get()(url, params)
+
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(tmp_path / 'cache', 'ctgov'))
+    A.fetch_ctgov_studies(['NCT09990002'], log, get, throttle)
+    assert log.records['ctgov/study/NCT09990002']['status'] == A.UNUSABLE_200
+    assert A.studies_from_ctgov_records(log.records, ['NCT09990002']) == {'NCT09990002': None}
 
 
 # ---------------------------------------------------------------- posted results and statement sources

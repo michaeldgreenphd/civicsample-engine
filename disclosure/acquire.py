@@ -24,7 +24,7 @@ import re
 import shlex
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Literal
 from urllib.parse import urlsplit
@@ -457,6 +457,41 @@ CTGOV_STUDY_LIST_ENTRIES: dict[tuple[str, ...], tuple[type, tuple[tuple[str, tup
 }
 
 
+# Every CT.gov date the build reads, under `statusModule`: the milestones, the 365-day window and the
+# CT.gov results link's date read each one through `ctgov_date_span`'s reader.
+CTGOV_STUDY_DATES: tuple[tuple[str, ...], ...] = (
+    ('primaryCompletionDateStruct', 'date'),
+    ('completionDateStruct', 'date'),
+    ('resultsFirstSubmitDate',),
+    ('resultsFirstSubmitQcDate',),
+    ('resultsFirstPostDateStruct', 'date'),
+)
+
+
+def ctgov_date_span(value: str) -> tuple[date, date] | None:
+    """The first and last day that CT.gov date `value` can denote, read as the build reads it
+    (`timeline.parse_partial_date`: `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, surrounding blanks stripped), or
+    None when no date is read from it.
+
+    The study check and the retrieval bound use this reader rather than a pattern of their own. The
+    bound's pattern skipped `2100` and ` 2100-01-01`, which the build reads as days in 2100, so a
+    posting date in 2100 passed in a record fetched in 2026 while `2100-01-01` was refused.
+    """
+    # Imported when called: `timeline` imports this module.
+    from disclosure.timeline import parse_partial_date
+
+    parsed = parse_partial_date(value)
+    return None if parsed is None else (parsed.earliest, parsed.latest)
+
+
+def _status_value(status_mod: dict[str, Any], path: tuple[str, ...]) -> Any:
+    """The value at `path` under a study's `statusModule`, or None where any part of it is absent."""
+    value: Any = status_mod
+    for key in path:
+        value = value.get(key) if isinstance(value, dict) else None
+    return value
+
+
 def _value_is(value: Any, types: tuple[type, ...]) -> bool:
     """`isinstance`, except that a bool is not an int (`True` is not an enrollment count)."""
     return isinstance(value, types) and not (isinstance(value, bool) and bool not in types)
@@ -467,7 +502,8 @@ def ctgov_study_problem(body: Any) -> str | None:
 
     It needs a `protocolSection` object with an `identificationModule` object whose `nctId` is an NCT
     ID, and every part in `CTGOV_STUDY_PARTS` (and every entry in `CTGOV_STUDY_LIST_ENTRIES`) must have
-    its type when present. `hasResults: false` with a non-empty `resultsSection`, or with a results
+    its type when present. Every populated date in `CTGOV_STUDY_DATES` must be one the build reads
+    (`ctgov_date_span`). `hasResults: false` with a non-empty `resultsSection`, or with a results
     posting date, is refused as contradictory. All 3,371 distinct trials and all 75,811 study entries
     in the stored local files pass.
     """
@@ -499,6 +535,16 @@ def ctgov_study_problem(body: Any) -> str | None:
                 for field, types in entry_fields:
                     if entry.get(field) is not None and not _value_is(entry[field], types):
                         return f'{where}[{i}].{field} is {type(entry[field]).__name__}, not {types[0].__name__}'
+    # A populated date the build cannot read was read as no date. With `hasResults: false`, a
+    # `resultsFirstSubmitDate` of `not-a-date` or `2025-99-99` became "no posted or submitted results"
+    # and an `UNREPORTED_PAST_365D` window, a completed negative resting on unreadable evidence. Blank
+    # text reads as absent, as for the posting date below. Every populated date in the 75,811 stored
+    # study entries is `YYYY-MM` or `YYYY-MM-DD`.
+    status_mod = body['protocolSection'].get('statusModule') or {}
+    for date_path in CTGOV_STUDY_DATES:
+        raw = _status_value(status_mod, date_path)
+        if isinstance(raw, str) and raw.strip() and ctgov_date_span(raw) is None:
+            return f"statusModule.{'.'.join(date_path)} {raw!r} is not a date (YYYY, YYYY-MM or YYYY-MM-DD)"
     # Every module of a results section is an object (null reads as absent, as above): `{"participantFlowModule":
     # "broken"}` was read as posted results, so a verified CT.gov link and `verified_link` rested on a value
     # nothing could read. All 3,812 stored results sections hold only objects.
@@ -515,7 +561,6 @@ def ctgov_study_problem(body: Any) -> str | None:
     if body.get('hasResults') is False:
         if isinstance(body.get('resultsSection'), dict) and body['resultsSection']:
             return 'hasResults is false but resultsSection is non-empty'
-        status_mod = body['protocolSection'].get('statusModule') or {}
         post_date = (status_mod.get('resultsFirstPostDateStruct') or {}).get('date')
         if isinstance(post_date, str) and post_date.strip():
             return 'hasResults is false but statusModule.resultsFirstPostDateStruct has a date'
@@ -551,20 +596,19 @@ def ctgov_results_date_after(body: dict[str, Any], fetched_at: str) -> str | Non
     """The first results date (`CTGOV_RESULTS_DATES`) in study `body` that starts after a record
     retrieved at `fetched_at` (a UTC timestamp) can hold, as `statusModule.<field> (<date>)`, else None.
 
-    `body` must pass `ctgov_study_problem`. CT.gov states no time zone for these days, so the bound is
-    the calendar day at `fetched_at` in the zone furthest ahead of UTC (+14 hours), as for `dataTimestamp`
-    (`data_timestamp_after_retrieval`): no real record is refused. A month containing that day is a
-    prefix of it and sorts before it, so it is not after; text that is not a day or a month is left to
-    the readers, which treat it as missing.
+    `body` must pass `ctgov_study_problem`, which refuses a populated date the build cannot read. CT.gov
+    states no time zone for these days, so the bound is the calendar day at `fetched_at` in the zone
+    furthest ahead of UTC (+14 hours), as for `dataTimestamp` (`data_timestamp_after_retrieval`): no real
+    record is refused. A date is after the bound when the first day it can denote is (`ctgov_date_span`,
+    the build's own reader), so a month or year containing the bound is not after it.
     """
-    bound = (datetime.fromisoformat(fetched_at).astimezone(timezone.utc) + timedelta(hours=14)).date().isoformat()
+    bound = (datetime.fromisoformat(fetched_at).astimezone(timezone.utc) + timedelta(hours=14)).date()
     status_mod = body['protocolSection'].get('statusModule') or {}
     for path in CTGOV_RESULTS_DATES:
-        value: Any = status_mod
-        for key in path:
-            value = value.get(key) if isinstance(value, dict) else None
-        if isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}(?:-\d{2})?', value) and value > bound:
-            return f"statusModule.{'.'.join(path)} ({value})"
+        value = _status_value(status_mod, path)
+        span = ctgov_date_span(value) if isinstance(value, str) else None
+        if span is not None and span[0] > bound:
+            return f"statusModule.{'.'.join(path)} ({value.strip()})"
     return None
 
 

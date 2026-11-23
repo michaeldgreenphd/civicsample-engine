@@ -91,10 +91,14 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 # obsolete ID can be answered under the current one) is logged as unusable, never settled, and freezing
 # and loading refuse a cache that holds one as settled: re-run the ctgov stage. An answer with a mistyped
 # part (`acquire.ctgov_study_problem`) is never settled either, and if one reaches a build its trial reads
-# as `lookup_failed` with every route incomplete, never a crash or a negative. So is an answer holding a
-# results submission, QC or posting date after it was retrieved (`acquire.ctgov_study_record_problem`,
-# allowing the largest real UTC offset): a 2100 posting date was published on the verified results link
-# and read by the 365-day window as submitted but unposted.
+# as `lookup_failed` with every route incomplete, never a crash or a negative. So is an answer with a
+# populated completion, results submission, QC or posting date the build cannot read as YYYY, YYYY-MM or
+# YYYY-MM-DD (`acquire.ctgov_date_span`): with hasResults false, a submission date of `not-a-date` was
+# read as none and the window published UNREPORTED_PAST_365D. So is an answer holding a results
+# submission, QC or posting date after it was retrieved (`acquire.ctgov_study_record_problem`, allowing
+# the largest real UTC offset, and reading the date as the build does, so `2100` counts): a 2100 posting
+# date was published on the verified results link and read by the 365-day window as submitted but
+# unposted.
 
 # 2. Offline deterministic build from frozen cache (runs contract check before writing):
 python3 scripts/build_drug_disclosure.py build \
