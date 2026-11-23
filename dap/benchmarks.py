@@ -702,6 +702,31 @@ WEEKLY_LIST_FIELDS: dict[str, tuple[type, tuple[str, ...]]] = {
     "collaborators": (dict, ("name", "class")),
     "conditions": (str, ()),
 }
+# Entry fields `src/utils.py` always writes as non-blank strings: it keeps a site only for a location
+# with a country.
+WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {"study_sites": ("country",)}
+# The other weekly fields this module reads, the type `src/utils.py` writes for each, and whether it is
+# never blank (dates are "" when CT.gov has none). A missing or mistyped one was read as absent: an
+# "Unknown" sponsor and class (`_extract_core_metadata`), no enrollment, a demographics block read as not
+# reported, or a sex/gender row re-parsed as `parse_error`.
+WEEKLY_SCALAR_FIELDS: dict[str, tuple[type, bool]] = {
+    "nct_id": (str, True),
+    "brief_title": (str, False),
+    "study_type": (str, True),
+    "status": (str, True),
+    "start_date": (str, False),
+    "primary_completion_date": (str, False),
+    "results_date": (str, False),
+    "enrollment": (int, False),
+    "enrollment_type": (str, False),
+    "lead_sponsor_name": (str, True),
+    "sponsor_class": (str, True),
+    "race": (dict, False),
+    "ethnicity": (dict, False),
+    "sex": (dict, False),
+    "gender": (dict, False),
+    "sex_gender": (dict, False),
+}
 
 
 def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
@@ -716,8 +741,26 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     included, whose entries have their type, with the fields read strings when present. `conditions`
     must be non-empty, as on the raw path, since an empty list reads as ontology Other. All 80,890
     records of the 2026-11-08 weekly extraction carry the three keys as lists of such entries
-    (1,485,097 sites, 48,077 collaborators, 142,169 conditions), none with an empty `conditions`.
+    (1,485,097 sites, 48,077 collaborators, 142,169 conditions), none with an empty `conditions`, and
+    every site carries a non-blank `country`.
+
+    The other fields read (`WEEKLY_SCALAR_FIELDS`) must be present with their type (a bool is not an
+    enrollment), non-blank where the producer never writes them blank, and `sex_gender` must carry a
+    `sex_report_status` in `SEX_GENDER_STATES`, the row `extract_sex_gender` reuses. All 80,890 weekly
+    records pass (80,097 `reported`, 727 `uninformative`, 66 `explicit_unknown_only`).
     """
+    for key, (field_type, non_blank) in WEEKLY_SCALAR_FIELDS.items():
+        if key not in rec:
+            return f"has no {key} (src/utils.py always writes it)"
+        value = rec[key]
+        if not isinstance(value, field_type) or (isinstance(value, bool) and field_type is int):
+            kind = "an object" if field_type is dict else field_type.__name__
+            return f"{key} is {type(value).__name__}, not {kind}"
+        if non_blank and not value.strip():
+            return f"{key} is blank"
+    status = rec["sex_gender"].get("sex_report_status")
+    if status not in SEX_GENDER_STATES:
+        return f"sex_gender.sex_report_status {status!r} is not one of SEX_GENDER_STATES"
     for key, (entry_type, fields) in WEEKLY_LIST_FIELDS.items():
         if key not in rec:
             return f"has no {key} (src/utils.py always writes it)"
@@ -735,11 +778,14 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
             for field in fields:
                 if field in entry and not isinstance(entry[field], str):
                     return f"{key}[{i}].{field} is {type(entry[field]).__name__}, not a string"
+            for field in WEEKLY_REQUIRED_ENTRY_FIELDS.get(key, ()):
+                if not (isinstance(entry.get(field), str) and entry[field].strip()):
+                    return f"{key}[{i}].{field} is missing or blank (src/utils.py keeps only sites with one)"
     return None
 
 
 def _require_weekly_lists(records: list[dict[str, Any]], source: str) -> None:
-    """Refuse weekly full records whose site, collaborator or condition lists are malformed."""
+    """Refuse weekly full records missing a field this module reads, or holding a malformed one."""
     bad = [
         f"{rec.get('nct_id') or f'index {idx}'} {problem}"
         for idx, rec in enumerate(records)
@@ -747,7 +793,7 @@ def _require_weekly_lists(records: list[dict[str, Any]], source: str) -> None:
     ]
     if bad:
         raise ValueError(
-            f"{source}: {len(bad)} of {len(records)} weekly records carry a malformed list field "
+            f"{source}: {len(bad)} of {len(records)} weekly records carry a missing or malformed field "
             f"(first: {bad[0]})"
         )
 

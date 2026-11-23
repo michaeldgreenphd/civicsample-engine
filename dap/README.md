@@ -138,8 +138,17 @@ must be present, as `src/utils.py` always writes them; `study_sites` and
 non-blank strings, as on the raw path, an explicit `null` refused throughout. A
 `conditions` string was read one character at a time, a dropped or missing
 condition list moved the indication to Other, and a dropped or missing site
-list lowered the exact site counts. All 80,890 records of the 2026-11-08
-weekly extraction pass.
+list lowered the exact site counts. Every site must carry a non-blank
+`country`, since `src/utils.py` keeps only locations with one
+(`WEEKLY_REQUIRED_ENTRY_FIELDS`). The other weekly fields this module reads
+must be present with the producer's type (`WEEKLY_SCALAR_FIELDS`): `nct_id`,
+`study_type`, `status`, `lead_sponsor_name` and `sponsor_class` non-blank
+strings, `brief_title`, the dates and `enrollment_type` strings, `enrollment`
+an integer, and `race`, `ethnicity`, `sex`, `gender` and `sex_gender` objects,
+the last with a `sex_report_status` in `SEX_GENDER_STATES`. A missing or
+mistyped one was read as an "Unknown" sponsor, no enrollment, a block not
+reported, or a sex/gender row re-parsed as `parse_error`. All 80,890 records
+of the 2026-11-08 weekly extraction pass.
 `contactsLocationsModule` and `derivedSection` are not required: their absence
 is a real "no listed facilities" / `no_derived`, so a whole-module projection
 that omits them cannot be told apart record by record.

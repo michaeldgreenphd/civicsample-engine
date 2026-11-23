@@ -370,6 +370,25 @@ def build_weekly_full_records_doc() -> dict[str, Any]:
                     ],
                     "flags": [],
                 },
+                # The legacy blocks src/utils.py writes on every record, consistent with the row below.
+                "sex": {
+                    "reported": True,
+                    "totals": {"female": 50, "male": 50, "unknown": 0},
+                    "unknown_explicit": 0,
+                    "unknown_inferred": 0,
+                    "raw_categories": [],
+                    "quarantined_labels": [],
+                    "flags": [],
+                },
+                "gender": {
+                    "reported": False,
+                    "totals": {"woman": 0, "man": 0, "nonbinary": 0, "transgender": 0, "other": 0, "unknown": 0},
+                    "unknown_explicit": 0,
+                    "unknown_inferred": 0,
+                    "raw_categories": [],
+                    "quarantined_labels": [],
+                    "flags": [],
+                },
                 "sex_gender": {
                     "sex_report_status": "reported",
                     "reported_sex": True,
