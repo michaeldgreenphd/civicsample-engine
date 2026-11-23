@@ -755,10 +755,11 @@ def ingest_local_ctgov_records(
     source_path: Path,
     cache_dir: Path,
     *,
+    fetched_at: str,
+    data_timestamp: str,
     nct_ids: list[str] | None = None,
     limit: int | None = None,
-    fetched_at: str = '2026-11-01T00:00:00+00:00',
-    data_timestamp: str = '2026-11-01T00:00:00',
+    frozen_at: str | None = None,
 ) -> dict[str, Any]:
     """Freeze local CT.gov v2 study files into `cache_dir` with sha256 manifest verification.
 
@@ -766,7 +767,21 @@ def ingest_local_ctgov_records(
     routes report `not_searched` rather than falsely claiming `no_candidate_in_completed_scope`.
     Every ID in `nct_ids` must be present in the local files: an absent one is refused before
     anything is written, never recorded as a CT.gov 404 that no request returned.
+
+    The code cannot know when local files were obtained, so both stamps are required and have no
+    default (a fixed default would claim that date for every local snapshot):
+      * `fetched_at`: when the records were retrieved from ClinicalTrials.gov, as stated by the
+        person freezing them; stamped on each record and so the archive's first/last_fetched_at.
+      * `data_timestamp`: the CT.gov `dataTimestamp` (data refresh) the records reflect; recorded
+        in the local version record, reported as run.json `sources.ctgov.data_timestamp`, and the
+        build's `as_of` when `--as-of` is not given.
+    `frozen_at` is when the cache was frozen: the current time unless pinned (tests pin it).
     """
+    for label, stamp in (('fetched_at', fetched_at), ('data_timestamp', data_timestamp)):
+        try:
+            datetime.fromisoformat(stamp)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f'{label} must be an ISO 8601 timestamp, got {stamp!r}') from exc
     if not source_path.exists():
         raise FileNotFoundError(f'{source_path}: local CT.gov source path does not exist')
     files: list[Path]
@@ -842,7 +857,7 @@ def ingest_local_ctgov_records(
             'body': st,
             'error': None,
         })
-    return freeze_cache(cache_dir, requested, frozen_at=fetched_at)
+    return freeze_cache(cache_dir, requested, frozen_at=frozen_at)
 
 
 # ---------------------------------------------------------------- freeze & strict verification

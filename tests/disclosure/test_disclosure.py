@@ -70,6 +70,11 @@ def built_files(built_dir: Path) -> dict[str, Any]:
     return files
 
 
+# Local CT.gov records carry no acquisition time of their own, so every local freeze states one.
+LOCAL_STAMPS: dict[str, str] = {'fetched_at': F.GENERATED_AT, 'data_timestamp': '2026-11-01T08:00:00'}
+LOCAL_STAMP_ARGS = ['--fetched-at', LOCAL_STAMPS['fetched_at'], '--data-timestamp', LOCAL_STAMPS['data_timestamp']]
+
+
 def _timeline_of(files: dict[str, Any], nct_id: str) -> dict[str, Any]:
     return next(t for t in files['timelines.json']['timelines'] if t['nct_id'] == nct_id)
 
@@ -154,7 +159,7 @@ def test_unicode_line_separators_in_jsonl_logs_local_jsonl_and_frozen_archives(t
     local_jsonl.write_bytes(gzip.compress(raw_line, mtime=0))
 
     cache_dir = tmp_path / 'unicode_cache'
-    A.ingest_local_ctgov_records(local_jsonl, cache_dir)
+    A.ingest_local_ctgov_records(local_jsonl, cache_dir, **LOCAL_STAMPS, frozen_at=F.GENERATED_AT)
 
     # 2. Also append a literature ResponseLog record containing unescaped U+2028 / U+2029 in abstractText
     lit_log = A.ResponseLog(A.raw_log_path(cache_dir, 'literature'))
@@ -371,7 +376,7 @@ def test_coverage_matrix_distinguishes_all_seven_states_and_never_conflates_not_
             gzip.compress(json.dumps(F.STUDIES[nct_id]).encode('utf-8'), mtime=0)
         )
     local_cache_dir = tmp_path / 'local_cache'
-    A.ingest_local_ctgov_records(local_src, local_cache_dir)
+    A.ingest_local_ctgov_records(local_src, local_cache_dir, **LOCAL_STAMPS, frozen_at=F.GENERATED_AT)
     local_built = ART.build_artifacts(
         A.load_frozen_cache(local_cache_dir),
         reviews_path=ROOT / 'disclosure' / 'reviews.csv',
@@ -858,6 +863,9 @@ def test_real_stored_ctgov_records_offline_smoke_pipeline(tmp_path: Path) -> Non
         '--records', str(real_archive),
         '--cache', str(cache_dir),
         '--limit', '25',
+        # When the tracked first-pass cache was fetched, and CT.gov's dataTimestamp then (its fetch_manifest.json).
+        '--fetched-at', '2026-11-13T22:32:29+00:00',
+        '--data-timestamp', '2026-11-13T10:00:06',
     ]) == 0
     assert cli_build.main([
         'build',
@@ -1304,20 +1312,21 @@ def test_freeze_local_refuses_requested_ids_absent_from_the_local_records(tmp_pa
 
     # NCT09990005 is absent locally: refused before anything is written, never logged as a CT.gov 404.
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
-                           '--nct-list', str(wanted)]) == 1
+                           '--nct-list', str(wanted), *LOCAL_STAMP_ARGS]) == 1
     assert not (cache / 'manifest.json').exists()
     assert not A.raw_log_path(cache, 'ctgov').exists()
     with pytest.raises(ValueError, match=r'not in the local CT\.gov records \(\[.NCT09990005.\]\)'):
-        A.ingest_local_ctgov_records(local_src, cache, nct_ids=['NCT09990004', 'NCT09990005'])
+        A.ingest_local_ctgov_records(local_src, cache, nct_ids=['NCT09990004', 'NCT09990005'], **LOCAL_STAMPS)
     out = tmp_path / 'out'
     assert cli_build.main(['build', '--cache', str(cache), '--records', str(local_src), '--nct-list', str(wanted),
-                           '--out', str(out), '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT]) == 1
+                           '--out', str(out), '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT,
+                           *LOCAL_STAMP_ARGS]) == 1
     assert not out.exists()
 
     # With every listed ID present the freeze proceeds, and each record is the local 200 response.
     wanted.write_text('NCT09990004\n', encoding='utf-8')
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
-                           '--nct-list', str(wanted)]) == 0
+                           '--nct-list', str(wanted), *LOCAL_STAMP_ARGS]) == 0
     loaded = A.load_frozen_cache(cache)
     assert loaded.requested_nct_ids == ['NCT09990004']
     assert {k: v['status'] for k, v in loaded.ctgov.items() if k.startswith('ctgov/study/')} == {
@@ -1359,3 +1368,42 @@ def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() ->
     assert T.classify_discordance([], coverage('available_document_insufficient'))['state'] == (
         'coverage_incomplete_or_awaiting_review'
     )
+
+
+# ---------------------------------------------------------------- 13. Local freeze timestamps, out-of-scope reviews
+
+def test_local_freeze_requires_stated_timestamps_and_freezes_at_the_real_time(tmp_path: Path) -> None:
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'NCT09990004.json').write_text(json.dumps(F.STUDIES['NCT09990004']), encoding='utf-8')
+    cache = tmp_path / 'local_cache'
+
+    # No default retrieval or data timestamp: freeze-local cannot run without both.
+    for missing in (['--fetched-at', '2025-06-30T18:00:00+00:00'], ['--data-timestamp', '2025-06-30T09:00:00']):
+        with pytest.raises(SystemExit):
+            cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), *missing])
+    assert not cache.exists()
+    # build --records seeds through the same path and refuses without them.
+    out = tmp_path / 'out'
+    assert cli_build.main(['build', '--cache', str(cache), '--records', str(local_src), '--out', str(out)]) == 1
+    assert not cache.exists() and not out.exists()
+    with pytest.raises(ValueError, match='fetched_at must be an ISO 8601 timestamp'):
+        A.ingest_local_ctgov_records(local_src, cache, fetched_at='last June', data_timestamp='2025-06-30T09:00:00')
+
+    # Stated stamps are what the cache records; frozen_at is the time of freezing.
+    before = A.now_utc()
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
+                           '--fetched-at', '2025-06-30T18:00:00+00:00', '--data-timestamp', '2025-06-30T09:00:00']) == 0
+    after = A.now_utc()
+    loaded = A.load_frozen_cache(cache)
+    assert loaded.ctgov['ctgov/study/NCT09990004']['fetched_at'] == '2025-06-30T18:00:00+00:00'
+    assert loaded.ctgov['ctgov/version/2025-06-30']['body']['dataTimestamp'] == '2025-06-30T09:00:00'
+    assert before <= loaded.manifest['frozen_at'] <= after
+
+    # Without --as-of the 365-day window is evaluated at the stated data timestamp, not a fixed date.
+    assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--generated-at', F.GENERATED_AT]) == 0
+    run = json.loads((out / 'run.json').read_text(encoding='utf-8'))
+    assert run['as_of'] == '2025-06-30'
+    assert run['sources']['ctgov']['data_timestamp'] == '2025-06-30T09:00:00'
+    timelines = json.loads((out / 'timelines.json').read_text(encoding='utf-8'))['timelines']
+    assert {t['window_365d']['as_of'] for t in timelines} == {'2025-06-30'}

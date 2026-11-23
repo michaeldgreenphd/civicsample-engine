@@ -56,9 +56,14 @@ States: `not_searched`, `search_incomplete_or_blocked`, `document_unavailable`, 
 python3 scripts/build_drug_disclosure.py acquire \
     --cache build/disclosure_cache --nct-list ids.txt
 
-# 1b. Or freeze local CT.gov v2 study records (.json / .json.gz / .jsonl.gz) with zero network calls:
+# 1b. Or freeze local CT.gov v2 study records (.json / .json.gz / .jsonl.gz) with zero network calls.
+#     The code cannot know when local files were obtained, so both stamps are required (no defaults):
+#     --fetched-at is when the records were retrieved from CT.gov (each record's fetched_at), and
+#     --data-timestamp is the CT.gov dataTimestamp they reflect (run.json sources.ctgov.data_timestamp,
+#     and the build's as_of when --as-of is omitted). manifest frozen_at is the time of freezing.
 python3 scripts/build_drug_disclosure.py freeze-local \
-    --records /path/to/ctgov_records --cache build/disclosure_cache
+    --records /path/to/ctgov_records --cache build/disclosure_cache \
+    --fetched-at 2026-11-13T22:32:29+00:00 --data-timestamp 2026-11-13T10:00:06
 
 # Freezing (either way) and loading refuse a cache in which any requested NCT ID has no CT.gov
 # study response record (a raw log acquired for another NCT list): run the ctgov stage for it first.
@@ -68,6 +73,7 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 # 2. Offline deterministic build from frozen cache (runs contract check before writing):
 python3 scripts/build_drug_disclosure.py build \
     --cache build/disclosure_cache --out build/disclosure --as-of 2026-11-01
+# (build --records seeds an absent cache from local files like freeze-local, with the same required stamps.)
 
 # 3. Producer contract check and atomic site export:
 python3 scripts/check_drug_disclosure_contract.py build/disclosure

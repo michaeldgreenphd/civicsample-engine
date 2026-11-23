@@ -5,8 +5,10 @@ Usage:
   # 1a. Live rate-limited (<= 2 req/s per host), resumable acquisition + freeze:
   python3 scripts/build_drug_disclosure.py acquire --cache build/disclosure_cache --nct-list ids.txt
 
-  # 1b. Or freeze already-downloaded local CT.gov v2 `.json`/`.json.gz`/`.jsonl.gz` records offline:
-  python3 scripts/build_drug_disclosure.py freeze-local --records /path/to/records --cache build/disclosure_cache
+  # 1b. Or freeze already-downloaded local CT.gov v2 `.json`/`.json.gz`/`.jsonl.gz` records offline,
+  #     stating when they were retrieved and the CT.gov data timestamp they reflect (no defaults):
+  python3 scripts/build_drug_disclosure.py freeze-local --records /path/to/records --cache build/disclosure_cache \
+      --fetched-at 2026-11-13T22:32:29+00:00 --data-timestamp 2026-11-13T10:00:06
 
   # 2. Offline deterministic build from frozen sha256-verified cache:
   python3 scripts/build_drug_disclosure.py build --cache build/disclosure_cache --out build/disclosure
@@ -172,6 +174,16 @@ def producer_metadata(root: Path = ROOT) -> dict[str, Any]:
     }
 
 
+FETCHED_AT_HELP = (
+    'ISO 8601 time the local records were retrieved from ClinicalTrials.gov '
+    '(stamped as the fetched_at of each record; there is no default)'
+)
+DATA_TIMESTAMP_HELP = (
+    'ISO 8601 CT.gov dataTimestamp the local records reflect (run.json sources.ctgov.data_timestamp '
+    'and the default --as-of; there is no default)'
+)
+
+
 def _resolve_nct_ids(nct_list: Path | None, nct_ids: list[str] | None) -> list[str]:
     collected: list[str] = []
     if nct_list is not None:
@@ -254,11 +266,18 @@ def cmd_build(args: argparse.Namespace) -> int:
     try:
         subset_ids = A.read_nct_list(args.nct_list) if args.nct_list else None
         if args.records is not None and not (args.cache / 'manifest.json').exists():
+            if args.fetched_at is None or args.data_timestamp is None:
+                raise ValueError(
+                    '--records seeds the cache from local files, so --fetched-at and --data-timestamp '
+                    'are required: when the records were retrieved and the CT.gov data timestamp they reflect'
+                )
             A.ingest_local_ctgov_records(
                 args.records,
                 args.cache,
                 nct_ids=subset_ids,
                 limit=args.limit,
+                fetched_at=args.fetched_at,
+                data_timestamp=args.data_timestamp,
             )
         frozen = A.load_frozen_cache(args.cache)
         as_of_date = date.fromisoformat(args.as_of) if args.as_of else None
@@ -317,8 +336,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_loc.add_argument('--cache', type=Path, default=ROOT / 'build' / 'disclosure_cache')
     p_loc.add_argument('--nct-list', type=Path, help='Optional allowlist of NCT IDs')
     p_loc.add_argument('--limit', type=int, help='Optional cap on number of local study records ingested')
-    p_loc.add_argument('--fetched-at', default='2026-11-01T00:00:00+00:00')
-    p_loc.add_argument('--data-timestamp', default='2026-11-01T00:00:00')
+    p_loc.add_argument('--fetched-at', required=True, help=FETCHED_AT_HELP)
+    p_loc.add_argument('--data-timestamp', required=True, help=DATA_TIMESTAMP_HELP)
 
     p_bld = sub.add_parser('build', help='Offline deterministic build from frozen cache')
     p_bld.add_argument('--cache', type=Path, default=ROOT / 'build' / 'disclosure_cache')
@@ -326,8 +345,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_bld.add_argument('--records', type=Path,
                        help='Optional local CT.gov v2 records to freeze into --cache when manifest is absent')
     p_bld.add_argument('--limit', type=int, help='Optional limit when seeding from --records')
+    p_bld.add_argument('--fetched-at', help='Required with --records when seeding: ' + FETCHED_AT_HELP)
+    p_bld.add_argument('--data-timestamp', help='Required with --records when seeding: ' + DATA_TIMESTAMP_HELP)
     p_bld.add_argument('--nct-list', type=Path, help='Optional subset of cached NCT IDs to include')
-    p_bld.add_argument('--as-of', help='Reference date YYYY-MM-DD for 365-day window evaluation')
+    p_bld.add_argument('--as-of', help='Reference date YYYY-MM-DD for 365-day window evaluation '
+                       "(default: the date of the cache's CT.gov data timestamp)")
     p_bld.add_argument('--generated-at', help='Pin ISO 8601 timestamp for byte-identical run.json')
     p_bld.add_argument('--reviews', type=Path, default=ROOT / 'disclosure' / 'reviews.csv')
     p_bld.add_argument('--statements', type=Path, default=ROOT / 'disclosure' / 'documentary_statements.csv')
