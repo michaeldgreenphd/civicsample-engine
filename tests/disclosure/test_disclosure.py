@@ -522,6 +522,9 @@ def test_exact_dates_keep_to_the_years_the_other_forms_allow(value: str) -> None
     # On cc83fa0 each became the RESULT reference's date and so NCT09990001's earliest results publication.
     ('0001-01-01', '2021-03'),
     ('00010101', '2021-03'),
+    # On d708f89 a day that does not exist became the month, 2021-02, and the pubdate was never read.
+    ('2021 Feb 30', '2021-03'),
+    ('2021 Feb 00', '2021-03'),
     # Control, on both heads: the fixture's own date.
     ('2021 Feb 10', '2021-02-10'),
 ])
@@ -2194,6 +2197,39 @@ def test_an_nct_cited_fda_link_takes_the_earliest_dated_citing_submission(
         several = [r for r in link['validation_reasons'] if 'dated submissions; the earliest' in r]
         assert several == ([f'{nct} is cited in {n_dated} dated submissions; the earliest action date is used']
                            if n_dated > 1 else [])
+
+
+def _suppl_dated(day: str, number: str) -> dict[str, Any]:
+    return {'submission_type': 'SUPPL', 'submission_number': number, 'submission_status': 'AP',
+            'submission_status_date': day, 'submission_public_notes': 'Supported by NCT09990001.'}
+
+
+@pytest.mark.parametrize(
+    ('days', 'date', 'precision', 'index'),
+    [
+        # On d708f89 the normalized strings sorted the whole year (or month) first, though the exact
+        # submission puts the earliest action on 1 January.
+        (['2025', '20250101'], '2025-01-01', 'day', 1),
+        (['2025-01', '20250101'], '2025-01-01', 'day', 1),
+        (['20250101', '2025'], '2025-01-01', 'day', 0),
+        # Control, on both heads: overlapping dates without a tie keep the earlier start.
+        (['2025', '20250615'], '2025', 'year', 0),
+    ],
+)
+def test_tied_fda_action_dates_take_the_narrower_date(
+    days: list[str], date: str, precision: str, index: int
+) -> None:
+    nct = 'NCT09990001'
+    app = {'application_number': 'NDA990001',
+           'submissions': [_suppl_dated(day, str(40 + i)) for i, day in enumerate(days)]}
+    study = F.STUDIES[nct]
+    drug = A.extract_drug_candidates(study)[0]
+    records = {A.drug_query_key(drug): {'status': 200, 'body': {'meta': {'results': {'total': 1}}, 'results': [app]}}}
+    via_drug = next(x for x in E.build_openfda_links(nct, study, records, E.trial_sponsor_match_keys(study))
+                    if x['automated_validation'] == 'identifier_confirmed')
+    for link in (_nct_cited_link(app), via_drug):
+        assert (link['publication_or_action_date'], link['date_precision']) == (date, precision)
+        assert link['locator']['json_path'] == f'results[0].submissions[{index}].submission_public_notes'
 
 
 @pytest.mark.parametrize('raw', [20250102, 20250102.0, ['20250102'], {'date': '20250102'}, True])

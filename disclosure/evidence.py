@@ -273,10 +273,13 @@ def normalize_publication_date(raw: str | None) -> tuple[str | None, str]:
             return f'{y:04d}', 'year'
         mo = MONTH_MAP[mon_token]
         if day_token:
+            # A day that does not exist is unreadable, as in the exact and compact forms above: `2021 Feb 30`
+            # had become the month `2021-02`, so `_pubmed_summary_date` stopped there instead of reading the
+            # next field (`pubdate` `2021 Mar`), and February became the trial's earliest publication.
             try:
                 return date(y, mo, int(day_token)).isoformat(), 'day'
             except ValueError:
-                return f'{y:04d}-{mo:02d}', 'month'
+                return None, 'missing'
         return f'{y:04d}-{mo:02d}', 'month'
 
     return None, 'missing'
@@ -801,6 +804,17 @@ def _cited_submission_date(app: dict[str, Any], field_path: str) -> tuple[str | 
     return _submission_date(subs[int(match.group(1))])
 
 
+def _date_span(norm: str) -> tuple[date, date]:
+    """The first and last day a normalized `YYYY`, `YYYY-MM` or `YYYY-MM-DD` date allows."""
+    parts = [int(x) for x in norm.split('-')]
+    if len(parts) == 3:
+        day = date(*parts)
+        return day, day
+    if len(parts) == 2:
+        return date(parts[0], parts[1], 1), date(parts[0], parts[1], calendar.monthrange(parts[0], parts[1])[1])
+    return date(parts[0], 1, 1), date(parts[0], 12, 31)
+
+
 def _nct_citation(
     app: dict[str, Any], nct_id: str, app_no: str, retrieved_day: str | None = None
 ) -> tuple[str, str, str | None, str, list[str]] | None:
@@ -816,6 +830,11 @@ def _nct_citation(
     locator and date; equal dates keep traversal order. The dates are normalized strings, so a year or
     month sorts before any day inside it, that is, by its earliest possible day. Only when no citing
     submission is dated does the link fall back to the first mention, with a missing date.
+
+    Citing submissions are ordered by the first day each date allows, then by its last (`_date_span`), so
+    on a tie the narrower date wins: of `2025` and `20250101` the action is known to be 1 January, and the
+    normalized strings had sorted the whole year first. Dates that overlap without a tie (`2025` and
+    `2025-06-15`) keep the earlier start, a span that still holds the earliest action.
 
     A submission dated after `retrieved_day`, the day the record was fetched, is no action the record
     can show: `2100-01-02` in a record fetched in 2026 was published as the trial's earliest FDA action.
@@ -841,7 +860,7 @@ def _nct_citation(
             f'{nct_id} is not cited in a submission with a readable action date (a `submission_status_date` '
             'string), so no FDA action date is tied to it',
         ]
-    cited_date, _, path, excerpt, precision = min(dated)
+    cited_date, _, path, excerpt, precision = min(dated, key=lambda d: (*_date_span(d[0]), d[1]))
     reasons = [f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({path})', *future]
     # A dated path starts with its submission, `submissions[i].`, so the prefix counts submissions.
     n_dated = len({p.split('.', 1)[0] for _, _, p, _, _ in dated})
