@@ -20,7 +20,7 @@ import re
 import shutil
 import tempfile
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -490,17 +490,9 @@ def generated_at_problem(value: Any) -> str | None:
 
     `generated_at` is published as the build's generation time, so the whole value is parsed, not a
     prefix: an impossible date, trailing text, a date without a time, a naive time or a non-zero UTC
-    offset is refused (the rule the feasibility and DAP builds apply).
+    offset is refused (the rule the feasibility and DAP builds apply; see `A.timestamp_problem`).
     """
-    if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T.+', value):
-        return f'generated_at must be an ISO 8601 UTC timestamp, got {value!r}'
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return f'generated_at must be an ISO 8601 UTC timestamp, got {value!r}'
-    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
-        return f'generated_at must carry a UTC offset (Z or +00:00), got {value!r}'
-    return None
+    return A.timestamp_problem(value, 'generated_at', require_utc=True)
 
 
 def build_artifacts(

@@ -22,7 +22,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 from urllib.parse import urlsplit
@@ -80,6 +80,26 @@ class FrozenCache:
     literature_meta: dict[str, Any] | None
     openfda: dict[str, dict[str, Any]]
     openfda_meta: dict[str, Any] | None
+
+
+def timestamp_problem(value: Any, label: str, *, require_utc: bool) -> str | None:
+    """Why `value` is not a whole ISO 8601 date and time, or None when it is.
+
+    `datetime.fromisoformat` alone accepts a bare date (`2026-11-01`), which names no instant, so a
+    date and an hour:minute time are required and the whole value must parse. With `require_utc` the
+    value must also carry a zero UTC offset (`Z` or `+00:00`): acquisition and generation times are
+    stamped in UTC. CT.gov's own `dataTimestamp` carries no offset (`2026-11-13T10:00:06`), so a data
+    timestamp is checked with `require_utc=False`.
+    """
+    if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*', value):
+        return f'{label} must be a whole ISO 8601 date and time, got {value!r}'
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return f'{label} must be a whole ISO 8601 date and time, got {value!r}'
+    if require_utc and (parsed.tzinfo is None or parsed.utcoffset() != timedelta(0)):
+        return f'{label} must carry a UTC offset (Z or +00:00), got {value!r}'
+    return None
 
 
 def now_utc() -> str:
@@ -862,11 +882,14 @@ def ingest_local_ctgov_records(
     so its default `as_of`), and earlier literature or openFDA logs would be frozen with records they
     were never acquired for. Live `acquire` keeps resuming an existing cache; only this path refuses.
     """
-    for label, stamp in (('fetched_at', fetched_at), ('data_timestamp', data_timestamp)):
-        try:
-            datetime.fromisoformat(stamp)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f'{label} must be an ISO 8601 timestamp, got {stamp!r}') from exc
+    # fetched_at is an acquisition instant, stamped in UTC like live acquisition's; data_timestamp
+    # follows CT.gov's dataTimestamp, a whole date and time with no offset (see timestamp_problem).
+    for problem in (
+        timestamp_problem(fetched_at, 'fetched_at', require_utc=True),
+        timestamp_problem(data_timestamp, 'data_timestamp', require_utc=False),
+    ):
+        if problem:
+            raise ValueError(problem)
     if cache_dir.exists() and (not cache_dir.is_dir() or any(cache_dir.iterdir())):
         raise CacheIntegrityError(
             f'{cache_dir}: a local freeze needs a new or empty cache directory, so no earlier CT.gov version, '

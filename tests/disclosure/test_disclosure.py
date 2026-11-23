@@ -1745,6 +1745,33 @@ def test_generated_at_must_be_a_whole_utc_timestamp(
     assert ART.generated_at_problem(F.GENERATED_AT) is None
 
 
+@pytest.mark.parametrize(
+    ('fetched_at', 'data_timestamp', 'expect'),
+    [
+        ('2026-11-01', '2026-11-01T08:00:00', 'fetched_at must be a whole'),  # a bare date names no instant
+        ('2026-11-01T12:00:00', '2026-11-01T08:00:00', 'fetched_at must carry a UTC offset'),  # naive
+        ('2026-11-01T12:00:00+01:00', '2026-11-01T08:00:00', 'fetched_at must carry a UTC offset'),
+        ('2026-11-01T12:00:00+00:00', '2026-11-01', 'data_timestamp must be a whole'),
+        ('2026-11-01T12:00:00+00:00', 'yesterday', 'data_timestamp must be a whole'),
+    ],
+)
+def test_local_freeze_stamps_must_be_whole_timestamps(
+    tmp_path: Path, fetched_at: str, data_timestamp: str, expect: str
+) -> None:
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'NCT09990004.json').write_text(json.dumps(F.STUDIES['NCT09990004']), encoding='utf-8')
+    cache = tmp_path / 'cache'
+    with pytest.raises(ValueError, match=expect):
+        A.ingest_local_ctgov_records(local_src, cache, fetched_at=fetched_at, data_timestamp=data_timestamp)
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
+                           '--fetched-at', fetched_at, '--data-timestamp', data_timestamp]) == 1
+    assert not A.raw_log_path(cache, 'ctgov').exists()
+    # Control: a UTC fetch time and CT.gov's offset-free data timestamp are accepted.
+    assert A.timestamp_problem('2026-11-01T12:00:00Z', 'fetched_at', require_utc=True) is None
+    assert A.timestamp_problem('2026-11-13T10:00:06', 'data_timestamp', require_utc=False) is None
+
+
 def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:
     # hasResults=true with an empty resultsSection: the CT.gov route is `available_document_insufficient`.
     shell = F._make_study('NCT09990010', title='Results shell', lead_sponsor='Fictional Sponsor',
@@ -1798,7 +1825,7 @@ def test_local_freeze_requires_stated_timestamps_and_freezes_at_the_real_time(tm
     out = tmp_path / 'out'
     assert cli_build.main(['build', '--cache', str(cache), '--records', str(local_src), '--out', str(out)]) == 1
     assert not cache.exists() and not out.exists()
-    with pytest.raises(ValueError, match='fetched_at must be an ISO 8601 timestamp'):
+    with pytest.raises(ValueError, match='fetched_at must be a whole ISO 8601 date and time'):
         A.ingest_local_ctgov_records(local_src, cache, fetched_at='last June', data_timestamp='2025-06-30T09:00:00')
 
     # Stated stamps are what the cache records; frozen_at is the time of freezing.
