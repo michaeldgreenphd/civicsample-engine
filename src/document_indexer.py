@@ -5213,9 +5213,11 @@ class DocumentCacheStore:
         called): a cached blob or local file whose bytes are not that
         digest's (damaged, or swapped for another trial's document) would
         otherwise be a successful cache hit for that digest, or be parsed and
-        cached as its pages. The error names the expected digest and the
-        file, never the digest the file actually has. With ``pdf_path`` None
-        no file is hashed.
+        cached as its pages. A ``pdf_path`` that cannot be read as a file (an
+        ``OSError``: a folder, or a file this user may not read) is refused
+        the same way, since its bytes cannot be verified. The error names the
+        expected digest and the file, never the digest the file actually has.
+        With ``pdf_path`` None no file is hashed.
         """
         validate_page_selection_bounds(min_selected_pages, max_selected_pages)
         combined_audit, combined_allowed = self.merge_firewall_sets(audit_nct_ids, allowed_nct_ids)
@@ -5270,8 +5272,19 @@ class DocumentCacheStore:
         )
         if pdf_path is not None:
             # Checked before any of steps 2 and 3 (see the docstring); with
-            # pdf_path None no file is read.
-            actual_sha, actual_bytes = sha256_file(Path(pdf_path))
+            # pdf_path None no file is read. A path that cannot be read as a
+            # file (a folder in the blob slot, or a file this user may not
+            # read) is refused the same way: its bytes cannot be shown to be
+            # ``sha``'s, and a bare OSError would bypass the CLI's report.
+            try:
+                actual_sha, actual_bytes = sha256_file(Path(pdf_path))
+            except OSError as exc:
+                raise CacheIntegrityError(
+                    f"The PDF file {pdf_path} handed to the page extractor for sha256={sha} "
+                    f"could not be read ({type(exc).__name__}), so its bytes are not verified "
+                    "to be that digest's; no cached entry is served and nothing is parsed or "
+                    "cached. Remove the damaged file, or make it readable."
+                ) from exc
             if actual_sha != sha or actual_bytes != byte_count:
                 raise CacheIntegrityError(
                     f"The PDF file {pdf_path} handed to the page extractor for sha256={sha} "

@@ -7047,3 +7047,80 @@ def test_m1_r5_cache_hit_checks_a_supplied_pdf_path_against_the_digest(
 
     monkeypatch.setattr(di, "sha256_file", _no_hashing)
     assert store.get_or_index_document(**call)[1] is True
+
+
+# ---------------------------------------------------------------------------
+# Round 6: a skeptic's reproduced defect in the round-5 pdf_path check. The
+# test failed until the module was fixed. Fictional NCT990000xx ids only, fake
+# providers and sessions only, no network.
+# ---------------------------------------------------------------------------
+
+
+def test_m1_r6_unreadable_pdf_path_is_a_cache_integrity_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A ``pdf_path`` that cannot be read as a file is refused as ``CacheIntegrityError``, not an ``OSError``.
+
+    The round-5 check hashes a supplied ``pdf_path`` before an existing entry
+    is served, so a blob slot holding a folder (or a file this user may not
+    read) raised ``IsADirectoryError`` (or ``PermissionError``) out of
+    ``get_or_index_document`` and out of ``run_cli`` as a traceback, skipping
+    the CLI's ``DOCUMENT INDEXER ERROR`` report and exit 1. Before round 5 the
+    url_manifest fast path served the entry for such a slot as a cache hit.
+    Correct: the file's bytes cannot be verified to be the digest's, so the
+    call raises ``CacheIntegrityError`` naming the file and telling the reader
+    to remove it, on the cache-hit and the fresh-index path alike; no entry is
+    served, the provider is not called, and the CLI exits 1 with that message
+    and writes nothing.
+    """
+    pdf = _make_minimal_pdf("The digest's own protocol bytes")
+    sha = di.sha256_bytes(pdf)
+    provider = di.FixturePageTextProvider({sha: _rt_stat_pages()})
+    call: dict[str, Any] = {"sha256": sha, "byte_count": len(pdf), "provider": provider, "nct_id": _RT_A}
+    folder = tmp_path / "slot.pdf"
+    folder.mkdir()
+    real_sha256_file = di.sha256_file
+
+    def _not_permitted(path: Path) -> tuple[str, int]:
+        if path == folder:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real_sha256_file(path)
+
+    # The fresh-index path (no entry yet), then the cache-hit path.
+    store = di.DocumentCacheStore(
+        tmp_path / "ur_cache", tmp_path / "ur_index.jsonl", audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A}
+    )
+    for cached in (False, True):
+        if cached:
+            assert store.get_or_index_document(**call, extracted_at=_RT_STAMP)[1] is False
+        for variant in ("folder", "unreadable"):
+            if variant == "unreadable":
+                monkeypatch.setattr(di, "sha256_file", _not_permitted)
+            with pytest.raises(di.CacheIntegrityError) as info:
+                store.get_or_index_document(**call, pdf_path=folder)
+            monkeypatch.setattr(di, "sha256_file", real_sha256_file)
+            message = str(info.value)
+            assert str(folder) in message and "could not be read" in message, (cached, variant)
+            assert "Remove" in message, (cached, variant)
+        assert len(provider.calls) == (1 if cached else 0), "the provider was handed an unreadable file"
+
+    # Through the CLI: the url_manifest fast path hands in a blob slot that is a folder.
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    study = _make_study(_RT_A, [_r5_doc("Prot_000.pdf", len(pdf))])
+    manifest = _rt_manifest(tmp_path)
+    argv = ["--manifest", str(manifest), "--nct-id", _RT_A, *_rt_outs(tmp_path, "uc")]
+    assert cli_mod.run_cli(
+        argv, api_client=_SpyAPIClient({_RT_A: study}), session=_R3Session({url: pdf}), provider=provider
+    ) == 0
+    capsys.readouterr()
+    blob = tmp_path / "uc_cache" / "blobs" / sha[:2] / f"{sha}.pdf"
+    blob.unlink()
+    blob.mkdir()
+    before = {p: p.read_bytes() for p in _rt_written(tmp_path, "uc") if p.is_file()}
+    session = _R3Session({url: pdf})
+    rc = cli_mod.run_cli(argv, api_client=_SpyAPIClient({_RT_A: study}), session=session, provider=provider)
+    err = capsys.readouterr().err
+    assert rc == 1, err
+    assert "DOCUMENT INDEXER ERROR" in err and "could not be read" in err, err
+    assert session.requested_urls == []
+    assert {p: p.read_bytes() for p in _rt_written(tmp_path, "uc") if p.is_file()} == before
