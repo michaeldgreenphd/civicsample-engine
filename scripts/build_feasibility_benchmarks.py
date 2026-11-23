@@ -11,7 +11,9 @@ Examples:
       --out build/feasibility
 
 Never scheduled by `.github/workflows/extract.yml`. Refuses site-projected
-`demographics.part*.json.gz` files, validates the staged family with `feasibility.artifacts.check_contract`
+`demographics.part*.json.gz` files, refuses a `--condition-mesh` sidecar that lacks a line for any
+cohort trial or (with `--demographics`) whose lines' `extracted_at` / `pipeline_commit` differ from
+the full records', validates the staged family with `feasibility.artifacts.check_contract`
 before writing, and stages atomically into `--out`.
 """
 from __future__ import annotations
@@ -222,8 +224,21 @@ def load_studies_input(
 
 def load_condition_mesh_sidecar(
     path: Path | None,
+    *,
+    records_meta: dict[str, Any],
 ) -> tuple[dict[str, dict[str, Any]] | None, dict[str, Any] | None]:
-    """Load optional `condition_mesh.jsonl.gz` sidecar keyed by `nct_id`."""
+    """Load optional `condition_mesh.jsonl.gz` sidecar keyed by `nct_id`, refusing another run's.
+
+    Method: `src/extract_all.py` stamps every sidecar line with the same `extracted_at` and
+    `pipeline_commit` it writes on that week's `demographics.json` container. When the records
+    come from `--demographics` (`records_meta["mode"] == "weekly_full_records"`), both container
+    stamps must be present and every line must carry exactly those values; otherwise the sidecar
+    is from another week (or partly from one) and its descriptors would be joined onto the wrong
+    registry state, so this raises `ValueError` naming the first mismatching line. The matched
+    stamps are recorded in `run.json` (`inputs.condition_mesh`). `--records-dir` and `--archive`
+    inputs carry no run stamps to compare against, so only cohort coverage is required for them
+    (`require_condition_mesh_coverage`), and `provenance_check` says which check ran.
+    """
     if path is None:
         return None, None
     if not path.is_file():
@@ -231,6 +246,20 @@ def load_condition_mesh_sidecar(
     raw = path.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
     uncompressed = gzip.decompress(raw) if path.name.endswith(".gz") else raw
+
+    weekly = records_meta.get("mode") == "weekly_full_records"
+    expected: dict[str, Any] = {
+        "extracted_at": records_meta.get("source_extracted_at"),
+        "pipeline_commit": records_meta.get("source_pipeline_commit"),
+    }
+    if weekly:
+        absent = [k for k, v in expected.items() if not isinstance(v, str) or not v.strip()]
+        if absent:
+            raise ValueError(
+                f"{records_meta.get('source')}: full records carry no {' or '.join(absent)}, so "
+                f"--condition-mesh {path.name} cannot be matched to the run that wrote them"
+            )
+
     by_nct: dict[str, dict[str, Any]] = {}
     for line_no, raw_line in enumerate(uncompressed.split(b"\n"), start=1):
         if not raw_line.strip():
@@ -241,11 +270,50 @@ def load_condition_mesh_sidecar(
             raise ValueError(f"{path.name}:{line_no}: missing nct_id in condition_mesh sidecar")
         if nct in by_nct:
             raise ValueError(f"{path.name}:{line_no}: duplicate nct_id {nct} in condition_mesh sidecar")
+        if weekly:
+            for stamp, want in expected.items():
+                if obj.get(stamp) != want:
+                    raise ValueError(
+                        f"{path.name}:{line_no}: {nct} {stamp} {obj.get(stamp)!r} != "
+                        f"{records_meta.get('source')} {stamp} {want!r}; the condition_mesh sidecar "
+                        "is not from the run that wrote these full records"
+                    )
         by_nct[nct] = obj
     return by_nct, {
         "file": path.name,
         "n_rows": len(by_nct),
         "sha256": sha,
+        "provenance_check": (
+            "weekly_run_stamps_and_cohort_coverage" if weekly else "cohort_coverage_only"
+        ),
+        "extracted_at": expected["extracted_at"] if weekly else None,
+        "pipeline_commit": expected["pipeline_commit"] if weekly else None,
+    }
+
+
+def require_condition_mesh_coverage(
+    mesh_by_nct: dict[str, dict[str, Any]],
+    cohort_nct_ids: list[str],
+    sidecar_name: str,
+) -> dict[str, int]:
+    """Require the sidecar to hold a line for every cohort trial; return coverage counts.
+
+    A cohort trial with no sidecar line would silently fall back to the record's own
+    `derivedSection` (API v2) or to `condition_mesh.state = "not_provided"` (weekly records),
+    mixing two sources or reading as "no MeSH" in the MeSH strata. Raises `ValueError` naming the
+    count and the first missing NCT ids instead. Sidecar lines outside the cohort are harmless
+    (they are never joined) and are counted in `n_rows_outside_cohort`.
+    """
+    cohort = set(cohort_nct_ids)
+    missing = sorted(cohort - set(mesh_by_nct))
+    if missing:
+        raise ValueError(
+            f"{sidecar_name}: condition_mesh sidecar has no line for {len(missing)} of "
+            f"{len(cohort)} cohort trials (first: {', '.join(missing[:5])})"
+        )
+    return {
+        "n_cohort_trials_covered": len(cohort),
+        "n_rows_outside_cohort": len(set(mesh_by_nct) - cohort),
     }
 
 
@@ -272,7 +340,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--condition-mesh",
         type=Path,
-        help="Optional condition_mesh.jsonl.gz sidecar file.",
+        help="Optional condition_mesh.jsonl.gz sidecar file; must cover every cohort trial and, with "
+        "--demographics, carry that run's extracted_at and pipeline_commit on every line.",
     )
     ap.add_argument(
         "--reviews",
@@ -317,7 +386,9 @@ def main(argv: list[str] | None = None) -> int:
             records_dir=args.records_dir,
             archive_path=args.archive,
         )
-        mesh_by_nct, mesh_meta = load_condition_mesh_sidecar(args.condition_mesh)
+        mesh_by_nct, mesh_meta = load_condition_mesh_sidecar(
+            args.condition_mesh, records_meta=records_meta
+        )
 
         trials, sponsor_meta, review_meta = benchmarks.build_trial_records(
             studies,
@@ -325,6 +396,12 @@ def main(argv: list[str] | None = None) -> int:
             rules_path=args.rules,
             condition_mesh_by_nct=mesh_by_nct,
         )
+        if mesh_by_nct is not None and mesh_meta is not None:
+            mesh_meta.update(
+                require_condition_mesh_coverage(
+                    mesh_by_nct, [t["nct_id"] for t in trials], mesh_meta["file"]
+                )
+            )
 
         inputs_meta: dict[str, Any] = {
             "records": records_meta,

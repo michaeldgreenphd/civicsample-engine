@@ -31,6 +31,17 @@ Written by `scripts/build_feasibility_benchmarks.py`:
 
 ## Running & verifying
 
+`--condition-mesh` must come from the same run as the records it is joined to. With
+`--demographics`, every sidecar line's `extracted_at` and `pipeline_commit` must equal the
+full-record container's (both must be present), so the matching week's
+`condition_mesh.jsonl.gz` from the same `data-YYYY-MM-DD` release is the only one accepted.
+With `--records-dir` or `--archive` there are no run stamps to compare, so only coverage is
+checked. Either way the sidecar must hold a line for every cohort trial; extra lines are counted,
+never joined. A mismatch refuses the build and writes nothing. `run.json`
+`inputs.condition_mesh` records `provenance_check`, the matched `extracted_at` /
+`pipeline_commit` (`null` when no stamps were compared), `n_cohort_trials_covered` and
+`n_rows_outside_cohort`.
+
 ```bash
 # Build from weekly full records (never pass site demographics.part*.json.gz)
 python3 scripts/build_feasibility_benchmarks.py --demographics data/demographics.json.gz \

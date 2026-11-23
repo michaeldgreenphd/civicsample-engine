@@ -490,7 +490,24 @@ def test_weekly_untyped_dates_excluded_from_percentiles_and_counted_in_summary()
     assert any("window not eligible for realized duration" in p for p in artifacts.check_contract(leaked))
 
 
-def test_weekly_demographics_and_condition_mesh_sidecar_build(tmp_path: Path) -> None:
+_WEEKLY_EXTRACTED_AT = "2026-11-15T06:00:00+00:00"
+_WEEKLY_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+
+
+def _write_weekly_inputs(
+    tmp_path: Path,
+    *,
+    mesh_stamps: dict[str, Any] | None = None,
+    stale_line_index: int | None = None,
+    n_mesh_lines: int = 5,
+) -> tuple[Path, Path]:
+    """Write a 5-trial weekly `demographics.json.gz` and a `condition_mesh.jsonl.gz` sidecar.
+
+    Sidecar lines carry the run stamps `src/extract_all.py` writes (`snapshot_date`,
+    `extracted_at`, `pipeline_commit`), matching the demographics container unless `mesh_stamps`
+    overrides them for every line or `stale_line_index` gives one line another week's stamps.
+    `n_mesh_lines < 5` writes a sidecar covering only part of the cohort.
+    """
     weekly_records = [
         {
             "nct_id": f"NCT9930000{i}",
@@ -517,12 +534,22 @@ def test_weekly_demographics_and_condition_mesh_sidecar_build(tmp_path: Path) ->
     ]
     demog_path = tmp_path / "demographics.json.gz"
     demog_body = {
-        "extracted_at": "2026-11-15T06:00:00+00:00",
-        "pipeline_commit": "0123456789abcdef0123456789abcdef01234567",
+        "extracted_at": _WEEKLY_EXTRACTED_AT,
+        "pipeline_commit": _WEEKLY_COMMIT,
         "data": weekly_records,
     }
     demog_path.write_bytes(gzip.compress(json.dumps(demog_body).encode("utf-8"), mtime=0))
 
+    stamps = mesh_stamps or {
+        "snapshot_date": "2026-11-15",
+        "extracted_at": _WEEKLY_EXTRACTED_AT,
+        "pipeline_commit": _WEEKLY_COMMIT,
+    }
+    stale = {
+        "snapshot_date": "2026-11-08",
+        "extracted_at": "2026-11-08T06:00:00+00:00",
+        "pipeline_commit": "fedcba9876543210fedcba9876543210fedcba98",
+    }
     mesh_path = tmp_path / "condition_mesh.jsonl.gz"
     mesh_lines = [
         json.dumps(
@@ -532,32 +559,159 @@ def test_weekly_demographics_and_condition_mesh_sidecar_build(tmp_path: Path) ->
                 "state": "indexed",
                 "meshes": [{"id": "D006973", "term": "Hypertension"}],
                 "ancestors": [],
+                "refetched": False,
+                **(stale if stale_line_index == i else stamps),
             }
         )
-        for i in range(1, 6)
+        for i in range(1, n_mesh_lines + 1)
     ]
     mesh_path.write_bytes(gzip.compress(("\n".join(mesh_lines) + "\n").encode("utf-8"), mtime=0))
+    return demog_path, mesh_path
 
-    out_dir = tmp_path / "weekly_build"
-    assert (
-        build_feasibility_benchmarks.main(
-            [
-                "--demographics",
-                str(demog_path),
-                "--condition-mesh",
-                str(mesh_path),
-                "--generated-at",
-                "2026-11-21T12:00:00+00:00",
-                "--out",
-                str(out_dir),
-            ]
-        )
-        == 0
+
+def _build_weekly(demog_path: Path, mesh_path: Path, out_dir: Path) -> int:
+    return build_feasibility_benchmarks.main(
+        [
+            "--demographics",
+            str(demog_path),
+            "--condition-mesh",
+            str(mesh_path),
+            "--generated-at",
+            "2026-11-21T12:00:00+00:00",
+            "--out",
+            str(out_dir),
+        ]
     )
+
+
+def test_weekly_demographics_and_condition_mesh_sidecar_build(tmp_path: Path) -> None:
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    out_dir = tmp_path / "weekly_build"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 0
     assert check_feasibility_contract.main([str(out_dir)]) == 0
     strata = json.loads((out_dir / "strata.json").read_text(encoding="utf-8"))
     assert strata["by_mesh_descriptor"][0]["mesh_id"] == "D006973"
     assert strata["by_mesh_descriptor"][0]["n_trials"] == 5
+
+    # The matched run stamps are recorded alongside the sidecar's sha256.
+    run = json.loads((out_dir / "run.json").read_text(encoding="utf-8"))
+    mesh_meta = run["inputs"]["condition_mesh"]
+    assert mesh_meta["provenance_check"] == "weekly_run_stamps_and_cohort_coverage"
+    assert mesh_meta["extracted_at"] == _WEEKLY_EXTRACTED_AT
+    assert mesh_meta["pipeline_commit"] == _WEEKLY_COMMIT
+    assert mesh_meta["extracted_at"] == run["inputs"]["records"]["source_extracted_at"]
+    assert mesh_meta["pipeline_commit"] == run["inputs"]["records"]["source_pipeline_commit"]
+    assert mesh_meta["n_cohort_trials_covered"] == 5
+    assert mesh_meta["n_rows_outside_cohort"] == 0
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["every_line_from_another_week", "one_line_from_another_week", "stamps_missing", "other_commit"],
+)
+def test_weekly_build_refuses_condition_mesh_sidecar_from_another_run(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    if case == "every_line_from_another_week":
+        demog_path, mesh_path = _write_weekly_inputs(
+            tmp_path,
+            mesh_stamps={
+                "snapshot_date": "2026-11-08",
+                "extracted_at": "2026-11-08T06:00:00+00:00",
+                "pipeline_commit": "fedcba9876543210fedcba9876543210fedcba98",
+            },
+        )
+        expect = "extracted_at '2026-11-08T06:00:00+00:00'"
+    elif case == "one_line_from_another_week":
+        demog_path, mesh_path = _write_weekly_inputs(tmp_path, stale_line_index=4)
+        expect = "NCT99300004 extracted_at"
+    elif case == "stamps_missing":
+        demog_path, mesh_path = _write_weekly_inputs(tmp_path, mesh_stamps={"snapshot_date": "2026-11-15"})
+        expect = "extracted_at None"
+    else:
+        demog_path, mesh_path = _write_weekly_inputs(
+            tmp_path,
+            mesh_stamps={
+                "snapshot_date": "2026-11-15",
+                "extracted_at": _WEEKLY_EXTRACTED_AT,
+                "pipeline_commit": "fedcba9876543210fedcba9876543210fedcba98",
+            },
+        )
+        expect = "pipeline_commit 'fedcba9876543210fedcba9876543210fedcba98'"
+    out_dir = tmp_path / "refused"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 1
+    err = capsys.readouterr().err
+    assert "REFUSED" in err and "not from the run that wrote these full records" in err
+    assert expect in err
+    assert not out_dir.exists()
+
+
+def test_weekly_build_refuses_unstamped_full_records(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body["pipeline_commit"] = None
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    out_dir = tmp_path / "refused"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 1
+    assert "carry no pipeline_commit" in capsys.readouterr().err
+    assert not out_dir.exists()
+
+
+def test_condition_mesh_sidecar_must_cover_every_cohort_trial(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Weekly input: matching stamps, but lines for only 3 of the 5 cohort trials.
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path, n_mesh_lines=3)
+    assert _build_weekly(demog_path, mesh_path, tmp_path / "partial_weekly") == 1
+    err = capsys.readouterr().err
+    assert "no line for 2 of 5 cohort trials (first: NCT99300004, NCT99300005)" in err
+    assert not (tmp_path / "partial_weekly").exists()
+
+    # API v2 archive input: no run stamps to compare, but cohort coverage is still required.
+    archive_path = tmp_path / "studies.jsonl.gz"
+    studies = [make_ctgov_study(f"NCT9970000{i}") for i in (1, 2)]
+    archive_path.write_bytes(
+        gzip.compress(("\n".join(json.dumps(s) for s in studies) + "\n").encode("utf-8"), mtime=0)
+    )
+    def _mesh_lines(ncts: tuple[str, ...]) -> bytes:
+        body = "".join(
+            json.dumps({"nct_id": n, "state": "not_indexed", "meshes": None, "ancestors": None}) + "\n"
+            for n in ncts
+        )
+        return gzip.compress(body.encode("utf-8"), mtime=0)
+
+    mesh_one = tmp_path / "mesh_one.jsonl.gz"
+    mesh_one.write_bytes(_mesh_lines(("NCT99700001",)))
+    archive_args = ["--archive", str(archive_path), "--generated-at", "2026-11-21T12:00:00+00:00"]
+    out_partial = tmp_path / "partial_archive"
+    assert (
+        build_feasibility_benchmarks.main(
+            archive_args + ["--condition-mesh", str(mesh_one), "--out", str(out_partial)]
+        )
+        == 1
+    )
+    assert "no line for 1 of 2 cohort trials (first: NCT99700002)" in capsys.readouterr().err
+    assert not out_partial.exists()
+
+    # A superset sidecar covering the cohort builds and records which check ran.
+    mesh_all = tmp_path / "mesh_all.jsonl.gz"
+    mesh_all.write_bytes(_mesh_lines(("NCT99700001", "NCT99700002", "NCT99700099")))
+    out_ok = tmp_path / "archive_ok"
+    assert (
+        build_feasibility_benchmarks.main(archive_args + ["--condition-mesh", str(mesh_all), "--out", str(out_ok)])
+        == 0
+    )
+    mesh_meta = json.loads((out_ok / "run.json").read_text(encoding="utf-8"))["inputs"]["condition_mesh"]
+    assert mesh_meta["provenance_check"] == "cohort_coverage_only"
+    assert mesh_meta["extracted_at"] is None and mesh_meta["pipeline_commit"] is None
+    assert mesh_meta["n_cohort_trials_covered"] == 2
+    assert mesh_meta["n_rows_outside_cohort"] == 1
 
 
 def test_python311_ast_full_type_hints_and_zero_rng_hygiene() -> None:
