@@ -296,9 +296,22 @@ def _unwrap_study_object(obj: Any) -> dict[str, Any]:
 
 
 def load_records_dir(records_dir: Path, snapshot_date: str | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Load stored per-trial CT.gov v2 `.json.gz` / `.json` files from `records_dir` deterministically."""
+    """Load stored per-trial CT.gov v2 `.json.gz` / `.json` files from `records_dir` deterministically.
+
+    `snapshot_date` (the date the records were retrieved) is required: a directory of study files
+    carries no acquisition metadata, and a record's lastUpdatePostDate / resultsFirstPostDate say
+    when the registry published it, not when it was retrieved, so neither can stand in for
+    `acquisition.retrieved_at` or the run-id date.
+    """
     if not records_dir.is_dir():
         raise BuildError(f'{records_dir}: not a directory')
+    if snapshot_date is None:
+        raise BuildError(
+            f'{records_dir}: a records directory records no retrieval date; '
+            'supply --snapshot-date YYYY-MM-DD (the date the records were retrieved)'
+        )
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', snapshot_date):
+        raise BuildError(f'snapshot_date {snapshot_date!r} must be YYYY-MM-DD')
     candidates = sorted(
         p for p in records_dir.iterdir()
         if p.is_file() and (p.name.endswith('.json.gz') or (p.name.endswith('.json') and not p.name.endswith('.meta.json')))
@@ -307,7 +320,6 @@ def load_records_dir(records_dir: Path, snapshot_date: str | None = None) -> tup
         raise BuildError(f'{records_dir}: contains no .json.gz or .json study files')
 
     studies_by_nct: dict[str, dict[str, Any]] = {}
-    dates_seen: list[str] = []
     for p in candidates:
         try:
             raw_bytes = gzip.decompress(p.read_bytes()) if p.name.endswith('.gz') else p.read_bytes()
@@ -321,20 +333,10 @@ def load_records_dir(records_dir: Path, snapshot_date: str | None = None) -> tup
         if nct in studies_by_nct:
             raise BuildError(f'{p.name}: duplicate study record for {nct}')
         studies_by_nct[nct] = study
-        # Collect lastUpdatePostDate or resultsFirstPostDate as deterministic fallback date when no
-        # explicit snapshot_date is supplied, so two builds on the same directory share one date.
-        status_mod = ((study.get('protocolSection') or {}).get('statusModule') or {})
-        for key in ('lastUpdatePostDateStruct', 'resultsFirstPostDateStruct'):
-            dt = (status_mod.get(key) or {}).get('date')
-            if isinstance(dt, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', dt):
-                dates_seen.append(dt)
 
     ordered_ids = sorted(studies_by_nct)
     ordered_studies = [studies_by_nct[n] for n in ordered_ids]
     canonical_bytes = acquire.encode(ordered_studies)
-    inferred_date = snapshot_date or (max(dates_seen) if dates_seen else '1970-01-01')
-    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', inferred_date):
-        raise BuildError(f'snapshot_date {inferred_date!r} must be YYYY-MM-DD')
 
     meta = {
         'source': 'local CT.gov API v2 records directory',
@@ -343,9 +345,9 @@ def load_records_dir(records_dir: Path, snapshot_date: str | None = None) -> tup
         'request': None,
         'retrieved_from': None,
         'retrieved_to': None,
-        'retrieved_at': f'{inferred_date}T00:00:00+00:00',
+        'retrieved_at': f'{snapshot_date}T00:00:00+00:00',
         'api_version': 'local_records_dir',
-        'data_timestamp': inferred_date,
+        'data_timestamp': snapshot_date,
         'n_requested': len(ordered_ids),
         'n_records': len(ordered_ids),
         'not_retrieved': [],
@@ -358,11 +360,18 @@ def load_records_dir(records_dir: Path, snapshot_date: str | None = None) -> tup
 
 
 def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Load CT.gov API v2 studies from a frozen HTTP batch responses `.jsonl.gz` cache."""
+    """Load CT.gov API v2 studies from a frozen HTTP batch responses `.jsonl.gz` cache.
+
+    The retrieval date is `snapshot_date` when given, else the latest `fetched_at` of the cache's
+    lines, which is acquisition metadata, but only when every line carries one. Registry dates
+    (lastUpdatePostDate, resultsFirstPostDate) are never used: they say when a record was
+    published, not when it was retrieved.
+    """
     if not cache_path.is_file():
         raise BuildError(f'{cache_path}: responses cache file does not exist')
     studies_by_nct: dict[str, dict[str, Any]] = {}
     fetched_dates: list[str] = []
+    n_lines_without_fetched_at = 0
     try:
         # Read binary lines (`0x0A` only) so U+2028/U+2029/\x85/\r inside `ensure_ascii=False`
         # JSON strings never split a JSONL record mid-line.
@@ -372,9 +381,13 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
                     continue
                 line = raw_line.decode('utf-8')
                 outer = json.loads(line)
-                if isinstance(outer, dict) and isinstance(outer.get('fetched_at'), str):
-                    if re.match(r'^\d{4}-\d{2}-\d{2}', outer['fetched_at']):
-                        fetched_dates.append(outer['fetched_at'][:10])
+                if (
+                    isinstance(outer, dict) and isinstance(outer.get('fetched_at'), str)
+                    and re.match(r'^\d{4}-\d{2}-\d{2}', outer['fetched_at'])
+                ):
+                    fetched_dates.append(outer['fetched_at'][:10])
+                else:
+                    n_lines_without_fetched_at += 1
                 if isinstance(outer, dict) and 'body' in outer:
                     body = json.loads(outer['body']) if isinstance(outer['body'], str) else outer['body']
                     batch_studies = body.get('studies') or [] if isinstance(body, dict) else []
@@ -399,18 +412,15 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
     ordered_studies = [studies_by_nct[n] for n in ordered_ids]
     canonical_bytes = acquire.encode(ordered_studies)
 
-    if snapshot_date is None and not fetched_dates:
-        # Derive deterministic date from latest record post date when cache lines lack `fetched_at`.
-        post_dates: list[str] = []
-        for s in ordered_studies:
-            sm = ((s.get('protocolSection') or {}).get('statusModule') or {})
-            for k in ('lastUpdatePostDateStruct', 'resultsFirstPostDateStruct'):
-                dt = (sm.get(k) or {}).get('date')
-                if isinstance(dt, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', dt):
-                    post_dates.append(dt)
-        inferred_date = max(post_dates) if post_dates else '1970-01-01'
+    if snapshot_date is not None:
+        inferred_date = snapshot_date
+    elif n_lines_without_fetched_at:
+        raise BuildError(
+            f'{cache_path.name}: {n_lines_without_fetched_at} line(s) lack a fetched_at date, so the cache '
+            'does not record when it was retrieved; supply --snapshot-date YYYY-MM-DD'
+        )
     else:
-        inferred_date = snapshot_date or max(fetched_dates)
+        inferred_date = max(fetched_dates)
 
     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', inferred_date):
         raise BuildError(f'snapshot_date {inferred_date!r} must be YYYY-MM-DD')

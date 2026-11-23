@@ -1014,7 +1014,9 @@ def test_contract_checker_refuses_tampering_private_keys_and_broken_invariants(t
         (rec_dir / f'{nct}.json.gz').write_bytes(gzip.compress(json.dumps(s).encode('utf-8'), mtime=0))
 
     out_dir = tmp_path / 'build_out'
-    assert build_outcomes_comparability.main(['--records-dir', str(rec_dir), '--out', str(out_dir)]) == 0
+    assert build_outcomes_comparability.main(
+        ['--records-dir', str(rec_dir), '--snapshot-date', '2026-11-15', '--out', str(out_dir)]
+    ) == 0
     assert check_outcomes_comparability_contract.main([str(out_dir)]) == 0
 
     base = B.load_dir(out_dir)
@@ -1223,6 +1225,40 @@ def test_site_run_id_follows_the_exported_bytes_not_only_the_build(monkeypatch: 
     changed = export_outcomes_comparability_site.select(fam)
     assert changed['run.json']['build_run_id'] == first['run.json']['build_run_id']
     assert changed['run.json']['run_id'] != s_run_id
+
+
+def test_local_sources_never_take_the_retrieval_date_from_registry_dates(tmp_path: Path) -> None:
+    # Regression: without --snapshot-date, --records-dir stamped acquisition.retrieved_at and the
+    # run-id date with the newest lastUpdatePostDate / resultsFirstPostDate (registry publication,
+    # here 2026-11-10) or 1970-01-01, and a responses cache without fetched_at did the same.
+    studies = _sample_studies()
+    rec_dir = tmp_path / 'records_in'
+    rec_dir.mkdir()
+    for s in studies:
+        (rec_dir / f'{C.nct_id_of(s)}.json').write_text(json.dumps(s), encoding='utf-8')
+    with pytest.raises(B.BuildError, match='--snapshot-date'):
+        B.load_records_dir(rec_dir)
+    assert build_outcomes_comparability.main(['--records-dir', str(rec_dir), '--out', str(tmp_path / 'o1')]) == 1
+    assert not (tmp_path / 'o1').exists()
+    assert B.load_records_dir(rec_dir, snapshot_date='2026-11-20')[1]['retrieved_at'] == '2026-11-20T00:00:00+00:00'
+
+    def _cache(name: str, lines: list[dict[str, Any]]) -> Path:
+        path = tmp_path / name
+        path.write_bytes(gzip.compress(''.join(json.dumps(x) + '\n' for x in lines).encode('utf-8'), mtime=0))
+        return path
+
+    partial = _cache('partial.jsonl.gz', [
+        {'fetched_at': '2026-11-15T10:00:00Z', 'body': {'studies': studies[:1]}},
+        {'body': {'studies': studies[1:]}},
+    ])
+    with pytest.raises(B.BuildError, match='1 line\\(s\\) lack a fetched_at'):
+        B.load_responses_cache(partial)
+    assert B.load_responses_cache(partial, snapshot_date='2026-11-20')[1]['retrieved_at'] == '2026-11-20T00:00:00+00:00'
+    complete = _cache('complete.jsonl.gz', [
+        {'fetched_at': '2026-11-15T10:00:00Z', 'body': {'studies': studies[:1]}},
+        {'fetched_at': '2026-11-16T09:00:00Z', 'body': {'studies': studies[1:]}},
+    ])
+    assert B.load_responses_cache(complete)[1]['retrieved_at'] == '2026-11-16T00:00:00+00:00'
 
 
 def test_fetch_rate_limiting_version_guard_and_responses_cache_cli(

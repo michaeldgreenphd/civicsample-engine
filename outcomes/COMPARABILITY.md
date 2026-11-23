@@ -206,14 +206,17 @@ refused, never reported as `meta_verified`.
 ### CLI Entry Points
 
 ```bash
-# Build from stored per-trial .json.gz / .json records directory:
-python3 scripts/build_outcomes_comparability.py --records-dir PATH --out build/outcomes_comparability
+# Build from stored per-trial .json.gz / .json records directory (the files record no retrieval
+# date, so --snapshot-date, the date they were retrieved, is required):
+python3 scripts/build_outcomes_comparability.py --records-dir PATH --snapshot-date YYYY-MM-DD \
+    --out build/outcomes_comparability
 
 # Build from a frozen sha256-verified .jsonl.gz archive (+ optional historical snapshots):
 python3 scripts/build_outcomes_comparability.py --archive PATH \
     [--history-archive hist.jsonl.gz] --out build/outcomes_comparability
 
-# Build from a frozen CT.gov HTTP responses cache:
+# Build from a frozen CT.gov HTTP responses cache (retrieval date from its lines' fetched_at;
+# --snapshot-date YYYY-MM-DD is required when any line lacks one):
 python3 scripts/build_outcomes_comparability.py --responses-cache PATH --out build/outcomes_comparability
 
 # Fetch full CT.gov API v2 records (<= 2 req/s) and build:

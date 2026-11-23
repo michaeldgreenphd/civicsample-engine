@@ -2,7 +2,8 @@
 """Build the trial comparability, estimand, attrition & outcome-fidelity artifacts (manual only).
 
 Examples:
-  python3 scripts/build_outcomes_comparability.py --records-dir PATH --out build/outcomes_comparability
+  python3 scripts/build_outcomes_comparability.py --records-dir PATH --snapshot-date YYYY-MM-DD \
+      --out build/outcomes_comparability
   python3 scripts/build_outcomes_comparability.py --archive build/outcomes_comparability_cache/NAME.jsonl.gz \
       --out build/outcomes_comparability
   python3 scripts/build_outcomes_comparability.py --responses-cache PATH --out build/outcomes_comparability
@@ -13,7 +14,9 @@ Optional flags:
   --nct-list FILE          subset/target NCT IDs to include
   --exclude-list FILE      frame NCT IDs excluded from this build (requires --exclude-reason)
   --exclude-reason TEXT    explicit reason for excluded frame records
-  --snapshot-date DATE     YYYY-MM-DD override for local --records-dir / --responses-cache inputs
+  --snapshot-date DATE     YYYY-MM-DD date the local records were retrieved: required for
+                           --records-dir, and for --responses-cache when any line lacks fetched_at
+                           (registry post dates are never used in its place)
 
 Runs comparability_build.check() before writing anything; stages atomically so a failed run never
 corrupts or partially overwrites an existing output directory.
@@ -84,7 +87,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument('--exclude-list', type=Path, help='text file of excluded frame NCT IDs')
     ap.add_argument('--exclude-reason', help='stated reason for --exclude-list')
     ap.add_argument('--history-archive', type=Path, help='optional frozen jsonl.gz of historical primaryOutcomes')
-    ap.add_argument('--snapshot-date', help='optional YYYY-MM-DD date stamp for --records-dir or --responses-cache')
+    ap.add_argument(
+        '--snapshot-date',
+        help='YYYY-MM-DD retrieval date; required for --records-dir, and for --responses-cache lines without fetched_at',
+    )
     ap.add_argument('--out', type=Path, default=ROOT / 'build' / 'outcomes_comparability')
     args = ap.parse_args(argv)
 
