@@ -346,8 +346,8 @@ def interval_between(start_raw: str | None, end_raw: str | None) -> dict[str, An
 # where this module looked before, so every real trial published its history as absent.
 SUBMISSION_INFOS_PATH: tuple[str, ...] = ('derivedSection', 'miscInfoModule', 'submissionTracking', 'submissionInfos')
 # The entry fields read, each with its type when present and not null. The stored entries hold
-# `releaseDate` and `resetDate` strings and `mcpReleaseN` integers; `unreleaseDate` is CT.gov's
-# date for a review cycle withdrawn after release.
+# `releaseDate` and `resetDate` strings and `mcpReleaseN` integers; no stored entry carries an
+# `unreleaseDate`, so its string type is taken from the other date fields, not from an observed record.
 SUBMISSION_INFO_FIELDS: dict[str, type] = {
     'releaseDate': str, 'unreleaseDate': str, 'resetDate': str, 'mcpReleaseN': int,
 }

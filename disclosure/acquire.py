@@ -787,6 +787,11 @@ def drug_planning_problem(study: dict[str, Any] | None) -> str | None:
             return f'interventions[{i}] is not an object'
         if not isinstance(item.get('type'), str) or not isinstance(item.get('name'), str):
             return f'interventions[{i}] lacks a string type and name'
+        # A blank type could be a drug's, and a blank name gives `extract_drug_candidates` no term, so
+        # either left the drug search unplanned while the route completed over the NCT query alone. No
+        # intervention in the stored records has a blank string type or name.
+        if not item['type'].strip() or not item['name'].strip():
+            return f'interventions[{i}] has a blank type or name'
         others = item.get('otherNames', [])
         if not isinstance(others, list) or not all(isinstance(o, str) for o in others):
             return f'interventions[{i}].otherNames is not a list of strings'

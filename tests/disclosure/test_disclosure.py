@@ -1414,11 +1414,14 @@ def test_producer_digest_and_dirty_check_cover_the_build_import_closure(
 
 def test_link_identity_changes_when_the_action_date_changes_under_the_same_excerpt() -> None:
     study = F._make_study('NCT09990009', title='Fictional study', lead_sponsor='Fictional Trial Sponsor Inc')
+    # The NCT ID stands in the submission whose action it supported (a top-level field ties it to no
+    # action, so its date would be unknown).
+    cited = {'submission_type': 'ORIG', 'submission_status': 'TA', 'submission_status_date': '20220301',
+             'submission_public_notes': 'Pivotal study NCT09990009'}
     app = {
         'application_number': 'NDA777003',
         'sponsor_name': 'Fictional Trial Sponsor Inc',
-        'note': 'Pivotal study NCT09990009',
-        'submissions': [{'submission_type': 'ORIG', 'submission_status': 'TA', 'submission_status_date': '20220301'}],
+        'submissions': [cited],
     }
 
     def links_for(application: dict[str, Any], meta_updated: str) -> list[dict[str, Any]]:
@@ -1436,10 +1439,8 @@ def test_link_identity_changes_when_the_action_date_changes_under_the_same_excer
     assert before[0]['source_sha256'] != refreshed[0]['source_sha256']
     assert before[0]['link_id'] == refreshed[0]['link_id']
 
-    # The application gains an approval: the excerpt and locator stay the same, the action date changes.
-    approved = {**app, 'submissions': [*app['submissions'], {
-        'submission_type': 'ORIG', 'submission_status': 'AP', 'submission_status_date': '20230115',
-    }]}
+    # The cited submission is approved: the excerpt and locator stay the same, the action date changes.
+    approved = {**app, 'submissions': [{**cited, 'submission_status': 'AP', 'submission_status_date': '20230115'}]}
     after = links_for(approved, '2026-11-08')
     assert after[0]['verbatim_excerpt'] == before[0]['verbatim_excerpt']
     assert after[0]['locator'] == before[0]['locator']
@@ -1896,6 +1897,14 @@ def _study_with_arms(arms: Any) -> dict[str, Any]:
         ({'status': 200}, {'interventions': [{'type': 'DRUG'}]}, 'interventions[0] lacks a string type and name'),
         ({'status': 200}, {'interventions': [{'type': 'DRUG', 'name': 'X', 'otherNames': 'Y'}]},
          'otherNames is not a list of strings'),
+        # On f68199e a blank name planned no drug term and a blank type hid a drug, so the route read
+        # no_candidate_in_completed_scope over the NCT query alone.
+        ({'status': 200}, {'interventions': [{'type': 'DRUG', 'name': ''}]},
+         'interventions[0] has a blank type or name'),
+        ({'status': 200}, {'interventions': [{'type': 'DRUG', 'name': '  '}]},
+         'interventions[0] has a blank type or name'),
+        ({'status': 200}, {'interventions': [{'type': '', 'name': 'Zorbatinib'}]},
+         'interventions[0] has a blank type or name'),
     ],
 )
 def test_openfda_route_is_incomplete_when_drug_queries_cannot_be_planned(
@@ -1914,6 +1923,47 @@ def test_a_record_that_registers_no_drug_is_a_completed_openfda_search(arms: Any
     assert cell['state'] == 'no_candidate_in_completed_scope', cell
     # A CT.gov 404 is the registry's own answer: no record, so nothing to plan.
     assert _openfda_cell_without_candidates({'status': 404}, None)['state'] == 'document_unavailable'
+
+
+def _nct_cited_link(app: dict[str, Any]) -> dict[str, Any]:
+    nct = 'NCT09990001'
+    records = {f'openfda/nct/{nct}': {'status': 200, 'body': {'meta': {'results': {'total': 1}}, 'results': [app]}}}
+    links = E.build_openfda_links(nct, F.STUDIES[nct], records, set())
+    return next(x for x in links if x['automated_validation'] == 'identifier_confirmed')
+
+
+_ORIG_2000 = {'submission_type': 'ORIG', 'submission_number': '1', 'submission_status': 'AP',
+              'submission_status_date': '20000115'}
+
+
+@pytest.mark.parametrize(
+    ('app', 'date', 'precision'),
+    [
+        # On f68199e every case took the original approval, 2000-01-15.
+        ({'application_number': 'NDA990001', 'submissions': [
+            _ORIG_2000, {'submission_type': 'SUPPL', 'submission_number': '40', 'submission_status': 'AP',
+                         'submission_status_date': '20250610',
+                         'submission_public_notes': 'Supported by NCT09990001.'}]},
+         '2025-06-10', 'day'),
+        # cited outside any submission: no action is tied to the trial
+        ({'application_number': 'NDA990001', 'sponsor_name': 'PFIZER INC (NCT09990001)', 'submissions': [_ORIG_2000]},
+         None, 'missing'),
+        # cited in a submission with no action date
+        ({'application_number': 'NDA990001', 'submissions': [
+            _ORIG_2000, {'submission_type': 'SUPPL', 'submission_public_notes': 'Supported by NCT09990001.'}]},
+         None, 'missing'),
+        # control: cited in the original approval itself
+        ({'application_number': 'NDA990001', 'submissions': [{**_ORIG_2000, 'submission_public_notes': 'NCT09990001'}]},
+         '2000-01-15', 'day'),
+    ],
+)
+def test_an_nct_cited_fda_link_takes_the_cited_submissions_date(
+    app: dict[str, Any], date: str | None, precision: str
+) -> None:
+    link = _nct_cited_link(app)
+    assert (link['publication_or_action_date'], link['date_precision']) == (date, precision)
+    if date is None:
+        assert any('no FDA action date is tied to it' in r for r in link['validation_reasons'])
 
 
 @pytest.mark.parametrize('has_results', ['<absent>', None, 'false', 0, True])
