@@ -50,7 +50,7 @@ States: `not_searched`, `search_incomplete_or_blocked`, `document_unavailable`, 
 - **Earliest linked publication / FDA action**: the earliest date across qualifying links lies in `[min earliest, min latest]` of their spans; when that is tighter than any single date the milestone is `bounded_composite`. An undated qualifying link may precede every dated one, so then the milestone has `precision = "bounded_above_only"`, `date = null`, `earliest_bound = null` and only `latest_bound` (with `has_undated_qualifying_link = true`); no lag is computed from it. With no dated qualifying link the milestone is `missing`.
 - **QC lag & cycles**: `resultsFirstSubmitDate -> resultsFirstPostDate` plus `protocolSection.statusModule.submissionInfos` cycle counts (kept `null` when absent, never coerced to `0`).
 - **Descriptive 365-day window**: `POSTED_WITHIN_365D`, `POSTED_AFTER_365D`, `PENDING_SUBMITTED_UNPOSTED`, `UNREPORTED_PAST_365D`, `UNREPORTED_WITHIN_365D`, `DATE_PRECISION_INDETERMINATE`, `COMPLETION_DATE_MISSING_OR_FUTURE`, `RESULTS_STATUS_INDETERMINATE`. Strictly describes registry dates; never claims legal FDAAA 801 / 42 CFR Part 11 non-compliance. Only a primary completion date typed `ACTUAL` opens an elapsed-window state; `ESTIMATED`, `ANTICIPATED`, a missing or an unrecognized type gives `COMPLETION_DATE_MISSING_OR_FUTURE` with the type in the reason. `PENDING_SUBMITTED_UNPOSTED` and the two `UNREPORTED_*` states need evidence that results were unposted on `as_of`: an explicit `hasResults=false`, or a `resultsFirstPostDate` after `as_of`. Without it (`hasResults` missing or non-boolean, or `true` with neither a results section nor a post date) the state is `RESULTS_STATUS_INDETERMINATE`, even when a `resultsFirstSubmitDate` is recorded; the contract refuses a pending or unreported window state that lacks this evidence. A month- or year-precision completion date that overlaps `as_of` is `DATE_PRECISION_INDETERMINATE` before any posted or submitted state is considered, since completion may fall after both.
-- **Cross-source discordance**: `published_results_while_ctgov_unreported`, `fda_cited_while_ctgov_unreported`, `ctgov_posted_no_linked_results_publication`, `concordant_multi_source_disclosed`, `unreported_across_completed_routes`, `coverage_incomplete_or_awaiting_review`. The "CT.gov unreported" states need the CT.gov results route at `no_candidate_in_completed_scope`; a record with `hasResults=true` but no `resultsSection` (`available_document_insufficient`) is ambiguous and stays `coverage_incomplete_or_awaiting_review`, and so is a record that omits `hasResults` or carries a non-boolean value: only an explicit `hasResults=false` is the registry's negative.
+- **Cross-source discordance**: `published_results_while_ctgov_unreported`, `fda_cited_while_ctgov_unreported`, `ctgov_posted_no_linked_results_publication`, `concordant_multi_source_disclosed`, `unreported_across_completed_routes`, `coverage_incomplete_or_awaiting_review`. The "CT.gov unreported" states need the CT.gov results route at `no_candidate_in_completed_scope`; a record with `hasResults=true` but no `resultsSection` (`available_document_insufficient`) is ambiguous and stays `coverage_incomplete_or_awaiting_review`, and so is a record that omits `hasResults` or carries a non-boolean value: only an explicit `hasResults=false` is the registry's negative. The summary's `trials_ctgov_results_posted` (and the `ctgov_posted_trials` denominator) counts the registry fact, trials whose record generated the `ctgov_results` link, whatever a review says; the discordance flag `ctgov_results_posted` follows the reviewed route, so an `indeterminate` review sets it false.
 - **Sponsor rollups (`sponsors.json`)**: read-only `sponsors/` attribution providing both `current_owner` (`canonical`) and `as_registered` (`entity`) views while keeping `attributed`, `reviewed_excluded`, and `unreviewed` strictly disjoint and separate.
 
 ## Running it
@@ -75,6 +75,9 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 # refuses a trial that appears more than once with different records (identical copies are fine),
 # and needs a new or empty --cache, so no earlier CT.gov version or other source's record is mixed in.
 # They also refuse openFDA drug-query records made with an earlier query form: re-run the openfda stage.
+# A CT.gov answer whose record is a different trial (its own nctId differs from the one requested, as an
+# obsolete ID can be answered under the current one) is logged as unusable, never settled, and freezing
+# and loading refuse a cache that holds one as settled: re-run the ctgov stage.
 
 # 2. Offline deterministic build from frozen cache (runs contract check before writing):
 python3 scripts/build_drug_disclosure.py build \
@@ -89,8 +92,9 @@ python3 scripts/build_drug_disclosure.py build \
 # timestamps (an acquisition resumed after, or running across, a CT.gov data refresh) is refused unless
 # --as-of is given. An explicit --as-of may not be later than the earliest CT.gov data timestamp in the
 # cache (else its earliest fetch): the frozen records cannot show what was posted after that date. The
-# contract applies the same bound. --generated-at must be a whole ISO 8601 UTC timestamp (Z or +00:00),
-# checked before anything is seeded and again by the contract.
+# contract applies the same bound. --generated-at (like freeze-local's --fetched-at) must be a whole
+# ISO 8601 UTC timestamp written with Z or +00:00, checked before anything is seeded and again by the
+# contract; -00:00, which RFC 3339 uses for an unknown local offset, is refused.
 
 # 3. Producer contract check and atomic site export. run.json producer.commit and
 #    uncommitted_changes are null when git was missing or failed at build time (never false); such a

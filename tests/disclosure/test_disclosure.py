@@ -2004,7 +2004,8 @@ def test_as_of_after_the_frozen_ctgov_data_is_refused(
 
 
 @pytest.mark.parametrize('value', ['not-a-timestamp', '2026-02-30T12:00:00+00:00', '2026-11-01',
-                                   '2026-11-01T12:00:00', '2026-11-01T12:00:00+01:00', '2026-11-01T12:00:00Zjunk'])
+                                   '2026-11-01T12:00:00', '2026-11-01T12:00:00+01:00', '2026-11-01T12:00:00Zjunk',
+                                   '2026-11-01T12:00:00-00:00'])  # RFC 3339: -00:00 = offset unknown
 def test_generated_at_must_be_a_whole_utc_timestamp(
     tmp_path: Path, frozen_cache: A.FrozenCache, built_files: dict[str, Any], value: str
 ) -> None:
@@ -2035,6 +2036,8 @@ def test_generated_at_must_be_a_whole_utc_timestamp(
         ('2026-11-01', '2026-11-01T08:00:00', 'fetched_at must be a whole'),  # a bare date names no instant
         ('2026-11-01T12:00:00', '2026-11-01T08:00:00', 'fetched_at must carry a UTC offset'),  # naive
         ('2026-11-01T12:00:00+01:00', '2026-11-01T08:00:00', 'fetched_at must carry a UTC offset'),
+        # RFC 3339 writes -00:00 for an unknown local offset: a zero number, but not a stated UTC time
+        ('2026-11-01T12:00:00-00:00', '2026-11-01T08:00:00', 'fetched_at must carry a UTC offset'),
         ('2026-11-01T12:00:00+00:00', '2026-11-01', 'data_timestamp must be a whole'),
         ('2026-11-01T12:00:00+00:00', 'yesterday', 'data_timestamp must be a whole'),
         # CT.gov's dataTimestamp has no offset; a zoned value's first ten characters can name the
@@ -2386,6 +2389,74 @@ def _build_kwargs() -> dict[str, Any]:
         'producer': cli_build.producer_metadata(),
         'generated_at': F.GENERATED_AT,
     }
+
+
+def test_a_ctgov_answer_for_another_trial_is_never_settled_frozen_or_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # /studies/NCT09990002 answers with NCT09990001's record (as an obsolete ID can be answered
+    # under the trial's current one).
+    def other_trial_get(url: str, params: dict[str, Any] | None) -> A.Response:
+        if url == f'{A.CTGOV_API}/studies/NCT09990002':
+            return F._json_resp(F.STUDIES['NCT09990001'])
+        return F.stub_get()(url, params)
+
+    ids = ['NCT09990001', 'NCT09990002']
+    key = 'ctgov/study/NCT09990002'
+    cache = tmp_path / 'other_trial_cache'
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    raw = A.raw_log_path(cache, 'ctgov')
+    # Acquired by code that accepted any valid study record: the answer is settled.
+    with monkeypatch.context() as mp:
+        mp.setattr(A, 'ctgov_study_answers', lambda body, nct_id: A.ctgov_study_valid(body))
+        A.fetch_ctgov_studies(ids, A.ResponseLog(raw), other_trial_get, throttle, run_stamp='2026-11-01')
+    assert A.ResponseLog(raw).records[key]['status'] == 200
+    with pytest.raises(A.CacheIntegrityError, match=r'records for a different NCT ID .*NCT09990002'):
+        A.freeze_cache(cache, ids, frozen_at=F.GENERATED_AT)
+    # Frozen by code without the freeze check, it is refused at load.
+    with monkeypatch.context() as mp:
+        mp.setattr(A, 'ctgov_studies_answered_for_another_trial', lambda records: [])
+        A.freeze_cache(cache, ids, frozen_at=F.GENERATED_AT)
+    with pytest.raises(A.CacheIntegrityError, match=r'records for a different NCT ID .*NCT09990002'):
+        A.load_frozen_cache(cache)
+    # Run again, the ctgov stage logs the answer as unusable; the cache then freezes and builds, and
+    # nothing of NCT09990001's record is published under NCT09990002.
+    res = A.fetch_ctgov_studies(ids, A.ResponseLog(raw), other_trial_get, throttle, run_stamp='2026-11-02')
+    assert res == {'studies_answered': 1, 'studies_unanswered': 1}
+    assert A.ResponseLog(raw).records[key]['status'] == A.UNUSABLE_200
+    A.freeze_cache(cache, ids, frozen_at=F.GENERATED_AT)
+    built = ART.build_artifacts(A.load_frozen_cache(cache), **_build_kwargs())
+    assert ART.check_contract(built) == []
+    study = next(s for s in built['studies.json']['studies'] if s['nct_id'] == 'NCT09990002')
+    assert study['registry_state'] == 'lookup_failed' and study['brief_title'] is None
+    assert not [x for x in built['links.json']['links'] if x['nct_id'] == 'NCT09990002'
+                and x['source_route'] == 'ctgov_results']
+    assert _cell_of(built, 'NCT09990002', 'ctgov_results')['state'] == 'search_incomplete_or_blocked'
+
+
+def test_posted_results_count_is_the_registry_fact_whatever_the_review(
+    tmp_path: Path, frozen_cache: A.FrozenCache, built_files: dict[str, Any]
+) -> None:
+    ct = next(x for x in built_files['links.json']['links']
+              if x['nct_id'] == 'NCT09990001' and x['source_route'] == 'ctgov_results')
+    rev_csv = tmp_path / 'reviews.csv'
+    with rev_csv.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.REVIEW_COLUMNS)
+        w.writerow([ct['link_id'], 'NCT09990001', 'Dr. Fictional', '2026-11-02', 'indeterminate', 'unsure'])
+    reviewed = ART.build_artifacts(frozen_cache, **{**_build_kwargs(), 'reviews_path': rev_csv},
+                                   as_of=date.fromisoformat(F.AS_OF))
+    assert ART.check_contract(reviewed) == []
+    # The review holds the CT.gov cell and the discordance flag back, as designed ...
+    assert _cell_of(reviewed, 'NCT09990001', 'ctgov_results')['state'] == 'candidate_awaiting_review'
+    assert _timeline_of(reviewed, 'NCT09990001')['discordance']['ctgov_results_posted'] is False
+    # ... but the trial still carries a posted resultsSection, and the count says so.
+    def metric(files: dict[str, Any], mid: str) -> dict[str, Any]:
+        return next(m for m in files['summary.json']['metrics'] if m['id'] == mid)
+    for mid in ('trials_ctgov_results_posted', 'trials_with_exact_qc_lag'):
+        assert metric(reviewed, mid)['numerator'] == metric(built_files, mid)['numerator']
+    assert metric(reviewed, 'trials_ctgov_results_posted')['numerator'] == 2
+    assert reviewed['summary.json']['denominators']['ctgov_posted_trials']['n'] == 2
 
 
 def test_same_day_resume_after_a_ctgov_refresh_records_both_data_timestamps(tmp_path: Path) -> None:

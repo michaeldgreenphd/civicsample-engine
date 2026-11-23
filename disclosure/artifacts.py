@@ -259,7 +259,12 @@ def summarise_artifacts(
     """Compute `summary.json` from the sibling payloads; contract checker re-runs this for parity."""
     n_included = len(studies)
     n_retrieved = sum(1 for s in studies if s['registry_state'] == 'retrieved')
-    n_ctgov_posted = sum(1 for t in timelines if t['discordance']['ctgov_results_posted'])
+    # A trial carries a posted resultsSection when its record generated the `ctgov_results` link
+    # (`evidence.build_ctgov_results_links`: hasResults=true and a non-empty resultsSection). That is
+    # the registry fact, counted whatever a review says: the discordance flag `ctgov_results_posted`
+    # is false while a review holds the link `indeterminate`, so it would undercount.
+    posted_ids = {x['nct_id'] for x in links if x['source_route'] == 'ctgov_results'}
+    n_ctgov_posted = sum(1 for s in studies if s['nct_id'] in posted_ids)
     n_links = len(links)
     n_cells = sum(len(c['routes']) for c in coverage_rows)
 
@@ -331,7 +336,7 @@ def summarise_artifacts(
           sum(1 for t in timelines if t['submission_infos']['present'] is True), 'retrieved_trials',
           'Retrieved trials whose protocolSection.statusModule carries a submissionInfos array.'),
         m('trials_with_exact_qc_lag', 'Trials with exact day-level QC lag',
-          sum(1 for t in timelines if t['discordance']['ctgov_results_posted'] and t['qc_lag']['state'] == 'exact'),
+          sum(1 for t in timelines if t['nct_id'] in posted_ids and t['qc_lag']['state'] == 'exact'),
           'ctgov_posted_trials',
           'Posted-results trials with day-precision resultsFirstSubmitDate and resultsFirstPostDate.'),
         m('links_identifier_confirmed', 'Identifier-confirmed evidence links',

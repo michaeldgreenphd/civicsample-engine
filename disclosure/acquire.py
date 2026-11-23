@@ -101,6 +101,8 @@ def timestamp_problem(value: Any, label: str, *, offset: Literal['utc', 'none'])
     `datetime.fromisoformat` alone accepts a bare date (`2026-11-01`), which names no instant, so a
     date and an hour:minute time are required and the whole value must parse. `offset='utc'` also
     requires a zero UTC offset (`Z` or `+00:00`): acquisition and generation times are stamped in UTC.
+    The offset is checked as text, not only as a number: RFC 3339 uses `-00:00` to say the local
+    offset is unknown, so it is refused although `fromisoformat` reads it as zero.
     `offset='none'` requires no offset at all, the form of CT.gov's own `dataTimestamp`
     (`2026-11-13T10:00:06`). Data timestamps are compared as strings and cut to their first ten
     characters for `as_of`, so a zoned value (`2026-11-01T23:30:00-05:00`, which is 2 November in
@@ -113,7 +115,11 @@ def timestamp_problem(value: Any, label: str, *, offset: Literal['utc', 'none'])
         parsed = datetime.fromisoformat(value)
     except ValueError:
         return f'{label} must be a whole ISO 8601 date and time, got {value!r}'
-    if offset == 'utc' and (parsed.tzinfo is None or parsed.utcoffset() != timedelta(0)):
+    if offset == 'utc' and (
+        parsed.tzinfo is None
+        or parsed.utcoffset() != timedelta(0)
+        or not re.search(r'(?:Z|\+00:00)\Z', value)
+    ):
         return f'{label} must carry a UTC offset (Z or +00:00), got {value!r}'
     if offset == 'none' and parsed.tzinfo is not None:
         return f"{label} must carry no UTC offset, as CT.gov's dataTimestamp does not, got {value!r}"
@@ -389,6 +395,29 @@ def ctgov_study_valid(body: Any) -> bool:
         return False
     nct = ident.get('nctId')
     return isinstance(nct, str) and NCT_RE.match(nct) is not None
+
+
+def ctgov_study_answers(body: Any, nct_id: str) -> bool:
+    """Whether `body` is a valid CT.gov study record for `nct_id` itself.
+
+    `/studies/{nct_id}` can answer with a structurally valid record whose own `nctId` differs (for
+    example an obsolete ID answered under the trial's current one). Its titles, results and references
+    would be published under the requested ID, so such an answer is not settled at acquisition and a
+    frozen cache holding one is refused (`ctgov_studies_answered_for_another_trial`).
+    """
+    return ctgov_study_valid(body) and body['protocolSection']['identificationModule']['nctId'] == nct_id
+
+
+def ctgov_studies_answered_for_another_trial(ctgov_records: dict[str, dict[str, Any]]) -> list[str]:
+    """`ctgov/study/{id}` keys whose HTTP 200 record is a study for a different NCT ID, sorted."""
+    out: list[str] = []
+    for key, rec in ctgov_records.items():
+        if not key.startswith('ctgov/study/') or not isinstance(rec, dict) or rec.get('status') != 200:
+            continue
+        wanted = key[len('ctgov/study/'):]
+        if ctgov_study_valid(rec.get('body')) and not ctgov_study_answers(rec.get('body'), wanted):
+            out.append(key)
+    return sorted(out)
 
 
 def epmc_search_valid(body: Any) -> bool:
@@ -811,7 +840,9 @@ def fetch_ctgov_studies(
             f'{CTGOV_API}/studies/{nct_id}',
             None,
             tag={'nct_id': nct_id},
-            valid=ctgov_study_valid,
+            # The record must be the requested trial's own (`ctgov_study_answers`): an answer for
+            # another NCT ID is logged as unusable and requested again on the next run.
+            valid=lambda body, wanted=nct_id: ctgov_study_answers(body, wanted),
         )
         if rec is not None and rec.get('status') in FINAL_STATUSES:
             answered += 1
@@ -1250,9 +1281,9 @@ def freeze_cache(
     """Freeze all acquired source logs under `cache_dir` and write `manifest.json` sidecar.
 
     Refuses when any requested NCT ID has no CT.gov study response record in raw/ctgov.jsonl, when
-    the CT.gov version observations do not bracket the study answers (`ctgov_version_bracket_problem`),
-    or when a drug-query record the build will read in raw/openfda.jsonl was made with an earlier
-    query form.
+    an HTTP 200 study response is a record for a different NCT ID, when the CT.gov version
+    observations do not bracket the study answers (`ctgov_version_bracket_problem`), or when a
+    drug-query record the build will read in raw/openfda.jsonl was made with an earlier query form.
     """
     ids = sorted(set(requested_nct_ids))
     if not ids or any(not NCT_RE.match(i) for i in ids):
@@ -1266,6 +1297,12 @@ def freeze_cache(
         raise CacheIntegrityError(
             f'{cache_dir}: {len(unlooked)} requested NCT ID(s) have no CT.gov study response in '
             f'raw/ctgov.jsonl ({unlooked[:5]}); run the ctgov stage for them before freezing'
+        )
+    foreign = ctgov_studies_answered_for_another_trial(ctgov_log.records)
+    if foreign:
+        raise CacheIntegrityError(
+            f'{cache_dir}: {len(foreign)} CT.gov study response(s) in raw/ctgov.jsonl are records for a '
+            f'different NCT ID than the one requested ({foreign[:3]}); run the ctgov stage again before freezing'
         )
     bracket = ctgov_version_bracket_problem(read_jsonl(ctgov_raw))
     if bracket:
@@ -1359,8 +1396,9 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
     """Strictly verify and load a frozen disclosure cache for offline build execution.
 
     Besides the archive hashes, every NCT ID the manifest requests must have a CT.gov study
-    response record (`ctgov_ids_without_study_record`), and every openFDA drug-query record the
-    build will read must have been made with today's query form (`stale_openfda_drug_queries`).
+    response record (`ctgov_ids_without_study_record`), no HTTP 200 study response may be a record
+    for a different NCT ID (`ctgov_studies_answered_for_another_trial`), and every openFDA drug-query
+    record the build will read must have been made with today's query form (`stale_openfda_drug_queries`).
     """
     if not cache_dir.is_dir():
         raise CacheIntegrityError(f'{cache_dir}: cache directory does not exist')
@@ -1454,6 +1492,13 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
         raise CacheIntegrityError(
             f'{cache_dir}: {len(unlooked)} requested NCT ID(s) in manifest.json have no CT.gov study '
             f'response in ctgov.jsonl.gz ({unlooked[:5]}); the cache does not cover its own frame'
+        )
+    foreign = ctgov_studies_answered_for_another_trial(loaded['ctgov'][0])
+    if foreign:
+        raise CacheIntegrityError(
+            f'{cache_dir}: {len(foreign)} CT.gov study response(s) in ctgov.jsonl.gz are records for a '
+            f'different NCT ID than the one requested ({foreign[:3]}); run `acquire --stage ctgov --stage '
+            'freeze` to request them again'
         )
     stale = stale_openfda_drug_queries(loaded['openfda'][0], loaded['ctgov'][0], ids)
     if stale:
