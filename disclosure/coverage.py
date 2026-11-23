@@ -122,13 +122,26 @@ def ctgov_results_cell(
     has_results = body.get('hasResults')
     rs_mod = body.get('resultsSection')
     live = _active_links(route_links)
-    confirmed = [x for x in live if x['automated_validation'] == 'identifier_confirmed' and x['review_status'] != 'indeterminate']
+    # The ctgov_results link is generated only from the retrieved record's own posted resultsSection
+    # (hasResults=true and non-empty), so it states a registry fact about this NCT ID. A human review
+    # marking it `rejected_false_positive` or `confirmed_background_only` is recorded on the link but
+    # cannot turn that fact into a negative; only `indeterminate` holds the route at awaiting review.
+    confirmed = [
+        x for x in route_links
+        if x['automated_validation'] == 'identifier_confirmed' and x['review_status'] != 'indeterminate'
+    ]
     if confirmed:
         reviewed = sum(1 for x in confirmed if x['review_status'] != 'unreviewed')
+        overridden = sum(1 for x in confirmed if x['review_status'] in ('rejected_false_positive', 'confirmed_background_only'))
+        note = (
+            f'; {overridden} review(s) marking it rejected or background-only are recorded on the link '
+            'but do not override the posted record'
+            if overridden else ''
+        )
         return _cell(
             route,
             'verified_link',
-            f'retrieved study record carries a posted resultsSection ({reviewed}/{len(confirmed)} human-reviewed)',
+            f'retrieved study record carries a posted resultsSection ({reviewed}/{len(confirmed)} human-reviewed){note}',
             has_results=True,
             n_links=len(confirmed),
         )
@@ -146,13 +159,6 @@ def ctgov_results_cell(
             'available_document_insufficient',
             'study record sets hasResults=true, but resultsSection is absent or empty',
             has_results=True,
-        )
-    if route_links and all(x['review_status'] in ('rejected_false_positive', 'confirmed_background_only') for x in route_links):
-        return _cell(
-            route,
-            'no_candidate_in_completed_scope',
-            'posted results link was rejected by human review',
-            has_results=bool(has_results),
         )
     return _cell(
         route,

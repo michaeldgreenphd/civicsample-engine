@@ -82,6 +82,14 @@ DISCORDANCE_STATES = (
     'coverage_incomplete_or_awaiting_review',
 )
 
+# The discordance states that assert CT.gov has no posted results. They need the CT.gov route at
+# `no_candidate_in_completed_scope`, so a record with hasResults=true never carries one.
+CTGOV_UNREPORTED_DISCORDANCE = (
+    'published_results_while_ctgov_unreported',
+    'fda_cited_while_ctgov_unreported',
+    'unreported_across_completed_routes',
+)
+
 SPONSOR_REVIEW_STATES = ('attributed', 'reviewed_excluded', 'unreviewed')
 
 WINDOW_365D_NOTE = (

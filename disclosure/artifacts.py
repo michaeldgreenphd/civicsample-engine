@@ -894,6 +894,12 @@ def check_contract(
                         and x['review_status'] == 'confirmed_same_trial_results'
                         for x in rl
                     )
+                elif rname == 'ctgov_results':
+                    # The registry's own posted resultsSection: a rejecting review does not unverify it.
+                    ok = any(
+                        x['automated_validation'] == 'identifier_confirmed' and x['review_status'] != 'indeterminate'
+                        for x in rl
+                    )
                 else:
                     ok = any(
                         x['automated_validation'] == 'identifier_confirmed'
@@ -917,10 +923,14 @@ def check_contract(
             links_by_nct.setdefault(str(x.get('nct_id')), []).append(x)
 
     # Timeline invariants
+    has_results_by_nct = {str(s.get('nct_id')): s.get('has_results') for s in studies if isinstance(s, dict)}
     for tl in timelines:
         nct = str(tl.get('nct_id'))
         wstate = (tl.get('window_365d') or {}).get('state')
         dstate = (tl.get('discordance') or {}).get('state')
+        # A record with hasResults=true never establishes that CT.gov is unreported, whatever the reviews say.
+        if has_results_by_nct.get(nct) is True and dstate in T.CTGOV_UNREPORTED_DISCORDANCE:
+            problems.append(f'{nct}: CT.gov record has hasResults=true, but discordance is {dstate!r}')
         if wstate not in T.WINDOW_STATES_365D:
             problems.append(f'{nct}: invalid window_365d state {wstate!r}')
         if dstate not in T.DISCORDANCE_STATES:

@@ -1527,3 +1527,48 @@ def test_local_freeze_refuses_an_existing_cache_instead_of_mixing_its_records(
     loaded = A.load_frozen_cache(empty)
     assert [k for k in loaded.ctgov if k.startswith('ctgov/version/')] == ['ctgov/version/2025-06-30']
     assert loaded.literature_meta is None and loaded.openfda_meta is None
+
+
+def test_reviews_cannot_unpost_ctgov_results_or_make_the_trial_unreported(
+    tmp_path: Path,
+    frozen_cache: A.FrozenCache,
+    built_files: dict[str, Any],
+) -> None:
+    ct_links = {
+        x['nct_id']: x for x in built_files['links.json']['links'] if x['source_route'] == 'ctgov_results'
+    }
+    assert set(ct_links) == {'NCT09990001', 'NCT09990004'}
+    rev_csv = tmp_path / 'reviews.csv'
+    with rev_csv.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.REVIEW_COLUMNS)
+        w.writerow([ct_links['NCT09990001']['link_id'], 'NCT09990001', 'Dr. Fictional', '2026-11-02',
+                    'rejected_false_positive', 'disputes the posted results'])
+        w.writerow([ct_links['NCT09990004']['link_id'], 'NCT09990004', 'Dr. Fictional', '2026-11-02',
+                    'confirmed_background_only', 'disputes the posted results'])
+    reviewed = ART.build_artifacts(
+        frozen_cache,
+        reviews_path=rev_csv,
+        statements_path=ROOT / 'disclosure' / 'documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv',
+        producer=cli_build.producer_metadata(),
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+    )
+    assert ART.check_contract(reviewed) == []
+    for nct in ('NCT09990001', 'NCT09990004'):
+        cell = _cell_of(reviewed, nct, 'ctgov_results')
+        # The review is recorded on the link, and the registry's posted results still stand.
+        assert next(x for x in reviewed['links.json']['links'] if x['link_id'] == ct_links[nct]['link_id'])[
+            'review_status'] in ('rejected_false_positive', 'confirmed_background_only')
+        assert cell['state'] == 'verified_link'
+        assert 'do not override the posted record' in cell['reason']
+        assert _timeline_of(reviewed, nct)['discordance'] == _timeline_of(built_files, nct)['discordance']
+    assert _timeline_of(reviewed, 'NCT09990001')['discordance']['state'] == 'concordant_multi_source_disclosed'
+    posted = next(m for m in reviewed['summary.json']['metrics'] if m['id'] == 'trials_ctgov_results_posted')
+    assert posted['numerator'] == 2
+
+    # The contract refuses a hasResults=true trial in a "CT.gov unreported" discordance state.
+    bad = copy.deepcopy(reviewed)
+    _timeline_of(bad, 'NCT09990001')['discordance']['state'] = 'published_results_while_ctgov_unreported'
+    assert any('hasResults=true, but discordance is' in p for p in ART.check_contract(bad))
