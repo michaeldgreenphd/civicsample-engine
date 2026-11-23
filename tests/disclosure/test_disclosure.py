@@ -2024,6 +2024,33 @@ def test_an_nct_cited_fda_link_takes_the_earliest_dated_citing_submission(
                            if n_dated > 1 else [])
 
 
+@pytest.mark.parametrize('raw', [20250102, 20250102.0, ['20250102'], {'date': '20250102'}, True])
+def test_a_mistyped_fda_submission_date_is_unknown(raw: object) -> None:
+    # On 44ce5e3 the value was passed through str(), so the number 20250102 became the action date
+    # 2025-01-02 of a verified link, and of a candidate.
+    nct = 'NCT09990001'
+    cited = {'application_number': 'NDA990001', 'submissions': [
+        {'submission_type': 'SUPPL', 'submission_status': 'AP', 'submission_status_date': raw,
+         'submission_public_notes': 'Supported by NCT09990001.'}]}
+    study = F.STUDIES[nct]
+    drug = A.extract_drug_candidates(study)[0]
+    direct = _nct_cited_link(cited)
+    records = {A.drug_query_key(drug): {'status': 200, 'body': {'meta': {'results': {'total': 1}}, 'results': [cited]}}}
+    via_drug = next(x for x in E.build_openfda_links(nct, study, records, E.trial_sponsor_match_keys(study))
+                    if x['automated_validation'] == 'identifier_confirmed')
+    for link in (direct, via_drug):
+        assert (link['publication_or_action_date'], link['date_precision']) == (None, 'missing')
+        assert any('no FDA action date is tied to it' in r for r in link['validation_reasons'])
+    # The application-level action date, which candidates carry, reads the same way.
+    candidate = {'application_number': 'NDA990002', 'submissions': [
+        {**_ORIG_2000, 'submission_status_date': raw}]}
+    assert E._openfda_action_date(candidate) == (None, 'missing')
+    # Control: the same date as a string is read, for both.
+    cited['submissions'][0]['submission_status_date'] = '20250102'
+    assert _nct_cited_link(cited)['publication_or_action_date'] == '2025-01-02'
+    assert E._openfda_action_date({**candidate, 'submissions': [_ORIG_2000]}) == ('2000-01-15', 'day')
+
+
 @pytest.mark.parametrize('has_results', ['<absent>', None, 'false', 0, True])
 def test_365d_window_needs_explicit_unposted_evidence_before_an_unreported_state(has_results: object) -> None:
     as_of = date(2026, 11, 1)

@@ -683,8 +683,24 @@ def build_literature_search_links(
 
 # ---------------------------------------------------------------- route 4: openFDA Drugs@FDA
 
+def _submission_date(sub: Any) -> tuple[str | None, str]:
+    """A Drugs@FDA submission's `submission_status_date`, normalized, or `(None, 'missing')`.
+
+    Only a string is read. The value had been passed through `str()`, so a number such as 20250102
+    became the date 2025-01-02 and was published as an FDA action date; a value of another type is not
+    a date the source states, so the date is unknown, as it is for a string that does not parse.
+    """
+    raw = sub.get('submission_status_date') if isinstance(sub, dict) else None
+    if not isinstance(raw, str):
+        return None, 'missing'
+    norm, prec = normalize_publication_date(raw)
+    return (norm, prec) if norm is not None else (None, 'missing')
+
+
 def _openfda_action_date(app: dict[str, Any]) -> tuple[str | None, str]:
-    """Select original approval (`ORIG` + `AP`) date, else earliest `AP` date, else earliest submission date."""
+    """Select original approval (`ORIG` + `AP`) date, else earliest `AP` date, else earliest submission date.
+
+    A submission without a readable date (`_submission_date`) takes no part in the choice."""
     subs = app.get('submissions')
     if not isinstance(subs, list) or not subs:
         return None, 'missing'
@@ -694,9 +710,7 @@ def _openfda_action_date(app: dict[str, Any]) -> tuple[str | None, str]:
     for sub in subs:
         if not isinstance(sub, dict):
             continue
-        norm, prec = normalize_publication_date(
-            str(sub.get('submission_status_date') or '') if sub.get('submission_status_date') else None
-        )
+        norm, prec = _submission_date(sub)
         if norm is None:
             continue
         any_dated.append((norm, prec))
@@ -718,16 +732,14 @@ def _cited_submission_date(app: dict[str, Any], field_path: str) -> tuple[str | 
     in a later supplement: an ORIG approval in 2000 beside a 2025 supplement citing the trial gave the
     link the 2000 date, and the timeline an FDA action years before the trial ended. So the date is
     the cited submission's `submission_status_date`, and an NCT ID found outside any submission (the
-    application's own fields, its products) ties the trial to no action, so its date is unknown.
+    application's own fields, its products) ties the trial to no action, so its date is unknown. So
+    does a cited submission whose date is not a readable date string (`_submission_date`).
     """
     match = _CITED_SUBMISSION_RX.match(field_path)
     subs = app.get('submissions')
     if match is None or not isinstance(subs, list) or int(match.group(1)) >= len(subs):
         return None, 'missing'
-    sub = subs[int(match.group(1))]
-    raw = sub.get('submission_status_date') if isinstance(sub, dict) else None
-    norm, prec = normalize_publication_date(str(raw) if raw else None)
-    return (norm, prec) if norm is not None else (None, 'missing')
+    return _submission_date(subs[int(match.group(1))])
 
 
 def _nct_citation(
@@ -758,7 +770,8 @@ def _nct_citation(
         path, excerpt = mentions[0]
         return path, excerpt, None, 'missing', [
             f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({path})',
-            f'{nct_id} is not cited in a dated submission, so no FDA action date is tied to it',
+            f'{nct_id} is not cited in a submission with a readable action date (a `submission_status_date` '
+            'string), so no FDA action date is tied to it',
         ]
     cited_date, _, path, excerpt, precision = min(dated)
     reasons = [f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({path})']
