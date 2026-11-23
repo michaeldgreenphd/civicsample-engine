@@ -31,6 +31,18 @@ from dap import UNIT_BASIS, artifacts  # noqa: E402
 SITE_SCHEMA_VERSION: int = 1
 BUILD_SCHEMA_VERSION: int = 1
 SITE_FILES: tuple[str, ...] = ("summary.json", "strata.json", "sponsors.json")
+# Sidecar provenance the build verified (benchmarks.check_condition_mesh_provenance)
+# and recorded in run.json inputs.condition_mesh; carried to the site manifest so
+# the published files name the extraction run their MeSH descriptors came from.
+MESH_PROVENANCE_KEYS: tuple[str, ...] = (
+    "snapshot_date",
+    "extracted_at",
+    "pipeline_commit",
+    "provenance_check",
+    "provenance_reason",
+    "n_cohort_trials",
+    "n_lines_outside_cohort",
+)
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -95,6 +107,22 @@ def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
     mesh_in = inputs.get("condition_mesh")
     ont_in = inputs.get("condition_ontology") or {}
     sp_in = inputs.get("sponsor_rules") or {}
+    site_mesh: dict[str, Any] | None = None
+    if isinstance(mesh_in, dict):
+        # A build whose run.json lacks these keys predates the sidecar checks:
+        # its sidecar was never verified against its records, so it is refused
+        # rather than published with the provenance silently missing.
+        missing = [k for k in MESH_PROVENANCE_KEYS if k not in mesh_in]
+        if missing:
+            raise ValueError(
+                f"run.json: inputs.condition_mesh lacks {missing}; the sidecar was not "
+                "provenance-checked, rebuild with the current build_dap_benchmarks.py"
+            )
+        site_mesh = {
+            "n_lines": mesh_in.get("n_lines"),
+            "sha256": mesh_in.get("sha256"),
+            **{k: mesh_in[k] for k in MESH_PROVENANCE_KEYS},
+        }
 
     site_manifest: dict[str, Any] = {
         "schema_version": SITE_SCHEMA_VERSION,
@@ -118,14 +146,7 @@ def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
                 "extracted_at": study_in.get("extracted_at"),
                 "pipeline_commit": study_in.get("pipeline_commit"),
             },
-            "condition_mesh": (
-                {
-                    "n_lines": mesh_in.get("n_lines"),
-                    "sha256": mesh_in.get("sha256"),
-                }
-                if isinstance(mesh_in, dict)
-                else None
-            ),
+            "condition_mesh": site_mesh,
             "condition_ontology": {
                 "version": ont_in.get("version"),
                 "sha256": ont_in.get("sha256"),

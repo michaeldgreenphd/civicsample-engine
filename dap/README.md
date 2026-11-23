@@ -91,7 +91,9 @@ does not belong to its study records (`benchmarks.check_condition_mesh_provenanc
 
 `run.json` `inputs.condition_mesh` records the sidecar's three stamps (null
 when its lines carry none), `provenance_check`, `provenance_reason`,
-`n_cohort_trials` and `n_lines_outside_cohort`.
+`n_cohort_trials` and `n_lines_outside_cohort`. `export_dap_benchmarks_site.py`
+copies them into the site's `run.json`, and refuses a build whose
+`inputs.condition_mesh` lacks them (built before these checks existed).
 
 ## Commands
 

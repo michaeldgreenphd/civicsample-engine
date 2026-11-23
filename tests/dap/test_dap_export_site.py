@@ -1,6 +1,8 @@
 """Offline tests for scripts/export_dap_benchmarks_site.py atomic staging and refusals."""
 from __future__ import annotations
 
+import copy
+import gzip
 import hashlib
 import importlib.util
 import json
@@ -28,6 +30,7 @@ if not hasattr(fx, "make_raw_ctgov_study"):
 import build_dap_benchmarks as cli_build  # noqa: E402
 import export_dap_benchmarks_site as site_export  # noqa: E402
 from dap import artifacts  # noqa: E402
+from src import condition_mesh as cmesh  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -81,6 +84,56 @@ def test_site_export_projects_verified_files_and_preserves_summary_counts(
     build_summary = json.loads((verified_build / "summary.json").read_text(encoding="utf-8"))
     site_summary = json.loads((site_dir / "summary.json").read_text(encoding="utf-8"))
     assert {**site_summary, "run_id": build_summary["run_id"]} == build_summary
+
+
+def test_site_manifest_carries_verified_condition_mesh_provenance(tmp_path: Path) -> None:
+    studies = fx.build_fictional_cohort()
+    studies_dir = fx.write_studies_dir(studies, tmp_path / "studies")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    stamps = {
+        "snapshot_date": "2026-11-21",
+        "extracted_at": "2026-11-21T00:00:00+00:00",
+        "pipeline_commit": "deadbeef1234",
+    }
+    raw = b"".join(
+        (json.dumps({**cmesh.select_condition_mesh(s), **stamps}) + "\n").encode("utf-8") for s in studies
+    )
+    mesh_path = tmp_path / "condition_mesh.jsonl.gz"
+    mesh_path.write_bytes(gzip.compress(raw, mtime=0))
+    build = tmp_path / "build"
+    rc = cli_build.main(
+        [
+            "--records-dir",
+            str(studies_dir),
+            "--condition-mesh",
+            str(mesh_path),
+            "--sponsor-rules",
+            str(rules_path),
+            "--generated-at",
+            "2026-11-21T12:00:00+00:00",
+            "--out",
+            str(build),
+        ]
+    )
+    assert rc == 0
+
+    site_dir = tmp_path / "site" / "dap"
+    site_export.export_site(build, site_dir)
+    build_mesh = json.loads((build / "run.json").read_text(encoding="utf-8"))["inputs"]["condition_mesh"]
+    site_mesh = json.loads((site_dir / "run.json").read_text(encoding="utf-8"))["inputs"]["condition_mesh"]
+    assert site_mesh == {k: build_mesh[k] for k in ("n_lines", "sha256", *site_export.MESH_PROVENANCE_KEYS)}
+    assert site_mesh["extracted_at"] == "2026-11-21T00:00:00+00:00"
+    assert site_mesh["pipeline_commit"] == "deadbeef1234"
+    assert site_mesh["snapshot_date"] == "2026-11-21"
+    assert site_mesh["provenance_check"] == "cohort_covered_and_one_run_only"
+    assert site_mesh["n_cohort_trials"] == len(studies)
+
+    # A build manifest without the verified provenance (older build code) is refused.
+    loaded = artifacts.load_dir(build)
+    unverified = copy.deepcopy(loaded)
+    del unverified["run.json"]["inputs"]["condition_mesh"]["provenance_check"]
+    with pytest.raises(ValueError, match="was not provenance-checked"):
+        site_export.select_site_files(unverified)
 
 
 def test_tampered_or_incomplete_build_is_refused_and_leaves_site_intact(
