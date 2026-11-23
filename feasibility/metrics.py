@@ -661,7 +661,13 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(ms, dict):
             continue
         mtype = ms.get("type")
-        if mtype in ("STARTED", "COMPLETED") and mtype not in milestones:
+        if mtype in ("STARTED", "COMPLETED") and mtype in milestones:
+            # A second STARTED or COMPLETED milestone in Period 1 leaves no single count; using
+            # either occurrence would publish an arbitrary one.
+            base["flow_status"] = "malformed_participant_flow"
+            base["completion_rate_status"] = "withheld_missing_started_or_completed"
+            return base
+        if mtype in ("STARTED", "COMPLETED"):
             ach: dict[str, Any] = {}
             for a in ms.get("achievements") or []:
                 if not isinstance(a, dict) or not isinstance(a.get("groupId"), str):

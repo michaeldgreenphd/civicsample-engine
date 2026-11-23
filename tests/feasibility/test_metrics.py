@@ -453,3 +453,19 @@ def test_repeated_milestone_achievement_withholds_retention(milestone_index: int
     assert ret["flow_status"] == "malformed_participant_flow"
     assert ret.get("period1_started") is None
     assert ret.get("period1_completion_rate") is None
+
+
+@pytest.mark.parametrize("milestone_index", [0, 1])  # STARTED, COMPLETED
+def test_repeated_period1_milestone_type_withholds_retention(milestone_index: int) -> None:
+    """A second STARTED (or COMPLETED) milestone with other counts leaves no single count."""
+    import copy
+
+    study = copy.deepcopy(make_ctgov_study("NCT99100065"))
+    milestones = study["resultsSection"]["participantFlowModule"]["periods"][0]["milestones"]
+    repeat = copy.deepcopy(milestones[milestone_index])
+    for a in repeat["achievements"]:
+        a["numSubjects"] = "40"
+    milestones.append(repeat)
+    ret = extract_period1_retention(study)
+    assert ret["flow_status"] == "malformed_participant_flow"
+    assert ret.get("period1_completion_rate") is None
