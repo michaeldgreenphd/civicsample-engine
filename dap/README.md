@@ -122,6 +122,11 @@ all 976 lead rows without a class are named "[Redacted]" (the fixture holds no
 study status, so that they are withheld trials is inferred, not checked), and
 the one such record cached from the API (NCT04060524, `WITHHELD`) has no study
 type either.
+Parts the build or the shared race, ethnicity and sex extractors read without a type check must
+have their API v2 type when present (the start and primary completion date structs,
+`enrollmentInfo`, and the baseline table's groups, denominators, measures, classes, categories and
+measurements; see `TYPED_PROTOCOL_PARTS` and `BASELINE_SHAPE`), so a malformed record is refused by
+name instead of stopping the build with a traceback.
 `contactsLocationsModule` and `derivedSection` are not required: their absence
 is a real "no listed facilities" / `no_derived`, so a whole-module projection
 that omits them cannot be told apart record by record.

@@ -1321,6 +1321,82 @@ def test_records_missing_condition_or_lead_sponsor_payloads_are_refused(
             benchmarks.load_study_records(path)
 
 
+_BASE = "resultsSection.baselineCharacteristicsModule"
+
+
+def _measured_study(nct_id: str) -> dict:
+    """The fixture study with race and sex baseline measures, so every baseline part is present."""
+    return fx.make_raw_ctgov_study(
+        nct_id,
+        measures=[
+            fx.make_measure("Race (NIH/OMB)", [("White", "60"), ("Asian", "40")]),
+            fx.make_measure("Sex: Female, Male", [("Female", "55"), ("Male", "45")]),
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    "path, value, expect",
+    [
+        (("protocolSection", "statusModule", "startDateStruct"), "2023-04-15",
+         "statusModule.startDateStruct (an object)"),
+        (("protocolSection", "designModule", "enrollmentInfo"), 120, "designModule.enrollmentInfo (an object)"),
+        (("resultsSection", "baselineCharacteristicsModule"), None, f"{_BASE} (an object)"),
+        (("resultsSection", "baselineCharacteristicsModule", "denoms"), 0, f"{_BASE}.denoms (a list)"),
+        (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "units"), None,
+         f"{_BASE}.denoms[0].units (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "counts"), "100",
+         f"{_BASE}.denoms[0].counts (a list)"),
+        (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "title"), 5,
+         f"{_BASE}.groups[0].title (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0), "Race",
+         f"{_BASE}.measures[0] (an object)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "title"), None,
+         f"{_BASE}.measures[0].title (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 1, "paramType"), ["COUNT"],
+         f"{_BASE}.measures[1].paramType (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes"), None,
+         f"{_BASE}.measures[0].classes (a list)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "categories", 1), [],
+         f"{_BASE}.measures[0].classes[0].categories[1] (an object)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "categories", 0, "title"), 7,
+         f"{_BASE}.measures[0].classes[0].categories[0].title (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "categories", 0,
+          "measurements"), True, f"{_BASE}.measures[0].classes[0].categories[0].measurements (a list)"),
+    ],
+)
+def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
+    tmp_path: Path, path: tuple, value: object, expect: str
+) -> None:
+    # DAP or the shared race, ethnicity and sex extractors read each of these without a type check, so
+    # each raised AttributeError or TypeError and one record stopped the whole build with a traceback.
+    complete = _measured_study("NCT99800021")
+    bad = _measured_study("NCT99800022")
+    holder = bad
+    for key in path[:-1]:
+        holder = holder[key]
+    holder[path[-1]] = value
+    want = (
+        r"1 of 2 study records lack required protocol modules or fields "
+        rf"\(first: NCT99800022 lacks {re.escape(expect)}\)"
+    )
+    plain = tmp_path / "studies.jsonl"
+    plain.write_text(json.dumps(complete) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=want):
+        benchmarks.load_study_records(plain)
+
+
+def test_records_with_well_typed_baseline_parts_load_and_build(tmp_path: Path) -> None:
+    # Control: the measured fixture passes the type checks and builds.
+    plain = tmp_path / "studies.jsonl"
+    plain.write_text(
+        json.dumps(_measured_study("NCT99800023")) + "\n" + json.dumps(_measured_study("NCT99800024")) + "\n",
+        encoding="utf-8",
+    )
+    records, _ = benchmarks.load_study_records(plain)
+    assert len(benchmarks.build_benchmarks(records, min_cell_trials=1)["trial_rows"]) == 2
+
+
 def test_records_with_condition_and_lead_sponsor_payloads_are_accepted(tmp_path: Path) -> None:
     # Control for the refusals above: the same fixture, untouched, loads through every raw shape, with
     # a single condition, a lead sponsor of class OTHER and no collaborators.

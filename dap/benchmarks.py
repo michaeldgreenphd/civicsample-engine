@@ -539,12 +539,82 @@ def _missing_condition_and_sponsor_payloads(protocol: dict[str, Any]) -> list[st
     return missing
 
 
+# Parts of a raw record that DAP reads, or hands to the shared race, ethnicity and sex extractors
+# (`src/`), without checking their type. A mutation fuzz of the build (each value of a complete
+# record replaced by a list, object, number, boolean, null or blank) found every one of these raising
+# AttributeError, TypeError or KeyError, so one malformed record stopped the whole build with a
+# traceback. A part of the wrong type is refused by name, like a missing module, rather than read as
+# absent; the shared extractors are not changed.
+#   * `TYPED_PROTOCOL_PARTS`: (module, field, type) that must have that type when present.
+#   * `BASELINE_SHAPE`: the baseline table, when present. Each key names a list of objects; inside
+#     an object, `str` means a string when present, `REQUIRED_STR` a string that must be present,
+#     and a nested dict another list of objects.
+TYPED_PROTOCOL_PARTS: tuple[tuple[str, str, type], ...] = (
+    ("statusModule", "startDateStruct", dict),
+    ("statusModule", "primaryCompletionDateStruct", dict),
+    ("designModule", "enrollmentInfo", dict),
+)
+REQUIRED_STR = "required string"
+BASELINE_SHAPE: dict[str, Any] = {
+    "groups": {"title": str},
+    "denoms": {"units": REQUIRED_STR, "counts": {}},
+    "measures": {
+        "title": REQUIRED_STR,
+        "paramType": str,
+        "unitOfMeasure": str,
+        "classes": {"categories": {"title": str, "measurements": {}}},
+    },
+}
+
+
+def _object_list_problems(value: Any, path: str, fields: dict[str, Any]) -> list[str]:
+    """Problems with `value` as a list of objects whose fields follow `fields` (see `BASELINE_SHAPE`)."""
+    if not isinstance(value, list):
+        return [f"{path} (a list)"]
+    out: list[str] = []
+    for i, item in enumerate(value):
+        where = f"{path}[{i}]"
+        if not isinstance(item, dict):
+            out.append(f"{where} (an object)")
+            continue
+        for name, spec in fields.items():
+            if isinstance(spec, dict):
+                if name in item:
+                    out += _object_list_problems(item[name], f"{where}.{name}", spec)
+            elif spec == REQUIRED_STR or name in item:
+                if not isinstance(item.get(name), str):
+                    out.append(f"{where}.{name} (a string)")
+    return out
+
+
+def _mistyped_parts(study: dict[str, Any]) -> list[str]:
+    """Name the `TYPED_PROTOCOL_PARTS` and baseline-table parts of `study` with the wrong type."""
+    protocol = study.get("protocolSection")
+    out: list[str] = []
+    if isinstance(protocol, dict):
+        for mod, field, kind in TYPED_PROTOCOL_PARTS:
+            holder = protocol.get(mod)
+            if isinstance(holder, dict) and field in holder and not isinstance(holder[field], kind):
+                out.append(f"{mod}.{field} (an object)")
+    results = study.get("resultsSection")
+    if isinstance(results, dict) and "baselineCharacteristicsModule" in results:
+        root = "resultsSection.baselineCharacteristicsModule"
+        module = results["baselineCharacteristicsModule"]
+        if not isinstance(module, dict):
+            return out + [f"{root} (an object)"]
+        for name, fields in BASELINE_SHAPE.items():
+            if name in module:
+                out += _object_list_problems(module[name], f"{root}.{name}", fields)
+    return out
+
+
 def _require_complete_records(studies: list[dict[str, Any]], source: str) -> None:
     """Refuse raw API v2 study records that are incomplete (see the notes above).
 
     A record must carry the ``REQUIRED_PROTOCOL_MODULES``, the ``REQUIRED_RECORD_FIELDS`` inside them,
     a non-empty ``conditionsModule.conditions`` list and a lead sponsor with its
-    ``REQUIRED_LEAD_SPONSOR_FIELDS``, and a boolean top-level ``hasResults``, with a non-empty
+    ``REQUIRED_LEAD_SPONSOR_FIELDS``, no part of the wrong type (``_mistyped_parts``), and a boolean
+    top-level ``hasResults``, with a non-empty
     ``resultsSection`` whenever it is true. A record with ``hasResults: true`` but no results section
     was projected or truncated: built from it, its baseline table would read as never posted
     (``no_results_posted``) while the contract passed. Same rule as the feasibility benchmarks (#107).
@@ -563,6 +633,7 @@ def _require_complete_records(studies: list[dict[str, Any]], source: str) -> Non
             and not (isinstance(protocol[mod].get(field), str) and protocol[mod][field].strip())
         ]
         missing += _missing_condition_and_sponsor_payloads(protocol)
+        missing += _mistyped_parts(study)
         has_results = study.get("hasResults")
         if not isinstance(has_results, bool):
             missing.append("hasResults (a boolean)")
