@@ -1190,7 +1190,8 @@ def test_producer_digest_and_dirty_check_cover_the_build_import_closure(
     (tmp_path / 'sponsors' / 'adapter.py').write_bytes((ROOT / 'sponsors' / 'adapter.py').read_bytes() + b'\n# changed\n')
     assert cli_build.source_digest(tmp_path) != same
 
-    # The dirty check asks git about exactly the same list.
+    # The dirty check asks git about the same list, plus the `disclosure` directory so a deleted
+    # tracked file there is reported too.
     calls: list[list[str]] = []
 
     class _Done:
@@ -1204,7 +1205,7 @@ def test_producer_digest_and_dirty_check_cover_the_build_import_closure(
     monkeypatch.setattr(cli_build.subprocess, 'run', _fake_run)
     info = cli_build.producer_metadata(ROOT)
     status_call = next(c for c in calls if c[:2] == ['git', 'status'])
-    assert status_call[status_call.index('--') + 1:] == paths
+    assert status_call[status_call.index('--') + 1:] == ['disclosure', *paths]
     assert info['source_sha256'] == cli_build.source_digest(ROOT, paths)
 
 

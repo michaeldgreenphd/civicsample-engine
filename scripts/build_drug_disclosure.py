@@ -142,7 +142,8 @@ def producer_metadata(root: Path = ROOT) -> dict[str, Any]:
     """Producer repository, HEAD commit (when git metadata is reachable), and `source_sha256`.
 
     The digest and the `git status` dirty check cover the same list (`producer_paths`), checked
-    in `root`.
+    in `root`; the dirty check also names the `disclosure` directory, so a deleted tracked file
+    there counts as an uncommitted change.
     """
     paths = producer_paths(root)
     rev = subprocess.run(
@@ -154,8 +155,10 @@ def producer_metadata(root: Path = ROOT) -> dict[str, Any]:
     commit = rev.stdout.strip() if rev.returncode == 0 and rev.stdout.strip() else None
     dirty: bool | None = None
     if commit is not None:
+        # The `disclosure` directory pathspec also reports a tracked file deleted from the working
+        # tree, which `paths` (files present on disk) cannot name; such a deletion changes the digest.
         st = subprocess.run(
-            ['git', 'status', '--porcelain', '--', *paths],
+            ['git', 'status', '--porcelain', '--', 'disclosure', *paths],
             cwd=root,
             capture_output=True,
             text=True,
