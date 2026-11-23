@@ -122,6 +122,36 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def ontology_problem(doc: Any) -> str | None:
+    """Why a ``condition_ontology.json`` document cannot classify conditions, or ``None``.
+
+    A missing or empty ``categories`` built an empty lookup, so every condition fell to ``Other /
+    Uncategorized`` and the indication strata and sponsor benchmarks still passed the contract; a
+    missing version was recorded as ``"unknown"``. The document must be an object with a non-blank
+    ``metadata.version`` and a non-empty ``categories`` object, each category a non-empty object of
+    subcategories, each a non-empty list of non-blank keyword strings. The shipped file (version 1.0.0)
+    has 19 categories, 132 subcategories and 1,166 keywords, none blank.
+    """
+    if not isinstance(doc, dict):
+        return "the ontology is not a JSON object"
+    metadata = doc.get("metadata")
+    version = metadata.get("version") if isinstance(metadata, dict) else None
+    if not (isinstance(version, str) and version.strip()):
+        return f"metadata.version is {version!r}, not a non-blank string"
+    categories = doc.get("categories")
+    if not (isinstance(categories, dict) and categories):
+        return "categories is not a non-empty object"
+    for primary, secondaries in categories.items():
+        if not primary.strip() or not (isinstance(secondaries, dict) and secondaries):
+            return f"categories.{primary!r} is not a named, non-empty object of subcategories"
+        for secondary, keywords in secondaries.items():
+            if not secondary.strip() or not (
+                isinstance(keywords, list) and keywords and all(isinstance(k, str) and k.strip() for k in keywords)
+            ):
+                return f"categories.{primary!r}.{secondary!r} is not a named, non-empty list of non-blank keywords"
+    return None
+
+
 class OntologyClassifier:
     """Deterministic condition classifier bound to an explicit ``condition_ontology.json`` file.
 
@@ -139,7 +169,9 @@ class OntologyClassifier:
         raw = ontology_path.read_bytes()
         self.sha256 = hashlib.sha256(raw).hexdigest()
         doc = json.loads(raw.decode("utf-8"))
-        self.version = str((doc.get("metadata") or {}).get("version") or "unknown")
+        if problem := ontology_problem(doc):
+            raise ValueError(f"{ontology_path}: {problem}; refusing to classify every condition as Other")
+        self.version = str(doc["metadata"]["version"])
         self._flat_lookup: dict[str, tuple[str, str]] = {}
         for primary, secondaries in (doc.get("categories") or {}).items():
             for secondary, keywords in secondaries.items():

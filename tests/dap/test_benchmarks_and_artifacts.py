@@ -2359,6 +2359,71 @@ def test_a_table_within_one_percent_of_its_denominator_and_one_the_sex_table_bou
     assert bounded["status_detail"] == "table_total_exceeds_sex_table"
 
 
+def _raw_study_with_tables(**stale: Any) -> dict[str, Any]:
+    """A raw study posting race (60/40), ethnicity (30/70) and sex (50/50) tables of 100, plus top-level blocks."""
+    study = fx.make_raw_ctgov_study("NCT99800056", measures=[
+        fx.make_measure("Race (NIH/OMB)", [("White", "60"), ("Asian", "40")]),
+        fx.make_measure("Ethnicity (NIH/OMB)", [("Hispanic or Latino", "30"), ("Not Hispanic or Latino", "70")]),
+        fx.make_measure(*_SEX_100),
+    ])
+    study.update(stale)
+    return study
+
+
+def _reading(demo: dict[str, Any]) -> tuple[str, str, str]:
+    return (demo["race"]["table_status"], demo["ethnicity"]["table_status"], demo["sex_gender"]["sex_report_status"])
+
+
+@pytest.mark.parametrize(
+    "stale",
+    [
+        # On bd5ca5a each stale block on a raw record won over the record's own posted table.
+        {"race": {"reported": False}},
+        {"ethnicity": {"reported": False}},
+        {"sex_gender": {"sex_report_status": "not_reported"}},
+    ],
+)
+def test_a_raw_record_is_read_from_its_own_sections_whatever_blocks_it_carries(stale: dict[str, Any]) -> None:
+    assert _reading(extract_demographics(_raw_study_with_tables(**stale))) == _reading(
+        extract_demographics(_raw_study_with_tables()))
+
+
+def test_a_raw_record_without_extra_blocks_reads_its_tables() -> None:
+    # Control, on both heads.
+    assert _reading(extract_demographics(_raw_study_with_tables())) == ("omb_compatible", "omb_compatible", "reported")
+
+
+_ONE_CATEGORY = {"Oncology": {"Breast": ["breast cancer"]}}
+
+
+@pytest.mark.parametrize(
+    ("doc", "problem"),
+    [
+        # On bd5ca5a each loaded: an empty lookup classified every condition as Other / Uncategorized, and a
+        # missing version was recorded as "unknown".
+        ({}, "metadata.version is None, not a non-blank string"),
+        ({"metadata": {"version": " "}, "categories": _ONE_CATEGORY}, "metadata.version is ' '"),
+        ({"metadata": {"version": "1.0.0"}}, "categories is not a non-empty object"),
+        ({"metadata": {"version": "1.0.0"}, "categories": {}}, "categories is not a non-empty object"),
+        ({"metadata": {"version": "1.0.0"}, "categories": {"Oncology": {"Breast": []}}},
+         "categories.'Oncology'.'Breast' is not a named, non-empty list of non-blank keywords"),
+    ],
+)
+def test_an_ontology_that_cannot_classify_is_refused(tmp_path: Path, doc: dict[str, Any], problem: str) -> None:
+    path = tmp_path / "ontology.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(ValueError, match=re.escape(problem)):
+        benchmarks.OntologyClassifier(path)
+
+
+def test_the_shipped_ontology_and_a_minimal_one_load(tmp_path: Path) -> None:
+    # Controls, on both heads.
+    assert benchmarks.OntologyClassifier().version == "1.0.0"
+    path = tmp_path / "ontology.json"
+    path.write_text(json.dumps({"metadata": {"version": "2"}, "categories": _ONE_CATEGORY}), encoding="utf-8")
+    assert benchmarks.OntologyClassifier(path).classify_one("Breast Cancer") == ("Oncology", "Breast")
+
+
 _COMPOSITION = ("percent_female", "female_share", "of_parsed_total", "of_classified")
 
 

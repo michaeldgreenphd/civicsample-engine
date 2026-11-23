@@ -130,6 +130,16 @@ refuses the input, and each response line must be a whole, successful answer
 ids equal to the requested ones, and no trial returned twice across lines),
 or the build is refused, naming the line.
 
+**The ontology must classify.** `--ontology` (default: the repository's `condition_ontology.json`) must hold a
+non-blank `metadata.version` and a non-empty `categories` object of non-empty subcategory keyword
+lists (`ontology_problem`): an empty or truncated file had classified every condition as Other, and
+the build still passed its contract.
+
+**A raw record is read from its own sections.** The `race`, `ethnicity`, `sex` and `sex_gender`
+blocks are reused only on a weekly full record (`_is_weekly_record`); on a raw API v2 study they are
+extra fields, and a stale `race: {"reported": false}` had hidden a posted race table. No stored raw
+record carries any of them.
+
 **Records must be complete.** A response requested with a `fields=` projection
 is refused, and so is any raw study missing a protocol module CT.gov requires
 on every registration: `identificationModule`, `statusModule`,

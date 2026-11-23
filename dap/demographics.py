@@ -137,6 +137,17 @@ def is_results_posted(record: dict[str, Any]) -> bool:
     return any(isinstance(record.get(k), dict) for k in ("race", "ethnicity", "sex", "sex_gender"))
 
 
+def _is_weekly_record(record: dict[str, Any]) -> bool:
+    """Whether a record is a weekly full record, whose `race`, `ethnicity`, `sex` and `sex_gender`
+    blocks are the extractors' projection of its baseline table, rather than a raw CT.gov API v2 study.
+
+    A raw study is always read from its own sections. Its top-level blocks are not the extractors': the
+    raw loader allows extra fields, so a stale `race: {"reported": false}` beside a posted race table had
+    published the table as absent, and the contract passed. No stored raw record carries any such block.
+    """
+    return "protocolSection" not in record and "resultsSection" not in record
+
+
 def _reads_as_baseline_count(value: Any) -> bool:
     """Whether ``src.utils.get_total_baseline_participants`` reads ``value`` as a count:
     ``int(float(str(value).replace(",", "")))`` succeeds and the value is not None."""
@@ -242,7 +253,7 @@ def extract_sex_gender(
     Never modifies ``src/sex_gender_parser.py`` and never folds
     ``enrollment_minus_parsed`` into ``n_unknown`` or any denominator.
     """
-    existing = record.get("sex_gender")
+    existing = record.get("sex_gender") if _is_weekly_record(record) else None
     if isinstance(existing, dict) and existing.get("sex_report_status") in SEX_GENDER_STATES:
         row = copy.deepcopy(existing)
     else:
@@ -360,7 +371,7 @@ def _sex_participant_total(record: dict[str, Any], sex_gender: dict[str, Any]) -
         )
         if total > 0:
             return int(round(total))
-    legacy_sex = record.get("sex")
+    legacy_sex = record.get("sex") if _is_weekly_record(record) else None
     if isinstance(legacy_sex, dict) and legacy_sex.get("reported") and isinstance(legacy_sex.get("totals"), dict):
         legacy_total = sum(
             int(v) for v in legacy_sex["totals"].values() if isinstance(v, (int, float))
@@ -1041,14 +1052,15 @@ def extract_demographics(
     sex_gender = extract_sex_gender(record, snapshot_date=snapshot_date)
     sex_total = _sex_participant_total(record, sex_gender)
 
-    if isinstance(record.get("race"), dict) or "protocolSection" not in record and "resultsSection" not in record:
+    weekly = _is_weekly_record(record)
+    if weekly:
         raw_race = record.get("race") if isinstance(record.get("race"), dict) else None
     elif posted:
         raw_race = race_extractor.extract_race_data(_study_without_protocol_enrollment_padding(record))
     else:
         raw_race = None
 
-    if isinstance(record.get("ethnicity"), dict) or "protocolSection" not in record and "resultsSection" not in record:
+    if weekly:
         raw_eth = record.get("ethnicity") if isinstance(record.get("ethnicity"), dict) else None
     elif posted:
         raw_eth = ethnicity_extractor.extract_ethnicity_data(_study_without_protocol_enrollment_padding(record))
