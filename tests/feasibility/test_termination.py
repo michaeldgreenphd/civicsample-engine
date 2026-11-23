@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_rules_version_and_curated_csv_is_header_only() -> None:
-    assert TERMINATION_RULES_VERSION == "1.4.3"
+    assert TERMINATION_RULES_VERSION == "1.4.4"
     csv_path = ROOT / "feasibility" / "termination_reviews.csv"
     raw_lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert raw_lines == [",".join(REVIEW_COLUMNS)]
@@ -301,6 +301,13 @@ def test_no_masks_business_only_when_it_denies_a_reason(why: str, category: str)
         ("slow recruitment and no further drug supply", "multiple_signals_detected"),
         ("There was no shortage; business reasons", "business_or_strategic"),
         ("No supply issues; sponsor decision", "business_or_strategic"),
+        # rules 1.4.4: the detector's other manufacturing problem nouns, and a supply chain problem
+        ("No manufacturing defects; terminated for strategic reasons", "business_or_strategic"),
+        ("No manufacturing failures; sponsor decision", "business_or_strategic"),
+        ("No manufacturing hold; sponsor decision", "business_or_strategic"),
+        ("No supply chain issues; sponsor decision", "business_or_strategic"),
+        ("Manufacturing defects", "supply_or_drug_availability"),
+        ("Supply chain issues", "supply_or_drug_availability"),
         # controls: the stated causes stand
         ("Terminated due to FDA feedback", "regulatory_or_clinical_hold"),
         ("Manufacturing issues", "supply_or_drug_availability"),

@@ -674,6 +674,9 @@ _SITE = {"facility": "Hospital A", "country": "United States"}
         ("status", "", "status is blank"),
         ("start_date", None, "start_date is NoneType, not str"),
         ("why_stopped", None, "why_stopped is NoneType, not str"),
+        # On dd1e29c each built: the trial left the stopped benchmarks, or its enrollment read MISSING_TYPE.
+        ("status", "terminated", "status 'terminated' is not a CT.gov status value"),
+        ("enrollment_type", "BANANA", "enrollment_type 'BANANA' is not ACTUAL, ESTIMATED, ANTICIPATED or N/A"),
         # On 1fb8452 any non-empty results_date read as posted results.
         ("results_date", "N/A",
          "results_date 'N/A' is neither \"\" nor a date (any other value reads as posted results)"),
@@ -1565,6 +1568,14 @@ def test_records_missing_condition_or_lead_sponsor_payloads_are_refused(
          "statusModule.completionDateStruct.type (ACTUAL, ESTIMATED or ANTICIPATED)"),
         (("statusModule", "startDateStruct", "type"), ["ACTUAL"],
          "statusModule.startDateStruct.type (ACTUAL, ESTIMATED or ANTICIPATED)"),
+        # On dd1e29c a status outside CT.gov's values fell outside every status group, and an unknown
+        # enrollment type became MISSING_TYPE.
+        (("statusModule", "overallStatus"), "terminated", "statusModule.overallStatus (a CT.gov status value)"),
+        (("statusModule", "overallStatus"), "STOPPED", "statusModule.overallStatus (a CT.gov status value)"),
+        (("designModule", "enrollmentInfo", "type"), "BANANA",
+         "designModule.enrollmentInfo.type (ACTUAL, ESTIMATED or ANTICIPATED)"),
+        (("designModule", "enrollmentInfo", "type"), None,
+         "designModule.enrollmentInfo.type (ACTUAL, ESTIMATED or ANTICIPATED)"),
     ],
 )
 def test_records_with_mistyped_optional_parts_are_refused(

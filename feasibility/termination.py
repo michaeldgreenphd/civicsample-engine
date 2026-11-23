@@ -31,7 +31,7 @@ from typing import Any
 
 from feasibility.metrics import is_num, parse_num
 
-TERMINATION_RULES_VERSION = "1.4.3"
+TERMINATION_RULES_VERSION = "1.4.4"
 # CT.gov's outcome measure types. The 2,200 cached records with posted outcome measures under
 # docs/audits/outcomes_results_structure/ hold only these four (4,688 PRIMARY, 13,388 SECONDARY,
 # 689 OTHER_PRE_SPECIFIED, 71 POST_HOC).
@@ -205,9 +205,13 @@ _NEGATION_PATTERNS: dict[str, re.Pattern[str]] = {
     # Rules 1.4.0 also narrow the determiners to problem nouns: "no drug supply" and "without drug
     # supply" state a supply problem (three weekly texts: "no further drug supply", "due to no drug
     # supply", "there was no drug supply"), while "no shortage" or "no supply issues" deny one.
+    # Rules 1.4.4: every manufacturing problem noun the detector matches (`defects`, `failures` and
+    # `holds` too), and a `supply chain` problem, so "No manufacturing defects; strategic reasons" and
+    # "No supply chain issues" deny the supply signal rather than read as multiple signals.
     "supply_or_drug_availability": _negation(
         r"no|without",
-        r"shortages?|(?:supply|manufacturing)\s+(?:issues?|problems?|constraints?|shortages?|delays?)",
+        r"shortages?|supply\s+(?:chain\s+)?(?:issues?|problems?|constraints?|shortages?|delays?|disruptions?)"
+        r"|manufacturing\s+(?:issues?|problems?|constraints?|shortages?|delays?|defects?|failures?|holds?)",
         35,
         linked_signal=_SUPPLY_LINKED,
     ),

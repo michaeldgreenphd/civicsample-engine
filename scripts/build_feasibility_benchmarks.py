@@ -213,6 +213,22 @@ _NCT_ID_RE = re.compile(r"NCT[0-9]{8}")  # used with fullmatch; ASCII digits onl
 # a stratum of its own (`PHASE_3` beside `PHASE3`), so raw phases and weekly phase strings must hold
 # only these. A value CT.gov adds later surfaces as a named refusal and needs adding here.
 CTGOV_PHASES = frozenset({"NA", "EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4"})
+# CT.gov's overall status values. `extract_trial_metrics` and the termination layer group trials by
+# exact value, so any other string (`"terminated"`) fell outside every group: a stopped trial left the
+# stopped and resolved benchmarks with nothing reported. The 18,973 distinct trials in the stored local
+# records hold the first 13 (the 80,890 weekly records 6 of them); TEMPORARILY_NOT_AVAILABLE, an
+# expanded-access status, is in no stored record and is kept so that a real one is not refused.
+CTGOV_OVERALL_STATUSES = frozenset({
+    "ACTIVE_NOT_RECRUITING", "APPROVED_FOR_MARKETING", "AVAILABLE", "COMPLETED", "ENROLLING_BY_INVITATION",
+    "NO_LONGER_AVAILABLE", "NOT_YET_RECRUITING", "RECRUITING", "SUSPENDED", "TERMINATED", "UNKNOWN",
+    "WITHDRAWN", "WITHHELD", "TEMPORARILY_NOT_AVAILABLE",
+})
+# Enrollment types `metrics.normalize_enrollment` reads (ANTICIPATED is the legacy name of ESTIMATED);
+# any other value became `MISSING_TYPE` and left the trial out of the enrollment and facility metrics.
+# The stored records hold ACTUAL and ESTIMATED; the weekly records also carry `src/utils.py`'s "N/A"
+# for a record with no type (4 of 80,890).
+CTGOV_ENROLLMENT_TYPES = frozenset({"ACTUAL", "ESTIMATED", "ANTICIPATED"})
+WEEKLY_ENROLLMENT_TYPES = CTGOV_ENROLLMENT_TYPES | {"N/A"}
 
 
 def _study_nct_id(study: dict[str, Any]) -> str | None:
@@ -368,7 +384,16 @@ def _mistyped_optional_parts(ps: dict[str, Any]) -> list[str]:
     strings. A part is present when its key is, so an explicit null is refused like any other wrong
     type (the 5,330 stored unprojected records hold no explicit null anywhere)."""
     out: list[str] = []
+    status_mod = ps.get("statusModule")
+    if isinstance(status_mod, dict) and isinstance(status_mod.get("overallStatus"), str):
+        if status_mod["overallStatus"] not in CTGOV_OVERALL_STATUSES:
+            out.append("statusModule.overallStatus (a CT.gov status value)")
     design = ps.get("designModule")
+    enrollment = design.get("enrollmentInfo") if isinstance(design, dict) else None
+    if isinstance(enrollment, dict) and "type" in enrollment:
+        # checked as a string first: a list or object is unhashable
+        if not (isinstance(enrollment["type"], str) and enrollment["type"] in CTGOV_ENROLLMENT_TYPES):
+            out.append("designModule.enrollmentInfo.type (ACTUAL, ESTIMATED or ANTICIPATED)")
     if isinstance(design, dict) and "phases" in design:
         # normalize_phase turned every entry into text with str(), so [7] or [null] became a phase
         # stratum of its own, and kept any other string (`PHASE_3`) as one too; the stored records
@@ -788,6 +813,10 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
             return f"{key} is {type(value).__name__}, not {scalar_type.__name__}"
         if non_blank and not value.strip():
             return f"{key} is blank"
+    if rec["status"] not in CTGOV_OVERALL_STATUSES:
+        return f"status {rec['status']!r} is not a CT.gov status value"
+    if rec["enrollment_type"] not in WEEKLY_ENROLLMENT_TYPES:
+        return f"enrollment_type {rec['enrollment_type']!r} is not ACTUAL, ESTIMATED, ANTICIPATED or N/A"
     results_date = rec["results_date"]
     if results_date != "" and metrics.parse_date_bounds(results_date)["state"] != "ok":
         return f"results_date {results_date!r} is neither \"\" nor a date (any other value reads as posted results)"
