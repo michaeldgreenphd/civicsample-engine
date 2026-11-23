@@ -1367,3 +1367,29 @@ def test_redteam_m2_ecosystem_has_no_in_code_caller_on_this_branch() -> None:
             if any(n == "sponsors.ecosystem" or n.endswith(".ecosystem") or n == "ecosystem" for n in names):
                 importers.append(str(rel))
     assert importers == []
+
+
+@pytest.mark.parametrize("dtype", ["category", "string", "str"])
+def test_redteam_m2_missing_values_in_typed_columns_are_refused(
+    dtype: str,
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: a missing nct_id or in_audit value inside a categorical or
+    # string-dtype column. If Series.map skipped missing values, NaN would
+    # reach .to_numpy(dtype=bool) as True and pass both checks. Expected:
+    # the missing in_audit is refused (as not a bool or as held) and the
+    # missing id as malformed.
+    flags = _holdout_frame([False] * 4)
+    flags["in_audit"] = pd.Series([False, False, None, False], dtype=object).astype(
+        "category" if dtype == "category" else object
+    )
+    ids = _holdout_frame([False] * 4)
+    ids["nct_id"] = pd.Series(["NCT99000101", "NCT99000101", None, "NCT99000102"], dtype=dtype)
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(flags, shipped_rules, shipped_ecosystem_rules)
+        assert exc_info.value.reason in {"in_audit_not_bool", "in_audit_true"}
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(ids, shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "nct_id_malformed")
