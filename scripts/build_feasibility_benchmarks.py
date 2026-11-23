@@ -257,7 +257,8 @@ REQUIRED_PROTOCOL_MODULES: tuple[str, ...] = (
 # stored CT.gov caches, the device-linkage projections lack `statusVerifiedDate` and the outcomes
 # second-pass projection lacks `briefTitle`; the unprojected records carry all four. This cannot
 # catch a projection that requests whole modules and omits others entirely (contactsLocationsModule,
-# derivedSection): such an absence is indistinguishable from a registration without them.
+# derivedSection): such an absence is indistinguishable from a registration without them. The
+# payloads of the conditions and sponsor modules are checked separately (below).
 REQUIRED_RECORD_FIELDS: tuple[tuple[str, str], ...] = (
     ("identificationModule", "briefTitle"),
     ("statusModule", "overallStatus"),
@@ -265,10 +266,63 @@ REQUIRED_RECORD_FIELDS: tuple[tuple[str, str], ...] = (
     ("designModule", "studyType"),
 )
 
+# The conditions and lead-sponsor payloads. CT.gov requires every registration to list at least one
+# condition and a lead sponsor, and the build reads both: the conditions place a trial in its
+# indication, and the lead sponsor's class is its `by_sponsor_class` stratum and its name the
+# sponsor attribution. `feasibility.metrics.extract_trial_metrics` and `build_trial_records` read a
+# gap as no conditions (indication Other), a lead sponsor "Unknown" (unreviewed) and the class
+# `MISSING_CLASS`; a `conditions` string is read character by character, and a `leadSponsor` that is
+# not an object raises. So a module kept without its payload (`"conditionsModule": {}`, `conditions`
+# that is not a list, a `leadSponsor` without a `name`) is refused like a missing module:
+# `conditionsModule.conditions` must be a non-empty list of non-blank strings, and
+# `sponsorCollaboratorsModule.leadSponsor` an object whose `REQUIRED_LEAD_SPONSOR_FIELDS` are
+# non-blank strings. The class is required on evidence: the unprojected stored records carry one,
+# and none of the 80,890 trials in the weekly full records extracted 2026-11-08 fell back to the
+# extractor's "Unknown" class, while the device-linkage projection that did not request
+# `LeadSponsorClass` kept `leadSponsor` with its name alone. In the 2026-06-19 AACT sponsors fixture
+# all 976 lead rows without a class are named "[Redacted]"; the fixture holds no study status, so
+# that they are withheld trials is inferred, not checked. The one such record cached from the API
+# (NCT04060524, `WITHHELD`, in the device-linkage acquisition cache) came back without a study type
+# either, so it was refused already. Same rule as the DAP benchmarks (#106).
+REQUIRED_LEAD_SPONSOR_FIELDS: tuple[str, ...] = ("name", "class")
+
+
+def _missing_condition_and_sponsor_payloads(ps: dict[str, Any]) -> list[str]:
+    """Name the conditions and lead-sponsor payloads the protocol section `ps` lacks (see the note
+    above).
+
+    A module that is absent or not an object is reported by the module check, not again here. A
+    `conditions` list with any blank or non-string entry is refused whole: a registration never holds
+    one, and keeping the rest would hide the malformation.
+    """
+    missing: list[str] = []
+    cond_mod = ps.get("conditionsModule")
+    if isinstance(cond_mod, dict):
+        conditions = cond_mod.get("conditions")
+        if not (
+            isinstance(conditions, list)
+            and conditions
+            and all(isinstance(c, str) and c.strip() for c in conditions)
+        ):
+            missing.append("conditionsModule.conditions")
+    sponsor_mod = ps.get("sponsorCollaboratorsModule")
+    if isinstance(sponsor_mod, dict):
+        lead = sponsor_mod.get("leadSponsor")
+        if not isinstance(lead, dict):
+            missing.append("sponsorCollaboratorsModule.leadSponsor")
+        else:
+            missing += [
+                f"sponsorCollaboratorsModule.leadSponsor.{field}"
+                for field in REQUIRED_LEAD_SPONSOR_FIELDS
+                if not (isinstance(lead.get(field), str) and lead[field].strip())
+            ]
+    return missing
+
 
 def _require_complete_records(studies: list[dict[str, Any]], source: str) -> None:
-    """Refuse API v2 study records missing any `REQUIRED_PROTOCOL_MODULES` (see the note above),
-    or whose results part is incomplete.
+    """Refuse API v2 study records missing any `REQUIRED_PROTOCOL_MODULES` (see the notes above),
+    any `REQUIRED_RECORD_FIELDS` inside them, their conditions or their lead sponsor's
+    `REQUIRED_LEAD_SPONSOR_FIELDS`, or whose results part is incomplete.
 
     A complete API v2 record always carries the top-level boolean `hasResults`, and a record with
     `hasResults: true` carries its posted `resultsSection`. A record without the flag, with a
@@ -290,6 +344,7 @@ def _require_complete_records(studies: list[dict[str, Any]], source: str) -> Non
             if isinstance(ps.get(mod), dict)
             and not (isinstance(ps[mod].get(field), str) and ps[mod][field].strip())
         ]
+        missing += _missing_condition_and_sponsor_payloads(ps)
         has_results = study.get("hasResults")
         if not isinstance(has_results, bool):
             missing.append("hasResults (a boolean)")

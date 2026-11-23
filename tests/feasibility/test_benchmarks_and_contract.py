@@ -5,12 +5,14 @@ import ast
 import csv
 import gzip
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from feasibility import artifacts, benchmarks
+from feasibility.metrics import extract_trial_metrics
 from scripts import (
     build_feasibility_benchmarks,
     check_feasibility_contract,
@@ -1216,6 +1218,106 @@ def test_field_projected_record_keeping_every_module_shell_is_refused(tmp_path: 
     apath.write_bytes(gzip.compress((json.dumps(projected) + "\n").encode("utf-8"), mtime=0))
     with pytest.raises(ValueError, match="identificationModule.briefTitle, statusModule.statusVerifiedDate"):
         _load_archive(apath)
+
+
+def _strip_payload(study: dict[str, Any], edit: str) -> None:
+    """Apply one malformation to `study`'s conditions or lead-sponsor payload, in place."""
+    ps = study["protocolSection"]
+    lead = ps["sponsorCollaboratorsModule"]["leadSponsor"]
+    if edit == "empty_conditions_module":
+        ps["conditionsModule"] = {}
+    elif edit == "string_conditions":
+        ps["conditionsModule"]["conditions"] = "Type 2 Diabetes Mellitus"
+    elif edit == "empty_conditions_list":
+        ps["conditionsModule"]["conditions"] = []
+    elif edit == "blank_condition_only":
+        ps["conditionsModule"]["conditions"] = ["   "]
+    elif edit == "blank_condition_entry":
+        ps["conditionsModule"]["conditions"] = ["Type 2 Diabetes Mellitus", "   "]
+    elif edit == "non_string_condition_entry":
+        ps["conditionsModule"]["conditions"] = ["Type 2 Diabetes Mellitus", 7]
+    elif edit == "drop_lead_sponsor":
+        ps["sponsorCollaboratorsModule"].pop("leadSponsor")
+    elif edit == "string_lead_sponsor":
+        ps["sponsorCollaboratorsModule"]["leadSponsor"] = "Pfizer"
+    elif edit == "drop_lead_name":
+        lead.pop("name")
+    elif edit == "blank_lead_name":
+        lead["name"] = "  "
+    elif edit == "drop_lead_class":
+        lead.pop("class")
+    else:
+        raise AssertionError(f"unknown edit {edit}")
+
+
+@pytest.mark.parametrize(
+    "edit, expect",
+    [
+        ("empty_conditions_module", "conditionsModule.conditions"),
+        ("string_conditions", "conditionsModule.conditions"),
+        ("empty_conditions_list", "conditionsModule.conditions"),
+        ("blank_condition_only", "conditionsModule.conditions"),
+        ("blank_condition_entry", "conditionsModule.conditions"),
+        ("non_string_condition_entry", "conditionsModule.conditions"),
+        ("drop_lead_sponsor", "sponsorCollaboratorsModule.leadSponsor"),
+        ("string_lead_sponsor", "sponsorCollaboratorsModule.leadSponsor"),
+        ("drop_lead_name", "sponsorCollaboratorsModule.leadSponsor.name"),
+        ("blank_lead_name", "sponsorCollaboratorsModule.leadSponsor.name"),
+        ("drop_lead_class", "sponsorCollaboratorsModule.leadSponsor.class"),
+    ],
+)
+def test_records_missing_condition_or_lead_sponsor_payloads_are_refused(
+    tmp_path: Path, edit: str, expect: str
+) -> None:
+    # The module objects are kept, so the module check passes; built anyway, the trial would read as
+    # indication Other, an "Unknown" sponsor or MISSING_CLASS. The error names exactly the one missing
+    # payload, through the records directory, direct study lines and response envelopes.
+    complete = make_ctgov_study("NCT99600021")
+    shell = make_ctgov_study("NCT99600022")
+    _strip_payload(shell, edit)
+    want = (
+        r"1 of 2 study records lack required protocol modules or results parts "
+        rf"\(first: NCT99600022 lacks {re.escape(expect)}\)"
+    )
+    rdir = tmp_path / "records"
+    rdir.mkdir()
+    (rdir / "a.json").write_text(json.dumps(complete), encoding="utf-8")
+    (rdir / "b.json").write_text(json.dumps(shell), encoding="utf-8")
+    with pytest.raises(ValueError, match=want):
+        build_feasibility_benchmarks.load_studies_input(demographics_path=None, records_dir=rdir, archive_path=None)
+    apath = tmp_path / "studies.jsonl.gz"
+    apath.write_bytes(gzip.compress((json.dumps(complete) + "\n" + json.dumps(shell) + "\n").encode("utf-8"), mtime=0))
+    with pytest.raises(ValueError, match=want):
+        _load_archive(apath)
+    epath = _write_archive(tmp_path, [_envelope([complete, shell], ["NCT99600021", "NCT99600022"])])
+    with pytest.raises(ValueError, match=want):
+        _load_archive(epath)
+
+
+def test_records_with_condition_and_lead_sponsor_payloads_are_accepted(tmp_path: Path) -> None:
+    # Control for the refusals above: an untouched fixture record, with a single condition, a lead
+    # sponsor of class OTHER and no collaborators, loads through every raw shape and reads back as such.
+    study = make_ctgov_study(
+        "NCT99600023", conditions=["Asthma"], lead_sponsor_name="Fictional Academic Center",
+        lead_sponsor_class="OTHER",
+    )
+    assert study["protocolSection"]["sponsorCollaboratorsModule"]["collaborators"] == []
+    rdir = tmp_path / "records"
+    rdir.mkdir()
+    (rdir / "a.json").write_text(json.dumps(study), encoding="utf-8")
+    apath = tmp_path / "studies.jsonl.gz"
+    apath.write_bytes(gzip.compress((json.dumps(study) + "\n").encode("utf-8"), mtime=0))
+    epath = _write_archive(tmp_path, [_envelope([study], ["NCT99600023"])])
+    loaded = [
+        build_feasibility_benchmarks.load_studies_input(demographics_path=None, records_dir=rdir, archive_path=None)[0],
+        _load_archive(apath),
+        _load_archive(epath),
+    ]
+    for records in loaded:
+        assert len(records) == 1
+        m = extract_trial_metrics(records[0])
+        assert m["conditions"] == ["Asthma"]
+        assert (m["lead_sponsor_name"], m["lead_sponsor_class"]) == ("Fictional Academic Center", "OTHER")
 
 
 @pytest.mark.parametrize("value", ["bad", "5", True, 2.5, None, 0, -3])
