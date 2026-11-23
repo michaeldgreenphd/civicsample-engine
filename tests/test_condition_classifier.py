@@ -58,3 +58,28 @@ def test_plural_and_punctuation_boundaries():
     assert not cc._keyword_matches("ra", "trauma")
     assert not cc._keyword_matches("all", "falls")
     assert not cc._keyword_matches("skin", "dyskinesia")
+
+
+@pytest.mark.parametrize("condition, wrong", [
+    ("Fall", "Hematologic Malignancy"),   # fuzzy "all" scored 85.7 against "fall"
+])
+def test_short_keyword_is_not_reached_through_the_fuzzy_step(condition, wrong):
+    assert cc.classify_condition(condition)[1] != wrong, cc.classify_condition(condition)
+
+
+def test_fuzzy_step_never_offers_a_short_keyword():
+    cc._ensure_loaded()
+    assert cc._fuzzy_keywords
+    assert all(len(kw) > cc.SHORT_KEYWORD_MAX_LEN for kw in cc._fuzzy_keywords)
+    assert set(cc._fuzzy_keywords) | set(cc._short_patterns) == set(cc._all_keywords)
+
+
+@pytest.mark.parametrize("condition, secondary", [
+    ("Schizophernia", "Schizophrenia and Psychotic Disorders"),
+    ("Leukemai", "Hematologic Malignancy"),
+])
+def test_fuzzy_step_still_corrects_typos_in_long_keywords(condition, secondary):
+    cc._ensure_loaded()
+    norm = cc._normalize(condition)
+    assert not any(cc._keyword_matches(kw, norm) for kw in cc._all_keywords)  # reaches Step B
+    assert cc.classify_condition(condition)[1] == secondary

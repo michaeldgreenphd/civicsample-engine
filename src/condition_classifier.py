@@ -22,6 +22,7 @@ _ontology = None
 _flat_lookup = None          # keyword -> (primary, secondary)
 _all_keywords = None         # ordered list of keywords for fuzzy matching
 _short_patterns: Optional[dict] = None   # short keyword -> whole-word pattern
+_fuzzy_keywords = None       # keywords the fuzzy step may return (no short ones)
 
 ONTOLOGY_PATH = Path(__file__).resolve().parent.parent / "condition_ontology.json"
 DEFAULT_FUZZY_THRESHOLD = 85
@@ -39,6 +40,13 @@ DEFAULT_FUZZY_THRESHOLD = 85
 # 2026-11-15 (142,369 condition mentions): keywords of up to 4 characters
 # account for nearly all matches inside unrelated words, and a threshold of
 # 3 left "Burnout" -> burn wound and "Dyskinesia" -> dermatology in place.
+#
+# The same keywords are also left out of the fuzzy step (Step B). A short
+# keyword standing as a whole word is already matched in Step A, so the fuzzy
+# step could only reach it from a near-miss spelling, and for a 2-4 letter
+# acronym a near-miss is a different word, not a typo: "Fall" scores 85.7
+# against "all" (acute lymphoblastic leukaemia) under token_set_ratio, above
+# the threshold of 85.
 SHORT_KEYWORD_MAX_LEN = 4
 
 
@@ -62,7 +70,7 @@ def _keyword_matches(kw: str, norm: str) -> bool:
 
 def _load_ontology() -> None:
     """Load and index the ontology file into fast lookup structures."""
-    global _ontology, _flat_lookup, _all_keywords, _short_patterns
+    global _ontology, _flat_lookup, _all_keywords, _short_patterns, _fuzzy_keywords
 
     with open(ONTOLOGY_PATH) as f:
         _ontology = json.load(f)
@@ -79,6 +87,7 @@ def _load_ontology() -> None:
         kw: _short_keyword_pattern(kw)
         for kw in _all_keywords if len(kw) <= SHORT_KEYWORD_MAX_LEN
     }
+    _fuzzy_keywords = [kw for kw in _all_keywords if len(kw) > SHORT_KEYWORD_MAX_LEN]
     logger.info(f"Loaded condition ontology: {len(_ontology['categories'])} primary categories, "
                 f"{len(_flat_lookup)} keywords")
 
@@ -127,10 +136,10 @@ def classify_condition(condition: str,
         if _keyword_matches(kw, norm):
             return _flat_lookup[kw]
 
-    # --- Step B: fuzzy match on the whole condition string -----------------
+    # --- Step B: fuzzy match on the whole condition string (long keywords) --
     match = process.extractOne(
         norm,
-        _all_keywords,
+        _fuzzy_keywords,
         scorer=fuzz.token_set_ratio,
         score_cutoff=fuzzy_threshold,
     )
