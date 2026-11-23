@@ -393,6 +393,38 @@ def ctgov_version_valid(body: Any) -> bool:
     )
 
 
+def data_timestamp_after_retrieval(data_timestamp: str, fetched_at: str) -> bool:
+    """Whether CT.gov `dataTimestamp` `data_timestamp` is later than records retrieved at `fetched_at`
+    can reflect. Both must already pass `timestamp_problem` (no offset, and UTC, respectively).
+
+    CT.gov states no time zone for dataTimestamp, so it is compared as if UTC with the largest real UTC
+    offset (14 hours) allowed: no possible pair is refused, and a data timestamp more than that after
+    retrieval (a later day's refresh, or `2100-01-01T00:00:00` answered in 2026) is.
+    """
+    fetched_utc = datetime.fromisoformat(fetched_at).astimezone(timezone.utc).replace(tzinfo=None)
+    return datetime.fromisoformat(data_timestamp) - timedelta(hours=14) > fetched_utc
+
+
+def ctgov_version_record_valid(rec: Any) -> bool:
+    """Whether a logged CT.gov `/version` record is a usable observation of the data version: an HTTP
+    200 answer that passes `ctgov_version_valid`, with a `dataTimestamp` no later than its own retrieval
+    allows (`data_timestamp_after_retrieval`).
+
+    A valid-looking `2100-01-01T00:00:00` answered in 2026 was accepted by the bracket check, frozen,
+    and became the build's default `as_of`, so records were classified against a date in the future.
+    Such a record counts, everywhere this is called, as a failed observation, like a malformed one. The
+    bound needs the record's `fetched_at` as a UTC timestamp, which every record acquisition or a local
+    freeze logs carries; a record without one is not bounded, as for openFDA actions
+    (`evidence._retrieved_day`).
+    """
+    if not isinstance(rec, dict) or rec.get('status') != 200 or not ctgov_version_valid(rec.get('body')):
+        return False
+    fetched_at = rec.get('fetched_at')
+    if timestamp_problem(fetched_at, 'fetched_at', offset='utc') is not None:
+        return True
+    return not data_timestamp_after_retrieval(rec['body']['dataTimestamp'], fetched_at)
+
+
 # Every part of a CT.gov v2 study record the build reads, with the type it must have when present
 # (`None` counts as absent, as the readers' `or {}` treat it). A part of another type made a reader's
 # `.get` raise and stopped an offline build (`statusModule: ["bad"]`), or was read as absent. The
@@ -485,6 +517,66 @@ def ctgov_study_problem(body: Any) -> str | None:
 def ctgov_study_valid(body: Any) -> bool:
     """Whether `body` is a study record the build can read (`ctgov_study_problem`)."""
     return ctgov_study_problem(body) is None
+
+
+# The results dates ClinicalTrials.gov records when it receives, quality-checks and posts a trial's
+# results. Each names a day that had begun somewhere when the record was served.
+CTGOV_RESULTS_DATES: tuple[tuple[str, ...], ...] = (
+    ('resultsFirstSubmitDate',),
+    ('resultsFirstSubmitQcDate',),
+    ('resultsFirstPostDateStruct', 'date'),
+)
+
+
+def ctgov_results_date_after(body: dict[str, Any], fetched_at: str) -> str | None:
+    """The first results date (`CTGOV_RESULTS_DATES`) in study `body` that starts after a record
+    retrieved at `fetched_at` (a UTC timestamp) can hold, as `statusModule.<field> (<date>)`, else None.
+
+    `body` must pass `ctgov_study_problem`. CT.gov states no time zone for these days, so the bound is
+    the calendar day at `fetched_at` in the zone furthest ahead of UTC (+14 hours), as for `dataTimestamp`
+    (`data_timestamp_after_retrieval`): no real record is refused. A month containing that day is a
+    prefix of it and sorts before it, so it is not after; text that is not a day or a month is left to
+    the readers, which treat it as missing.
+    """
+    bound = (datetime.fromisoformat(fetched_at).astimezone(timezone.utc) + timedelta(hours=14)).date().isoformat()
+    status_mod = body['protocolSection'].get('statusModule') or {}
+    for path in CTGOV_RESULTS_DATES:
+        value: Any = status_mod
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        if isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}(?:-\d{2})?', value) and value > bound:
+            return f"statusModule.{'.'.join(path)} ({value})"
+    return None
+
+
+def ctgov_study_record_problem(rec: Any) -> str | None:
+    """Why a logged CT.gov study record is not one the build can read, or None when it is: an HTTP 200
+    answer whose body passes `ctgov_study_problem` and holds no results date after its own retrieval
+    (`ctgov_results_date_after`).
+
+    A valid-looking `resultsFirstPostDateStruct.date` of `2100-01-01` in a record fetched in 2026 was
+    published on the verified CT.gov results link and as `results_first_posted`, and with an earlier
+    submission date the 365-day window read the results as `PENDING_SUBMITTED_UNPOSTED` while coverage
+    reported them posted. A record contradicting its own retrieval is read as a failed lookup, like
+    one contradicting itself (`hasResults: false` beside posted results). The bound needs the record's
+    `fetched_at` as a UTC timestamp, which every record acquisition or a local freeze logs carries; a
+    record without one is not bounded, as for openFDA actions (`evidence._retrieved_day`).
+    """
+    if not isinstance(rec, dict) or rec.get('status') != 200:
+        return 'not an HTTP 200 answer'
+    problem = ctgov_study_problem(rec.get('body'))
+    if problem is not None:
+        return problem
+    fetched_at = rec.get('fetched_at')
+    if timestamp_problem(fetched_at, 'fetched_at', offset='utc') is not None:
+        return None
+    late = ctgov_results_date_after(rec['body'], fetched_at)
+    return f'{late} is after the record was retrieved ({fetched_at})' if late else None
+
+
+def ctgov_study_record_valid(rec: Any) -> bool:
+    """Whether a logged CT.gov study record is one the build can read (`ctgov_study_record_problem`)."""
+    return ctgov_study_record_problem(rec) is None
 
 
 def ctgov_study_answers(body: Any, nct_id: str) -> bool:
@@ -1015,12 +1107,15 @@ def fetch_ctgov_studies(
             f'{CTGOV_API}/version',
             None,
             tag={'run_stamp': stamp, 'phase': phase},
-            valid=ctgov_version_valid,
+            # Checked against the time of validation, which the record's `fetched_at` (stamped after
+            # it) does not precede, so an answer refused here would fail `ctgov_version_record_valid`.
+            valid=lambda body: ctgov_version_valid(body)
+            and not data_timestamp_after_retrieval(body['dataTimestamp'], now_utc()),
         )
 
     def observe_version_or_raise(phase: str) -> None:
         rec = observe_version(phase)
-        if rec and rec.get('status') == 200 and ctgov_version_valid(rec.get('body')):
+        if ctgov_version_record_valid(rec):
             return
         status = rec.get('status') if rec else None
         if phase == 'begin':
@@ -1052,7 +1147,10 @@ def fetch_ctgov_studies(
             tag={'nct_id': nct_id},
             # The record must be the requested trial's own (`ctgov_study_answers`): an answer for
             # another NCT ID is logged as unusable and requested again on the next run.
-            valid=lambda body, wanted=nct_id: ctgov_study_answers(body, wanted),
+            # A results date after the answer arrived (`ctgov_results_date_after`) is unusable too,
+            # checked against the time of validation, which the record's `fetched_at` does not precede.
+            valid=lambda body, wanted=nct_id: ctgov_study_answers(body, wanted)
+            and ctgov_results_date_after(body, now_utc()) is None,
         )
         if rec is not None and rec.get('status') in FINAL_STATUSES:
             answered += 1
@@ -1068,9 +1166,10 @@ def studies_from_ctgov_records(ctgov_records: dict[str, dict[str, Any]], nct_ids
     for nct_id in sorted(set(nct_ids)):
         rec = ctgov_records.get(f'ctgov/study/{nct_id}')
         body = rec.get('body') if rec and rec.get('status') == 200 else None
-        # Only a readable record that is the trial's own (`ctgov_study_answers`): the timeline and the
-        # sponsor context read it without further type checks.
-        out[nct_id] = body if ctgov_study_answers(body, nct_id) else None
+        # Only a readable record that is the trial's own (`ctgov_study_answers`) and holds no results
+        # date after its retrieval (`ctgov_study_record_valid`): the timeline and the sponsor context
+        # read it without further type checks.
+        out[nct_id] = body if ctgov_study_answers(body, nct_id) and ctgov_study_record_valid(rec) else None
     return out
 
 
@@ -1312,11 +1411,9 @@ def ingest_local_ctgov_records(
         if problem:
             raise ValueError(problem)
     # Records retrieved at `fetched_at` cannot reflect a CT.gov refresh after it, and the data
-    # timestamp becomes the build's default `as_of`. CT.gov states no time zone for dataTimestamp, so it
-    # is compared as if UTC with the largest real UTC offset (14 hours) allowed: no possible pair is
-    # refused, and a data timestamp more than that after retrieval (a later day's refresh) is.
-    fetched_utc = datetime.fromisoformat(fetched_at).astimezone(timezone.utc).replace(tzinfo=None)
-    if datetime.fromisoformat(data_timestamp) - timedelta(hours=14) > fetched_utc:
+    # timestamp becomes the build's default `as_of` (`data_timestamp_after_retrieval`, the rule live
+    # version observations follow too).
+    if data_timestamp_after_retrieval(data_timestamp, fetched_at):
         raise ValueError(
             f'data_timestamp {data_timestamp!r} is later than fetched_at {fetched_at!r}: records retrieved '
             'then cannot reflect a later CT.gov refresh'
@@ -1372,6 +1469,10 @@ def ingest_local_ctgov_records(
     for file_path in files:
         for position, st in enumerate(_iter_studies_from_local_file(file_path), start=1):
             problem = ctgov_study_problem(st)
+            # A results date after the stated retrieval contradicts it (`ctgov_results_date_after`).
+            late = ctgov_results_date_after(st, fetched_at) if problem is None else None
+            if late:
+                problem = f'{late} is after the stated fetched_at ({fetched_at})'
             if problem:
                 malformed.append(f'{file_path.name} study {position}: {problem}')
                 continue
@@ -1509,9 +1610,7 @@ def ctgov_version_bracket_problem(ctgov_lines: list[dict[str, Any]]) -> str | No
         return None
     version_lines = [
         idx for key, idx in last_line.items()
-        if key.startswith('ctgov/version/')
-        and ctgov_lines[idx].get('status') == 200
-        and ctgov_version_valid(ctgov_lines[idx].get('body'))
+        if key.startswith('ctgov/version/') and ctgov_version_record_valid(ctgov_lines[idx])
     ]
     if not version_lines:
         return 'no successful CT.gov /version observation is logged; run the ctgov stage again'

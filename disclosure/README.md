@@ -82,15 +82,19 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 # protocolSection, a `studies` value that is not a list), and a log line whose status is neither 200
 # nor a failed request (null or another HTTP status), or whose 200 answer is none of those, all of
 # which were skipped, refuses a --data-timestamp more than 14 hours after --fetched-at (CT.gov states no
-# zone for dataTimestamp, so the largest real UTC offset is allowed) and a --fetched-at later than the
-# freeze itself (records cannot be retrieved after the cache that holds them),
+# zone for dataTimestamp, so the largest real UTC offset is allowed), a record holding a results
+# submission, QC or posting date later than --fetched-at allows on the same terms, and a --fetched-at
+# later than the freeze itself (records cannot be retrieved after the cache that holds them),
 # and needs a new or empty --cache, so no earlier CT.gov version or other source's record is mixed in.
 # They also refuse openFDA drug-query records made with an earlier query form: re-run the openfda stage.
 # A CT.gov answer whose record is a different trial (its own nctId differs from the one requested, as an
 # obsolete ID can be answered under the current one) is logged as unusable, never settled, and freezing
 # and loading refuse a cache that holds one as settled: re-run the ctgov stage. An answer with a mistyped
 # part (`acquire.ctgov_study_problem`) is never settled either, and if one reaches a build its trial reads
-# as `lookup_failed` with every route incomplete, never a crash or a negative.
+# as `lookup_failed` with every route incomplete, never a crash or a negative. So is an answer holding a
+# results submission, QC or posting date after it was retrieved (`acquire.ctgov_study_record_problem`,
+# allowing the largest real UTC offset): a 2100 posting date was published on the verified results link
+# and read by the 365-day window as submitted but unposted.
 
 # 2. Offline deterministic build from frozen cache (runs contract check before writing):
 python3 scripts/build_drug_disclosure.py build \
@@ -100,7 +104,9 @@ python3 scripts/build_drug_disclosure.py build \
 # run observes /version before its first study request and after its last, never reusing an earlier
 # run's answer; a failed observation stops the run, and freezing needs a successful one before the first
 # study answer and after the last; an answer whose dataTimestamp is not in CT.gov's form, a whole date
-# and time with no offset as --data-timestamp must be, counts as failed and is left out of `versions`)
+# and time with no offset as --data-timestamp must be, or that is more than 14 hours after the answer
+# was retrieved, counts as failed and is left out of `versions`, and the contract refuses a listed one
+# dated so)
 # and the range of their data timestamps (`data_timestamp_first`,
 # `data_timestamp_last`). Without --as-of, as_of defaults to the cache's CT.gov data timestamp
 # (`as_of_source` records which default was used); a cache whose version records span several data

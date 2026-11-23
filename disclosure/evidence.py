@@ -369,7 +369,7 @@ def build_ctgov_results_links(nct_id: str, ctgov_rec: dict[str, Any] | None) -> 
     if ctgov_rec is None or ctgov_rec.get('status') != 200:
         return []
     body = ctgov_rec.get('body')
-    if not A.ctgov_study_valid(body) or body.get('hasResults') is not True:
+    if not A.ctgov_study_record_valid(ctgov_rec) or body.get('hasResults') is not True:
         return []
     rs = body.get('resultsSection')
     if not isinstance(rs, dict) or not rs:
@@ -425,7 +425,7 @@ def build_registry_reference_links(
     if ctgov_rec is None or ctgov_rec.get('status') != 200:
         return []
     body = ctgov_rec.get('body')
-    if not A.ctgov_study_valid(body):
+    if not A.ctgov_study_record_valid(ctgov_rec):
         return []
     ctgov_sha = _record_sha256(ctgov_rec)
     out: list[dict[str, Any]] = []

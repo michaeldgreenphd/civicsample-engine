@@ -136,7 +136,7 @@ def _study_record(nct_id: str, ctgov_rec: dict[str, Any] | None) -> dict[str, An
             'is_fda_regulated_drug': None,
         }
     body = ctgov_rec.get('body')
-    if status != 200 or not A.ctgov_study_valid(body):
+    if status != 200 or not A.ctgov_study_record_valid(ctgov_rec):
         return {
             'nct_id': nct_id,
             'registry_state': 'lookup_failed',
@@ -217,7 +217,7 @@ def _ctgov_version_info(ctgov_records: dict[str, dict[str, Any]]) -> dict[str, A
     versions = sorted(
         (
             r for k, r in ctgov_records.items()
-            if k.startswith('ctgov/version/') and r.get('status') == 200 and A.ctgov_version_valid(r.get('body'))
+            if k.startswith('ctgov/version/') and A.ctgov_version_record_valid(r)
         ),
         key=lambda r: (str(r.get('fetched_at') or ''), str(r.get('key') or '')),
     )
@@ -907,6 +907,19 @@ def _ctgov_version_problems(run: dict[str, Any], ctgov_src: dict[str, Any]) -> l
     order = [(str(v.get('fetched_at') or ''), str(v.get('key') or '')) for v in versions]
     if order != sorted(order):
         problems.append('run.json sources.ctgov.versions are not ordered by fetched_at')
+    # The build keeps only version records whose data timestamp their retrieval allows
+    # (`A.ctgov_version_record_valid`), so a recorded one later than that was not read from the archive.
+    late = [
+        str(v.get('key')) for v in versions
+        if A.timestamp_problem(v.get('data_timestamp'), 'data_timestamp', offset='none') is None
+        and A.timestamp_problem(v.get('fetched_at'), 'fetched_at', offset='utc') is None
+        and A.data_timestamp_after_retrieval(v['data_timestamp'], v['fetched_at'])
+    ]
+    if late:
+        problems.append(
+            f'run.json sources.ctgov.versions has {len(late)} data timestamp(s) later than their retrieval '
+            f'allows (first: {late[0]})'
+        )
     first, last = ctgov_src.get('data_timestamp_first'), ctgov_src.get('data_timestamp_last')
     expected = (min(stamps), max(stamps), stamps[-1]) if stamps else (None, None, None)
     if (first, last, ctgov_src.get('data_timestamp')) != expected:

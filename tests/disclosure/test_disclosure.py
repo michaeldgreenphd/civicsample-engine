@@ -14,7 +14,7 @@ import shlex
 import shutil
 import sys
 import urllib.parse
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -3675,3 +3675,191 @@ def test_results_posting_date_beside_hasresults_false_is_not_read_as_posted_and_
     timeline = _timeline_of(built, nct)
     assert timeline['discordance']['state'] == 'coverage_incomplete_or_awaiting_review'
     assert timeline['window_365d']['state'] != 'POSTED_WITHIN_365D'
+
+
+# ---------------------------------------------------------------- dates after retrieval (CT.gov)
+
+_LATE_STAMP = '2100-01-01T00:00:00'
+
+
+def test_live_version_dated_after_retrieval_stops_the_run(tmp_path: Path) -> None:
+    # On 7e8612f a /version answer of 2100 in 2026 was a successful observation: the bracket check took
+    # it, the freeze kept it, and the build's default `as_of` became 2100-01-01.
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(tmp_path / 'cache', 'ctgov'))
+    with pytest.raises(A.CTGovVersionUnavailable, match='before the study requests failed'):
+        A.fetch_ctgov_studies(['NCT09990001'], log, _version_says({1: _LATE_STAMP}), throttle)
+    (rec,) = [r for k, r in log.records.items() if k.startswith('ctgov/version/')]
+    assert rec['status'] == A.UNUSABLE_200
+    assert not [k for k in log.records if k.startswith('ctgov/study/')]
+
+
+def test_end_version_dated_after_retrieval_blocks_freezing(tmp_path: Path) -> None:
+    cache = tmp_path / 'cache'
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(cache, 'ctgov'))
+    with pytest.raises(A.CTGovVersionUnavailable, match='after the study requests failed'):
+        A.fetch_ctgov_studies(['NCT09990001'], log, _version_says({2: _LATE_STAMP}), throttle)
+    with pytest.raises(A.CacheIntegrityError, match='after the last study answer'):
+        A.freeze_cache(cache, ['NCT09990001'], frozen_at=F.GENERATED_AT)
+
+
+def test_live_version_within_a_utc_offset_of_retrieval_is_an_observation(tmp_path: Path) -> None:
+    # Control: CT.gov states no zone for dataTimestamp, so one up to 14 hours ahead of UTC is possible.
+    ahead = (datetime.now(timezone.utc) + timedelta(hours=13)).replace(tzinfo=None).isoformat(timespec='seconds')
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(tmp_path / 'cache', 'ctgov'))
+    A.fetch_ctgov_studies(['NCT09990001'], log, _version_says({1: ahead, 2: ahead}), throttle)
+    assert [r['status'] for k, r in sorted(log.records.items()) if k.startswith('ctgov/version/')] == [200, 200]
+
+
+@pytest.mark.parametrize(
+    ('stamp', 'kept'),
+    [
+        (_LATE_STAMP, False),
+        ('2026-11-02T00:00:01', False),  # just over 14 hours after retrieval at 10:00 UTC
+        ('2026-11-02T00:00:00', True),  # 14 hours after: within any real UTC offset
+        ('2026-11-01T08:00:00', True),
+    ],
+)
+def test_logged_version_dated_after_its_retrieval_counts_as_a_failed_observation(stamp: str, kept: bool) -> None:
+    def rec(key: str, data_timestamp: str = '2026-11-01T08:00:00') -> dict[str, Any]:
+        body = {'apiVersion': '2.0.5', 'dataTimestamp': data_timestamp} if 'version' in key else {}
+        return {'key': key, 'status': 200, 'fetched_at': '2026-11-01T10:00:00+00:00', 'body': body}
+
+    begin, study, end = rec('ctgov/version/x/begin'), rec('ctgov/study/NCT09990001'), rec('ctgov/version/x/end', stamp)
+    problem = A.ctgov_version_bracket_problem([begin, study, end])
+    info = ART._ctgov_version_info({r['key']: r for r in (begin, study, end)})
+    if kept:
+        assert problem is None
+        assert [v['key'] for v in info['versions']] == ['ctgov/version/x/begin', 'ctgov/version/x/end']
+        return
+    assert 'after the last study answer' in (problem or '')
+    assert [v['key'] for v in info['versions']] == ['ctgov/version/x/begin']
+    assert info['data_timestamp_last'] == '2026-11-01T08:00:00'
+
+
+@pytest.mark.parametrize(('stamp', 'refused'), [(_LATE_STAMP, True), ('2026-11-01T08:00:00', False)])
+def test_contract_refuses_a_recorded_data_timestamp_later_than_its_retrieval(stamp: str, refused: bool) -> None:
+    version = {
+        'key': 'ctgov/version/x/begin',
+        'fetched_at': '2026-11-01T10:00:00+00:00',
+        'api_version': '2.0.5',
+        'data_timestamp': stamp,
+    }
+    ctgov_src = {
+        'versions': [version],
+        'data_timestamp': stamp,
+        'data_timestamp_first': stamp,
+        'data_timestamp_last': stamp,
+        'n_records': 3,
+    }
+    problems = ART._ctgov_version_problems({'as_of': '2026-11-01', 'as_of_source': 'as_of_argument'}, ctgov_src)
+    assert any('later than their retrieval allows' in p for p in problems) == refused, problems
+
+
+_RESULTS_DATE_PATHS = {
+    'post': ('protocolSection', 'statusModule', 'resultsFirstPostDateStruct', 'date'),
+    'submit': ('protocolSection', 'statusModule', 'resultsFirstSubmitDate'),
+    'qc': ('protocolSection', 'statusModule', 'resultsFirstSubmitQcDate'),
+}
+
+
+@pytest.mark.parametrize(
+    ('field', 'value', 'refused'),
+    [
+        ('post', '2100-01-01', True),
+        ('submit', '2100-01-01', True),
+        ('qc', '2100-01-01', True),
+        ('post', '2026-11-03', True),
+        ('post', '2026-12', True),
+        # Controls: fetched at 10:00 UTC on 1 November, the 2nd had begun at UTC+14, and a month
+        # that contains the retrieval day is not after it.
+        ('post', '2026-11-02', False),
+        ('post', '2026-11', False),
+    ],
+)
+def test_results_date_after_retrieval_is_read_as_a_failed_lookup(
+    tmp_path: Path, field: str, value: str, refused: bool
+) -> None:
+    # On 7e8612f a 2100 posting date in a record fetched in 2026 was published on the verified CT.gov
+    # results link and as `results_first_posted`, and beside the 2020 submission date the window read
+    # PENDING_SUBMITTED_UNPOSTED while coverage reported the results posted.
+    nct = 'NCT09990001'
+    study = _study_with(F.STUDIES[nct], _RESULTS_DATE_PATHS[field], value)
+    cache = F.acquire_fixture_cache(tmp_path / 'c')
+    cache.ctgov[f'ctgov/study/{nct}'] = dict(
+        cache.ctgov[f'ctgov/study/{nct}'], body=study, fetched_at='2026-11-01T10:00:00+00:00'
+    )
+    built = ART.build_artifacts(
+        cache,
+        reviews_path=ROOT / 'disclosure/reviews.csv',
+        statements_path=ROOT / 'disclosure/documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors/company_aliases.csv',
+        producer={'commit': None, 'uncommitted_changes': None},
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+        requested_nct_ids=[nct],
+    )
+    row = next(s for s in built['studies.json']['studies'] if s['nct_id'] == nct)
+    results_links = [x for x in built['links.json']['links'] if x['source_route'] == 'ctgov_results']
+    if not refused:
+        assert row['registry_state'] == 'retrieved'
+        assert [x['publication_or_action_date'] for x in results_links] == [value]
+        return
+    assert row['registry_state'] == 'lookup_failed'
+    assert results_links == []
+    assert _cell_of(built, nct, 'ctgov_results')['state'] == 'search_incomplete_or_blocked'
+    assert _timeline_of(built, nct)['window_365d']['state'] != 'PENDING_SUBMITTED_UNPOSTED'
+    assert value not in json.dumps(built, default=str)
+
+
+def test_study_record_problem_names_the_results_date_after_retrieval() -> None:
+    study = _study_with(F.STUDIES['NCT09990001'], _RESULTS_DATE_PATHS['post'], '2026-11-03')
+    rec = {'key': 'ctgov/study/NCT09990001', 'status': 200, 'fetched_at': '2026-11-01T10:00:00+00:00', 'body': study}
+    assert A.ctgov_study_problem(study) is None  # the body alone is readable
+    assert A.ctgov_study_record_problem(rec) == (
+        'statusModule.resultsFirstPostDateStruct.date (2026-11-03) is after the record was retrieved '
+        '(2026-11-01T10:00:00+00:00)'
+    )
+    # Text that is not a day or a month is left to the readers, which treat it as missing, and a record
+    # without a readable fetched_at is not bounded.
+    odd = _study_with(study, _RESULTS_DATE_PATHS['post'], 'not-a-date')
+    assert A.ctgov_study_record_problem({**rec, 'body': odd}) is None
+    assert A.ctgov_study_record_problem({**rec, 'fetched_at': None}) is None
+
+
+def test_live_study_answer_dated_after_retrieval_is_unusable(tmp_path: Path) -> None:
+    # On 7e8612f it was settled as a 200 answer and frozen.
+    study = _study_with(F.STUDIES['NCT09990001'], _RESULTS_DATE_PATHS['post'], '2100-01-01')
+
+    def get(url: str, params: dict[str, Any] | None) -> A.Response:
+        if url == f'{A.CTGOV_API}/studies/NCT09990001':
+            return F._json_resp(study)
+        return F.stub_get()(url, params)
+
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(tmp_path / 'cache', 'ctgov'))
+    A.fetch_ctgov_studies(['NCT09990001'], log, get, throttle)
+    assert log.records['ctgov/study/NCT09990001']['status'] == A.UNUSABLE_200
+    assert A.studies_from_ctgov_records(log.records, ['NCT09990001']) == {'NCT09990001': None}
+
+
+@pytest.mark.parametrize(('post', 'refused'), [('2026-11-03', True), ('2026-11-02', False)])
+def test_freeze_local_refuses_a_results_date_after_the_stated_retrieval(
+    tmp_path: Path, post: str, refused: bool
+) -> None:
+    # Stated retrieval 2026-11-01T12:00:00Z: the 2nd had begun at UTC+14, the 3rd had not anywhere.
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'a.json').write_text(json.dumps(F.STUDIES['NCT09990004']), encoding='utf-8')
+    late = _study_with(F.STUDIES['NCT09990001'], _RESULTS_DATE_PATHS['post'], post)
+    (local_src / 'b.json').write_text(json.dumps(late), encoding='utf-8')
+    cache = tmp_path / 'cache'
+    if not refused:
+        A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
+        return
+    with pytest.raises(ValueError, match=rf'b\.json study 1: statusModule\.resultsFirstPostDateStruct\.date \({post}\) '
+                       r'is after the stated fetched_at'):
+        A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
+    assert not (cache / 'manifest.json').exists()

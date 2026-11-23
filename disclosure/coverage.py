@@ -181,7 +181,7 @@ def ctgov_results_cell(
             f'ClinicalTrials.gov answered HTTP 404; no study record exists for {nct_id}',
             http_status=404,
         )
-    if status != 200 or not A.ctgov_study_valid(ctgov_rec.get('body')):
+    if status != 200 or not A.ctgov_study_record_valid(ctgov_rec):
         return _cell(
             route,
             'search_incomplete_or_blocked',
@@ -280,7 +280,7 @@ def registry_references_cell(
             f'ClinicalTrials.gov answered HTTP 404; referencesModule unavailable for {nct_id}',
             http_status=404,
         )
-    if status != 200 or not A.ctgov_study_valid(ctgov_rec.get('body')):
+    if status != 200 or not A.ctgov_study_record_valid(ctgov_rec):
         return _cell(
             route,
             'search_incomplete_or_blocked',
