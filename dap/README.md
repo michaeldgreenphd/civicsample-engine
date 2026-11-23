@@ -164,7 +164,11 @@ participants were counted as unknown race. A measure with no labelled row at all
 "Race and Ethnicity Not Collected" count, is kept. In a table of several groups with a recognised
 whole-population group, every row's measurements and every denominator's counts must carry that group
 exactly once: the extractors read each at it, and a row posting only arms gave an arm's count as the
-trial's.
+trial's. No list may name any group twice (a single-group row with two entries was read at its last).
+And where a denominator, or a row the race and ethnicity extractors read, gives the whole-population
+group no number ("NA") while another group has one, the record is refused: the row read as 0 and the
+denominator fell back to the last group's count. A row posting "NA" for every group (a category not
+collected) still reads as 0.
 Weekly full records never pass these checks, so their own lists are checked
 too (`WEEKLY_LIST_FIELDS`): `study_sites`, `collaborators` and `conditions`
 must be present, as `src/utils.py` always writes them; `study_sites` and

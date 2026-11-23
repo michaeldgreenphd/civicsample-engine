@@ -1860,6 +1860,84 @@ def test_a_list_without_one_whole_population_entry_is_refused(
         benchmarks.load_study_records(plain)
 
 
+def _load_pair(tmp_path: Path, bad: dict) -> list[dict]:
+    plain = tmp_path / "studies.jsonl"
+    plain.write_text(json.dumps(_measured_study("NCT99800021")) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
+    return benchmarks.load_study_records(plain)[0]
+
+
+def _total_first(st: dict) -> dict:
+    """The same table with its Total group listed first, where the extractors' fallback to the last entry
+    reaches an arm."""
+    module = st["resultsSection"]["baselineCharacteristicsModule"]
+    module["groups"] = [module["groups"][-1], *module["groups"][:-1]]
+    module["denoms"][0]["counts"] = [module["denoms"][0]["counts"][-1], *module["denoms"][0]["counts"][:-1]]
+    return st
+
+
+def test_a_single_group_row_naming_its_group_twice_is_refused(tmp_path: Path) -> None:
+    # On 9a955a7 it loaded, and with no Overall id the extractors read the last entry: White 10, not 60.
+    bad = _measured_study("NCT99800022")
+    row = bad["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"][0]
+    row["measurements"].append({"groupId": "BG000", "value": "10"})
+    row_path = f"{_BASE}.measures[0].classes[0].categories[0].measurements"
+    want = re.escape(f"{row_path} (one entry per group, not 2 for 'BG000')")
+    with pytest.raises(ValueError, match=want):
+        _load_pair(tmp_path, bad)
+
+
+@pytest.mark.parametrize("where", ["race_row", "table_denom"])
+def test_a_whole_population_entry_without_a_number_beside_numbers_is_refused(tmp_path: Path, where: str) -> None:
+    # On 9a955a7 the race row read as 0 (its participants balanced into unknown race), and a Total
+    # denominator of "NA" listed first fell back to the last arm's 50 as the trial's baseline.
+    bad = _total_first(_arms_without_total("NCT99800022", _WITH_TOTAL))
+    module = bad["resultsSection"]["baselineCharacteristicsModule"]
+    if where == "race_row":
+        entries = module["measures"][0]["classes"][0]["categories"][0]["measurements"]
+        expect = f"{_BASE}.measures[0].classes[0].categories[0].measurements"
+    else:
+        entries = module["denoms"][0]["counts"]
+        expect = f"{_BASE}.denoms[0].counts"
+    next(x for x in entries if x["groupId"] == "BG002")["value"] = "NA"
+    want = re.escape(
+        f"{expect} (a number for the whole-population group 'BG002', as other groups in it carry, not 'NA')"
+    )
+    with pytest.raises(ValueError, match=want):
+        _load_pair(tmp_path, bad)
+
+
+@pytest.mark.parametrize("shape", ["all_na_race_row", "sex_row_total_na", "single_group_empty_row"])
+def test_rows_the_registry_posts_without_a_whole_population_number_load(tmp_path: Path, shape: str) -> None:
+    # Controls, on both heads, from real stored shapes: a race category not collected in any group (all "NA",
+    # NCT03901482), a sex row whose Total is "NA" beside an arm's count (NCT01388361; DAP reads sex through
+    # the sex/gender parser, not at the Total), and single-group race rows with no measurements (NCT05124899).
+    if shape == "single_group_empty_row":
+        st = _measured_study("NCT99800022")
+        st["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"].append(
+            {"title": "More than one race", "measurements": []}
+        )
+    else:
+        st = _arms_without_total("NCT99800022", _WITH_TOTAL)
+        module = st["resultsSection"]["baselineCharacteristicsModule"]
+        if shape == "all_na_race_row":
+            module["measures"][0]["classes"][0]["categories"].append({"title": "More than one race", "measurements": [
+                {"groupId": g, "value": "NA"} for g in ("BG000", "BG001", "BG002")
+            ]})
+        else:
+            module["measures"].append({
+                "title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+                "classes": [{"categories": [
+                    {"title": "Female", "measurements": [
+                        {"groupId": "BG000", "value": "30"}, {"groupId": "BG001", "value": "NA"},
+                        {"groupId": "BG002", "value": "NA"}]},
+                    {"title": "Male", "measurements": [
+                        {"groupId": "BG000", "value": "20"}, {"groupId": "BG001", "value": "NA"},
+                        {"groupId": "BG002", "value": "NA"}]},
+                ]}],
+            })
+    assert len(_load_pair(tmp_path, st)) == 2
+
+
 def test_a_measurement_without_its_value_is_refused(tmp_path: Path) -> None:
     bad = _measured_study("NCT99800022")
     bad["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"][0][

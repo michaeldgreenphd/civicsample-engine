@@ -763,10 +763,12 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
         # trial's. All 3,133 stored baseline tables carry a non-empty list.
         if not (isinstance(module.get("groups"), list) and module["groups"]):
             out.append(f"{root}.groups (a non-empty list)")
+        shape: list[str] = []
         for name, fields in BASELINE_SHAPE.items():
             if name in module:
-                out += _object_list_problems(module[name], f"{root}.{name}", fields)
-        out += _baseline_group_reference_problems(module, root)
+                shape += _object_list_problems(module[name], f"{root}.{name}", fields)
+        out += shape
+        out += _baseline_group_reference_problems(module, root, shape_ok=not shape and bool(module.get("groups")))
         out += _unlabelled_row_problems(module, root)
     return out
 
@@ -835,7 +837,19 @@ def _listed(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
-def _baseline_group_reference_problems(module: dict[str, Any], root: str) -> list[str]:
+def _read_at_whole_population(measure: Any, overall: str, shape_ok: bool) -> bool:
+    """Whether the race or ethnicity extractors read `measure`'s rows at the whole-population group: a
+    race- or ethnicity-titled measure, or a sex-titled one the race extractor reads as race (its own test,
+    run only on a table that passed the shape check, since it reads every row)."""
+    if not isinstance(measure, dict) or not isinstance(measure.get("title"), str):
+        return False
+    title = measure["title"]
+    if race_extractor.is_race_table(title) or ethnicity_extractor.is_ethnicity_table(title):
+        return True
+    return shape_ok and race_extractor.is_sex_titled_race_table(measure, overall)
+
+
+def _baseline_group_reference_problems(module: dict[str, Any], root: str, *, shape_ok: bool = False) -> list[str]:
     """Every measurement and denominator count of a baseline table with `groups` must name one of them.
 
     `src.utils._get_measurement_value` reads the Overall group's value by `groupId` and falls back to the
@@ -862,12 +876,13 @@ def _baseline_group_reference_problems(module: dict[str, Any], root: str) -> lis
     declared = seen_ids
     # Each list of entries keyed by group: a denominator's counts (table, measure-level, class-level) or a
     # row's measurements.
-    lists: list[tuple[str, list[Any]]] = []
+    # with the measure a row belongs to (None for a denominator).
+    lists: list[tuple[str, list[Any], dict[str, Any] | None]] = []
 
     def add_counts(denoms: Any, path: str) -> None:
         for i, denom in enumerate(_listed(denoms)):
             if isinstance(denom, dict):
-                lists.append((f"{path}[{i}].counts", _listed(denom.get("counts"))))
+                lists.append((f"{path}[{i}].counts", _listed(denom.get("counts")), None))
 
     add_counts(module.get("denoms"), f"{root}.denoms")
     for m_i, measure in enumerate(_listed(module.get("measures"))):
@@ -882,10 +897,12 @@ def _baseline_group_reference_problems(module: dict[str, Any], root: str) -> lis
             add_counts(cls.get("denoms"), f"{c_path}.denoms")
             for k_i, category in enumerate(_listed(cls.get("categories"))):
                 if isinstance(category, dict):
-                    lists.append((f"{c_path}.categories[{k_i}].measurements", _listed(category.get("measurements"))))
+                    lists.append(
+                        (f"{c_path}.categories[{k_i}].measurements", _listed(category.get("measurements")), measure)
+                    )
     out: list[str] = []
-    clean: list[tuple[str, list[Any]]] = []
-    for path, entries in lists:
+    clean: list[tuple[str, list[Any], dict[str, Any] | None]] = []
+    for path, entries, owner in lists:
         bad = [
             f"{path}[{j}].groupId (the id of one of the table's groups, not {x['groupId']!r})"
             for j, x in enumerate(entries)
@@ -893,7 +910,7 @@ def _baseline_group_reference_problems(module: dict[str, Any], root: str) -> lis
         ]
         out += bad
         if not bad and all(isinstance(x, dict) and isinstance(x.get("groupId"), str) for x in entries):
-            clean.append((path, entries))
+            clean.append((path, entries, owner))
     # In a table of several groups the extractors read each row and count at the whole-population group
     # (`get_overall_group_id`), and `_get_measurement_value` and `get_total_baseline_participants` fall back
     # to the last entry when it is missing, so a row posting only arms gave an arm's count as the trial's.
@@ -905,11 +922,44 @@ def _baseline_group_reference_problems(module: dict[str, Any], root: str) -> lis
         if len(groups) > 1
         else None
     )
+    # No list may name a group twice: `_get_measurement_value` takes the first match and, in a single-group
+    # table, the last entry, so a second entry for the sole group replaced the trial's count. A single-group
+    # row may name its group not at all (28 rows of two real trials post empty measurements, read as 0).
+    # No real stored list repeats an id. The whole-population group's repeats are reported just below.
+    for path, entries, _ in clean:
+        repeats = Counter(x["groupId"] for x in entries)
+        out += [
+            f"{path} (one entry per group, not {n} for {gid!r})"
+            for gid, n in repeats.items()
+            if n > 1 and gid != overall
+        ]
     if overall is not None:
-        for path, entries in clean:
-            n = sum(1 for x in entries if x["groupId"] == overall)
-            if n != 1:
-                out.append(f"{path} (one entry for the whole-population group {overall!r}, not {n})")
+        read: dict[int, bool] = {}  # per measure, since the extractor's own test reads every row
+        for path, entries, owner in clean:
+            whole = [x for x in entries if x["groupId"] == overall]
+            if len(whole) != 1:
+                out.append(f"{path} (one entry for the whole-population group {overall!r}, not {len(whole)})")
+                continue
+            # A whole-population value that reads as no number ("NA") beside a group that posts one is read
+            # as 0 in a row, and a denominator falls back to the last group's count, so the trial took an
+            # arm's figure or none. Checked on every denominator and on the rows the race and ethnicity
+            # extractors read. All-"NA" rows ("More than one race" not collected) stay 0. In real stored
+            # trials no denominator and no such row has this shape; 11 rows of sex and continuous measures
+            # do, which DAP does not read at the whole-population group.
+            if owner is not None and id(owner) not in read:
+                read[id(owner)] = _read_at_whole_population(owner, overall, shape_ok)
+            if (owner is None or read[id(owner)]) and (
+                src_utils.measurement_number(whole, overall) is None
+                and any(
+                    src_utils.measurement_number([x], x["groupId"]) is not None
+                    for x in entries
+                    if x["groupId"] != overall
+                )
+            ):
+                out.append(
+                    f"{path} (a number for the whole-population group {overall!r}, as other groups in it "
+                    f"carry, not {whole[0].get('value')!r})"
+                )
     return out
 
 
