@@ -797,6 +797,7 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
         out += _unlabelled_row_problems(module, root)
         if not shape and not references and module.get("groups"):
             out += _unconverted_percentage_problems(module, root)
+            out += _demographic_row_value_problems(module, root)
     return out
 
 
@@ -905,6 +906,46 @@ def _unconverted_percentage_problems(module: dict[str, Any], root: str) -> list[
                 f"{root}.measures[{i}].denoms (a Participants count to convert the measure's percentages against, "
                 "on the measure, on every class or in the table's denoms)"
             )
+    return out
+
+
+def _demographic_row_value_problems(module: dict[str, Any], root: str) -> list[str]:
+    """Values in the rows the race and ethnicity extractors read that are neither counts nor percentages.
+
+    `sum_measurements` truncates a count (`int(num)`), keeps a negative one, and converts a percentage only
+    from 0 to 100, reading any other as a count. So a White count of 159.5 lost half a participant to
+    unknown race, -1 stopped the build with an unnamed `ValueError` in `evaluate_unknown_bounds`, and 150%
+    of a 200-person table was published as 150 participants (baseline 230). In a measure the extractors read
+    (`_read_at_whole_population`), every value that reads as a number must be a non-negative whole number,
+    or, in a percentage measure, a number from 0 to 100. "NA" reads as none and passes, as before. Run only
+    on a table that passed the shape and group-reference checks.
+    """
+    groups = module["groups"]
+    table = {"resultsSection": {"baselineCharacteristicsModule": module}}
+    overall = src_utils.get_overall_group_id(table) if len(groups) > 1 else None
+    out: list[str] = []
+    for i, measure in enumerate(_listed(module.get("measures"))):
+        if not _read_at_whole_population(measure, overall, True):
+            continue
+        pct = src_utils.is_percentage_measure(measure)
+        for j, cls in enumerate(_listed(measure.get("classes"))):
+            rows = [(f"classes[{j}].categories[{k}]", cat) for k, cat in enumerate(_listed(cls.get("categories")))]
+            if "measurements" in cls:
+                rows.append((f"classes[{j}]", cls))
+            for where, row in rows:
+                for m, entry in enumerate(_listed(row.get("measurements"))):
+                    value = entry["value"]
+                    readings = _baseline_readings(value)
+                    if pct and not all(math.isfinite(x) and 0 <= x <= 100 for x in readings):
+                        out.append(
+                            f"{root}.measures[{i}].{where}.measurements[{m}].value (a percentage from 0 to 100, "
+                            f"not {value!r})"
+                        )
+                    elif not pct and not _reads_as_count_or_none(value):
+                        out.append(
+                            f"{root}.measures[{i}].{where}.measurements[{m}].value (a count of participants, a "
+                            f"non-negative whole number, not {value!r})"
+                        )
     return out
 
 

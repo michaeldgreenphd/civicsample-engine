@@ -1729,9 +1729,11 @@ def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
 
 @pytest.mark.parametrize("text", ["NA", "60", "1,200", "50.3 (33.8)", "12%", "0"])
 def test_baseline_values_in_registry_forms_load(tmp_path: Path, text: str) -> None:
-    # "NA" reads as no number; the others as finite numbers, as src/utils.measurement_number reads them.
+    # "NA" reads as no number; the others as finite numbers, as src/utils.measurement_number reads them. The
+    # value is set in the sex row: since round 48 a race or ethnicity row must hold a count or a percentage
+    # (`test_a_race_value_must_be_a_count_or_a_percentage`), and "50.3 (33.8)" is a mean.
     st = _measured_study("NCT99800022")
-    st["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"][0][
+    st["resultsSection"]["baselineCharacteristicsModule"]["measures"][1]["classes"][0]["categories"][0][
         "measurements"][0]["value"] = text
     plain = tmp_path / "studies.jsonl"
     plain.write_text(json.dumps(_measured_study("NCT99800021")) + "\n" + json.dumps(st) + "\n", encoding="utf-8")
@@ -2045,6 +2047,58 @@ def test_a_count_table_beside_an_unparsed_participants_count_loads(tmp_path: Pat
     loaded = _load_pair(tmp_path, st)
     rec = next(r for r in loaded if r["protocolSection"]["identificationModule"]["nctId"] == "NCT99800065")
     assert extract_demographics(rec)["race"]["counts"]["white"] == 60
+
+
+_WHITE = ("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "categories", 0,
+          "measurements", 0, "value")
+
+
+def _set(st: dict, path: tuple, value: Any) -> dict:
+    node: Any = st
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    return st
+
+
+_COUNT = "a count of participants, a non-negative whole number"
+
+
+@pytest.mark.parametrize(
+    ("layout", "value", "problem"),
+    [
+        # On 7e2c26d each loaded: 159.5 was truncated to 159 and half a participant balanced into unknown race,
+        # -1 stopped the build with an unnamed ValueError, and 150% of 200 was published as 150 participants.
+        ("count", "159.5", f"classes[0].categories[0].measurements[0].value ({_COUNT}, not '159.5')"),
+        ("count", "-1", f"classes[0].categories[0].measurements[0].value ({_COUNT}, not '-1')"),
+        ("class", "1.5", f"classes[0].measurements[0].value ({_COUNT}, not '1.5')"),
+        ("percentage", "150",
+         "classes[0].categories[0].measurements[0].value (a percentage from 0 to 100, not '150')"),
+        ("percentage", "-5",
+         "classes[0].categories[0].measurements[0].value (a percentage from 0 to 100, not '-5')"),
+    ],
+)
+def test_a_race_value_must_be_a_count_or_a_percentage(tmp_path: Path, layout: str, value: str, problem: str) -> None:
+    if layout == "percentage":
+        bad = _set(_percentage_table("NCT99800073", "200"), _WHITE, value)
+    elif layout == "class":
+        bad = _class_rows(_measured_study("NCT99800073"))
+        _first_class(bad)["measurements"][0]["value"] = value
+    else:
+        bad = _set(_measured_study("NCT99800073"), _WHITE, value)
+    with pytest.raises(ValueError, match=re.escape(f"NCT99800073 lacks {_BASE}.measures[0].{problem}")):
+        _load_pair(tmp_path, bad)
+
+
+@pytest.mark.parametrize(
+    ("layout", "value"),
+    [("count", "60"), ("count", "1,060"), ("count", "NA"), ("percentage", "22.6"), ("percentage", "100")],
+)
+def test_race_values_the_extractors_read_load(tmp_path: Path, layout: str, value: str) -> None:
+    # Controls, on both heads: whole counts (comma-grouped too), "NA" (read as none), and percentages from 0
+    # to 100, fractional ones included.
+    st = _percentage_table("NCT99800074", "200") if layout == "percentage" else _measured_study("NCT99800074")
+    assert len(_load_pair(tmp_path, _set(st, _WHITE, value))) == 2
 
 
 def test_a_single_group_row_naming_its_group_twice_is_refused(tmp_path: Path) -> None:
