@@ -1066,3 +1066,23 @@ def test_condition_mesh_sidecar_refuses_lines_outside_the_producer_contract(
 ) -> None:
     with pytest.raises(ValueError, match=match):
         _load_mesh(tmp_path, line)
+
+
+@pytest.mark.parametrize("bad_entry", [None, "NCT99600009", ["x"], 7])
+def test_direct_and_enveloped_studies_batches_refuse_a_malformed_entry(
+    tmp_path: Path, bad_entry: object
+) -> None:
+    a, b = make_ctgov_study("NCT99600001"), make_ctgov_study("NCT99600002")
+    direct = tmp_path / "direct"
+    direct.mkdir()
+    (direct / "batch.json").write_text(json.dumps({"studies": [a, bad_entry, b]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="not study objects"):
+        build_feasibility_benchmarks.load_studies_input(
+            demographics_path=None, records_dir=direct, archive_path=None
+        )
+    path = _write_archive(
+        tmp_path,
+        [_envelope([a, bad_entry, b], ["NCT99600001", "NCT99600002"])],  # type: ignore[list-item]
+    )
+    with pytest.raises(ValueError, match="not study objects"):
+        _load_archive(path)

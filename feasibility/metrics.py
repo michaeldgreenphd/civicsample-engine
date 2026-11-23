@@ -588,13 +588,23 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
         base["completion_rate_status"] = "withheld_missing_started_or_completed"
         return base
 
-    group_list = [g for g in (raw_groups or []) if isinstance(g, dict)]
+    # Every flow group must be an object with a non-empty string id. Dropping a malformed entry
+    # and summing the rest would publish STARTED / COMPLETED for only some arms under
+    # `flow_status = "ok"`, so one malformed group withholds the whole flow instead.
+    group_list = list(raw_groups or [])
+    if any(
+        not isinstance(g, dict) or not isinstance(g.get("id"), str) or not g["id"].strip()
+        for g in group_list
+    ):
+        base["flow_status"] = "malformed_participant_flow"
+        base["completion_rate_status"] = "withheld_missing_started_or_completed"
+        return base
     if len(group_list) > 1:
         arm_groups = [g for g in group_list if (g.get("title") or "").strip().casefold() != "total"]
     else:
         arm_groups = list(group_list)
 
-    arm_ids = [g["id"] for g in arm_groups if isinstance(g.get("id"), str) and g["id"].strip()]
+    arm_ids = [g["id"] for g in arm_groups]
     if not arm_ids:
         base["flow_status"] = "no_flow_groups"
         base["completion_rate_status"] = "withheld_missing_started_or_completed"

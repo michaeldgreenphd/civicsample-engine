@@ -369,3 +369,24 @@ def test_api_v2_actual_date_types_unaffected_by_weekly_rule() -> None:
     assert m["accrual"]["actual_participants_per_month"] is not None
     # compute_duration's default (API v2) path still reads an untyped date as before.
     assert compute_duration("2020-01-15", None, "2021-01-15", None)["status"] == "exact_days"
+
+
+@pytest.mark.parametrize(
+    "bad_group",
+    [None, "FG002", ["FG002"], {"title": "Third arm"}, {"id": "", "title": "Third arm"}, {"id": 2}],
+)
+def test_one_malformed_flow_group_withholds_retention(bad_group: object) -> None:
+    """A malformed group beside valid ones must not leave a partial STARTED/COMPLETED sum."""
+    import copy
+
+    study = make_ctgov_study("NCT99100060")
+    ok = extract_period1_retention(study)
+    assert ok["flow_status"] == "ok" and ok["completion_rate_status"] == "computed"
+
+    broken = copy.deepcopy(study)
+    broken["resultsSection"]["participantFlowModule"]["groups"].append(bad_group)
+    ret = extract_period1_retention(broken)
+    assert ret["flow_status"] == "malformed_participant_flow"
+    assert ret["completion_rate_status"] == "withheld_missing_started_or_completed"
+    assert ret.get("period1_completion_rate") is None
+    assert ret.get("period1_started") is None

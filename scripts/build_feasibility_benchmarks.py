@@ -220,6 +220,21 @@ def _study_nct_id(study: dict[str, Any]) -> str | None:
     return nct if isinstance(nct, str) else None
 
 
+def _study_objects(items: list[Any], where: str) -> list[dict[str, Any]]:
+    """The entries of a `studies` batch, refusing the batch if any entry is not a study object.
+
+    Dropping a `null`, string or list entry and keeping the rest would shrink the cohort and every
+    denominator below the input batch with nothing said, so one malformed entry refuses the batch.
+    """
+    bad = [i for i, s in enumerate(items) if not isinstance(s, dict)]
+    if bad:
+        raise ValueError(
+            f"{where}: `studies` batch holds {len(bad)} entr{'y' if len(bad) == 1 else 'ies'} that "
+            f"are not study objects (first at index {bad[0]}: {type(items[bad[0]]).__name__})"
+        )
+    return items
+
+
 def _requested_nct_ids(envelope: dict[str, Any]) -> list[str] | None:
     """NCT ids a cached request asked for: its `ids` field, else the `url`'s `filter.ids` or its
     single-study path (`/studies/NCT########`)."""
@@ -274,7 +289,7 @@ def _response_envelope_studies(obj: dict[str, Any], where: str) -> list[dict[str
     if isinstance(body, dict) and "protocolSection" in body:
         studies = [body]
     elif isinstance(body, dict) and isinstance(body.get("studies"), list):
-        studies = [s for s in body["studies"] if isinstance(s, dict)]
+        studies = _study_objects(body["studies"], where)
     if not studies:
         raise ValueError(f"{where}: response envelope holds zero studies")
 
@@ -321,7 +336,7 @@ def _extract_studies_from_json_obj(obj: Any, where: str) -> list[dict[str, Any]]
     if "body" in obj:
         return _response_envelope_studies(obj, where)
     if isinstance(obj.get("studies"), list):
-        studies = [s for s in obj["studies"] if isinstance(s, dict)]
+        studies = _study_objects(obj["studies"], where)
         if not studies:
             raise ValueError(f"{where}: `studies` batch holds zero study records")
         return studies
