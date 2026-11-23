@@ -1108,6 +1108,12 @@ def test_archive_accepts_complete_response_envelopes(tmp_path: Path) -> None:
         ("repeated_trial", "repeated"),
         ("no_requested_ids", "names no requested NCT ids"),
         ("empty_studies_batch", "zero study records"),
+        # Round 35 (ported from #106): the hash and the text body are required. On dc39587 the first and
+        # third loaded; a short hash was refused as a mismatch, and a line with no body as an unknown shape.
+        ("no_hash", "body_sha256 None is not a 64-hex sha256"),
+        ("short_hash", "body_sha256 'abc' is not a 64-hex sha256"),
+        ("parsed_body", "response body is dict, not the unparsed response text"),
+        ("no_body", "unrecognized study JSON shape"),
     ],
 )
 def test_archive_refuses_failed_or_short_response_envelopes(
@@ -1124,6 +1130,10 @@ def test_archive_refuses_failed_or_short_response_envelopes(
         "repeated_trial": _envelope([b, b], ["NCT99600002"]),
         "no_requested_ids": _envelope([b], None),
         "empty_studies_batch": {"studies": []},
+        "no_hash": {k: v for k, v in _envelope([b], ["NCT99600002"]).items() if k != "body_sha256"},
+        "short_hash": {**_envelope([b], ["NCT99600002"]), "body_sha256": "abc"},
+        "parsed_body": {**_envelope([b], ["NCT99600002"]), "body": {"studies": [b]}},
+        "no_body": {k: v for k, v in _envelope([b], ["NCT99600002"]).items() if k != "body"},
     }[case]
     path = _write_archive(tmp_path, [ok, bad])
     with pytest.raises(ValueError, match=match):

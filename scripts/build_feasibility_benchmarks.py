@@ -484,7 +484,7 @@ def _response_envelope_studies(obj: dict[str, Any], where: str) -> list[dict[str
     whose request failed, whose body was altered, or that answered fewer or other trials than it
     asked for would otherwise contribute fewer studies with nothing said, and the build would publish
     benchmarks whose cohort and denominators silently lack those trials. So `status` must be 200,
-    `body_sha256` (when present) must match the body text, the body must hold at least one study,
+    the body must be text and `body_sha256` a 64-hex hash matching it, the body must hold at least one study,
     and the studies' NCT ids must equal the requested ids exactly: none missing, extra or repeated.
     An envelope that names no requested ids is refused, since a short answer could not be detected.
     `nextPageToken` is not consulted: CT.gov returns one on a full page even when `filter.ids` has
@@ -504,11 +504,18 @@ def _response_envelope_studies(obj: dict[str, Any], where: str) -> list[dict[str
             "lacks the modules these benchmarks read (conditions, sponsors, locations), and would publish "
             "every trial as Other / no sites / no sponsor class. Use complete study records."
         )
-    body = obj["body"]
+    # Both cached-response formats store the unparsed body text with its sha256, so both are required: a
+    # line without the hash, or with a parsed body, was read without showing that its records are the
+    # cached response. Every line of the four outcomes-audit caches carries a text body and its matching
+    # hash. (A line with no `body` key is not taken for an envelope and is refused by the loader.)
+    body = obj.get("body")
     want_sha = obj.get("body_sha256")
-    if want_sha is not None:
-        if not isinstance(body, str) or hashlib.sha256(body.encode("utf-8")).hexdigest() != want_sha:
-            raise ValueError(f"{where}: response body does not match its body_sha256")
+    if not isinstance(body, str):
+        raise ValueError(f"{where}: response body is {type(body).__name__}, not the unparsed response text")
+    if not (isinstance(want_sha, str) and re.fullmatch(r"[0-9a-f]{64}", want_sha)):
+        raise ValueError(f"{where}: body_sha256 {want_sha!r} is not a 64-hex sha256 of the response body")
+    if hashlib.sha256(body.encode("utf-8")).hexdigest() != want_sha:
+        raise ValueError(f"{where}: response body does not match its body_sha256")
     if isinstance(body, str):
         try:
             body = json.loads(body)
