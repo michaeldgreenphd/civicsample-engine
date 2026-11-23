@@ -710,7 +710,10 @@ def test_condition_mesh_sidecar_must_cover_every_cohort_trial(
     )
     def _mesh_lines(ncts: tuple[str, ...]) -> bytes:
         body = "".join(
-            json.dumps({"nct_id": n, "state": "not_indexed", "meshes": None, "ancestors": None}) + "\n"
+            json.dumps(
+                {"schema_version": "1.0", "nct_id": n, "state": "not_indexed", "meshes": None, "ancestors": None}
+            )
+            + "\n"
             for n in ncts
         )
         return gzip.compress(body.encode("utf-8"), mtime=0)
@@ -973,3 +976,93 @@ def test_archive_refuses_failed_or_short_response_envelopes(
     out = tmp_path / "out"
     assert build_feasibility_benchmarks.main(["--archive", str(path), "--out", str(out)]) == 1
     assert not out.exists()
+
+
+# ---- Contract: generated_at and condition_mesh states are rechecked on a written build
+
+
+@pytest.mark.parametrize(
+    "generated_at, match",
+    [
+        ("garbage", "generated_at must be an ISO-8601 UTC timestamp"),
+        ("2026-02-30T12:00:00+00:00", "generated_at must be an ISO-8601 UTC timestamp"),
+        ("2026-11-21T12:00:00+05:00", "generated_at must carry a UTC offset"),
+        ("2026-11-22T12:00:00+00:00", "run_id date 2026-11-21 != generated_at date 2026-11-22"),
+    ],
+)
+def test_contract_rechecks_generated_at(generated_at: str, match: str) -> None:
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    family, raw = _fixture_family(trials, sponsor_meta, review_meta)
+    assert artifacts.check_contract(family, raw) == []
+    edited = json.loads(json.dumps(family))
+    edited["run.json"]["generated_at"] = generated_at
+    assert any(match in p for p in artifacts.check_contract(edited)), artifacts.check_contract(edited)
+
+
+def test_contract_refuses_an_unknown_condition_mesh_state() -> None:
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    family, _raw = _fixture_family(trials, sponsor_meta, review_meta)
+    edited = json.loads(json.dumps(family))
+    edited["trials.jsonl.gz"][0]["indication"]["condition_mesh"]["state"] = "future_state"
+    nct = edited["trials.jsonl.gz"][0]["nct_id"]
+    assert f"{nct}.indication.condition_mesh: invalid state 'future_state'" in artifacts.check_contract(edited)
+
+
+# ---- Sidecar lines must keep the src/condition_mesh.py line contract
+
+_MESH = [{"id": "D003924", "term": "Diabetes Mellitus, Type 2"}]
+
+
+def _mesh_line(**fields: Any) -> dict[str, Any]:
+    line: dict[str, Any] = {"schema_version": "1.0", "nct_id": "NCT99800001", "meshes": None, "ancestors": None}
+    line.update(fields)
+    return line
+
+
+def _load_mesh(tmp_path: Path, line: dict[str, Any]) -> dict[str, dict[str, Any]] | None:
+    path = tmp_path / "condition_mesh.jsonl.gz"
+    path.write_bytes(gzip.compress((json.dumps(line) + "\n").encode("utf-8"), mtime=0))
+    by_nct, _meta = build_feasibility_benchmarks.load_condition_mesh_sidecar(
+        path, records_meta={"mode": "jsonl_archive"}
+    )
+    return by_nct
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        _mesh_line(state="indexed", meshes=_MESH, ancestors=[]),
+        _mesh_line(state="not_indexed", meshes=[], ancestors=_MESH),
+        _mesh_line(state="not_indexed"),
+        _mesh_line(state="no_module"),
+        _mesh_line(state="no_derived"),
+        _mesh_line(state="malformed", meshes=None, ancestors=_MESH, problem="meshes is not a list of id/term pairs"),
+    ],
+)
+def test_condition_mesh_sidecar_accepts_each_producer_state(tmp_path: Path, line: dict[str, Any]) -> None:
+    by_nct = _load_mesh(tmp_path, line)
+    assert by_nct is not None and by_nct["NCT99800001"]["state"] == line["state"]
+
+
+@pytest.mark.parametrize(
+    "line, match",
+    [
+        (_mesh_line(state="future_state"), "state 'future_state' is not one of"),
+        (_mesh_line(state="indexed", meshes=_MESH, ancestors=[], schema_version="2.0"), "schema_version '2.0'"),
+        ({k: v for k, v in _mesh_line(state="no_module").items() if k != "schema_version"}, "schema_version None"),
+        (_mesh_line(state="indexed", meshes=[], ancestors=[]), "indexed without"),
+        (_mesh_line(state="indexed", ancestors=[]), "indexed without"),
+        (_mesh_line(state="not_indexed", meshes=_MESH), "not_indexed with meshes"),
+        (_mesh_line(state="indexed", meshes=[{"id": "D1"}], ancestors=[]), "meshes is neither null"),
+        (_mesh_line(state="indexed", meshes=_MESH, ancestors="D2"), "ancestors is neither null"),
+        ({k: v for k, v in _mesh_line(state="no_module").items() if k != "ancestors"}, "no ancestors key"),
+        (_mesh_line(state="no_derived", meshes=[]), "no_derived with a meshes or ancestors list"),
+        (_mesh_line(state="malformed"), "malformed without a problem"),
+        (_mesh_line(state="indexed", meshes=_MESH, ancestors=[], problem="x"), "indexed carries a problem"),
+    ],
+)
+def test_condition_mesh_sidecar_refuses_lines_outside_the_producer_contract(
+    tmp_path: Path, line: dict[str, Any], match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        _load_mesh(tmp_path, line)

@@ -37,7 +37,10 @@ full-record container's (both must be present), so the matching week's
 `condition_mesh.jsonl.gz` from the same `data-YYYY-MM-DD` release is the only one accepted.
 With `--records-dir` or `--archive` there are no run stamps to compare, so only coverage is
 checked. Either way the sidecar must hold a line for every cohort trial; extra lines are counted,
-never joined. A mismatch refuses the build and writes nothing. `run.json`
+never joined. Every line must also keep the `src/condition_mesh.py` line contract: `schema_version`
+`1.0`, a known `state`, `meshes`/`ancestors` null or lists of `{id, term}`, and a state that agrees
+with them (`indexed` has descriptors, `not_indexed` none, `no_module`/`no_derived` no lists, only
+`malformed` a `problem`). A mismatch refuses the build and writes nothing. `run.json`
 `inputs.condition_mesh` records `provenance_check`, the matched `extracted_at` /
 `pipeline_commit` (`null` when no stamps were compared), `n_cohort_trials_covered` and
 `n_rows_outside_cohort`.
@@ -60,7 +63,8 @@ python3 scripts/build_feasibility_benchmarks.py \
     --archive docs/audits/outcomes_results_structure/first_pass/cache/raw_responses.jsonl.gz \
     --out build/feasibility
 
-# Verify producer contract
+# Verify producer contract (also re-parses run.json generated_at and checks every trial's
+# condition_mesh.state against the known states)
 python3 scripts/check_feasibility_contract.py build/feasibility
 
 # Export compact site files (stages atomically after verifying build SHA-256s)

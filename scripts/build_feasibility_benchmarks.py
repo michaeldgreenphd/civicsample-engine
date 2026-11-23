@@ -38,6 +38,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from feasibility import artifacts, benchmarks, termination  # noqa: E402
+from src import condition_mesh as cmesh  # noqa: E402
 from src import full_records  # noqa: E402
 
 DEFAULT_REVIEWS_PATH = ROOT / "feasibility" / "termination_reviews.csv"
@@ -418,6 +419,45 @@ def load_studies_input(
     }
 
 
+def condition_mesh_line_problem(row: dict[str, Any]) -> str | None:
+    """Why one sidecar line breaks the `src/condition_mesh.py` line contract, or `None`.
+
+    The contract is what `select_condition_mesh` writes: `schema_version` is
+    `cmesh.SCHEMA_VERSION`; `state` is one of `cmesh.STATES`; `meshes` and `ancestors` are both
+    present, each null or a list of `{"id": str, "term": str}` (`cmesh._terms`, the producer's own
+    rule); and the state agrees with its payload:
+      indexed              `meshes` holds at least one descriptor
+      not_indexed          `meshes` is null or empty
+      no_module, no_derived  `meshes` and `ancestors` are both null
+      malformed            a non-empty `problem` string; either list may be null
+    Only `malformed` carries `problem`. A line outside this contract (a newer producer's state, a
+    descriptor list of the wrong shape) would be joined onto its trial and then fall outside the
+    summary's state partition or contribute no descriptors to the MeSH strata.
+    """
+    if row.get("schema_version") != cmesh.SCHEMA_VERSION:
+        return f"schema_version {row.get('schema_version')!r} is not {cmesh.SCHEMA_VERSION!r}"
+    state = row.get("state")
+    if state not in cmesh.STATES:
+        return f"state {state!r} is not one of {list(cmesh.STATES)}"
+    for key in ("meshes", "ancestors"):
+        if key not in row:
+            return f"no {key} key (null records an absent list)"
+        if row[key] is not None and cmesh._terms(row[key]) is None:
+            return f"{key} is neither null nor a list of id/term pairs"
+    if state == "indexed" and not row["meshes"]:
+        return "state indexed without at least one meshes descriptor"
+    if state == "not_indexed" and row["meshes"]:
+        return "state not_indexed with meshes descriptors"
+    if state in ("no_module", "no_derived") and (row["meshes"] is not None or row["ancestors"] is not None):
+        return f"state {state} with a meshes or ancestors list"
+    if state == "malformed":
+        if not isinstance(row.get("problem"), str) or not row["problem"].strip():
+            return "state malformed without a problem description"
+    elif "problem" in row:
+        return f"state {state} carries a problem field"
+    return None
+
+
 def load_condition_mesh_sidecar(
     path: Path | None,
     *,
@@ -431,7 +471,8 @@ def load_condition_mesh_sidecar(
     stamps must be present and every line must carry exactly those values; otherwise the sidecar
     is from another week (or partly from one) and its descriptors would be joined onto the wrong
     registry state, so this raises `ValueError` naming the first mismatching line. The matched
-    stamps are recorded in `run.json` (`inputs.condition_mesh`). `--records-dir` and `--archive`
+    stamps are recorded in `run.json` (`inputs.condition_mesh`). Every line must also keep the
+    producer's line contract (`condition_mesh_line_problem`). `--records-dir` and `--archive`
     inputs carry no run stamps to compare against, so only cohort coverage is required for them
     (`require_condition_mesh_coverage`), and `provenance_check` says which check ran.
     """
@@ -466,6 +507,12 @@ def load_condition_mesh_sidecar(
             raise ValueError(f"{path.name}:{line_no}: missing nct_id in condition_mesh sidecar")
         if nct in by_nct:
             raise ValueError(f"{path.name}:{line_no}: duplicate nct_id {nct} in condition_mesh sidecar")
+        line_problem = condition_mesh_line_problem(obj)
+        if line_problem is not None:
+            raise ValueError(
+                f"{path.name}:{line_no}: {nct}: condition_mesh line breaks the src/condition_mesh.py "
+                f"contract: {line_problem}"
+            )
         if weekly:
             for stamp, want in expected.items():
                 if obj.get(stamp) != want:

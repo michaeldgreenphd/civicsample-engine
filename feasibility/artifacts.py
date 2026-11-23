@@ -65,6 +65,18 @@ TRIALS_FILE = "trials.jsonl.gz"
 FILES = JSON_FILES + (TRIALS_FILE,)
 
 RUN_ID_RE = re.compile(r"^feasibility-\d{4}-\d{2}-\d{2}-[0-9a-f]{10}$")
+# `trials[].indication.condition_mesh.state`: the `src/condition_mesh.py` states, plus
+# `not_provided` for a trial with neither a sidecar line nor a record to derive one from. The
+# summary's `condition_mesh_states` table has one row per state, so it partitions the cohort only
+# if every trial carries one of these.
+CONDITION_MESH_STATES = (
+    "indexed",
+    "not_indexed",
+    "no_module",
+    "no_derived",
+    "malformed",
+    "not_provided",
+)
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 NCT_RE = re.compile(r"^NCT\d{8}$")
 
@@ -363,14 +375,7 @@ def summarize_trials(
     spon_c = Counter(t["sponsor"]["review_state"] for t in trials)
     mesh_c = Counter(t["indication"]["condition_mesh"]["state"] for t in trials)
 
-    mesh_states_ordered = (
-        "indexed",
-        "not_indexed",
-        "no_module",
-        "no_derived",
-        "malformed",
-        "not_provided",
-    )
+    mesh_states_ordered = CONDITION_MESH_STATES
 
     tables: dict[str, dict[str, Any]] = {
         "enrollment_types": {
@@ -829,6 +834,20 @@ def check_contract(
     run_id = run.get("run_id")
     if not isinstance(run_id, str) or not RUN_ID_RE.fullmatch(run_id):
         problems.append(f"run.json: malformed run_id {run_id!r}")
+    # `generated_at` is outside `run_identity` and `run.json` is outside its own `files` hashes, so
+    # an edited value would pass every other check: parse it whole again, and require its date to be
+    # the one in `run_id` (build_artifact_family derives the run_id date from it).
+    try:
+        generated_date = utc_timestamp_date(run.get("generated_at"))  # type: ignore[arg-type]
+    except ValueError as exc:
+        problems.append(f"run.json: {exc}")
+    else:
+        if isinstance(run_id, str) and RUN_ID_RE.fullmatch(run_id):
+            run_id_date = run_id[len("feasibility-"):len("feasibility-") + 10]
+            if run_id_date != generated_date:
+                problems.append(
+                    f"run.json: run_id date {run_id_date} != generated_at date {generated_date}"
+                )
 
     prod = run.get("producer") or {}
     if not HEX64_RE.fullmatch(str(prod.get("source_sha256"))):
@@ -908,6 +927,10 @@ def check_contract(
             problems.append(f"trials[{idx}]: invalid nct_id {nct!r}")
             continue
         nct_ids.append(nct)
+
+        mesh_state = (((t.get("indication") or {}).get("condition_mesh")) or {}).get("state")
+        if mesh_state not in CONDITION_MESH_STATES:
+            problems.append(f"{nct}.indication.condition_mesh: invalid state {mesh_state!r}")
 
         for dur_name in ("primary_completion", "study_completion"):
             d = (t.get("durations") or {}).get(dur_name) or {}
