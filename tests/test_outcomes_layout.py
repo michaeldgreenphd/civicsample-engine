@@ -4654,3 +4654,999 @@ def test_m3_fix_staging_is_never_removed_through_a_symlink_on_either_path(
     assert (work / ol.SWAP_COMPLETE_FILE).is_file()
     assert ol.write_outcomes_tree(out, idx_v2, shards_v2).ok
     assert not work.exists()
+
+
+# ── Red team m3, round 3 (on 626100d with m4 17b5705 merged) ─────────────────
+# Fictional IDs only (RT_OK ordinary, RT_HOLD the holdout), as in rounds 1-2.
+# Each test asserts the correct behaviour. A test for a bypass found in round
+# 3 fails until the module is fixed; the others guard attacks that the code
+# already refuses. Write-safety tests use fictional replicas of the site's
+# family folders (file names only), never a site checkout.
+
+_RT3_SECRET = "HR 0.68 (95% CI 0.55-0.84)"
+_RT3_SECRET_MARK = "0.68"
+_RT3_STRAY = b"operator file, not a shard of this bundle\n"
+
+
+def _rt3_pdf_row() -> dict[str, Any]:
+    """A document row as PDF inspection writes it, carried without a wrapper key."""
+    return {
+        "filename": "Prot_SAP_000.pdf",
+        "doc_type": "combined",
+        "sha256": SHA_B,
+        "physical_pages": 112,
+        "readability_status": "machine_readable",
+        "pages_without_text": [1],
+        "version_label": "Protocol Amendment 3.0",
+        "version_date_as_printed": "12 March 2019",
+    }
+
+
+def _rt3_holdout_carrying(case: str) -> dict[str, Any]:
+    """The holdout's own CT.gov-shaped record carrying side material in ``case``."""
+    study = _make_ctgov_study(RT_HOLD, in_audit=True)
+    if case == "native_primary_pass":
+        study["protocolSection"]["outcomesModule"]["primary_pass"] = [
+            {
+                "primary_outcome_index": 0,
+                "element": "margin",
+                "status": "FOUND",
+                "pages_searched": "all",
+                "pages_not_searched": [],
+                "citations": [_make_citation(sha256=SHA_B)],
+            }
+        ]
+    elif case == "native_large_docs_pdf_scraped":
+        study["documentSection"] = {
+            "largeDocumentModule": {
+                "largeDocs": [
+                    {
+                        "typeAbbrev": "Prot_SAP",
+                        "hasProtocol": True,
+                        "hasSap": True,
+                        "filename": "Prot_SAP_000.pdf",
+                        "sha256": SHA_B,
+                        "version_label": "Protocol Amendment 3.0",
+                        "version_date_as_printed": "12 March 2019",
+                    }
+                ]
+            }
+        }
+    elif case == "native_results_documents":
+        study["resultsSection"]["documents"] = [_rt3_pdf_row()]
+    elif case == "unlisted_wrapper_document_rows":
+        study["pdf_index"] = [_rt3_pdf_row()]
+    else:
+        study["rule_census"] = [
+            {
+                "primary_outcome_index": 0,
+                "element": "margin",
+                "status": "NOT_FOUND",
+                "pages_searched": "all",
+                "pages_not_searched": [],
+            }
+        ]
+    return study
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "native_primary_pass",
+        "native_large_docs_pdf_scraped",
+        "native_results_documents",
+        "unlisted_wrapper_document_rows",
+        "unlisted_wrapper_location_rows",
+    ],
+)
+def test_redteam_m3_holdout_material_in_native_sections_or_unlisted_wrappers_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """Holdout material in the holdout's own --trials record is refused (exit
+    2), never dropped, wherever it sits: decision-rule location rows under
+    primary_pass inside protocolSection, PDF-scraped sha256/version_label/
+    version_date_as_printed on CT.gov's largeDocs, document rows under
+    resultsSection.documents, and document or location rows under a wrapper
+    key the module does not list. Round 3: exit 0 each time, the stub is
+    written and the material is dropped without a word (native sections are
+    read only for wrapped forms and vector-3 keys, where primary_pass,
+    citations and the PDF keys are not; the unwrapped-content list has none
+    of the per-row keys)."""
+    argv, out = _rt_build(tmp_path, studies=[_make_ctgov_study(RT_OK), _rt3_holdout_carrying(case)])
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=2)
+
+
+def test_redteam_m3_holdout_manifest_row_material_under_unlisted_wrapper_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The same holdout material carried on the holdout's manifest row (no
+    --trials) is refused. Round 3: exit 0, dropped."""
+    rows = [
+        {"nct_id": RT_OK, "in_audit": False, "cohorts": ["nih"]},
+        {"nct_id": RT_HOLD, "in_audit": True, "cohorts": ["nih"], "pdf_index": [_rt3_pdf_row()]},
+    ]
+    argv, out = _rt2_argv(tmp_path, manifest=rows)
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=2)
+
+
+_RT3_HOLDOUT_VALUE_CASES: dict[str, tuple[str, Any]] = {
+    "enrollment_object": ("enrollment", {"primary_result": _RT3_SECRET}),
+    "primary_outcomes_count_text": ("primary_outcomes_count", _RT3_SECRET),
+    "cohorts_object": ("cohorts", {"primary_result": _RT3_SECRET}),
+    "cohorts_bad_slug": ("cohorts", [_RT3_SECRET]),
+    "ecosystem_category_text": ("ecosystem_category", _RT3_SECRET),
+}
+
+
+@pytest.mark.parametrize("case", [*_RT3_HOLDOUT_VALUE_CASES, "protocol_text_in_both_inputs"])
+def test_redteam_m3_build_refusal_does_not_quote_holdout_record_values(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """A refusal about a holdout's record never quotes the record's values: a
+    holdout's results text placed in enrollment, primary_outcomes_count,
+    cohorts, ecosystem_category or protocol is refused without being printed.
+    Round 3: the ID is withheld but the value is quoted, e.g. "ERROR: <NCT id
+    withheld>.enrollment must be an int or None, got dict: {'primary_result':
+    'HR 0.68 (95% CI 0.55-0.84)'}" (and "AUDIT FIREWALL BLOCKED:
+    trials.protocol must be an explicit bool ..., got str: 'HR 0.68 ...'")."""
+    hold = _make_ctgov_study(RT_HOLD, in_audit=True)
+    rows: list[dict[str, Any]] | None = None
+    if case == "protocol_text_in_both_inputs":
+        hold["protocol"] = _RT3_SECRET
+        rows = [{"nct_id": RT_OK, "in_audit": False}, {"nct_id": RT_HOLD, "in_audit": True, "protocol": True}]
+    else:
+        key, value = _RT3_HOLDOUT_VALUE_CASES[case]
+        hold[key] = value
+    argv, out = _rt_build(tmp_path, studies=[_make_ctgov_study(RT_OK), hold], manifest_rows=rows)
+    rc = cli.main(argv)
+    err = capsys.readouterr().err
+    assert rc != 0
+    assert not out.exists()
+    assert _RT3_SECRET_MARK not in err
+    assert RT_HOLD_DIGITS not in err
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["has_reported_results", "document_badge.doc_count", "census_badge.status_counts", "cohorts", "shard_record.cohorts"],
+)
+def test_redteam_m3_check_does_not_quote_holdout_values(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+) -> None:
+    """--check reports a holdout row or stub carrying content without quoting
+    that content, on stderr or in --report. Round 3: the problem quotes it,
+    e.g. "... index_row.has_reported_results must be None, got
+    {'primary_result': 'HR 0.68 (95% CI 0.55-0.84)'}", and the report file
+    holds the same text."""
+    out = _rt2_built_tree(tmp_path)
+    leaked = {"primary_result": _RT3_SECRET}
+    if field == "shard_record.cohorts":
+        _rt2_edit_record(out, RT_HOLD, lambda rec: rec.__setitem__("cohorts", leaked))
+    else:
+        *parents, last = field.split(".")
+
+        def edit(idx: dict[str, Any]) -> None:
+            for row in idx["data"]:
+                if row["nct_id"] == RT_HOLD:
+                    node = row
+                    for part in parents:
+                        node = node[part]
+                    node[last] = leaked
+
+        _rt2_edit_index(out, edit)
+    report = tmp_path / "rt3_check_report.json"
+    capsys.readouterr()
+    assert cli.main(["--check", str(out), "--report", str(report)]) != 0
+    err = capsys.readouterr().err
+    assert _RT3_SECRET_MARK not in err
+    assert RT_HOLD_DIGITS not in err
+    if report.exists():
+        text = report.read_text(encoding="utf-8")
+        assert _RT3_SECRET_MARK not in text
+        assert RT_HOLD_DIGITS not in text
+
+
+@pytest.mark.parametrize("entry_point", ["validate_outcomes_tree", "write_outcomes_tree", "build_outcomes_documents"])
+def test_redteam_m3_library_firewall_refusals_withhold_holdout_id(tmp_path: pathlib.Path, entry_point: str) -> None:
+    """The library entry points that refuse a holdout leak withhold its ID,
+    as the CLI does. Round 3: validate_outcomes_tree(raise_on_audit_leakage=
+    True), write_outcomes_tree and build_outcomes_documents raise
+    "NCT99000058: in_audit holdout leak (vector 5) — document_badge.doc_count
+    must be None, got 3"; only the CLI wrapper withholds it."""
+    with pytest.raises(ol.AuditFirewallError) as excinfo:
+        if entry_point == "validate_outcomes_tree":
+            out = _rt2_built_tree(tmp_path)
+
+            def edit(idx: dict[str, Any]) -> None:
+                for row in idx["data"]:
+                    if row["nct_id"] == RT_HOLD:
+                        row["document_badge"]["doc_count"] = 3
+
+            _rt2_edit_index(out, edit)
+            ol.validate_outcomes_tree(out, raise_on_audit_leakage=True)
+        else:
+            stub_row, stub_rec = ol.build_trial_bundle(_make_ctgov_study(RT_HOLD, in_audit=True), shards=4)
+            stub_row = {**stub_row, "document_badge": {**stub_row["document_badge"], "doc_count": 3}}
+            if entry_point == "build_outcomes_documents":
+                ol.build_outcomes_documents(
+                    [(stub_row, stub_rec)], extracted_at=SAMPLE_TS, source_pipeline_commit=SAMPLE_COMMIT, shards=4
+                )
+            else:
+                idx, shard_docs = _rt2_one_trial_docs()
+                idx["data"].append(stub_row)
+                ol.write_outcomes_tree(tmp_path / "bundle", idx, shard_docs)
+    assert RT_HOLD_DIGITS not in str(excinfo.value)
+
+
+@pytest.mark.parametrize("where", ["trials_record", "provenance"])
+@pytest.mark.parametrize("key", ["held_out", "heldOut", "is_held_out", "in_audit_set"])
+def test_redteam_m3_holdout_marker_spellings_on_ordinary_trial_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    key: str,
+    where: str,
+) -> None:
+    """A record that marks an ordinary trial as held out under another
+    spelling (held_out, heldOut, is_held_out, in_audit_set) contradicts the
+    manifest, as in_audit_holdout does: exit 2. Round 3: exit 0 and the key
+    is published verbatim (in the shard's longitudinal_provenance for the
+    provenance case)."""
+    study = _make_ctgov_study(RT_OK)
+    side: list[tuple[str, Any]] = []
+    if where == "trials_record":
+        study[key] = True
+    else:
+        prov = _make_module4_provenance(RT_OK)
+        prov["registry_milestones"][key] = True
+        side = [("--provenance", prov)]
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)], side=side)
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=2)
+
+
+@pytest.mark.parametrize("case", ["profile_in_audit_true", "document_row_in_audit_true", "rows_of_two_trials"])
+def test_redteam_m3_normalize_document_profile_refuses_holdout_or_mixed_input(case: str) -> None:
+    """normalize_document_profile, a public section builder, refuses a
+    profile or document row that says it is a holdout's (AuditFirewallError),
+    as the provenance, locations and results builders do, and refuses rows of
+    two trials in one profile when no expected trial is given. Round 3: all
+    three return a profile (the mixed one holds the holdout's document)."""
+    raw: Any
+    expected: type[Exception]
+    if case == "profile_in_audit_true":
+        raw, expected = {**_make_doc_profile(RT_HOLD), "in_audit": True}, ol.AuditFirewallError
+    elif case == "document_row_in_audit_true":
+        raw, expected = [{**_make_doc_profile(RT_HOLD)["documents"][0], "in_audit": True}], ol.AuditFirewallError
+    else:
+        raw = [
+            _make_doc_profile(RT_OK)["documents"][0],
+            {**_make_doc_profile(RT_HOLD)["documents"][0], "filename": "Prot_001.pdf"},
+        ]
+        expected = ol.OutcomesLayoutError
+    with pytest.raises(expected):
+        ol.normalize_document_profile(raw)
+
+
+@pytest.mark.parametrize("case", ["measure_text", "inline_population"])
+def test_redteam_m3_population_parser_edits_to_the_record_not_published_unchecked(case: str) -> None:
+    """A population parser that edits the record it is given (here writing
+    the holdout's ID into a measure) cannot publish the edit past the
+    identity checks: the build is refused or the edit is not in the bundle.
+    Round 3: the parser runs after check_trial_record_identity on the
+    builder's working copy, and its edit is published, holdout ID included,
+    though audit_nct_ids names the holdout."""
+
+    def _parser(study: dict[str, Any]) -> None:
+        measure = study["resultsSection"]["outcomeMeasuresModule"]["outcomeMeasures"][0]
+        if case == "measure_text":
+            measure["description"] = f"Pooled with {RT_HOLD}: {_RT3_SECRET}"
+        else:
+            measure["analysis_population_parsed"] = {"population": "copied", "nct_id": RT_HOLD}
+
+    try:
+        bundle = ol.build_trial_bundle(
+            _make_ctgov_study(RT_OK),
+            shards=8,
+            in_audit=False,
+            population_parser=_parser,
+            audit_nct_ids=frozenset({RT_HOLD}),
+        )
+    except ol.OutcomesLayoutError:
+        return
+    assert RT_HOLD not in json.dumps(bundle)
+
+
+def test_redteam_m3_explicit_cohort_slug_naming_holdout_refused() -> None:
+    """build_trial_bundle's explicit_cohorts are scanned like the record: a
+    cohort slug spelling the holdout's ID is refused when audit_nct_ids names
+    it. Round 3: the slug is published in the ordinary trial's cohorts (the
+    CLI's --manifest-cohort is caught, but only by the staged-tree check)."""
+    with pytest.raises(ol.AuditFirewallError):
+        ol.build_trial_bundle(
+            _make_ctgov_study(RT_OK),
+            shards=8,
+            in_audit=False,
+            explicit_cohorts=[RT_HOLD.lower()],
+            audit_nct_ids=frozenset({RT_HOLD}),
+        )
+
+
+@pytest.mark.parametrize("with_ordinary_trial", [True, False])
+def test_redteam_m3_manifest_cohort_spelling_holdout_id_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    with_ordinary_trial: bool,
+) -> None:
+    """--manifest-cohort spelling the holdout's ID (a valid slug) is refused,
+    with or without an ordinary trial in the build (exit 2, nothing written).
+    Guard: refused in round 3."""
+    studies = _rt_pair() if with_ordinary_trial else [_make_ctgov_study(RT_HOLD, in_audit=True)]
+    argv, out = _rt_build(tmp_path, studies=studies)
+    _rt_assert_refused(cli.main([*argv, "--manifest-cohort", RT_HOLD.lower()]), out, capsys, expected_rc=2)
+
+
+@pytest.mark.parametrize("swap", ["report_path", "report_parent"])
+def test_redteam_m3_report_swapped_for_symlink_after_check_not_written_through(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    swap: str,
+) -> None:
+    """If the --report path, or its parent directory, becomes a symlink into a
+    family folder after write_report's check (another process), the report is
+    not written through it. Round 3: write_text follows the link; the geo
+    family's active_run.json is overwritten with the report, or a report.json
+    is created in the sponsors family."""
+    data = _rt_site_replica(tmp_path)
+    before = _rt_tree_hashes(data)
+    report = tmp_path / "reports" / "report.json"
+    real_check = ol.check_report_path
+
+    def _check_then_swap(path: Any, **kwargs: Any) -> pathlib.Path:
+        checked = real_check(path, **kwargs)
+        if sys._getframe(1).f_code.co_name == "write_report" and not os.path.lexists(tmp_path / "reports" / "report.json"):
+            if swap == "report_path":
+                report.parent.mkdir(parents=True, exist_ok=True)
+                report.symlink_to(data / "geo" / "active_run.json")
+            elif not os.path.lexists(tmp_path / "reports"):
+                (tmp_path / "reports").symlink_to(data / "sponsors")
+        return checked
+
+    monkeypatch.setattr(ol, "check_report_path", _check_then_swap)
+    with contextlib.suppress(ol.OutcomesLayoutError, OSError):
+        cli.main(_rt_manifest_only(tmp_path, tmp_path / "bundle", "--report", str(report)))
+    assert _rt_tree_hashes(data) == before
+
+
+def test_redteam_m3_leftover_staging_directory_is_not_a_bundle_target(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A staging directory left by a killed build (it holds both markers) is
+    not a bundle target: building into <out>.partial is refused, or the bundle
+    built there survives the next build of <out>. Round 3: check_output_target
+    takes the leftover for a bundle (it holds the bundle marker), a valid
+    two-trial bundle is built into it (--check ok), and the next build of
+    <out> deletes it whole as its own leftover staging directory."""
+    out = tmp_path / "bundle"
+    work = pathlib.Path(f"{out}.partial")
+    idx, shard_docs = _rt2_one_trial_docs()
+
+    def _killed(*_args: Any, **_kwargs: Any) -> None:
+        raise KeyboardInterrupt()
+
+    def _no_cleanup(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ol, "_swap_into_target", _killed)
+        patch.setattr(ol, "_cleanup_staging", _no_cleanup)
+        with pytest.raises(KeyboardInterrupt):
+            ol.write_outcomes_tree(out, idx, shard_docs)
+    assert (work / ol.STAGING_MARKER_FILE).is_file()
+    idx_v2, shards_v2 = ol.build_outcomes_documents(
+        [
+            ol.build_trial_bundle(_make_ctgov_study(RT_OK), shards=4),
+            ol.build_trial_bundle(_make_ctgov_study("NCT99000060", sponsor_class="NIH", phase="PHASE2"), shards=4),
+        ],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+    try:
+        ol.write_outcomes_tree(work, idx_v2, shards_v2)
+    except ol.OutcomesLayoutError:
+        return
+    built = _rt_tree_hashes(work)
+    with contextlib.suppress(ol.OutcomesLayoutError):
+        ol.write_outcomes_tree(out, idx, shard_docs)
+    assert work.is_dir()
+    assert _rt_tree_hashes(work) == built
+
+
+@pytest.mark.parametrize("name", ["1٣.json.gz", "1３.json.gz", "4.json.gz"])
+def test_redteam_m3_shards_entry_not_named_by_the_bundle_layout_not_deleted(tmp_path: pathlib.Path, name: str) -> None:
+    """A file in an existing bundle's shards/ that the bundle's own layout
+    never names (non-ASCII digits, or an index beyond its shard count; --check
+    calls each a stray file) is not deleted by the next write. Round 3:
+    SHARD_FILENAME_RE's \\d admits other scripts' digits and any index, so
+    the file is moved with the old shards and deleted without a word."""
+    out = tmp_path / "bundle"
+    idx_v2, shards_v2 = _rt2_two_versions(out)
+    stray = out / "shards" / name
+    stray.write_bytes(_RT3_STRAY)
+    assert not ol.validate_outcomes_tree(out).ok
+    with contextlib.suppress(ol.OutcomesLayoutError):
+        ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    assert stray.read_bytes() == _RT3_STRAY
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit])
+def test_redteam_m3_interrupt_during_index_backup_copy_not_reported_as_failed_restore(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt: type[BaseException],
+) -> None:
+    """Where hard links are unavailable, an interrupt during the byte copy of
+    the previous index (before any rename) leaves the target as it was, lets
+    the interrupt propagate, and does not tell the next run to restore the
+    half-written copy. Round 3: the interrupt is turned into a
+    RetainedBackupError saying the previous bundle "could not be put back",
+    .partial is kept, and the next run refuses with an instruction to move
+    the truncated _previous_index.json over the intact index.json."""
+    out = tmp_path / "bundle"
+    idx_v2, shards_v2 = _rt2_two_versions(out)
+    before = _rt_tree_hashes(out)
+
+    def _no_hard_links(*_args: Any, **_kwargs: Any) -> None:
+        raise OSError(1, "hard links are not supported here")
+
+    def _copy_half(src: Any, dst: Any, **_kwargs: Any) -> None:
+        data = pathlib.Path(src).read_bytes()
+        pathlib.Path(dst).write_bytes(data[: len(data) // 2])
+        raise interrupt()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ol.os, "link", _no_hard_links)
+        patch.setattr(ol.shutil, "copyfile", _copy_half)
+        with pytest.raises(BaseException) as excinfo:
+            ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    assert isinstance(excinfo.value, interrupt)
+    assert _rt_tree_hashes(out) == before
+    ol.check_output_target(out)
+
+
+@pytest.mark.parametrize("point", ["index_link", "completion_record"])
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit])
+def test_redteam_m3_interrupt_after_index_link_or_completion_record_restores_target(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    point: str,
+    interrupt: type[BaseException],
+) -> None:
+    """An interrupt right after the previous index is hard-linked, or right
+    after the completion record is written (the two swap steps that are not
+    an os.replace), leaves the target byte-for-byte as it was and no .partial.
+    Guard: restored in round 3."""
+    out = tmp_path / "bundle"
+    idx_v2, shards_v2 = _rt2_two_versions(out)
+    before = _rt_tree_hashes(out)
+    real_link = os.link
+    real_write = ol._write_new_files
+
+    def _link_then_interrupt(src: Any, dst: Any, **kwargs: Any) -> None:
+        real_link(src, dst, **kwargs)
+        raise interrupt()
+
+    def _write_then_interrupt(directory: pathlib.Path, identity: tuple[int, int], files: Any) -> None:
+        items = list(files)
+        real_write(directory, identity, items)
+        if any(name == ol.SWAP_COMPLETE_FILE for name, _data in items):
+            raise interrupt()
+
+    with monkeypatch.context() as patch:
+        if point == "index_link":
+            patch.setattr(ol.os, "link", _link_then_interrupt)
+        else:
+            patch.setattr(ol, "_write_new_files", _write_then_interrupt)
+        with pytest.raises(interrupt):
+            ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    assert _rt_tree_hashes(out) == before
+    assert not pathlib.Path(f"{out}.partial").exists()
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_redteam_m3_non_finite_number_never_written_into_a_shard(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    value: float,
+) -> None:
+    """A NaN or Infinity in an ordinary trial's results (Python's json writes
+    and reads both) is refused, or written as strict JSON: a browser's
+    JSON.parse rejects the NaN token and with it every trial in the shard.
+    Round 3: exit 0 and the shard holds a bare NaN / Infinity token."""
+    study = _make_ctgov_study(RT_OK)
+    measure = study["resultsSection"]["outcomeMeasuresModule"]["outcomeMeasures"][0]
+    measure["classes"] = [{"categories": [{"measurements": [{"groupId": "OG000", "value": value}]}]}]
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)])
+    rc = cli.main(argv)
+    capsys.readouterr()
+    if rc != 0:
+        assert not out.exists()
+        return
+    path, _ = _read_shard(out, RT_OK)
+
+    def _refuse_constant(token: str) -> Any:
+        raise ValueError(f"non-finite JSON constant {token}")
+
+    json.loads(gzip.decompress(path.read_bytes()).decode("utf-8"), parse_constant=_refuse_constant)
+
+
+def test_redteam_m3_check_refuses_non_finite_number_in_shard(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--check refuses a shard holding a NaN token (not JSON a browser
+    parses). Round 3: "outcomes tree check: ok", exit 0."""
+    out = _rt2_built_tree(tmp_path)
+    _rt2_edit_record(
+        out,
+        RT_OK,
+        lambda rec: rec["reported_results"]["primary_outcome_measures"][0].__setitem__(
+            "classes", [{"categories": [{"measurements": [{"groupId": "OG000", "value": float("nan")}]}]}]
+        ),
+    )
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) != 0
+
+
+def _rt3_tree_with_locations(tmp_path: pathlib.Path) -> pathlib.Path:
+    """A CLI-built tree: the ordinary trial with documents and a complete
+    primary pass of decision-rule locations, and the holdout's stub."""
+    argv, out = _rt2_argv(
+        tmp_path,
+        manifest=_RT2_ROWS,
+        trials=_rt_pair(),
+        extra=[
+            "--documents", str(_rt2_write(tmp_path / "rt3_docs.json", _make_doc_profile(RT_OK))),
+            "--locations", str(_rt2_write(tmp_path / "rt3_locs.json", _make_complete_locations(RT_OK))),
+        ],
+    )
+    assert cli.main(argv) == 0
+    return out
+
+
+@pytest.mark.parametrize("case", ["extra_row_key", "note_object", "title_object", "worker_object"])
+def test_redteam_m3_check_refuses_location_rows_the_builder_never_writes(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """--check holds decision_rule_locations rows to what the builder writes:
+    no key it never writes (here llm_assessment carrying results), and text
+    (or null) in note, primary_outcome_title and worker, never an object.
+    Round 3: each tree checks "ok", exit 0 (the round-2 fix holds the other
+    sections to a normalizer fixed point, but location rows' own keys and
+    values are not read)."""
+    out = _rt3_tree_with_locations(tmp_path)
+    leaked = {"primary_result": _RT3_SECRET}
+    field = {"extra_row_key": "llm_assessment", "note_object": "note", "title_object": "primary_outcome_title", "worker_object": "worker"}[case]
+
+    def edit(rec: dict[str, Any]) -> None:
+        for pass_key in ("primary_pass", "effective_pass"):
+            rec["decision_rule_locations"][pass_key][0][field] = leaked
+
+    _rt2_edit_record(out, RT_OK, edit)
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) != 0
+
+
+@pytest.mark.parametrize("case", ["module4_model_id_and_prompt_version", "unknown_row_key", "note_object"])
+def test_redteam_m3_location_row_content_not_dropped_or_stringified(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """A location row's content is published as given or refused, never
+    dropped or turned into its str(): Module 4 requires model_id and
+    prompt_version on every census location row (LOCATION_REQUIRED_KEYS;
+    the model id is the record of a non-deterministic step), so they are
+    published; an unknown key is kept or refused; an object in note is
+    refused. Round 3: exit 0; model_id, prompt_version and the unknown key
+    are dropped, and the note is published as "{'primary_result': ...}"."""
+    rows = _make_complete_locations(RT_OK)
+    for row in rows:
+        if case == "module4_model_id_and_prompt_version":
+            row["model_id"] = "fictional-model-2026-01-01"
+            row["prompt_version"] = "fictional-census-prompt-v9"
+        elif case == "unknown_row_key":
+            row["confidence"] = 0.93
+        else:
+            row["note"] = {"primary_result": _RT3_SECRET}
+    argv, out = _rt_build(
+        tmp_path,
+        studies=_rt_pair(),
+        side=[("--documents", _make_doc_profile(RT_OK)), ("--locations", rows)],
+    )
+    rc = cli.main(argv)
+    capsys.readouterr()
+    if case == "module4_model_id_and_prompt_version":
+        assert rc == 0
+    if rc != 0:
+        assert not out.exists()
+        return
+    _, sdoc = _read_shard(out, RT_OK)
+    published = sdoc["data"][RT_OK]["decision_rule_locations"]["primary_pass"]
+    for row in published:
+        if case == "module4_model_id_and_prompt_version":
+            assert row.get("model_id") == "fictional-model-2026-01-01"
+            assert row.get("prompt_version") == "fictional-census-prompt-v9"
+        elif case == "unknown_row_key":
+            assert row.get("confidence") == 0.93
+        else:
+            assert row["note"] != str({"primary_result": _RT3_SECRET})
+
+
+def test_redteam_m3_location_rows_for_absent_outcome_index_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Decision-rule location rows for a primary outcome index the trial does
+    not have (here 5, of a trial with one primary outcome) are refused, as a
+    parsed population for such an index is. Round 3: exit 0, the rows are
+    published and the census badge reads partial with seven FOUND cells."""
+    rows = _make_complete_locations(RT_OK)
+    for row in rows:
+        row["primary_outcome_index"] = 5
+    argv, out = _rt_build(
+        tmp_path,
+        studies=_rt_pair(),
+        side=[("--documents", _make_doc_profile(RT_OK)), ("--locations", rows)],
+    )
+    _rt_assert_refused(cli.main(argv), out, capsys)
+
+
+@pytest.mark.parametrize("key", ["documents", "registry_milestones", "primary_pass"])
+def test_redteam_m3_unwrapped_side_content_in_ordinary_record_not_dropped(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    key: str,
+) -> None:
+    """Side content carried at the top of an ordinary trial's --trials record
+    without its wrapper (Module 1 documents, Module 4 registry_milestones, a
+    primary_pass of location rows) is published or refused, never dropped,
+    as it is refused on a holdout's record. Round 3: exit 0 and the shard's
+    section is null; the content is gone without a word."""
+    content = {
+        "documents": _make_doc_profile(RT_OK)["documents"],
+        "registry_milestones": _make_module4_provenance(RT_OK)["registry_milestones"],
+        "primary_pass": _make_complete_locations(RT_OK),
+    }[key]
+    study = _make_ctgov_study(RT_OK)
+    study[key] = content
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)])
+    rc = cli.main(argv)
+    capsys.readouterr()
+    if rc != 0:
+        assert not out.exists()
+        return
+    _, sdoc = _read_shard(out, RT_OK)
+    section = {"documents": "document_profile", "registry_milestones": "longitudinal_provenance", "primary_pass": "decision_rule_locations"}[key]
+    assert sdoc["data"][RT_OK][section] is not None
+
+
+def test_redteam_m3_document_badge_total_pages_not_an_undercount() -> None:
+    """When a document's page count is unknown (download_failed: None), the
+    badge's total_physical_pages is unknown (None), as Module 1's own badge
+    states it, not the sum of the others. Round 3: doc_count 2 and
+    total_physical_pages 40, the one known document's pages presented as the
+    trial's total."""
+    profile = _make_doc_profile(RT_OK)
+    failed = {
+        **profile["documents"][0],
+        "filename": "ICF_001.pdf",
+        "doc_type": "protocol",
+        "http_status": 404,
+        "sha256": None,
+        "bytes": None,
+        "physical_pages": None,
+        "readability_status": "download_failed",
+        "pages_selected": None,
+        "pages_deferred": None,
+    }
+    profile["documents"].append(failed)
+    profile["readability_summary"] = "partial_image_or_redacted"
+    badge = ol.build_document_badge(in_audit=False, document_profile=ol.normalize_document_profile(profile, expected_nct_id=RT_OK))
+    assert badge["doc_count"] == 2
+    assert badge["total_physical_pages"] is None
+
+
+@pytest.mark.parametrize("case", ["extraction_failed", "download_error_reason"])
+def test_redteam_m3_module1_document_states_and_reasons_kept(case: str) -> None:
+    """Module 1's own document vocabulary is read: an extraction_failed
+    document (bytes obtained, no page extracted) and profile keep that state,
+    and the reason Module 1 records for a document's absence
+    (download_error, extraction_error) is published with it. Round 3:
+    extraction_failed is refused ("not in READABILITY_STATUSES"), and
+    download_error is dropped, so download_failed is published without its
+    reason."""
+    profile = _make_doc_profile(RT_OK)
+    doc = profile["documents"][0]
+    if case == "extraction_failed":
+        doc.update(readability_status="extraction_failed", physical_pages=None, extraction_error="no provider extracted a page")
+        profile["readability_summary"] = "extraction_failed"
+    else:
+        doc.update(
+            readability_status="download_failed", http_status=404, sha256=None, bytes=None, physical_pages=None,
+            pages_selected=None, pages_deferred=None, download_error="HTTP 404 from the registry CDN",
+        )
+        profile["readability_summary"] = "download_failed"
+    norm = ol.normalize_document_profile(profile, expected_nct_id=RT_OK)
+    if case == "extraction_failed":
+        assert norm["readability_summary"] == "extraction_failed"
+        assert norm["documents"][0]["readability_status"] == "extraction_failed"
+        assert "no provider extracted a page" in json.dumps(norm)
+    else:
+        assert "HTTP 404 from the registry CDN" in json.dumps(norm)
+
+
+@pytest.mark.parametrize(
+    "case", ["posted_documents_vs_large_docs", "publications_vs_linked_publications", "date_deltas_vs_delta"]
+)
+def test_redteam_m3_provenance_spellings_that_disagree_refused(case: str) -> None:
+    """A provenance record carrying a section under both of its spellings
+    (posted_documents and Module 4's large_docs; publications and
+    linked_publications; date_deltas and primary_completion_to_results_delta)
+    with different content is refused, not resolved by precedence. Round 3:
+    the first spelling is published and the other dropped without a word."""
+    prov = _make_module4_provenance(RT_OK)
+    if case == "posted_documents_vs_large_docs":
+        prov["posted_documents"] = [{"filename": "Other_000.pdf"}]
+    elif case == "publications_vs_linked_publications":
+        prov["publications"] = [{"title": "A different publication"}]
+    else:
+        prov["date_deltas"] = {"primary_completion_to_results": {"exact_days": 1}}
+    with pytest.raises(ol.OutcomesLayoutError):
+        ol.normalize_longitudinal_provenance(prov)
+
+
+def test_redteam_m3_side_section_provenance_stamps_published(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The provenance stamps of each side section (a Module 1 profile's
+    extracted_at and pipeline_commit, a Module 4 record's assembled_at and
+    source_pipeline_commit) reach the published tree, so a section cannot
+    outrun its source unnoticed. Round 3: all four are dropped; the bundle
+    carries only its own build stamps."""
+    profile = {**_make_doc_profile(RT_OK), "pipeline_commit": "deadbee", "extracted_at": "2026-02-03T04:05:06+00:00"}
+    prov = {**_make_module4_provenance(RT_OK), "source_pipeline_commit": "c0ffee1", "assembled_at": "2026-01-02T03:04:05+00:00"}
+    argv, out = _rt_build(tmp_path, studies=_rt_pair(), side=[("--documents", profile), ("--provenance", prov)])
+    assert cli.main(argv) == 0
+    capsys.readouterr()
+    path, _ = _read_shard(out, RT_OK)
+    published = (out / "index.json").read_text(encoding="utf-8") + gzip.decompress(path.read_bytes()).decode("utf-8")
+    for stamp in ("deadbee", "2026-02-03T04:05:06", "c0ffee1", "2026-01-02T03:04:05"):
+        assert stamp in published
+
+
+@pytest.mark.parametrize("outcome_type", ["PRIMARY ", "primary​"])
+def test_redteam_m3_population_row_with_unread_outcome_type_not_dropped(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    outcome_type: str,
+) -> None:
+    """A --population-parsed row whose outcome_type is a padded or
+    zero-width spelling of PRIMARY is published with its measure or refused,
+    never skipped as if it were a secondary outcome. Round 3: exit 0 and the
+    measure's analysis_population_parsed is null."""
+    side = (
+        "--population-parsed",
+        {"nct_id": RT_OK, "outcomes": [{"outcome_index": 0, "outcome_type": outcome_type, "population": "mITT"}]},
+    )
+    argv, out = _rt_build(tmp_path, studies=_rt_pair(), side=[side])
+    rc = cli.main(argv)
+    capsys.readouterr()
+    if rc != 0:
+        assert not out.exists()
+        return
+    _, sdoc = _read_shard(out, RT_OK)
+    assert sdoc["data"][RT_OK]["reported_results"]["primary_outcome_measures"][0]["analysis_population_parsed"] is not None
+
+
+@pytest.mark.parametrize("case", ["outcome_index_text", "measure_null", "measure_object", "nested_unknown_key"])
+def test_redteam_m3_prebuilt_results_rows_not_coerced_or_dropped(case: str) -> None:
+    """A pre-built reported_results is read as written or refused: an
+    outcome_index that is not an int is not replaced by the row's position
+    (two measures then share index 0), a null measure stays null rather than
+    becoming "", an object measure is not published as its str(), and a key
+    the block does not have is not dropped. Round 3: all four are coerced or
+    dropped and returned without a word."""
+    reg: dict[str, Any] = {"outcome_index": 0, "measure": "Overall Survival", "time_frame": "24 months", "description": None}
+    measures: list[dict[str, Any]] = [{"outcome_index": 0, "title": "Overall Survival"}]
+    if case == "outcome_index_text":
+        measures = [{"outcome_index": "1", "title": "Overall Survival"}, {"outcome_index": 0, "title": "PFS"}]
+    elif case == "measure_null":
+        reg["measure"] = None
+    elif case == "measure_object":
+        reg["measure"] = {"primary_result": _RT3_SECRET}
+    else:
+        measures[0]["llm_assessment"] = {"primary_result": _RT3_SECRET}
+    study = {
+        "nct_id": RT_OK,
+        "reported_results": {"results_posted": True, "registered_primary_outcomes": [reg], "primary_outcome_measures": measures},
+    }
+    try:
+        block = ol.extract_reported_results(study)
+    except ol.OutcomesLayoutError:
+        return
+    if case == "outcome_index_text":
+        indexes = [m["outcome_index"] for m in block["primary_outcome_measures"]]
+        assert len(set(indexes)) == len(indexes)
+    elif case == "measure_null":
+        assert block["registered_primary_outcomes"][0]["measure"] is None
+    elif case == "measure_object":
+        assert block["registered_primary_outcomes"][0]["measure"] != str({"primary_result": _RT3_SECRET})
+    else:
+        assert "llm_assessment" in json.dumps(block)
+
+
+# Guards: write safety against a replica of the families' real file names.
+
+_RT3_REAL_FAMILIES: dict[str, tuple[str, ...]] = {
+    "outcomes": ("index.json", "run.json", "summary.json", *(f"records/r0{n}.json" for n in range(8))),
+    "results_structure": ("run.json", "summary.json", "records.json"),
+    "sponsors": (
+        "bridge.csv.gz", "bridge_meta.json", "audit/audit_summary.json", "audit/inbox_open.csv.gz",
+        "audit/inbox_new_unmatched.csv", "audit/label_changes.csv", "audit/literals_all.csv.gz", "audit/match_changes.csv",
+    ),
+    "geo": (
+        "README.md", "active_run.json", "geo_rep_2026-06-19_run063/CONTRACT.md",
+        "geo_rep_2026-06-19_run063/geo_dictionary.csv", "geo_rep_2026-06-19_run063/column_dictionary.csv",
+        "geo_rep_2026-06-19_run063/geo_reader.R",
+    ),
+    "sex_gender": (
+        "methods.json", "methods.md", "audit/audit_summary.json", "audit/status_counts.json",
+        "audit/inbox_unrecognized.csv", "audit/resolved_labels.csv", "audit/label_buckets.csv",
+        "audit/bucket_changes.csv", "audit/inbox_exits.csv",
+    ),
+}
+
+
+def _rt3_real_replica(tmp_path: pathlib.Path, *, under_data: bool = True) -> pathlib.Path:
+    """Fictional files at the families' real file names, under ``data/`` (as
+    in a copy of the site's data folder) or directly under a folder that is
+    not named data (a family copied on its own)."""
+    base = tmp_path / "replica3" / ("data" if under_data else "loose")
+    for family, names in _RT3_REAL_FAMILIES.items():
+        for name in names:
+            path = base / family / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"fictional {family}/{name}\n", encoding="utf-8")
+    return base
+
+
+@pytest.mark.parametrize("under_data", [True, False])
+@pytest.mark.parametrize(
+    "sub",
+    [
+        "outcomes/records",
+        "outcomes/records/b",
+        "results_structure",
+        "sponsors",
+        "sponsors/audit",
+        "sponsors/audit/b",
+        "geo",
+        "geo/b",
+        "geo/geo_rep_2026-06-19_run063",
+        "sex_gender",
+        "sex_gender/audit",
+        "sex_gender/audit/b",
+    ],
+)
+def test_redteam_m3_real_layout_family_subpaths_refused(tmp_path: pathlib.Path, under_data: bool, sub: str) -> None:
+    """Every family folder and subfolder, at the families' real file names,
+    with or without a data/ parent, is refused as --out-dir, and no family
+    file changes. Guard: refused in round 3."""
+    base = _rt3_real_replica(tmp_path, under_data=under_data)
+    before = _rt_tree_hashes(base)
+    assert cli.main(_rt_manifest_only(tmp_path, base / sub)) == 1
+    assert _rt_tree_hashes(base) == before
+
+
+@pytest.mark.parametrize("family", sorted(_RT3_REAL_FAMILIES))
+def test_redteam_m3_relative_report_from_family_cwd_refused(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    family: str,
+) -> None:
+    """A relative --report run from inside a family folder lands in the
+    family and is refused. Guard: refused in round 3."""
+    base = _rt3_real_replica(tmp_path)
+    before = _rt_tree_hashes(base)
+    monkeypatch.chdir(base / family)
+    assert cli.main(_rt_manifest_only(tmp_path, tmp_path / "bundle", "--report", "rt3_report.json")) == 1
+    assert _rt_tree_hashes(base) == before
+    assert not (tmp_path / "bundle").exists()
+
+
+_RT3_CROSS_STREAM_CASES: tuple[str, ...] = (
+    "documents_mapping_with_lowercase_holdout_key",
+    "provenance_nctId_names_holdout",
+    "provenance_filed_by_trial_nct_id_holdout",
+    "second_locations_file_with_holdout_rows",
+    "population_row_nested_nctId_holdout",
+    "documents_row_zero_width_holdout_id",
+    "documents_jsonl_padded_holdout_id",
+    "trials_record_absent_from_manifest",
+    "side_record_for_excluded_trial",
+)
+
+
+@pytest.mark.parametrize("case", _RT3_CROSS_STREAM_CASES)
+def test_redteam_m3_cross_stream_holdout_and_absent_trial_variants_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """Holdout material through a stream's other spellings, and records for
+    trials absent from the manifest, are refused before anything is written,
+    with the holdout's ID withheld. Guard: refused in round 3."""
+    studies = _rt_pair()
+    profile = _make_doc_profile(RT_OK)
+    manifest: Any = _RT2_ROWS
+    extra: list[str] = []
+
+    def side(option: str, name: str, content: Any) -> None:
+        extra.extend([option, str(_rt2_write(tmp_path / name, content))])
+
+    if case == "documents_mapping_with_lowercase_holdout_key":
+        side("--documents", "d.json", {RT_OK: profile, RT_HOLD.lower(): _make_doc_profile(RT_HOLD)})
+    elif case == "provenance_nctId_names_holdout":
+        side("--provenance", "p.json", {**_make_module4_provenance(RT_OK), "nctId": RT_HOLD})
+    elif case == "provenance_filed_by_trial_nct_id_holdout":
+        prov = {k: v for k, v in _make_module4_provenance(RT_HOLD).items() if k != "nct_id"}
+        side("--provenance", "p.json", {**prov, "trial_nct_id": RT_HOLD})
+    elif case == "second_locations_file_with_holdout_rows":
+        side("--documents", "d.json", profile)
+        side("--locations", "l1.json", _make_complete_locations(RT_OK))
+        side("--locations", "l2.json", _make_complete_locations(RT_HOLD))
+    elif case == "population_row_nested_nctId_holdout":
+        row = {"outcome_index": 0, "outcome_type": "PRIMARY", "population": "ITT", "source": {"nctId": RT_HOLD}}
+        side("--population-parsed", "pp.json", {"nct_id": RT_OK, "outcomes": [row]})
+    elif case == "documents_row_zero_width_holdout_id":
+        side("--documents", "d.json", [{**profile["documents"][0], "nct_id": RT_HOLD[:5] + "​" + RT_HOLD[5:]}])
+    elif case == "documents_jsonl_padded_holdout_id":
+        side("--documents", "d.jsonl", json.dumps({**_make_doc_profile(RT_HOLD), "nct_id": RT_HOLD + " "}) + "\n")
+    elif case == "trials_record_absent_from_manifest":
+        studies = [*studies, _make_ctgov_study("NCT99000099")]
+    else:
+        manifest = {"rows": _RT2_ROWS, "excluded": [{"nct_id": "NCT99000099", "reason": "fictional"}]}
+        side("--documents", "d.json", _make_doc_profile("NCT99000099"))
+    argv, out = _rt2_argv(tmp_path, manifest=manifest, trials=studies, extra=extra)
+    _rt_assert_refused(cli.main(argv), out, capsys)
+
+
+def test_redteam_m3_documents_and_provenance_disagreeing_on_a_document_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--documents and --provenance that give one posted document
+    (Prot_SAP_000.pdf) two different sha256 values conflict, and the build is
+    refused rather than publishing both. Round 3: exit 0; the shard's
+    document_profile says sha256 bbbb... and its longitudinal_provenance
+    says aaaa... for the same file, and --check passes the tree."""
+    argv, out = _rt_build(
+        tmp_path,
+        studies=_rt_pair(),
+        side=[
+            ("--documents", _make_doc_profile(RT_OK, sha=SHA_B)),
+            ("--provenance", _make_module4_provenance(RT_OK, with_pdf_scraped=True)),
+        ],
+    )
+    _rt_assert_refused(cli.main(argv), out, capsys)
