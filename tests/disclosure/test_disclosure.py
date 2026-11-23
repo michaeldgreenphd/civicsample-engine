@@ -1042,3 +1042,62 @@ def test_statement_locator_that_does_not_resolve_is_never_quote_confirmed() -> N
             assert lnk['automated_validation'] == 'not_validated', sid
             assert lnk['validation_reasons'][0].startswith(f'{check}:'), sid
         assert E.link_problems(lnk) == [], sid
+
+
+def test_flooded_generic_query_cannot_hide_precise_querys_reviewable_candidate() -> None:
+    study = F._make_study(
+        'NCT09990009',
+        title='Fictional combination study',
+        lead_sponsor='Fictional Trial Sponsor Inc',
+        # Sorted query order puts the flooded generic term first, as it claimed the application before.
+        drugs=['Acetamigen', 'Zorbaprecise 10 mg'],
+    )
+    assert A.extract_drug_candidates(study) == ['acetamigen', 'zorbaprecise']
+
+    shared_app = {
+        'application_number': 'NDA777001',
+        'sponsor_name': 'Unrelated Licensee Pharma',
+        'products': [{'brand_name': 'ZORBAPRECISE'}],
+        'submissions': [{'submission_type': 'ORIG', 'submission_status': 'AP', 'submission_status_date': '20220301'}],
+    }
+    flood_apps = [
+        {'application_number': f'ANDA{900000 + i}', 'sponsor_name': f'Generic Maker {i}'}
+        for i in range(29)
+    ]
+    openfda_records = {
+        A.drug_query_key('acetamigen'): {
+            'status': 200,
+            'body': {'meta': {'results': {'total': 30}}, 'results': [*flood_apps, shared_app]},
+        },
+        A.drug_query_key('zorbaprecise'): {
+            'status': 200,
+            'body': {'meta': {'results': {'total': 1}}, 'results': [shared_app]},
+        },
+    }
+    links = E.build_openfda_links('NCT09990009', study, openfda_records, E.trial_sponsor_match_keys(study))
+
+    shared = [x for x in links if x['target_id'] == 'NDA777001']
+    assert len(shared) == 1
+    kept = shared[0]
+    assert kept['automated_validation'] == 'not_validated'
+    assert kept['detail']['matched_drug'] == 'zorbaprecise'
+    assert kept['locator']['drug_query'] == 'zorbaprecise'
+    assert kept['detail']['drug_queries_returning_application'] == ['acetamigen', 'zorbaprecise']
+    # The flooded query's other applications are still set aside by rule, one link each.
+    flooded = [x for x in links if x['target_id'].startswith('ANDA')]
+    assert len(flooded) == 29 and {x['automated_validation'] for x in flooded} == {'rejected_by_rule'}
+    assert all(E.link_problems(x) == [] for x in links)
+
+    # An NCT-cited record outranks a reviewable candidate for the same application, whichever query found it.
+    cited_app = {**shared_app, 'application_number': 'NDA777002', 'note': 'Pivotal study NCT09990009'}
+    openfda_records[A.drug_query_key('acetamigen')]['body']['results'].append(cited_app)
+    openfda_records[A.drug_query_key('acetamigen')]['body']['meta']['results']['total'] = 31
+    openfda_records[A.drug_query_key('zorbaprecise')]['body']['results'].append(
+        {k: v for k, v in cited_app.items() if k != 'note'}
+    )
+    openfda_records[A.drug_query_key('zorbaprecise')]['body']['meta']['results']['total'] = 2
+    links2 = E.build_openfda_links('NCT09990009', study, openfda_records, E.trial_sponsor_match_keys(study))
+    cited = [x for x in links2 if x['target_id'] == 'NDA777002']
+    assert len(cited) == 1
+    assert cited[0]['automated_validation'] == 'identifier_confirmed'
+    assert cited[0]['detail']['matched_drug'] == 'acetamigen'

@@ -23,6 +23,8 @@ It runs by hand; no scheduled workflow invokes it, and the weekly demographics p
 - `rejected_by_rule`: a full-text search hit lacking an exact `NCT_ID` token in any retrieved field, or a high-volume generic drug query (`>= 25` applications) without sponsor agreement — retained for audit visibility and set aside.
 - `not_validated`: heuristic sponsor+drug NDA/BLA candidates, free-text citations without a PMID, or statements whose excerpt was not confirmed; `detail.statement_check` and the validation reason say why (`source_not_retrieved`, `locator_not_resolved`, `excerpt_not_found_at_locator`).
 
+When several drug queries for one trial return the same openFDA application, one link is kept for it: the strongest classification (`identifier_confirmed` > `not_validated` candidate > `rejected_by_rule`), ties broken by query term. A flooded generic query therefore cannot hide a precise query's reviewable candidate; `detail.drug_queries_returning_application` lists every query that returned it.
+
 Unreviewed links are **never** called "validated". Semantic confirmation (`review_status` in `{"unreviewed", "confirmed_same_trial_results", "confirmed_background_only", "rejected_false_positive", "indeterminate"}`) comes solely from `disclosure/reviews.csv`.
 
 ## 5-route × 7-state coverage (`coverage.json`)

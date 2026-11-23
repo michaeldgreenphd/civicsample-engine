@@ -152,6 +152,9 @@ STATEMENT_SOURCE_TYPES = (
 )
 
 OPENFDA_DRUG_FLOOD_THRESHOLD = 25
+# Strength of an openFDA drug-query link for one application, strongest first: an exact NCT token in
+# the record, then a reviewable candidate, then a candidate set aside by the flood rule.
+OPENFDA_CANDIDATE_STRENGTH = {'identifier_confirmed': 0, 'not_validated': 1, 'rejected_by_rule': 2}
 
 LINK_ID_RE = re.compile(r'^link:[0-9a-f]{16}$')
 NCT_RE = re.compile(r'^NCT\d{8}$')
@@ -798,9 +801,11 @@ def build_openfda_links(
                 )
 
     # 2. Candidate drug intervention queries (`openfda/drug/{slug}`)
-    seen_candidate_apps: set[str] = set(confirmed_apps)
+    # Several drug queries can return the same application. Every (application, query) pair is
+    # classified into `pair_links` first; one link per application is kept afterwards.
     canon_lookup = rules_canonicals_by_norm or {}
     wanted_canon = trial_canonicals or set()
+    pair_links: list[dict[str, Any]] = []
 
     for drug in A.extract_drug_candidates(study):
         drec = openfda_records.get(A.drug_query_key(drug))
@@ -811,14 +816,13 @@ def build_openfda_links(
         flooded = total >= OPENFDA_DRUG_FLOOD_THRESHOLD
         for idx, app in enumerate(drec['body']['results']):
             app_no = squash_whitespace(str(app.get('application_number') or f'app:{drug}:{idx}'))
-            if app_no in seen_candidate_apps:
+            if app_no in confirmed_apps:
                 continue
-            seen_candidate_apps.add(app_no)
             act_date, prec = _openfda_action_date(app)
             located = _find_exact_nct(app, nct_id)
             if located is not None:
                 field_path, snippet = located
-                out.append(
+                pair_links.append(
                     _new_link(
                         nct_id=nct_id,
                         source_route='openfda_drugsfda',
@@ -855,7 +859,7 @@ def build_openfda_links(
                 f"drug_query={drug} | brands={', '.join(brand_names[:3]) or 'none'}"
             )
             if sponsor_agrees:
-                out.append(
+                pair_links.append(
                     _new_link(
                         nct_id=nct_id,
                         source_route='openfda_drugsfda',
@@ -881,7 +885,7 @@ def build_openfda_links(
                     )
                 )
             elif flooded:
-                out.append(
+                pair_links.append(
                     _new_link(
                         nct_id=nct_id,
                         source_route='openfda_drugsfda',
@@ -907,7 +911,7 @@ def build_openfda_links(
                     )
                 )
             else:
-                out.append(
+                pair_links.append(
                     _new_link(
                         nct_id=nct_id,
                         source_route='openfda_drugsfda',
@@ -932,6 +936,23 @@ def build_openfda_links(
                         },
                     )
                 )
+
+    # Keep one link per application: the strongest classification (`OPENFDA_CANDIDATE_STRENGTH`),
+    # ties broken by position in `pair_links`, which runs in sorted query-term order and then result
+    # index. Keeping whichever query reached an application first would let a flooded generic query's
+    # `rejected_by_rule` hide a precise query's reviewable candidate for the same application. Every
+    # query that returned the application is recorded on the kept link.
+    best: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}
+    queries_by_app: dict[str, set[str]] = {}
+    for pos, lnk in enumerate(pair_links):
+        app_no = lnk['target_id']
+        queries_by_app.setdefault(app_no, set()).add(lnk['detail']['matched_drug'])
+        key = (OPENFDA_CANDIDATE_STRENGTH[lnk['automated_validation']], pos)
+        if app_no not in best or key < best[app_no][0]:
+            best[app_no] = (key, lnk)
+    for _, lnk in sorted(best.values(), key=lambda item: item[0][1]):
+        lnk['detail']['drug_queries_returning_application'] = sorted(queries_by_app[lnk['target_id']])
+        out.append(lnk)
     return out
 
 
