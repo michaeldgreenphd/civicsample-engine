@@ -676,6 +676,7 @@ def load_studies_input(
             f"them ({'; '.join(malformed)})"
         )
     _require_weekly_phases(records, str(target))
+    _require_weekly_lists(records, str(target))
     file_sha = hashlib.sha256(target.read_bytes()).hexdigest()
     return records, {
         "mode": "weekly_full_records",
@@ -712,6 +713,58 @@ def _require_weekly_phases(records: list[dict[str, Any]], source: str) -> None:
     if bad:
         raise ValueError(
             f"{source}: {len(bad)} of {len(records)} weekly records carry a phase outside CT.gov's values "
+            f"(first: {bad[0]})"
+        )
+
+
+# The weekly list fields `metrics.extract_trial_row` reads, the type of their entries, and the entry
+# fields it reads (each a string when present). `src/utils.py` writes all four as lists.
+WEEKLY_LIST_FIELDS: dict[str, tuple[type, tuple[str, ...]]] = {
+    "study_sites": (dict, ("country",)),
+    "countries": (dict, ("country",)),
+    "collaborators": (dict, ("name", "class")),
+    "conditions": (str, ()),
+}
+
+
+def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
+    """Why one weekly record's list fields cannot be read whole, or `None`.
+
+    `extract_trial_row` keeps only object sites, countries and collaborators and only string
+    conditions, so a `null` or mistyped entry would drop out: fewer listed facilities, another
+    footprint tier and more participants per facility, with the build still passing its contract. A
+    key that is present must hold a list (explicit `null` included) whose entries have their type,
+    with the fields read strings when present and conditions non-blank. A missing key is left as it
+    was read before. All 80,890 records of the 2026-11-08 weekly extraction hold the four as lists of
+    such entries (1,485,097 sites, 194,168 countries, 48,077 collaborators, 142,169 conditions).
+    """
+    for key, (entry_type, fields) in WEEKLY_LIST_FIELDS.items():
+        if key not in rec:
+            continue
+        value = rec[key]
+        if not isinstance(value, list):
+            return f"{key} is {type(value).__name__}, not a list"
+        for i, entry in enumerate(value):
+            if not isinstance(entry, entry_type):
+                return f"{key}[{i}] is {type(entry).__name__}, not {'an object' if entry_type is dict else 'a string'}"
+            if entry_type is str and not entry.strip():
+                return f"{key}[{i}] is blank"
+            for field in fields:
+                if field in entry and not isinstance(entry[field], str):
+                    return f"{key}[{i}].{field} is {type(entry[field]).__name__}, not a string"
+    return None
+
+
+def _require_weekly_lists(records: list[dict[str, Any]], source: str) -> None:
+    """Refuse weekly full records whose site, country, collaborator or condition lists are malformed."""
+    bad = [
+        f"{rec.get('nct_id') or f'index {idx}'} {problem}"
+        for idx, rec in enumerate(records)
+        if isinstance(rec, dict) and (problem := _weekly_list_problem(rec))
+    ]
+    if bad:
+        raise ValueError(
+            f"{source}: {len(bad)} of {len(records)} weekly records carry a malformed list field "
             f"(first: {bad[0]})"
         )
 

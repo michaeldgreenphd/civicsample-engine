@@ -636,6 +636,54 @@ def test_weekly_records_must_carry_ctgov_phase_values(
     assert not out_dir.exists()
 
 
+_SITE = {"facility": "Hospital A", "country": "United States"}
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "problem"),
+    [
+        # On 84bbcfb each built and passed the contract; a dropped site lowered n_listed_facilities.
+        ("study_sites", [_SITE, None], "study_sites[1] is NoneType, not an object"),
+        ("study_sites", [_SITE, "Hospital B"], "study_sites[1] is str, not an object"),
+        ("study_sites", None, "study_sites is NoneType, not a list"),
+        ("study_sites", _SITE, "study_sites is dict, not a list"),
+        ("study_sites", [{"facility": "Hospital A", "country": None}],
+         "study_sites[0].country is NoneType, not a string"),
+        ("countries", [{"country": "United States"}, None], "countries[1] is NoneType, not an object"),
+        ("collaborators", ["Fictional CRO"], "collaborators[0] is str, not an object"),
+        ("collaborators", [{"name": ["Fictional CRO"], "class": "OTHER"}],
+         "collaborators[0].name is list, not a string"),
+        ("conditions", ["Hypertension", 7], "conditions[1] is int, not a string"),
+        ("conditions", ["Hypertension", "   "], "conditions[1] is blank"),
+    ],
+)
+def test_weekly_records_with_malformed_list_fields_are_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], key: str, value: object, problem: str
+) -> None:
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body["data"][2][key] = value
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    out_dir = tmp_path / "refused"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 1
+    err = capsys.readouterr().err
+    assert f"1 of 5 weekly records carry a malformed list field (first: NCT99300003 {problem})" in err, err
+    assert not out_dir.exists()
+
+
+def test_weekly_list_fields_the_extractor_writes_are_accepted(tmp_path: Path) -> None:
+    # Two sites, a countries list and a collaborator, as src/utils.py writes them; a missing key is read as before.
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body["data"][2].update(
+        study_sites=[_SITE, {"facility": "Hospital B", "city": "", "state": "", "zip": "", "country": "Canada"}],
+        countries=[{"country": "Canada"}, {"country": "United States"}],
+        collaborators=[{"name": "Fictional CRO", "class": "INDUSTRY"}],
+    )
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    assert _build_weekly(demog_path, mesh_path, tmp_path / "ok") == 0
+
+
 def test_weekly_phase_forms_the_extractor_writes_are_accepted(tmp_path: Path) -> None:
     # The 2026-11-08 weekly extraction holds the six values, two comma-joined multi-phase forms and
     # "" (no phase stated); a missing key means no phase too.

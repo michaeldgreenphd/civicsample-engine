@@ -31,7 +31,7 @@ from typing import Any
 
 from feasibility.metrics import is_num, parse_num
 
-TERMINATION_RULES_VERSION = "1.4.0"
+TERMINATION_RULES_VERSION = "1.4.1"
 
 STOPPED_STATUSES = ("TERMINATED", "WITHDRAWN", "SUSPENDED")
 
@@ -152,7 +152,8 @@ def _negation(
     return re.compile("|".join(x for x in (det, head, linked) if x), _I)
 
 
-# The phrases `_SIGNAL_PATTERNS` detects for these two categories, for their linked negation guard.
+# The phrases `_SIGNAL_PATTERNS` detects for these two categories, for their linked negation guard. Each
+# detector alternative has a counterpart here; a test checks the supply detector's four, one by one.
 _REGULATORY_LINKED = (
     r"(?:clinical|regulatory)\s+hold|regulatory\s+(?:authority|agency|decision|request|directive|feedback|"
     r"requirements?|non[- ]approval|reasons?|issues?)"
@@ -167,6 +168,8 @@ _SUPPLY_LINKED = (
     r"|shortages?|unavailability|lack\s+of\s+supply|supply(?:\s+(?:issues?|problems?|chain|constraints?|shortages?))?"
     r"|manufacturing(?:\s+(?:issues?|problems?|delays?|defects?|failures?|holds?|constraints?))?"
     r"|drug\s+availability"
+    # Rules 1.4.1: the detector's unavailable-first form ("Not due to an unavailable study drug").
+    r"|unavailable\s+(?:study\s+)?(?:drug|medication|investigational\s+product|device)"
 )
 
 

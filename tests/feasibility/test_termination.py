@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_rules_version_and_curated_csv_is_header_only() -> None:
-    assert TERMINATION_RULES_VERSION == "1.4.0"
+    assert TERMINATION_RULES_VERSION == "1.4.1"
     csv_path = ROOT / "feasibility" / "termination_reviews.csv"
     raw_lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert raw_lines == [",".join(REVIEW_COLUMNS)]
@@ -287,6 +287,12 @@ def test_no_masks_business_only_when_it_denies_a_reason(why: str, category: str)
         ("Not due to FDA feedback; terminated for strategic reasons", "business_or_strategic"),
         ("Not due to manufacturing issues; terminated for strategic reasons", "business_or_strategic"),
         ("Not related to drug supply; sponsor decision", "business_or_strategic"),
+        # rules 1.4.1: one excluded phrase for each alternative of the supply detector, in its order
+        ("Not due to a study drug shortage; terminated for strategic reasons", "business_or_strategic"),
+        ("Not due to a lack of supply; terminated for strategic reasons", "business_or_strategic"),
+        ("Not due to a manufacturing delay; terminated for strategic reasons", "business_or_strategic"),
+        ("Not due to an unavailable study drug; terminated for strategic reasons", "business_or_strategic"),
+        ("Unrelated to unavailable medication; funding ended", "business_or_strategic"),
         ("Not based on a regulatory decision; funding ended", "business_or_strategic"),
         ("Unrelated to the clinical hold; funding ended", "business_or_strategic"),
         # rules 1.4.0: "no" / "without" deny only a supply problem noun; "no drug supply" states one
@@ -298,6 +304,7 @@ def test_no_masks_business_only_when_it_denies_a_reason(why: str, category: str)
         # controls: the stated causes stand
         ("Terminated due to FDA feedback", "regulatory_or_clinical_hold"),
         ("Manufacturing issues", "supply_or_drug_availability"),
+        ("Terminated because of unavailable study drug", "supply_or_drug_availability"),
         ("Clinical hold", "regulatory_or_clinical_hold"),
     ],
 )
