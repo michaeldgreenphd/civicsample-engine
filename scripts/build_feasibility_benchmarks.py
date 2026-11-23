@@ -336,16 +336,41 @@ TYPED_OPTIONAL_PARTS: tuple[tuple[str | None, str, type], ...] = (
 )
 
 
+# Lists among `TYPED_OPTIONAL_PARTS` whose entries the build reads: every entry must be an object
+# and the named fields strings when present. `extract_trial_metrics` skipped a non-object entry, so a
+# `null` among the locations lowered `n_listed_facilities` (and the footprint tier and
+# participants-per-facility built on it) with nothing reported; a skipped collaborator dropped out of
+# the sponsor attribution the same way.
+LIST_ENTRY_FIELDS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("sponsorCollaboratorsModule", "collaborators"): ("name", "class"),
+    ("contactsLocationsModule", "locations"): ("country",),
+}
+
+
 def _mistyped_optional_parts(ps: dict[str, Any]) -> list[str]:
-    """Name the `TYPED_OPTIONAL_PARTS` present in the protocol section `ps` with the wrong type."""
+    """Name the `TYPED_OPTIONAL_PARTS` present in the protocol section `ps` with the wrong type, and
+    the malformed entries of the `LIST_ENTRY_FIELDS` lists."""
     out: list[str] = []
     for mod, field, kind in TYPED_OPTIONAL_PARTS:
         holder = ps if mod is None else ps.get(mod)
         if not isinstance(holder, dict) or holder.get(field) is None:
             continue
+        where = field if mod is None else f"{mod}.{field}"
         if not isinstance(holder[field], kind):
-            where = field if mod is None else f"{mod}.{field}"
             out.append(f"{where} ({'an object' if kind is dict else 'a list'})")
+            continue
+        entry_fields = LIST_ENTRY_FIELDS.get((mod, field)) if mod is not None else None
+        if entry_fields is None:
+            continue
+        for i, entry in enumerate(holder[field]):
+            if not isinstance(entry, dict):
+                out.append(f"{where}[{i}] (an object)")
+                continue
+            out += [
+                f"{where}[{i}].{name} (a string)"
+                for name in entry_fields
+                if entry.get(name) is not None and not isinstance(entry[name], str)
+            ]
     return out
 
 
@@ -708,6 +733,11 @@ def load_condition_mesh_sidecar(
         if not raw_line.strip():
             continue
         obj = json.loads(raw_line.rstrip(b"\r").decode("utf-8"))
+        if not isinstance(obj, dict):
+            # A JSON scalar or array line raised AttributeError at .get, a traceback rather than a refusal.
+            raise ValueError(
+                f"{path.name}:{line_no}: condition_mesh sidecar line is a JSON {type(obj).__name__}, not an object"
+            )
         nct = obj.get("nct_id")
         if not isinstance(nct, str) or not nct.strip():
             raise ValueError(f"{path.name}:{line_no}: missing nct_id in condition_mesh sidecar")

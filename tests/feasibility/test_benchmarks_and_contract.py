@@ -1044,6 +1044,14 @@ def _load_mesh(tmp_path: Path, line: dict[str, Any]) -> dict[str, dict[str, Any]
     return by_nct
 
 
+@pytest.mark.parametrize("line", [["NCT99800001"], "NCT99800001", 7, None])
+def test_condition_mesh_sidecar_refuses_a_line_that_is_not_an_object(tmp_path: Path, line: Any) -> None:
+    # json.loads accepts these, and reading nct_id from them raised AttributeError (a traceback).
+    want = r"condition_mesh\.jsonl\.gz:1: condition_mesh sidecar line is a JSON \w+, not an object"
+    with pytest.raises(ValueError, match=want):
+        _load_mesh(tmp_path, line)
+
+
 @pytest.mark.parametrize(
     "line",
     [
@@ -1306,6 +1314,14 @@ def test_records_missing_condition_or_lead_sponsor_payloads_are_refused(
          "sponsorCollaboratorsModule.collaborators (a list)"),
         (("contactsLocationsModule",), "Boston", "contactsLocationsModule (an object)"),
         (("contactsLocationsModule", "locations"), True, "contactsLocationsModule.locations (a list)"),
+        # entries: a skipped null location lowered n_listed_facilities with nothing reported
+        (("contactsLocationsModule", "locations", 1), None, "contactsLocationsModule.locations[1] (an object)"),
+        (("contactsLocationsModule", "locations", 0, "country"), 5,
+         "contactsLocationsModule.locations[0].country (a string)"),
+        (("sponsorCollaboratorsModule", "collaborators"), ["Fictional CRO"],
+         "sponsorCollaboratorsModule.collaborators[0] (an object)"),
+        (("sponsorCollaboratorsModule", "collaborators"), [{"name": ["Fictional CRO"], "class": "INDUSTRY"}],
+         "sponsorCollaboratorsModule.collaborators[0].name (a string)"),
     ],
 )
 def test_records_with_mistyped_optional_parts_are_refused(
