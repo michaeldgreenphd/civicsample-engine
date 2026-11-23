@@ -110,9 +110,18 @@ record would otherwise build with every trial read as ontology Other, no
 listed facilities, no MeSH and an unreviewed "Unknown" sponsor, and the
 contract would pass. Inside those modules a record must also carry the fields
 every registration holds (`briefTitle`, `overallStatus`, `statusVerifiedDate`,
-`studyType`), which a field-by-field projection keeping the module objects drops,
-and a boolean `hasResults`, with a non-empty `resultsSection` whenever it is
-true (otherwise the baseline table would read as never posted).
+`studyType`), which a field-by-field projection keeping the module objects drops;
+its conditions (`conditionsModule.conditions`, a non-empty list of non-blank
+strings) and its lead sponsor (`sponsorCollaboratorsModule.leadSponsor`, an
+object with a non-blank `name` and `class`), which would otherwise read as
+ontology Other and an "Unknown" sponsor; and a boolean `hasResults`, with a
+non-empty `resultsSection` whenever it is true (otherwise the baseline table
+would read as never posted). The lead sponsor class is required because every
+stored unprojected record carries one. In the 2026-06-19 AACT sponsors fixture
+all 976 lead rows without a class are named "[Redacted]" (the fixture holds no
+study status, so that they are withheld trials is inferred, not checked), and
+the one such record cached from the API (NCT04060524, `WITHHELD`) has no study
+type either.
 `contactsLocationsModule` and `derivedSection` are not required: their absence
 is a real "no listed facilities" / `no_derived`, so a whole-module projection
 that omits them cannot be told apart record by record.
