@@ -628,6 +628,84 @@ def snapshot_date_problem(value: Any) -> str | None:
     return None
 
 
+def resolve_snapshot_date(
+    explicit: str | None,
+    *,
+    default: str,
+    records: list[dict[str, Any]],
+    study_meta: dict[str, Any],
+    mesh_meta: dict[str, Any] | None,
+) -> str:
+    """The snapshot date to record, taken from the inputs' own stamps when they are weekly full records.
+
+    Weekly full records (``input_format == "full_records"``) arrive with their sex/gender rows already
+    parsed, and ``extract_sex_gender`` reuses those rows, so the build date says nothing about them. The
+    pull's date is read from what the inputs record:
+
+      - ``snapshot_date`` on the reused ``sex_gender`` rows. ``src/extract_all.py`` publishes the rows
+        through ``sgt.lean_row``, which drops it, so real weekly rows carry none (none of the 80,890 in
+        the pull extracted 2026-11-08); where rows do carry one, every value present must agree;
+      - the condition_mesh sidecar's ``snapshot_date``, which ``src/extract_all.py`` writes on every
+        line from the same ``--snapshot-date``, and which ``check_condition_mesh_provenance`` has
+        already tied to the records' pull by ``extracted_at`` and ``pipeline_commit``;
+      - ``explicit`` (``--snapshot-date``).
+
+    Each value given must be a real date and all must agree. With none, the build is refused rather
+    than stamped with the build date. ``extracted_at`` is not used: the weekly job takes the snapshot
+    date from the runner's date when the job starts and ``extracted_at`` later, so they can differ.
+
+    Other inputs (raw CT.gov v2 studies) are parsed in this build, so their rows take this value:
+    ``explicit`` or, without it, ``default`` (the ``--generated-at`` date).
+    """
+    if explicit is not None:
+        problem = snapshot_date_problem(explicit)
+        if problem:
+            raise ValueError(f"--snapshot-date: {problem}")
+    if study_meta.get("input_format") != "full_records":
+        return explicit if explicit is not None else default
+
+    where = study_meta.get("path")
+    row_values: dict[str, str] = {}
+    for rec in records:
+        row = rec.get("sex_gender")
+        if not (isinstance(row, dict) and row.get("sex_report_status") in SEX_GENDER_STATES):
+            continue  # not reused: extract_sex_gender parses it under the resolved date
+        if row.get("snapshot_date") is None:
+            continue
+        problem = snapshot_date_problem(row.get("snapshot_date"))
+        if problem:
+            raise ValueError(f"{where}: {rec.get('nct_id')}: sex_gender.{problem}")
+        row_values.setdefault(row["snapshot_date"], str(rec.get("nct_id")))
+    if len(row_values) > 1:
+        shown = ", ".join(f"{v!r} ({n})" for v, n in sorted(row_values.items())[:3])
+        raise ValueError(
+            f"{where}: sex_gender rows carry {len(row_values)} different snapshot_date values ({shown}); "
+            "weekly full records must come from one pull"
+        )
+
+    candidates: list[tuple[str, str]] = []
+    if row_values:
+        candidates.append(("the sex_gender rows", next(iter(row_values))))
+    mesh_value = (mesh_meta or {}).get("snapshot_date")
+    if mesh_value is not None:
+        problem = snapshot_date_problem(mesh_value)
+        if problem:
+            raise ValueError(f"{(mesh_meta or {}).get('path')}: condition_mesh {problem}")
+        candidates.append(("the condition_mesh sidecar", mesh_value))
+    if explicit is not None:
+        candidates.append(("--snapshot-date", explicit))
+    if not candidates:
+        raise ValueError(
+            f"{where}: weekly full records carry no snapshot date (their sex_gender rows drop it) and no "
+            "condition_mesh sidecar gives one; pass --snapshot-date with the weekly pull's date, or the "
+            "pull's --condition-mesh sidecar, rather than recording the build date"
+        )
+    if len({value for _, value in candidates}) > 1:
+        shown = "; ".join(f"{source} gives {value!r}" for source, value in candidates)
+        raise ValueError(f"{where}: snapshot dates disagree: {shown}")
+    return candidates[0][1]
+
+
 def build_artifact_family(
     benchmark_result: dict[str, Any],
     *,
@@ -918,9 +996,27 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
             f"run.json: parameters.min_cell_trials must be an integer >= 1 (got {raw_min_cell!r})"
         )
         min_cell = 5
-    snap_problem = snapshot_date_problem((run.get("parameters") or {}).get("snapshot_date"))
+    snap_value = (run.get("parameters") or {}).get("snapshot_date")
+    snap_problem = snapshot_date_problem(snap_value)
     if snap_problem:
         p.append(f"run.json: parameters.{snap_problem}")
+    # Weekly full records: the sidecar's snapshot_date is the pull's own stamp (resolve_snapshot_date),
+    # so a manifest giving another date for the same pull contradicts itself.
+    inputs_in = run.get("inputs") if isinstance(run.get("inputs"), dict) else {}
+    study_in = inputs_in.get("study_records")
+    mesh_in = inputs_in.get("condition_mesh")
+    if (
+        not snap_problem
+        and isinstance(study_in, dict)
+        and study_in.get("input_format") == "full_records"
+        and isinstance(mesh_in, dict)
+        and mesh_in.get("snapshot_date") is not None
+        and mesh_in.get("snapshot_date") != snap_value
+    ):
+        p.append(
+            f"run.json: parameters.snapshot_date {snap_value!r} differs from inputs.condition_mesh."
+            f"snapshot_date {mesh_in.get('snapshot_date')!r}, the weekly pull's own stamp"
+        )
 
     # Check per-trial invariants
     nct_ids: list[str] = []

@@ -171,13 +171,30 @@ copies them into the site's `run.json`, and refuses a build whose
 ## Commands
 
 ```bash
-python3 scripts/build_dap_benchmarks.py --demographics data/demographics.json.gz --out build/dap
+python3 scripts/build_dap_benchmarks.py --demographics data/demographics.json.gz \
+  --condition-mesh data/condition_mesh.jsonl.gz --out build/dap
 python3 scripts/check_dap_benchmarks_contract.py build/dap
 python3 scripts/export_dap_benchmarks_site.py build/dap ../clinical-trial-populations/data/dap
 python3 -m pytest tests/dap -q
 ```
 
-`--snapshot-date YYYY-MM-DD` names the registry snapshot the raw sex/gender
-measures were parsed from (default: the `--generated-at` date). It must be a
-real calendar day, is recorded as `run.json` `parameters.snapshot_date` (so it
-enters the run identity and the site manifest), and the contract re-checks it.
+`--snapshot-date YYYY-MM-DD` names the registry snapshot the sex/gender
+measures were parsed from. It must be a real calendar day, is recorded as
+`run.json` `parameters.snapshot_date` (so it enters the run identity and the
+site manifest), and the contract re-checks it. Where it comes from depends on
+the input (`artifacts.resolve_snapshot_date`):
+
+- **Raw CT.gov v2 studies** are parsed in this build, so the value is stamped
+  on their rows: `--snapshot-date`, or the `--generated-at` date without it.
+- **Weekly full records** arrive with their sex/gender rows already parsed, and
+  those rows are reused, so the build date would name nothing about them. The
+  date is the pull's own: a `snapshot_date` on the rows, the condition_mesh
+  sidecar's `snapshot_date` (written from the same `--snapshot-date` by
+  `src/extract_all.py`, and already tied to the records by `extracted_at` and
+  `pipeline_commit`), or `--snapshot-date`. Every value given must agree. With
+  none, the build is refused: the published rows drop the stamp
+  (`sgt.lean_row`), so a weekly build without the sidecar needs
+  `--snapshot-date` with the pull's date. `extracted_at` is not used, because
+  the weekly job sets it after taking the snapshot date and the two can name
+  different days. The contract refuses a weekly manifest whose
+  `parameters.snapshot_date` differs from `inputs.condition_mesh.snapshot_date`.

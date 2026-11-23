@@ -229,7 +229,11 @@ def main(argv: list[str] | None = None) -> int:
         "--snapshot-date",
         type=str,
         default=None,
-        help="YYYY-MM-DD snapshot date stamped when parsing raw sex/gender measures",
+        help=(
+            "YYYY-MM-DD registry snapshot date. Raw CT.gov input: stamped on the parsed sex/gender rows "
+            "(default: the --generated-at date). Weekly full records: the pull's date, required unless "
+            "the rows or the --condition-mesh sidecar carry it, and must match them"
+        ),
     )
     ap.add_argument(
         "--out",
@@ -258,11 +262,11 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
-    snapshot_date = args.snapshot_date or generated_date
-    problem = artifacts.snapshot_date_problem(snapshot_date)  # refuse before building, like generated_at
-    if problem:
-        print(f"refused: {problem}", file=sys.stderr)
-        return 1
+    if args.snapshot_date is not None:
+        problem = artifacts.snapshot_date_problem(args.snapshot_date)  # refuse before building
+        if problem:
+            print(f"refused: {problem}", file=sys.stderr)
+            return 1
 
     try:
         records, study_meta = benchmarks.load_study_records(
@@ -272,6 +276,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         mesh_map, mesh_meta = benchmarks.load_condition_mesh(args.condition_mesh)
         mesh_meta = benchmarks.check_condition_mesh_provenance(mesh_map, mesh_meta, records, study_meta)
+        # Weekly full records: the pull's own date (rows or sidecar), never the build date.
+        snapshot_date = artifacts.resolve_snapshot_date(
+            args.snapshot_date,
+            default=generated_date,
+            records=records,
+            study_meta=study_meta,
+            mesh_meta=mesh_meta,
+        )
         result = benchmarks.build_benchmarks(
             records,
             mesh_sidecar=mesh_map,

@@ -557,6 +557,8 @@ def test_weekly_full_records_container_supported(tmp_path: Path) -> None:
                 str(rules_path),
                 "--generated-at",
                 "2026-11-21T00:00:00+00:00",
+                "--snapshot-date",
+                "2026-11-21",
                 "--out",
                 str(out_dir),
             ]
@@ -1593,3 +1595,103 @@ def test_core_metadata_reads_malformed_parts_as_empty() -> None:
     study["protocolSection"]["designModule"]["enrollmentInfo"] = "120"
     core = benchmarks._extract_core_metadata(study)
     assert core["conditions"] == [] and core["collaborators"] == [] and core["enrollment"] is None
+
+
+def _build_weekly(
+    tmp_path: Path,
+    name: str,
+    *,
+    doc: dict[str, Any] | None = None,
+    mesh_lines: list[dict[str, Any]] | None = None,
+    snapshot_date: str | None = None,
+) -> tuple[int, Path]:
+    """Build from weekly full records on a later day than the pull (generated 2026-11-23)."""
+    weekly_path = tmp_path / f"{name}.demographics.json.gz"
+    weekly_doc = doc if doc is not None else fx.build_weekly_full_records_doc()
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    argv = ["--demographics", str(weekly_path),
+            "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / f"{name}.aliases.csv")),
+            "--generated-at", "2026-11-23T09:00:00Z", "--out", str(tmp_path / name)]
+    if mesh_lines is not None:
+        argv += ["--condition-mesh", str(_write_mesh_sidecar(tmp_path / f"{name}.mesh.jsonl.gz", mesh_lines))]
+    if snapshot_date is not None:
+        argv += ["--snapshot-date", snapshot_date]
+    return cli_build.main(argv), tmp_path / name
+
+
+def test_weekly_snapshot_date_comes_from_the_pull_not_the_build_date(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # On e285f9d each of these builds recorded parameters.snapshot_date 2026-11-23, the build date, although
+    # extract_sex_gender reused rows parsed on 2026-11-21; with a sidecar the manifest gave two dates.
+    cohort = [r["nct_id"] for r in fx.build_weekly_full_records_doc()["data"]]
+
+    def snapshot_of(out: Path) -> str:
+        return json.loads((out / "run.json").read_text(encoding="utf-8"))["parameters"]["snapshot_date"]
+
+    rc, out = _build_weekly(tmp_path, "sidecar", mesh_lines=_weekly_mesh_lines(cohort))
+    assert rc == 0 and snapshot_of(out) == "2026-11-21"
+    assert artifacts.load_dir(out)["run.json"]["inputs"]["condition_mesh"]["snapshot_date"] == "2026-11-21"
+    assert cli_check.main([str(out)]) == 0
+
+    stamped = fx.build_weekly_full_records_doc()
+    for rec in stamped["data"]:
+        rec["sex_gender"]["snapshot_date"] = "2026-11-21"
+    rc, out = _build_weekly(tmp_path, "rows", doc=stamped)
+    assert rc == 0 and snapshot_of(out) == "2026-11-21"
+
+    rc, out = _build_weekly(tmp_path, "explicit", snapshot_date="2026-11-21")
+    assert rc == 0 and snapshot_of(out) == "2026-11-21"
+    rc, out = _build_weekly(tmp_path, "explicit_matching", mesh_lines=_weekly_mesh_lines(cohort),
+                            snapshot_date="2026-11-21")
+    assert rc == 0 and snapshot_of(out) == "2026-11-21"
+    capsys.readouterr()
+
+    # Refused, nothing written: no stamp anywhere, or stamps that disagree.
+    disagreeing_rows = copy.deepcopy(stamped)
+    disagreeing_rows["data"][0]["sex_gender"]["snapshot_date"] = "2026-11-14"
+    refused = {
+        "none": ({}, "weekly full records carry no snapshot date"),
+        "explicit_vs_sidecar": ({"mesh_lines": _weekly_mesh_lines(cohort), "snapshot_date": "2026-11-23"},
+                                "snapshot dates disagree"),
+        "explicit_vs_rows": ({"doc": stamped, "snapshot_date": "2026-11-23"}, "snapshot dates disagree"),
+        "rows_disagree": ({"doc": disagreeing_rows}, "2 different snapshot_date values"),
+        "rows_vs_sidecar": ({"doc": {**stamped, "data": [dict(r, sex_gender=dict(r["sex_gender"],
+                                                                              snapshot_date="2026-11-14"))
+                                                          for r in stamped["data"]]},
+                             "mesh_lines": _weekly_mesh_lines(cohort)}, "snapshot dates disagree"),
+        "bad_row_stamp": ({"doc": {**stamped, "data": [dict(r, sex_gender=dict(r["sex_gender"],
+                                                                            snapshot_date="2026-02-30"))
+                                                        for r in stamped["data"]]}},
+                          "sex_gender.snapshot_date must be a real calendar date"),
+    }
+    for name, (kwargs, message) in refused.items():
+        rc, out = _build_weekly(tmp_path, name, **kwargs)
+        err = capsys.readouterr().err
+        assert rc == 1 and not out.exists(), name
+        assert message in err, (name, err)
+
+
+def test_contract_refuses_a_weekly_manifest_whose_snapshot_date_contradicts_its_sidecar(tmp_path: Path) -> None:
+    cohort = [r["nct_id"] for r in fx.build_weekly_full_records_doc()["data"]]
+    rc, out = _build_weekly(tmp_path, "weekly", mesh_lines=_weekly_mesh_lines(cohort))
+    assert rc == 0
+    built = artifacts.load_dir(out)
+    assert artifacts.check_contract(built) == []
+    tampered = copy.deepcopy(built)
+    tampered["run.json"]["parameters"]["snapshot_date"] = "2026-11-23"
+    assert any("differs from inputs.condition_mesh.snapshot_date '2026-11-21'" in x
+               for x in artifacts.check_contract(tampered))
+    # Raw CT.gov input: the sidecar's stamps are recorded, not matched, so no such problem is reported.
+    raw = copy.deepcopy(tampered)
+    raw["run.json"]["inputs"]["study_records"]["input_format"] = "records_directory"
+    assert not any("differs from inputs.condition_mesh" in x for x in artifacts.check_contract(raw))
+
+
+def test_raw_records_snapshot_date_still_defaults_to_the_build_date(tmp_path: Path) -> None:
+    studies_dir = fx.write_studies_dir(fx.build_fictional_cohort(), tmp_path / "studies")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    assert cli_build.main(["--records-dir", str(studies_dir), "--sponsor-rules", str(rules_path),
+                           "--generated-at", "2026-11-23T09:00:00Z", "--out", str(tmp_path / "raw")]) == 0
+    run = json.loads((tmp_path / "raw" / "run.json").read_text(encoding="utf-8"))
+    assert run["parameters"]["snapshot_date"] == "2026-11-23"
