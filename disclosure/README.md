@@ -62,6 +62,7 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 
 # Freezing (either way) and loading refuse a cache in which any requested NCT ID has no CT.gov
 # study response record (a raw log acquired for another NCT list): run the ctgov stage for it first.
+# freeze-local refuses an --nct-list ID absent from the local records instead of recording a 404.
 # They also refuse openFDA drug-query records made with an earlier query form: re-run the openfda stage.
 
 # 2. Offline deterministic build from frozen cache (runs contract check before writing):

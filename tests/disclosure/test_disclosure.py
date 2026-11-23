@@ -1292,3 +1292,34 @@ def test_openfda_drug_query_joins_fields_with_or_and_refuses_records_from_the_ol
     assert fda_log.records[A.drug_query_key('lumirafenib')]['params'] == next_form('lumirafenib')
     A.freeze_cache(cache, F.NCT_IDS, frozen_at=F.GENERATED_AT)
     assert A.load_frozen_cache(cache).openfda[A.drug_query_key('floodedgeneric')]['params'] == next_form('floodedgeneric')
+
+
+def test_freeze_local_refuses_requested_ids_absent_from_the_local_records(tmp_path: Path) -> None:
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'NCT09990004.json').write_text(json.dumps(F.STUDIES['NCT09990004']), encoding='utf-8')
+    wanted = tmp_path / 'ids.txt'
+    wanted.write_text('NCT09990004\nNCT09990005\n', encoding='utf-8')
+    cache = tmp_path / 'local_cache'
+
+    # NCT09990005 is absent locally: refused before anything is written, never logged as a CT.gov 404.
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
+                           '--nct-list', str(wanted)]) == 1
+    assert not (cache / 'manifest.json').exists()
+    assert not A.raw_log_path(cache, 'ctgov').exists()
+    with pytest.raises(ValueError, match=r'not in the local CT\.gov records \(\[.NCT09990005.\]\)'):
+        A.ingest_local_ctgov_records(local_src, cache, nct_ids=['NCT09990004', 'NCT09990005'])
+    out = tmp_path / 'out'
+    assert cli_build.main(['build', '--cache', str(cache), '--records', str(local_src), '--nct-list', str(wanted),
+                           '--out', str(out), '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT]) == 1
+    assert not out.exists()
+
+    # With every listed ID present the freeze proceeds, and each record is the local 200 response.
+    wanted.write_text('NCT09990004\n', encoding='utf-8')
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
+                           '--nct-list', str(wanted)]) == 0
+    loaded = A.load_frozen_cache(cache)
+    assert loaded.requested_nct_ids == ['NCT09990004']
+    assert {k: v['status'] for k, v in loaded.ctgov.items() if k.startswith('ctgov/study/')} == {
+        'ctgov/study/NCT09990004': 200,
+    }

@@ -764,6 +764,8 @@ def ingest_local_ctgov_records(
 
     Makes zero network calls. `literature` and `openfda` archives remain absent so their coverage
     routes report `not_searched` rather than falsely claiming `no_candidate_in_completed_scope`.
+    Every ID in `nct_ids` must be present in the local files: an absent one is refused before
+    anything is written, never recorded as a CT.gov 404 that no request returned.
     """
     if not source_path.exists():
         raise FileNotFoundError(f'{source_path}: local CT.gov source path does not exist')
@@ -798,6 +800,15 @@ def ingest_local_ctgov_records(
     requested = sorted(wanted) if wanted is not None else sorted(studies)
     if not requested:
         raise ValueError(f'{source_path}: yielded zero valid CT.gov v2 study records')
+    # Absence from local files says nothing about ClinicalTrials.gov, so it is refused rather than
+    # logged as an HTTP 404 (which coverage would report as the registry answering "no record").
+    absent = [i for i in requested if i not in studies]
+    if absent:
+        raise ValueError(
+            f'{source_path}: {len(absent)} requested NCT ID(s) are not in the local CT.gov records '
+            f'({absent[:5]}); supply their records, drop them from the NCT list, or acquire them from CT.gov'
+        )
+
     log = ResponseLog(raw_log_path(cache_dir, 'ctgov'))
     ver_body = {'apiVersion': '2.0.local', 'dataTimestamp': data_timestamp}
     ver_bytes = canonical_json_bytes(ver_body)
@@ -816,37 +827,21 @@ def ingest_local_ctgov_records(
         'error': None,
     })
     for nct_id in requested:
-        st = studies.get(nct_id)
-        if st is not None:
-            st_bytes = canonical_json_bytes(st)
-            log.put({
-                'key': f'ctgov/study/{nct_id}',
-                'url': f'{CTGOV_API}/studies/{nct_id}',
-                'params': {},
-                'tag': {'nct_id': nct_id, 'origin': 'local_records'},
-                'fetched_at': fetched_at,
-                'status': 200,
-                'http_status': 200,
-                'attempts': 0,
-                'response_sha256': sha256_bytes(st_bytes),
-                'body': st,
-                'error': None,
-            })
-        else:
-            err_body = {'message': f'{nct_id} not present in local source'}
-            log.put({
-                'key': f'ctgov/study/{nct_id}',
-                'url': f'{CTGOV_API}/studies/{nct_id}',
-                'params': {},
-                'tag': {'nct_id': nct_id, 'origin': 'local_records'},
-                'fetched_at': fetched_at,
-                'status': 404,
-                'http_status': 404,
-                'attempts': 0,
-                'response_sha256': sha256_bytes(canonical_json_bytes(err_body)),
-                'body': err_body,
-                'error': 'HTTP 404',
-            })
+        st = studies[nct_id]
+        st_bytes = canonical_json_bytes(st)
+        log.put({
+            'key': f'ctgov/study/{nct_id}',
+            'url': f'{CTGOV_API}/studies/{nct_id}',
+            'params': {},
+            'tag': {'nct_id': nct_id, 'origin': 'local_records'},
+            'fetched_at': fetched_at,
+            'status': 200,
+            'http_status': 200,
+            'attempts': 0,
+            'response_sha256': sha256_bytes(st_bytes),
+            'body': st,
+            'error': None,
+        })
     return freeze_cache(cache_dir, requested, frozen_at=fetched_at)
 
 
