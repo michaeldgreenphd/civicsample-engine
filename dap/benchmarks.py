@@ -821,6 +821,14 @@ WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS: dict[str, dict[str, tuple[str, bool]]] = {
         "reported": ("bool", True),
     },
 }
+# The totals child of each block whose counts this module reads. Each extractor starts a block with
+# `reported` false and every total 0, sets `reported` only when it counts a table, and its all-zero
+# rejection sets it back to false and clears the totals, so `reported` is true exactly when the totals
+# are not all zero. `_analyze_race_block`, `_analyze_ethnicity_block` and `_sex_participant_total` drop a
+# block's counts when `reported` is false, so `reported: false` beside positive totals removed those
+# participants with nothing reported. All 80,890 weekly records keep the rule (44,879 + 1,685 race,
+# 32,072 ethnicity and 78,726 sex blocks reported, every other block with zero totals).
+WEEKLY_BLOCK_TOTALS: dict[str, str] = {"race": "omb_totals", "ethnicity": "omb_totals", "sex": "totals"}
 # The category keys each block's totals always hold (the extractors start from all of them at 0).
 WEEKLY_TOTAL_KEYS: dict[str, tuple[str, ...]] = {
     "race": (*RACE_CLASSIFIED_KEYS, "unknown_not_reported"),
@@ -895,7 +903,8 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     `sgp.derive_outcomes` gives for its status and counts (`WEEKLY_OUTCOME_COLUMNS`), its numbers finite
     and its counts non-negative. The `race`, `ethnicity`, `sex` and `gender` blocks must carry the
     children `dap/demographics.py` reads, each of the kind the extractors write
-    (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`), and `results_date` must be "" or a date. All 80,890 weekly
+    (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`), with `reported` true exactly when the block's totals are not
+    all zero (`WEEKLY_BLOCK_TOTALS`), and `results_date` must be "" or a date. All 80,890 weekly
     records pass (80,097 `reported`, 727 `uninformative`, 66 `explicit_unknown_only`).
     """
     for key, (field_type, non_blank) in WEEKLY_SCALAR_FIELDS.items():
@@ -921,6 +930,13 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
                 continue
             if problem := _demographic_child_problem(block, key, kind, rec[block][key]):
                 return problem
+    for block, totals_key in WEEKLY_BLOCK_TOTALS.items():
+        reported, total = rec[block]["reported"], sum(rec[block][totals_key].values())
+        if reported is not (total > 0):
+            return (
+                f"{block}.reported is {reported} but its {totals_key} sum to {total} "
+                "(the extractor reports a block exactly when its counts are not all zero)"
+            )
     status = rec["sex_gender"].get("sex_report_status")
     if status not in SEX_GENDER_STATES:
         return f"sex_gender.sex_report_status {status!r} is not one of SEX_GENDER_STATES"

@@ -170,7 +170,10 @@ the sex/gender row gives no participant total. The `gender` block needs a
 boolean `reported`, since `is_results_posted` reads every block's `reported` by
 truthiness. A malformed child was read as absent or zero: `omb_totals: "corrupt"`
 published a reported table as absent, and `"reported": "false"` published a
-trial without results as posted. For the same reason `results_date` must be
+trial without results as posted. A race, ethnicity or sex block's `reported`
+must be true exactly when its totals are not all zero (`WEEKLY_BLOCK_TOTALS`),
+as the extractors write it: `reported: false` beside positive totals dropped
+those participants. For the same reason `results_date` must be
 exactly `""` or a date `parse_partial_date_bounds` reads. The sex/gender row's
 numbers must be finite (JSON `1e309` parses as infinity and raised
 `OverflowError` in the build) and its five participant counts non-negative;

@@ -1978,6 +1978,32 @@ def test_weekly_negative_enrollment_gap_loads(tmp_path: Path) -> None:
     assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
 
 
+@pytest.mark.parametrize(
+    ("block", "totals_key", "reported", "total"),
+    [
+        # On 96f721b each loaded, and DAP dropped the block's positive counts as not reported.
+        ("race", "omb_totals", False, 100),
+        ("ethnicity", "omb_totals", False, 100),
+        ("sex", "totals", False, 100),
+        # A reported block whose totals are all zero is one the extractor's all-zero rejection clears.
+        ("race", "omb_totals", True, 0),
+    ],
+)
+def test_weekly_block_reported_flag_must_match_its_totals(
+    tmp_path: Path, block: str, totals_key: str, reported: bool, total: int
+) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    payload = weekly_doc["data"][1][block]
+    payload["reported"] = reported
+    if total == 0:
+        payload[totals_key] = {k: 0 for k in payload[totals_key]}
+    assert sum(payload[totals_key].values()) == total
+    problem = (f"{block}.reported is {reported} but its {totals_key} sum to {total} "
+               "(the extractor reports a block exactly when its counts are not all zero)")
+    with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem})")):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
 @pytest.mark.parametrize("value", ["corrupt", " ", "2026-02-30", "2024-10-01T00:00"])
 def test_weekly_results_date_must_be_blank_or_a_date(tmp_path: Path, value: str) -> None:
     # On d97d844 each loaded, and `is_results_posted` read the non-empty value as posted results.
