@@ -718,6 +718,41 @@ def test_weekly_records_missing_a_list_field_are_refused(
     assert not out_dir.exists()
 
 
+@pytest.mark.parametrize(
+    ("countries", "problem"),
+    [
+        # On 76c9d39 a partial list was read in place of the sites and published n_countries 1.
+        ([{"country": "United States"}],
+         "countries ['United States'] differ from the study_sites countries ['Canada', 'United States']"),
+        ([{"country": "Canada"}, {"country": "United States"}, {"country": "Mexico"}],
+         "countries ['Canada', 'Mexico', 'United States'] differ from the study_sites countries"),
+        # an empty list made metrics fall back to the sites, but src/utils.py never writes one beside sites
+        ([], "countries [] differ from the study_sites countries ['Canada', 'United States']"),
+    ],
+)
+def test_weekly_countries_must_match_the_listed_sites(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], countries: list, problem: str
+) -> None:
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body["data"][2].update(study_sites=[_SITE, {"facility": "Hospital B", "country": "Canada"}], countries=countries)
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    out_dir = tmp_path / "refused"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 1
+    err = capsys.readouterr().err
+    assert f"(first: NCT99300003 {problem}" in err, err
+    assert not out_dir.exists()
+
+
+def test_weekly_record_with_no_sites_and_no_countries_is_accepted(tmp_path: Path) -> None:
+    # 4,375 records of the 2026-11-08 extraction list neither.
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body["data"][2].update(study_sites=[], countries=[])
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    assert _build_weekly(demog_path, mesh_path, tmp_path / "ok") == 0
+
+
 def test_weekly_list_fields_the_extractor_writes_are_accepted(tmp_path: Path) -> None:
     # Two sites, a countries list and a collaborator, as src/utils.py writes them.
     demog_path, mesh_path = _write_weekly_inputs(tmp_path)

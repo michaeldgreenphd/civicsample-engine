@@ -810,6 +810,19 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
             for field in WEEKLY_REQUIRED_ENTRY_FIELDS.get(key, ()):
                 if not (isinstance(entry.get(field), str) and entry[field].strip()):
                     return f"{key}[{i}].{field} is missing or blank (src/utils.py keeps only sites with one)"
+    # `src/utils.py` derives both lists from the same locations: `countries` is the set of their
+    # non-blank countries, and `study_sites` keeps exactly the locations with one. `extract_trial_metrics`
+    # reads `countries` whenever it is non-empty, so a partial list published a lower `n_countries`
+    # than the sites show (on 76c9d39, sites in two countries beside `countries: [United States]`
+    # published 1, and the contract passed). In all 80,890 records of the 2026-11-08 extraction the two
+    # country sets are equal (4,375 records have neither).
+    listed = {entry["country"] for entry in rec["countries"]}
+    at_sites = {entry["country"] for entry in rec["study_sites"]}
+    if listed != at_sites:
+        return (
+            f"countries {sorted(listed)} differ from the study_sites countries {sorted(at_sites)} "
+            "(src/utils.py derives both from the same locations)"
+        )
     return None
 
 
