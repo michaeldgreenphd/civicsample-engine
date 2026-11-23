@@ -2375,6 +2375,42 @@ def test_a_frozen_record_with_a_utc_fetch_time_loads(tmp_path: Path) -> None:
     assert A.load_frozen_cache(cache_dir).ctgov['ctgov/study/NCT09990001']['fetched_at'] == '2026-11-01T12:00:00Z'
 
 
+def _cache_frozen_at(tmp_path: Path, frozen_at: str) -> Path:
+    """The fixture cache with `frozen_at` restated in the manifest, each archive entry and each sidecar."""
+    cache_dir = tmp_path / 'c'
+    F.acquire_fixture_cache(cache_dir)
+    manifest = json.loads((cache_dir / 'manifest.json').read_text(encoding='utf-8'))
+    manifest['frozen_at'] = frozen_at
+    for source, entry in manifest['archives'].items():
+        entry['frozen_at'] = frozen_at
+        (cache_dir / f'{source}.jsonl.gz.meta.json').write_text(json.dumps(entry), encoding='utf-8')
+    (cache_dir / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+    return cache_dir
+
+
+@pytest.mark.parametrize(
+    ('frozen_at', 'problem'),
+    [
+        # On 27ea612 each loaded when stated alike everywhere, and was published as the freeze time.
+        ('garbage', "frozen_at must be a whole ISO 8601 date and time, got 'garbage'"),
+        ('2026-11-01', "frozen_at must be a whole ISO 8601 date and time, got '2026-11-01'"),
+        ('2026-11-01T12:00:00', "frozen_at must carry a UTC offset (Z or +00:00), got '2026-11-01T12:00:00'"),
+    ],
+)
+def test_a_cache_frozen_at_a_malformed_time_is_refused(tmp_path: Path, frozen_at: str, problem: str) -> None:
+    with pytest.raises(A.CacheIntegrityError, match=re.escape(f'manifest.json: {problem}')):
+        A.load_frozen_cache(_cache_frozen_at(tmp_path, frozen_at))
+    # Nor can it be pinned at freeze.
+    with pytest.raises(ValueError, match=re.escape(problem)):
+        A.freeze_cache(tmp_path / 'c', F.NCT_IDS, frozen_at=frozen_at)
+
+
+def test_a_cache_frozen_at_a_utc_time_loads(tmp_path: Path) -> None:
+    # Control, on both heads: a Z timestamp, pinned earlier than the records' fetch times as the fixture pins.
+    assert A.load_frozen_cache(_cache_frozen_at(tmp_path, '2026-11-01T12:00:00Z')).manifest['frozen_at'] == (
+        '2026-11-01T12:00:00Z')
+
+
 def _cache_with_ctgov_fetch_time(tmp_path: Path, fetched_at: str) -> Path:
     """The fixture cache with one frozen CT.gov record's `fetched_at` replaced (`'<absent>'` removes it),
     and the archive's hashes and fetch-time range restated in its sidecar and the manifest."""

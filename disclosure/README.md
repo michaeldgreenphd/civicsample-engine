@@ -124,7 +124,9 @@ python3 scripts/build_drug_disclosure.py build \
 # contract; -00:00, which RFC 3339 uses for an unknown local offset, is refused. Every record of a frozen
 # archive must carry its fetched_at in that form too, or the cache is refused at load: the retrieval
 # bounds read it, and one missing or written "garbage" had let a results record posted in 2100 build
-# a verified link dated 2100. It may not be earlier
+# a verified link dated 2100. The cache's frozen_at must be a whole UTC timestamp as well, pinned or
+# not, at freeze and at load: a malformed one stated alike in the manifest and every sidecar had
+# loaded and set no bound on --generated-at. A pinned frozen_at may still precede the fetch times. It may not be earlier
 # than the cache's frozen_at either (build and contract): a build reads the frozen cache. freeze-local
 # and build --records stamp frozen_at with the current time, so a build from a cache seeded today states
 # a --generated-at no earlier than the seeding, or none. No reviews.csv row may be dated after the

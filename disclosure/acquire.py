@@ -1808,6 +1808,9 @@ def freeze_cache(
     ids = sorted(set(requested_nct_ids))
     if not ids or any(not NCT_RE.match(i) for i in ids):
         raise ValueError('freeze_cache requires at least one valid NCT ID')
+    # A pinned freeze time must have the form `load_frozen_cache` requires of it.
+    if frozen_at is not None and (frozen_problem := timestamp_problem(frozen_at, 'frozen_at', offset='utc')):
+        raise ValueError(frozen_problem)
     ctgov_raw = raw_log_path(cache_dir, 'ctgov')
     if not ctgov_raw.exists():
         raise CacheIntegrityError(f'{cache_dir}: cannot freeze cache without raw/ctgov.jsonl')
@@ -2024,6 +2027,12 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
     loaded: dict[str, tuple[dict[str, dict[str, Any]], dict[str, Any] | None]] = {
         src: ({}, None) for src in SOURCES
     }
+    # `frozen_at` is published as `cache_manifest_frozen_at` and bounds `--generated-at`
+    # (`artifacts.generated_before_frozen_problem`), which reads no bound from a value that does not parse.
+    # Consistent malformed stamps in the manifest and every sidecar had loaded. It may be pinned earlier
+    # than the records' fetch times (tests and reproductions pin it), so only its form is checked.
+    if frozen_problem := timestamp_problem(manifest.get('frozen_at'), 'frozen_at', offset='utc'):
+        raise CacheIntegrityError(f'manifest.json: {frozen_problem}')
     for source, entry in sorted(archives.items()):
         if not isinstance(entry, dict):
             raise CacheIntegrityError(f'manifest.json: invalid archive entry for {source!r}')
