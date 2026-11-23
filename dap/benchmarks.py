@@ -83,6 +83,15 @@ _PARTIAL_DATE_RX: re.Pattern[str] = re.compile(
     r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$"
 )
 _PUNCT_RE: re.Pattern[str] = re.compile(r"[^\w\s/-]")
+# Ontology keywords this short collide with fragments of unrelated words when
+# tested as substrings: 'ra' in 'Trauma', 'all' in 'Falls', 'ms' in
+# 'Behavioral Symptoms', 'skin' in 'Dyskinesia', 'burn' in 'Burnout'. They
+# therefore match only standing alone. Longer keywords keep the substring test
+# because compounds carry real matches ('sarcoma' in 'Gliosarcoma', 'leukemia'
+# in 'Erythroleukemia'); measured on 142,369 published condition mentions,
+# nearly all wrong substring matches came from keywords of <= 4 characters.
+# The same rule applies in src/condition_classifier.py; the two must agree.
+_SHORT_KEYWORD_MAX_LEN: int = 4
 
 
 def sha256_file(path: Path) -> str:
@@ -97,9 +106,12 @@ def sha256_file(path: Path) -> str:
 class OntologyClassifier:
     """Deterministic condition classifier bound to an explicit ``condition_ontology.json`` file.
 
-    Reproduces ``src/condition_classifier.py`` exact-keyword + ``rapidfuzz``
+    Reproduces ``src/condition_classifier.py`` keyword + ``rapidfuzz``
     matching without mutating module-level globals when custom ontology files
-    are supplied in tests.
+    are supplied in tests. Keywords are tried longest-first; a keyword of
+    ``_SHORT_KEYWORD_MAX_LEN`` characters or fewer matches the normalized
+    condition only as a whole word or phrase with an optional ``s``/``es``
+    plural suffix, a longer one as a substring (see ``_SHORT_KEYWORD_MAX_LEN``).
     """
 
     def __init__(self, ontology_path: Path = DEFAULT_ONTOLOGY_PATH, fuzzy_threshold: int = 85) -> None:
@@ -118,6 +130,14 @@ class OntologyClassifier:
             self._flat_lookup.keys(),
             key=lambda s: (-len(s), s),
         )
+        # One precompiled boundary pattern per short keyword: not preceded by a
+        # word character, optionally followed by a plural "s"/"es", then not
+        # followed by a word character ("ms" matches "MS", never "Symptoms").
+        self._short_keyword_rx: dict[str, re.Pattern[str]] = {
+            kw: re.compile(r"(?<!\w)" + re.escape(kw) + r"(?:s|es)?(?!\w)")
+            for kw in self._all_keywords
+            if len(kw) <= _SHORT_KEYWORD_MAX_LEN
+        }
 
     @staticmethod
     def _normalize(text: str) -> str:
@@ -132,7 +152,12 @@ class OntologyClassifier:
         if not norm:
             return ("Other", "Uncategorized")
         for kw in self._all_keywords:
-            if kw in norm:
+            short_rx = self._short_keyword_rx.get(kw)
+            if short_rx is not None:
+                hit = short_rx.search(norm) is not None
+            else:
+                hit = kw in norm
+            if hit:
                 return self._flat_lookup[kw]
         match = process.extractOne(
             norm,

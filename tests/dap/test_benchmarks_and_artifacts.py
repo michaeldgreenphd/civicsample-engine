@@ -67,6 +67,44 @@ def test_regulatory_era_partial_date_discipline(
     assert era["regulatory_era"] == expected_era
 
 
+def test_short_ontology_keywords_match_only_standing_alone() -> None:
+    """Keywords of <= 4 characters need word boundaries; longer keywords keep substring matching."""
+    clf = benchmarks.OntologyClassifier()
+    lookup = clf._flat_lookup
+
+    # Short keywords inside unrelated words no longer decide the category.
+    for condition, short_kw in (
+        ("Falls", "all"),
+        ("Trauma", "ra"),
+        ("Behavioral Symptoms", "ms"),
+        ("Caregiver Burnout", "burn"),
+        ("Tardive Dyskinesia", "skin"),
+    ):
+        assert len(short_kw) <= 4
+        assert short_kw in clf._normalize(condition)  # the old substring test hit it
+        assert clf.classify_one(condition) != lookup[short_kw], condition
+
+    # Whole-word short keywords (with an optional plural suffix) and long
+    # keywords inside compounds still classify.
+    expected = {
+        "Neoplasms": ("Oncology", "Other Oncology"),
+        "HIV Infections": ("Infectious Disease", "HIV/AIDS"),
+        "Gliosarcoma": ("Oncology", "Sarcoma"),
+        "Erythroleukemia": ("Oncology", "Hematologic Malignancy"),
+        "Rheumatoid Arthritis": ("Autoimmune and Inflammatory", "Rheumatoid Arthritis"),
+        "Multiple Sclerosis": ("Neurology", "Multiple Sclerosis"),
+        "MS": ("Neurology", "Multiple Sclerosis"),
+        "UTIs": lookup["uti"],
+    }
+    for condition, pair in expected.items():
+        assert clf.classify_one(condition) == pair, condition
+
+    # Longest-first order still holds: 'heart failure' wins over 'heart'.
+    assert lookup["heart failure"] != lookup["heart"]
+    assert clf.classify_one("Congestive Heart Failure") == lookup["heart failure"]
+    assert clf.classify_one("Heart Disease") == lookup["heart"]
+
+
 def test_sponsor_three_review_states_and_zero_substring_matching(tmp_path: Path) -> None:
     rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
     studies = fx.build_fictional_cohort()
