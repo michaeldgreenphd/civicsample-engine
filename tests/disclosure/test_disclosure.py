@@ -2808,6 +2808,11 @@ def test_unknown_git_provenance_is_null_builds_locally_and_is_never_exported(
             {'references': [{'pmid': '31234569', 'type': 'RESULT'}, 7]},
             'referencesModule.references[1] is not an object',
         ),
+        ({'references': [{}]}, 'referencesModule.references[0] has no citation text or PMID'),
+        ({'references': [{'type': 'RESULT', 'citation': '   '}]}, 'references[0] has no citation text or PMID'),
+        ({'references': [{'pmid': 31234569, 'citation': 'Fictional et al.'}]}, 'references[0].pmid is not a string'),
+        ({'references': [{'citation': ['Fictional et al.']}]}, 'references[0].citation is not a string'),
+        ({'references': [{'citation': 'Fictional et al.', 'type': 3}]}, 'references[0].type is not a string'),
     ],
 )
 def test_malformed_references_module_is_an_incomplete_search_not_zero_citations(
@@ -2817,7 +2822,7 @@ def test_malformed_references_module_is_an_incomplete_search_not_zero_citations(
     study = F._make_study(nct, title='Malformed references', lead_sponsor='Fictional Sponsor')
     study['protocolSection']['referencesModule'] = references_module
     ctgov_rec = {'status': 200, 'body': study}
-    assert A.registry_references_problem(study) == problem
+    assert (A.registry_references_problem(study) or "").endswith(problem)
     cell = C.registry_references_cell(nct, ctgov_rec, [], {}, True)
     assert cell['state'] == 'search_incomplete_or_blocked', cell
     assert problem in cell['reason']
@@ -2861,3 +2866,17 @@ def test_unreadable_reference_entry_blocks_negative_states_but_not_a_verified_re
     # A person's confirmation of the readable entry settles the route either way.
     confirmed = [dict(links[0], review_status='confirmed_same_trial_results')]
     assert C.registry_references_cell(nct, ctgov_rec, confirmed, lit, True)['state'] == 'verified_link'
+
+
+@pytest.mark.parametrize('entry', [{}, {'type': 'RESULT'}, {'type': 'RESULT', 'citation': '   '}])
+def test_reference_entry_with_no_citation_or_pmid_is_no_candidate_and_no_negative(entry: dict[str, Any]) -> None:
+    # On c5ed8dd such an entry became the candidate `ref:<nct>:0` with the excerpt `<nct> reference[0]`, and
+    # a reviewer's rejection of that placeholder turned the route into `no_candidate_in_completed_scope`.
+    nct = 'NCT09990026'
+    study = F._make_study(nct, title='Unidentifiable reference', lead_sponsor='Fictional Sponsor', references=[entry])
+    ctgov_rec = {'status': 200, 'body': study}
+    assert A.extract_registry_references(study) == []
+    assert E.build_registry_reference_links(nct, ctgov_rec, {}) == []
+    cell = C.registry_references_cell(nct, ctgov_rec, [], {}, True)
+    assert cell['state'] == 'search_incomplete_or_blocked', cell
+    assert 'has no citation text or PMID' in cell['reason']
