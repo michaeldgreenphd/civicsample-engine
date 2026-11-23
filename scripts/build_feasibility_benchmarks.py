@@ -6,8 +6,7 @@ Examples:
       --condition-mesh data/condition_mesh.jsonl.gz --out build/feasibility
   python3 scripts/build_feasibility_benchmarks.py --records-dir /path/to/ctgov_v2_records \
       --out build/feasibility
-  python3 scripts/build_feasibility_benchmarks.py \
-      --archive docs/audits/outcomes_results_structure/first_pass/cache/raw_responses.jsonl.gz \
+  python3 scripts/build_feasibility_benchmarks.py --archive /path/to/full_records.jsonl.gz \
       --out build/feasibility
 
 Never scheduled by `.github/workflows/extract.yml`. Refuses site-projected
@@ -235,6 +234,42 @@ def _study_objects(items: list[Any], where: str) -> list[dict[str, Any]]:
     return items
 
 
+# Protocol modules ClinicalTrials.gov requires on every registration (identification, overall
+# status, sponsor, conditions, study type), so a complete API v2 record always carries them. A record
+# without one was fetched with a `fields=` projection (or truncated): building from it would silently
+# read the missing modules as "no conditions" (indication Other), "no sponsor" (MISSING_CLASS) and so
+# on, and the contract would still pass. Absence of these modules is therefore refused, not
+# benchmarked. (`contactsLocationsModule` and `derivedSection` are legitimately absent on some
+# registrations and are not required here.)
+REQUIRED_PROTOCOL_MODULES: tuple[str, ...] = (
+    "identificationModule",
+    "statusModule",
+    "sponsorCollaboratorsModule",
+    "conditionsModule",
+    "designModule",
+)
+
+
+def _require_complete_records(studies: list[dict[str, Any]], source: str) -> None:
+    """Refuse API v2 study records missing any `REQUIRED_PROTOCOL_MODULES` (see the note above)."""
+    incomplete: dict[str, list[str]] = {}
+    for idx, study in enumerate(studies):
+        ps = study.get("protocolSection")
+        if not isinstance(ps, dict):
+            incomplete[_study_nct_id(study) or f"index {idx}"] = ["protocolSection"]
+            continue
+        missing = [m for m in REQUIRED_PROTOCOL_MODULES if not isinstance(ps.get(m), dict)]
+        if missing:
+            incomplete[_study_nct_id(study) or f"index {idx}"] = missing
+    if incomplete:
+        first = next(iter(incomplete))
+        raise ValueError(
+            f"{source}: {len(incomplete)} of {len(studies)} study records lack required protocol modules "
+            f"(first: {first} lacks {', '.join(incomplete[first])}); these look field-projected or "
+            "truncated, so the build is refused rather than reading the gaps as absent data"
+        )
+
+
 def _requested_nct_ids(envelope: dict[str, Any]) -> list[str] | None:
     """NCT ids a cached request asked for: its `ids` field, else the `url`'s `filter.ids` or its
     single-study path (`/studies/NCT########`)."""
@@ -274,6 +309,14 @@ def _response_envelope_studies(obj: dict[str, Any], where: str) -> list[dict[str
     if status != 200:
         raise ValueError(
             f"{where}: cached response status {status!r}, not 200; a failed request is not an empty batch"
+        )
+    url = obj.get("url")
+    projected = parse_qs(urlsplit(url).query).get("fields") if isinstance(url, str) else None
+    if projected:
+        raise ValueError(
+            f"{where}: response was requested with fields={','.join(projected)}; a field-projected record "
+            "lacks the modules these benchmarks read (conditions, sponsors, locations), and would publish "
+            "every trial as Other / no sites / no sponsor class. Use complete study records."
         )
     body = obj["body"]
     want_sha = obj.get("body_sha256")
@@ -370,6 +413,7 @@ def load_studies_input(
             studies.extend(_extract_studies_from_json_obj(obj, fp.name))
         if not studies:
             raise ValueError(f"{records_dir}: decoded zero study records")
+        _require_complete_records(studies, f"{records_dir}")
         return studies, {
             "mode": "records_dir",
             "source": records_dir.name,
@@ -405,6 +449,7 @@ def load_studies_input(
             studies.extend(_extract_studies_from_json_obj(obj, f"{archive_path.name}:{line_no}"))
         if not studies:
             raise ValueError(f"{archive_path}: archive holds zero study records")
+        _require_complete_records(studies, archive_path.name)
         return studies, {
             "mode": "jsonl_archive",
             "source": archive_path.name,

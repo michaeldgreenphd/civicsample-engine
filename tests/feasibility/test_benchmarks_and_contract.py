@@ -1086,3 +1086,54 @@ def test_direct_and_enveloped_studies_batches_refuse_a_malformed_entry(
     )
     with pytest.raises(ValueError, match="not study objects"):
         _load_archive(path)
+
+
+# ---- Inputs must be complete study records, never field-projected ones
+
+
+def test_archive_refuses_a_field_projected_response_envelope(tmp_path: Path) -> None:
+    study = make_ctgov_study("NCT99600011")
+    url = (
+        "https://clinicaltrials.gov/api/v2/studies?filter.ids=NCT99600011&pageSize=50"
+        "&fields=NCTId,HasResults,ResultsSection,OutcomesModule,StatusModule,DesignModule"
+    )
+    path = _write_archive(tmp_path, [_envelope([study], None, url=url)])
+    with pytest.raises(ValueError, match="fields=NCTId"):
+        _load_archive(path)
+
+
+@pytest.mark.parametrize(
+    "module", ["sponsorCollaboratorsModule", "conditionsModule", "statusModule", "designModule", "identificationModule"]
+)
+def test_records_missing_a_required_protocol_module_are_refused(tmp_path: Path, module: str) -> None:
+    complete = make_ctgov_study("NCT99600012")
+    projected = make_ctgov_study("NCT99600013")
+    if module == "identificationModule":
+        projected["protocolSection"]["identificationModule"] = None
+    else:
+        projected["protocolSection"].pop(module)
+    # records-dir
+    rdir = tmp_path / "records"
+    rdir.mkdir()
+    (rdir / "a.json").write_text(json.dumps(complete), encoding="utf-8")
+    (rdir / "b.json").write_text(json.dumps(projected), encoding="utf-8")
+    with pytest.raises(ValueError, match=f"lack required protocol modules.*{module}"):
+        build_feasibility_benchmarks.load_studies_input(
+            demographics_path=None, records_dir=rdir, archive_path=None
+        )
+    # archive of direct study lines
+    apath = tmp_path / "studies.jsonl.gz"
+    apath.write_bytes(
+        gzip.compress((json.dumps(complete) + "\n" + json.dumps(projected) + "\n").encode("utf-8"), mtime=0)
+    )
+    with pytest.raises(ValueError, match="lack required protocol modules"):
+        _load_archive(apath)
+
+
+def test_records_without_locations_or_derived_section_are_still_accepted(tmp_path: Path) -> None:
+    study = make_ctgov_study("NCT99600014")
+    study["protocolSection"].pop("contactsLocationsModule", None)
+    study.pop("derivedSection", None)
+    apath = tmp_path / "studies.jsonl.gz"
+    apath.write_bytes(gzip.compress((json.dumps(study) + "\n").encode("utf-8"), mtime=0))
+    assert len(_load_archive(apath)) == 1

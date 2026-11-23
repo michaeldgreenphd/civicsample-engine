@@ -45,6 +45,8 @@ with them (`indexed` has descriptors, `not_indexed` none, `no_module`/`no_derive
 `pipeline_commit` (`null` when no stamps were compared), `n_cohort_trials_covered` and
 `n_rows_outside_cohort`.
 
+`--records-dir` and `--archive` need complete API v2 study records: every record must carry the protocol modules CT.gov requires on each registration (identification, status, sponsor, conditions, design), and a response envelope requested with a `fields=` projection is refused. The outcomes audit caches under `docs/audits/outcomes_results_structure/` are field-projected and are not valid inputs here: built from them, every trial would read as Other / no sites / no sponsor class.
+
 `--archive` also reads cached HTTP response envelopes (one JSON line per request with `status`,
 `body_sha256` and the unparsed `body`, as the outcomes audit's fetch scripts write them). Each must
 have `status` 200, a body matching `body_sha256`, at least one study, and exactly the NCT ids it
@@ -59,8 +61,7 @@ python3 scripts/build_feasibility_benchmarks.py --demographics data/demographics
     --condition-mesh data/condition_mesh.jsonl.gz --out build/feasibility
 
 # Or build from a directory or frozen archive of full CT.gov API v2 records
-python3 scripts/build_feasibility_benchmarks.py \
-    --archive docs/audits/outcomes_results_structure/first_pass/cache/raw_responses.jsonl.gz \
+python3 scripts/build_feasibility_benchmarks.py --archive /path/to/full_records.jsonl.gz \
     --out build/feasibility
 
 # Verify producer contract (also re-parses run.json generated_at and checks every trial's
