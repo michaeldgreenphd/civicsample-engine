@@ -39,15 +39,28 @@ Hard safety guarantees:
   ``1 <= min <= max``; ``--rate-limit-sec`` must be a finite number >= 0 (no
   clamping); ``--local-pdf-dir`` must be an existing directory; and neither
   ``--profiles-out`` nor ``--index-out`` may name an input file (the
-  manifest, the census, a page map), the cache's own files or its pages/ and
-  blobs/ folders, an existing directory, or the other output. Paths are
-  compared after resolving links and ``..``.
+  manifest, the census, a page map), anything inside ``--local-pdf-dir``,
+  the cache's own files or its pages/ and blobs/ folders, ``--cache-dir``
+  itself or a folder holding it, an existing directory, or the other
+  output. Paths are compared after resolving links and ``..``.
+- A manifest marks a holdout wherever it says ``in_audit: true``: an object
+  outside the row list (an ``excluded`` list, a row's nested value) adds its
+  trial to the holdout set, and one marked in_audit=False in the rows and
+  in_audit=True elsewhere is refused (exit 2).
 - A local PDF is read only from ``<local-pdf-dir>/<nct_id>/`` itself: a file
   or trial folder that is a symlink leading outside it (into a holdout
-  trial's folder, say) is refused before it is opened (exit 2).
-- A study payload naming a filename in two largeDocs entries is refused, and
-  with no holdout set known an ``nctIdAliases`` entry must be on the
-  manifest's allowlist (exit 2).
+  trial's folder, say) is refused before it is opened (exit 2). A local PDF
+  whose byte count is not the payload's ``size`` is refused (exit 1).
+- A study payload is read strictly, before any request: a filename in two
+  largeDocs entries, a malformed ``largeDocs`` list or entry (a non-object,
+  a missing filename, a non-boolean ``hasProtocol``/``hasSap``, a size that
+  is not a non-negative int), a filename that is not a plain ASCII basename,
+  or a date that is not a CT.gov date is refused (exit 1); a filename that
+  reads as a trial id is a firewall refusal (exit 2), and so, with no holdout
+  set known, is an ``nctIdAliases`` entry not on the manifest's allowlist.
+- A live run is all-or-nothing in the cache: its writes are staged and land
+  only when every trial has been indexed, so a firewall or integrity refusal
+  part-way through leaves no earlier trial cached without a profile.
 - The census ingest type-checks every field it carries (``http_status`` an
   int or null, dates CT.gov date strings or null, ``retrieved_at`` an ISO-8601
   timestamp, a 200 row with a digest and positive ``bytes``), refuses two
@@ -89,6 +102,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import sys
 import time
 from typing import AbstractSet, Any, Iterable, Mapping, Sequence
@@ -107,6 +121,7 @@ if str(_REPO_ROOT) not in sys.path:
 from src.document_indexer import (  # noqa: E402
     INDEXER_RULES_VERSION,
     AuditHoldoutError,
+    CacheIntegrityError,
     ChainedPageTextProvider,
     DocumentCacheStore,
     DocumentIndexerError,
@@ -130,6 +145,7 @@ from src.document_indexer import (  # noqa: E402
     resolve_pipeline_commit,
     sha256_file,
     utc_now_iso,
+    validate_ctgov_date_field,
     validate_nct_id,
     validate_page_selection_bounds,
     validate_safe_pdf_filename,
@@ -140,6 +156,10 @@ from src.document_indexer import (  # noqa: E402
 USER_AGENT = "CivicSample-Research/1.0 (academic research)"
 DEFAULT_RATE_LIMIT_SEC = 0.55
 DEFAULT_TIMEOUT_SEC = 60
+# A manifest key is printed in a location only when it has the shape of a
+# schema field name (lowercase ASCII letters and underscores), which cannot
+# hold a trial id; any other key is shown as <key>.
+_PRINTABLE_MANIFEST_KEY_RE = re.compile(r"[a-z_]{1,32}", re.ASCII)
 
 
 def _resolve_pipeline_commit() -> str | None:
@@ -186,7 +206,18 @@ class GlobalRateLimiter:
         self._last_local_ts: float = 0.0
 
     def wait(self) -> None:
-        """Sleep as needed so consecutive requests are separated by >= min_interval_sec."""
+        """Sleep as needed so consecutive requests are separated by >= min_interval_sec.
+
+        The last request time is the later of this limiter's own and the lock
+        file's stamp. A stamp that cannot be used as a past time (unreadable
+        text, ``nan``/``inf``, or a time after now: another process's clock
+        running ahead, or a hand-edited file) is taken as "a request was made
+        just now", so the wait is the full interval: never shorter than the
+        limit (no request goes out early) and never longer than it (a stamp a
+        day ahead used to sleep a day, and ``inf`` asked ``time.sleep`` for an
+        infinite sleep, which raises ``OverflowError``). No single wait exceeds
+        ``min_interval_sec``.
+        """
         if self.min_interval_sec <= 0.0:
             return
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -196,16 +227,19 @@ class GlobalRateLimiter:
             try:
                 handle.seek(0)
                 raw = handle.read().strip()
-                last_ts = self._last_local_ts
+                now = time.time()
+                last_ts = min(self._last_local_ts, now)
                 if raw:
                     try:
-                        last_ts = max(last_ts, float(raw))
+                        stamp = float(raw)
                     except ValueError:
-                        pass
-                now = time.time()
-                elapsed = now - last_ts
+                        stamp = now
+                    if not math.isfinite(stamp) or stamp > now:
+                        stamp = now
+                    last_ts = max(last_ts, stamp)
+                elapsed = max(0.0, now - last_ts)
                 if elapsed < self.min_interval_sec:
-                    time.sleep(self.min_interval_sec - elapsed)
+                    time.sleep(min(self.min_interval_sec, self.min_interval_sec - elapsed))
                     now = time.time()
                 handle.seek(0)
                 handle.truncate()
@@ -219,12 +253,20 @@ class GlobalRateLimiter:
 
 @dataclass(frozen=True)
 class DownloadResult:
+    """One download's outcome. ``blob_created`` is True only when the download put a new file at ``local_path``.
+
+    A caller writing into a ``DocumentCacheStore`` reports such a file
+    (``note_blob_created``) so that a staged block that later fails removes
+    it; a blob that already held these bytes was not created by this run.
+    """
+
     ok: bool
     http_status: int | None
     sha256: str | None
     byte_count: int | None
     local_path: Path | None
     error: str | None
+    blob_created: bool = False
 
 
 def _merge_allowed_sets(
@@ -424,6 +466,7 @@ def download_pdf_atomic(
         sha = digest.hexdigest()
         blob_path = dest_dir / sha[:2] / f"{sha}.pdf"
         blob_path.parent.mkdir(parents=True, exist_ok=True)
+        blob_created = False
         if blob_path.exists() and sha256_file(blob_path) == (sha, total_bytes):
             # The existing blob is verified to be these bytes; keep it.
             part_path.unlink(missing_ok=True)
@@ -434,6 +477,8 @@ def download_pdf_atomic(
                     "was replaced with the verified download.",
                     file=sys.stderr,
                 )
+            else:
+                blob_created = True
             os.replace(part_path, blob_path)
 
         return DownloadResult(
@@ -443,6 +488,7 @@ def download_pdf_atomic(
             byte_count=total_bytes,
             local_path=blob_path,
             error=None,
+            blob_created=blob_created,
         )
     except Exception as exc:
         part_path.unlink(missing_ok=True)
@@ -474,7 +520,19 @@ def load_manifest_rows(
     false}`` read as False), and a wrapper object carrying more than one of
     ``data``, ``rows``, ``trials`` or a top-level ``nct_id`` (only the first was
     read, so a holdout row in a second list was never seen). Other top-level
-    keys (``run_id``, ``schema_version``) are allowed and ignored.
+    keys (``run_id``, ``schema_version``, ``excluded``) are allowed.
+
+    No ``in_audit: true`` in the file is dropped. Every JSON object anywhere
+    in the file that is not one of the rows read (under another top-level key
+    such as ``excluded``, or nested inside a row) and carries ``in_audit`` is
+    read for it: ``true`` adds its strict ``nct_id`` to the holdout set
+    (refused if it names none, since that holdout cannot be honoured);
+    ``false`` adds nothing (only the row list authorizes indexing); any other
+    value is refused. A trial marked in_audit=False in the row list and
+    in_audit=True elsewhere is refused as a conflict. Such objects used to be
+    ignored, so a holdout marked outside the row list was missing from the
+    holdout set, and a payload whose alias named it was indexed. Messages
+    give positions, never ids.
     """
     path = Path(manifest_path)
     if not path.exists():
@@ -507,6 +565,9 @@ def load_manifest_rows(
         return out
 
     rows: list[Mapping[str, Any]] = []
+    # Every JSON value the file holds, by location, for the in_audit scan
+    # below: the parsed document, or each JSONL line object.
+    scanned_roots: list[tuple[str, Any]] = []
     parsed: Any = None
     parsed_single_json = False
     if raw_text.startswith("{") or raw_text.startswith("["):
@@ -520,6 +581,7 @@ def load_manifest_rows(
             parsed_single_json = False
 
     if parsed_single_json:
+        scanned_roots.append(("the document root", parsed))
         if isinstance(parsed, Mapping):
             # A wrapper holds exactly one source of rows. Reading the first of
             # several and ignoring the rest let a holdout row under a second
@@ -565,6 +627,42 @@ def load_manifest_rows(
                     f"Manifest {path} line {line_no} is not a JSON object."
                 )
             rows.append(obj)
+            scanned_roots.append((f"line {line_no}", obj))
+
+    # in_audit outside the row list (see the docstring). The scan is iterative
+    # (no recursion limit on a deeply nested file) and skips only the row
+    # objects themselves, whose flags are read below; their nested values are
+    # scanned. A location names key names only when they cannot hold an id.
+    row_object_ids = {id(row) for row in rows}
+    outside_audit: set[str] = set()
+    pending: list[tuple[str, Any]] = list(scanned_roots)
+    while pending:
+        location, node = pending.pop()
+        if isinstance(node, Mapping):
+            if id(node) not in row_object_ids and "in_audit" in node:
+                flag = node["in_audit"]
+                if type(flag) is not bool:
+                    raise AuditHoldoutError(
+                        f"Manifest {path} object at {location}, outside the row list, has "
+                        f"non-bool in_audit (type={type(flag).__name__}); an in_audit flag "
+                        "anywhere in a manifest must be a boolean."
+                    )
+                if flag:
+                    try:
+                        outside_audit.add(validate_nct_id(node.get("nct_id")))
+                    except InvalidNctIdError as exc:
+                        raise AuditHoldoutError(
+                            f"Manifest {path} object at {location}, outside the row list, is "
+                            f"marked in_audit=True but names no valid nct_id ({exc}); that "
+                            "holdout cannot be added to the holdout set, so the manifest is "
+                            "refused."
+                        ) from None
+            for key, value in node.items():
+                printable = isinstance(key, str) and _PRINTABLE_MANIFEST_KEY_RE.fullmatch(key)
+                pending.append((f"{location}.{key if printable else '<key>'}", value))
+        elif isinstance(node, list):
+            for index, item in enumerate(node):
+                pending.append((f"{location}[{index}]", item))
 
     if not rows:
         raise AuditHoldoutError(
@@ -603,6 +701,19 @@ def load_manifest_rows(
         else:
             in_scope.append(dict(row))
 
+    if outside_audit:
+        # A holdout marked outside the row list joins the holdout set; one
+        # the row list marks in_audit=False is a conflict, refused like two
+        # rows that disagree.
+        conflicting = outside_audit & {nct for nct, flag in seen_flags.items() if flag is False}
+        if conflicting:
+            raise AuditHoldoutError(
+                f"Manifest {path} marks {len(conflicting)} trial(s) in_audit=False in its row "
+                "list and in_audit=True elsewhere in the file; conflicting flags are refused."
+            )
+        has_audit_rows = True
+        audit_ids |= outside_audit
+
     if caller_audit is not None:
         if has_audit_rows and not caller_audit:
             raise AuditHoldoutError(
@@ -625,25 +736,42 @@ def load_manifest_rows(
 
 
 def _extract_study_dates(study: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    """Return the payload's ``(primary completion date, results first posted date)``, each a CT.gov date or None.
+
+    Read strictly: an absent ``statusModule``, date struct or ``date`` (or a
+    null one) is recorded as absent (None); a ``statusModule`` or struct that
+    is not an object, or a ``date`` that is not a CT.gov date string
+    (``validate_ctgov_date_field``), raises ``DocumentIndexerError``. The
+    dates used to be ``str()``-ed, so an object or list became its Python
+    text (``"{'nct_id': ...}"``) in the profile's upload-timing facts. No
+    message prints a value.
+    """
     protocol = study.get("protocolSection")
-    status_mod = (
-        protocol.get("statusModule") if isinstance(protocol, Mapping) else {}
-    )
-    if not isinstance(status_mod, Mapping):
+    status_mod = protocol.get("statusModule") if isinstance(protocol, Mapping) else None
+    if status_mod is None:
         return None, None
-    pcd_struct = status_mod.get("primaryCompletionDateStruct")
-    rfp_struct = status_mod.get("resultsFirstPostDateStruct")
-    pcd = (
-        str(pcd_struct.get("date")).strip()
-        if isinstance(pcd_struct, Mapping) and pcd_struct.get("date")
-        else None
-    )
-    rfp = (
-        str(rfp_struct.get("date")).strip()
-        if isinstance(rfp_struct, Mapping) and rfp_struct.get("date")
-        else None
-    )
-    return pcd, rfp
+    if not isinstance(status_mod, Mapping):
+        raise DocumentIndexerError(
+            f"Study payload statusModule is {type(status_mod).__name__}, not an object; the "
+            "payload is refused rather than read as carrying no dates."
+        )
+    dates: list[str | None] = []
+    for struct_key in ("primaryCompletionDateStruct", "resultsFirstPostDateStruct"):
+        struct = status_mod.get(struct_key)
+        if struct is None:
+            dates.append(None)
+            continue
+        if not isinstance(struct, Mapping):
+            raise DocumentIndexerError(
+                f"Study payload statusModule.{struct_key} is {type(struct).__name__}, not an "
+                "object; the payload is refused."
+            )
+        dates.append(
+            validate_ctgov_date_field(
+                struct.get("date"), origin=f"Study payload statusModule.{struct_key}.date"
+            )
+        )
+    return dates[0], dates[1]
 
 
 def index_trial_from_study(
@@ -674,10 +802,28 @@ def index_trial_from_study(
     the call before any cache lookup, download or write. A local PDF is taken
     only through ``resolve_local_trial_pdf``, which refuses (``AuditHoldoutError``)
     a file or trial folder linking outside ``<local_pdf_dir>/<nct_id>/`` before
-    it is read.
+    it is read, and only when its byte count equals the payload's ``size``
+    (``CacheIntegrityError`` otherwise, or when the payload gives no size to
+    check it against): a copied file (another trial's document, an old
+    version) would otherwise be indexed, profiled and recorded in
+    url_manifest.json as the verified content of this trial's CT.gov URL.
+
+    The firewall is ``cache_store``'s merged with this call's arguments
+    (``DocumentCacheStore.merge_firewall_sets``), so a store built with a
+    holdout set refuses that trial even when this call's own sets are left at
+    their defaults. The payload's document module and dates are read
+    strictly (``extract_in_scope_large_docs``, ``_extract_study_dates``)
+    before any cache lookup or request.
+
+    All of the trial's cache writes are staged (``staged_writes``): a refusal
+    for one of its documents leaves nothing of the trial in the cache. Inside
+    a caller's staged block (``run_cli`` stages a whole live run) the trial's
+    writes join that block.
     """
     validate_page_selection_bounds(min_selected_pages, max_selected_pages)
-    effective_allowed = _merge_allowed_sets(allowed_nct_ids, in_scope_nct_ids)
+    audit_set, effective_allowed = cache_store.merge_firewall_sets(
+        audit_nct_ids, _merge_allowed_sets(allowed_nct_ids, in_scope_nct_ids)
+    )
 
     # Hard firewall BEFORE inspecting documents, cache, local PDFs, or network:
     # validates (a) strict ^NCT[0-9]{8}$ on study payload nctId, (b) exact equality
@@ -687,7 +833,7 @@ def index_trial_from_study(
         study,
         expected_nct_id=nct_id,
         in_audit=in_audit,
-        audit_nct_ids=audit_nct_ids,
+        audit_nct_ids=audit_set,
         allowed_nct_ids=effective_allowed,
     )
 
@@ -695,12 +841,71 @@ def index_trial_from_study(
         study,
         expected_nct_id=study_nct_id,
         in_audit=in_audit,
-        audit_nct_ids=audit_nct_ids,
+        audit_nct_ids=audit_set,
         allowed_nct_ids=effective_allowed,
     )
     primary_completion_date, results_first_post_date = _extract_study_dates(study)
     stamp = extracted_at or utc_now_iso()
 
+    with cache_store.staged_writes():
+        return _index_study_documents(
+            in_scope_docs,
+            excluded_icf_count=excluded_icf_count,
+            study_nct_id=study_nct_id,
+            primary_completion_date=primary_completion_date,
+            results_first_post_date=results_first_post_date,
+            stamp=stamp,
+            cache_store=cache_store,
+            provider=provider,
+            session=session,
+            local_pdf_dir=local_pdf_dir,
+            rate_limiter=rate_limiter,
+            offline=offline,
+            force_download=force_download,
+            reparse_cached_pages=reparse_cached_pages,
+            min_selected_pages=min_selected_pages,
+            max_selected_pages=max_selected_pages,
+            pipeline_commit=pipeline_commit,
+            indexer_rules_version=indexer_rules_version,
+            in_audit=in_audit,
+            audit_nct_ids=audit_set,
+            allowed_nct_ids=effective_allowed,
+        )
+
+
+def _index_study_documents(
+    in_scope_docs: Sequence[Mapping[str, Any]],
+    *,
+    excluded_icf_count: int,
+    study_nct_id: str,
+    primary_completion_date: str | None,
+    results_first_post_date: str | None,
+    stamp: str,
+    cache_store: DocumentCacheStore,
+    provider: DocumentPageExtractor | None,
+    session: Any | None,
+    local_pdf_dir: Path | None,
+    rate_limiter: GlobalRateLimiter | None,
+    offline: bool,
+    force_download: bool,
+    reparse_cached_pages: bool,
+    min_selected_pages: int,
+    max_selected_pages: int,
+    pipeline_commit: str | None,
+    indexer_rules_version: str,
+    in_audit: Any,
+    audit_nct_ids: frozenset[str],
+    allowed_nct_ids: frozenset[str] | None,
+) -> TrialDocumentProfile:
+    """Resolve, index and profile one trial's in-scope documents (the body of ``index_trial_from_study``).
+
+    Called only by ``index_trial_from_study`` after the payload passed the
+    firewall and was read strictly, inside its staged block; ``audit_nct_ids``
+    and ``allowed_nct_ids`` are the merged firewall sets. Each document is
+    resolved from the url_manifest fast path, a local PDF (size-checked
+    against the payload), or a download, then indexed through the cache.
+    """
+    effective_allowed = allowed_nct_ids
     trial_records: list[TrialDocumentRecord] = []
 
     for meta in in_scope_docs:
@@ -741,7 +946,11 @@ def index_trial_from_study(
 
         # 2. Local PDF directory resolution without duplicating multi-MB files.
         # A file or trial folder linking outside <local_pdf_dir>/<nct_id>/ (into
-        # a holdout trial's folder, say) is refused before it is opened.
+        # a holdout trial's folder, say) is refused before it is opened. A
+        # local file is the posted document only if its size is the payload's
+        # (see the docstring of index_trial_from_study); the census ingest
+        # refuses a byte-count mismatch the same way. The local file's digest
+        # is not printed.
         if resolved_sha is None and local_pdf_dir is not None:
             candidate = resolve_local_trial_pdf(local_pdf_dir, study_nct_id, filename)
             if candidate is not None:
@@ -751,7 +960,16 @@ def index_trial_from_study(
                     download_error = "local_pdf_invalid_header_or_empty"
                     http_status = None
                 else:
-                    resolved_sha, resolved_bytes = sha256_file(candidate)
+                    local_sha, local_bytes = sha256_file(candidate)
+                    if api_size is None or local_bytes != api_size:
+                        expected = "gives no size" if api_size is None else f"says {api_size} bytes"
+                        raise CacheIntegrityError(
+                            f"Local PDF {filename} of an in-scope trial under --local-pdf-dir has "
+                            f"{local_bytes} bytes but the CT.gov payload {expected}; it is not "
+                            "taken as the posted document (a copied or outdated file would be "
+                            "recorded as this trial's). Remove or replace the file."
+                        )
+                    resolved_sha, resolved_bytes = local_sha, local_bytes
                     resolved_pdf_path = candidate
 
         # 3. Live HTTP download (unless offline or already resolved)
@@ -775,6 +993,9 @@ def index_trial_from_study(
                     allowed_nct_ids=effective_allowed,
                 )
                 http_status = dl.http_status
+                if dl.blob_created and dl.local_path is not None:
+                    # A new blob is removed again if this staged block fails.
+                    cache_store.note_blob_created(dl.local_path)
                 if dl.ok and dl.sha256 is not None and dl.byte_count is not None:
                     resolved_sha = dl.sha256
                     resolved_bytes = dl.byte_count
@@ -931,13 +1152,21 @@ def fetch_and_index_trial(
     allowed_nct_ids: AbstractSet[str] | None = None,
     in_scope_nct_ids: AbstractSet[str] | None = None,
 ) -> TrialDocumentProfile:
-    """Fetch a single study from CTGovAPIClient and index its documents behind the in_audit firewall."""
-    effective_allowed = _merge_allowed_sets(allowed_nct_ids, in_scope_nct_ids)
+    """Fetch a single study from CTGovAPIClient and index its documents behind the in_audit firewall.
+
+    The firewall is ``cache_store``'s holdout set and allowlist merged with
+    this call's (``DocumentCacheStore.merge_firewall_sets``), checked before
+    the CT.gov record is requested: a store built with a holdout set refuses
+    that trial even when this call's own sets are left at their defaults.
+    """
+    audit_set, effective_allowed = cache_store.merge_firewall_sets(
+        audit_nct_ids, _merge_allowed_sets(allowed_nct_ids, in_scope_nct_ids)
+    )
     # Firewall runs BEFORE calling api_client.get_study()!
     nct = enforce_not_in_audit(
         nct_id,
         in_audit=in_audit,
-        audit_nct_ids=audit_nct_ids,
+        audit_nct_ids=audit_set,
         allowed_nct_ids=effective_allowed,
     )
 
@@ -966,7 +1195,7 @@ def fetch_and_index_trial(
         indexer_rules_version=indexer_rules_version,
         nct_id=nct,
         in_audit=in_audit,
-        audit_nct_ids=audit_nct_ids,
+        audit_nct_ids=audit_set,
         allowed_nct_ids=effective_allowed,
     )
 
@@ -1225,6 +1454,13 @@ def _output_path_conflicts(args: argparse.Namespace) -> list[str]:
     written: each output against every input file, the cache's own files and
     its pages/ and blobs/ folders, an existing directory, and the other
     output. Problems name the options, never the paths (which may hold ids).
+
+    Two more inputs are folders. An output inside ``--local-pdf-dir`` is
+    refused (``--profiles-out`` naming a local PDF the run reads replaced that
+    PDF with the profiles). An output that is ``--cache-dir`` itself, or a
+    folder holding it, is refused even before the cache folder exists (it
+    passed when the cache was not yet a directory; the run then created the
+    cache there and the profile write failed after the cache was written).
     """
     inputs: list[tuple[str, Path]] = []
     if args.manifest is not None:
@@ -1255,6 +1491,10 @@ def _output_path_conflicts(args: argparse.Namespace) -> list[str]:
         for folder_name, folder in folders:
             if _is_within(out_path, folder):
                 problems.append(f"{out_name} lies inside {folder_name}")
+        if args.local_pdf_dir is not None and _is_within(out_path, args.local_pdf_dir):
+            problems.append(f"{out_name} lies inside --local-pdf-dir")
+        if _is_within(cache_dir, out_path):
+            problems.append(f"{out_name} is --cache-dir or a folder holding it")
     if _names_same_file(args.profiles_out, args.index_out):
         problems.append("--profiles-out and --index-out name the same file")
     return problems
@@ -1491,37 +1731,44 @@ def run_cli(
         # One trial's CT.gov record failing to arrive (a 404, a 5xx, a dropped
         # connection) no longer aborts the batch: the trial is named in
         # fetch_failures and skipped, the rest are indexed, and the run exits 1.
-        # Only network/HTTP errors are caught. A firewall or integrity error
-        # still stops the whole run before anything is written.
+        # Only network/HTTP errors are caught (they are raised by the record
+        # fetch, before that trial writes anything). A firewall or integrity
+        # error still stops the whole run before anything is written: every
+        # cache write of the run is staged (staged_writes) and lands only when
+        # the loop finishes, so a refusal part-way through leaves no earlier
+        # trial's blob, page map, url record or index line in the cache with
+        # no profile. The price is that an interrupted run keeps nothing
+        # either, and the run's page maps are held in memory until it ends.
         fetch_failures: list[tuple[str, str]] = []
-        for nct in iterator:
-            try:
-                profile = fetch_and_index_trial(
-                    nct,
-                    api_client=api_client,
-                    cache_store=cache_store,
-                    provider=active_provider,
-                    session=session,
-                    local_pdf_dir=args.local_pdf_dir,
-                    rate_limiter=rate_limiter,
-                    offline=args.offline,
-                    force_download=args.force_download,
-                    reparse_cached_pages=args.reparse_cached_pages,
-                    min_selected_pages=args.min_selected_pages,
-                    max_selected_pages=args.max_selected_pages,
-                    extracted_at=stamp,
-                    pipeline_commit=commit,
-                    indexer_rules_version=INDEXER_RULES_VERSION,
-                    in_audit=False,
-                    audit_nct_ids=audit_nct_ids,
-                    allowed_nct_ids=in_scope_nct_ids,
-                )
-            except requests.RequestException as exc:
-                # nct passed enforce_not_in_audit before the fetch, so it is an
-                # in-scope trial and may be named.
-                fetch_failures.append((nct, f"{type(exc).__name__}: {exc}"))
-                continue
-            profiles.append(profile)
+        with cache_store.staged_writes():
+            for nct in iterator:
+                try:
+                    profile = fetch_and_index_trial(
+                        nct,
+                        api_client=api_client,
+                        cache_store=cache_store,
+                        provider=active_provider,
+                        session=session,
+                        local_pdf_dir=args.local_pdf_dir,
+                        rate_limiter=rate_limiter,
+                        offline=args.offline,
+                        force_download=args.force_download,
+                        reparse_cached_pages=args.reparse_cached_pages,
+                        min_selected_pages=args.min_selected_pages,
+                        max_selected_pages=args.max_selected_pages,
+                        extracted_at=stamp,
+                        pipeline_commit=commit,
+                        indexer_rules_version=INDEXER_RULES_VERSION,
+                        in_audit=False,
+                        audit_nct_ids=audit_nct_ids,
+                        allowed_nct_ids=in_scope_nct_ids,
+                    )
+                except requests.RequestException as exc:
+                    # nct passed enforce_not_in_audit before the fetch, so it is
+                    # an in-scope trial and may be named.
+                    fetch_failures.append((nct, f"{type(exc).__name__}: {exc}"))
+                    continue
+                profiles.append(profile)
 
         if profiles:
             write_profiles_jsonl(args.profiles_out, profiles)

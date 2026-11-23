@@ -6353,3 +6353,251 @@ def test_redteam_m1_repeated_flags_in_mixed_spellings_are_refused_or_deduplicate
     capsys.readouterr()
     assert rc == 0 and api.requested_ncts == [_RT_A, _RT_B]
     assert _rt_profile_ids(tmp_path / "rf_ids_profiles.jsonl") == [_RT_A, _RT_B]
+
+
+# ---------------------------------------------------------------------------
+# Round-3 fixes: behaviour the fixes added beyond what the red-team tests pin.
+# Fictional NCT990000xx ids, fake clients and sessions, no network.
+# ---------------------------------------------------------------------------
+
+
+def test_m1_r3_posted_filenames_and_canonical_urls(tmp_path: Path) -> None:
+    """Real CT.gov names pass; encoded, spaced or id-like names are refused unechoed and are never canonical."""
+    for name in ("Prot_000.pdf", "SAP_001.pdf", "Prot_SAP_000.pdf", "ICF_000.pdf", "Function_000.pdf", "Prot_000.PDF"):
+        assert di.validate_safe_pdf_filename(name) == name
+        assert di.parse_ctgov_large_doc_url(di.build_ctgov_large_doc_url(_RT_A, name)) == (_RT_A, name)
+    refused: dict[str, type[di.DocumentIndexerError]] = {
+        "%2E%2E%2FProt_000.pdf": di.DocumentIndexerError,
+        "Prot 000.pdf": di.DocumentIndexerError,
+        ".Prot_000.pdf": di.DocumentIndexerError,
+        "Prot_000.pdf?v=2.pdf": di.DocumentIndexerError,
+        "Prot_​000.pdf": di.DocumentIndexerError,
+        f"{_RT_AUDIT.lower()}_Prot.pdf": di.AuditHoldoutError,
+        "Prot_NCT-9.pdf": di.AuditHoldoutError,
+        f"{_RT_AUDIT[3:]}_Prot.pdf": di.AuditHoldoutError,
+    }
+    for name, error in refused.items():
+        with pytest.raises(error) as info:
+            di.validate_safe_pdf_filename(name)
+        assert name not in str(info.value) and _RT_AUDIT[3:] not in str(info.value), name
+        # build_ctgov_large_doc_url is a string builder; the URL it builds is not canonical.
+        if "/" not in name and ".." not in name:
+            assert di.parse_ctgov_large_doc_url(di.build_ctgov_large_doc_url(_RT_A, name)) is None, name
+
+    # Under a configured firewall a url_manifest key with such a filename cannot be attributed.
+    cache = tmp_path / "fnu_cache"
+    cache.mkdir()
+    path = cache / "url_manifest.json"
+    path.write_text(
+        json.dumps({di.build_ctgov_large_doc_url(_RT_A, "%2E%2E%2FProt_000.pdf"): _m1_url_record("a")}),
+        encoding="utf-8",
+    )
+    before = path.read_bytes()
+    with pytest.raises(di.AuditHoldoutError):
+        di.DocumentCacheStore(cache, tmp_path / "fnu_index.jsonl", audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A})
+    assert path.read_bytes() == before
+
+
+def test_m1_r3_ctgov_dates_are_read_whole_and_in_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The shapes CT.gov writes parse; trailing text, bad clock times and non-ASCII digits do not."""
+    for raw, precision in (
+        ("2020-01-01", "day"),
+        ("2021-04-01T10:00", "day"),
+        ("2020-01-01 10:00:59", "day"),
+        ("2020-01-01T10:00:00.123+00:00", "day"),
+        ("2020-01-01T10:00Z", "day"),
+        ("08/21/2020 14:32", "day"),
+        ("2020-05", "month"),
+        ("2020", "year"),
+        ("2020-01-01 10:00 extra", "unknown"),
+        ("2020-01-01T24:00", "unknown"),
+        ("08/21/2020 14:61", "unknown"),
+        ("08/21/2020\t14:32", "unknown"),
+        ("٢٠٢٠-01-01", "unknown"),
+        ("2020-01-01\nNCT", "unknown"),
+    ):
+        assert di.parse_ctgov_date(raw)["date_precision"] == precision, raw
+
+    assert di.validate_ctgov_date_field(None, origin="x") is None
+    assert di.validate_ctgov_date_field(" 2020-05 ", origin="x") == "2020-05"
+    for bad in ("", "  ", "not a date", 20200101, ["2020-01-01"], {"date": "2020-01-01"}):
+        with pytest.raises(di.DocumentIndexerError) as info:
+            di.validate_ctgov_date_field(bad, origin="Study payload field 'x'")
+        assert "not a date" not in str(info.value)
+
+    # The record builder refuses a non-date date argument rather than copying it.
+    common: dict[str, Any] = {
+        "nct_id": _RT_A,
+        "filename": "Prot_000.pdf",
+        "doc_type": "protocol",
+        "url": di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf"),
+        "http_status": 404,
+        "entry": None,
+        "retrieved_at": _RT_STAMP,
+    }
+    for field in ("api_doc_date", "upload_date", "primary_completion_date", "results_first_post_date"):
+        with pytest.raises(di.DocumentIndexerError):
+            di.build_trial_document_record(**common, **{field: f"2020-01-01 {_RT_AUDIT}"})
+        assert di.build_trial_document_record(**common, **{field: "2020-01"})["readability_status"] == "download_failed"
+
+    # A GITHUB_SHA that is not a commit id is not stamped, and the reason does not echo it.
+    monkeypatch.setenv("GITHUB_SHA", _RT_AUDIT)
+    commit, reason = di.resolve_pipeline_commit()
+    assert commit is None and reason is not None and _RT_AUDIT not in reason
+
+
+def test_m1_r3_url_manifest_writes_obey_the_read_rule(tmp_path: Path) -> None:
+    """record_url_manifest refuses a record its own loader would refuse, and leaves the file as it was."""
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    store = di.DocumentCacheStore(
+        tmp_path / "uw_cache", tmp_path / "uw_index.jsonl", audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A}
+    )
+    good: dict[str, Any] = {"sha256": "a" * 64, "byte_count": 10, "api_size": 10, "api_upload_date": "2021-04-01T10:00"}
+    for label, overrides in {
+        "upload_date_text": {"api_upload_date": _RT_AUDIT},
+        "api_size_bool": {"api_size": True},
+        "api_size_negative": {"api_size": -1},
+        "verified_at_text": {"verified_at": _RT_AUDIT},
+        "commit_text": {"pipeline_commit": _RT_AUDIT},
+    }.items():
+        with pytest.raises(di.CacheIntegrityError) as info:
+            store.record_url_manifest(url, **{**good, **overrides})
+        assert _RT_AUDIT not in str(info.value), label
+        assert not store.url_manifest_path.exists(), label
+        assert store.lookup_url_manifest(url) is None, label
+    store.record_url_manifest(url, **good, verified_at=_RT_STAMP, pipeline_commit="abcdef1")
+    reopened = di.DocumentCacheStore(
+        tmp_path / "uw_cache", tmp_path / "uw_index.jsonl", audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A}
+    )
+    assert reopened.lookup_url_manifest(url) == {**good, "verified_at": _RT_STAMP, "pipeline_commit": "abcdef1"}
+
+
+def test_m1_r3_nested_staged_blocks_are_savepoints_and_rollback_removes_new_blobs(tmp_path: Path) -> None:
+    """An inner block's failure undoes only its own writes; an outer failure removes the blobs and folders it made."""
+    one, two = _make_minimal_pdf("Savepoint one"), _make_minimal_pdf("Savepoint two")
+    sha_one, sha_two = di.sha256_bytes(one), di.sha256_bytes(two)
+    provider = di.FixturePageTextProvider({sha_one: _rt_stat_pages(), sha_two: _rt_stat_pages()})
+    cache, index = tmp_path / "sp_cache", tmp_path / "sp_index.jsonl"
+    store = di.DocumentCacheStore(cache, index, audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A, _RT_B})
+
+    def _index(nct: str, pdf: bytes) -> None:
+        store.get_or_index_document(
+            sha256=di.sha256_bytes(pdf), byte_count=len(pdf), provider=provider, nct_id=nct, extracted_at=_RT_STAMP
+        )
+        store.save_blob(di.sha256_bytes(pdf), pdf)
+
+    with pytest.raises(RuntimeError):
+        with store.staged_writes():
+            _index(_RT_A, one)
+            assert store.blob_path(sha_one).exists()
+            raise RuntimeError("outer refusal")
+    assert not cache.exists() and not index.exists()
+    assert store.get_entry(sha_one) is None
+
+    with store.staged_writes():
+        _index(_RT_A, one)
+        with pytest.raises(RuntimeError):
+            with store.staged_writes():
+                _index(_RT_B, two)
+                raise RuntimeError("inner refusal")
+        assert store.get_entry(sha_two) is None and not store.blob_path(sha_two).exists()
+        assert store.get_entry(sha_one) is not None and not index.exists()
+    assert [p.name for p in sorted(cache.rglob("*")) if p.is_file()] == [f"{sha_one}.pdf", f"{sha_one}.json.gz"]
+    assert len(index.read_text(encoding="utf-8").splitlines()) == 1
+
+    # Only this store's own blob files can be registered for removal.
+    with store.staged_writes():
+        with pytest.raises(di.CacheIntegrityError):
+            store.note_blob_created(tmp_path / "elsewhere.pdf")
+
+
+def test_m1_r3_manifest_flags_outside_the_row_list(tmp_path: Path) -> None:
+    """Outside-the-list holdouts join the set; untagged, non-bool or conflicting flags are refused; plain excluded entries are ignored."""
+    def _wrapper(name: str, extra: dict[str, Any]) -> Path:
+        path = tmp_path / name
+        path.write_text(
+            json.dumps(
+                {
+                    "rows": [{"nct_id": _RT_A, "in_audit": False}, {"nct_id": _RT_AUDIT, "in_audit": True}],
+                    **extra,
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    rows, audit = cli_mod.load_manifest_rows(
+        _wrapper("mf_plain.json", {"excluded": [{"nct_id": _RT_B, "reasons": ["out of scope"]}]})
+    )
+    assert [r["nct_id"] for r in rows] == [_RT_A] and audit == {_RT_AUDIT}
+    _, audit = cli_mod.load_manifest_rows(
+        _wrapper("mf_false.json", {"excluded": [{"nct_id": _RT_B, "in_audit": False}]})
+    )
+    assert audit == {_RT_AUDIT}
+    _, audit = cli_mod.load_manifest_rows(
+        _wrapper("mf_deep.json", {"meta": {"by_id": {_RT_B: [{"nct_id": _R3_AUDIT2, "in_audit": True}]}}})
+    )
+    assert audit == {_RT_AUDIT, _R3_AUDIT2}
+
+    for label, extra in {
+        "conflict": {"excluded": [{"nct_id": _RT_A, "in_audit": True}]},
+        "untagged": {"excluded": [{"in_audit": True}]},
+        "malformed_id": {"excluded": [{"nct_id": _R3_AUDIT2 + " ", "in_audit": True}]},
+        "non_bool": {"excluded": [{"nct_id": _R3_AUDIT2, "in_audit": "true"}]},
+    }.items():
+        with pytest.raises(di.AuditHoldoutError) as info:
+            cli_mod.load_manifest_rows(_wrapper(f"mf_{label}.json", extra))
+        assert re.search(r"NCT[0-9]{8}", str(info.value).replace(str(tmp_path), "")) is None, label
+
+
+def test_m1_r3_local_pdf_needs_the_payload_size_and_cache_dir_inside_an_output_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A local PDF with no payload size to check it against is refused; an output folder holding --cache-dir exits 2."""
+    pdf = _make_minimal_pdf("Local PDF without a payload size")
+    local = tmp_path / "ns_pdfs"
+    (local / _RT_A).mkdir(parents=True)
+    (local / _RT_A / "Prot_000.pdf").write_bytes(pdf)
+    study = _make_study(_RT_A, [{"filename": "Prot_000.pdf", "hasProtocol": True, "hasSap": False}])
+    session = _R3Session({di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf"): pdf})
+    rc = cli_mod.run_cli(
+        ["--manifest", str(_rt_manifest(tmp_path)), "--nct-id", _RT_A, "--local-pdf-dir", str(local),
+         *_rt_outs(tmp_path, "ns")],
+        api_client=_SpyAPIClient({_RT_A: study}),
+        session=session,
+        provider=di.FixturePageTextProvider({di.sha256_bytes(pdf): _rt_stat_pages()}),
+    )
+    err = capsys.readouterr().err
+    assert rc == 1 and "gives no size" in err
+    assert _rt_written(tmp_path, "ns") == [] and session.requested_urls == []
+
+    holder = tmp_path / "ns_holder"
+    api = _SpyAPIClient({_RT_A: _rt_study(_RT_A, pdf)})
+    rc = cli_mod.run_cli(
+        ["--manifest", str(_rt_manifest(tmp_path)), "--nct-id", _RT_A, "--cache-dir", str(holder / "cache"),
+         "--profiles-out", str(holder), "--index-out", str(tmp_path / "ns_holder_index.jsonl"),
+         "--rate-limit-sec", "0"],
+        api_client=api,
+        session=_R3Session(),
+    )
+    capsys.readouterr()
+    assert rc == 2 and api.requested_ncts == [] and not holder.exists()
+
+
+def test_m1_r3_rate_limit_lock_with_unreadable_text_waits_one_interval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unreadable or non-finite lock text is taken as a request made just now: one full interval, never more, never skipped."""
+    slept: list[float] = []
+    monkeypatch.setattr(cli_mod.time, "sleep", lambda seconds: slept.append(seconds))
+    lock = tmp_path / "rl_text.lock"
+    for content in ("not a number\n", "nan\n", "-inf\n"):
+        lock.write_text(content, encoding="utf-8")
+        slept.clear()
+        cli_mod.GlobalRateLimiter(lock, min_interval_sec=0.5).wait()
+        assert len(slept) == 1 and 0.0 < slept[0] <= 0.5, content
+    # A stamp from a real past request an interval ago owes no wait.
+    lock.write_text(f"{cli_mod.time.time() - 10:.6f}\n", encoding="utf-8")
+    slept.clear()
+    cli_mod.GlobalRateLimiter(lock, min_interval_sec=0.5).wait()
+    assert slept == []
