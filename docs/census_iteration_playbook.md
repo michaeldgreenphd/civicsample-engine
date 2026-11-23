@@ -11,7 +11,7 @@ The commands use M1 (`scripts/index_trial_documents.py`), M4
 (`scripts/verify_and_plan_census_batch.py`), M2 as a library, and M3
 (`scripts/build_outcomes_shards.py`), so they need a checkout that carries the
 branches they name. They were checked against m1 `69edfb3`, m2 `fe7399e`, m4
-`dab323c` and m3 `52c0bac`.
+`dab323c` and m3 `ccfa413`.
 
 ## 0. Before anything runs
 
@@ -356,6 +356,7 @@ mkdir -p census-work/reports
 python scripts/build_outcomes_shards.py \
   --cohort-manifest "$INDEX" \
   --manifest-cohort industry_outcomes_beta \
+  --extracted-at <extracted-at> \
   --documents data/trial_document_profiles.jsonl \
   --locations census-work/merged/locations.jsonl \
   --out-dir data/outcomes_bundles \
@@ -365,7 +366,14 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
 ```
 
 - `--manifest-cohort` is needed with the site index, whose rows carry no
-  cohort; without it such a row resolves to no cohort and is refused.
+  cohort: without it, a row with neither a protocol nor a SAP resolves to no
+  cohort and the build is refused (exit 1).
+- `--extracted-at` is needed too. The builder takes the extraction time
+  from `--extracted-at`, else from the `extracted_at` of a `--trials` or
+  `--cohort-manifest` container, else from `--now-utc`, and refuses the
+  build (exit 1, nothing written) when none is given. The site index's
+  header carries no `extracted_at`. `<extracted-at>` is the ISO-8601 UTC
+  time the inputs were extracted, not the time of the build.
 - `--trials`, if given, may hold only the manifest's trials (the weekly
   `data/demographics.json.gz` holds every trial and is refused). Leave
   holdout trials out of every input except the manifest.
@@ -374,8 +382,13 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
   library functions.
 - The default `--out-dir` is refused when `data/run.json` exists (a weekly
   dataset in `data/`); pass another gitignored path then.
-- At `52c0bac` the bundle keeps each location row's `worker` but not its
-  `model_id` or `prompt_version` (F6), so it cannot be published as it is.
+- At `ccfa413` the bundle keeps each location row's `worker`, and its
+  `model_id` and `prompt_version` when the row carries them (F6), but M3
+  does not require them: a row without them is published without them.
+  Rows that passed step 5's `verify` carry them, because M4 requires them on
+  every row. A bundle built from rows without them, such as the existing
+  census's, can attribute a row to a model only through its `worker`, so it
+  cannot be published as it is.
 
 ## 5. Extending to new cohorts
 

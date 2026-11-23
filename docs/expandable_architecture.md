@@ -26,7 +26,8 @@ merged on its own; M3 is the exception, because it imports M4.
 | `antigravity/docs-platform` | `aa14a2d` | this file and `docs/census_iteration_playbook.md` | not applicable | for review |
 
 The revisions read for this document were m1 `69edfb3`, m2 `fe7399e`, m4
-`dab323c` and m3 `52c0bac` (which merges m4 at `dab323c`). A later commit on
+`dab323c` and m3 `ccfa413` (which contains m4 at `dab323c`, merged in at
+`52c0bac`). A later commit on
 any of these branches can change a detail stated here, so re-check a detail
 against the branch before relying on it.
 
@@ -155,8 +156,10 @@ M2 leaves it to its callers.
   bool `in_audit` is the only flag that admits a trial. A holdout trial is
   written as a stub: its index row holds the fields copied from its manifest
   or trial row (`ecosystem_category` included, when the row has one), masked
-  badges and `has_reported_results` null, and its shard record holds only
-  `nct_id`, `in_audit`, `cohorts` and `shard`. A bundle therefore names the
+  badges and `has_reported_results` null, and its shard record holds
+  `nct_id`, `in_audit`, `cohorts` and `shard`, with its four sections
+  (`reported_results`, `document_profile`, `decision_rule_locations`,
+  `longitudinal_provenance`) null. A bundle therefore names the
   holdout trials, as the site's outcomes index does, and carries none of
   their results, documents, locations or provenance. Any side input for a
   holdout trial (a `--documents`, `--locations`, `--provenance` or
@@ -234,10 +237,17 @@ any branch covers it.
   Wave 3 worker); document rows name no worker, so a document row's model can
   be inferred only through the shard its trial was assigned to
   (`shard_assignment` in `manifest.json`).
-- **M3 at `52c0bac` keeps each location row's `worker` but not its
-  `model_id` or `prompt_version`.** A bundle built from it can attribute a
-  row to a model only through the worker. That must change before any
-  bundle is published (F6).
+- **M3 at `ccfa413` keeps a location row's `model_id` and `prompt_version`
+  when the row carries them, but does not require them.** It publishes each
+  row's `worker`, adds `model_id` and `prompt_version` when present, and
+  refuses either one when it is present but empty or not a string. A key
+  outside M4's row keys (`LOCATION_ROW_INPUT_KEYS`) is refused rather than
+  dropped. A document row's `model_id` and `profile_version` are kept the
+  same way. A row without the stamps (every row of the existing census
+  lacks them) is published without them, so a bundle built from such rows can
+  attribute a row to a model only through its worker. Such a bundle does not
+  meet F6 and cannot be published as it is. This was run on fictional rows
+  with and without the stamps.
 - **Review status.** AI output is unreviewed until a person reviews it.
   M4's checks are mechanical: a quotation is found on the cited page, the
   row has the required shape, the status-to-citation rule holds, and the
@@ -484,14 +494,18 @@ references (`registry_reference_types` `BACKGROUND`, `DERIVED`, `RESULT`),
 - **CLI (`scripts/build_outcomes_shards.py`).** `--cohort-manifest`
   (required for a build), `--manifest-cohort`, `--trials` (every trial must be
   in the manifest), `--documents`, `--locations` (repeatable), `--provenance`,
-  `--population-parsed`, `--extracted-at`, `--now-utc`,
+  `--population-parsed`, `--extracted-at` (else the `extracted_at` of the
+  `--trials` and `--cohort-manifest` containers, which must agree, else
+  `--now-utc`; a build refuses when none is given and never stamps the build
+  time), `--now-utc`,
   `--source-pipeline-commit` (alias `--pipeline-commit`; default the engine
   checkout's HEAD; a build refuses when neither resolves), `--shards`,
   `--out-dir` (default `data/outcomes_bundles`, resolved from the script's
   location), `--report`, `--check DIR`, and `--allow-null-commit` (with
   `--check` only). `--check` refuses any build-only option. Exit 0 on
   success, 1 on contract, input or validation errors, 2 on
-  `AuditFirewallError`.
+  `AuditFirewallError` and, with `--check`, on a holdout leak found in the
+  tree.
 
 ## 9. Verification
 
