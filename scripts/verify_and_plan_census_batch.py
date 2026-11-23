@@ -21,8 +21,14 @@ no ``in_audit``, so membership of that set, read from the index, is what admits
 a trial; no call writes a literal ``in_audit=False`` on a trial's behalf. A
 ``--doc-cache`` entry names no trial of its own, so it is admitted only when
 its sha256 is a document of an in-scope trial and none of its keys or strings
-names an audit, unlisted or malformed NCT ID. An index row's missing
-``protocol``/``sap`` flag is unknown, not "no document".
+names an audit, unlisted or malformed NCT ID. ``--documents``, ``--locations``
+and ``--profiles`` rows follow the same token rule under every key and string,
+with the row's own trial also admitted. ``verify --pages-dir`` hands the page
+provider the ``(nct_id, sha256)`` pairs of the in-scope documents, so no
+content-addressed page map outside them is opened. ``plan`` files a trial as
+``cached_complete`` only when every one of its rows passes
+``verify_location_record``. An index row's missing ``protocol``/``sap`` flag is
+unknown, not "no document".
 
 Runtime dependencies:
 - Python 3.11+ standard library (``argparse``, ``datetime``, ``gzip``,
@@ -60,9 +66,9 @@ if str(_REPO_ROOT) not in sys.path:
 
 from src.citation_verifier import (  # noqa: E402
     ALLOWED_PASSES,
-    _check_embedded_url_ncts,
     _is_non_empty_str,
     _prescan_nested_nct_fields,
+    _scan_record_strings_for_nct_tokens,
     _validate_nested_firewall_metadata,
     AuditHoldoutViolationError,
     CitationVerificationError,
@@ -76,14 +82,20 @@ from src.citation_verifier import (  # noqa: E402
     validate_status_citations,
     validate_strict_nct_id,
     verify_census_corpus,
+    verify_location_record,
 )
 from src.utils import pipeline_commit  # noqa: E402
 
 PLANNER_SCHEMA_VERSION: Final[int] = 1
-PLANNER_RULES_VERSION: Final[str] = "1.2.0"
+# 1.3.0: cached_complete only for trials whose every row verify accepts; unknown modes refused.
+PLANNER_RULES_VERSION: Final[str] = "1.3.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
 CostSchedule = Literal["sliced", "full", "conservative"]
+# The single list of each, used by the CLI choices and by plan_incremental_cohort, which
+# refuses anything else rather than reading an unknown mode as incremental-delta.
+PLAN_MODES: Final[tuple[str, ...]] = ("resume-unstarted", "recover-unreadable", "incremental-delta")
+COST_SCHEDULES: Final[tuple[str, ...]] = ("sliced", "full", "conservative")
 
 DEFAULT_COST_PER_TRIAL_SLICED_USD: Final[float] = 0.085
 DEFAULT_COST_PER_TRIAL_FULL_USD: Final[float] = 0.4011
@@ -348,48 +360,28 @@ def _scan_strings_for_nct_tokens(
     context: str,
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
+    allow_empty_audit_set: bool,
 ) -> None:
     """Refuse an audit, unlisted or malformed NCT token in any key or string value.
 
     The named-key checks in ``_validate_nested_firewall_metadata`` see only
     ``nct_id``-style keys and URL keys; a doc-cache entry can name a trial under
     any key (``{"trial": ...}``) or inside free text. Every string, keys
-    included, is therefore read with the same token rule as URLs (an NCT-like
-    token must be strict, outside the audit set and in scope). This can refuse
-    an in-scope document whose indexed text names another trial; that refusal
-    is loud (exit 2) and deliberate, since a silent pass is the failure mode.
+    included, is therefore read with the verifier's single text-token rule
+    (``src.citation_verifier._check_embedded_text_ncts``): an NCT-like token must
+    be strict, outside the audit set and, since a doc-cache entry has no trial
+    of its own (``expected_nct_id=None``), in scope. This can refuse an in-scope
+    document whose indexed text names another trial; that refusal is loud
+    (exit 2) and deliberate, since a silent pass is the failure mode.
     """
-    if isinstance(node, str):
-        _check_embedded_url_ncts(
-            node,
-            context=context,
-            expected_nct_id=None,
-            audit_nct_ids=audit_nct_ids,
-            in_scope_nct_ids=in_scope_nct_ids,
-        )
-    elif isinstance(node, Mapping):
-        for raw_k, val in node.items():
-            key = str(raw_k)
-            _scan_strings_for_nct_tokens(
-                key,
-                context=f"{context} key {key!r}",
-                audit_nct_ids=audit_nct_ids,
-                in_scope_nct_ids=in_scope_nct_ids,
-            )
-            _scan_strings_for_nct_tokens(
-                val,
-                context=f"{context}.{key}",
-                audit_nct_ids=audit_nct_ids,
-                in_scope_nct_ids=in_scope_nct_ids,
-            )
-    elif isinstance(node, (list, tuple)):
-        for idx, item in enumerate(node):
-            _scan_strings_for_nct_tokens(
-                item,
-                context=f"{context}[{idx}]",
-                audit_nct_ids=audit_nct_ids,
-                in_scope_nct_ids=in_scope_nct_ids,
-            )
+    _scan_record_strings_for_nct_tokens(
+        node,
+        context=context,
+        expected_nct_id=None,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
 
 
 def _validate_doc_cache_entry(
@@ -423,6 +415,7 @@ def _validate_doc_cache_entry(
         context=context,
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
     )
     sha = row.get("sha256")
     if type(sha) is not str or _SHA256_HEX_RE.fullmatch(sha) is None:
@@ -482,6 +475,16 @@ def _validate_profile_entry(
         allow_empty_audit_set=allow_empty_audit_set,
     )
     _validate_nested_firewall_metadata(
+        row,
+        context=context,
+        expected_nct_id=checked_key,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
+    # A profile is a record about one trial, read like a document row: any key or
+    # string naming another trial follows the derived-ID rule.
+    _scan_record_strings_for_nct_tokens(
         row,
         context=context,
         expected_nct_id=checked_key,
@@ -754,6 +757,61 @@ def _verified_pass_doc_fingerprints(
     return verified_keys
 
 
+def _trial_rows_verify(
+    nct_id: str,
+    nct_locs: Sequence[Mapping[str, Any]],
+    current_docs: Sequence[Mapping[str, Any]],
+    *,
+    manifest_has_documents: bool | None,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str],
+    allow_empty_audit_set: bool,
+) -> bool:
+    """Return whether every location row of one trial is a row ``verify`` would accept.
+
+    Method: ``cached_complete`` means "never re-run", so it may only be given to
+    rows that verification accepts. The cache lookup
+    (``_verified_pass_doc_fingerprints``) checks the grid, status-to-citation
+    counts and citation shape; rather than copy more of verify's row rules here
+    (search coverage, required keys, pass names, provenance, neutral language),
+    every row of the trial, of every pass, is run through
+    ``src.citation_verifier.verify_location_record`` against the trial's current
+    documents, with no page provider (planning reads no page text) and
+    exhaustive NOT_FOUND required (verify's default). Any error-severity issue,
+    two rows for one (outcome, element, pass) cell, or two current documents
+    with one filename returns False. Warnings (``NOTE_PAGE_COUNT_MISMATCH``) do
+    not, as they do not fail verify.
+    """
+    docs_by_filename: dict[str, Mapping[str, Any]] = {}
+    for doc in current_docs:
+        fn = doc.get("filename")
+        if type(fn) is not str or fn in docs_by_filename:
+            return False
+        docs_by_filename[fn] = doc
+    seen_cells: set[tuple[str, str, str]] = set()
+    for loc in nct_locs:
+        # repr keeps unhashable or oddly typed values (a list index) comparable.
+        cell = (
+            repr(loc.get("primary_outcome_index")),
+            repr(loc.get("element")),
+            repr(loc.get("pass")),
+        )
+        if cell in seen_cells:
+            return False
+        seen_cells.add(cell)
+        _, issues = verify_location_record(
+            loc,
+            docs_by_nct={nct_id: docs_by_filename},
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+            manifest_has_documents=manifest_has_documents,
+        )
+        if any(issue.severity == "error" for issue in issues):
+            return False
+    return True
+
+
 def plan_incremental_cohort(
     index_rows: Sequence[Mapping[str, Any]],
     *,
@@ -776,8 +834,18 @@ def plan_incremental_cohort(
     """Partition cohort trials and emit budget-gated ``/swarm`` shard manifests.
 
     Enforces strict ASCII NCT IDs, ``in_audit == False``, in-scope membership,
-    ``expected_k >= 1``, and provenance stamps across all input streams.
+    ``expected_k >= 1``, and provenance stamps across all input streams. ``mode``
+    and ``cost_schedule`` must be one of ``PLAN_MODES`` / ``COST_SCHEDULES``
+    exactly; anything else is refused, never read as the default.
     """
+    if type(mode) is not str or mode not in PLAN_MODES:
+        raise CitationVerificationError(
+            f"Invalid mode {mode!r}; expected one of {PLAN_MODES}."
+        )
+    if type(cost_schedule) is not str or cost_schedule not in COST_SCHEDULES:
+        raise CitationVerificationError(
+            f"Invalid cost_schedule {cost_schedule!r}; expected one of {COST_SCHEDULES}."
+        )
     if type(shard_size) is not int or shard_size < 1:
         raise CitationVerificationError(f"shard_size must be int >= 1, got {shard_size!r}")
     for cost_label, cost_val in (
@@ -881,6 +949,14 @@ def plan_incremental_cohort(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        _scan_record_strings_for_nct_tokens(
+            doc,
+            context=f"documents[{doc_idx}]",
+            expected_nct_id=doc_nct,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
         _validate_document_provenance_for_plan(doc, context=f"documents[{doc_idx}]")
 
     for loc_idx, loc in enumerate(locations):
@@ -892,6 +968,14 @@ def plan_incremental_cohort(
             allow_empty_audit_set=allow_empty_audit_set,
         )
         _validate_nested_firewall_metadata(
+            loc,
+            context=f"locations[{loc_idx}]",
+            expected_nct_id=loc_nct,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+        _scan_record_strings_for_nct_tokens(
             loc,
             context=f"locations[{loc_idx}]",
             expected_nct_id=loc_nct,
@@ -926,6 +1010,7 @@ def plan_incremental_cohort(
             context="doc_cache_by_sha256 key",
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
         )
         entry_sha = _validate_doc_cache_entry(
             cache_row,
@@ -1023,6 +1108,8 @@ def plan_incremental_cohort(
         if not _trial_has_in_scope_doc(row, current_docs):
             excluded_no_document_count += 1
             continue
+        # True / False / None (unknown) from the index flags, as verify reads them.
+        manifest_has_documents = _validate_index_doc_flags(row, context="plan index row")
 
         current_doc_tuple = compute_doc_sha256_tuple(current_docs)
         doc_fingerprints[nct_id] = compute_doc_set_fingerprint(current_doc_tuple)
@@ -1092,6 +1179,19 @@ def plan_incremental_cohort(
                 and (nct_id, "primary", current_doc_tuple) in verified_cache
             )
         )
+        if cache_hit and not _trial_rows_verify(
+            nct_id,
+            nct_locs,
+            current_docs,
+            manifest_has_documents=manifest_has_documents,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        ):
+            # A cache entry exists, but some row of the trial would fail verify: the rows
+            # are re-run, like rows that no longer match the documents.
+            partitions["amended_doc_or_outcome_delta"].append(nct_id)
+            continue
         if cache_hit:
             grid_locs = (
                 primary_locs
@@ -1299,6 +1399,14 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        _scan_record_strings_for_nct_tokens(
+            doc,
+            context=f"documents[{idx}]",
+            expected_nct_id=doc_nct,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
 
     for idx, loc in enumerate(locations):
         loc_nct = loc["nct_id"]
@@ -1316,15 +1424,33 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        _scan_record_strings_for_nct_tokens(
+            loc,
+            context=f"locations[{idx}]",
+            expected_nct_id=loc_nct,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
 
     provider: DirectoryPageTextProvider | None = None
     if args.pages_dir is not None:
+        # Content-addressed page maps name no trial, so the provider is told which
+        # (trial, sha256) pairs this run's in-scope documents (firewalled above) name: it
+        # never opens a <sha256> map outside them, refuses a JSONL row for one, and
+        # refuses a lookup of any other pair.
+        referenced_documents: frozenset[tuple[str, str]] = frozenset(
+            (doc["nct_id"], doc["sha256"])
+            for doc in documents
+            if type(doc.get("sha256")) is str and _SHA256_HEX_RE.fullmatch(doc["sha256"])
+        )
         provider = DirectoryPageTextProvider(
             Path(args.pages_dir),
             ocr_dir=Path(args.ocr_dir) if args.ocr_dir is not None else None,
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            referenced_documents=referenced_documents,
         )
 
     expected_outcomes_by_nct: dict[str, int] | None = (
@@ -1481,7 +1607,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_plan.add_argument(
         "--mode",
-        choices=("resume-unstarted", "recover-unreadable", "incremental-delta"),
+        choices=PLAN_MODES,
         default="incremental-delta",
         help="Batch planning mode",
     )
@@ -1519,7 +1645,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_plan.add_argument(
         "--cost-schedule",
-        choices=("sliced", "full", "conservative"),
+        choices=COST_SCHEDULES,
         default="sliced",
         help="Cost schedule gating launch_approved and max_launchable_shards",
     )

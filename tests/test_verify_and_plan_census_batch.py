@@ -1171,6 +1171,10 @@ def test_planner_adjudication_and_ocr_override_parity() -> None:
             "pass": "ocr_recovery",
             "model_id": "claude-sonnet-4-6-20260601",
             "prompt_version": "decision-rule-v1.1",
+            # The OCR row cites page 5, a page without pdfkit text; verify reads the row's
+            # own text_source (else --text-source, default pdfkit) and reports
+            # CITATION_PAGE_WITHOUT_TEXT for a pdfkit citation of it.
+            "text_source": "macos_vision_ocr_v1",
         }
     ]
 
@@ -1196,6 +1200,21 @@ def test_planner_adjudication_and_ocr_override_parity() -> None:
             assert plan["shards"][0]["target_elements_by_nct"]["NCT99000012"] == [
                 {"primary_outcome_index": 0, "element": "margin"}
             ]
+
+    # The same OCR row without text_source is one verify rejects (CITATION_PAGE_WITHOUT_TEXT
+    # under pdfkit), so the trial is re-run rather than filed as cached_complete.
+    untagged_ocr = {k: v for k, v in locs_14[-1].items() if k != "text_source"}
+    untagged_plan = plan_incremental_cohort(
+        index_rows,
+        documents=documents,
+        locations=locs_11 + locs_12 + locs_13 + locs_14[:-1] + [untagged_ocr],
+        cohort="industry_phase3",
+        mode="incremental-delta",
+        shard_size=10,
+        budget_cap_usd=50.0,
+    )
+    assert untagged_plan["partitions"]["cached_complete"] == ["NCT99000011"]
+    assert untagged_plan["partitions"]["amended_doc_or_outcome_delta"] == ["NCT99000014"]
 
 
 def test_cli_verify_rejects_no_document_using_index_document_flags(tmp_path: Path) -> None:

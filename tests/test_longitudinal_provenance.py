@@ -392,7 +392,10 @@ def test_full_assembly_large_docs_icf_exclusion_and_pub_origin_separation() -> N
     assert derived_pub["registry_reference_types"] == ["DERIVED"]
     assert derived_pub["link_origins"] == ["AUTO_INDEXED"]
 
-    layout_proj = to_outcomes_layout_provenance(record)
+    # The projection takes the same firewall basis as the assembly it follows.
+    layout_proj = to_outcomes_layout_provenance(
+        record, in_audit=False, audit_nct_ids=HOLDOUT_SET
+    )
     assert layout_proj["nct_id"] == "NCT99000001"
     assert scan_neutral_language_record(record) == []
     assert scan_neutral_language_record(layout_proj) == []
@@ -410,7 +413,9 @@ def test_to_outcomes_layout_provenance_dict_contract_and_jsonl_roundtrip(
         assembled_at="2026-11-20T12:00:00Z",
         source_pipeline_commit="aa14a2d",
     )
-    layout_proj = to_outcomes_layout_provenance(record)
+    layout_proj = to_outcomes_layout_provenance(
+        record, in_scope_nct_ids=frozenset({"NCT99000002"}), audit_nct_ids=HOLDOUT_SET
+    )
 
     expected_keys = {
         "nct_id",

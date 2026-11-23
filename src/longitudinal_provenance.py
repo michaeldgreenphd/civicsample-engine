@@ -27,7 +27,17 @@ Key invariants:
   explicit ``bool`` ``in_audit`` (or verified ``in_scope_nct_ids``) and
   non-empty ``audit_nct_ids`` by default before touching any provider or
   document metadata. A study's own ``in_audit`` can refuse it but never stands
-  in for the caller's flag or scope.
+  in for the caller's flag or scope. Every ID field of the study is one of its
+  own (``nctId``, ``nct_id``, the classic API's ``NCTId``) or an obsolete
+  registration of the same trial (``nctIdAliases``, refused when it is an audit
+  ID), and no key or string of the study or of a publication record may name
+  an audit trial (``_scan_strings_for_audit_nct_tokens``). Extracted documents
+  are document rows: each must name the study in ``nct_id`` (CT.gov large-doc
+  filenames are generic, so a filename alone ties a row to no trial), and any
+  other trial they name follows the derived-ID rule.
+- ``to_outcomes_layout_provenance`` takes the same firewall basis
+  (``in_audit`` or ``in_scope_nct_ids``, plus ``audit_nct_ids``) as assembly; a
+  record read back from disk carries no proof of where it came from.
 - Never fabricates ``-01`` day suffixes on partial ``YYYY-MM`` or ``YYYY``
   dates: ``exact_days`` is populated ONLY when both endpoints have
   ``date_precision == "day"``; otherwise exact calendar bounds
@@ -55,6 +65,8 @@ from typing import (
 from src.citation_verifier import (
     _MISSING,
     _prescan_nested_nct_fields,
+    _scan_record_strings_for_nct_tokens,
+    _scan_strings_for_audit_nct_tokens,
     _validate_nct_set,
     _validate_nested_firewall_metadata,
     AuditHoldoutViolationError,
@@ -64,10 +76,12 @@ from src.citation_verifier import (
     validate_strict_nct_id,
 )
 
-__version__: Final[str] = "1.1.0"
+__version__: Final[str] = "1.2.0"
 LONGITUDINAL_SCHEMA_VERSION: Final[int] = 1
 PROVENANCE_SCHEMA_VERSION: Final[int] = LONGITUDINAL_SCHEMA_VERSION
-PROVENANCE_RULES_VERSION: Final[str] = "1.1.0"
+# 1.2.0: identification fields and audit tokens firewalled, extracted documents must name
+# the study, and the layout projection takes a firewall basis.
+PROVENANCE_RULES_VERSION: Final[str] = "1.2.0"
 
 DatePrecision = Literal["day", "month", "year", "unknown"]
 DocType = Literal["protocol", "sap", "combined"]
@@ -1039,8 +1053,17 @@ def _extract_and_merge_publications(
     return output
 
 
-def _resolve_study_nct_id(study: Mapping[str, Any]) -> tuple[str, list[str]]:
-    """Resolve and validate all NCT ID fields on ``study`` without silent fallback."""
+def _resolve_study_nct_id(study: Mapping[str, Any]) -> tuple[str, list[str], list[str]]:
+    """Resolve and validate the study's own NCT ID fields and its NCT aliases.
+
+    Returns ``(nct_id, own_ids, aliases)``. Own-ID fields are
+    ``identificationModule.nctId`` / ``nct_id``, top-level ``nct_id`` /
+    ``nctId``, and the classic API's top-level ``NCTId`` (a string or a list
+    of strings); they must all name one trial. ``identificationModule.nctIdAliases``
+    lists obsolete registrations of the same trial (API v2); each must be a
+    strict ID, and is returned for the audit check in
+    ``assemble_longitudinal_provenance``.
+    """
     protocol = study.get("protocolSection")
     id_mod = protocol.get("identificationModule") if isinstance(protocol, Mapping) else None
 
@@ -1074,10 +1097,38 @@ def _resolve_study_nct_id(study: Mapping[str, Any]) -> tuple[str, list[str]]:
         candidates.append(
             ("study.nctId", validate_strict_nct_id(study["nctId"], context="study.nctId"))
         )
+    if "NCTId" in study:
+        classic = study["NCTId"]
+        classic_values = classic if isinstance(classic, list) else [classic]
+        if not classic_values:
+            raise CitationVerificationError("study.NCTId is an empty list; it names no trial.")
+        for idx, value in enumerate(classic_values):
+            candidates.append(
+                (
+                    f"study.NCTId[{idx}]",
+                    validate_strict_nct_id(value, context=f"study.NCTId[{idx}]"),
+                )
+            )
+
+    aliases: list[str] = []
+    if isinstance(id_mod, Mapping) and "nctIdAliases" in id_mod:
+        raw_aliases = id_mod["nctIdAliases"]
+        if not isinstance(raw_aliases, list):
+            raise CitationVerificationError(
+                f"study.protocolSection.identificationModule.nctIdAliases must be a list, "
+                f"got {type(raw_aliases).__name__}."
+            )
+        for idx, alias in enumerate(raw_aliases):
+            aliases.append(
+                validate_strict_nct_id(
+                    alias,
+                    context=f"study.protocolSection.identificationModule.nctIdAliases[{idx}]",
+                )
+            )
 
     if not candidates:
-        return validate_strict_nct_id(None, context="study.nct_id"), []
-    return candidates[0][1], [val for _, val in candidates]
+        return validate_strict_nct_id(None, context="study.nct_id"), [], aliases
+    return candidates[0][1], [val for _, val in candidates], aliases
 
 
 def _prescan_side_stream(
@@ -1108,7 +1159,13 @@ def _validate_side_stream_records(
     in_scope_nct_ids: frozenset[str] | None,
     allow_empty_audit_set: bool,
 ) -> None:
-    """Validate strict NCT IDs, ``in_audit`` flags, and embedded URLs on side streams."""
+    """Validate strict NCT IDs, ``in_audit`` flags, embedded URLs and audit tokens on side streams.
+
+    Besides the named-key walk, every key and string of each record is read for
+    an audit-holdout ID (``_scan_strings_for_audit_nct_tokens``): a publication
+    title or citation naming a holdout trial would otherwise be copied into
+    the record.
+    """
     if records is None:
         return
     _prescan_side_stream(records, stream_name=stream_name)
@@ -1117,6 +1174,50 @@ def _validate_side_stream_records(
             rec,
             context=f"{stream_name}[{idx}]",
             expected_nct_id=expected_nct_id,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+        _scan_strings_for_audit_nct_tokens(
+            rec, context=f"{stream_name}[{idx}]", audit_nct_ids=audit_nct_ids
+        )
+
+
+def _validate_extracted_documents_name_study(
+    records: Sequence[Mapping[str, Any]] | None,
+    *,
+    nct_id: str,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+    allow_empty_audit_set: bool,
+) -> None:
+    """Require every extracted document to name the study, and firewall what else it names.
+
+    Method: ``_extract_large_docs`` joins extracted documents to the study's
+    ``largeDocs`` by filename, and ClinicalTrials.gov large-document filenames
+    are generic (``Prot_000.pdf``), so a row that names no trial would attach
+    its sha256 and version label to whichever study shares the filename. Each
+    row must therefore carry ``nct_id`` equal to the study's (a different one
+    is already refused by the named-key walk); and, as a document row
+    (``src.citation_verifier.verify_document_record`` reads rows the same way),
+    every other key and string follows the derived-ID rule.
+    """
+    if records is None:
+        return
+    for idx, rec in enumerate(records):
+        if "nct_id" not in rec:
+            raise CitationVerificationError(
+                f"extracted_documents[{idx}] names no trial (no nct_id); a filename alone does "
+                f"not tie a document to {nct_id!r}."
+            )
+        if rec["nct_id"] != nct_id:
+            raise AuditHoldoutViolationError(
+                f"extracted_documents[{idx}].nct_id={rec['nct_id']!r} is not the study {nct_id!r}."
+            )
+        _scan_record_strings_for_nct_tokens(
+            rec,
+            context=f"extracted_documents[{idx}]",
+            expected_nct_id=nct_id,
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
@@ -1149,7 +1250,7 @@ def assemble_longitudinal_provenance(
         )
 
     # Step 1 (F2): Strict ASCII ^NCT[0-9]{8}$ check FIRST across study, sets, and side streams.
-    nct_id, all_study_ncts = _resolve_study_nct_id(study)
+    nct_id, all_study_ncts, study_aliases = _resolve_study_nct_id(study)
     checked_audit_ids = _validate_nct_set(audit_nct_ids, context="audit_nct_ids")
     checked_scope_ids: frozenset[str] | None = (
         _validate_nct_set(in_scope_nct_ids, context="in_scope_nct_ids")
@@ -1190,6 +1291,17 @@ def assemble_longitudinal_provenance(
         raise CitationVerificationError(
             f"Mismatched study NCT IDs across fields: {all_study_ncts}."
         )
+    # An alias is an obsolete registration of this same trial, so the caller's admission
+    # of the study covers it; an alias in the audit set means the study is a holdout
+    # trial under another number, and it is refused.
+    if any(alias in checked_audit_ids for alias in study_aliases):
+        raise AuditHoldoutViolationError(
+            "Audit holdout violation: study.protocolSection.identificationModule.nctIdAliases "
+            "names an audit-holdout trial."
+        )
+    # Registry text is copied into the record (reference citations are), so nothing in
+    # the study may name an audit trial, under any key (secondaryIdInfos[].id included).
+    _scan_strings_for_audit_nct_tokens(study, context="study", audit_nct_ids=checked_audit_ids)
 
     _validate_nested_firewall_metadata(
         study,
@@ -1204,6 +1316,13 @@ def assemble_longitudinal_provenance(
         extracted_documents,
         stream_name="extracted_documents",
         expected_nct_id=nct_id,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
+    _validate_extracted_documents_name_study(
+        extracted_documents,
+        nct_id=nct_id,
         audit_nct_ids=checked_audit_ids,
         in_scope_nct_ids=checked_scope_ids,
         allow_empty_audit_set=allow_empty_audit_set,
@@ -1273,20 +1392,62 @@ def assemble_longitudinal_provenance(
 
 def to_outcomes_layout_provenance(
     record: LongitudinalProvenanceRecord,
+    *,
+    in_audit: Any = _MISSING,
+    audit_nct_ids: AbstractSet[str] = frozenset(),
+    in_scope_nct_ids: AbstractSet[str] | None = None,
+    allow_empty_audit_set: bool = False,
 ) -> dict[str, Any]:
     """Project a ``LongitudinalProvenanceRecord`` to the outcomes bundle shard schema.
 
     Emits ``nct_id`` alongside the four top-level sections consumed by the
     outcomes bundle builder (``registry_milestones``, ``posted_documents``,
     ``publications``, ``date_deltas``) and provenance version stamps.
+
+    Firewall basis: the same as ``assemble_longitudinal_provenance``. A record
+    may be read back from a file (the shape the JSONL round-trip writes), so
+    nothing about it shows it was assembled behind the firewall, and its own
+    ``in_audit`` can only refuse. The caller therefore supplies an explicit
+    ``in_audit`` or the verified ``in_scope_nct_ids``, with ``audit_nct_ids``;
+    without them the projection is refused. The record's nested ID fields
+    follow the named-key walk, and none of its strings may name an audit trial.
     """
+    if not isinstance(record, Mapping):
+        raise CitationVerificationError(
+            f"provenance record must be a mapping, got {type(record).__name__}."
+        )
     checked_nct = validate_strict_nct_id(record.get("nct_id"), context="provenance.nct_id")
+    checked_audit_ids = _validate_nct_set(audit_nct_ids, context="audit_nct_ids")
+    checked_scope_ids: frozenset[str] | None = (
+        _validate_nct_set(in_scope_nct_ids, context="in_scope_nct_ids")
+        if in_scope_nct_ids is not None
+        else None
+    )
+    _prescan_nested_nct_fields(record, context="provenance")
     if "in_audit" in record:
         raw_flag = record.get("in_audit")
         if type(raw_flag) is not bool or raw_flag is True:
             raise AuditHoldoutViolationError(
                 f"Provenance record for {checked_nct!r} carries forbidden in_audit={raw_flag!r}."
             )
+    enforce_audit_holdout(
+        checked_nct,
+        in_audit=in_audit,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
+    _validate_nested_firewall_metadata(
+        record,
+        context="provenance",
+        expected_nct_id=checked_nct,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
+    _scan_strings_for_audit_nct_tokens(
+        record, context="provenance", audit_nct_ids=checked_audit_ids
+    )
     return {
         "nct_id": checked_nct,
         "provenance_schema_version": record["provenance_schema_version"],

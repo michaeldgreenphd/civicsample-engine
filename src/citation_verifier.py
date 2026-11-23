@@ -27,6 +27,21 @@ Key invariants:
   ``in_audit`` can refuse it but never admits it. ``allow_empty_audit_set=True``
   with an empty audit set also requires ``in_scope_nct_ids``, and
   ``verify_census_corpus`` always requires it.
+- The named-key walk enters every nested container (a list inside a ``pages``
+  list included), and every other key and string of a location, document,
+  citation or ``docs_by_nct`` entry is read for NCT-like tokens
+  (``_check_embedded_text_ncts``): an audit ID refuses, a malformed token
+  refuses, and any other trial is admitted only as the record's own trial or
+  a member of ``in_scope_nct_ids``. Registry and publication text is read for
+  audit IDs only (``_scan_strings_for_audit_nct_tokens``).
+- Page providers serve a public ``get_page_text`` request only for a trial in
+  the bound scope or admitted by a verify entry point; the audit set alone
+  admits nothing. ``DirectoryPageTextProvider`` refuses symlinks, firewalls
+  its roots as given and as resolved, never opens a ``<sha256>`` map that no
+  referenced document names (when given ``referenced_documents``), and serves
+  a map only when the trial and sha256 it declares agree with the request.
+  Page numbers are ASCII digits, once each; ``null`` page text is absence.
+  ``--pdf-root`` likewise refuses links and reads only files inside the root.
 - Document presence is tri-state (True / False / None for "the index does not
   say"); absence is never read as "no documents", and a ``NO_DOCUMENT`` row
   whose presence is unknown is reported as ``NO_DOCUMENT_PRESENCE_UNKNOWN``.
@@ -45,9 +60,14 @@ Key invariants:
 - Exhaustive search discipline: ``NOT_FOUND`` is forbidden whenever
   ``pages_not_searched`` is non-empty in default publication mode;
   ``pages_searched == "all"`` contradicts any non-empty ``pages_not_searched``.
+  With nothing unsearched, ``NOT_FOUND`` still needs ``pages_searched == "all"``
+  or a per-document mapping that, with blank pages, covers every supplied
+  document; and it needs at least one supplied document (as ``UNREADABLE``
+  does), so it cannot stand in for ``NO_DOCUMENT``.
 - Deterministic neutral-language guard: flags evaluative trial-outcome,
-  p-value spin, and regulatory-compliance claims in worker/system commentary
-  while exempting verbatim source text (``quotation``, ``statement_verbatim``).
+  p-value spin, and regulatory-compliance claims in every string of a
+  location row (``note``, ``summary``, nested objects), exempting only
+  verbatim source text (``quotation``, ``statement_verbatim``).
 """
 from __future__ import annotations
 
@@ -70,8 +90,10 @@ from typing import (
 import unicodedata
 from urllib.parse import unquote
 
-__version__: Final[str] = "1.2.0"
-VERIFIER_RULES_VERSION: Final[str] = "1.2.0"
+__version__: Final[str] = "1.3.0"
+# 1.3.0: record-wide NCT token rule, NOT_FOUND needs a document and a complete search
+# record, neutral-language guard over every field, stricter page maps (see module notes).
+VERIFIER_RULES_VERSION: Final[str] = "1.3.0"
 
 STRICT_NCT_ID_RE: Final[re.Pattern[str]] = re.compile(r"^NCT[0-9]{8}$", re.ASCII)
 
@@ -517,6 +539,24 @@ def _validate_nct_set(
     return frozenset(validated)
 
 
+def _iter_embedded_nct_tokens(text: str) -> list[str]:
+    """Return every NCT-like token in ``text`` as written, percent-decoded and folded.
+
+    Method: a token can be hidden from a plain regex by percent-encoding (in a
+    URL) or by invisible and compatibility characters (a zero-width space, a
+    fullwidth letter). The text is read three ways, as written, percent-decoded
+    when it holds a ``%``, and NFKC-folded with invisible characters removed,
+    and the tokens of all three are returned in that order. Duplicates are
+    kept: each reading is checked on its own, so a token that is malformed as
+    written is still refused when its folded form is well formed.
+    """
+    variants = [text]
+    if "%" in text:
+        variants.append(unquote(text))
+    variants.append(_strip_invisible(unicodedata.normalize("NFKC", variants[-1])))
+    return [match.group(0) for variant in variants for match in _EMBEDDED_NCT_TOKEN_RE.finditer(variant)]
+
+
 def _check_embedded_url_ncts(
     url_text: str,
     *,
@@ -526,41 +566,180 @@ def _check_embedded_url_ncts(
     in_scope_nct_ids: frozenset[str] | None,
 ) -> None:
     """Reject audit, unlisted, malformed, or mismatched NCT tokens embedded inside URLs."""
-    variants = [url_text]
-    if "%" in url_text:
-        variants.append(unquote(url_text))
-    variants.append(_strip_invisible(unicodedata.normalize("NFKC", variants[-1])))
+    for raw_tok in _iter_embedded_nct_tokens(url_text):
+        upper_tok = raw_tok.upper()
+        if STRICT_NCT_ID_RE.fullmatch(upper_tok) is not None and upper_tok in audit_nct_ids:
+            raise AuditHoldoutViolationError(
+                f"Audit holdout violation in {context}: URL references holdout trial {upper_tok!r}."
+            )
+        if STRICT_NCT_ID_RE.fullmatch(raw_tok) is None:
+            raise InvalidNctIdError(
+                f"Malformed NCT token {raw_tok!r} in {context}: expected strict ^NCT[0-9]{{8}}$."
+            )
+        if in_scope_nct_ids is not None and raw_tok not in in_scope_nct_ids:
+            raise AuditHoldoutViolationError(
+                f"Audit holdout refusal in {context}: URL references unlisted trial {raw_tok!r}."
+            )
+        # Same rule as ``_enforce_derived_nct_holdout``: with no record trial to compare
+        # against and no in-scope set, the audit set alone cannot show that a URL's trial
+        # is outside the holdout (it lists the holdout, not the trials outside it).
+        if in_scope_nct_ids is None and expected_nct_id is None:
+            raise AuditHoldoutViolationError(
+                f"Audit holdout refusal in {context}: URL references trial {raw_tok!r}, and "
+                f"neither a record nct_id nor in_scope_nct_ids establishes it is outside the "
+                f"holdout."
+            )
+        if expected_nct_id is not None and raw_tok != expected_nct_id:
+            raise AuditHoldoutViolationError(
+                f"Audit holdout refusal in {context}: URL NCT {raw_tok!r} disagrees with "
+                f"record nct_id={expected_nct_id!r}."
+            )
 
-    for variant in variants:
-        for match in _EMBEDDED_NCT_TOKEN_RE.finditer(variant):
-            raw_tok = match.group(0)
+
+def _check_embedded_text_ncts(
+    text: str,
+    *,
+    context: str,
+    expected_nct_id: str | None,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+    allow_empty_audit_set: bool,
+) -> None:
+    """Firewall every NCT-like token in a string that is not under a named NCT or URL key.
+
+    Method: a record can name a trial under any key (``NCTId``, ``trial``,
+    ``nctIdAliases``, ``secondaryIdInfos[].id``, ``href``) or inside free text
+    (``"Same protocol as NCT..."``), which the named-key walk in
+    ``_validate_nested_firewall_metadata`` never reads. Each token, in every
+    reading ``_iter_embedded_nct_tokens`` gives, is therefore checked in this
+    order: (1) a token whose upper-cased form is in ``audit_nct_ids`` is a
+    holdout violation, and the message names its position, not the trial;
+    (2) a token that is not strict ``^NCT[0-9]{8}$`` as written is malformed
+    (``InvalidNctIdError``); (3) any other token is an ID reached from the
+    record, so it follows ``_enforce_derived_nct_holdout``: admitted when it is
+    the record's own trial or, with ``in_scope_nct_ids``, a member of it, and
+    refused otherwise. Rule (3) can refuse a record whose text names an
+    unlisted trial for a legitimate reason; that refusal is loud (exit 2 in the
+    CLI) and deliberate, since a silent pass is the failure this guards.
+    """
+    for raw_tok in _iter_embedded_nct_tokens(text):
+        upper_tok = raw_tok.upper()
+        if STRICT_NCT_ID_RE.fullmatch(upper_tok) is not None and upper_tok in audit_nct_ids:
+            raise AuditHoldoutViolationError(
+                f"Audit holdout violation in {context}: the text names an audit-holdout trial."
+            )
+        if STRICT_NCT_ID_RE.fullmatch(raw_tok) is None:
+            raise InvalidNctIdError(
+                f"Malformed NCT token {raw_tok!r} in {context}: expected strict ^NCT[0-9]{{8}}$."
+            )
+        _enforce_derived_nct_holdout(
+            raw_tok,
+            verified_nct=expected_nct_id,
+            context=context,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+
+
+def _scan_record_strings_for_nct_tokens(
+    node: Any,
+    *,
+    context: str,
+    expected_nct_id: str | None,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+    allow_empty_audit_set: bool,
+) -> None:
+    """Apply ``_check_embedded_text_ncts`` to every key and string value at any depth.
+
+    Method: keys are read as ``str(key)``, the same way the named-key walk reads
+    them, and lists and tuples are entered item by item, so nesting (a list of
+    lists, a mapping inside a list) hides nothing. Named NCT keys are read here
+    too; their values are strict IDs that this rule admits exactly when the
+    named-key walk does, so reading them twice changes no outcome. A key's own
+    text is reported by position only (``"<context> (a key)"``), so a key that
+    is an audit trial's ID never appears in an error message.
+    """
+    if isinstance(node, str):
+        _check_embedded_text_ncts(
+            node,
+            context=context,
+            expected_nct_id=expected_nct_id,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+    elif isinstance(node, Mapping):
+        for raw_k, val in node.items():
+            key = str(raw_k)
+            _check_embedded_text_ncts(
+                key,
+                context=f"{context} (a key)",
+                expected_nct_id=expected_nct_id,
+                audit_nct_ids=audit_nct_ids,
+                in_scope_nct_ids=in_scope_nct_ids,
+                allow_empty_audit_set=allow_empty_audit_set,
+            )
+            _scan_record_strings_for_nct_tokens(
+                val,
+                context=f"{context}.{key}",
+                expected_nct_id=expected_nct_id,
+                audit_nct_ids=audit_nct_ids,
+                in_scope_nct_ids=in_scope_nct_ids,
+                allow_empty_audit_set=allow_empty_audit_set,
+            )
+    elif isinstance(node, (list, tuple)):
+        for idx, item in enumerate(node):
+            _scan_record_strings_for_nct_tokens(
+                item,
+                context=f"{context}[{idx}]",
+                expected_nct_id=expected_nct_id,
+                audit_nct_ids=audit_nct_ids,
+                in_scope_nct_ids=in_scope_nct_ids,
+                allow_empty_audit_set=allow_empty_audit_set,
+            )
+
+
+def _scan_strings_for_audit_nct_tokens(
+    node: Any,
+    *,
+    context: str,
+    audit_nct_ids: frozenset[str],
+) -> None:
+    """Refuse any key or string, at any depth, that names an audit-holdout trial.
+
+    Method: this is rule (1) of ``_check_embedded_text_ncts`` alone, for
+    registry and publication data (a CT.gov study, PubMed and Europe PMC
+    records, an assembled provenance record). Their free text routinely names
+    other trials for good reasons (an extension study, a pooled analysis), so
+    an unlisted or malformed token there is not refused; but any of their text
+    can be copied into an output (reference citations are), and the holdout
+    forbids recording anything that names a holdout trial, so a token whose
+    upper-cased form, in any reading, is an audit ID stops the call. The
+    message names the position only.
+    """
+    if isinstance(node, str):
+        for raw_tok in _iter_embedded_nct_tokens(node):
             upper_tok = raw_tok.upper()
             if STRICT_NCT_ID_RE.fullmatch(upper_tok) is not None and upper_tok in audit_nct_ids:
                 raise AuditHoldoutViolationError(
-                    f"Audit holdout violation in {context}: URL references holdout trial {upper_tok!r}."
+                    f"Audit holdout violation in {context}: the text names an audit-holdout trial."
                 )
-            if STRICT_NCT_ID_RE.fullmatch(raw_tok) is None:
-                raise InvalidNctIdError(
-                    f"Malformed NCT token {raw_tok!r} in {context}: expected strict ^NCT[0-9]{{8}}$."
-                )
-            if in_scope_nct_ids is not None and raw_tok not in in_scope_nct_ids:
-                raise AuditHoldoutViolationError(
-                    f"Audit holdout refusal in {context}: URL references unlisted trial {raw_tok!r}."
-                )
-            # Same rule as ``_enforce_derived_nct_holdout``: with no record trial to compare
-            # against and no in-scope set, the audit set alone cannot show that a URL's trial
-            # is outside the holdout (it lists the holdout, not the trials outside it).
-            if in_scope_nct_ids is None and expected_nct_id is None:
-                raise AuditHoldoutViolationError(
-                    f"Audit holdout refusal in {context}: URL references trial {raw_tok!r}, and "
-                    f"neither a record nct_id nor in_scope_nct_ids establishes it is outside the "
-                    f"holdout."
-                )
-            if expected_nct_id is not None and raw_tok != expected_nct_id:
-                raise AuditHoldoutViolationError(
-                    f"Audit holdout refusal in {context}: URL NCT {raw_tok!r} disagrees with "
-                    f"record nct_id={expected_nct_id!r}."
-                )
+    elif isinstance(node, Mapping):
+        for raw_k, val in node.items():
+            key = str(raw_k)
+            _scan_strings_for_audit_nct_tokens(
+                key, context=f"{context} (a key)", audit_nct_ids=audit_nct_ids
+            )
+            _scan_strings_for_audit_nct_tokens(
+                val, context=f"{context}.{key}", audit_nct_ids=audit_nct_ids
+            )
+    elif isinstance(node, (list, tuple)):
+        for idx, item in enumerate(node):
+            _scan_strings_for_audit_nct_tokens(
+                item, context=f"{context}[{idx}]", audit_nct_ids=audit_nct_ids
+            )
 
 
 def _prescan_nested_nct_fields(obj: Any, *, context: str) -> None:
@@ -578,11 +757,9 @@ def _prescan_nested_nct_fields(obj: Any, *, context: str) -> None:
                     )
                 for idx, item in enumerate(val):
                     validate_strict_nct_id(item, context=f"{child_ctx}[{idx}]")
-            elif key == "pages" and isinstance(val, list):
-                for idx, item in enumerate(val):
-                    if isinstance(item, Mapping):
-                        _prescan_nested_nct_fields(item, context=f"{child_ctx}[{idx}]")
             elif isinstance(val, (Mapping, list, tuple)):
+                # Every container is entered, whatever its key: a list nested in a list
+                # (``{"pages": [[{"nct_id": ...}]]}``) hides nothing.
                 _prescan_nested_nct_fields(val, context=child_ctx)
     elif isinstance(obj, (list, tuple)):
         for idx, item in enumerate(obj):
@@ -655,11 +832,9 @@ def _validate_nested_firewall_metadata(
                         audit_nct_ids=audit_nct_ids,
                         in_scope_nct_ids=in_scope_nct_ids,
                     )
-                elif key == "pages" and isinstance(val, list):
-                    for idx, item in enumerate(val):
-                        if isinstance(item, Mapping):
-                            _walk(item, f"{child_ctx}[{idx}]")
                 elif isinstance(val, (Mapping, list, tuple)):
+                    # As in _prescan_nested_nct_fields, every container is entered whatever
+                    # its key, so nesting under ``pages`` (or anywhere) hides nothing.
                     _walk(val, child_ctx)
         elif isinstance(node, (list, tuple)):
             for idx, item in enumerate(node):
@@ -869,6 +1044,17 @@ def _enforce_record_firewall(
         allow_empty_audit_set=allow_empty_audit_set,
     )
     _validate_nested_firewall_metadata(
+        record,
+        context=record_label,
+        expected_nct_id=checked_nct,
+        audit_nct_ids=checked_audit_ids,
+        in_scope_nct_ids=checked_scope_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    )
+    # The named-key walk reads three NCT keys, two list keys and five URL keys; a record
+    # can name a trial under any other key or in free text, so every key and string is
+    # read with the same derived-ID rule (``_check_embedded_text_ncts``).
+    _scan_record_strings_for_nct_tokens(
         record,
         context=record_label,
         expected_nct_id=checked_nct,
@@ -1148,6 +1334,82 @@ def scan_neutral_language_record(
     return findings
 
 
+def _validate_admitted_nct_ids(
+    admitted_nct_ids: AbstractSet[str],
+    *,
+    audit_nct_ids: frozenset[str],
+    context: str,
+) -> frozenset[str]:
+    """Validate trials a verify entry point admits into an unscoped page provider.
+
+    Method: a provider bound to ``in_scope_nct_ids`` serves exactly those trials.
+    One bound to an audit set alone cannot tell a trial outside the holdout from
+    an unlisted one (the audit set lists the holdout, not the trials outside it),
+    so it serves only trials an entry point has admitted after passing them
+    through ``enforce_audit_holdout`` with the caller's explicit ``in_audit``.
+    Each admitted ID must be strict and outside the audit set.
+    """
+    checked = _validate_nct_set(admitted_nct_ids, context=f"{context}.admitted_nct_ids")
+    held_out = checked & audit_nct_ids
+    if held_out:
+        raise AuditHoldoutViolationError(
+            f"{context}: {len(held_out)} admitted trial(s) are in audit_nct_ids."
+        )
+    return checked
+
+
+def _check_page_request_trial(
+    nct_id: Any,
+    *,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+    admitted_nct_ids: frozenset[str],
+    context: str,
+) -> str:
+    """Firewall the trial named by a public ``get_page_text`` call.
+
+    Method: ``get_page_text`` is public, so the trial it is asked for is not
+    known to have passed a verify entry point. It is served only when it is
+    strict, outside ``audit_nct_ids``, and either a member of the bound
+    ``in_scope_nct_ids`` or, with no scope bound, a trial an entry point
+    admitted (``_validate_admitted_nct_ids``). The audit set alone admits
+    nothing.
+    """
+    checked = validate_strict_nct_id(nct_id, context=f"{context}.nct_id")
+    if checked in audit_nct_ids:
+        raise AuditHoldoutViolationError(
+            f"Audit holdout violation: refusing page lookup for {checked!r}."
+        )
+    if in_scope_nct_ids is not None:
+        if checked not in in_scope_nct_ids:
+            raise AuditHoldoutViolationError(
+                f"Audit holdout refusal: page lookup for unlisted trial {checked!r}."
+            )
+        return checked
+    if checked not in admitted_nct_ids:
+        raise AuditHoldoutViolationError(
+            f"Audit holdout refusal: page lookup for {checked!r}, but the provider has no "
+            f"in_scope_nct_ids and no verify entry point admitted that trial, so nothing "
+            f"establishes that it is outside the holdout."
+        )
+    return checked
+
+
+def _validate_page_text_value(value: Any, *, context: str) -> str | None:
+    """Return a page's text, ``None`` for a page recorded as having no text, or raise.
+
+    Method: page text is a ``str``; JSON ``null`` records that the page has no
+    text, and is kept as absence (``None``), never turned into the string
+    ``"None"``. Anything else (a number, a list, an object) is not page text
+    and is refused rather than coerced with ``str()``.
+    """
+    if value is None or type(value) is str:
+        return value
+    raise CitationVerificationError(
+        f"{context} must be a string or null, got {type(value).__name__}."
+    )
+
+
 class DictPageTextProvider:
     """In-memory ``PageTextProvider`` for deterministic offline tests and fixtures."""
 
@@ -1182,12 +1444,28 @@ class DictPageTextProvider:
             raise AuditHoldoutViolationError(
                 "DictPageTextProvider requires non-empty audit_nct_ids unless allow_empty_audit_set=True."
             )
-        self._pages_by_key: dict[Any, str] = dict(pages_by_key or {})
-        self._pages_by_sha256: dict[str, tuple[str, ...]] = {
-            k: tuple(v) for k, v in (pages_by_sha256 or {}).items()
+        self._admitted_nct_ids: frozenset[str] = frozenset()
+        self._pages_by_key: dict[Any, str | None] = {
+            k: _validate_page_text_value(v, context=f"DictPageTextProvider.pages_by_key[{k!r}]")
+            for k, v in (pages_by_key or {}).items()
         }
-        self._ocr_pages_by_sha256: dict[str, tuple[str, ...]] = {
-            k: tuple(v) for k, v in (ocr_pages_by_sha256 or {}).items()
+        self._pages_by_sha256: dict[str, tuple[str | None, ...]] = {
+            k: tuple(
+                _validate_page_text_value(
+                    page, context=f"DictPageTextProvider.pages_by_sha256[{k!r}][{idx}]"
+                )
+                for idx, page in enumerate(v)
+            )
+            for k, v in (pages_by_sha256 or {}).items()
+        }
+        self._ocr_pages_by_sha256: dict[str, tuple[str | None, ...]] = {
+            k: tuple(
+                _validate_page_text_value(
+                    page, context=f"DictPageTextProvider.ocr_pages_by_sha256[{k!r}][{idx}]"
+                )
+                for idx, page in enumerate(v)
+            )
+            for k, v in (ocr_pages_by_sha256 or {}).items()
         }
         self._validate_stored_keys()
 
@@ -1268,8 +1546,15 @@ class DictPageTextProvider:
         audit_nct_ids: AbstractSet[str],
         in_scope_nct_ids: AbstractSet[str] | None = None,
         allow_empty_audit_set: bool = False,
+        admitted_nct_ids: AbstractSet[str] = frozenset(),
     ) -> None:
-        """Bind or tighten firewall sets and re-verify stored keys."""
+        """Bind or tighten firewall sets, admit verified trials, and re-verify stored keys.
+
+        ``admitted_nct_ids`` are trials a verify entry point has passed through
+        ``enforce_audit_holdout`` with an explicit ``in_audit``; they are served
+        only while no ``in_scope_nct_ids`` is bound (see
+        ``_check_page_request_trial``).
+        """
         merged_audit = self._audit_nct_ids | _validate_nct_set(
             audit_nct_ids, context="DictPageTextProvider.audit_nct_ids"
         )
@@ -1291,9 +1576,14 @@ class DictPageTextProvider:
             allow_empty_audit_set=allow_empty_audit_set,
             context="DictPageTextProvider.bind_firewall",
         )
+        newly_admitted = _validate_admitted_nct_ids(
+            admitted_nct_ids, audit_nct_ids=merged_audit, context="DictPageTextProvider"
+        )
         self._audit_nct_ids = merged_audit
         self._in_scope_nct_ids = merged_scope
         self._allow_empty_audit_set = allow_empty_audit_set
+        # An earlier admission that the merged audit set now holds out is dropped.
+        self._admitted_nct_ids = (self._admitted_nct_ids | newly_admitted) - merged_audit
         self._validate_stored_keys()
 
     def get_page_text(
@@ -1305,7 +1595,12 @@ class DictPageTextProvider:
         *,
         text_source: str = "pdfkit",
     ) -> str | None:
-        """Return single-page text for ``physical_page`` (1-based) or None."""
+        """Return single-page text for ``physical_page`` (1-based) or None.
+
+        The requested trial must be in the bound scope or, with no scope bound,
+        admitted by a verify entry point (``_check_page_request_trial``). A page
+        stored as ``None`` has no text and is returned as ``None``.
+        """
         checked_nct = validate_strict_nct_id(nct_id, context="page_text.nct_id")
         # Construction may leave the provider unbound (empty audit set, no scope) so that
         # ``bind_firewall`` can tighten it later; serving text from that state would rest on
@@ -1316,14 +1611,13 @@ class DictPageTextProvider:
             allow_empty_audit_set=self._allow_empty_audit_set,
             context="DictPageTextProvider.get_page_text",
         )
-        if checked_nct in self._audit_nct_ids:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout violation: refusing page lookup for {checked_nct!r}."
-            )
-        if self._in_scope_nct_ids is not None and checked_nct not in self._in_scope_nct_ids:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout refusal: page lookup for unlisted trial {checked_nct!r}."
-            )
+        _check_page_request_trial(
+            checked_nct,
+            audit_nct_ids=self._audit_nct_ids,
+            in_scope_nct_ids=self._in_scope_nct_ids,
+            admitted_nct_ids=self._admitted_nct_ids,
+            context="page_text",
+        )
         if not _is_strict_int(physical_page) or physical_page < 1:
             return None
         for key in (
@@ -1346,8 +1640,54 @@ class DictPageTextProvider:
         return None
 
 
+_ASCII_PAGE_KEY_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9]+$", re.ASCII)
+# A key made only of digits (of any script), underscores and spaces reads as a page number
+# to ``int()``; at the top level of a page map such a key is treated as a page key and must
+# then be plain ASCII digits (``_page_number_from_key``), never skipped as metadata.
+_PAGE_LIKE_KEY_RE: Final[re.Pattern[str]] = re.compile(r"^[\s_\d]*\d[\s_\d]*$")
+
+
+@dataclass(frozen=True)
+class _PageMap:
+    """One parsed page map and the trial and document version it declares about itself.
+
+    ``pages`` holds only pages with text; a page recorded as ``null`` (no text)
+    is absent from it, so a lookup returns ``None`` for it. ``declared_nct_id``
+    and ``declared_sha256`` are what the map's own payload says (``None`` when
+    it says nothing); ``_load_doc_pages`` compares them with each request.
+    """
+
+    pages: Mapping[int, str]
+    declared_nct_id: str | None
+    declared_sha256: str | None
+    source_desc: str
+
+
 class DirectoryPageTextProvider:
-    """Filesystem ``PageTextProvider`` reading JSON, gzipped JSON, or JSONL page maps."""
+    """Filesystem ``PageTextProvider`` reading JSON, gzipped JSON, or JSONL page maps.
+
+    Layouts under ``pages_dir`` (and ``ocr_dir``): ``<sha256>.json[.gz]``,
+    ``<sha256[:2]>/<sha256>.json[.gz]``, ``<NCT>/<doc>.json[.gz]``,
+    ``<NCT>__<doc>.json`` and ``*.jsonl[.gz]`` rows. Method:
+
+    - Names are firewalled before anything is opened, and the firewall reads
+      paths, so a path that resolves elsewhere would defeat it: every symlink
+      under a root is refused, the root is checked both as given and as
+      resolved, and each file read must resolve inside its root.
+    - ``referenced_documents`` (the CLI passes the in-scope ``--documents``
+      rows as ``(nct_id, sha256)`` pairs) ties content-addressed maps to this
+      run: a ``<sha256>`` map no pair names is never opened, a JSONL row
+      declaring such a sha256 is refused, and ``get_page_text`` refuses a pair
+      not listed. Without it (library use) every map is opened at preflight.
+    - A map is served for a request only when what it declares about itself
+      agrees: a declared ``nct_id`` other than the requested trial raises, a
+      ``<sha256>`` map declaring another sha256 raises, and a trial-keyed map
+      (``(nct_id, filename)``) declaring another sha256 is another version of
+      the document and is not served. A trial-keyed map declaring no sha256 is
+      still served (its version is unknown; see the module notes).
+    - Page numbers must be ASCII digits and appear once; page text must be a
+      string, and ``null`` is a page without text (absent), never ``"None"``.
+    """
 
     def __init__(
         self,
@@ -1357,6 +1697,7 @@ class DirectoryPageTextProvider:
         audit_nct_ids: AbstractSet[str] = frozenset(),
         in_scope_nct_ids: AbstractSet[str] | None = None,
         allow_empty_audit_set: bool = False,
+        referenced_documents: AbstractSet[tuple[str, str]] | None = None,
     ) -> None:
         self._pages_dir = Path(pages_dir)
         self._ocr_dir = Path(ocr_dir) if ocr_dir is not None else None
@@ -1383,10 +1724,58 @@ class DirectoryPageTextProvider:
             raise AuditHoldoutViolationError(
                 "DirectoryPageTextProvider requires non-empty audit_nct_ids unless allow_empty_audit_set=True."
             )
-        self._cache: dict[tuple[str, str, str, str], dict[int, str] | None] = {}
-        self._jsonl_pages: dict[tuple[str, str], dict[int, str]] = {}
-        self._jsonl_trial_pages: dict[tuple[str, str, str], dict[int, str]] = {}
+        self._admitted_nct_ids: frozenset[str] = frozenset()
+        self._referenced_documents: frozenset[tuple[str, str]] | None = (
+            self._validate_referenced_documents(referenced_documents)
+        )
+        self._referenced_sha256s: frozenset[str] | None = (
+            frozenset(sha for _, sha in self._referenced_documents)
+            if self._referenced_documents is not None
+            else None
+        )
+        # Content-addressed maps skipped unopened because no referenced document names them.
+        self.unreferenced_maps_not_opened: int = 0
+        self._cache: dict[tuple[str, str, str, str], Mapping[int, str] | None] = {}
+        self._jsonl_pages: dict[tuple[str, str], _PageMap] = {}
+        self._jsonl_default_pages: dict[tuple[str, str], _PageMap] = {}
+        self._jsonl_trial_pages: dict[tuple[str, str, str], _PageMap] = {}
+        self._jsonl_default_trial_pages: dict[tuple[str, str, str], _PageMap] = {}
         self._preflight_scan_all()
+
+    def _validate_referenced_documents(
+        self, referenced_documents: AbstractSet[tuple[str, str]] | None
+    ) -> frozenset[tuple[str, str]] | None:
+        """Validate the ``(nct_id, sha256)`` pairs this run's in-scope documents name.
+
+        Each trial must pass the layout firewall (outside the audit set and, as
+        every derived ID, a member of ``in_scope_nct_ids``), and each sha256
+        must be 64 lowercase hex characters, the only form a map is keyed by.
+        """
+        if referenced_documents is None:
+            return None
+        if isinstance(referenced_documents, (str, bytes, Mapping)) or not isinstance(
+            referenced_documents, AbstractSet
+        ):
+            raise CitationVerificationError(
+                "referenced_documents must be a set of (nct_id, sha256) pairs, got "
+                f"{type(referenced_documents).__name__}."
+            )
+        checked: set[tuple[str, str]] = set()
+        for item in referenced_documents:
+            if not isinstance(item, tuple) or len(item) != 2:
+                raise CitationVerificationError(
+                    f"referenced_documents entry {item!r} is not an (nct_id, sha256) pair."
+                )
+            raw_nct, raw_sha = item
+            checked_nct = self._check_layout_nct_allowed(
+                raw_nct, context="DirectoryPageTextProvider.referenced_documents"
+            )
+            if type(raw_sha) is not str or _SHA256_RE.fullmatch(raw_sha) is None:
+                raise CitationVerificationError(
+                    f"referenced_documents sha256 {raw_sha!r} is not 64 lowercase hex characters."
+                )
+            checked.add((checked_nct, raw_sha))
+        return frozenset(checked)
 
     def bind_firewall(
         self,
@@ -1394,8 +1783,15 @@ class DirectoryPageTextProvider:
         audit_nct_ids: AbstractSet[str],
         in_scope_nct_ids: AbstractSet[str] | None = None,
         allow_empty_audit_set: bool = False,
+        admitted_nct_ids: AbstractSet[str] = frozenset(),
     ) -> None:
-        """Bind or tighten firewall sets and re-scan page-map roots before serving pages."""
+        """Bind or tighten firewall sets, admit verified trials, and re-scan page-map roots.
+
+        ``admitted_nct_ids`` are trials a verify entry point has passed through
+        ``enforce_audit_holdout`` with an explicit ``in_audit``; they are served
+        only while no ``in_scope_nct_ids`` is bound (``_check_page_request_trial``).
+        Admitting a trial changes no layout rule, so it triggers no re-scan.
+        """
         merged_audit = self._audit_nct_ids | _validate_nct_set(
             audit_nct_ids, context="DirectoryPageTextProvider.audit_nct_ids"
         )
@@ -1417,6 +1813,9 @@ class DirectoryPageTextProvider:
             allow_empty_audit_set=allow_empty_audit_set,
             context="DirectoryPageTextProvider.bind_firewall",
         )
+        newly_admitted = _validate_admitted_nct_ids(
+            admitted_nct_ids, audit_nct_ids=merged_audit, context="DirectoryPageTextProvider"
+        )
         if (
             merged_audit != self._audit_nct_ids
             or merged_scope != self._in_scope_nct_ids
@@ -1427,29 +1826,26 @@ class DirectoryPageTextProvider:
             self._allow_empty_audit_set = allow_empty_audit_set
             self._cache.clear()
             self._jsonl_pages.clear()
+            self._jsonl_default_pages.clear()
             self._jsonl_trial_pages.clear()
+            self._jsonl_default_trial_pages.clear()
+            self.unreferenced_maps_not_opened = 0
+            if self._referenced_documents is not None:
+                self._referenced_documents = self._validate_referenced_documents(
+                    self._referenced_documents
+                )
             self._preflight_scan_all()
-
-    def _check_nct_allowed(self, raw_nct: Any, *, context: str) -> str:
-        checked = validate_strict_nct_id(raw_nct, context=context)
-        if checked in self._audit_nct_ids:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout violation in {context}: trial {checked!r} is in audit_nct_ids."
-            )
-        if self._in_scope_nct_ids is not None and checked not in self._in_scope_nct_ids:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout refusal in {context}: trial {checked!r} is absent from in_scope_nct_ids."
-            )
-        return checked
+        # An earlier admission that the merged audit set now holds out is dropped.
+        self._admitted_nct_ids = (self._admitted_nct_ids | newly_admitted) - self._audit_nct_ids
 
     def _check_layout_nct_allowed(self, raw_nct: Any, *, context: str) -> str:
         """Firewall a trial named by the page-map layout (a directory, a filename prefix).
 
-        The trial requested in ``get_page_text`` is the call's subject, which the
-        verify entry points have already firewalled; a trial named by the layout
-        is reached from the files instead, so it follows
-        ``_enforce_derived_nct_holdout``: without ``in_scope_nct_ids`` it is refused
-        rather than admitted on the audit set alone.
+        The trial requested in ``get_page_text`` is checked separately
+        (``_check_page_request_trial``); a trial named by the layout is reached
+        from the files instead, so it follows ``_enforce_derived_nct_holdout``:
+        without ``in_scope_nct_ids`` it is refused rather than admitted on the
+        audit set alone.
         """
         checked = validate_strict_nct_id(raw_nct, context=context)
         _enforce_derived_nct_holdout(
@@ -1478,12 +1874,57 @@ class DirectoryPageTextProvider:
                 )
             self._check_layout_nct_allowed(tok, context=context)
 
+    @staticmethod
+    def _page_map_metadata(payload: Any) -> Any:
+        """Return the parts of a page-map payload that are not page text.
+
+        Method: page text is the document's own text and may name other trials
+        (a protocol citing a predecessor study); it is never recorded, so it is
+        not read for NCT tokens. Everything else in a payload (``nct_id``,
+        ``url``, ``source``, the non-text keys of page objects) is metadata
+        about the map and is read like any record. Page text is the values of
+        a ``pages`` mapping, the strings of a ``pages`` list, the ``text`` of
+        page objects, and the values of top-level page-number keys.
+        """
+        if not isinstance(payload, Mapping):
+            return None
+        meta: dict[str, Any] = {}
+        for raw_k, val in payload.items():
+            key = str(raw_k)
+            if key == "pages":
+                if isinstance(val, list):
+                    meta[key] = [
+                        {str(k): v for k, v in item.items() if str(k) != "text"}
+                        if isinstance(item, Mapping)
+                        else None
+                        for item in val
+                    ]
+                continue
+            if type(raw_k) is str and _PAGE_LIKE_KEY_RE.fullmatch(raw_k) is not None:
+                continue
+            meta[key] = val
+        return meta
+
     def _validate_payload_firewall(self, payload: Any, *, source_desc: str) -> str | None:
-        """Recursively validate ``nct_id``, ``nctId``, ``nct_ids``, ``in_audit``, and URLs."""
+        """Firewall a page-map payload and return the trial it declares, if any.
+
+        The named-key walk (``nct_id``, ``nctId``, ``nct_ids``, ``in_audit``,
+        URL keys) covers the whole payload; every other key and string of its
+        metadata (``_page_map_metadata``) is read with the derived-ID rule of
+        ``_check_embedded_text_ncts``.
+        """
         if not isinstance(payload, Mapping):
             return None
         discovered = _validate_nested_firewall_metadata(
             payload,
+            context=source_desc,
+            expected_nct_id=None,
+            audit_nct_ids=self._audit_nct_ids,
+            in_scope_nct_ids=self._in_scope_nct_ids,
+            allow_empty_audit_set=self._allow_empty_audit_set,
+        )
+        _scan_record_strings_for_nct_tokens(
+            self._page_map_metadata(payload),
             context=source_desc,
             expected_nct_id=None,
             audit_nct_ids=self._audit_nct_ids,
@@ -1495,6 +1936,23 @@ class DirectoryPageTextProvider:
         if "nctId" in payload:
             return str(payload["nctId"])
         return discovered[0] if len(set(discovered)) == 1 else None
+
+    @staticmethod
+    def _declared_sha256(payload: Any, *, source_desc: str) -> str | None:
+        """Return the sha256 a page map declares for itself, ``None`` when it declares none.
+
+        A declared value must be 64 lowercase hex characters: a map that names
+        its document version in any other form cannot be compared with the
+        request, so it is refused rather than ignored.
+        """
+        if not isinstance(payload, Mapping) or "sha256" not in payload:
+            return None
+        raw = payload["sha256"]
+        if type(raw) is not str or _SHA256_RE.fullmatch(raw) is None:
+            raise CitationVerificationError(
+                f"{source_desc} declares sha256={raw!r}, which is not 64 lowercase hex characters."
+            )
+        return raw
 
     @staticmethod
     def _is_jsonl_path(path: Path) -> bool:
@@ -1514,6 +1972,37 @@ class DirectoryPageTextProvider:
                 return stem[: -len(ext)]
         return stem
 
+    @staticmethod
+    def _is_sha_stem(stem: str) -> bool:
+        return len(stem) == 64 and _SHA256_RE.fullmatch(stem) is not None
+
+    @staticmethod
+    def _store_page_map(
+        store: dict[Any, _PageMap],
+        key: Any,
+        entry: _PageMap,
+    ) -> None:
+        """Store a JSONL page map, refusing a second, different map under the same key.
+
+        Two rows for one document version and text source that disagree leave
+        no way to tell which text is the document's, so the run stops instead
+        of letting the later row win. An identical repeat is harmless and kept
+        once.
+        """
+        existing = store.get(key)
+        if existing is None:
+            store[key] = entry
+            return
+        if (
+            dict(existing.pages) != dict(entry.pages)
+            or existing.declared_nct_id != entry.declared_nct_id
+            or existing.declared_sha256 != entry.declared_sha256
+        ):
+            raise CitationVerificationError(
+                f"Conflicting page maps for the same document and text source: "
+                f"{existing.source_desc} and {entry.source_desc}."
+            )
+
     def _ingest_jsonl_file(self, path: Path, *, default_source_bucket: str) -> None:
         opener = gzip.open if path.suffix == ".gz" else open
         try:
@@ -1523,14 +2012,28 @@ class DirectoryPageTextProvider:
                     if not stripped:
                         continue
                     row = json.loads(stripped)
+                    source_desc = f"{path}:{line_no}"
                     if not isinstance(row, Mapping):
                         raise CitationVerificationError(
-                            f"{path}:{line_no}: expected JSON object in page-map JSONL."
+                            f"{source_desc}: expected JSON object in page-map JSONL."
                         )
-                    row_nct = self._validate_payload_firewall(
-                        row, source_desc=f"{path}:{line_no}"
-                    )
-                    parsed_pages = self._parse_page_map_payload(row)
+                    row_nct = self._validate_payload_firewall(row, source_desc=source_desc)
+                    declared_sha = self._declared_sha256(row, source_desc=source_desc)
+                    # A JSONL file is a container: its rows cannot be told apart without
+                    # reading them. With referenced documents, a row for a document this
+                    # run does not hold is therefore refused (loudly) once read, rather
+                    # than silently kept or dropped.
+                    if (
+                        self._referenced_sha256s is not None
+                        and declared_sha is not None
+                        and declared_sha not in self._referenced_sha256s
+                    ):
+                        raise AuditHoldoutViolationError(
+                            f"{source_desc}: page-map row for a sha256 that no in-scope document "
+                            f"of this run names; a content-addressed map that no in-scope "
+                            f"document ties to a trial may hold any trial's text."
+                        )
+                    parsed_pages = self._parse_page_map_payload(row, source_desc=source_desc)
                     if parsed_pages is None:
                         continue
                     row_ts = row.get("text_source")
@@ -1539,19 +2042,26 @@ class DirectoryPageTextProvider:
                         if isinstance(row_ts, str) and row_ts
                         else default_source_bucket
                     )
-                    sha = row.get("sha256")
-                    if isinstance(sha, str) and sha:
-                        self._jsonl_pages[(sha, bucket)] = parsed_pages
+                    entry = _PageMap(
+                        pages=parsed_pages,
+                        declared_nct_id=row_nct,
+                        declared_sha256=declared_sha,
+                        source_desc=source_desc,
+                    )
+                    if declared_sha is not None:
+                        self._store_page_map(self._jsonl_pages, (declared_sha, bucket), entry)
                         if bucket != default_source_bucket:
-                            self._jsonl_pages.setdefault(
-                                (sha, default_source_bucket), parsed_pages
+                            self._jsonl_default_pages.setdefault(
+                                (declared_sha, default_source_bucket), entry
                             )
                     fn = row.get("filename")
                     if row_nct is not None and isinstance(fn, str) and fn:
-                        self._jsonl_trial_pages[(row_nct, fn, bucket)] = parsed_pages
+                        self._store_page_map(
+                            self._jsonl_trial_pages, (row_nct, fn, bucket), entry
+                        )
                         if bucket != default_source_bucket:
-                            self._jsonl_trial_pages.setdefault(
-                                (row_nct, fn, default_source_bucket), parsed_pages
+                            self._jsonl_default_trial_pages.setdefault(
+                                (row_nct, fn, default_source_bucket), entry
                             )
         except json.JSONDecodeError as exc:
             raise CitationVerificationError(f"Malformed JSON in {path}: {exc}") from exc
@@ -1581,7 +2091,7 @@ class DirectoryPageTextProvider:
                     )
                 return checked_prefix
             self._check_path_part_for_embedded_nct(stem, context=f"page_map_file({entry})")
-            if len(stem) != 64 or _SHA256_RE.fullmatch(stem) is None:
+            if not self._is_sha_stem(stem):
                 raise CitationVerificationError(
                     f"Top-level page map {entry.name!r} under {root} must be <sha256>.json[.gz] "
                     f"or <NCT_ID>__<doc>.json[.gz]."
@@ -1601,8 +2111,7 @@ class DirectoryPageTextProvider:
             self._check_path_part_for_embedded_nct(stem, context=f"page_map_file({entry})")
             if (
                 not self._is_json_map_path(entry)
-                or len(stem) != 64
-                or _SHA256_RE.fullmatch(stem) is None
+                or not self._is_sha_stem(stem)
                 or stem[:2] != parent.name
             ):
                 raise CitationVerificationError(
@@ -1620,20 +2129,60 @@ class DirectoryPageTextProvider:
             )
         return checked_dir_nct
 
-    def _scan_root(self, root: Path, *, default_source_bucket: str) -> None:
-        # Check root's own path components for any embedded/direct NCT token even if absent!
-        for part in root.parts:
+    def _check_root_path_parts(self, path: Path, *, label: str) -> None:
+        """Firewall every component of a page-map root path that holds an NCT-like token."""
+        for part in path.parts:
             folded = _strip_invisible(unicodedata.normalize("NFKC", part))
-            if _EMBEDDED_NCT_TOKEN_RE.search(folded) is not None:
-                if part == root.name and root.is_file() and "__" in part:
-                    stem = self._strip_map_extensions(part)
-                    prefix, rest = stem.split("__", 1)
-                    self._check_layout_nct_allowed(prefix, context=f"page_map_file({root})")
-                    self._check_path_part_for_embedded_nct(
-                        rest, context=f"page_map_file({root})"
-                    )
-                else:
-                    self._check_path_part_for_embedded_nct(part, context=f"page_map_root({root})")
+            if _EMBEDDED_NCT_TOKEN_RE.search(folded) is None:
+                continue
+            if part == path.name and path.is_file() and "__" in part:
+                stem = self._strip_map_extensions(part)
+                prefix, rest = stem.split("__", 1)
+                self._check_layout_nct_allowed(prefix, context=f"page_map_file({label})")
+                self._check_path_part_for_embedded_nct(rest, context=f"page_map_file({label})")
+            else:
+                self._check_path_part_for_embedded_nct(part, context=f"page_map_root({label})")
+
+    def _firewall_root(self, root: Path) -> None:
+        """Firewall a page-map root both as given and as the filesystem resolves it.
+
+        Method: the layout rules read names. A root that is itself a link (or
+        sits under one) names one path and serves another, so the resolved
+        path is checked with the same component rule as the given one; a link
+        into ``.../<audit NCT>/...`` is refused even when its own name is clean.
+        """
+        self._check_root_path_parts(root, label=str(root))
+        if root.exists() or root.is_symlink():
+            resolved = root.resolve()
+            if resolved != root:
+                self._check_root_path_parts(resolved, label=f"{root} -> {resolved}")
+
+    @staticmethod
+    def _refuse_symlink(entry: Path, *, root: Path) -> None:
+        """Refuse a symlink under a page-map root, file or directory alike.
+
+        The layout firewall reads link names, and a link's target can be any
+        trial's path (``<in-scope NCT>`` -> ``.../<audit NCT>``), so no link is
+        followed: the run stops instead.
+        """
+        if entry.is_symlink():
+            raise AuditHoldoutViolationError(
+                f"Symlink {entry} under page-map root {root} is refused: the page-map firewall "
+                f"reads names, and a link may point into any trial's path."
+            )
+
+    def _skip_unreferenced_sha_map(self, path: Path) -> bool:
+        """True (and counted) when ``path`` is a ``<sha256>`` map no referenced document names."""
+        if self._referenced_sha256s is None:
+            return False
+        stem = self._strip_map_extensions(path.name)
+        if self._is_sha_stem(stem) and stem not in self._referenced_sha256s:
+            self.unreferenced_maps_not_opened += 1
+            return True
+        return False
+
+    def _scan_root(self, root: Path, *, default_source_bucket: str) -> None:
+        self._firewall_root(root)
 
         if not root.exists():
             return
@@ -1658,6 +2207,8 @@ class DirectoryPageTextProvider:
             if self._is_jsonl_path(root):
                 self._ingest_jsonl_file(root, default_source_bucket=default_source_bucket)
             elif self._is_json_map_path(root):
+                if expected_nct is None and self._skip_unreferenced_sha_map(root):
+                    return
                 payload = self._read_json_file(root)
                 payload_nct = self._validate_payload_firewall(payload, source_desc=str(root))
                 if (
@@ -1675,6 +2226,8 @@ class DirectoryPageTextProvider:
             return
 
         for entry in sorted(root.rglob("*")):
+            # Before any is_dir()/is_file(), which follow links: a link is never read.
+            self._refuse_symlink(entry, root=root)
             if entry.is_dir():
                 if entry.parent != root:
                     self._check_path_part_for_embedded_nct(
@@ -1697,6 +2250,10 @@ class DirectoryPageTextProvider:
             if self._is_jsonl_path(entry):
                 self._ingest_jsonl_file(entry, default_source_bucket=default_source_bucket)
             elif self._is_json_map_path(entry):
+                # A <sha256> map names no trial; unless a referenced document names its
+                # sha256 it is never opened (it may be any trial's text).
+                if path_nct is None and self._skip_unreferenced_sha_map(entry):
+                    continue
                 payload = self._read_json_file(entry)
                 payload_nct = self._validate_payload_firewall(payload, source_desc=str(entry))
                 if (
@@ -1734,64 +2291,190 @@ class DirectoryPageTextProvider:
         nct_id: str,
         filename: str,
         sha256: str,
-    ) -> list[Path]:
+    ) -> list[tuple[Path, Literal["sha", "trial", "file_root"]]]:
+        """List the files that could hold ``(nct_id, filename, sha256)``, with how each is keyed.
+
+        ``"sha"`` files are named by a sha256, ``"trial"`` files by the trial and
+        document name. A single-file root is offered only when its own name
+        does not say it is another document's (a ``<sha256>`` name must be the
+        requested sha256; an ``<NCT>__<doc>`` or ``<NCT>/<doc>`` name must be the
+        requested trial and document); any other single file is ``"file_root"``,
+        keyed only by what its payload declares.
+        """
+        doc_stems = {filename, Path(filename).stem}
         if base_dir.is_file():
-            return [base_dir] if self._is_json_map_path(base_dir) else []
-        candidates: list[Path] = []
-        if sha256:
-            candidates.extend(
-                [
-                    base_dir / f"{sha256}.json",
-                    base_dir / f"{sha256}.json.gz",
-                    base_dir / sha256[:2] / f"{sha256}.json.gz",
-                    base_dir / sha256[:2] / f"{sha256}.json",
-                ]
-            )
+            if not self._is_json_map_path(base_dir):
+                return []
+            stem = self._strip_map_extensions(base_dir.name)
+            if self._is_sha_stem(stem):
+                return [(base_dir, "sha")] if stem == sha256 else []
+            if "__" in stem:
+                prefix, doc_part = stem.split("__", 1)
+                return [(base_dir, "trial")] if prefix == nct_id and doc_part in doc_stems else []
+            if STRICT_NCT_ID_RE.fullmatch(base_dir.parent.name) is not None:
+                return (
+                    [(base_dir, "trial")]
+                    if base_dir.parent.name == nct_id and stem in doc_stems
+                    else []
+                )
+            return [(base_dir, "file_root")]
+        candidates: list[tuple[Path, Literal["sha", "trial", "file_root"]]] = [
+            (base_dir / f"{sha256}.json", "sha"),
+            (base_dir / f"{sha256}.json.gz", "sha"),
+            (base_dir / sha256[:2] / f"{sha256}.json.gz", "sha"),
+            (base_dir / sha256[:2] / f"{sha256}.json", "sha"),
+        ]
         if nct_id and filename:
             stem = Path(filename).stem
             candidates.extend(
                 [
-                    base_dir / nct_id / f"{filename}.json",
-                    base_dir / nct_id / f"{filename}.json.gz",
-                    base_dir / nct_id / f"{stem}.json",
-                    base_dir / f"{nct_id}__{filename}.json",
-                    base_dir / f"{nct_id}__{stem}.json",
+                    (base_dir / nct_id / f"{filename}.json", "trial"),
+                    (base_dir / nct_id / f"{filename}.json.gz", "trial"),
+                    (base_dir / nct_id / f"{stem}.json", "trial"),
+                    (base_dir / f"{nct_id}__{filename}.json", "trial"),
+                    (base_dir / f"{nct_id}__{stem}.json", "trial"),
                 ]
             )
         return candidates
 
     @staticmethod
-    def _parse_page_map_payload(payload: Any) -> dict[int, str] | None:
-        if isinstance(payload, list):
-            return {idx + 1: str(val) for idx, val in enumerate(payload)}
-        if not isinstance(payload, Mapping):
-            return None
-        pages_obj = payload.get("pages")
-        if isinstance(pages_obj, list):
-            result: dict[int, str] = {}
-            for idx, item in enumerate(pages_obj):
-                if isinstance(item, str):
-                    result[idx + 1] = item
+    def _is_readable_map_file(candidate: Path, *, base_dir: Path) -> bool:
+        """True when ``candidate`` is a regular file inside ``base_dir``; raise on a link or escape.
+
+        Files can change after preflight, so each read is checked again: a
+        link is refused, and the file must resolve inside the resolved root (a
+        linked directory between the root and the file resolves outside it).
+        """
+        # A single-file root may itself be a link; its resolved path was firewalled by
+        # _firewall_root. Any other file read must not be one.
+        if candidate != base_dir and candidate.is_symlink():
+            raise AuditHoldoutViolationError(
+                f"Page map {candidate} is a symlink; links are never followed."
+            )
+        if not candidate.is_file():
+            return False
+        resolved_base = base_dir.resolve()
+        resolved = candidate.resolve()
+        inside = (
+            resolved == resolved_base
+            if base_dir.is_file()
+            else resolved.is_relative_to(resolved_base)
+        )
+        if not inside:
+            raise AuditHoldoutViolationError(
+                f"Page map {candidate} resolves outside its root {base_dir}; it is not read."
+            )
+        return True
+
+    @staticmethod
+    def _parse_page_map_payload(
+        payload: Any, *, source_desc: str = "page map"
+    ) -> dict[int, str] | None:
+        """Parse a page map into ``{physical_page: text}`` for the pages that have text.
+
+        Accepted shapes: a list of pages (``str``, ``null`` or page objects), a
+        ``pages`` list or mapping, or top-level page-number keys. Method:
+
+        - A page number is ASCII digits only (``_page_number_from_key``):
+          ``int()`` would read ``"2_0"`` as 20 and ``"٢"`` as 2, so any
+          other form is refused, never converted.
+        - Each page appears once: ``"2"`` and ``"02"``, or two objects for page
+          2, are refused instead of letting the later entry win.
+        - Page text is a string; ``null`` (or a page object with no ``text``)
+          is a page without text and is left out, so a lookup returns ``None``.
+        - ``None`` is returned when the payload holds no page structure at all.
+        """
+        result: dict[int, str | None] = {}
+
+        def _record(number: int, text: str | None, context: str) -> None:
+            if number in result:
+                raise CitationVerificationError(
+                    f"{source_desc}: page {number} appears more than once ({context}); the map "
+                    f"does not say which text is that page's."
+                )
+            result[number] = text
+
+        def _from_sequence(items: Sequence[Any], context: str) -> None:
+            for idx, item in enumerate(items):
+                item_ctx = f"{context}[{idx}]"
+                if item is None or type(item) is str:
+                    _record(idx + 1, item, item_ctx)
                 elif isinstance(item, Mapping):
-                    page_num = item.get("physical_page", item.get("page", idx + 1))
-                    if _is_strict_int(page_num) and page_num >= 1:
-                        result[page_num] = str(item.get("text", ""))
-            return result
-        if isinstance(pages_obj, Mapping):
-            result = {}
-            for key, val in pages_obj.items():
-                try:
-                    page_num = int(str(key))
-                except ValueError:
-                    continue
-                if page_num >= 1:
-                    result[page_num] = str(val)
-            return result
-        numeric_map: dict[int, str] = {}
-        for key, val in payload.items():
-            if isinstance(key, str) and key.isdigit() and isinstance(val, str):
-                numeric_map[int(key)] = val
-        return numeric_map if numeric_map else None
+                    numbers = [item[k] for k in ("physical_page", "page") if k in item]
+                    for raw_number in numbers:
+                        if not _is_strict_int(raw_number) or raw_number < 1:
+                            raise CitationVerificationError(
+                                f"{source_desc}: {item_ctx} page number {raw_number!r} is not an "
+                                f"int >= 1."
+                            )
+                    if len(set(numbers)) > 1:
+                        raise CitationVerificationError(
+                            f"{source_desc}: {item_ctx} gives two page numbers {numbers!r}."
+                        )
+                    number = numbers[0] if numbers else idx + 1
+                    text = _validate_page_text_value(
+                        item.get("text"), context=f"{source_desc}: {item_ctx}.text"
+                    )
+                    _record(number, text, item_ctx)
+                else:
+                    raise CitationVerificationError(
+                        f"{source_desc}: {item_ctx} must be page text, null or a page object, "
+                        f"got {type(item).__name__}."
+                    )
+
+        def _page_number_from_key(key: Any, context: str) -> int:
+            if type(key) is not str or _ASCII_PAGE_KEY_RE.fullmatch(key) is None:
+                raise CitationVerificationError(
+                    f"{source_desc}: {context} key {key!r} is not a page number in ASCII digits."
+                )
+            number = int(key)
+            if number < 1:
+                raise CitationVerificationError(
+                    f"{source_desc}: {context} key {key!r} is not a page number >= 1."
+                )
+            return number
+
+        if isinstance(payload, list):
+            _from_sequence(payload, "pages")
+        elif not isinstance(payload, Mapping):
+            return None
+        elif "pages" in payload:
+            pages_obj = payload["pages"]
+            if isinstance(pages_obj, list):
+                _from_sequence(pages_obj, "pages")
+            elif isinstance(pages_obj, Mapping):
+                for key, val in pages_obj.items():
+                    number = _page_number_from_key(key, "pages")
+                    _record(
+                        number,
+                        _validate_page_text_value(val, context=f"{source_desc}: pages[{key!r}]"),
+                        f"pages[{key!r}]",
+                    )
+            else:
+                raise CitationVerificationError(
+                    f"{source_desc}: 'pages' must be a list or an object, got "
+                    f"{type(pages_obj).__name__}."
+                )
+        else:
+            for key, val in payload.items():
+                if type(key) is not str or _PAGE_LIKE_KEY_RE.fullmatch(key) is None:
+                    continue  # metadata (sha256, nct_id, text_source, ...)
+                number = _page_number_from_key(key, "top-level")
+                _record(
+                    number,
+                    _validate_page_text_value(val, context=f"{source_desc}: [{key!r}]"),
+                    f"[{key!r}]",
+                )
+            if not result:
+                return None
+        return {number: text for number, text in result.items() if text is not None}
+
+    @staticmethod
+    def _check_map_trial(entry_nct: str | None, nct_id: str, *, source_desc: str) -> None:
+        if entry_nct is not None and entry_nct != nct_id:
+            raise CitationVerificationError(
+                f"Page map {source_desc} declares nct_id={entry_nct!r}, expected {nct_id!r}."
+            )
 
     def _load_doc_pages(
         self,
@@ -1799,22 +2482,36 @@ class DirectoryPageTextProvider:
         filename: str,
         sha256: str,
         text_source: str,
-    ) -> dict[int, str] | None:
+    ) -> Mapping[int, str] | None:
+        """Find the page map of exactly this document version for this trial.
+
+        Order: JSONL rows keyed by sha256, JSONL rows keyed by ``(nct_id,
+        filename)``, then files (sha-named first). A sha256-keyed map that
+        declares another trial raises (as for a JSON file); a trial-keyed map
+        that declares another sha256 is another version's text and is skipped;
+        a ``<sha256>`` file whose payload declares another sha256 contradicts
+        itself and raises.
+        """
         cache_key = (nct_id, filename, sha256, text_source)
         if cache_key in self._cache:
             return self._cache[cache_key]
 
         bucket_fallback = "pdfkit" if text_source == "pdfkit" else "ocr"
         for jsonl_key in ((sha256, text_source), (sha256, bucket_fallback)):
-            if jsonl_key in self._jsonl_pages:
-                loaded_jsonl = self._jsonl_pages[jsonl_key]
-                self._cache[cache_key] = loaded_jsonl
-                return loaded_jsonl
+            sha_entry = self._jsonl_pages.get(jsonl_key) or self._jsonl_default_pages.get(jsonl_key)
+            if sha_entry is not None:
+                self._check_map_trial(
+                    sha_entry.declared_nct_id, nct_id, source_desc=sha_entry.source_desc
+                )
+                self._cache[cache_key] = sha_entry.pages
+                return sha_entry.pages
         for trial_key in ((nct_id, filename, text_source), (nct_id, filename, bucket_fallback)):
-            if trial_key in self._jsonl_trial_pages:
-                loaded_trial = self._jsonl_trial_pages[trial_key]
-                self._cache[cache_key] = loaded_trial
-                return loaded_trial
+            trial_entry = self._jsonl_trial_pages.get(trial_key) or self._jsonl_default_trial_pages.get(
+                trial_key
+            )
+            if trial_entry is not None and trial_entry.declared_sha256 in (None, sha256):
+                self._cache[cache_key] = trial_entry.pages
+                return trial_entry.pages
 
         search_dirs: list[Path] = []
         if text_source != "pdfkit" and self._ocr_dir is not None:
@@ -1822,21 +2519,25 @@ class DirectoryPageTextProvider:
         else:
             search_dirs.append(self._pages_dir)
 
-        loaded: dict[int, str] | None = None
+        loaded: Mapping[int, str] | None = None
         for base_dir in search_dirs:
-            for candidate in self._candidate_paths(base_dir, nct_id, filename, sha256):
-                if not candidate.is_file():
+            for candidate, keyed_by in self._candidate_paths(base_dir, nct_id, filename, sha256):
+                if not self._is_readable_map_file(candidate, base_dir=base_dir):
                     continue
                 payload = self._read_json_file(candidate)
                 payload_nct = self._validate_payload_firewall(
                     payload, source_desc=str(candidate)
                 )
-                if payload_nct is not None and payload_nct != nct_id:
-                    raise CitationVerificationError(
-                        f"Page map {candidate} declares nct_id={payload_nct!r}, "
-                        f"expected {nct_id!r}."
-                    )
-                loaded = self._parse_page_map_payload(payload)
+                self._check_map_trial(payload_nct, nct_id, source_desc=str(candidate))
+                declared_sha = self._declared_sha256(payload, source_desc=str(candidate))
+                if declared_sha is not None and declared_sha != sha256:
+                    if keyed_by == "sha":
+                        raise CitationVerificationError(
+                            f"Page map {candidate} is named for sha256 {sha256!r} but declares "
+                            f"sha256={declared_sha!r}."
+                        )
+                    continue  # another version of the document: not this one's text
+                loaded = self._parse_page_map_payload(payload, source_desc=str(candidate))
                 if loaded is not None:
                     break
             if loaded is not None:
@@ -1854,7 +2555,14 @@ class DirectoryPageTextProvider:
         *,
         text_source: str = "pdfkit",
     ) -> str | None:
-        """Return single-page text for ``physical_page`` (1-based) or None."""
+        """Return single-page text for ``physical_page`` (1-based) or None.
+
+        The requested trial must be in the bound scope or admitted by a verify
+        entry point (``_check_page_request_trial``). A request that names no
+        valid sha256 identifies no document version, so no map is shown to be
+        its text and ``None`` is returned. With ``referenced_documents``, a
+        request for a pair this run does not reference is refused.
+        """
         # See DictPageTextProvider.get_page_text: an unbound provider serves nothing.
         _require_scope_for_empty_audit_set(
             self._audit_nct_ids,
@@ -1862,9 +2570,27 @@ class DirectoryPageTextProvider:
             allow_empty_audit_set=self._allow_empty_audit_set,
             context="DirectoryPageTextProvider.get_page_text",
         )
-        checked_nct = self._check_nct_allowed(nct_id, context="page_text.nct_id")
+        checked_nct = _check_page_request_trial(
+            nct_id,
+            audit_nct_ids=self._audit_nct_ids,
+            in_scope_nct_ids=self._in_scope_nct_ids,
+            admitted_nct_ids=self._admitted_nct_ids,
+            context="page_text",
+        )
         if not _is_strict_int(physical_page) or physical_page < 1:
             return None
+        if type(sha256) is not str or _SHA256_RE.fullmatch(sha256) is None:
+            return None
+        if (
+            self._referenced_documents is not None
+            and (checked_nct, sha256) not in self._referenced_documents
+        ):
+            raise AuditHoldoutViolationError(
+                f"Audit holdout refusal: page lookup for {checked_nct!r} names a sha256 that no "
+                f"in-scope document of this run ties to that trial."
+            )
+        if type(filename) is not str or not _is_safe_pdf_filename(filename):
+            filename = ""
         pages = self._load_doc_pages(checked_nct, filename, sha256, text_source)
         if pages is None:
             return None
@@ -1877,7 +2603,14 @@ def _validate_pdf_root_firewall(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str] | None,
 ) -> None:
-    """Scan ``pdf_root`` path components and subdirectories for holdout/malformed NCT IDs."""
+    """Scan ``pdf_root`` path components and subdirectories for holdout/malformed NCT IDs.
+
+    Method: the rule reads path components, so a path that resolves elsewhere
+    would defeat it. The root is checked both as given and as resolved, and any
+    symlink under it (a file link, or a ``<in-scope NCT>`` directory linked to
+    ``.../<audit NCT>``) is refused before anything is read; ``rglob`` lists a
+    linked directory without entering it, so the link itself is what is seen.
+    """
     if pdf_root is None:
         return
     root = Path(pdf_root)
@@ -1902,11 +2635,39 @@ def _validate_pdf_root_firewall(
 
     for part in root.parts:
         _check_part(part, f"pdf_root({root})")
+    if root.exists() or root.is_symlink():
+        resolved_root = root.resolve()
+        if resolved_root != root:
+            for part in resolved_root.parts:
+                _check_part(part, f"pdf_root({root} -> {resolved_root})")
     if root.exists() and root.is_dir():
         for entry in sorted(root.rglob("*")):
+            if entry.is_symlink():
+                raise AuditHoldoutViolationError(
+                    f"Symlink {entry} under pdf_root {root} is refused: the path firewall reads "
+                    f"names, and a link may point into any trial's path."
+                )
             rel_parts = entry.relative_to(root).parts
             for part in rel_parts:
                 _check_part(part, f"pdf_root_entry({entry})")
+
+
+def _require_pdf_inside_root(candidate_pdf: Path, pdf_root: Path) -> None:
+    """Refuse to read a PDF that is a link or resolves outside ``pdf_root``.
+
+    ``_validate_pdf_root_firewall`` runs before the read; this repeats the
+    check on the one file about to be hashed, since a file can change between
+    the two (a linked directory between the root and the file resolves outside
+    the root, so it is caught here too).
+    """
+    if candidate_pdf.is_symlink():
+        raise AuditHoldoutViolationError(
+            f"PDF {candidate_pdf} is a symlink; links are never followed."
+        )
+    if not candidate_pdf.resolve().is_relative_to(Path(pdf_root).resolve()):
+        raise AuditHoldoutViolationError(
+            f"PDF {candidate_pdf} resolves outside pdf_root {pdf_root}; it is not read."
+        )
 
 
 def verify_document_record(
@@ -2216,6 +2977,7 @@ def verify_document_record(
                 )
             )
         else:
+            _require_pdf_inside_root(candidate_pdf, pdf_root)
             raw_bytes = candidate_pdf.read_bytes()
             if _is_strict_int(byte_count) and len(raw_bytes) != byte_count:
                 issues.append(
@@ -2334,6 +3096,14 @@ def _validate_docs_mapping_for_nct(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        _scan_record_strings_for_nct_tokens(
+            doc_obj,
+            context=f"{context}[{doc_fn!r}]",
+            expected_nct_id=expected_nct,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
 
 
 def verify_citation(
@@ -2385,6 +3155,14 @@ def verify_citation(
             in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        _scan_record_strings_for_nct_tokens(
+            citation,
+            context="citation",
+            expected_nct_id=checked_nct,
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
     _validate_docs_mapping_for_nct(
         checked_nct,
         docs_by_filename,
@@ -2394,10 +3172,14 @@ def verify_citation(
         allow_empty_audit_set=allow_empty_audit_set,
     )
     if isinstance(page_text_provider, (DirectoryPageTextProvider, DictPageTextProvider)):
+        # Without a scope, the provider serves only trials an entry point has admitted;
+        # ``checked_nct`` has just passed enforce_audit_holdout with the caller's explicit
+        # bool in_audit (required when no scope is given), which is that admission.
         page_text_provider.bind_firewall(
             audit_nct_ids=checked_audit_ids,
             in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            admitted_nct_ids=frozenset({checked_nct}) if checked_scope_ids is None else frozenset(),
         )
 
     issues: list[VerificationIssue] = []
@@ -2708,7 +3490,17 @@ def _validate_page_partition(
     pages_not_searched: Any,
     docs_by_filename: Mapping[str, Mapping[str, Any]],
 ) -> list[VerificationIssue]:
-    """Validate disjoint partition when ``pages_not_searched`` is non-empty."""
+    """Validate that searched, not-searched and blank pages partition every supplied document.
+
+    Used when ``pages_not_searched`` is non-empty, and for a ``NOT_FOUND`` row
+    whose ``pages_searched`` is an explicit per-document mapping (with
+    ``pages_not_searched={}``). For each supplied document with a page count,
+    ``pages_searched U pages_not_searched U pages_without_text`` must be
+    exactly ``1..physical_pages`` with no overlap. A supplied document named
+    in neither mapping is read as searched=[] and not-searched=[], so unless
+    all its pages are blank it leaves the partition incomplete: a row that
+    leaves a document out has not accounted for its pages.
+    """
     issues: list[VerificationIssue] = []
     if not isinstance(pages_searched, Mapping) or len(pages_searched) == 0:
         issues.append(
@@ -2744,8 +3536,12 @@ def _validate_page_partition(
         )
         return issues
 
-    all_doc_names = set(pages_searched.keys()) | set(pages_not_searched.keys())
-    for fn in sorted(all_doc_names):
+    all_doc_names = (
+        set(pages_searched.keys())
+        | set(pages_not_searched.keys())
+        | {fn for fn in docs_by_filename.keys() if type(fn) is str}
+    )
+    for fn in sorted(all_doc_names, key=str):
         doc = docs_by_filename.get(fn)
         if doc is None:
             issues.append(
@@ -2767,6 +3563,10 @@ def _validate_page_partition(
         searched_raw = pages_searched.get(fn, [])
         unsearched_raw = pages_not_searched.get(fn, [])
         blank_raw = doc.get("pages_without_text", [])
+        # A malformed pages_without_text is reported by verify_document_record; here it
+        # counts no page as blank, so it cannot complete a partition.
+        if not isinstance(blank_raw, list):
+            blank_raw = []
 
         if not isinstance(searched_raw, list) or not all(_is_strict_int(p) for p in searched_raw):
             issues.append(
@@ -2984,6 +3784,12 @@ def verify_location_record(
     ``docs_by_nct`` keys other than the record's own trial are firewalled by
     ``_enforce_derived_nct_holdout``: without ``in_scope_nct_ids`` they are
     refused, since the caller's ``in_audit`` speaks only for this record's trial.
+
+    ``NOT_FOUND`` needs a supplied document of the trial
+    (``NOT_FOUND_WITHOUT_DOCUMENT``) and a complete search record: with no
+    unsearched pages, ``pages_searched`` is ``"all"`` or a per-document mapping
+    that partitions every supplied document (``NOT_FOUND_WITHOUT_COMPLETE_SEARCH``,
+    ``SEARCH_PARTITION_INCOMPLETE``).
     """
     if not isinstance(loc, Mapping):
         raise CitationVerificationError(
@@ -3256,6 +4062,49 @@ def verify_location_record(
                     ),
                 )
             )
+    elif status_raw == "NOT_FOUND" and pages_searched != "all":
+        # NOT_FOUND claims that every page of every supplied document was searched. With
+        # nothing listed as unsearched, the search record itself must show that: either
+        # "all", or a per-document mapping that, with blank pages, covers each document.
+        if isinstance(pages_searched, Mapping) and len(pages_searched) > 0:
+            issues.extend(
+                _validate_page_partition(nct_id, loc_key, pages_searched, {}, docs_for_nct)
+            )
+        else:
+            issues.append(
+                VerificationIssue(
+                    code="NOT_FOUND_WITHOUT_COMPLETE_SEARCH",
+                    severity="error",
+                    nct_id=nct_id,
+                    location_key=loc_key,
+                    filename=None,
+                    physical_page=None,
+                    message=(
+                        f"status='NOT_FOUND' needs pages_searched == 'all' or a per-document "
+                        f"mapping covering every page; got {pages_searched!r}."
+                    ),
+                )
+            )
+
+    if status_raw == "NOT_FOUND" and not docs_for_nct:
+        # Same rule as UNREADABLE: a search of posted documents can only be verified
+        # against documents the corpus holds. With none supplied, NOT_FOUND would stand in
+        # for NO_DOCUMENT and skip its tri-state presence check.
+        issues.append(
+            VerificationIssue(
+                code="NOT_FOUND_WITHOUT_DOCUMENT",
+                severity="error",
+                nct_id=nct_id,
+                location_key=loc_key,
+                filename=None,
+                physical_page=None,
+                message=(
+                    f"status='NOT_FOUND' asserts a search of posted documents, but no document "
+                    f"of {nct_id} was supplied; use NO_DOCUMENT when none is posted "
+                    f"(manifest_has_documents={manifest_has_documents!r})."
+                ),
+            )
+        )
 
     if status_raw == "UNREADABLE":
         issues.extend(_verify_unreadable_validity(nct_id, loc_key, loc, docs_for_nct))
@@ -3289,24 +4138,28 @@ def verify_location_record(
         elif tier == "mismatch":
             counts["substring_mismatches"] += 1
 
+    # The guard covers every string of the row, not only ``note``: location rows accept
+    # extra keys, and commentary under ``summary``, ``rationale`` or a nested object is
+    # still commentary. Only verbatim source text (``quotation``, ``statement_verbatim``)
+    # is exempt, the default of scan_neutral_language_record.
+    for flag_path, flag in scan_neutral_language_record(loc):
+        counts["neutral_language_flags"] += 1
+        issues.append(
+            VerificationIssue(
+                code=f"NEUTRAL_LANGUAGE_{flag.rule_id}",
+                severity="error",
+                nct_id=nct_id,
+                location_key=loc_key,
+                filename=None,
+                physical_page=None,
+                message=(
+                    f"Neutral-language violation in {flag_path} ({flag.rule_id}/{flag.category}): "
+                    f"{flag.matched_text!r} — {flag.rationale}"
+                ),
+            )
+        )
     note = loc.get("note")
     if type(note) is str:
-        for flag in scan_neutral_language(note):
-            counts["neutral_language_flags"] += 1
-            issues.append(
-                VerificationIssue(
-                    code=f"NEUTRAL_LANGUAGE_{flag.rule_id}",
-                    severity="error",
-                    nct_id=nct_id,
-                    location_key=loc_key,
-                    filename=None,
-                    physical_page=None,
-                    message=(
-                        f"Neutral-language violation ({flag.rule_id}/{flag.category}): "
-                        f"{flag.matched_text!r} — {flag.rationale}"
-                    ),
-                )
-            )
         issues.extend(check_note_page_counts(nct_id, loc_key, note, docs_for_nct))
 
     return counts, issues
@@ -3367,6 +4220,14 @@ def verify_trial_completeness(
             allow_empty_audit_set=allow_empty_audit_set,
         )
         _validate_nested_firewall_metadata(
+            loc,
+            context=f"locations[{idx_loc}]",
+            expected_nct_id=loc_nct,
+            audit_nct_ids=checked_audit_ids,
+            in_scope_nct_ids=checked_scope_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+        _scan_record_strings_for_nct_tokens(
             loc,
             context=f"locations[{idx_loc}]",
             expected_nct_id=loc_nct,
