@@ -375,12 +375,21 @@ def logged_json(
 # ---------------------------------------------------------------- validators & query planners
 
 def ctgov_version_valid(body: Any) -> bool:
+    """Whether a CT.gov `/version` answer can be used: a non-blank `apiVersion` and a `dataTimestamp` in
+    CT.gov's own form, a whole date and time with no offset (`timestamp_problem`, the rule a local
+    freeze's `--data-timestamp` follows). Live answers are checked here, so a malformed or zoned one is
+    logged as `UNUSABLE_200` and the run stops (`CTGovVersionUnavailable`) rather than being frozen as
+    the data version: `not-a-timestamp` stopped the build later in `date.fromisoformat`, and
+    `2026-11-01T23:30:00-05:00` was cut to the wrong `as_of` day. A line an earlier acquisition logged as
+    successful with such a timestamp counts, here as everywhere this is called, as a failed observation:
+    the freeze's bracket check needs other observations around the study answers, and run.json
+    `sources.ctgov` leaves it out. Every stored CT.gov answer carries the form (`2026-11-13T10:00:06`).
+    """
     return (
         isinstance(body, dict)
         and isinstance(body.get('apiVersion'), str)
         and bool(body['apiVersion'].strip())
-        and isinstance(body.get('dataTimestamp'), str)
-        and bool(body['dataTimestamp'].strip())
+        and timestamp_problem(body.get('dataTimestamp'), 'dataTimestamp', offset='none') is None
     )
 
 

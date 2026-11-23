@@ -2679,6 +2679,65 @@ def test_failed_version_after_the_studies_blocks_freezing_until_a_later_run(tmp_
         ART.build_artifacts(frozen, **_build_kwargs())
 
 
+_BAD_DATA_TIMESTAMPS = ['not-a-timestamp', '2026-11-01T23:30:00-05:00', '2026-11-01T23:30:00Z', '2026-11-01']
+
+
+def _version_says(stamps: dict[int, Any]) -> A.Get:
+    """A transport whose n-th `/version` answer (1-based) carries `stamps[n]` as its `dataTimestamp`
+    (`2026-11-01T08:00:00` otherwise); other requests are served by the stub."""
+    n_version = [0]
+
+    def get(url: str, params: dict[str, Any] | None) -> A.Response:
+        if url == f'{A.CTGOV_API}/version':
+            n_version[0] += 1
+            stamp = stamps.get(n_version[0], '2026-11-01T08:00:00')
+            return F._json_resp({'apiVersion': '2.0.5', 'dataTimestamp': stamp})
+        return F.stub_get()(url, params)
+
+    return get
+
+
+@pytest.mark.parametrize('stamp', [*_BAD_DATA_TIMESTAMPS, '', None])
+def test_live_version_with_an_unreadable_data_timestamp_stops_the_run(tmp_path: Path, stamp: Any) -> None:
+    # On 7c380fc the first four were logged as successful observations and frozen: `not-a-timestamp`
+    # later stopped the build in `date.fromisoformat`, and a zoned value gave the wrong `as_of` day.
+    # The blank and null values were refused there too.
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(tmp_path / 'cache', 'ctgov'))
+    with pytest.raises(A.CTGovVersionUnavailable, match='before the study requests failed'):
+        A.fetch_ctgov_studies(['NCT09990001'], log, _version_says({1: stamp}), throttle)
+    (rec,) = [r for k, r in log.records.items() if k.startswith('ctgov/version/')]
+    assert rec['status'] == A.UNUSABLE_200 and rec['error'] == 'invalid_answer_shape_on_200'
+    assert not [k for k in log.records if k.startswith('ctgov/study/')]
+
+
+@pytest.mark.parametrize('stamp', _BAD_DATA_TIMESTAMPS)
+def test_end_version_with_an_unreadable_data_timestamp_blocks_freezing(tmp_path: Path, stamp: str) -> None:
+    cache = tmp_path / 'cache'
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(cache, 'ctgov'))
+    with pytest.raises(A.CTGovVersionUnavailable, match='after the study requests failed'):
+        A.fetch_ctgov_studies(['NCT09990001'], log, _version_says({2: stamp}), throttle)
+    with pytest.raises(A.CacheIntegrityError, match='after the last study answer'):
+        A.freeze_cache(cache, ['NCT09990001'], frozen_at=F.GENERATED_AT)
+
+
+def test_logged_success_with_an_unreadable_data_timestamp_counts_as_a_failed_observation() -> None:
+    # A line an earlier acquisition logged with status 200 and a zoned timestamp: the bracket check
+    # does not take it to cover the studies, and run.json `sources.ctgov` leaves it out.
+    def rec(key: str, stamp: str = '2026-11-01T08:00:00') -> dict[str, Any]:
+        body = {'apiVersion': '2.0.5', 'dataTimestamp': stamp} if 'version' in key else {}
+        return {'key': key, 'status': 200, 'fetched_at': '2026-11-01T10:00:00+00:00', 'body': body}
+
+    begin, study = rec('ctgov/version/x/begin'), rec('ctgov/study/NCT09990001')
+    zoned_end = rec('ctgov/version/x/end', '2026-11-01T23:30:00-05:00')
+    assert A.ctgov_version_bracket_problem([begin, study, rec('ctgov/version/x/end')]) is None
+    assert 'after the last study answer' in (A.ctgov_version_bracket_problem([begin, study, zoned_end]) or '')
+    info = ART._ctgov_version_info({r['key']: r for r in (begin, study, zoned_end)})
+    assert [v['key'] for v in info['versions']] == ['ctgov/version/x/begin']
+    assert info['data_timestamp_last'] == '2026-11-01T08:00:00'
+
+
 def test_version_bracket_rule_on_hand_made_logs() -> None:
     def rec(key: str, status: int | None = 200) -> dict[str, Any]:
         body = {'apiVersion': '2.0.5', 'dataTimestamp': '2026-11-01T08:00:00'} if 'version' in key else {}
