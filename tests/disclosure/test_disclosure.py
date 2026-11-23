@@ -981,3 +981,64 @@ def test_normalize_drug_term_strips_whole_strength_with_unit_denominator_and_per
     expected: str | None,
 ) -> None:
     assert A.normalize_drug_term(raw) == expected
+
+
+def test_statement_locator_that_does_not_resolve_is_never_quote_confirmed() -> None:
+    excerpt = 'primary endpoint met at Week 24'
+    lit_body = {
+        'hitCount': 1,
+        'resultList': {'result': [{'title': f'Trial NCT09990001: {excerpt}', 'abstractText': 'Background only.'}]},
+    }
+    fda_body = {
+        'meta': {'results': {'total': 1}},
+        'results': [{'application_number': 'NDA000001', 'sponsor_name': 'Fictional', 'note': excerpt}],
+    }
+    literature_records = {'literature/epmc_nct/NCT09990001': {'status': 200, 'body': lit_body}}
+    openfda_records = {'openfda/nct/NCT09990001': {'status': 200, 'body': fda_body}}
+
+    def stmt(sid: str, stype: str, locator: str) -> dict[str, str]:
+        return {
+            'statement_id': sid,
+            'nct_id': 'NCT09990001',
+            'source_type': stype,
+            'source_locator': locator,
+            'statement_date': '2021-01',
+            'verbatim_excerpt': excerpt,
+            'recorded_by': 'Curator',
+            'notes': 'test row',
+        }
+
+    rows = [
+        # The excerpt stands elsewhere in each body, but not at these locators.
+        stmt('lit-missing', 'literature_record', 'resultList.result[0].noSuchField'),
+        stmt('lit-unparseable', 'literature_record', 'pmid-not-a-path'),
+        stmt('lit-elsewhere', 'literature_record', 'resultList.result[0].abstractText'),
+        stmt('fda-missing', 'openfda_record', 'results[0].no_such_field'),
+        stmt('fda-elsewhere', 'openfda_record', 'results[0].sponsor_name'),
+        # Controls: the excerpt stands at the locator.
+        stmt('lit-at', 'literature_record', 'resultList.result[0].title'),
+        stmt('fda-at', 'openfda_record', 'results[0].note'),
+        # Source absent from the cache.
+        stmt('reg-absent', 'registry_record', 'protocolSection.descriptionModule.briefSummary'),
+    ]
+    links = E.build_statement_links(rows, 'b' * 64, {}, literature_records, openfda_records)
+    by_sid = {x['detail']['statement_id']: x for x in links}
+    expected = {
+        'lit-missing': 'locator_not_resolved',
+        'lit-unparseable': 'locator_not_resolved',
+        'lit-elsewhere': 'excerpt_not_found_at_locator',
+        'fda-missing': 'locator_not_resolved',
+        'fda-elsewhere': 'excerpt_not_found_at_locator',
+        'lit-at': 'quote_found_at_locator',
+        'fda-at': 'quote_found_at_locator',
+        'reg-absent': 'source_not_retrieved',
+    }
+    for sid, check in expected.items():
+        lnk = by_sid[sid]
+        assert lnk['detail']['statement_check'] == check, sid
+        confirmed = check == 'quote_found_at_locator'
+        assert (lnk['automated_validation'] == 'quote_confirmed_in_source') is confirmed, sid
+        if not confirmed:
+            assert lnk['automated_validation'] == 'not_validated', sid
+            assert lnk['validation_reasons'][0].startswith(f'{check}:'), sid
+        assert E.link_problems(lnk) == [], sid

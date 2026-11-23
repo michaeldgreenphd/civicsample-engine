@@ -976,39 +976,49 @@ def _locate_statement_source(
     ctgov_records: dict[str, dict[str, Any]],
     literature_records: dict[str, dict[str, Any]],
     openfda_records: dict[str, dict[str, Any]],
-) -> tuple[str | None, str | None]:
-    """Return `(retrieved_text, source_sha256)` when the statement's source stands in frozen cache."""
+) -> tuple[str | None, str | None, str]:
+    """Return `(text_at_locator, source_sha256, status)` for a statement's frozen source.
+
+    `status` is `resolved`, `locator_not_resolved` (the source is in the cache but `source_locator`
+    names no value in it), or `source_not_retrieved`. A locator that does not resolve never falls
+    back to the whole response: an excerpt found elsewhere in the body does not stand at the locator.
+    The one locator that names a whole record is `pmid:<PMID>` with no sub-path, which resolves to
+    that PMID's own PubMed esummary record.
+    """
     nct_id = row['nct_id'].strip()
     stype = row['source_type'].strip()
     locator = row['source_locator'].strip()
 
+    def _at_locator(rec: dict[str, Any], path: str) -> tuple[str | None, str | None, str]:
+        text = resolve_json_locator(rec['body'], path)
+        return text, _record_sha256(rec), 'resolved' if text is not None else 'locator_not_resolved'
+
     if stype == 'registry_record':
         rec = ctgov_records.get(f'ctgov/study/{nct_id}')
         if rec and rec.get('status') == 200 and isinstance(rec.get('body'), dict):
-            return resolve_json_locator(rec['body'], locator), _record_sha256(rec)
-        return None, None
+            return _at_locator(rec, locator)
+        return None, None, 'source_not_retrieved'
 
     if stype in ('literature_record', 'journal_article'):
         if locator.startswith('pmid:'):
             pmid, _, subpath = locator[5:].partition(':')
             rec = literature_records.get(f'literature/pubmed_pmid/{pmid}')
             if rec and rec.get('status') == 200 and isinstance(rec.get('body'), dict):
-                text = resolve_json_locator(rec['body'], subpath) if subpath else json.dumps(rec['body'])
-                return text, _record_sha256(rec)
+                if not subpath:
+                    return json.dumps(rec['body']), _record_sha256(rec), 'resolved'
+                return _at_locator(rec, subpath)
         rec = literature_records.get(f'literature/epmc_nct/{nct_id}')
         if rec and rec.get('status') == 200 and isinstance(rec.get('body'), dict):
-            text = resolve_json_locator(rec['body'], locator) or json.dumps(rec['body'])
-            return text, _record_sha256(rec)
-        return None, None
+            return _at_locator(rec, locator)
+        return None, None, 'source_not_retrieved'
 
     if stype == 'openfda_record':
         rec = openfda_records.get(f'openfda/nct/{nct_id}')
         if rec and rec.get('status') == 200 and isinstance(rec.get('body'), dict):
-            text = resolve_json_locator(rec['body'], locator) or json.dumps(rec['body'])
-            return text, _record_sha256(rec)
-        return None, None
+            return _at_locator(rec, locator)
+        return None, None, 'source_not_retrieved'
 
-    return None, None
+    return None, None, 'source_not_retrieved'
 
 
 def build_statement_links(
@@ -1032,17 +1042,36 @@ def build_statement_links(
         pub_date, prec = normalize_publication_date(sdate_raw)
         excerpt = row['verbatim_excerpt'].strip()
 
-        source_text, retrieved_sha = _locate_statement_source(row, ctgov_records, literature_records, openfda_records)
-        quote_found = (
-            source_text is not None
-            and squash_whitespace(excerpt).lower() in squash_whitespace(source_text).lower()
+        source_text, retrieved_sha, locate_status = _locate_statement_source(
+            row, ctgov_records, literature_records, openfda_records
         )
+        # The excerpt is compared only with the value at `source_locator`, never with the whole response.
+        # `check` records why it was or was not confirmed, in `validation_reasons` and
+        # `detail.statement_check`: quote_found_at_locator, excerpt_not_found_at_locator,
+        # locator_not_resolved, or source_not_retrieved.
+        if locate_status != 'resolved' or source_text is None:
+            check = 'source_not_retrieved' if locate_status == 'source_not_retrieved' else 'locator_not_resolved'
+        elif squash_whitespace(excerpt).lower() in squash_whitespace(source_text).lower():
+            check = 'quote_found_at_locator'
+        else:
+            check = 'excerpt_not_found_at_locator'
+        quote_found = check == 'quote_found_at_locator'
         validation = 'quote_confirmed_in_source' if quote_found else 'not_validated'
-        reason = (
-            'verbatim_excerpt confirmed at source_locator in frozen retrieved source'
-            if quote_found
-            else 'curated documentary statement; verbatim quote not verified against a frozen retrieved source'
-        )
+        reason = {
+            'quote_found_at_locator': 'verbatim_excerpt confirmed at source_locator in frozen retrieved source',
+            'excerpt_not_found_at_locator': (
+                'excerpt_not_found_at_locator: curated documentary statement; verbatim_excerpt does not '
+                'stand in the value at source_locator in the frozen retrieved source'
+            ),
+            'locator_not_resolved': (
+                'locator_not_resolved: curated documentary statement; source_locator names no value in the '
+                'frozen retrieved source, so the verbatim quote was not checked'
+            ),
+            'source_not_retrieved': (
+                'source_not_retrieved: curated documentary statement; verbatim quote not verified against a '
+                'frozen retrieved source'
+            ),
+        }[check]
         out.append(
             _new_link(
                 nct_id=nct_id,
@@ -1062,6 +1091,7 @@ def build_statement_links(
                     'source_type': stype,
                     'notes': row['notes'].strip(),
                     'source_sha256_basis': 'retrieved_source' if retrieved_sha else 'statements_csv',
+                    'statement_check': check,
                 },
             )
         )
