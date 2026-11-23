@@ -304,6 +304,7 @@ def test_weekly_record_projection_input() -> None:
         "lead_sponsor_name": "National Cancer Institute (NCI)",
         "collaborators": [],
         "study_sites": [{"facility": "Clinic 1", "country": "United States"}],
+        "countries": [{"country": "United States"}],
         "conditions": ["Breast Cancer"],
     }
     m = extract_trial_metrics(weekly)

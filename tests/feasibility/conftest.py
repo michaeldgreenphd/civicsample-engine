@@ -196,6 +196,7 @@ def make_weekly_record(nct_id: str = "NCT99100030", **overrides: Any) -> dict[st
         "lead_sponsor_name": "Pfizer",
         "collaborators": [],
         "study_sites": [{"facility": "Clinic 1", "country": "United States"}],
+        "countries": [{"country": "United States"}],
         "conditions": ["Hypertension"],
     }
     rec.update(overrides)

@@ -557,6 +557,7 @@ def _write_weekly_inputs(
             "lead_sponsor_name": "Pfizer",
             "collaborators": [],
             "study_sites": [{"facility": "Hospital A", "country": "United States"}],
+            "countries": [{"country": "United States"}],
             "conditions": ["Hypertension"],
             "primary_condition": "Cardiovascular",
             "secondary_condition": "Hypertension",
@@ -655,6 +656,7 @@ _SITE = {"facility": "Hospital A", "country": "United States"}
          "collaborators[0].name is list, not a string"),
         ("conditions", ["Hypertension", 7], "conditions[1] is int, not a string"),
         ("conditions", ["Hypertension", "   "], "conditions[1] is blank"),
+        ("conditions", [], "conditions is empty"),
     ],
 )
 def test_weekly_records_with_malformed_list_fields_are_refused(
@@ -671,8 +673,24 @@ def test_weekly_records_with_malformed_list_fields_are_refused(
     assert not out_dir.exists()
 
 
+@pytest.mark.parametrize("key", ["study_sites", "countries", "collaborators", "conditions"])
+def test_weekly_records_missing_a_list_field_are_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], key: str
+) -> None:
+    # On 5c3a588 a missing key was skipped and read as an empty list: no listed sites, no conditions.
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body["data"][2].pop(key)
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    out_dir = tmp_path / "refused"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 1
+    err = capsys.readouterr().err
+    assert f"(first: NCT99300003 has no {key} (src/utils.py always writes it))" in err, err
+    assert not out_dir.exists()
+
+
 def test_weekly_list_fields_the_extractor_writes_are_accepted(tmp_path: Path) -> None:
-    # Two sites, a countries list and a collaborator, as src/utils.py writes them; a missing key is read as before.
+    # Two sites, a countries list and a collaborator, as src/utils.py writes them.
     demog_path, mesh_path = _write_weekly_inputs(tmp_path)
     body = json.loads(gzip.decompress(demog_path.read_bytes()))
     body["data"][2].update(

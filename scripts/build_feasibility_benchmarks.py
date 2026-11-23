@@ -733,17 +733,22 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     `extract_trial_row` keeps only object sites, countries and collaborators and only string
     conditions, so a `null` or mistyped entry would drop out: fewer listed facilities, another
     footprint tier and more participants per facility, with the build still passing its contract. A
-    key that is present must hold a list (explicit `null` included) whose entries have their type,
-    with the fields read strings when present and conditions non-blank. A missing key is left as it
-    was read before. All 80,890 records of the 2026-11-08 weekly extraction hold the four as lists of
-    such entries (1,485,097 sites, 194,168 countries, 48,077 collaborators, 142,169 conditions).
+    key must be present (`src/utils.py` always writes all four, so a missing one, read as an empty
+    list, would turn a sited trial into one with no listed sites) and hold a list, explicit `null`
+    included, whose entries have their type, with the fields read strings when present.
+    `conditions` must be non-empty, as on the raw path, since an empty list reads as indication
+    Other. All 80,890 records of the 2026-11-08 weekly extraction carry the four keys as lists of such
+    entries (1,485,097 sites, 194,168 countries, 48,077 collaborators, 142,169 conditions), none with
+    an empty `conditions`.
     """
     for key, (entry_type, fields) in WEEKLY_LIST_FIELDS.items():
         if key not in rec:
-            continue
+            return f"has no {key} (src/utils.py always writes it)"
         value = rec[key]
         if not isinstance(value, list):
             return f"{key} is {type(value).__name__}, not a list"
+        if entry_type is str and not value:
+            return f"{key} is empty"
         for i, entry in enumerate(value):
             if not isinstance(entry, entry_type):
                 return f"{key}[{i}] is {type(entry).__name__}, not {'an object' if entry_type is dict else 'a string'}"
