@@ -976,10 +976,30 @@ def test_six_readability_statuses_disjoint(tmp_path: Path) -> None:
     assert e_clean.redaction.pages_header_stamp_only == ()
     assert e_clean.unreadable_recovery_bucket is None
 
-    # All 6 statuses verified disjoint
+    # 7. extraction_failed: the PDF downloads (sha256 known) but no provider can
+    # extract its pages, as on Linux with no page map.
+    nct_noext = "NCT99000006"
+    noext_bytes = _make_minimal_pdf("Protocol that cannot be extracted here")
+    noext_sha = di.sha256_bytes(noext_bytes)
+    u_noext = di.build_ctgov_large_doc_url(nct_noext, "Prot_000.pdf")
+    prof_noext = cli_mod.index_trial_from_study(
+        _make_study(
+            nct_noext,
+            [{"filename": "Prot_000.pdf", "hasProtocol": True, "hasSap": False}],
+        ),
+        cache_store=cache,
+        provider=di.FixturePageTextProvider(
+            {noext_sha: di.PageExtractionError("no provider on this platform")}
+        ),
+        session=_FakeSession({u_noext: _FakeResponse(200, noext_bytes)}),
+    )
+    assert prof_noext["readability_summary"] == "extraction_failed"
+
+    # All 7 statuses verified disjoint
     observed = {
         prof_empty["readability_summary"],
         prof_fail["readability_summary"],
+        prof_noext["readability_summary"],
         e_pure_scan.readability_status,
         e_punct.readability_status,
         e_partial_blank.readability_status,
@@ -1575,7 +1595,9 @@ def test_cli_ingest_census_offline_and_non_darwin_guard(
     )
     page_map = tmp_path / "pages.jsonl"
     page_map.write_text(
-        json.dumps({"sha256": sha, "pages": _clean_stat_pages(4)}) + "\n",
+        # Under the CLI firewall every page-map row must name its trial.
+        json.dumps({"nct_id": "NCT99000022", "sha256": sha, "pages": _clean_stat_pages(4)})
+        + "\n",
         encoding="utf-8",
     )
 
@@ -1739,7 +1761,9 @@ def test_load_manifest_rows_outcomes_beta_and_trials_shapes(tmp_path: Path) -> N
     )
     page_map = tmp_path / "pages.jsonl"
     page_map.write_text(
-        json.dumps({"sha256": sha, "pages": _clean_stat_pages(4)}) + "\n",
+        # Under the CLI firewall every page-map row must name its trial.
+        json.dumps({"nct_id": "NCT99000022", "sha256": sha, "pages": _clean_stat_pages(4)})
+        + "\n",
         encoding="utf-8",
     )
     index_out = tmp_path / "index.jsonl"
@@ -2270,3 +2294,597 @@ def test_fictional_nct99_ids_only_and_zero_cross_module_imports() -> None:
                     assert alias.name not in forbidden_modules and combined not in forbidden_modules, (
                         f"Forbidden cross-module import {combined!r} in {py_path.name}"
                     )
+
+
+# ---------------------------------------------------------------------------
+# Group 10: Fixes from the audit of be5f0c7
+# ---------------------------------------------------------------------------
+
+_AUDIT_NCT = "NCT99000099"
+_ALLOWED_NCT = "NCT99000031"
+
+
+def _write_jsonl(path: Path, rows: Sequence[Any]) -> Path:
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    return path
+
+
+def _write_cached_map(pages_dir: Path, payload: dict[str, Any]) -> Path:
+    sha = payload["sha256"]
+    path = pages_dir / sha[:2] / f"{sha}.json.gz"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(di.encode_gz_json(payload))
+    return path
+
+
+def _sentinel(path: Path) -> bytes:
+    data = b'{"nct_id":"NCT99000001","sentinel":true}\n'
+    path.write_bytes(data)
+    return data
+
+
+def test_page_map_audit_tag_refused_without_allowlist(tmp_path: Path) -> None:
+    """The audit-id check on page maps holds on its own, with no allowlist to back it up."""
+    sha = "a" * 64
+    pm = _write_jsonl(
+        tmp_path / "pm.jsonl",
+        [{"nct_id": _AUDIT_NCT, "filename": "Prot_000.pdf", "sha256": sha, "pages": ["Audit page"]}],
+    )
+    prov = di.JsonlPageMapProvider([pm], audit_nct_ids={_AUDIT_NCT}, allowed_nct_ids=None)
+    with pytest.raises(di.AuditHoldoutError):
+        prov.validate_loaded()
+    assert prov._by_sha_source == {}
+    with pytest.raises(di.AuditHoldoutError):
+        prov.extract_pages(sha256=sha)
+
+    # The same check guards cached maps, through the provider and the store.
+    pages_dir = tmp_path / "cache" / "pages"
+    _write_cached_map(
+        pages_dir,
+        {"sha256": sha, "byte_count": 10, "physical_pages": 1, "nct_id": _AUDIT_NCT, "pages": ["Audit page"]},
+    )
+    prov_cache = di.JsonlPageMapProvider(
+        cache_pages_dir=pages_dir, audit_nct_ids={_AUDIT_NCT}, allowed_nct_ids=None
+    )
+    with pytest.raises(di.AuditHoldoutError):
+        prov_cache.extract_pages(sha256=sha)
+    assert prov_cache._by_sha_source == {}
+    store = di.DocumentCacheStore(
+        tmp_path / "cache", tmp_path / "index.jsonl", audit_nct_ids={_AUDIT_NCT}
+    )
+    with pytest.raises(di.AuditHoldoutError):
+        store.load_cached_pages(sha)
+
+
+def test_page_map_untagged_rows_refused_whenever_firewall_configured(tmp_path: Path) -> None:
+    """A page map naming no trial is refused under a holdout set or allowlist, and served only with neither."""
+    sha = "b" * 64
+    pm = _write_jsonl(tmp_path / "pm.jsonl", [{"sha256": sha, "pages": ["Untagged page"]}])
+
+    for audit, allowed in (({_AUDIT_NCT}, None), (frozenset(), {_ALLOWED_NCT}), ({_AUDIT_NCT}, {_ALLOWED_NCT})):
+        prov = di.JsonlPageMapProvider([pm], audit_nct_ids=audit, allowed_nct_ids=allowed)
+        with pytest.raises(di.AuditHoldoutError, match="names no nct_id"):
+            prov.validate_loaded()
+        assert prov._by_sha_source == {}
+    # Not served to an allowed trial's lookup either.
+    prov_allowed = di.JsonlPageMapProvider([pm], allowed_nct_ids={_ALLOWED_NCT})
+    with pytest.raises(di.AuditHoldoutError):
+        prov_allowed.get_page_text(_ALLOWED_NCT, "Prot_000.pdf", sha, 1)
+
+    # With no firewall configured (library use) an untagged map still loads.
+    prov_open = di.JsonlPageMapProvider([pm])
+    assert prov_open.extract_pages(sha256=sha).pages == ("Untagged page",)
+
+    # in_audit is checked on its own: an untagged row passes the unconfigured
+    # firewall, so only the in_audit check can refuse it.
+    for bad_flag in (True, None, 0, "false"):
+        pm_flag = _write_jsonl(
+            tmp_path / f"pm_flag_{bad_flag}.jsonl",
+            [{"sha256": sha, "pages": ["Page"], "in_audit": bad_flag}],
+        )
+        with pytest.raises(di.AuditHoldoutError):
+            di.JsonlPageMapProvider([pm_flag]).validate_loaded()
+
+    # Under an allowlist a lookup must name its trial, even for a tagged row.
+    pm_tagged = _write_jsonl(
+        tmp_path / "pm_tagged.jsonl",
+        [{"nct_id": _ALLOWED_NCT, "filename": "Prot_000.pdf", "sha256": sha, "pages": ["Tagged page"]}],
+    )
+    prov_tagged = di.JsonlPageMapProvider([pm_tagged], allowed_nct_ids={_ALLOWED_NCT})
+    with pytest.raises(di.AuditHoldoutError, match="Explicit nct_id"):
+        prov_tagged.extract_pages(sha256=sha)
+    assert prov_tagged.extract_pages(sha256=sha, nct_id=_ALLOWED_NCT).pages == ("Tagged page",)
+    assert prov_tagged.get_page_text(_ALLOWED_NCT, "Prot_000.pdf", sha, 1) == "Tagged page"
+
+    # Cached maps: an untagged map is refused by a configured store and provider.
+    cache_dir = tmp_path / "cache"
+    open_store = di.DocumentCacheStore(cache_dir, tmp_path / "index.jsonl")
+    open_store.save_cached_pages(sha, byte_count=100, pages=["Cached untagged"])
+    assert open_store.load_cached_pages(sha) is not None
+    scoped_store = di.DocumentCacheStore(
+        cache_dir, tmp_path / "index.jsonl", allowed_nct_ids={_ALLOWED_NCT}
+    )
+    with pytest.raises(di.AuditHoldoutError, match="names no nct_id"):
+        scoped_store.load_cached_pages(sha)
+    with pytest.raises(di.AuditHoldoutError):
+        scoped_store.get_page_text(_ALLOWED_NCT, "Prot_000.pdf", sha, 1)
+    with pytest.raises(di.AuditHoldoutError, match="names no nct_id"):
+        di.JsonlPageMapProvider(
+            cache_pages_dir=cache_dir / "pages", audit_nct_ids={_AUDIT_NCT}
+        ).extract_pages(sha256=sha)
+
+    # Maps the store writes for a trial carry that trial's tag, so a configured
+    # store can reuse them.
+    tagged_sha = "c" * 64
+    provider = di.FixturePageTextProvider({tagged_sha: _clean_stat_pages(2)})
+    scoped_store.get_or_index_document(
+        sha256=tagged_sha,
+        byte_count=200,
+        provider=provider,
+        nct_id=_ALLOWED_NCT,
+        filename="Prot_000.pdf",
+    )
+    with gzip.open(scoped_store.page_map_path(tagged_sha), "rt", encoding="utf-8") as handle:
+        assert json.load(handle)["nct_id"] == _ALLOWED_NCT
+    reopened = di.DocumentCacheStore(
+        cache_dir, tmp_path / "index2.jsonl", audit_nct_ids={_AUDIT_NCT}, allowed_nct_ids={_ALLOWED_NCT}
+    )
+    assert reopened.load_cached_pages(tagged_sha) is not None
+    # The store never writes a map tagged with a holdout trial.
+    with pytest.raises(di.AuditHoldoutError):
+        di.DocumentCacheStore(
+            cache_dir, tmp_path / "index3.jsonl", audit_nct_ids={_AUDIT_NCT}
+        ).save_cached_pages("d" * 64, byte_count=1, pages=["x"], nct_id=_AUDIT_NCT)
+    assert not (cache_dir / "pages" / "dd").exists()
+
+
+def test_page_map_provider_strict_loading(tmp_path: Path) -> None:
+    """A missing page-map file and malformed rows raise; nothing is skipped silently."""
+    sha = "e" * 64
+    good = {"nct_id": _ALLOWED_NCT, "sha256": sha, "pages": ["One", "Two"]}
+
+    with pytest.raises(di.DocumentIndexerError, match="does not exist") as missing:
+        di.JsonlPageMapProvider([tmp_path / "typo.jsonl"]).validate_loaded()
+    # Not a PageExtractionError, which callers turn into a per-document record.
+    assert not isinstance(missing.value, di.PageExtractionError)
+
+    bad_rows: tuple[tuple[str, Any, type[Exception]], ...] = (
+        ("not_json", "{not json", di.DocumentIndexerError),
+        ("not_object", [1, 2], di.DocumentIndexerError),
+        ("bad_sha", {**good, "sha256": "xyz"}, di.CacheIntegrityError),
+        ("no_sha", {"nct_id": _ALLOWED_NCT, "pages": ["One"]}, di.CacheIntegrityError),
+        ("pages_str", {**good, "pages": "One"}, di.CacheIntegrityError),
+        ("pages_null_page", {**good, "pages": ["One", None]}, di.CacheIntegrityError),
+        ("bad_source", {**good, "text_source": 7}, di.CacheIntegrityError),
+        ("bad_filename", {**good, "filename": 7}, di.DocumentIndexerError),
+    )
+    for label, row, exc_type in bad_rows:
+        path = tmp_path / f"{label}.jsonl"
+        if isinstance(row, str):
+            path.write_text(row + "\n", encoding="utf-8")
+        else:
+            _write_jsonl(path, [good, row])
+        prov = di.JsonlPageMapProvider([path], allowed_nct_ids={_ALLOWED_NCT})
+        with pytest.raises(exc_type):
+            prov.validate_loaded()
+        assert prov._by_sha_source == {}, label
+
+    # Identical duplicates are harmless; conflicting duplicates raise.
+    dup_ok = _write_jsonl(tmp_path / "dup_ok.jsonl", [good, good])
+    assert di.JsonlPageMapProvider([dup_ok]).extract_pages(sha256=sha).physical_pages == 2
+    dup_bad = _write_jsonl(tmp_path / "dup_bad.jsonl", [good, {**good, "pages": ["Other"]}])
+    with pytest.raises(di.CacheIntegrityError, match="differ"):
+        di.JsonlPageMapProvider([dup_bad]).validate_loaded()
+
+    # A cached map filed under one digest must carry that digest.
+    pages_dir = tmp_path / "cache" / "pages"
+    path = pages_dir / sha[:2] / f"{sha}.json.gz"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(di.encode_gz_json({"sha256": "f" * 64, "pages": ["Wrong"]}))
+    with pytest.raises(di.CacheIntegrityError):
+        di.JsonlPageMapProvider(cache_pages_dir=pages_dir).extract_pages(sha256=sha)
+
+    # CLI: a mistyped --page-map-jsonl exits 1 and writes nothing.
+    manifest = _write_jsonl(tmp_path / "manifest.jsonl", [{"nct_id": _ALLOWED_NCT, "in_audit": False}])
+    census = _write_jsonl(
+        tmp_path / "census.jsonl",
+        [
+            {
+                "nct_id": _ALLOWED_NCT,
+                "filename": "Prot_000.pdf",
+                "url": di.build_ctgov_large_doc_url(_ALLOWED_NCT, "Prot_000.pdf"),
+                "http_status": 200,
+                "sha256": sha,
+                "bytes": 4096,
+                "doc_type": "protocol",
+                "retrieved_at": "2026-11-14T00:00:00Z",
+            }
+        ],
+    )
+    profiles_out = tmp_path / "profiles.jsonl"
+    rc = cli_mod.run_cli(
+        [
+            "--manifest", str(manifest),
+            "--ingest-census-jsonl", str(census),
+            "--page-map-jsonl", str(tmp_path / "typo.jsonl"),
+            "--cache-dir", str(tmp_path / "cli_cache"),
+            "--index-out", str(tmp_path / "cli_index.jsonl"),
+            "--profiles-out", str(profiles_out),
+            "--offline",
+        ]
+    )
+    assert rc == 1
+    assert not profiles_out.exists()
+    assert not (tmp_path / "cli_index.jsonl").exists()
+
+
+def test_cli_zero_trials_to_index_exits_2_and_leaves_profiles_untouched(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An all-audit manifest, --limit below 1, or an empty census leaves the profiles file as it was."""
+    profiles_out = tmp_path / "profiles.jsonl"
+    sentinel = _sentinel(profiles_out)
+    api_spy = _SpyAPIClient({})
+    http_spy = _FakeSession({})
+
+    def _run(extra: list[str], tag: str) -> int:
+        return cli_mod.run_cli(
+            extra
+            + [
+                "--cache-dir", str(tmp_path / f"cache_{tag}"),
+                "--index-out", str(tmp_path / f"index_{tag}.jsonl"),
+                "--profiles-out", str(profiles_out),
+            ],
+            api_client=api_spy,
+            session=http_spy,
+        )
+
+    all_audit = _write_jsonl(
+        tmp_path / "all_audit.jsonl",
+        [{"nct_id": _AUDIT_NCT, "in_audit": True}, {"nct_id": "NCT99000098", "in_audit": True}],
+    )
+    in_scope = _write_jsonl(tmp_path / "in_scope.jsonl", [{"nct_id": _ALLOWED_NCT, "in_audit": False}])
+    empty_census = tmp_path / "empty_census.jsonl"
+    empty_census.write_text("", encoding="utf-8")
+
+    cases = (
+        ("all_audit", ["--manifest", str(all_audit)]),
+        ("all_audit_census", ["--manifest", str(all_audit), "--ingest-census-jsonl", str(empty_census), "--offline"]),
+        ("limit_zero", ["--manifest", str(in_scope), "--limit", "0"]),
+        ("limit_negative", ["--manifest", str(in_scope), "--limit", "-1"]),
+        ("limit_zero_census", ["--manifest", str(in_scope), "--ingest-census-jsonl", str(empty_census), "--limit", "0", "--offline"]),
+        ("empty_census", ["--manifest", str(in_scope), "--ingest-census-jsonl", str(empty_census), "--offline"]),
+    )
+    for tag, extra in cases:
+        rc = _run(extra, tag)
+        err = capsys.readouterr().err
+        assert rc == 2, tag
+        assert profiles_out.read_bytes() == sentinel, tag
+        assert not (tmp_path / f"index_{tag}.jsonl").exists(), tag
+        assert not (tmp_path / f"cache_{tag}").exists(), tag
+        assert "NCT99000099" not in err and "NCT99000098" not in err, tag
+    assert api_spy.requested_ncts == []
+    assert http_spy.requested_urls == []
+
+
+def test_downloaded_unextractable_pdf_is_extraction_failed_with_digest_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A PDF that downloads but cannot be extracted keeps its sha256 and size and has no page count."""
+    pdf_bytes = _make_minimal_pdf("Downloaded protocol")
+    pdf_sha = di.sha256_bytes(pdf_bytes)
+    nct = _ALLOWED_NCT
+    url = di.build_ctgov_large_doc_url(nct, "Prot_000.pdf")
+    url_missing = di.build_ctgov_large_doc_url(nct, "SAP_001.pdf")
+    study = _make_study(
+        nct,
+        [
+            {"filename": "Prot_000.pdf", "hasProtocol": True, "hasSap": False},
+            {"filename": "SAP_001.pdf", "hasProtocol": False, "hasSap": True},
+        ],
+    )
+    session = _FakeSession({url: _FakeResponse(200, pdf_bytes), url_missing: _FakeResponse(404, b"")})
+    cache = di.DocumentCacheStore(tmp_path / "cache", tmp_path / "index.jsonl")
+    profile = cli_mod.index_trial_from_study(
+        study,
+        cache_store=cache,
+        provider=di.ChainedPageTextProvider([], cache_store=cache),
+        session=session,
+    )
+    docs = {d["filename"]: d for d in profile["documents"]}
+    noext = docs["Prot_000.pdf"]
+    assert noext["readability_status"] == "extraction_failed"
+    assert noext["sha256"] == pdf_sha
+    assert noext["bytes"] == len(pdf_bytes)
+    assert noext["http_status"] == 200
+    assert noext["physical_pages"] is None
+    assert noext["download_error"] is None
+    assert "page_extraction_error" in (noext["extraction_error"] or "")
+    failed = docs["SAP_001.pdf"]
+    assert failed["readability_status"] == "download_failed"
+    assert failed["physical_pages"] is None
+    assert failed["extraction_error"] is None
+    # Unknown page counts make the total unknown rather than an undercount.
+    assert profile["document_badge"]["total_physical_pages"] is None
+    legacy = di.to_legacy_census_document_row(noext)
+    assert (legacy["sha256"], legacy["bytes"], legacy["physical_pages"]) == (pdf_sha, len(pdf_bytes), None)
+
+    # Trial summary: all extraction_failed -> extraction_failed.
+    assert di.summarize_trial_readability([noext]) == "extraction_failed"
+    assert di.summarize_trial_readability([failed]) == "download_failed"
+
+    # The record builder refuses an extraction_failed record without the digest.
+    with pytest.raises(di.CacheIntegrityError):
+        di.build_trial_document_record(
+            nct_id=nct, filename="Prot_000.pdf", doc_type="protocol", url=url,
+            http_status=200, entry=None, extraction_error="no provider",
+        )
+    with pytest.raises(di.DocumentIndexerError):
+        di.build_trial_document_record(
+            nct_id=nct, filename="Prot_000.pdf", doc_type="protocol", url=url,
+            http_status=200, entry=None, extraction_error="no provider",
+            download_error="http_status_404", sha256=pdf_sha, byte_count=len(pdf_bytes),
+        )
+
+    # Through the CLI on a platform with no PDFKit and no page map: exit 0,
+    # the record says extraction_failed, and stderr counts it.
+    monkeypatch.setattr(di.sys, "platform", "linux")
+    manifest = _write_jsonl(tmp_path / "manifest.jsonl", [{"nct_id": nct, "in_audit": False}])
+    profiles_out = tmp_path / "profiles.jsonl"
+    rc = cli_mod.run_cli(
+        [
+            "--manifest", str(manifest),
+            "--cache-dir", str(tmp_path / "cli_cache"),
+            "--index-out", str(tmp_path / "cli_index.jsonl"),
+            "--profiles-out", str(profiles_out),
+            "--rate-limit-sec", "0",
+        ],
+        api_client=_SpyAPIClient({nct: study}),
+        session=_FakeSession({url: _FakeResponse(200, pdf_bytes), url_missing: _FakeResponse(404, b"")}),
+    )
+    err = capsys.readouterr().err
+    assert rc == 0
+    written = json.loads(profiles_out.read_text(encoding="utf-8"))
+    statuses = sorted(d["readability_status"] for d in written["documents"])
+    assert statuses == ["download_failed", "extraction_failed"]
+    assert "download_failed=1, extraction_failed=1" in err
+
+
+def test_legacy_census_ingest_refuses_rows_missing_provenance(tmp_path: Path) -> None:
+    """A census row without retrieved_at, doc_type or url is refused, not filled in."""
+    sha = "9" * 64
+    full_row = {
+        "nct_id": _ALLOWED_NCT,
+        "filename": "Prot_000.pdf",
+        "url": di.build_ctgov_large_doc_url(_ALLOWED_NCT, "Prot_000.pdf"),
+        "http_status": 200,
+        "sha256": sha,
+        "bytes": 4096,
+        "doc_type": "sap",
+        "retrieved_at": "2026-11-14T00:00:00Z",
+    }
+    provider = di.FixturePageTextProvider({sha: _clean_stat_pages(4)})
+    for missing in ("retrieved_at", "doc_type", "url"):
+        for variant, row in (
+            ("absent", {k: v for k, v in full_row.items() if k != missing}),
+            ("empty", {**full_row, missing: ""}),
+            ("null", {**full_row, missing: None}),
+        ):
+            census = _write_jsonl(tmp_path / f"census_{missing}_{variant}.jsonl", [row])
+            index_path = tmp_path / f"index_{missing}_{variant}.jsonl"
+            cache = di.DocumentCacheStore(tmp_path / f"cache_{missing}_{variant}", index_path)
+            with pytest.raises(di.DocumentIndexerError, match=missing):
+                di.ingest_legacy_census_documents(
+                    census,
+                    cache_store=cache,
+                    provider=provider,
+                    allowed_nct_ids={_ALLOWED_NCT},
+                    extracted_at="2099-01-01T00:00:00+00:00",
+                )
+            assert not index_path.exists()
+    assert provider.calls == []
+
+    # A complete row keeps the census's own values; the ingest time is only extracted_at.
+    census = _write_jsonl(tmp_path / "census_full.jsonl", [full_row])
+    cache = di.DocumentCacheStore(tmp_path / "cache_full", tmp_path / "index_full.jsonl")
+    _, profiles = di.ingest_legacy_census_documents(
+        census,
+        cache_store=cache,
+        provider=provider,
+        allowed_nct_ids={_ALLOWED_NCT},
+        extracted_at="2099-01-01T00:00:00+00:00",
+    )
+    doc = profiles[0]["documents"][0]
+    assert doc["retrieved_at"] == "2026-11-14T00:00:00Z"
+    assert doc["doc_type"] == "sap"
+    assert doc["url"] == full_row["url"]
+    assert profiles[0]["extracted_at"] == "2099-01-01T00:00:00+00:00"
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+         "-c", "commit.gpgsign=false", *args],
+        cwd=str(cwd), capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+
+def test_pipeline_commit_names_this_checkout_and_reports_why_when_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """pipeline_commit is this repository's commit whatever the cwd; a null stamp carries a reason."""
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    other_repo = tmp_path / "other_repo"
+    other_repo.mkdir()
+    _git(other_repo, "init", "-q")
+    _git(other_repo, "commit", "-q", "--allow-empty", "-m", "unrelated")
+    other_commit = _git(other_repo, "rev-parse", "HEAD")
+
+    own = subprocess.run(
+        ["git", "-C", str(di.PIPELINE_REPO_ROOT), "rev-parse", "HEAD"],
+        capture_output=True, text=True, check=False,
+    )
+    not_a_repo = tmp_path / "not_a_repo"
+    not_a_repo.mkdir()
+    for cwd in (other_repo, not_a_repo):
+        monkeypatch.chdir(cwd)
+        commit, reason = di.resolve_pipeline_commit()
+        assert commit != other_commit
+        assert di.safe_pipeline_commit() == commit
+        if own.returncode == 0:
+            assert (commit, reason) == (own.stdout.strip(), None)
+        else:
+            assert commit is None and reason
+
+    commit, reason = di.resolve_pipeline_commit(not_a_repo)
+    assert commit is None
+    assert reason is not None and "git rev-parse HEAD failed" in reason
+
+    monkeypatch.setenv("GITHUB_SHA", "f" * 40)
+    assert di.resolve_pipeline_commit(not_a_repo) == ("f" * 40, None)
+    monkeypatch.delenv("GITHUB_SHA")
+
+    # The CLI keeps a null stamp but says why on stderr.
+    monkeypatch.setattr(cli_mod, "_REPO_ROOT", not_a_repo)
+    assert cli_mod._resolve_pipeline_commit() is None
+    assert "pipeline_commit will be recorded as null" in capsys.readouterr().err
+
+
+def test_firewall_messages_never_name_holdout_ids(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """AuditHoldoutError and InvalidNctIdError messages report positions and counts, never ids."""
+    messages: list[str] = []
+
+    def _capture(fn: Any, exc_type: type[Exception] = di.AuditHoldoutError) -> None:
+        with pytest.raises(exc_type) as info:
+            fn()
+        messages.append(str(info.value))
+
+    audit = {_AUDIT_NCT}
+    _capture(lambda: di.enforce_not_in_audit(_AUDIT_NCT, audit_nct_ids=audit))
+    _capture(lambda: di.enforce_not_in_audit(_AUDIT_NCT, in_audit=True))
+    _capture(lambda: di.enforce_not_in_audit(_AUDIT_NCT, in_audit=None))
+    _capture(lambda: di.enforce_not_in_audit(_AUDIT_NCT, allowed_nct_ids={_ALLOWED_NCT}))
+    _capture(lambda: di.enforce_not_in_audit(_ALLOWED_NCT, audit_nct_ids=audit, allowed_nct_ids=audit))
+    _capture(lambda: di.validate_nct_id(_AUDIT_NCT + " "), di.InvalidNctIdError)
+    _capture(lambda: di.validate_study_payload_nct_id(_make_study(_AUDIT_NCT, []), expected_nct_id=_ALLOWED_NCT))
+    payload = _make_study(_AUDIT_NCT, [])
+    payload["in_audit"] = True
+    _capture(lambda: di.validate_study_payload_nct_id(payload))
+
+    pm = _write_jsonl(tmp_path / "pm.jsonl", [{"nct_id": _AUDIT_NCT, "sha256": "1" * 64, "pages": ["x"]}])
+    _capture(lambda: di.JsonlPageMapProvider([pm], audit_nct_ids=audit).validate_loaded())
+    _capture(lambda: di.JsonlPageMapProvider([pm], allowed_nct_ids={_ALLOWED_NCT}).validate_loaded())
+    _capture(lambda: di.DocumentCacheStore(tmp_path / "c", tmp_path / "i.jsonl", audit_nct_ids=audit, allowed_nct_ids=audit))
+
+    census = _write_jsonl(tmp_path / "census.jsonl", [{"nct_id": _AUDIT_NCT, "filename": "Prot_000.pdf"}])
+    store = di.DocumentCacheStore(tmp_path / "c2", tmp_path / "i2.jsonl")
+    _capture(lambda: di.ingest_legacy_census_documents(census, cache_store=store, audit_nct_ids=audit))
+    _capture(lambda: di.ingest_legacy_census_documents(census, cache_store=store, allowed_nct_ids={_ALLOWED_NCT}))
+
+    m_flag = _write_jsonl(tmp_path / "m_flag.jsonl", [{"nct_id": _AUDIT_NCT, "in_audit": "true"}])
+    _capture(lambda: cli_mod.load_manifest_rows(m_flag))
+    m_dup = _write_jsonl(
+        tmp_path / "m_dup.jsonl",
+        [{"nct_id": _AUDIT_NCT, "in_audit": True}, {"nct_id": _AUDIT_NCT, "in_audit": False}],
+    )
+    _capture(lambda: cli_mod.load_manifest_rows(m_dup))
+    m_ok = _write_jsonl(
+        tmp_path / "m_ok.jsonl",
+        [{"nct_id": _ALLOWED_NCT, "in_audit": False}, {"nct_id": _AUDIT_NCT, "in_audit": True}],
+    )
+    _capture(lambda: cli_mod.load_manifest_rows(m_ok, audit_nct_ids={"NCT99000098"}))
+    m_nonobj = tmp_path / "m_nonobj.json"
+    m_nonobj.write_text(json.dumps({"data": [_AUDIT_NCT]}), encoding="utf-8")
+    _capture(lambda: cli_mod.load_manifest_rows(m_nonobj))
+    m_badid = _write_jsonl(tmp_path / "m_badid.jsonl", [{"nct_id": _AUDIT_NCT + "​", "in_audit": True}])
+    _capture(lambda: cli_mod.load_manifest_rows(m_badid), di.InvalidNctIdError)
+
+    assert len(messages) == 18
+    for msg in messages:
+        assert re.search(r"NCT[0-9]{8}", msg) is None, msg
+
+    # End to end: an explicit holdout --nct-id exits 2 without echoing the id.
+    rc = cli_mod.run_cli(
+        [
+            "--manifest", str(m_ok),
+            "--nct-id", _AUDIT_NCT,
+            "--cache-dir", str(tmp_path / "cli_cache"),
+            "--index-out", str(tmp_path / "cli_index.jsonl"),
+            "--profiles-out", str(tmp_path / "cli_profiles.jsonl"),
+        ],
+        api_client=_SpyAPIClient({}),
+        session=_FakeSession({}),
+    )
+    assert rc == 2
+    assert _AUDIT_NCT not in capsys.readouterr().err
+
+
+class _FlakyAPIClient(_SpyAPIClient):
+    def __init__(self, studies: dict[str, dict[str, Any]], failing: dict[str, Exception]) -> None:
+        super().__init__(studies)
+        self._failing = failing
+
+    def get_study(self, nct_id: str) -> dict[str, Any]:
+        self.requested_ncts.append(nct_id)
+        if nct_id in self._failing:
+            raise self._failing[nct_id]
+        return self._studies[nct_id]
+
+
+def test_cli_fetch_error_skips_one_trial_and_keeps_the_rest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A 404 or network error for one trial is reported and skipped; the batch's other profiles are written."""
+    ok_a, bad, ok_b = "NCT99000032", "NCT99000033", "NCT99000034"
+    manifest = _write_jsonl(
+        tmp_path / "manifest.jsonl",
+        [{"nct_id": n, "in_audit": False} for n in (ok_a, bad, ok_b)] + [{"nct_id": _AUDIT_NCT, "in_audit": True}],
+    )
+    profiles_out = tmp_path / "profiles.jsonl"
+    sentinel = _sentinel(profiles_out)
+
+    def _run(client: _FlakyAPIClient) -> int:
+        return cli_mod.run_cli(
+            [
+                "--manifest", str(manifest),
+                "--cache-dir", str(tmp_path / "cache"),
+                "--index-out", str(tmp_path / "index.jsonl"),
+                "--profiles-out", str(profiles_out),
+                "--rate-limit-sec", "0",
+            ],
+            api_client=client,
+            session=_FakeSession({}),
+        )
+
+    import requests
+
+    flaky = _FlakyAPIClient(
+        {ok_a: _make_study(ok_a, []), ok_b: _make_study(ok_b, [])},
+        {bad: requests.HTTPError("404 Client Error: Not Found")},
+    )
+    rc = _run(flaky)
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert flaky.requested_ncts == [ok_a, bad, ok_b]
+    written = [json.loads(line) for line in profiles_out.read_text(encoding="utf-8").splitlines()]
+    assert [p["nct_id"] for p in written] == [ok_a, ok_b]
+    assert "FETCH ERRORS: 1 of 3" in err and bad in err
+
+    # Every fetch failing writes no profiles file at all.
+    sentinel = _sentinel(profiles_out)
+    all_down = _FlakyAPIClient(
+        {},
+        {n: requests.ConnectionError("connection refused") for n in (ok_a, bad, ok_b)},
+    )
+    rc_all = _run(all_down)
+    err_all = capsys.readouterr().err
+    assert rc_all == 1
+    assert profiles_out.read_bytes() == sentinel
+    assert "FETCH ERRORS: 3 of 3" in err_all and "no profiles file was written" in err_all
+
+    # A firewall error mid-batch still aborts the whole run with nothing written.
+    spoof = _FlakyAPIClient({ok_a: _make_study(ok_a, []), bad: _make_study(_AUDIT_NCT, []), ok_b: _make_study(ok_b, [])}, {})
+    assert _run(spoof) == 2
+    assert profiles_out.read_bytes() == sentinel

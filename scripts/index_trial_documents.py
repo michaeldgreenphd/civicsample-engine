@@ -25,7 +25,17 @@ Hard safety guarantees:
   the ``nctId`` returned inside CT.gov ``study`` payloads).
 - Running with no target arguments (neither ``--manifest``, ``--nct-id``, nor
   ``--ingest-census-jsonl``) prints usage to ``stderr`` and exits with status 2
-  without creating, touching, or truncating output or cache paths.
+  without creating, touching, or truncating output or cache paths. So does any
+  run left with no trial to index: a manifest whose rows are all
+  ``in_audit=True``, ``--limit`` below 1, or an empty census file.
+- A trial whose CT.gov record cannot be fetched (HTTP or network error) is
+  named on ``stderr`` and skipped; the other trials' profiles are written and
+  the run exits 1.
+- ``pipeline_commit`` is the commit of this script's checkout (or
+  ``GITHUB_SHA``), whatever the working directory; when it cannot be resolved
+  it is recorded as null and the reason is printed to ``stderr``.
+- Firewall errors never print a trial id: they give the file, line or row
+  index, and counts.
 - Enforces a global inter-request rate-limit lock (<cache-dir>/.ctgov_rate_limit.lock)
   defaulting to 0.55s across processes.
 - Downloads PDFs atomically via .part staging and verifies the %PDF- header and
@@ -44,6 +54,8 @@ import sys
 import time
 from typing import AbstractSet, Any, Iterable, Mapping, Sequence
 
+import requests
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - non-POSIX fallback
@@ -60,6 +72,7 @@ from src.document_indexer import (  # noqa: E402
     DocumentCacheStore,
     DocumentIndexerError,
     DocumentPageExtractor,
+    InvalidNctIdError,
     JsonlPageMapProvider,
     MacOSPDFKitProvider,
     PageExtractionError,
@@ -72,7 +85,7 @@ from src.document_indexer import (  # noqa: E402
     extract_in_scope_large_docs,
     has_pdf_magic,
     ingest_legacy_census_documents,
-    safe_pipeline_commit,
+    resolve_pipeline_commit,
     sha256_file,
     utc_now_iso,
     validate_nct_id,
@@ -87,16 +100,23 @@ DEFAULT_TIMEOUT_SEC = 60
 
 
 def _resolve_pipeline_commit() -> str | None:
-    """Resolve current pipeline commit via src.utils.pipeline_commit with graceful fallback."""
-    try:
-        from src.utils import pipeline_commit as _utils_pipeline_commit
+    """Return the commit of the checkout this script belongs to, warning on stderr when there is none.
 
-        commit = _utils_pipeline_commit()
-        if commit:
-            return str(commit)
-    except Exception:
-        pass
-    return safe_pipeline_commit()
+    ``resolve_pipeline_commit`` asks git about this script's repository
+    (``_REPO_ROOT``), not the working directory: ``src.utils.pipeline_commit``
+    runs ``git rev-parse HEAD`` wherever the process happens to be, so a run
+    from outside a checkout stamped None with no reason and a run from inside
+    another repository stamped that repository's commit. A None stamp is kept
+    (artifacts stay writable outside a checkout, as ``src.utils`` intends), but
+    its reason is printed so the gap is visible in the run log.
+    """
+    commit, reason = resolve_pipeline_commit(_REPO_ROOT)
+    if commit is None:
+        print(
+            f"WARNING: pipeline_commit will be recorded as null: {reason}",
+            file=sys.stderr,
+        )
+    return commit
 
 
 class GlobalRateLimiter:
@@ -324,10 +344,12 @@ def load_manifest_rows(
         if not isinstance(seq, list):
             raise AuditHoldoutError(f"Manifest {path} field {label!r} must be a JSON list.")
         out: list[Mapping[str, Any]] = []
-        for item in seq:
+        for index, item in enumerate(seq):
             if not isinstance(item, Mapping):
+                # The row itself is not printed: it may hold a holdout id.
                 raise AuditHoldoutError(
-                    f"Manifest {path} contains non-object row {item!r} in {label!r}."
+                    f"Manifest {path} row {index} in {label!r} is "
+                    f"{type(item).__name__}, not a JSON object."
                 )
             out.append(item)
         return out
@@ -389,18 +411,24 @@ def load_manifest_rows(
     seen_flags: dict[str, bool] = {}
     has_audit_rows = False
 
-    for row in rows:
-        nct_id = validate_nct_id(row.get("nct_id"))
+    # Messages below name the row's position, never its id: a row whose flag is
+    # missing, malformed or contradicted may be a holdout trial's.
+    for index, row in enumerate(rows):
+        try:
+            nct_id = validate_nct_id(row.get("nct_id"))
+        except InvalidNctIdError as exc:
+            raise InvalidNctIdError(f"Manifest {path} row {index}: {exc}") from None
         if "in_audit" not in row or type(row.get("in_audit")) is not bool:
             raise AuditHoldoutError(
-                f"Manifest row for {nct_id} has non-bool or missing in_audit={row.get('in_audit')!r}; "
-                "explicit boolean required."
+                f"Manifest {path} row {index} has non-bool or missing in_audit "
+                f"(type={type(row.get('in_audit')).__name__}); explicit boolean required."
             )
         flag: bool = row["in_audit"]
         if nct_id in seen_flags:
             if seen_flags[nct_id] != flag:
                 raise AuditHoldoutError(
-                    f"Manifest {path} contains conflicting duplicate in_audit values for {nct_id}."
+                    f"Manifest {path} row {index} repeats an earlier trial with a "
+                    "conflicting in_audit value."
                 )
             continue
         seen_flags[nct_id] = flag
@@ -418,7 +446,8 @@ def load_manifest_rows(
         missing_from_caller = audit_ids - caller_audit
         if missing_from_caller:
             raise AuditHoldoutError(
-                f"Caller audit_nct_ids omits manifest in_audit=True trials: {sorted(missing_from_caller)}"
+                f"Caller audit_nct_ids omits {len(missing_from_caller)} of the manifest's "
+                f"{len(audit_ids)} in_audit=True trial(s)."
             )
         audit_ids |= set(caller_audit)
 
@@ -556,8 +585,6 @@ def index_trial_from_study(
                 download_error = "offline_cache_miss"
             else:
                 if session is None:
-                    import requests  # lazy import
-
                     session = requests.Session()
                     session.headers.update({"User-Agent": USER_AGENT})
                 dl = download_pdf_atomic(
@@ -632,6 +659,11 @@ def index_trial_from_study(
                 allowed_nct_ids=effective_allowed,
             )
         except PageExtractionError as exc:
+            # The bytes are in hand (resolved_sha / resolved_bytes are known);
+            # only page extraction failed (on Linux with no page map, every
+            # uncached document lands here). That is extraction_failed, kept
+            # apart from download_failed, with the digest and size recorded and
+            # no page count.
             trial_records.append(
                 build_trial_document_record(
                     nct_id=study_nct_id,
@@ -640,7 +672,9 @@ def index_trial_from_study(
                     url=url,
                     http_status=http_status,
                     entry=None,
-                    download_error=f"page_extraction_error: {exc}",
+                    extraction_error=f"page_extraction_error: {exc}",
+                    sha256=resolved_sha,
+                    byte_count=resolved_bytes,
                     api_doc_date=api_doc_date,
                     upload_date=upload_date,
                     primary_completion_date=primary_completion_date,
@@ -883,6 +917,44 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return build_arg_parser().parse_args(argv)
 
 
+def _report_unindexed_documents(profiles: Sequence[TrialDocumentProfile]) -> None:
+    """Print to stderr how many documents ended download_failed or extraction_failed.
+
+    These are per-document states recorded in the profiles, and the run still
+    exits 0 for them, as it does for a trial whose posted document is a scan.
+    The count goes to the run log so that, for example, a Linux run with no page
+    map (every uncached document extraction_failed) is visible without opening
+    the output. Counts only: no trial ids.
+    """
+    counts = {"download_failed": 0, "extraction_failed": 0}
+    total = 0
+    for profile in profiles:
+        for doc in profile["documents"]:
+            total += 1
+            status = doc["readability_status"]
+            if status in counts:
+                counts[status] += 1
+    not_indexed = counts["download_failed"] + counts["extraction_failed"]
+    if not_indexed:
+        print(
+            f"WARNING: {not_indexed} of {total} in-scope document(s) were not indexed "
+            f"(download_failed={counts['download_failed']}, "
+            f"extraction_failed={counts['extraction_failed']}); each record says why.",
+            file=sys.stderr,
+        )
+
+
+def _refuse_nothing_to_index(message: str) -> int:
+    """Report a run that has no trial to index, touch no output, and return exit status 2.
+
+    A run with nothing to index used to write an empty profiles file over the
+    previous one and exit 0, the failure the no-target-arguments guard (D1)
+    exists to prevent. Every zero-trial path now ends here instead.
+    """
+    print(f"NOTHING TO INDEX: {message}; no output or cache path was written.", file=sys.stderr)
+    return 2
+
+
 def run_cli(
     argv: Sequence[str] | None = None,
     *,
@@ -890,7 +962,14 @@ def run_cli(
     session: Any | None = None,
     provider: DocumentPageExtractor | None = None,
 ) -> int:
-    """Execute the document pre-indexer CLI. Returns 0 on success, 2 on AuditHoldoutError/usage, 1 on other errors."""
+    """Execute the document pre-indexer CLI.
+
+    Exit status: 0 on success; 2 on usage errors, ``AuditHoldoutError``, or a
+    run with no trial to index (no output is written); 1 on other indexer
+    errors, and on a live run in which one or more trials' CT.gov records could
+    not be fetched (the other trials' profiles are still written, and the
+    failed trials are named on stderr).
+    """
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
@@ -900,6 +979,15 @@ def run_cli(
         print(
             "index_trial_documents.py: error: at least one target argument "
             "(--manifest, --nct-id, or --ingest-census-jsonl) is required.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.limit is not None and args.limit < 1:
+        # --limit 0 selected nothing and still truncated the profiles file; a
+        # negative value silently dropped trials from the end of the list.
+        parser.print_usage(sys.stderr)
+        print(
+            "index_trial_documents.py: error: --limit must be a positive integer.",
             file=sys.stderr,
         )
         return 2
@@ -935,6 +1023,13 @@ def run_cli(
                 allowed_nct_ids=in_scope_nct_ids,
             )
 
+        # A manifest whose every row is in_audit=True leaves nothing any mode
+        # may index. Refuse before a cache store or provider is built.
+        if not in_scope_nct_ids:
+            return _refuse_nothing_to_index(
+                f"the manifest lists 0 in-scope trials ({len(audit_nct_ids)} in_audit=True)"
+            )
+
         target_ncts: list[str] = []
         if args.ingest_census_jsonl is None:
             if explicit_nct_ids:
@@ -943,7 +1038,9 @@ def run_cli(
                 target_ncts = [validate_nct_id(row["nct_id"]) for row in manifest_rows]
             if args.limit is not None:
                 target_ncts = target_ncts[: args.limit]
-            if target_ncts and args.offline:
+            if not target_ncts:
+                return _refuse_nothing_to_index("no trial was selected")
+            if args.offline:
                 raise DocumentIndexerError(
                     "Live CT.gov API fetching is disabled under --offline; "
                     "use --ingest-census-jsonl for offline indexing."
@@ -987,12 +1084,15 @@ def run_cli(
             )
             if args.limit is not None:
                 census_profiles = census_profiles[: args.limit]
+            if not census_profiles:
+                # An empty census file yields no rows, so nothing was indexed
+                # or cached; the previous profiles file is left as it was.
+                return _refuse_nothing_to_index(
+                    "the census documents file holds 0 rows"
+                )
             profiles.extend(census_profiles)
             write_profiles_jsonl(args.profiles_out, profiles)
-            return 0
-
-        if not target_ncts:
-            write_profiles_jsonl(args.profiles_out, profiles)
+            _report_unindexed_documents(profiles)
             return 0
 
         rate_limiter = GlobalRateLimiter(
@@ -1004,8 +1104,6 @@ def run_cli(
 
             api_client = CTGovAPIClient(rate_limit_delay=args.rate_limit_sec)
         if session is None:
-            import requests  # lazy import
-
             session = requests.Session()
             session.headers.update({"User-Agent": USER_AGENT})
 
@@ -1018,30 +1116,55 @@ def run_cli(
             except ImportError:
                 iterator = target_ncts
 
+        # One trial's CT.gov record failing to arrive (a 404, a 5xx, a dropped
+        # connection) no longer aborts the batch: the trial is named in
+        # fetch_failures and skipped, the rest are indexed, and the run exits 1.
+        # Only network/HTTP errors are caught. A firewall or integrity error
+        # still stops the whole run before anything is written.
+        fetch_failures: list[tuple[str, str]] = []
         for nct in iterator:
-            profile = fetch_and_index_trial(
-                nct,
-                api_client=api_client,
-                cache_store=cache_store,
-                provider=active_provider,
-                session=session,
-                local_pdf_dir=args.local_pdf_dir,
-                rate_limiter=rate_limiter,
-                offline=args.offline,
-                force_download=args.force_download,
-                reparse_cached_pages=args.reparse_cached_pages,
-                min_selected_pages=args.min_selected_pages,
-                max_selected_pages=args.max_selected_pages,
-                extracted_at=stamp,
-                pipeline_commit=commit,
-                indexer_rules_version=INDEXER_RULES_VERSION,
-                in_audit=False,
-                audit_nct_ids=audit_nct_ids,
-                allowed_nct_ids=in_scope_nct_ids,
-            )
+            try:
+                profile = fetch_and_index_trial(
+                    nct,
+                    api_client=api_client,
+                    cache_store=cache_store,
+                    provider=active_provider,
+                    session=session,
+                    local_pdf_dir=args.local_pdf_dir,
+                    rate_limiter=rate_limiter,
+                    offline=args.offline,
+                    force_download=args.force_download,
+                    reparse_cached_pages=args.reparse_cached_pages,
+                    min_selected_pages=args.min_selected_pages,
+                    max_selected_pages=args.max_selected_pages,
+                    extracted_at=stamp,
+                    pipeline_commit=commit,
+                    indexer_rules_version=INDEXER_RULES_VERSION,
+                    in_audit=False,
+                    audit_nct_ids=audit_nct_ids,
+                    allowed_nct_ids=in_scope_nct_ids,
+                )
+            except requests.RequestException as exc:
+                # nct passed enforce_not_in_audit before the fetch, so it is an
+                # in-scope trial and may be named.
+                fetch_failures.append((nct, f"{type(exc).__name__}: {exc}"))
+                continue
             profiles.append(profile)
 
-        write_profiles_jsonl(args.profiles_out, profiles)
+        if profiles:
+            write_profiles_jsonl(args.profiles_out, profiles)
+            _report_unindexed_documents(profiles)
+        if fetch_failures:
+            print(
+                f"FETCH ERRORS: {len(fetch_failures)} of {len(target_ncts)} trial(s) could not "
+                "be fetched from CT.gov and have no profile in this run"
+                + ("" if profiles else "; no profiles file was written")
+                + ":",
+                file=sys.stderr,
+            )
+            for nct, detail in fetch_failures:
+                print(f"  {nct}: {detail}", file=sys.stderr)
+            return 1
         return 0
     except AuditHoldoutError as exc:
         print(f"AUDIT HOLDOUT ERROR: {exc}", file=sys.stderr)
