@@ -753,6 +753,11 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
         module = results["baselineCharacteristicsModule"]
         if not isinstance(module, dict):
             return out + [f"{root} (an object)"]
+        # A baseline table must list its groups: without them `get_overall_group_id` finds no Overall group,
+        # the reference check below has nothing to check against, and the last arm's value stands in for the
+        # trial's. All 3,133 stored baseline tables carry a non-empty list.
+        if not (isinstance(module.get("groups"), list) and module["groups"]):
+            out.append(f"{root}.groups (a non-empty list)")
         for name, fields in BASELINE_SHAPE.items():
             if name in module:
                 out += _object_list_problems(module[name], f"{root}.{name}", fields)
@@ -776,11 +781,19 @@ def _baseline_group_reference_problems(module: dict[str, Any], root: str) -> lis
     per reference, and only a string `groupId` is looked up.
     """
     groups = module.get("groups")
-    if not isinstance(groups, list) or not all(
+    if not isinstance(groups, list) or not groups or not all(
         isinstance(g, dict) and isinstance(g.get("id"), str) and g["id"].strip() for g in groups
     ):
-        return []
-    declared = {g["id"] for g in groups}
+        return []  # a missing, empty or malformed list is reported once, by the caller or the shape check
+    # Group ids must be unique: a set collapses a repeated id, so an arm sharing the Overall group's id made
+    # every reference look valid while `_get_measurement_value` took the first match, the arm's value. No
+    # stored baseline table repeats an id.
+    seen_ids: set[str] = set()
+    for i, group in enumerate(groups):
+        if group["id"] in seen_ids:
+            return [f"{root}.groups[{i}].id (an id no other group has, not {group['id']!r} again)"]
+        seen_ids.add(group["id"])
+    declared = seen_ids
     refs: list[tuple[str, Any]] = []
 
     def add_counts(denoms: Any, path: str) -> None:

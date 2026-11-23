@@ -1679,6 +1679,13 @@ _DROP_KEY = object()  # remove the key instead of setting it
          [{"units": "Participants", "counts": [{"groupId": "BG009", "value": "60"}]}],
          f"{_BASE}.measures[0].classes[0].denoms[0].counts[0].groupId"
          " (the id of one of the table's groups, not 'BG009')"),
+        # On 8f0c197 a table without groups, or with a repeated group id, loaded and skipped the reference check.
+        (("resultsSection", "baselineCharacteristicsModule", "groups"), _DROP_KEY,
+         f"{_BASE}.groups (a non-empty list)"),
+        (("resultsSection", "baselineCharacteristicsModule", "groups"), [], f"{_BASE}.groups (a non-empty list)"),
+        (("resultsSection", "baselineCharacteristicsModule", "groups"),
+         [{"id": "BG000", "title": "Arm A"}, {"id": "BG000", "title": "Total"}],
+         f"{_BASE}.groups[1].id (an id no other group has, not 'BG000' again)"),
     ],
 )
 def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(

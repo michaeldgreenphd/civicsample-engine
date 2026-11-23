@@ -147,7 +147,9 @@ A denominator count must read as a non-negative whole number, or as none (`"NA"`
 must carry a non-blank string `id` and `title`: `get_overall_group_id` finds the Overall group by its
 title and returns its id, so without either the last arm's counts stood in for the trial's. Every
 measurement and denominator count must name one of the table's group ids: an unmatched `groupId` on
-the Overall value also fell back to the last measurement.
+the Overall value also fell back to the last measurement. A baseline table must list its groups (a
+non-empty `groups`), and no two groups may share an id: a repeated id made every reference look valid
+while the first match, possibly an arm, was read.
 Weekly full records never pass these checks, so their own lists are checked
 too (`WEEKLY_LIST_FIELDS`): `study_sites`, `collaborators` and `conditions`
 must be present, as `src/utils.py` always writes them; `study_sites` and
