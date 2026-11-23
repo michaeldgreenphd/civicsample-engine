@@ -852,6 +852,14 @@ def check_contract(
     prod = run.get("producer") or {}
     if not HEX64_RE.fullmatch(str(prod.get("source_sha256"))):
         problems.append("run.json: producer.source_sha256 is missing or not 64-hex")
+    # `commit` is a 40-hex revision, or null when git could not be read; `uncommitted_changes` is a
+    # bool, or null (unverifiable) in that case. A null is allowed in a build but refused at export.
+    commit = prod.get("commit")
+    if commit is not None and not (isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)):
+        problems.append(f"run.json: producer.commit {commit!r} is neither a 40-hex revision nor null")
+    dirty = prod.get("uncommitted_changes")
+    if dirty is not None and not isinstance(dirty, bool):
+        problems.append(f"run.json: producer.uncommitted_changes {dirty!r} is neither a bool nor null")
 
     inputs = run.get("inputs") or {}
     rec_in = inputs.get("records") or {}

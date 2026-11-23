@@ -1137,3 +1137,40 @@ def test_records_without_locations_or_derived_section_are_still_accepted(tmp_pat
     apath = tmp_path / "studies.jsonl.gz"
     apath.write_bytes(gzip.compress((json.dumps(study) + "\n").encode("utf-8"), mtime=0))
     assert len(_load_archive(apath)) == 1
+
+
+# ---- Provenance: a build whose git revision could not be read is not exported
+
+
+@pytest.mark.parametrize(
+    "commit, dirty, exported",
+    [
+        (None, None, False),          # git unavailable
+        ("a" * 40, None, False),      # git status failed
+        ("a" * 40, True, True),       # dirty tree, honestly recorded
+        ("a" * 40, False, True),
+    ],
+)
+def test_site_export_requires_readable_git_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, commit: str | None, dirty: bool | None, exported: bool
+) -> None:
+    def fake_producer(root: Path = ROOT) -> dict[str, Any]:
+        return {"repository": "civicsample-engine", "commit": commit, "uncommitted_changes": dirty,
+                "source_sha256": "c" * 64}
+
+    monkeypatch.setattr(build_feasibility_benchmarks, "producer_metadata", fake_producer)
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    out_dir, site_dir = tmp_path / "build", tmp_path / "site"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 0
+    assert check_feasibility_contract.main([str(out_dir)]) == 0
+    assert (export_feasibility_site.main([str(out_dir), str(site_dir)]) == 0) is exported
+    assert site_dir.exists() is exported
+
+
+@pytest.mark.parametrize("field, value", [("commit", "HEAD"), ("commit", 7), ("uncommitted_changes", "no")])
+def test_contract_refuses_malformed_producer_provenance(field: str, value: object) -> None:
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    family, _raw = _fixture_family(trials, sponsor_meta, review_meta)
+    edited = json.loads(json.dumps(family))
+    edited["run.json"]["producer"][field] = value
+    assert any(f"producer.{field}" in p for p in artifacts.check_contract(edited))

@@ -112,6 +112,18 @@ def select_site_files(parsed_build: dict[str, Any]) -> dict[str, Any]:
     sponsors = parsed_build["sponsors.json"]
     trials = parsed_build[artifacts.TRIALS_FILE]
 
+    # Published files must name the code that produced them. When git was unavailable or failed, the
+    # build records `commit: null` / `uncommitted_changes: null` (unverifiable, never false); such a
+    # build is fine for local diagnostics but is not exported. A dirty tree recorded as `true` is
+    # honest provenance and is exported with that flag.
+    prod = run.get("producer") or {}
+    if prod.get("commit") is None or prod.get("uncommitted_changes") is None:
+        raise ValueError(
+            f"run.json: producer commit {prod.get('commit')!r} / uncommitted_changes "
+            f"{prod.get('uncommitted_changes')!r}: the producing revision could not be read from git, so "
+            "the build is not exported to the site (rebuild from a git checkout)"
+        )
+
     s_run_id = site_run_id(run)
     stopped_rows = [slim_stopped_trial(t) for t in trials if t["termination"]["is_stopped_study"]]
 
