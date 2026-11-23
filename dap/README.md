@@ -177,7 +177,11 @@ those participants. For the same reason `results_date` must be
 exactly `""` or a date `parse_partial_date_bounds` reads. The sex/gender row's
 numbers must be finite (JSON `1e309` parses as infinity and raised
 `OverflowError` in the build) and its five participant counts non-negative;
-`enrollment_minus_parsed` may be negative. `parser_rules_version`, the only
+`enrollment_minus_parsed` may be negative. The row's `sex_report_status` must
+itself follow from the row as `sgp.classify_reporting` derives it: a
+`not_reported` or `parse_error` row has no counts, and any other status is the
+one its five counts give (a `not_reported` row with posted female and male
+counts published a trial as omitting sex). `parser_rules_version`, the only
 record of which parsing rules produced the published aggregates, must not be
 blank, and every race and ethnicity `raw_categories` entry's `omb_category`
 must be one of the block's categories (`WEEKLY_TOTAL_KEYS`): an unknown one

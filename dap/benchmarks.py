@@ -740,6 +740,16 @@ assert list(WEEKLY_SEX_GENDER_COLUMNS) == list(sgt.LEAN_COLUMNS), "keep in step 
 # reported sex. All 80,890 rows of the 2026-11-08 extraction carry exactly the derived flags.
 WEEKLY_OUTCOME_COLUMNS: tuple[str, ...] = ("reported_sex", "reported_gender", "reported_both")
 _OUTCOME_INPUT_COLUMNS: tuple[str, ...] = ("n_female", "n_male", "n_gender_diverse", "n_ambiguous_gender")
+# The status itself follows from the row as `sgp.classify_reporting` derives it. A row with no
+# sex/gender measure (`not_reported`: `parse_measures` returns before any count is set) or whose input
+# could not be read (`parse_error`: `sgt.parse_error_row`) has every count `None`. Any other status is
+# what `classify_reporting` gives for the five counts: `reported` when a female, male or gender-diverse
+# count, or an ambiguous one, is above 0, `explicit_unknown_only` when only Unknown is, `uninformative`
+# otherwise. `extract_sex_gender` reuses the stated status, so a `not_reported` row with positive counts
+# published a posted trial as omitting sex and left out its composition. All 80,890 weekly rows give
+# their stated status.
+_STATUS_COUNT_COLUMNS: tuple[str, ...] = ("n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender")
+_NO_MEASURE_STATUSES: frozenset[str] = frozenset({"not_reported", "parse_error"})
 # Columns `sgt.parse_error_row` leaves `None`, the outcome flags of a row whose input was not read.
 _PARSE_ERROR_NULLABLE: frozenset[str] = frozenset(WEEKLY_OUTCOME_COLUMNS)
 # The participant counts the parser writes, never negative. Every numeric column must also be finite:
@@ -966,6 +976,20 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
         if column in _SEX_GENDER_NON_BLANK_COLUMNS and not value.strip():
             return f"sex_gender.{column} is blank"
     row = rec["sex_gender"]
+    if status in _NO_MEASURE_STATUSES:
+        counted = next((c for c in _STATUS_COUNT_COLUMNS if row[c] is not None), None)
+        if counted is not None:
+            return (
+                f"sex_gender.{counted} is {row[counted]!r}, but a {status!r} row has no counts "
+                "(the parser read no sex/gender measure)"
+            )
+    else:
+        parsed = sgp.ParsedTrial(raw_present=True, parse_ok=True, **{c: row[c] for c in _STATUS_COUNT_COLUMNS})
+        if (classified := sgp.classify_reporting(parsed)) != status:
+            return (
+                f"sex_gender.sex_report_status is {status!r}, but sgp.classify_reporting gives {classified!r} "
+                "for the row's counts"
+            )
     derived = sgp.derive_outcomes(sgp.ParsedTrial(**{c: row[c] for c in _OUTCOME_INPUT_COLUMNS}), status)
     for column in WEEKLY_OUTCOME_COLUMNS:
         if row[column] is not derived[column]:

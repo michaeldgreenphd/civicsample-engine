@@ -1961,6 +1961,60 @@ def test_weekly_sex_gender_outcome_flags_must_be_the_derived_ones(
         benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
 
 
+@pytest.mark.parametrize(
+    ("make_row", "changes", "problem"),
+    [
+        # On d72b348 each loaded and `extract_sex_gender` reused the stated status: a trial with posted
+        # female and male counts was published as not reporting sex, its composition left out.
+        ("not_reported", {"n_female": 50.0, "n_male": 50.0},
+         "sex_gender.n_female is 50.0, but a 'not_reported' row has no counts (the parser read no sex/gender measure)"),
+        ("parse_error", {"n_unknown": 3.0},
+         "sex_gender.n_unknown is 3.0, but a 'parse_error' row has no counts (the parser read no sex/gender measure)"),
+        ("reported", {"sex_report_status": "uninformative", "reported_sex": False},
+         "sex_gender.sex_report_status is 'uninformative', but sgp.classify_reporting gives 'reported'"),
+        ("reported", {"sex_report_status": "explicit_unknown_only", "reported_sex": False},
+         "sex_gender.sex_report_status is 'explicit_unknown_only', but sgp.classify_reporting gives 'reported'"),
+        ("reported", {"n_female": 0.0, "n_male": 0.0, "n_unknown": 4.0, "reported_sex": False},
+         "sex_gender.sex_report_status is 'reported', but sgp.classify_reporting gives 'explicit_unknown_only'"),
+    ],
+)
+def test_weekly_sex_gender_status_must_follow_from_the_counts(
+    tmp_path: Path, make_row: str, changes: dict[str, Any], problem: str
+) -> None:
+    from src import sex_gender_table as sgt
+
+    weekly_doc = fx.build_weekly_full_records_doc()
+    if make_row == "parse_error":
+        weekly_doc["data"][1]["sex_gender"] = sgt.lean_row(sgt.parse_error_row("NCT99000402", 100, "2026-11-21"))
+    elif make_row == "not_reported":
+        weekly_doc["data"][1]["sex_gender"] = sgt.lean_row(
+            sgt.build_row({"protocolSection": {"identificationModule": {"nctId": "NCT99000402"}}}, "2026-11-21"))
+    assert weekly_doc["data"][1]["sex_gender"]["sex_report_status"] == make_row
+    weekly_doc["data"][1]["sex_gender"].update(changes)
+    with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem}")):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
+@pytest.mark.parametrize(
+    ("changes", "status"),
+    [
+        ({"n_female": 0.0, "n_male": 0.0, "n_unknown": 4.0}, "explicit_unknown_only"),
+        ({"n_female": 0.0, "n_male": 0.0, "n_unknown": 0.0}, "uninformative"),
+        ({"n_female": None, "n_male": None, "n_unknown": None, "n_gender_diverse": None, "n_ambiguous_gender": None},
+         "uninformative"),
+        ({"n_female": 0.0, "n_male": 0.0, "n_ambiguous_gender": 2.0}, "reported"),
+    ],
+)
+def test_weekly_sex_gender_statuses_the_counts_give_load(
+    tmp_path: Path, changes: dict[str, Any], status: str
+) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    row = weekly_doc["data"][1]["sex_gender"]
+    row.update(changes, sex_report_status=status)
+    row.update(reported_sex=False, reported_gender=status == "reported", reported_both=False)
+    assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
+
+
 def test_weekly_sex_gender_row_reporting_gender_loads(tmp_path: Path) -> None:
     weekly_doc = fx.build_weekly_full_records_doc()
     weekly_doc["data"][1]["sex_gender"].update(n_gender_diverse=2.0, reported_gender=True, reported_both=True)
