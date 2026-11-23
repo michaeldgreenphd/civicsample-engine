@@ -32,10 +32,24 @@ READS   --cohort-manifest  REQUIRED JSON/JSONL (plain or .gz): one row per trial
         (under a trial-ID key such as nct_id/nctId/trial_nct_id, in a URL, or
         as a mapping key), naming a holdout trial anywhere, or carrying a
         holdout flag (in_audit under any spelling: inAudit, IN_AUDIT,
-        in-audit, is_in_audit) that contradicts the manifest is refused,
-        never dropped. A --trials record is held to the same rule for its
-        trial-ID keys and holdout flags, and a holdout's own record may carry
-        no side section inline. A JSON object repeating a key is refused.
+        in-audit, is_in_audit; or a holdout marker such as in_audit_holdout)
+        that contradicts the manifest is refused, never dropped. A --trials
+        record is held to the same rule for its trial-ID keys and holdout
+        flags. A holdout's own record may carry no side section inline, with
+        or without its wrapper, and no LLM, assessment or pass key, CT.gov's
+        native sections included. An ordinary trial's record may carry
+        document_profile, decision_rule_locations, longitudinal_provenance or
+        a pre-built reported_results at its top level (published as that
+        section; one also given by a side stream, or by the record's own
+        CT.gov results, must not differ); a section key anywhere else is
+        refused. A --population-parsed row for an outcome index the trial's
+        results do not have is refused. A JSON object repeating a key is
+        refused; a JSON container ({"rows": [...]}) holds exactly one row
+        list beside its header values (extracted_at, pipeline_commit,
+        source_pipeline_commit, indexer_rules_version, run_id,
+        schema_version; for the manifest also the live index's columns_note
+        and excluded), and any other key is refused (exit 2). Header values
+        naming a holdout are refused (run_id is published).
 WRITES  --out-dir (default <engine root>/data/outcomes_bundles, resolved from
         this file, not the working directory):
           index.json            multi-cohort trial catalog, sorted by nct_id
@@ -56,7 +70,12 @@ WRITES  --out-dir (default <engine root>/data/outcomes_bundles, resolved from
         build is refused, never stamped null.
         --report (optional) gets the same allowlist.
 CHECKS  --check <dir> validates an existing outcomes directory on disk without
-        modifying it (--allow-null-commit accepts a tree stamped null).
+        modifying it (--allow-null-commit accepts a tree stamped null). Every
+        in-scope record is read with the builder's own input rules and
+        normalizers against the tree's holdout set. With --cohort-manifest M
+        the tree must also hold exactly M's trials, each one M marks in_audit
+        as a holdout stub (exit 2 otherwise). Any build-only option given
+        with --check is refused, never ignored.
 EXITS   0 on success; 2 on any AuditFirewallError (in_audit holdout violation,
         aborted BEFORE touching --out-dir; trial IDs are withheld from the
         message); 1 on any other contract, input, or validation error. Any
@@ -132,18 +151,91 @@ def _read_text(path: Path) -> str:
         raise ol.OutcomesLayoutError(f"{path}: cannot be read ({exc})") from exc
 
 
-def _load_records_file(path: str | os.PathLike[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+# A JSON container object: exactly one row list under one of these keys...
+_CONTAINER_LIST_KEYS: tuple[str, ...] = ("data", "trials", "records", "rows")
+# ...beside header values (strings, or a schema version number)...
+_CONTAINER_META_KEYS: tuple[str, ...] = (
+    "extracted_at",
+    "pipeline_commit",
+    "source_pipeline_commit",
+    "indexer_rules_version",
+    "run_id",
+    "schema_version",
+)
+# ...and, in a cohort manifest only, the live outcomes index's own two keys
+# (outcomes/artifacts.py writes them): a note, and the trials the cohort
+# excluded, each an ID with its reason(s).
+_LIVE_INDEX_KEYS: tuple[str, ...] = ("columns_note", "excluded")
+_EXCLUDED_ENTRY_KEYS: frozenset[str] = frozenset({"nct_id", "reason", "reasons"})
+
+
+def _check_container_meta(p: Path, meta: Mapping[str, Any]) -> None:
+    """Refuse container header values the builder could not read as written.
+
+    Header values are scalars (a string, or null; ``schema_version`` may be a
+    number); ``columns_note`` is a string; every ``excluded`` entry is an
+    object holding a strict ``nct_id`` and its ``reason`` (a string) or
+    ``reasons`` (a list of strings) and nothing else. An object or list
+    elsewhere would carry content past the builder (red-team m3 round 2: a
+    container's other keys held a holdout's record), so it is refused.
+    """
+    for key, value in meta.items():
+        if key == "excluded":
+            if not isinstance(value, list):
+                raise ol.OutcomesLayoutError(f"{p}.excluded must be a list, got {type(value).__name__}")
+            for pos, item in enumerate(value):
+                if not isinstance(item, dict) or not set(item) <= _EXCLUDED_ENTRY_KEYS or "nct_id" not in item:
+                    raise ol.AuditFirewallError(
+                        f"{p}.excluded[{pos}] must be an object holding nct_id and reason or reasons only; "
+                        f"other content there would be dropped, which can hide a holdout trial's record"
+                    )
+                ol.strict_nct_id(item["nct_id"], f"{p}.excluded[{pos}].nct_id")
+                reason = item.get("reason")
+                reasons = item.get("reasons")
+                if (reason is not None and type(reason) is not str) or (
+                    reasons is not None
+                    and (not isinstance(reasons, list) or not all(type(r) is str for r in reasons))
+                ):
+                    raise ol.OutcomesLayoutError(
+                        f"{p}.excluded[{pos}]: reason must be a string and reasons a list of strings"
+                    )
+        elif key == "schema_version":
+            if value is not None and type(value) not in (int, str):
+                raise ol.OutcomesLayoutError(
+                    f"{p}.schema_version must be a number or a string, got {type(value).__name__}"
+                )
+        elif value is not None and type(value) is not str:
+            raise ol.OutcomesLayoutError(f"{p}.{key} must be a string or null, got {type(value).__name__}")
+
+
+def _load_records_file(
+    path: str | os.PathLike[str],
+    *,
+    manifest: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Load JSON or JSONL (plain or ``.gz``) into ``(records, container_meta)``.
 
     Accepts:
     - JSONL / ``.jsonl.gz`` (one JSON object per non-empty line)
     - JSON array of objects
-    - JSON container object with ``data``, ``trials``, ``records``, or ``rows``
-      list (including the live outcomes ``index.json``; preserving top-level
+    - JSON container object holding exactly one row list, under ``data``,
+      ``trials``, ``records`` or ``rows``, beside the header keys
       ``extracted_at`` / ``pipeline_commit`` / ``source_pipeline_commit`` /
-      ``run_id`` / ``schema_version``)
+      ``indexer_rules_version`` / ``run_id`` / ``schema_version`` (returned as
+      ``container_meta``), and for a cohort manifest (``manifest=True``) the
+      live outcomes index's ``columns_note`` and ``excluded``; the live
+      ``index.json`` is accepted as is
     - JSON mapping keyed by ``nct_id`` -> object (an inner ``nct_id`` must agree)
     Every object refuses a repeated key (``_refuse_repeated_keys``).
+
+    Method: a container is read whole or refused. Two row lists, or any other
+    key beside the row list, would have one read and the rest dropped
+    without a word (red-team m3 round 2: a second list key, or a key that is
+    a holdout's ID, carried the holdout's record past every check; a
+    manifest's ``data`` and ``rows`` disagreed on a trial's ``in_audit`` and
+    the builder took ``data``), so such a file is refused as an
+    ``AuditFirewallError`` (exit 2) with every key name's NCT-like tokens
+    withheld; header values are checked by ``_check_container_meta``.
     """
     p = Path(path)
     if not p.is_file():
@@ -182,24 +274,31 @@ def _load_records_file(path: str | os.PathLike[str]) -> tuple[list[dict[str, Any
         return parsed, {}
 
     if isinstance(parsed, dict):
-        meta = {
-            k: parsed.get(k)
-            for k in (
-                "extracted_at",
-                "pipeline_commit",
-                "source_pipeline_commit",
-                "indexer_rules_version",
-                "run_id",
-                "schema_version",
+        list_keys = [k for k in _CONTAINER_LIST_KEYS if k in parsed]
+        if len(list_keys) > 1:
+            raise ol.AuditFirewallError(
+                f"{p}: a JSON container carries {len(list_keys)} row lists ({', '.join(list_keys)}); a reader "
+                f"takes one and drops the others, which can hide a holdout trial's record or contradict its "
+                f"in_audit, so the file is refused"
             )
-            if k in parsed
-        }
-        for list_key in ("data", "trials", "records", "rows"):
-            if isinstance(parsed.get(list_key), list):
-                items = parsed[list_key]
-                if not all(isinstance(x, dict) for x in items):
-                    raise ol.OutcomesLayoutError(f"{p}.{list_key}: must contain only objects")
-                return items, meta
+        if list_keys:
+            list_key = list_keys[0]
+            items = parsed[list_key]
+            if not isinstance(items, list):
+                raise ol.OutcomesLayoutError(f"{p}.{list_key} must be a list, got {type(items).__name__}")
+            if not all(isinstance(x, dict) for x in items):
+                raise ol.OutcomesLayoutError(f"{p}.{list_key}: must contain only objects")
+            allowed = {list_key, *_CONTAINER_META_KEYS, *(_LIVE_INDEX_KEYS if manifest else ())}
+            unknown = [k for k in parsed if k not in allowed]
+            if unknown:
+                raise ol.AuditFirewallError(
+                    f"{p}: a JSON container carries {len(unknown)} key(s) beside its row list that this builder "
+                    f"does not read ({', '.join(ol.withhold_nct_ids(repr(k)) for k in unknown[:5])}); their "
+                    f"content would be dropped, which can hide a holdout trial's record, so the file is refused"
+                )
+            meta = {k: v for k, v in parsed.items() if k != list_key}
+            _check_container_meta(p, meta)
+            return items, meta
         if parsed and all(isinstance(k, str) and ol.NCT_RE.fullmatch(k) and isinstance(v, dict) for k, v in parsed.items()):
             out_rows: list[dict[str, Any]] = []
             for nct_id, val in parsed.items():
@@ -253,15 +352,16 @@ def _group_side_stream(
     return grouped
 
 
-def _load_documents_stream(path: str | os.PathLike[str]) -> dict[str, Any]:
-    """Load ``--documents`` as either Module 1 profiles or legacy ``documents.jsonl`` rows."""
-    rows, _ = _load_records_file(path)
+def _load_documents_stream(path: str | os.PathLike[str]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Load ``--documents`` as either Module 1 profiles or legacy ``documents.jsonl`` rows,
+    with the file's container header values."""
+    rows, meta = _load_records_file(path)
     return _group_side_stream(
         rows,
         source=f"--documents {path}",
         is_grouped=lambda r: isinstance(r.get("documents"), list),
         grouped_label="TrialDocumentProfile",
-    )
+    ), meta
 
 
 def _is_grouped_locations(row: Mapping[str, Any]) -> bool:
@@ -275,8 +375,9 @@ def _is_grouped_locations(row: Mapping[str, Any]) -> bool:
     return any(k in ol.GROUPED_PASS_KEYS or str(k).endswith("_pass") for k in row)
 
 
-def _load_locations_streams(paths: Sequence[str]) -> dict[str, Any]:
-    """Load every ``--locations`` file and append their rows (L6).
+def _load_locations_streams(paths: Sequence[str]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Load every ``--locations`` file and append their rows (L6), with each
+    file's container header values (one entry per file that has any).
 
     The same path twice is refused outright. Rows from several files are
     concatenated before grouping, so a cell given in two files reaches the
@@ -285,42 +386,51 @@ def _load_locations_streams(paths: Sequence[str]) -> dict[str, Any]:
     """
     seen: set[str] = set()
     all_rows: list[dict[str, Any]] = []
+    metas: list[dict[str, Any]] = []
     for path in paths:
         key = os.path.abspath(path)
         if key in seen:
             raise ol.OutcomesLayoutError(f"--locations {path} given more than once")
         seen.add(key)
-        rows, _ = _load_records_file(path)
+        rows, meta = _load_records_file(path)
         all_rows.extend(rows)
+        if meta:
+            metas.append(meta)
     return _group_side_stream(
         all_rows,
         source="--locations",
         is_grouped=_is_grouped_locations,
         grouped_label="pre-grouped decision_rule_locations object",
-    )
+    ), metas
 
 
-def _load_provenance_stream(path: str | os.PathLike[str]) -> dict[str, dict[str, Any]]:
-    """Load ``--provenance`` records keyed by ``nct_id`` (one per trial)."""
-    rows, _ = _load_records_file(path)
+def _load_provenance_stream(path: str | os.PathLike[str]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """Load ``--provenance`` records keyed by ``nct_id`` (one per trial), with the
+    file's container header values."""
+    rows, meta = _load_records_file(path)
     by_nct: dict[str, dict[str, Any]] = {}
     for row in rows:
         nct_id = _extract_nct_id(row, f"--provenance {path}")
         if nct_id in by_nct:
             raise ol.OutcomesLayoutError(f"--provenance {path}: duplicate longitudinal_provenance record for a trial")
         by_nct[nct_id] = row
-    return by_nct
+    return by_nct, meta
 
 
-def _load_population_parsed_stream(path: str | os.PathLike[str]) -> dict[str, Any]:
-    """Load ``--population-parsed`` Module 2 outputs keyed by ``nct_id``."""
-    rows, _ = _load_records_file(path)
+def _load_population_parsed_stream(path: str | os.PathLike[str]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Load ``--population-parsed`` Module 2 outputs keyed by ``nct_id``, with the
+    file's container header values."""
+    rows, meta = _load_records_file(path)
     return _group_side_stream(
         rows,
         source=f"--population-parsed {path}",
         is_grouped=lambda r: isinstance(r.get("outcomes"), list),
         grouped_label="TrialAnalysisPopulations record",
-    )
+    ), meta
+
+
+# The sections a trial's own record may carry inline, at its top level.
+_INLINE_SECTION_KEYS: tuple[str, ...] = (*ol.INLINE_SIDE_SECTIONS, "reported_results")
 
 
 def _merge_trials_and_manifest(
@@ -344,7 +454,11 @@ def _merge_trials_and_manifest(
     (red-team m3 round 1: ``inAudit: true`` on a --trials record was ignored).
     Both conflicts are ``AuditFirewallError`` (exit 2). Manifest fields
     override trial fields, except ``protocol`` and ``sap``, which are true
-    when either source says so. ``manifest_cohort`` is added to every row's
+    when either source says so, and a section carried inline
+    (``document_profile``, ``decision_rule_locations``,
+    ``longitudinal_provenance``, ``reported_results``), which both may carry
+    only as the same data: two different ones conflict and are refused, not
+    resolved by precedence. ``manifest_cohort`` is added to every row's
     cohorts.
     """
     manifest_by_nct: dict[str, dict[str, Any]] = {}
@@ -392,6 +506,16 @@ def _merge_trials_and_manifest(
                 "conflicting holdout flags between --trials and --cohort-manifest for one trial: the "
                 "--trials record carries in_audit (under some spelling) that is not the manifest's bool"
             )
+        for section in _INLINE_SECTION_KEYS:
+            if (
+                base.get(section) is not None
+                and overlay.get(section) is not None
+                and ol.canonicalize_nested(base[section]) != ol.canonicalize_nested(overlay[section])
+            ):
+                raise ol.OutcomesLayoutError(
+                    f"--trials and --cohort-manifest both carry {section} for one trial and they differ; "
+                    f"conflicting inputs are refused, not resolved"
+                )
         combined = {**base, **overlay}
         for flag in ("protocol", "sap"):
             if flag in base and flag in overlay:
@@ -500,13 +624,87 @@ def _fail(message: str) -> NoReturn:
     raise ol.OutcomesLayoutError(message)
 
 
+# Options that only a build reads, as (flag, argparse dest). --check refuses
+# each one given, rather than accepting it and ignoring it.
+_BUILD_ONLY_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("--trials", "trials"),
+    ("--manifest-cohort", "manifest_cohort"),
+    ("--documents", "documents"),
+    ("--locations", "locations"),
+    ("--provenance", "provenance"),
+    ("--population-parsed", "population_parsed"),
+    ("--extracted-at", "extracted_at"),
+    ("--now-utc", "now_utc"),
+    ("--source-pipeline-commit", "source_pipeline_commit"),
+    ("--shards", "shards"),
+    ("--out-dir", "out_dir"),
+)
+
+
+def _option_given(args: argparse.Namespace, dest: str) -> bool:
+    """True when the option stored at ``dest`` was given on the command line
+    (``_StoreOnce`` records it; an option without a default is not None)."""
+    return bool(getattr(args, f"_seen_{dest}", False)) or (
+        dest not in ("shards", "out_dir") and getattr(args, dest, None) is not None
+    )
+
+
+def _manifest_in_audit(path: str) -> dict[str, bool]:
+    """Read a cohort manifest as a build does and return each trial's in_audit.
+
+    The same loader and row rules as a build (``_load_records_file`` with
+    ``manifest=True``, ``_merge_trials_and_manifest``: a strict bool
+    ``in_audit`` on every row, no second holdout flag contradicting it, no
+    repeated trial), and the same check of the live index's ``excluded``
+    list (``_check_excluded_overlap``).
+    """
+    rows, meta = _load_records_file(path, manifest=True)
+    merged = _merge_trials_and_manifest([], rows)
+    _check_excluded_overlap(meta, merged)
+    return {nct_id: bool(row["in_audit"]) for nct_id, row in merged.items()}
+
+
+def _check_excluded_overlap(meta: Mapping[str, Any], merged: Mapping[str, Any]) -> None:
+    """Refuse a manifest whose ``excluded`` list names a trial its rows list.
+
+    Such a trial is both in the cohort and excluded from it; the file does
+    not say which, so it is refused, never resolved. Counts only, no IDs.
+    """
+    excluded = {entry["nct_id"] for entry in meta.get("excluded") or ()}
+    both = excluded & set(merged)
+    if both:
+        raise ol.OutcomesLayoutError(
+            f"--cohort-manifest: {len(both)} trial(s) are both rows of the manifest and in its excluded list "
+            f"(IDs withheld); the file does not say which it means"
+        )
+
+
 def _run_check(args: argparse.Namespace) -> int:
-    """``--check DIR``: validate a tree on disk, optionally writing a report."""
+    """``--check DIR``: validate a tree on disk, optionally writing a report.
+
+    Method: every build-only option given with --check is refused, never
+    accepted and ignored (red-team m3 round 2: --cohort-manifest was). A
+    ``--cohort-manifest`` is read as a build reads it, and the tree is
+    checked against it (``validate_outcomes_tree``'s ``cohort_in_audit``):
+    it must hold exactly the manifest's trials, and every trial the manifest
+    marks in_audit must be a holdout stub; the manifest's holdouts join the
+    tree's own in the audit-ID reading of every in-scope record.
+    """
+    given = [flag for flag, dest in _BUILD_ONLY_OPTIONS if _option_given(args, dest)]
+    if given:
+        _fail(
+            f"--check reads only the tree, --cohort-manifest, --report and --allow-null-commit; "
+            f"{', '.join(given)} would be ignored, so the combination is refused"
+        )
+    cohort_in_audit: dict[str, bool] | None = None
+    if args.cohort_manifest is not None:
+        cohort_in_audit = _manifest_in_audit(args.cohort_manifest)
     if args.report is not None:
         ol.check_report_path(args.report, out_dir=args.check)
     result = ol.validate_outcomes_tree(
         args.check,
         allow_null_commit=args.allow_null_commit,
+        cohort_in_audit=cohort_in_audit,
     )
     if args.report is not None:
         ol.write_report(args.report, result.to_dict(), out_dir=args.check)
@@ -548,8 +746,9 @@ def _run_build(args: argparse.Namespace) -> int:
     trials_meta: dict[str, Any] = {}
     if args.trials is not None:
         trials_rows, trials_meta = _load_records_file(args.trials)
-    manifest_rows, manifest_meta = _load_records_file(args.cohort_manifest)
+    manifest_rows, manifest_meta = _load_records_file(args.cohort_manifest, manifest=True)
     merged = _merge_trials_and_manifest(trials_rows, manifest_rows, manifest_cohort=args.manifest_cohort)
+    _check_excluded_overlap(manifest_meta, merged)
     audit_nct_ids = frozenset(nct for nct, row in merged.items() if row["in_audit"] is True)
     try:
         return _build_and_write(args, merged, audit_nct_ids, commit, trials_meta, manifest_meta)
@@ -581,10 +780,26 @@ def _build_and_write(
     the build's holdout set, so a trial record or side input naming a holdout
     anywhere is refused.
     """
-    docs_by_nct = _load_documents_stream(args.documents) if args.documents else {}
-    locs_by_nct = _load_locations_streams(args.locations) if args.locations else {}
-    prov_by_nct = _load_provenance_stream(args.provenance) if args.provenance else {}
-    pop_by_nct = _load_population_parsed_stream(args.population_parsed) if args.population_parsed else {}
+    docs_by_nct, docs_meta = _load_documents_stream(args.documents) if args.documents else ({}, {})
+    locs_by_nct, locs_meta = _load_locations_streams(args.locations) if args.locations else ({}, [])
+    prov_by_nct, prov_meta = _load_provenance_stream(args.provenance) if args.provenance else ({}, {})
+    pop_by_nct, pop_meta = (
+        _load_population_parsed_stream(args.population_parsed) if args.population_parsed else ({}, {})
+    )
+
+    # Container header values are input too: run_id is published in
+    # index.json (red-team m3 round 2: one naming a holdout, with its
+    # results, was published unscanned), and none of them may name a holdout.
+    metas: tuple[tuple[str, Any], ...] = (
+        ("--cohort-manifest container", manifest_meta),
+        ("--trials container", trials_meta),
+        ("--documents container", docs_meta),
+        ("--locations container", locs_meta),
+        ("--provenance container", prov_meta),
+        ("--population-parsed container", pop_meta),
+    )
+    for label, meta in metas:
+        ol.refuse_audit_ids(meta, audit_nct_ids=audit_nct_ids, label=label)
 
     # Vector 6 hard cross-stream firewall BEFORE building or touching --out-dir.
     ol.assert_no_audit_cross_stream_leakage(
@@ -615,7 +830,7 @@ def _build_and_write(
     component_versions: dict[str, str | None] = {
         "outcomes_layout": f"v{ol.LAYOUT_VERSION}",
     }
-    if isinstance(manifest_meta.get("run_id"), str):
+    if manifest_meta.get("run_id") is not None:
         component_versions["cohort_manifest"] = manifest_meta["run_id"]
     for prof in docs_by_nct.values():
         if isinstance(prof, Mapping) and isinstance(prof.get("indexer_rules_version"), str):

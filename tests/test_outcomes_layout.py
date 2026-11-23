@@ -4526,3 +4526,131 @@ def test_redteam_m3_population_for_absent_outcome_refused_not_dropped(
     side = ("--population-parsed", {"nct_id": RT_OK, "outcomes": [{"outcome_index": 5, "outcome_type": "PRIMARY", "population": "mITT"}]})
     argv, out = _rt_build(tmp_path, studies=_rt_pair(), side=[side])
     _rt_assert_refused(cli.main(argv), out, capsys)
+
+
+# ── m3 round-2 fixes: the choices the red-team tests leave open ──────────────
+# Fictional IDs only (RT_OK ordinary, RT_HOLD the holdout).
+
+def test_m3_fix_in_scope_inline_section_is_published_and_checks_ok(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An ordinary trial's top-level document_profile is published as its
+    section (the red-team test accepts publish or refuse; the builder
+    publishes), the badge is computed from it, and --check accepts the tree."""
+    study = _make_ctgov_study(RT_OK)
+    study["document_profile"] = _make_doc_profile(RT_OK)
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)])
+    assert cli.main(argv) == 0
+    _, sdoc = _read_shard(out, RT_OK)
+    assert [d["filename"] for d in sdoc["data"][RT_OK]["document_profile"]["documents"]] == ["Prot_SAP_000.pdf"]
+    row = {r["nct_id"]: r for r in json.loads((out / "index.json").read_text(encoding="utf-8"))["data"]}[RT_OK]
+    assert row["document_badge"]["doc_count"] == 1
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) == 0
+
+
+def test_m3_fix_section_key_the_builder_does_not_read_is_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A section key in an ordinary record where the builder does not read it
+    (here nested in protocolSection) would be dropped, so it is refused."""
+    study = _make_ctgov_study(RT_OK)
+    study["protocolSection"]["document_profile"] = _make_doc_profile(RT_OK)
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)])
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=1)
+
+
+@pytest.mark.parametrize("option", ["--documents", "--out-dir", "--shards", "--manifest-cohort"])
+def test_m3_fix_check_refuses_build_only_options(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    option: str,
+) -> None:
+    """--check refuses an option only a build reads, rather than ignoring it."""
+    out = _rt2_built_tree(tmp_path)
+    value = {"--documents": str(tmp_path / "rt2_docs.json"), "--out-dir": str(tmp_path / "elsewhere"),
+             "--shards": "8", "--manifest-cohort": "nih"}[option]
+    capsys.readouterr()
+    assert cli.main(["--check", str(out), option, value]) == 1
+    assert option in capsys.readouterr().err
+
+
+def test_m3_fix_check_against_an_agreeing_manifest_passes_and_a_partial_one_fails(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--check --cohort-manifest passes when the manifest is the tree's own,
+    and fails (counts only, no IDs) when the tree holds a trial it does not list."""
+    out = _rt2_built_tree(tmp_path)
+    same = _rt2_write(tmp_path / "rt2_same.json", {"rows": _RT2_ROWS, "run_id": "fictional-run"})
+    capsys.readouterr()
+    assert cli.main(["--check", str(out), "--cohort-manifest", str(same)]) == 0
+    partial = _rt2_write(tmp_path / "rt2_partial.json", [_RT2_ROWS[1]])
+    capsys.readouterr()
+    assert cli.main(["--check", str(out), "--cohort-manifest", str(partial)]) == 1
+    err = capsys.readouterr().err
+    assert "1 trial(s) in it the manifest does not list" in err
+    assert RT_HOLD_DIGITS not in err and RT_OK[3:] not in err
+
+
+def test_m3_fix_manifest_excluded_list_naming_a_row_is_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The live index's "excluded" list is read, not dropped: a trial both
+    listed as a row and excluded is refused, and an excluded entry carrying
+    anything but its ID and reason(s) is refused (exit 2)."""
+    both = {"rows": _RT2_ROWS, "excluded": [{"nct_id": RT_OK, "reasons": ["fictional"]}]}
+    argv, out = _rt2_argv(tmp_path, manifest=both, trials=_rt_pair())
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=1)
+    extra = {"rows": _RT2_ROWS, "excluded": [{"nct_id": "NCT99300099", "reason": "x", "results": {"hr": "0.68"}}]}
+    argv, out = _rt2_argv(tmp_path, manifest=extra, trials=_rt_pair())
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=2)
+
+
+@pytest.mark.parametrize("fd_safe", [True, False])
+def test_m3_fix_staging_is_never_removed_through_a_symlink_on_either_path(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fd_safe: bool,
+) -> None:
+    """Both ways of removing the staging directory (by descriptor where the
+    platform allows it, by re-checked path elsewhere) refuse a .partial that
+    was swapped for a symlink into a family folder, and both clean up a
+    completed swap's leftovers on the next write."""
+    monkeypatch.setattr(ol, "_FD_SAFE", fd_safe)
+    data = _rt_site_replica(tmp_path)
+    before = _rt_tree_hashes(data)
+    out = tmp_path / "bundle"
+    work = pathlib.Path(f"{out}.partial")
+    idx, shard_docs = _rt2_one_trial_docs()
+    real_validate = ol.validate_outcomes_tree
+
+    def _validate_then_swap(path: Any, **kwargs: Any) -> ol.ValidationResult:
+        result = real_validate(path, **kwargs)
+        if pathlib.Path(path) == work and not os.path.islink(work):
+            os.rename(work, tmp_path / "moved_partial")
+            work.symlink_to(data / "geo")
+        return result
+
+    monkeypatch.setattr(ol, "validate_outcomes_tree", _validate_then_swap)
+    with pytest.raises(ol.OutcomesLayoutError):
+        ol.write_outcomes_tree(out, idx, shard_docs)
+    assert _rt_tree_hashes(data) == before
+    monkeypatch.setattr(ol, "validate_outcomes_tree", real_validate)
+    work.unlink()
+
+    idx_v2, shards_v2 = _rt2_two_versions(out)
+
+    def _interrupt(*_args: Any, **_kwargs: Any) -> None:
+        raise KeyboardInterrupt()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ol.shutil, "rmtree", _interrupt)
+        with pytest.raises(KeyboardInterrupt):
+            ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    assert (work / ol.SWAP_COMPLETE_FILE).is_file()
+    assert ol.write_outcomes_tree(out, idx_v2, shards_v2).ok
+    assert not work.exists()
