@@ -615,7 +615,11 @@ def _build_weekly(demog_path: Path, mesh_path: Path, out_dir: Path) -> int:
     )
 
 
-@pytest.mark.parametrize("phase", ["BANANA", "PHASE_3", "PHASE2, Phase 3", 3, None, ["PHASE3"]])
+@pytest.mark.parametrize(
+    "phase",
+    # the last five are separator-only or hold an empty piece, which normalize_phase read as no phase
+    ["BANANA", "PHASE_3", "PHASE2, Phase 3", 3, None, ["PHASE3"], ",", " / ", "PHASE1,,PHASE2", "PHASE2,", " "],
+)
 def test_weekly_records_must_carry_ctgov_phase_values(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], phase: object
 ) -> None:

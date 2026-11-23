@@ -677,18 +677,23 @@ def _require_weekly_phases(records: list[dict[str, Any]], source: str) -> None:
     """Refuse weekly full records whose `phase` string holds anything but CT.gov's phase values.
 
     Weekly records never pass the raw-record checks, so a `"phase": "BANANA"` (or a non-string) would
-    become a stratum of its own. Each token, split on `,` and `/` as `metrics.normalize_phase` splits
-    it (`"PHASE1, PHASE2"`), must be in `CTGOV_PHASES`; an empty string or a missing key still means
-    no phase stated. The 80,890 records of the 2026-11-08 weekly extraction hold only the six values,
-    two multi-phase forms and `""`.
+    become a stratum of its own. The value must be exactly `""` (no phase stated) or, split on `,` and
+    `/` as `metrics.normalize_phase` splits it (`"PHASE1, PHASE2"`), consist only of `CTGOV_PHASES`
+    values: an empty piece (`","`, `"PHASE2,"`, `" "`) is refused too, since `normalize_phase` drops
+    it and would read a separator-only value as no phase. A missing key still means no phase. The
+    80,890 records of the 2026-11-08 weekly extraction hold only the six values, two multi-phase
+    forms and `""`.
     """
     bad: list[str] = []
     for idx, rec in enumerate(records):
         if not isinstance(rec, dict) or "phase" not in rec:
             continue
         phase = rec["phase"]
-        tokens = [t.strip() for t in re.split(r"[,/]", phase) if t.strip()] if isinstance(phase, str) else None
-        if tokens is None or any(t not in CTGOV_PHASES for t in tokens):
+        if not isinstance(phase, str):
+            pieces = None
+        else:
+            pieces = [] if phase == "" else [t.strip() for t in re.split(r"[,/]", phase)]
+        if pieces is None or any(t not in CTGOV_PHASES for t in pieces):
             bad.append(f"{rec.get('nct_id') or f'index {idx}'} has phase {phase!r}")
     if bad:
         raise ValueError(
