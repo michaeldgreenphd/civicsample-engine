@@ -75,6 +75,11 @@ STRATUM_KINDS: tuple[str, ...] = (
 
 MESH_STATES_EXTENDED: tuple[str, ...] = tuple(cmesh.STATES) + ("mesh_sidecar_not_provided",)
 
+# Run stamps ``src/extract_all.py`` writes on every ``condition_mesh.jsonl.gz``
+# line; ``load_condition_mesh`` keeps them so ``check_condition_mesh_provenance``
+# can tie the sidecar to the study records it annotates.
+MESH_RUN_STAMP_KEYS: tuple[str, ...] = ("snapshot_date", "extracted_at", "pipeline_commit")
+
 _SITE_PART_NAME_RX: re.Pattern[str] = re.compile(
     r"^(?:demographics|studies_tab)\.part\d+\.json(?:\.gz)?$",
     re.IGNORECASE,
@@ -579,7 +584,12 @@ def load_study_records(
 def load_condition_mesh(
     path: Path | None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any] | None]:
-    """Load optional ``condition_mesh.jsonl.gz`` sidecar keyed by ``nct_id``."""
+    """Load optional ``condition_mesh.jsonl.gz`` sidecar keyed by ``nct_id``.
+
+    Each entry keeps the line's ``MESH_RUN_STAMP_KEYS`` (``None`` when a line
+    carries none) next to its MeSH fields; ``check_condition_mesh_provenance``
+    checks them against the study records before the build uses the sidecar.
+    """
     if path is None:
         return {}, None
     if not path.exists():
@@ -608,6 +618,7 @@ def load_condition_mesh(
                 "meshes": row.get("meshes"),
                 "ancestors": row.get("ancestors"),
                 **({"problem": row["problem"]} if "problem" in row else {}),
+                **{k: row.get(k) for k in MESH_RUN_STAMP_KEYS},
             }
             state_counts[state] += 1
     return by_nct, {
@@ -615,6 +626,107 @@ def load_condition_mesh(
         "sha256": digest,
         "n_lines": len(by_nct),
         "state_counts": {s: state_counts.get(s, 0) for s in cmesh.STATES},
+    }
+
+
+def check_condition_mesh_provenance(
+    mesh_sidecar: dict[str, dict[str, Any]],
+    mesh_meta: dict[str, Any] | None,
+    records: list[dict[str, Any]],
+    study_meta: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Refuse a ``condition_mesh`` sidecar that does not belong to the study records.
+
+    Returns ``mesh_meta`` extended with the sidecar's run stamps and the check
+    applied (recorded as ``run.json`` ``inputs.condition_mesh``), or ``None``
+    when no sidecar was supplied; raises ``ValueError`` naming the mismatch.
+
+    Every input format:
+      - coverage: the sidecar holds a line for every cohort trial. A missing
+        line would otherwise fall back, unannounced, to the record's own
+        ``derivedSection`` or to ``mesh_sidecar_not_provided``. Lines for
+        trials outside the cohort are allowed (``--limit`` cuts the records,
+        not the sidecar) and counted in ``n_lines_outside_cohort``.
+      - one run: every line carries the same ``MESH_RUN_STAMP_KEYS`` triple;
+        a file mixing extraction runs is refused.
+
+    Weekly full records (``input_format == "full_records"``) also carry the
+    pull's stamps: ``src/extract_all.py`` writes the same ``extracted_at`` and
+    ``pipeline_commit`` on the ``demographics.json`` container and on every
+    sidecar line, and the sex/gender write-back keeps the container's. So
+    every line's pair must equal the records' pair; a sidecar from another
+    week or commit is refused, and so are records missing either stamp, since
+    nothing could then show the two files are one pull. The container has no
+    ``snapshot_date``; the sidecar's is recorded, not matched.
+
+    Other inputs (a records directory, JSON or JSONL archives of API v2
+    studies) carry no extraction stamps to match, so only coverage and the
+    one-run check apply; the sidecar's stamps are recorded as found (``None``
+    when its lines carry none) and ``provenance_reason`` says why.
+    """
+    if mesh_meta is None:
+        return None
+    where = mesh_meta.get("path")
+
+    # Coverage. Empty nct_ids are skipped here; build_benchmarks refuses them.
+    cohort = sorted({_extract_core_metadata(r)["nct_id"] for r in records} - {""})
+    missing = [n for n in cohort if n not in mesh_sidecar]
+    if missing:
+        raise ValueError(
+            f"{where}: condition_mesh sidecar has no line for {len(missing)} of "
+            f"{len(cohort)} cohort trials (first: {', '.join(missing[:5])}); "
+            "it must cover every study record it annotates"
+        )
+
+    weekly = study_meta.get("input_format") == "full_records"
+    if weekly:
+        rec_pair = (study_meta.get("extracted_at"), study_meta.get("pipeline_commit"))
+        if not all(isinstance(s, str) and s for s in rec_pair):
+            raise ValueError(
+                f"{study_meta.get('path')}: full records carry no extracted_at/pipeline_commit "
+                f"(got {rec_pair!r}); cannot show the condition_mesh sidecar {where} is from the same pull"
+            )
+        stale = [
+            n for n in sorted(mesh_sidecar)
+            if (mesh_sidecar[n].get("extracted_at"), mesh_sidecar[n].get("pipeline_commit")) != rec_pair
+        ]
+        if stale:
+            first = mesh_sidecar[stale[0]]
+            raise ValueError(
+                f"{where}: {len(stale)} of {len(mesh_sidecar)} condition_mesh lines are not from the "
+                f"study records' pull: {stale[0]} has extracted_at={first.get('extracted_at')!r}, "
+                f"pipeline_commit={first.get('pipeline_commit')!r}, but {study_meta.get('path')} has "
+                f"extracted_at={rec_pair[0]!r}, pipeline_commit={rec_pair[1]!r}"
+            )
+
+    triples = sorted(
+        {tuple(entry.get(k) for k in MESH_RUN_STAMP_KEYS) for entry in mesh_sidecar.values()},
+        key=repr,
+    )
+    if len(triples) != 1:
+        raise ValueError(
+            f"{where}: condition_mesh lines carry {len(triples)} different "
+            f"({', '.join(MESH_RUN_STAMP_KEYS)}) stamps, e.g. {triples[0]!r} and {triples[1]!r}; "
+            "a sidecar must come from one extraction run"
+        )
+    stamps = dict(zip(MESH_RUN_STAMP_KEYS, triples[0]))
+
+    if weekly:
+        check = "full_records_run_stamps_matched_and_cohort_covered"
+        reason = "every line's extracted_at and pipeline_commit equal the full records' container stamps"
+    else:
+        check = "cohort_covered_and_one_run_only"
+        reason = (
+            f"{study_meta.get('input_format')} input carries no extraction stamps to match; "
+            "checked that every cohort trial has a line and all lines carry one run's stamps"
+        )
+    return {
+        **mesh_meta,
+        **stamps,
+        "provenance_check": check,
+        "provenance_reason": reason,
+        "n_cohort_trials": len(cohort),
+        "n_lines_outside_cohort": len(set(mesh_sidecar) - set(cohort)),
     }
 
 

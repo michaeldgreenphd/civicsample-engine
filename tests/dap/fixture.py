@@ -312,3 +312,81 @@ def write_studies_dir(studies: list[dict[str, Any]], target_dir: Path) -> Path:
         raw = (json.dumps(s, sort_keys=True) + "\n").encode("utf-8")
         (target_dir / f"{nct}.json.gz").write_bytes(gzip.compress(raw, mtime=0))
     return target_dir
+
+
+WEEKLY_EXTRACTED_AT: str = "2026-11-21T00:00:00+00:00"
+WEEKLY_PIPELINE_COMMIT: str = "deadbeef1234"
+
+
+def build_weekly_full_records_doc() -> dict[str, Any]:
+    """Five fictional weekly full records (``NCT99000401..405``) in the ``src/full_records.py`` container."""
+    return {
+        "extracted_at": WEEKLY_EXTRACTED_AT,
+        "pipeline_commit": WEEKLY_PIPELINE_COMMIT,
+        "data": [
+            {
+                "nct_id": f"NCT9900040{i}",
+                "brief_title": f"Weekly trial {i}",
+                "study_type": "INTERVENTIONAL",
+                "phase": "PHASE3",
+                "enrollment": 100,
+                "enrollment_type": "ACTUAL",
+                "status": "COMPLETED",
+                "start_date": "2023-06-01",
+                "primary_completion_date": "2024-06-01",
+                "results_date": "2024-10-01",
+                "sponsor_class": "INDUSTRY",
+                "lead_sponsor_name": "Acme Bio",
+                "collaborators": [],
+                "study_sites": [{"facility": "US1", "state": "MA", "country": "United States"}],
+                "conditions": ["Type 2 Diabetes"],
+                "race": {
+                    "reported": True,
+                    "omb_totals": {
+                        "white": 60,
+                        "black_african_american": 25,
+                        "asian": 10,
+                        "unknown_not_reported": 5,
+                    },
+                    "raw_categories": [
+                        {"omb_category": "white", "original": "White", "count": 60},
+                        {"omb_category": "black_african_american", "original": "Black", "count": 25},
+                        {"omb_category": "asian", "original": "Asian", "count": 10},
+                        {"omb_category": "unknown_not_reported", "original": "Unknown", "count": 5},
+                    ],
+                    "skipped_ethnicity_rows": [],
+                    "flags": [],
+                },
+                "ethnicity": {
+                    "reported": True,
+                    "omb_totals": {
+                        "hispanic_latino": 15,
+                        "not_hispanic_latino": 80,
+                        "unknown_not_reported": 5,
+                    },
+                    "raw_categories": [
+                        {"omb_category": "hispanic_latino", "original": "Hispanic or Latino", "count": 15},
+                        {"omb_category": "not_hispanic_latino", "original": "Not Hispanic or Latino", "count": 80},
+                    ],
+                    "flags": [],
+                },
+                "sex_gender": {
+                    "sex_report_status": "reported",
+                    "reported_sex": True,
+                    "reported_gender": False,
+                    "reported_both": False,
+                    "n_female": 50.0,
+                    "n_male": 50.0,
+                    "n_unknown": 0.0,
+                    "n_gender_diverse": 0.0,
+                    "n_ambiguous_gender": 0.0,
+                    "is_participant_count": True,
+                    "uninformative_reason": None,
+                    "declared_not_collected": False,
+                    "enrollment_minus_parsed": 0.0,
+                    "parser_rules_version": "1.0.0",
+                },
+            }
+            for i in range(1, 6)
+        ],
+    }

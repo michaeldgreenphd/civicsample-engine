@@ -65,6 +65,28 @@ modified.
 | `sponsors.json` | Canonical (`current_owner`) and `as_registered` company peer scorecards and 3-state attribution summary |
 | `trials.jsonl.gz` | Deterministic `nct_id`-sorted per-trial records (kept with the engine build; omitted by `export_dap_benchmarks_site.py`) |
 
+## Condition MeSH sidecar (`--condition-mesh`)
+
+The optional `condition_mesh.jsonl.gz` (`src/condition_mesh.py`) replaces each
+trial's own `derivedSection` MeSH descriptors, so the build refuses one that
+does not belong to its study records (`benchmarks.check_condition_mesh_provenance`):
+
+- **Every input:** the sidecar must hold a line for every input trial (lines
+  for other trials, e.g. under `--limit`, are allowed and counted), and all its
+  lines must carry one `(snapshot_date, extracted_at, pipeline_commit)` triple.
+- **Weekly full records (`--demographics`, or `--records` given a full-record
+  container):** `src/extract_all.py` stamps the `demographics.json` container
+  and every sidecar line with the same `extracted_at` and `pipeline_commit`,
+  so every line must equal the records' pair. Another week's or another
+  commit's sidecar is refused, as are records without both stamps.
+- **Raw API v2 inputs (`--records-dir`, or `--records` given study documents
+  or a JSONL archive):** they carry no extraction stamps, so only coverage and
+  the one-run check apply.
+
+`run.json` `inputs.condition_mesh` records the sidecar's three stamps (null
+when its lines carry none), `provenance_check`, `provenance_reason`,
+`n_cohort_trials` and `n_lines_outside_cohort`.
+
 ## Commands
 
 ```bash

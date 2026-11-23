@@ -103,7 +103,11 @@ def main(argv: list[str] | None = None) -> int:
         "--condition-mesh",
         type=Path,
         default=None,
-        help="Optional condition_mesh.jsonl.gz sidecar (src/condition_mesh.py)",
+        help=(
+            "Optional condition_mesh.jsonl.gz sidecar (src/condition_mesh.py); must cover every "
+            "input trial, come from one extraction run and, for weekly full records "
+            "(--demographics), carry their extracted_at and pipeline_commit on every line"
+        ),
     )
     ap.add_argument(
         "--ontology",
@@ -172,6 +176,7 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.limit,
         )
         mesh_map, mesh_meta = benchmarks.load_condition_mesh(args.condition_mesh)
+        mesh_meta = benchmarks.check_condition_mesh_provenance(mesh_map, mesh_meta, records, study_meta)
         result = benchmarks.build_benchmarks(
             records,
             mesh_sidecar=mesh_map,

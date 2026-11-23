@@ -29,6 +29,14 @@ if not hasattr(fx, "make_raw_ctgov_study"):
 import build_dap_benchmarks as cli_build  # noqa: E402
 import check_dap_benchmarks_contract as cli_check  # noqa: E402
 from dap import artifacts, benchmarks  # noqa: E402
+from src import condition_mesh as cmesh  # noqa: E402
+
+
+def _write_mesh_sidecar(path: Path, lines: list[dict[str, Any]]) -> Path:
+    """Write ``condition_mesh.jsonl.gz`` lines deterministically (``mtime=0``)."""
+    raw = b"".join((json.dumps(line) + "\n").encode("utf-8") for line in lines)
+    path.write_bytes(gzip.compress(raw, mtime=0))
+    return path
 
 
 @pytest.mark.parametrize(
@@ -175,18 +183,14 @@ def test_build_contract_and_byte_stable_run_identity(tmp_path: Path) -> None:
     studies_dir = fx.write_studies_dir(studies, tmp_path / "studies")
     rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
 
-    # Optional MeSH sidecar overriding one trial
+    # Optional MeSH sidecar covering every cohort trial (as the build requires),
+    # overriding one trial's derivedSection.
     mesh_sidecar = tmp_path / "condition_mesh.jsonl.gz"
-    mesh_line = {
-        "schema_version": "1.0",
-        "nct_id": "NCT99000110",
-        "state": "indexed",
-        "meshes": [{"id": "D006333", "term": "Heart Failure"}],
-        "ancestors": [],
-    }
-    mesh_sidecar.write_bytes(
-        gzip.compress((json.dumps(mesh_line) + "\n").encode("utf-8"), mtime=0)
-    )
+    mesh_lines = [cmesh.select_condition_mesh(s) for s in studies]
+    for line in mesh_lines:
+        if line["nct_id"] == "NCT99000110":
+            line.update(state="indexed", meshes=[{"id": "D006333", "term": "Heart Failure"}], ancestors=[])
+    _write_mesh_sidecar(mesh_sidecar, mesh_lines)
 
     out_a = tmp_path / "build_a"
     out_b = tmp_path / "build_b"
@@ -299,76 +303,7 @@ def test_site_parts_are_refused_as_study_input(tmp_path: Path) -> None:
 
 
 def test_weekly_full_records_container_supported(tmp_path: Path) -> None:
-    weekly_doc = {
-        "extracted_at": "2026-11-21T00:00:00+00:00",
-        "pipeline_commit": "deadbeef1234",
-        "data": [
-            {
-                "nct_id": f"NCT9900040{i}",
-                "brief_title": f"Weekly trial {i}",
-                "study_type": "INTERVENTIONAL",
-                "phase": "PHASE3",
-                "enrollment": 100,
-                "enrollment_type": "ACTUAL",
-                "status": "COMPLETED",
-                "start_date": "2023-06-01",
-                "primary_completion_date": "2024-06-01",
-                "results_date": "2024-10-01",
-                "sponsor_class": "INDUSTRY",
-                "lead_sponsor_name": "Acme Bio",
-                "collaborators": [],
-                "study_sites": [{"facility": "US1", "state": "MA", "country": "United States"}],
-                "conditions": ["Type 2 Diabetes"],
-                "race": {
-                    "reported": True,
-                    "omb_totals": {
-                        "white": 60,
-                        "black_african_american": 25,
-                        "asian": 10,
-                        "unknown_not_reported": 5,
-                    },
-                    "raw_categories": [
-                        {"omb_category": "white", "original": "White", "count": 60},
-                        {"omb_category": "black_african_american", "original": "Black", "count": 25},
-                        {"omb_category": "asian", "original": "Asian", "count": 10},
-                        {"omb_category": "unknown_not_reported", "original": "Unknown", "count": 5},
-                    ],
-                    "skipped_ethnicity_rows": [],
-                    "flags": [],
-                },
-                "ethnicity": {
-                    "reported": True,
-                    "omb_totals": {
-                        "hispanic_latino": 15,
-                        "not_hispanic_latino": 80,
-                        "unknown_not_reported": 5,
-                    },
-                    "raw_categories": [
-                        {"omb_category": "hispanic_latino", "original": "Hispanic or Latino", "count": 15},
-                        {"omb_category": "not_hispanic_latino", "original": "Not Hispanic or Latino", "count": 80},
-                    ],
-                    "flags": [],
-                },
-                "sex_gender": {
-                    "sex_report_status": "reported",
-                    "reported_sex": True,
-                    "reported_gender": False,
-                    "reported_both": False,
-                    "n_female": 50.0,
-                    "n_male": 50.0,
-                    "n_unknown": 0.0,
-                    "n_gender_diverse": 0.0,
-                    "n_ambiguous_gender": 0.0,
-                    "is_participant_count": True,
-                    "uninformative_reason": None,
-                    "declared_not_collected": False,
-                    "enrollment_minus_parsed": 0.0,
-                    "parser_rules_version": "1.0.0",
-                },
-            }
-            for i in range(1, 6)
-        ],
-    }
+    weekly_doc = fx.build_weekly_full_records_doc()
     weekly_path = tmp_path / "demographics.json.gz"
     weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
     rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
@@ -389,6 +324,162 @@ def test_weekly_full_records_container_supported(tmp_path: Path) -> None:
         == 0
     )
     assert cli_check.main([str(out_dir)]) == 0
+
+
+def _weekly_mesh_lines(
+    nct_ids: list[str],
+    *,
+    extracted_at: str = fx.WEEKLY_EXTRACTED_AT,
+    pipeline_commit: str = fx.WEEKLY_PIPELINE_COMMIT,
+) -> list[dict[str, Any]]:
+    """Sidecar lines stamped as ``src/extract_all.py`` stamps them."""
+    return [
+        {
+            "schema_version": "1.0",
+            "nct_id": nct,
+            "state": "indexed",
+            "meshes": [{"id": "D003924", "term": "Diabetes Mellitus, Type 2"}],
+            "ancestors": [],
+            "refetched": False,
+            "snapshot_date": "2026-11-21",
+            "extracted_at": extracted_at,
+            "pipeline_commit": pipeline_commit,
+        }
+        for nct in nct_ids
+    ]
+
+
+def _build_weekly_with_mesh(
+    tmp_path: Path, mesh_lines: list[dict[str, Any]], out_name: str
+) -> tuple[int, Path]:
+    """Build from the fictional weekly full records with the given sidecar lines."""
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(
+        gzip.compress(json.dumps(fx.build_weekly_full_records_doc()).encode("utf-8"), mtime=0)
+    )
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    mesh_path = _write_mesh_sidecar(tmp_path / f"{out_name}.condition_mesh.jsonl.gz", mesh_lines)
+    out_dir = tmp_path / out_name
+    rc = cli_build.main(
+        [
+            "--demographics",
+            str(weekly_path),
+            "--condition-mesh",
+            str(mesh_path),
+            "--sponsor-rules",
+            str(rules_path),
+            "--generated-at",
+            "2026-11-21T00:00:00+00:00",
+            "--out",
+            str(out_dir),
+        ]
+    )
+    return rc, out_dir
+
+
+def test_weekly_mesh_sidecar_must_match_records_run_and_cover_cohort(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cohort = [r["nct_id"] for r in fx.build_weekly_full_records_doc()["data"]]
+
+    # Matching sidecar: builds, and run.json records the matched stamps.
+    rc, out_ok = _build_weekly_with_mesh(tmp_path, _weekly_mesh_lines(cohort), "ok")
+    assert rc == 0
+    assert cli_check.main([str(out_ok)]) == 0
+    run = json.loads((out_ok / "run.json").read_text(encoding="utf-8"))
+    mesh_in = run["inputs"]["condition_mesh"]
+    assert mesh_in["extracted_at"] == fx.WEEKLY_EXTRACTED_AT == run["inputs"]["study_records"]["extracted_at"]
+    assert (
+        mesh_in["pipeline_commit"]
+        == fx.WEEKLY_PIPELINE_COMMIT
+        == run["inputs"]["study_records"]["pipeline_commit"]
+    )
+    assert mesh_in["snapshot_date"] == "2026-11-21"
+    assert mesh_in["provenance_check"] == "full_records_run_stamps_matched_and_cohort_covered"
+    assert mesh_in["n_cohort_trials"] == 5 and mesh_in["n_lines_outside_cohort"] == 0
+    rows = artifacts.load_dir(out_ok)["trial_rows"]
+    assert {r["indication"]["mesh_source"] for r in rows} == {"condition_mesh_sidecar"}
+    capsys.readouterr()
+
+    # Stale sidecar: another week's extracted_at -> refused, nothing written.
+    stale = _weekly_mesh_lines(cohort, extracted_at="2026-11-14T00:00:00+00:00")
+    rc, out_stale = _build_weekly_with_mesh(tmp_path, stale, "stale")
+    err = capsys.readouterr().err
+    assert rc == 1 and not out_stale.exists()
+    assert "not from the study records' pull" in err and "2026-11-14T00:00:00+00:00" in err
+
+    # Another commit's sidecar, even one line of it -> refused.
+    mixed = _weekly_mesh_lines(cohort)
+    mixed[2]["pipeline_commit"] = "0123abcd"
+    rc, out_mixed = _build_weekly_with_mesh(tmp_path, mixed, "mixed")
+    err = capsys.readouterr().err
+    assert rc == 1 and not out_mixed.exists()
+    assert "1 of 5 condition_mesh lines" in err and cohort[2] in err
+
+    # Partial sidecar missing a cohort trial -> refused, naming the trial.
+    rc, out_partial = _build_weekly_with_mesh(tmp_path, _weekly_mesh_lines(cohort[:-1]), "partial")
+    err = capsys.readouterr().err
+    assert rc == 1 and not out_partial.exists()
+    assert "no line for 1 of 5 cohort trials" in err and cohort[-1] in err
+
+    # Records without stamps cannot be matched to a sidecar -> refused.
+    loaded_mesh, mesh_meta = benchmarks.load_condition_mesh(
+        _write_mesh_sidecar(tmp_path / "plain.jsonl.gz", _weekly_mesh_lines(cohort))
+    )
+    records = fx.build_weekly_full_records_doc()["data"]
+    unstamped_meta = {
+        "input_format": "full_records",
+        "path": "demographics.json",
+        "extracted_at": None,
+        "pipeline_commit": None,
+    }
+    with pytest.raises(ValueError, match="full records carry no extracted_at/pipeline_commit"):
+        benchmarks.check_condition_mesh_provenance(loaded_mesh, mesh_meta, records, unstamped_meta)
+
+
+def test_raw_records_mesh_sidecar_checks_coverage_and_one_run(tmp_path: Path) -> None:
+    studies = fx.build_fictional_cohort()
+    records, study_meta = benchmarks.load_study_records(fx.write_studies_dir(studies, tmp_path / "studies"))
+    lines = [cmesh.select_condition_mesh(s) for s in studies]
+
+    # Full coverage, unstamped lines: accepted; absent stamps recorded with the reason.
+    mesh_map, mesh_meta = benchmarks.load_condition_mesh(
+        _write_mesh_sidecar(tmp_path / "full.jsonl.gz", lines)
+    )
+    checked = benchmarks.check_condition_mesh_provenance(mesh_map, mesh_meta, records, study_meta)
+    assert checked is not None
+    assert checked["provenance_check"] == "cohort_covered_and_one_run_only"
+    assert "records_directory input carries no extraction stamps" in checked["provenance_reason"]
+    assert [checked[k] for k in benchmarks.MESH_RUN_STAMP_KEYS] == [None, None, None]
+    assert checked["n_cohort_trials"] == len(studies)
+
+    # Extra lines beyond the cohort (e.g. --limit) are allowed and counted.
+    limited = records[:3]
+    checked_lim = benchmarks.check_condition_mesh_provenance(mesh_map, mesh_meta, limited, study_meta)
+    assert checked_lim is not None and checked_lim["n_lines_outside_cohort"] == len(studies) - 3
+
+    # Missing a cohort trial -> refused.
+    part_map, part_meta = benchmarks.load_condition_mesh(
+        _write_mesh_sidecar(tmp_path / "part.jsonl.gz", lines[1:])
+    )
+    want = rf"no line for 1 of {len(studies)} cohort trials \(first: NCT99000101\)"
+    with pytest.raises(ValueError, match=want):
+        benchmarks.check_condition_mesh_provenance(part_map, part_meta, records, study_meta)
+
+    # Lines from two extraction runs -> refused.
+    two_runs = [
+        dict(line, snapshot_date="2026-11-21", extracted_at="2026-11-21T00:00:00+00:00", pipeline_commit="aaa")
+        for line in lines
+    ]
+    two_runs[0]["extracted_at"] = "2026-11-14T00:00:00+00:00"
+    run_map, run_meta = benchmarks.load_condition_mesh(
+        _write_mesh_sidecar(tmp_path / "runs.jsonl.gz", two_runs)
+    )
+    with pytest.raises(ValueError, match="carry 2 different"):
+        benchmarks.check_condition_mesh_provenance(run_map, run_meta, records, study_meta)
+
+    # No sidecar -> nothing to check.
+    assert benchmarks.check_condition_mesh_provenance({}, None, records, study_meta) is None
 
 
 def test_contract_checker_refuses_tampered_or_invariant_violating_builds(tmp_path: Path) -> None:
