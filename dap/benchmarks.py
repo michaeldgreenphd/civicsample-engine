@@ -687,6 +687,15 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
                     for name in entry_fields or ()
                     if name in entry and not isinstance(entry[name], str)
                 ]
+                # A collaborator without a name was read as "" and skipped by `attribute_sponsors`, so the
+                # trial left that collaborator's scorecards and the literal counts fell with nothing
+                # reported. All 61,241 collaborator entries in the stored local files carry a non-blank
+                # name. (A name of another type is reported just above.)
+                name = entry.get("name")
+                if (mod, field) == ("sponsorCollaboratorsModule", "collaborators") and (
+                    "name" not in entry or (isinstance(name, str) and not name.strip())
+                ):
+                    out.append(f"{where}[{i}].name (a non-blank string)")
         # normalize_phase turned any entry into text with str() and kept any token, so [7], [null] or
         # ["PHASE_3"] became a phase stratum of its own. Phases must be CT.gov's values (CTGOV_PHASES).
         design = protocol.get("designModule")
@@ -818,8 +827,9 @@ _SEX_GENDER_COUNT_COLUMNS: frozenset[str] = frozenset(
 # rows carry `parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14`.
 _SEX_GENDER_NON_BLANK_COLUMNS: frozenset[str] = frozenset({"parser_rules_version"})
 # Entry fields `src/utils.py` always writes as non-blank strings: it keeps a site only for a location
-# with a country.
-WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {"study_sites": ("country",)}
+# with a country, and an unnamed collaborator dropped out of sponsor attribution (`attribute_sponsors`
+# skips it). All 48,077 weekly collaborators carry a name.
+WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {"study_sites": ("country",), "collaborators": ("name",)}
 # The other weekly fields this module reads, the type `src/utils.py` writes for each, and whether it is
 # never blank (dates are "" when CT.gov has none). A missing or mistyped one was read as absent: an
 # "Unknown" sponsor and class (`_extract_core_metadata`), no enrollment, a demographics block read as not
@@ -1225,7 +1235,11 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
                     return f"{key}[{i}].{field} is {type(entry[field]).__name__}, not a string"
             for field in WEEKLY_REQUIRED_ENTRY_FIELDS.get(key, ()):
                 if not (isinstance(entry.get(field), str) and entry[field].strip()):
-                    return f"{key}[{i}].{field} is missing or blank (src/utils.py keeps only sites with one)"
+                    why = (
+                        "an unnamed collaborator drops out of sponsor attribution" if key == "collaborators"
+                        else "src/utils.py keeps only sites with one"
+                    )
+                    return f"{key}[{i}].{field} is missing or blank ({why})"
     return None
 
 

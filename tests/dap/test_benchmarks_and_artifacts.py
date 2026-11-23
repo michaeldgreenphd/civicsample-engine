@@ -577,6 +577,12 @@ _WEEKLY_SITE = {"facility": "US1", "state": "MA", "country": "United States"}
          "study_sites[0].country is missing or blank (src/utils.py keeps only sites with one)"),
         ("study_sites", [{"facility": "US1", "state": "MA"}],
          "study_sites[0].country is missing or blank (src/utils.py keeps only sites with one)"),
+        # On f81b1e6 an unnamed collaborator loaded and `attribute_sponsors` skipped it, so the trial left
+        # that collaborator's scorecards.
+        ("collaborators", [{"class": "INDUSTRY"}],
+         "collaborators[0].name is missing or blank (an unnamed collaborator drops out of sponsor attribution)"),
+        ("collaborators", [{"name": " ", "class": "INDUSTRY"}],
+         "collaborators[0].name is missing or blank (an unnamed collaborator drops out of sponsor attribution)"),
         # The other fields read, with the producer's type.
         ("lead_sponsor_name", None, "lead_sponsor_name is NoneType, not str"),
         ("lead_sponsor_name", ["Acme Bio"], "lead_sponsor_name is list, not str"),
@@ -1547,6 +1553,11 @@ def _measured_study(nct_id: str) -> dict:
          "contactsLocationsModule.locations[0].state (a string)"),
         (("protocolSection", "sponsorCollaboratorsModule", "collaborators"), [{"name": None, "class": "INDUSTRY"}],
          "sponsorCollaboratorsModule.collaborators[0].name (a string)"),
+        # On f81b1e6 a collaborator without a name, or with a blank one, built and was skipped by attribution.
+        (("protocolSection", "sponsorCollaboratorsModule", "collaborators"), [{"class": "INDUSTRY"}],
+         "sponsorCollaboratorsModule.collaborators[0].name (a non-blank string)"),
+        (("protocolSection", "sponsorCollaboratorsModule", "collaborators"), [{"name": "", "class": "INDUSTRY"}],
+         "sponsorCollaboratorsModule.collaborators[0].name (a non-blank string)"),
         # phases: str() turned these into strata of their own
         (("protocolSection", "designModule", "phases"), [7],
          "designModule.phases (a list of CT.gov phase values)"),

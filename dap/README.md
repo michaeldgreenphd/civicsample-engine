@@ -129,7 +129,9 @@ measurements; see `TYPED_PROTOCOL_PARTS` and `BASELINE_SHAPE`), so a malformed r
 name instead of stopping the build with a traceback. The locations module and list, and every
 location and collaborator entry, are checked the same way (`LIST_ENTRY_FIELDS`): a skipped `null`
 location, or a module read as empty, would lower or zero the listed facilities and move the
-footprint class with nothing reported. Every measurement and denominator count must carry its
+footprint class with nothing reported. Every collaborator must also carry a non-blank `name`: one
+without was read as `""` and skipped by `attribute_sponsors`, so the trial left that collaborator's
+scorecards with nothing reported. Every measurement and denominator count must carry its
 `groupId` and `value` as strings, CT.gov's form (`"60"`, `"NA"`): `src/utils.sum_measurements`
 counts a value it cannot parse as 0, so a missing or non-string one (`{}`, `["60"]`, `true`, `null`)
 moved a posted row's participants into the balanced unknown remainder. The same holds for a
@@ -146,7 +148,8 @@ non-blank strings, as on the raw path, an explicit `null` refused throughout. A
 `conditions` string was read one character at a time, a dropped or missing
 condition list moved the indication to Other, and a dropped or missing site
 list lowered the exact site counts. Every site must carry a non-blank
-`country`, since `src/utils.py` keeps only locations with one
+`country`, since `src/utils.py` keeps only locations with one, and every
+collaborator a non-blank `name`, as on the raw path
 (`WEEKLY_REQUIRED_ENTRY_FIELDS`). The other weekly fields this module reads
 must be present with the producer's type (`WEEKLY_SCALAR_FIELDS`): `nct_id`,
 `study_type`, `status`, `lead_sponsor_name` and `sponsor_class` non-blank
