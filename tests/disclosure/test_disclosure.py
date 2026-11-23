@@ -2231,6 +2231,29 @@ def test_version_bracket_rule_on_hand_made_logs() -> None:
     assert problem([rec('ctgov/version/2026-11-01'), local]) is None
 
 
+def test_a_cache_frozen_before_the_version_bracket_check_is_refused(
+    tmp_path: Path, frozen_cache: A.FrozenCache
+) -> None:
+    # The bracket needs the raw log's order, which the key-sorted archive drops, so it cannot be
+    # re-checked on load; a version-1 manifest (frozen without it) is refused by version instead.
+    cache = tmp_path / 'old_cache'
+    shutil.copytree(frozen_cache.cache_dir, cache)
+    manifest_path = cache / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    assert manifest['schema_version'] == A.CACHE_SCHEMA_VERSION == 2
+    manifest['schema_version'] = 1
+    manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+    with pytest.raises(A.CacheIntegrityError, match=r'schema_version 1 \(expected 2\).*freeze it again'):
+        A.load_frozen_cache(cache)
+    out = tmp_path / 'out'
+    assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--as-of', F.AS_OF,
+                           '--generated-at', F.GENERATED_AT]) == 1
+    assert not out.exists()
+    # Freezing the same raw logs again (they bracket their answers) gives a loadable cache.
+    A.freeze_cache(cache, F.NCT_IDS, frozen_at=F.GENERATED_AT)
+    assert A.load_frozen_cache(cache).manifest['schema_version'] == 2
+
+
 def test_acquire_cli_refuses_when_the_version_request_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def get(url: str, params: dict[str, Any] | None) -> A.Response:
         if url == f'{A.CTGOV_API}/version':
