@@ -126,9 +126,10 @@ Key invariants:
   ``quotation`` (verbatim text matched against the cited page). Text is
   matched after NFKC folding with invisible characters removed.
 - A quotation compared with no page text (no page provider) is recorded, not
-  passed silently: it is counted in ``quotations_not_compared`` and, as not
-  matched on its page, in ``substring_mismatches``, and the corpus report is
-  not ``ok`` (``verify`` without ``--pages-dir`` exits 1).
+  passed silently: it is counted in ``quotations_not_compared``, never in
+  ``substring_mismatches`` (a quotation nothing compared has not been found
+  to mismatch), and the corpus report is not ``ok`` (``verify`` without
+  ``--pages-dir`` exits 1).
 """
 from __future__ import annotations
 
@@ -536,11 +537,13 @@ class CorpusVerificationReport:
     """Aggregate report returned by ``verify_census_corpus``.
 
     ``substring_mismatches`` counts every checked citation whose quotation was
-    not matched on its cited page's text: compared and not found, page text
-    unavailable, or no page text given at all. ``quotations_not_compared`` is
-    the last of these: with no page provider (``verify`` without
-    ``--pages-dir``) every citation is counted there, so a structure-only run
-    says in its report that no quotation was checked against a page.
+    not matched on its cited page's text: compared and not found, or page text
+    unavailable for the cited page. ``quotations_not_compared`` counts the
+    citations for which no page text was given at all: with no page provider
+    (``verify`` without ``--pages-dir``) every citation is counted there and
+    none in ``substring_mismatches``, so a structure-only run says in its
+    report that no quotation was checked against a page, and does not report
+    as mismatched a quotation nothing compared.
 
     ``ok`` is True only when no issue is an error and ``quotations_not_compared``
     is 0: a run that compared a quotation with no page text did not verify it,
@@ -4935,8 +4938,8 @@ def verify_location_record(
     """Verify a single location record, provenance, citations, coverage, and neutrality.
 
     With no ``page_text_provider`` no quotation is compared with page text;
-    each citation is then counted in ``quotations_not_compared`` and, as not
-    matched on its page, in ``substring_mismatches`` (see the citation loop).
+    each citation is then counted in ``quotations_not_compared`` only, not in
+    ``substring_mismatches`` (see the citation loop).
 
     ``manifest_has_documents`` is what the index says about posted documents for
     the record's trial: True, False, or None when the index does not say (or the
@@ -5323,13 +5326,13 @@ def verify_location_record(
             counts["ellipsis_flags"] += 1
         if page_text_provider is None:
             # With no page text the quotation was compared with nothing. That is recorded,
-            # not left as a citation with no match tier and no count: it is counted as not
-            # matched on its page (``substring_mismatches``, as for a page whose text is
-            # unavailable) and, separately, as ``quotations_not_compared``, so a report
-            # says how many of its citations no page text checked. The citation's
-            # quotation is also the one string the neutral-language guard exempts, so
-            # without page text nothing else reads it.
-            counts["substring_mismatches"] += 1
+            # not left as a citation with no match tier and no count: it is counted in
+            # ``quotations_not_compared``, so a report says how many of its citations no
+            # page text checked. It is not counted in ``substring_mismatches``: a
+            # quotation nothing compared has not been found to mismatch, and counting it
+            # there would report every uncompared quotation as a failed one. The
+            # citation's quotation is also the one string the neutral-language guard
+            # exempts, so without page text nothing else reads it.
             counts["quotations_not_compared"] += 1
         elif tier == "exact_ws":
             counts["exact_ws_matches"] += 1
