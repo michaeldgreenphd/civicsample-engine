@@ -29,7 +29,7 @@ from typing import Any
 
 from feasibility.metrics import is_num, parse_num
 
-TERMINATION_RULES_VERSION = "1.1.0"
+TERMINATION_RULES_VERSION = "1.2.0"
 
 STOPPED_STATUSES = ("TERMINATED", "WITHDRAWN", "SUSPENDED")
 
@@ -68,7 +68,8 @@ _I = re.IGNORECASE
 # that category, preventing false positives on real registry text such as
 # "Terminated for strategic reasons; there were no safety concerns."
 #
-# Method (rules 1.1.0). A negation masks a signal only when the negator governs the signal itself:
+# Method (rules 1.1.0; COVID's "no" in 1.2.0). A negation masks a signal only when the negator
+# governs the signal itself:
 #   * Determiner-type negators ("no", "without", "neither", "nor", "there were no", "free of", ...)
 #     modify the noun phrase that follows, so the signal may sit a few words later ("no new safety
 #     signals"), but never past a causal connective: in "no further enrolment due to slow accrual"
@@ -79,6 +80,16 @@ _I = re.IGNORECASE
 #     issue". In "Could not continue due to COVID-19" it negates "continue", and COVID-19 is the
 #     reason, so nothing is masked. (Rules 1.0.0 masked any signal within 35 characters of "not".)
 #   * "unrelated to" and "non-" attach directly to the signal.
+#   * Rules 1.2.0: for COVID, "no" masks the signal only when it heads the noun phrase holding it,
+#     with nothing but filler words between ("No COVID-19 impact", "there were no COVID-19 related
+#     issues", "no significant COVID-19 impact"). The pandemic is often the time or circumstance of
+#     what "no" negates, so the span the other determiners use would mask it in "No participants
+#     enrolled during the COVID-19 pandemic", where "no" governs "participants" and "during" is not
+#     a causal connective; COVID's only span determiner stays "prior to". Rules 1.0.0 and 1.1.0 had
+#     no "no" guard for COVID, so "No COVID-19 impact; terminated for strategic reasons" read as
+#     COVID plus business (multiple_signals_detected). Known limits: "No impact of COVID-19" is
+#     still a COVID signal, and "No COVID-19 patients were enrolled" loses it, as any phrase "no"
+#     heads does.
 _CAUSAL = r"(?:due\s+to|because\s+of|owing\s+to|as\s+a\s+result\s+of|caused\s+by|resulting\s+from)"
 _NOT_LINK = (
     r"(?:(?:be|been|being|was|were|is|are)\s+)?"
@@ -93,10 +104,11 @@ _FILLERS = (
 )
 
 
-def _negation(determiners: str, signal: str, gap: int) -> re.Pattern[str]:
+def _negation(determiners: str, signal: str, gap: int, heads: str = "") -> re.Pattern[str]:
     """Negation guard for one category: determiner-type negators within `gap` characters (never
-    across a clause break or a causal connective), or "not" / "unrelated to" / "non-" linked
-    directly to the signal (see the method note above)."""
+    across a clause break or a causal connective), `heads` negators followed by the signal with
+    only filler words between, or "not" / "unrelated to" / "non-" linked directly to the signal
+    (see the method note above)."""
     # A negated signal may run into further signal words ("COVID-19 pandemic", "safety or
     # tolerability"); the mask covers the whole run so none of it is matched afterwards.
     run = rf"(?:{signal})\b(?:[\s/-]+(?:(?:or|and|nor)\s+)?(?:{signal})\b){{0,3}}"
@@ -105,8 +117,9 @@ def _negation(determiners: str, signal: str, gap: int) -> re.Pattern[str]:
         if determiners
         else None
     )
+    head = rf"\b(?:{heads})\b{_FILLERS}\s+{run}" if heads else None
     linked = rf"\bnot\s+{_NOT_LINK}{_FILLERS}\s*\b{run}|\bunrelated\s+to{_FILLERS}\s+{run}|\bnon[- ]{run}"
-    return re.compile("|".join(x for x in (det, linked) if x), _I)
+    return re.compile("|".join(x for x in (det, head, linked) if x), _I)
 
 
 _NEGATION_PATTERNS: dict[str, re.Pattern[str]] = {
@@ -125,7 +138,7 @@ _NEGATION_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
     "business_or_strategic": _negation(r"", r"business|commercial|financial|strategic", 30),
     "covid_or_pandemic": _negation(
-        r"prior\s+to", r"covid(?:[- ]?19)?|sars[- ]cov[- ]2|pandemic|coronavirus", 35
+        r"prior\s+to", r"covid(?:[- ]?19)?|sars[- ]cov[- ]2|pandemic|coronavirus", 35, heads=r"no"
     ),
     "regulatory_or_clinical_hold": _negation(
         r"no|without|lifted", r"clinical\s+hold|regulatory\s+hold", 30

@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_rules_version_and_curated_csv_is_header_only() -> None:
-    assert TERMINATION_RULES_VERSION == "1.1.0"
+    assert TERMINATION_RULES_VERSION == "1.2.0"
     csv_path = ROOT / "feasibility" / "termination_reviews.csv"
     raw_lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert raw_lines == [",".join(REVIEW_COLUMNS)]
@@ -233,4 +233,24 @@ def test_reviewed_at_is_validated_whole(tmp_path: Path, reviewed_at: str, ok: bo
     ],
 )
 def test_negation_masks_only_a_signal_it_governs(why: str, category: str) -> None:
+    assert classify_why_stopped(why)["deterministic_category"] == category
+
+
+@pytest.mark.parametrize(
+    "why, category",
+    [
+        # rules 1.2.0: "no" heading the noun phrase that holds COVID negates it
+        ("No COVID-19 impact; terminated for strategic reasons", "business_or_strategic"),
+        ("there were no COVID-19 related issues", "other_unclassified_text"),
+        ("Terminated for strategic reasons; there were no significant COVID-19 related delays.", "business_or_strategic"),
+        ("Sponsor decision. No COVID or pandemic impact on the study.", "business_or_strategic"),
+        # "no" governs something else, so COVID stays the stated cause or circumstance
+        ("Could not continue due to COVID-19", "covid_or_pandemic"),
+        ("Could not achieve recruitment goal due to COVID delays and staffing.", "covid_or_pandemic"),
+        ("No further enrollment due to COVID-19", "covid_or_pandemic"),
+        ("No enrollment during the COVID-19 pandemic", "covid_or_pandemic"),
+        ("No participants enrolled during the COVID-19 pandemic", "multiple_signals_detected"),
+    ],
+)
+def test_no_masks_covid_only_in_the_phrase_it_heads(why: str, category: str) -> None:
     assert classify_why_stopped(why)["deterministic_category"] == category
