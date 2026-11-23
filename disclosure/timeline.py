@@ -7,7 +7,8 @@ Key methodological invariants:
        * Both endpoints `YYYY-MM-DD`: `state = "exact"`, `exact_days = int`
        * Partial dates whose calendar spans do not overlap: `state = "bounded_partial"`,
          `bounds_days = [min_days, max_days]`, `exact_days = None`
-       * Partial dates whose calendar spans overlap: `state = "indeterminate_at_recorded_precision"`,
+       * Partial dates whose calendar spans overlap, or an endpoint bounded on one side only
+         (`bounded_above_only`): `state = "indeterminate_at_recorded_precision"`,
          `bounds_days = None`, `exact_days = None`
        * Missing endpoint(s): `state = "endpoint_missing"`, `bounds_days = None`, `exact_days = None`
   2. The 365-day window classification (`WINDOW_STATES_365D`) describes registry timestamps only
@@ -56,6 +57,11 @@ INTERVAL_STATES = (
     'indeterminate_at_recorded_precision',
     'endpoint_missing',
 )
+
+# Earliest-link milestones add two precisions to the per-date ones: `bounded_composite` (several dated
+# links narrow `[earliest, latest]`) and `bounded_above_only` (an undated qualifying link leaves no
+# lower bound, so only `latest_bound` is recorded and no lag is computed from the milestone).
+MILESTONE_PRECISIONS = (*E.DATE_PRECISIONS, 'bounded_composite', 'bounded_above_only')
 
 WINDOW_STATES_365D = (
     'POSTED_WITHIN_365D',
@@ -171,6 +177,11 @@ def earliest_link_milestone(qualifying_links: list[dict[str, Any]]) -> dict[str,
 
     For dates `{[L_i, U_i]}`, `min_i d_i` lies in `[min_i L_i, min_i U_i]`: it cannot precede
     every `L_i` and cannot exceed any `U_i`.
+
+    An undated qualifying link has no `L_i`: its date may precede every dated link, so the dated
+    links' `min_i L_i` is NOT a lower bound on the true earliest date. Only the upper bound
+    `min_i U_i` (over the dated links) still holds. Such a milestone carries no `date`, no
+    `earliest_bound`, and precision `bounded_above_only`, so that no consumer computes a lag from it.
     """
     dated: list[tuple[PartialDate, str]] = []
     undated_ids: list[str] = []
@@ -196,6 +207,18 @@ def earliest_link_milestone(qualifying_links: list[dict[str, Any]]) -> dict[str,
     exact_matches = [(p, lid) for p, lid in dated if p.earliest == min_earliest and p.latest == min_latest]
     contributing = sorted({lid for p, lid in dated if p.earliest <= min_latest})
 
+    if undated_ids:
+        # Any undated link could be the earliest, so it contributes alongside every dated link whose
+        # span starts on or before `min_latest`; the lower bound is recorded as absent, never as `min_earliest`.
+        return {
+            'date': None,
+            'precision': 'bounded_above_only',
+            'earliest_bound': None,
+            'latest_bound': min_latest.isoformat(),
+            'link_ids': sorted(set(contributing) | set(undated_ids)),
+            'has_undated_qualifying_link': True,
+        }
+
     if exact_matches:
         chosen = sorted(exact_matches, key=lambda item: (item[0].raw, item[1]))[0][0]
         return {
@@ -219,14 +242,22 @@ def earliest_link_milestone(qualifying_links: list[dict[str, Any]]) -> dict[str,
 
 
 def interval_from_milestones(start_ms: dict[str, Any], end_ms: dict[str, Any]) -> dict[str, Any]:
-    """Compute date-precision-aware interval `end - start` in days without fabricating `-01`."""
+    """Compute date-precision-aware interval `end - start` in days without fabricating `-01`.
+
+    An endpoint with neither bound is `endpoint_missing`. An endpoint with only one bound (a
+    `bounded_above_only` earliest-link milestone, whose lower bound is unknown because an undated
+    qualifying link may precede every dated one) leaves the lag unbounded on one side, so the
+    interval is `indeterminate_at_recorded_precision` with no exact, minimum or maximum days.
+    """
     s_lo_raw, s_hi_raw = start_ms.get('earliest_bound'), start_ms.get('latest_bound')
     e_lo_raw, e_hi_raw = end_ms.get('earliest_bound'), end_ms.get('latest_bound')
     missing: list[str] = []
-    if not s_lo_raw or not s_hi_raw:
-        missing.append('start')
-    if not e_lo_raw or not e_hi_raw:
-        missing.append('end')
+    one_sided: list[str] = []
+    for name, lo_raw, hi_raw in (('start', s_lo_raw, s_hi_raw), ('end', e_lo_raw, e_hi_raw)):
+        if not lo_raw and not hi_raw:
+            missing.append(name)
+        elif not lo_raw or not hi_raw:
+            one_sided.append(name)
 
     base: dict[str, Any] = {
         'start_date': start_ms.get('date'),
@@ -243,6 +274,17 @@ def interval_from_milestones(start_ms: dict[str, Any], end_ms: dict[str, Any]) -
             'max_days': None,
             'bounds_days': None,
             'missing_endpoints': missing,
+        }
+    if one_sided:
+        # A one-sided endpoint bounds the lag on one side only; no lag (exact or bounded) is computed.
+        return {
+            **base,
+            'state': 'indeterminate_at_recorded_precision',
+            'exact_days': None,
+            'min_days': None,
+            'max_days': None,
+            'bounds_days': None,
+            'one_sided_endpoints': one_sided,
         }
 
     s_lo = date.fromisoformat(s_lo_raw)

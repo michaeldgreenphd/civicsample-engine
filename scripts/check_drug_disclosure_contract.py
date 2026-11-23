@@ -5,7 +5,8 @@ Usage:
   python3 scripts/check_drug_disclosure_contract.py build/disclosure
 
 Exits 0 when every manifest hash, `run_identity`, count object, coverage cell, partial-date
-interval bound, human-review boundary, and sponsor 3-state invariant passes; exits 1 otherwise.
+interval bound, one-sided (`bounded_above_only`) earliest-milestone bound, human-review boundary,
+and sponsor 3-state invariant passes; exits 1 otherwise.
 """
 from __future__ import annotations
 

@@ -37,7 +37,9 @@ States: `not_searched`, `search_incomplete_or_blocked`, `document_unavailable`, 
   - Both `YYYY-MM-DD`: `state = "exact"`, `exact_days = int`.
   - Non-overlapping partial ranges: `state = "bounded_partial"`, `bounds_days = [min_days, max_days]`, `exact_days = null`.
   - Overlapping partial ranges: `state = "indeterminate_at_recorded_precision"`, `bounds_days = null`, `exact_days = null`.
+  - An endpoint bounded on one side only (`bounded_above_only`, below): `state = "indeterminate_at_recorded_precision"`, `one_sided_endpoints` names it, and no exact, minimum or maximum days are computed.
   - Missing endpoint(s): `state = "endpoint_missing"`.
+- **Earliest linked publication / FDA action**: the earliest date across qualifying links lies in `[min earliest, min latest]` of their spans; when that is tighter than any single date the milestone is `bounded_composite`. An undated qualifying link may precede every dated one, so then the milestone has `precision = "bounded_above_only"`, `date = null`, `earliest_bound = null` and only `latest_bound` (with `has_undated_qualifying_link = true`); no lag is computed from it. With no dated qualifying link the milestone is `missing`.
 - **QC lag & cycles**: `resultsFirstSubmitDate -> resultsFirstPostDate` plus `protocolSection.statusModule.submissionInfos` cycle counts (kept `null` when absent, never coerced to `0`).
 - **Descriptive 365-day window**: `POSTED_WITHIN_365D`, `POSTED_AFTER_365D`, `PENDING_SUBMITTED_UNPOSTED`, `UNREPORTED_PAST_365D`, `UNREPORTED_WITHIN_365D`, `DATE_PRECISION_INDETERMINATE`, `COMPLETION_DATE_MISSING_OR_FUTURE`. Strictly describes registry dates; never claims legal FDAAA 801 / 42 CFR Part 11 non-compliance.
 - **Cross-source discordance**: `published_results_while_ctgov_unreported`, `fda_cited_while_ctgov_unreported`, `ctgov_posted_no_linked_results_publication`, `concordant_multi_source_disclosed`, `unreported_across_completed_routes`, `coverage_incomplete_or_awaiting_review`.

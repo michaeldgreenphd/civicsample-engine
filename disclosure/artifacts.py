@@ -654,7 +654,7 @@ def build_artifacts(
             'target_id_types': list(E.TARGET_ID_TYPES),
             'citation_types': list(E.CITATION_TYPES),
             'date_precisions': list(E.DATE_PRECISIONS),
-            'milestone_precisions': [*E.DATE_PRECISIONS, 'bounded_composite'],
+            'milestone_precisions': list(T.MILESTONE_PRECISIONS),
             'automated_validation': list(E.AUTOMATED_VALIDATION),
             'review_statuses': list(E.REVIEW_STATUSES),
             'coverage_routes': list(C.ROUTES),
@@ -908,11 +908,29 @@ def check_contract(
             expected_disc = T.classify_discordance(links_by_nct.get(nct, []), cov_map[nct])
             if tl.get('discordance') != expected_disc:
                 problems.append(f'{nct}: timeline discordance disagrees with links.json and coverage.json')
+        for mname, ms in (tl.get('milestones') or {}).items():
+            mprec = ms.get('precision')
+            if mprec not in T.MILESTONE_PRECISIONS:
+                problems.append(f'{nct}/{mname}: invalid milestone precision {mprec!r}')
+                continue
+            # An undated qualifying link may precede every dated one: such a milestone must carry no exact
+            # date and no lower bound, only `latest_bound`, under precision `bounded_above_only`.
+            if mprec == 'bounded_above_only':
+                if ms.get('date') is not None or ms.get('earliest_bound') is not None or not ms.get('latest_bound'):
+                    problems.append(f'{nct}/{mname}: bounded_above_only requires date=None, earliest_bound=None and a latest_bound')
+                if ms.get('has_undated_qualifying_link') is not True:
+                    problems.append(f'{nct}/{mname}: bounded_above_only without an undated qualifying link')
+            elif ms.get('has_undated_qualifying_link') is True and ms.get('latest_bound') is not None:
+                problems.append(f'{nct}/{mname}: an undated qualifying link leaves no lower bound, but precision is {mprec!r}')
         for iname, iv in (tl.get('intervals') or {}).items():
             istate = iv.get('state')
             if istate not in T.INTERVAL_STATES:
                 problems.append(f'{nct}/{iname}: invalid interval state {istate!r}')
                 continue
+            if istate in ('exact', 'bounded_partial') and 'bounded_above_only' in (
+                iv.get('start_precision'), iv.get('end_precision')
+            ):
+                problems.append(f'{nct}/{iname}: lag computed from a bounded_above_only endpoint with no lower bound')
             if istate == 'exact':
                 if iv.get('start_precision') != 'day' or iv.get('end_precision') != 'day' or not isinstance(iv.get('exact_days'), int):
                     problems.append(f'{nct}/{iname}: exact interval requires both endpoints at day precision')

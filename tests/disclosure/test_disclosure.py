@@ -871,3 +871,92 @@ def test_real_stored_ctgov_records_offline_smoke_pipeline(tmp_path: Path) -> Non
     summary = json.loads((site_out / 'summary.json').read_text(encoding='utf-8'))
     assert summary['denominators']['included_trials']['n'] == 25
     assert summary['denominators']['retrieved_trials']['n'] == 25
+
+
+# ---------------------------------------------------------------- 10. Milestone bounds, drug terms, statements, openFDA
+
+def _qualifying_result_ref(link_id: str, pub_date: str | None) -> dict[str, Any]:
+    """A PubMed-resolved CT.gov RESULT reference: qualifies as a results publication while unreviewed."""
+    return {
+        'link_id': link_id,
+        'source_route': 'registry_references',
+        'citation_type': 'RESULT',
+        'automated_validation': 'identifier_confirmed',
+        'review_status': 'unreviewed',
+        'publication_or_action_date': pub_date,
+    }
+
+
+def test_undated_qualifying_link_leaves_no_lower_bound_and_no_lag(
+    built_files: dict[str, Any],
+) -> None:
+    dated = _qualifying_result_ref('link:00000000000000a1', '2021-05-10')
+    undated = _qualifying_result_ref('link:00000000000000a2', None)
+
+    # The undated link may precede 2021-05-10, so only the upper bound survives.
+    ms = T.earliest_link_milestone([dated, undated])
+    assert ms == {
+        'date': None,
+        'precision': 'bounded_above_only',
+        'earliest_bound': None,
+        'latest_bound': '2021-05-10',
+        'link_ids': ['link:00000000000000a1', 'link:00000000000000a2'],
+        'has_undated_qualifying_link': True,
+    }
+
+    # No lag from it, as either endpoint, at day or partial precision on the other side.
+    for other in ('2020-01-01', '2020', '2022-01-01'):
+        for iv in (
+            T.interval_from_milestones(T.milestone_from_raw(other), ms),
+            T.interval_from_milestones(ms, T.milestone_from_raw(other)),
+        ):
+            assert iv['state'] == 'indeterminate_at_recorded_precision'
+            assert (iv['exact_days'], iv['min_days'], iv['max_days'], iv['bounds_days']) == (None, None, None, None)
+            assert iv['one_sided_endpoints'] in (['start'], ['end'])
+    # An endpoint with neither bound stays `endpoint_missing`, ahead of a one-sided one.
+    iv_missing = T.interval_from_milestones(T.milestone_from_raw(None), ms)
+    assert iv_missing['state'] == 'endpoint_missing'
+    assert iv_missing['missing_endpoints'] == ['start']
+
+    # The assembled timeline carries the one-sided milestone and computes no publication lag.
+    tl = T.build_trial_timeline(
+        'NCT09990001',
+        F.STUDIES['NCT09990001'],
+        [dated, undated],
+        _coverage_of(built_files, 'NCT09990001'),
+        {},
+        date.fromisoformat(F.AS_OF),
+    )
+    assert tl['milestones']['earliest_results_publication']['precision'] == 'bounded_above_only'
+    for name in (
+        'results_first_posted_to_earliest_results_publication',
+        'primary_completion_to_earliest_results_publication',
+        'earliest_results_publication_to_earliest_fda_action',
+    ):
+        assert tl['intervals'][name]['exact_days'] is None
+        assert tl['intervals'][name]['bounds_days'] is None
+
+    # The contract checker refuses an exact date beside an undated link, and a lag from a one-sided endpoint.
+    assert 'bounded_above_only' in built_files['run.json']['vocabularies']['milestone_precisions']
+    old_style = copy.deepcopy(built_files)
+    old_tl = old_style['timelines.json']['timelines'][0]
+    old_tl['milestones']['earliest_results_publication'] = {
+        'date': '2021-05-10',
+        'precision': 'day',
+        'earliest_bound': '2021-05-10',
+        'latest_bound': '2021-05-10',
+        'link_ids': ['link:00000000000000a1', 'link:00000000000000a2'],
+        'has_undated_qualifying_link': True,
+    }
+    old_tl['intervals']['primary_completion_to_earliest_results_publication'] = {
+        **old_tl['intervals']['primary_completion_to_earliest_results_publication'],
+        'end_precision': 'bounded_above_only',
+        'state': 'bounded_partial',
+        'exact_days': None,
+        'min_days': 400,
+        'max_days': 480,
+        'bounds_days': [400, 480],
+    }
+    probs = ART.check_contract(old_style)
+    assert any('an undated qualifying link leaves no lower bound' in p for p in probs)
+    assert any('lag computed from a bounded_above_only endpoint' in p for p in probs)
