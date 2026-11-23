@@ -1027,6 +1027,16 @@ def check_contract(
             )
         if wstate not in T.WINDOW_STATES_365D:
             problems.append(f'{nct}: invalid window_365d state {wstate!r}')
+        elif wstate in ('UNREPORTED_PAST_365D', 'UNREPORTED_WITHIN_365D'):
+            # Unposted on `as_of` needs evidence: hasResults=false, or a results-first-posted date
+            # (necessarily after `as_of`, else the window would be POSTED_*).
+            posted_later = (((tl.get('milestones') or {}).get('results_first_posted') or {}).get('precision')
+                            not in (None, 'missing'))
+            if has_results_by_nct.get(nct) is not False and not posted_later:
+                problems.append(
+                    f'{nct}: window_365d is {wstate} but CT.gov hasResults is '
+                    f'{json.dumps(has_results_by_nct.get(nct))} and no results-first-posted date is recorded'
+                )
         if dstate not in T.DISCORDANCE_STATES:
             problems.append(f'{nct}: invalid discordance state {dstate!r}')
         elif nct in cov_map and len((cov_map[nct].get('routes') or [])) == len(C.ROUTES):

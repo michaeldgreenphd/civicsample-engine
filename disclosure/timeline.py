@@ -71,6 +71,7 @@ WINDOW_STATES_365D = (
     'UNREPORTED_WITHIN_365D',
     'DATE_PRECISION_INDETERMINATE',
     'COMPLETION_DATE_MISSING_OR_FUTURE',
+    'RESULTS_STATUS_INDETERMINATE',
 )
 
 DISCORDANCE_STATES = (
@@ -497,6 +498,26 @@ def classify_window_365d(study: dict[str, Any] | None, as_of: date) -> dict[str,
             'state': 'DATE_PRECISION_INDETERMINATE',
             'as_of': as_of.isoformat(),
             'reason': f'partial primaryCompletionDate ({pcd.raw}) overlaps reference date {as_of.isoformat()}',
+            'note': WINDOW_365D_NOTE,
+        }
+
+    # Results were unposted on `as_of` only if the record says so: an explicit hasResults=false, or a
+    # resultsFirstPostDate later than `as_of` (a historical reference date, before results were posted;
+    # hasResults describes the record today). A record that omits hasResults or carries a non-boolean
+    # (a field-projected or hand-edited local record), or one with hasResults=true but neither a
+    # resultsSection nor a resultsFirstPostDate, says nothing definite, so it cannot be
+    # UNREPORTED_PAST_365D / UNREPORTED_WITHIN_365D.
+    has_results_flag = study.get('hasResults')
+    if has_results_flag is not False and post is None:
+        return {
+            'state': 'RESULTS_STATUS_INDETERMINATE',
+            'as_of': as_of.isoformat(),
+            'reason': (
+                'hasResults is true, but neither a resultsSection nor a resultsFirstPostDate is recorded'
+                if has_results_flag is True
+                else f'hasResults is {"absent" if has_results_flag is None else repr(has_results_flag)}, '
+                'not an explicit false, so the record does not show that results are unposted'
+            ),
             'note': WINDOW_365D_NOTE,
         }
 

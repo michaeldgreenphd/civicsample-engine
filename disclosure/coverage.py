@@ -251,16 +251,10 @@ def registry_references_cell(
             n_verified_links=len(confirmed),
             n_human_confirmed_only=human_only,
         )
-    if live:
-        return _cell(
-            route,
-            'candidate_awaiting_review',
-            f'{len(live)} registry reference candidate(s) present without PubMed identifier resolution or settled review',
-            n_references=len(refs),
-            n_candidates=len(live),
-        )
-
-    # Check if any PMID failed transiently when literature acquisition was attempted
+    # A cited PMID whose PubMed lookup failed (timeout, 5xx) or is missing from an acquired literature
+    # archive yields a live `not_validated` link. That is an incomplete search, not a reviewable
+    # candidate: no review can supply the lookup that did not happen. So it is checked before the
+    # candidate state (a person's `confirmed_same_trial_results` above still verifies the route).
     pmids = [r['pmid'] for r in refs if r['pmid'] and A.PMID_RE.match(r['pmid'])]
     if literature_acquired and pmids:
         failed_pmids = [
@@ -275,6 +269,15 @@ def registry_references_cell(
                 n_references=len(refs),
                 failed_pmids=failed_pmids,
             )
+
+    if live:
+        return _cell(
+            route,
+            'candidate_awaiting_review',
+            f'{len(live)} registry reference candidate(s) present without PubMed identifier resolution or settled review',
+            n_references=len(refs),
+            n_candidates=len(live),
+        )
 
     if route_links and all(x['review_status'] == 'rejected_false_positive' for x in route_links):
         return _cell(

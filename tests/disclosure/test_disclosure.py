@@ -325,7 +325,9 @@ def test_all_seven_descriptive_365d_window_states_and_no_compliance_claims(built
     }
     observed = {t['nct_id']: t['window_365d']['state'] for t in built_files['timelines.json']['timelines']}
     assert observed == expected
-    assert set(observed.values()) == set(T.WINDOW_STATES_365D)
+    # RESULTS_STATUS_INDETERMINATE (no explicit hasResults=false) has its own test below; the fixture
+    # cohort, whose records all carry a boolean hasResults, exercises the other seven states.
+    assert set(observed.values()) == set(T.WINDOW_STATES_365D) - {'RESULTS_STATUS_INDETERMINATE'}
     blob = json.dumps(built_files)
     assert not ART.FORBIDDEN_COMPLIANCE_RE.search(blob)
 
@@ -1583,6 +1585,55 @@ def test_365d_window_needs_an_explicit_actual_primary_completion(pcd_type: str |
 )
 def test_combination_labels_also_query_each_component(raw: str, expected: list[str]) -> None:
     assert A.drug_label_terms(raw) == expected
+
+
+@pytest.mark.parametrize('has_results', ['<absent>', None, 'false', 0, True])
+def test_365d_window_needs_explicit_unposted_evidence_before_an_unreported_state(has_results: object) -> None:
+    as_of = date(2026, 11, 1)
+    study = F._make_study('NCT09990015', title='Unknown results flag', lead_sponsor='Fictional Sponsor',
+                          pcd=('2020-01-15', 'ACTUAL'))
+    if has_results == '<absent>':
+        study.pop('hasResults', None)
+    else:
+        study['hasResults'] = has_results
+    window = T.classify_window_365d(study, as_of)
+    assert window['state'] == 'RESULTS_STATUS_INDETERMINATE', window
+    # Control: an explicit hasResults=false is the registry's negative.
+    study['hasResults'] = False
+    assert T.classify_window_365d(study, as_of)['state'] == 'UNREPORTED_PAST_365D'
+    # Control: a results-first-post date after a historical reference date shows results were unposted
+    # then, whatever hasResults says today.
+    later = F._make_study('NCT09990016', title='Posted later', lead_sponsor='Fictional Sponsor',
+                          pcd=('2020-01-15', 'ACTUAL'), has_results=True, post_date=('2025-06-01', 'ACTUAL'))
+    assert T.classify_window_365d(later, date(2022, 1, 1))['state'] == 'UNREPORTED_PAST_365D'
+
+
+def test_contract_refuses_an_unreported_window_without_unposted_evidence(built_files: dict[str, Any]) -> None:
+    bad = copy.deepcopy(built_files)
+    nct = 'NCT09990002'  # UNREPORTED_PAST_365D in the fixture build, with hasResults=false
+    assert _timeline_of(bad, nct)['window_365d']['state'] == 'UNREPORTED_PAST_365D'
+    assert not [p for p in ART.check_contract(bad) if 'window_365d is' in p]
+    next(s for s in bad['studies.json']['studies'] if s['nct_id'] == nct)['has_results'] = None
+    assert any(f'{nct}: window_365d is UNREPORTED_PAST_365D but CT.gov hasResults is null' in p
+               for p in ART.check_contract(bad))
+
+
+def test_failed_pubmed_lookup_makes_registry_references_incomplete_not_a_candidate() -> None:
+    nct = 'NCT09990017'
+    study = F._make_study(nct, title='Cited PMID', lead_sponsor='Fictional Sponsor',
+                          references=[{'pmid': '31234567', 'type': 'RESULT', 'citation': 'Fictional et al.'}])
+    ctgov_rec = {'status': 200, 'body': study}
+    lit = {f'literature/pubmed_pmid/31234567': {'status': 503, 'body': None}}
+    links = E.build_registry_reference_links(nct, ctgov_rec, lit)
+    assert links and all(x['automated_validation'] == 'not_validated' for x in links)
+    cell = C.registry_references_cell(nct, ctgov_rec, links, lit, True)
+    assert cell['state'] == 'search_incomplete_or_blocked', cell
+    assert cell['detail']['failed_pmids'] == ['31234567']
+    # A missing lookup in an acquired archive is the same incomplete search.
+    assert C.registry_references_cell(nct, ctgov_rec, links, {}, True)['state'] == 'search_incomplete_or_blocked'
+    # A person's confirmation still settles the route.
+    confirmed = [dict(links[0], review_status='confirmed_same_trial_results')]
+    assert C.registry_references_cell(nct, ctgov_rec, confirmed, lit, True)['state'] == 'verified_link'
 
 
 def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:
