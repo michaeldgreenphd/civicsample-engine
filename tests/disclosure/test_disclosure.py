@@ -1636,6 +1636,35 @@ def test_failed_pubmed_lookup_makes_registry_references_incomplete_not_a_candida
     assert C.registry_references_cell(nct, ctgov_rec, confirmed, lit, True)['state'] == 'verified_link'
 
 
+def test_partial_completion_overlapping_as_of_is_indeterminate_before_posted_or_submitted() -> None:
+    as_of = date(2020, 6, 1)
+    # Year-precision completion 2020 may fall after the 2020-01-15 posting and after as_of itself.
+    posted = F._make_study('NCT09990018', title='Year completion, posted', lead_sponsor='Fictional Sponsor',
+                           pcd=('2020', 'ACTUAL'), has_results=True, post_date=('2020-01-15', 'ACTUAL'))
+    assert T.classify_window_365d(posted, as_of)['state'] == 'DATE_PRECISION_INDETERMINATE'
+    submitted = F._make_study('NCT09990019', title='Year completion, submitted', lead_sponsor='Fictional Sponsor',
+                              pcd=('2020', 'ACTUAL'), submit_date='2020-02-01')
+    assert T.classify_window_365d(submitted, as_of)['state'] == 'DATE_PRECISION_INDETERMINATE'
+    # Control: an exact completion date before the posting still gives the posted state.
+    exact = F._make_study('NCT09990020', title='Exact completion', lead_sponsor='Fictional Sponsor',
+                          pcd=('2020-01-10', 'ACTUAL'), has_results=True, post_date=('2020-01-15', 'ACTUAL'))
+    assert T.classify_window_365d(exact, as_of)['state'] == 'POSTED_WITHIN_365D'
+
+
+def test_registry_reference_pmids_unlooked_without_a_literature_archive_are_incomplete() -> None:
+    nct = 'NCT09990021'
+    study = F._make_study(nct, title='Cited PMID, local build', lead_sponsor='Fictional Sponsor',
+                          references=[{'pmid': '31234568', 'type': 'RESULT', 'citation': 'Fictional et al.'}])
+    ctgov_rec = {'status': 200, 'body': study}
+    links = E.build_registry_reference_links(nct, ctgov_rec, {})
+    assert links and all(x['automated_validation'] == 'not_validated' for x in links)
+    cell = C.registry_references_cell(nct, ctgov_rec, links, {}, False)
+    assert cell['state'] == 'search_incomplete_or_blocked', cell
+    assert cell['detail']['unlooked_pmids'] == ['31234568']
+    confirmed = [dict(links[0], review_status='confirmed_same_trial_results')]
+    assert C.registry_references_cell(nct, ctgov_rec, confirmed, {}, False)['state'] == 'verified_link'
+
+
 def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:
     # hasResults=true with an empty resultsSection: the CT.gov route is `available_document_insufficient`.
     shell = F._make_study('NCT09990010', title='Results shell', lead_sponsor='Fictional Sponsor',

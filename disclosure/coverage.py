@@ -270,6 +270,23 @@ def registry_references_cell(
                 failed_pmids=failed_pmids,
             )
 
+    # With no literature archive at all (a `freeze-local` build), no PubMed lookup ran: a cited PMID's
+    # `not_validated` link is unsearched evidence, not a reviewable candidate.
+    if not literature_acquired:
+        unlooked = sorted({
+            str(x.get('target_id')) for x in live
+            if x.get('target_id_type') == 'pmid' and x['automated_validation'] == 'not_validated'
+        })
+        if unlooked:
+            return _cell(
+                route,
+                'search_incomplete_or_blocked',
+                f'PubMed esummary lookups were not run for {len(unlooked)} cited PMID(s): the cache holds no '
+                'literature archive',
+                n_references=len(refs),
+                unlooked_pmids=unlooked,
+            )
+
     if live:
         return _cell(
             route,

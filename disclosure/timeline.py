@@ -427,6 +427,16 @@ def classify_window_365d(study: dict[str, Any] | None, as_of: date) -> dict[str,
             'reason': f'primaryCompletionDate ({pcd.raw}) lies after reference date {as_of.isoformat()}',
             'note': WINDOW_365D_NOTE,
         }
+    # A partial (month or year) completion date that overlaps the reference date leaves completion
+    # possibly after `as_of`, and after any posting or submission date too, so it is checked before the
+    # posted/submitted branches: no lag or pending state can be stated from it.
+    if pcd.latest > as_of:
+        return {
+            'state': 'DATE_PRECISION_INDETERMINATE',
+            'as_of': as_of.isoformat(),
+            'reason': f'partial primaryCompletionDate ({pcd.raw}) overlaps reference date {as_of.isoformat()}',
+            'note': WINDOW_365D_NOTE,
+        }
 
     post_raw = (sm.get('resultsFirstPostDateStruct') or {}).get('date')
     post = parse_partial_date(post_raw if isinstance(post_raw, str) else None)
@@ -492,14 +502,6 @@ def classify_window_365d(study: dict[str, Any] | None, as_of: date) -> dict[str,
                 'reason': f'partial resultsFirstSubmitDate ({sub.raw}) overlaps {as_of.isoformat()}',
                 'note': WINDOW_365D_NOTE,
             }
-
-    if pcd.latest > as_of:
-        return {
-            'state': 'DATE_PRECISION_INDETERMINATE',
-            'as_of': as_of.isoformat(),
-            'reason': f'partial primaryCompletionDate ({pcd.raw}) overlaps reference date {as_of.isoformat()}',
-            'note': WINDOW_365D_NOTE,
-        }
 
     # Results were unposted on `as_of` only if the record says so: an explicit hasResults=false, or a
     # resultsFirstPostDate later than `as_of` (a historical reference date, before results were posted;
