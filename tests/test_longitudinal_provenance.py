@@ -731,3 +731,149 @@ def test_redteam_m4_layout_projection_needs_a_firewall_basis() -> None:
     with pytest.raises(AuditHoldoutViolationError):
         to_outcomes_layout_provenance(tampered)  # type: ignore[arg-type]
         pytest.fail("an audit trial's provenance record was projected")
+
+
+# ---------------------------------------------------------------------------
+# Round-3 red team on m4 at e677d79 (fictional NCT99800001..NCT99899999 only).
+#
+# Each test asserts the behaviour the module's own rules call for. Tests for a
+# bypass fail until the module is fixed; tests for an attempt that held pass.
+# ---------------------------------------------------------------------------
+
+
+def _rt_m4_r3_obfuscated_audit_ids() -> dict[str, str]:
+    """Renderings of ``RT_AUDIT_ID`` a reader takes for it but ``nct[0-9]{7,10}`` misses."""
+    prefix, digits = RT_AUDIT_ID[:3], RT_AUDIT_ID[3:]
+    return {
+        "space": f"{prefix} {digits}",
+        "hyphen": f"{prefix}-{digits}",
+        "underscore": f"{prefix}_{digits}",
+        "no_break_space": f"{prefix} {digits}",
+        "cyrillic_es": f"NСT{digits}",
+        "variation_selector": f"{RT_AUDIT_ID[:4]}️{RT_AUDIT_ID[4:]}",
+    }
+
+
+def test_redteam_m4_provenance_obfuscated_audit_tokens_refused() -> None:
+    """Publication and registry text naming the audit trial as ``NCT 9...`` is copied into the record.
+
+    ``_scan_strings_for_audit_nct_tokens`` finds only ``nct[0-9]{7,10}``
+    (after percent-decoding and NFKC/Cf folding). PubMed and registry text
+    commonly writes ``NCT 0123 4567``; such a title or reference citation
+    passes and is copied into ``linked_publications``, and a study whose
+    reference names the holdout that way reaches the publication provider.
+    """
+    for name, token in _rt_m4_r3_obfuscated_audit_ids().items():
+        text = f"Long-term extension of {token}."
+        with pytest.raises(CitationVerificationError):
+            assemble_longitudinal_provenance(
+                _sample_study(nct_id=RT_SCOPE_ID),
+                in_audit=False,
+                audit_nct_ids=RT_AUDIT_SET,
+                pubmed_records=[{"pmid": "34000002", "title": text, "pub_date": "2022 Jan"}],
+            )
+            pytest.fail(f"{name}: a PubMed title naming the audit trial was assembled")
+        with pytest.raises(CitationVerificationError):
+            assemble_longitudinal_provenance(
+                _sample_study(nct_id=RT_SCOPE_ID),
+                in_audit=False,
+                audit_nct_ids=RT_AUDIT_SET,
+                europe_pmc_records=[{"pmid": "34000003", "title": text}],
+            )
+            pytest.fail(f"{name}: a Europe PMC title naming the audit trial was assembled")
+
+        spy = _SpyPublicationProvider([])
+        study = _sample_study(nct_id=RT_SCOPE_ID)
+        study["protocolSection"]["referencesModule"]["references"].append(
+            {"pmid": "34000004", "type": "BACKGROUND", "citation": text}
+        )
+        with pytest.raises(CitationVerificationError):
+            assemble_longitudinal_provenance(
+                study,
+                in_audit=False,
+                audit_nct_ids=RT_AUDIT_SET,
+                publication_provider=spy,
+            )
+            pytest.fail(f"{name}: a registry reference naming the audit trial was assembled")
+        assert spy.calls == [], f"{name}: the publication provider was called"
+
+
+def test_redteam_m4_provenance_large_doc_flags_absent_are_unknown() -> None:
+    """A largeDocs entry with missing, null or string flags is typed by truthiness.
+
+    ``_extract_large_docs`` reads ``bool(raw_doc.get("hasProtocol"))``: a
+    missing or null flag is read as False, so a document whose type the
+    registry does not state is counted as a standalone ICF and dropped from
+    ``large_docs``; the strings ``"false"``/``"true"`` are both True, so it
+    becomes ``combined``. Absence must stay absence (the planner reads a
+    missing ``protocol``/``sap`` flag as unknown), and a non-bool flag is not
+    a flag.
+    """
+    cases: dict[str, dict[str, Any]] = {
+        "flags_missing": {"filename": "Prot_000.pdf", "uploadDate": "2020-08-21"},
+        "flags_null": {"filename": "Prot_000.pdf", "hasProtocol": None, "hasSap": None},
+        "flags_false_strings": {"filename": "Prot_000.pdf", "hasProtocol": "false", "hasSap": "false"},
+    }
+    for name, large_doc in cases.items():
+        study = _sample_study(nct_id=RT_SCOPE_ID)
+        study["documentSection"]["largeDocumentModule"]["largeDocs"] = [large_doc]
+        try:
+            record = assemble_longitudinal_provenance(
+                study, in_audit=False, audit_nct_ids=RT_AUDIT_SET
+            )
+        except CitationVerificationError:
+            continue
+        assert record["excluded_standalone_icf_count"] == 0, (
+            f"{name}: a document of unstated type was counted as a standalone ICF"
+        )
+        typed = {d["filename"]: d["doc_type"] for d in record["large_docs"]}
+        assert typed.get("Prot_000.pdf") not in {"protocol", "sap", "combined"}, (
+            f"{name}: a document of unstated type was typed {typed.get('Prot_000.pdf')!r}"
+        )
+
+
+def test_redteam_m4_provenance_duplicate_extracted_documents_refused() -> None:
+    """Two extracted documents for one filename are resolved silently (the later wins).
+
+    ``_extract_large_docs`` keys extracted rows by filename and overwrites, so
+    which sha256 and version label the record carries for ``Prot_000.pdf``
+    depends on row order. ``verify_census_corpus`` reports the same
+    duplicate (``DUPLICATE_DOCUMENT_RECORD``).
+    """
+    extracted = [
+        {"nct_id": RT_SCOPE_ID, "filename": "Prot_000.pdf", "sha256": "a" * 64, "version_label": "v1"},
+        {"nct_id": RT_SCOPE_ID, "filename": "Prot_000.pdf", "sha256": "b" * 64, "version_label": "v2"},
+    ]
+    with pytest.raises(CitationVerificationError):
+        assemble_longitudinal_provenance(
+            _sample_study(nct_id=RT_SCOPE_ID),
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+            extracted_documents=extracted,
+        )
+        pytest.fail("two extracted documents for one filename were merged by row order")
+
+
+def test_redteam_m4_provenance_malformed_ids_and_unscoped_empty_audit_set() -> None:
+    """Attempt that held: malformed record IDs and an empty audit set without scope are refused."""
+    for bad in (RT_SCOPE_ID.lower(), f" {RT_SCOPE_ID}", f"{RT_SCOPE_ID}​"):
+        with pytest.raises(InvalidNctIdError):
+            to_outcomes_layout_provenance(
+                {"nct_id": bad},  # type: ignore[arg-type]
+                in_audit=False,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+        with pytest.raises(InvalidNctIdError):
+            assemble_longitudinal_provenance(
+                _sample_study(nct_id=bad), in_audit=False, audit_nct_ids=RT_AUDIT_SET
+            )
+    with pytest.raises(AuditHoldoutViolationError):
+        assemble_longitudinal_provenance(
+            _sample_study(nct_id=RT_SCOPE_ID), in_audit=False, allow_empty_audit_set=True
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        to_outcomes_layout_provenance(
+            {"nct_id": RT_SCOPE_ID},  # type: ignore[arg-type]
+            in_audit=False,
+            allow_empty_audit_set=True,
+        )

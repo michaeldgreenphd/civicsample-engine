@@ -2542,3 +2542,420 @@ def test_redteam_m4_expected_k_variants_in_library_entry_points() -> None:
             in_scope_nct_ids=RT_SCOPE_SET,
             expected_outcomes_by_nct={},
         )
+
+
+# ---------------------------------------------------------------------------
+# Round-3 red team on m4 at e677d79 (fictional NCT99800001..NCT99899999 only).
+#
+# Each test asserts the behaviour the module's own rules call for. Tests for a
+# bypass fail until the module is fixed; tests for an attempt that held pass.
+# ---------------------------------------------------------------------------
+
+
+def _rt_m4_r3_obfuscated_audit_ids() -> dict[str, str]:
+    """Renderings of ``RT_AUDIT_ID`` that a reader takes for it but the token rule misses.
+
+    ``_EMBEDDED_NCT_TOKEN_RE`` is ``nct[0-9]{7,10}`` over the text as written,
+    percent-decoded and NFKC-folded with Cf/Cc characters removed, so a
+    separator between prefix and digits (registries and abstracts write
+    ``NCT 0123 4567``), a Cyrillic letter that looks like a Latin one, or a
+    variation selector (category Mn, not stripped) hides the ID.
+    """
+    prefix, digits = RT_AUDIT_ID[:3], RT_AUDIT_ID[3:]
+    return {
+        "space": f"{prefix} {digits}",
+        "hyphen": f"{prefix}-{digits}",
+        "underscore": f"{prefix}_{digits}",
+        "no_break_space": f"{prefix} {digits}",
+        "cyrillic_es": f"NСT{digits}",
+        "variation_selector": f"{RT_AUDIT_ID[:4]}️{RT_AUDIT_ID[4:]}",
+    }
+
+
+def test_redteam_m4_obfuscated_audit_id_tokens_refused(tmp_path: Path) -> None:
+    """A row or page-map metadata naming the audit trial in a common variant form passes.
+
+    The plain form is refused everywhere (``_check_embedded_text_ncts``); the
+    forms of ``_rt_m4_r3_obfuscated_audit_ids`` are not, so a location note,
+    a document row and page-map metadata naming the holdout trial verify.
+    """
+    docs = _rt_m4_scoped_docs()
+    _, clean = verify_location_record(
+        _make_location(nct_id=RT_SCOPE_ID),
+        docs_by_nct=docs,
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+    )
+    assert clean == []
+
+    for name, token in _rt_m4_r3_obfuscated_audit_ids().items():
+        text = f"Same protocol as {token}."
+        with pytest.raises(CitationVerificationError):
+            verify_location_record(
+                _make_location(nct_id=RT_SCOPE_ID, note=text),
+                docs_by_nct=docs,
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+            )
+            pytest.fail(f"{name}: a location note naming the audit trial verified")
+        with pytest.raises(CitationVerificationError):
+            verify_document_record(
+                _make_doc(nct_id=RT_SCOPE_ID, extra={"source_note": text}),
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+                strict_keys=False,
+            )
+            pytest.fail(f"{name}: a document row naming the audit trial was read")
+        root = tmp_path / f"r3_obfuscated_{name}"
+        _rt_m4_write_page_map(root, f"{SHA_A}.json", {"source": text, "pages": _RT_M4_PAGES})
+        with pytest.raises(CitationVerificationError):
+            prov = DirectoryPageTextProvider(
+                root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+            )
+            prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+            pytest.fail(f"{name}: page-map metadata naming the audit trial was served")
+
+
+def test_redteam_m4_top_level_list_page_map_is_firewalled(tmp_path: Path) -> None:
+    """A page map whose payload is a JSON list skips the payload firewall.
+
+    ``_validate_payload_firewall`` returns ``None`` for a non-mapping payload
+    without walking it, while ``_parse_page_map_payload`` accepts a list of
+    page objects. Page objects carrying the audit ``nct_id``,
+    ``in_audit: true`` and an audit URL are served, under a ``<sha256>`` name
+    and under the in-scope trial's own layouts; the same objects wrapped in
+    ``{"pages": [...]}`` are refused. A list whose objects declare another
+    in-scope trial is served for this one.
+    """
+    audit_url = f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID}/Prot_000.pdf"
+    audit_objects = [
+        {"physical_page": n, "text": t, "nct_id": RT_AUDIT_ID, "in_audit": True, "url": audit_url}
+        for n, t in enumerate(_RT_M4_PAGES, start=1)
+    ]
+    layouts = {
+        "sha_named": f"{SHA_A}.json",
+        "trial_directory": f"{RT_SCOPE_ID}/Prot_000.json",
+        "trial_prefixed": f"{RT_SCOPE_ID}__Prot_000.json",
+    }
+    for name, rel in layouts.items():
+        root = tmp_path / f"r3_list_{name}"
+        _rt_m4_write_page_map(root, rel, audit_objects)
+        with pytest.raises(AuditHoldoutViolationError):
+            prov = DirectoryPageTextProvider(
+                root,
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+                referenced_documents={(RT_SCOPE_ID, SHA_A)},
+            )
+            prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+            pytest.fail(f"{name}: a list page map declaring the audit trial was served")
+
+    scope = {RT_SCOPE_ID, RT_SCOPE_ID_2}
+    other_root = tmp_path / "r3_list_other_trial"
+    _rt_m4_write_page_map(
+        other_root,
+        f"{SHA_A}.json",
+        [{"physical_page": n, "text": t, "nct_id": RT_SCOPE_ID_2} for n, t in enumerate(_RT_M4_PAGES, start=1)],
+    )
+    other_prov = DirectoryPageTextProvider(
+        other_root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=scope
+    )
+    with pytest.raises(CitationVerificationError):
+        other_prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+        pytest.fail("a list page map declaring another trial was served for this one")
+
+
+def test_redteam_m4_single_file_page_map_declaring_nothing_is_not_every_documents_text(
+    tmp_path: Path,
+) -> None:
+    """A single-file page-map root that names no trial and no sha256 serves every request.
+
+    ``_candidate_paths`` offers such a root as ``"file_root"`` and
+    ``_load_doc_pages`` serves it when it declares nothing, so one map
+    verifies citations of two different documents of two different trials.
+    At most one document can be the map's.
+    """
+    single = tmp_path / "r3_single_root" / "pages.json"
+    single.parent.mkdir(parents=True)
+    single.write_text(json.dumps({"pages": _RT_M4_PAGES}), encoding="utf-8")
+    scope = {RT_SCOPE_ID, RT_SCOPE_ID_2}
+    requests_ = (
+        (RT_SCOPE_ID, "Prot_000.pdf", SHA_A),
+        (RT_SCOPE_ID_2, "SAP_000.pdf", SHA_B),
+    )
+    try:
+        prov = DirectoryPageTextProvider(
+            single,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=scope,
+            referenced_documents={(nct, sha) for nct, _, sha in requests_},
+        )
+    except CitationVerificationError:
+        return
+    served: list[str] = []
+    for nct, filename, sha in requests_:
+        try:
+            text = prov.get_page_text(nct, filename, sha, 2)
+        except CitationVerificationError:
+            text = None
+        if text is not None:
+            served.append(f"{nct}/{filename}")
+    assert len(served) <= 1, f"one anonymous page map served as the text of {served}"
+
+
+def test_redteam_m4_page_text_of_one_source_does_not_verify_another(tmp_path: Path) -> None:
+    """Page text of one text source verifies citations claimed from another.
+
+    (a) ``_ingest_jsonl_file`` also files a row declaring ``text_source:
+    "ocr"`` under the default ``pdfkit`` bucket (``_jsonl_default_pages``), so
+    a pdfkit request is answered with OCR text. (b) A location row tagged
+    ``text_source: "ocr"`` in a run with no OCR source is checked against the
+    pdfkit maps (``_load_doc_pages`` reads ``pages_dir`` when ``ocr_dir`` is
+    None) and, being non-pdfkit, skips ``CITATION_PAGE_WITHOUT_TEXT`` for a
+    page the document lists as having no pdfkit text.
+    """
+    ocr_root = tmp_path / "r3_ocr_row_only"
+    _rt_m4_write_page_map(
+        ocr_root, "maps.jsonl", {"sha256": SHA_A, "text_source": "ocr", "pages": _RT_M4_PAGES}
+    )
+    ocr_prov = DirectoryPageTextProvider(
+        ocr_root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+    )
+    assert ocr_prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2, text_source="ocr") == (
+        _RT_M4_PAGES[1]
+    )
+    try:
+        served = ocr_prov.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+    except CitationVerificationError:
+        served = None
+    assert served is None, "an OCR page map was served for a pdfkit request"
+
+    pdfkit_root = tmp_path / "r3_pdfkit_only"
+    _rt_m4_write_page_map(pdfkit_root, f"{SHA_A}.json", {"pages": _RT_M4_PAGES})
+    docs = {RT_SCOPE_ID: {"Prot_000.pdf": _make_doc(nct_id=RT_SCOPE_ID, pages_without_text=[2])}}
+
+    def _verify(extra: dict[str, Any] | None) -> tuple[dict[str, int], list[Any]]:
+        prov = DirectoryPageTextProvider(
+            pdfkit_root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+        )
+        return verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID, extra=extra),
+            docs_by_nct=docs,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=RT_SCOPE_SET,
+            page_text_provider=prov,
+        )
+
+    _, control = _verify(None)
+    assert "CITATION_PAGE_WITHOUT_TEXT" in {i.code for i in control}
+    counts, issues = _verify({"text_source": "ocr"})
+    assert counts["exact_ws_matches"] == 0 and any(i.severity == "error" for i in issues), (
+        "a citation tagged text_source='ocr' verified against pdfkit text in a run with no OCR source"
+    )
+
+
+def test_redteam_m4_not_found_needs_a_searchable_document() -> None:
+    """NOT_FOUND verifies when no page of any supplied document could be searched.
+
+    ``NOT_FOUND_WITHOUT_DOCUMENT`` counts supplied documents, not searchable
+    ones: a document whose download failed (``http_status`` 404, no pages) is
+    skipped by the partition check, and one whose every page is in
+    ``pages_without_text`` completes the partition with nothing searched.
+    Either way NOT_FOUND stands in for UNREADABLE.
+    """
+    unsearchable = {
+        "download_failed": _make_doc(
+            nct_id=RT_SCOPE_ID,
+            http_status=404,
+            extra={"sha256": None, "bytes": None, "physical_pages": None},
+        ),
+        "every_page_without_text": _make_doc(
+            nct_id=RT_SCOPE_ID, physical_pages=5, pages_without_text=[1, 2, 3, 4, 5]
+        ),
+    }
+    for name, doc in unsearchable.items():
+        for pages_searched in ("all", {"Prot_000.pdf": []}):
+            _, issues = verify_location_record(
+                _make_location(
+                    nct_id=RT_SCOPE_ID,
+                    status="NOT_FOUND",
+                    citations=[],
+                    pages_searched=pages_searched,
+                    pages_not_searched=[],
+                ),
+                docs_by_nct={RT_SCOPE_ID: {"Prot_000.pdf": doc}},
+                in_audit=False,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+            assert issues != [], (
+                f"{name}: NOT_FOUND verified with pages_searched={pages_searched!r} and no "
+                f"searchable page"
+            )
+
+    # Control: a searchable document with an exhaustive search verifies.
+    _, control = verify_location_record(
+        _make_location(nct_id=RT_SCOPE_ID, status="NOT_FOUND", citations=[]),
+        docs_by_nct=_rt_m4_scoped_docs(),
+        in_audit=False,
+        audit_nct_ids=RT_AUDIT_SET,
+    )
+    assert control == []
+
+
+def test_redteam_m4_neutral_language_guard_has_no_key_or_invisible_escape() -> None:
+    """Commentary escapes the guard under a ``quotation`` key or with invisible characters.
+
+    ``verify_location_record`` uses ``scan_neutral_language_record`` with its
+    default exemption, which skips ``quotation`` and ``statement_verbatim``
+    at any depth: a location row's own top-level or nested ``quotation`` is
+    not a citation and is verified against nothing. ``scan_neutral_language``
+    matches the raw text, so a zero-width space, soft hyphen or word joiner
+    inside a phrase (invisible when rendered; the NCT rule strips them)
+    defeats every rule.
+    """
+    claim = "Treatment achieved statistical significance."
+    docs = _rt_m4_scoped_docs()
+
+    def _neutral_codes(**kwargs: Any) -> set[str]:
+        _, issues = verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID, **kwargs),
+            docs_by_nct=docs,
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+        return {i.code for i in issues if i.code.startswith("NEUTRAL_LANGUAGE_")}
+
+    assert _neutral_codes(note=claim) == {"NEUTRAL_LANGUAGE_NL02"}
+    # Control: a citation's quotation is verbatim source text and stays exempt.
+    assert _neutral_codes(citations=[_make_citation(quotation=claim)]) == set()
+
+    for extra in (
+        {"quotation": claim},
+        {"statement_verbatim": claim},
+        {"review": {"quotation": claim}},
+    ):
+        assert _neutral_codes(extra=extra) != set(), (
+            f"commentary under {extra!r} escaped the neutral-language guard"
+        )
+    for name, hidden in {
+        "zero_width_space": "Treatment achieved stat​istical significance.",
+        "soft_hyphen": "Treatment achieved statis­tical significance.",
+        "word_joiner": "Treatment achieved statistical⁠ significance.",
+    }.items():
+        assert _neutral_codes(note=hidden) != set(), f"{name} hid an evaluative claim"
+
+
+def test_redteam_m4_record_in_audit_spellings_refuse() -> None:
+    """A row's own holdout flag is read only under the exact key ``in_audit``.
+
+    A record's own flag can only refuse (``_enforce_record_firewall``), but
+    ``inAudit``, ``IN_AUDIT``, ``in-audit`` or ``in_audit `` set to true is
+    ignored, so a row that says it is a holdout trial verifies.
+    """
+    docs = _rt_m4_scoped_docs()
+    for key in ("inAudit", "IN_AUDIT", "in-audit", "in_audit ", "In_Audit"):
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_location_record(
+                _make_location(nct_id=RT_SCOPE_ID, extra={key: True}),
+                docs_by_nct=docs,
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+            )
+            pytest.fail(f"a location row with {key!r}=true verified")
+        with pytest.raises(AuditHoldoutViolationError):
+            verify_document_record(
+                _make_doc(nct_id=RT_SCOPE_ID, extra={key: True}),
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+                strict_keys=False,
+            )
+            pytest.fail(f"a document row with {key!r}=true was read")
+
+
+def test_redteam_m4_dict_provider_keys_naming_audit_trial_refused() -> None:
+    """``DictPageTextProvider`` stores and serves keys whose filename or text source names the holdout.
+
+    ``_validate_stored_keys`` checks the trial element and the shape of the
+    others; the directory provider refuses the same names
+    (``_check_path_part_for_embedded_nct``), the dict provider does not.
+    """
+    keyed: dict[str, dict[Any, str]] = {
+        "filename": {(RT_SCOPE_ID, f"{RT_AUDIT_ID}_Prot.pdf", 2): "Page two."},
+        "text_source_by_sha": {(SHA_A, 2, RT_AUDIT_ID): "Page two."},
+        "text_source_by_trial": {(RT_SCOPE_ID, "Prot_000.pdf", 2, f"ocr-{RT_AUDIT_ID}"): "Page two."},
+    }
+    for name, pages_by_key in keyed.items():
+        with pytest.raises(AuditHoldoutViolationError):
+            DictPageTextProvider(
+                pages_by_key, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
+            )
+            pytest.fail(f"{name}: a page key naming the audit trial was stored")
+
+
+def test_redteam_m4_provider_and_completeness_entry_points_refuse_malformed_ids() -> None:
+    """Attempt that held: lowercase, padded, zero-width or non-ASCII IDs and unscoped empty audit sets.
+
+    Covers the entry points the earlier suites did not: both providers'
+    public ``get_page_text``, ``referenced_documents``,
+    ``verify_trial_completeness`` location rows, and an empty audit set with
+    no scope at ``verify_citation``, ``verify_trial_completeness`` and the
+    dict provider.
+    """
+    malformed = (
+        RT_SCOPE_ID.lower(),
+        f" {RT_SCOPE_ID}",
+        f"{RT_SCOPE_ID} ",
+        f"{RT_SCOPE_ID}​",
+        "NCT" + "".join(chr(0x0660 + int(d)) for d in RT_SCOPE_ID[3:]),
+    )
+    dict_prov = DictPageTextProvider(
+        pages_by_sha256={SHA_A: _RT_M4_PAGES},
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+    )
+    for bad in malformed:
+        with pytest.raises(InvalidNctIdError):
+            dict_prov.get_page_text(bad, "Prot_000.pdf", SHA_A, 2)
+        with pytest.raises(InvalidNctIdError):
+            verify_trial_completeness(
+                RT_SCOPE_ID,
+                [_make_location(nct_id=bad)],
+                expected_primary_outcomes=1,
+                in_audit=False,
+                audit_nct_ids=RT_AUDIT_SET,
+            )
+
+    with pytest.raises(AuditHoldoutViolationError):
+        DictPageTextProvider(
+            pages_by_sha256={SHA_A: _RT_M4_PAGES}, allow_empty_audit_set=True
+        ).get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2)
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_trial_completeness(
+            RT_SCOPE_ID, [], expected_primary_outcomes=1, in_audit=False, allow_empty_audit_set=True
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_citation(
+            RT_SCOPE_ID,
+            (0, "margin", "primary"),
+            _make_citation(),
+            docs_by_filename={},
+            in_audit=False,
+            allow_empty_audit_set=True,
+        )
+
+
+def test_redteam_m4_directory_provider_refuses_malformed_ids(tmp_path: Path) -> None:
+    """Attempt that held: the directory provider's request and ``referenced_documents`` IDs are strict."""
+    root = tmp_path / "r3_strict_ids"
+    _rt_m4_write_page_map(root, f"{SHA_A}.json", {"pages": _RT_M4_PAGES})
+    prov = DirectoryPageTextProvider(root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET)
+    for bad in (RT_SCOPE_ID.lower(), f" {RT_SCOPE_ID}", f"{RT_SCOPE_ID}​"):
+        with pytest.raises(InvalidNctIdError):
+            prov.get_page_text(bad, "Prot_000.pdf", SHA_A, 2)
+        with pytest.raises(InvalidNctIdError):
+            DirectoryPageTextProvider(
+                root,
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=RT_SCOPE_SET,
+                referenced_documents={(bad, SHA_A)},
+            )

@@ -2718,3 +2718,376 @@ def test_redteam_m4_cli_mixed_nct_id_targets_refused(tmp_path: Path) -> None:
     assert main(base) == 0
     for extra in (RT_UNLISTED_ID, RT_AUDIT_ID, RT_SCOPE_ID_2):
         assert main([*base, "--nct-id", extra]) == 2, extra
+
+
+# ---------------------------------------------------------------------------
+# Round-3 red team on m4 at e677d79 (fictional NCT99800001..NCT99899999 only).
+#
+# Each test asserts the behaviour the module's own rules call for. Tests for a
+# bypass fail until the module is fixed; tests for an attempt that held pass.
+# ---------------------------------------------------------------------------
+
+
+def _rt_m4_r3_obfuscated_audit_ids() -> dict[str, str]:
+    """Renderings of ``RT_AUDIT_ID`` a reader takes for it but ``nct[0-9]{7,10}`` misses."""
+    prefix, digits = RT_AUDIT_ID[:3], RT_AUDIT_ID[3:]
+    return {
+        "space": f"{prefix} {digits}",
+        "hyphen": f"{prefix}-{digits}",
+        "underscore": f"{prefix}_{digits}",
+        "no_break_space": f"{prefix} {digits}",
+        "cyrillic_es": f"NСT{digits}",
+        "variation_selector": f"{RT_AUDIT_ID[:4]}️{RT_AUDIT_ID[4:]}",
+    }
+
+
+def test_redteam_m4_cli_obfuscated_audit_id_tokens_refused(tmp_path: Path) -> None:
+    """verify and plan accept rows, doc-cache entries and page maps naming the audit trial as ``NCT 9...``.
+
+    The CLI's token rule (``_scan_record_strings_for_nct_tokens``) refuses the
+    plain ID in any key or string; a separator between prefix and digits, a
+    look-alike letter or a variation selector passes, and the row is recorded.
+    """
+    clean_args = _rt_m4_inputs(tmp_path, "obf_control")
+    assert main(["verify", *clean_args]) == 0
+    clean_cache = tmp_path / "obf_cache_control.jsonl"
+    _write_jsonl(clean_cache, [{"sha256": SHA_1, "title": "Protocol version 2"}])
+    assert main(["plan", *clean_args, "--doc-cache", str(clean_cache)]) == 0
+    clean_pages = _rt_m4_pages_dir(
+        tmp_path / "obf_pages_control", {f"{SHA_1}.json": {"source": "pdfkit", "pages": _RT_M4_PAGES}}
+    )
+    assert main(["verify", *clean_args, "--pages-dir", str(clean_pages)]) == 0
+
+    for name, token in _rt_m4_r3_obfuscated_audit_ids().items():
+        text = f"Same protocol as {token}."
+        locs = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        locs[0]["note"] = text
+        loc_args = _rt_m4_inputs(tmp_path, f"obf_loc_{name}", locations=locs)
+        assert main(["verify", *loc_args]) == 2, f"{name}: verify accepted the location note"
+        assert main(["plan", *loc_args]) == 2, f"{name}: plan accepted the location note"
+
+        cache = tmp_path / f"obf_cache_{name}.jsonl"
+        _write_jsonl(cache, [{"sha256": SHA_1, "title": text}])
+        assert main(["plan", *clean_args, "--doc-cache", str(cache)]) == 2, (
+            f"{name}: plan accepted the doc-cache entry"
+        )
+
+        pages = _rt_m4_pages_dir(
+            tmp_path / f"obf_pages_{name}", {f"{SHA_1}.json": {"source": text, "pages": _RT_M4_PAGES}}
+        )
+        assert main(["verify", *clean_args, "--pages-dir", str(pages)]) == 2, (
+            f"{name}: verify served a page map whose metadata names the audit trial"
+        )
+
+
+def test_redteam_m4_cli_top_level_list_page_map_refused(tmp_path: Path) -> None:
+    """verify --pages-dir serves a list-shaped page map declaring the audit trial.
+
+    A JSON list of page objects is parsed as pages but never firewalled
+    (``_validate_payload_firewall`` returns early for a non-mapping), so
+    ``nct_id`` of the audit trial and ``in_audit: true`` on every page pass.
+    """
+    args = _rt_m4_inputs(tmp_path, "list_map")
+    objects = [
+        {"physical_page": n, "text": t, "nct_id": RT_AUDIT_ID, "in_audit": True}
+        for n, t in enumerate(_RT_M4_PAGES, start=1)
+    ]
+    layouts = {
+        "sha_named": f"{SHA_1}.json",
+        "trial_directory": f"{RT_SCOPE_ID}/Prot_000.json",
+        "trial_prefixed": f"{RT_SCOPE_ID}__Prot_000.json",
+    }
+    for name, rel in layouts.items():
+        pages = _rt_m4_pages_dir(tmp_path / f"list_pages_{name}", {rel: objects})
+        assert main(["verify", *args, "--pages-dir", str(pages)]) == 2, (
+            f"{name}: verify served a list page map declaring the audit trial"
+        )
+
+
+def test_redteam_m4_cli_jsonl_rows_naming_no_document_refused(tmp_path: Path) -> None:
+    """verify --pages-dir parses JSONL page rows that name no document and drops them silently.
+
+    With referenced documents, a row declaring an unreferenced sha256 is
+    refused loudly (``_ingest_jsonl_file``), because a map no in-scope
+    document names may hold any trial's text. A row declaring no sha256 (and
+    no filename) is the same kind of map; it is parsed and discarded.
+    """
+    args = _rt_m4_inputs(tmp_path, "anon_rows")
+    referenced = json.dumps({"sha256": SHA_1, "pages": _RT_M4_PAGES}) + "\n"
+    control = _rt_m4_pages_dir(tmp_path / "anon_control", {"maps.jsonl": referenced})
+    assert main(["verify", *args, "--pages-dir", str(control)]) == 0
+
+    unnamed_rows: dict[str, dict[str, Any]] = {
+        "no_sha_no_trial": {"pages": ["Text of a document no row names."]},
+        "trial_without_document": {"nct_id": RT_SCOPE_ID, "pages": ["Text of an unnamed document."]},
+    }
+    for name, row in unnamed_rows.items():
+        pages = _rt_m4_pages_dir(
+            tmp_path / f"anon_{name}", {"maps.jsonl": referenced + json.dumps(row) + "\n"}
+        )
+        assert main(["verify", *args, "--pages-dir", str(pages)]) != 0, (
+            f"{name}: a JSONL page row naming no in-scope document was parsed and dropped"
+        )
+
+
+def test_redteam_m4_cli_in_audit_spellings_refuse(tmp_path: Path) -> None:
+    """verify and plan ignore a holdout flag spelled other than ``in_audit``.
+
+    Rows (and the index's own in-scope rows) carrying ``inAudit: true`` or
+    ``IN_AUDIT: true`` say the trial is held out; only the exact key is read,
+    so they verify and are planned.
+    """
+    for key in ("inAudit", "IN_AUDIT"):
+        locs = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        locs[0][key] = True
+        loc_args = _rt_m4_inputs(tmp_path, f"spell_loc_{key}", locations=locs)
+        assert main(["verify", *loc_args]) == 2, f"verify accepted a location row with {key}=true"
+        assert main(["plan", *loc_args]) == 2, f"plan accepted a location row with {key}=true"
+
+        doc_args = _rt_m4_inputs(
+            tmp_path,
+            f"spell_doc_{key}",
+            documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1, extra={key: True})],
+        )
+        assert main(["verify", *doc_args, "--allow-extra-document-keys"]) == 2, (
+            f"verify accepted a document row with {key}=true"
+        )
+
+        index_rows = _rt_index_rows()
+        index_rows[0][key] = True
+        idx_args = _rt_m4_inputs(tmp_path, f"spell_idx_{key}", index_rows=index_rows)
+        assert main(["verify", *idx_args]) == 2, f"verify admitted an index row with {key}=true"
+        assert main(["plan", *idx_args]) == 2, f"plan admitted an index row with {key}=true"
+
+
+def test_redteam_m4_cli_index_row_own_id_fields_naming_audit_trial_refused(tmp_path: Path) -> None:
+    """An in-scope index row whose own-ID or alias field is the audit trial is admitted.
+
+    ``_partition_index_firewall`` walks in-scope rows with the named-key walk
+    only (``nct_id``/``nctId``/``trial_nct_id``, ``nct_ids``). The classic
+    API's ``NCTId`` and API v2 ``nctIdAliases`` name the same trial;
+    ``assemble_longitudinal_provenance`` refuses a study whose alias is an
+    audit ID ("a holdout trial under another number"), the index does not, so
+    the row's trial is verified and planned.
+    """
+    vectors: dict[str, Any] = {
+        "NCTId": RT_AUDIT_ID,
+        "nctIdAliases": [RT_AUDIT_ID],
+        "protocolSection": {"identificationModule": {"nctIdAliases": [RT_AUDIT_ID]}},
+    }
+    for key, value in vectors.items():
+        index_rows = _rt_index_rows()
+        index_rows[0][key] = value
+        args = _rt_m4_inputs(tmp_path, f"own_id_{key}", index_rows=index_rows)
+        assert main(["verify", *args]) == 2, f"verify admitted an index row with {key} = audit"
+        assert main(["plan", *args]) == 2, f"plan admitted an index row with {key} = audit"
+
+
+def test_redteam_m4_plan_doc_cache_entry_for_another_trial_not_applied() -> None:
+    """A doc-cache entry declaring another trial is applied to this trial's document.
+
+    The entry's sha256 must be some in-scope document's, but the trial it
+    declares is never compared with the trial whose document has that sha256
+    (page maps raise on the same disagreement). An entry declaring trial 2 for
+    trial 1's document moves trial 1 from OCR recovery to the terminal $0
+    skip.
+    """
+    index_rows = _rt_index_rows() + [
+        {
+            "nct_id": RT_SCOPE_ID_2,
+            "in_audit": False,
+            "protocol": True,
+            "sap": False,
+            "cohorts": ["rt_cohort"],
+            "primary_outcomes_count": 1,
+        }
+    ]
+    documents = [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1), _doc(RT_SCOPE_ID_2, "Prot_000.pdf", SHA_2)]
+    locations = _complete_primary_locations(
+        RT_SCOPE_ID,
+        "Prot_000.pdf",
+        SHA_1,
+        unreadable_elements={"margin"},
+        unreadable_note="Scanned image-only PDF with no extractable text.",
+    )
+
+    def _plan(cache: dict[str, dict[str, Any]]) -> dict[str, Any]:
+        return plan_incremental_cohort(
+            index_rows,
+            documents=documents,
+            locations=locations,
+            doc_cache_by_sha256=cache,
+            planned_at="2026-11-23T00:00:00+00:00",
+        )
+
+    control = _plan({})
+    assert control["partitions"]["unreadable_recoverable_ocr"] == [RT_SCOPE_ID]
+    foreign = {
+        SHA_1: {"sha256": SHA_1, "nct_id": RT_SCOPE_ID_2, "unreadable_recovery_bucket": "redacted_cci_ppd"}
+    }
+    try:
+        plan = _plan(foreign)
+    except CitationVerificationError:
+        return
+    assert plan["partitions"] == control["partitions"], (
+        "a doc-cache entry declaring trial 2 reclassified trial 1's document: "
+        f"{plan['partitions']}"
+    )
+
+
+def test_redteam_m4_cli_conflicting_doc_cache_rows_refused(tmp_path: Path) -> None:
+    """Two --doc-cache rows for one sha256 that disagree are resolved silently (the later wins).
+
+    The rows decide whether an unreadable trial is recovered by OCR or
+    skipped terminally at $0; ``_load_doc_cache_by_sha256`` keeps the last
+    row read, so the order of lines in the file decides.
+    """
+    locs = _complete_primary_locations(
+        RT_SCOPE_ID,
+        "Prot_000.pdf",
+        SHA_1,
+        unreadable_elements={"margin"},
+        unreadable_note="Scanned image-only PDF with no extractable text.",
+    )
+    args = _rt_m4_inputs(tmp_path, "dup_cache", locations=locs)
+    single = tmp_path / "dup_cache_single.jsonl"
+    _write_jsonl(single, [{"sha256": SHA_1, "unreadable_recovery_bucket": "image_only_scan"}])
+    assert main(["plan", *args, "--doc-cache", str(single)]) == 0
+
+    conflicting = tmp_path / "dup_cache_conflicting.jsonl"
+    _write_jsonl(
+        conflicting,
+        [
+            {"sha256": SHA_1, "unreadable_recovery_bucket": "image_only_scan"},
+            {"sha256": SHA_1, "unreadable_recovery_bucket": "redacted_cci_ppd"},
+        ],
+    )
+    assert main(["plan", *args, "--doc-cache", str(conflicting)]) != 0, (
+        "plan resolved two conflicting doc-cache rows for one sha256 by line order"
+    )
+
+
+def test_redteam_m4_cli_not_found_on_unsearchable_document(tmp_path: Path) -> None:
+    """verify passes NOT_FOUND for a trial whose only document failed to download.
+
+    The document row is valid (``http_status`` 404, no sha256 or pages), so
+    ``NOT_FOUND_WITHOUT_DOCUMENT`` does not fire, and the partition check
+    skips a document without a page count: NOT_FOUND claims a search of pages
+    that were never retrieved.
+    """
+    failed = _doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    failed.update({"http_status": 404, "sha256": None, "bytes": None, "physical_pages": None})
+    not_found = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    for row in not_found:
+        row["status"] = "NOT_FOUND"
+        row["citations"] = []
+    args = _rt_m4_inputs(tmp_path, "nf_failed_doc", documents=[failed], locations=not_found)
+    assert main(["verify", *args, "--check-completeness"]) == 1, (
+        "NOT_FOUND verified for a trial whose only document was never retrieved"
+    )
+
+
+def test_redteam_m4_cli_refusal_messages_do_not_quote_audit_ids(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Refusals print the audit trial's ID, in canonical form, to stderr.
+
+    The text-token rule names a position only ("the text names an
+    audit-holdout trial"), so that no error message quotes a holdout ID; the
+    URL rule, ``enforce_audit_holdout``, the page-map path rule and the
+    ``--nct-id`` check print it, upper-cased and percent-decoded from the
+    input where the input hid it.
+    """
+    lower_url = f"https://cdn.clinicaltrials.gov/large-docs/88/{RT_AUDIT_ID.lower()}/Prot_000.pdf"
+    pct_id = f"{RT_AUDIT_ID[:3]}%{ord(RT_AUDIT_ID[3]):X}{RT_AUDIT_ID[4:]}"
+    pct_url = f"https://cdn.clinicaltrials.gov/large-docs/88/{pct_id}/Prot_000.pdf"
+
+    def _locs(update: dict[str, Any]) -> list[dict[str, Any]]:
+        rows = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        rows[0].update(update)
+        return rows
+
+    clean_args = _rt_m4_inputs(tmp_path, "msg_clean")
+    audit_dir_pages = _rt_m4_pages_dir(
+        tmp_path / "msg_pages",
+        {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}, f"{RT_AUDIT_ID}/Prot_000.json": {"pages": _RT_M4_PAGES}},
+    )
+    cases: dict[str, list[str]] = {
+        "location_url_lowercase": [
+            "verify", *_rt_m4_inputs(tmp_path, "msg_lower", locations=_locs({"source_url": lower_url}))
+        ],
+        "location_url_percent_encoded": [
+            "verify", *_rt_m4_inputs(tmp_path, "msg_pct", locations=_locs({"source_url": pct_url}))
+        ],
+        "location_nct_id": [
+            "verify",
+            *_rt_m4_inputs(
+                tmp_path,
+                "msg_nct",
+                locations=_complete_primary_locations(RT_AUDIT_ID, "Prot_000.pdf", SHA_1),
+            ),
+        ],
+        "page_map_directory": ["verify", *clean_args, "--pages-dir", str(audit_dir_pages)],
+        "plan_nct_id": ["plan", "--index", clean_args[1], "--nct-id", RT_AUDIT_ID],
+    }
+    for name, argv in cases.items():
+        capsys.readouterr()
+        rc = main(argv)
+        captured = capsys.readouterr()
+        assert rc == 2, f"{name}: expected a firewall refusal, got exit {rc}"
+        assert RT_AUDIT_ID not in captured.err and RT_AUDIT_ID not in captured.out, (
+            f"{name}: the refusal message quotes the audit trial's ID"
+        )
+
+
+def test_redteam_m4_cli_nct_id_obfuscations_refused(tmp_path: Path) -> None:
+    """Attempt that held: a lowercase, padded, zero-width or non-ASCII --nct-id stops plan (exit 2)."""
+    args = _rt_m4_inputs(tmp_path, "nct_id_forms")
+    for bad in (
+        RT_SCOPE_ID.lower(),
+        f" {RT_SCOPE_ID}",
+        f"{RT_SCOPE_ID} ",
+        f"{RT_SCOPE_ID}​",
+        "NCT" + "".join(chr(0x0660 + int(d)) for d in RT_SCOPE_ID[3:]),
+    ):
+        assert main(["plan", "--index", args[1], "--nct-id", bad]) == 2, repr(bad)
+
+
+def test_redteam_m4_cli_pre_grouped_lines_and_non_list_citations_rejected(tmp_path: Path) -> None:
+    """Attempt that held: pass-grouped location objects and non-list citations never verify or cache.
+
+    A --locations line holding rows grouped by pass (``{"primary": [...],
+    "bogus": [...]}``) is refused (no trial: exit 2) or fails verify (exit 1)
+    when it carries one; the library entry points refuse a pass-keyed mapping
+    in place of a row sequence. A ``citations`` value that is an object, a
+    string, null or a number fails verify and keeps the trial out of
+    ``cached_complete``.
+    """
+    grid = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    grouped: dict[str, Any] = {"primary": grid, "bogus": grid[:1]}
+    for name, line in (("no_trial", grouped), ("with_trial", {"nct_id": RT_SCOPE_ID, **grouped})):
+        args = _rt_m4_inputs(tmp_path, f"grouped_{name}")
+        _write_jsonl(Path(args[5]), [line])
+        expected = 2 if name == "no_trial" else 1
+        assert main(["verify", *args, "--check-completeness"]) == expected, name
+        assert main(["plan", *args]) == expected, name
+    with pytest.raises(CitationVerificationError):
+        plan_incremental_cohort(
+            _rt_index_rows(),
+            documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+            locations=grouped,  # type: ignore[arg-type]
+            planned_at="2026-11-23T00:00:00+00:00",
+        )
+
+    for idx, citations in enumerate(({"filename": "Prot_000.pdf"}, "x", None, 0)):
+        locs = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        locs[0]["citations"] = citations
+        args = _rt_m4_inputs(tmp_path, f"citations_type_{idx}", locations=locs)
+        assert main(["verify", *args]) == 1, repr(citations)
+        plan = plan_incremental_cohort(
+            _rt_index_rows(),
+            documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+            locations=locs,
+            planned_at="2026-11-23T00:00:00+00:00",
+        )
+        assert plan["partitions"]["cached_complete"] == [], repr(citations)
