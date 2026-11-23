@@ -3593,3 +3593,34 @@ def test_redteam_m2_round4_attempts_that_are_refused(
         with pytest.raises((eco.EcosystemAuditHoldoutError, TypeError)):
             entry(sqlite_attrs, shipped_rules, shipped_ecosystem_rules)
         assert name
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [123, None, ("NCT99000101", "NCT99000102"), b"National Cancer Institute (NCI)"],
+    ids=["int", "none", "tuple-of-ids", "bytes"],
+)
+def test_a_canonical_or_stem_that_is_not_a_str_is_refused_naming_its_type_only(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+    bad: Any,
+) -> None:
+    # Before: audit_ecosystem compared `canonical` with == against the
+    # matched names, so an int or a tuple matched nothing and the call
+    # returned empty frames; organization_trials passed it on to
+    # sr.trials, which did the same. Now both raise TypeError, and the
+    # message names the type, never the value.
+    sp = _holdout_frame()
+    idx = eco.build_unified_index(sp, shipped_rules, shipped_ecosystem_rules)
+    calls: list[Callable[[], Any]] = [
+        lambda: eco.audit_ecosystem(sp, shipped_ecosystem_rules, bad, "cancer"),
+        lambda: eco.audit_ecosystem(
+            sp, shipped_ecosystem_rules, "National Cancer Institute (NCI)", bad
+        ),
+        lambda: eco.organization_trials(idx, bad),
+    ]
+    for call in calls:
+        with pytest.raises(TypeError) as exc_info:
+            call()
+        assert "nct99" not in str(exc_info.value).lower()
+        assert type(bad).__name__ in str(exc_info.value)

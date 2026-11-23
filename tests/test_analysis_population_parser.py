@@ -3134,13 +3134,6 @@ def test_redteam_m2_round4_attempts_that_are_refused(
     assert _redteam4_not_refused(entry, cases) == []
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "declared unseen in the module docstring (a table rendered as text whose "
-        "header names in_audit); kept so the gap stays visible"
-    ),
-)
 @pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
 def test_redteam_m2_round4_manifest_rendered_as_a_text_table_is_refused(
     name: str, entry: Callable[[Any], Any], retained: bool

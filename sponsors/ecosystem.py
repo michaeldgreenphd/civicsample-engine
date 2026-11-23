@@ -2854,6 +2854,19 @@ def sector_trials(
     return out
 
 
+def _require_str_argument(name: str, value: object) -> None:
+    """Raise TypeError unless `value` is exactly a str.
+
+    Without this, a canonical that is not text (an int, or a tuple of ids
+    passed by position) is compared with ``==`` against a column of names,
+    matches nothing and returns empty results: a silent failure. The
+    message names the argument's type only, never its value, so an audit
+    id set passed here does not reach a log (see sector_trials).
+    """
+    if type(value) is not str:
+        raise TypeError(f"{name} must be a str; got a {type(value).__name__}")
+
+
 def organization_trials(
     index: pd.DataFrame,
     canonical: str,
@@ -2884,6 +2897,7 @@ def organization_trials(
     module docstring).
     """
     _refuse_audit_holdout_frame(index, "organization_trials")
+    _require_str_argument("canonical", canonical)
     return sr.trials(index, canonical, role=role, view=view)
 
 
@@ -2969,6 +2983,8 @@ def audit_ecosystem(
     code (see the module docstring).
     """
     _refuse_audit_holdout_frame(sponsors, "audit_ecosystem")
+    _require_str_argument("canonical", canonical)
+    _require_str_argument("stem", stem)
     validated = validate_ecosystem_rules(rules)
     uniq = sr.literal_universe(sponsors)
     matched = match_ecosystem_literals(uniq, validated)
