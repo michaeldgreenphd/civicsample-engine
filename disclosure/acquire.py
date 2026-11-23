@@ -612,9 +612,11 @@ def openfda_drugsfda_valid(body: Any) -> bool:
 # when a unit follows it, so codes such as `5-FU` and `Ro 09-1978/000` are kept.
 # One amount: plain or comma-grouped digits (`50,000`), with an optional decimal part. Used for the
 # leading amount, the end of a range and every slash-separated component (`24,000/76,000/120,000 units`).
+# A hyphen may join the amount to its unit (`Prednisone 10-mg`, `0.5-mg tablet`): without it the term kept
+# `10-mg` or `0 5-mg`, a phrase no Drugs@FDA name carries. The unit must still follow, so `5-FU` is kept.
 _DRUG_AMOUNT = r'(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?'
 DRUG_STRENGTH_RE = re.compile(
-    rf'\b{_DRUG_AMOUNT}(?:\s*(?:-|\u2013|\u2014|to)\s*{_DRUG_AMOUNT})?(?:\s*/\s*{_DRUG_AMOUNT})*\s*'
+    rf'\b{_DRUG_AMOUNT}(?:\s*(?:-|\u2013|\u2014|to)\s*{_DRUG_AMOUNT})?(?:\s*/\s*{_DRUG_AMOUNT})*\s*-?\s*'
     r'(?:%|(?:units?|mmol|nmol|pmol|meq|mcg|[\u00b5\u03bc]g|ug|ng|mg|ml|iu|g|u)'
     r'(?:\s*/\s*(?:dose|day|hour|min|hr|h|mcg|[\u00b5\u03bc]g|kg|m2|m\u00b2|mg|ml|dl|ug|g|l))*)'
     r'(?=\W|$)',

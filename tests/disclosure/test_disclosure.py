@@ -2810,6 +2810,13 @@ def test_reviews_for_trials_outside_the_build_are_out_of_scope_not_orphaned(
         ('Drug 50,000/10,000 IU', 'drug'),
         ('Pancrelipase 24,000/76,000/120,000 units', 'pancrelipase'),
         ('ICI 182,780', 'ici 182 780'),  # a grouped number with no unit after it is a code, kept
+        # A hyphen may join an amount to its unit (on 7402950 these kept `10-mg`, `0 5-mg`, `2-g`, `000-iu`).
+        ('Prednisone 10-mg', 'prednisone'),
+        ('Drug 0.5-mg tablet', 'drug'),
+        ('Drug 10-mg/kg', 'drug'),
+        ('Drug 2-g', 'drug'),
+        ('Drug 50,000-IU', 'drug'),
+        ('IL-2', 'il-2'),  # control: no unit after the hyphen
     ],
 )
 def test_normalize_drug_term_strips_activity_amount_and_micro_sign_strengths(
