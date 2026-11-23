@@ -32,8 +32,10 @@ Every trial ID is fictional (NCT99xxxxxx).
 from __future__ import annotations
 
 import ast
+import collections
 import contextlib
 import copy
+import dataclasses
 import gzip
 import hashlib
 import io
@@ -3910,3 +3912,617 @@ def test_m3_fix_extract_reported_results_refuses_holdout_parsed_populations() ->
             _make_ctgov_study(RT_OK),
             parsed_populations={"outcomes": [{"outcome_index": 0, "inAudit": True}]},
         )
+
+
+# ── Red team m3, round 2 (on 2e1717e) ────────────────────────────────────────
+# Fictional IDs only (RT_OK ordinary, RT_HOLD the holdout), as in round 1.
+# Each test asserts the correct behaviour; on 2e1717e every one fails.
+
+def _rt2_write(path: pathlib.Path, obj: Any) -> pathlib.Path:
+    """Write ``obj`` as JSON (a str is written verbatim) and return the path."""
+    path.write_text(obj if isinstance(obj, str) else json.dumps(obj), encoding="utf-8")
+    return path
+
+
+def _rt2_argv(tmp_path: pathlib.Path, *, manifest: Any, trials: Any = None, extra: list[str] | None = None) -> tuple[list[str], pathlib.Path]:
+    """argv for a CLI build whose manifest and trials files hold ``manifest``
+    and ``trials`` exactly as given (a container object is kept as is)."""
+    out = tmp_path / "bundle"
+    argv = ["--cohort-manifest", str(_rt2_write(tmp_path / "rt2_manifest.json", manifest))]
+    if trials is not None:
+        argv += ["--trials", str(_rt2_write(tmp_path / "rt2_trials.json", trials))]
+    argv += [
+        "--extracted-at", SAMPLE_TS,
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out),
+        *(extra or []),
+    ]
+    return argv, out
+
+
+_RT2_ROWS: list[dict[str, Any]] = [
+    {"nct_id": RT_OK, "in_audit": False, "cohorts": ["nih"]},
+    {"nct_id": RT_HOLD, "in_audit": True, "cohorts": ["nih"]},
+]
+
+
+def _rt2_side_pair(option: str) -> tuple[Any, Any]:
+    """(the ordinary trial's record, the holdout's record) for one side stream."""
+    if option == "--documents":
+        return _make_doc_profile(RT_OK), _make_doc_profile(RT_HOLD)
+    if option == "--provenance":
+        return _make_module4_provenance(RT_OK), _make_module4_provenance(RT_HOLD)
+    if option == "--locations":
+        return _make_complete_locations(RT_OK), _make_complete_locations(RT_HOLD)
+    return (
+        {"nct_id": RT_OK, "outcomes": [{"outcome_index": 0, "outcome_type": "PRIMARY", "population": "ITT"}]},
+        {"nct_id": RT_HOLD, "outcomes": [{"outcome_index": 0, "outcome_type": "PRIMARY", "population": "ITT"}]},
+    )
+
+
+@pytest.mark.parametrize("extra_key", ["second_list_key", "holdout_id_key"])
+@pytest.mark.parametrize("option", ["--documents", "--provenance", "--population-parsed", "--locations", "--trials"])
+def test_redteam_m3_container_extra_key_holding_holdout_record_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    option: str,
+    extra_key: str,
+) -> None:
+    """A JSON container ({"data": [...]}) whose other keys hold the holdout's
+    record (a second list key such as "records", or a key that is the holdout's
+    ID) is holdout material in the input: refused, never dropped. Round 2:
+    _load_records_file returns the first of data/trials/records/rows and drops
+    every other key without a word; exit 0, "wrote 2 trials (1 holdout)"."""
+    if option == "--trials":
+        ok_rec: Any = _make_ctgov_study(RT_OK)
+        hold_rec: Any = {**_make_ctgov_study(RT_HOLD, in_audit=True), "document_profile": _make_doc_profile(RT_HOLD)}
+    else:
+        ok_rec, hold_rec = _rt2_side_pair(option)
+    ok_list = ok_rec if isinstance(ok_rec, list) else [ok_rec]
+    hold_list = hold_rec if isinstance(hold_rec, list) else [hold_rec]
+    container: dict[str, Any] = {"data": ok_list}
+    if extra_key == "second_list_key":
+        container["records"] = hold_list
+    else:
+        container[RT_HOLD] = hold_list[0]
+    if option == "--trials":
+        argv, out = _rt2_argv(tmp_path, manifest=_RT2_ROWS, trials=container)
+    else:
+        side = _rt2_write(tmp_path / "rt2_side.json", container)
+        argv, out = _rt2_argv(tmp_path, manifest=_RT2_ROWS, trials=_rt_pair(), extra=[option, str(side)])
+    _rt_assert_refused(cli.main(argv), out, capsys)
+
+
+def test_redteam_m3_manifest_container_with_two_disagreeing_row_lists_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A manifest container carrying both "data" and "rows", one marking the
+    holdout in scope and the other in_audit true, does not say which it means
+    (the container-level form of a row contradicting its own in_audit): exit
+    2, nothing written. Round 2: the builder takes "data", ignores "rows", and
+    publishes the holdout in full: exit 0, "wrote 2 trials (0 holdout)", its
+    index row has_reported_results true and its shard carries reported_results."""
+    manifest = {
+        "data": [{"nct_id": RT_OK, "in_audit": False}, {"nct_id": RT_HOLD, "in_audit": False}],
+        "rows": [{"nct_id": RT_OK, "in_audit": False}, {"nct_id": RT_HOLD, "in_audit": True}],
+    }
+    argv, out = _rt2_argv(tmp_path, manifest=manifest, trials=[_make_ctgov_study(RT_OK), _make_ctgov_study(RT_HOLD)])
+    _rt_assert_refused(cli.main(argv), out, capsys)
+
+
+def test_redteam_m3_manifest_run_id_naming_holdout_not_published(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The manifest container's run_id is copied into index.json
+    (component_versions.cohort_manifest); one that names the holdout (here with
+    its results) is holdout material and is refused, like any other input
+    text naming a holdout. Round 2: never scanned; exit 0 and index.json
+    carries "NCT99000058: HR 0.68 (0.52-0.89) p<0.0001"."""
+    manifest = {"run_id": f"{RT_HOLD}: HR 0.68 (0.52-0.89) p<0.0001", "rows": _RT2_ROWS}
+    argv, out = _rt2_argv(tmp_path, manifest=manifest, trials=_rt_pair())
+    _rt_assert_refused(cli.main(argv), out, capsys)
+
+
+def test_redteam_m3_check_does_not_ignore_cohort_manifest(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--check DIR --cohort-manifest M either checks the tree against M (where
+    M marks a trial in_audit, the tree may hold only its stub) or refuses the
+    combination; it never ignores M. Round 2: M is accepted and ignored, and a
+    tree publishing M's holdout in full checks "ok (2 trials, 0 holdout ...)",
+    exit 0."""
+    rows_in_scope = [{"nct_id": RT_OK, "in_audit": False}, {"nct_id": RT_HOLD, "in_audit": False}]
+    argv, out = _rt2_argv(tmp_path, manifest=rows_in_scope, trials=[_make_ctgov_study(RT_OK), _make_ctgov_study(RT_HOLD)])
+    assert cli.main(argv) == 0
+    authoritative = _rt2_write(tmp_path / "rt2_authoritative.json", _RT2_ROWS)
+    capsys.readouterr()
+    assert cli.main(["--check", str(out), "--cohort-manifest", str(authoritative)]) != 0
+    assert RT_HOLD_DIGITS not in capsys.readouterr().err
+
+
+def _rt2_built_tree(tmp_path: pathlib.Path) -> pathlib.Path:
+    """A CLI-built tree: the ordinary trial with documents and provenance, and
+    the holdout's stub."""
+    argv, out = _rt2_argv(
+        tmp_path,
+        manifest=_RT2_ROWS,
+        trials=_rt_pair(),
+        extra=[
+            "--documents", str(_rt2_write(tmp_path / "rt2_docs.json", _make_doc_profile(RT_OK))),
+            "--provenance", str(_rt2_write(tmp_path / "rt2_prov.json", _make_module4_provenance(RT_OK))),
+        ],
+    )
+    assert cli.main(argv) == 0
+    return out
+
+
+def _rt2_edit_index(out: pathlib.Path, edit: Any) -> None:
+    idx = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    edit(idx)
+    (out / "index.json").write_text(ol.encode_json_text(idx, trailing_newline=True), encoding="utf-8")
+
+
+def _rt2_edit_record(out: pathlib.Path, nct_id: str, edit: Any) -> None:
+    path, sdoc = _read_shard(out, nct_id)
+    edit(sdoc["data"][nct_id])
+    path.write_bytes(ol.encode_gz_bytes(sdoc))
+
+
+@pytest.mark.parametrize("case", ["document_url_names_holdout", "nested_in_audit_true", "nested_nct_id_is_holdout"])
+def test_redteam_m3_check_applies_identity_rules_to_in_scope_records(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """--check reads every in-scope shard record with the rules the builder
+    applies on input (check_side_input_identity against the tree's own
+    holdout set): a document URL naming the tree's holdout, a nested in_audit
+    true, a nested nct_id naming the holdout. Round 2: none is read; each
+    tree checks "ok (2 trials, 1 holdout ...)", exit 0."""
+    out = _rt2_built_tree(tmp_path)
+
+    def edit(rec: dict[str, Any]) -> None:
+        if case == "document_url_names_holdout":
+            rec["document_profile"]["documents"][0]["url"] = RT_HOLD_URL
+        elif case == "nested_in_audit_true":
+            rec["reported_results"]["primary_outcome_measures"][0]["analyses"][0]["in_audit"] = True
+        else:
+            rec["longitudinal_provenance"]["posted_documents"][0]["nct_id"] = RT_HOLD
+
+    _rt2_edit_record(out, RT_OK, edit)
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) != 0
+    assert RT_HOLD_DIGITS not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "component_versions_object",
+        "holdout_document_badge_extra_key",
+        "holdout_census_badge_extra_key",
+        "in_scope_document_badge_disagrees_with_shard",
+        "in_scope_profile_raw_page_text",
+    ],
+)
+def test_redteam_m3_check_refuses_content_the_builder_never_writes(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """--check refuses what the builder never writes: an object in
+    component_versions (the builder writes strings), an extra key in a
+    holdout's document_badge or census_badge (here carrying its results), an
+    in-scope document_badge that disagrees with the shard's document_profile,
+    and raw PDF page text in a document_profile (refused on input). Round 2:
+    each tree checks "ok", exit 0."""
+    out = _rt2_built_tree(tmp_path)
+    results = {"primary_outcome_measures": [{"title": "OS", "analyses": [{"paramValue": "0.68", "pValue": "<0.0001"}]}]}
+
+    def edit_rows(idx: dict[str, Any]) -> None:
+        for row in idx["data"]:
+            if case == "holdout_document_badge_extra_key" and row["nct_id"] == RT_HOLD:
+                row["document_badge"]["results"] = results
+            elif case == "holdout_census_badge_extra_key" and row["nct_id"] == RT_HOLD:
+                row["census_badge"]["results"] = results
+            elif case == "in_scope_document_badge_disagrees_with_shard" and row["nct_id"] == RT_OK:
+                row["document_badge"]["doc_count"] = 7
+
+    if case == "component_versions_object":
+        _rt2_edit_index(out, lambda idx: idx["component_versions"].__setitem__("extra", results))
+    elif case == "in_scope_profile_raw_page_text":
+        _rt2_edit_record(out, RT_OK, lambda rec: rec["document_profile"].__setitem__("page_texts", ["page 1 text"]))
+    else:
+        _rt2_edit_index(out, edit_rows)
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) != 0
+    assert RT_HOLD_DIGITS not in capsys.readouterr().err
+
+
+@dataclasses.dataclass
+class _Rt2Population:
+    """A Module 2-style parsed outcome population (dataclass, not a mapping)."""
+
+    outcome_index: int
+    outcome_type: str
+    population: str
+    nct_id: str
+    in_audit: bool
+
+
+@dataclasses.dataclass
+class _Rt2Populations:
+    """A Module 2-style TrialAnalysisPopulations (dataclass with .outcomes)."""
+
+    outcomes: list[_Rt2Population]
+
+
+@pytest.mark.parametrize("entry_point", ["build_trial_bundle", "extract_reported_results"])
+def test_redteam_m3_dataclass_parsed_populations_identity_checked(entry_point: str) -> None:
+    """Module 2's parsed populations arrive as dataclasses (the module reads
+    them through .outcomes and __dict__); one naming the holdout with
+    in_audit true is refused like the same content as a mapping. Round 2: the
+    identity walk and _refuse_holdout_flags enter only mappings, lists and
+    tuples, so the dataclass passes and is published verbatim in the ordinary
+    trial's reported_results ("nct_id": "NCT99000058", "in_audit": true)."""
+    pops = _Rt2Populations(outcomes=[_Rt2Population(0, "PRIMARY", "ITT", RT_HOLD, True)])
+    with pytest.raises(ol.OutcomesLayoutError):
+        if entry_point == "build_trial_bundle":
+            ol.build_trial_bundle(
+                _make_ctgov_study(RT_OK), shards=8, in_audit=False, parsed_populations=pops, audit_nct_ids={RT_HOLD}
+            )
+        else:
+            ol.extract_reported_results(_make_ctgov_study(RT_OK), parsed_populations=pops)
+
+
+@pytest.mark.parametrize("entry_point", ["build_trial_bundle", "extract_reported_results"])
+def test_redteam_m3_population_parser_output_identity_checked(entry_point: str) -> None:
+    """The population_parser's result is a side input like parsed_populations
+    and is held to the same rules. Round 2: it is computed after every check
+    and published unchecked; a result naming the holdout with in_audit true
+    is returned in the ordinary trial's reported_results."""
+
+    def parser(_study: Any) -> dict[str, Any]:
+        return {"outcomes": [{"outcome_index": 0, "outcome_type": "PRIMARY", "nct_id": RT_HOLD, "in_audit": True, "population": "ITT"}]}
+
+    with pytest.raises(ol.OutcomesLayoutError):
+        if entry_point == "build_trial_bundle":
+            ol.build_trial_bundle(
+                _make_ctgov_study(RT_OK), shards=8, in_audit=False, population_parser=parser, audit_nct_ids={RT_HOLD}
+            )
+        else:
+            ol.extract_reported_results(_make_ctgov_study(RT_OK), population_parser=parser)
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    ["build_trial_bundle_documents", "build_trial_bundle_locations", "check_side_input_identity", "cross_stream_guard"],
+)
+def test_redteam_m3_non_list_sequences_identity_checked(entry_point: str) -> None:
+    """Side inputs accepted as any Sequence are read as one: a document
+    profile or location rows given as a collections.UserList naming the
+    holdout are refused, as the same rows in a list are. Round 2: the
+    identity walk enters list and tuple only; the UserList passes
+    check_side_input_identity and the vector-6 guard (both return None) and
+    build_trial_bundle publishes the holdout's document URL or a note naming
+    it in the ordinary trial's shard."""
+    docs = _make_doc_profile(RT_OK)["documents"]
+    docs[0]["url"] = RT_HOLD_URL
+    locs = _make_complete_locations(RT_OK)
+    locs[0]["note"] = f"see {RT_HOLD} SAP p.12"
+    with pytest.raises(ol.OutcomesLayoutError):
+        if entry_point == "build_trial_bundle_documents":
+            ol.build_trial_bundle(
+                _make_ctgov_study(RT_OK), shards=8, in_audit=False, audit_nct_ids={RT_HOLD},
+                document_profile=collections.UserList(docs),
+            )
+        elif entry_point == "build_trial_bundle_locations":
+            ol.build_trial_bundle(
+                _make_ctgov_study(RT_OK), shards=8, in_audit=False, audit_nct_ids={RT_HOLD},
+                document_profile=_make_doc_profile(RT_OK), decision_rule_locations=collections.UserList(locs),
+            )
+        elif entry_point == "check_side_input_identity":
+            ol.check_side_input_identity(
+                collections.UserList([{"nct_id": RT_HOLD, "in_audit": True}]),
+                expected_nct_id=RT_OK, expected_in_audit=False, label="documents", audit_nct_ids={RT_HOLD},
+            )
+        else:
+            ol.assert_no_audit_cross_stream_leakage(
+                {RT_HOLD}, documents_by_nct={RT_OK: collections.UserList([{"nct_id": RT_HOLD, "in_audit": True}])}
+            )
+
+
+@pytest.mark.parametrize("key", ["documents", "large_docs", "registry_milestones", "outcomes", "primary_pass"])
+def test_redteam_m3_holdout_unwrapped_side_content_refused_not_dropped(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    key: str,
+) -> None:
+    """Side-section content carried at the top of the holdout's own --trials
+    record without its section wrapper (a profile's documents, Module 4's
+    large_docs or registry_milestones, parsed population outcomes, a
+    primary_pass) is holdout material, refused like the wrapped sections
+    (exit 2). Round 2: HOLDOUT_INLINE_SECTION_FORMS names the wrappers only;
+    exit 0, the content dropped without a word."""
+    content: Any = {
+        "documents": _make_doc_profile(RT_HOLD)["documents"],
+        "large_docs": _make_module4_provenance(RT_HOLD)["large_docs"],
+        "registry_milestones": _make_module4_provenance(RT_HOLD)["registry_milestones"],
+        "outcomes": [{"outcome_index": 0, "outcome_type": "PRIMARY", "population": "ITT", "n_analyzed": 238}],
+        "primary_pass": [{"primary_outcome_index": 0, "element": "margin", "status": "NOT_APPLICABLE"}],
+    }[key]
+    holdout = _make_ctgov_study(RT_HOLD, in_audit=True)
+    holdout[key] = content
+    argv, out = _rt_build(tmp_path, studies=[_make_ctgov_study(RT_OK), holdout])
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=2)
+
+
+@pytest.mark.parametrize("key", ["llm_assessment", "paper_extraction", "model_id", "prompt_sha256", "effective_pass"])
+def test_redteam_m3_holdout_llm_keys_inside_native_sections_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    key: str,
+) -> None:
+    """Vector 3 (no LLM, assessment or pass keys on a holdout) holds inside
+    the CT.gov native sections too, apart from the two keys CT.gov's own
+    schema uses (locations, citations). Round 2: raw_payload skips
+    protocolSection, resultsSection, annotationSection, documentSection and
+    derivedSection wholesale; protocolSection.outcomesModule.<key> on the
+    holdout's record is dropped without a word, exit 0."""
+    holdout = _make_ctgov_study(RT_HOLD, in_audit=True)
+    holdout["protocolSection"]["outcomesModule"][key] = (
+        [{"status": "FOUND"}] if key == "effective_pass" else {"hr": "0.68", "p": "<0.0001"}
+    )
+    argv, out = _rt_build(tmp_path, studies=[_make_ctgov_study(RT_OK), holdout])
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=2)
+
+
+@pytest.mark.parametrize("key", ["in_audit_holdout", "inAuditHoldout", "audit_holdout"])
+def test_redteam_m3_in_scope_record_holdout_marker_spellings_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    key: str,
+) -> None:
+    """A nested key that says "in_audit holdout" (the very status the badges
+    use for a holdout) set true in an ordinary trial's record contradicts the
+    manifest, as a nested in_audit true does: exit 2. Round 2: only the
+    in_audit / is_in_audit spellings are read; exit 0 and the key is published
+    verbatim in the ordinary trial's reported_results.analyses."""
+    study = _make_ctgov_study(RT_OK)
+    study["resultsSection"]["outcomeMeasuresModule"]["outcomeMeasures"][0]["analyses"][0][key] = True
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)])
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=2)
+
+
+def _rt2_one_trial_docs() -> tuple[dict[str, Any], dict[int, dict[str, Any]]]:
+    return ol.build_outcomes_documents(
+        [ol.build_trial_bundle(_make_ctgov_study(RT_OK), shards=4)],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+
+
+@pytest.mark.parametrize("family", ["geo", "sex_gender", "sponsors"])
+def test_redteam_m3_partial_turned_symlink_before_staging_not_followed(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    family: str,
+) -> None:
+    """If <out>.partial becomes a symlink into a family folder after the
+    allowlist check (another process, during the pre-flight firewall pass),
+    the staging step does not delete through it. Round 2: _remove_own_staging_dir
+    lists the symlink's target and removes every entry in it (the family
+    folder is emptied), then fails with NotADirectoryError at rmdir."""
+    data = _rt_site_replica(tmp_path)
+    before = _rt_tree_hashes(data)
+    out = tmp_path / "bundle"
+    work = pathlib.Path(f"{out}.partial")
+    idx, shard_docs = _rt2_one_trial_docs()
+    real_assert = ol.assert_no_audit_leakage
+
+    def _assert_then_swap(**kwargs: Any) -> None:
+        if not os.path.lexists(work):
+            work.symlink_to(data / family)
+        real_assert(**kwargs)
+
+    monkeypatch.setattr(ol, "assert_no_audit_leakage", _assert_then_swap)
+    with contextlib.suppress(ol.OutcomesLayoutError, OSError):
+        ol.write_outcomes_tree(out, idx, shard_docs)
+    assert _rt_tree_hashes(data) == before
+
+
+@pytest.mark.parametrize("family", ["geo", "sex_gender", "sponsors"])
+def test_redteam_m3_partial_swapped_for_symlink_during_validation_not_followed(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    family: str,
+) -> None:
+    """If <out>.partial is replaced by a symlink into a family folder while the
+    staged tree is validated, nothing is deleted or written through it. Round
+    2: the swap's re-check refuses the symlinked staging directory, and the
+    cleanup in write_outcomes_tree's finally then follows the symlink and
+    deletes every file of the family folder."""
+    data = _rt_site_replica(tmp_path)
+    before = _rt_tree_hashes(data)
+    out = tmp_path / "bundle"
+    work = pathlib.Path(f"{out}.partial")
+    idx, shard_docs = _rt2_one_trial_docs()
+    real_validate = ol.validate_outcomes_tree
+
+    def _validate_then_swap(path: Any, **kwargs: Any) -> ol.ValidationResult:
+        result = real_validate(path, **kwargs)
+        if pathlib.Path(path) == work and not os.path.islink(work):
+            os.rename(work, tmp_path / "moved_partial")
+            work.symlink_to(data / family)
+        return result
+
+    monkeypatch.setattr(ol, "validate_outcomes_tree", _validate_then_swap)
+    with contextlib.suppress(ol.OutcomesLayoutError, OSError):
+        ol.write_outcomes_tree(out, idx, shard_docs)
+    assert _rt_tree_hashes(data) == before
+
+
+def _rt2_two_versions(out: pathlib.Path) -> tuple[dict[str, Any], dict[int, dict[str, Any]]]:
+    """Write version 1 (one trial) to ``out``; return version 2 (two trials)."""
+    idx_v1, shards_v1 = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(_make_ctgov_study(RT_OK), shards=4)],
+        extracted_at="2026-11-20T03:00:00+00:00",
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+    ol.write_outcomes_tree(out, idx_v1, shards_v1)
+    return ol.build_outcomes_documents(
+        [
+            ol.build_trial_bundle(_make_ctgov_study(RT_OK), shards=4),
+            ol.build_trial_bundle(_make_ctgov_study("NCT99000060", sponsor_class="NIH", phase="PHASE2"), shards=4),
+        ],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+
+
+@pytest.mark.parametrize("second_at", [1, 2])
+def test_redteam_m3_second_interrupt_during_rollback_keeps_previous_shards(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    second_at: int,
+) -> None:
+    """A second Ctrl-C landing while the rollback runs (here between its
+    undo steps, at the identity check of undo step ``second_at``) never
+    deletes the previous bundle: the target is as it was, or the previous
+    shards are retained in .partial for a person. Round 2: the interrupted
+    rollback propagates a KeyboardInterrupt, write_outcomes_tree's finally
+    removes .partial with _previous_shards in it, and the target is left with
+    the previous index over the new shards (mixed versions), the previous
+    shards gone."""
+    out = tmp_path / "bundle"
+    idx_v2, shards_v2 = _rt2_two_versions(out)
+    before = _rt_tree_hashes(out)
+    work = pathlib.Path(f"{out}.partial")
+    real_replace = os.replace
+    real_same = ol._is_same_directory
+    state = {"first": False, "calls": 0}
+
+    def _replace(src: Any, dst: Any) -> None:
+        if not state["first"] and _rt_swap_step(src, dst, out) == "install_new_shards":
+            state["first"] = True
+            real_replace(src, dst)
+            raise KeyboardInterrupt()
+        real_replace(src, dst)
+
+    def _same(path: pathlib.Path, identity: tuple[int, int]) -> bool:
+        if state["first"]:
+            state["calls"] += 1
+            if state["calls"] == second_at:
+                raise KeyboardInterrupt()
+        return real_same(path, identity)
+
+    monkeypatch.setattr(ol.os, "replace", _replace)
+    monkeypatch.setattr(ol, "_is_same_directory", _same)
+    with pytest.raises(BaseException):
+        ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    monkeypatch.setattr(ol.os, "replace", real_replace)
+    monkeypatch.setattr(ol, "_is_same_directory", real_same)
+    assert _rt_tree_hashes(out) == before or (work / ol.PREVIOUS_SHARDS_DIR).is_dir()
+
+
+def test_redteam_m3_interrupted_cleanup_after_completed_swap_not_reported_as_failed_restore(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the swap has completed and only the removal of the superseded
+    version from .partial is interrupted, the next write proceeds: the target
+    is a whole, valid new bundle and the leftovers are the old version, not a
+    failed restore's backup. Round 2: the next write raises
+    RetainedBackupError naming _previous_shards and _previous_index.json as
+    "the previous bundle's shards or index, retained after an earlier failed
+    or interrupted restore" and tells the operator to move them back into the
+    target, which would put the old version (or, if only one survived, a
+    mixture) over the new bundle."""
+    out = tmp_path / "bundle"
+    idx_v2, shards_v2 = _rt2_two_versions(out)
+
+    def _interrupt(*_args: Any, **_kwargs: Any) -> None:
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(ol.shutil, "rmtree", _interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    monkeypatch.undo()
+    assert json.loads((out / ol.INDEX_FILE).read_text(encoding="utf-8"))["total_trials"] == 2
+    assert ol.validate_outcomes_tree(out).ok
+    result = ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    assert result.ok
+    assert not pathlib.Path(f"{out}.partial").exists()
+
+
+@pytest.mark.parametrize("section", ["document_profile", "longitudinal_provenance"])
+def test_redteam_m3_in_scope_inline_section_not_dropped(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    section: str,
+) -> None:
+    """A side section carried inline in an ordinary trial's --trials record is
+    either published or refused, never dropped. Round 2: exit 0, the shard's
+    section is null and the inline section is gone without a word."""
+    study = _make_ctgov_study(RT_OK)
+    study[section] = _make_doc_profile(RT_OK) if section == "document_profile" else _make_module4_provenance(RT_OK)
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)])
+    rc = cli.main(argv)
+    capsys.readouterr()
+    if rc == 0:
+        _, sdoc = _read_shard(out, RT_OK)
+        assert sdoc["data"][RT_OK][section] is not None
+    else:
+        assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["document_profile_vs_documents", "provenance_vs_provenance", "inline_population_vs_stream", "prebuilt_results_vs_results_section"],
+)
+def test_redteam_m3_inline_and_stream_conflict_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """When an ordinary trial's --trials record carries a section inline and a
+    side stream (or the record's own CT.gov section) gives a different one,
+    the two conflict and the build is refused, never resolved silently.
+    Round 2: exit 0 each time; the side stream's profile, provenance or
+    population is published and the inline one dropped, and a pre-built
+    reported_results replaces the record's resultsSection."""
+    study = _make_ctgov_study(RT_OK)
+    side: list[tuple[str, Any]] = []
+    if case == "document_profile_vs_documents":
+        study["document_profile"] = _make_doc_profile(RT_OK, sha=SHA_B)
+        side = [("--documents", _make_doc_profile(RT_OK))]
+    elif case == "provenance_vs_provenance":
+        study["longitudinal_provenance"] = {**_make_module4_provenance(RT_OK), "provenance_rules_version": "9.9.9"}
+        side = [("--provenance", _make_module4_provenance(RT_OK))]
+    elif case == "inline_population_vs_stream":
+        measure = study["resultsSection"]["outcomeMeasuresModule"]["outcomeMeasures"][0]
+        measure["analysis_population_parsed"] = {"population": "PP (inline)"}
+        side = [("--population-parsed", {"nct_id": RT_OK, "outcomes": [{"outcome_index": 0, "outcome_type": "PRIMARY", "population": "ITT (stream)"}]})]
+    else:
+        study["reported_results"] = {"results_posted": True, "primary_outcome_measures": [{"title": "Pre-built"}]}
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)], side=side)
+    _rt_assert_refused(cli.main(argv), out, capsys)
+
+
+def test_redteam_m3_population_for_absent_outcome_refused_not_dropped(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A --population-parsed row for a primary outcome index the trial does
+    not have is refused, not dropped. Round 2: exit 0 and the row (here
+    outcome_index 5, "mITT") is nowhere in the shard."""
+    side = ("--population-parsed", {"nct_id": RT_OK, "outcomes": [{"outcome_index": 5, "outcome_type": "PRIMARY", "population": "mITT"}]})
+    argv, out = _rt_build(tmp_path, studies=_rt_pair(), side=[side])
+    _rt_assert_refused(cli.main(argv), out, capsys)
