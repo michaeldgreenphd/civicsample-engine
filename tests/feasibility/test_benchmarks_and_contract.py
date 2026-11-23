@@ -1392,6 +1392,15 @@ def test_records_missing_condition_or_lead_sponsor_payloads_are_refused(
         (("designModule", "phases"), ["PHASE_3"], "designModule.phases (a list of CT.gov phase values)"),
         (("designModule", "phases"), ["Phase 3"], "designModule.phases (a list of CT.gov phase values)"),
         (("designModule", "phases"), ["PHASE2", "BANANA"], "designModule.phases (a list of CT.gov phase values)"),
+        # date types: an unrecognized value was read as no type, and the window counted as realized
+        (("statusModule", "startDateStruct", "type"), "BANANA",
+         "statusModule.startDateStruct.type (ACTUAL, ESTIMATED or ANTICIPATED)"),
+        (("statusModule", "primaryCompletionDateStruct", "type"), 7,
+         "statusModule.primaryCompletionDateStruct.type (ACTUAL, ESTIMATED or ANTICIPATED)"),
+        (("statusModule", "completionDateStruct", "type"), None,
+         "statusModule.completionDateStruct.type (ACTUAL, ESTIMATED or ANTICIPATED)"),
+        (("statusModule", "startDateStruct", "type"), ["ACTUAL"],
+         "statusModule.startDateStruct.type (ACTUAL, ESTIMATED or ANTICIPATED)"),
     ],
 )
 def test_records_with_mistyped_optional_parts_are_refused(
@@ -1419,6 +1428,17 @@ def test_records_with_mistyped_optional_parts_are_refused(
     apath.write_bytes(gzip.compress((json.dumps(complete) + "\n" + json.dumps(bad) + "\n").encode("utf-8"), mtime=0))
     with pytest.raises(ValueError, match=want):
         _load_archive(apath)
+
+
+def test_an_untyped_api_v2_date_still_counts_as_realized() -> None:
+    # A date struct without a type is a real registry state (955 of 3,371 stored unprojected trials
+    # have no start-date type), kept realized until the owner decides otherwise; only a weekly
+    # projection, which drops every type, is withheld.
+    from feasibility import metrics
+    api = metrics.compute_duration("2020-01-15", None, "2021-01-15", "ACTUAL")
+    assert api["eligible_for_realized_duration"] is True and api["start_date_type"] is None
+    weekly = metrics.compute_duration("2020-01-15", None, "2021-01-15", None, from_weekly_projection=True)
+    assert weekly["status"] == "date_type_unavailable_in_weekly_projection"
 
 
 def test_record_with_results_but_has_results_false_is_refused(tmp_path: Path) -> None:

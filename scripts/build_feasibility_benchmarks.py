@@ -341,6 +341,16 @@ TYPED_OPTIONAL_PARTS: tuple[tuple[str | None, str, type], ...] = (
 )
 
 
+# A date struct's `type`, when present, must be one of these. `metrics.compute_duration` excludes
+# ESTIMATED and ANTICIPATED windows and reads any other value it cannot clean (a number, `null`,
+# `"BANANA"`) as no type, which an API v2 window then treats like an untyped date. A type that is
+# absent is a real registry state, not refused: 955 of the 3,371 distinct trials in the stored
+# unprojected CT.gov records carry a start date with no type (the other values are ACTUAL and
+# ESTIMATED only), and how an untyped window should count is left to the owner.
+DATE_STRUCT_TYPES = frozenset({"ACTUAL", "ESTIMATED", "ANTICIPATED"})
+DATE_STRUCTS = ("startDateStruct", "primaryCompletionDateStruct", "completionDateStruct")
+
+
 # Lists among `TYPED_OPTIONAL_PARTS` whose entries the build reads: every entry must be an object
 # and the named fields strings when present. `extract_trial_metrics` skipped a non-object entry, so a
 # `null` among the locations lowered `n_listed_facilities` (and the footprint tier and
@@ -374,6 +384,10 @@ def _mistyped_optional_parts(ps: dict[str, Any]) -> list[str]:
         if not isinstance(holder[field], kind):
             out.append(f"{where} ({'an object' if kind is dict else 'a list'})")
             continue
+        if field in DATE_STRUCTS and "type" in holder[field]:
+            date_type = holder[field]["type"]  # checked as a string first: a list or object is unhashable
+            if not (isinstance(date_type, str) and date_type in DATE_STRUCT_TYPES):
+                out.append(f"{where}.type (ACTUAL, ESTIMATED or ANTICIPATED)")
         entry_fields = LIST_ENTRY_FIELDS.get((mod, field)) if mod is not None else None
         if entry_fields is None:
             continue
