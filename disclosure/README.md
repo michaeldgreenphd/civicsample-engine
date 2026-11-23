@@ -82,14 +82,15 @@ python3 scripts/build_drug_disclosure.py build \
 # (build --records seeds an absent cache from local files like freeze-local, with the same required stamps.)
 # run.json sources.ctgov lists every CT.gov version record in the cache (`versions`: each acquisition
 # run observes /version before its first study request and after its last, never reusing an earlier
-# run's answer) and the range of their data timestamps (`data_timestamp_first`, `data_timestamp_last`).
-# Without --as-of, as_of defaults to the cache's CT.gov data timestamp (`as_of_source` records which
-# default was used); a cache whose version records span several data timestamps (an acquisition resumed
-# after, or running across, a CT.gov data refresh) is refused unless --as-of is given. An explicit
-# --as-of may not be later than the earliest CT.gov data timestamp in the cache (else its earliest
-# fetch): the frozen records cannot show what was posted after that date. The contract applies the same
-# bound. --generated-at must be a whole ISO 8601 UTC timestamp (Z or +00:00), checked before anything is
-# seeded and again by the contract.
+# run's answer; a failed observation stops the run, and freezing needs a successful one before the first
+# study answer and after the last) and the range of their data timestamps (`data_timestamp_first`,
+# `data_timestamp_last`). Without --as-of, as_of defaults to the cache's CT.gov data timestamp
+# (`as_of_source` records which default was used); a cache whose version records span several data
+# timestamps (an acquisition resumed after, or running across, a CT.gov data refresh) is refused unless
+# --as-of is given. An explicit --as-of may not be later than the earliest CT.gov data timestamp in the
+# cache (else its earliest fetch): the frozen records cannot show what was posted after that date. The
+# contract applies the same bound. --generated-at must be a whole ISO 8601 UTC timestamp (Z or +00:00),
+# checked before anything is seeded and again by the contract.
 
 # 3. Producer contract check and atomic site export. run.json producer.commit and
 #    uncommitted_changes are null when git was missing or failed at build time (never false); such a

@@ -220,7 +220,11 @@ def cmd_acquire(args: argparse.Namespace) -> int:
 
     ctgov_log = A.ResponseLog(A.raw_log_path(cache_dir, 'ctgov'))
     if 'ctgov' in stages:
-        res_ct = A.fetch_ctgov_studies(ids, ctgov_log, get, throttle)
+        try:
+            res_ct = A.fetch_ctgov_studies(ids, ctgov_log, get, throttle)
+        except A.CTGovVersionUnavailable as exc:
+            print(f'REFUSED: {exc}', file=sys.stderr)
+            return 1
         print(f'ctgov: {res_ct}')
 
     studies_by_nct = A.studies_from_ctgov_records(ctgov_log.records, ids)

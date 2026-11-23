@@ -2092,7 +2092,10 @@ def test_resumed_acquisition_across_a_ctgov_refresh_records_the_range_and_needs_
 
 
 def _version_stamps(cache: A.FrozenCache) -> list[str]:
-    return sorted({r['body']['dataTimestamp'] for k, r in cache.ctgov.items() if k.startswith('ctgov/version/')})
+    return sorted({
+        r['body']['dataTimestamp'] for k, r in cache.ctgov.items()
+        if k.startswith('ctgov/version/') and r.get('status') == 200
+    })
 
 
 def _build_kwargs() -> dict[str, Any]:
@@ -2146,6 +2149,98 @@ def test_ctgov_refresh_during_one_run_records_both_data_timestamps(tmp_path: Pat
     assert _version_stamps(frozen) == ['2026-11-01T08:00:00', '2026-11-01T20:00:00']
     with pytest.raises(ValueError, match=r'2026-11-01T08:00:00 to 2026-11-01T20:00:00.*pass --as-of'):
         ART.build_artifacts(frozen, **_build_kwargs())
+
+
+def _version_fails(phase_calls: set[int]) -> tuple[A.Get, list[str]]:
+    """A transport whose n-th `/version` request (1-based) fails with a timeout when n is in
+    `phase_calls`, every retry included (a retry repeats the previous call); other requests are
+    served by the stub."""
+    seen: list[str] = []
+    n_version = [0]
+
+    def get(url: str, params: dict[str, Any] | None) -> A.Response:
+        seen.append(url)
+        if url == f'{A.CTGOV_API}/version':
+            if len(seen) == 1 or seen[-2] != url:  # a new request, not a retry of the last one
+                n_version[0] += 1
+            if n_version[0] in phase_calls:
+                return None, {}, b'', 'TimeoutError: simulated'
+        return F.stub_get()(url, params)
+
+    return get, seen
+
+
+def test_failed_version_before_the_studies_requests_no_study(tmp_path: Path) -> None:
+    get, seen = _version_fails({1})
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(tmp_path / 'cache', 'ctgov'))
+    with pytest.raises(A.CTGovVersionUnavailable, match='before the study requests failed'):
+        A.fetch_ctgov_studies(['NCT09990001'], log, get, throttle)
+    assert all(u == f'{A.CTGOV_API}/version' for u in seen)  # no study was requested
+    assert not [k for k in log.records if k.startswith('ctgov/study/')]
+
+
+def test_failed_version_after_the_studies_blocks_freezing_until_a_later_run(tmp_path: Path) -> None:
+    # The run's end observation fails after CT.gov refreshed; its begin observation must not be
+    # taken to cover the study answers, so the cache cannot be frozen until a later run observes.
+    get, _ = _version_fails({2})
+    cache = tmp_path / 'cache'
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    log = A.ResponseLog(A.raw_log_path(cache, 'ctgov'))
+    with pytest.raises(A.CTGovVersionUnavailable, match='after the study requests failed'):
+        A.fetch_ctgov_studies(['NCT09990001', 'NCT09990002'], log, get, throttle)
+    assert log.settled('ctgov/study/NCT09990002') is not None  # the answers are kept for the resume
+    with pytest.raises(A.CacheIntegrityError, match='after the last study answer'):
+        A.freeze_cache(cache, ['NCT09990001', 'NCT09990002'], frozen_at=F.GENERATED_AT)
+    assert not (cache / 'manifest.json').exists()
+
+    def refreshed_get(url: str, params: dict[str, Any] | None) -> A.Response:
+        if url == f'{A.CTGOV_API}/version':
+            return F._json_resp({'apiVersion': '2.0.5', 'dataTimestamp': '2026-11-01T20:00:00'})
+        return F.stub_get()(url, params)
+
+    A.fetch_ctgov_studies(['NCT09990001', 'NCT09990002'], log, refreshed_get, throttle)
+    A.freeze_cache(cache, ['NCT09990001', 'NCT09990002'], frozen_at=F.GENERATED_AT)
+    frozen = A.load_frozen_cache(cache)
+    assert _version_stamps(frozen) == ['2026-11-01T08:00:00', '2026-11-01T20:00:00']
+    with pytest.raises(ValueError, match=r'2026-11-01T08:00:00 to 2026-11-01T20:00:00.*pass --as-of'):
+        ART.build_artifacts(frozen, **_build_kwargs())
+
+
+def test_version_bracket_rule_on_hand_made_logs() -> None:
+    def rec(key: str, status: int | None = 200) -> dict[str, Any]:
+        body = {'apiVersion': '2.0.5', 'dataTimestamp': '2026-11-01T08:00:00'} if 'version' in key else {}
+        return {'key': key, 'status': status, 'fetched_at': '2026-11-01T10:00:00+00:00', 'body': body}
+
+    begin, study, end = rec('ctgov/version/x/begin'), rec('ctgov/study/NCT09990001'), rec('ctgov/version/x/end')
+    problem = A.ctgov_version_bracket_problem
+    # Log order decides, though every line here shares one fetched_at second.
+    assert problem([begin, study, end]) is None
+    assert problem([study]) is not None
+    assert 'after the last study answer' in (problem([begin, study]) or '')
+    assert 'before the first study answer' in (problem([study, end]) or '')
+    assert 'after the last study answer' in (problem([begin, study, rec('ctgov/version/x/end', None)]) or '')
+    # A study answered again later counts at its latest line.
+    assert 'after the last study answer' in (problem([begin, study, end, study]) or '')
+    # A later run's observation bounds an earlier run's answers.
+    assert problem([begin, study, rec('ctgov/version/y/begin')]) is None
+    # A study request that never got a final answer carries no CT.gov data and needs no bracket,
+    # and nor does a local record, whose data timestamp is the one stated for it.
+    assert problem([rec('ctgov/study/NCT09990001', None)]) is None
+    local = {**study, 'tag': {'nct_id': 'NCT09990001', 'origin': 'local_records'}}
+    assert problem([rec('ctgov/version/2026-11-01'), local]) is None
+
+
+def test_acquire_cli_refuses_when_the_version_request_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def get(url: str, params: dict[str, Any] | None) -> A.Response:
+        if url == f'{A.CTGOV_API}/version':
+            return 400, {}, b'{}', None  # not retried
+        return F.stub_get()(url, params)
+
+    monkeypatch.setattr(A, 'requests_get', lambda: get)
+    cache = tmp_path / 'cache'
+    assert cli_build.main(['acquire', '--cache', str(cache), '--nct-id', 'NCT09990001']) == 1
+    assert not (cache / 'manifest.json').exists()
 
 
 def test_unknown_git_provenance_is_null_builds_locally_and_is_never_exported(

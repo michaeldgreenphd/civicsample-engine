@@ -67,6 +67,10 @@ class CacheIntegrityError(ValueError):
     """Raised when a disclosure cache is missing, partial, unfrozen, or fails hash verification."""
 
 
+class CTGovVersionUnavailable(RuntimeError):
+    """Raised when a CT.gov `/version` observation bracketing an acquisition run fails."""
+
+
 @dataclass(frozen=True)
 class FrozenCache:
     """Verified offline snapshot of frozen acquisition archives and manifest metadata."""
@@ -659,8 +663,8 @@ def fetch_ctgov_studies(
     """
     stamp = run_stamp or datetime.now(timezone.utc).isoformat(timespec='microseconds')
 
-    def observe_version(phase: str) -> None:
-        logged_json(
+    def observe_version(phase: str) -> dict[str, Any] | None:
+        return logged_json(
             log,
             get,
             throttle,
@@ -671,7 +675,25 @@ def fetch_ctgov_studies(
             valid=ctgov_version_valid,
         )
 
-    observe_version('begin')
+    def observe_version_or_raise(phase: str) -> None:
+        rec = observe_version(phase)
+        if rec and rec.get('status') == 200 and ctgov_version_valid(rec.get('body')):
+            return
+        status = rec.get('status') if rec else None
+        if phase == 'begin':
+            raise CTGovVersionUnavailable(
+                f'the CT.gov /version request before the study requests failed (status {status!r}); '
+                'no study was requested; run the ctgov stage again'
+            )
+        raise CTGovVersionUnavailable(
+            f'the CT.gov /version request after the study requests failed (status {status!r}); the study '
+            'answers are logged; run the ctgov stage again to observe the version after them before freezing'
+        )
+
+    # Without the observation before them no study is requested, so a failed begin leaves nothing
+    # unbracketed. A failed end raises after the study answers are logged; the next run's
+    # observations, all later than them, bound them instead (see ctgov_version_bracket_problem).
+    observe_version_or_raise('begin')
     answered = 0
     unanswered = 0
     for nct_id in sorted(set(nct_ids)):
@@ -691,7 +713,7 @@ def fetch_ctgov_studies(
             answered += 1
         else:
             unanswered += 1
-    observe_version('end')
+    observe_version_or_raise('end')
     return {'studies_answered': answered, 'studies_unanswered': unanswered}
 
 
@@ -1048,6 +1070,54 @@ def freeze_source(log: ResponseLog, out_archive: Path, source: str, frozen_at: s
     return meta
 
 
+def ctgov_version_bracket_problem(ctgov_lines: list[dict[str, Any]]) -> str | None:
+    """Why the CT.gov version observations in a log do not bracket its study answers, or None.
+
+    `ctgov_lines` is raw/ctgov.jsonl in file order. The log is append-only, so its order is the order
+    in which answers arrived, exact where `fetched_at` (to the second) is not; the latest line for a
+    key is that key's answer. A frozen cache's data timestamps must cover every study answer it holds:
+    some valid `/version` answer must come before the first final (200 or 404) study answer and some
+    after the last. CT.gov's `dataTimestamp` only moves forward, so if those two agree no refresh
+    fell between them, and if they differ the cache's range shows it (and the build requires
+    `--as-of`). A failed version request is ignored, so a run whose observation after its study
+    requests failed leaves its answers unbounded above until a later run observes the version.
+    Study records from a local freeze (`tag.origin == 'local_records'`) are not acquisitions: their
+    data timestamp is the one stated for them, so they need no bracket, also when the cache is
+    frozen again after later stages.
+    """
+    last_line: dict[str, int] = {}
+    for idx, rec in enumerate(ctgov_lines):
+        if isinstance(rec, dict) and isinstance(rec.get('key'), str):
+            last_line[rec['key']] = idx
+    study_lines = [
+        idx for key, idx in last_line.items()
+        if key.startswith('ctgov/study/')
+        and ctgov_lines[idx].get('status') in FINAL_STATUSES
+        and (ctgov_lines[idx].get('tag') or {}).get('origin') != 'local_records'
+    ]
+    if not study_lines:
+        return None
+    version_lines = [
+        idx for key, idx in last_line.items()
+        if key.startswith('ctgov/version/')
+        and ctgov_lines[idx].get('status') == 200
+        and ctgov_version_valid(ctgov_lines[idx].get('body'))
+    ]
+    if not version_lines:
+        return 'no successful CT.gov /version observation is logged; run the ctgov stage again'
+    if min(version_lines) > min(study_lines):
+        return (
+            'no successful CT.gov /version observation was logged before the first study answer, so the '
+            'data version it came from is unknown; re-acquire into a new cache'
+        )
+    if max(version_lines) < max(study_lines):
+        return (
+            'no successful CT.gov /version observation was logged after the last study answer; run the '
+            'ctgov stage again to observe the version after it'
+        )
+    return None
+
+
 def ctgov_ids_without_study_record(
     nct_ids: Iterable[str],
     ctgov_records: dict[str, dict[str, Any]],
@@ -1071,8 +1141,9 @@ def freeze_cache(
 ) -> dict[str, Any]:
     """Freeze all acquired source logs under `cache_dir` and write `manifest.json` sidecar.
 
-    Refuses when any requested NCT ID has no CT.gov study response record in raw/ctgov.jsonl, or
-    when a drug-query record the build will read in raw/openfda.jsonl was made with an earlier
+    Refuses when any requested NCT ID has no CT.gov study response record in raw/ctgov.jsonl, when
+    the CT.gov version observations do not bracket the study answers (`ctgov_version_bracket_problem`),
+    or when a drug-query record the build will read in raw/openfda.jsonl was made with an earlier
     query form.
     """
     ids = sorted(set(requested_nct_ids))
@@ -1088,6 +1159,9 @@ def freeze_cache(
             f'{cache_dir}: {len(unlooked)} requested NCT ID(s) have no CT.gov study response in '
             f'raw/ctgov.jsonl ({unlooked[:5]}); run the ctgov stage for them before freezing'
         )
+    bracket = ctgov_version_bracket_problem(read_jsonl(ctgov_raw))
+    if bracket:
+        raise CacheIntegrityError(f'{cache_dir}: {bracket}')
     openfda_raw = raw_log_path(cache_dir, 'openfda')
     openfda_log = ResponseLog(openfda_raw) if openfda_raw.exists() else None
     stale = stale_openfda_drug_queries(openfda_log.records, ctgov_log.records, ids) if openfda_log is not None else []
