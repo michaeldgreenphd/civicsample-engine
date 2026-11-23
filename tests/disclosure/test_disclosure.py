@@ -960,3 +960,24 @@ def test_undated_qualifying_link_leaves_no_lower_bound_and_no_lag(
     probs = ART.check_contract(old_style)
     assert any('an undated qualifying link leaves no lower bound' in p for p in probs)
     assert any('lag computed from a bounded_above_only endpoint' in p for p in probs)
+
+
+@pytest.mark.parametrize(
+    ('raw', 'expected'),
+    [
+        ('DrugX 5 mg/mL', 'drugx'),
+        ('DrugX 2 mg/kg', 'drugx'),
+        ('Lidocaine 5% cream', 'lidocaine cream'),  # dosage-form words are not strength and are kept
+        ('DrugX 10 mg', 'drugx'),
+        ('Docetaxel 75 mg/m2', 'docetaxel'),
+        ('Insulin 100 IU / mL', 'insulin'),
+        ('DrugX 0.5%', 'drugx'),
+        ('Zorbatinib 10 mg', 'zorbatinib'),
+        ('Placebo 5 mg', None),
+    ],
+)
+def test_normalize_drug_term_strips_whole_strength_with_unit_denominator_and_percent(
+    raw: str,
+    expected: str | None,
+) -> None:
+    assert A.normalize_drug_term(raw) == expected

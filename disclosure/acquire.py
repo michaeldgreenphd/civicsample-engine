@@ -383,10 +383,23 @@ def openfda_drugsfda_valid(body: Any) -> bool:
     return True
 
 
+# A strength is a number followed by a unit and an optional `/unit` denominator (`5 mg/mL`, `2 mg/kg`,
+# `75 mg/m2`), or by `%`. Units are listed longest first and the denominator is tried before the bare
+# unit, so `mg/mL` is removed whole rather than as `mg`, leaving a stray `ml`. The closing lookahead
+# `(?=\W|$)` replaces `\b`, which never holds after `%` when a space or the end follows it
+# (`5% cream`). Dosage-form words (`cream`, `tablet`) are not strength and are kept.
+DRUG_STRENGTH_RE = re.compile(
+    r'\b\d+(?:\.\d+)?\s*'
+    r'(?:%|(?:mcg|mg|ug|ml|iu|g)(?:\s*/\s*(?:dose|day|mcg|kg|m2|mg|ml|dl|ug|g|l))?)'
+    r'(?=\W|$)',
+    re.IGNORECASE,
+)
+
+
 def normalize_drug_term(raw: str) -> str | None:
     """Normalize an intervention drug label for candidate openFDA lookup; return None for placebos."""
     cleaned = re.sub(r'\([^)]*\)', ' ', raw or '')
-    cleaned = re.sub(r'\b\d+(?:\.\d+)?\s*(?:mg|mcg|ug|g|ml|iu|%|mg/ml|mg/kg)\b', ' ', cleaned, flags=re.I)
+    cleaned = DRUG_STRENGTH_RE.sub(' ', cleaned)
     cleaned = re.sub(r'[^A-Za-z0-9\- ]+', ' ', cleaned)
     cleaned = re.sub(r'\s+', ' ', cleaned).strip().lower()
     if len(cleaned) < 3 or cleaned in PLACEBO_TERMS:
