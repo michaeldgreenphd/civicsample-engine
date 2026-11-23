@@ -12,7 +12,9 @@ Writes nothing unless the staged artifact family passes ``dap.artifacts.check_co
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
+import importlib.util
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -27,27 +29,100 @@ from dap import artifacts, benchmarks  # noqa: E402
 from src import full_records  # noqa: E402
 
 
+# Repository directories whose modules count as producing code.
+PRODUCER_DIRS: tuple[str, ...] = ("dap", "src", "sponsors", "scripts")
+
+
+def _loaded_repo_modules(root: Path) -> dict[str, Path]:
+    """Module name -> resolved source file for every loaded module under ``PRODUCER_DIRS``."""
+    root_resolved = root.resolve()
+    loaded: dict[str, Path] = {}
+    for name, module in list(sys.modules.items()):
+        fname = getattr(module, "__file__", None)
+        if not isinstance(fname, str) or not fname.endswith(".py"):
+            continue  # builtins, extension modules, namespace packages
+        path = Path(fname).resolve()
+        if not path.is_relative_to(root_resolved):
+            continue
+        if path.relative_to(root_resolved).parts[0] in PRODUCER_DIRS:
+            loaded[name] = path
+    return loaded
+
+
+def _imported_module_names(path: Path, package: str | None) -> set[str]:
+    """Every module name an import statement in ``path`` can bind, parent packages included.
+
+    ``from pkg import name`` yields both ``pkg`` and ``pkg.name`` because
+    ``name`` may be a submodule; names that are not loaded modules are simply
+    never matched. Relative imports resolve against ``package``; imports
+    inside functions count, since the build may run them.
+    """
+    tree = ast.parse(path.read_bytes(), filename=str(path))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        targets: list[str] = []
+        if isinstance(node, ast.Import):
+            targets = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                if not package:
+                    continue  # a relative import outside a package cannot run
+                base = importlib.util.resolve_name("." * node.level + base, package)
+            targets = [base] + [f"{base}.{alias.name}" for alias in node.names]
+        for target in targets:
+            parts = target.split(".")
+            names.update(".".join(parts[: i + 1]) for i in range(len(parts)))
+    return names
+
+
 def producer_paths(root: Path = ROOT) -> list[str]:
-    """Sorted relative paths of producing code files for deterministic code digest."""
-    dap_files = [
-        str(p.relative_to(root).as_posix())
-        for p in (root / "dap").rglob("*.py")
-        if p.is_file() and "__pycache__" not in p.parts
-    ]
-    return sorted(dap_files + ["scripts/build_dap_benchmarks.py"])
+    """Sorted paths, relative to ``root`` (the checkout imported from), of the files the build imported.
+
+    Method: the repo-local entries of ``sys.modules`` (files under
+    ``PRODUCER_DIRS``) are the modules actually loaded. Starting from this
+    script, follow the import statements of each file to the loaded modules
+    they name, so the list is this build's import closure: the dap package,
+    ``src`` full-record loading, race/ethnicity extractors, sex/gender table
+    and parser, condition MeSH, and the ``sponsors`` attribution modules.
+    Following imports rather than taking every repo-local entry keeps the list
+    independent of what else the process loaded (a test session imports many
+    unrelated modules), so the digest depends only on the producing code.
+    Call it after the build has run, so imports made at run time are loaded.
+    """
+    loaded = _loaded_repo_modules(root)
+    entry = Path(__file__).resolve()
+    seen: set[Path] = set()
+    pending: list[tuple[Path, str | None]] = [(entry, __package__)]
+    while pending:
+        path, package = pending.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        for name in _imported_module_names(path, package):
+            dep = loaded.get(name)
+            if dep is not None and dep not in seen:
+                pending.append((dep, getattr(sys.modules[name], "__package__", None)))
+    root_resolved = root.resolve()
+    # relative_to raises if ``root`` is not the checkout the script was imported from.
+    return sorted(p.relative_to(root_resolved).as_posix() for p in seen)
 
 
-def source_digest(root: Path = ROOT) -> str:
-    """Deterministic SHA-256 over all producing module files on disk."""
+def source_digest(root: Path = ROOT, paths: list[str] | None = None) -> str:
+    """Deterministic SHA-256 over the producing files (default ``producer_paths()``) read from ``root``."""
     h = hashlib.sha256()
-    for rel in producer_paths(root):
+    for rel in producer_paths() if paths is None else paths:
         h.update(rel.encode("utf-8") + b"\0" + (root / rel).read_bytes() + b"\0")
     return h.hexdigest()
 
 
 def producer_info(root: Path = ROOT) -> dict[str, Any]:
-    """Git commit, working-tree cleanliness of producing paths, and code SHA-256."""
-    paths = producer_paths(root)
+    """Git commit, working-tree cleanliness of producing paths, and code SHA-256.
+
+    The digest and the ``git status`` dirty check cover the same list: the
+    build's import closure (``producer_paths``), checked in ``root``.
+    """
+    paths = producer_paths()
     commit_proc = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=root,
@@ -71,7 +146,7 @@ def producer_info(root: Path = ROOT) -> dict[str, Any]:
         "repository": "civicsample-engine",
         "commit": commit,
         "uncommitted_changes": dirty,
-        "source_sha256": source_digest(root),
+        "source_sha256": source_digest(root, paths),
     }
 
 

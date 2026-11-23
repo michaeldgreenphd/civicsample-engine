@@ -673,6 +673,68 @@ def test_unicode_line_separators_in_jsonl_roundtrip(tmp_path: Path) -> None:
     assert reloaded["trial_rows"][0]["indication"]["meshes"][0]["term"] == tricky_mesh_term
 
 
+def test_producer_paths_cover_the_build_import_closure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = cli_build.producer_paths()
+    # The modules the build executes beyond dap/: full-record loading, the
+    # race/ethnicity extractors, the sex/gender table, condition MeSH, sponsors.
+    for dep in (
+        "scripts/build_dap_benchmarks.py",
+        "dap/__init__.py",
+        "dap/artifacts.py",
+        "dap/benchmarks.py",
+        "dap/demographics.py",
+        "dap/geography.py",
+        "src/full_records.py",
+        "src/race_extractor.py",
+        "src/ethnicity_extractor.py",
+        "src/sex_gender_table.py",
+        "src/sex_gender_parser.py",
+        "src/condition_mesh.py",
+        "sponsors/adapter.py",
+        "sponsors/audit_states.py",
+        "sponsors/sponsor_roles.py",
+    ):
+        assert dep in paths, dep
+    assert paths == sorted(set(paths))
+    # Repo modules loaded in this process but not imported by the build stay out,
+    # so the digest does not depend on what else the process imported.
+    assert "scripts/check_dap_benchmarks_contract.py" in {
+        p.relative_to(ROOT).as_posix() for p in cli_build._loaded_repo_modules(ROOT).values()
+    }
+    assert "scripts/check_dap_benchmarks_contract.py" not in paths
+    assert not any(p.startswith("tests/") for p in paths)
+
+    # The digest covers every listed file: a change to a src/ dependency moves it.
+    for rel in paths:
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes((ROOT / rel).read_bytes())
+    same = cli_build.source_digest(tmp_path)
+    assert same == cli_build.source_digest(ROOT)
+    (tmp_path / "src" / "full_records.py").write_bytes(
+        (ROOT / "src" / "full_records.py").read_bytes() + b"\n# changed\n"
+    )
+    assert cli_build.source_digest(tmp_path) != same
+
+    # The dirty check asks git about exactly the same list.
+    calls: list[list[str]] = []
+
+    class _Done:
+        returncode = 0
+        stdout = "abc123\n"
+
+    def _fake_run(cmd: list[str], **_kwargs: Any) -> _Done:
+        calls.append(list(cmd))
+        return _Done()
+
+    monkeypatch.setattr(cli_build.subprocess, "run", _fake_run)
+    info = cli_build.producer_info(ROOT)
+    status_call = next(c for c in calls if c[:2] == ["git", "status"])
+    assert status_call[status_call.index("--") + 1 :] == paths
+    assert info["source_sha256"] == cli_build.source_digest(ROOT, paths)
+
+
 def test_codebase_ast_typing_future_annotations_and_zero_rng() -> None:
     """Enforce CLAUDE.md Python 3.11, full type annotations, and zero-RNG constraints."""
     target_files = sorted((ROOT / "dap").rglob("*.py")) + [
