@@ -512,8 +512,18 @@ def build_artifacts(
         raise ValueError('build_artifacts requires at least one included NCT ID')
 
     ver_info = _ctgov_version_info(cache.ctgov)
+    as_of_bound = _as_of_bound(ver_info, cache.ctgov_meta)
     if as_of is not None:
         as_of_source = 'as_of_argument'
+        # The frozen records show the registry only as of the CT.gov data they hold, so a stated
+        # reference date may not be later than the earliest of it: a 2026 record with hasResults=false
+        # says nothing about 2100. With a resumed cache the earliest data timestamp binds, since
+        # records fetched on the first day reflect that day's data.
+        if as_of_bound is not None and as_of > as_of_bound:
+            raise ValueError(
+                f'--as-of {as_of.isoformat()} is after the CT.gov data the cache holds (earliest '
+                f'{as_of_bound.isoformat()}); the frozen records cannot show what was posted after that date'
+            )
     elif ver_info['data_timestamp_first'] != ver_info['data_timestamp_last']:
         # Studies fetched on different days reflect different CT.gov data refreshes; no single date
         # describes them all, so the reference date for the 365-day window must be stated.
@@ -792,6 +802,20 @@ def _check_count_obj(
     return problems
 
 
+def _as_of_bound(ver_info: dict[str, Any], ctgov_meta: dict[str, Any]) -> date | None:
+    """Latest reference date the frozen CT.gov records can support, or None when the cache gives none.
+
+    The earliest CT.gov `dataTimestamp` among the version records, else the earliest study fetch time.
+    """
+    for raw in (ver_info.get('data_timestamp_first'), (ctgov_meta or {}).get('first_fetched_at')):
+        if isinstance(raw, str) and len(raw) >= 10:
+            try:
+                return date.fromisoformat(raw[:10])
+            except ValueError:
+                continue
+    return None
+
+
 def _ctgov_version_problems(run: dict[str, Any], ctgov_src: dict[str, Any]) -> list[str]:
     """Check run.json's recorded CT.gov version records, data-timestamp range and `as_of` choice.
 
@@ -822,6 +846,9 @@ def _ctgov_version_problems(run: dict[str, Any], ctgov_src: dict[str, Any]) -> l
         problems.append('run.json as_of was defaulted although CT.gov data timestamps differ across version records')
     elif as_of_source == 'ctgov_data_timestamp' and str(run.get('as_of')) != str(ctgov_src.get('data_timestamp'))[:10]:
         problems.append('run.json as_of does not match the CT.gov data timestamp it was defaulted from')
+    # Same bound as build_artifacts: as_of may not be later than the earliest CT.gov data timestamp.
+    if isinstance(first, str) and len(first) >= 10 and isinstance(run.get('as_of'), str) and run['as_of'] > first[:10]:
+        problems.append(f"run.json as_of {run['as_of']} is after the earliest CT.gov data timestamp {first[:10]}")
     return problems
 
 

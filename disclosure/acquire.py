@@ -385,16 +385,17 @@ def openfda_drugsfda_valid(body: Any) -> bool:
 
 # A strength is a number, or a combination product's `a/b` numbers (`320/9.6 mcg`), followed by a
 # unit and any `/unit` denominators (`5 mg/mL`, `2 mg/kg`, `75 mg/m2`, `5 mcg/kg/min`), or by `%`.
-# Units: mass (`mcg`, `ug`, `mg`, `g`, and `g` after a micro sign U+00B5 or Greek mu U+03BC), volume
-# (`ml`), activity (`iu`, `unit`/`units`, `u`) and amount (`mEq`, `mmol`). Each alternative must end at a
+# Units: mass (`mcg`, `ug`, `ng`, `mg`, `g`, and `g` after a micro sign U+00B5 or Greek mu U+03BC),
+# volume (`ml`), activity (`iu`, `unit`/`units`, `u`) and amount (`mEq`, `mmol`, `nmol`, `pmol`); a body
+# surface area denominator may be written `m2` or with a superscript two (`m²`). Each alternative must end at a
 # non-word character (the closing lookahead `(?=\W|$)`, which unlike `\b` also holds after `%`
 # before a space), so a unit is stripped only as a whole token right after a number: `mg/mL` goes
 # whole rather than as `mg` leaving `ml`, and `D3` in `Vitamin D3`, the `U` of `Insulin U-100` or a
 # name such as `Unituxin` are never touched. Dosage-form and route words go next (see below).
 DRUG_STRENGTH_RE = re.compile(
     r'\b\d+(?:\.\d+)?(?:\s*/\s*\d+(?:\.\d+)?)*\s*'
-    r'(?:%|(?:units?|mmol|meq|mcg|[\u00b5\u03bc]g|ug|mg|ml|iu|g|u)'
-    r'(?:\s*/\s*(?:dose|day|hour|min|hr|h|mcg|[\u00b5\u03bc]g|kg|m2|mg|ml|dl|ug|g|l))*)'
+    r'(?:%|(?:units?|mmol|nmol|pmol|meq|mcg|[\u00b5\u03bc]g|ug|ng|mg|ml|iu|g|u)'
+    r'(?:\s*/\s*(?:dose|day|hour|min|hr|h|mcg|[\u00b5\u03bc]g|kg|m2|m\u00b2|mg|ml|dl|ug|g|l))*)'
     r'(?=\W|$)',
     re.IGNORECASE,
 )

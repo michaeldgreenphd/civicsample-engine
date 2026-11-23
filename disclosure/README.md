@@ -18,7 +18,7 @@ It runs by hand; no scheduled workflow invokes it, and the weekly demographics p
 
 `automated_validation` records mechanical checks only:
 - `identifier_confirmed`: an identifier stands in the retrieved source and resolves (posted `resultsSection` on CT.gov, PubMed-resolved PMID in `referencesModule`, exact `NCT_ID` token in an Europe PMC record, or exact `NCT_ID` token in an openFDA `drugsfda` record).
-- `quote_confirmed_in_source`: a curated row in `disclosure/documentary_statements.csv` whose `verbatim_excerpt` stands at `source_locator` in a frozen retrieved source. The excerpt is compared only with the value the locator names (`pmid:<PMID>` with no sub-path names that PMID's whole esummary record), never with the rest of the response.
+- `quote_confirmed_in_source`: a curated row in `disclosure/documentary_statements.csv` whose `verbatim_excerpt` stands at `source_locator` in a frozen retrieved source. The excerpt is compared only with the value the locator names (`pmid:<PMID>` with no sub-path names that PMID's whole esummary record), never with the rest of the response. A statement counts as a results publication in the timeline only when it is both quote-confirmed and reviewed as `confirmed_same_trial_results`, the same two conditions its coverage cell requires.
 - `identifier_not_resolved`: a cited PMID that fails resolution in NCBI PubMed `esummary` (404 or error).
 - `rejected_by_rule`: a full-text search hit lacking an exact `NCT_ID` token in any retrieved field, or a high-volume generic drug query (`>= 25` applications) without sponsor agreement — retained for audit visibility and set aside.
 - `not_validated`: heuristic sponsor+drug NDA/BLA candidates, free-text citations without a PMID, or statements whose excerpt was not confirmed; `detail.statement_check` and the validation reason say why (`source_not_retrieved`, `locator_not_resolved`, `excerpt_not_found_at_locator`).
@@ -84,7 +84,9 @@ python3 scripts/build_drug_disclosure.py build \
 # day) and the range of their data timestamps (`data_timestamp_first`, `data_timestamp_last`). Without
 # --as-of, as_of defaults to the cache's CT.gov data timestamp (`as_of_source` records which default was
 # used); a cache whose version records span several data timestamps (an acquisition resumed across a
-# CT.gov data refresh) is refused unless --as-of is given.
+# CT.gov data refresh) is refused unless --as-of is given. An explicit --as-of may not be later than the
+# earliest CT.gov data timestamp in the cache (else its earliest fetch): the frozen records cannot show
+# what was posted after that date. The contract applies the same bound.
 
 # 3. Producer contract check and atomic site export. run.json producer.commit and
 #    uncommitted_changes are null when git was missing or failed at build time (never false); such a

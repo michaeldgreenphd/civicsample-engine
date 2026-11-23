@@ -673,7 +673,7 @@ def test_byte_stable_run_identity_and_summary_count_objects(
         sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv',
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
-        as_of=date(2026, 11, 2),
+        as_of=date(2026, 10, 31),
     )
     assert different['run.json']['run_identity'] != built_files['run.json']['run_identity']
 
@@ -1665,6 +1665,60 @@ def test_registry_reference_pmids_unlooked_without_a_literature_archive_are_inco
     assert C.registry_references_cell(nct, ctgov_rec, confirmed, {}, False)['state'] == 'verified_link'
 
 
+@pytest.mark.parametrize(
+    ('raw', 'expected'),
+    [
+        ('Epoprostenol 2 ng/kg/min', 'epoprostenol'),
+        ('DrugX 75 mg/m\u00b2 IV', 'drugx'),
+        ('Docetaxel 75 mg/m2', 'docetaxel'),
+        ('Octreotide 100 nmol', 'octreotide'),
+    ],
+)
+def test_nanogram_amount_and_superscript_area_doses_are_stripped(raw: str, expected: str) -> None:
+    assert A.normalize_drug_term(raw) == expected
+
+
+def test_documentary_statement_needs_its_quote_found_before_the_timeline_counts_it() -> None:
+    base = {
+        'link_id': 'link:00000000000000d1',
+        'nct_id': 'NCT09990022',
+        'source_route': 'documentary_statements',
+        'citation_type': 'DOCUMENTARY_STATEMENT',
+        'review_status': 'confirmed_same_trial_results',
+        'publication_or_action_date': '2021-05-10',
+    }
+    unquoted = dict(base, automated_validation='not_validated')
+    quoted = dict(base, automated_validation='quote_confirmed_in_source')
+    # Confirmed by a person but its quote was not found at the locator: not a qualifying publication,
+    # matching the coverage cell, which reads it as awaiting review.
+    assert T._qualifying_results_publications([unquoted]) == []
+    assert C.documentary_statements_cell('NCT09990022', [unquoted])['state'] == 'candidate_awaiting_review'
+    assert T._qualifying_results_publications([quoted]) == [quoted]
+    assert C.documentary_statements_cell('NCT09990022', [quoted])['state'] == 'verified_link'
+
+
+def test_as_of_after_the_frozen_ctgov_data_is_refused(
+    tmp_path: Path, frozen_cache: A.FrozenCache, built_files: dict[str, Any]
+) -> None:
+    kwargs: dict[str, Any] = {
+        'reviews_path': ROOT / 'disclosure' / 'reviews.csv',
+        'statements_path': ROOT / 'disclosure' / 'documentary_statements.csv',
+        'sponsor_rules_path': ROOT / 'sponsors' / 'company_aliases.csv',
+        'producer': cli_build.producer_metadata(),
+        'generated_at': F.GENERATED_AT,
+    }
+    with pytest.raises(ValueError, match=r'--as-of 2100-01-01 is after the CT.gov data the cache holds'):
+        ART.build_artifacts(frozen_cache, **kwargs, as_of=date(2100, 1, 1))
+    out = tmp_path / 'out'
+    assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(out), '--as-of', '2100-01-01',
+                           '--generated-at', F.GENERATED_AT]) == 1
+    assert not out.exists()
+    # The contract applies the same bound to an edited manifest.
+    bad = copy.deepcopy(built_files)
+    bad['run.json']['as_of'] = '2100-01-01'
+    assert any('is after the earliest CT.gov data timestamp' in p for p in ART.check_contract(bad))
+
+
 def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:
     # hasResults=true with an empty resultsSection: the CT.gov route is `available_document_insufficient`.
     shell = F._make_study('NCT09990010', title='Results shell', lead_sponsor='Fictional Sponsor',
@@ -1953,7 +2007,7 @@ def test_resumed_acquisition_across_a_ctgov_refresh_records_the_range_and_needs_
     assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--generated-at', F.GENERATED_AT]) == 1
     assert not out.exists()
 
-    stated = ART.build_artifacts(resumed, **kwargs, as_of=date(2026, 11, 2))
+    stated = ART.build_artifacts(resumed, **kwargs, as_of=date(2026, 11, 1))  # the earliest data timestamp binds
     assert ART.check_contract(stated) == []
     ct2 = stated['run.json']['sources']['ctgov']
     assert [(v['key'], v['data_timestamp']) for v in ct2['versions']] == [

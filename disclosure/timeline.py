@@ -564,6 +564,15 @@ def _qualifying_results_publications(trial_links: list[dict[str, Any]]) -> list[
             continue
         rs = lnk['review_status']
         if rs == 'confirmed_same_trial_results':
+            # A documentary statement qualifies only when its quote was also found at its locator in
+            # the frozen source (`quote_confirmed_in_source`), the same two conditions its coverage
+            # cell requires for `verified_link`: a person's confirmation of a statement whose source
+            # did not resolve, or did not contain the excerpt, cannot establish a publication.
+            if (
+                lnk['source_route'] == 'documentary_statements'
+                and lnk['automated_validation'] != 'quote_confirmed_in_source'
+            ):
+                continue
             out.append(lnk)
             continue
         if rs != 'unreviewed':
