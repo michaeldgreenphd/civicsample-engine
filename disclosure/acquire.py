@@ -780,12 +780,22 @@ def ingest_local_ctgov_records(
         in the local version record, reported as run.json `sources.ctgov.data_timestamp`, and the
         build's `as_of` when `--as-of` is not given.
     `frozen_at` is when the cache was frozen: the current time unless pinned (tests pin it).
+
+    `cache_dir` must be new or empty. Ingesting into an existing cache would keep its earlier records
+    beside the local ones: a later `ctgov/version/*` record would win the build's data timestamp (and
+    so its default `as_of`), and earlier literature or openFDA logs would be frozen with records they
+    were never acquired for. Live `acquire` keeps resuming an existing cache; only this path refuses.
     """
     for label, stamp in (('fetched_at', fetched_at), ('data_timestamp', data_timestamp)):
         try:
             datetime.fromisoformat(stamp)
         except (TypeError, ValueError) as exc:
             raise ValueError(f'{label} must be an ISO 8601 timestamp, got {stamp!r}') from exc
+    if cache_dir.exists() and (not cache_dir.is_dir() or any(cache_dir.iterdir())):
+        raise CacheIntegrityError(
+            f'{cache_dir}: a local freeze needs a new or empty cache directory, so no earlier CT.gov version, '
+            'study, literature or openFDA record is frozen with the local records; use another --cache'
+        )
     if not source_path.exists():
         raise FileNotFoundError(f'{source_path}: local CT.gov source path does not exist')
     files: list[Path]

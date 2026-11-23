@@ -1496,3 +1496,34 @@ def test_normalize_drug_term_strips_activity_amount_and_micro_sign_strengths(
     expected: str | None,
 ) -> None:
     assert A.normalize_drug_term(raw) == expected
+
+
+# ---------------------------------------------------------------- 15. Fresh local caches, posted CT.gov results
+
+def test_local_freeze_refuses_an_existing_cache_instead_of_mixing_its_records(
+    tmp_path: Path,
+    frozen_cache: A.FrozenCache,
+) -> None:
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'NCT09990004.json').write_text(json.dumps(F.STUDIES['NCT09990004']), encoding='utf-8')
+    historical = ['--fetched-at', '2025-06-30T18:00:00+00:00', '--data-timestamp', '2025-06-30T09:00:00']
+
+    # A cache from a live acquisition holds a later CT.gov version record and literature/openFDA logs.
+    cache = tmp_path / 'live_cache'
+    shutil.copytree(frozen_cache.cache_dir, cache)
+    assert frozen_cache.ctgov['ctgov/version/2026-11-01']['body']['dataTimestamp'] == '2026-11-01T08:00:00'
+    before = {p.relative_to(cache).as_posix(): p.read_bytes() for p in cache.rglob('*') if p.is_file()}
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), *historical]) == 1
+    with pytest.raises(A.CacheIntegrityError, match='new or empty cache directory'):
+        A.ingest_local_ctgov_records(local_src, cache, fetched_at='2025-06-30T18:00:00+00:00',
+                                     data_timestamp='2025-06-30T09:00:00')
+    assert {p.relative_to(cache).as_posix(): p.read_bytes() for p in cache.rglob('*') if p.is_file()} == before
+
+    # A new or empty directory takes the local freeze, and the stated version is the only one.
+    empty = tmp_path / 'empty_cache'
+    empty.mkdir()
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(empty), *historical]) == 0
+    loaded = A.load_frozen_cache(empty)
+    assert [k for k in loaded.ctgov if k.startswith('ctgov/version/')] == ['ctgov/version/2025-06-30']
+    assert loaded.literature_meta is None and loaded.openfda_meta is None
