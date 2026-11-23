@@ -108,8 +108,14 @@ on every registration: `identificationModule`, `statusModule`,
 `sponsorCollaboratorsModule`, `conditionsModule` or `designModule`. A projected
 record would otherwise build with every trial read as ontology Other, no
 listed facilities, no MeSH and an unreviewed "Unknown" sponsor, and the
-contract would pass. `contactsLocationsModule` and `derivedSection` are not
-required: their absence is a real "no listed facilities" / `no_derived`.
+contract would pass. Inside those modules a record must also carry the fields
+every registration holds (`briefTitle`, `overallStatus`, `statusVerifiedDate`,
+`studyType`), which a field-by-field projection keeping the module objects drops,
+and a boolean `hasResults`, with a non-empty `resultsSection` whenever it is
+true (otherwise the baseline table would read as never posted).
+`contactsLocationsModule` and `derivedSection` are not required: their absence
+is a real "no listed facilities" / `no_derived`, so a whole-module projection
+that omits them cannot be told apart record by record.
 **The audit caches under `docs/audits/outcomes_results_structure/` are not
 valid DAP inputs**: every request in them used `fields=` (first pass:
 `NCTId,HasResults,ResultsSection,OutcomesModule,StatusModule,DesignModule`).

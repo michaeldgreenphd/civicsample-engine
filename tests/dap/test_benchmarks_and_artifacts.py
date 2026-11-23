@@ -468,7 +468,7 @@ def test_projected_or_incomplete_raw_records_are_refused(tmp_path: Path) -> None
         partial = fx.make_raw_ctgov_study("NCT99000972")
         del partial["protocolSection"][module]
         key = "NCT99000972" if module != "identificationModule" else "index 1"
-        want = rf"1 of 2 study records lack required protocol modules \(first: {key} lacks {module}\)"
+        want = rf"1 of 2 study records lack required protocol modules or fields \(first: {key} lacks {module}\)"
         studies_dir = fx.write_studies_dir([full], tmp_path / f"dir_{module}")
         (studies_dir / "z_partial.json").write_text(json.dumps(partial), encoding="utf-8")
         container = tmp_path / f"{module}.json"
@@ -1200,3 +1200,51 @@ def test_codebase_ast_typing_future_annotations_and_zero_rng() -> None:
                     assert arg.annotation is not None, (
                         f"{fpath}:{node.lineno} {node.name} parameter {arg.arg!r} lacks type annotation"
                     )
+
+
+@pytest.mark.parametrize(
+    "edit, expect",
+    [
+        ("drop_brief_title", "identificationModule.briefTitle"),
+        ("drop_status_verified", "statusModule.statusVerifiedDate"),
+        ("drop_study_type", "designModule.studyType"),
+        ("drop_has_results", "hasResults"),
+        ("string_has_results", "hasResults"),
+        ("drop_results_section", "resultsSection"),
+    ],
+)
+def test_records_with_projected_module_shells_or_results_parts_are_refused(
+    tmp_path: Path, edit: str, expect: str
+) -> None:
+    # A field-by-field projection keeps the five module objects but drops fields every registration
+    # holds, or keeps `hasResults: true` without the results section the baseline table is read from.
+    complete = fx.make_raw_ctgov_study("NCT99800001")
+    projected = fx.make_raw_ctgov_study("NCT99800002")
+    ps = projected["protocolSection"]
+    if edit == "drop_brief_title":
+        ps["identificationModule"].pop("briefTitle")
+    elif edit == "drop_status_verified":
+        ps["statusModule"].pop("statusVerifiedDate")
+    elif edit == "drop_study_type":
+        ps["designModule"].pop("studyType")
+    elif edit == "drop_has_results":
+        projected.pop("hasResults")
+    elif edit == "string_has_results":
+        projected["hasResults"] = "true"
+    else:
+        projected.pop("resultsSection")
+    rdir = tmp_path / "records"
+    rdir.mkdir()
+    (rdir / "a.json").write_text(json.dumps(complete), encoding="utf-8")
+    (rdir / "b.json").write_text(json.dumps(projected), encoding="utf-8")
+    with pytest.raises(ValueError, match=f"NCT99800002 lacks {expect}"):
+        benchmarks.load_study_records(rdir)
+
+
+def test_records_without_posted_results_are_still_accepted_as_complete(tmp_path: Path) -> None:
+    study = fx.make_raw_ctgov_study("NCT99800003", has_results=False)
+    rdir = tmp_path / "records"
+    rdir.mkdir()
+    (rdir / "a.json").write_text(json.dumps(study), encoding="utf-8")
+    records, _meta = benchmarks.load_study_records(rdir)
+    assert len(records) == 1

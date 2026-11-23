@@ -28,7 +28,7 @@ def make_raw_ctgov_study(
     meshes: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Construct a synthetic ClinicalTrials.gov API v2 study document."""
-    status_mod: dict[str, Any] = {"overallStatus": "COMPLETED"}
+    status_mod: dict[str, Any] = {"overallStatus": "COMPLETED", "statusVerifiedDate": "2024-07"}
     if start_date is not None:
         status_mod["startDateStruct"] = {"date": start_date, "type": "ACTUAL"}
     if primary_completion_date is not None:

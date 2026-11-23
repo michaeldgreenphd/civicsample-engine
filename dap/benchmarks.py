@@ -454,9 +454,32 @@ REQUIRED_PROTOCOL_MODULES: tuple[str, ...] = (
     "designModule",
 )
 
+# Fields CT.gov holds on every registration, inside modules a projection can keep as shells: the
+# brief title, the overall status, the record-verification date (a required data element) and the
+# study type. A field-by-field projection (``fields=NCTId,OverallStatus,LeadSponsorName,Condition,
+# StudyType``) keeps all five module objects but drops most of these, so a record without any of
+# them is refused. Among the stored CT.gov caches, the device-linkage projections lack
+# ``statusVerifiedDate`` and the outcomes second-pass projection lacks ``briefTitle``; the
+# unprojected records carry all four. A projection that requests whole modules and omits others
+# entirely (``contactsLocationsModule``, ``derivedSection``) cannot be told from a registration
+# without them. Same rule as the feasibility benchmarks (#107).
+REQUIRED_RECORD_FIELDS: tuple[tuple[str, str], ...] = (
+    ("identificationModule", "briefTitle"),
+    ("statusModule", "overallStatus"),
+    ("statusModule", "statusVerifiedDate"),
+    ("designModule", "studyType"),
+)
+
 
 def _require_complete_records(studies: list[dict[str, Any]], source: str) -> None:
-    """Refuse raw API v2 study records missing any ``REQUIRED_PROTOCOL_MODULES`` (see the note above)."""
+    """Refuse raw API v2 study records that are incomplete (see the notes above).
+
+    A record must carry the ``REQUIRED_PROTOCOL_MODULES``, the ``REQUIRED_RECORD_FIELDS`` inside them,
+    and a boolean top-level ``hasResults``, with a non-empty ``resultsSection`` whenever it is true. A
+    record with ``hasResults: true`` but no results section was projected or truncated: built from
+    it, its baseline table would read as never posted (``no_results_posted``) while the contract
+    passed. Same rule as the feasibility benchmarks (#107).
+    """
     incomplete: dict[str, list[str]] = {}
     for idx, study in enumerate(studies):
         protocol = study.get("protocolSection")
@@ -465,13 +488,25 @@ def _require_complete_records(studies: list[dict[str, Any]], source: str) -> Non
             incomplete[key] = ["protocolSection"]
             continue
         missing = [m for m in REQUIRED_PROTOCOL_MODULES if not isinstance(protocol.get(m), dict)]
+        missing += [
+            f"{mod}.{field}" for mod, field in REQUIRED_RECORD_FIELDS
+            if isinstance(protocol.get(mod), dict)
+            and not (isinstance(protocol[mod].get(field), str) and protocol[mod][field].strip())
+        ]
+        has_results = study.get("hasResults")
+        if not isinstance(has_results, bool):
+            missing.append("hasResults (a boolean)")
+        elif has_results:
+            results_sec = study.get("resultsSection")
+            if not isinstance(results_sec, dict) or not results_sec:
+                missing.append("resultsSection (hasResults is true)")
         if missing:
             incomplete[key] = missing
     if incomplete:
         first = next(iter(incomplete))
         raise ValueError(
             f"{source}: {len(incomplete)} of {len(studies)} study records lack required protocol modules "
-            f"(first: {first} lacks {', '.join(incomplete[first])}); these look field-projected or "
+            f"or fields (first: {first} lacks {', '.join(incomplete[first])}); these look field-projected or "
             "truncated, so the build is refused rather than reading the gaps as absent data"
         )
 
