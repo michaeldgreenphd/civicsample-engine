@@ -1577,4 +1577,3 @@ def test_denominator_b_classified_bounds_invariant_to_unknown_count() -> None:
             ref_b = res["of_classified"]
         else:
             assert res["of_classified"] == ref_b
-

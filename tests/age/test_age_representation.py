@@ -469,4 +469,3 @@ def test_compare_age_to_acs_nan_moe_and_json_strict_serialization() -> None:
     lvl_zero = _make_acs_level(male_counts=[0.0] * 14, female_counts=[0.0] * 14)
     res_zero = ar.compare_age_to_acs(p, lvl_zero, "24510", sexes=("male", "female"), eligible_lo=18.0, eligible_hi=None)
     assert res_zero == {"available": False, "reason": "no_eligible_residents_estimated", "geoid": "24510"}
-

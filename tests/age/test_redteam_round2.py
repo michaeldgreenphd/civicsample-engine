@@ -965,4 +965,3 @@ def test_vocabulary_pin_and_uninformative_reason_priority_completeness() -> None
     assert emitted.issubset(set(ap.UNINFORMATIVE_REASON_PRIORITY))
     for code in ap.UNINFORMATIVE_REASON_PRIORITY:
         assert f"`{code}`" in readme_src
-
