@@ -592,10 +592,18 @@ CTGOV_RESULTS_DATES: tuple[tuple[str, ...], ...] = (
 )
 
 
+# Completion dates the record states as having happened (`type: ACTUAL`). An ACTUAL date names a day that
+# had begun when the record was served, as a results date does; an ESTIMATED or ANTICIPATED one may lie
+# ahead, and an untyped one opens no elapsed-window state (`timeline.classify_window_365d`), so neither is
+# bounded. The latest ACTUAL dates in the 75,811 stored study entries are 2026-04-10 (primary
+# completion) and 2026-05-19 (completion).
+CTGOV_ACTUAL_DATE_STRUCTS: tuple[str, ...] = ('primaryCompletionDateStruct', 'completionDateStruct')
+
+
 def ctgov_results_date_after(body: dict[str, Any], fetched_at: str) -> str | None:
-    """The first results date (`CTGOV_RESULTS_DATES`, then the QC review cycles' dates) in study `body`
-    that starts after a record retrieved at `fetched_at` (a UTC timestamp) can hold, as `<path> (<date>)`,
-    else None.
+    """The first results date (`CTGOV_RESULTS_DATES`), ACTUAL completion date (`CTGOV_ACTUAL_DATE_STRUCTS`)
+    or QC review cycle date in study `body` that starts after a record retrieved at `fetched_at` (a UTC
+    timestamp) can hold, as `<path> (<date>)`, else None.
 
     `body` must pass `ctgov_study_problem`, which refuses a populated date the build cannot read. CT.gov
     states no time zone for these days, so the bound is the calendar day at `fetched_at` in the zone
@@ -610,6 +618,14 @@ def ctgov_results_date_after(body: dict[str, Any], fetched_at: str) -> str | Non
         span = ctgov_date_span(value) if isinstance(value, str) else None
         if span is not None and span[0] > bound:
             return f"statusModule.{'.'.join(path)} ({value.strip()})"
+    # On 05a8005 an ACTUAL primary completion or completion in 2100, in a record fetched in 2026, was published
+    # as a completion milestone and fed every completion-based interval.
+    for struct_name in CTGOV_ACTUAL_DATE_STRUCTS:
+        struct = status_mod.get(struct_name)
+        value = struct.get('date') if isinstance(struct, dict) and struct.get('type') == 'ACTUAL' else None
+        span = ctgov_date_span(value) if isinstance(value, str) else None
+        if span is not None and span[0] > bound:
+            return f"statusModule.{struct_name}.date ({value.strip()}, ACTUAL)"
     # A QC cycle's release, unrelease or reset is an event of the same results review, so it too names a day
     # that had begun when the record was served: on 71f99b9 a `releaseDate` of 2100-01-01 in a record
     # fetched in 2026 was published as a cycle. The timeline's own path and fields are read (imported when

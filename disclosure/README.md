@@ -95,8 +95,8 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 # populated completion, results submission, QC or posting date the build cannot read as YYYY, YYYY-MM or
 # YYYY-MM-DD in the years 1800 to 2200 (`acquire.ctgov_date_span`): with hasResults false, a submission date of `not-a-date` was
 # read as none and the window published UNREPORTED_PAST_365D. So is an answer holding a results
-# submission, QC or posting date, or a QC review cycle's release, unrelease or reset date, after it was
-# retrieved (`acquire.ctgov_study_record_problem`, allowing
+# submission, QC or posting date, an ACTUAL primary completion or completion date, or a QC review
+# cycle's release, unrelease or reset date, after it was retrieved (`acquire.ctgov_study_record_problem`, allowing
 # the largest real UTC offset, and reading the date as the build does, so `2100` counts): a 2100 posting
 # date was published on the verified results link and read by the 365-day window as submitted but
 # unposted.

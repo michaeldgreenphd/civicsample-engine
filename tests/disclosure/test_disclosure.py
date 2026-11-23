@@ -3876,6 +3876,50 @@ def test_results_date_after_retrieval_is_read_as_a_failed_lookup(
     assert json.dumps(value.strip()) not in json.dumps(built, default=str)
 
 
+_COMPLETION = ('protocolSection', 'statusModule')
+
+
+@pytest.mark.parametrize(
+    ('struct', 'value', 'kind', 'refused'),
+    [
+        # On 05a8005 each built as `retrieved`, with an ACTUAL completion after the record was fetched.
+        ('primaryCompletionDateStruct', '2100-01-01', 'ACTUAL', True),
+        ('completionDateStruct', '2026-11-03', 'ACTUAL', True),
+        # Controls, on both heads: an ESTIMATED date may lie ahead, and an ACTUAL day begun at UTC+14 or a
+        # month containing the retrieval day is not after it.
+        ('primaryCompletionDateStruct', '2100-01-01', 'ESTIMATED', False),
+        ('completionDateStruct', '2026-11-02', 'ACTUAL', False),
+        ('primaryCompletionDateStruct', '2026-11', 'ACTUAL', False),
+    ],
+)
+def test_an_actual_completion_after_retrieval_is_read_as_a_failed_lookup(
+    tmp_path: Path, struct: str, value: str, kind: str, refused: bool
+) -> None:
+    nct = 'NCT09990001'
+    study = _study_with(F.STUDIES[nct], (*_COMPLETION, struct), {'date': value, 'type': kind})
+    fetched_at = '2026-11-01T10:00:00+00:00'
+    problem = A.ctgov_study_record_problem({'status': 200, 'fetched_at': fetched_at, 'body': study})
+    cache = F.acquire_fixture_cache(tmp_path / 'c')
+    cache.ctgov[f'ctgov/study/{nct}'] = dict(cache.ctgov[f'ctgov/study/{nct}'], body=study, fetched_at=fetched_at)
+    built = ART.build_artifacts(
+        cache,
+        reviews_path=ROOT / 'disclosure/reviews.csv',
+        statements_path=ROOT / 'disclosure/documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors/company_aliases.csv',
+        producer={'commit': None, 'uncommitted_changes': None},
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+        requested_nct_ids=[nct],
+    )
+    row = next(x for x in built['studies.json']['studies'] if x['nct_id'] == nct)
+    if not refused:
+        assert problem is None and row['registry_state'] == 'retrieved'
+        return
+    assert problem == f'statusModule.{struct}.date ({value}, ACTUAL) is after the record was retrieved ({fetched_at})'
+    assert row['registry_state'] == 'lookup_failed'
+    assert json.dumps(value) not in json.dumps(built, default=str)
+
+
 _CYCLES = ('derivedSection', 'miscInfoModule', 'submissionTracking', 'submissionInfos')
 
 
