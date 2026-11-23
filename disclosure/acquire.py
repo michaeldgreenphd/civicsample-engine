@@ -1345,7 +1345,13 @@ def _read_verified_archive(
     path: Path,
     expected_manifest_entry: dict[str, Any],
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
-    """Verify `.jsonl.gz` against both its `.meta.json` sidecar and `manifest.json` entry."""
+    """Verify `.jsonl.gz` against both its `.meta.json` sidecar and `manifest.json` entry.
+
+    The build reads the sidecar (`run.json` sources, the `as_of` fallback and bound), so every field
+    it holds must equal the manifest entry, which `freeze_cache` writes from the same dict, and the
+    fetch times it states must be those of the archive's own (hash-verified) records, as
+    `freeze_source` computed them. An edited sidecar could otherwise publish false acquisition times.
+    """
     if not path.is_file():
         raise CacheIntegrityError(f'{path.name}: listed in manifest.json but missing from cache')
     meta_path = path.with_name(path.name + '.meta.json')
@@ -1356,7 +1362,9 @@ def _read_verified_archive(
     except (OSError, ValueError) as exc:
         raise CacheIntegrityError(f'{meta_path.name}: unreadable JSON sidecar ({exc})') from exc
 
-    for key in ('archive', 'n_records', 'sha256_compressed', 'sha256_uncompressed', 'source'):
+    if not isinstance(meta, dict):
+        raise CacheIntegrityError(f'{meta_path.name}: sidecar is not a JSON object')
+    for key in sorted(set(meta) | set(expected_manifest_entry)):
         if meta.get(key) != expected_manifest_entry.get(key):
             raise CacheIntegrityError(
                 f'{path.name}: manifest.json and {meta_path.name} disagree on {key!r}'
@@ -1389,6 +1397,14 @@ def _read_verified_archive(
         raise CacheIntegrityError(
             f"{path.name}: decoded {len(records)} record(s), expected {meta.get('n_records')}"
         )
+    times = sorted(str(r['fetched_at']) for r in records.values() if r.get('fetched_at'))
+    held_times = (('first_fetched_at', times[0] if times else None), ('last_fetched_at', times[-1] if times else None))
+    for key, held in held_times:
+        if meta.get(key) != held:
+            raise CacheIntegrityError(
+                f'{path.name}: {meta_path.name} states {key} {meta.get(key)!r}, but the archive records '
+                f'give {held!r}'
+            )
     return records, meta
 
 
@@ -1484,6 +1500,11 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
     for source, entry in sorted(archives.items()):
         if not isinstance(entry, dict):
             raise CacheIntegrityError(f'manifest.json: invalid archive entry for {source!r}')
+        if entry.get('frozen_at') != manifest.get('frozen_at'):
+            raise CacheIntegrityError(
+                f"manifest.json: the {source} archive states frozen_at {entry.get('frozen_at')!r}, but the "
+                f"cache was frozen at {manifest.get('frozen_at')!r}"
+            )
         loaded[source] = _read_verified_archive(archive_path(cache_dir, source), entry)
 
     assert loaded['ctgov'][1] is not None

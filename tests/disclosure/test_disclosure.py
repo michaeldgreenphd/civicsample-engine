@@ -289,6 +289,33 @@ def test_offline_cache_loader_refuses_partial_missing_or_hash_mismatched_caches(
         A.load_frozen_cache(c5)
 
 
+@pytest.mark.parametrize('field', ['first_fetched_at', 'last_fetched_at', 'frozen_at', 'description'])
+def test_an_edited_archive_sidecar_is_refused_at_load(
+    tmp_path: Path, frozen_cache: A.FrozenCache, field: str
+) -> None:
+    # The build publishes the sidecar's fields (run.json sources) and reads last_fetched_at for the
+    # as_of fallback and bound, so a sidecar edited after freezing must not load.
+    cache = tmp_path / 'edited_sidecar'
+    shutil.copytree(frozen_cache.cache_dir, cache)
+    meta_path = cache / 'ctgov.jsonl.gz.meta.json'
+    meta = json.loads(meta_path.read_text(encoding='utf-8'))
+    meta[field] = '2020-01-01T00:00:00+00:00'
+    meta_path.write_text(json.dumps(meta), encoding='utf-8')
+    with pytest.raises(A.CacheIntegrityError, match=f"disagree on '{field}'"):
+        A.load_frozen_cache(cache)
+    # Edited consistently in the manifest entry too, the fetch times still disagree with the archive's
+    # own records, and frozen_at with the manifest's.
+    manifest_path = cache / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    manifest['archives']['ctgov'][field] = meta[field]
+    manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+    if field == 'description':
+        A.load_frozen_cache(cache)  # a label the build does not take as evidence
+    else:
+        with pytest.raises(A.CacheIntegrityError, match=rf'{field}'):
+            A.load_frozen_cache(cache)
+
+
 # ---------------------------------------------------------------- 3. Partial-date interval bounds
 
 @pytest.mark.parametrize(
