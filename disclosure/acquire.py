@@ -737,13 +737,45 @@ def stale_openfda_drug_queries(
     return sorted(stale)
 
 
+def registry_references_problem(study: dict[str, Any] | None) -> str | None:
+    """Why a study's `referencesModule` cannot be read, or None when it can.
+
+    `extract_registry_references` returns an empty list both for a record that cites nothing and for
+    a module, list or entry of the wrong type, so coverage asks this first. Presence of a key is
+    what counts: a record with no `referencesModule` (1,859 of the 3,371 distinct trials in the stored
+    unprojected CT.gov records) or a module with no `references` key (329) cites nothing, while a
+    present part of the wrong type (none in the stored records) leaves the citations unknown.
+    """
+    if not isinstance(study, dict) or not isinstance(study.get('protocolSection'), dict):
+        return 'no protocolSection object'
+    ps = study['protocolSection']
+    if 'referencesModule' not in ps:
+        return None
+    rm = ps['referencesModule']
+    if not isinstance(rm, dict):
+        return 'referencesModule is not an object'
+    if 'references' not in rm:
+        return None
+    refs = rm['references']
+    if not isinstance(refs, list):
+        return 'referencesModule.references is not a list'
+    bad = [i for i, ref in enumerate(refs) if not isinstance(ref, dict)]
+    if bad:
+        return f'referencesModule.references[{bad[0]}] is not an object'
+    return None
+
+
 def extract_registry_references(study: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """Return normalized entries from `protocolSection.referencesModule.references`."""
+    """Return normalized entries from `protocolSection.referencesModule.references`.
+
+    Read type-safely (a non-object module raised `AttributeError`); a malformed part gives no
+    entries here and is reported by `registry_references_problem`.
+    """
     if not isinstance(study, dict):
         return []
-    ps = study.get('protocolSection') or {}
-    rm = ps.get('referencesModule') or {}
-    refs = rm.get('references') or []
+    ps = study.get('protocolSection')
+    rm = ps.get('referencesModule') if isinstance(ps, dict) else None
+    refs = rm.get('references') if isinstance(rm, dict) else None
     if not isinstance(refs, list):
         return []
     out: list[dict[str, Any]] = []

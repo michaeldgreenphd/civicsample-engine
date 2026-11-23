@@ -277,7 +277,18 @@ def registry_references_cell(
             f"ClinicalTrials.gov study lookup did not return a valid 200 record (status={status!r})",
         )
 
+    # A malformed references module is unread, not empty: it must not read as a completed search over
+    # zero citations, which could feed `unreported_across_completed_routes`. A verified readable entry
+    # (resolved RESULT PMID or a person's confirmation) still settles the route below; otherwise the route
+    # is incomplete, ahead of the candidate, insufficient and negative states, as a failed lookup is.
+    references_problem = A.registry_references_problem(ctgov_rec['body'])
     refs = A.extract_registry_references(ctgov_rec['body'])
+    if not refs and references_problem:
+        return _cell(
+            route,
+            'search_incomplete_or_blocked',
+            f'retrieved study record has an unreadable referencesModule ({references_problem})',
+        )
     if not refs:
         return _cell(
             route,
@@ -299,6 +310,13 @@ def registry_references_cell(
             n_references=len(refs),
             n_verified_links=len(confirmed),
             n_human_confirmed_only=human_only,
+        )
+    if references_problem:
+        return _cell(
+            route,
+            'search_incomplete_or_blocked',
+            f'retrieved study record has an unreadable referencesModule ({references_problem})',
+            n_references=len(refs),
         )
     # A cited PMID whose PubMed lookup failed (timeout, 5xx) or is missing from an acquired literature
     # archive yields a live `not_validated` link. That is an incomplete search, not a reviewable

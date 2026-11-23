@@ -35,7 +35,7 @@ A `link_id` hashes everything the link presents as evidence: trial, route, targe
 
 Routes: `ctgov_results`, `registry_references`, `literature_search`, `openfda_drugsfda`, `documentary_statements`.
 
-A registry reference whose PubMed lookup failed, or never ran because the cache holds no literature archive (a `freeze-local` build), makes that route `search_incomplete_or_blocked`, never a candidate.
+A registry reference whose PubMed lookup failed, or never ran because the cache holds no literature archive (a `freeze-local` build), makes that route `search_incomplete_or_blocked`, never a candidate. So does a `referencesModule` that cannot be read: a module that is not an object, a `references` value that is not a list, or an entry that is not an object (`acquire.registry_references_problem`). Such a record is not read as citing nothing; only a record with no `referencesModule`, no `references` key or an empty list is a completed search over zero citations. A readable entry that verifies (a resolved RESULT PMID, or a person's `confirmed_same_trial_results`) still settles the route; otherwise the route reads `search_incomplete_or_blocked`, ahead of the candidate, insufficient and negative states, as a failed lookup does. None of the 3,371 stored unprojected records has such a module (1,859 have none, 329 have no `references` key).
 
 States: `not_searched`, `search_incomplete_or_blocked`, `document_unavailable`, `available_document_insufficient`, `candidate_awaiting_review`, `no_candidate_in_completed_scope`, `verified_link`. Only `no_candidate_in_completed_scope` is a negative finding; `not_searched` (e.g. when offline builds run from local CT.gov archives without literature or openFDA caches) is never conflated with "none found".
 

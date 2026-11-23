@@ -2796,3 +2796,68 @@ def test_unknown_git_provenance_is_null_builds_locally_and_is_never_exported(
     false_without_commit = copy.deepcopy(files)
     false_without_commit['run.json']['producer']['uncommitted_changes'] = False
     assert any('must be null when producer.commit is null' in p for p in ART.check_contract(false_without_commit))
+
+
+@pytest.mark.parametrize(
+    ('references_module', 'problem'),
+    [
+        ('not an object', 'referencesModule is not an object'),
+        ({'references': 'PMID 31234569'}, 'referencesModule.references is not a list'),
+        ({'references': ['PMID 31234569']}, 'referencesModule.references[0] is not an object'),
+        (
+            {'references': [{'pmid': '31234569', 'type': 'RESULT'}, 7]},
+            'referencesModule.references[1] is not an object',
+        ),
+    ],
+)
+def test_malformed_references_module_is_an_incomplete_search_not_zero_citations(
+    references_module: Any, problem: str,
+) -> None:
+    nct = 'NCT09990023'
+    study = F._make_study(nct, title='Malformed references', lead_sponsor='Fictional Sponsor')
+    study['protocolSection']['referencesModule'] = references_module
+    ctgov_rec = {'status': 200, 'body': study}
+    assert A.registry_references_problem(study) == problem
+    cell = C.registry_references_cell(nct, ctgov_rec, [], {}, True)
+    assert cell['state'] == 'search_incomplete_or_blocked', cell
+    assert problem in cell['reason']
+
+
+@pytest.mark.parametrize('references_module', ['<absent>', {}, {'references': []}])
+def test_absent_or_empty_references_module_is_a_completed_search_over_zero_citations(references_module: Any) -> None:
+    nct = 'NCT09990024'
+    study = F._make_study(nct, title='No references', lead_sponsor='Fictional Sponsor')
+    study['protocolSection'].pop('referencesModule', None)
+    if references_module != '<absent>':
+        study['protocolSection']['referencesModule'] = references_module
+    assert A.registry_references_problem(study) is None
+    assert A.extract_registry_references(study) == []
+    cell = C.registry_references_cell(nct, {'status': 200, 'body': study}, [], {}, True)
+    assert cell['state'] == 'no_candidate_in_completed_scope', cell
+
+
+@pytest.mark.parametrize(('reference_type', 'expected'), [
+    # An unreviewed BACKGROUND entry read `available_document_insufficient` (a completed search) on the old
+    # head although the second entry was never read.
+    ('BACKGROUND', 'search_incomplete_or_blocked'),
+    # A RESULT PMID resolved on PubMed is positive evidence and still verifies the route.
+    ('RESULT', 'verified_link'),
+])
+def test_unreadable_reference_entry_blocks_negative_states_but_not_a_verified_readable_entry(
+    reference_type: str, expected: str,
+) -> None:
+    nct = 'NCT09990025'
+    study = F._make_study(nct, title='Partly malformed references', lead_sponsor='Fictional Sponsor',
+                          references=[{'pmid': '31234570', 'type': reference_type, 'citation': 'Fictional et al.'}])
+    study['protocolSection']['referencesModule']['references'].append('PMID 31234571')
+    ctgov_rec = {'status': 200, 'body': study}
+    lit = {'literature/pubmed_pmid/31234570': {'status': 200, 'body': {'result': {}}}}
+    links = E.build_registry_reference_links(nct, ctgov_rec, lit)
+    assert len(links) == 1
+    cell = C.registry_references_cell(nct, ctgov_rec, links, lit, True)
+    assert cell['state'] == expected, cell
+    if expected == 'search_incomplete_or_blocked':
+        assert 'referencesModule.references[1] is not an object' in cell['reason']
+    # A person's confirmation of the readable entry settles the route either way.
+    confirmed = [dict(links[0], review_status='confirmed_same_trial_results')]
+    assert C.registry_references_cell(nct, ctgov_rec, confirmed, lit, True)['state'] == 'verified_link'
