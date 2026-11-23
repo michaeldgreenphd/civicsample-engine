@@ -29,7 +29,7 @@ from typing import Any
 
 from feasibility.metrics import is_num, parse_num
 
-TERMINATION_RULES_VERSION = "1.0.0"
+TERMINATION_RULES_VERSION = "1.1.0"
 
 STOPPED_STATUSES = ("TERMINATED", "WITHDRAWN", "SUSPENDED")
 
@@ -67,36 +67,71 @@ _I = re.IGNORECASE
 # Clauses inside `whyStopped` that explicitly negate a signal category are masked before matching
 # that category, preventing false positives on real registry text such as
 # "Terminated for strategic reasons; there were no safety concerns."
+#
+# Method (rules 1.1.0). A negation masks a signal only when the negator governs the signal itself:
+#   * Determiner-type negators ("no", "without", "neither", "nor", "there were no", "free of", ...)
+#     modify the noun phrase that follows, so the signal may sit a few words later ("no new safety
+#     signals"), but never past a causal connective: in "no further enrolment due to slow accrual"
+#     the accrual signal is the stated cause, not the thing negated.
+#   * "not" negates a verb, so it negates a signal only through a connective that names the signal
+#     as the (non-)reason: "not due to COVID-19", "not related to safety", "not based on safety",
+#     "not for a safety concern", "not terminated because of safety", "not considered a safety
+#     issue". In "Could not continue due to COVID-19" it negates "continue", and COVID-19 is the
+#     reason, so nothing is masked. (Rules 1.0.0 masked any signal within 35 characters of "not".)
+#   * "unrelated to" and "non-" attach directly to the signal.
+_CAUSAL = r"(?:due\s+to|because\s+of|owing\s+to|as\s+a\s+result\s+of|caused\s+by|resulting\s+from)"
+_NOT_LINK = (
+    r"(?:(?:be|been|being|was|were|is|are)\s+)?"
+    r"(?:(?:terminated|stopped|halted|discontinued|withdrawn|suspended|closed|ended|made|taken)\s+)?"
+    r"(?:(?:considered|deemed|believed|thought|judged)\s+(?:to\s+be\s+)?)?"
+    r"(?:due\s+to|because\s+of|owing\s+to|related\s+to|attributable\s+to|attributed\s+to|associated\s+with|"
+    r"linked\s+to|caused\s+by|driven\s+by|based\s+on|a\s+result\s+of|the\s+result\s+of|for|from|a|an|any)?"
+)
+_FILLERS = (
+    r"(?:\s+(?:any|a|an|the|its|their|this|that|specific|particular|known|new|significant|major|serious|"
+    r"reported|identified|observed|unexpected|of|or|and|product|study|drug|treatment)){0,3}"
+)
+
+
+def _negation(determiners: str, signal: str, gap: int) -> re.Pattern[str]:
+    """Negation guard for one category: determiner-type negators within `gap` characters (never
+    across a clause break or a causal connective), or "not" / "unrelated to" / "non-" linked
+    directly to the signal (see the method note above)."""
+    # A negated signal may run into further signal words ("COVID-19 pandemic", "safety or
+    # tolerability"); the mask covers the whole run so none of it is matched afterwards.
+    run = rf"(?:{signal})\b(?:[\s/-]+(?:(?:or|and|nor)\s+)?(?:{signal})\b){{0,3}}"
+    det = (
+        rf"\b(?:{determiners})\b(?:(?!\b{_CAUSAL}\b)[^.;,]){{0,{gap}}}\b{run}"
+        if determiners
+        else None
+    )
+    linked = rf"\bnot\s+{_NOT_LINK}{_FILLERS}\s*\b{run}|\bunrelated\s+to{_FILLERS}\s+{run}|\bnon[- ]{run}"
+    return re.compile("|".join(x for x in (det, linked) if x), _I)
+
+
 _NEGATION_PATTERNS: dict[str, re.Pattern[str]] = {
     "accrual_or_recruitment": re.compile(
-        r"\b(?:recruitment|enrol+ment|accrual)\s+was\s+(?:fully\s+|already\s+)?completed\b"
-        r"|\b(?:not|no|neither|nor|unrelated\s+to)\b[^.;,]{0,35}\b(?:accrual|enrol+ment|recruitment)\b",
+        r"\b(?:recruitment|enrol+ment|accrual)\s+was\s+(?:fully\s+|already\s+)?completed\b|"
+        + _negation(r"no|neither|nor", r"accrual|enrol+ment|recruitment", 35).pattern,
         _I,
     ),
-    "futility_or_lack_of_efficacy": re.compile(
-        r"\b(?:not|no|neither|nor|without|unrelated\s+to)\b[^.;,]{0,35}\b(?:futil(?:e|ity)|lack\s+of\s+efficacy|efficacy\s+concern)\b",
-        _I,
+    "futility_or_lack_of_efficacy": _negation(
+        r"no|neither|nor|without", r"futil(?:e|ity)|lack\s+of\s+efficacy|efficacy\s+concerns?", 35
     ),
-    "safety_or_toxicity": re.compile(
-        r"\b(?:there\s+(?:were|was|are|is)\s+no|no|not|neither|nor|without|unrelated\s+to|free\s+of|absence\s+of|non[- ])\b"
-        r"[^.;,]{0,40}\b(?:safety|toxicit(?:y|ies)|tolerability|adverse\s+events?|saes?|dlts?)\b",
-        _I,
+    "safety_or_toxicity": _negation(
+        r"there\s+(?:were|was|are|is)\s+no|no|neither|nor|without|free\s+of|absence\s+of",
+        r"safety|toxicit(?:y|ies)|tolerability|adverse\s+events?|saes?|dlts?",
+        40,
     ),
-    "business_or_strategic": re.compile(
-        r"\b(?:not|non[- ]|unrelated\s+to)\b[^.;,]{0,30}\b(?:business|commercial|financial|strategic)\b",
-        _I,
+    "business_or_strategic": _negation(r"", r"business|commercial|financial|strategic", 30),
+    "covid_or_pandemic": _negation(
+        r"prior\s+to", r"covid(?:[- ]?19)?|sars[- ]cov[- ]2|pandemic|coronavirus", 35
     ),
-    "covid_or_pandemic": re.compile(
-        r"\b(?:not|non[- ]|unrelated\s+to|prior\s+to)\b[^.;,]{0,35}\b(?:covid(?:[- ]?19)?|sars[- ]cov[- ]2|pandemic|coronavirus)\b",
-        _I,
+    "regulatory_or_clinical_hold": _negation(
+        r"no|without|lifted", r"clinical\s+hold|regulatory\s+hold", 30
     ),
-    "regulatory_or_clinical_hold": re.compile(
-        r"\b(?:no|not|without|lifted)\b[^.;,]{0,30}\b(?:clinical\s+hold|regulatory\s+hold)\b",
-        _I,
-    ),
-    "supply_or_drug_availability": re.compile(
-        r"\b(?:no|not|without|unrelated\s+to)\b[^.;,]{0,35}\b(?:supply|shortage|drug\s+availability)\b",
-        _I,
+    "supply_or_drug_availability": _negation(
+        r"no|without", r"supply|shortage|drug\s+availability", 35
     ),
 }
 

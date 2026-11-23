@@ -439,3 +439,17 @@ def test_repeated_flow_group_id_withholds_retention() -> None:
     assert ret["flow_status"] == "malformed_participant_flow"
     assert ret.get("period1_started") is None
     assert ret.get("period1_completion_rate") is None
+
+
+@pytest.mark.parametrize("milestone_index", [0, 1])  # STARTED, COMPLETED
+def test_repeated_milestone_achievement_withholds_retention(milestone_index: int) -> None:
+    """A second count for the same retained arm would replace the first (60 -> 999 inflates STARTED)."""
+    import copy
+
+    study = copy.deepcopy(make_ctgov_study("NCT99100064"))
+    ms = study["resultsSection"]["participantFlowModule"]["periods"][0]["milestones"][milestone_index]
+    ms["achievements"].append({"groupId": "FG000", "numSubjects": "999"})
+    ret = extract_period1_retention(study)
+    assert ret["flow_status"] == "malformed_participant_flow"
+    assert ret.get("period1_started") is None
+    assert ret.get("period1_completion_rate") is None

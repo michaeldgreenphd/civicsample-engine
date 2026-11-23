@@ -662,11 +662,17 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
             continue
         mtype = ms.get("type")
         if mtype in ("STARTED", "COMPLETED") and mtype not in milestones:
-            ach = {
-                a["groupId"]: a.get("numSubjects")
-                for a in (ms.get("achievements") or [])
-                if isinstance(a, dict) and isinstance(a.get("groupId"), str)
-            }
+            ach: dict[str, Any] = {}
+            for a in ms.get("achievements") or []:
+                if not isinstance(a, dict) or not isinstance(a.get("groupId"), str):
+                    continue
+                if a["groupId"] in ach and a["groupId"] in arm_id_set:
+                    # A retained arm counted twice in one milestone has no single count; keeping
+                    # either value would publish an arbitrary STARTED / COMPLETED.
+                    base["flow_status"] = "malformed_participant_flow"
+                    base["completion_rate_status"] = "withheld_missing_started_or_completed"
+                    return base
+                ach[a["groupId"]] = a.get("numSubjects")
             milestones[mtype] = ach
 
     if "STARTED" not in milestones:
