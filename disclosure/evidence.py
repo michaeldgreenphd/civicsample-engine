@@ -165,7 +165,7 @@ OPENFDA_DRUG_FLOOD_THRESHOLD = 25
 OPENFDA_CANDIDATE_STRENGTH = {'identifier_confirmed': 0, 'not_validated': 1, 'rejected_by_rule': 2}
 
 LINK_ID_RE = re.compile(r'^link:[0-9a-f]{16}$')
-NCT_RE = re.compile(r'^NCT\d{8}$')
+NCT_RE = re.compile(r'^NCT[0-9]{8}\Z')  # ASCII digits, no trailing newline (as acquire.NCT_RE)
 HEX64_RE = re.compile(r'^[0-9a-f]{64}$')
 ISO_DAY_RE = re.compile(r'^(\d{4})-(\d{2})-(\d{2})$')
 ISO_MONTH_RE = re.compile(r'^(\d{4})-(\d{2})$')

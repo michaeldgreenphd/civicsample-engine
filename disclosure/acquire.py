@@ -20,6 +20,7 @@ import gzip
 import hashlib
 import json
 import re
+import shlex
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -56,7 +57,8 @@ SOURCES: dict[str, str] = {
 }
 STAGES = ('ctgov', 'literature', 'openfda', 'freeze')
 
-NCT_RE = re.compile(r'^NCT\d{8}$')
+# ASCII digits and \Z: \d also matches other scripts' digits, and $ allows a trailing newline.
+NCT_RE = re.compile(r'^NCT[0-9]{8}\Z')
 PMID_RE = re.compile(r'^\d{1,10}$')
 PLACEBO_TERMS = frozenset({
     'placebo', 'matching placebo', 'oral placebo', 'iv placebo', 'subcutaneous placebo',
@@ -1286,8 +1288,10 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
             hint = (
                 '; it was frozen before the CT.gov version-bracket check. Its raw logs are still in the '
                 f"cache: write this manifest's {n_ids} requested_nct_ids to a file, one per line, and run "
-                f'`scripts/build_drug_disclosure.py acquire --cache {cache_dir} --nct-list FILE '
-                '--stage ctgov --stage freeze` to observe the CT.gov version again and freeze it again'
+                # The script is not executable (mode 0644), and the path is quoted for the shell.
+                f'`python3 scripts/build_drug_disclosure.py acquire --cache {shlex.quote(str(cache_dir))} '
+                '--nct-list FILE --stage ctgov --stage freeze` from the repository root to observe the CT.gov '
+                'version again and freeze it again'
             )
         raise CacheIntegrityError(
             f'{manifest_path}: unsupported schema_version {found!r} (expected {CACHE_SCHEMA_VERSION}){hint}'

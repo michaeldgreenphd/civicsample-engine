@@ -10,6 +10,7 @@ import importlib.util
 import inspect
 import json
 import re
+import shlex
 import shutil
 import sys
 import urllib.parse
@@ -2236,7 +2237,7 @@ def test_a_cache_frozen_before_the_version_bracket_check_is_refused(
 ) -> None:
     # The bracket needs the raw log's order, which the key-sorted archive drops, so it cannot be
     # re-checked on load; a version-1 manifest (frozen without it) is refused by version instead.
-    cache = tmp_path / 'old_cache'
+    cache = tmp_path / 'old cache'  # a space, so the command must quote the path
     shutil.copytree(frozen_cache.cache_dir, cache)
     manifest_path = cache / 'manifest.json'
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
@@ -2245,23 +2246,38 @@ def test_a_cache_frozen_before_the_version_bracket_check_is_refused(
     manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
     with pytest.raises(A.CacheIntegrityError, match=r'schema_version 1 \(expected 2\).*freeze it again') as refused:
         A.load_frozen_cache(cache)
-    message = str(refused.value)
-    assert f"this manifest's {len(F.NCT_IDS)} requested_nct_ids" in message
-    assert f'acquire --cache {cache} --nct-list FILE --stage ctgov --stage freeze' in message
     out = tmp_path / 'out'
     assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--as-of', F.AS_OF,
                            '--generated-at', F.GENERATED_AT]) == 1
     assert not out.exists()
-    # Following the message: the old manifest's IDs in a file, and the named acquire command. The
-    # ctgov stage reuses every settled study and observes the version twice; freeze then succeeds.
+
+    # Follow the message: its command, split as a shell would, runs the script through python3 with
+    # the quoted cache path; FILE is the old manifest's IDs. The ctgov stage reuses every settled
+    # study and observes the version twice; freeze then succeeds.
+    message = str(refused.value)
+    assert f"this manifest's {len(F.NCT_IDS)} requested_nct_ids" in message
+    argv = shlex.split(re.search(r'`([^`]+)`', message).group(1))  # type: ignore[union-attr]
+    assert argv[:3] == ['python3', 'scripts/build_drug_disclosure.py', 'acquire']
+    assert (ROOT / argv[1]).is_file()
     id_file = tmp_path / 'ids.txt'
     id_file.write_text('\n'.join(manifest['requested_nct_ids']) + '\n', encoding='utf-8')
+    args = [str(id_file) if a == 'FILE' else a for a in argv[2:]]
+    assert args[args.index('--cache') + 1] == str(cache)
     calls: list[str] = []
     monkeypatch.setattr(A, 'requests_get', lambda: F.stub_get(calls))
-    assert cli_build.main(['acquire', '--cache', str(cache), '--nct-list', str(id_file),
-                           '--stage', 'ctgov', '--stage', 'freeze']) == 0
+    assert cli_build.main(args) == 0
     assert calls and all(c.startswith(f'{A.CTGOV_API}/version?') for c in calls)
     assert A.load_frozen_cache(cache).manifest['schema_version'] == 2
+
+
+@pytest.mark.parametrize(
+    'nct', ['NCT\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668', 'NCT01234567\n', 'NCT0123456']
+)
+def test_nct_ids_are_eight_ascii_digits_with_nothing_after(nct: str) -> None:
+    # \d matched other scripts' digits and $ allowed a trailing newline.
+    assert A.NCT_RE.match(nct) is None
+    assert E.NCT_RE.match(nct) is None
+    assert A.NCT_RE.match('NCT01234567') is not None and E.NCT_RE.match('NCT01234567') is not None
 
 
 def test_acquire_cli_refuses_when_the_version_request_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
