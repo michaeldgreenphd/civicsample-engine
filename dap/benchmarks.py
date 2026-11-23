@@ -586,14 +586,21 @@ REQUIRED_STR = "required string"
 # any other value (a typo such as PHASE_3, or a value CT.gov might add) is refused by name rather than
 # published as a phase stratum of its own, so a new CT.gov value would show up as a refusal here.
 CTGOV_PHASES: frozenset[str] = frozenset({"NA", "EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4"})
+# A measurement or denominator count is read through its `groupId` and its `value`. `value` is CT.gov's
+# text ("60", "NA"); `src/utils.measurement_number` turns it into a number with `str()`, and
+# `sum_measurements` counts one that does not parse as 0, so a missing or non-string value (`{}`, `["12"]`,
+# `true`, `null`) moved a posted row's participants into the balanced unknown remainder. All 132,311
+# measurements and 10,361 denominator counts in the 3,133 stored records with a baseline table carry
+# both as strings.
+_BASELINE_VALUE: dict[str, Any] = {"groupId": REQUIRED_STR, "value": REQUIRED_STR}
 BASELINE_SHAPE: dict[str, Any] = {
     "groups": {"title": str},
-    "denoms": {"units": REQUIRED_STR, "counts": {}},
+    "denoms": {"units": REQUIRED_STR, "counts": _BASELINE_VALUE},
     "measures": {
         "title": REQUIRED_STR,
         "paramType": str,
         "unitOfMeasure": str,
-        "classes": {"categories": {"title": str, "measurements": {}}},
+        "classes": {"categories": {"title": str, "measurements": _BASELINE_VALUE}},
     },
 }
 
@@ -902,6 +909,51 @@ def weekly_block_flag_problem(block: str, payload: dict[str, Any]) -> str | None
     return None
 
 
+def weekly_block_totals_problem(block: str, payload: dict[str, Any]) -> str | None:
+    """Why a weekly race or ethnicity block's `omb_totals` differ from the category rows they are summed
+    from, or `None`.
+
+    `dap/demographics.py` reads the totals and trusts them, so a total edited away from its rows changed
+    the published counts and shares with nothing reported (`omb_totals.white` raised by 30 published 90
+    White participants against rows holding 60). The extractors build each total as the sum of its
+    `raw_categories` counts, and add to it only through fields the block records:
+      * race (`src/race_extractor.py`): `unknown_not_reported` adds the denominator shortfall,
+        `unknown_inferred` plus `unknown_ethnicity_only`; every other total is its rows' sum;
+      * ethnicity (`src/ethnicity_extractor.py`): `not_hispanic_latino` adds `not_hispanic_from_race_rows`
+        (absent on records the field predates, read as 0), and `unknown_not_reported` adds the shortfall,
+        which the block does not record: it exceeds its rows' sum exactly when the block carries
+        `denominator_balanced`, and equals it otherwise; `hispanic_latino` is its rows' sum.
+    The all-zero rejection clears the totals and the rows together. Every block of the 80,890 weekly
+    records keeps these rules (4,577 ethnicity blocks balanced), and so does every block the current
+    extractors write for the 3,130 stored trials with results.
+    """
+    rows: dict[str, int] = {key: 0 for key in payload["omb_totals"]}
+    for entry in payload["raw_categories"]:
+        rows[entry["omb_category"]] += entry["count"]
+    added: dict[str, int] = {}
+    if block == "race":
+        added["unknown_not_reported"] = payload["unknown_inferred"] + payload.get("unknown_ethnicity_only", 0)
+    else:
+        added["not_hispanic_latino"] = payload.get("not_hispanic_from_race_rows", 0)
+    for key, total in payload["omb_totals"].items():
+        if block == "ethnicity" and key == "unknown_not_reported":
+            balanced = "denominator_balanced" in payload["flags"]
+            if (total > rows[key]) if balanced else (total == rows[key]):
+                continue
+            return (
+                f"ethnicity.omb_totals.unknown_not_reported is {total} beside rows summing to {rows[key]}, "
+                f"which {'a balanced' if balanced else 'an unbalanced'} block cannot hold "
+                "(see weekly_block_totals_problem)"
+            )
+        want = rows[key] + added.get(key, 0)
+        if total != want:
+            return (
+                f"{block}.omb_totals.{key} is {total}, but its category rows and recorded additions give {want} "
+                "(see weekly_block_totals_problem)"
+            )
+    return None
+
+
 def _demographic_child_problem(block: str, key: str, kind: str, value: Any) -> str | None:
     """Why one child of a weekly race, ethnicity or sex block is not of its kind
     (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`), or `None`."""
@@ -981,7 +1033,9 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     and its counts non-negative. The `race`, `ethnicity`, `sex` and `gender` blocks must carry the
     children `dap/demographics.py` reads, each of the kind the extractors write
     (`WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS`), with `reported` true exactly when the block's totals are not
-    all zero (`WEEKLY_BLOCK_TOTALS`), and `results_date` must be "" or a date. All 80,890 weekly
+    all zero (`WEEKLY_BLOCK_TOTALS`), the race and ethnicity flags and totals agreeing with the rows
+    they come from (`weekly_block_flag_problem`, `weekly_block_totals_problem`), and `results_date`
+    must be "" or a date. All 80,890 weekly
     records pass (80,097 `reported`, 727 `uninformative`, 66 `explicit_unknown_only`).
     """
     for key, (field_type, non_blank) in WEEKLY_SCALAR_FIELDS.items():
@@ -1015,7 +1069,7 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
                 "(the extractor reports a block exactly when its counts are not all zero)"
             )
     for block in ("race", "ethnicity"):
-        if problem := weekly_block_flag_problem(block, rec[block]):
+        if problem := weekly_block_flag_problem(block, rec[block]) or weekly_block_totals_problem(block, rec[block]):
             return problem
     status = rec["sex_gender"].get("sex_report_status")
     if status not in SEX_GENDER_STATES:

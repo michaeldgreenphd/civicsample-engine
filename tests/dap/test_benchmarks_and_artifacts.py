@@ -1581,6 +1581,21 @@ def _measured_study(nct_id: str) -> dict:
          f"{_BASE}.measures[0].classes[0].categories[0].title (a string)"),
         (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "categories", 0,
           "measurements"), True, f"{_BASE}.measures[0].classes[0].categories[0].measurements (a list)"),
+        # On a26822e each loaded, and src/utils.sum_measurements counted the row as 0, so its participants
+        # were folded into the balanced unknown remainder (White 60 became unknown_not_reported 60).
+        *[
+            (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "categories", 0,
+              "measurements", 0, "value"), bad, f"{_BASE}.measures[0].classes[0].categories[0].measurements[0].value"
+             " (a string)")
+            for bad in ({}, ["60"], True, None, 60)
+        ],
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "categories", 0,
+          "measurements", 0, "groupId"), 0,
+         f"{_BASE}.measures[0].classes[0].categories[0].measurements[0].groupId (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "counts", 0, "value"), 100,
+         f"{_BASE}.denoms[0].counts[0].value (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "counts", 0, "groupId"), None,
+         f"{_BASE}.denoms[0].counts[0].groupId (a string)"),
     ],
 )
 def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
@@ -1601,6 +1616,16 @@ def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
     plain = tmp_path / "studies.jsonl"
     plain.write_text(json.dumps(complete) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match=want):
+        benchmarks.load_study_records(plain)
+
+
+def test_a_measurement_without_its_value_is_refused(tmp_path: Path) -> None:
+    bad = _measured_study("NCT99800022")
+    bad["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"][0][
+        "measurements"][0].pop("value")
+    plain = tmp_path / "studies.jsonl"
+    plain.write_text(json.dumps(_measured_study("NCT99800021")) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=re.escape("categories[0].measurements[0].value (a string)")):
         benchmarks.load_study_records(plain)
 
 
@@ -2076,6 +2101,48 @@ def test_weekly_block_flags_with_their_fields_load(tmp_path: Path) -> None:
                 flags=["ethnicity_rows_skipped", "shortfall_is_ethnicity_rows", "denominator_balanced",
                        "combined_race_ethnicity"])
     race["raw_categories"][0]["flags"] = ["combined_race_ethnicity"]
+    race["omb_totals"]["unknown_not_reported"] += 5  # the shortfall the two fields record
+    assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
+
+
+def _raise_total(block: str, key: str, by: int) -> Any:
+    return lambda rec: rec[block]["omb_totals"].__setitem__(key, rec[block]["omb_totals"][key] + by)
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        # On a26822e each loaded, and the analyzers published the edited total: white 90 beside rows of 60.
+        (_raise_total("race", "white", 30),
+         "race.omb_totals.white is 90, but its category rows and recorded additions give 60"),
+        (_raise_total("race", "unknown_not_reported", 3),
+         "race.omb_totals.unknown_not_reported is 8, but its category rows and recorded additions give 5"),
+        (_raise_total("ethnicity", "hispanic_latino", 30),
+         "ethnicity.omb_totals.hispanic_latino is 45, but its category rows and recorded additions give 15"),
+        (_raise_total("ethnicity", "not_hispanic_latino", -3),
+         "ethnicity.omb_totals.not_hispanic_latino is 77, but its category rows and recorded additions give 80"),
+        # an ethnicity unknown above its rows needs denominator_balanced, and one with the flag must exceed them
+        (_raise_total("ethnicity", "unknown_not_reported", 4),
+         "ethnicity.omb_totals.unknown_not_reported is 9 beside rows summing to 5, which an unbalanced block"),
+        (lambda rec: rec["ethnicity"]["flags"].append("denominator_balanced"),
+         "ethnicity.omb_totals.unknown_not_reported is 5 beside rows summing to 5, which a balanced block"),
+        (lambda rec: rec["ethnicity"].update(not_hispanic_from_race_rows=6),
+         "ethnicity.omb_totals.not_hispanic_latino is 80, but its category rows and recorded additions give 86"),
+    ],
+)
+def test_weekly_block_totals_must_equal_their_rows(tmp_path: Path, change: Any, problem: str) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    change(weekly_doc["data"][1])
+    with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem}")):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
+def test_weekly_block_totals_with_their_recorded_additions_load(tmp_path: Path) -> None:
+    # The two ethnicity additions the extractor records, and a balanced shortfall it does not.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    eth = weekly_doc["data"][1]["ethnicity"]
+    eth.update(not_hispanic_from_race_rows=6, flags=["denominator_balanced", "not_hispanic_from_combined_table"])
+    eth["omb_totals"].update(not_hispanic_latino=86, unknown_not_reported=9)
     assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
 
 

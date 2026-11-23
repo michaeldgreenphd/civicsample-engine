@@ -379,6 +379,9 @@ def build_weekly_full_records_doc() -> dict[str, Any]:
                          "flags": []},
                         {"omb_category": "not_hispanic_latino", "original": "Not Hispanic or Latino", "count": 80,
                          "flags": []},
+                        # The row its unknown total is summed from (weekly_block_totals_problem).
+                        {"omb_category": "unknown_not_reported", "original": "Unknown or Not Reported", "count": 5,
+                         "flags": []},
                     ],
                     "flags": [],
                 },

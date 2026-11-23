@@ -129,7 +129,10 @@ measurements; see `TYPED_PROTOCOL_PARTS` and `BASELINE_SHAPE`), so a malformed r
 name instead of stopping the build with a traceback. The locations module and list, and every
 location and collaborator entry, are checked the same way (`LIST_ENTRY_FIELDS`): a skipped `null`
 location, or a module read as empty, would lower or zero the listed facilities and move the
-footprint class with nothing reported.
+footprint class with nothing reported. Every measurement and denominator count must carry its
+`groupId` and `value` as strings, CT.gov's form (`"60"`, `"NA"`): `src/utils.sum_measurements`
+counts a value it cannot parse as 0, so a missing or non-string one (`{}`, `["60"]`, `true`, `null`)
+moved a posted row's participants into the balanced unknown remainder.
 Weekly full records never pass these checks, so their own lists are checked
 too (`WEEKLY_LIST_FIELDS`): `study_sites`, `collaborators` and `conditions`
 must be present, as `src/utils.py` always writes them; `study_sites` and
@@ -198,7 +201,13 @@ when `unknown_ethnicity_only` is positive, `denominator_balanced` exactly when a
 shortfall was folded into the unknowns, `split_from_combined` and
 `combined_race_ethnicity` exactly when a category entry carries them, and
 `all_zero_rejection` (race or ethnicity) only on an unreported block. A false
-`ethnicity_rows_skipped` quarantined the whole race table.
+`ethnicity_rows_skipped` quarantined the whole race table. The race and ethnicity
+`omb_totals` must equal the category rows they are summed from
+(`weekly_block_totals_problem`), with only the additions the block records: a race
+`unknown_not_reported` adds `unknown_inferred` and `unknown_ethnicity_only`, an
+ethnicity `not_hispanic_latino` adds `not_hispanic_from_race_rows`, and an
+ethnicity `unknown_not_reported` exceeds its rows exactly when the block carries
+`denominator_balanced`. A total edited away from its rows was published as it stood.
 A category entry flagged `unmapped` must be in the category the extractors give
 such rows (`other` for race, `unknown_not_reported` for ethnicity), since the
 analyzers subtract or drop flagged rows by that rule. A condition_mesh sidecar
