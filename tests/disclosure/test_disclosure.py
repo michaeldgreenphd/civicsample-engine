@@ -2051,6 +2051,50 @@ def test_a_mistyped_fda_submission_date_is_unknown(raw: object) -> None:
     assert E._openfda_action_date({**candidate, 'submissions': [_ORIG_2000]}) == ('2000-01-15', 'day')
 
 
+def _pmid_statement_check(locator: str, excerpt: str, result: dict[str, Any]) -> str:
+    row = dict.fromkeys(E.STATEMENT_COLUMNS, '')
+    row.update(statement_id='stmt-pmid', nct_id='NCT09990001', source_type='literature_record',
+               source_locator=locator, verbatim_excerpt=excerpt, recorded_by='Curator', notes='PubMed record')
+    pmid = locator.split(':')[1]
+    records = {f'literature/pubmed_pmid/{pmid}': {
+        'status': 200, 'body': {'header': {'type': 'esummary', 'note': 'Primary endpoint met at Week 24'},
+                                'result': result}}}
+    link = E.build_statement_links([row], 'a' * 64, {}, records, {})[0]
+    return link['detail']['statement_check']
+
+
+_ESUMMARY_111_222 = {
+    'uids': ['99000111', '99000222'],
+    '99000111': {'uid': '99000111', 'title': 'A background paper'},
+    '99000222': {'uid': '99000222', 'title': 'Primary endpoint met at Week 24'},
+}
+
+
+@pytest.mark.parametrize(
+    ('locator', 'excerpt', 'result', 'check'),
+    [
+        # On 8a57052 each was quote_found_at_locator: the whole response was read, so the excerpt stood
+        # in a sibling PMID's entry, in the response's header, or in a response without the PMID's entry.
+        ('pmid:99000111', 'Primary endpoint met at Week 24', _ESUMMARY_111_222, 'excerpt_not_found_at_locator'),
+        ('pmid:99000333', 'Primary endpoint met at Week 24', _ESUMMARY_111_222, 'locator_not_resolved'),
+        ('pmid:99000111', 'Primary endpoint met at Week 24',
+         {'uids': ['99000111'], '99000111': {'uid': '99000111', 'error': 'cannot get document summary'}},
+         'locator_not_resolved'),
+        # On 8a57052 a sub-path was resolved against the whole response, where no path reaches a PMID's
+        # entry (a path part cannot start with a digit), so it never resolved.
+        # Now it resolves, inside the PMID's entry only (the sibling's uid is not found there).
+        ('pmid:99000222:title', 'Primary endpoint met', _ESUMMARY_111_222, 'quote_found_at_locator'),
+        ('pmid:99000222:uid', '99000111', _ESUMMARY_111_222, 'excerpt_not_found_at_locator'),
+        # control: an excerpt in the PMID's own entry
+        ('pmid:99000222', 'Primary endpoint met at Week 24', _ESUMMARY_111_222, 'quote_found_at_locator'),
+    ],
+)
+def test_a_pmid_locator_reads_only_that_pmids_esummary_entry(
+    locator: str, excerpt: str, result: dict[str, Any], check: str
+) -> None:
+    assert _pmid_statement_check(locator, excerpt, result) == check
+
+
 @pytest.mark.parametrize('has_results', ['<absent>', None, 'false', 0, True])
 def test_365d_window_needs_explicit_unposted_evidence_before_an_unreported_state(has_results: object) -> None:
     as_of = date(2026, 11, 1)

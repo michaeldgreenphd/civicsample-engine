@@ -1096,7 +1096,11 @@ def _locate_statement_source(
     names no value in it), or `source_not_retrieved`. A locator that does not resolve never falls
     back to the whole response: an excerpt found elsewhere in the body does not stand at the locator.
     The one locator that names a whole record is `pmid:<PMID>` with no sub-path, which resolves to
-    that PMID's own PubMed esummary record.
+    that PMID's own PubMed esummary record, `body['result'][PMID]`; `pmid:<PMID>:<path>` resolves the
+    path inside that record. Both had read the whole response: with no sub-path an excerpt standing in
+    a sibling PMID's entry, or in the response's metadata, was confirmed at `pmid:<PMID>`, and a sub-path
+    could not reach the PMID's entry at all (a path part cannot start with a digit). A response without
+    that PMID's entry, or whose entry is NCBI's error for an unresolved PMID, does not resolve.
     """
     nct_id = row['nct_id'].strip()
     stype = row['source_type'].strip()
@@ -1117,9 +1121,15 @@ def _locate_statement_source(
             pmid, _, subpath = locator[5:].partition(':')
             rec = literature_records.get(f'literature/pubmed_pmid/{pmid}')
             if rec and rec.get('status') == 200 and isinstance(rec.get('body'), dict):
-                if not subpath:
-                    return json.dumps(rec['body']), _record_sha256(rec), 'resolved'
-                return _at_locator(rec, subpath)
+                result = rec['body'].get('result')
+                entry = result.get(pmid) if isinstance(result, dict) else None
+                if not isinstance(entry, dict) or entry.get('uid') != pmid or 'error' in entry:
+                    return None, _record_sha256(rec), 'locator_not_resolved'
+                text = (
+                    json.dumps(entry, ensure_ascii=False, sort_keys=True) if not subpath
+                    else resolve_json_locator(entry, subpath)
+                )
+                return text, _record_sha256(rec), 'resolved' if text is not None else 'locator_not_resolved'
         rec = literature_records.get(f'literature/epmc_nct/{nct_id}')
         if rec and rec.get('status') == 200 and isinstance(rec.get('body'), dict):
             return _at_locator(rec, locator)
