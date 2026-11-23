@@ -42,6 +42,7 @@ import io
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -5650,3 +5651,738 @@ def test_redteam_m3_documents_and_provenance_disagreeing_on_a_document_refused(
         ],
     )
     _rt_assert_refused(cli.main(argv), out, capsys)
+
+
+# ── Skeptic review of m3 at 5658d7f: each test below failed on that code. ────
+# Every trial ID is fictional (NCT99xxxxxx).
+
+_SK_SECRET = "SKEPTIC-HR-0.68"
+_SK_ABSENT = "NCT99000099"
+
+
+def _sk_without(argv: list[str], option: str) -> list[str]:
+    """``argv`` with ``option`` and its value removed."""
+    out: list[str] = []
+    skip = False
+    for item in argv:
+        if skip:
+            skip = False
+            continue
+        if item == option:
+            skip = True
+            continue
+        out.append(item)
+    return out
+
+
+def _sk_locations(nct_id: str, outcome_index: int) -> list[dict[str, Any]]:
+    """Complete location rows for one primary outcome of ``nct_id``."""
+    rows = _make_complete_locations(nct_id)
+    for row in rows:
+        row["primary_outcome_index"] = outcome_index
+    return rows
+
+
+def _sk_two_outcome_study(nct_id: str) -> dict[str, Any]:
+    """A CT.gov-shaped record registering two primary outcomes (posting one measure)."""
+    study = _make_ctgov_study(nct_id)
+    study["protocolSection"]["outcomesModule"]["primaryOutcomes"].append(
+        {"measure": "Progression-free survival", "timeFrame": "Up to 12 months", "description": None}
+    )
+    return study
+
+
+def _sk_side_args(tmp_path: pathlib.Path, *pairs: tuple[str, Any]) -> list[str]:
+    """``[option, path, ...]`` for side inputs written as JSON (a str verbatim)."""
+    args: list[str] = []
+    for pos, (option, content) in enumerate(pairs):
+        args += [option, str(_rt2_write(tmp_path / f"sk_side_{pos}.json", content))]
+    return args
+
+
+# Finding 1: a primary outcome count is checked against the record's own outcomes.
+
+@pytest.mark.parametrize("case", ["live_n_primary_2_vs_registered_1", "count_3_vs_registered_1", "count_keys_disagree"])
+def test_skeptic_m3_stated_primary_outcome_count_contradicted_by_record_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """A manifest row's primary outcome count that the trial's own CT.gov
+    record (one registered primary outcome) or the row itself contradicts is
+    refused, so no location row for an outcome the trial does not have is
+    published. 5658d7f: exit 0 and --check exit 0, with location rows for
+    outcome 1 (or 2) beside a record registering outcome 0 only; the value 3
+    was taken over n_primary_outcomes 1 without a word."""
+    nct = "NCT99400001"
+    trials: Any = [_make_ctgov_study(nct)]
+    if case == "live_n_primary_2_vs_registered_1":
+        row: dict[str, Any] = _live_shaped_row(nct, docs=True)
+        loc_index = 1
+    elif case == "count_3_vs_registered_1":
+        row = {"nct_id": nct, "in_audit": False, "primary_outcomes_count": 3}
+        loc_index = 2
+    else:
+        row = {**_live_shaped_row(nct, docs=True), "n_primary_outcomes": 1, "primary_outcomes_count": 3}
+        loc_index = 2
+        trials = None
+    extra = [
+        "--manifest-cohort", "industry_outcomes_beta",
+        *_sk_side_args(tmp_path, ("--documents", _make_doc_profile(nct)), ("--locations", _rt_jsonl(_sk_locations(nct, loc_index)))),
+    ]
+    argv, out = _rt2_argv(tmp_path, manifest={"rows": [row]}, trials=trials, extra=extra)
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=1)
+
+
+def test_skeptic_m3_agreeing_primary_outcome_counts_build(tmp_path: pathlib.Path) -> None:
+    """Control for the refusal above: a live row stating the record's own
+    count (2 registered outcomes) builds, with rows for outcome 1 published,
+    and --check passes."""
+    nct = "NCT99400002"
+    extra = [
+        "--manifest-cohort", "industry_outcomes_beta",
+        *_sk_side_args(
+            tmp_path,
+            ("--documents", _make_doc_profile(nct)),
+            ("--locations", _rt_jsonl(_sk_locations(nct, 0) + _sk_locations(nct, 1))),
+        ),
+    ]
+    argv, out = _rt2_argv(
+        tmp_path, manifest={"rows": [_live_shaped_row(nct, docs=True)]}, trials=[_sk_two_outcome_study(nct)], extra=extra
+    )
+    assert cli.main(argv) == 0
+    assert cli.main(["--check", str(out)]) == 0
+    idx = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    assert idx["data"][0]["primary_outcomes_count"] == 2
+    assert idx["data"][0]["census_badge"]["census_status"] == "complete"
+
+
+@pytest.mark.parametrize("case", ["registered_index_gap", "measure_for_unregistered_outcome"])
+def test_skeptic_m3_prebuilt_results_index_only_outcomes_the_trial_has(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """A pre-built reported_results numbers its registered outcomes and its
+    measures as the builder writes them, by position: registered outcomes 0
+    and 7, or a lone measure for outcome 9, name outcomes the trial does not
+    have, and the block is refused. 5658d7f: primary_outcomes_count 2 (the
+    list length), location rows for the absent outcome 1 published and
+    passing --check, rows for the registered outcome 7 refused, and the
+    measure for outcome 9 published."""
+    nct = "NCT99400011"
+    registered: list[dict[str, Any]] = [{"outcome_index": 0, "measure": "OS", "time_frame": "24 months", "description": None}]
+    measures: list[dict[str, Any]] = [{"outcome_index": 0, "title": "OS"}]
+    if case == "registered_index_gap":
+        registered.append({"outcome_index": 7, "measure": "PFS", "time_frame": "12 months", "description": None})
+    else:
+        measures = [{"outcome_index": 9, "title": "Ghost measure"}]
+    trial = {
+        "nct_id": nct,
+        "brief_title": "Fictional pre-built trial",
+        "protocol": True,
+        "sap": True,
+        "reported_results": {
+            "results_posted": True,
+            "registered_primary_outcomes": registered,
+            "primary_outcome_measures": measures,
+        },
+    }
+    with pytest.raises(ol.OutcomesLayoutError):
+        ol.extract_reported_results(trial)
+    extra = _sk_side_args(
+        tmp_path, ("--documents", _make_doc_profile(nct)), ("--locations", _rt_jsonl(_sk_locations(nct, 1)))
+    )
+    argv, out = _rt2_argv(
+        tmp_path, manifest=[{"nct_id": nct, "in_audit": False, "cohorts": ["nih"]}], trials=[trial], extra=extra
+    )
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=1)
+
+
+@pytest.mark.parametrize("case", ["index_count_raised", "registered_outcome_removed_under_its_rows"])
+def test_skeptic_m3_check_holds_primary_outcome_count_to_the_shard(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """--check holds the index row's primary_outcomes_count to the shard's
+    own registered outcomes, so location rows for an outcome the shard does
+    not register are refused on disk as on input. 5658d7f: both edited
+    trees check ok (the bound was the index row's count alone)."""
+    nct = "NCT99400021"
+    manifest = [{"nct_id": nct, "in_audit": False}]
+    if case == "index_count_raised":
+        argv, out = _rt2_argv(tmp_path, manifest=manifest, trials=[_make_ctgov_study(nct)])
+    else:
+        extra = _sk_side_args(
+            tmp_path,
+            ("--documents", _make_doc_profile(nct)),
+            ("--locations", _rt_jsonl(_sk_locations(nct, 0) + _sk_locations(nct, 1))),
+        )
+        argv, out = _rt2_argv(tmp_path, manifest=manifest, trials=[_sk_two_outcome_study(nct)], extra=extra)
+    assert cli.main(argv) == 0
+    assert cli.main(["--check", str(out)]) == 0
+    if case == "index_count_raised":
+        _rt2_edit_index(out, lambda idx: idx["data"][0].__setitem__("primary_outcomes_count", 3))
+    else:
+        _rt2_edit_record(out, nct, lambda rec: rec["reported_results"]["registered_primary_outcomes"].pop())
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) == 1
+
+
+# Finding 2: Module 2's trial-level provenance is published, never dropped or misattributed.
+
+def _sk_population_record(nct_id: str, version: str, vocabulary: str, snapshot: str) -> dict[str, Any]:
+    """A TrialAnalysisPopulations-shaped record (Module 2's dataclass fields)."""
+    return {
+        "nct_id": nct_id,
+        "snapshot_date": snapshot,
+        "enrollment": 240.0,
+        "has_results_section": True,
+        "has_participant_flow": True,
+        "n_outcomes_total": 1,
+        "n_primary_outcomes": 1,
+        "outcomes": [
+            {"outcome_index": 0, "outcome_type": "PRIMARY", "population_class": "itt", "parser_rules_version": version}
+        ],
+        "primary_population_classes": ["itt"],
+        "parse_ok": True,
+        "parser_rules_version": version,
+        "vocabulary_sha256": vocabulary,
+    }
+
+
+def _sk_population_build(tmp_path: pathlib.Path, records: list[dict[str, Any]]) -> tuple[list[str], pathlib.Path]:
+    ids = [r["nct_id"] for r in records]
+    return _rt2_argv(
+        tmp_path,
+        manifest=[{"nct_id": n, "in_audit": False} for n in ids],
+        trials=[_make_ctgov_study(n) for n in ids],
+        extra=_sk_side_args(tmp_path, ("--population-parsed", records)),
+    )
+
+
+def test_skeptic_m3_population_record_provenance_published_with_each_trial(tmp_path: pathlib.Path) -> None:
+    """Each trial's Module 2 record keeps its own vocabulary_sha256,
+    snapshot_date and parser_rules_version in its shard. 5658d7f: only the
+    outcome rows were read; both hashes and snapshot_date appeared nowhere
+    in the tree."""
+    a, b = "NCT99400101", "NCT99400102"
+    version = "analysis_pop@2026-11-20.v1"
+    records = [
+        _sk_population_record(a, version, "1" * 64, "2026-11-19"),
+        _sk_population_record(b, version, "2" * 64, "2026-11-18"),
+    ]
+    argv, out = _sk_population_build(tmp_path, records)
+    assert cli.main(argv) == 0
+    assert cli.main(["--check", str(out)]) == 0
+    for nct, vocabulary, snapshot in ((a, "1" * 64, "2026-11-19"), (b, "2" * 64, "2026-11-18")):
+        _, sdoc = _read_shard(out, nct)
+        text = json.dumps(sdoc["data"][nct]["reported_results"])
+        assert vocabulary in text and snapshot in text and version in text
+    idx = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    assert idx["component_versions"]["analysis_population_parser"] == version
+
+
+def test_skeptic_m3_population_records_of_two_parser_versions_not_stamped_as_one(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Two trials parsed by different Module 2 versions are not published
+    under one component version. 5658d7f: exit 0 and component_versions
+    named the first record's v1 for both, so B's populations read as v1."""
+    records = [
+        _sk_population_record("NCT99400111", "analysis_pop@2026-11-20.v1", "1" * 64, "2026-11-19"),
+        _sk_population_record("NCT99400112", "analysis_pop@2026-12-01.v2", "2" * 64, "2026-11-18"),
+    ]
+    argv, out = _sk_population_build(tmp_path, records)
+    rc = cli.main(argv)
+    capsys.readouterr()
+    if rc != 0:
+        assert not out.exists()
+        return
+    idx = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    assert idx["component_versions"].get("analysis_population_parser") not in (
+        "analysis_pop@2026-11-20.v1",
+        "analysis_pop@2026-12-01.v2",
+    )
+    for record in records:
+        _, sdoc = _read_shard(out, record["nct_id"])
+        assert record["parser_rules_version"] in json.dumps(sdoc["data"][record["nct_id"]]["reported_results"])
+
+
+def test_skeptic_m3_population_record_key_not_published_is_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A key of a Module 2 record that the builder does not publish is
+    refused rather than dropped. 5658d7f: exit 0, the key absent."""
+    record = {**_sk_population_record("NCT99400121", "analysis_pop@2026-11-20.v1", "1" * 64, "2026-11-19"),
+              "reviewer_note": _SK_SECRET}
+    argv, out = _sk_population_build(tmp_path, [record])
+    rc = cli.main(argv)
+    capsys.readouterr()
+    if rc == 0:
+        _, sdoc = _read_shard(out, "NCT99400121")
+        assert _SK_SECRET in json.dumps(sdoc)
+    else:
+        assert rc == 1 and not out.exists()
+
+
+# Finding 3: Module 1's TrialDocumentRecord is published as given, or refused.
+
+_SK_UPLOAD_TIMING: dict[str, Any] = {
+    "uploaded_date": {
+        "raw": "08/21/2020 14:32",
+        "iso_normalized": "2020-08-21",
+        "date_precision": "day",
+        "earliest_iso": "2020-08-21",
+        "latest_iso": "2020-08-21",
+    },
+    "vs_primary_completion": {
+        "exact_days": -663,
+        "min_days": -663,
+        "max_days": -663,
+        "uploaded_precision": "day",
+        "anchor_precision": "day",
+        "date_precision": "day",
+        "relation": "before",
+    },
+}
+
+
+def test_skeptic_m3_module1_document_record_fields_published(tmp_path: pathlib.Path) -> None:
+    """api_doc_date, upload_timing, unreadable_statistical_pages,
+    unreadable_recovery_bucket and cache_hit are published with the
+    document, and --check passes the tree. 5658d7f: all five were dropped
+    and --check passed."""
+    nct = "NCT99400401"
+    profile = _make_doc_profile(nct)
+    given = {
+        "download_error": None,
+        "extraction_error": None,
+        "api_doc_date": "2020-03-15",
+        "upload_timing": _SK_UPLOAD_TIMING,
+        "unreadable_statistical_pages": [11],
+        "unreadable_recovery_bucket": None,
+        "cache_hit": True,
+    }
+    profile["documents"][0].update(given)
+    argv, out = _rt2_argv(
+        tmp_path,
+        manifest=[{"nct_id": nct, "in_audit": False}],
+        trials=[_make_ctgov_study(nct)],
+        extra=_sk_side_args(tmp_path, ("--documents", profile)),
+    )
+    assert cli.main(argv) == 0
+    assert cli.main(["--check", str(out)]) == 0
+    _, sdoc = _read_shard(out, nct)
+    published = sdoc["data"][nct]["document_profile"]["documents"][0]
+    for key, value in given.items():
+        assert key in published and published[key] == value, key
+
+
+def test_skeptic_m3_legacy_census_row_provenance_published(tmp_path: pathlib.Path) -> None:
+    """A legacy documents.jsonl row (Module 1's to_legacy_census_document_row:
+    model_id and profile_version beside the document fields) keeps both.
+    5658d7f: both were dropped."""
+    nct = "NCT99400402"
+    doc = dict(_make_doc_profile(nct)["documents"][0])
+    for key in ("readability_status", "redaction_markers", "upload_date", "pages_selected", "pages_deferred"):
+        doc.pop(key)
+    doc.update({"nct_id": nct, "model_id": "doc-model-fictional-1", "profile_version": "doc_indexer@2026-11-21.v1"})
+    argv, out = _rt2_argv(
+        tmp_path,
+        manifest=[{"nct_id": nct, "in_audit": False}],
+        trials=[_make_ctgov_study(nct)],
+        extra=_sk_side_args(tmp_path, ("--documents", _rt_jsonl([doc]))),
+    )
+    assert cli.main(argv) == 0
+    assert cli.main(["--check", str(out)]) == 0
+    _, sdoc = _read_shard(out, nct)
+    published = sdoc["data"][nct]["document_profile"]["documents"][0]
+    assert published.get("model_id") == "doc-model-fictional-1"
+    assert published.get("profile_version") == "doc_indexer@2026-11-21.v1"
+
+
+@pytest.mark.parametrize("case", ["document_row_unknown_key", "profile_unknown_key", "profile_badge_disagrees", "url_object"])
+def test_skeptic_m3_document_input_not_published_is_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """A document row or profile key the builder does not publish, Module
+    1's own document_badge disagreeing with the profile, and an object under
+    a text field are refused, never dropped or stringified. 5658d7f: exit 0
+    with the key dropped, the badge ignored and the object published as its
+    str()."""
+    nct = "NCT99400411"
+    profile = _make_doc_profile(nct)
+    if case == "document_row_unknown_key":
+        profile["documents"][0]["reviewer_note"] = _SK_SECRET
+    elif case == "profile_unknown_key":
+        profile["reviewer_note"] = _SK_SECRET
+    elif case == "profile_badge_disagrees":
+        profile["document_badge"] = {
+            "readability_status": "machine_readable",
+            "redaction_flags": [],
+            "doc_count": 2,
+            "total_physical_pages": 80,
+        }
+    else:
+        profile["documents"][0]["url"] = {"href": _SK_SECRET}
+    argv, out = _rt2_argv(
+        tmp_path,
+        manifest=[{"nct_id": nct, "in_audit": False}],
+        trials=[_make_ctgov_study(nct)],
+        extra=_sk_side_args(tmp_path, ("--documents", profile)),
+    )
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=1)
+
+
+def test_skeptic_m3_module1_document_badge_agreeing_with_profile_builds(tmp_path: pathlib.Path) -> None:
+    """Control: Module 1's own document_badge, when it is the badge the
+    profile gives, does not stop the build."""
+    nct = "NCT99400412"
+    profile = _make_doc_profile(nct)
+    profile["document_badge"] = {
+        "readability_status": "machine_readable",
+        "redaction_flags": [],
+        "doc_count": 1,
+        "total_physical_pages": 40,
+    }
+    argv, out = _rt2_argv(
+        tmp_path,
+        manifest=[{"nct_id": nct, "in_audit": False}],
+        trials=[_make_ctgov_study(nct)],
+        extra=_sk_side_args(tmp_path, ("--documents", profile)),
+    )
+    assert cli.main(argv) == 0
+    idx = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    assert idx["data"][0]["document_badge"] == profile["document_badge"]
+
+
+# Finding 4: input container stamps are carried; conflicts and an unknown time are not hidden.
+
+def test_skeptic_m3_input_container_stamps_carried_into_the_tree(tmp_path: pathlib.Path) -> None:
+    """Every input container's extracted_at and pipeline_commit reach
+    index.json. 5658d7f: the trials, manifest and documents containers'
+    commits and the documents container's extracted_at appeared nowhere."""
+    nct = "NCT99401001"
+    trials = {"extracted_at": "2026-10-01T00:00:00+00:00", "pipeline_commit": "1111111aaaaaaa", "trials": [_make_ctgov_study(nct)]}
+    manifest = {"extracted_at": "2026-10-01T00:00:00+00:00", "pipeline_commit": "2222222bbbbbbb", "rows": [{"nct_id": nct, "in_audit": False}]}
+    docs = {
+        "extracted_at": "2026-11-01T00:00:00+00:00",
+        "pipeline_commit": "abcdef1234567",
+        "rows": [{**doc, "nct_id": nct} for doc in _make_doc_profile(nct)["documents"]],
+    }
+    argv, out = _rt2_argv(tmp_path, manifest=manifest, trials=trials, extra=_sk_side_args(tmp_path, ("--documents", docs)))
+    assert cli.main(argv) == 0
+    assert cli.main(["--check", str(out)]) == 0
+    text = (out / "index.json").read_text(encoding="utf-8")
+    for stamp in ("1111111aaaaaaa", "2222222bbbbbbb", "abcdef1234567", "2026-11-01T00:00:00+00:00"):
+        assert stamp in text, stamp
+
+
+def test_skeptic_m3_conflicting_container_extraction_times_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Without --extracted-at, a trials container and a manifest container
+    giving different extracted_at values are refused, not resolved by
+    precedence. 5658d7f: exit 0, the trials container's value published and
+    the manifest's dropped."""
+    nct = "NCT99401002"
+    trials = {"extracted_at": "2026-10-01T00:00:00+00:00", "trials": [_make_ctgov_study(nct)]}
+    manifest = {"extracted_at": "2026-09-01T00:00:00+00:00", "rows": [{"nct_id": nct, "in_audit": False}]}
+    argv, out = _rt2_argv(tmp_path, manifest=manifest, trials=trials)
+    _rt_assert_refused(cli.main(_sk_without(argv, "--extracted-at")), out, capsys, expected_rc=1)
+
+
+def test_skeptic_m3_unknown_extraction_time_not_stamped_as_build_time(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """With no --extracted-at, --now-utc or container extracted_at, the tree
+    is not stamped with the wall-clock build time as its extraction time.
+    5658d7f: exit 0, extracted_at the moment of the build."""
+    nct = "NCT99401003"
+    manifest = {"rows": [_live_shaped_row(nct, docs=True)], "run_id": "outcomes-2026-06-30-fictional", "schema_version": 1}
+    argv, out = _rt2_argv(tmp_path, manifest=manifest, extra=["--manifest-cohort", "industry_outcomes_beta"])
+    rc = cli.main(_sk_without(argv, "--extracted-at"))
+    capsys.readouterr()
+    if rc == 0:
+        assert json.loads((out / "index.json").read_text(encoding="utf-8"))["extracted_at"] is None
+    else:
+        assert rc == 1 and not out.exists()
+
+
+# Finding 5: --check refuses a tree left half-swapped beside a retained backup.
+
+def test_skeptic_m3_check_refuses_tree_beside_retained_backup(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The state a SIGTERM leaves right after the new shards are moved in
+    (the previous index over the new shards, the previous shards and index
+    kept in <out>.partial) fails --check. 5658d7f: "outcomes tree check: ok",
+    exit 0, while the next build refused the same target. A .partial holding
+    only an unswapped staging tree beside an untouched target still checks ok."""
+    nct = "NCT99400801"
+    manifest = [{"nct_id": nct, "in_audit": False}]
+    argv_v1, out = _rt2_argv(tmp_path, manifest=manifest, trials=[_make_ctgov_study(nct)])
+    assert cli.main(argv_v1) == 0
+    v2_dir = tmp_path / "v2"
+    v2_dir.mkdir()
+    argv_v2, out_v2 = _rt2_argv(
+        v2_dir,
+        manifest=manifest,
+        trials=[_make_ctgov_study(nct)],
+        extra=_sk_side_args(v2_dir, ("--provenance", _make_module4_provenance(nct))),
+    )
+    assert cli.main(argv_v2) == 0
+
+    work = pathlib.Path(f"{out}.partial")
+    work.mkdir()
+    (work / ol.STAGING_MARKER_FILE).write_text(ol._marker_text(ol.STAGING_MARKER), encoding="utf-8")
+    (work / ol.BUNDLE_MARKER_FILE).write_text(ol._marker_text(ol.BUNDLE_MARKER), encoding="utf-8")
+    (work / ol.INDEX_FILE).write_bytes((out_v2 / ol.INDEX_FILE).read_bytes())
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) == 0  # an unswapped staging tree: the target is untouched
+
+    os.link(out / ol.INDEX_FILE, work / ol.PREVIOUS_INDEX_FILE)
+    os.replace(out / ol.SHARDS_DIR, work / ol.PREVIOUS_SHARDS_DIR)
+    shutil.copytree(out_v2 / ol.SHARDS_DIR, out / ol.SHARDS_DIR)
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) == 1
+    assert cli.main(argv_v1) == 1  # the build refuses the same target
+
+
+# Finding 6: every key form is compared in folded form, sha256 included.
+
+def test_skeptic_m3_key_forms_are_in_folded_form() -> None:
+    """Keys are compared after _folded_key, which keeps letters only, so a
+    listed form that is not its own fold can never match. 5658d7f:
+    SIDE_ROW_KEY_FORMS listed "sha256", which folds to "sha"."""
+    for forms in (
+        ol.SIDE_ROW_KEY_FORMS,
+        ol.HOLDOUT_SIDE_CONTENT_FORMS,
+        ol.HOLDOUT_INLINE_SECTION_FORMS,
+        ol._CTGOV_NATIVE_CONTENT_FORMS,
+        ol._TRIAL_ID_KEY_FORMS,
+        ol._TRIAL_ID_LIST_KEY_FORMS,
+    ):
+        assert all(ol._folded_key(form) == form for form in forms), sorted(f for f in forms if ol._folded_key(f) != f)
+    assert ol._folded_key("sha256") in ol.SIDE_ROW_KEY_FORMS
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_rc"),
+    [
+        ("holdout_large_docs_sha256", 2),
+        ("holdout_record_pdf_index_sha256", 2),
+        ("holdout_manifest_row_pdf_index_sha256", 2),
+        ("holdout_manifest_row_sha256", 2),
+        ("in_scope_record_pdf_index_sha256", 1),
+    ],
+)
+def test_skeptic_m3_pdf_sha256_in_a_trial_record_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+    expected_rc: int,
+) -> None:
+    """A PDF's sha256 carried in a trial's own record outside a section is
+    side material: refused for the holdout (exit 2) and for an in-scope
+    trial (exit 1), never dropped. 5658d7f: exit 0 in every case, the sha256
+    dropped without a word."""
+    pdf_row = {"filename": "Prot_SAP_000.pdf", "sha256": SHA_B}
+    studies: Any = _rt_pair()
+    rows: list[dict[str, Any]] = [dict(r) for r in _RT2_ROWS]
+    if case == "holdout_large_docs_sha256":
+        studies[1]["documentSection"] = {"largeDocumentModule": {"largeDocs": [
+            {"typeAbbrev": "Prot_SAP", "hasProtocol": True, "hasSap": True, **pdf_row}
+        ]}}
+    elif case == "holdout_record_pdf_index_sha256":
+        studies[1]["pdf_index"] = [pdf_row]
+    elif case == "holdout_manifest_row_pdf_index_sha256":
+        studies = None
+        rows[1]["pdf_index"] = [pdf_row]
+    elif case == "holdout_manifest_row_sha256":
+        studies = None
+        rows[1]["sha256"] = SHA_B
+    else:
+        studies[0]["pdf_index"] = [pdf_row]
+    argv, out = _rt2_argv(tmp_path, manifest=rows, trials=studies)
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=expected_rc)
+
+
+# Finding 7: a refusal at a trial-ID key names the position and type, never the value.
+
+_SK_QUOTE_CASES: tuple[str, ...] = (
+    "trials_nested_nct_id",
+    "trials_top_level_nctId",
+    "manifest_trial_nct_id",
+    "manifest_nct_ids_item",
+    "provenance_record_nctId",
+    "absent_trial_document_row_nct_id",
+    "absent_trial_provenance_nested_nct_id",
+)
+
+
+@pytest.mark.parametrize("value", ["object", "string"])
+@pytest.mark.parametrize("case", _SK_QUOTE_CASES)
+def test_skeptic_m3_trial_id_refusal_does_not_quote_the_value(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+    value: str,
+) -> None:
+    """Content under a trial-ID key of the holdout's record, or of a side
+    record for a trial outside the manifest, is not printed in the refusal;
+    the absent trial's record is refused before it is read. 5658d7f: every
+    case printed the value (Module 4's repr) on stderr."""
+    bad: Any = {"primary_result": _SK_SECRET} if value == "object" else "SKEPTICHR068"
+    studies: Any = _rt_pair()
+    rows: list[dict[str, Any]] = [dict(r) for r in _RT2_ROWS]
+    side: list[tuple[str, Any]] = []
+    if case == "trials_nested_nct_id":
+        studies[1]["protocolSection"]["armsInterventionsModule"] = {"armGroups": [{"label": "A", "nct_id": bad}]}
+    elif case == "trials_top_level_nctId":
+        studies[1]["nctId"] = bad
+    elif case == "manifest_trial_nct_id":
+        studies, rows[1]["trial_nct_id"] = None, bad
+    elif case == "manifest_nct_ids_item":
+        studies, rows[1]["nct_ids"] = None, [bad]
+    elif case == "provenance_record_nctId":
+        side = [("--provenance", {"nct_id": RT_HOLD, "nctId": bad})]
+    elif case == "absent_trial_document_row_nct_id":
+        profile = _make_doc_profile(_SK_ABSENT)
+        profile["documents"][0]["nct_id"] = bad
+        side = [("--documents", profile)]
+    else:
+        side = [("--provenance", {"nct_id": _SK_ABSENT, "registry_milestones": {"note": {"nct_id": bad}}})]
+    argv, out = _rt2_argv(tmp_path, manifest=rows, trials=studies, extra=_sk_side_args(tmp_path, *side))
+    rc = cli.main(argv)
+    err = capsys.readouterr().err
+    assert rc != 0 and not out.exists()
+    assert _SK_SECRET not in err and "SKEPTICHR068" not in err
+    assert RT_HOLD_DIGITS not in err
+
+
+# Finding 8: CT.gov's expandedAccessInfo.nctId names the expanded-access record, not this one.
+
+@pytest.mark.parametrize(("whose", "eap_id", "expected_rc"), [
+    ("in_scope", "NCT99000201", 0),
+    ("holdout", "NCT99000201", 0),
+    ("in_scope", RT_HOLD, 2),
+])
+def test_skeptic_m3_expanded_access_record_id_is_not_the_records_own(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    whose: str,
+    eap_id: str,
+    expected_rc: int,
+) -> None:
+    """A CT.gov v2 record whose statusModule.expandedAccessInfo.nctId names
+    its (fictional) expanded-access record builds, and --check passes; one
+    naming the holdout is still a firewall refusal. 5658d7f: exit 1, "names
+    a different trial than the record it is filed under", for clean data."""
+    studies = _rt_pair()
+    target = studies[0] if whose == "in_scope" else studies[1]
+    target["protocolSection"]["statusModule"]["expandedAccessInfo"] = {
+        "hasExpandedAccess": True,
+        "nctId": eap_id,
+        "statusForNctId": "AVAILABLE",
+    }
+    argv, out = _rt_build(tmp_path, studies=studies)
+    rc = cli.main(argv)
+    if expected_rc == 0:
+        assert rc == 0
+        assert cli.main(["--check", str(out)]) == 0
+    else:
+        _rt_assert_refused(rc, out, capsys, expected_rc=expected_rc)
+
+
+# Finding 9: a build and --check classify one holdout reference alike.
+
+@pytest.mark.parametrize("case", ["document_url_names_holdout", "document_row_nct_id_names_holdout"])
+def test_skeptic_m3_build_and_check_give_one_exit_for_one_holdout_reference(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    """The same holdout-named value in an in-scope trial's document profile
+    gets the same exit from a build (on input) and from --check (on disk).
+    5658d7f: the build exited 1 (identity rule first) and --check 2 (audit
+    scan first)."""
+
+    def edit(doc: dict[str, Any]) -> None:
+        if case == "document_url_names_holdout":
+            doc["url"] = RT_HOLD_URL
+        else:
+            doc["nct_id"] = RT_HOLD
+
+    profile = _make_doc_profile(RT_OK)
+    edit(profile["documents"][0])
+    argv, out = _rt2_argv(tmp_path, manifest=_RT2_ROWS, trials=_rt_pair(), extra=_sk_side_args(tmp_path, ("--documents", profile)))
+    build_rc = cli.main(argv)
+    assert build_rc != 0 and not out.exists()
+    tree_dir = tmp_path / "tree"
+    tree_dir.mkdir()
+    tree = _rt2_built_tree(tree_dir)
+    _rt2_edit_record(tree, RT_OK, lambda rec: edit(rec["document_profile"]["documents"][0]))
+    check_rc = cli.main(["--check", str(tree)])
+    assert RT_HOLD_DIGITS not in capsys.readouterr().err
+    assert check_rc == build_rc
+
+
+# Finding 10: --manifest-cohort with a non-string cohort is refused, not a traceback.
+
+@pytest.mark.parametrize("cohorts", [[{"x": _SK_SECRET}], [[_SK_SECRET]], ["nih", 1], [None]])
+def test_skeptic_m3_manifest_cohort_beside_non_string_cohort_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    cohorts: list[Any],
+) -> None:
+    """With --manifest-cohort, a row whose cohorts hold a non-string is
+    refused like any bad slug (exit 1, the value not shown). 5658d7f: an
+    uncaught TypeError traceback (unhashable type, or str < int)."""
+    rows = [_live_shaped_row(RT_OK, docs=True), {**_live_shaped_row(RT_HOLD, docs=True, in_audit=True), "cohorts": cohorts}]
+    argv, out = _rt2_argv(tmp_path, manifest={"rows": rows}, extra=["--manifest-cohort", "industry_outcomes_beta"])
+    rc = cli.main(argv)
+    err = capsys.readouterr().err
+    assert rc == 1 and not out.exists()
+    assert _SK_SECRET not in err and RT_HOLD_DIGITS not in err
+
+
+# Finding 11: a non-string date is refused, never published as null.
+
+@pytest.mark.parametrize("field", ["primary_completion_date", "results_first_post_date"])
+@pytest.mark.parametrize("value", [{"date": "2023-01-10", "type": "ACTUAL"}, 20230110])
+def test_skeptic_m3_non_string_flat_date_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    value: Any,
+) -> None:
+    """A flat row's date that is not a string is refused, as every other
+    index text field is. 5658d7f: exit 0, the date published as null."""
+    row = {**_live_shaped_row("NCT99401101", docs=True), field: value}
+    argv, out = _rt2_argv(tmp_path, manifest={"rows": [row]}, extra=["--manifest-cohort", "industry_outcomes_beta"])
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=1)
+
+
+@pytest.mark.parametrize("struct", [{"date": 20230110, "type": "ACTUAL"}, "2023-01-10"])
+def test_skeptic_m3_non_string_ctgov_date_struct_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    struct: Any,
+) -> None:
+    """A CT.gov date struct that is not an object, or whose date is not a
+    string, is refused. 5658d7f: exit 0, the date published as null."""
+    nct = "NCT99401102"
+    study = _make_ctgov_study(nct)
+    study["protocolSection"]["statusModule"]["resultsFirstPostDateStruct"] = struct
+    argv, out = _rt2_argv(tmp_path, manifest=[{"nct_id": nct, "in_audit": False}], trials=[study])
+    _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=1)
