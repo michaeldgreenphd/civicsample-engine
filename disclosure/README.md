@@ -121,7 +121,10 @@ python3 scripts/build_drug_disclosure.py build \
 # a --generated-at no earlier than the seeding, or none. No reviews.csv row may be dated after the
 # --generated-at day (build and contract): a build cannot include a later decision. Nor may a
 # documentary_statements.csv statement_date fall after it (build and contract), at the precision it
-# was written: a year or month containing the generation day is accepted.
+# was written: a year or month containing the generation day is accepted. generated_at stays out of
+# run_identity, so a rebuild at another time shares its identity and sibling files byte for byte;
+# run.json carries manifest_sha256, a digest of its own canonical content without that key, which the
+# contract recomputes, so an edited generated_at (or any other run.json field) is refused.
 
 # 3. Producer contract check and atomic site export. run.json producer.commit and
 #    uncommitted_changes are null when git was missing or failed at build time (never false); such a

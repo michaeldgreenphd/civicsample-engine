@@ -3935,3 +3935,50 @@ def test_statement_citing_a_retrievable_source_reads(tmp_path: Path, source_type
     # Control, on both heads: the four types `_locate_statement_source` resolves against the frozen cache.
     rows, _ = E.read_statements(_statements_csv(tmp_path / 'documentary_statements.csv', source_type))
     assert [r['source_type'] for r in rows] == [source_type]
+
+
+# ---------------------------------------------------------------- run.json digest and artifact roots
+
+def test_an_edited_generation_time_fails_the_contract(tmp_path: Path, built_dir: Path) -> None:
+    # On 8878a77 run.json's generated_at, outside run_identity and the file hashes, could be changed to
+    # another valid time after the cache's freeze, and the contract and its CLI passed the build.
+    edited = tmp_path / 'edited'
+    shutil.copytree(built_dir, edited)
+    run = json.loads((edited / 'run.json').read_text(encoding='utf-8'))
+    run['generated_at'] = '2026-11-02T08:00:00+00:00'
+    (edited / 'run.json').write_text(json.dumps(run), encoding='utf-8')
+    assert cli_check.main([str(edited)]) == 1
+    files, _ = ART.load_dir(edited)
+    assert any('manifest_sha256 does not match' in p for p in ART.check_contract(files))
+
+
+def test_a_rebuild_at_another_time_passes_with_the_same_identity(
+    frozen_cache: A.FrozenCache, built_files: dict[str, Any]
+) -> None:
+    # Control, on both heads: a build stating another generation time is its own valid build, and keeps
+    # the content identity of the first.
+    second = ART.build_artifacts(
+        frozen_cache,
+        reviews_path=ROOT / 'disclosure' / 'reviews.csv',
+        statements_path=ROOT / 'disclosure' / 'documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv',
+        producer=cli_build.producer_metadata(),
+        generated_at='2026-11-02T08:00:00+00:00',
+        as_of=date.fromisoformat(F.AS_OF),
+    )
+    assert ART.check_contract(second) == []
+    assert second['run.json']['run_identity'] == built_files['run.json']['run_identity']
+
+
+@pytest.mark.parametrize('root', ['[]', '7', '"summary"'])
+def test_a_sibling_whose_root_is_not_an_object_fails_without_a_traceback(
+    tmp_path: Path, built_dir: Path, root: str
+) -> None:
+    # On 8878a77 the contract noted the root, then `run_identity` called `.items()` on it, and the CLI
+    # printed an AttributeError traceback instead of FAIL.
+    bad = tmp_path / 'bad_root'
+    shutil.copytree(built_dir, bad)
+    (bad / 'summary.json').write_text(root, encoding='utf-8')
+    assert cli_check.main([str(bad)]) == 1
+    files, _ = ART.load_dir(bad)
+    assert 'summary.json: root JSON value is not an object' in ART.check_contract(files)

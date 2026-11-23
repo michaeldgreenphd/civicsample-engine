@@ -483,13 +483,26 @@ def run_identity(run: dict[str, Any], files: dict[str, Any]) -> str:
     """Deterministic 64-hex sha256 over run manifest (minus volatile keys) and sibling file digests."""
     manifest_body = {
         k: v for k, v in run.items()
-        if k not in ('run_id', 'run_identity', 'generated_at', 'files')
+        if k not in ('run_id', 'run_identity', 'generated_at', 'files', 'manifest_sha256')
     }
     sibling_digests = {
         name: sha256_bytes(dump({k: v for k, v in files[name].items() if k != 'run_id'}))
         for name in sorted(FILES)
     }
     return sha256_bytes(dump([manifest_body, sibling_digests]))
+
+
+def manifest_sha256(run: dict[str, Any]) -> str:
+    """sha256 over run.json's canonical dump without this digest's own key, `manifest_sha256`.
+
+    `generated_at` is kept out of `run_identity` so that rebuilds of the same inputs at another time share
+    their identity and sibling files byte for byte, and run.json is not among its own file hashes, so an
+    edit to `generated_at` (another valid timestamp after the cache's `frozen_at`) passed every check and
+    the site exporter published it. This digest covers every run.json field, `generated_at` included,
+    without changing the identity: an edit is refused unless the digest is recomputed with it, as an edit
+    to any other field is refused unless `run_identity` or the file hashes are.
+    """
+    return sha256_bytes(dump({k: v for k, v in run.items() if k != 'manifest_sha256'}))
 
 
 def generated_at_problem(value: Any) -> str | None:
@@ -820,6 +833,7 @@ def build_artifacts(
         **{k: v for k, v in run.items() if k != 'schema_version'},
     }
     full_run['files'] = {name: sha256_bytes(dump(files[name])) for name in sorted(FILES)}
+    full_run['manifest_sha256'] = manifest_sha256(full_run)
     return {'run.json': full_run, **files}
 
 
@@ -958,8 +972,8 @@ def check_contract(
     rid = run.get('run_id')
     if not isinstance(rid, str) or not RUN_ID_RE.match(rid):
         problems.append(f'run.json run_id {rid!r} is malformed')
-    # generated_at sits outside run_identity and run.json outside its own file hashes, so an edited
-    # value would pass every other check; it is parsed whole again here.
+    # generated_at sits outside run_identity and run.json outside its own file hashes, so the run.json
+    # digest (`manifest_sha256`) is what ties it to the build; it is also parsed whole again here.
     # The same holds for generation before the cache it read (`generated_before_frozen_problem`).
     inputs = run.get('inputs')
     frozen_at = inputs.get('cache_manifest_frozen_at') if isinstance(inputs, dict) else None
@@ -971,6 +985,8 @@ def check_contract(
     rident = run.get('run_identity')
     if not isinstance(rident, str) or not HEX64_RE.match(rident):
         problems.append(f'run.json run_identity {rident!r} must be a 64-hex sha256')
+    if run.get('manifest_sha256') != manifest_sha256(run):
+        problems.append('run.json manifest_sha256 does not match the canonical run.json (an edited field)')
 
     listed = run.get('files')
     if not isinstance(listed, dict):
@@ -984,10 +1000,12 @@ def check_contract(
     if set(FILES) - present:
         return problems + [f'missing required artifact file(s): {sorted(set(FILES) - present)}']
 
+    non_object = False
     for name in sorted(set(listed) & present):
         sibling = files[name]
         if not isinstance(sibling, dict):
             problems.append(f'{name}: root JSON value is not an object')
+            non_object = True
             continue
         expected_sha = listed[name]
         actual_dump_sha = sha256_bytes(dump(sibling))
@@ -998,6 +1016,10 @@ def check_contract(
         if sibling.get('run_id') != rid or sibling.get('schema_version') != SCHEMA_VERSION:
             problems.append(f'{name}: run_id or schema_version disagrees with run.json')
 
+    # The identity and every later check read each file as an object; a root of another type raised
+    # `AttributeError` in `run_identity` and the contract CLI printed a traceback instead of FAIL.
+    if non_object:
+        return problems
     expected_identity = run_identity(run, files)
     if isinstance(rident, str) and rident != expected_identity:
         problems.append('run.json run_identity does not match recomputed content/input digest')
