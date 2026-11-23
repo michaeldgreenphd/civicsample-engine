@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import ast
+import builtins
+import collections
 import inspect
+import io
+import os
+import socket
+import types
+from pathlib import Path
 from typing import Any, Callable
 
 import pytest
@@ -1051,3 +1058,395 @@ def test_population_holdout_error_contract() -> None:
     )
     with pytest.raises(ValueError):
         ap.PopulationAuditHoldoutError("nct_id_in_audit_set", "not a reason")
+
+
+# ---------------------------------------------------------------------------
+# 12. Red team, M2 round 1: holdout bypass attempts (test_redteam_m2_*)
+#
+# Each test asserts the CORRECT behaviour, which is refusal, for one attack
+# on an entry point that enforces the holdout. A test that fails here names
+# a bypass that is still open; it is not a test to loosen. Every id is
+# fictional (NCT99000001..NCT99999999) and no test touches the network or a
+# file. The holdout trial is NCT99000001 (_HOLDOUT_NCT); NCT99000002
+# (_CLEAN_NCT) is a trial the record says is not held out.
+# ---------------------------------------------------------------------------
+
+
+_REDTEAM_MARKER: str = "REDTEAM-M2-HOLDOUT-DESCRIPTION-MARKER"
+
+# Entry points that take one CT.gov-shaped study, and the retained-record one.
+_REDTEAM_STUDY_ENTRY_POINTS: list[tuple[str, Callable[[Any], Any]]] = [
+    ("parse_study_outcomes", ap.parse_study_outcomes),
+    ("select_raw_outcome_populations", ap.select_raw_outcome_populations),
+    ("parse_outcomes_frame", lambda study: ap.parse_outcomes_frame([study])),
+]
+_REDTEAM_ALL_ENTRY_POINTS: list[tuple[str, Callable[[Any], Any], bool]] = [
+    (name, entry, False) for name, entry in _REDTEAM_STUDY_ENTRY_POINTS
+] + [("build_outcomes_from_raw", ap.build_outcomes_from_raw, True)]
+
+
+def _redteam_holdout_record(retained: bool, **extra: Any) -> dict[str, Any]:
+    """The fictional holdout trial as a study dict, or as a retained raw record."""
+    if retained:
+        return _retained_carrying(_HOLDOUT_NCT, **extra)
+    return _study_carrying(_HOLDOUT_NCT, **extra)
+
+
+def _redteam_mapping_wrappers() -> list[tuple[str, Callable[[dict[str, Any]], Any]]]:
+    """Read-only or dict-like Mappings that are not dict subclasses.
+
+    Method: each wraps the same holdout record. A caller gets these from
+    collections.UserDict, from a frozen view (MappingProxyType) or from
+    pandas (df.iterrows() yields Series, whose ``in`` and ``.get`` read the
+    index labels). None is a dict, so an ``isinstance(record, dict)`` guard
+    skips it.
+    """
+    pd = pytest.importorskip("pandas")
+    return [
+        ("UserDict", collections.UserDict),
+        ("MappingProxyType", types.MappingProxyType),
+        ("pandas.Series", pd.Series),
+    ]
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_non_dict_mapping_carrying_in_audit_true_is_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack: hand the holdout record over as a Mapping that is not a dict.
+    # _refuse_audit_holdout_record returns early for any non-dict, and the
+    # entry point then emits a parse-error record (parse_outcomes_frame a
+    # row) for the trial instead of refusing it. A refused record gets no
+    # parse-error record either (module docstring), so the correct result is
+    # a PopulationAuditHoldoutError.
+    for wrapper_name, wrap in _redteam_mapping_wrappers():
+        held = wrap(_redteam_holdout_record(retained, in_audit=True))
+        with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+            entry(held)
+        assert exc_info.value.reason == "in_audit_true", wrapper_name
+
+
+def test_redteam_m2_parse_outcomes_frame_mixed_batch_with_non_dict_holdout_is_refused() -> None:
+    # Attack: a list mixing a clean dict record and the holdout as a
+    # UserDict. Observed without the fix: a two-row frame, the second row a
+    # parse error for the holdout trial.
+    studies = [
+        _study_carrying(_CLEAN_NCT, in_audit=False),
+        collections.UserDict(_study_carrying(_HOLDOUT_NCT, in_audit=True)),
+    ]
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        ap.parse_outcomes_frame(studies)
+    assert exc_info.value.reason == "in_audit_true"
+
+
+def test_redteam_m2_parse_outcomes_frame_single_record_instead_of_list_is_refused() -> None:
+    # Attack: pass the holdout study itself where an iterable of studies is
+    # expected. Iterating a dict yields its keys, so each top-level key
+    # becomes a "study_not_a_dict" parse-error row of the holdout trial
+    # rather than a refusal.
+    held = _study_carrying(_HOLDOUT_NCT, in_audit=True)
+    with pytest.raises((ap.PopulationAuditHoldoutError, TypeError)):
+        ap.parse_outcomes_frame(held)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_nested_in_audit_true_is_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack: the record says it is a holdout, but below the top level, so
+    # the top-level ``"in_audit" in record`` test does not see it. Shapes:
+    # the flag beside the id it describes (identificationModule), on
+    # protocolSection, or in a merged manifest sub-record. The correct
+    # result is refusal: a record that marks itself in_audit anywhere is a
+    # holdout record.
+    shapes: list[dict[str, Any]] = []
+    if retained:
+        manifest_nested = _retained_carrying(_HOLDOUT_NCT)
+        manifest_nested["manifest"] = {"nct_id": _HOLDOUT_NCT, "in_audit": True}
+        flow_nested = _retained_carrying(_HOLDOUT_NCT)
+        flow_nested["participant_flow_module"] = dict(
+            flow_nested["participant_flow_module"] or {}, in_audit=True
+        )
+        shapes = [manifest_nested, flow_nested]
+    else:
+        in_ident = _study_carrying(_HOLDOUT_NCT)
+        in_ident["protocolSection"]["identificationModule"]["in_audit"] = True
+        in_proto = _study_carrying(_HOLDOUT_NCT)
+        in_proto["protocolSection"]["in_audit"] = True
+        manifest_nested = _study_carrying(_HOLDOUT_NCT)
+        manifest_nested["manifest"] = {"nct_id": _HOLDOUT_NCT, "in_audit": True}
+        shapes = [in_ident, in_proto, manifest_nested]
+    for held in shapes:
+        with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+            entry(held)
+        assert exc_info.value.reason == "in_audit_true"
+
+
+def test_redteam_m2_parse_outcomes_frame_batch_with_a_record_missing_in_audit_is_refused() -> None:
+    # Attack: a manifest-merged batch in which one record lost its in_audit
+    # key (a left join that found no manifest row). Every other record
+    # carries the key, so the batch is manifest-merged and the missing one
+    # is unknown, not clean; the frame path of sponsors/ecosystem.py refuses
+    # the same gap (a NaN in its in_audit column). Observed without the fix:
+    # both studies parsed, the holdout's outcome classified "itt".
+    studies = [
+        _study_carrying(_CLEAN_NCT, in_audit=False),
+        _study_carrying(_HOLDOUT_NCT),
+    ]
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        ap.parse_outcomes_frame(studies)
+    assert exc_info.value.reason in ap.HOLDOUT_REFUSAL_REASONS
+
+
+@pytest.mark.parametrize(("name", "entry"), _REDTEAM_STUDY_ENTRY_POINTS)
+def test_redteam_m2_conflicting_top_level_nct_id_is_refused(
+    name: str, entry: Callable[[Any], Any]
+) -> None:
+    # Attack: the manifest row (in_audit False, for the clean trial) is
+    # merged onto the holdout trial's payload, leaving two different ids in
+    # one record: top-level nct_id (from the manifest) and the nested nctId
+    # (from the payload). The check reads only the nested one, accepts it
+    # and parses a trial the in_audit flag does not describe. Correct: an
+    # id disagreement is refused rather than resolved.
+    study = _study_carrying(_HOLDOUT_NCT, in_audit=False)
+    study["nct_id"] = _CLEAN_NCT
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        entry(study)
+    assert exc_info.value.reason == "nct_id_malformed"
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+@pytest.mark.parametrize("key", ["inAudit", "In_Audit", "IN_AUDIT", "in_audit ", "in-audit"])
+def test_redteam_m2_in_audit_key_spelling_variants_are_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool, key: str
+) -> None:
+    # Attack: the holdout flag under a spelling a camelCase merge, a
+    # spreadsheet header or a stray space produces. The exact-key test
+    # misses it and the trial is parsed in full. Correct: a key that reads
+    # as in_audit once case, spaces, hyphens and underscores are ignored is
+    # treated as in_audit.
+    held = _redteam_holdout_record(retained, **{key: True})
+    with pytest.raises(ap.PopulationAuditHoldoutError):
+        entry(held)
+
+
+# Ids an id-shaped check must not accept, beyond _MALFORMED_NCT_IDS:
+# invisible or whitespace characters a copy-paste or a spreadsheet adds, and
+# full-width letters.
+_REDTEAM_ODD_NCT_IDS: list[str] = [
+    "NCT99000002​",
+    "​NCT99000002",
+    "NCT99000‍002",
+    "﻿NCT99000002",
+    "NCT99000002 ",
+    "NCT99000002\t",
+    "NCT99000002\r",
+    "NCT99000002\x00",
+    "ＮＣＴ99000002",
+    "NCT99000002́",
+]
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+@pytest.mark.parametrize("nct_id", _REDTEAM_ODD_NCT_IDS)
+def test_redteam_m2_odd_nct_ids_with_in_audit_false_are_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool, nct_id: str
+) -> None:
+    # Attack: in_audit False on an id that only looks canonical. Expected
+    # to be refused by the fullmatch on ^NCT[0-9]{8}$ (ASCII, unstripped).
+    record = (
+        _retained_carrying(nct_id, in_audit=False)
+        if retained
+        else _study_carrying(nct_id, in_audit=False)
+    )
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        entry(record)
+    assert exc_info.value.reason == "nct_id_malformed"
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_odd_in_audit_values_are_refused(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack: in_audit values a CSV, a form or a JSON writer produces that a
+    # truthiness test would read as False (or as True), none of them a bool.
+    np = pytest.importorskip("numpy")
+    odd: list[Any] = [
+        "false", "FALSE", "", "0", "no", b"False", b"True", 0.0, -0.0,
+        float("nan"), {}, {"value": False}, (), np.False_, np.True_, np.int64(0),
+    ]
+    for flag in odd:
+        with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+            entry(_redteam_holdout_record(retained, in_audit=flag))
+        assert exc_info.value.reason == "in_audit_not_bool", repr(flag)
+
+
+def test_redteam_m2_lists_mixing_clean_and_holdout_refuse_wherever_the_holdout_sits() -> None:
+    # Attack: the holdout first, last, or between clean records, from a
+    # list or a one-shot generator, with a malformed id on the holdout too.
+    # Expected: the whole batch is refused and no frame is returned.
+    def batch(position: int, nct_id: str) -> list[dict[str, Any]]:
+        studies = [_study_carrying(_CLEAN_NCT, in_audit=False) for _ in range(2)]
+        studies.insert(position, _study_carrying(nct_id, in_audit=True))
+        return studies
+
+    for position in (0, 1, 2):
+        for nct_id in (_HOLDOUT_NCT, "nct99000001", "NCT99000001​"):
+            for source in (batch(position, nct_id), iter(batch(position, nct_id))):
+                with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+                    ap.parse_outcomes_frame(source)
+                assert exc_info.value.reason == "in_audit_true"
+
+
+@pytest.mark.parametrize(("name", "entry", "retained"), _REDTEAM_ALL_ENTRY_POINTS)
+def test_redteam_m2_refusal_records_nothing_about_the_holdout(
+    name: str, entry: Callable[[Any], Any], retained: bool
+) -> None:
+    # Attack: read the holdout's id or description text back out of the
+    # refusal itself (message, args, notes, chained exception).
+    if retained:
+        held = _retained_carrying(_HOLDOUT_NCT, in_audit=True)
+        held["outcome_measures"][0]["populationDescription"] = _REDTEAM_MARKER
+    else:
+        held = _study_carrying(_HOLDOUT_NCT, in_audit=True)
+        measures = held["resultsSection"]["outcomeMeasuresModule"]["outcomeMeasures"]
+        measures[0]["populationDescription"] = _REDTEAM_MARKER
+    with pytest.raises(ap.PopulationAuditHoldoutError) as exc_info:
+        entry(held)
+    exc = exc_info.value
+    texts = [str(exc), repr(exc), *map(str, exc.args), *getattr(exc, "__notes__", [])]
+    assert exc.__cause__ is None and exc.__context__ is None
+    for text in texts:
+        assert _HOLDOUT_NCT not in text
+        assert _REDTEAM_MARKER not in text
+
+
+def test_redteam_m2_entry_points_reject_an_audit_id_set_argument() -> None:
+    # Attack: a caller passes the audit id set (as a list, with odd ids) in
+    # the belief that the module filters on it. No entry point takes one,
+    # so it must fail loudly (TypeError), never be swallowed by **kwargs.
+    audit_ids: list[Any] = [_HOLDOUT_NCT, "nct99000001", " NCT99000001", None]
+    study = _study_carrying(_HOLDOUT_NCT)
+    calls: list[Callable[[], Any]] = [
+        lambda: ap.parse_study_outcomes(study, audit_ids=audit_ids),  # type: ignore[call-arg]
+        lambda: ap.select_raw_outcome_populations(study, audit_ids=audit_ids),  # type: ignore[call-arg]
+        lambda: ap.parse_outcomes_frame([study], audit_ids=audit_ids),  # type: ignore[call-arg]
+        lambda: ap.build_outcomes_from_raw(  # type: ignore[call-arg]
+            _retained_carrying(_HOLDOUT_NCT), audit_ids=audit_ids
+        ),
+        lambda: ap.parse_study_outcomes(study, in_audit=True),  # type: ignore[call-arg]
+    ]
+    for call in calls:
+        with pytest.raises(TypeError):
+            call()
+    public = [
+        obj
+        for attr, obj in vars(ap).items()
+        if callable(obj) and not attr.startswith("_") and getattr(obj, "__module__", "") == ap.__name__
+        and inspect.isfunction(obj)
+    ]
+    for fn in public:
+        params = inspect.signature(fn).parameters.values()
+        assert not any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params), fn.__name__
+
+
+def _redteam_forbid_io(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make every file, process and network primitive raise while patched."""
+
+    def refuse(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("I/O attempted by an entry point that relies on its caller")
+
+    monkeypatch.setattr(builtins, "open", refuse)
+    monkeypatch.setattr(io, "open", refuse)
+    monkeypatch.setattr(os, "open", refuse)
+    monkeypatch.setattr(Path, "open", refuse)
+    monkeypatch.setattr(Path, "read_text", refuse)
+    monkeypatch.setattr(Path, "write_text", refuse)
+    monkeypatch.setattr(socket, "socket", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    monkeypatch.setattr(builtins, "print", refuse)
+
+
+def test_redteam_m2_relies_on_caller_entry_points_do_no_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Claim under test: the entry points documented as relying on the caller
+    # read only the objects they are handed. Run each one on fictional input
+    # with every file, socket and print primitive patched to raise.
+    study = _study_carrying(_HOLDOUT_NCT)
+    measure = study["resultsSection"]["outcomeMeasuresModule"]["outcomeMeasures"][0]
+    flow_module = study["resultsSection"]["participantFlowModule"]
+    parsed = ap.parse_study_outcomes(study)
+    _redteam_forbid_io(monkeypatch)
+    flow_groups, flow_status = ap.extract_flow_started(flow_module)
+    ap.align_flow_and_outcome_groups(flow_groups, measure["groups"])
+    ap.parse_outcome_measure(measure, 0, flow_groups, flow_status, 100.0)
+    ap.classify_population_description("Intent-to-treat population")
+    ap.normalize_population_text("All randomized participants")
+    ap.population_audit(["ITT", None, "Per protocol population"])
+    ap.structural_checks([parsed])
+    ap.parse_error_trial_outcomes(None, None, None, "study_not_a_dict")
+    # The enforcing entry points on input without in_audit rely on the
+    # caller as well; they must not do I/O either.
+    ap.parse_study_outcomes(study)
+    ap.build_outcomes_from_raw(ap.select_raw_outcome_populations(study))
+
+
+def test_redteam_m2_parser_module_imports_and_calls_no_io_primitives() -> None:
+    # Static half of the claim "This module does no I/O": the module imports
+    # only these standard-library modules (pandas lazily, inside
+    # parse_outcomes_frame) and calls no builtin that reads, writes, prints
+    # or executes.
+    source = inspect.getsource(ap)
+    tree = ast.parse(source)
+    allowed = {
+        "__future__", "hashlib", "json", "math", "re", "collections",
+        "dataclasses", "typing", "pandas",
+    }
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+    assert imported <= allowed, sorted(imported - allowed)
+    forbidden_calls = {"open", "print", "input", "exec", "eval", "compile", "__import__"}
+    called = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert not (called & forbidden_calls), sorted(called & forbidden_calls)
+    json_attrs = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "json"
+    }
+    assert json_attrs <= {"dumps"}, sorted(json_attrs)
+
+
+def test_redteam_m2_parser_has_no_in_code_caller_on_this_branch() -> None:
+    # Claim under test (module docstring): "Callers today: none in code. The
+    # only importer in this repository is
+    # tests/test_analysis_population_parser.py." Every .py file outside
+    # tests/ is parsed and its imports checked.
+    repo = Path(__file__).resolve().parents[1]
+    importers: list[str] = []
+    for path in sorted(repo.rglob("*.py")):
+        rel = path.relative_to(repo)
+        if rel.parts[0] in {"tests", ".git", ".venv", "venv"} or "__pycache__" in rel.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(rel))
+        for node in ast.walk(tree):
+            names: list[str] = []
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""] + [
+                    f"{node.module}.{alias.name}" for alias in node.names
+                ]
+            if any(n.endswith("analysis_population_parser") for n in names):
+                importers.append(str(rel))
+    assert importers == []

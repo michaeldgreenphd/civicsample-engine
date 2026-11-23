@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import ast
+import builtins
+import collections
+import inspect
+import io
 import os
+import socket
+import types
 from pathlib import Path
 from typing import Any
 
@@ -927,3 +934,436 @@ def test_ecosystem_holdout_error_contract() -> None:
     )
     with pytest.raises(ValueError):
         eco.EcosystemAuditHoldoutError("nct_id_in_audit_set", "not a reason")
+
+
+# ---------------------------------------------------------------------------
+# 12. Red team, M2 round 1: holdout bypass attempts (test_redteam_m2_*)
+#
+# Each test asserts the CORRECT behaviour, which is refusal, for one attack
+# on an entry point that enforces the holdout. A test that fails here names
+# a bypass that is still open; it is not a test to loosen. Every id is
+# fictional (NCT99000001..NCT99999999); no test touches the network, and
+# none reads a file other than the shipped rules fixtures.
+# ---------------------------------------------------------------------------
+
+
+def _redteam_mapping_wrappers() -> list[tuple[str, Any]]:
+    """Mappings that are not dict subclasses but answer ``in`` and ``.get``.
+
+    Method: sponsors.adapter.record_rows reads a record only through
+    ``.get``, so each of these is attributed in full; the holdout check
+    skips anything that is not a dict. pandas Series rows are what
+    df.iterrows() yields.
+    """
+    return [
+        ("UserDict", collections.UserDict),
+        ("MappingProxyType", types.MappingProxyType),
+        ("pandas.Series", pd.Series),
+    ]
+
+
+def _redteam_run(
+    records: Any, shipped_rules: pd.DataFrame, shipped_ecosystem_rules: pd.DataFrame
+) -> Any:
+    """attribute_study_sponsors with the shipped rules passed in (no file read)."""
+    return eco.attribute_study_sponsors(
+        records, industry_rules=shipped_rules, ecosystem_rules=shipped_ecosystem_rules
+    )
+
+
+def test_redteam_m2_attribute_study_sponsors_refuses_non_dict_mapping_records(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: the holdout record as a Mapping that is not a dict, alone or
+    # after a clean dict record. _refuse_audit_holdout_records skips
+    # non-dicts ("left to sponsors.adapter, which logs them"), but the
+    # adapter does not log them: it reads them with .get and the holdout
+    # trial is attributed to its sectors. Correct: refusal.
+    for _wrapper_name, wrap in _redteam_mapping_wrappers():
+        for make in (_stored_record, _api_record):
+            held = wrap(make("NCT99000301", in_audit=True))
+            for batch in ([held], [_stored_record("NCT99000302", in_audit=False), held]):
+                with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+                    _redteam_run(batch, shipped_rules, shipped_ecosystem_rules)
+                _assert_refused(exc_info.value, "in_audit_true")
+
+
+def test_redteam_m2_attribute_study_sponsors_refuses_single_record_not_list(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: the holdout record itself where an iterable of records is
+    # expected (iterating it yields its keys). Expected: it raises, so
+    # nothing is attributed; a holdout refusal or a TypeError are both
+    # refusals, an index is not.
+    held = _stored_record("NCT99000303", in_audit=True)
+    with pytest.raises((eco.EcosystemAuditHoldoutError, TypeError, AttributeError)):
+        _redteam_run(held, shipped_rules, shipped_ecosystem_rules)
+
+
+def test_redteam_m2_attribute_study_sponsors_refuses_batch_with_a_record_missing_in_audit(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: a manifest-merged batch where one record lost its in_audit key
+    # (a left join with no manifest row). The frame entry points refuse the
+    # same gap, a NaN in the in_audit column, so pd.DataFrame(records) is
+    # refused while the record list is attributed. Correct: once any record
+    # in a batch carries in_audit, every record must.
+    for make in (_stored_record, _api_record):
+        batch = [_stored_record("NCT99000304", in_audit=False), make("NCT99000305")]
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            _redteam_run(batch, shipped_rules, shipped_ecosystem_rules)
+        assert exc_info.value.reason in eco.HOLDOUT_REFUSAL_REASONS
+    as_frame = frame(_HOLDOUT_ROWS)
+    as_frame["in_audit"] = pd.Series([False, False, None, None], dtype=object)
+    with pytest.raises(eco.EcosystemAuditHoldoutError):
+        eco.build_unified_index(as_frame, shipped_rules, shipped_ecosystem_rules)
+
+
+def test_redteam_m2_attribute_study_sponsors_refuses_nested_in_audit(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: the record marks itself as a holdout below the top level, so
+    # the top-level key test misses it: beside the id it describes
+    # (identificationModule), on protocolSection, or in a merged manifest
+    # sub-record. Correct: refusal.
+    in_ident = _api_record("NCT99000306")
+    in_ident["protocolSection"]["identificationModule"]["in_audit"] = True
+    in_proto = _api_record("NCT99000307")
+    in_proto["protocolSection"]["in_audit"] = True
+    manifest_api = _api_record("NCT99000308", manifest={"in_audit": True})
+    manifest_stored = _stored_record("NCT99000309", manifest={"in_audit": True})
+    for held in (in_ident, in_proto, manifest_api, manifest_stored):
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            _redteam_run([held], shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "in_audit_true")
+
+
+def test_redteam_m2_attribute_study_sponsors_refuses_conflicting_ids(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: a manifest row (in_audit False, one trial) merged onto another
+    # trial's CT.gov payload leaves two ids in one record: top-level nct_id
+    # from the manifest, nested nctId from the payload. The check reads only
+    # the nested id and attributes a trial the flag does not describe.
+    # Correct: an id disagreement is refused rather than resolved.
+    held = _api_record("NCT99000310", in_audit=False)
+    held["nct_id"] = "NCT99000311"
+    with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+        _redteam_run([held], shipped_rules, shipped_ecosystem_rules)
+    _assert_refused(exc_info.value, "nct_id_malformed")
+
+
+_REDTEAM_KEY_VARIANTS: list[str] = ["inAudit", "In_Audit", "IN_AUDIT", "in_audit ", "in-audit"]
+
+
+@pytest.mark.parametrize("key", _REDTEAM_KEY_VARIANTS)
+def test_redteam_m2_in_audit_key_and_column_spelling_variants_are_refused(
+    key: str,
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: the holdout flag under a spelling a camelCase merge, a
+    # spreadsheet header or a stray space produces, as a record key and as
+    # a frame or index column. The exact-name test misses it and the trial
+    # is attributed and counted. Correct: a name that reads as in_audit
+    # once case, spaces, hyphens and underscores are ignored is in_audit.
+    for make in (_stored_record, _api_record):
+        with pytest.raises(eco.EcosystemAuditHoldoutError):
+            _redteam_run([make("NCT99000312", **{key: True})], shipped_rules, shipped_ecosystem_rules)
+    held = _holdout_frame([True] * 4).rename(columns={"in_audit": key})
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError):
+            entry(held, shipped_rules, shipped_ecosystem_rules)
+    idx = _index_with_in_audit(shipped_rules, shipped_ecosystem_rules, [True])
+    idx = idx.rename(columns={"in_audit": key})
+    for name, entry in _INDEX_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError):
+            entry(idx)
+
+
+@pytest.mark.parametrize("levels", [["in_audit"], ["nct_id", "in_audit"]])
+def test_redteam_m2_frame_and_index_entry_points_refuse_in_audit_as_index_level(
+    levels: list[str],
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: move in_audit (and optionally nct_id) from the columns into
+    # the row index with set_index. The check looks only at frame.columns;
+    # with in_audit alone in the index every frame entry point attributes
+    # or counts the holdout rows, and with nct_id too the three entry
+    # points that never read nct_id (partition_ecosystem, partition_unified,
+    # uncovered_ecosystem_rules) still do. Correct: a holdout refusal, not a
+    # result and not a KeyError.
+    held = _holdout_frame([True] * 4).set_index(levels)
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(held, shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "in_audit_true")
+    idx = _index_with_in_audit(shipped_rules, shipped_ecosystem_rules, [True]).set_index(levels)
+    for name, entry in _INDEX_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(idx)
+        _assert_refused(exc_info.value, "in_audit_true")
+
+
+def test_redteam_m2_literal_entry_points_refuse_a_column_mapping_carrying_in_audit(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: a column mapping ({column: Series}) instead of a DataFrame.
+    # The check returns early for anything that is not a DataFrame, and
+    # sr.literal_universe only needs sponsors["name"], so the entry points
+    # that stop at the literal universe partition the holdout's sponsor
+    # names. Correct: refusal.
+    held = _holdout_frame([True] * 4)
+    columns = {c: held[c] for c in held.columns}
+    literal_entry_points: list[tuple[str, Any]] = [
+        ("partition_ecosystem", lambda f: eco.partition_ecosystem(f, shipped_ecosystem_rules)),
+        (
+            "partition_unified",
+            lambda f: eco.partition_unified(f, shipped_rules, shipped_ecosystem_rules),
+        ),
+        (
+            "uncovered_ecosystem_rules",
+            lambda f: eco.uncovered_ecosystem_rules(f, shipped_ecosystem_rules),
+        ),
+    ]
+    for name, entry in literal_entry_points:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(columns)
+        _assert_refused(exc_info.value, "in_audit_true")
+
+
+_REDTEAM_ODD_NCT_IDS: list[str] = [
+    "NCT99000102​",
+    "​NCT99000102",
+    "NCT99000‍102",
+    "﻿NCT99000102",
+    "NCT99000102 ",
+    "NCT99000102\t",
+    "NCT99000102\r",
+    "NCT99000102\x00",
+    "ＮＣＴ99000102",
+    "NCT99000102́",
+]
+
+
+@pytest.mark.parametrize("nct_id", _REDTEAM_ODD_NCT_IDS)
+def test_redteam_m2_odd_nct_ids_with_in_audit_false_are_refused(
+    nct_id: str,
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: in_audit False on an id that only looks canonical (invisible,
+    # whitespace or combining characters, full-width letters), through every
+    # frame, index and record entry point. Expected: nct_id_malformed.
+    held = _holdout_frame([False] * 4)
+    held["nct_id"] = pd.Series(
+        ["NCT99000101", "NCT99000101", nct_id, "NCT99000102"], dtype=object
+    )
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(held, shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "nct_id_malformed")
+    idx = _index_with_in_audit(shipped_rules, shipped_ecosystem_rules, [False])
+    idx["nct_id"] = idx["nct_id"].astype(object)
+    idx.iloc[0, idx.columns.get_loc("nct_id")] = nct_id
+    for name, entry in _INDEX_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(idx)
+        _assert_refused(exc_info.value, "nct_id_malformed")
+    for make in (_stored_record, _api_record):
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            _redteam_run([make(nct_id, in_audit=False)], shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "nct_id_malformed")
+
+
+def test_redteam_m2_odd_in_audit_values_are_refused(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: in_audit values a CSV, a form or a JSON writer produces, none
+    # of them a bool: lowercase strings, empty string, bytes, floats, NA
+    # markers, containers. Frames accept numpy bools (a bool-dtype column
+    # holds them); records accept only Python bools.
+    np = pytest.importorskip("numpy")
+    odd: list[Any] = [
+        "false", "FALSE", "", "0", "no", b"False", b"True", 0.0, -0.0,
+        pd.NA, pd.NaT, {}, (), np.int64(0),
+    ]
+    for flag in odd:
+        held = _holdout_frame([False, False, flag, False])
+        for name, entry in _FRAME_ENTRY_POINTS:
+            with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+                entry(held, shipped_rules, shipped_ecosystem_rules)
+            _assert_refused(exc_info.value, "in_audit_not_bool")
+        for make in (_stored_record, _api_record):
+            with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+                _redteam_run([make("NCT99000313", in_audit=flag)], shipped_rules, shipped_ecosystem_rules)
+            _assert_refused(exc_info.value, "in_audit_not_bool")
+    nullable = _holdout_frame()
+    nullable["in_audit"] = pd.Series([False, False, pd.NA, False], dtype="boolean")
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(nullable, shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "in_audit_not_bool")
+    for flag in (np.True_, np.False_):
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            _redteam_run([_stored_record("NCT99000314", in_audit=flag)], shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "in_audit_not_bool")
+    np_held = _holdout_frame([np.False_, np.False_, np.True_, np.False_])
+    for name, entry in _FRAME_ENTRY_POINTS:
+        with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+            entry(np_held, shipped_rules, shipped_ecosystem_rules)
+        _assert_refused(exc_info.value, "in_audit_true")
+
+
+def test_redteam_m2_lists_and_frames_mixing_clean_and_holdout_refuse_wherever_it_sits(
+    monkeypatch: pytest.MonkeyPatch,
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: the holdout first, last or between clean rows and records,
+    # from a list or a one-shot generator, with a malformed id on it too.
+    # Expected: refused before anything is adapted or attributed.
+    for position in (0, 1, 2, 3):
+        flags = [False] * 4
+        flags[position] = True
+        held = _holdout_frame(flags)
+        for name, entry in _FRAME_ENTRY_POINTS:
+            with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+                entry(held, shipped_rules, shipped_ecosystem_rules)
+            _assert_refused(exc_info.value, "in_audit_true")
+
+    def must_not_run(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("adapted a batch that holds a holdout record")
+
+    monkeypatch.setattr(eco.adapter, "records_to_frame", must_not_run)
+    for position in (0, 1, 2):
+        for nct_id in ("NCT99000315", "nct99000315", "NCT99000315​"):
+            records = [_stored_record("NCT99000316", in_audit=False) for _ in range(2)]
+            records.insert(position, _api_record(nct_id, in_audit=True))
+            for source in (records, iter(list(records))):
+                with pytest.raises(eco.EcosystemAuditHoldoutError) as exc_info:
+                    _redteam_run(source, shipped_rules, shipped_ecosystem_rules)
+                _assert_refused(exc_info.value, "in_audit_true")
+
+
+def test_redteam_m2_entry_points_reject_an_audit_id_set_argument(
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Attack: a caller passes the audit id set (a list, with odd ids) in the
+    # belief that the module filters on it. No entry point takes one, so it
+    # must fail loudly (TypeError) rather than be swallowed by **kwargs.
+    audit_ids: list[Any] = ["NCT99000101", "nct99000101", " NCT99000101", None]
+    sp = _holdout_frame()
+    calls: list[Any] = [
+        lambda: eco.build_ecosystem_index(sp, shipped_ecosystem_rules, audit_ids=audit_ids),
+        lambda: eco.build_unified_index(
+            sp, shipped_rules, shipped_ecosystem_rules, audit_ids=audit_ids
+        ),
+        lambda: eco.attribute_study_sponsors(
+            [_stored_record("NCT99000101")],
+            industry_rules=shipped_rules,
+            ecosystem_rules=shipped_ecosystem_rules,
+            audit_ids=audit_ids,
+        ),
+        lambda: eco.trial_cohorts(sp, audit_ids=audit_ids),
+    ]
+    for call in calls:
+        with pytest.raises(TypeError):
+            call()
+    for attr, obj in vars(eco).items():
+        if attr.startswith("_") or not inspect.isfunction(obj) or obj.__module__ != eco.__name__:
+            continue
+        params = inspect.signature(obj).parameters.values()
+        assert not any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params), attr
+
+
+def test_redteam_m2_relies_on_caller_entry_points_do_no_io(
+    monkeypatch: pytest.MonkeyPatch,
+    shipped_rules: pd.DataFrame,
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Claim under test: with rules passed in, every trial entry point on
+    # input without in_audit (where it relies on its caller) reads only the
+    # objects it is handed and writes nothing. Every file, socket and CSV
+    # primitive raises while the entry points run.
+    sp = _holdout_frame()
+    records = [_stored_record("NCT99000317"), _api_record("NCT99000318")]
+    idx = eco.build_unified_index(sp, shipped_rules, shipped_ecosystem_rules)
+
+    def refuse(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("I/O attempted by an entry point that relies on its caller")
+
+    for target, attr in (
+        (builtins, "open"), (io, "open"), (os, "open"), (Path, "open"),
+        (Path, "write_text"), (Path, "read_text"), (socket, "socket"),
+        (socket, "create_connection"), (pd, "read_csv"), (pd, "read_json"),
+        (pd.DataFrame, "to_csv"), (pd.DataFrame, "to_json"), (eco.json, "dump"),
+        (eco.json, "load"), (eco.sr, "load_rules"), (eco, "load_ecosystem_rules"),
+    ):
+        monkeypatch.setattr(target, attr, refuse)
+    for name, entry in _FRAME_ENTRY_POINTS:
+        entry(sp, shipped_rules, shipped_ecosystem_rules)
+    for name, entry in _INDEX_ENTRY_POINTS:
+        entry(idx)
+    _redteam_run(records, shipped_rules, shipped_ecosystem_rules)
+
+
+def test_redteam_m2_ecosystem_module_reads_and_writes_only_the_documented_files() -> None:
+    # Static half of the claim "The only files this module reads or writes
+    # are the two rules CSVs and the aggregate baseline JSON": the only
+    # functions whose bodies reach a file are the documented loaders and
+    # writer, and nothing imports a network or process module.
+    tree = ast.parse(inspect.getsource(eco))
+    io_names = {"open", "read_csv", "to_csv", "read_json", "to_json", "load", "dump", "exists"}
+    reaching: set[str] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Call):
+                fn = sub.func
+                called = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else ""
+                if called in io_names:
+                    reaching.add(node.name)
+    assert reaching == {"load_ecosystem_rules", "load_expected_ecosystem", "write_ecosystem_baseline"}
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.add((node.module or "").split(".")[0])
+    assert imported <= {"__future__", "json", "os", "re", "datetime", "typing", "pandas", ""}
+
+
+def test_redteam_m2_ecosystem_has_no_in_code_caller_on_this_branch() -> None:
+    # Claim under test (module docstring): "Callers today: none in code. The
+    # only importer in this repository is tests/sponsors/test_ecosystem.py."
+    repo = Path(REPO_ROOT)
+    importers: list[str] = []
+    for path in sorted(repo.rglob("*.py")):
+        rel = path.relative_to(repo)
+        if rel.parts[0] in {"tests", ".git", ".venv", "venv"} or "__pycache__" in rel.parts:
+            continue
+        if rel.as_posix() == "sponsors/ecosystem.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(rel))
+        for node in ast.walk(tree):
+            names: list[str] = []
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""] + [
+                    f"{node.module or ''}.{alias.name}" for alias in node.names
+                ]
+            if any(n == "sponsors.ecosystem" or n.endswith(".ecosystem") or n == "ecosystem" for n in names):
+                importers.append(str(rel))
+    assert importers == []
