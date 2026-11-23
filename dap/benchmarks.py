@@ -600,14 +600,26 @@ CTGOV_PHASES: frozenset[str] = frozenset({"NA", "EARLY_PHASE1", "PHASE1", "PHASE
 # no number and is kept; no stored measurement or count reads as a non-finite number.
 FINITE_TEXT = "required string reading as a finite number or none"
 _BASELINE_VALUE: dict[str, Any] = {"groupId": REQUIRED_STR, "value": FINITE_TEXT}
+# A denominator count is a count of units: any number it reads as must be a non-negative whole number.
+# `get_measure_denom` read `"-200"` as -200 and `"1.5"` as 1.5 (and `get_total_baseline_participants` as
+# 1), so a percentage table skipped its conversion or was rounded against one participant, and the
+# published counts stayed internally consistent. A marker such as `"NA"`, which reads as no number, is
+# kept. All 20,921 denominator counts in the 3,133 stored baseline tables (10,361 table, 406 measure-level
+# and 10,154 class-level) are whole numbers, 6 of them comma-grouped (`"15,581"`).
+COUNT_TEXT = "required string reading as a non-negative whole number or none"
+_BASELINE_DENOM_COUNT: dict[str, Any] = {"groupId": REQUIRED_STR, "value": COUNT_TEXT}
+# A baseline group's id: `src.utils.get_overall_group_id` returns None for an Overall group without one,
+# and `get_total_baseline_participants` and `sum_measurements` then read the last group's value, an arm's
+# counts in place of the trial's when Overall is not last. All 10,321 stored baseline groups carry one.
+REQUIRED_ID = "required non-blank string"
 # A denominator list: the table's own, or a measure's or class's Number Analyzed, which
 # `table_selection.number_analyzed` reads through `get_measure_denom` with `.get` and no type check (a
 # `classes[0].denoms: "corrupt"` raised `AttributeError` in the build). All 2,951 class-level and 74
 # measure-level lists in the stored records are lists of objects with a string `units`, and their
 # 10,560 counts carry `groupId` and `value` as strings.
-_BASELINE_DENOMS: dict[str, Any] = {"units": REQUIRED_STR, "counts": _BASELINE_VALUE}
+_BASELINE_DENOMS: dict[str, Any] = {"units": REQUIRED_STR, "counts": _BASELINE_DENOM_COUNT}
 BASELINE_SHAPE: dict[str, Any] = {
-    "groups": {"title": str},
+    "groups": {"id": REQUIRED_ID, "title": str},
     "denoms": _BASELINE_DENOMS,
     "measures": {
         "title": REQUIRED_STR,
@@ -636,25 +648,41 @@ def _object_list_problems(value: Any, path: str, fields: dict[str, Any]) -> list
             if isinstance(spec, dict):
                 if name in item:
                     out += _object_list_problems(item[name], f"{where}.{name}", spec)
-            elif spec in (REQUIRED_STR, FINITE_TEXT) or name in item:
+            elif spec in (REQUIRED_STR, FINITE_TEXT, COUNT_TEXT, REQUIRED_ID) or name in item:
                 if not isinstance(item.get(name), str):
                     out.append(f"{where}.{name} (a string)")
+                elif spec == REQUIRED_ID and not item[name].strip():
+                    out.append(f"{where}.{name} (a non-blank string)")
                 elif spec == FINITE_TEXT and _reads_as_non_finite_number(item[name]):
                     out.append(f"{where}.{name} (a string reading as a finite number, or none)")
+                elif spec == COUNT_TEXT and not _reads_as_count_or_none(item[name]):
+                    out.append(f"{where}.{name} (a string reading as a non-negative whole number, or none)")
     return out
+
+
+def _baseline_readings(text: str) -> list[float]:
+    """The numbers `src/utils.py` reads `text` as: `get_measure_denom`'s `float(text.replace(",", ""))`
+    and `sum_measurements`' `measurement_number`, each when it reads one."""
+    readings: list[float] = []
+    try:
+        readings.append(float(text.replace(",", "")))
+    except ValueError:
+        pass
+    number = src_utils.measurement_number([{"value": text}], None)
+    if number is not None:
+        readings.append(number)
+    return readings
+
+
+def _reads_as_count_or_none(text: str) -> bool:
+    """Whether every number `src/utils.py` reads `text` as is a non-negative whole number (none at all,
+    as for `"NA"`, passes)."""
+    return all(math.isfinite(x) and x >= 0 and x == int(x) for x in _baseline_readings(text))
 
 
 def _reads_as_non_finite_number(text: str) -> bool:
     """Whether either reading `src/utils.py` makes of a baseline value gives an infinite or NaN number."""
-    readings: list[float] = []
-    try:
-        readings.append(float(text.replace(",", "")))  # get_measure_denom's reading
-    except ValueError:
-        pass
-    number = src_utils.measurement_number([{"value": text}], None)  # sum_measurements' reading
-    if number is not None:
-        readings.append(number)
-    return any(not math.isfinite(value) for value in readings)
+    return any(not math.isfinite(value) for value in _baseline_readings(text))
 
 
 # The date structs `classify_regulatory_era` reads on a raw record.

@@ -142,6 +142,10 @@ measure's or class's own Number Analyzed (`denoms`), which `table_selection.numb
 without a type check (a `classes[0].denoms: "corrupt"` stopped the build with `AttributeError`).
 A value must also not read as an infinite or NaN number (`"Infinity"`, `"1e400"`, `"nan"`), which
 `src/utils.py` parsed and then failed on with `OverflowError`; `"NA"` reads as no number and is kept.
+A denominator count must read as a non-negative whole number, or as none (`"NA"`): `"-200"` or
+`"1.5"` was read by `get_measure_denom` and skewed the percentage conversion. Every baseline group
+must carry a non-blank string `id`: without one `get_overall_group_id` found no Overall group, and the
+last arm's counts stood in for the trial's.
 Weekly full records never pass these checks, so their own lists are checked
 too (`WEEKLY_LIST_FIELDS`): `study_sites`, `collaborators` and `conditions`
 must be present, as `src/utils.py` always writes them; `study_sites` and

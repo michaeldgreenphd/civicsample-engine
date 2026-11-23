@@ -1526,6 +1526,9 @@ def _measured_study(nct_id: str) -> dict:
     )
 
 
+_DROP_KEY = object()  # remove the key instead of setting it
+
+
 @pytest.mark.parametrize(
     "path, value, expect",
     [
@@ -1636,11 +1639,30 @@ def _measured_study(nct_id: str) -> dict:
              " (a string reading as a finite number, or none)")
             for text in ("Infinity", "-Infinity", "nan", "1e400", "inf (2.0)")
         ],
+        # (since 1c3301d a denominator count must read as a non-negative whole number, which these are not)
         (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "counts", 0, "value"), "1e400",
-         f"{_BASE}.denoms[0].counts[0].value (a string reading as a finite number, or none)"),
+         f"{_BASE}.denoms[0].counts[0].value (a string reading as a non-negative whole number, or none)"),
         (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "denoms"),
          [{"units": "Participants", "counts": [{"groupId": "BG000", "value": "Infinity"}]}],
-         f"{_BASE}.measures[0].classes[0].denoms[0].counts[0].value (a string reading as a finite number, or none)"),
+         f"{_BASE}.measures[0].classes[0].denoms[0].counts[0].value"
+         " (a string reading as a non-negative whole number, or none)"),
+        # On 1c3301d a finite count that is no count loaded: `get_measure_denom` read -200 or 1.5.
+        *[
+            (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "counts", 0, "value"), text,
+             f"{_BASE}.denoms[0].counts[0].value (a string reading as a non-negative whole number, or none)")
+            for text in ("-200", "1.5", "0.5")
+        ],
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "denoms"),
+         [{"units": "Participants", "counts": [{"groupId": "BG000", "value": "-1"}]}],
+         f"{_BASE}.measures[0].classes[0].denoms[0].counts[0].value"
+         " (a string reading as a non-negative whole number, or none)"),
+        # On 1c3301d a group without a usable id loaded, and the Overall group's counts could be replaced
+        # by the last arm's.
+        (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), _DROP_KEY,
+         f"{_BASE}.groups[0].id (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), 7, f"{_BASE}.groups[0].id (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), " ",
+         f"{_BASE}.groups[0].id (a non-blank string)"),
     ],
 )
 def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
@@ -1653,7 +1675,10 @@ def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
     holder = bad
     for key in path[:-1]:
         holder = holder[key]
-    holder[path[-1]] = value
+    if value is _DROP_KEY:
+        holder.pop(path[-1])
+    else:
+        holder[path[-1]] = value
     want = (
         r"1 of 2 study records lack required protocol modules or fields "
         rf"\(first: NCT99800022 lacks {re.escape(expect)}\)"
