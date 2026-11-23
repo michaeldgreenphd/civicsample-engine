@@ -641,23 +641,35 @@ def _epmc_year(value: Any) -> str | None:
     return text if re.fullmatch(r'[0-9]{4}', text) else None
 
 
-def _epmc_date(hit: dict[str, Any]) -> tuple[str | None, str]:
+def _epmc_date(hit: dict[str, Any], retrieved_day: str | None = None) -> tuple[str | None, str, list[str]]:
     """A Europe PMC hit's publication date: its first or electronic publication date, else the year of
-    `pubYear` or `journalInfo.yearOfPublication` (`_epmc_year`), else missing."""
+    `pubYear` or `journalInfo.yearOfPublication` (`_epmc_year`), else missing; with why a field was passed
+    over.
+
+    A first or electronic publication date after `retrieved_day`, the day the search was fetched, is no
+    publication the record can show: `2100-01-02` on an exact-NCT hit fetched in 2026 became the trial's
+    earliest results publication. It is passed over, with a reason, for the next field, as a PubMed
+    `epubdate` is (`_pubmed_summary_date`). The year fields name the issue's year, which can lie ahead of
+    its online publication, so they are not bounded.
+    """
+    notes: list[str] = []
     for key in ('firstPublicationDate', 'electronicPublicationDate'):
         val = hit.get(key)
         if isinstance(val, str) and val.strip():
             norm, prec = normalize_publication_date(val)
-            if norm is not None:
-                return norm, prec
+            if norm is not None and _after_retrieval(norm, retrieved_day):
+                notes.append(f'Europe PMC {key} {norm} is after the search was retrieved on {retrieved_day}, '
+                             'so it is not used')
+            elif norm is not None:
+                return norm, prec, notes
     journal = hit.get('journalInfo')
     for raw in (hit.get('pubYear'), journal.get('yearOfPublication') if isinstance(journal, dict) else None):
         year = _epmc_year(raw)
         if year is not None:
             norm, prec = normalize_publication_date(year)
             if norm is not None:
-                return norm, prec
-    return None, 'missing'
+                return norm, prec, notes
+    return None, 'missing', notes
 
 
 def build_literature_search_links(
@@ -682,7 +694,7 @@ def build_literature_search_links(
             continue
         seen.add((target_type, target_id))
 
-        pub_date, prec = _epmc_date(hit)
+        pub_date, prec, date_notes = _epmc_date(hit, _retrieved_day(rec))
         located = _find_exact_nct(hit, nct_id)
         title = squash_whitespace(str(hit.get('title') or target_id))
         if located is not None:
@@ -702,7 +714,8 @@ def build_literature_search_links(
                     automated_validation='identifier_confirmed',
                     validation_reasons=[
                         f'exact {nct_id} token confirmed in Europe PMC record field {field_path}; '
-                        'automated check confirms citation presence only, not whether results are reported'
+                        'automated check confirms citation presence only, not whether results are reported',
+                        *date_notes,
                     ],
                     detail={'title': title, 'pub_type': hit.get('pubType')},
                 )
@@ -724,7 +737,8 @@ def build_literature_search_links(
                     automated_validation='rejected_by_rule',
                     validation_reasons=[
                         f'returned by Europe PMC search for {nct_id}, but exact {nct_id} token stands in '
-                        'no retrieved metadata or abstract field'
+                        'no retrieved metadata or abstract field',
+                        *date_notes,
                     ],
                     detail={'title': title, 'pub_type': hit.get('pubType')},
                 )

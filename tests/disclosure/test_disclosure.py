@@ -2382,6 +2382,36 @@ def test_a_europe_pmc_year_field_is_read_only_as_a_year(fields: dict[str, Any], 
     assert _epmc_link_date(**fields) == expected
 
 
+def _epmc_link_fetched_2026_11_01(**fields: Any) -> dict[str, Any]:
+    hit = {'id': 'EPMC9901', 'title': 'Results of NCT09990001', 'abstractText': 'Primary results of NCT09990001.'}
+    hit.update(fields)
+    records = {'literature/epmc_nct/NCT09990001': {'status': 200, 'fetched_at': '2026-11-01T12:00:00+00:00',
+                                                   'body': {'hitCount': 1, 'resultList': {'result': [hit]}}}}
+    return next(x for x in E.build_literature_search_links('NCT09990001', records)
+                if x['automated_validation'] == 'identifier_confirmed')
+
+
+@pytest.mark.parametrize(
+    ('fields', 'expected', 'passed_over'),
+    [
+        # On a8f9177 a first publication date after the search's retrieval was the link's date.
+        ({'firstPublicationDate': '2100-01-02', 'pubYear': '2021'}, ('2021', 'year'), True),
+        ({'firstPublicationDate': '2026-11-02', 'electronicPublicationDate': '2026-10-30'},
+         ('2026-10-30', 'day'), True),
+        # Controls, on both heads: the fetch day itself, and an earlier date beside a later issue year.
+        ({'firstPublicationDate': '2026-11-01'}, ('2026-11-01', 'day'), False),
+        ({'firstPublicationDate': '2021-02-10', 'pubYear': '2027'}, ('2021-02-10', 'day'), False),
+    ],
+)
+def test_a_europe_pmc_publication_date_after_retrieval_is_passed_over(
+    fields: dict[str, Any], expected: tuple[str, str], passed_over: bool
+) -> None:
+    link = _epmc_link_fetched_2026_11_01(**fields)
+    assert (link['publication_or_action_date'], link['date_precision']) == expected
+    named = [r for r in link['validation_reasons'] if 'after the search was retrieved on 2026-11-01' in r]
+    assert bool(named) is passed_over
+
+
 def _fda_link_fetched_2026_11_01(app: dict[str, Any], via_drug: bool) -> dict[str, Any]:
     nct = 'NCT09990001'
     study = F.STUDIES[nct]
