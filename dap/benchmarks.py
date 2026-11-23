@@ -658,6 +658,30 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
     return out
 
 
+def _require_weekly_phases(records: list[dict[str, Any]], source: str) -> None:
+    """Refuse weekly full records whose `phase` is not CT.gov phase values.
+
+    The weekly extractor writes a record's phases as one string, CT.gov's values joined with ", "
+    ("PHASE1, PHASE2"), or "" when none is stated; all 80,890 records of the 2026-11-08 extraction
+    have that form. These records never pass `_require_complete_records`, so a hand-built or edited
+    one with "phase": "BANANA" became a phase stratum of its own. Each token split the way
+    `normalize_phase` splits must be in `CTGOV_PHASES`; a missing key still reads as no phase.
+    """
+    bad: list[str] = []
+    for idx, rec in enumerate(records):
+        if "phase" not in rec:
+            continue
+        phase = rec["phase"]
+        tokens = [t.strip() for t in re.split(r"[,;/]", phase) if t.strip()] if isinstance(phase, str) else None
+        if tokens is None or any(t not in CTGOV_PHASES for t in tokens):
+            bad.append(f"{rec.get('nct_id') or f'index {idx}'} has phase {phase!r}")
+    if bad:
+        raise ValueError(
+            f"{source}: {len(bad)} of {len(records)} weekly records carry a phase outside CT.gov's values "
+            f"(first: {bad[0]})"
+        )
+
+
 def _require_complete_records(studies: list[dict[str, Any]], source: str) -> None:
     """Refuse raw API v2 study records that are incomplete (see the notes above).
 
@@ -863,6 +887,7 @@ def load_study_records(
     if source_kind == "full_records":
         recs, extracted_at, pipeline_commit = full_records.load(path)
         recs = _require_study_objects(recs, f"{path}: data")
+        _require_weekly_phases(recs, f"{path}: data")
         digest = sha256_file(path)
         if limit is not None and limit > 0:
             recs = recs[:limit]
@@ -927,6 +952,7 @@ def load_study_records(
     if isinstance(container, dict) and "data" in container:
         recs, extracted_at, pipeline_commit = full_records.load(path)
         recs = _require_study_objects(recs, f"{path}: data")
+        _require_weekly_phases(recs, f"{path}: data")
         if limit is not None and limit > 0:
             recs = recs[:limit]
         return recs, {

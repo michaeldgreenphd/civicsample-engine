@@ -507,6 +507,31 @@ def test_projected_or_incomplete_raw_records_are_refused(tmp_path: Path) -> None
     assert row["indication"]["primary_condition"] != "Other"
 
 
+@pytest.mark.parametrize("source_kind", ["full_records", "auto"])
+@pytest.mark.parametrize("phase", ["BANANA", "PHASE3, PHASE_9", 3, None])
+def test_weekly_records_with_a_phase_outside_ctgov_values_are_refused(
+    tmp_path: Path, phase: object, source_kind: str
+) -> None:
+    # Weekly records never pass the raw-record checks, so "BANANA" became a phase stratum of its own.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1]["phase"] = phase
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    with pytest.raises(ValueError, match=r"weekly records carry a phase outside CT\.gov's values"):
+        benchmarks.load_study_records(weekly_path, source_kind=source_kind)
+
+
+def test_weekly_records_with_ctgov_phase_strings_load(tmp_path: Path) -> None:
+    # Control: the weekly extractor's own forms, multi-phase and empty, and a missing key, pass.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][0]["phase"] = "PHASE1, PHASE2"
+    weekly_doc["data"][1]["phase"] = ""
+    weekly_doc["data"][2].pop("phase", None)
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    assert len(benchmarks.load_study_records(weekly_path, source_kind="full_records")[0]) == 5
+
+
 def test_weekly_full_records_container_supported(tmp_path: Path) -> None:
     weekly_doc = fx.build_weekly_full_records_doc()
     weekly_path = tmp_path / "demographics.json.gz"
