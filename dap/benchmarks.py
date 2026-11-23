@@ -695,6 +695,59 @@ def _require_weekly_phases(records: list[dict[str, Any]], source: str) -> None:
         )
 
 
+# The weekly list fields this module reads, the type of their entries, and the entry fields it reads
+# (each a string when present). `src/utils.py` writes all three as lists.
+WEEKLY_LIST_FIELDS: dict[str, tuple[type, tuple[str, ...]]] = {
+    "study_sites": (dict, ("country", "state")),
+    "collaborators": (dict, ("name", "class")),
+    "conditions": (str, ()),
+}
+
+
+def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
+    """Why one weekly record's list fields cannot be read whole, or `None`.
+
+    Weekly records never pass `_require_complete_records`. `_extract_core_metadata` kept only string
+    conditions (a `"Cancer"` string was read one character at a time) and object collaborators, and
+    `geography.extract_raw_locations` only object sites, so a malformed value moved the indication to
+    Other, or lowered the exact site counts (`n_us_facilities`, `country_counts`), with nothing
+    reported. A key that is present must hold a list (explicit `null` included) whose entries have
+    their type, with the fields read strings when present and conditions non-blank. A missing key is
+    read as before. All 80,890 records of the 2026-11-08 weekly extraction hold the three as lists of
+    such entries (1,485,097 sites, 48,077 collaborators, 142,169 conditions).
+    """
+    for key, (entry_type, fields) in WEEKLY_LIST_FIELDS.items():
+        if key not in rec:
+            continue
+        value = rec[key]
+        if not isinstance(value, list):
+            return f"{key} is {type(value).__name__}, not a list"
+        for i, entry in enumerate(value):
+            if not isinstance(entry, entry_type):
+                kind = "an object" if entry_type is dict else "a string"
+                return f"{key}[{i}] is {type(entry).__name__}, not {kind}"
+            if entry_type is str and not entry.strip():
+                return f"{key}[{i}] is blank"
+            for field in fields:
+                if field in entry and not isinstance(entry[field], str):
+                    return f"{key}[{i}].{field} is {type(entry[field]).__name__}, not a string"
+    return None
+
+
+def _require_weekly_lists(records: list[dict[str, Any]], source: str) -> None:
+    """Refuse weekly full records whose site, collaborator or condition lists are malformed."""
+    bad = [
+        f"{rec.get('nct_id') or f'index {idx}'} {problem}"
+        for idx, rec in enumerate(records)
+        if (problem := _weekly_list_problem(rec))
+    ]
+    if bad:
+        raise ValueError(
+            f"{source}: {len(bad)} of {len(records)} weekly records carry a malformed list field "
+            f"(first: {bad[0]})"
+        )
+
+
 def _require_complete_records(studies: list[dict[str, Any]], source: str) -> None:
     """Refuse raw API v2 study records that are incomplete (see the notes above).
 
@@ -901,6 +954,7 @@ def load_study_records(
         recs, extracted_at, pipeline_commit = full_records.load(path)
         recs = _require_study_objects(recs, f"{path}: data")
         _require_weekly_phases(recs, f"{path}: data")
+        _require_weekly_lists(recs, f"{path}: data")
         digest = sha256_file(path)
         if limit is not None and limit > 0:
             recs = recs[:limit]
@@ -966,6 +1020,7 @@ def load_study_records(
         recs, extracted_at, pipeline_commit = full_records.load(path)
         recs = _require_study_objects(recs, f"{path}: data")
         _require_weekly_phases(recs, f"{path}: data")
+        _require_weekly_lists(recs, f"{path}: data")
         if limit is not None and limit > 0:
             recs = recs[:limit]
         return recs, {

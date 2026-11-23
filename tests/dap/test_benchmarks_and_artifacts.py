@@ -542,6 +542,51 @@ def test_weekly_records_with_ctgov_phase_strings_load(tmp_path: Path) -> None:
     assert len(benchmarks.load_study_records(weekly_path, source_kind="full_records")[0]) == 5
 
 
+_WEEKLY_SITE = {"facility": "US1", "state": "MA", "country": "United States"}
+
+
+@pytest.mark.parametrize("source_kind", ["full_records", "auto"])
+@pytest.mark.parametrize(
+    ("key", "value", "problem"),
+    [
+        # On c37ed67 each loaded: "Cancer" was read one character at a time, a dropped condition could
+        # move the indication to Other, and a dropped site lowered the exact site counts.
+        ("conditions", "Cancer", "conditions is str, not a list"),
+        ("conditions", ["Type 2 Diabetes", 7], "conditions[1] is int, not a string"),
+        ("conditions", ["Type 2 Diabetes", "  "], "conditions[1] is blank"),
+        ("conditions", None, "conditions is NoneType, not a list"),
+        ("study_sites", [_WEEKLY_SITE, None], "study_sites[1] is NoneType, not an object"),
+        ("study_sites", [dict(_WEEKLY_SITE, country=7)], "study_sites[0].country is int, not a string"),
+        ("study_sites", [dict(_WEEKLY_SITE, state=["MA"])], "study_sites[0].state is list, not a string"),
+        ("collaborators", ["Fictional CRO"], "collaborators[0] is str, not an object"),
+        ("collaborators", [{"name": "Fictional CRO", "class": None}],
+         "collaborators[0].class is NoneType, not a string"),
+    ],
+)
+def test_weekly_records_with_malformed_list_fields_are_refused(
+    tmp_path: Path, source_kind: str, key: str, value: object, problem: str
+) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1][key] = value
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    message = f"1 of 5 weekly records carry a malformed list field (first: NCT99000402 {problem})"
+    with pytest.raises(ValueError, match=re.escape(message)):
+        benchmarks.load_study_records(weekly_path, source_kind=source_kind)
+
+
+def test_weekly_list_fields_the_extractor_writes_load(tmp_path: Path) -> None:
+    # Control: two sites and a collaborator as src/utils.py writes them, and a missing key, pass.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][0]["study_sites"] = [_WEEKLY_SITE, {"facility": "CA1", "city": "", "state": "", "zip": "",
+                                                           "country": "Canada"}]
+    weekly_doc["data"][0]["collaborators"] = [{"name": "Fictional CRO", "class": "INDUSTRY"}]
+    weekly_doc["data"][2].pop("collaborators", None)
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    assert len(benchmarks.load_study_records(weekly_path, source_kind="full_records")[0]) == 5
+
+
 def test_weekly_full_records_container_supported(tmp_path: Path) -> None:
     weekly_doc = fx.build_weekly_full_records_doc()
     weekly_path = tmp_path / "demographics.json.gz"
