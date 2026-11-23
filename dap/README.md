@@ -135,6 +135,8 @@ counts a value it cannot parse as 0, so a missing or non-string one (`{}`, `["60
 moved a posted row's participants into the balanced unknown remainder. The same holds for a
 measure's or class's own Number Analyzed (`denoms`), which `table_selection.number_analyzed` reads
 without a type check (a `classes[0].denoms: "corrupt"` stopped the build with `AttributeError`).
+A value must also not read as an infinite or NaN number (`"Infinity"`, `"1e400"`, `"nan"`), which
+`src/utils.py` parsed and then failed on with `OverflowError`; `"NA"` reads as no number and is kept.
 Weekly full records never pass these checks, so their own lists are checked
 too (`WEEKLY_LIST_FIELDS`): `study_sites`, `collaborators` and `conditions`
 must be present, as `src/utils.py` always writes them; `study_sites` and

@@ -43,6 +43,7 @@ from src import condition_mesh as cmesh
 from src import full_records
 from src import sex_gender_parser as sgp
 from src import sex_gender_table as sgt
+from src import utils as src_utils
 
 ROOT: Path = Path(__file__).resolve().parents[1]
 DEFAULT_ONTOLOGY_PATH: Path = ROOT / "condition_ontology.json"
@@ -592,7 +593,13 @@ CTGOV_PHASES: frozenset[str] = frozenset({"NA", "EARLY_PHASE1", "PHASE1", "PHASE
 # `true`, `null`) moved a posted row's participants into the balanced unknown remainder. All 132,311
 # measurements and 10,361 denominator counts in the 3,133 stored records with a baseline table carry
 # both as strings.
-_BASELINE_VALUE: dict[str, Any] = {"groupId": REQUIRED_STR, "value": REQUIRED_STR}
+# A required string whose number, when it reads as one, is finite. `src/utils.py` reads a value as
+# `measurement_number` does (and `get_measure_denom` as `float(text.replace(",", ""))`), so "Infinity",
+# "inf" or "1e400" read as an infinite float and "nan" as NaN, and `sum_measurements` or
+# `get_measure_denom` then raised `OverflowError` (or `ValueError`) and stopped the build. "NA" reads as
+# no number and is kept; no stored measurement or count reads as a non-finite number.
+FINITE_TEXT = "required string reading as a finite number or none"
+_BASELINE_VALUE: dict[str, Any] = {"groupId": REQUIRED_STR, "value": FINITE_TEXT}
 # A denominator list: the table's own, or a measure's or class's Number Analyzed, which
 # `table_selection.number_analyzed` reads through `get_measure_denom` with `.get` and no type check (a
 # `classes[0].denoms: "corrupt"` raised `AttributeError` in the build). All 2,951 class-level and 74
@@ -629,10 +636,25 @@ def _object_list_problems(value: Any, path: str, fields: dict[str, Any]) -> list
             if isinstance(spec, dict):
                 if name in item:
                     out += _object_list_problems(item[name], f"{where}.{name}", spec)
-            elif spec == REQUIRED_STR or name in item:
+            elif spec in (REQUIRED_STR, FINITE_TEXT) or name in item:
                 if not isinstance(item.get(name), str):
                     out.append(f"{where}.{name} (a string)")
+                elif spec == FINITE_TEXT and _reads_as_non_finite_number(item[name]):
+                    out.append(f"{where}.{name} (a string reading as a finite number, or none)")
     return out
+
+
+def _reads_as_non_finite_number(text: str) -> bool:
+    """Whether either reading `src/utils.py` makes of a baseline value gives an infinite or NaN number."""
+    readings: list[float] = []
+    try:
+        readings.append(float(text.replace(",", "")))  # get_measure_denom's reading
+    except ValueError:
+        pass
+    number = src_utils.measurement_number([{"value": text}], None)  # sum_measurements' reading
+    if number is not None:
+        readings.append(number)
+    return any(not math.isfinite(value) for value in readings)
 
 
 def _mistyped_parts(study: dict[str, Any]) -> list[str]:

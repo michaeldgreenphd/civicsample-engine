@@ -1610,6 +1610,19 @@ def _measured_study(nct_id: str) -> dict:
         (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "denoms"),
          [{"counts": [{"groupId": "BG000", "value": "90"}]}],
          f"{_BASE}.measures[0].classes[0].denoms[0].units (a string)"),
+        # On 8ea5edc each loaded, and the build raised OverflowError (ValueError for NaN) in src/utils.
+        *[
+            (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "categories", 0,
+              "measurements", 0, "value"), text,
+             f"{_BASE}.measures[0].classes[0].categories[0].measurements[0].value"
+             " (a string reading as a finite number, or none)")
+            for text in ("Infinity", "-Infinity", "nan", "1e400", "inf (2.0)")
+        ],
+        (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "counts", 0, "value"), "1e400",
+         f"{_BASE}.denoms[0].counts[0].value (a string reading as a finite number, or none)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "denoms"),
+         [{"units": "Participants", "counts": [{"groupId": "BG000", "value": "Infinity"}]}],
+         f"{_BASE}.measures[0].classes[0].denoms[0].counts[0].value (a string reading as a finite number, or none)"),
     ],
 )
 def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
@@ -1631,6 +1644,17 @@ def test_records_with_mistyped_parts_are_refused_before_the_extractors_raise(
     plain.write_text(json.dumps(complete) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match=want):
         benchmarks.load_study_records(plain)
+
+
+@pytest.mark.parametrize("text", ["NA", "60", "1,200", "50.3 (33.8)", "12%", "0"])
+def test_baseline_values_in_registry_forms_load(tmp_path: Path, text: str) -> None:
+    # "NA" reads as no number; the others as finite numbers, as src/utils.measurement_number reads them.
+    st = _measured_study("NCT99800022")
+    st["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"][0][
+        "measurements"][0]["value"] = text
+    plain = tmp_path / "studies.jsonl"
+    plain.write_text(json.dumps(_measured_study("NCT99800021")) + "\n" + json.dumps(st) + "\n", encoding="utf-8")
+    assert len(benchmarks.load_study_records(plain)[0]) == 2
 
 
 def test_a_measurement_without_its_value_is_refused(tmp_path: Path) -> None:
