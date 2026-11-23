@@ -19,6 +19,15 @@ Pins:
 8. Atomic .partial staging rollback, CLI graceful git fallback, and zero
    interference with src/dataset_folder.py::present_files.
 9. .gitignore coverage for the bundle directory and its staging directory.
+10. Hardening, each test failing on the dc38220 code: Module 4's citation rules
+    on input and on disk (F5), unknown pass sections refused (F4), the output
+    allowlist (L1), engine-rooted defaults and commit and a guarded report
+    (L2), interrupt-safe swap and retained-backup refusal (L3), recomputed
+    census status and no citation without a document (L4), the manifest as
+    allowlist with strict IDs and holdout stubs (L5), repeated options (L6),
+    and the live outcomes index shape (L7).
+
+Every trial ID is fictional (NCT99xxxxxx).
 """
 from __future__ import annotations
 
@@ -357,6 +366,17 @@ def _make_module4_provenance(nct_id: str, *, with_pdf_scraped: bool = False) -> 
         "excluded_standalone_icf_count": 1,
         "linked_publications": [],
     }
+
+
+def _write_manifest(path: pathlib.Path, studies: list[dict[str, Any]]) -> pathlib.Path:
+    """Write a --cohort-manifest listing each study's nct_id and in_audit (JSONL)."""
+    path.write_text(
+        "".join(
+            json.dumps({"nct_id": s["nct_id"], "in_audit": s["in_audit"]}) + "\n" for s in studies
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 # ── 1. Sharding vectors & parity with src/site_layout.py ─────────────────────
@@ -779,9 +799,11 @@ def test_ocr_recovery_and_adjudication_passes_effective_pass_and_cli(tmp_path: p
     locs_path = tmp_path / "locations.jsonl"
     locs_path.write_text("\n".join(json.dumps(r) for r in flat_rows) + "\n", encoding="utf-8")
     out_dir = tmp_path / "outcomes_cli"
+    manifest_path = _write_manifest(tmp_path / "manifest.jsonl", [study])
 
     rc = cli.main([
         "--trials", str(trials_path),
+        "--cohort-manifest", str(manifest_path),
         "--documents", str(docs_path),
         "--locations", str(locs_path),
         "--extracted-at", SAMPLE_TS,
@@ -947,13 +969,16 @@ def test_pregrouped_census_status_no_document_rejected_when_docs_posted() -> Non
             has_posted_documents=1,  # type: ignore[arg-type]
         )
 
-    allowed = ol.normalize_decision_rule_locations(
-        empty_nodoc_grouped,
-        document_profile=None,
-        has_posted_documents=False,
-    )
-    assert allowed is not None
-    assert allowed["census_status"] == "no_document"
+    # L4: a supplied census_status is recomputed, never trusted. An empty
+    # primary_pass computes to "not_started", so its "no_document" claim is
+    # refused even with no documents posted (it was accepted before); a trial
+    # with no documents records that with NO_DOCUMENT rows.
+    with pytest.raises(ol.OutcomesLayoutError, match="never trusted"):
+        ol.normalize_decision_rule_locations(
+            empty_nodoc_grouped,
+            document_profile=None,
+            has_posted_documents=False,
+        )
 
 
 def test_cli_no_document_manifest_and_trials_flag_merge_guards(tmp_path: pathlib.Path) -> None:
@@ -1352,13 +1377,17 @@ def test_audit_firewall_vectors_1_through_5_raise_value_error(
 def test_in_audit_ctgov_study_with_native_contacts_locations_is_allowed() -> None:
     """Native CT.gov contactsLocationsModule.locations must not false-positive."""
     study = _make_ctgov_study("NCT99000058", in_audit=True, include_native_locations=True)
-    prov_clean = _make_module4_provenance("NCT99000058", with_pdf_scraped=False)
-    row, rec = ol.build_trial_bundle(study, shards=16, longitudinal_provenance=prov_clean)
+    row, rec = ol.build_trial_bundle(study, shards=16)
     assert row["in_audit"] is True
     assert row["document_badge"]["readability_status"] == "in_audit_holdout"
     assert row["census_badge"]["census_status"] == "in_audit_holdout"
     assert rec["document_profile"] is None
     assert rec["decision_rule_locations"] is None
+    # L5: a holdout is a stub, so even PDF-free provenance for it is refused
+    # (it was accepted, and written, before).
+    prov_clean = _make_module4_provenance("NCT99000058", with_pdf_scraped=False)
+    with pytest.raises(ol.AuditFirewallError):
+        ol.build_trial_bundle(study, shards=16, longitudinal_provenance=prov_clean)
 
 
 @pytest.mark.parametrize("leak_stream", ["locations", "documents"])
@@ -1375,9 +1404,18 @@ def test_audit_firewall_vector_6_aborts_cli_before_touching_out_dir(
         encoding="utf-8",
     )
     out_dir = tmp_path / "outcomes_target"
+    manifest_path = _write_manifest(
+        tmp_path / "manifest.jsonl",
+        [
+            _make_ctgov_study("NCT99000076", in_audit=False),
+            _make_ctgov_study("NCT99000058", in_audit=True),
+        ],
+    )
     argv = [
         "--trials",
         str(trials_path),
+        "--cohort-manifest",
+        str(manifest_path),
         "--extracted-at",
         SAMPLE_TS,
         "--pipeline-commit",
@@ -1607,10 +1645,14 @@ def test_write_outcomes_tree_preserves_backup_if_rollback_restore_fails(
         real_replace(src, dst)
 
     monkeypatch.setattr(ol.os, "replace", _fail_index_and_restore)
-    with pytest.raises(OSError, match="simulated backup restore failure"):
+    # L3: the failure is reported as RetainedBackupError (it was the bare
+    # OSError of the failed restore); the message still carries that OSError's
+    # text, and now also names where the previous shards are kept.
+    with pytest.raises(ol.RetainedBackupError, match="simulated backup restore failure") as excinfo:
         ol.write_outcomes_tree(out, idx_v2, shards_v2)
 
     backup_dir = tmp_path / "outcomes_keep_backup.partial" / "_previous_shards"
+    assert str(backup_dir) in str(excinfo.value)
     assert backup_dir.is_dir(), "work/.partial must NOT be deleted when _previous_shards restore failed"
     assert (backup_dir / "0.json.gz").read_bytes() == v1_shard0
 
@@ -1652,7 +1694,8 @@ def test_write_outcomes_tree_refuses_foreign_data_directories(
 ) -> None:
     """Refuse to overwrite live data/outcomes/, data/results_structure/, or data/."""
     assert ol.DEFAULT_OUT_DIR_NAME == "outcomes_bundles"
-    assert cli.DEFAULT_OUT_DIR == os.path.join("data", "outcomes_bundles")
+    # L2: the default is resolved from the engine root, not the working directory.
+    assert cli.DEFAULT_OUT_DIR == str(ROOT / "data" / "outcomes_bundles")
 
     s1 = _make_ctgov_study("NCT99000076", in_audit=False)
     idx, shards = ol.build_outcomes_documents(
@@ -1801,25 +1844,38 @@ def test_dataset_folder_present_files_ignores_outcomes_bundles_directory(tmp_pat
         source_pipeline_commit=SAMPLE_COMMIT,
         shards=8,
     )
-    ol.write_outcomes_tree(site_data / ol.DEFAULT_OUT_DIR_NAME, idx, shards)
+    # L1: the builder no longer writes under a dataset folder (its ancestor
+    # holds run.json), so the bundle is built beside it and copied in to check
+    # that present_files still ignores one placed there.
+    with pytest.raises(ol.OutcomesLayoutError, match="ancestor"):
+        ol.write_outcomes_tree(site_data / ol.DEFAULT_OUT_DIR_NAME, idx, shards)
+    assert not (site_data / ol.DEFAULT_OUT_DIR_NAME).exists()
+    built = tmp_path / "built" / ol.DEFAULT_OUT_DIR_NAME
+    assert ol.write_outcomes_tree(built, idx, shards).ok
+    import shutil
+
+    shutil.copytree(built, site_data / ol.DEFAULT_OUT_DIR_NAME)
 
     present = df.present_files(str(site_data))
     assert present == ["demographics.part1.json.gz", "run.json"]
     assert not any("outcomes_bundles" in name for name in present)
 
 
-def test_cli_end_to_end_and_graceful_git_fallback(
+def test_cli_end_to_end_and_unresolvable_commit_refused(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """L2: with git unavailable and no --pipeline-commit the build is refused and
+    nothing is written (before, it wrote source_pipeline_commit=null and exited
+    0); an explicit --pipeline-commit still builds a tree that passes --check.
+    """
+    studies = [
+        _make_ctgov_study("NCT99000076", in_audit=False),
+        _make_ctgov_study("NCT99000058", in_audit=True),
+    ]
     trials_path = tmp_path / "trials.json"
-    trials_path.write_text(
-        json.dumps([
-            _make_ctgov_study("NCT99000076", in_audit=False),
-            _make_ctgov_study("NCT99000058", in_audit=True),
-        ]),
-        encoding="utf-8",
-    )
+    trials_path.write_text(json.dumps(studies), encoding="utf-8")
+    manifest_path = _write_manifest(tmp_path / "manifest.jsonl", studies)
     docs_path = tmp_path / "profiles.jsonl"
     docs_path.write_text(json.dumps(_make_doc_profile("NCT99000076")) + "\n", encoding="utf-8")
     locs_path = tmp_path / "locations.jsonl"
@@ -1833,48 +1889,48 @@ def test_cli_end_to_end_and_graceful_git_fallback(
         encoding="utf-8",
     )
     report_path = tmp_path / "report.json"
+    common = [
+        "--trials", str(trials_path),
+        "--cohort-manifest", str(manifest_path),
+        "--documents", str(docs_path),
+        "--locations", str(locs_path),
+        "--provenance", str(prov_path),
+        "--extracted-at", SAMPLE_TS,
+        "--shards", "8",
+    ]
 
-    # Simulate git unavailable inside sandbox + no GITHUB_SHA.
-    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    # Simulate git unavailable inside sandbox; GITHUB_SHA is not consulted.
+    monkeypatch.setenv("GITHUB_SHA", SAMPLE_COMMIT)
+    real_run = ol.subprocess.run
     monkeypatch.setattr(
         ol.subprocess,
         "run",
         lambda *a, **kw: (_ for _ in ()).throw(OSError("git blocked in sandbox")),
     )
-
     out_fallback = tmp_path / "out_fallback"
-    rc_fallback = cli.main([
-        "--trials", str(trials_path),
-        "--documents", str(docs_path),
-        "--locations", str(locs_path),
-        "--provenance", str(prov_path),
-        "--extracted-at", SAMPLE_TS,
-        "--shards", "8",
-        "--out-dir", str(out_fallback),
-        "--report", str(report_path),
-    ])
-    assert rc_fallback == 0
-    assert ol.validate_outcomes_tree(out_fallback, allow_null_commit=True).ok
-    assert not ol.validate_outcomes_tree(out_fallback).ok  # strict check catches null commit
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["ok"] is True
-    assert report["total_trials"] == 2
-    assert report["audit_holdout_trials"] == 1
+    rc_fallback = cli.main([*common, "--out-dir", str(out_fallback), "--report", str(report_path)])
+    assert rc_fallback == 1
+    assert not out_fallback.exists()
+    assert not pathlib.Path(f"{out_fallback}.partial").exists()
+    assert not report_path.exists()
+    monkeypatch.setattr(ol.subprocess, "run", real_run)
 
     # Explicit --pipeline-commit satisfies strict --check (exit 0).
     out_strict = tmp_path / "out_strict"
     rc_strict = cli.main([
-        "--trials", str(trials_path),
-        "--documents", str(docs_path),
-        "--locations", str(locs_path),
-        "--provenance", str(prov_path),
-        "--extracted-at", SAMPLE_TS,
+        *common,
         "--pipeline-commit", SAMPLE_COMMIT,
-        "--shards", "8",
         "--out-dir", str(out_strict),
+        "--report", str(report_path),
     ])
     assert rc_strict == 0
     assert cli.main(["--check", str(out_strict)]) == 0
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["ok"] is True
+    assert report["total_trials"] == 2
+    assert report["audit_holdout_trials"] == 1
+    idx_doc = json.loads((out_strict / "index.json").read_text(encoding="utf-8"))
+    assert idx_doc["source_pipeline_commit"] == SAMPLE_COMMIT
 
 
 # ── 8b. Module 4 provenance projection feeding the builder ───────────────────
@@ -2040,6 +2096,730 @@ def test_to_outcomes_layout_provenance_feeds_build_outcomes_shards(tmp_path: pat
     assert cli.main(["--check", str(out_dir)]) == 0
 
 
+# ── 10. Hardening: F4, F5, L1-L7 (each fails on the dc38220 code) ────────────
+
+def _valid_tree(
+    out: pathlib.Path,
+    *,
+    nct_id: str = "NCT99000076",
+    loc_rows: list[dict[str, Any]] | None = None,
+    shards: int = 8,
+) -> pathlib.Path:
+    """Write a valid one-trial tree (documents + locations) with the library."""
+    study = _make_ctgov_study(nct_id, in_audit=False)
+    bundle = ol.build_trial_bundle(
+        study,
+        shards=shards,
+        document_profile=_make_doc_profile(nct_id),
+        decision_rule_locations=loc_rows if loc_rows is not None else _make_complete_locations(nct_id),
+    )
+    idx, shard_docs = ol.build_outcomes_documents(
+        [bundle], extracted_at=SAMPLE_TS, source_pipeline_commit=SAMPLE_COMMIT, shards=shards
+    )
+    assert ol.write_outcomes_tree(out, idx, shard_docs).ok
+    return out
+
+
+def _read_shard(out: pathlib.Path, nct_id: str, shards: int = 8) -> tuple[pathlib.Path, dict[str, Any]]:
+    """Return ``(path, decoded shard document)`` for the shard holding ``nct_id``."""
+    path = out / "shards" / f"{ol.outcomes_shard_of(nct_id, shards)}.json.gz"
+    return path, json.loads(gzip.decompress(path.read_bytes()).decode("utf-8"))
+
+
+def _cli_build_args(
+    tmp_path: pathlib.Path,
+    studies: list[dict[str, Any]],
+    out_dir: pathlib.Path,
+    *,
+    extra: list[str] | None = None,
+    manifest: bool = True,
+) -> list[str]:
+    """argv for a CLI build of ``studies`` (trials + manifest) into ``out_dir``."""
+    trials_path = tmp_path / "trials_cli.json"
+    trials_path.write_text(json.dumps(studies), encoding="utf-8")
+    argv = ["--trials", str(trials_path)]
+    if manifest:
+        argv += ["--cohort-manifest", str(_write_manifest(tmp_path / "manifest_cli.jsonl", studies))]
+    argv += [
+        "--extracted-at", SAMPLE_TS,
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out_dir),
+    ]
+    return argv + (extra or [])
+
+
+# F5: one definition of the citation rules, applied on input and on disk.
+
+def test_f5_citation_rules_are_module4_definitions() -> None:
+    from src import citation_verifier as cv
+
+    assert ol.CITATION_REQUIRED_STATUSES is cv.CITATION_REQUIRED_STATUSES
+    assert ol.CITATION_FORBIDDEN_STATUSES is cv.CITATION_FORBIDDEN_STATUSES
+    assert ol.validate_status_citations is cv.validate_status_citations
+    assert ol.validate_citation_shape is cv.validate_citation_shape
+    assert ol.validate_strict_nct_id is cv.validate_strict_nct_id
+
+
+@pytest.mark.parametrize(
+    "field,value,expect",
+    [
+        ("printed_page", 10, "printed_page"),
+        ("filename", "Prot SAP 000.pdf", "pdf basename"),
+        ("quotation", "Primary analysis․․․ ITT population.", "ellipsis"),
+    ],
+)
+def test_f5_normalization_applies_module4_citation_shape(field: str, value: Any, expect: str) -> None:
+    """Citations dc38220 accepted and Module 4 refuses: an int printed page, a
+    filename that is not a safe .pdf basename, an ellipsis in a compatibility
+    spelling (one-dot leaders)."""
+    nct_id = "NCT99000076"
+    raw_prof = _make_doc_profile(nct_id)
+    if field == "filename":
+        raw_prof["documents"][0]["filename"] = value
+    prof = ol.normalize_document_profile(raw_prof)
+    rows = _make_complete_locations(nct_id)
+    rows[0]["citations"][0][field] = value
+    with pytest.raises(ol.OutcomesLayoutError, match=expect):
+        ol.normalize_decision_rule_locations(rows, document_profile=prof, primary_outcomes_count=1)
+
+
+@pytest.mark.parametrize("bad", [[None], ["x"], [{}]], ids=["none", "str", "empty_object"])
+def test_f5_on_disk_malformed_citations_fail_check(tmp_path: pathlib.Path, bad: list[Any]) -> None:
+    nct_id = "NCT99000076"
+    out = _valid_tree(tmp_path / "bundle", nct_id=nct_id)
+    path, sdoc = _read_shard(out, nct_id)
+    locs = sdoc["data"][nct_id]["decision_rule_locations"]
+    locs["primary_pass"][0]["citations"] = copy.deepcopy(bad)
+    locs["effective_pass"][0]["citations"] = copy.deepcopy(bad)
+    path.write_bytes(ol.encode_gz_bytes(sdoc))
+    res = ol.validate_outcomes_tree(out)
+    assert not res.ok
+    assert any("primary_pass[0].citations[0]" in p for p in res.problems)
+    assert any("effective_pass[0].citations[0]" in p for p in res.problems)
+    assert cli.main(["--check", str(out)]) == 1
+
+
+# F4: unknown pass sections in a pre-grouped object are refused, not dropped.
+
+def _primary_and_adjudication(nct_id: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    primary_rows = _make_complete_locations(nct_id)
+    for row in primary_rows:
+        if row["element"] == "margin":
+            row["status"] = "AMBIGUOUS"
+    adj_row = copy.deepcopy(primary_rows[4])
+    adj_row["status"] = "FOUND"
+    adj_row["pass"] = "adjudication"
+    return primary_rows, adj_row
+
+
+@pytest.mark.parametrize("unknown_key", ["ocr_pass", "adjudication", "effective_pass", "notes"])
+def test_f4_pregrouped_unknown_key_refused(unknown_key: str) -> None:
+    nct_id = "NCT99000076"
+    prof = ol.normalize_document_profile(_make_doc_profile(nct_id))
+    primary_rows, adj_row = _primary_and_adjudication(nct_id)
+    grouped = {"nct_id": nct_id, "primary_pass": primary_rows, unknown_key: [adj_row]}
+    with pytest.raises(ol.OutcomesLayoutError, match="unknown key"):
+        ol.normalize_decision_rule_locations(grouped, document_profile=prof, primary_outcomes_count=1)
+
+
+def test_f4_pregrouped_row_filed_under_another_pass_refused() -> None:
+    nct_id = "NCT99000076"
+    prof = ol.normalize_document_profile(_make_doc_profile(nct_id))
+    primary_rows, adj_row = _primary_and_adjudication(nct_id)
+    with pytest.raises(ol.OutcomesLayoutError, match="re-filed"):
+        ol.normalize_decision_rule_locations(
+            {"primary_pass": primary_rows[:-1] + [adj_row]},
+            document_profile=prof,
+            primary_outcomes_count=1,
+        )
+
+
+def test_f4_cli_pregrouped_misspelled_pass_is_refused(tmp_path: pathlib.Path) -> None:
+    nct_id = "NCT99000076"
+    primary_rows, adj_row = _primary_and_adjudication(nct_id)
+    locs_path = tmp_path / "grouped.jsonl"
+    locs_path.write_text(
+        json.dumps({"nct_id": nct_id, "primary_pass": primary_rows, "adjudication": [adj_row]}) + "\n",
+        encoding="utf-8",
+    )
+    docs_path = tmp_path / "docs.jsonl"
+    docs_path.write_text(json.dumps(_make_doc_profile(nct_id)) + "\n", encoding="utf-8")
+    out = tmp_path / "bundle"
+    argv = _cli_build_args(
+        tmp_path,
+        [_make_ctgov_study(nct_id)],
+        out,
+        extra=["--documents", str(docs_path), "--locations", str(locs_path)],
+    )
+    assert cli.main(argv) == 1
+    assert not out.exists()
+
+
+def test_f4_on_disk_unknown_locations_key_fails_check(tmp_path: pathlib.Path) -> None:
+    nct_id = "NCT99000076"
+    out = _valid_tree(tmp_path / "bundle", nct_id=nct_id)
+    path, sdoc = _read_shard(out, nct_id)
+    sdoc["data"][nct_id]["decision_rule_locations"]["ocr_pass"] = []
+    path.write_bytes(ol.encode_gz_bytes(sdoc))
+    res = ol.validate_outcomes_tree(out)
+    assert not res.ok
+    assert any("key mismatch" in p and "ocr_pass" in p for p in res.problems)
+
+
+# L4: census_status is recomputed; citations need a posted document.
+
+def test_l4_pregrouped_census_status_is_recomputed_not_trusted() -> None:
+    nct_id = "NCT99000076"
+    prof = ol.normalize_document_profile(_make_doc_profile(nct_id))
+    rows = _make_complete_locations(nct_id)[:3]
+    with pytest.raises(ol.OutcomesLayoutError, match="never trusted"):
+        ol.normalize_decision_rule_locations(
+            {"primary_pass": rows, "census_status": "complete"},
+            document_profile=prof,
+            primary_outcomes_count=1,
+        )
+    agreed = ol.normalize_decision_rule_locations(
+        {"primary_pass": rows, "census_status": "partial"},
+        document_profile=prof,
+        primary_outcomes_count=1,
+    )
+    assert agreed is not None and agreed["census_status"] == "partial"
+
+
+def test_l4_citations_refused_when_no_document_is_posted() -> None:
+    rows = _make_complete_locations("NCT99000076")
+    with pytest.raises(ol.OutcomesLayoutError, match="no posted documents"):
+        ol.normalize_decision_rule_locations(
+            rows, document_profile=None, primary_outcomes_count=1, has_posted_documents=False
+        )
+
+
+def test_l4_no_document_census_with_citations_refused() -> None:
+    nct_id = "NCT99000076"
+    rows = _make_no_document_locations(nct_id)
+    second = copy.deepcopy(_make_complete_locations(nct_id, include_second_pass=True)[-1])
+    with pytest.raises(ol.OutcomesLayoutError):
+        ol.normalize_decision_rule_locations(
+            rows + [second], document_profile=None, primary_outcomes_count=1, has_posted_documents=False
+        )
+
+
+def test_l4_on_disk_census_status_recomputed(tmp_path: pathlib.Path) -> None:
+    nct_id = "NCT99000076"
+    out = _valid_tree(tmp_path / "bundle", nct_id=nct_id)
+    path, sdoc = _read_shard(out, nct_id)
+    sdoc["data"][nct_id]["decision_rule_locations"]["census_status"] = "partial"
+    path.write_bytes(ol.encode_gz_bytes(sdoc))
+    idx_doc = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    idx_doc["data"][0]["census_badge"]["census_status"] = "partial"  # badge kept consistent
+    (out / "index.json").write_text(ol.encode_json_text(idx_doc, trailing_newline=True), encoding="utf-8")
+    res = ol.validate_outcomes_tree(out)
+    assert not res.ok
+    assert any("never trusted" in p for p in res.problems)
+
+
+# L1: the output allowlist.
+
+@pytest.mark.parametrize("marker", ["run.json", "summary.json", "records", "records.json", "index.json"])
+def test_l1_ancestor_marking_another_family_is_refused(tmp_path: pathlib.Path, marker: str) -> None:
+    family = tmp_path / "site_data"
+    family.mkdir()
+    if marker == "records":
+        (family / "records").mkdir()
+    else:
+        (family / marker).write_text("{}\n", encoding="utf-8")
+    target = family / "nested" / "outcomes_bundles"
+    with pytest.raises(ol.OutcomesLayoutError, match="ancestor"):
+        _valid_tree(target)
+    assert not (family / "nested").exists()
+    assert sorted(os.listdir(family)) == [marker]
+
+
+def test_l1_non_empty_target_without_marker_is_refused(tmp_path: pathlib.Path) -> None:
+    target = tmp_path / "somebody_elses"
+    target.mkdir()
+    (target / "notes.txt").write_text("keep", encoding="utf-8")
+    with pytest.raises(ol.OutcomesLayoutError, match="non-empty"):
+        _valid_tree(target)
+    assert sorted(os.listdir(target)) == ["notes.txt"]
+    assert not pathlib.Path(f"{target}.partial").exists()
+
+
+def test_l1_symlinked_target_ancestor_and_partial_are_refused(tmp_path: pathlib.Path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    link_target = tmp_path / "link_target"
+    link_target.symlink_to(real, target_is_directory=True)
+    with pytest.raises(ol.OutcomesLayoutError, match="symlink"):
+        _valid_tree(link_target)
+    link_parent = tmp_path / "link_parent"
+    link_parent.symlink_to(real, target_is_directory=True)
+    with pytest.raises(ol.OutcomesLayoutError, match="symlink"):
+        _valid_tree(link_parent / "bundle")
+    assert os.listdir(real) == []
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "precious.txt").write_text("keep", encoding="utf-8")
+    (tmp_path / "bundle.partial").symlink_to(elsewhere, target_is_directory=True)
+    with pytest.raises(ol.OutcomesLayoutError, match="symlink"):
+        _valid_tree(tmp_path / "bundle")
+    assert sorted(os.listdir(elsewhere)) == ["precious.txt"]
+    assert not (tmp_path / "bundle").exists()
+
+
+def test_l1_foreign_partial_is_never_deleted_own_leftover_is(tmp_path: pathlib.Path) -> None:
+    target = tmp_path / "bundle"
+    foreign = tmp_path / "bundle.partial"
+    foreign.mkdir()
+    (foreign / "precious.txt").write_text("keep", encoding="utf-8")
+    with pytest.raises(ol.OutcomesLayoutError, match="did not create it"):
+        _valid_tree(target)
+    assert (foreign / "precious.txt").read_text(encoding="utf-8") == "keep"
+    assert not target.exists()
+
+    # A leftover staging directory carrying this module's staging marker is removed.
+    (foreign / "precious.txt").unlink()
+    (foreign / ol.STAGING_MARKER_FILE).write_text(ol._marker_text(ol.STAGING_MARKER), encoding="utf-8")
+    (foreign / "shards").mkdir()
+    _valid_tree(target)
+    assert not foreign.exists()
+    assert ol.validate_outcomes_tree(target).ok
+
+
+def test_l1_bundle_marker_written_and_required(tmp_path: pathlib.Path) -> None:
+    out = _valid_tree(tmp_path / "bundle")
+    marker = out / ol.BUNDLE_MARKER_FILE
+    assert json.loads(marker.read_text(encoding="utf-8")) == {
+        "layout": "outcomes_bundles",
+        "layout_version": ol.LAYOUT_VERSION,
+    }
+    # Rewriting an existing bundle is allowed (it carries the marker).
+    _valid_tree(out)
+    marker.unlink()
+    res = ol.validate_outcomes_tree(out)
+    assert not res.ok
+    assert any(ol.BUNDLE_MARKER_FILE in p for p in res.problems)
+    # Without its marker the directory is no longer this module's to overwrite.
+    with pytest.raises(ol.OutcomesLayoutError, match="foreign directory"):
+        _valid_tree(out)
+
+
+# L2: engine-rooted defaults, engine commit, guarded report.
+
+def test_l2_default_out_dir_is_engine_rooted_whatever_the_cwd(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    args = cli._build_parser().parse_args(["--cohort-manifest", "m.json"])
+    assert args.out_dir == str(ROOT / "data" / "outcomes_bundles")
+    assert pathlib.Path(args.out_dir).is_absolute()
+
+
+def _git(cwd: pathlib.Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def test_l2_commit_resolved_from_engine_root_not_cwd(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    other = tmp_path / "other_repo"
+    other.mkdir()
+    _git(other, "init", "-q")
+    _git(other, "commit", "-q", "--allow-empty", "-m", "other")
+    other_head = _git(other, "rev-parse", "HEAD")
+    engine_head = _git(ROOT, "rev-parse", "HEAD")
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    monkeypatch.chdir(other)
+    resolved = ol.resolve_pipeline_commit()
+    assert resolved == engine_head
+    assert resolved != other_head
+
+    # A directory inside another repository is not its own checkout: no commit.
+    nested = other / "engine_copy"
+    nested.mkdir()
+    assert ol.resolve_pipeline_commit(repo_root=nested) is None
+
+
+@pytest.mark.parametrize("case", ["foreign_ancestor", "not_a_report", "symlink", "inside_bundle"])
+def test_l2_report_path_is_guarded(tmp_path: pathlib.Path, case: str) -> None:
+    out = tmp_path / "bundle"
+    if case == "foreign_ancestor":
+        (tmp_path / "site").mkdir()
+        (tmp_path / "site" / "run.json").write_text("{}\n", encoding="utf-8")
+        report = tmp_path / "site" / "reports" / "report.json"
+    elif case == "not_a_report":
+        report = tmp_path / "notes.json"
+        report.write_text('{"mine": true}\n', encoding="utf-8")
+    elif case == "symlink":
+        real = tmp_path / "real.json"
+        real.write_text("{}\n", encoding="utf-8")
+        report = tmp_path / "report.json"
+        report.symlink_to(real)
+    else:
+        report = out / "report.json"
+    argv = _cli_build_args(
+        tmp_path, [_make_ctgov_study("NCT99000076")], out, extra=["--report", str(report)]
+    )
+    assert cli.main(argv) == 1
+    assert not out.exists()
+    if case == "not_a_report":
+        assert report.read_text(encoding="utf-8") == '{"mine": true}\n'
+    if case == "foreign_ancestor":
+        assert not report.parent.exists()
+
+
+# L3: interrupts in the swap window, and a retained backup.
+
+def _two_versions(out: pathlib.Path) -> tuple[dict[str, Any], dict[int, dict[str, Any]], bytes, dict[int, bytes]]:
+    s1 = _make_ctgov_study("NCT99000076", in_audit=False)
+    s2 = _make_ctgov_study("NCT99000060", in_audit=False, sponsor_class="NIH", phase="PHASE2")
+    idx_v1, shards_v1 = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(s1, shards=4)],
+        extracted_at="2026-11-20T03:00:00+00:00",
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+    ol.write_outcomes_tree(out, idx_v1, shards_v1)
+    idx_v2, shards_v2 = ol.build_outcomes_documents(
+        [ol.build_trial_bundle(s1, shards=4), ol.build_trial_bundle(s2, shards=4)],
+        extracted_at=SAMPLE_TS,
+        source_pipeline_commit=SAMPLE_COMMIT,
+        shards=4,
+    )
+    v1_index = (out / "index.json").read_bytes()
+    v1_shards = {n: (out / "shards" / f"{n}.json.gz").read_bytes() for n in range(4)}
+    return idx_v2, shards_v2, v1_index, v1_shards
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit])
+def test_l3_interrupt_during_swap_restores_previous_tree(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt: type[BaseException],
+) -> None:
+    out = tmp_path / "bundle"
+    idx_v2, shards_v2, v1_index, v1_shards = _two_versions(out)
+    real_replace = os.replace
+
+    def _interrupt_on_index(src: Any, dst: Any) -> None:
+        if pathlib.Path(dst).name == ol.INDEX_FILE:
+            raise interrupt()
+        real_replace(src, dst)
+
+    monkeypatch.setattr(ol.os, "replace", _interrupt_on_index)
+    with pytest.raises(interrupt):
+        ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    monkeypatch.setattr(ol.os, "replace", real_replace)
+
+    assert (out / "index.json").read_bytes() == v1_index
+    for n in range(4):
+        assert (out / "shards" / f"{n}.json.gz").read_bytes() == v1_shards[n]
+    assert ol.validate_outcomes_tree(out).ok
+    assert not pathlib.Path(f"{out}.partial").exists()
+
+
+def test_l3_retained_backup_refuses_next_run_and_names_it(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    out = tmp_path / "bundle"
+    idx_v2, shards_v2, _, v1_shards = _two_versions(out)
+    real_replace = os.replace
+
+    def _fail_index_and_restore(src: Any, dst: Any) -> None:
+        if pathlib.Path(dst).name == ol.INDEX_FILE:
+            raise OSError("simulated index swap failure")
+        if pathlib.Path(src).name == ol.PREVIOUS_SHARDS_DIR:
+            raise OSError("simulated backup restore failure")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(ol.os, "replace", _fail_index_and_restore)
+    backup = pathlib.Path(f"{out}.partial") / ol.PREVIOUS_SHARDS_DIR
+    with pytest.raises(ol.RetainedBackupError) as first:
+        ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    assert str(backup) in str(first.value)
+    monkeypatch.setattr(ol.os, "replace", real_replace)
+
+    with pytest.raises(ol.RetainedBackupError) as second:
+        ol.write_outcomes_tree(out, idx_v2, shards_v2)
+    assert str(backup) in str(second.value)
+    for n in range(4):
+        assert (backup / f"{n}.json.gz").read_bytes() == v1_shards[n]
+
+    manifest = _write_manifest(tmp_path / "m.jsonl", [_make_ctgov_study("NCT99000076")])
+    rc = cli.main([
+        "--cohort-manifest", str(manifest),
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--manifest-cohort", "industry_outcomes_beta",
+        "--shards", "4",
+        "--out-dir", str(out),
+    ])
+    assert rc == 1
+    assert str(backup) in capsys.readouterr().err
+    assert backup.is_dir()
+
+
+# L5: the manifest is the allowlist; strict IDs; holdout stubs.
+
+def test_l5_cohort_manifest_is_required(tmp_path: pathlib.Path) -> None:
+    out = tmp_path / "bundle"
+    argv = _cli_build_args(tmp_path, [_make_ctgov_study("NCT99000076")], out, manifest=False)
+    assert cli.main(argv) == 1
+    assert not out.exists()
+
+
+def test_l5_trial_absent_from_manifest_is_refused(tmp_path: pathlib.Path) -> None:
+    listed = _make_ctgov_study("NCT99000076")
+    unlisted = _make_ctgov_study("NCT99000060", sponsor_class="NIH", phase="PHASE2")
+    trials_path = tmp_path / "trials.json"
+    trials_path.write_text(json.dumps([listed, unlisted]), encoding="utf-8")
+    out = tmp_path / "bundle"
+    rc = cli.main([
+        "--trials", str(trials_path),
+        "--cohort-manifest", str(_write_manifest(tmp_path / "m.jsonl", [listed])),
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out),
+    ])
+    assert rc == 1
+    assert not out.exists()
+
+
+def _side_stream_case(tmp_path: pathlib.Path, case: str) -> tuple[list[str], int]:
+    """argv and expected exit code for one bad side stream."""
+    nct_id = "NCT99000076"
+    study = _make_ctgov_study(nct_id)
+    out = tmp_path / "bundle"
+    path = tmp_path / f"{case}.jsonl"
+    if case == "outside_build_provenance":
+        path.write_text(json.dumps(_make_module4_provenance("NCT99000060")) + "\n", encoding="utf-8")
+        return _cli_build_args(tmp_path, [study], out, extra=["--provenance", str(path)]), 1
+    if case == "outside_build_locations":
+        rows = _make_complete_locations("NCT99000060")
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        return _cli_build_args(tmp_path, [study], out, extra=["--locations", str(path)]), 1
+    if case == "non_ascii_digits":
+        pop = {
+            "nct_id": "NCT٩٩٠٠٠٠٧٦",
+            "outcomes": [{"outcome_index": 0, "outcome_type": "PRIMARY"}],
+        }
+        path.write_text(json.dumps(pop) + "\n", encoding="utf-8")
+        return _cli_build_args(tmp_path, [study], out, extra=["--population-parsed", str(path)]), 1
+    if case == "nested_other_trial":
+        prof = _make_doc_profile(nct_id)
+        prof["documents"][0]["nct_id"] = "NCT99000060"
+        path.write_text(json.dumps(prof) + "\n", encoding="utf-8")
+        return _cli_build_args(tmp_path, [study], out, extra=["--documents", str(path)]), 1
+    if case in ("side_in_audit_true", "side_inAudit_true"):
+        prov = _make_module4_provenance(nct_id)
+        prov["in_audit" if case == "side_in_audit_true" else "inAudit"] = True
+        path.write_text(json.dumps(prov) + "\n", encoding="utf-8")
+        return _cli_build_args(tmp_path, [study], out, extra=["--provenance", str(path)]), 2
+    if case == "holdout_population":
+        holdout = _make_ctgov_study("NCT99000058", in_audit=True)
+        pop = {"nct_id": "NCT99000058", "outcomes": [{"outcome_index": 0, "outcome_type": "PRIMARY"}]}
+        path.write_text(json.dumps(pop) + "\n", encoding="utf-8")
+        return _cli_build_args(tmp_path, [study, holdout], out, extra=["--population-parsed", str(path)]), 2
+    raise AssertionError(case)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "outside_build_provenance",
+        "outside_build_locations",
+        "non_ascii_digits",
+        "nested_other_trial",
+        "side_in_audit_true",
+        "side_inAudit_true",
+        "holdout_population",
+    ],
+)
+def test_l5_side_streams_are_checked_against_the_manifest(
+    tmp_path: pathlib.Path,
+    case: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    argv, expected_rc = _side_stream_case(tmp_path, case)
+    assert cli.main(argv) == expected_rc
+    assert not (tmp_path / "bundle").exists()
+    if expected_rc == 2:
+        assert "NCT99000058" not in capsys.readouterr().err
+
+
+def test_l5_manifest_repeating_in_audit_key_is_refused(tmp_path: pathlib.Path) -> None:
+    manifest = tmp_path / "m.json"
+    manifest.write_text(
+        '[{"nct_id": "NCT99000076", "in_audit": true, "cohorts": ["nih"], "in_audit": false}]',
+        encoding="utf-8",
+    )
+    out = tmp_path / "bundle"
+    rc = cli.main([
+        "--cohort-manifest", str(manifest),
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--out-dir", str(out),
+    ])
+    assert rc == 2
+    assert not out.exists()
+
+
+def test_l5_holdout_is_written_as_an_index_only_stub(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    holdout_id = "NCT99000058"
+    studies = [_make_ctgov_study("NCT99000076"), _make_ctgov_study(holdout_id, in_audit=True)]
+    out = tmp_path / "bundle"
+    assert cli.main(_cli_build_args(tmp_path, studies, out)) == 0
+    idx_doc = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    row = {r["nct_id"]: r for r in idx_doc["data"]}[holdout_id]
+    assert row["has_reported_results"] is None
+    assert row["primary_outcomes_count"] is None  # not counted from the holdout's results
+    path, sdoc = _read_shard(out, holdout_id)
+    rec = sdoc["data"][holdout_id]
+    assert rec["reported_results"] is None
+    assert rec["document_profile"] is None
+    assert rec["decision_rule_locations"] is None
+    assert rec["longitudinal_provenance"] is None
+
+    # On disk, anything beyond the stub in a holdout record is a leak (exit 2).
+    rec["reported_results"] = {"results_posted": True}
+    path.write_bytes(ol.encode_gz_bytes(sdoc))
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) == 2
+    assert holdout_id not in capsys.readouterr().err
+
+
+# L6: repeated options.
+
+def test_l6_repeated_locations_append(tmp_path: pathlib.Path) -> None:
+    nct_id = "NCT99000076"
+    primary_rows, adj_row = _primary_and_adjudication(nct_id)
+    a = tmp_path / "primary.jsonl"
+    b = tmp_path / "adjudication.jsonl"
+    a.write_text("".join(json.dumps(r) + "\n" for r in primary_rows), encoding="utf-8")
+    b.write_text(json.dumps(adj_row) + "\n", encoding="utf-8")
+    docs = tmp_path / "docs.jsonl"
+    docs.write_text(json.dumps(_make_doc_profile(nct_id)) + "\n", encoding="utf-8")
+    out = tmp_path / "bundle"
+    extra = ["--documents", str(docs), "--locations", str(a), "--locations", str(b)]
+    assert cli.main(_cli_build_args(tmp_path, [_make_ctgov_study(nct_id)], out, extra=extra)) == 0
+    _, sdoc = _read_shard(out, nct_id)
+    locs = sdoc["data"][nct_id]["decision_rule_locations"]
+    assert len(locs["primary_pass"]) == 7
+    assert len(locs["adjudication_pass"]) == 1
+
+    # The same cell in two files, or the same file twice, is refused.
+    out2 = tmp_path / "bundle2"
+    dup = ["--documents", str(docs), "--locations", str(a), "--locations", str(tmp_path / "again.jsonl")]
+    (tmp_path / "again.jsonl").write_text(json.dumps(primary_rows[0]) + "\n", encoding="utf-8")
+    assert cli.main(_cli_build_args(tmp_path, [_make_ctgov_study(nct_id)], out2, extra=dup)) == 1
+    same = ["--documents", str(docs), "--locations", str(a), "--locations", str(a)]
+    assert cli.main(_cli_build_args(tmp_path, [_make_ctgov_study(nct_id)], out2, extra=same)) == 1
+    assert not out2.exists()
+
+
+@pytest.mark.parametrize("option", ["--documents", "--provenance", "--trials", "--out-dir"])
+def test_l6_other_options_refuse_repetition(tmp_path: pathlib.Path, option: str) -> None:
+    out = tmp_path / "bundle"
+    argv = _cli_build_args(tmp_path, [_make_ctgov_study("NCT99000076")], out)
+    argv += [option, str(tmp_path / "a.json"), option, str(tmp_path / "b.json")]
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(argv)
+    assert excinfo.value.code == 2
+    assert not out.exists()
+
+
+# L7: the live outcomes index shape ({"rows": [...]}).
+
+def _live_shaped_row(nct_id: str, *, docs: bool, in_audit: bool = False, posted: bool = True) -> dict[str, Any]:
+    """A fictional row with exactly the keys of data/outcomes/index.json rows."""
+    return {
+        "nct_id": nct_id,
+        "title": f"Fictional trial {nct_id[-4:]}",
+        "sponsor": "Fictional Pharma",
+        "sponsor_state": "attributed",
+        "recode_differs": False,
+        "area": "Oncology",
+        "area_secondary": "",
+        "primary_objective": "Efficacy",
+        "n_primary_outcomes": 2,
+        "results_state": "POSTED" if posted else "NOT_POSTED",
+        "results_sub_reason": None if posted else "no_results_posted",
+        "results_first_post_date": "2023-01-10" if posted else None,
+        "protocol": docs,
+        "sap": docs,
+        "in_audit": in_audit,
+        "assessment_kind": None,
+        "trial_state": None,
+        "review_status": None,
+        "in_demographics": True,
+        "record": "records/r00.json",
+    }
+
+
+def test_l7_live_outcomes_index_shape_builds_end_to_end(tmp_path: pathlib.Path) -> None:
+    rows = [
+        _live_shaped_row("NCT99300001", docs=True),
+        _live_shaped_row("NCT99300002", docs=False),
+        _live_shaped_row("NCT99300003", docs=False, posted=False),
+        _live_shaped_row("NCT99300004", docs=True, in_audit=True),
+    ]
+    index = {
+        "columns_note": "Fictional rows in the live index's shape.",
+        "excluded": [{"nct_id": "NCT99300099", "reason": "fictional"}],
+        "rows": rows,
+        "run_id": "outcomes-2026-11-09-fictional",
+        "schema_version": 1,
+    }
+    # The copy keeps the live file's name; it sits in its own directory because
+    # a directory holding a non-bundle index.json is refused as an ancestor.
+    (tmp_path / "inputs").mkdir()
+    manifest = tmp_path / "inputs" / "index.json"
+    manifest.write_text(json.dumps(index), encoding="utf-8")
+    out = tmp_path / "bundle"
+    base = [
+        "--cohort-manifest", str(manifest),
+        "--extracted-at", SAMPLE_TS,
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out),
+    ]
+    # Rows without docs carry no cohort, sponsor class or phase: no cohort.
+    assert cli.main(base) == 1
+    assert not out.exists()
+
+    assert cli.main([*base, "--manifest-cohort", "industry_outcomes_beta"]) == 0
+    assert cli.main(["--check", str(out)]) == 0
+    idx_doc = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    by_id = {r["nct_id"]: r for r in idx_doc["data"]}
+    assert idx_doc["total_trials"] == 4
+    assert idx_doc["audit_holdout_trials"] == 1
+    assert idx_doc["cohort_counts"] == {"all_large_docs": 2, "industry_outcomes_beta": 4}
+    assert idx_doc["component_versions"]["cohort_manifest"] == "outcomes-2026-11-09-fictional"
+    assert by_id["NCT99300002"]["cohorts"] == ["industry_outcomes_beta"]
+    assert by_id["NCT99300002"]["census_badge"]["census_status"] == "no_document"
+    assert by_id["NCT99300002"]["primary_outcomes_count"] == 2
+    assert by_id["NCT99300002"]["brief_title"] == "Fictional trial 0002"
+    assert by_id["NCT99300002"]["lead_sponsor_name"] == "Fictional Pharma"
+    # No CT.gov record was supplied, so whether results are posted is unknown.
+    assert all(r["has_reported_results"] is None for r in idx_doc["data"])
+    assert by_id["NCT99300003"]["results_first_post_date"] is None
+    assert by_id["NCT99300004"]["document_badge"]["readability_status"] == "in_audit_holdout"
+    assert "NCT99300099" not in by_id  # "excluded" is not a row
+
+
 # ── 9. .gitignore coverage & Python 3.11 AST / typing gate ───────────────────
 
 def test_gitignore_covers_transient_outcomes_and_cache_paths() -> None:
@@ -2072,6 +2852,35 @@ def test_gitignore_covers_transient_outcomes_and_cache_paths() -> None:
                 text=True,
             )
             assert chk.returncode == 0, f"git check-ignore did not ignore {sample}"
+
+
+def test_m3_imports_only_module4_among_the_split_modules() -> None:
+    """M3 builds on M4 only: no M1 (document indexer) or M2 (population
+    ecosystem) import in the module, its script or its tests, and the module
+    and script import no project module but src.citation_verifier."""
+    m1_m2 = (
+        "document_indexer",
+        "index_trial_documents",
+        "analysis_population_parser",
+        "ecosystem",
+    )
+    for rel in ("src/outcomes_layout.py", "scripts/build_outcomes_shards.py", "tests/test_outcomes_layout.py"):
+        tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"), filename=rel)
+        modules: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                modules.append(node.module)
+                modules.extend(f"{node.module}.{alias.name}" for alias in node.names)
+        for name in modules:
+            assert not any(bad in name for bad in m1_m2), f"{rel} imports {name}"
+        if not rel.startswith("tests/"):
+            project = {m for m in modules if m.split(".")[0] in ("src", "scripts", "sponsors")}
+            allowed = {"src", "src.outcomes_layout", "src.citation_verifier"}
+            assert {m for m in project if m.split(".")[0:2] != ["src", "citation_verifier"]} <= allowed, (
+                f"{rel} imports {sorted(project)}"
+            )
 
 
 def test_python311_ast_and_full_type_annotations() -> None:

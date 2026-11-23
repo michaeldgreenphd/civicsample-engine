@@ -37,9 +37,33 @@ Invariants enforced here:
 - Zero interference with ``src/dataset_folder.py::present_files`` (which only
   inspects ``demographics.part*.json.gz``, ``studies_tab.part*.json.gz``,
   ``detail/``, and ``run.json``).
+
+Rules this module shares rather than restates:
+- The status-to-citation rule and the 6-key citation shape are Module 4's
+  (``src.citation_verifier``: ``CITATION_REQUIRED_STATUSES``,
+  ``CITATION_FORBIDDEN_STATUSES``, ``validate_status_citations``,
+  ``validate_citation_shape``), applied both when rows are normalized and when
+  a tree on disk is checked, so the two can never disagree. Trial IDs are
+  checked with Module 4's ``validate_strict_nct_id`` (ASCII ``^NCT[0-9]{8}$``;
+  ``\\d`` would also admit non-ASCII digits, which ``int()`` reads as the same
+  trial). This module imports nothing else from another module.
+
+Holdout stubs: an ``in_audit`` trial is written as its index row (fields that
+come 1:1 from the trial/manifest row, with masked badges and
+``has_reported_results`` ``None``) plus a shard record holding only
+``nct_id``, ``in_audit``, ``cohorts`` and ``shard``; its ``reported_results``,
+``document_profile``, ``decision_rule_locations`` and
+``longitudinal_provenance`` are ``None``. Any side input for such a trial is
+refused rather than dropped.
+
+Writing (``write_outcomes_tree``) is allowlisted: the target must be absent,
+an empty directory, or a bundle this module wrote (identified by
+``outcomes_bundle.json``, which names the layout and its version). See
+``check_output_target`` for every refusal.
 """
 from __future__ import annotations
 
+import dataclasses
 import gzip
 import io
 import json
@@ -47,12 +71,22 @@ import os
 import re
 import shutil
 import subprocess
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from src.citation_verifier import (
+    CITATION_FORBIDDEN_STATUSES,
+    CITATION_REQUIRED_KEYS,
+    CITATION_REQUIRED_STATUSES,
+    CitationVerificationError,
+    validate_citation_shape,
+    validate_status_citations,
+    validate_strict_nct_id,
+)
 
 LAYOUT_VERSION = 1
 SHARD_KEY = "nct_number_mod"
@@ -69,7 +103,8 @@ SECTION_LABEL_REPORTED_RESULTS = "Primary results as posted"
 
 # Markers identifying other live data families (site/data/outcomes/,
 # site/data/results_structure/, site/data/) that write_outcomes_tree must
-# never overwrite.
+# never write into or under. An index.json that is not a bundle's own index
+# (a directory without BUNDLE_MARKER_FILE) is refused the same way.
 FOREIGN_DIRECTORY_MARKERS: tuple[str, ...] = (
     "run.json",
     "summary.json",
@@ -77,18 +112,43 @@ FOREIGN_DIRECTORY_MARKERS: tuple[str, ...] = (
     "records.json",
 )
 
+# The bundle marker: write_outcomes_tree writes this file into every bundle,
+# and a non-empty directory is overwritten only when it holds exactly this
+# content. It names the layout and its version, so a bundle of another layout
+# version is not overwritten by this one either.
+BUNDLE_MARKER_FILE = "outcomes_bundle.json"
+BUNDLE_MARKER: dict[str, Any] = {"layout": DEFAULT_OUT_DIR_NAME, "layout_version": LAYOUT_VERSION}
+
+# The staging marker: written first into <out_dir>.partial when this module
+# creates it. A .partial without it was not made by this module and is never
+# deleted; one with it is this module's leftover staging directory.
+STAGING_MARKER_FILE = "outcomes_bundle_staging.json"
+STAGING_MARKER: dict[str, Any] = {"staging_for": DEFAULT_OUT_DIR_NAME, "layout_version": LAYOUT_VERSION}
+
+# Inside <out_dir>.partial: the previous shards while the new ones are swapped
+# in. If putting them back fails, they stay here and every later run refuses
+# until a person has dealt with them.
+PREVIOUS_SHARDS_DIR = "_previous_shards"
+FAILED_NEW_SHARDS_DIR = "_failed_new_shards"
+
 # Size guardrails matching scripts/check_site_contract.py (telemetry only;
 # never modifies tests/data_budget.json).
 PART_HARD_LIMIT_BYTES = 100 * 1024 * 1024
 TREE_HARD_LIMIT_BYTES = 1_000_000_000
 TREE_WARN_BYTES = 900_000_000
 
-NCT_RE = re.compile(r"NCT\d{8}")
+# ASCII digits only: ``\d`` also matches other scripts' digits, which int()
+# reads as the same number, so "NCT" + eight Arabic-Indic digits would shard
+# (and could pass for) an existing trial. Validation goes through Module 4's
+# validate_strict_nct_id; this pattern is kept for callers that only test.
+NCT_RE = re.compile(r"NCT[0-9]{8}", re.ASCII)
 COMMIT_RE = re.compile(r"[0-9a-f]{7,40}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 COHORT_RE = re.compile(r"[a-z][a-z0-9_]{1,63}")
 SHARD_FILENAME_RE = re.compile(r"(0|[1-9]\d*)\.json\.gz")
-ELLIPSIS_RE = re.compile(r"\.{3,}|(?:\.\s+){2,}\.|[\u2026\u22ee\u22ef]")
+# Any NCT-like token, in any script's digits and with separators, for
+# withholding trial IDs from refusal messages (withhold_nct_ids).
+_NCT_LIKE_TOKEN_RE = re.compile(r"nct[\W_]{0,3}\d{8}", re.IGNORECASE)
 
 STANDARD_COHORTS: tuple[str, ...] = (
     "industry_phase3",
@@ -131,15 +191,15 @@ LOCATION_STATUSES: tuple[str, ...] = (
     "NO_DOCUMENT",
 )
 
-CITATION_REQUIRED_STATUSES: tuple[str, ...] = (
-    "FOUND",
-    "AMBIGUOUS",
-    "NOT_APPLICABLE",
-)
+# CITATION_REQUIRED_STATUSES and CITATION_FORBIDDEN_STATUSES are imported from
+# src.citation_verifier above: Module 4 holds the one definition of which
+# statuses need a citation and which forbid one.
 
-CITATION_FORBIDDEN_STATUSES: tuple[str, ...] = (
-    "NOT_FOUND",
-    "NO_DOCUMENT",
+CENSUS_STATUSES: tuple[str, ...] = (
+    "complete",
+    "partial",
+    "not_started",
+    "no_document",
 )
 
 READABILITY_STATUSES: tuple[str, ...] = (
@@ -262,14 +322,8 @@ SHARD_RECORD_KEYS: tuple[str, ...] = (
     "longitudinal_provenance",
 )
 
-CITATION_KEYS: tuple[str, ...] = (
-    "filename",
-    "sha256",
-    "physical_page",
-    "printed_page",
-    "section_heading",
-    "quotation",
-)
+# The 6 citation keys are Module 4's (one definition, as for the status rules).
+CITATION_KEYS: tuple[str, ...] = CITATION_REQUIRED_KEYS
 
 FORBIDDEN_AUDIT_KEYS: frozenset[str] = frozenset({
     "llm_assessment",
@@ -306,6 +360,38 @@ class AuditFirewallError(OutcomesLayoutError):
     """Raised when an ``in_audit == True`` holdout trial leaks protected data."""
 
 
+class RetainedBackupError(OutcomesLayoutError):
+    """The swap into the target failed and the previous shards could not be put
+    back; they are kept in ``<out_dir>.partial/_previous_shards`` (named in the
+    message) and every later write refuses until a person has dealt with them.
+    """
+
+
+def withhold_nct_ids(text: str) -> str:
+    """Replace every NCT-like token in ``text`` with a placeholder.
+
+    Used on refusal messages that concern the ``in_audit`` holdout: such a
+    message may be about a holdout trial, and a holdout trial's ID is not to be
+    printed or logged. The pattern is deliberately loose (any script's digits,
+    up to three separator characters after ``NCT``), so a malformed rendering
+    of an ID is withheld too.
+    """
+    return _NCT_LIKE_TOKEN_RE.sub("<NCT id withheld>", text)
+
+
+def strict_nct_id(value: Any, label: str = "nct_id") -> str:
+    """Return ``value`` if it is an ASCII ``^NCT[0-9]{8}$`` string, else raise.
+
+    Delegates to Module 4's ``validate_strict_nct_id`` (no stripping, no case
+    folding, no non-ASCII digits) and re-raises its refusal as
+    ``OutcomesLayoutError``; Module 4's message withholds any NCT-like value.
+    """
+    try:
+        return validate_strict_nct_id(value, context=label)
+    except CitationVerificationError as exc:
+        raise OutcomesLayoutError(str(exc)) from None
+
+
 # ── sharding and naming ───────────────────────────────────────────────────────
 
 def _validate_shards(shards: Any) -> int:
@@ -320,11 +406,8 @@ def _validate_shards(shards: Any) -> int:
 def outcomes_shard_of(nct_id: Any, shards: int = DEFAULT_OUTCOMES_SHARDS) -> int:
     """Return ``int(nct_id[3:]) % shards`` matching ``src/site_layout.py::shard_of``."""
     n_shards = _validate_shards(shards)
-    if not isinstance(nct_id, str) or not NCT_RE.fullmatch(nct_id):
-        raise OutcomesLayoutError(
-            f"nct_id {nct_id!r} is not NCT followed by 8 digits, so no outcomes shard can hold it"
-        )
-    return int(nct_id[3:]) % n_shards
+    checked = strict_nct_id(nct_id, "nct_id (no outcomes shard can hold it)")
+    return int(checked[3:]) % n_shards
 
 
 # Alias matching architecture spec #61 naming.
@@ -398,32 +481,62 @@ def inspect_gzip_header(raw: bytes) -> tuple[int, int]:
 
 # ── provenance helpers ────────────────────────────────────────────────────────
 
-def resolve_pipeline_commit(explicit: str | None = None) -> str | None:
-    """Resolve the git commit SHA without crashing when git is unavailable.
+# The engine checkout this module belongs to (src/outcomes_layout.py -> root).
+ENGINE_ROOT = Path(__file__).resolve().parents[1]
 
-    Precedence:
-    1. Explicit caller-provided value (validated against ``COMMIT_RE``).
-    2. ``GITHUB_SHA`` environment variable (validated against ``COMMIT_RE``).
-    3. ``git rev-parse HEAD`` (returns ``None`` cleanly when git is unavailable,
-       e.g., inside a sandboxed linked worktree).
-    """
-    if explicit is not None:
-        return validate_commit_stamp(explicit, allow_null=False, label="source_pipeline_commit")
-    env_sha = os.environ.get("GITHUB_SHA")
-    if env_sha:
-        return validate_commit_stamp(env_sha.strip(), allow_null=False, label="GITHUB_SHA")
+
+def _git_output(repo_root: Path, *args: str) -> str | None:
+    """Return ``git -C <repo_root> <args>`` stdout stripped, or ``None`` on any failure."""
     try:
         proc = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+            ["git", "-C", str(repo_root), *args],
             capture_output=True,
             text=True,
             check=True,
         )
-        head = proc.stdout.strip()
-        if head and COMMIT_RE.fullmatch(head):
-            return head
     except (OSError, subprocess.SubprocessError):
         return None
+    out = proc.stdout.strip()
+    return out or None
+
+
+def resolve_pipeline_commit(
+    explicit: str | None = None,
+    *,
+    repo_root: Path = ENGINE_ROOT,
+) -> str | None:
+    """Return the commit to stamp as ``source_pipeline_commit``, or ``None``.
+
+    Method:
+    1. An explicit value (``--pipeline-commit``) wins, validated against
+       ``COMMIT_RE``.
+    2. Otherwise ``git -C <repo_root> rev-parse HEAD``, where ``repo_root`` is
+       this engine checkout (from ``__file__``), never the caller's working
+       directory: run from inside another repository, a bare ``git rev-parse``
+       would stamp that repository's commit. The answer counts only when
+       ``git -C <repo_root> rev-parse --show-toplevel`` is ``repo_root``
+       itself, so an engine copied into another repository without its own
+       ``.git`` does not borrow the enclosing repository's commit.
+    3. Anything else is unresolvable and returns ``None``; the caller refuses
+       to build rather than stamp ``null`` (see scripts/build_outcomes_shards.py).
+
+    ``GITHUB_SHA`` is not read: it names the commit of whichever repository's
+    workflow is running, which need not be this engine checkout.
+    """
+    if explicit is not None:
+        return validate_commit_stamp(explicit, allow_null=False, label="source_pipeline_commit")
+    toplevel = _git_output(repo_root, "rev-parse", "--show-toplevel")
+    if toplevel is None:
+        return None
+    try:
+        same_repo = Path(toplevel).resolve() == Path(repo_root).resolve()
+    except OSError:
+        return None
+    if not same_repo:
+        return None
+    head = _git_output(repo_root, "rev-parse", "HEAD")
+    if head is not None and COMMIT_RE.fullmatch(head):
+        return head
     return None
 
 
@@ -619,6 +732,23 @@ def assert_no_audit_leakage(
     if not is_holdout:
         return
 
+    # Holdout stub: the shard record carries nothing beyond nct_id, in_audit,
+    # cohorts and shard (the fields that mirror the index row 1:1). Results,
+    # documents, locations and provenance are all None (vectors 2 and 4 below
+    # name the location and document cases; these two cover the rest).
+    if shard_record is not None:
+        for stub_key in ("reported_results", "longitudinal_provenance"):
+            if shard_record.get(stub_key) is not None:
+                raise AuditFirewallError(
+                    f"{nct_id}: in_audit holdout leak (stub) — shard_record.{stub_key} must be None, "
+                    f"got {type(shard_record.get(stub_key)).__name__}"
+                )
+    if index_row is not None and index_row.get("has_reported_results") is not None:
+        raise AuditFirewallError(
+            f"{nct_id}: in_audit holdout leak (stub) — index_row.has_reported_results must be None, "
+            f"got {index_row.get('has_reported_results')!r}"
+        )
+
     # Vector 2: decision_rule_locations must be strictly None.
     eff_locations = (
         decision_rule_locations
@@ -662,7 +792,14 @@ def assert_no_audit_leakage(
         if longitudinal_provenance is not None
         else (shard_record.get("longitudinal_provenance") if shard_record is not None else None)
     )
+    # The PDF-scraped check names the field that leaks; a holdout stub carries
+    # no provenance at all, so anything that passes it is still refused.
     _check_provenance_pdf_leak(nct_id, eff_prov)
+    if eff_prov is not None:
+        raise AuditFirewallError(
+            f"{nct_id}: in_audit holdout leak (vector 4) — longitudinal_provenance must be None for a "
+            f"holdout stub, got {type(eff_prov).__name__}"
+        )
 
     # Vector 5: index badge leak block.
     if index_row is not None:
@@ -716,10 +853,16 @@ def assert_no_audit_cross_stream_leakage(
     locations_by_nct: Mapping[str, Any] | None = None,
     profiles_by_nct: Mapping[str, Any] | None = None,
     provenance_by_nct: Mapping[str, Any] | None = None,
+    population_parsed_by_nct: Mapping[str, Any] | None = None,
 ) -> None:
     """Vector 6: abort BEFORE touching output dirs if any audit NCT appears in
-    protected side streams (documents, locations, document profiles, or
-    PDF-scraped provenance entries).
+    any side stream (documents, locations, document profiles, provenance or
+    parsed populations).
+
+    A holdout trial is written as a stub (see the module notes), so a side
+    record for one could only be dropped, and dropping it silently would hide
+    that the input carried holdout material. It is refused instead. The
+    message gives counts and stream names only, never a holdout trial's ID.
     """
     if not audit_nct_ids:
         return
@@ -727,19 +870,76 @@ def assert_no_audit_cross_stream_leakage(
         ("locations", locations_by_nct),
         ("documents", documents_by_nct),
         ("document_profiles", profiles_by_nct),
+        ("provenance", provenance_by_nct),
+        ("population_parsed", population_parsed_by_nct),
     ):
         if not mapping:
             continue
-        leaked = sorted(nct for nct in mapping if nct in audit_nct_ids)
+        leaked = sum(1 for nct in mapping if nct in audit_nct_ids)
         if leaked:
-            sample = ", ".join(leaked[:5])
             raise AuditFirewallError(
-                f"in_audit holdout leak (vector 6) — {len(leaked)} audit holdout trial(s) present "
-                f"in {stream_name} stream ({sample}); aborting before touching output directory"
+                f"in_audit holdout leak (vector 6) — {leaked} audit holdout trial(s) present "
+                f"in {stream_name} stream (IDs withheld); aborting before touching output directory"
             )
-    if provenance_by_nct:
-        for nct_id in sorted(nct for nct in provenance_by_nct if nct in audit_nct_ids):
-            _check_provenance_pdf_leak(nct_id, provenance_by_nct[nct_id])
+
+
+# ── side-input identity: nested trial IDs and in_audit flags ─────────────────
+
+def _normalized_key(key: Any) -> str:
+    """Lower-case a key and drop ``_``, ``-`` and spaces (``inAudit`` -> ``inaudit``)."""
+    return re.sub(r"[\s_\-]", "", str(key)).lower()
+
+
+def _iter_keyed_values(obj: Any, wanted: str, path: str = "") -> Iterator[tuple[str, Any]]:
+    """Yield ``(path, value)`` for every key anywhere in ``obj`` whose
+    ``_normalized_key`` equals ``wanted`` (so ``nct_id``, ``nctId`` and
+    ``NCT-ID`` are all read as the trial-ID key, and ``in_audit``, ``inAudit``
+    and ``IN-AUDIT`` as the holdout flag).
+    """
+    if isinstance(obj, Mapping):
+        for key, value in obj.items():
+            sub = f"{path}.{key}" if path else str(key)
+            if _normalized_key(key) == wanted:
+                yield sub, value
+            yield from _iter_keyed_values(value, wanted, sub)
+    elif isinstance(obj, (list, tuple)):
+        for idx, item in enumerate(obj):
+            yield from _iter_keyed_values(item, wanted, f"{path}[{idx}]")
+
+
+def check_side_input_identity(
+    obj: Any,
+    *,
+    expected_nct_id: str,
+    expected_in_audit: bool,
+    label: str,
+) -> None:
+    """Refuse a side input (document profile, locations, provenance, parsed
+    populations) that names another trial or contradicts the trial's
+    ``in_audit``.
+
+    Method: every key read as a trial ID, at any depth, must hold a strict
+    ASCII ``^NCT[0-9]{8}$`` string equal to ``expected_nct_id``: a nested
+    document or location row naming another trial would otherwise be filed
+    under this one. Every key read as the holdout flag must be the bool
+    ``expected_in_audit``; a side record saying ``in_audit: true`` for a trial
+    the manifest marks false (or the reverse) is a conflict, refused as
+    ``AuditFirewallError`` rather than resolved either way. Messages name the
+    position, never the ID found there.
+    """
+    for where, value in _iter_keyed_values(obj, "nctid"):
+        checked = strict_nct_id(value, f"{label}.{withhold_nct_ids(where)}")
+        if checked != expected_nct_id:
+            raise OutcomesLayoutError(
+                f"{label}.{withhold_nct_ids(where)} names a different trial than the record it is "
+                f"filed under; a nested row is never re-attributed"
+            )
+    for where, value in _iter_keyed_values(obj, "inaudit"):
+        if type(value) is not bool or value is not expected_in_audit:
+            raise AuditFirewallError(
+                f"{label}.{withhold_nct_ids(where)} is {value!r} but the cohort manifest marks this "
+                f"trial in_audit={expected_in_audit}; a conflicting holdout flag is refused"
+            )
 
 
 # ── cohort derivation ─────────────────────────────────────────────────────────
@@ -810,7 +1010,8 @@ def derive_cohorts(
 
     if not found:
         raise OutcomesLayoutError(
-            "trial resolved to zero cohorts; pass explicit cohorts or valid sponsor/document metadata"
+            "trial resolved to zero cohorts; pass explicit cohorts (the builder's --manifest-cohort) "
+            "or valid sponsor/document metadata"
         )
     return sorted(found)
 
@@ -921,8 +1122,14 @@ def extract_reported_results(
         reg = pre.get("registered_primary_outcomes", [])
         measures = pre.get("primary_outcome_measures", [])
         results_posted = pre.get("results_posted")
-        if type(results_posted) is not bool:
-            results_posted = bool(measures)
+        if results_posted is None:
+            # Not stated: posted measures show results were posted; with none,
+            # whether results exist is unknown, not "no".
+            results_posted = True if measures else None
+        elif type(results_posted) is not bool:
+            raise OutcomesLayoutError(
+                f"reported_results.results_posted must be a bool or None, got {results_posted!r}"
+            )
         pop_by_idx = _extract_parsed_population_map(parsed_populations)
         norm_measures = [
             _normalize_primary_outcome_measure(
@@ -1003,10 +1210,24 @@ def extract_reported_results(
             )
             primary_pos += 1
 
-    has_results = bool(study.get("hasResults")) or bool(results_sec)
+    # results_posted is tri-state. True when the record carries a
+    # resultsSection or hasResults is true; False only when hasResults is
+    # explicitly false; None when the input says neither, as for a manifest row
+    # built without its CT.gov record (the live outcomes index), so that
+    # absence of the record is not published as "no results posted".
+    has_results_flag = study.get("hasResults")
+    if has_results_flag is not None and type(has_results_flag) is not bool:
+        raise OutcomesLayoutError(f"hasResults must be a bool or absent, got {has_results_flag!r}")
+    results_posted: bool | None
+    if results_sec or has_results_flag is True:
+        results_posted = True
+    elif has_results_flag is False:
+        results_posted = False
+    else:
+        results_posted = None
     return canonicalize_nested({
         "section_label": SECTION_LABEL_REPORTED_RESULTS,
-        "results_posted": bool(has_results),
+        "results_posted": results_posted,
         "registered_primary_outcomes": registered,
         "primary_outcome_measures": primary_measures,
     })
@@ -1041,9 +1262,24 @@ def _summarize_doc_readability(docs: Sequence[Mapping[str, Any]]) -> str:
     return "partial_image_or_redacted"
 
 
-def _normalize_single_document(raw_doc: Mapping[str, Any]) -> dict[str, Any]:
-    """Normalize one Module 1 TrialDocumentRecord or legacy documents.jsonl row."""
+def _normalize_single_document(
+    raw_doc: Mapping[str, Any],
+    *,
+    expected_nct_id: str | None = None,
+) -> dict[str, Any]:
+    """Normalize one Module 1 TrialDocumentRecord or legacy documents.jsonl row.
+
+    A row's own ``nct_id``, when present, must be a strict ASCII NCT ID and,
+    when the caller knows the trial (``expected_nct_id``), that trial's: a
+    document row naming another trial is refused, never filed under this one.
+    """
     _reject_embedded_raw_text(raw_doc, "document")
+    if "nct_id" in raw_doc:
+        row_nct = strict_nct_id(raw_doc["nct_id"], "document.nct_id")
+        if expected_nct_id is not None and row_nct != expected_nct_id:
+            raise OutcomesLayoutError(
+                "document.nct_id names a different trial than the document profile it is in"
+            )
     filename = raw_doc.get("filename")
     if not isinstance(filename, str) or not filename.strip() or "/" in filename or "\\" in filename:
         raise OutcomesLayoutError(f"document filename must be a safe basename, got {filename!r}")
@@ -1138,13 +1374,22 @@ def _normalize_single_document(raw_doc: Mapping[str, Any]) -> dict[str, Any]:
 
 def normalize_document_profile(
     raw: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
+    *,
+    expected_nct_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Normalize a Module 1 ``TrialDocumentProfile`` or legacy ``documents.jsonl`` rows.
 
-    Rejects embedded raw PDF text arrays (``page_texts``, ``raw_pages``, etc.).
+    Rejects embedded raw PDF text arrays (``page_texts``, ``raw_pages``, etc.),
+    and any profile or document row whose ``nct_id`` is not strict or, given
+    ``expected_nct_id``, not that trial's.
     """
     if raw is None:
         return None
+    if isinstance(raw, Mapping) and "nct_id" in raw:
+        profile_nct = strict_nct_id(raw["nct_id"], "document_profile.nct_id")
+        if expected_nct_id is not None and profile_nct != expected_nct_id:
+            raise OutcomesLayoutError("document_profile.nct_id names a different trial")
+        expected_nct_id = profile_nct
 
     indexer_rules_version: str | None = None
     explicit_summary: str | None = None
@@ -1185,7 +1430,7 @@ def normalize_document_profile(
     for item in raw_docs:
         if not isinstance(item, Mapping):
             raise OutcomesLayoutError("every item in document_profile.documents must be an object")
-        norm = _normalize_single_document(item)
+        norm = _normalize_single_document(item, expected_nct_id=expected_nct_id)
         fn = norm["filename"]
         if fn in seen_filenames:
             raise OutcomesLayoutError(f"duplicate document filename in document_profile: {fn!r}")
@@ -1205,100 +1450,74 @@ def normalize_document_profile(
 
 # ── section 3: decision_rule_locations (locations.jsonl adapter) ──────────────
 
+def citation_problems(
+    cit: Any,
+    *,
+    docs_by_filename: Mapping[str, Mapping[str, Any]] | None,
+    pages_not_searched: Any,
+) -> list[str]:
+    """Every problem with one decision-rule citation ([] when it is sound).
+
+    Method: the 6-key shape and quotation hygiene are Module 4's
+    ``validate_citation_shape`` (optional strings may be ``None``), so this
+    module cannot accept a citation the verifier refuses: ``None``, ``'x'``,
+    ``{}``, a non-``.pdf`` filename, an ``int`` printed page, an ellipsis in any
+    Unicode spelling. Only when the shape is sound are the two checks that need
+    this module's context added: the citation must name a document of the
+    trial's ``document_profile`` (same sha256, page within its page count),
+    and it may not land on a page the row lists as not searched. The same
+    function serves normalization (which raises) and the on-disk check
+    (which reports), so the two cannot drift apart.
+    """
+    shape_errors = validate_citation_shape(cit, allow_none_optional_strings=True)
+    if shape_errors:
+        return list(shape_errors)
+    errors: list[str] = []
+    filename = cit["filename"]
+    sha256 = cit["sha256"]
+    physical_page = cit["physical_page"]
+    if docs_by_filename is not None:
+        if filename not in docs_by_filename:
+            errors.append(f"citation references unknown document {filename!r} not in document_profile")
+        else:
+            doc = docs_by_filename[filename]
+            if doc.get("sha256") != sha256:
+                errors.append(
+                    f"citation sha256 for {filename!r} ({sha256}) does not match document_profile "
+                    f"({doc.get('sha256')})"
+                )
+            max_pages = doc.get("physical_pages")
+            if type(max_pages) is int and not (1 <= physical_page <= max_pages):
+                errors.append(
+                    f"citation physical_page {physical_page} out of bounds 1..{max_pages} for {filename!r}"
+                )
+    if isinstance(pages_not_searched, Mapping):
+        unsearched = pages_not_searched.get(filename)
+        if isinstance(unsearched, Sequence) and physical_page in unsearched:
+            errors.append(f"citation ({filename}, p.{physical_page}) falls inside pages_not_searched")
+    elif isinstance(pages_not_searched, Sequence) and not isinstance(pages_not_searched, (str, bytes)):
+        if physical_page in pages_not_searched:
+            errors.append(f"citation ({filename}, p.{physical_page}) falls inside pages_not_searched")
+    return errors
+
+
 def _normalize_citation(
-    raw_cit: Mapping[str, Any],
+    raw_cit: Any,
     *,
     docs_by_filename: Mapping[str, Mapping[str, Any]] | None,
     pages_not_searched: Any,
 ) -> dict[str, Any]:
-    """Validate and normalize one 6-key decision-rule citation."""
-    if not isinstance(raw_cit, Mapping):
-        raise OutcomesLayoutError(f"citation must be an object, got {type(raw_cit).__name__}")
-    if set(raw_cit.keys()) != set(CITATION_KEYS):
-        missing = sorted(set(CITATION_KEYS) - set(raw_cit.keys()))
-        extra = sorted(set(raw_cit.keys()) - set(CITATION_KEYS))
-        raise OutcomesLayoutError(
-            f"citation must carry exact keys {list(CITATION_KEYS)} (missing={missing}, extra={extra})"
-        )
-
-    filename = raw_cit["filename"]
-    if not isinstance(filename, str) or not filename.strip() or "/" in filename or "\\" in filename:
-        raise OutcomesLayoutError(f"citation filename must be a safe basename, got {filename!r}")
-
-    sha256 = raw_cit["sha256"]
-    if not isinstance(sha256, str) or not SHA256_RE.fullmatch(sha256):
-        raise OutcomesLayoutError(f"citation sha256 must be 64 lowercase hex chars, got {sha256!r}")
-
-    physical_page = raw_cit["physical_page"]
-    if type(physical_page) is not int or physical_page < 1:
-        raise OutcomesLayoutError(
-            f"citation physical_page must be an int >= 1 (not bool), got {physical_page!r}"
-        )
-
-    printed_page = raw_cit["printed_page"]
-    if printed_page is not None and not isinstance(printed_page, (str, int)):
-        raise OutcomesLayoutError(f"citation printed_page must be str, int, or None, got {printed_page!r}")
-    if type(printed_page) is bool:
-        raise OutcomesLayoutError("citation printed_page cannot be a bool")
-
-    section_heading = raw_cit["section_heading"]
-    if section_heading is not None and not isinstance(section_heading, str):
-        raise OutcomesLayoutError(f"citation section_heading must be str or None, got {section_heading!r}")
-
-    quotation = raw_cit["quotation"]
-    if not isinstance(quotation, str):
-        raise OutcomesLayoutError(f"citation quotation must be a string, got {type(quotation).__name__}")
-    if not (1 <= len(quotation) <= 300):
-        raise OutcomesLayoutError(
-            f"citation quotation length must be in 1..300, got {len(quotation)}"
-        )
-    if quotation != " ".join(quotation.split()):
-        raise OutcomesLayoutError(
-            f"citation quotation must be single-space normalized without leading/trailing whitespace: {quotation!r}"
-        )
-    if ELLIPSIS_RE.search(quotation):
-        raise OutcomesLayoutError(
-            f"citation quotation contains forbidden ellipsis ('...' / '…'): {quotation!r}"
-        )
-
-    # Cross-check against document_profile when supplied.
-    if docs_by_filename is not None:
-        if filename not in docs_by_filename:
-            raise OutcomesLayoutError(
-                f"citation references unknown document {filename!r} not in document_profile"
-            )
-        doc = docs_by_filename[filename]
-        if doc.get("sha256") != sha256:
-            raise OutcomesLayoutError(
-                f"citation sha256 for {filename!r} ({sha256}) does not match document_profile ({doc.get('sha256')})"
-            )
-        max_pages = doc.get("physical_pages")
-        if type(max_pages) is int and not (1 <= physical_page <= max_pages):
-            raise OutcomesLayoutError(
-                f"citation physical_page {physical_page} out of bounds 1..{max_pages} for {filename!r}"
-            )
-
-    # Citation cannot land on a page listed in pages_not_searched.
-    if isinstance(pages_not_searched, Mapping):
-        unsearched = pages_not_searched.get(filename)
-        if isinstance(unsearched, Sequence) and physical_page in unsearched:
-            raise OutcomesLayoutError(
-                f"citation ({filename}, p.{physical_page}) falls inside pages_not_searched"
-            )
-    elif isinstance(pages_not_searched, Sequence) and not isinstance(pages_not_searched, (str, bytes)):
-        if physical_page in pages_not_searched:
-            raise OutcomesLayoutError(
-                f"citation ({filename}, p.{physical_page}) falls inside pages_not_searched"
-            )
-
-    return canonicalize_nested({
-        "filename": filename,
-        "sha256": sha256,
-        "physical_page": physical_page,
-        "printed_page": printed_page,
-        "section_heading": section_heading,
-        "quotation": quotation,
-    })
+    """Validate one 6-key decision-rule citation (``citation_problems``) and
+    return it with sorted keys; raise ``OutcomesLayoutError`` on any problem.
+    """
+    errors = citation_problems(
+        raw_cit,
+        docs_by_filename=docs_by_filename,
+        pages_not_searched=pages_not_searched,
+    )
+    if errors:
+        raise OutcomesLayoutError("citation refused: " + "; ".join(errors))
+    return canonicalize_nested({key: raw_cit[key] for key in CITATION_REQUIRED_KEYS})
 
 
 def _is_non_empty_unsearched(pages_not_searched: Any) -> bool:
@@ -1318,8 +1537,19 @@ def _normalize_location_pass(
     pass_label: str,
     docs_by_filename: Mapping[str, Mapping[str, Any]] | None,
     has_posted_documents: bool = False,
+    pass_name: str | None = None,
+    expected_nct_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Validate and sort one pass's decision-rule location rows."""
+    """Validate and sort one pass's decision-rule location rows.
+
+    The status-to-citation rule is Module 4's ``validate_status_citations``
+    with ``has_posted_documents`` set from the trial's own evidence of posted
+    documents: a status in ``CITATION_REQUIRED_STATUSES`` needs a citation,
+    one in ``CITATION_FORBIDDEN_STATUSES`` may carry none, ``NO_DOCUMENT`` is
+    refused when documents are posted, and any citation is refused when none
+    are. A row that states its own ``pass`` must agree with the pass it is
+    filed under (``pass_name``), and a row's ``nct_id`` must be the trial's.
+    """
     has_posted_docs_flag = _require_strict_bool(
         has_posted_documents, f"{pass_label}.has_posted_documents"
     )
@@ -1329,6 +1559,17 @@ def _normalize_location_pass(
     for raw_row in rows:
         if not isinstance(raw_row, Mapping):
             raise OutcomesLayoutError(f"{pass_label}: location row must be an object")
+        if pass_name is not None and "pass" in raw_row and raw_row["pass"] != pass_name:
+            raise OutcomesLayoutError(
+                f"{pass_label}: a row stating pass {raw_row['pass']!r} is filed under {pass_name!r}; "
+                f"a row is never re-filed into another pass"
+            )
+        if "nct_id" in raw_row:
+            row_nct = strict_nct_id(raw_row["nct_id"], f"{pass_label}.nct_id")
+            if expected_nct_id is not None and row_nct != expected_nct_id:
+                raise OutcomesLayoutError(
+                    f"{pass_label}: a location row names a different trial than its record"
+                )
         outcome_idx = raw_row.get("primary_outcome_index")
         if type(outcome_idx) is not int or outcome_idx < 0:
             raise OutcomesLayoutError(
@@ -1372,17 +1613,12 @@ def _normalize_location_pass(
             )
             for c in raw_citations
         ]
-        if status == "NO_DOCUMENT" and effective_has_docs:
+        rule_errors = validate_status_citations(
+            str(status), len(citations), has_posted_documents=effective_has_docs
+        )
+        if rule_errors:
             raise OutcomesLayoutError(
-                f"{pass_label} {pair}: status 'NO_DOCUMENT' is forbidden when posted document(s) are present"
-            )
-        if status in CITATION_REQUIRED_STATUSES and len(citations) < 1:
-            raise OutcomesLayoutError(
-                f"{pass_label} {pair}: status {status!r} requires at least 1 citation"
-            )
-        if status in CITATION_FORBIDDEN_STATUSES and len(citations) != 0:
-            raise OutcomesLayoutError(
-                f"{pass_label} {pair}: status {status!r} forbids citations (found {len(citations)})"
+                f"{pass_label} {pair}: forbidden by the status-to-citation rule: " + "; ".join(rule_errors)
             )
 
         raw_text_source = raw_row.get("text_source")
@@ -1440,12 +1676,83 @@ def _resolve_effective_pass(
     return [resolved[pair] for pair in ordered_pairs]
 
 
+# Pass sections a pre-grouped decision_rule_locations object may carry, and
+# the pass name each one's rows belong to.
+GROUPED_PASS_KEYS: dict[str, str] = {
+    "primary_pass": "primary",
+    "second_pass": "second",
+    "ocr_recovery_pass": "ocr_recovery",
+    "adjudication_pass": "adjudication",
+}
+# Everything else a pre-grouped object may carry. Any other key is refused:
+# an unknown section (an "ocr_pass", an "adjudication" without "_pass") would
+# otherwise be dropped without a word, and with it that pass's rows.
+GROUPED_OTHER_KEYS: frozenset[str] = frozenset({"nct_id", "in_audit", "census_status"})
+
+# The keys of the normalized block, as written into shards.
+LOCATIONS_BLOCK_KEYS: frozenset[str] = frozenset({
+    "census_status",
+    "elements_expected_per_outcome",
+    "primary_pass",
+    "second_pass",
+    "ocr_recovery_pass",
+    "adjudication_pass",
+    "effective_pass",
+})
+
+
+def census_status_from_effective_pass(
+    effective_pass: Sequence[Mapping[str, Any]],
+    primary_outcomes_count: int | None,
+) -> str:
+    """Compute a trial's census status from its resolved cells.
+
+    Method: no cells -> ``not_started``; every cell ``NO_DOCUMENT`` ->
+    ``no_document``; otherwise ``complete`` when every element of every
+    primary outcome has a cell (outcomes ``0..primary_outcomes_count-1`` when
+    the count is known, else every outcome that has any cell), and ``partial``
+    when any is missing. The status is always computed, never taken from the
+    input (a supplied one must agree, see ``normalize_decision_rule_locations``),
+    and the on-disk check recomputes it the same way.
+    """
+    if not effective_pass:
+        return "not_started"
+    if all(r.get("status") == "NO_DOCUMENT" for r in effective_pass):
+        return "no_document"
+    got_pairs = {(r.get("primary_outcome_index"), r.get("element")) for r in effective_pass}
+    if primary_outcomes_count is not None and primary_outcomes_count > 0:
+        expected_pairs = {
+            (idx, elem)
+            for idx in range(primary_outcomes_count)
+            for elem in ELEMENTS
+        }
+        return "complete" if expected_pairs.issubset(got_pairs) else "partial"
+    by_outcome: dict[Any, set[Any]] = {}
+    for idx, elem in got_pairs:
+        by_outcome.setdefault(idx, set()).add(elem)
+    all_full = bool(by_outcome) and all(elems == set(ELEMENTS) for elems in by_outcome.values())
+    return "complete" if all_full else "partial"
+
+
+def _rows_with_citations(passes: Mapping[str, Any]) -> int:
+    """Count rows, over every pass list in ``passes``, that carry any citation."""
+    count = 0
+    for rows in passes.values():
+        if isinstance(rows, list):
+            count += sum(
+                1 for r in rows
+                if isinstance(r, Mapping) and isinstance(r.get("citations"), list) and r["citations"]
+            )
+    return count
+
+
 def normalize_decision_rule_locations(
     raw: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
     *,
     document_profile: Mapping[str, Any] | None = None,
     primary_outcomes_count: int | None = None,
     has_posted_documents: bool = False,
+    expected_nct_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Normalize decision-rule location records into the unified shard block.
 
@@ -1455,6 +1762,15 @@ def normalize_decision_rule_locations(
     ``ocr_recovery_pass``, and ``adjudication_pass``. Retains every pass
     append-only and computes deterministic ``effective_pass`` under precedence
     ``primary -> ocr_recovery -> adjudication``.
+
+    Refusals beyond the per-row rules (``_normalize_location_pass``):
+    - a pre-grouped object with any key outside ``GROUPED_PASS_KEYS`` and
+      ``GROUPED_OTHER_KEYS`` (its section would be dropped);
+    - a pre-grouped ``census_status`` that differs from the one computed from
+      the rows (``census_status_from_effective_pass``): a supplied status is
+      never trusted;
+    - ``no_document`` with a citation in any pass, and ``no_document`` when the
+      trial has posted documents.
     """
     has_posted_docs_flag = _require_strict_bool(
         has_posted_documents, "decision_rule_locations.has_posted_documents"
@@ -1473,129 +1789,104 @@ def normalize_decision_rule_locations(
             }
     effective_has_docs = has_posted_docs_flag or bool(docs_by_filename)
 
-    primary_raw: list[Mapping[str, Any]] = []
-    second_raw: list[Mapping[str, Any]] = []
-    ocr_recovery_raw: list[Mapping[str, Any]] = []
-    adjudication_raw: list[Mapping[str, Any]] = []
-    explicit_census_status: str | None = None
+    raw_by_pass: dict[str, list[Mapping[str, Any]]] = {name: [] for name in GROUPED_PASS_KEYS}
+    supplied_census_status: str | None = None
 
     if isinstance(raw, Mapping):
+        unknown_keys = sorted(
+            str(k) for k in raw if k not in GROUPED_PASS_KEYS and k not in GROUPED_OTHER_KEYS
+        )
+        if unknown_keys:
+            raise OutcomesLayoutError(
+                f"decision_rule_locations: unknown key(s) {unknown_keys} in a pre-grouped object; the "
+                f"known passes are {sorted(GROUPED_PASS_KEYS)} (an unknown section would be dropped)"
+            )
+        if "nct_id" in raw:
+            grouped_nct = strict_nct_id(raw["nct_id"], "decision_rule_locations.nct_id")
+            if expected_nct_id is not None and grouped_nct != expected_nct_id:
+                raise OutcomesLayoutError("decision_rule_locations.nct_id names a different trial")
+            expected_nct_id = grouped_nct
+        if "in_audit" in raw and type(raw["in_audit"]) is not bool:
+            raise AuditFirewallError(
+                f"decision_rule_locations.in_audit must be a bool, got {raw['in_audit']!r}"
+            )
         if "primary_pass" not in raw or not isinstance(raw["primary_pass"], Sequence) or isinstance(raw["primary_pass"], (str, bytes)):
             raise OutcomesLayoutError("decision_rule_locations dict must contain 'primary_pass' list")
-        primary_raw = list(raw["primary_pass"])
-        for pass_key, bucket in (
-            ("second_pass", second_raw),
-            ("ocr_recovery_pass", ocr_recovery_raw),
-            ("adjudication_pass", adjudication_raw),
-        ):
+        for pass_key in GROUPED_PASS_KEYS:
             val = raw.get(pass_key)
-            if val is not None:
-                if not isinstance(val, Sequence) or isinstance(val, (str, bytes)):
-                    raise OutcomesLayoutError(f"decision_rule_locations.{pass_key} must be a list or None")
-                bucket.extend(val)
+            if val is None:
+                continue
+            if not isinstance(val, Sequence) or isinstance(val, (str, bytes)):
+                raise OutcomesLayoutError(f"decision_rule_locations.{pass_key} must be a list or None")
+            raw_by_pass[pass_key].extend(val)
         cs = raw.get("census_status")
         if cs is not None:
-            if cs not in ("complete", "partial", "not_started", "no_document"):
+            if cs not in CENSUS_STATUSES:
                 raise OutcomesLayoutError(f"invalid decision_rule_locations.census_status: {cs!r}")
-            explicit_census_status = str(cs)
+            supplied_census_status = str(cs)
     elif isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)):
         if len(raw) == 0:
             return None
+        pass_to_key = {name: key for key, name in GROUPED_PASS_KEYS.items()}
         for row in raw:
             if not isinstance(row, Mapping):
                 raise OutcomesLayoutError("each row in locations must be an object")
             pass_name = row.get("pass", "primary")
             if pass_name not in ALLOWED_PASSES:
                 raise OutcomesLayoutError(f"unknown location pass {pass_name!r}; expected one of {ALLOWED_PASSES}")
-            if pass_name == "primary":
-                primary_raw.append(row)
-            elif pass_name == "second":
-                second_raw.append(row)
-            elif pass_name == "ocr_recovery":
-                ocr_recovery_raw.append(row)
-            elif pass_name == "adjudication":
-                adjudication_raw.append(row)
+            raw_by_pass[pass_to_key[pass_name]].append(row)
     else:
         raise OutcomesLayoutError(
             f"decision_rule_locations must be a mapping, list of location rows, or None; got {type(raw).__name__}"
         )
 
-    primary_pass = _normalize_location_pass(
-        primary_raw,
-        pass_label="primary_pass",
-        docs_by_filename=docs_by_filename,
-        has_posted_documents=effective_has_docs,
-    )
-    second_pass = (
-        _normalize_location_pass(
-            second_raw,
-            pass_label="second_pass",
+    normalized_by_pass: dict[str, list[dict[str, Any]] | None] = {}
+    for pass_key, pass_name in GROUPED_PASS_KEYS.items():
+        rows = raw_by_pass[pass_key]
+        if pass_key != "primary_pass" and not rows:
+            normalized_by_pass[pass_key] = None
+            continue
+        normalized_by_pass[pass_key] = _normalize_location_pass(
+            rows,
+            pass_label=pass_key,
             docs_by_filename=docs_by_filename,
             has_posted_documents=effective_has_docs,
+            pass_name=pass_name,
+            expected_nct_id=expected_nct_id,
         )
-        if second_raw
-        else None
-    )
-    ocr_recovery_pass = (
-        _normalize_location_pass(
-            ocr_recovery_raw,
-            pass_label="ocr_recovery_pass",
-            docs_by_filename=docs_by_filename,
-            has_posted_documents=effective_has_docs,
-        )
-        if ocr_recovery_raw
-        else None
-    )
-    adjudication_pass = (
-        _normalize_location_pass(
-            adjudication_raw,
-            pass_label="adjudication_pass",
-            docs_by_filename=docs_by_filename,
-            has_posted_documents=effective_has_docs,
-        )
-        if adjudication_raw
-        else None
-    )
+    primary_pass = normalized_by_pass["primary_pass"] or []
     effective_pass = _resolve_effective_pass(
         primary_pass,
-        ocr_recovery_pass,
-        adjudication_pass,
+        normalized_by_pass["ocr_recovery_pass"],
+        normalized_by_pass["adjudication_pass"],
     )
 
-    if explicit_census_status is not None:
-        census_status = explicit_census_status
-    elif not effective_pass:
-        census_status = "not_started"
-    elif all(r["status"] == "NO_DOCUMENT" for r in effective_pass):
-        census_status = "no_document"
-    else:
-        if primary_outcomes_count is not None and primary_outcomes_count > 0:
-            expected_pairs = {
-                (idx, elem)
-                for idx in range(primary_outcomes_count)
-                for elem in ELEMENTS
-            }
-            got_pairs = {(r["primary_outcome_index"], r["element"]) for r in effective_pass}
-            census_status = "complete" if expected_pairs.issubset(got_pairs) else "partial"
-        else:
-            by_outcome: dict[int, set[str]] = {}
-            for r in effective_pass:
-                by_outcome.setdefault(r["primary_outcome_index"], set()).add(r["element"])
-            all_full = bool(by_outcome) and all(elems == set(ELEMENTS) for elems in by_outcome.values())
-            census_status = "complete" if all_full else "partial"
+    census_status = census_status_from_effective_pass(effective_pass, primary_outcomes_count)
+    if supplied_census_status is not None and supplied_census_status != census_status:
+        raise OutcomesLayoutError(
+            f"decision_rule_locations: supplied census_status {supplied_census_status!r} disagrees with "
+            f"{census_status!r} computed from the rows; a supplied census_status is never trusted"
+        )
 
     if census_status == "no_document" and effective_has_docs:
         raise OutcomesLayoutError(
             "decision_rule_locations: census_status 'no_document' is forbidden when posted document(s) are present"
         )
+    if census_status == "no_document":
+        cited_rows = _rows_with_citations(normalized_by_pass)
+        if cited_rows:
+            raise OutcomesLayoutError(
+                f"decision_rule_locations: census_status 'no_document' is forbidden with citations "
+                f"({cited_rows} row(s) in some pass cite a document)"
+            )
 
     return canonicalize_nested({
         "census_status": census_status,
         "elements_expected_per_outcome": list(ELEMENTS),
         "primary_pass": primary_pass,
-        "second_pass": second_pass,
-        "ocr_recovery_pass": ocr_recovery_pass,
-        "adjudication_pass": adjudication_pass,
+        "second_pass": normalized_by_pass["second_pass"],
+        "ocr_recovery_pass": normalized_by_pass["ocr_recovery_pass"],
+        "adjudication_pass": normalized_by_pass["adjudication_pass"],
         "effective_pass": effective_pass,
     })
 
@@ -1758,6 +2049,30 @@ def build_census_badge(
     }
 
 
+def trial_nct_id(trial: Mapping[str, Any]) -> str:
+    """The trial's ID from a flat row (``nct_id``) or a CT.gov study
+    (``protocolSection.identificationModule.nctId``), strictly validated.
+
+    When a record carries both, they must agree: a flat ``nct_id`` stamped
+    onto another trial's CT.gov record is refused, not resolved either way.
+    """
+    proto = trial.get("protocolSection") if isinstance(trial.get("protocolSection"), Mapping) else {}
+    ident = proto.get("identificationModule") if isinstance(proto.get("identificationModule"), Mapping) else {}
+    flat = trial.get("nct_id")
+    nested = ident.get("nctId")
+    if flat is None and nested is None:
+        raise OutcomesLayoutError("record carries no nct_id (neither nct_id nor identificationModule.nctId)")
+    flat_checked = strict_nct_id(flat, "nct_id") if flat is not None else None
+    nested_checked = (
+        strict_nct_id(nested, "protocolSection.identificationModule.nctId") if nested is not None else None
+    )
+    if flat_checked is not None and nested_checked is not None and flat_checked != nested_checked:
+        raise OutcomesLayoutError(
+            "record's nct_id and protocolSection.identificationModule.nctId name different trials"
+        )
+    return flat_checked if flat_checked is not None else str(nested_checked)
+
+
 def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
     """Extract lightweight trial-index metadata from either a flat manifest row
     or a full CT.gov API v2 study object. Missing values stay ``None``.
@@ -1774,7 +2089,7 @@ def _study_scalar_fields(trial: Mapping[str, Any]) -> dict[str, Any]:
     large_doc_mod = doc_sec.get("largeDocumentModule") if isinstance(doc_sec.get("largeDocumentModule"), Mapping) else {}
     large_docs = large_doc_mod.get("largeDocs") if isinstance(large_doc_mod.get("largeDocs"), Sequence) else []
 
-    nct_id = trial.get("nct_id") or ident.get("nctId")
+    nct_id = trial_nct_id(trial)
     brief_title = trial.get("brief_title")
     if brief_title is None:
         brief_title = ident.get("briefTitle")
@@ -1882,11 +2197,28 @@ def build_trial_bundle(
     population_parser: Callable[[Mapping[str, Any]], Any] | None = None,
     parsed_populations: Any = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Construct and audit-check ``(index_row, shard_record)`` for one trial."""
+    """Construct and audit-check ``(index_row, shard_record)`` for one trial.
+
+    ``in_audit`` (when given) and the trial's own ``in_audit`` must agree. A
+    holdout trial (``in_audit`` true) is built as a stub: its index row holds
+    the fields that come 1:1 from the trial/manifest row, masked badges and
+    ``has_reported_results`` ``None``; its shard record holds ``nct_id``,
+    ``in_audit``, ``cohorts`` and ``shard`` with every section ``None``. Its
+    results are not extracted, its population parser is not called, and any
+    side input for it is refused (``AuditFirewallError``), never dropped.
+    For any other trial, every side input must name this trial wherever it
+    names one, and any holdout flag it carries must be false
+    (``check_side_input_identity``).
+    """
     meta = _study_scalar_fields(trial)
     nct_id = meta["nct_id"]
     shard_id = outcomes_shard_of(nct_id, shards)
 
+    if in_audit is not None and "in_audit" in trial and trial["in_audit"] is not in_audit:
+        raise AuditFirewallError(
+            f"{nct_id}: in_audit argument ({in_audit!r}) disagrees with the trial's own "
+            f"in_audit ({trial['in_audit']!r})"
+        )
     raw_in_audit = in_audit if in_audit is not None else trial.get("in_audit")
     # Run initial firewall check on raw inputs (Vectors 1, 2, 3, 4).
     assert_no_audit_leakage(
@@ -1897,7 +2229,26 @@ def build_trial_bundle(
         longitudinal_provenance=longitudinal_provenance,
         raw_payload=trial if raw_in_audit is True else None,
     )
-    is_holdout = bool(raw_in_audit)
+    is_holdout = raw_in_audit is True
+    if is_holdout and parsed_populations is not None:
+        raise AuditFirewallError(
+            f"{nct_id}: in_audit holdout leak (stub) — parsed populations supplied for a holdout trial"
+        )
+
+    side_inputs: tuple[tuple[str, Any], ...] = (
+        ("document_profile", document_profile),
+        ("decision_rule_locations", decision_rule_locations),
+        ("longitudinal_provenance", longitudinal_provenance),
+        ("population_parsed", parsed_populations),
+    )
+    for side_label, side_value in side_inputs:
+        if side_value is not None:
+            check_side_input_identity(
+                side_value,
+                expected_nct_id=nct_id,
+                expected_in_audit=is_holdout,
+                label=side_label,
+            )
 
     cohorts = derive_cohorts(
         explicit_cohorts if explicit_cohorts is not None else trial.get("cohorts"),
@@ -1908,39 +2259,51 @@ def build_trial_bundle(
         sap=meta["sap"],
     )
 
-    reported_results = extract_reported_results(
-        trial,
-        population_parser=population_parser,
-        parsed_populations=parsed_populations,
-    )
-
-    if meta["primary_outcomes_count"] is not None:
+    if is_holdout:
+        # Stub: nothing beyond the 1:1 index fields. primary_outcomes_count is
+        # the row's own count when it states one, never one counted from results.
+        reported_results: dict[str, Any] | None = None
         primary_outcomes_count: int | None = meta["primary_outcomes_count"]
+        norm_profile: dict[str, Any] | None = None
+        norm_prov: dict[str, Any] | None = None
+        norm_locations: dict[str, Any] | None = None
+        has_docs = bool(meta["protocol"] or meta["sap"])
+        has_reported_results: bool | None = None
     else:
-        reg_count = len(reported_results["registered_primary_outcomes"])
-        meas_count = len(reported_results["primary_outcome_measures"])
-        primary_outcomes_count = reg_count if reg_count > 0 else (meas_count if meas_count > 0 else None)
+        reported_results = extract_reported_results(
+            trial,
+            population_parser=population_parser,
+            parsed_populations=parsed_populations,
+        )
+        if meta["primary_outcomes_count"] is not None:
+            primary_outcomes_count = meta["primary_outcomes_count"]
+        else:
+            reg_count = len(reported_results["registered_primary_outcomes"])
+            meas_count = len(reported_results["primary_outcome_measures"])
+            primary_outcomes_count = reg_count if reg_count > 0 else (meas_count if meas_count > 0 else None)
 
-    norm_profile = normalize_document_profile(document_profile)
-    norm_prov = normalize_longitudinal_provenance(longitudinal_provenance, in_audit=is_holdout)
-    has_docs = (
-        meta["protocol"]
-        or meta["sap"]
-        or bool(norm_profile and norm_profile["documents"])
-        or bool(norm_prov and norm_prov["posted_documents"])
-    )
-    norm_locations = normalize_decision_rule_locations(
-        decision_rule_locations,
-        document_profile=norm_profile,
-        primary_outcomes_count=primary_outcomes_count,
-        has_posted_documents=has_docs,
-    )
+        norm_profile = normalize_document_profile(document_profile, expected_nct_id=nct_id)
+        norm_prov = normalize_longitudinal_provenance(longitudinal_provenance, in_audit=False)
+        has_docs = (
+            meta["protocol"]
+            or meta["sap"]
+            or bool(norm_profile and norm_profile["documents"])
+            or bool(norm_prov and norm_prov["posted_documents"])
+        )
+        norm_locations = normalize_decision_rule_locations(
+            decision_rule_locations,
+            document_profile=norm_profile,
+            primary_outcomes_count=primary_outcomes_count,
+            has_posted_documents=bool(has_docs),
+            expected_nct_id=nct_id,
+        )
+        has_reported_results = reported_results["results_posted"]
 
     doc_badge = build_document_badge(in_audit=is_holdout, document_profile=norm_profile)
     census_badge = build_census_badge(
         in_audit=is_holdout,
         decision_rule_locations=norm_locations,
-        has_documents=has_docs,
+        has_documents=bool(has_docs),
     )
 
     index_row: dict[str, Any] = {
@@ -1961,7 +2324,7 @@ def build_trial_bundle(
         "protocol": meta["protocol"],
         "sap": meta["sap"],
         "primary_outcomes_count": primary_outcomes_count,
-        "has_reported_results": bool(reported_results["results_posted"]),
+        "has_reported_results": has_reported_results,
         "document_badge": canonicalize_nested(doc_badge),
         "census_badge": canonicalize_nested(census_badge),
     }
@@ -2168,20 +2531,46 @@ def _validate_shard_decision_rule_locations(
     document_profile: Any = None,
     longitudinal_provenance: Any = None,
 ) -> list[str]:
-    """Validate a non-audit shard record's ``decision_rule_locations`` block."""
+    """Validate a non-audit shard record's ``decision_rule_locations`` block.
+
+    Applies on disk the rules normalization applies on input, from the same
+    functions: Module 4's ``validate_citation_shape`` on every citation (so
+    ``[None]``, ``['x']`` and ``[{}]`` fail here too) plus this module's
+    document cross-check (``citation_problems``), Module 4's
+    ``validate_status_citations`` on every row of every pass and of
+    ``effective_pass``, the census status recomputed from ``effective_pass``
+    (``census_status_from_effective_pass``) rather than read, ``no_document``
+    with any citation, and the block's exact key set.
+    """
     errs: list[str] = []
     prefix = f"{rel}.data[{nct_id}].decision_rule_locations"
     if not isinstance(locs, Mapping):
         return [f"{prefix} must be an object or None"]
+
+    block_keys = set(locs.keys())
+    if block_keys != LOCATIONS_BLOCK_KEYS:
+        errs.append(
+            f"{prefix} key mismatch (missing={sorted(LOCATIONS_BLOCK_KEYS - block_keys)}, "
+            f"extra={sorted(str(k) for k in block_keys - LOCATIONS_BLOCK_KEYS)})"
+        )
+    if locs.get("elements_expected_per_outcome") != list(ELEMENTS):
+        errs.append(f"{prefix}.elements_expected_per_outcome is not {list(ELEMENTS)}")
 
     has_posted_docs = _shard_has_posted_documents(
         idx_row,
         document_profile=document_profile,
         longitudinal_provenance=longitudinal_provenance,
     )
+    docs_by_filename: dict[str, Mapping[str, Any]] | None = None
+    if isinstance(document_profile, Mapping) and isinstance(document_profile.get("documents"), list):
+        docs_by_filename = {
+            str(d["filename"]): d
+            for d in document_profile["documents"]
+            if isinstance(d, Mapping) and isinstance(d.get("filename"), str)
+        }
 
     census_status = locs.get("census_status")
-    if census_status not in ("complete", "partial", "not_started", "no_document"):
+    if census_status not in CENSUS_STATUSES:
         errs.append(f"{prefix}.census_status is invalid: {census_status!r}")
     elif census_status == "no_document" and has_posted_docs:
         errs.append(
@@ -2202,6 +2591,45 @@ def _validate_shard_decision_rule_locations(
         else:
             optional_passes[pass_key] = val
 
+    def _row_problems(where: str, row: Mapping[str, Any]) -> tuple[list[str], bool]:
+        """Problems with one stored row, and whether its structure is sound."""
+        row_errs: list[str] = []
+        sound = True
+        if type(row.get("primary_outcome_index")) is not int or row["primary_outcome_index"] < 0:
+            row_errs.append(f"{where}.primary_outcome_index is invalid")
+            sound = False
+        if row.get("element") not in _ELEMENT_ORDER:
+            row_errs.append(f"{where}.element is invalid: {row.get('element')!r}")
+            sound = False
+        status = row.get("status")
+        status_ok = status in LOCATION_STATUSES
+        if not status_ok:
+            row_errs.append(f"{where}.status is invalid: {status!r}")
+            sound = False
+        cits = row.get("citations")
+        if not isinstance(cits, list):
+            row_errs.append(f"{where}.citations must be a list")
+            sound = False
+        else:
+            for c_idx, cit in enumerate(cits):
+                for problem in citation_problems(
+                    cit,
+                    docs_by_filename=docs_by_filename,
+                    pages_not_searched=row.get("pages_not_searched"),
+                ):
+                    row_errs.append(f"{where}.citations[{c_idx}]: {problem}")
+            if status_ok:
+                for problem in validate_status_citations(
+                    str(status), len(cits), has_posted_documents=has_posted_docs
+                ):
+                    row_errs.append(f"{where} forbidden by the status-to-citation rule: {problem}")
+        if "text_source" in row:
+            ts_val = row["text_source"]
+            if not isinstance(ts_val, str) or not ts_val.strip():
+                row_errs.append(f"{where}.text_source must be a non-empty string")
+                sound = False
+        return row_errs, sound
+
     all_pass_rows_valid = True
     for pass_key, pass_rows in (
         ("primary_pass", primary_pass),
@@ -2216,71 +2644,26 @@ def _validate_shard_decision_rule_locations(
                 errs.append(f"{prefix}.{pass_key}[{idx}] must be an object")
                 all_pass_rows_valid = False
                 continue
-            if type(row.get("primary_outcome_index")) is not int or row["primary_outcome_index"] < 0:
-                errs.append(f"{prefix}.{pass_key}[{idx}].primary_outcome_index is invalid")
-                all_pass_rows_valid = False
-            if row.get("element") not in _ELEMENT_ORDER:
-                errs.append(f"{prefix}.{pass_key}[{idx}].element is invalid: {row.get('element')!r}")
-                all_pass_rows_valid = False
-            status = row.get("status")
-            if status not in LOCATION_STATUSES:
-                errs.append(f"{prefix}.{pass_key}[{idx}].status is invalid: {status!r}")
-                all_pass_rows_valid = False
-            elif status == "NO_DOCUMENT" and has_posted_docs:
-                errs.append(
-                    f"{prefix}.{pass_key}[{idx}]: status 'NO_DOCUMENT' is forbidden when posted document(s) are present"
-                )
-            cits = row.get("citations")
-            if not isinstance(cits, list):
-                errs.append(f"{prefix}.{pass_key}[{idx}].citations must be a list")
-                all_pass_rows_valid = False
-            elif status in CITATION_REQUIRED_STATUSES and len(cits) < 1:
-                errs.append(
-                    f"{prefix}.{pass_key}[{idx}]: status {status!r} requires at least 1 citation"
-                )
-            elif status in CITATION_FORBIDDEN_STATUSES and len(cits) != 0:
-                errs.append(
-                    f"{prefix}.{pass_key}[{idx}]: status {status!r} forbids citations (found {len(cits)})"
-                )
-            if "text_source" in row:
-                ts_val = row["text_source"]
-                if not isinstance(ts_val, str) or not ts_val.strip():
-                    errs.append(f"{prefix}.{pass_key}[{idx}].text_source must be a non-empty string")
-                    all_pass_rows_valid = False
+            row_errs, sound = _row_problems(f"{prefix}.{pass_key}[{idx}]", row)
+            errs.extend(row_errs)
+            all_pass_rows_valid = all_pass_rows_valid and sound
 
     effective_pass = locs.get("effective_pass")
     if not isinstance(effective_pass, list):
         errs.append(f"{prefix}.effective_pass must be a list")
     else:
+        effective_sound = True
         for idx, row in enumerate(effective_pass):
             if not isinstance(row, Mapping):
                 errs.append(f"{prefix}.effective_pass[{idx}] must be an object")
+                effective_sound = False
                 continue
             sp = row.get("source_pass")
             if sp not in EFFECTIVE_SOURCE_PASSES:
                 errs.append(f"{prefix}.effective_pass[{idx}].source_pass is invalid: {sp!r}")
-            eff_status = row.get("status")
-            if eff_status not in LOCATION_STATUSES:
-                errs.append(f"{prefix}.effective_pass[{idx}].status is invalid: {eff_status!r}")
-            elif eff_status == "NO_DOCUMENT" and has_posted_docs:
-                errs.append(
-                    f"{prefix}.effective_pass[{idx}]: status 'NO_DOCUMENT' is forbidden when posted document(s) are present"
-                )
-            eff_cits = row.get("citations")
-            if not isinstance(eff_cits, list):
-                errs.append(f"{prefix}.effective_pass[{idx}].citations must be a list")
-            elif eff_status in CITATION_REQUIRED_STATUSES and len(eff_cits) < 1:
-                errs.append(
-                    f"{prefix}.effective_pass[{idx}]: status {eff_status!r} requires at least 1 citation"
-                )
-            elif eff_status in CITATION_FORBIDDEN_STATUSES and len(eff_cits) != 0:
-                errs.append(
-                    f"{prefix}.effective_pass[{idx}]: status {eff_status!r} forbids citations (found {len(eff_cits)})"
-                )
-            if "text_source" in row:
-                ts_val = row["text_source"]
-                if not isinstance(ts_val, str) or not ts_val.strip():
-                    errs.append(f"{prefix}.effective_pass[{idx}].text_source must be a non-empty string")
+            row_errs, sound = _row_problems(f"{prefix}.effective_pass[{idx}]", row)
+            errs.extend(row_errs)
+            effective_sound = effective_sound and sound
         if primary_pass is not None and all_pass_rows_valid:
             expected_effective = _resolve_effective_pass(
                 primary_pass,
@@ -2291,6 +2674,27 @@ def _validate_shard_decision_rule_locations(
                 errs.append(
                     f"{prefix}.effective_pass does not match primary -> ocr_recovery -> adjudication resolution"
                 )
+        if effective_sound and census_status in CENSUS_STATUSES:
+            count = idx_row.get("primary_outcomes_count") if isinstance(idx_row, Mapping) else None
+            recomputed = census_status_from_effective_pass(
+                effective_pass, count if type(count) is int else None
+            )
+            if recomputed != census_status:
+                errs.append(
+                    f"{prefix}.census_status is {census_status!r}, but its effective_pass gives "
+                    f"{recomputed!r}; a stored census_status is recomputed, never trusted"
+                )
+    if census_status == "no_document":
+        cited_rows = _rows_with_citations({
+            "primary_pass": primary_pass,
+            **optional_passes,
+            "effective_pass": effective_pass,
+        })
+        if cited_rows:
+            errs.append(
+                f"{prefix}.census_status 'no_document' is forbidden with citations "
+                f"({cited_rows} row(s) cite a document)"
+            )
 
     if idx_row is not None and not errs:
         expected_badge = canonicalize_nested(
@@ -2329,7 +2733,11 @@ def validate_outcomes_tree(
     - Sorted ascending ``nct_id`` order in ``index.json`` and every shard's ``data``.
     - Exact shard assignment (``outcomes_shard_of(nct_id, N) == n``) and
       1:1 bijection between ``index.json`` and all shard entries.
-    - Re-runs the 6-vector ``assert_no_audit_leakage`` firewall on every trial.
+    - The bundle marker (``outcomes_bundle.json``) names this layout and version.
+    - Re-runs the 6-vector ``assert_no_audit_leakage`` firewall on every trial
+      (holdout stubs included); messages about holdout trials withhold IDs.
+    - The decision-rule rules of ``_validate_shard_decision_rule_locations``,
+      which are the same functions normalization uses.
     - Computes budget telemetry and flags hard GitHub/Pages size limits without
       touching ``tests/data_budget.json``.
     """
@@ -2350,11 +2758,15 @@ def validate_outcomes_tree(
             budget=None,
         )
 
+    marker_problem = _bundle_marker_problem(root)
+    if marker_problem is not None:
+        found_problems.append(marker_problem)
+
     index_path = root / INDEX_FILE
     if not index_path.is_file():
         return ValidationResult(
             ok=False,
-            problems=(f"missing {INDEX_FILE} in {root}",),
+            problems=(*found_problems, f"missing {INDEX_FILE} in {root}",),
             warnings=(),
             total_trials=0,
             audit_holdout_trials=0,
@@ -2369,7 +2781,7 @@ def validate_outcomes_tree(
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         return ValidationResult(
             ok=False,
-            problems=(f"{INDEX_FILE} is not valid UTF-8 JSON ({exc})",),
+            problems=(*found_problems, f"{INDEX_FILE} is not valid UTF-8 JSON ({exc})",),
             warnings=(),
             total_trials=0,
             audit_holdout_trials=0,
@@ -2381,7 +2793,7 @@ def validate_outcomes_tree(
     if not isinstance(index_doc, dict):
         return ValidationResult(
             ok=False,
-            problems=(f"{INDEX_FILE} root must be a JSON object, got {type(index_doc).__name__}",),
+            problems=(*found_problems, f"{INDEX_FILE} root must be a JSON object, got {type(index_doc).__name__}",),
             warnings=(),
             total_trials=0,
             audit_holdout_trials=0,
@@ -2442,8 +2854,10 @@ def validate_outcomes_tree(
                 found_problems.append(f"{INDEX_FILE}.data[{idx}] is not an object")
                 continue
             nct_id = row.get("nct_id")
-            if not isinstance(nct_id, str) or not NCT_RE.fullmatch(nct_id):
-                found_problems.append(f"{INDEX_FILE}.data[{idx}].nct_id is invalid: {nct_id!r}")
+            try:
+                strict_nct_id(nct_id, f"{INDEX_FILE}.data[{idx}].nct_id")
+            except OutcomesLayoutError as exc:
+                found_problems.append(str(exc))
                 continue
             if prev_nct is not None and nct_id <= prev_nct:
                 found_problems.append(
@@ -2469,7 +2883,7 @@ def validate_outcomes_tree(
                 audit_leakage = True
                 if raise_on_audit_leakage:
                     raise
-                found_problems.append(str(exc))
+                found_problems.append(withhold_nct_ids(str(exc)))
             except OutcomesLayoutError as exc:
                 found_problems.append(str(exc))
 
@@ -2653,7 +3067,7 @@ def validate_outcomes_tree(
                     audit_leakage = True
                     if raise_on_audit_leakage:
                         raise
-                    found_problems.append(str(exc))
+                    found_problems.append(withhold_nct_ids(str(exc)))
                 except OutcomesLayoutError as exc:
                     found_problems.append(str(exc))
 
@@ -2763,50 +3177,245 @@ def problems(out_dir: str | os.PathLike[str], *, allow_null_commit: bool = False
     return list(validate_outcomes_tree(out_dir, allow_null_commit=allow_null_commit).problems)
 
 
+# ── output allowlist (where a bundle, its staging dir or a report may go) ─────
+
+def _marker_text(marker: Mapping[str, Any]) -> str:
+    """The exact bytes (as text) a marker file holds: compact JSON plus newline."""
+    return encode_json_text(dict(marker), trailing_newline=True)
+
+
+def _holds_marker(directory: Path, name: str, marker: Mapping[str, Any]) -> bool:
+    """True when ``directory/name`` is a regular file (not a symlink) holding
+    exactly ``_marker_text(marker)``."""
+    path = directory / name
+    if os.path.islink(path) or not path.is_file():
+        return False
+    try:
+        return path.read_text(encoding="utf-8") == _marker_text(marker)
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def is_bundle_dir(directory: Path) -> bool:
+    """True when ``directory`` holds this layout's bundle marker."""
+    return _holds_marker(directory, BUNDLE_MARKER_FILE, BUNDLE_MARKER)
+
+
+def _bundle_marker_problem(root: Path) -> str | None:
+    """A problem string when ``root`` lacks this layout's bundle marker, else None."""
+    if is_bundle_dir(root):
+        return None
+    return (
+        f"{root} lacks the bundle marker {BUNDLE_MARKER_FILE} holding {BUNDLE_MARKER!r} "
+        f"(as a regular file); only a tree written by write_outcomes_tree is an outcomes bundle"
+    )
+
+
+def absolute_output_path(path: str | os.PathLike[str]) -> Path:
+    """Return ``path`` made absolute against the working directory, refusing ``..``.
+
+    The path is deliberately not resolved: resolving would hide the symlinks
+    the guards below refuse. A ``..`` component is refused because collapsing
+    it lexically gives the wrong directory when the component before it is a
+    symlink, and keeping it would leave the ancestor checks reading the wrong
+    chain.
+    """
+    raw = Path(os.fspath(path))
+    if any(part == ".." for part in raw.parts):
+        raise OutcomesLayoutError(f"refusing output path {raw}: it contains '..'")
+    return raw if raw.is_absolute() else Path.cwd() / raw
+
+
+def _foreign_entries(directory: Path) -> list[str]:
+    """Names in ``directory`` that mark another data family's directory.
+
+    ``run.json``, ``summary.json``, ``records`` and ``records.json`` mark the
+    site's dataset folder, its outcomes and results-structure families; an
+    ``index.json`` in a directory without this layout's bundle marker is
+    someone else's index. Entries are tested with ``lexists`` so a dangling
+    symlink counts too.
+    """
+    found = [name for name in FOREIGN_DIRECTORY_MARKERS if os.path.lexists(directory / name)]
+    if os.path.lexists(directory / INDEX_FILE) and not is_bundle_dir(directory):
+        found.append(f"{INDEX_FILE} (not an outcomes bundle index)")
+    return found
+
+
+def _check_ancestors(path: Path, *, what: str) -> None:
+    """Refuse when any ancestor of ``path`` is a symlink, marks another data
+    family, or is itself an outcomes bundle."""
+    for ancestor in path.parents:
+        if os.path.islink(ancestor):
+            raise OutcomesLayoutError(
+                f"refusing to write {what} {path}: its ancestor {ancestor} is a symlink "
+                f"(pass a path without symlinked components)"
+            )
+        if not ancestor.is_dir():
+            continue
+        foreign = _foreign_entries(ancestor)
+        if foreign:
+            raise OutcomesLayoutError(
+                f"refusing to write {what} {path}: its ancestor {ancestor} is a foreign data "
+                f"directory (found {', '.join(foreign)}); point it at a dedicated directory outside "
+                f"any dataset folder"
+            )
+        if is_bundle_dir(ancestor):
+            raise OutcomesLayoutError(
+                f"refusing to write {what} {path}: its ancestor {ancestor} is an outcomes bundle"
+            )
+
+
+def _staging_dir_for(target: Path) -> Path:
+    """``<target>.partial``, the staging directory beside the target."""
+    return target.with_name(target.name + ".partial")
+
+
+def check_output_target(out_dir: str | os.PathLike[str]) -> Path:
+    """Refuse every output location this module may not write; return the
+    absolute target when it may.
+
+    Allowed: a target that is absent, an empty directory, or a bundle this
+    module wrote (``is_bundle_dir``). Refused, before anything is created or
+    deleted:
+    - a target that is a symlink, a non-directory, a directory holding
+      another family's markers (``_foreign_entries``), or a non-empty
+      directory without the bundle marker; a bundle whose ``index.json``,
+      ``shards`` or marker is a symlink;
+    - an ancestor that is a symlink, marks another family, or is a bundle;
+    - a ``<target>.partial`` that is a symlink or not a directory, that holds
+      a retained ``_previous_shards`` backup (named in the refusal; L3), or
+      that is non-empty without this module's staging marker. Only an empty
+      ``.partial`` or one holding the staging marker is this module's to remove.
+    """
+    target = absolute_output_path(out_dir)
+    _check_ancestors(target, what="outcomes bundle")
+
+    if os.path.lexists(target):
+        if os.path.islink(target):
+            raise OutcomesLayoutError(f"refusing to write through symlinked output path {target}")
+        if not target.is_dir():
+            raise OutcomesLayoutError(f"refusing to overwrite non-directory output path {target}")
+        foreign = _foreign_entries(target)
+        if any(not f.startswith(INDEX_FILE) for f in foreign):
+            raise OutcomesLayoutError(
+                f"refusing to overwrite foreign data directory {target}: found marker(s) "
+                f"{', '.join(foreign)} (point --out-dir at a dedicated {DEFAULT_OUT_DIR_NAME!r} directory)"
+            )
+        if foreign:
+            raise OutcomesLayoutError(
+                f"refusing to overwrite foreign directory {target}: existing {INDEX_FILE} is not an "
+                f"{DEFAULT_OUT_DIR_NAME} index (no {BUNDLE_MARKER_FILE} marker)"
+            )
+        if any(target.iterdir()) and not is_bundle_dir(target):
+            raise OutcomesLayoutError(
+                f"refusing to write into non-empty directory {target}: it holds no "
+                f"{BUNDLE_MARKER_FILE} marker, so this module did not write it"
+            )
+        for managed in (INDEX_FILE, SHARDS_DIR, BUNDLE_MARKER_FILE):
+            if os.path.islink(target / managed):
+                raise OutcomesLayoutError(f"refusing to replace symlinked bundle entry {target / managed}")
+
+    work = _staging_dir_for(target)
+    if os.path.lexists(work):
+        if os.path.islink(work):
+            raise OutcomesLayoutError(f"refusing to use symlinked staging directory {work}")
+        if not work.is_dir():
+            raise OutcomesLayoutError(f"refusing to replace non-directory staging path {work}")
+        backup = work / PREVIOUS_SHARDS_DIR
+        if os.path.lexists(backup):
+            raise RetainedBackupError(
+                f"refusing to run: {backup} holds previous shards retained after an earlier failed "
+                f"restore. Move them back to {target / SHARDS_DIR} (or set them aside) and delete {work} "
+                f"by hand; nothing was deleted"
+            )
+        if any(work.iterdir()) and not _holds_marker(work, STAGING_MARKER_FILE, STAGING_MARKER):
+            raise OutcomesLayoutError(
+                f"refusing to delete {work}: it is not empty and holds no {STAGING_MARKER_FILE} "
+                f"marker, so this module did not create it"
+            )
+    return target
+
+
+def check_report_path(
+    report: str | os.PathLike[str],
+    *,
+    out_dir: str | os.PathLike[str] | None = None,
+) -> Path:
+    """Refuse a ``--report`` location this module may not write; return it absolute.
+
+    The same allowlist as the bundle: no symlinked report path or ancestor, no
+    ancestor that marks another data family or is a bundle; the report may not
+    sit inside the bundle or its staging directory (it would be swapped away
+    or flagged as a stray), may not be named like a data family's file
+    (``run.json``, ``summary.json``, ``records.json``, ``index.json``), and may
+    replace an existing file only when that file is a report this module
+    wrote (``report_of`` names it).
+    """
+    path = absolute_output_path(report)
+    if path.name in (*FOREIGN_DIRECTORY_MARKERS, INDEX_FILE, BUNDLE_MARKER_FILE, STAGING_MARKER_FILE):
+        raise OutcomesLayoutError(f"refusing report path {path}: its name is a data family's file name")
+    if out_dir is not None:
+        target = absolute_output_path(out_dir)
+        for inside in (target, _staging_dir_for(target)):
+            if inside == path or inside in path.parents:
+                raise OutcomesLayoutError(f"refusing report path {path}: it is inside {inside}")
+    _check_ancestors(path, what="report")
+    if os.path.lexists(path):
+        if os.path.islink(path) or not path.is_file():
+            raise OutcomesLayoutError(f"refusing report path {path}: it exists and is not a regular file")
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            existing = None
+        if not isinstance(existing, dict) or existing.get("report_of") != REPORT_OF:
+            raise OutcomesLayoutError(
+                f"refusing to overwrite {path}: it is not a report this builder wrote "
+                f"(no report_of={REPORT_OF!r})"
+            )
+    return path
+
+
+# Stamped into every report so an existing report can be told from any other file.
+REPORT_OF = "scripts/build_outcomes_shards.py"
+
+
+def write_report(
+    path: str | os.PathLike[str],
+    payload: Mapping[str, Any],
+    *,
+    out_dir: str | os.PathLike[str] | None = None,
+) -> Path:
+    """Write a JSON report after ``check_report_path`` allows it."""
+    report_path = check_report_path(path, out_dir=out_dir)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    body = {"report_of": REPORT_OF, **dict(payload)}
+    report_path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+    return report_path
+
+
 # ── atomic staging + swap writer ──────────────────────────────────────────────
 
-def _assert_not_foreign_output_dir(target: Path) -> None:
-    """Refuse to overwrite another live data family (e.g. ``site/data/outcomes/``,
-    ``site/data/results_structure/``, or ``site/data/``).
+def _remove_own_staging_dir(work: Path) -> None:
+    """Delete a staging directory this module created, marker last.
+
+    Called only on a directory ``check_output_target`` accepted (empty, or
+    holding the staging marker) or one this call created. Everything but the
+    marker goes first, so if removal stops partway the marker is still there
+    and the next run still recognises the directory as this module's.
     """
-    if not target.exists():
+    if not os.path.lexists(work):
         return
-    if not target.is_dir():
-        raise OutcomesLayoutError(
-            f"refusing to overwrite non-directory output path {target}"
-        )
-    present_markers = [
-        name for name in FOREIGN_DIRECTORY_MARKERS if (target / name).exists()
-    ]
-    if present_markers:
-        raise OutcomesLayoutError(
-            f"refusing to overwrite foreign data directory {target}: found marker(s) "
-            f"{', '.join(present_markers)} (point --out-dir at a dedicated "
-            f"{DEFAULT_OUT_DIR_NAME!r} directory)"
-        )
-    existing_index = target / INDEX_FILE
-    if existing_index.exists():
-        if not existing_index.is_file():
-            raise OutcomesLayoutError(
-                f"refusing to overwrite foreign directory {target}: existing {INDEX_FILE} is not a file"
-            )
-        try:
-            parsed = json.loads(existing_index.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, ValueError) as exc:
-            raise OutcomesLayoutError(
-                f"refusing to overwrite foreign directory {target}: existing {INDEX_FILE} "
-                f"is not valid JSON ({exc})"
-            ) from exc
-        if (
-            not isinstance(parsed, dict)
-            or "layout_version" not in parsed
-            or "layout" not in parsed
-            or "data" not in parsed
-        ):
-            raise OutcomesLayoutError(
-                f"refusing to overwrite foreign directory {target}: existing {INDEX_FILE} "
-                f"is not an {DEFAULT_OUT_DIR_NAME} index (missing 'layout_version', 'layout', or 'data')"
-            )
+    marker = work / STAGING_MARKER_FILE
+    for entry in list(work.iterdir()):
+        if entry == marker:
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+    if os.path.lexists(marker):
+        marker.unlink()
+    work.rmdir()
 
 
 def write_outcomes_tree(
@@ -2818,15 +3427,28 @@ def write_outcomes_tree(
 ) -> ValidationResult:
     """Atomically write and verify an outcomes tree via ``<out_dir>.partial``.
 
-    Refuses to overwrite any foreign data directory (such as ``data/outcomes/``
-    or ``data/results_structure/``) and runs the 6-vector audit holdout
-    firewall across all supplied rows and shards BEFORE creating ``.partial``
-    or touching ``out_dir``. Only after ``validate_outcomes_tree(work)`` passes
-    does this function swap ``index.json`` and ``shards/`` into ``out_dir``,
-    leaving any unrelated sibling files untouched.
+    Method:
+    1. ``check_output_target`` refuses every location this module may not
+       write (L1) and a retained backup from an earlier failed restore (L3),
+       before anything is created or deleted. The audit firewall runs over
+       every row and shard next, still before touching the filesystem.
+    2. The tree, its bundle marker and a staging marker are written into a
+       freshly created ``<out_dir>.partial`` and checked with
+       ``validate_outcomes_tree``.
+    3. The swap: the bundle marker (when the target has none), then
+       ``shards/`` (the old one moved to ``.partial/_previous_shards``), then
+       ``index.json``. Any exception in this window, ``KeyboardInterrupt`` and
+       ``SystemExit`` included, rolls back before it propagates: the new
+       shards move out, the old ones move back, a marker this call installed
+       is removed, and a target this call created is removed if empty. If the
+       old shards cannot be moved back they stay in ``_previous_shards``, the
+       staging directory is kept, and ``RetainedBackupError`` names the path
+       (every later call refuses until a person has dealt with it).
+    4. On the way out the staging directory is removed, marker last
+       (``_remove_own_staging_dir``); a failure to remove it is returned as a
+       warning, not hidden. Sibling files in the target are never touched.
     """
-    target = Path(os.path.normpath(os.fspath(out_dir)))
-    _assert_not_foreign_output_dir(target)
+    target = check_output_target(out_dir)
 
     layout = index_doc.get("layout")
     if not isinstance(layout, Mapping):
@@ -2864,18 +3486,24 @@ def write_outcomes_tree(
                 index_row=rows_by_nct.get(str(nct_id)),
             )
 
-    work = Path(f"{target}.partial")
-    shutil.rmtree(work, ignore_errors=True)
+    work = _staging_dir_for(target)
+    # check_output_target accepted any existing .partial as this module's own
+    # (empty, or holding the staging marker, and no retained backup).
+    _remove_own_staging_dir(work)
+    work.parent.mkdir(parents=True, exist_ok=True)
+    work.mkdir()
+    created_work = True
+    (work / STAGING_MARKER_FILE).write_text(_marker_text(STAGING_MARKER), encoding="utf-8")
     work_shards = work / SHARDS_DIR
-    work_shards.mkdir(parents=True)
+    work_shards.mkdir()
 
-    target_existed_before = target.exists()
-    backup_shards = work / "_previous_shards"
-    moved_old_shards = False
-    installed_new_shards = False
-    preserve_work_for_unrestored_backup = False
+    target_existed_before = os.path.lexists(target)
+    target_had_marker = target_existed_before and is_bundle_dir(target)
+    backup_shards = work / PREVIOUS_SHARDS_DIR
+    preserve_work = False
 
     try:
+        (work / BUNDLE_MARKER_FILE).write_text(_marker_text(BUNDLE_MARKER), encoding="utf-8")
         (work / INDEX_FILE).write_text(
             encode_json_text(index_doc, trailing_newline=True),
             encoding="utf-8",
@@ -2894,40 +3522,76 @@ def write_outcomes_tree(
                 f"staged outcomes tree failed validation; {target} untouched: {'; '.join(result.problems)}"
             )
 
-        target.mkdir(parents=True, exist_ok=True)
         dst_shards = target / SHARDS_DIR
         dst_index = target / INDEX_FILE
-
+        dst_marker = target / BUNDLE_MARKER_FILE
+        installed_marker = False
+        moved_old_shards = False
+        installed_new_shards = False
+        installed_new_index = False
         try:
-            if dst_shards.exists():
+            target.mkdir(exist_ok=True)
+            if not target_had_marker:
+                os.replace(work / BUNDLE_MARKER_FILE, dst_marker)
+                installed_marker = True
+            if os.path.lexists(dst_shards):
                 os.replace(dst_shards, backup_shards)
                 moved_old_shards = True
             os.replace(work_shards, dst_shards)
             installed_new_shards = True
             os.replace(work / INDEX_FILE, dst_index)
-        except Exception:
-            try:
-                if installed_new_shards and dst_shards.exists():
-                    failed_new_shards = work / "_failed_new_shards"
-                    try:
-                        os.replace(dst_shards, failed_new_shards)
-                    except OSError:
-                        shutil.rmtree(dst_shards, ignore_errors=True)
-                if moved_old_shards and backup_shards.exists() and not dst_shards.exists():
+            installed_new_index = True
+        except BaseException as swap_exc:
+            if installed_new_index:
+                # The swap completed before the interruption landed; the
+                # target is the new, validated tree. Nothing to undo.
+                raise
+            undo_failures: list[str] = []
+            if installed_new_shards and os.path.lexists(dst_shards):
+                try:
+                    os.replace(dst_shards, work / FAILED_NEW_SHARDS_DIR)
+                except BaseException as undo_exc:  # noqa: BLE001 - recorded and reported below
+                    undo_failures.append(f"moving the new shards out failed ({undo_exc})")
+            if moved_old_shards and os.path.lexists(backup_shards) and not os.path.lexists(dst_shards):
+                try:
                     os.replace(backup_shards, dst_shards)
-                if (
-                    not moved_old_shards
-                    and not target_existed_before
-                    and target.exists()
-                    and not any(target.iterdir())
-                ):
-                    target.rmdir()
-            finally:
-                if moved_old_shards and backup_shards.exists():
-                    preserve_work_for_unrestored_backup = True
+                except BaseException as undo_exc:  # noqa: BLE001 - recorded and reported below
+                    undo_failures.append(f"moving the previous shards back failed ({undo_exc})")
+            if installed_marker and not moved_old_shards and not os.path.lexists(dst_index):
+                try:
+                    dst_marker.unlink()
+                    if not target_existed_before and not any(target.iterdir()):
+                        target.rmdir()
+                except BaseException as undo_exc:  # noqa: BLE001 - recorded and reported below
+                    undo_failures.append(f"removing the marker this call installed failed ({undo_exc})")
+            elif not target_existed_before:
+                try:
+                    if os.path.lexists(target) and not any(target.iterdir()):
+                        target.rmdir()
+                except BaseException as undo_exc:  # noqa: BLE001 - recorded and reported below
+                    undo_failures.append(f"removing the target this call created failed ({undo_exc})")
+            if os.path.lexists(backup_shards):
+                preserve_work = True
+                raise RetainedBackupError(
+                    f"writing {target} failed ({type(swap_exc).__name__}: {swap_exc}) and the previous "
+                    f"shards could not be put back ({'; '.join(undo_failures) or 'restore did not run'}). "
+                    f"They are retained at {backup_shards}: move them back to {dst_shards} by hand, then "
+                    f"delete {work}; until then every write to {target} refuses"
+                ) from swap_exc
+            if undo_failures:
+                swap_exc.add_note("rollback problems: " + "; ".join(undo_failures))
             raise
-
-        return result
     finally:
-        if not preserve_work_for_unrestored_backup:
-            shutil.rmtree(work, ignore_errors=True)
+        cleanup_warning: str | None = None
+        if created_work and not preserve_work:
+            try:
+                _remove_own_staging_dir(work)
+            except OSError as exc:
+                cleanup_warning = (
+                    f"staging directory {work} could not be removed ({exc}); it holds the staging "
+                    f"marker, so the next run removes it"
+                )
+
+    if cleanup_warning is not None:
+        result = dataclasses.replace(result, warnings=(*result.warnings, cleanup_warning))
+    return result
