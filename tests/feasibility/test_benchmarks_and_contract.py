@@ -1174,3 +1174,23 @@ def test_contract_refuses_malformed_producer_provenance(field: str, value: objec
     edited = json.loads(json.dumps(family))
     edited["run.json"]["producer"][field] = value
     assert any(f"producer.{field}" in p for p in artifacts.check_contract(edited))
+
+
+@pytest.mark.parametrize("stamp, value", [("pipeline_commit", None), ("extracted_at", None), ("extracted_at", " ")])
+def test_weekly_build_without_sidecar_still_needs_run_stamps(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], stamp: str, value: str | None
+) -> None:
+    demog_path, _mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    if value is None:
+        body.pop(stamp, None)
+    else:
+        body[stamp] = value
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    out_dir = tmp_path / "refused"
+    rc = build_feasibility_benchmarks.main(
+        ["--demographics", str(demog_path), "--generated-at", "2026-11-21T12:00:00+00:00", "--out", str(out_dir)]
+    )
+    assert rc == 1
+    assert f"carry no {stamp}" in capsys.readouterr().err
+    assert not out_dir.exists()

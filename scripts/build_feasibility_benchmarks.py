@@ -468,6 +468,19 @@ def load_studies_input(
         records, extracted_at, pipe_commit = full_records.load(target)
     except SystemExit as exc:
         raise ValueError(str(exc)) from exc
+    # The weekly container's run stamps are the only record of which extraction run, and which
+    # pipeline revision, produced these records; the build and its site export carry them as
+    # `source_extracted_at` / `source_pipeline_commit`. A container without both is refused whether
+    # or not a MeSH sidecar is supplied (the sidecar check needs them too).
+    missing = [
+        name for name, value in (("extracted_at", extracted_at), ("pipeline_commit", pipe_commit))
+        if not isinstance(value, str) or not value.strip()
+    ]
+    if missing:
+        raise ValueError(
+            f"{target}: weekly full records carry no {' or '.join(missing)}, so the build could not "
+            "name the extraction run that produced them"
+        )
     file_sha = hashlib.sha256(target.read_bytes()).hexdigest()
     return records, {
         "mode": "weekly_full_records",
