@@ -1130,6 +1130,50 @@ def test_records_missing_a_required_protocol_module_are_refused(tmp_path: Path, 
         _load_archive(apath)
 
 
+@pytest.mark.parametrize(
+    "edit, expect",
+    [
+        ("drop_results_section", "resultsSection"),  # hasResults true, results not carried
+        ("empty_results_section", "resultsSection"),
+        ("drop_has_results", "hasResults"),
+        ("string_has_results", "hasResults"),
+    ],
+)
+def test_records_with_an_incomplete_results_part_are_refused(tmp_path: Path, edit: str, expect: str) -> None:
+    complete = make_ctgov_study("NCT99600015")
+    assert complete["hasResults"] is True and complete["resultsSection"]
+    projected = make_ctgov_study("NCT99600016")
+    if edit == "drop_results_section":
+        projected.pop("resultsSection")
+    elif edit == "empty_results_section":
+        projected["resultsSection"] = {}
+    elif edit == "drop_has_results":
+        projected.pop("hasResults")
+    else:
+        projected["hasResults"] = "true"
+    rdir = tmp_path / "records"
+    rdir.mkdir()
+    (rdir / "a.json").write_text(json.dumps(complete), encoding="utf-8")
+    (rdir / "b.json").write_text(json.dumps(projected), encoding="utf-8")
+    with pytest.raises(ValueError, match=f"NCT99600016 lacks {expect}"):
+        build_feasibility_benchmarks.load_studies_input(demographics_path=None, records_dir=rdir, archive_path=None)
+    apath = tmp_path / "studies.jsonl.gz"
+    apath.write_bytes(
+        gzip.compress((json.dumps(complete) + "\n" + json.dumps(projected) + "\n").encode("utf-8"), mtime=0)
+    )
+    with pytest.raises(ValueError, match="or results parts"):
+        _load_archive(apath)
+
+
+def test_records_without_posted_results_are_still_accepted(tmp_path: Path) -> None:
+    # hasResults false with no resultsSection is a complete record of a trial that posted nothing.
+    study = make_ctgov_study("NCT99600017", has_results=False)
+    study.pop("resultsSection", None)
+    apath = tmp_path / "studies.jsonl.gz"
+    apath.write_bytes(gzip.compress((json.dumps(study) + "\n").encode("utf-8"), mtime=0))
+    assert len(_load_archive(apath)) == 1
+
+
 def test_records_without_locations_or_derived_section_are_still_accepted(tmp_path: Path) -> None:
     study = make_ctgov_study("NCT99600014")
     study["protocolSection"].pop("contactsLocationsModule", None)

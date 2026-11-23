@@ -251,7 +251,17 @@ REQUIRED_PROTOCOL_MODULES: tuple[str, ...] = (
 
 
 def _require_complete_records(studies: list[dict[str, Any]], source: str) -> None:
-    """Refuse API v2 study records missing any `REQUIRED_PROTOCOL_MODULES` (see the note above)."""
+    """Refuse API v2 study records missing any `REQUIRED_PROTOCOL_MODULES` (see the note above),
+    or whose results part is incomplete.
+
+    A complete API v2 record always carries the top-level boolean `hasResults`, and a record with
+    `hasResults: true` carries its posted `resultsSection`. A record without the flag, with a
+    non-boolean one, or with `hasResults: true` but no (or an empty) `resultsSection` was projected
+    or truncated (a direct `--records-dir`/`--archive` study object has no request URL to show a
+    `fields=` projection). Built from it, the stopped-study results state would read
+    `results_not_posted` and retention `no_participant_flow_module` while the contract passed, so it
+    is refused like a missing protocol module.
+    """
     incomplete: dict[str, list[str]] = {}
     for idx, study in enumerate(studies):
         ps = study.get("protocolSection")
@@ -259,13 +269,20 @@ def _require_complete_records(studies: list[dict[str, Any]], source: str) -> Non
             incomplete[_study_nct_id(study) or f"index {idx}"] = ["protocolSection"]
             continue
         missing = [m for m in REQUIRED_PROTOCOL_MODULES if not isinstance(ps.get(m), dict)]
+        has_results = study.get("hasResults")
+        if not isinstance(has_results, bool):
+            missing.append("hasResults (a boolean)")
+        elif has_results:
+            results_sec = study.get("resultsSection")
+            if not isinstance(results_sec, dict) or not results_sec:
+                missing.append("resultsSection (hasResults is true)")
         if missing:
             incomplete[_study_nct_id(study) or f"index {idx}"] = missing
     if incomplete:
         first = next(iter(incomplete))
         raise ValueError(
             f"{source}: {len(incomplete)} of {len(studies)} study records lack required protocol modules "
-            f"(first: {first} lacks {', '.join(incomplete[first])}); these look field-projected or "
+            f"or results parts (first: {first} lacks {', '.join(incomplete[first])}); these look field-projected or "
             "truncated, so the build is refused rather than reading the gaps as absent data"
         )
 
