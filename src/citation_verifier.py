@@ -19,7 +19,17 @@ Key invariants:
   ``bool`` ``in_audit`` (or verified ``in_scope_nct_ids`` + ``audit_nct_ids``)
   and non-empty ``audit_nct_ids`` by default, raising
   ``AuditHoldoutViolationError`` unconditionally before reading or inspecting
-  document text whenever an audit or unlisted trial is referenced.
+  document text whenever an audit or unlisted trial is referenced. The
+  caller's ``in_audit`` covers the record's own trial only: any other ID
+  reached from a record (``docs_by_nct`` keys, nested ``nct_ids``, completeness
+  rows, ``expected_*`` keys, URL tokens) is admitted only by membership of
+  ``in_scope_nct_ids`` (``_enforce_derived_nct_holdout``). A record's own
+  ``in_audit`` can refuse it but never admits it. ``allow_empty_audit_set=True``
+  with an empty audit set also requires ``in_scope_nct_ids``, and
+  ``verify_census_corpus`` always requires it.
+- Document presence is tri-state (True / False / None for "the index does not
+  say"); absence is never read as "no documents", and a ``NO_DOCUMENT`` row
+  whose presence is unknown is reported as ``NO_DOCUMENT_PRESENCE_UNKNOWN``.
 - Canonical status-to-citation and 6-key citation-shape rules
   (``CITATION_REQUIRED_STATUSES``, ``CITATION_FORBIDDEN_STATUSES``,
   ``validate_status_citations``, ``validate_citation_shape``) shared across
@@ -60,8 +70,8 @@ from typing import (
 import unicodedata
 from urllib.parse import unquote
 
-__version__: Final[str] = "1.1.0"
-VERIFIER_RULES_VERSION: Final[str] = "1.1.0"
+__version__: Final[str] = "1.2.0"
+VERIFIER_RULES_VERSION: Final[str] = "1.2.0"
 
 STRICT_NCT_ID_RE: Final[re.Pattern[str]] = re.compile(r"^NCT[0-9]{8}$", re.ASCII)
 
@@ -537,6 +547,15 @@ def _check_embedded_url_ncts(
                 raise AuditHoldoutViolationError(
                     f"Audit holdout refusal in {context}: URL references unlisted trial {raw_tok!r}."
                 )
+            # Same rule as ``_enforce_derived_nct_holdout``: with no record trial to compare
+            # against and no in-scope set, the audit set alone cannot show that a URL's trial
+            # is outside the holdout (it lists the holdout, not the trials outside it).
+            if in_scope_nct_ids is None and expected_nct_id is None:
+                raise AuditHoldoutViolationError(
+                    f"Audit holdout refusal in {context}: URL references trial {raw_tok!r}, and "
+                    f"neither a record nct_id nor in_scope_nct_ids establishes it is outside the "
+                    f"holdout."
+                )
             if expected_nct_id is not None and raw_tok != expected_nct_id:
                 raise AuditHoldoutViolationError(
                     f"Audit holdout refusal in {context}: URL NCT {raw_tok!r} disagrees with "
@@ -590,9 +609,10 @@ def _validate_nested_firewall_metadata(
                 child_ctx = f"{path}.{key}"
                 if key in _NCT_FIELD_KEYS:
                     checked = validate_strict_nct_id(val, context=child_ctx)
-                    enforce_audit_holdout(
+                    _enforce_derived_nct_holdout(
                         checked,
-                        in_audit=False,
+                        verified_nct=expected_nct_id,
+                        context=child_ctx,
                         audit_nct_ids=audit_nct_ids,
                         in_scope_nct_ids=in_scope_nct_ids,
                         allow_empty_audit_set=allow_empty_audit_set,
@@ -609,9 +629,10 @@ def _validate_nested_firewall_metadata(
                         )
                     for idx, item in enumerate(val):
                         checked = validate_strict_nct_id(item, context=f"{child_ctx}[{idx}]")
-                        enforce_audit_holdout(
+                        _enforce_derived_nct_holdout(
                             checked,
-                            in_audit=False,
+                            verified_nct=expected_nct_id,
+                            context=f"{child_ctx}[{idx}]",
                             audit_nct_ids=audit_nct_ids,
                             in_scope_nct_ids=in_scope_nct_ids,
                             allow_empty_audit_set=allow_empty_audit_set,
@@ -718,10 +739,89 @@ def enforce_audit_holdout(
             f"in-scope index rows."
         )
 
-    if not allow_empty_audit_set and len(checked_audit_ids) == 0:
+    _require_scope_for_empty_audit_set(
+        checked_audit_ids,
+        checked_scope_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+        context="enforce_audit_holdout",
+    )
+
+
+def _require_scope_for_empty_audit_set(
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+    *,
+    allow_empty_audit_set: bool,
+    context: str,
+) -> None:
+    """Refuse an empty audit set unless the caller also supplies the in-scope set it verified.
+
+    Method: an empty ``audit_nct_ids`` is legitimate only for an index whose
+    rows all carry explicit ``in_audit=False`` (the CLI derives
+    ``allow_empty_audit_set`` that way in ``_partition_index_firewall``). A
+    library caller asserts the flag rather than deriving it, so the assertion
+    alone would leave nothing between an unknown trial and the page text. The
+    caller that verified those rows holds them, so it must pass them as
+    ``in_scope_nct_ids``: with an empty audit set, membership of that set is
+    the only remaining guard, and without it the call is refused.
+    """
+    if len(audit_nct_ids) > 0:
+        return
+    if not allow_empty_audit_set:
         raise AuditHoldoutViolationError(
-            "audit_nct_ids may not be empty unless allow_empty_audit_set=True after verifying "
-            "100% of index rows carry explicit in_audit=False."
+            f"{context}: audit_nct_ids may not be empty unless allow_empty_audit_set=True after "
+            f"verifying 100% of index rows carry explicit in_audit=False."
+        )
+    if in_scope_nct_ids is None:
+        raise AuditHoldoutViolationError(
+            f"{context}: allow_empty_audit_set=True with an empty audit_nct_ids also requires "
+            f"in_scope_nct_ids (the verified index rows); without it no trial can be shown to be "
+            f"outside the holdout."
+        )
+
+
+def _enforce_derived_nct_holdout(
+    derived_nct: str,
+    *,
+    verified_nct: str | None,
+    context: str,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+    allow_empty_audit_set: bool,
+) -> None:
+    """Firewall an NCT ID reached from a record rather than supplied with its own flag.
+
+    Method: a caller's explicit ``in_audit`` speaks for one trial only, the
+    record's own ``verified_nct``, which the caller has already passed through
+    ``enforce_audit_holdout``. Every other ID reached from that record (a
+    ``docs_by_nct`` key, a nested ``nct_id``/``nct_ids`` entry, a completeness
+    row, an ``expected_*`` key) carries no flag of its own, and passing
+    ``in_audit=False`` for it would be a default. So:
+
+    - with ``in_scope_nct_ids`` (index rows whose ``in_audit`` is explicitly
+      False), the ID must be a member and outside ``audit_nct_ids``;
+    - without it, only ``verified_nct`` itself is accepted (re-checked against
+      ``audit_nct_ids``); any other ID is refused, because the audit set lists
+      the holdout, not the trials known to be outside it.
+    """
+    checked = validate_strict_nct_id(derived_nct, context=context)
+    if in_scope_nct_ids is not None:
+        enforce_audit_holdout(
+            checked,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+        return
+    if checked in audit_nct_ids:
+        raise AuditHoldoutViolationError(
+            f"Audit holdout violation in {context}: trial {checked!r} is in audit_nct_ids."
+        )
+    if verified_nct is None or checked != verified_nct:
+        raise AuditHoldoutViolationError(
+            f"Audit holdout refusal in {context}: trial {checked!r} is not the record's own "
+            f"trial ({verified_nct!r}) and no in_scope_nct_ids was supplied, so nothing "
+            f"establishes that it is outside the holdout."
         )
 
 
@@ -746,8 +846,11 @@ def _enforce_record_firewall(
     _prescan_nested_nct_fields(record, context=record_label)
 
     # Phase B (F1): Inspect in_audit flags, membership, and embedded URLs.
-    has_row_flag = "in_audit" in record
-    if has_row_flag:
+    # A record's own ``in_audit`` is reported by the data under check, so it can only
+    # refuse (True or non-bool). It never stands in for the caller's flag or in-scope set,
+    # which come from the index: a worker or a stale file writing ``in_audit: false`` must
+    # not admit a record that the index would hold out.
+    if "in_audit" in record:
         row_flag = record["in_audit"]
         if type(row_flag) is not bool:
             raise AuditHoldoutViolationError(
@@ -758,24 +861,9 @@ def _enforce_record_firewall(
                 f"Audit holdout violation: {record_label} for {checked_nct!r} has in_audit=True."
             )
 
-    if in_audit is not _MISSING:
-        if type(in_audit) is not bool:
-            raise AuditHoldoutViolationError(
-                f"in_audit must be an explicit bool for {checked_nct!r}, got {in_audit!r}."
-            )
-        if in_audit is True:
-            raise AuditHoldoutViolationError(
-                f"Audit holdout violation: trial {checked_nct!r} has in_audit=True."
-            )
-        effective_in_audit: Any = False
-    elif has_row_flag:
-        effective_in_audit = False
-    else:
-        effective_in_audit = _MISSING
-
     enforce_audit_holdout(
         checked_nct,
-        in_audit=effective_in_audit,
+        in_audit=in_audit,
         audit_nct_ids=checked_audit_ids,
         in_scope_nct_ids=checked_scope_ids,
         allow_empty_audit_set=allow_empty_audit_set,
@@ -1197,10 +1285,12 @@ class DictPageTextProvider:
             raise AuditHoldoutViolationError(
                 "Audit holdout violation: DictPageTextProvider in_scope_nct_ids overlaps audit_nct_ids."
             )
-        if not allow_empty_audit_set and len(merged_audit) == 0:
-            raise AuditHoldoutViolationError(
-                "DictPageTextProvider requires non-empty audit_nct_ids unless allow_empty_audit_set=True."
-            )
+        _require_scope_for_empty_audit_set(
+            merged_audit,
+            merged_scope,
+            allow_empty_audit_set=allow_empty_audit_set,
+            context="DictPageTextProvider.bind_firewall",
+        )
         self._audit_nct_ids = merged_audit
         self._in_scope_nct_ids = merged_scope
         self._allow_empty_audit_set = allow_empty_audit_set
@@ -1217,6 +1307,15 @@ class DictPageTextProvider:
     ) -> str | None:
         """Return single-page text for ``physical_page`` (1-based) or None."""
         checked_nct = validate_strict_nct_id(nct_id, context="page_text.nct_id")
+        # Construction may leave the provider unbound (empty audit set, no scope) so that
+        # ``bind_firewall`` can tighten it later; serving text from that state would rest on
+        # the caller's assertion alone, so it is refused until a scope is bound.
+        _require_scope_for_empty_audit_set(
+            self._audit_nct_ids,
+            self._in_scope_nct_ids,
+            allow_empty_audit_set=self._allow_empty_audit_set,
+            context="DictPageTextProvider.get_page_text",
+        )
         if checked_nct in self._audit_nct_ids:
             raise AuditHoldoutViolationError(
                 f"Audit holdout violation: refusing page lookup for {checked_nct!r}."
@@ -1312,10 +1411,12 @@ class DirectoryPageTextProvider:
             raise AuditHoldoutViolationError(
                 "Audit holdout violation: DirectoryPageTextProvider in_scope_nct_ids overlaps audit_nct_ids."
             )
-        if not allow_empty_audit_set and len(merged_audit) == 0:
-            raise AuditHoldoutViolationError(
-                "DirectoryPageTextProvider requires non-empty audit_nct_ids unless allow_empty_audit_set=True."
-            )
+        _require_scope_for_empty_audit_set(
+            merged_audit,
+            merged_scope,
+            allow_empty_audit_set=allow_empty_audit_set,
+            context="DirectoryPageTextProvider.bind_firewall",
+        )
         if (
             merged_audit != self._audit_nct_ids
             or merged_scope != self._in_scope_nct_ids
@@ -1341,6 +1442,26 @@ class DirectoryPageTextProvider:
             )
         return checked
 
+    def _check_layout_nct_allowed(self, raw_nct: Any, *, context: str) -> str:
+        """Firewall a trial named by the page-map layout (a directory, a filename prefix).
+
+        The trial requested in ``get_page_text`` is the call's subject, which the
+        verify entry points have already firewalled; a trial named by the layout
+        is reached from the files instead, so it follows
+        ``_enforce_derived_nct_holdout``: without ``in_scope_nct_ids`` it is refused
+        rather than admitted on the audit set alone.
+        """
+        checked = validate_strict_nct_id(raw_nct, context=context)
+        _enforce_derived_nct_holdout(
+            checked,
+            verified_nct=None,
+            context=context,
+            audit_nct_ids=self._audit_nct_ids,
+            in_scope_nct_ids=self._in_scope_nct_ids,
+            allow_empty_audit_set=self._allow_empty_audit_set,
+        )
+        return checked
+
     def _check_path_part_for_embedded_nct(self, part: str, *, context: str) -> None:
         """Scan a path component for exact or obfuscated NCT tokens."""
         folded = _strip_invisible(unicodedata.normalize("NFKC", part))
@@ -1355,7 +1476,7 @@ class DirectoryPageTextProvider:
                 raise InvalidNctIdError(
                     f"Malformed or obfuscated NCT path component {part!r} in {context}."
                 )
-            self._check_nct_allowed(tok, context=context)
+            self._check_layout_nct_allowed(tok, context=context)
 
     def _validate_payload_firewall(self, payload: Any, *, source_desc: str) -> str | None:
         """Recursively validate ``nct_id``, ``nctId``, ``nct_ids``, ``in_audit``, and URLs."""
@@ -1448,7 +1569,7 @@ class DirectoryPageTextProvider:
                 return None
             if "__" in stem:
                 prefix, doc_part = stem.split("__", 1)
-                checked_prefix = self._check_nct_allowed(
+                checked_prefix = self._check_layout_nct_allowed(
                     prefix, context=f"page_map_file({entry})"
                 )
                 self._check_path_part_for_embedded_nct(
@@ -1489,7 +1610,7 @@ class DirectoryPageTextProvider:
                 )
             return None
 
-        checked_dir_nct = self._check_nct_allowed(
+        checked_dir_nct = self._check_layout_nct_allowed(
             parent.name, context=f"page_map_dir({parent})"
         )
         self._check_path_part_for_embedded_nct(stem, context=f"page_map_file({entry})")
@@ -1507,7 +1628,7 @@ class DirectoryPageTextProvider:
                 if part == root.name and root.is_file() and "__" in part:
                     stem = self._strip_map_extensions(part)
                     prefix, rest = stem.split("__", 1)
-                    self._check_nct_allowed(prefix, context=f"page_map_file({root})")
+                    self._check_layout_nct_allowed(prefix, context=f"page_map_file({root})")
                     self._check_path_part_for_embedded_nct(
                         rest, context=f"page_map_file({root})"
                     )
@@ -1522,7 +1643,7 @@ class DirectoryPageTextProvider:
             expected_nct: str | None = None
             if "__" in stem:
                 prefix, doc_part = stem.split("__", 1)
-                expected_nct = self._check_nct_allowed(
+                expected_nct = self._check_layout_nct_allowed(
                     prefix, context=f"page_map_file({root})"
                 )
                 if _SAFE_STEM_RE.fullmatch(doc_part) is None:
@@ -1530,7 +1651,7 @@ class DirectoryPageTextProvider:
                         f"Unsafe page-map filename {root.name!r}."
                     )
             elif STRICT_NCT_ID_RE.fullmatch(root.parent.name) is not None:
-                expected_nct = self._check_nct_allowed(
+                expected_nct = self._check_layout_nct_allowed(
                     root.parent.name, context=f"page_map_dir({root.parent})"
                 )
 
@@ -1567,7 +1688,7 @@ class DirectoryPageTextProvider:
                 self._check_path_part_for_embedded_nct(
                     entry.name, context=f"page_map_dir({entry})"
                 )
-                self._check_nct_allowed(entry.name, context=f"page_map_dir({entry})")
+                self._check_layout_nct_allowed(entry.name, context=f"page_map_dir({entry})")
                 continue
 
             if not entry.is_file():
@@ -1734,6 +1855,13 @@ class DirectoryPageTextProvider:
         text_source: str = "pdfkit",
     ) -> str | None:
         """Return single-page text for ``physical_page`` (1-based) or None."""
+        # See DictPageTextProvider.get_page_text: an unbound provider serves nothing.
+        _require_scope_for_empty_audit_set(
+            self._audit_nct_ids,
+            self._in_scope_nct_ids,
+            allow_empty_audit_set=self._allow_empty_audit_set,
+            context="DirectoryPageTextProvider.get_page_text",
+        )
         checked_nct = self._check_nct_allowed(nct_id, context="page_text.nct_id")
         if not _is_strict_int(physical_page) or physical_page < 1:
             return None
@@ -2842,9 +2970,21 @@ def verify_location_record(
     page_text_provider: PageTextProvider | None = None,
     require_exhaustive_for_not_found: bool = True,
     text_source: str = "pdfkit",
-    manifest_has_documents: bool = False,
+    manifest_has_documents: bool | None = None,
 ) -> tuple[dict[str, int], list[VerificationIssue]]:
-    """Verify a single location record, provenance, citations, coverage, and neutrality."""
+    """Verify a single location record, provenance, citations, coverage, and neutrality.
+
+    ``manifest_has_documents`` is what the index says about posted documents for
+    the record's trial: True, False, or None when the index does not say (or the
+    caller did not pass it). None is kept as unknown, never read as "no
+    documents": a ``NO_DOCUMENT`` row for a trial with no supplied documents and
+    unknown presence is reported as ``NO_DOCUMENT_PRESENCE_UNKNOWN`` rather than
+    accepted.
+
+    ``docs_by_nct`` keys other than the record's own trial are firewalled by
+    ``_enforce_derived_nct_holdout``: without ``in_scope_nct_ids`` they are
+    refused, since the caller's ``in_audit`` speaks only for this record's trial.
+    """
     if not isinstance(loc, Mapping):
         raise CitationVerificationError(
             f"Location record must be a mapping, got {type(loc).__name__}."
@@ -2853,9 +2993,9 @@ def verify_location_record(
         raise CitationVerificationError(
             f"docs_by_nct must be a mapping, got {type(docs_by_nct).__name__}."
         )
-    if type(manifest_has_documents) is not bool:
+    if manifest_has_documents is not None and type(manifest_has_documents) is not bool:
         raise CitationVerificationError(
-            f"manifest_has_documents must be bool, got {manifest_has_documents!r}."
+            f"manifest_has_documents must be bool or None, got {manifest_has_documents!r}."
         )
 
     # Phase A (F2): Validate strict NCT IDs on docs_by_nct BEFORE _enforce_record_firewall.
@@ -2878,11 +3018,13 @@ def verify_location_record(
         allow_empty_audit_set=allow_empty_audit_set,
     )
 
-    # Phase B on docs_by_nct keys and inner document objects.
+    # Phase B on docs_by_nct keys and inner document objects. The caller's in_audit
+    # covers ``nct_id`` only; any other key needs in-scope membership.
     for k, per_nct_docs in docs_by_nct.items():
-        enforce_audit_holdout(
+        _enforce_derived_nct_holdout(
             k,
-            in_audit=False,
+            verified_nct=nct_id,
+            context="docs_by_nct key",
             audit_nct_ids=checked_audit_ids,
             in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
@@ -3023,7 +3165,31 @@ def verify_location_record(
         citations = []
 
     docs_for_nct = docs_by_nct.get(nct_id, {})
-    has_posted_docs: bool = bool(docs_for_nct) or manifest_has_documents
+    # Posted documents are known to exist when any are supplied or the index says so;
+    # known absent only when none are supplied and the index says False; otherwise unknown.
+    has_posted_docs: bool | None
+    if docs_for_nct or manifest_has_documents is True:
+        has_posted_docs = True
+    elif manifest_has_documents is False:
+        has_posted_docs = False
+    else:
+        has_posted_docs = None
+    if status_raw == "NO_DOCUMENT" and has_posted_docs is None:
+        issues.append(
+            VerificationIssue(
+                code="NO_DOCUMENT_PRESENCE_UNKNOWN",
+                severity="error",
+                nct_id=nct_id,
+                location_key=loc_key,
+                filename=None,
+                physical_page=None,
+                message=(
+                    f"status='NO_DOCUMENT' cannot be verified for {nct_id}: no documents were "
+                    f"supplied for it and the index does not say whether it has posted "
+                    f"documents (manifest_has_documents is None)."
+                ),
+            )
+        )
     status_errors = validate_status_citations(
         status_raw,  # type: ignore[arg-type]
         len(citations),
@@ -3105,7 +3271,7 @@ def verify_location_record(
             loc_key,
             cit,
             docs_by_filename=docs_for_nct,
-            in_audit=False,
+            in_audit=in_audit,
             audit_nct_ids=checked_audit_ids,
             in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
@@ -3190,9 +3356,12 @@ def verify_trial_completeness(
     )
     for idx_loc, loc in enumerate(locations):
         loc_nct = loc["nct_id"]
-        enforce_audit_holdout(
+        # The caller's in_audit covers ``nct_id`` only; rows of any other trial need
+        # in-scope membership (they are skipped by the grid below, but still inspected here).
+        _enforce_derived_nct_holdout(
             loc_nct,
-            in_audit=False,
+            verified_nct=checked_nct,
+            context=f"locations[{idx_loc}].nct_id",
             audit_nct_ids=checked_audit_ids,
             in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
@@ -3316,7 +3485,17 @@ def verify_census_corpus(
     require_exhaustive_for_not_found: bool = True,
     text_source: str = "pdfkit",
 ) -> CorpusVerificationReport:
-    """Run full mechanical verification across a documents + locations corpus."""
+    """Run full mechanical verification across a documents + locations corpus.
+
+    Requires ``in_scope_nct_ids``: a corpus spans many trials and this entry
+    point takes no per-trial ``in_audit``, and a record's own ``in_audit`` never
+    admits it (see ``_enforce_record_firewall``), so membership of the verified
+    in-scope index rows is what admits each trial.
+
+    ``expected_has_documents_by_nct`` values are True, False, or None (the index
+    does not say); a corpus trial missing from a supplied map, or with no map at
+    all, is passed on as None (unknown), never as False.
+    """
     if isinstance(documents, (str, bytes, Mapping)) or not isinstance(documents, Sequence):
         raise CitationVerificationError(
             f"documents must be a sequence of mappings, got {type(documents).__name__}."
@@ -3359,16 +3538,23 @@ def verify_census_corpus(
         raise AuditHoldoutViolationError(
             f"allow_empty_audit_set must be bool, got {type(allow_empty_audit_set).__name__}."
         )
-    if checked_scope_ids is not None and (checked_audit_ids & checked_scope_ids):
+    if checked_scope_ids is None:
+        raise AuditHoldoutViolationError(
+            "verify_census_corpus requires in_scope_nct_ids (the index rows with explicit "
+            "in_audit=False): it takes no per-trial in_audit, and a record's own in_audit "
+            "never admits it."
+        )
+    if checked_audit_ids & checked_scope_ids:
         overlap = sorted(checked_audit_ids & checked_scope_ids)
         raise AuditHoldoutViolationError(
             f"Audit holdout violation: in_scope_nct_ids overlaps audit_nct_ids: {overlap}."
         )
-    if not allow_empty_audit_set and len(checked_audit_ids) == 0:
-        raise AuditHoldoutViolationError(
-            "audit_nct_ids may not be empty unless allow_empty_audit_set=True after verifying "
-            "100% of index rows carry explicit in_audit=False."
-        )
+    _require_scope_for_empty_audit_set(
+        checked_audit_ids,
+        checked_scope_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+        context="verify_census_corpus",
+    )
 
     if isinstance(page_text_provider, (DirectoryPageTextProvider, DictPageTextProvider)):
         page_text_provider.bind_firewall(
@@ -3382,25 +3568,26 @@ def verify_census_corpus(
         in_scope_nct_ids=checked_scope_ids,
     )
 
+    # expected_* keys are index-derived trial IDs with no flag of their own: admitted by
+    # in-scope membership only.
     if expected_has_documents_by_nct is not None:
         for nct_id, has_docs_val in sorted(expected_has_documents_by_nct.items()):
             enforce_audit_holdout(
                 nct_id,
-                in_audit=False,
                 audit_nct_ids=checked_audit_ids,
                 in_scope_nct_ids=checked_scope_ids,
                 allow_empty_audit_set=allow_empty_audit_set,
             )
-            if type(has_docs_val) is not bool:
+            if has_docs_val is not None and type(has_docs_val) is not bool:
                 raise CitationVerificationError(
-                    f"expected_has_documents_by_nct[{nct_id!r}] must be bool, got {has_docs_val!r}."
+                    f"expected_has_documents_by_nct[{nct_id!r}] must be bool or None (unknown), "
+                    f"got {has_docs_val!r}."
                 )
 
     if expected_outcomes_by_nct is not None:
         for nct_id in sorted(expected_outcomes_by_nct.keys()):
             enforce_audit_holdout(
                 nct_id,
-                in_audit=False,
                 audit_nct_ids=checked_audit_ids,
                 in_scope_nct_ids=checked_scope_ids,
                 allow_empty_audit_set=allow_empty_audit_set,
@@ -3452,14 +3639,20 @@ def verify_census_corpus(
     for loc in locations:
         loc_nct = loc["nct_id"]
         corpus_ncts.add(loc_nct)
-        manifest_has_docs = (
-            bool(expected_has_documents_by_nct.get(loc_nct, False))
+        # Absent from the map (or no map) is unknown, not "no documents".
+        manifest_has_docs: bool | None = (
+            expected_has_documents_by_nct.get(loc_nct)
             if expected_has_documents_by_nct is not None
-            else False
+            else None
+        )
+        # Each location sees its own trial's documents only: it reads no other trial's, and
+        # every document was already firewalled by verify_document_record above.
+        own_docs_by_nct: dict[str, dict[str, Mapping[str, Any]]] = (
+            {loc_nct: docs_by_nct[loc_nct]} if loc_nct in docs_by_nct else {}
         )
         counts, loc_issues = verify_location_record(
             loc,
-            docs_by_nct=docs_by_nct,
+            docs_by_nct=own_docs_by_nct,
             audit_nct_ids=checked_audit_ids,
             in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
@@ -3512,15 +3705,16 @@ def verify_census_corpus(
                     f"Invalid expected primary outcomes count {expected_k!r} for {nct_id!r}; "
                     f"must be strict int >= 1."
                 )
+            # The grid counts only this trial's rows; pass only those, admitted by scope.
+            trial_locations = [loc for loc in locations if loc["nct_id"] == nct_id]
             for pass_name in sorted(passes_by_nct.get(nct_id, set()) | {"primary"}):
                 all_issues.extend(
                     verify_trial_completeness(
                         nct_id,
-                        locations,
+                        trial_locations,
                         expected_primary_outcomes=expected_k,
                         pass_name=pass_name,
                         allow_sparse=pass_name in SPARSE_PASSES,
-                        in_audit=False,
                         audit_nct_ids=checked_audit_ids,
                         in_scope_nct_ids=checked_scope_ids,
                         allow_empty_audit_set=allow_empty_audit_set,

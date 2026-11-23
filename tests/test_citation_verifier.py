@@ -195,15 +195,33 @@ def test_f1_audit_holdout_no_defaults_and_non_empty_audit_set() -> None:
     # Empty audit_nct_ids is refused by default even when in_audit=False.
     with pytest.raises(AuditHoldoutViolationError):
         enforce_audit_holdout("NCT99000001", in_audit=False, audit_nct_ids=frozenset())
-    assert (
+    # allow_empty_audit_set=True is a caller's assertion; with an empty audit set it also
+    # needs the verified in-scope rows, whose membership is then the only guard.
+    with pytest.raises(AuditHoldoutViolationError):
         enforce_audit_holdout(
             "NCT99000001",
             in_audit=False,
             audit_nct_ids=frozenset(),
             allow_empty_audit_set=True,
         )
+    assert (
+        enforce_audit_holdout(
+            "NCT99000001",
+            in_audit=False,
+            audit_nct_ids=frozenset(),
+            in_scope_nct_ids=SCOPE_SET,
+            allow_empty_audit_set=True,
+        )
         is None
     )
+    with pytest.raises(AuditHoldoutViolationError):
+        enforce_audit_holdout(
+            "NCT99000002",
+            in_audit=False,
+            audit_nct_ids=frozenset(),
+            in_scope_nct_ids=SCOPE_SET,
+            allow_empty_audit_set=True,
+        )
 
     # Explicit True or non-bool in_audit always raises AuditHoldoutViolationError.
     for bad_flag in (True, None, 0, 1, "false", "False", []):
@@ -883,30 +901,33 @@ def test_no_document_consistency_with_posted_documents() -> None:
     assert report_fail.to_dict()["error_count"] == len(ELEMENTS)
     assert {i.code for i in report_fail.issues} == {"NO_DOCUMENT_WITH_POSTED_DOCUMENT"}
 
+    # No documents supplied and no index flag: presence is unknown, so NO_DOCUMENT is not
+    # verified (it used to pass, reading the missing flag as "no documents").
     _, issues_absent = verify_location_record(
         loc_no_doc,
         docs_by_nct={},
         in_audit=False,
         audit_nct_ids=HOLDOUT_SET,
     )
-    assert issues_absent == []
+    assert [i.code for i in issues_absent] == ["NO_DOCUMENT_PRESENCE_UNKNOWN"]
     _, issues_empty = verify_location_record(
         loc_no_doc,
         docs_by_nct={"NCT99000001": {}},
         in_audit=False,
         audit_nct_ids=HOLDOUT_SET,
     )
-    assert issues_empty == []
+    assert [i.code for i in issues_empty] == ["NO_DOCUMENT_PRESENCE_UNKNOWN"]
 
-    report_ok = verify_census_corpus(
+    report_unknown = verify_census_corpus(
         [],
         no_doc_grid,
         audit_nct_ids=HOLDOUT_SET,
         in_scope_nct_ids=SCOPE_SET,
         expected_outcomes_by_nct={"NCT99000001": 1},
     )
-    assert report_ok.ok is True
-    assert report_ok.issues == ()
+    assert report_unknown.ok is False
+    assert report_unknown.to_dict()["error_count"] == len(ELEMENTS)
+    assert {i.code for i in report_unknown.issues} == {"NO_DOCUMENT_PRESENCE_UNKNOWN"}
 
     _, issues_manifest_flag = verify_location_record(
         loc_no_doc,
@@ -1884,3 +1905,212 @@ def test_redteam_m4_zero_cross_module_imports_and_fictional_ids() -> None:
                     assert 99800001 <= num <= 99899999, (
                         f"{rel}::{node.name} uses {tok} outside NCT99800001..NCT99899999"
                     )
+
+
+# ---------------------------------------------------------------------------
+# Follow-up to the m4 audit (fictional NCT99800001..NCT99899999 only)
+# ---------------------------------------------------------------------------
+
+
+def test_followup_derived_ids_need_scope_and_record_flag_never_admits(tmp_path: Path) -> None:
+    """An explicit in_audit covers the record's own trial only; other IDs need the scope."""
+    own_loc = _make_location(nct_id=RT_SCOPE_ID)
+    own_docs = {RT_SCOPE_ID: {"Prot_000.pdf": _make_doc(nct_id=RT_SCOPE_ID)}}
+
+    # Baseline: the record's own trial with its own documents is accepted.
+    verify_location_record(
+        own_loc, docs_by_nct=own_docs, in_audit=False, audit_nct_ids=RT_AUDIT_SET
+    )
+
+    # A docs_by_nct key for another trial used to pass on in_audit=False plus the audit
+    # set alone; nothing established that the other trial is outside the holdout.
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_location_record(
+            own_loc,
+            docs_by_nct={**own_docs, RT_UNLISTED_ID: {}},
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+    # With a scope, membership decides.
+    verify_location_record(
+        own_loc,
+        docs_by_nct={**own_docs, RT_SCOPE_ID_2: {}},
+        in_audit=False,
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids={RT_SCOPE_ID, RT_SCOPE_ID_2},
+    )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_location_record(
+            own_loc,
+            docs_by_nct={**own_docs, RT_UNLISTED_ID: {}},
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids={RT_SCOPE_ID, RT_SCOPE_ID_2},
+        )
+
+    # Completeness rows of another trial without a scope.
+    grid = [_make_location(nct_id=RT_SCOPE_ID, element=e) for e in ELEMENTS]
+    assert (
+        verify_trial_completeness(
+            RT_SCOPE_ID,
+            grid,
+            expected_primary_outcomes=1,
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+        == []
+    )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_trial_completeness(
+            RT_SCOPE_ID,
+            grid + [_make_location(nct_id=RT_UNLISTED_ID)],
+            expected_primary_outcomes=1,
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+
+    # A nested nct_ids list naming another trial, without a scope.
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_document_record(
+            _make_doc(nct_id=RT_SCOPE_ID, extra={"related": {"nct_ids": [RT_UNLISTED_ID]}}),
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+            strict_keys=False,
+        )
+
+    # A page map naming a trial (nested key or URL) when the provider has no scope.
+    for idx, payload in enumerate(
+        (
+            {"sha256": SHA_A, "nct_id": RT_UNLISTED_ID, "pages": ["Text"]},
+            {
+                "sha256": SHA_A,
+                "url": f"https://cdn.clinicaltrials.gov/large-docs/99/{RT_UNLISTED_ID}/Prot_000.pdf",
+                "pages": ["Text"],
+            },
+        )
+    ):
+        p_dir = tmp_path / f"followup_payload_{idx}"
+        p_dir.mkdir(parents=True)
+        (p_dir / "maps.jsonl").write_text(json.dumps(payload) + "\n", encoding="utf-8")
+        with pytest.raises(AuditHoldoutViolationError):
+            DirectoryPageTextProvider(p_dir, audit_nct_ids=RT_AUDIT_SET)
+
+    # A trial named by the page-map layout (per-trial directory) when the provider has no scope.
+    layout_root = tmp_path / "followup_layout"
+    (layout_root / RT_SCOPE_ID_2).mkdir(parents=True)
+    (layout_root / RT_SCOPE_ID_2 / "Prot_000.json").write_text(
+        json.dumps({"pages": ["Text"]}), encoding="utf-8"
+    )
+    with pytest.raises(AuditHoldoutViolationError):
+        DirectoryPageTextProvider(layout_root, audit_nct_ids=RT_AUDIT_SET)
+    scoped = DirectoryPageTextProvider(
+        layout_root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids={RT_SCOPE_ID_2}
+    )
+    assert scoped.get_page_text(RT_SCOPE_ID_2, "Prot_000.pdf", SHA_A, 1) == "Text"
+
+    # A record's own in_audit=False is self-reported by the data under check: it no longer
+    # stands in for the caller's in_audit or in_scope_nct_ids.
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_document_record(
+            _make_doc(nct_id=RT_SCOPE_ID, extra={"in_audit": False}),
+            audit_nct_ids=RT_AUDIT_SET,
+            strict_keys=False,
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID, extra={"in_audit": False}),
+            docs_by_nct={},
+            audit_nct_ids=RT_AUDIT_SET,
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_census_corpus(
+            [_make_doc(nct_id=RT_SCOPE_ID, extra={"in_audit": False})],
+            [],
+            audit_nct_ids=RT_AUDIT_SET,
+            strict_document_keys=False,
+        )
+    # The caller's explicit flag still admits the same record.
+    verify_document_record(
+        _make_doc(nct_id=RT_SCOPE_ID, extra={"in_audit": False}),
+        in_audit=False,
+        audit_nct_ids=RT_AUDIT_SET,
+        strict_keys=False,
+    )
+
+
+def test_followup_empty_audit_set_needs_the_verified_scope() -> None:
+    """allow_empty_audit_set=True is caller-asserted, so it also needs in_scope_nct_ids."""
+    with pytest.raises(AuditHoldoutViolationError):
+        enforce_audit_holdout(
+            RT_SCOPE_ID,
+            in_audit=False,
+            audit_nct_ids=frozenset(),
+            allow_empty_audit_set=True,
+        )
+    enforce_audit_holdout(
+        RT_SCOPE_ID,
+        in_audit=False,
+        audit_nct_ids=frozenset(),
+        in_scope_nct_ids=RT_SCOPE_SET,
+        allow_empty_audit_set=True,
+    )
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_census_corpus([], [], audit_nct_ids=frozenset(), allow_empty_audit_set=True)
+
+    # An unbound provider (empty audit set, no scope) serves nothing until a scope is bound.
+    unbound = DictPageTextProvider(pages_by_sha256={SHA_A: ["Page 1"]}, allow_empty_audit_set=True)
+    with pytest.raises(AuditHoldoutViolationError):
+        unbound.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 1)
+    with pytest.raises(AuditHoldoutViolationError):
+        unbound.bind_firewall(audit_nct_ids=frozenset(), allow_empty_audit_set=True)
+    unbound.bind_firewall(
+        audit_nct_ids=frozenset(), in_scope_nct_ids=RT_SCOPE_SET, allow_empty_audit_set=True
+    )
+    assert unbound.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 1) == "Page 1"
+    with pytest.raises(AuditHoldoutViolationError):
+        unbound.get_page_text(RT_UNLISTED_ID, "Prot_000.pdf", SHA_A, 1)
+
+
+def test_followup_missing_has_documents_entry_is_unknown_not_false() -> None:
+    """A corpus trial absent from expected_has_documents_by_nct is not read as 'no documents'."""
+    no_doc_grid = [
+        _make_location(
+            nct_id=RT_SCOPE_ID,
+            element=elem,
+            status="NO_DOCUMENT",
+            citations=[],
+            note="No protocol or SAP posted.",
+        )
+        for elem in ELEMENTS
+    ]
+    scope = {RT_SCOPE_ID, RT_SCOPE_ID_2}
+    for has_docs_map in ({RT_SCOPE_ID_2: False}, {RT_SCOPE_ID: None, RT_SCOPE_ID_2: False}):
+        report = verify_census_corpus(
+            [],
+            no_doc_grid,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=scope,
+            expected_outcomes_by_nct={RT_SCOPE_ID: 1},
+            expected_has_documents_by_nct=has_docs_map,
+        )
+        assert report.ok is False
+        assert {i.code for i in report.issues} == {"NO_DOCUMENT_PRESENCE_UNKNOWN"}
+        assert len(report.issues) == len(ELEMENTS)
+
+    # Stated as False, the same rows verify.
+    report_known = verify_census_corpus(
+        [],
+        no_doc_grid,
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=scope,
+        expected_outcomes_by_nct={RT_SCOPE_ID: 1},
+        expected_has_documents_by_nct={RT_SCOPE_ID: False},
+    )
+    assert report_known.ok is True
+    with pytest.raises(CitationVerificationError):
+        verify_census_corpus(
+            [],
+            [],
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=scope,
+            expected_has_documents_by_nct={RT_SCOPE_ID: "no"},  # type: ignore[dict-item]
+        )

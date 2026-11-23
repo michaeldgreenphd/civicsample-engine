@@ -599,3 +599,36 @@ def test_redteam_provenance_firewall_strict_nct_and_side_streams() -> None:
         tampered["in_audit"] = bad_flag
         with pytest.raises(AuditHoldoutViolationError):
             to_outcomes_layout_provenance(tampered)  # type: ignore[arg-type]
+
+
+def test_followup_study_own_in_audit_false_never_admits_and_provider_untouched() -> None:
+    """A study's own in_audit=False no longer stands in for the caller's flag or scope."""
+    spy = _SpyPublicationProvider([])
+    self_declared = {**_sample_study(nct_id=RT_SCOPE_ID), "in_audit": False}
+    with pytest.raises(AuditHoldoutViolationError):
+        assemble_longitudinal_provenance(
+            self_declared,
+            audit_nct_ids=RT_AUDIT_SET,
+            publication_provider=spy,
+        )
+    assert spy.calls == []
+
+    # Admitted by the caller's explicit flag, or by in-scope membership.
+    for admit in ({"in_audit": False}, {"in_scope_nct_ids": RT_SCOPE_SET}):
+        record = assemble_longitudinal_provenance(
+            self_declared,
+            audit_nct_ids=RT_AUDIT_SET,
+            publication_provider=spy,
+            **admit,  # type: ignore[arg-type]
+        )
+        assert record["nct_id"] == RT_SCOPE_ID
+    assert spy.calls == [RT_SCOPE_ID, RT_SCOPE_ID]
+
+    # A side-stream record naming another trial in a list key needs the scope.
+    with pytest.raises(AuditHoldoutViolationError):
+        assemble_longitudinal_provenance(
+            _sample_study(nct_id=RT_SCOPE_ID),
+            in_audit=False,
+            audit_nct_ids=RT_AUDIT_SET,
+            pubmed_records=[{"pmid": "34000002", "nct_ids": [RT_SCOPE_ID, RT_UNLISTED_ID]}],
+        )

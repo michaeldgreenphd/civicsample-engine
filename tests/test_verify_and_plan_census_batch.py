@@ -2055,3 +2055,195 @@ def test_redteam_f6_cli_verify_and_plan_provenance_refusals(tmp_path: Path) -> N
             )
             == 1
         )
+
+
+# ---------------------------------------------------------------------------
+# Follow-up to the m4 audit (fictional NCT99800001..NCT99899999 only)
+# ---------------------------------------------------------------------------
+
+
+def _no_document_rows(nct_id: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "nct_id": nct_id,
+            "primary_outcome_index": 0,
+            "primary_outcome_title": "Primary Endpoint",
+            "element": elem,
+            "status": "NO_DOCUMENT",
+            "citations": [],
+            "pages_searched": "all",
+            "pages_not_searched": [],
+            "note": "No protocol or SAP posted.",
+            "worker": "shard-01",
+            "pass": "primary",
+            "model_id": "claude-sonnet-4-6-20260601",
+            "prompt_version": "decision-rule-v1.1",
+        }
+        for elem in ELEMENTS
+    ]
+
+
+def test_followup_doc_cache_entries_must_tie_to_an_in_scope_document(tmp_path: Path) -> None:
+    """A --doc-cache entry is used only when its sha256 is an in-scope trial's document."""
+    index_path = tmp_path / "index.json"
+    index_path.write_text(json.dumps({"data": _rt_index_rows()}), encoding="utf-8")
+    docs_path = tmp_path / "documents.jsonl"
+    _write_jsonl(docs_path, [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)])
+
+    def _plan_rc(cache_rows: list[dict[str, Any]], name: str) -> int:
+        cache_path = tmp_path / f"{name}.jsonl"
+        _write_jsonl(cache_path, cache_rows)
+        return main(
+            [
+                "plan",
+                "--index",
+                str(index_path),
+                "--documents",
+                str(docs_path),
+                "--doc-cache",
+                str(cache_path),
+            ]
+        )
+
+    # Positive control: content-addressed entry (no NCT field, as M1 writes it) tied by sha256.
+    assert _plan_rc([{"sha256": SHA_1, "readability_status": "machine_readable"}], "tied") == 0
+
+    refused: dict[str, dict[str, Any]] = {
+        "audit_id_under_other_key": {"sha256": SHA_1, "trial": RT_AUDIT_ID},
+        "unlisted_id_in_free_text": {
+            "sha256": SHA_1,
+            "section_slice": {"titles": [f"Extension of {RT_UNLISTED_ID}"]},
+        },
+        "audit_id_as_key": {"sha256": SHA_1, RT_AUDIT_ID: {"readability_status": "x"}},
+        "sha_of_no_in_scope_document": {"sha256": SHA_2, "readability_status": "garbled_cmap"},
+        "no_sha256": {"readability_status": "garbled_cmap"},
+        "uppercase_sha256": {"sha256": "A" * 64},
+    }
+    for name, row in refused.items():
+        assert _plan_rc([row], name) == 2, f"plan accepted --doc-cache row {name}: {row!r}"
+
+    # Library entry point: same rules, plus the key must equal the entry's sha256.
+    with pytest.raises(AuditHoldoutViolationError):
+        plan_incremental_cohort(
+            _rt_index_rows(),
+            documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+            doc_cache_by_sha256={SHA_2: {"sha256": SHA_2}},
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        plan_incremental_cohort(
+            _rt_index_rows(),
+            documents=[_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+            doc_cache_by_sha256={SHA_1: {"sha256": SHA_2}},
+        )
+    # Tied through a profile's documents rather than --documents.
+    plan = plan_incremental_cohort(
+        _rt_index_rows(),
+        profiles_by_nct={
+            RT_SCOPE_ID: {
+                "nct_id": RT_SCOPE_ID,
+                "documents": [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_3)],
+            }
+        },
+        doc_cache_by_sha256={SHA_3: {"sha256": SHA_3, "readability_status": "machine_readable"}},
+        planned_at="2026-11-23T00:00:00+00:00",
+    )
+    assert plan["partitions"]["unstarted_primary"] == [RT_SCOPE_ID]
+
+
+def test_followup_missing_document_flags_are_unknown_not_no_document(tmp_path: Path) -> None:
+    """An index row lacking protocol/sap flags is not read as having no posted documents."""
+    docs_path = tmp_path / "documents.jsonl"
+    locs_path = tmp_path / "locations.jsonl"
+    report_path = tmp_path / "report.json"
+    _write_jsonl(docs_path, [])
+    _write_jsonl(locs_path, _no_document_rows(RT_SCOPE_ID))
+
+    def _index(flags: dict[str, Any]) -> list[dict[str, Any]]:
+        rows = _rt_index_rows()
+        for flag in ("protocol", "sap"):
+            rows[0].pop(flag)
+        rows[0].update(flags)
+        return rows
+
+    for name, flags in (("no_flags", {}), ("protocol_false_only", {"protocol": False})):
+        index_path = tmp_path / f"index_{name}.json"
+        index_path.write_text(json.dumps({"data": _index(flags)}), encoding="utf-8")
+        rc = main(
+            [
+                "verify",
+                "--index",
+                str(index_path),
+                "--documents",
+                str(docs_path),
+                "--locations",
+                str(locs_path),
+                "--report-out",
+                str(report_path),
+            ]
+        )
+        assert rc == 1, name
+        rep = json.loads(report_path.read_text(encoding="utf-8"))
+        assert {i["code"] for i in rep["issues"]} == {"NO_DOCUMENT_PRESENCE_UNKNOWN"}, name
+
+        # The planner neither schedules the trial nor counts it as no-document.
+        with pytest.raises(CitationVerificationError):
+            plan_incremental_cohort(_index(flags))
+        assert main(["plan", "--index", str(index_path)]) == 1
+
+    # Both flags stated False: NO_DOCUMENT verifies and the planner counts it as no-document.
+    index_path = tmp_path / "index_both_false.json"
+    known = _index({"protocol": False, "sap": False})
+    index_path.write_text(json.dumps({"data": known}), encoding="utf-8")
+    assert (
+        main(
+            [
+                "verify",
+                "--index",
+                str(index_path),
+                "--documents",
+                str(docs_path),
+                "--locations",
+                str(locs_path),
+            ]
+        )
+        == 0
+    )
+    plan = plan_incremental_cohort(known, planned_at="2026-11-23T00:00:00+00:00")
+    assert plan["excluded_no_document_count"] == 1
+    assert plan["scheduled_trial_count"] == 0
+
+
+def test_followup_plan_records_why_the_pipeline_commit_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The plan's provenance stamp is never a bare null: a missing commit carries its reason."""
+    import scripts.verify_and_plan_census_batch as planner
+
+    monkeypatch.setattr(planner, "pipeline_commit", lambda: None)
+    plan_missing = plan_incremental_cohort(_rt_index_rows(), planned_at="2026-11-23T00:00:00+00:00")
+    assert plan_missing["source_pipeline_commit"] is None
+    reason = plan_missing["source_pipeline_commit_missing_reason"]
+    assert isinstance(reason, str) and "GITHUB_SHA" in reason
+
+    monkeypatch.setattr(planner, "pipeline_commit", lambda: "0" * 40)
+    plan_known = plan_incremental_cohort(_rt_index_rows(), planned_at="2026-11-23T00:00:00+00:00")
+    assert plan_known["source_pipeline_commit"] == "0" * 40
+    assert plan_known["source_pipeline_commit_missing_reason"] is None
+
+
+def test_followup_zero_audit_manifest_still_refuses_unlisted_trials(tmp_path: Path) -> None:
+    """With no in_audit=True row the CLI allows an empty audit set, but scope membership
+    still refuses any trial the manifest does not list (exit 2), so a pre-filtered
+    in-scope-only manifest does not open the holdout."""
+    index_path = tmp_path / "in_scope_only.json"
+    index_path.write_text(json.dumps({"data": [_rt_index_rows()[0]]}), encoding="utf-8")
+    docs_path = tmp_path / "documents.jsonl"
+    locs_path = tmp_path / "locations.jsonl"
+    _write_jsonl(locs_path, [])
+    for outside_id in (RT_AUDIT_ID, RT_UNLISTED_ID):
+        _write_jsonl(docs_path, [_doc(outside_id, "Prot_000.pdf", SHA_1)])
+        verify_args = ["verify", "--index", str(index_path)]
+        verify_args += ["--documents", str(docs_path), "--locations", str(locs_path)]
+        assert main(verify_args) == 2
+        assert main(["plan", "--index", str(index_path), "--documents", str(docs_path)]) == 2
+        assert main(["plan", "--index", str(index_path), "--nct-id", outside_id]) == 2

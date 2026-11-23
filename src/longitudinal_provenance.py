@@ -26,7 +26,8 @@ Key invariants:
 - Hard ``in_audit`` holdout firewall: ``enforce_audit_holdout`` requires
   explicit ``bool`` ``in_audit`` (or verified ``in_scope_nct_ids``) and
   non-empty ``audit_nct_ids`` by default before touching any provider or
-  document metadata.
+  document metadata. A study's own ``in_audit`` can refuse it but never stands
+  in for the caller's flag or scope.
 - Never fabricates ``-01`` day suffixes on partial ``YYYY-MM`` or ``YYYY``
   dates: ``exact_days`` is populated ONLY when both endpoints have
   ``date_precision == "day"``; otherwise exact calendar bounds
@@ -1172,17 +1173,15 @@ def assemble_longitudinal_provenance(
                 f"Audit holdout violation: study {nct_id!r} carries in_audit=True."
             )
 
-    if in_audit is not _MISSING:
-        effective_in_audit: Any = in_audit
-    elif "in_audit" in study:
-        effective_in_audit = False
-    else:
-        effective_in_audit = _MISSING
-
+    # The study's own in_audit (checked above) can only refuse. It never stands in for the
+    # caller's in_audit or in_scope_nct_ids, which come from the index: a study record is
+    # the data under check, and a stale or edited ``in_audit: false`` on it must not admit
+    # a trial the index holds out. ``all_study_ncts`` are the study's own ID fields, all
+    # the same trial (a mismatch raises below), so the caller's flag covers each of them.
     for candidate_nct in all_study_ncts:
         enforce_audit_holdout(
             candidate_nct,
-            in_audit=effective_in_audit,
+            in_audit=in_audit,
             audit_nct_ids=checked_audit_ids,
             in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
