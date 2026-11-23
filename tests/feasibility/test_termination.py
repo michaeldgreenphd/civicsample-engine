@@ -311,6 +311,15 @@ def _cnt(*values: object) -> list:
         ([_primary("A", [{"groupId": "OG000", "value": "0"}, {"groupId": "OG000", "value": "0"}])],
          "results_posted_primary_denom_incomplete"),
         ([{**_primary("A", _cnt("0", "0")), "groups": []}], "results_posted_primary_denom_incomplete"),
+        # malformed ids and units are incomplete or unmatched, never an exception that stops the build
+        ([_primary("A", [{"groupId": ["OG000"], "value": "0"}, {"groupId": "OG001", "value": "0"}])],
+         "results_posted_primary_denom_incomplete"),
+        ([_primary("A", [{"groupId": {"id": "OG000"}, "value": "0"}, {"groupId": "OG001", "value": "0"}])],
+         "results_posted_primary_denom_incomplete"),
+        ([{**_primary("A", None), "denoms": [{"units": ["Participants"], "counts": _cnt("0", "0")}]}],
+         "empty_results_shell_zero_analysed"),
+        ([{**_primary("A", None), "denoms": [{"units": 5, "counts": _cnt("0", "NA")}]}],
+         "results_posted_primary_denom_incomplete"),
         # controls: complete zeros, one positive count anywhere, no numeric count at all
         ([_primary("A", _cnt("0", "0")), _primary("B", _cnt("0", "0"))], "empty_results_shell_zero_analysed"),
         ([_primary("A", _cnt("0", "NA")), _primary("B", _cnt("5", "0"))], "results_with_analysed_primary"),

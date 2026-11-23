@@ -390,10 +390,15 @@ def classify_why_stopped(why_stopped: str | None) -> dict[str, Any]:
 
 
 def _participants_denom_row(denoms: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Pick the Participants denominator row (case-insensitive), else first row, else None."""
+    """Pick the Participants denominator row (case-insensitive), else first row, else None.
+
+    A `units` that is not a string names no unit, so it never matches; before rules 1.3.0 it raised
+    `AttributeError` and one malformed record stopped the whole build.
+    """
     valid = [d for d in denoms if isinstance(d, dict)]
     for d in valid:
-        if (d.get("units") or "").strip().casefold() == "participants":
+        units = d.get("units")
+        if isinstance(units, str) and units.strip().casefold() == "participants":
             return d
     return valid[0] if valid else None
 
@@ -410,6 +415,9 @@ def _counts_cover_groups(groups: Any, counts: list[Any]) -> bool:
     if not all(isinstance(g, str) and g.strip() for g in group_ids) or len(set(group_ids)) != len(group_ids):
         return False
     count_ids = [c.get("groupId") if isinstance(c, dict) else None for c in counts]
+    # Checked before any set is built: a list or object id is unhashable and would raise.
+    if not all(isinstance(c, str) and c.strip() for c in count_ids):
+        return False
     return len(count_ids) == len(set(count_ids)) and set(count_ids) == set(group_ids)
 
 
