@@ -6,6 +6,7 @@ import copy
 import gzip
 import importlib.util
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -652,6 +653,65 @@ def test_contract_reports_non_integer_min_cell_trials_instead_of_raising(tmp_pat
     probs_both = artifacts.check_contract(tampered_both)
     assert "run.json: parameters.min_cell_trials must be an integer >= 1 (got 'five')" in probs_both
     assert any("withhold percentiles" in x for x in probs_both)
+
+
+def test_contract_reports_non_integer_facility_counts_instead_of_raising(tmp_path: Path) -> None:
+    studies_dir = fx.write_studies_dir(fx.build_fictional_cohort(), tmp_path / "studies")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    valid = tmp_path / "valid"
+    assert (
+        cli_build.main(
+            [
+                "--records-dir",
+                str(studies_dir),
+                "--sponsor-rules",
+                str(rules_path),
+                "--generated-at",
+                "2026-11-21T00:00:00+00:00",
+                "--out",
+                str(valid),
+            ]
+        )
+        == 0
+    )
+    base_loaded = artifacts.load_dir(valid)
+    assert artifacts.check_contract(base_loaded) == []
+    multinat = [
+        i for i, r in enumerate(base_loaded["trial_rows"])
+        if r["geography"]["site_footprint_class"] == "multinational_with_us_sites"
+    ]
+    assert multinat
+
+    missing = object()
+    for key, bad in (
+        ("n_facilities_with_country", "four"),
+        ("n_us_facilities", "one"),
+        ("n_us_facilities", None),
+        ("n_us_facilities", missing),
+        ("n_us_facilities", 1.0),
+        ("n_us_facilities", True),
+        ("n_us_facilities", 0),
+        ("n_facilities_with_country", 1),  # == n_us: no non-US facility
+    ):
+        tampered = copy.deepcopy(base_loaded)
+        geo = tampered["trial_rows"][multinat[0]]["geography"]
+        if bad is missing:
+            del geo[key]
+        else:
+            geo[key] = bad
+        problems = artifacts.check_contract(tampered)  # must not raise
+        nct = tampered["trial_rows"][multinat[0]]["nct_id"]
+        assert any(
+            x.startswith(f"{nct}: multinational_with_us_sites needs integer facility counts") for x in problems
+        ), (key, bad, problems)
+
+    # The CLI reports it and exits 1 instead of a traceback.
+    bad_disk = tmp_path / "bad_disk"
+    shutil.copytree(valid, bad_disk)
+    rows = copy.deepcopy(base_loaded["trial_rows"])
+    rows[multinat[0]]["geography"]["n_facilities_with_country"] = "four"
+    (bad_disk / "trials.jsonl.gz").write_bytes(artifacts.encode_trials_gzip(rows))
+    assert cli_check.main([str(bad_disk)]) == 1
 
 
 def test_unicode_line_separators_in_jsonl_roundtrip(tmp_path: Path) -> None:

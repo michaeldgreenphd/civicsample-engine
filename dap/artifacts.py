@@ -852,13 +852,26 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
             p.append(f"{nct}: invalid site_footprint_class {fp!r}")
         sbin = geo.get("us_site_share_bin")
         if fp == "multinational_with_us_sites":
+            # dap.geography assigns this class only with >= 1 US and >= 1 non-US
+            # facility, so its counts are integers with 0 < n_us < n_with_country.
+            # Anything else (a string, float, bool, null or missing count) is a
+            # contract problem, never converted, and never passed to
+            # classify_us_site_share_bin, which raises outside that range.
+            n_us = geo.get("n_us_facilities")
+            n_with = geo.get("n_facilities_with_country")
+            counts_ok = (
+                all(isinstance(v, int) and not isinstance(v, bool) for v in (n_us, n_with))
+                and 0 < n_us < n_with
+            )
             if sbin not in US_SITE_SHARE_BINS:
                 p.append(f"{nct}: multinational_with_us_sites missing valid us_site_share_bin")
-            elif int(geo.get("n_facilities_with_country") or 0) > 0:
-                want_bin = classify_us_site_share_bin(
-                    int(geo["n_us_facilities"]),
-                    int(geo["n_facilities_with_country"]),
+            elif not counts_ok:
+                p.append(
+                    f"{nct}: multinational_with_us_sites needs integer facility counts with "
+                    f"0 < n_us_facilities < n_facilities_with_country (got {n_us!r} / {n_with!r})"
                 )
+            else:
+                want_bin = classify_us_site_share_bin(n_us, n_with)
                 if sbin != want_bin:
                     p.append(f"{nct}: us_site_share_bin {sbin!r} != {want_bin!r}")
         elif sbin is not None:
