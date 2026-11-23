@@ -16,8 +16,10 @@ Design invariants:
    `notes`) remain in the CSV and are never copied into published artifacts.
 3. Stopped-study results state: Distinguishes genuinely analysed primary outcomes
    (`"results_with_analysed_primary"`) from empty results shells where every primary denominator is
-   zero (`"empty_results_shell_zero_analysed"`), posted results lacking a numeric primary
-   denominator (`"results_posted_no_primary_denom"`), and unposted results (`"results_not_posted"`).
+   zero (`"empty_results_shell_zero_analysed"`), posted results whose primary denominators are
+   zero where reported but missing or malformed elsewhere (`"results_posted_primary_denom_incomplete"`,
+   rules 1.3.0), posted results lacking a numeric primary denominator
+   (`"results_posted_no_primary_denom"`), and unposted results (`"results_not_posted"`).
 """
 from __future__ import annotations
 
@@ -29,7 +31,7 @@ from typing import Any
 
 from feasibility.metrics import is_num, parse_num
 
-TERMINATION_RULES_VERSION = "1.2.0"
+TERMINATION_RULES_VERSION = "1.3.0"
 
 STOPPED_STATUSES = ("TERMINATED", "WITHDRAWN", "SUSPENDED")
 
@@ -54,6 +56,7 @@ CLASSIFICATION_SOURCES = ("deterministic_rule", "human_review_override")
 STOPPED_STUDY_RESULTS_STATES = (
     "results_with_analysed_primary",
     "empty_results_shell_zero_analysed",
+    "results_posted_primary_denom_incomplete",
     "results_posted_no_primary_denom",
     "results_not_posted",
 )
@@ -68,8 +71,8 @@ _I = re.IGNORECASE
 # that category, preventing false positives on real registry text such as
 # "Terminated for strategic reasons; there were no safety concerns."
 #
-# Method (rules 1.1.0; COVID's "no" in 1.2.0). A negation masks a signal only when the negator
-# governs the signal itself:
+# Method (rules 1.1.0; COVID's "no" in 1.2.0; business's "no ... reason" in 1.3.0). A negation
+# masks a signal only when the negator governs the signal itself:
 #   * Determiner-type negators ("no", "without", "neither", "nor", "there were no", "free of", ...)
 #     modify the noun phrase that follows, so the signal may sit a few words later ("no new safety
 #     signals"), but never past a causal connective: in "no further enrolment due to slow accrual"
@@ -90,6 +93,19 @@ _I = re.IGNORECASE
 #     COVID plus business (multiple_signals_detected). Known limits: "No impact of COVID-19" is
 #     still a COVID signal, and "No COVID-19 patients were enrolled" loses it, as any phrase "no"
 #     heads does.
+#   * Rules 1.3.0: for business, "no" masks the signal only when it heads a phrase naming the
+#     business word as a reason: "no", filler words, the business word(s), then a reason noun
+#     ("No business reason; investigator relocated", "There were no strategic reasons"). A plain
+#     "no" determiner would hide real business stops. In the 8,499 distinct `whyStopped` texts of
+#     the weekly full records (extracted 2026-11-08), 17 put "no", "not", "neither", "nor" or
+#     "without" within 40 characters of a word starting business, commercial, financial or
+#     strategic, in the same clause: 16 state a business cause ("App developer is no longer in
+#     business", "Study no longer met business objectives", "No interest in continuing trial due to
+#     business changes"), one neither states nor denies one ("...not representing what will be made
+#     commercially available"), and none denies one. 1.3.0 changes the category of none of the
+#     11,291 weekly trials with a `whyStopped`. "No financial support" and "no commercial interest"
+#     name no reason noun and stay business signals. Rules 1.0.0 to 1.2.0 had only the "not" /
+#     "unrelated to" / "non-" guards here.
 _CAUSAL = r"(?:due\s+to|because\s+of|owing\s+to|as\s+a\s+result\s+of|caused\s+by|resulting\s+from)"
 _NOT_LINK = (
     r"(?:(?:be|been|being|was|were|is|are)\s+)?"
@@ -98,17 +114,23 @@ _NOT_LINK = (
     r"(?:due\s+to|because\s+of|owing\s+to|related\s+to|attributable\s+to|attributed\s+to|associated\s+with|"
     r"linked\s+to|caused\s+by|driven\s+by|based\s+on|a\s+result\s+of|the\s+result\s+of|for|from|a|an|any)?"
 )
+# Nouns that name a business word as a (non-)reason after "no" (rules 1.3.0, business only).
+_REASON_NOUNS = (
+    r"\s+(?:reasons?|considerations?|concerns?|motives?|motivations?|grounds|rationale)\b"
+)
 _FILLERS = (
     r"(?:\s+(?:any|a|an|the|its|their|this|that|specific|particular|known|new|significant|major|serious|"
     r"reported|identified|observed|unexpected|of|or|and|product|study|drug|treatment)){0,3}"
 )
 
 
-def _negation(determiners: str, signal: str, gap: int, heads: str = "") -> re.Pattern[str]:
+def _negation(
+    determiners: str, signal: str, gap: int, heads: str = "", head_tail: str = ""
+) -> re.Pattern[str]:
     """Negation guard for one category: determiner-type negators within `gap` characters (never
     across a clause break or a causal connective), `heads` negators followed by the signal with
-    only filler words between, or "not" / "unrelated to" / "non-" linked directly to the signal
-    (see the method note above)."""
+    only filler words between (and then `head_tail`, when given), or "not" / "unrelated to" /
+    "non-" linked directly to the signal (see the method note above)."""
     # A negated signal may run into further signal words ("COVID-19 pandemic", "safety or
     # tolerability"); the mask covers the whole run so none of it is matched afterwards.
     run = rf"(?:{signal})\b(?:[\s/-]+(?:(?:or|and|nor)\s+)?(?:{signal})\b){{0,3}}"
@@ -117,7 +139,7 @@ def _negation(determiners: str, signal: str, gap: int, heads: str = "") -> re.Pa
         if determiners
         else None
     )
-    head = rf"\b(?:{heads})\b{_FILLERS}\s+{run}" if heads else None
+    head = rf"\b(?:{heads})\b{_FILLERS}\s+{run}{head_tail}" if heads else None
     linked = rf"\bnot\s+{_NOT_LINK}{_FILLERS}\s*\b{run}|\bunrelated\s+to{_FILLERS}\s+{run}|\bnon[- ]{run}"
     return re.compile("|".join(x for x in (det, head, linked) if x), _I)
 
@@ -136,7 +158,9 @@ _NEGATION_PATTERNS: dict[str, re.Pattern[str]] = {
         r"safety|toxicit(?:y|ies)|tolerability|adverse\s+events?|saes?|dlts?",
         40,
     ),
-    "business_or_strategic": _negation(r"", r"business|commercial|financial|strategic", 30),
+    "business_or_strategic": _negation(
+        r"", r"business|commercial|financial|strategic", 30, heads=r"no", head_tail=_REASON_NOUNS
+    ),
     "covid_or_pandemic": _negation(
         r"prior\s+to", r"covid(?:[- ]?19)?|sars[- ]cov[- ]2|pandemic|coronavirus", 35, heads=r"no"
     ),
@@ -380,10 +404,17 @@ def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
     Returns one of:
       - `"results_with_analysed_primary"`: posted results with >= 1 PRIMARY measure carrying a
         numeric group denominator > 0.
-      - `"empty_results_shell_zero_analysed"`: posted results where PRIMARY measure(s) carry numeric
-        denominators and every numeric primary denominator is 0.
+      - `"empty_results_shell_zero_analysed"`: posted results where every PRIMARY measure carries a
+        complete denominator row (each group count numeric and >= 0) and every count is 0.
+      - `"results_posted_primary_denom_incomplete"` (rules 1.3.0): no PRIMARY denominator is > 0,
+        at least one is 0, and at least one PRIMARY measure lacks a denominator row or has a group
+        count that is missing, non-numeric or negative, so zero analysed is not established for
+        every primary outcome. Rules 1.2.0 dropped such counts and read the rest as an empty shell.
       - `"results_posted_no_primary_denom"`: results posted, but no PRIMARY outcome measure carries
         a numeric denominator (or weekly projection lacks `resultsSection`).
+
+    One positive count on any PRIMARY measure establishes analysed participants, whatever the other
+    measures hold; a zero-analysed shell needs every primary count, so a gap there is kept apart.
       - `"results_not_posted"`: no posted results (`hasResults` is false / `resultsSection` absent).
     """
     is_raw = "protocolSection" in study or "resultsSection" in study or "hasResults" in study
@@ -405,21 +436,30 @@ def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
         return "results_posted_no_primary_denom"
 
     numeric_counts: list[float] = []
+    # A primary measure is complete when it has a denominator row whose counts are a non-empty list
+    # of group entries, each numeric and >= 0. Anything else leaves its analysed count unknown.
+    all_complete = True
     for measure in primary_measures:
-        row = _participants_denom_row(measure.get("denoms") or [])
-        if row is None:
+        denoms = measure.get("denoms")
+        row = _participants_denom_row(denoms if isinstance(denoms, list) else [])
+        counts = row.get("counts") if row is not None else None
+        if not isinstance(counts, list) or not counts:
+            all_complete = False
             continue
-        for entry in row.get("counts") or []:
-            if not isinstance(entry, dict):
-                continue
-            val = parse_num(entry.get("value"))
-            if val is not None and is_num(entry.get("value")) and val >= 0:
+        for entry in counts:
+            value = entry.get("value") if isinstance(entry, dict) else None
+            val = parse_num(value)
+            if val is not None and is_num(value) and val >= 0:
                 numeric_counts.append(val)
+            else:
+                all_complete = False
 
     if not numeric_counts:
         return "results_posted_no_primary_denom"
     if any(v > 0 for v in numeric_counts):
         return "results_with_analysed_primary"
+    if not all_complete:
+        return "results_posted_primary_denom_incomplete"
     return "empty_results_shell_zero_analysed"
 
 

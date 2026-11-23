@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_rules_version_and_curated_csv_is_header_only() -> None:
-    assert TERMINATION_RULES_VERSION == "1.2.0"
+    assert TERMINATION_RULES_VERSION == "1.3.0"
     csv_path = ROOT / "feasibility" / "termination_reviews.csv"
     raw_lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert raw_lines == [",".join(REVIEW_COLUMNS)]
@@ -254,3 +254,65 @@ def test_negation_masks_only_a_signal_it_governs(why: str, category: str) -> Non
 )
 def test_no_masks_covid_only_in_the_phrase_it_heads(why: str, category: str) -> None:
     assert classify_why_stopped(why)["deterministic_category"] == category
+
+
+@pytest.mark.parametrize(
+    "why, category",
+    [
+        # rules 1.3.0: "no" + business word + reason noun denies a business cause
+        ("No business reason; investigator relocated", "other_unclassified_text"),
+        ("There were no strategic reasons", "other_unclassified_text"),
+        ("No business or strategic reasons; PI left", "other_unclassified_text"),
+        ("no specific business reasons", "other_unclassified_text"),
+        ("No strategic reasons; slow accrual", "accrual_or_recruitment"),
+        # without a reason noun, "no" governs something else and the business cause stands (real
+        # weekly whyStopped texts, apart from the first two)
+        ("No financial support", "business_or_strategic"),
+        ("No commercial interest", "business_or_strategic"),
+        ("App developer is no longer in business", "business_or_strategic"),
+        ("Study no longer met business objectives", "business_or_strategic"),
+        ("Stopped by sponsor. No interest in continuing trial due to business changes.", "business_or_strategic"),
+        ("No safety concerns; strategic reasons", "business_or_strategic"),
+        ("There were no financial concerns; sponsor withdrew support due to lack of funding", "business_or_strategic"),
+    ],
+)
+def test_no_masks_business_only_when_it_denies_a_reason(why: str, category: str) -> None:
+    assert classify_why_stopped(why)["deterministic_category"] == category
+
+
+def _primary(title: str, counts: list | None) -> dict:
+    """One PRIMARY measure; `counts=None` leaves out the denominator row."""
+    measure: dict = {"type": "PRIMARY", "title": title, "groups": [{"id": "OG000"}, {"id": "OG001"}]}
+    if counts is not None:
+        measure["denoms"] = [{"units": "Participants", "counts": counts}]
+    return measure
+
+
+def _cnt(*values: object) -> list:
+    return [{"groupId": f"OG00{i}", "value": v} for i, v in enumerate(values)]
+
+
+@pytest.mark.parametrize(
+    "measures, state",
+    [
+        # rules 1.3.0: zero analysed is established only when every primary count is present
+        ([_primary("A", _cnt("0", "NA"))], "results_posted_primary_denom_incomplete"),
+        ([_primary("A", _cnt("0", "-1"))], "results_posted_primary_denom_incomplete"),
+        ([_primary("A", _cnt("0", None))], "results_posted_primary_denom_incomplete"),
+        ([_primary("A", _cnt("0") + ["not an object"])], "results_posted_primary_denom_incomplete"),
+        ([_primary("A", _cnt("0", "0")), _primary("B", None)], "results_posted_primary_denom_incomplete"),
+        ([_primary("A", _cnt("0", "0")), _primary("B", [])], "results_posted_primary_denom_incomplete"),
+        # controls: complete zeros, one positive count anywhere, no numeric count at all
+        ([_primary("A", _cnt("0", "0")), _primary("B", _cnt("0", "0"))], "empty_results_shell_zero_analysed"),
+        ([_primary("A", _cnt("0", "NA")), _primary("B", _cnt("5", "0"))], "results_with_analysed_primary"),
+        (
+            [_primary("A", _cnt("0", "0")), _primary("B", None), _primary("C", _cnt("3"))],
+            "results_with_analysed_primary",
+        ),
+        ([_primary("A", None)], "results_posted_no_primary_denom"),
+        ([_primary("A", _cnt("NA", "NA"))], "results_posted_no_primary_denom"),
+    ],
+)
+def test_zero_analysed_shell_needs_every_primary_count(measures: list, state: str) -> None:
+    study = make_ctgov_study("NCT99100070", overall_status="TERMINATED", has_results=True, outcome_measures=measures)
+    assert classify_stopped_study_results_state(study) == state
