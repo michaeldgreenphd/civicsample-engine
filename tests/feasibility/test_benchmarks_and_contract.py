@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from feasibility import artifacts, benchmarks
+from feasibility import artifacts, benchmarks, termination
 from feasibility.metrics import extract_trial_metrics
 from scripts import (
     build_feasibility_benchmarks,
@@ -615,6 +615,54 @@ def _build_weekly(demog_path: Path, mesh_path: Path, out_dir: Path) -> int:
     )
 
 
+@pytest.mark.parametrize("phase", ["BANANA", "PHASE_3", "PHASE2, Phase 3", 3, None, ["PHASE3"]])
+def test_weekly_records_must_carry_ctgov_phase_values(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], phase: object
+) -> None:
+    # Weekly records never pass the raw-record checks, so a phase outside CT.gov's values (or not a
+    # string) became a stratum of its own.
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body["data"][2]["phase"] = phase
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    out_dir = tmp_path / "refused"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 1
+    err = capsys.readouterr().err
+    assert "1 of 5 weekly records carry a phase outside CT.gov's values (first: NCT99300003" in err
+    assert not out_dir.exists()
+
+
+def test_weekly_phase_forms_the_extractor_writes_are_accepted(tmp_path: Path) -> None:
+    # The 2026-11-08 weekly extraction holds the six values, two comma-joined multi-phase forms and
+    # "" (no phase stated); a missing key means no phase too.
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    for rec, phase in zip(body["data"], ["PHASE1, PHASE2", "PHASE2, PHASE3", "", "NA", "EARLY_PHASE1"]):
+        rec["phase"] = phase
+    del body["data"][4]["phase"]
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    assert _build_weekly(demog_path, mesh_path, tmp_path / "accepted") == 0
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [artifacts.NCT_RE, benchmarks._NCT_RE, termination._NCT_RE, build_feasibility_benchmarks._NCT_ID_RE],
+)
+def test_nct_patterns_take_ascii_digits_only(pattern: re.Pattern[str]) -> None:
+    # `\d` also matches other scripts' digits, so an ID written with Arabic-Indic digits passed.
+    assert pattern.fullmatch("NCT99600031")
+    assert not pattern.fullmatch("NCT\u0669\u0669\u0666\u0660\u0660\u0660\u0663\u0661")
+
+
+def test_contract_refuses_a_trial_row_with_unicode_digit_nct_id() -> None:
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    family, raw = _fixture_family(trials, sponsor_meta, review_meta)
+    edited = json.loads(json.dumps(family))
+    bad = "NCT\u0669\u0669\u0666\u0660\u0660\u0660\u0663\u0661"
+    edited[artifacts.TRIALS_FILE][0]["nct_id"] = bad
+    assert any(f"invalid nct_id {bad!r}" in p for p in artifacts.check_contract(edited))
+
+
 def test_weekly_demographics_and_condition_mesh_sidecar_build(tmp_path: Path) -> None:
     demog_path, mesh_path = _write_weekly_inputs(tmp_path)
     out_dir = tmp_path / "weekly_build"
@@ -828,6 +876,7 @@ def test_production_classifier_keeps_short_keywords_standing_alone(
         "2026-11-21",                  # no time
         "2026-11-21T12:00:00",         # naive time
         "2026-11-21T12:00:00+05:00",   # not UTC
+        "2026-11-21T12:00:00-00:00",   # RFC 3339: offset unknown, not a stated UTC time
         "not a timestamp",
     ],
 )
@@ -1003,6 +1052,7 @@ def test_archive_refuses_failed_or_short_response_envelopes(
         ("garbage", "generated_at must be an ISO-8601 UTC timestamp"),
         ("2026-02-30T12:00:00+00:00", "generated_at must be an ISO-8601 UTC timestamp"),
         ("2026-11-21T12:00:00+05:00", "generated_at must carry a UTC offset"),
+        ("2026-11-21T12:00:00-00:00", "generated_at must carry a UTC offset"),
         ("2026-11-22T12:00:00+00:00", "run_id date 2026-11-21 != generated_at date 2026-11-22"),
     ],
 )
@@ -1331,9 +1381,13 @@ def test_records_missing_condition_or_lead_sponsor_payloads_are_refused(
          "sponsorCollaboratorsModule.collaborators[0].class (a string)"),
         (("statusModule", "startDateStruct"), None, "statusModule.startDateStruct (an object)"),
         # phases: str() turned these into strata of their own
-        (("designModule", "phases"), [7], "designModule.phases (a list of non-blank strings)"),
-        (("designModule", "phases"), [None], "designModule.phases (a list of non-blank strings)"),
-        (("designModule", "phases"), "PHASE3", "designModule.phases (a list of non-blank strings)"),
+        (("designModule", "phases"), [7], "designModule.phases (a list of CT.gov phase values)"),
+        (("designModule", "phases"), [None], "designModule.phases (a list of CT.gov phase values)"),
+        (("designModule", "phases"), "PHASE3", "designModule.phases (a list of CT.gov phase values)"),
+        # phases: a string outside CT.gov's six values was kept as a stratum of its own
+        (("designModule", "phases"), ["PHASE_3"], "designModule.phases (a list of CT.gov phase values)"),
+        (("designModule", "phases"), ["Phase 3"], "designModule.phases (a list of CT.gov phase values)"),
+        (("designModule", "phases"), ["PHASE2", "BANANA"], "designModule.phases (a list of CT.gov phase values)"),
     ],
 )
 def test_records_with_mistyped_optional_parts_are_refused(
@@ -1502,6 +1556,7 @@ def test_weekly_build_without_sidecar_still_needs_run_stamps(
         ("extracted_at", "2026-11-15"),  # a date, no time
         ("extracted_at", "2026-11-15T06:00:00"),  # naive
         ("extracted_at", "2026-11-15T06:00:00+01:00"),  # not UTC
+        ("extracted_at", "2026-11-15T06:00:00-00:00"),  # RFC 3339: offset unknown
         ("extracted_at", "2026-02-30T06:00:00+00:00"),  # impossible date
         ("pipeline_commit", "garbage"),
         ("pipeline_commit", "0123abc"),  # abbreviated

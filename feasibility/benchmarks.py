@@ -77,7 +77,7 @@ ACTIVE_STATUSES = frozenset(
     }
 )
 
-_NCT_RE = re.compile(r"^NCT\d{8}$")
+_NCT_RE = re.compile(r"^NCT[0-9]{8}$")  # ASCII digits only: `\d` also matches other scripts' digits
 
 # Exact stdlib mirror of sponsors/sponsor_roles.py & sponsors/adapter.py for environments
 # where pandas is not installed (such as minimal stdlib+pytest sandboxes). Zero substring matching.

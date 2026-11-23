@@ -79,7 +79,7 @@ CONDITION_MESH_STATES = (
 )
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT_RE = re.compile(r"[0-9a-f]{40}")  # used with fullmatch
-NCT_RE = re.compile(r"^NCT\d{8}$")
+NCT_RE = re.compile(r"^NCT[0-9]{8}$")  # ASCII digits only: `\d` also matches other scripts' digits
 
 # The benchmark cell lists `build_strata_and_sponsors` writes into strata.json and sponsors.json
 # (besides strata.json `overall`, a single cell object); the contract walks every cell in them.
@@ -631,8 +631,10 @@ def utc_timestamp_date(generated_at: str, label: str = "generated_at") -> str:
 
     `generated_at` is published and its date enters `run_id`, so the whole value is parsed, not
     just a prefix: an impossible date (`2026-02-30`), trailing text, a date without a time, a
-    naive time or a non-zero UTC offset is refused rather than published. `label` names the field
-    in the error (the same rule checks the weekly container's `extracted_at`).
+    naive time or a non-zero UTC offset is refused rather than published. The offset is also checked
+    as text: RFC 3339 writes `-00:00` for an unknown local offset, which `fromisoformat` reads as
+    zero, so only `Z` or `+00:00` is accepted. `label` names the field in the error (the same rule
+    checks the weekly container's `extracted_at`).
     """
     if not isinstance(generated_at, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T.+", generated_at):
         raise ValueError(f"{label} must be an ISO-8601 UTC timestamp, got {generated_at!r}")
@@ -640,7 +642,11 @@ def utc_timestamp_date(generated_at: str, label: str = "generated_at") -> str:
         parsed = datetime.fromisoformat(generated_at)
     except ValueError as exc:
         raise ValueError(f"{label} must be an ISO-8601 UTC timestamp, got {generated_at!r}") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+    if (
+        parsed.tzinfo is None
+        or parsed.utcoffset() != timedelta(0)
+        or not re.search(r"(?:Z|\+00:00)\Z", generated_at)
+    ):
         raise ValueError(f"{label} must carry a UTC offset (Z or +00:00), got {generated_at!r}")
     return generated_at[:10]
 

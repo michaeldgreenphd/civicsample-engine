@@ -207,7 +207,12 @@ def producer_metadata(root: Path = ROOT) -> dict[str, Any]:
     }
 
 
-_NCT_ID_RE = re.compile(r"NCT\d{8}")
+_NCT_ID_RE = re.compile(r"NCT[0-9]{8}")  # used with fullmatch; ASCII digits only (`\d` matches any script's)
+
+# CT.gov API v2's phase values (the `Phase` enum). `metrics.normalize_phase` keeps any other token as
+# a stratum of its own (`PHASE_3` beside `PHASE3`), so raw phases and weekly phase strings must hold
+# only these. A value CT.gov adds later surfaces as a named refusal and needs adding here.
+CTGOV_PHASES = frozenset({"NA", "EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4"})
 
 
 def _study_nct_id(study: dict[str, Any]) -> str | None:
@@ -356,10 +361,11 @@ def _mistyped_optional_parts(ps: dict[str, Any]) -> list[str]:
     design = ps.get("designModule")
     if isinstance(design, dict) and "phases" in design:
         # normalize_phase turned every entry into text with str(), so [7] or [null] became a phase
-        # stratum of its own; the stored records hold only CT.gov's six phase values.
+        # stratum of its own, and kept any other string (`PHASE_3`) as one too; the stored records
+        # hold only CT.gov's six phase values (`CTGOV_PHASES`).
         phases = design["phases"]
-        if not (isinstance(phases, list) and all(isinstance(p, str) and p.strip() for p in phases)):
-            out.append("designModule.phases (a list of non-blank strings)")
+        if not (isinstance(phases, list) and all(isinstance(p, str) and p in CTGOV_PHASES for p in phases)):
+            out.append("designModule.phases (a list of CT.gov phase values)")
     for mod, field, kind in TYPED_OPTIONAL_PARTS:
         holder = ps if mod is None else ps.get(mod)
         if not isinstance(holder, dict) or field not in holder:
@@ -655,6 +661,7 @@ def load_studies_input(
             f"{target}: weekly full-record run stamps cannot name the extraction run that produced "
             f"them ({'; '.join(malformed)})"
         )
+    _require_weekly_phases(records, str(target))
     file_sha = hashlib.sha256(target.read_bytes()).hexdigest()
     return records, {
         "mode": "weekly_full_records",
@@ -664,6 +671,30 @@ def load_studies_input(
         "source_extracted_at": extracted_at,
         "source_pipeline_commit": pipe_commit,
     }
+
+
+def _require_weekly_phases(records: list[dict[str, Any]], source: str) -> None:
+    """Refuse weekly full records whose `phase` string holds anything but CT.gov's phase values.
+
+    Weekly records never pass the raw-record checks, so a `"phase": "BANANA"` (or a non-string) would
+    become a stratum of its own. Each token, split on `,` and `/` as `metrics.normalize_phase` splits
+    it (`"PHASE1, PHASE2"`), must be in `CTGOV_PHASES`; an empty string or a missing key still means
+    no phase stated. The 80,890 records of the 2026-11-08 weekly extraction hold only the six values,
+    two multi-phase forms and `""`.
+    """
+    bad: list[str] = []
+    for idx, rec in enumerate(records):
+        if not isinstance(rec, dict) or "phase" not in rec:
+            continue
+        phase = rec["phase"]
+        tokens = [t.strip() for t in re.split(r"[,/]", phase) if t.strip()] if isinstance(phase, str) else None
+        if tokens is None or any(t not in CTGOV_PHASES for t in tokens):
+            bad.append(f"{rec.get('nct_id') or f'index {idx}'} has phase {phase!r}")
+    if bad:
+        raise ValueError(
+            f"{source}: {len(bad)} of {len(records)} weekly records carry a phase outside CT.gov's values "
+            f"(first: {bad[0]})"
+        )
 
 
 def condition_mesh_line_problem(row: dict[str, Any]) -> str | None:

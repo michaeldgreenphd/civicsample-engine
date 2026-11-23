@@ -64,7 +64,7 @@ STOPPED_STUDY_RESULTS_STATES = (
 REVIEW_COLUMNS = ("nct_id", "reviewer", "reviewed_at", "override_category", "notes")
 PRIVATE_REVIEW_KEYS = frozenset({"reviewer", "notes"})
 
-_NCT_RE = re.compile(r"^NCT\d{8}$")
+_NCT_RE = re.compile(r"^NCT[0-9]{8}$")  # ASCII digits only: `\d` also matches other scripts' digits
 _I = re.IGNORECASE
 
 # Clauses inside `whyStopped` that explicitly negate a signal category are masked before matching
