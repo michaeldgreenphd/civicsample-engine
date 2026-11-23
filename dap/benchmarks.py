@@ -657,6 +657,10 @@ def _reads_as_non_finite_number(text: str) -> bool:
     return any(not math.isfinite(value) for value in readings)
 
 
+# The date structs `classify_regulatory_era` reads on a raw record.
+ERA_DATE_STRUCTS: tuple[str, ...] = ("startDateStruct", "primaryCompletionDateStruct")
+
+
 def _mistyped_parts(study: dict[str, Any]) -> list[str]:
     """Name the parts of `study` with the wrong type: the `TYPED_PROTOCOL_PARTS` and their
     `LIST_ENTRY_FIELDS` entries, the phases, the NCT ID, and the baseline table (`BASELINE_SHAPE`)."""
@@ -690,6 +694,15 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
             phases = design["phases"]
             if not (isinstance(phases, list) and all(isinstance(p, str) and p in CTGOV_PHASES for p in phases)):
                 out.append("designModule.phases (a list of CT.gov phase values)")
+        # `classify_regulatory_era` reads a start date that does not parse as missing and falls back to
+        # the primary completion date, so a malformed one moved a trial between regulatory-era strata.
+        # Every one of the 75,488 start and 74,868 primary completion structs in the stored local files
+        # carries a date that parses.
+        status_mod = protocol.get("statusModule")
+        for field in ERA_DATE_STRUCTS:
+            struct = status_mod.get(field) if isinstance(status_mod, dict) else None
+            if isinstance(struct, dict) and parse_partial_date_bounds(struct.get("date")) is None:
+                out.append(f"statusModule.{field}.date (a YYYY, YYYY-MM or YYYY-MM-DD date)")
         # The trial's key in every published file: a number such as 123 became the string "123".
         ident = protocol.get("identificationModule")
         if isinstance(ident, dict):
@@ -817,8 +830,8 @@ WEEKLY_SCALAR_FIELDS: dict[str, tuple[type, bool]] = {
     "brief_title": (str, False),
     "study_type": (str, True),
     "status": (str, True),
-    "start_date": (str, False),
-    "primary_completion_date": (str, False),
+    "start_date": (str, False),  # "" or a date, checked in `_weekly_list_problem`
+    "primary_completion_date": (str, False),  # the same
     "results_date": (str, False),  # "" or a date, checked in `_weekly_list_problem`
     "enrollment": (int, False),
     "enrollment_type": (str, False),
@@ -1127,6 +1140,13 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     results_date = rec["results_date"]
     if results_date and parse_partial_date_bounds(results_date) is None:
         return f"results_date {results_date!r} is neither \"\" nor a date (any other value reads as posted results)"
+    # `classify_regulatory_era` reads a start date that does not parse as missing and falls back to the
+    # primary completion date, so "corrupt" moved a trial into `pre_2017_final_rule` or
+    # `era_indeterminate`. Each must be exactly "" (the producer's value for no date) or a date; all
+    # 80,890 weekly records hold one or the other (17 and 74 of them "").
+    for key in ("start_date", "primary_completion_date"):
+        if rec[key] and parse_partial_date_bounds(rec[key]) is None:
+            return f"{key} {rec[key]!r} is neither \"\" nor a date (the regulatory era would read it as missing)"
     for block, fields in WEEKLY_DEMOGRAPHIC_BLOCK_FIELDS.items():
         for key, (kind, required) in fields.items():
             if key not in rec[block]:

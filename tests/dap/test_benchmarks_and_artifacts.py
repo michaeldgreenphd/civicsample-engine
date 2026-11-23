@@ -1610,6 +1610,13 @@ def _measured_study(nct_id: str) -> dict:
         (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "denoms"),
          [{"counts": [{"groupId": "BG000", "value": "90"}]}],
          f"{_BASE}.measures[0].classes[0].denoms[0].units (a string)"),
+        # On 8a72bac each loaded, and classify_regulatory_era read the date as missing.
+        (("protocolSection", "statusModule", "startDateStruct", "date"), "corrupt",
+         "statusModule.startDateStruct.date (a YYYY, YYYY-MM or YYYY-MM-DD date)"),
+        (("protocolSection", "statusModule", "startDateStruct"), {"type": "ACTUAL"},
+         "statusModule.startDateStruct.date (a YYYY, YYYY-MM or YYYY-MM-DD date)"),
+        (("protocolSection", "statusModule", "primaryCompletionDateStruct", "date"), "2020-02-30",
+         "statusModule.primaryCompletionDateStruct.date (a YYYY, YYYY-MM or YYYY-MM-DD date)"),
         # On 8ea5edc each loaded, and the build raised OverflowError (ValueError for NaN) in src/utils.
         *[
             (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0, "categories", 0,
@@ -2354,3 +2361,24 @@ def test_weekly_results_date_blank_or_a_date_loads(tmp_path: Path, value: str) -
     weekly_doc = fx.build_weekly_full_records_doc()
     weekly_doc["data"][1]["results_date"] = value
     assert len(benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]) == 5
+
+
+@pytest.mark.parametrize("key", ["start_date", "primary_completion_date"])
+@pytest.mark.parametrize("value", ["corrupt", " ", "2020-13-01", "2016-06-31"])
+def test_weekly_era_dates_must_be_blank_or_a_date(tmp_path: Path, key: str, value: str) -> None:
+    # On 8a72bac each loaded, and classify_regulatory_era read it as missing: a "corrupt" start beside a
+    # 2016 primary completion was published as pre_2017_final_rule.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1][key] = value
+    problem = f"{key} {value!r} is neither \"\" nor a date (the regulatory era would read it as missing)"
+    with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem})")):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
+def test_weekly_era_dates_blank_or_a_date_load(tmp_path: Path) -> None:
+    # A missing start ("") beside a primary completion before 2017 bounds the era, as the producer writes it.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["data"][1].update(start_date="", primary_completion_date="2016-06")
+    records = benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[0]
+    era = benchmarks.classify_regulatory_era(next(r for r in records if r["nct_id"] == "NCT99000402"))
+    assert era["regulatory_era"] == "pre_2017_final_rule"

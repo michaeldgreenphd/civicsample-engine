@@ -181,7 +181,12 @@ trial without results as posted. A race, ethnicity or sex block's `reported`
 must be true exactly when its totals are not all zero (`WEEKLY_BLOCK_TOTALS`),
 as the extractors write it: `reported: false` beside positive totals dropped
 those participants. For the same reason `results_date` must be
-exactly `""` or a date `parse_partial_date_bounds` reads. The sex/gender row's
+exactly `""` or a date `parse_partial_date_bounds` reads, and so must
+`start_date` and `primary_completion_date`: `classify_regulatory_era` read a
+start date that does not parse as missing and fell back to the primary
+completion date, so `"corrupt"` moved a trial into `pre_2017_final_rule`. A raw
+record's start and primary completion date structs must carry a date that parses
+too (`ERA_DATE_STRUCTS`). The sex/gender row's
 numbers must be finite (JSON `1e309` parses as infinity and raised
 `OverflowError` in the build) and its five participant counts non-negative;
 `enrollment_minus_parsed` may be negative. The row's `sex_report_status` must
