@@ -23,7 +23,7 @@ published site contracts remain untouched.
 
 Written by `scripts/build_feasibility_benchmarks.py`:
 
-- `run.json` — manifest carrying `run_id` (`feasibility-YYYY-MM-DD-<run_identity>`), `generated_at`, `producer` (`commit`, `uncommitted_changes`, `source_sha256`), pinned input SHA-256s, `parameters`, `vocabularies`, `reviews`, and `files` SHA-256 map.
+- `run.json` — manifest carrying `run_id` (`feasibility-YYYY-MM-DD-<run_identity>`), `generated_at`, `producer` (`commit`, `uncommitted_changes`, `source_sha256`; the digest and the dirty check cover every file under `feasibility/`, the three feasibility scripts, `condition_ontology.json`, and every repository module the build imports, including `src/full_records.py`, `src/condition_mesh.py`, `src/condition_classifier.py` and the `sponsors/` attribution modules), pinned input SHA-256s, `parameters`, `vocabularies`, `reviews`, and `files` SHA-256 map.
 - `summary.json` — named `denominators`, headline `metrics`, breakdown `tables`, and `overall_benchmarks`. Every count/metric object names `value`, `numerator`, `denominator`, and `definition`.
 - `strata.json` — overall, marginal, MeSH-indexed, and multi-way cross-classified operational benchmark cells.
 - `sponsors.json` — curated sponsor attribution summary (`attributed`, `reviewed_excluded`, `unreviewed` kept disjoint) and company-level (`lead` and `any` role) benchmark cells.
@@ -41,6 +41,14 @@ never joined. A mismatch refuses the build and writes nothing. `run.json`
 `inputs.condition_mesh` records `provenance_check`, the matched `extracted_at` /
 `pipeline_commit` (`null` when no stamps were compared), `n_cohort_trials_covered` and
 `n_rows_outside_cohort`.
+
+`--archive` also reads cached HTTP response envelopes (one JSON line per request with `status`,
+`body_sha256` and the unparsed `body`, as the outcomes audit's fetch scripts write them). Each must
+have `status` 200, a body matching `body_sha256`, at least one study, and exactly the NCT ids it
+requested (its `ids` field, or `filter.ids` in its `url`): a failed, altered or short response
+refuses the build rather than silently dropping trials from the cohort. An envelope that names no
+requested ids is refused too, because a short answer could not be detected. `nextPageToken` is not
+consulted, since CT.gov returns one on full pages even when the requested ids were all answered.
 
 ```bash
 # Build from weekly full records (never pass site demographics.part*.json.gz)

@@ -11,7 +11,8 @@ Examples:
       --out build/feasibility
 
 Never scheduled by `.github/workflows/extract.yml`. Refuses site-projected
-`demographics.part*.json.gz` files, refuses a `--condition-mesh` sidecar that lacks a line for any
+`demographics.part*.json.gz` files, refuses an `--archive` response envelope that failed, was altered
+or did not return exactly the trials it requested, refuses a `--condition-mesh` sidecar that lacks a line for any
 cohort trial or (with `--demographics`) whose lines' `extracted_at` / `pipeline_commit` differ from
 the full records', validates the staged family with `feasibility.artifacts.check_contract`
 before writing, and stages atomically into `--out`.
@@ -19,8 +20,10 @@ before writing, and stages atomically into `--out`.
 from __future__ import annotations
 
 import argparse
+import ast
 import gzip
 import hashlib
+import importlib.util
 import json
 import re
 import subprocess
@@ -28,6 +31,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -48,32 +52,127 @@ def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+# Repository directories whose loaded modules count as producing code.
+PRODUCER_DIRS: tuple[str, ...] = ("feasibility", "src", "sponsors", "scripts")
+# This family's scripts, hashed whether or not the build imports them: the contract checker and the
+# site exporter read and re-emit the artifacts this digest stamps.
+FAMILY_SCRIPTS: tuple[str, ...] = (
+    "scripts/build_feasibility_benchmarks.py",
+    "scripts/check_feasibility_contract.py",
+    "scripts/export_feasibility_site.py",
+)
+# Repository data files the producing code reads that no command-line flag names, so `run.json`
+# `inputs` records no SHA-256 for them. `condition_ontology.json` decides `indication.ontology_*`:
+# `src/condition_classifier.py` reads it, and so does the keyword fallback in
+# `feasibility/benchmarks.py` when rapidfuzz is absent. (`--rules` and `--reviews` are hashed
+# under `inputs` instead.)
+PRODUCER_DATA_FILES: tuple[str, ...] = ("condition_ontology.json",)
+
+
+def _loaded_repo_modules(root: Path) -> dict[str, Path]:
+    """Module name -> resolved source file for every loaded module under `PRODUCER_DIRS`."""
+    root_resolved = root.resolve()
+    loaded: dict[str, Path] = {}
+    for name, module in list(sys.modules.items()):
+        fname = getattr(module, "__file__", None)
+        if not isinstance(fname, str) or not fname.endswith(".py"):
+            continue  # builtins, extension modules, namespace packages
+        path = Path(fname).resolve()
+        if not path.is_relative_to(root_resolved):
+            continue
+        if path.relative_to(root_resolved).parts[0] in PRODUCER_DIRS:
+            loaded[name] = path
+    return loaded
+
+
+def _imported_module_names(path: Path, package: str | None) -> set[str]:
+    """Every module name an import statement in `path` can bind, parent packages included.
+
+    `from pkg import name` yields both `pkg` and `pkg.name` because `name` may be a submodule;
+    names that are not loaded modules are simply never matched. Relative imports resolve against
+    `package`; imports inside functions and `try` blocks count, since the build may run them.
+    """
+    tree = ast.parse(path.read_bytes(), filename=str(path))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        targets: list[str] = []
+        if isinstance(node, ast.Import):
+            targets = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                if not package:
+                    continue  # a relative import outside a package cannot run
+                base = importlib.util.resolve_name("." * node.level + base, package)
+            targets = [base] + [f"{base}.{alias.name}" for alias in node.names]
+        for target in targets:
+            parts = target.split(".")
+            names.update(".".join(parts[: i + 1]) for i in range(len(parts)))
+    return names
+
+
+def _import_closure(root: Path) -> list[str]:
+    """Paths relative to `root` of this script and every repository module it transitively imported.
+
+    Method: the repo-local entries of `sys.modules` (files under `PRODUCER_DIRS`) are the modules
+    actually loaded. Starting from this script, follow each file's import statements to the loaded
+    modules they name. Following imports, rather than taking every repo-local entry, keeps the list
+    independent of what else the process loaded (a test session imports many unrelated modules), so
+    the digest depends only on code that produced the artifacts. An optional import that failed
+    (`sponsors` without pandas, `src.condition_classifier` without rapidfuzz) is not loaded and so
+    not hashed; the code path that ran instead is in `feasibility/benchmarks.py`, which is.
+    """
+    loaded = _loaded_repo_modules(root)
+    entry = Path(__file__).resolve()
+    seen: set[Path] = set()
+    pending: list[tuple[Path, str | None]] = [(entry, __package__)]
+    while pending:
+        path, package = pending.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        for name in _imported_module_names(path, package):
+            dep = loaded.get(name)
+            if dep is not None and dep not in seen:
+                pending.append((dep, getattr(sys.modules[name], "__package__", None)))
+    # relative_to raises if `root` is not the checkout this script was imported from.
+    return [p.relative_to(root.resolve()).as_posix() for p in seen]
+
+
 def producer_paths(root: Path = ROOT) -> list[str]:
-    """Sorted repository-relative paths of all producing code and curated review CSVs."""
+    """Sorted repository-relative paths of every file that determines the artifacts.
+
+    The union of: every file under `feasibility/` (code, and the default curated
+    `termination_reviews.csv`); `FAMILY_SCRIPTS`; `PRODUCER_DATA_FILES`; and the build's import
+    closure (`_import_closure`), which brings in `src/full_records.py`, `src/condition_mesh.py`,
+    `src/condition_classifier.py` and the `sponsors/` attribution modules. `root` must be the
+    checkout this script was imported from. Call it after the build has run, so modules imported at
+    run time are loaded.
+    """
     pkg_files = [
         str(p.relative_to(root).as_posix())
         for p in (root / "feasibility").rglob("*")
         if p.is_file() and "__pycache__" not in p.parts
     ]
-    scripts_list = [
-        "scripts/build_feasibility_benchmarks.py",
-        "scripts/check_feasibility_contract.py",
-        "scripts/export_feasibility_site.py",
-    ]
-    present_scripts = [s for s in scripts_list if (root / s).is_file()]
-    return sorted(set(pkg_files + present_scripts))
+    present_scripts = [s for s in FAMILY_SCRIPTS if (root / s).is_file()]
+    return sorted(
+        set(pkg_files) | set(present_scripts) | set(PRODUCER_DATA_FILES) | set(_import_closure(root))
+    )
 
 
-def source_digest(root: Path = ROOT) -> str:
-    """SHA-256 over all producing files on disk, path by path."""
+def source_digest(root: Path = ROOT, paths: list[str] | None = None) -> str:
+    """SHA-256 over the producing files (default `producer_paths(root)`) read from `root`, path by path."""
     digest = hashlib.sha256()
-    for rel in producer_paths(root):
+    for rel in producer_paths(root) if paths is None else paths:
         digest.update(rel.encode("utf-8") + b"\0" + (root / rel).read_bytes() + b"\0")
     return digest.hexdigest()
 
 
 def producer_metadata(root: Path = ROOT) -> dict[str, Any]:
-    """Git revision, dirty state (when git is accessible), and deterministic code digest."""
+    """Git revision, dirty state (when git is accessible), and deterministic code digest.
+
+    The digest and the scoped `git status` dirty check cover the same list, `producer_paths(root)`.
+    """
     paths = producer_paths(root)
     commit: str | None = None
     dirty: bool | None = None
@@ -104,31 +203,128 @@ def producer_metadata(root: Path = ROOT) -> dict[str, Any]:
         "repository": "civicsample-engine",
         "commit": commit,
         "uncommitted_changes": dirty,
-        "source_sha256": source_digest(root),
+        "source_sha256": source_digest(root, paths),
     }
 
 
-def _extract_studies_from_json_obj(obj: Any) -> list[dict[str, Any]]:
-    """Unwrap one study or a batch of studies from direct CT.gov v2 JSON or cached envelopes."""
+_NCT_ID_RE = re.compile(r"NCT\d{8}")
+
+
+def _study_nct_id(study: dict[str, Any]) -> str | None:
+    """NCT id of a CT.gov API v2 study (`protocolSection.identificationModule.nctId`) or weekly record."""
+    if isinstance(study.get("nct_id"), str):
+        return study["nct_id"]
+    ident = (study.get("protocolSection") or {}).get("identificationModule") or {}
+    nct = ident.get("nctId") if isinstance(ident, dict) else None
+    return nct if isinstance(nct, str) else None
+
+
+def _requested_nct_ids(envelope: dict[str, Any]) -> list[str] | None:
+    """NCT ids a cached request asked for: its `ids` field, else the `url`'s `filter.ids` or its
+    single-study path (`/studies/NCT########`)."""
+    ids = envelope.get("ids")
+    if isinstance(ids, list) and ids and all(isinstance(i, str) for i in ids):
+        return ids
+    url = envelope.get("url")
+    if isinstance(url, str):
+        parts = urlsplit(url)
+        values = parse_qs(parts.query).get("filter.ids")
+        if values:
+            return [i for v in values for i in v.split(",") if i]
+        last = parts.path.rstrip("/").rsplit("/", 1)[-1]
+        if _NCT_ID_RE.fullmatch(last):
+            return [last]
+    return None
+
+
+def _response_envelope_studies(obj: dict[str, Any], where: str) -> list[dict[str, Any]]:
+    """Studies from one cached HTTP response envelope, refusing a failed, altered or short one.
+
+    Method: the cached-response formats in this repository
+    (`docs/audits/outcomes_results_structure/first_pass/scripts/fetch.py`, `.../second_pass/scripts/
+    ctgov.py`) write one line per request with its `status`, `body_sha256` and unparsed `body`;
+    the first also records the requested `ids`, and both put them in the `url` as `filter.ids`. A line
+    whose request failed, whose body was altered, or that answered fewer or other trials than it
+    asked for would otherwise contribute fewer studies with nothing said, and the build would publish
+    benchmarks whose cohort and denominators silently lack those trials. So `status` must be 200,
+    `body_sha256` (when present) must match the body text, the body must hold at least one study,
+    and the studies' NCT ids must equal the requested ids exactly: none missing, extra or repeated.
+    An envelope that names no requested ids is refused, since a short answer could not be detected.
+    `nextPageToken` is not consulted: CT.gov returns one on a full page even when `filter.ids` has
+    been answered completely (all 40 responses in the first-pass cache carry one, each with its 50
+    requested trials).
+    """
+    status = obj.get("status")
+    if status != 200:
+        raise ValueError(
+            f"{where}: cached response status {status!r}, not 200; a failed request is not an empty batch"
+        )
+    body = obj["body"]
+    want_sha = obj.get("body_sha256")
+    if want_sha is not None:
+        if not isinstance(body, str) or hashlib.sha256(body.encode("utf-8")).hexdigest() != want_sha:
+            raise ValueError(f"{where}: response body does not match its body_sha256")
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except ValueError as exc:
+            raise ValueError(f"{where}: response body is not JSON") from exc
+    studies: list[dict[str, Any]] = []
+    if isinstance(body, dict) and "protocolSection" in body:
+        studies = [body]
+    elif isinstance(body, dict) and isinstance(body.get("studies"), list):
+        studies = [s for s in body["studies"] if isinstance(s, dict)]
+    if not studies:
+        raise ValueError(f"{where}: response envelope holds zero studies")
+
+    requested = _requested_nct_ids(obj)
+    if requested is None:
+        raise ValueError(
+            f"{where}: response envelope names no requested NCT ids (no `ids`, no `filter.ids` in "
+            "`url`), so a response missing trials could not be detected"
+        )
+    returned = [_study_nct_id(s) for s in studies]
+    problems: list[str] = []
+    if any(n is None or not _NCT_ID_RE.fullmatch(n) for n in returned):
+        problems.append("a study without a valid NCT id")
+    named = [n for n in returned if n is not None]
+    if len(set(named)) != len(named):
+        problems.append("repeated NCT ids")
+    missing = sorted(set(requested) - set(named))
+    extra = sorted(set(named) - set(requested))
+    if missing:
+        problems.append(f"{len(missing)} requested trial(s) missing (first: {', '.join(missing[:5])})")
+    if extra:
+        problems.append(f"{len(extra)} unrequested trial(s) (first: {', '.join(extra[:5])})")
+    if problems:
+        raise ValueError(
+            f"{where}: response for {len(set(requested))} requested trials returned "
+            f"{len(studies)} studies with {'; '.join(problems)}"
+        )
+    return studies
+
+
+def _extract_studies_from_json_obj(obj: Any, where: str) -> list[dict[str, Any]]:
+    """Unwrap one study or a batch of studies from direct CT.gov v2 JSON or cached envelopes.
+
+    `where` names the file (and line) for error messages. A batch or envelope that yields zero
+    studies raises `ValueError`: an archive line or records file holding no study is a failed or
+    truncated fetch, not an empty part of the cohort.
+    """
     if not isinstance(obj, dict):
-        raise ValueError("expected JSON object for study record or envelope")
+        raise ValueError(f"{where}: expected JSON object for study record or envelope")
     if "protocolSection" in obj or "nct_id" in obj:
         return [obj]
     if isinstance(obj.get("study"), dict):
         return [obj["study"]]
-    if isinstance(obj.get("studies"), list):
-        return [s for s in obj["studies"] if isinstance(s, dict)]
     if "body" in obj:
-        body = obj["body"]
-        if isinstance(body, str):
-            body = json.loads(body)
-        if isinstance(body, dict):
-            if "protocolSection" in body:
-                return [body]
-            if isinstance(body.get("studies"), list):
-                return [s for s in body["studies"] if isinstance(s, dict)]
-        return []
-    raise ValueError(f"unrecognized study JSON shape with keys {sorted(obj.keys())[:8]}")
+        return _response_envelope_studies(obj, where)
+    if isinstance(obj.get("studies"), list):
+        studies = [s for s in obj["studies"] if isinstance(s, dict)]
+        if not studies:
+            raise ValueError(f"{where}: `studies` batch holds zero study records")
+        return studies
+    raise ValueError(f"{where}: unrecognized study JSON shape with keys {sorted(obj.keys())[:8]}")
 
 
 def load_studies_input(
@@ -155,7 +351,7 @@ def load_studies_input(
             dir_hash.update(fp.name.encode("utf-8") + b"\0" + raw + b"\0")
             text = gzip.decompress(raw).decode("utf-8") if fp.name.endswith(".gz") else raw.decode("utf-8")
             obj = json.loads(text)
-            studies.extend(_extract_studies_from_json_obj(obj))
+            studies.extend(_extract_studies_from_json_obj(obj, fp.name))
         if not studies:
             raise ValueError(f"{records_dir}: decoded zero study records")
         return studies, {
@@ -190,7 +386,7 @@ def load_studies_input(
                 obj = json.loads(raw_line.rstrip(b"\r").decode("utf-8"))
             except ValueError as exc:
                 raise ValueError(f"{archive_path.name}:{line_no}: invalid JSON line") from exc
-            studies.extend(_extract_studies_from_json_obj(obj))
+            studies.extend(_extract_studies_from_json_obj(obj, f"{archive_path.name}:{line_no}"))
         if not studies:
             raise ValueError(f"{archive_path}: archive holds zero study records")
         return studies, {

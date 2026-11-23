@@ -846,3 +846,130 @@ def test_site_export_keeps_the_source_pipeline_commit(tmp_path: Path) -> None:
     records = site_run["inputs"]["records"]
     assert records["source_pipeline_commit"] == _WEEKLY_COMMIT
     assert records["source_extracted_at"] == _WEEKLY_EXTRACTED_AT
+
+
+# ---- Producer digest: the build's import closure plus the data files it reads
+
+
+def test_producer_paths_cover_every_imported_producer() -> None:
+    import src.utils  # noqa: F401  # loaded in this process but not imported by the build
+
+    paths = build_feasibility_benchmarks.producer_paths()
+    for required in (
+        "condition_ontology.json",
+        "feasibility/benchmarks.py",
+        "feasibility/termination_reviews.csv",
+        "scripts/build_feasibility_benchmarks.py",
+        "scripts/export_feasibility_site.py",
+        "src/condition_classifier.py",
+        "src/condition_mesh.py",
+        "src/full_records.py",
+        "sponsors/adapter.py",
+        "sponsors/audit_states.py",
+        "sponsors/sponsor_roles.py",
+    ):
+        assert required in paths, required
+    assert "src/utils.py" not in paths
+    assert not any(p.startswith("tests/") for p in paths)
+
+
+@pytest.mark.parametrize("changed", ["condition_ontology.json", "src/condition_classifier.py"])
+def test_source_digest_changes_with_an_imported_producer(tmp_path: Path, changed: str) -> None:
+    paths = build_feasibility_benchmarks.producer_paths()
+    for rel in paths:
+        dest = tmp_path / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes((ROOT / rel).read_bytes())
+    same = build_feasibility_benchmarks.source_digest(tmp_path, paths)
+    assert same == build_feasibility_benchmarks.source_digest(ROOT, paths)
+    (tmp_path / changed).write_bytes((tmp_path / changed).read_bytes() + b"\n")
+    assert build_feasibility_benchmarks.source_digest(tmp_path, paths) != same
+
+
+# ---- --archive response envelopes: a failed, altered or short response is refused
+
+
+def _envelope(
+    studies: list[dict[str, Any]],
+    ids: list[str] | None,
+    *,
+    status: int = 200,
+    url: str | None = None,
+    body: str | None = None,
+) -> dict[str, Any]:
+    import hashlib
+
+    text = body if body is not None else json.dumps({"studies": studies, "nextPageToken": "tok"})
+    env: dict[str, Any] = {
+        "status": status,
+        "body_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "body": text,
+    }
+    if ids is not None:
+        env["ids"] = ids
+    if url is not None:
+        env["url"] = url
+    return env
+
+
+def _write_archive(tmp_path: Path, lines: list[dict[str, Any]]) -> Path:
+    path = tmp_path / "raw_responses.jsonl.gz"
+    text = "".join(json.dumps(line) + "\n" for line in lines)
+    path.write_bytes(gzip.compress(text.encode("utf-8"), mtime=0))
+    return path
+
+
+def _load_archive(path: Path) -> list[dict[str, Any]]:
+    studies, _meta = build_feasibility_benchmarks.load_studies_input(
+        demographics_path=None, records_dir=None, archive_path=path
+    )
+    return studies
+
+
+def test_archive_accepts_complete_response_envelopes(tmp_path: Path) -> None:
+    a, b, c = (make_ctgov_study(f"NCT9960000{i}") for i in range(1, 4))
+    url = "https://clinicaltrials.gov/api/v2/studies?filter.ids=NCT99600003&pageSize=50"
+    path = _write_archive(
+        tmp_path,
+        [
+            _envelope([a, b], ["NCT99600001", "NCT99600002"]),
+            _envelope([c], None, url=url),  # second-pass format: ids only in the url
+        ],
+    )
+    assert len(_load_archive(path)) == 3
+
+
+@pytest.mark.parametrize(
+    "case, match",
+    [
+        ("http_failure", "status 500"),
+        ("altered_body", "body_sha256"),
+        ("zero_studies", "zero studies"),
+        ("missing_trial", "1 requested trial"),
+        ("unrequested_trial", "unrequested"),
+        ("repeated_trial", "repeated"),
+        ("no_requested_ids", "names no requested NCT ids"),
+        ("empty_studies_batch", "zero study records"),
+    ],
+)
+def test_archive_refuses_failed_or_short_response_envelopes(
+    tmp_path: Path, case: str, match: str
+) -> None:
+    a, b = make_ctgov_study("NCT99600001"), make_ctgov_study("NCT99600002")
+    ok = _envelope([a], ["NCT99600001"])
+    bad: dict[str, Any] = {
+        "http_failure": _envelope([], ["NCT99600002"], status=500, body="upstream error"),
+        "altered_body": {**_envelope([b], ["NCT99600002"]), "body_sha256": "0" * 64},
+        "zero_studies": _envelope([], ["NCT99600002"]),
+        "missing_trial": _envelope([b], ["NCT99600002", "NCT99600003"]),
+        "unrequested_trial": _envelope([b, make_ctgov_study("NCT99600004")], ["NCT99600002"]),
+        "repeated_trial": _envelope([b, b], ["NCT99600002"]),
+        "no_requested_ids": _envelope([b], None),
+        "empty_studies_batch": {"studies": []},
+    }[case]
+    path = _write_archive(tmp_path, [ok, bad])
+    with pytest.raises(ValueError, match=match):
+        _load_archive(path)
+    out = tmp_path / "out"
+    assert build_feasibility_benchmarks.main(["--archive", str(path), "--out", str(out)]) == 1
+    assert not out.exists()
