@@ -614,8 +614,10 @@ def summarize(
     ]
 
     all_prim_measures = [pm for r in posted for pm in (r['primary_measures'] or [])]
-    all_og_bg = [a for pm in all_prim_measures for a in pm['og_to_bg_alignment']['og_alignments']]
-    all_og_fg = [a for pm in all_prim_measures for a in pm['og_to_fg_alignment']['og_alignments']]
+    # A measure with no arm OG (`arm_groups_state` other than `arm_groups_present`) carries None
+    # alignments and contributes no OG: a group titled Total is never counted as an arm.
+    all_og_bg = [a for pm in all_prim_measures for a in (pm['og_to_bg_alignment'] or {}).get('og_alignments') or []]
+    all_og_fg = [a for pm in all_prim_measures for a in (pm['og_to_fg_alignment'] or {}).get('og_alignments') or []]
     all_analyses = [a for pm in all_prim_measures for a in pm['analyses']]
     pairwise_analyses = [a for a in all_analyses if a['group_ids_cardinality_state'] == 'pairwise_two_arm']
     proto_res_alignments = [
@@ -660,7 +662,10 @@ def summarize(
         },
         'primary_measure_ogs': {
             'n': len(all_og_bg),
-            'definition': 'Non-Total outcome groups (OGs) across all posted PRIMARY outcome measures.',
+            'definition': (
+                'Non-Total outcome groups (OGs) across all posted PRIMARY outcome measures; a group titled '
+                'Total is never counted, including when it is the only group of a measure.'
+            ),
         },
         'primary_analyses': {
             'n': len(all_analyses),
@@ -786,7 +791,8 @@ def summarize(
             n_where(all_prim_measures, lambda pm: pm['denom_state'] == 'ok'),
             'primary_measures',
             denominators,
-            'PRIMARY measure denoms[] carries a Participants row with numeric counts for every non-Total OG.',
+            'PRIMARY measure denoms[] carries a Participants row with numeric counts for every non-Total OG '
+            '(for the single Total-titled OG when the measure posts no other group).',
         ),
         count_item(
             'primary_measures_with_class_denom_deviation',
@@ -873,6 +879,11 @@ def summarize(
         'no_title_match': 'Target module has groups, with no title/description match or pooling cue.',
         'module_groups_absent': 'Target module is absent or carries zero non-Total groups.',
     }
+    arm_group_defs = {
+        'arm_groups_present': 'Measure posts at least one non-Total OG; each is aligned to BG and FG.',
+        'no_arm_groups': 'Every OG the measure posts is titled Total; no arm to align (alignments are None).',
+        'no_groups': 'Measure posts no OG (alignments are None).',
+    }
     md_defs = {
         'mmrm': 'Mixed-effects model for repeated measures (MMRM) alone named in structured primary fields.',
         'multiple_imputation': 'Multiple imputation / reference-based imputation alone named.',
@@ -946,6 +957,14 @@ def summarize(
             lambda r: ((r['denominator_funnel'] or {}).get('period1_started') or {}).get('state'),
             'posted_results_trials',
             flow_defs,
+        ),
+        'primary_measure_arm_groups': _breakdown(
+            'primary_measure_arm_groups',
+            C.MEASURE_ARM_GROUP_STATES,
+            all_prim_measures,
+            lambda pm: pm.get('arm_groups_state'),
+            'primary_measures',
+            arm_group_defs,
         ),
         'og_to_bg_alignment': _breakdown(
             'og_to_bg',
@@ -1229,6 +1248,7 @@ def build(
             'flow_started_states': list(C.FLOW_STARTED_STATES),
             'baseline_total_states': list(C.BASELINE_TOTAL_STATES),
             'measure_denom_states': list(C.MEASURE_DENOM_STATES),
+            'measure_arm_group_states': list(C.MEASURE_ARM_GROUP_STATES),
             'arm_alignment_states': list(C.ARM_ALIGNMENT_STATES),
             'missing_data_states': list(C.MISSING_DATA_STATES),
             'intercurrent_event_states': list(C.INTERCURRENT_EVENT_STATES),
@@ -1379,7 +1399,27 @@ def check(files: dict[str, Any]) -> list[str]:
         for pm in r.get('primary_measures') or []:
             if pm.get('denom_state') not in C.MEASURE_DENOM_STATES:
                 p.append(f'{n}: invalid denom_state on primary measure')
+            # A group titled Total is never an arm: only non-Total OGs are aligned, and a measure with
+            # none carries None alignments with the reason in `arm_groups_state`.
+            og_dens = pm.get('og_denominators') or []
+            if any((g.get('is_total_group') is True) != (C.normalize_label(g.get('title')) == 'total') for g in og_dens):
+                p.append(f'{n}: og_denominators is_total_group disagrees with a group titled Total')
+            arm_og_ids = [g.get('group_id') for g in og_dens if g.get('is_total_group') is not True]
+            ags = pm.get('arm_groups_state')
+            expected_ags = 'arm_groups_present' if arm_og_ids else ('no_arm_groups' if og_dens else 'no_groups')
+            if ags not in C.MEASURE_ARM_GROUP_STATES:
+                p.append(f'{n}: invalid arm_groups_state {ags!r} on primary measure')
+            elif ags != expected_ags:
+                p.append(f'{n}: arm_groups_state {ags!r} disagrees with og_denominators ({expected_ags})')
             for side in ('og_to_bg_alignment', 'og_to_fg_alignment'):
+                side_al = pm.get(side)
+                if ags == 'arm_groups_present':
+                    if not isinstance(side_al, dict) or [
+                        oa.get('og_id') for oa in side_al.get('og_alignments') or []
+                    ] != arm_og_ids:
+                        p.append(f'{n}: {side} does not align exactly the non-Total OGs of its measure')
+                elif side_al is not None:
+                    p.append(f'{n}: {side} present on a measure with arm_groups_state {ags!r}')
                 seen_matched_targets: set[str] = set()
                 for oa in (pm.get(side) or {}).get('og_alignments') or []:
                     if oa.get('state') not in C.ARM_ALIGNMENT_STATES:

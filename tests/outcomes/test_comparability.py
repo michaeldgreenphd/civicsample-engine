@@ -523,6 +523,82 @@ def test_cross_pass_two_to_one_target_collision_downgrades_both_ogs_to_ambiguous
     assert [g['group_id'] for g in aligned['unmatched_target_groups']] == ['BG000', 'BG001']
 
 
+def test_sole_total_og_is_never_an_arm_and_measure_records_no_arm_groups() -> None:
+    # Regression: a PRIMARY measure whose only OG is titled "Total" (the NCT06507566 shape) used to
+    # keep that OG as an arm (`is_total_group` False), emit a `no_title_match` alignment for it, and
+    # count it in `n_primary_measure_ogs`. It is never an arm: no alignment, an explicit state, and
+    # `analysed_total` read from the Total group's own count.
+    arms = make_primary_measure(analyses=[{'groupIds': ['OG000', 'OG001'], 'pValue': '0.01'}])
+    sole_total = make_primary_measure('Sample Integrity', og_titles=('Total',), og_counts=('163',))
+    rec = C.inspect_study(make_study(40, measures=[arms, sole_total]))
+    assert rec['parse']['status'] == 'ok'
+    pm_arms, pm_tot = rec['primary_measures']
+
+    assert [(g['group_id'], g['is_total_group'], g['count']) for g in pm_tot['og_denominators']] == [('OG000', True, 163)]
+    assert pm_tot['arm_groups_state'] == 'no_arm_groups'
+    assert pm_tot['denom_state'] == 'ok' and pm_tot['analysed_total'] == 163
+    assert pm_tot['analysed_minus_baseline_total'] == 163 - 197
+    assert pm_tot['og_to_bg_alignment'] is None and pm_tot['og_to_fg_alignment'] is None
+    assert pm_tot['has_extra_baseline_groups_outside_measure'] is False
+    assert pm_tot['measure_two_arm_attrition'] is None
+
+    assert pm_arms['arm_groups_state'] == 'arm_groups_present'
+    assert [a['og_id'] for a in pm_arms['og_to_bg_alignment']['og_alignments']] == ['OG000', 'OG001']
+
+    aa = rec['arm_alignment']
+    assert aa['n_primary_measure_ogs'] == 2
+    assert aa['og_to_bg_state_counts']['no_title_match'] == 0 and aa['og_to_fg_state_counts']['no_title_match'] == 0
+    assert aa['primary_measure_arm_group_state_counts'] == {'arm_groups_present': 1, 'no_arm_groups': 1, 'no_groups': 0}
+    assert aa['extra_baseline_groups_outside_primary'] is False
+
+    # A Total group beside arms is still excluded from the arm sum and from alignment.
+    mixed = make_primary_measure(og_titles=('Zorbatinib 10 mg', 'Placebo', 'Total'), og_counts=('95', '85', '180'))
+    pm_mixed = C.inspect_study(make_study(41, measures=[mixed]))['primary_measures'][0]
+    assert [g['is_total_group'] for g in pm_mixed['og_denominators']] == [False, False, True]
+    assert pm_mixed['arm_groups_state'] == 'arm_groups_present' and pm_mixed['analysed_total'] == 180
+    assert [a['og_id'] for a in pm_mixed['og_to_bg_alignment']['og_alignments']] == ['OG000', 'OG001']
+
+    # A non-numeric sole Total count is recorded as absent, never coerced to 0 by an empty arm sum.
+    na_total = make_primary_measure(og_titles=('Total',), og_counts=('NA',))
+    pm_na = C.inspect_study(make_study(42, measures=[na_total]))['primary_measures'][0]
+    assert pm_na['arm_groups_state'] == 'no_arm_groups'
+    assert pm_na['denom_state'] == 'incomplete_or_non_numeric' and pm_na['analysed_total'] is None
+
+    # Two Total-titled groups and no arm: neither summed nor picked by position.
+    two_totals = make_primary_measure(og_titles=('Total', 'Total'), og_counts=('163', '140'))
+    pm_two = C.inspect_study(make_study(43, measures=[two_totals]))['primary_measures'][0]
+    assert [g['is_total_group'] for g in pm_two['og_denominators']] == [True, True]
+    assert pm_two['arm_groups_state'] == 'no_arm_groups'
+    assert pm_two['denom_state'] == 'multiple_total_groups' and pm_two['analysed_total'] is None
+    assert pm_two['og_to_bg_alignment'] is None
+
+    # The build counts no Total OG as an arm, and the contract refuses an alignment that does.
+    studies = [make_study(40, measures=[arms, sole_total])]
+    ids = [C.nct_id_of(s) or '' for s in studies]
+    recs, probs = B.build_records(studies, ids, {})
+    acq = {
+        'source': 'fictional', 'mode': 'archive', 'retrieved_at': '2026-11-15T10:00:00+00:00',
+        'api_version': '2.0.5', 'data_timestamp': '2026-11-15T09:00:00', 'n_requested': 1, 'n_records': 1,
+        'requested_ids_sha256': 'a' * 64, 'sha256_uncompressed': 'b' * 64, 'archive': 'records-fictional.jsonl.gz',
+    }
+    prod = {'repository': 'civicsample-engine', 'commit': 'c' * 40, 'uncommitted_changes': False, 'source_sha256': '1' * 64}
+    fam = B.build(recs, probs, acq, prod, {'source': 'archive'}, B.build_scope(ids, ids), generated_at='2026-11-15T12:00:00+00:00')
+    assert B.check(fam) == []
+    assert fam['summary.json']['denominators']['primary_measure_ogs']['n'] == 2
+    arm_groups = fam['summary.json']['state_breakdowns']['primary_measure_arm_groups']['counts']
+    assert {s: c['numerator'] for s, c in arm_groups.items()} == {'arm_groups_present': 1, 'no_arm_groups': 1, 'no_groups': 0}
+    assert fam['run.json']['vocabularies']['measure_arm_group_states'] == list(C.MEASURE_ARM_GROUP_STATES)
+
+    bad = copy.deepcopy(fam)
+    bad_pm = bad['records.json']['records']['NCT99000040']['primary_measures'][1]
+    bad_pm['og_to_bg_alignment'] = copy.deepcopy(pm_arms['og_to_bg_alignment'])
+    assert any('og_to_bg_alignment present on a measure with arm_groups_state' in p for p in B.check(bad))
+    bad_pm['arm_groups_state'] = 'arm_groups_present'
+    assert any("arm_groups_state 'arm_groups_present' disagrees with og_denominators" in p for p in B.check(bad))
+    bad_pm['og_denominators'][0]['is_total_group'] = False
+    assert any('is_total_group disagrees with a group titled Total' in p for p in B.check(bad))
+
+
 # ---------------------------------------------------------------- 3. estimands, missing data, documents, hypotheses
 
 def test_documents_missing_data_and_intercurrent_event_signals_with_exact_paths() -> None:

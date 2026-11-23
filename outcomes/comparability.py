@@ -58,6 +58,16 @@ MEASURE_DENOM_STATES = (
     'unit_not_participants',
     'no_groups',
     'incomplete_or_non_numeric',
+    'multiple_total_groups',
+)
+
+# Whether a PRIMARY measure posts any arm (non-Total) `OG` to align. A group titled "Total" is never
+# an arm, so a measure whose only groups are titled Total has nothing to align and records that here
+# rather than as an empty or `no_title_match` alignment.
+MEASURE_ARM_GROUP_STATES = (
+    'arm_groups_present',
+    'no_arm_groups',
+    'no_groups',
 )
 
 ARM_ALIGNMENT_STATES = (
@@ -713,13 +723,23 @@ def _extract_measure_denominators(m: dict[str, Any], measure_index: int) -> dict
         g['id'] for g in groups
         if isinstance(g, dict) and isinstance(g.get('id'), str) and normalize_label(g.get('title')) == 'total'
     }
-    # When a single group is literally titled "Total" with no arm groups, keep it out of arm matching
-    # while still reading its participant count if posted.
-    non_total_groups = [g for g in groups if g['id'] not in titled_total_ids] if len(groups) > len(titled_total_ids) else list(groups)
+    # A group literally titled "Total" is never an arm, whatever else the measure posts: it is kept out
+    # of arm matching and out of the arm sum (`is_total_group` is True for it unconditionally). When
+    # every posted group is titled Total (e.g. a single-group measure reporting the whole analysed
+    # population), there is no arm to align: `arm_groups_state = 'no_arm_groups'` records that, and
+    # `analysed_total` is read from the Total group's own count below rather than from an empty arm sum.
+    non_total_groups = [g for g in groups if g['id'] not in titled_total_ids]
+    if not groups:
+        arm_groups_state = 'no_groups'
+    elif not non_total_groups:
+        arm_groups_state = 'no_arm_groups'
+    else:
+        arm_groups_state = 'arm_groups_present'
 
     if not groups:
         return {
             'denom_state': 'no_groups',
+            'arm_groups_state': arm_groups_state,
             'reported_units': [],
             'og_denominators': [],
             'analysed_total': None,
@@ -730,10 +750,11 @@ def _extract_measure_denominators(m: dict[str, Any], measure_index: int) -> dict
     if not denoms:
         return {
             'denom_state': 'denoms_absent',
+            'arm_groups_state': arm_groups_state,
             'reported_units': [],
             'og_denominators': [
                 {'group_id': g['id'], 'title': g.get('title'), 'description': g.get('description'),
-                 'is_total_group': g['id'] in titled_total_ids and len(groups) > len(titled_total_ids),
+                 'is_total_group': g['id'] in titled_total_ids,
                  'count': None, 'raw_value': None}
                 for g in groups
             ],
@@ -747,10 +768,11 @@ def _extract_measure_denominators(m: dict[str, Any], measure_index: int) -> dict
         deviations = _detect_class_denom_deviations(m, measure_index, units_seen[0] if units_seen else None, {})
         return {
             'denom_state': 'unit_not_participants',
+            'arm_groups_state': arm_groups_state,
             'reported_units': units_seen,
             'og_denominators': [
                 {'group_id': g['id'], 'title': g.get('title'), 'description': g.get('description'),
-                 'is_total_group': g['id'] in titled_total_ids and len(groups) > len(titled_total_ids),
+                 'is_total_group': g['id'] in titled_total_ids,
                  'count': None, 'raw_value': None}
                 for g in groups
             ],
@@ -771,26 +793,41 @@ def _extract_measure_denominators(m: dict[str, Any], measure_index: int) -> dict
             'group_id': g['id'],
             'title': g.get('title'),
             'description': g.get('description'),
-            'is_total_group': g['id'] in titled_total_ids and len(groups) > len(titled_total_ids),
+            'is_total_group': g['id'] in titled_total_ids,
             'count': plain_num(num_by_gid.get(g['id'])),
             'raw_value': raw_by_gid.get(g['id']),
         }
         for g in groups
     ]
 
-    arm_vals = [num_by_gid.get(g['id']) for g in non_total_groups]
-    if any(v is None for v in arm_vals):
-        denom_state = 'incomplete_or_non_numeric'
-        analysed_total: int | float | None = None
+    analysed_total: int | float | None
+    if arm_groups_state == 'no_arm_groups':
+        # Every posted group is titled Total, so the analysed population is that Total group's own
+        # count (summing the empty arm list would coerce absence to 0). Two or more Total-titled
+        # groups with no arm leave no single total to read: neither summed (they may overlap) nor
+        # resolved by position, the measure is recorded as `multiple_total_groups` with no total.
+        if len(groups) > 1:
+            denom_state = 'multiple_total_groups'
+            analysed_total = None
+        else:
+            total_val = num_by_gid.get(groups[0]['id'])
+            denom_state = 'ok' if total_val is not None else 'incomplete_or_non_numeric'
+            analysed_total = plain_num(total_val)
     else:
-        denom_state = 'ok'
-        analysed_total = plain_num(sum(v for v in arm_vals if v is not None))
+        arm_vals = [num_by_gid.get(g['id']) for g in non_total_groups]
+        if any(v is None for v in arm_vals):
+            denom_state = 'incomplete_or_non_numeric'
+            analysed_total = None
+        else:
+            denom_state = 'ok'
+            analysed_total = plain_num(sum(v for v in arm_vals if v is not None))
 
     deviations = _detect_class_denom_deviations(
         m, measure_index, (part_row.get('units') or '').strip(), num_by_gid
     )
     return {
         'denom_state': denom_state,
+        'arm_groups_state': arm_groups_state,
         'reported_units': units_seen,
         'og_denominators': og_rows,
         'analysed_total': analysed_total,
@@ -1805,18 +1842,32 @@ def inspect_study(
             og_counts = {g['group_id']: g['count'] for g in non_total_ogs}
             og_titles = {g['group_id']: g.get('title') for g in non_total_ogs}
 
-            bg_alignment = align_ogs_to_target_groups(non_total_ogs, non_total_bg, 'baselineCharacteristicsModule')
-            fg_alignment = align_ogs_to_target_groups(non_total_ogs, non_total_fg, 'participantFlowModule')
+            # Only arm (non-Total) OGs are aligned. A measure with none (`no_arm_groups`: every group
+            # is titled Total; `no_groups`: no group posted) has nothing to align, so both alignments
+            # are recorded as None with the reason in `arm_groups_state`; such a measure adds no OG
+            # to any alignment count, extra-cohort flag, or attrition contrast.
+            arm_groups_state = denom_info['arm_groups_state']
+            bg_alignment: dict[str, Any] | None = None
+            fg_alignment: dict[str, Any] | None = None
+            if arm_groups_state == 'arm_groups_present':
+                bg_alignment = align_ogs_to_target_groups(non_total_ogs, non_total_bg, 'baselineCharacteristicsModule')
+                fg_alignment = align_ogs_to_target_groups(non_total_ogs, non_total_fg, 'participantFlowModule')
+            bg_og_alignments: list[dict[str, Any]] = bg_alignment['og_alignments'] if bg_alignment is not None else []
+            fg_og_alignments: list[dict[str, Any]] = fg_alignment['og_alignments'] if fg_alignment is not None else []
+            bg_matched_ids: list[str] = bg_alignment['matched_target_ids'] if bg_alignment is not None else []
+            bg_unmatched: list[dict[str, Any]] = (
+                bg_alignment['unmatched_target_groups'] if bg_alignment is not None else []
+            )
 
-            all_bg_matched_across_primaries.update(bg_alignment['matched_target_ids'])
+            all_bg_matched_across_primaries.update(bg_matched_ids)
             measure_pooled_bg_ids = {
                 cid
-                for al in bg_alignment['og_alignments']
+                for al in bg_og_alignments
                 if al['state'] in ('pooled_or_subset_suspected', 'ambiguous_duplicate_titles')
                 for cid in al['candidate_target_ids']
             }
             all_bg_pooled_candidates_across_primaries.update(measure_pooled_bg_ids)
-            if bg_alignment['matched_target_ids']:
+            if bg_matched_ids:
                 any_og_matched_bg = True
 
             # Per-measure extra baseline cohort flag: non-Total BGs neither uniquely matched nor
@@ -1824,17 +1875,17 @@ def inspect_study(
             # outnumber non-Total OGs on a populated measure.
             n_nt_bg = len(non_total_bg) if non_total_bg else 0
             measure_unaccounted_bg = [
-                g for g in bg_alignment['unmatched_target_groups']
+                g for g in bg_unmatched
                 if g['group_id'] not in measure_pooled_bg_ids
             ]
             measure_has_extra_bg = bool(
                 non_total_ogs
                 and measure_unaccounted_bg
-                and (bool(bg_alignment['matched_target_ids']) or n_nt_bg > len(non_total_ogs))
+                and (bool(bg_matched_ids) or n_nt_bg > len(non_total_ogs))
             )
 
-            bg_align_map = {a['og_id']: a for a in bg_alignment['og_alignments']}
-            fg_align_map = {a['og_id']: a for a in fg_alignment['og_alignments']}
+            bg_align_map = {a['og_id']: a for a in bg_og_alignments}
+            fg_align_map = {a['og_id']: a for a in fg_og_alignments}
 
             analysis_rows, contrast_summary, c_attr = _inspect_measure_contrasts_and_analyses(
                 m, mi, og_counts, og_titles, bg_align_map, fg_align_map, bg_counts, fg_started_counts
@@ -1893,6 +1944,7 @@ def inspect_study(
                 'time_frame': m.get('timeFrame') if isinstance(m.get('timeFrame'), str) else None,
                 'population_description': pop_desc if isinstance(pop_desc, str) else None,
                 'denom_state': denom_info['denom_state'],
+                'arm_groups_state': arm_groups_state,
                 'reported_denom_units': denom_info['reported_units'],
                 'og_denominators': denom_info['og_denominators'],
                 'analysed_total': an_val,
@@ -1936,17 +1988,32 @@ def inspect_study(
         )
         extra_bg_list = unaccounted_bg_all if extra_bg_flag else []
 
+        # Alignment is None on a measure with no arm OG (`arm_groups_state`), which contributes no OG.
         bg_state_counts = {
-            s: sum(1 for pm in primary_out for a in pm['og_to_bg_alignment']['og_alignments'] if a['state'] == s)
+            s: sum(
+                1 for pm in primary_out
+                for a in (pm['og_to_bg_alignment'] or {}).get('og_alignments') or []
+                if a['state'] == s
+            )
             for s in ARM_ALIGNMENT_STATES
         }
         fg_state_counts = {
-            s: sum(1 for pm in primary_out for a in pm['og_to_fg_alignment']['og_alignments'] if a['state'] == s)
+            s: sum(
+                1 for pm in primary_out
+                for a in (pm['og_to_fg_alignment'] or {}).get('og_alignments') or []
+                if a['state'] == s
+            )
             for s in ARM_ALIGNMENT_STATES
         }
         arm_alignment_summary = {
             'n_primary_measures': len(primary_out),
-            'n_primary_measure_ogs': sum(len(pm['og_to_bg_alignment']['og_alignments']) for pm in primary_out),
+            'n_primary_measure_ogs': sum(
+                len((pm['og_to_bg_alignment'] or {}).get('og_alignments') or []) for pm in primary_out
+            ),
+            'primary_measure_arm_group_state_counts': {
+                s: sum(1 for pm in primary_out if pm['arm_groups_state'] == s)
+                for s in MEASURE_ARM_GROUP_STATES
+            },
             'og_to_bg_state_counts': bg_state_counts,
             'og_to_fg_state_counts': fg_state_counts,
             'extra_baseline_groups_outside_primary': extra_bg_flag,

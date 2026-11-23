@@ -29,6 +29,8 @@ it modifies no weekly dataset or existing `outcomes/` cohort.
    - Outcome groups (`OG`, excluding any group titled `"Total"`) are matched to non-Total
      `baselineCharacteristicsModule.groups` (`BG`) and `participantFlowModule.groups` (`FG`)
      **strictly by normalized non-empty title/description equivalence**.
+   - A group titled `"Total"` is never an arm, including when it is a measure's only group: it is
+     never aligned and never counted in `primary_measure_ogs` (see `arm_groups_state` below).
    - Array position (`OG000 == BG000`) and participant count equality (`n == n`) are **never** used
      to align arms or resolve duplicate titles.
    - Arm-specific attrition and `abs_differential_attrition` are computed **only** when both `OG`s
@@ -61,9 +63,19 @@ it modifies no weekly dataset or existing `outcomes/` cohort.
 - **Primary outcome measures (`primary_measures[]`)**:
   - Preserves `title`, `type` (`"PRIMARY"`), `unitOfMeasure`, `paramType`, `dispersionType`,
     `timeFrame`, and `populationDescription` verbatim.
-  - Extracts measure-level `Participants` denominator per `OG` (`og_denominators`) and
-    `analysed_total` (`MEASURE_DENOM_STATES`: `ok`, `denoms_absent`, `unit_not_participants`,
-    `no_groups`, `incomplete_or_non_numeric`).
+  - Extracts measure-level `Participants` denominator per `OG` (`og_denominators`, with
+    `is_total_group` true for every group titled `"Total"`) and `analysed_total`
+    (`MEASURE_DENOM_STATES`: `ok`, `denoms_absent`, `unit_not_participants`, `no_groups`,
+    `incomplete_or_non_numeric`, `multiple_total_groups`). `analysed_total` sums the non-Total
+    `OG`s; when every posted `OG` is titled `"Total"` it is that single Total group's own count, and
+    with two or more Total-titled groups and no arm it is `None` with `multiple_total_groups` (never
+    a sum of Totals, never a pick by position).
+  - **`arm_groups_state`** (`MEASURE_ARM_GROUP_STATES`): `arm_groups_present` (at least one
+    non-Total `OG`), `no_arm_groups` (every posted `OG` is titled `"Total"`), `no_groups` (no `OG`
+    posted). Only `arm_groups_present` measures are aligned; the other two carry
+    `og_to_bg_alignment = None` and `og_to_fg_alignment = None` rather than an empty or
+    `no_title_match` alignment. Counted per measure in `summary.json`
+    `state_breakdowns.primary_measure_arm_groups`.
   - **`class_denom_deviations`**: Compares every `classes[].denoms[]` row against measure-level
     `denoms`, recording exact JSON path, unit mismatches (`unit_differs`), and signed per-`OG`
     differences (`class_minus_measure`).
@@ -83,6 +95,10 @@ Each non-Total `OG` on a `PRIMARY` measure is classified into one of five mutual
 | `pooled_or_subset_suspected` | No exact unique match, and an `OG` or target label carries pooling/subset cues (`pooled`, `combined`, `completers`, `per-protocol`, `subgroup`, etc.) or embeds another arm's normalized title. |
 | `no_title_match` | Target module has non-Total groups, with no title/description equivalence or pooling/subset cue. |
 | `module_groups_absent` | Target module (`BG` or `FG`) is absent or has zero non-Total groups. |
+
+A measure with no non-Total `OG` (`arm_groups_state` `no_arm_groups` or `no_groups`) is not aligned:
+it adds no `OG` to these states, to `n_primary_measure_ogs`, to the extra-cohort flags, or to any
+attrition contrast.
 
 - **`extra_baseline_groups_outside_primary`**: Flags non-Total `BG` cohorts (such as open-label
   run-in cohorts, non-randomized cohorts, or Part 1 lead-in arms) that have no aligned or pooled
