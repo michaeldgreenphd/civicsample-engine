@@ -160,7 +160,11 @@ Trials without posted results receive `state = "not_applicable_no_posted_results
 ### 3.2 Historical Study-Version Snapshots (`version_history`)
 
 Supports an optional frozen `jsonl.gz` archive keyed by `nct_id` carrying initial or pre-completion
-`primaryOutcomes` (and optional `secondaryOutcomes`).
+`primaryOutcomes` (and optional `secondaryOutcomes`). Every row must record its primary list: a row
+whose `primaryOutcomes` is absent or null (flat, under `protocolSection.outcomesModule`, or under a
+top-level `outcomesModule`, including a nested row with no `outcomesModule`) is refused with
+`HistoryArchiveError` rather than read as an empty registration; `[]` records a version that
+registered none.
 
 - Record states (`VERSION_HISTORY_STATES`): `history_archive_not_provided` (cleanly recorded with
   `diffs = None` when no archive is supplied), `trial_not_in_history_archive`, `evaluated`,

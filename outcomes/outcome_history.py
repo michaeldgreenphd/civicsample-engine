@@ -367,13 +367,25 @@ def _parse_history_entry(raw: dict[str, Any], line_no: int) -> tuple[str, dict[s
     snapshot_kind = raw.get('snapshot_kind') or raw.get('version_kind') or 'historical_snapshot'
     version_date = raw.get('version_date') or raw.get('submitted_date') or raw.get('snapshot_date')
 
+    # In every shape the historical primary list must be recorded: an absent outcomesModule, an
+    # absent primaryOutcomes key, or a null value is an unrecorded list, not an empty one, and reading
+    # it as [] would turn every current primary outcome into `primary_added`. A version that genuinely
+    # registered no primary outcome is written as `primaryOutcomes: []`, which is accepted.
+    om_path: str | None = None
     if isinstance(raw.get('protocolSection'), dict):
-        om = raw['protocolSection'].get('outcomesModule') or {}
+        om_path = 'protocolSection.outcomesModule'
+        om = raw['protocolSection'].get('outcomesModule')
+        if om is None:
+            raise HistoryArchiveError(
+                f'{nct} (line {line_no}): historical snapshot has no {om_path}; '
+                f'record {om_path}.primaryOutcomes ([] if the version registered none)'
+            )
         if not isinstance(om, dict):
-            raise HistoryArchiveError(f'{nct} (line {line_no}): protocolSection.outcomesModule is not an object')
+            raise HistoryArchiveError(f'{nct} (line {line_no}): {om_path} is not an object')
         prim_raw = om.get('primaryOutcomes')
         sec_raw = om.get('secondaryOutcomes')
     elif isinstance(raw.get('outcomesModule'), dict):
+        om_path = 'outcomesModule'
         om = raw['outcomesModule']
         prim_raw = om.get('primaryOutcomes')
         sec_raw = om.get('secondaryOutcomes')
@@ -386,10 +398,15 @@ def _parse_history_entry(raw: dict[str, Any], line_no: int) -> tuple[str, dict[s
                 break
         prim_raw = container.get('primaryOutcomes') if 'primaryOutcomes' in container else container.get('primary_outcomes')
         sec_raw = container.get('secondaryOutcomes') if 'secondaryOutcomes' in container else container.get('secondary_outcomes')
-        if prim_raw is None and 'primaryOutcomes' not in container and 'primary_outcomes' not in container:
+        if prim_raw is None:
             raise HistoryArchiveError(
                 f'{nct} (line {line_no}): historical snapshot must supply primaryOutcomes (or protocolSection.outcomesModule)'
             )
+    if om_path is not None and prim_raw is None:
+        raise HistoryArchiveError(
+            f'{nct} (line {line_no}): historical snapshot must supply {om_path}.primaryOutcomes '
+            '([] if the version registered none)'
+        )
 
     try:
         prim_items = _extract_outcome_items(prim_raw, 'measure')

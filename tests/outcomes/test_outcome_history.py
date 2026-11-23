@@ -294,6 +294,53 @@ def test_history_archive_supports_nested_protocol_section_and_refuses_tampering(
         OH.load_history_archive(p_bad_id)
 
 
+_ID_404 = {'nctId': 'NCT99000404'}
+_SEC_ONLY = {'secondaryOutcomes': [{'measure': 'Change in Body Weight', 'timeFrame': 'Week 24'}]}
+
+
+@pytest.mark.parametrize(
+    'row',
+    [
+        {'protocolSection': {'identificationModule': _ID_404}, 'version_date': '2020-01-01'},
+        {'protocolSection': {'identificationModule': _ID_404, 'outcomesModule': _SEC_ONLY}},
+        {'protocolSection': {'identificationModule': _ID_404, 'outcomesModule': {'primaryOutcomes': None}}},
+        {'nct_id': 'NCT99000404', 'outcomesModule': _SEC_ONLY},
+        {'nct_id': 'NCT99000404', 'primaryOutcomes': None},
+    ],
+    ids=[
+        'nested_without_outcomes_module',
+        'nested_outcomes_module_without_primary',
+        'nested_null_primary',
+        'top_level_outcomes_module_without_primary',
+        'flat_null_primary',
+    ],
+)
+def test_history_archive_refuses_an_unrecorded_primary_list(tmp_path: Path, row: dict[str, Any]) -> None:
+    # Regression: an unrecorded historical primary list used to read as an empty registration, so
+    # every current primary outcome became `primary_added`.
+    path = _write_history_archive(tmp_path / 'unrecorded.jsonl.gz', [row], with_meta=False)
+    with pytest.raises(OH.HistoryArchiveError, match=r'NCT99000404 \(line 1\): .*primaryOutcomes'):
+        OH.load_history_archive(path)
+
+
+def test_history_archive_accepts_a_recorded_empty_primary_list(tmp_path: Path) -> None:
+    path = _write_history_archive(
+        tmp_path / 'empty.jsonl.gz',
+        [
+            {'protocolSection': {'identificationModule': {'nctId': 'NCT99000405'}, 'outcomesModule': {'primaryOutcomes': []}}},
+            {'nct_id': 'NCT99000406', 'outcomesModule': {'primaryOutcomes': []}},
+        ],
+        with_meta=False,
+    )
+    snaps, meta = OH.load_history_archive(path)
+    assert meta['n_records'] == 2
+    assert snaps['NCT99000405']['primary_outcomes'] == [] and snaps['NCT99000406']['primary_outcomes'] == []
+    out = OH.inspect_outcome_history(_make_study('NCT99000405'), 'posted', history_snapshots=snaps)
+    assert out['version_history_state'] == 'evaluated'
+    assert out['version_history']['n_historical_primary'] == 0
+    assert out['version_history']['state_counts']['primary_added'] == 1
+
+
 def test_jsonl_readers_preserve_unicode_line_separators_when_ensure_ascii_is_false(tmp_path: Path) -> None:
     """Regression: U+2028, U+2029, U+0085, \\x0b, and \\x0c inside `ensure_ascii=False` JSONL
     strings must never split a line mid-JSON-string."""
