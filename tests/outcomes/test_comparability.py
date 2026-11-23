@@ -265,9 +265,44 @@ def test_denominator_funnel_exact_differences_ratios_and_class_deviations() -> N
     assert dev['class_index'] == 0
     assert dev['json_path'] == 'resultsSection.outcomeMeasuresModule.outcomeMeasures[0].classes[0].denoms[0]'
     assert dev['group_deviations'] == [
-        {'group_id': 'OG000', 'measure_count': 95, 'class_count': 97, 'raw_class_value': '97', 'class_minus_measure': 2},
-        {'group_id': 'OG001', 'measure_count': 85, 'class_count': 90, 'raw_class_value': '90', 'class_minus_measure': 5},
+        {'group_id': 'OG000', 'measure_count': 95, 'class_count': 97, 'raw_class_value': '97', 'class_minus_measure': 2,
+         'reason': 'counts_differ'},
+        {'group_id': 'OG001', 'measure_count': 85, 'class_count': 90, 'raw_class_value': '90', 'class_minus_measure': 5,
+         'reason': 'counts_differ'},
     ]
+
+
+def test_class_denom_row_omitting_a_measure_group_is_a_deviation_not_agreement() -> None:
+    # Regression: only the class row's own counts were compared, so a same-unit class row with a
+    # matching OG000 count and no OG001 count read as full agreement (no deviation recorded).
+    def _class(title: str, counts: list[dict[str, str]]) -> dict[str, Any]:
+        return {'title': title, 'denoms': [{'units': 'Participants', 'counts': counts}],
+                'categories': [{'measurements': _counts(('-0.6', '-0.1', '-0.4'), 'OG')}]}
+
+    pm = make_primary_measure(
+        og_titles=('Zorbatinib 10 mg', 'Placebo', 'Total'),
+        og_counts=('95', '85', '180'),
+        classes=[
+            _class('Week 12', [{'groupId': 'OG000', 'value': '95'}]),
+            _class('Week 24', _counts(('95', '85'), 'OG')),
+            _class('Week 36', _counts(('95', '85', '180'), 'OG')),
+            _class('Week 48', _counts(('95', 'NA', '180'), 'OG')),
+        ],
+    )
+    pm_out = C.inspect_study(make_study(44, measures=[pm]))['primary_measures'][0]
+    assert pm_out['has_class_denom_deviation'] is True
+    by_class = {d['class_index']: d['group_deviations'] for d in pm_out['class_denom_deviations']}
+    missing = {'measure_count': None, 'class_count': None, 'raw_class_value': None,
+               'class_minus_measure': None, 'reason': 'class_count_missing'}
+    assert by_class[0] == [
+        {**missing, 'group_id': 'OG001', 'measure_count': 85},
+        {**missing, 'group_id': 'OG002', 'measure_count': 180},
+    ]
+    # A Total-titled group is compared like any other group: omitting it is a deviation too.
+    assert by_class[1] == [{**missing, 'group_id': 'OG002', 'measure_count': 180}]
+    # A class row restating every group with the measure's counts is agreement.
+    assert 2 not in by_class
+    assert [(g['group_id'], g['reason']) for g in by_class[3]] == [('OG001', 'class_count_not_numeric')]
 
 
 def test_denominator_funnel_handles_no_total_column_flow_absent_and_non_participant_units() -> None:

@@ -78,7 +78,11 @@ it modifies no weekly dataset or existing `outcomes/` cohort.
     `state_breakdowns.primary_measure_arm_groups`.
   - **`class_denom_deviations`**: Compares every `classes[].denoms[]` row against measure-level
     `denoms`, recording exact JSON path, unit mismatches (`unit_differs`), and signed per-`OG`
-    differences (`class_minus_measure`).
+    differences (`class_minus_measure`). Each per-`OG` entry carries a `reason`
+    (`CLASS_DENOM_DEVIATION_REASONS`: `counts_differ`, `class_count_missing`,
+    `class_count_not_numeric`, `measure_count_not_numeric`). A group the measure-level row counts
+    and a same-unit class row omits is `class_count_missing`, never agreement; Total-titled groups
+    are compared like any other group, since this checks posted denominators, not arms.
   - **Funnel arithmetic**: `baseline_minus_period1_started`, `baseline_over_period1_started`,
     `analysed_minus_baseline_total`, `analysed_minus_period1_started`,
     `analysed_over_period1_started`, and `analysed_over_baseline_total`.

@@ -70,6 +70,14 @@ MEASURE_ARM_GROUP_STATES = (
     'no_groups',
 )
 
+# Why one group's count in a same-unit `classes[].denoms[]` row deviates from the measure-level row.
+CLASS_DENOM_DEVIATION_REASONS = (
+    'counts_differ',
+    'class_count_missing',
+    'class_count_not_numeric',
+    'measure_count_not_numeric',
+)
+
 ARM_ALIGNMENT_STATES = (
     'exact_unique_title_match',
     'ambiguous_duplicate_titles',
@@ -863,10 +871,12 @@ def _detect_class_denom_deviations(
             )
             group_diffs: list[dict[str, Any]] = []
             if not unit_differs:
+                class_gids: set[str] = set()
                 for c in d.get('counts') or []:
                     if not isinstance(c, dict) or not isinstance(c.get('groupId'), str):
                         continue
                     gid = c['groupId']
+                    class_gids.add(gid)
                     cl_val = num(c.get('value'))
                     m_val = measure_counts.get(gid)
                     if cl_val is None and m_val is None:
@@ -877,6 +887,7 @@ def _detect_class_denom_deviations(
                                 'class_count': None,
                                 'raw_class_value': c.get('value'),
                                 'class_minus_measure': None,
+                                'reason': 'class_count_not_numeric',
                             })
                     elif cl_val is None or m_val is None or abs(cl_val - m_val) > 1e-9:
                         group_diffs.append({
@@ -887,6 +898,26 @@ def _detect_class_denom_deviations(
                             'class_minus_measure': (
                                 plain_num(cl_val - m_val) if cl_val is not None and m_val is not None else None
                             ),
+                            'reason': (
+                                'class_count_not_numeric' if cl_val is None
+                                else 'measure_count_not_numeric' if m_val is None
+                                else 'counts_differ'
+                            ),
+                        })
+                # A group the measure-level row counts but this class row omits is a deviation, not
+                # agreement: the class row states no denominator for it. Every group of the measure
+                # row is compared, Total-titled groups included: this checks posted denominators, not
+                # arm identity (a differing Total count is likewise a deviation above). As for an entry
+                # present on both sides, a group with no numeric count on either side is not one.
+                for gid, m_val in measure_counts.items():
+                    if gid not in class_gids and m_val is not None:
+                        group_diffs.append({
+                            'group_id': gid,
+                            'measure_count': plain_num(m_val),
+                            'class_count': None,
+                            'raw_class_value': None,
+                            'class_minus_measure': None,
+                            'reason': 'class_count_missing',
                         })
             if unit_differs or group_diffs:
                 deviations.append({

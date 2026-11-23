@@ -1249,6 +1249,7 @@ def build(
             'baseline_total_states': list(C.BASELINE_TOTAL_STATES),
             'measure_denom_states': list(C.MEASURE_DENOM_STATES),
             'measure_arm_group_states': list(C.MEASURE_ARM_GROUP_STATES),
+            'class_denom_deviation_reasons': list(C.CLASS_DENOM_DEVIATION_REASONS),
             'arm_alignment_states': list(C.ARM_ALIGNMENT_STATES),
             'missing_data_states': list(C.MISSING_DATA_STATES),
             'intercurrent_event_states': list(C.INTERCURRENT_EVENT_STATES),
@@ -1399,6 +1400,10 @@ def check(files: dict[str, Any]) -> list[str]:
         for pm in r.get('primary_measures') or []:
             if pm.get('denom_state') not in C.MEASURE_DENOM_STATES:
                 p.append(f'{n}: invalid denom_state on primary measure')
+            for dev in pm.get('class_denom_deviations') or []:
+                for gd in dev.get('group_deviations') or []:
+                    if gd.get('reason') not in C.CLASS_DENOM_DEVIATION_REASONS:
+                        p.append(f'{n}: invalid class denom deviation reason {gd.get("reason")!r}')
             # A group titled Total is never an arm: only non-Total OGs are aligned, and a measure with
             # none carries None alignments with the reason in `arm_groups_state`.
             og_dens = pm.get('og_denominators') or []
