@@ -73,6 +73,9 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 # study response record (a raw log acquired for another NCT list): run the ctgov stage for it first.
 # freeze-local refuses an --nct-list ID absent from the local records instead of recording a 404,
 # refuses a trial that appears more than once with different records (identical copies are fine),
+# refuses a study record that is not a valid CT.gov v2 study with an NCT ID (rather than freezing a
+# smaller batch), refuses a --data-timestamp more than 14 hours after --fetched-at (CT.gov states no
+# zone for dataTimestamp, so the largest real UTC offset is allowed),
 # and needs a new or empty --cache, so no earlier CT.gov version or other source's record is mixed in.
 # They also refuse openFDA drug-query records made with an earlier query form: re-run the openfda stage.
 # A CT.gov answer whose record is a different trial (its own nctId differs from the one requested, as an

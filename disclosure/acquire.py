@@ -986,8 +986,13 @@ def fetch_openfda(
 
 # ---------------------------------------------------------------- local offline seeding
 
-def _iter_studies_from_local_file(path: Path) -> Iterable[dict[str, Any]]:
-    """Yield raw CT.gov v2 study dicts from `.json`, `.json.gz`, `.jsonl`, or `.jsonl.gz`."""
+def _iter_studies_from_local_file(path: Path) -> Iterable[Any]:
+    """Yield raw CT.gov v2 study dicts from `.json`, `.json.gz`, `.jsonl`, or `.jsonl.gz`.
+
+    Every entry of a `studies` list, or of a top-level list, is yielded whatever its shape, since each
+    is meant to be a study: the caller refuses a malformed one rather than letting it drop out. A
+    top-level object that is not a study or study envelope (a version or other log line) is skipped.
+    """
     name = path.name
     is_gz = name.endswith('.gz')
     is_jsonl = '.jsonl' in name
@@ -1002,30 +1007,22 @@ def _iter_studies_from_local_file(path: Path) -> Iterable[dict[str, Any]]:
             elif isinstance(obj, dict) and isinstance(obj.get('body'), str):
                 inner = json.loads(obj['body'])
                 if isinstance(inner, dict) and isinstance(inner.get('studies'), list):
-                    for st in inner['studies']:
-                        if isinstance(st, dict) and 'protocolSection' in st:
-                            yield st
+                    yield from inner['studies']
             elif isinstance(obj, dict) and isinstance(obj.get('body'), dict):
                 body = obj['body']
                 if 'protocolSection' in body:
                     yield body
                 elif isinstance(body.get('studies'), list):
-                    for st in body['studies']:
-                        if isinstance(st, dict) and 'protocolSection' in st:
-                            yield st
+                    yield from body['studies']
         return
 
     parsed = json.loads(raw.decode('utf-8'))
     if isinstance(parsed, dict) and 'protocolSection' in parsed:
         yield parsed
     elif isinstance(parsed, dict) and isinstance(parsed.get('studies'), list):
-        for st in parsed['studies']:
-            if isinstance(st, dict) and 'protocolSection' in st:
-                yield st
+        yield from parsed['studies']
     elif isinstance(parsed, list):
-        for st in parsed:
-            if isinstance(st, dict) and 'protocolSection' in st:
-                yield st
+        yield from parsed
 
 
 def ingest_local_ctgov_records(
@@ -1073,6 +1070,16 @@ def ingest_local_ctgov_records(
     ):
         if problem:
             raise ValueError(problem)
+    # Records retrieved at `fetched_at` cannot reflect a CT.gov refresh after it, and the data
+    # timestamp becomes the build's default `as_of`. CT.gov states no time zone for dataTimestamp, so it
+    # is compared as if UTC with the largest real UTC offset (14 hours) allowed: no possible pair is
+    # refused, and a data timestamp more than that after retrieval (a later day's refresh) is.
+    fetched_utc = datetime.fromisoformat(fetched_at).astimezone(timezone.utc).replace(tzinfo=None)
+    if datetime.fromisoformat(data_timestamp) - timedelta(hours=14) > fetched_utc:
+        raise ValueError(
+            f'data_timestamp {data_timestamp!r} is later than fetched_at {fetched_at!r}: records retrieved '
+            'then cannot reflect a later CT.gov refresh'
+        )
     if cache_dir.exists() and (not cache_dir.is_dir() or any(cache_dir.iterdir())):
         raise CacheIntegrityError(
             f'{cache_dir}: a local freeze needs a new or empty cache directory, so no earlier CT.gov version, '
@@ -1105,9 +1112,14 @@ def ingest_local_ctgov_records(
     # the Nth new ID, and stopping there would freeze whichever snapshot sorted first. Trials beyond
     # the limit are only skipped, never compared or frozen.
     limit_reached = False
+    # A study record that is not a valid CT.gov v2 study (no protocolSection object, identification
+    # module or NCT ID) is refused, not skipped: skipping it froze a smaller batch than the one
+    # supplied, with nothing reported (with `--nct-list` only a listed trial's absence was caught).
+    malformed: list[str] = []
     for file_path in files:
-        for st in _iter_studies_from_local_file(file_path):
+        for position, st in enumerate(_iter_studies_from_local_file(file_path), start=1):
             if not ctgov_study_valid(st):
+                malformed.append(f'{file_path.name} study {position}')
                 continue
             nct_id = st['protocolSection']['identificationModule']['nctId']
             if wanted is not None and nct_id not in wanted:
@@ -1120,6 +1132,11 @@ def ingest_local_ctgov_records(
                 limit_reached = limit is not None and wanted is None and len(studies) >= limit
             elif canonical_json_bytes(st) != canonical_json_bytes(studies[nct_id]):
                 conflicting.setdefault(nct_id, (first_seen_in[nct_id], file_path))
+    if malformed:
+        raise ValueError(
+            f'{source_path}: {len(malformed)} study record(s) are not valid CT.gov v2 study records with an '
+            f'NCT ID (first: {malformed[0]}); fix or remove them rather than freeze a smaller batch'
+        )
     if conflicting:
         first_id = sorted(conflicting)[0]
         first_a, first_b = conflicting[first_id]

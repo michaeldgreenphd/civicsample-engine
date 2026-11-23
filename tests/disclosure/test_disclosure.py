@@ -316,6 +316,65 @@ def test_an_edited_archive_sidecar_is_refused_at_load(
             A.load_frozen_cache(cache)
 
 
+@pytest.mark.parametrize(
+    ('layout', 'bad'),
+    [
+        ('file', {'protocolSection': {'identificationModule': {'briefTitle': 'no NCT ID'}}}),
+        ('file', {'protocolSection': 'projected'}),
+        ('list', 'NCT09990005'),
+        ('list', {'hasResults': False}),
+    ],
+)
+@pytest.mark.parametrize('with_nct_list', [False, True])
+def test_freeze_local_refuses_malformed_study_records_instead_of_dropping_them(
+    tmp_path: Path, layout: str, bad: Any, with_nct_list: bool
+) -> None:
+    # A malformed record was skipped, so the batch froze smaller than supplied with nothing reported.
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'a.json').write_text(json.dumps(F.STUDIES['NCT09990004']), encoding='utf-8')
+    if layout == 'file':
+        (local_src / 'b.json').write_text(json.dumps(bad), encoding='utf-8')
+        where = 'b.json study 1'
+    else:
+        (local_src / 'b.json').write_text(json.dumps({'studies': [F.STUDIES['NCT09990005'], bad]}), encoding='utf-8')
+        where = 'b.json study 2'
+    ids = {'nct_ids': ['NCT09990004']} if with_nct_list else {}
+    cache = tmp_path / 'cache'
+    with pytest.raises(ValueError, match=rf'1 study record\(s\) are not valid .*\(first: {re.escape(where)}\)'):
+        A.ingest_local_ctgov_records(local_src, cache, **ids, **LOCAL_STAMPS)
+    assert not (cache / 'manifest.json').exists()
+    # Control: without the malformed record the batch freezes.
+    (local_src / 'b.json').unlink()
+    A.ingest_local_ctgov_records(local_src, cache, **ids, **LOCAL_STAMPS)
+
+
+@pytest.mark.parametrize(
+    ('fetched_at', 'data_timestamp', 'ok'),
+    [
+        ('2026-11-01T12:00:00+00:00', '2026-12-01T00:00:00', False),  # a refresh a month after retrieval
+        ('2026-11-01T12:00:00+00:00', '2026-11-02T02:00:01', False),  # just over 14 hours after
+        ('2026-11-01T12:00:00+00:00', '2026-11-01T08:00:00', True),
+        ('2026-11-01T12:00:00+00:00', '2026-11-01T20:00:00', True),  # within any real UTC offset
+    ],
+)
+def test_freeze_local_refuses_a_data_timestamp_later_than_retrieval(
+    tmp_path: Path, fetched_at: str, data_timestamp: str, ok: bool
+) -> None:
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'a.json').write_text(json.dumps(F.STUDIES['NCT09990004']), encoding='utf-8')
+    cache = tmp_path / 'cache'
+    if ok:
+        A.ingest_local_ctgov_records(local_src, cache, fetched_at=fetched_at, data_timestamp=data_timestamp)
+        return
+    with pytest.raises(ValueError, match='is later than fetched_at'):
+        A.ingest_local_ctgov_records(local_src, cache, fetched_at=fetched_at, data_timestamp=data_timestamp)
+    assert not cache.exists()
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
+                           '--fetched-at', fetched_at, '--data-timestamp', data_timestamp]) == 1
+
+
 # ---------------------------------------------------------------- 3. Partial-date interval bounds
 
 @pytest.mark.parametrize(
