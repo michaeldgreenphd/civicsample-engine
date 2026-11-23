@@ -315,7 +315,8 @@ def write_studies_dir(studies: list[dict[str, Any]], target_dir: Path) -> Path:
 
 
 WEEKLY_EXTRACTED_AT: str = "2026-11-21T00:00:00+00:00"
-WEEKLY_PIPELINE_COMMIT: str = "deadbeef1234"
+# A full 40-hex commit, as `src.utils.pipeline_commit` writes (`GITHUB_SHA` or `git rev-parse HEAD`).
+WEEKLY_PIPELINE_COMMIT: str = "deadbeef1234" + "0" * 28
 
 
 def build_weekly_full_records_doc() -> dict[str, Any]:

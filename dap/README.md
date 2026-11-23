@@ -177,7 +177,16 @@ those participants. For the same reason `results_date` must be
 exactly `""` or a date `parse_partial_date_bounds` reads. The sex/gender row's
 numbers must be finite (JSON `1e309` parses as infinity and raised
 `OverflowError` in the build) and its five participant counts non-negative;
-`enrollment_minus_parsed` may be negative. `unknown_ethnicity_only`, `skipped_ethnicity_rows` and
+`enrollment_minus_parsed` may be negative. `parser_rules_version`, the only
+record of which parsing rules produced the published aggregates, must not be
+blank, and every race and ethnicity `raw_categories` entry's `omb_category`
+must be one of the block's categories (`WEEKLY_TOTAL_KEYS`): an unknown one
+emptied the categories present and published Denominator B for a
+single-category ethnicity table. The container's `extracted_at` and
+`pipeline_commit` must each be null or well formed (a whole UTC timestamp, a
+40-hex commit; `weekly_source_stamp_problem`), in the build and the contract.
+`src.utils.pipeline_commit` writes null outside a checkout, so a null stamp is
+recorded, but the site exporter refuses to publish a weekly build with one. `unknown_ethnicity_only`, `skipped_ethnicity_rows` and
 `not_hispanic_from_race_rows` postdate the 2026-11-08 extraction, so they are
 checked only when present. A missing or
 mistyped one was read as an "Unknown" sponsor, no enrollment, a block not

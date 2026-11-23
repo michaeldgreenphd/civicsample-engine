@@ -118,6 +118,25 @@ def require_git_provenance(block: Any, where: str) -> None:
         )
 
 
+def require_weekly_source_stamps(study_in: dict[str, Any]) -> None:
+    """Refuse a weekly build whose source container cannot name its extraction time and commit.
+
+    The site manifest publishes `inputs.study_records.extracted_at` and `pipeline_commit`, the stamps of
+    the `demographics.json` container the build read. `src.utils.pipeline_commit` writes null outside a
+    checkout, and the build records the null (`benchmarks.weekly_source_stamp_problem`), but such a
+    build is not published: the site's numbers could not be traced to the extraction and code that
+    produced their input. With a condition_mesh sidecar the build already requires both stamps.
+    """
+    extracted_at, pipeline_commit = study_in.get("extracted_at"), study_in.get("pipeline_commit")
+    problem = artifacts.weekly_source_stamp_problem(extracted_at, pipeline_commit)
+    if problem or extracted_at is None or pipeline_commit is None:
+        raise ValueError(
+            f"run.json: inputs.study_records extracted_at {extracted_at!r}, pipeline_commit "
+            f"{pipeline_commit!r}: a weekly build whose source container cannot name its extraction time "
+            "and producing commit is not published"
+        )
+
+
 def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
     """Project verified build artifacts onto static site files without altering counts."""
     run = loaded["run.json"]
@@ -151,6 +170,8 @@ def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
             "a --limit build is diagnostic only and is not exported to the site (rebuild without --limit)"
         )
     require_git_provenance(run.get("producer"), "run.json: producer")
+    if study_in.get("input_format") == "full_records":
+        require_weekly_source_stamps(study_in)
     exporter = exporter_info()
     require_git_provenance(exporter, "exporter")
     mesh_in = inputs.get("condition_mesh")

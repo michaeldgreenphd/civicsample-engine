@@ -16,7 +16,7 @@ import json
 import math
 import re
 from collections import Counter
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import parse_qs, urlsplit
@@ -750,6 +750,11 @@ _PARSE_ERROR_NULLABLE: frozenset[str] = frozenset(WEEKLY_OUTCOME_COLUMNS)
 _SEX_GENDER_COUNT_COLUMNS: frozenset[str] = frozenset(
     {"n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender"}
 )
+# String columns the parser never writes blank. `parser_rules_version` names the parsing rules that
+# produced the row; `extract_sex_gender` reuses it and the site export does not carry the per-trial
+# rows, so a blank one left the published aggregates unable to name their rules. All 80,890 weekly
+# rows carry `parsers.R@2026-08-17 / outcomes@2026-09-10 / units@2026-09-14`.
+_SEX_GENDER_NON_BLANK_COLUMNS: frozenset[str] = frozenset({"parser_rules_version"})
 # Entry fields `src/utils.py` always writes as non-blank strings: it keeps a site only for a location
 # with a country.
 WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {"study_sites": ("country",)}
@@ -873,6 +878,12 @@ def _demographic_child_problem(block: str, key: str, kind: str, value: Any) -> s
         for field in ("original", "omb_category") if kind == "categories" else ("original",):
             if not isinstance(entry.get(field), str):
                 return f"{at}.{field} is missing or not a string"
+        # The extractors place every counted row in one of the block's categories (the keys of
+        # `WEEKLY_TOTAL_KEYS`, which they sum into the totals). `_analyze_ethnicity_block` reads the
+        # categories present from these entries, so an unknown one (`"corrupt"`) emptied that set and
+        # turned a single-category table into `omb_compatible`, publishing Denominator B.
+        if kind == "categories" and entry["omb_category"] not in WEEKLY_TOTAL_KEYS[block]:
+            return f"{at}.omb_category {entry['omb_category']!r} is not one of the extractor's categories"
         if not _is_extractor_count(entry.get("count")):
             return f"{at}.count is missing or not a non-negative integer"
         flags = entry.get("flags")
@@ -952,6 +963,8 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
             return f"sex_gender.{column} is {value!r}, not a finite number"
         if column in _SEX_GENDER_COUNT_COLUMNS and value is not None and value < 0:
             return f"sex_gender.{column} is {value!r}, a negative count"
+        if column in _SEX_GENDER_NON_BLANK_COLUMNS and not value.strip():
+            return f"sex_gender.{column} is blank"
     row = rec["sex_gender"]
     derived = sgp.derive_outcomes(sgp.ParsedTrial(**{c: row[c] for c in _OUTCOME_INPUT_COLUMNS}), status)
     for column in WEEKLY_OUTCOME_COLUMNS:
@@ -980,6 +993,41 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
             for field in WEEKLY_REQUIRED_ENTRY_FIELDS.get(key, ()):
                 if not (isinstance(entry.get(field), str) and entry[field].strip()):
                     return f"{key}[{i}].{field} is missing or blank (src/utils.py keeps only sites with one)"
+    return None
+
+
+_GIT_COMMIT_RX: re.Pattern[str] = re.compile(r"[0-9a-f]{40}")
+
+
+def weekly_source_stamp_problem(extracted_at: Any, pipeline_commit: Any) -> str | None:
+    """Why a weekly container's provenance stamps are malformed, or `None`.
+
+    `src/extract_all.py` stamps the `demographics.json` container with `extracted_at`, the extraction
+    time (`datetime.now(timezone.utc).isoformat()`), and `pipeline_commit`, the producing commit
+    (`src.utils.pipeline_commit`: `GITHUB_SHA` in CI, else `git rev-parse HEAD`). Both are recorded as
+    run.json `inputs.study_records` and published in the site manifest, so a malformed one is refused
+    rather than carried. Either may be null: `pipeline_commit` is null when the producer ran outside a
+    checkout, and such a build is kept for local diagnostics; the site exporter refuses a weekly build
+    with a null stamp, as it refuses null git provenance of its own. The 2026-11-08 extraction carries
+    `2026-11-08T13:07:45.318831+00:00` and a 40-hex commit.
+    """
+    if extracted_at is not None:
+        parsed = None
+        if isinstance(extracted_at, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*", extracted_at):
+            try:
+                parsed = datetime.fromisoformat(extracted_at)
+            except ValueError:
+                parsed = None
+        if (
+            parsed is None
+            or parsed.utcoffset() != timedelta(0)
+            or not re.search(r"(?:Z|\+00:00)\Z", extracted_at)
+        ):
+            return f"extracted_at {extracted_at!r} is not a whole UTC timestamp (Z or +00:00)"
+    if pipeline_commit is not None and not (
+        isinstance(pipeline_commit, str) and _GIT_COMMIT_RX.fullmatch(pipeline_commit)
+    ):
+        return f"pipeline_commit {pipeline_commit!r} is not a 40-hex git commit"
     return None
 
 
@@ -1201,6 +1249,8 @@ def load_study_records(
 
     if source_kind == "full_records":
         recs, extracted_at, pipeline_commit = full_records.load(path)
+        if stamp_problem := weekly_source_stamp_problem(extracted_at, pipeline_commit):
+            raise ValueError(f"{path}: the container's {stamp_problem}")
         recs = _require_study_objects(recs, f"{path}: data")
         _require_weekly_phases(recs, f"{path}: data")
         _require_weekly_lists(recs, f"{path}: data")
@@ -1267,6 +1317,8 @@ def load_study_records(
 
     if isinstance(container, dict) and "data" in container:
         recs, extracted_at, pipeline_commit = full_records.load(path)
+        if stamp_problem := weekly_source_stamp_problem(extracted_at, pipeline_commit):
+            raise ValueError(f"{path}: the container's {stamp_problem}")
         recs = _require_study_objects(recs, f"{path}: data")
         _require_weekly_phases(recs, f"{path}: data")
         _require_weekly_lists(recs, f"{path}: data")

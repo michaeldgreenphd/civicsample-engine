@@ -1793,6 +1793,9 @@ def test_raw_records_snapshot_date_still_defaults_to_the_build_date(tmp_path: Pa
         ("n_female", float("inf"), "sex_gender.n_female is inf, not a finite number"),
         ("enrollment_minus_parsed", float("nan"), "sex_gender.enrollment_minus_parsed is nan, not a finite number"),
         ("n_male", -1.0, "sex_gender.n_male is -1.0, a negative count"),
+        # The published aggregates name their parsing rules only through this column.
+        ("parser_rules_version", "", "sex_gender.parser_rules_version is blank"),
+        ("parser_rules_version", "  ", "sex_gender.parser_rules_version is blank"),
     ],
 )
 def test_weekly_sex_gender_row_needs_every_lean_column_with_its_type(
@@ -1878,6 +1881,11 @@ def _write_weekly(weekly_doc: dict[str, Any], tmp_path: Path) -> Path:
         # `is_results_posted` reads every block's `reported` by truthiness: "false" read as posted results.
         (("sex", "reported"), "false", "sex.reported is str, not bool"),
         (("gender", "reported"), "false", "gender.reported is str, not bool"),
+        # An unknown category emptied `_analyze_ethnicity_block`'s categories present.
+        (("ethnicity", "raw_categories", 0, "omb_category"), "corrupt",
+         "ethnicity.raw_categories[0].omb_category 'corrupt' is not one of the extractor's categories"),
+        (("race", "raw_categories", 0, "omb_category"), "hispanic_latino",
+         "race.raw_categories[0].omb_category 'hispanic_latino' is not one of the extractor's categories"),
     ],
 )
 def test_weekly_race_and_ethnicity_children_need_the_extractors_kind(
@@ -2002,6 +2010,39 @@ def test_weekly_block_reported_flag_must_match_its_totals(
                "(the extractor reports a block exactly when its counts are not all zero)")
     with pytest.raises(ValueError, match=re.escape(f"(first: NCT99000402 {problem})")):
         benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")
+
+
+@pytest.mark.parametrize("source_kind", ["full_records", "auto"])
+@pytest.mark.parametrize(
+    ("key", "value", "problem"),
+    [
+        # On 96f9856 each loaded and was recorded, then published, as the source's provenance.
+        ("extracted_at", "yesterday", "extracted_at 'yesterday' is not a whole UTC timestamp (Z or +00:00)"),
+        ("extracted_at", "2026-11-08T13:07:45", "extracted_at '2026-11-08T13:07:45' is not a whole UTC timestamp"),
+        ("extracted_at", "2026-11-08T13:07:45-05:00",
+         "extracted_at '2026-11-08T13:07:45-05:00' is not a whole UTC timestamp"),
+        ("extracted_at", 7, "extracted_at 7 is not a whole UTC timestamp"),
+        ("pipeline_commit", "deadbeef1234", "pipeline_commit 'deadbeef1234' is not a 40-hex git commit"),
+        ("pipeline_commit", "", "pipeline_commit '' is not a 40-hex git commit"),
+    ],
+)
+def test_weekly_container_stamps_must_be_well_formed(
+    tmp_path: Path, source_kind: str, key: str, value: object, problem: str
+) -> None:
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc[key] = value
+    with pytest.raises(ValueError, match=re.escape(f"the container's {problem}")):
+        benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind=source_kind)
+
+
+def test_weekly_container_stamps_may_be_null_at_build(tmp_path: Path) -> None:
+    # `src.utils.pipeline_commit` writes null outside a checkout; the build records it (the exporter
+    # refuses to publish it, tests/dap/test_dap_export_site.py).
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc["pipeline_commit"] = None
+    weekly_doc["extracted_at"] = "2026-11-08T13:07:45.318831+00:00"
+    meta = benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[1]
+    assert meta["pipeline_commit"] is None and meta["extracted_at"] == "2026-11-08T13:07:45.318831+00:00"
 
 
 @pytest.mark.parametrize("value", ["corrupt", " ", "2026-02-30", "2024-10-01T00:00"])

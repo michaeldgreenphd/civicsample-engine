@@ -347,3 +347,40 @@ def test_write_failure_restores_previous_site_export(
 
     assert {p.name: p.read_bytes() for p in site_dir.iterdir()} == before
     assert sorted(p.name for p in site_dir.parent.iterdir()) == ["dap"]
+
+
+@pytest.mark.parametrize("missing", ["extracted_at", "pipeline_commit"])
+def test_weekly_build_without_source_stamps_is_built_but_not_published(tmp_path: Path, missing: str) -> None:
+    # On 96f9856 a weekly build without the condition_mesh sidecar exported with a null source stamp.
+    weekly_doc = fx.build_weekly_full_records_doc()
+    weekly_doc[missing] = None
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
+    build = tmp_path / "build"
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    assert cli_build.main(["--demographics", str(weekly_path), "--sponsor-rules", str(rules_path),
+                           "--generated-at", "2026-11-23T09:00:00Z", "--snapshot-date", "2026-11-21",
+                           "--out", str(build)]) == 0
+    loaded = artifacts.load_dir(build)
+    assert loaded["run.json"]["inputs"]["study_records"][missing] is None
+    assert artifacts.check_contract(loaded) == []
+    with pytest.raises(ValueError, match="a weekly build whose source container cannot name"):
+        site_export.export_site(build, tmp_path / "site" / "dap")
+    # The contract refuses a malformed stamp, as the build does.
+    bad = copy.deepcopy(loaded)
+    bad["run.json"]["inputs"]["study_records"]["pipeline_commit"] = "deadbeef1234"
+    assert any("pipeline_commit 'deadbeef1234' is not a 40-hex git commit" in x for x in artifacts.check_contract(bad))
+
+
+def test_weekly_build_with_both_source_stamps_is_published(tmp_path: Path) -> None:
+    weekly_path = tmp_path / "demographics.json.gz"
+    weekly_path.write_bytes(gzip.compress(json.dumps(fx.build_weekly_full_records_doc()).encode("utf-8"), mtime=0))
+    build = tmp_path / "build"
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    assert cli_build.main(["--demographics", str(weekly_path), "--sponsor-rules", str(rules_path),
+                           "--generated-at", "2026-11-23T09:00:00Z", "--snapshot-date", "2026-11-21",
+                           "--out", str(build)]) == 0
+    site_export.export_site(build, tmp_path / "site" / "dap")
+    site_run = json.loads((tmp_path / "site" / "dap" / "run.json").read_text(encoding="utf-8"))
+    assert site_run["inputs"]["study_records"]["pipeline_commit"] == fx.WEEKLY_PIPELINE_COMMIT
+    assert site_run["inputs"]["study_records"]["extracted_at"] == fx.WEEKLY_EXTRACTED_AT
