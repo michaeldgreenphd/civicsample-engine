@@ -326,6 +326,14 @@ def test_weekly_full_records_container_supported(tmp_path: Path) -> None:
     )
     assert cli_check.main([str(out_dir)]) == 0
 
+    # Weekly study_sites are truncated: no footprint class is asserted from them,
+    # so none of the five trials is counted as a US-site trial.
+    summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
+    footprint = {i["label"]: i["value"] for i in summary["breakdowns"]["site_footprint_class"]}
+    assert footprint == {fp: (5 if fp == "footprint_unknown" else 0) for fp in benchmarks.SITE_FOOTPRINT_CLASSES}
+    assert summary["denominators"]["us_site_trials"]["n"] == 0
+    assert summary["denominators"]["posted_us_site_trials"]["n"] == 0
+
 
 def _weekly_mesh_lines(
     nct_ids: list[str],

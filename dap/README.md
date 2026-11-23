@@ -19,7 +19,7 @@ modified.
    `protocolSection.contactsLocationsModule.locations` (or weekly
    `study_sites`).
 2. **Site footprint classification (`site_footprint_class`)** partitions trials
-   into five mutually exclusive classes:
+   into six mutually exclusive classes:
    - `us_only` (>= 1 listed facility, all in the 50 US states, DC, or inhabited
      US territories under FDA jurisdiction, and zero missing-country sites)
    - `multinational_with_us_sites` (>= 1 US facility and >= 1 non-US facility),
@@ -29,6 +29,19 @@ modified.
    - `facilities_missing_country` (listed facilities where missing country
      prevents establishing footprint without guessing)
    - `no_listed_facilities` (zero listed facilities)
+   - `footprint_unknown` (the site list cannot establish any class). **Every
+     weekly full record (`--demographics`) gets it.** `src/utils.py`
+     `get_study_metadata` drops each location without a country before writing
+     `study_sites`, and the record keeps no total location count, so a trial
+     with one US site and one countryless site would read as `us_only`, and
+     one whose sites all lack a country as `no_listed_facilities`. The row
+     carries `footprint_unknown_reason`; `n_listed_facilities`,
+     `n_facilities_missing_country` and `partial_missing_country` are null,
+     while counts over sites with a country (`n_us_facilities`,
+     `n_facilities_with_country`, `us_facility_share`) stay exact. A weekly
+     build therefore has no US-site trials, US-share bins or indication US
+     references; site-mix benchmarks need raw CT.gov API v2 records
+     (`--records`, `--records-dir`), which keep every location.
 3. **Six-state baseline table structure & two denominators** (following
    `census/`):
    - `race_table_status` and `ethnicity_table_status` in

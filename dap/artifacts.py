@@ -424,7 +424,12 @@ def summarise(
         "multinational_with_us_sites": "Trials with >= 1 listed US facility and >= 1 listed non-US facility.",
         "ex_us_only": "Trials with >= 1 listed facility, zero US facilities, and zero facilities missing country.",
         "facilities_missing_country": "Trials with listed facilities where missing country prevents establishing footprint.",
-        "no_listed_facilities": "Trials with zero listed facilities in contactsLocationsModule.locations / study_sites.",
+        "no_listed_facilities": "Trials with zero listed facilities in contactsLocationsModule.locations.",
+        "footprint_unknown": (
+            "Trials whose site list cannot establish a footprint: weekly full records (study_sites) drop "
+            "every location without a country and keep no total count. Raw CT.gov API v2 records are "
+            "needed for site-mix classes."
+        ),
     }
     share_bin_defs = {
         "us_share_lt_25": "Multinational US-site trials with 0 < us_facility_share < 0.25 (listed facilities basis).",

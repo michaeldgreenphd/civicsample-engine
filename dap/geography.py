@@ -11,7 +11,7 @@ Analytical invariants
   country on standard baseline tables, so ``us_facility_share`` is strictly a
   share of listed study facilities with a recorded country, never a share of
   enrolled participants.
-* ``site_footprint_class`` partitions all study records into five mutually
+* ``site_footprint_class`` partitions all study records into six mutually
   exclusive classes:
     - ``no_listed_facilities``: zero facilities listed on the registration.
     - ``facilities_missing_country``: at least one facility is listed, and
@@ -26,6 +26,13 @@ Analytical invariants
       and zero US facilities.
     - ``multinational_with_us_sites``: >= 1 US facility and >= 1 non-US
       facility.
+    - ``footprint_unknown``: the site list cannot establish any class. Every
+      weekly full record (``study_sites``) gets it: ``src/utils.py``
+      ``get_study_metadata`` drops each location without a country before
+      writing ``study_sites`` and the record keeps no total location count, so
+      a dropped countryless site would turn ``us_only``, ``ex_us_only`` or
+      ``no_listed_facilities`` into ``facilities_missing_country`` with nothing
+      to show it. Raw CT.gov API v2 records keep every location.
 * For ``multinational_with_us_sites``, ``us_site_share_bin`` classifies exact
   ``us_facility_share = n_us_facilities / n_facilities_with_country`` using
   exact integer cross-multiplication so rational boundaries (0.25, 0.50, 0.75)
@@ -44,6 +51,15 @@ SITE_FOOTPRINT_CLASSES: tuple[str, ...] = (
     "ex_us_only",
     "facilities_missing_country",
     "no_listed_facilities",
+    "footprint_unknown",
+)
+
+# Why a weekly record's footprint is ``footprint_unknown``; carried on the row.
+WEEKLY_SITES_UNKNOWN_REASON: str = (
+    "weekly study_sites omit every location without a country (src/utils.py get_study_metadata) "
+    "and the record keeps no total location count, so us_only, ex_us_only, no_listed_facilities "
+    "and facilities_missing_country cannot be told apart; build from raw CT.gov API v2 records "
+    "for site-mix classes"
 )
 
 US_SITE_SHARE_BINS: tuple[str, ...] = (
@@ -256,7 +272,9 @@ def extract_raw_locations(record: dict[str, Any]) -> tuple[list[dict[str, Any]],
     Caveat documented inline: ``src/utils.py::get_study_metadata`` omits
     location entries with an empty ``country`` when building ``study_sites``.
     Whenever ``protocolSection.contactsLocationsModule`` is available, we read
-    it directly so facilities lacking ``country`` are retained and counted.
+    it directly so facilities lacking ``country`` are retained and counted;
+    a ``weekly_study_sites`` list is truncated, and ``extract_geography``
+    classifies it ``footprint_unknown``.
     """
     protocol = record.get("protocolSection")
     if isinstance(protocol, dict):
@@ -319,7 +337,14 @@ def extract_geography(record: dict[str, Any]) -> dict[str, Any]:
         else None
     )
 
-    if n_listed == 0:
+    # A weekly site list is truncated (WEEKLY_SITES_UNKNOWN_REASON), so no class
+    # is asserted from it. Counts over sites WITH a country (n_us, n_non_us,
+    # n_with_country, us_facility_share, country counts) stay exact; counts
+    # that depend on the dropped sites are recorded as unknown (None) below.
+    truncated = location_source == "weekly_study_sites"
+    if truncated:
+        footprint = "footprint_unknown"
+    elif n_listed == 0:
         footprint = "no_listed_facilities"
     elif n_with_country == 0:
         footprint = "facilities_missing_country"
@@ -344,10 +369,10 @@ def extract_geography(record: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {
         "unit_basis": UNIT_BASIS,
         "location_source": location_source,
-        "n_listed_facilities": n_listed,
+        "n_listed_facilities": None if truncated else n_listed,
         "n_facilities_with_country": n_with_country,
-        "n_facilities_missing_country": n_missing_country,
-        "partial_missing_country": bool(n_with_country > 0 and n_missing_country > 0),
+        "n_facilities_missing_country": None if truncated else n_missing_country,
+        "partial_missing_country": None if truncated else bool(n_with_country > 0 and n_missing_country > 0),
         "n_us_facilities": n_us,
         "n_non_us_facilities": n_non_us,
         "n_countries": len(country_counter),
@@ -359,9 +384,6 @@ def extract_geography(record: dict[str, Any]) -> dict[str, Any]:
         "site_footprint_class": footprint,
         "us_site_share_bin": share_bin,
     }
-    if location_source == "weekly_study_sites":
-        out["location_source_caveat"] = (
-            "src.utils.get_study_metadata drops location entries with an empty country string; "
-            "use raw CT.gov API v2 records to observe facilities_missing_country."
-        )
+    if truncated:
+        out["footprint_unknown_reason"] = WEEKLY_SITES_UNKNOWN_REASON
     return out

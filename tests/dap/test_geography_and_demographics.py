@@ -28,9 +28,11 @@ from dap.demographics import (  # noqa: E402
     extract_sex_gender,
 )
 from dap.geography import (  # noqa: E402
+    SITE_FOOTPRINT_CLASSES,
     classify_us_site_share_bin,
     extract_geography,
 )
+from src.utils import get_study_metadata  # noqa: E402
 
 
 @pytest.mark.parametrize(
@@ -62,6 +64,45 @@ def test_us_site_share_bin_rejects_degenerate_counts() -> None:
         classify_us_site_share_bin(5, 5)
     with pytest.raises(ValueError):
         classify_us_site_share_bin(1, 0)
+
+
+def test_weekly_study_sites_never_assert_a_footprint_class() -> None:
+    """Weekly study_sites drop countryless locations (src/utils.py), so every weekly trial is footprint_unknown."""
+    us = {"facility": "US1", "state": "NY", "country": "United States"}
+    de = {"facility": "DE1", "country": "Germany"}
+    countryless = {"facility": "Site B", "city": "Somewhere"}
+    cases = {
+        # raw locations -> class from the complete raw list
+        "us_plus_countryless": ([us, countryless], "facilities_missing_country"),
+        "ex_us_plus_countryless": ([de, countryless], "facilities_missing_country"),
+        "all_countryless": ([countryless, countryless], "facilities_missing_country"),
+        "us_plus_de": ([us, de], "multinational_with_us_sites"),
+        "us_only": ([us], "us_only"),
+        "none": ([], "no_listed_facilities"),
+    }
+    for name, (locations, raw_class) in cases.items():
+        raw = fx.make_raw_ctgov_study("NCT99000290", locations=locations)
+        assert extract_geography(raw)["site_footprint_class"] == raw_class, name
+
+        weekly = {"nct_id": "NCT99000290", "study_sites": get_study_metadata(raw)["study_sites"]}
+        assert len(weekly["study_sites"]) == sum(1 for loc in locations if loc.get("country")), name
+        g = extract_geography(weekly)
+        assert g["location_source"] == "weekly_study_sites", name
+        assert g["site_footprint_class"] == "footprint_unknown", name
+        assert g["us_site_share_bin"] is None, name
+        assert g["footprint_unknown_reason"].startswith("weekly study_sites omit every location without a country")
+        # Counts that depend on the dropped sites are unknown, not zero ...
+        assert (g["n_listed_facilities"], g["n_facilities_missing_country"], g["partial_missing_country"]) == (
+            None,
+            None,
+            None,
+        ), name
+        # ... while counts over sites with a country stay exact.
+        assert g["n_us_facilities"] == sum(1 for loc in locations if loc.get("country") == "United States"), name
+        assert g["n_facilities_with_country"] == len(weekly["study_sites"]), name
+    assert "footprint_unknown" in SITE_FOOTPRINT_CLASSES
+    raw_us = extract_geography(fx.make_raw_ctgov_study("NCT99000291", locations=[us]))
+    assert "footprint_unknown_reason" not in raw_us
 
 
 def test_geography_five_footprint_classes_and_unit_basis() -> None:
