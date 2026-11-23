@@ -31,7 +31,11 @@ from typing import Any
 
 from feasibility.metrics import is_num, parse_num
 
-TERMINATION_RULES_VERSION = "1.4.1"
+TERMINATION_RULES_VERSION = "1.4.2"
+# CT.gov's outcome measure types. The 2,200 cached records with posted outcome measures under
+# docs/audits/outcomes_results_structure/ hold only these four (4,688 PRIMARY, 13,388 SECONDARY,
+# 689 OTHER_PRE_SPECIFIED, 71 POST_HOC).
+OUTCOME_MEASURE_TYPES: frozenset[str] = frozenset({"PRIMARY", "SECONDARY", "OTHER_PRE_SPECIFIED", "POST_HOC"})
 
 STOPPED_STATUSES = ("TERMINATED", "WITHDRAWN", "SUSPENDED")
 
@@ -507,9 +511,10 @@ def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
     # docs/audits/outcomes_results_structure/, every one of the 4,670 primary denominator rows lists
     # exactly its measure's group ids, in order.
     all_complete = True
-    # An outcome measure that is not an object could be a primary one, so zero analysed is not
-    # established for every primary outcome.
-    if any(not isinstance(m, dict) for m in measures):
+    # An outcome measure that is not an object, or whose `type` is not one of CT.gov's four (missing,
+    # null, a number or another string), could be a primary one, so zero analysed is not established
+    # for every primary outcome (rules 1.4.2; 1.4.1 dropped such a measure from the primary filter).
+    if any(not isinstance(m, dict) or m.get("type") not in OUTCOME_MEASURE_TYPES for m in measures):
         all_complete = False
     for measure in primary_measures:
         denoms = measure.get("denoms")

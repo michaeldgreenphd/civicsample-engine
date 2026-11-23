@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_rules_version_and_curated_csv_is_header_only() -> None:
-    assert TERMINATION_RULES_VERSION == "1.4.1"
+    assert TERMINATION_RULES_VERSION == "1.4.2"
     csv_path = ROOT / "feasibility" / "termination_reviews.csv"
     raw_lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert raw_lines == [",".join(REVIEW_COLUMNS)]
@@ -345,6 +345,18 @@ def _cnt(*values: object) -> list:
         ([{**_primary("A", _cnt("0", "0")), "groups": []}], "results_posted_primary_denom_incomplete"),
         # a measure that is not an object could be a primary one
         (["Primary outcome", _primary("A", _cnt("0", "0"))], "results_posted_primary_denom_incomplete"),
+        # rules 1.4.2: so could a measure whose type is missing, null, mistyped or not one of CT.gov's four
+        ([_primary("A", _cnt("0", "0")), {k: v for k, v in _primary("B", _cnt("3", "4")).items() if k != "type"}],
+         "results_posted_primary_denom_incomplete"),
+        ([_primary("A", _cnt("0", "0")), {**_primary("B", None), "type": None}],
+         "results_posted_primary_denom_incomplete"),
+        ([_primary("A", _cnt("0", "0")), {**_primary("B", None), "type": 7}],
+         "results_posted_primary_denom_incomplete"),
+        ([_primary("A", _cnt("0", "0")), {**_primary("B", None), "type": "primary"}],
+         "results_posted_primary_denom_incomplete"),
+        # control: a typed secondary measure leaves the zero-analysed shell standing
+        ([_primary("A", _cnt("0", "0")), {**_primary("B", _cnt("3", "4")), "type": "SECONDARY"}],
+         "empty_results_shell_zero_analysed"),
         # malformed ids and units are incomplete or unmatched, never an exception that stops the build
         ([_primary("A", [{"groupId": ["OG000"], "value": "0"}, {"groupId": "OG001", "value": "0"}])],
          "results_posted_primary_denom_incomplete"),

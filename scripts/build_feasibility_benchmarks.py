@@ -695,9 +695,9 @@ def _require_weekly_phases(records: list[dict[str, Any]], source: str) -> None:
     become a stratum of its own. The value must be exactly `""` (no phase stated) or, split on `,` and
     `/` as `metrics.normalize_phase` splits it (`"PHASE1, PHASE2"`), consist only of `CTGOV_PHASES`
     values: an empty piece (`","`, `"PHASE2,"`, `" "`) is refused too, since `normalize_phase` drops
-    it and would read a separator-only value as no phase. A missing key still means no phase. The
-    80,890 records of the 2026-11-08 weekly extraction hold only the six values, two multi-phase
-    forms and `""`.
+    it and would read a separator-only value as no phase. A missing key is refused by
+    `_require_weekly_lists` (`src/utils.py` writes `phase` on every record). The 80,890 records of the
+    2026-11-08 weekly extraction hold only the six values, two multi-phase forms and `""`.
     """
     bad: list[str] = []
     for idx, rec in enumerate(records):
@@ -734,6 +734,7 @@ WEEKLY_REQUIRED_ENTRY_FIELDS: dict[str, tuple[str, ...]] = {"study_sites": ("cou
 # are left out on purpose: when either is missing or blank the build classifies `conditions` itself.
 WEEKLY_SCALAR_FIELDS: dict[str, tuple[type, bool]] = {
     "nct_id": (str, True),
+    "phase": (str, False),  # its values are checked by `_require_weekly_phases`
     "brief_title": (str, False),
     "study_type": (str, True),
     "status": (str, True),

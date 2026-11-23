@@ -693,7 +693,7 @@ def test_weekly_records_with_malformed_list_fields_are_refused(
 @pytest.mark.parametrize(
     "key",
     ["study_sites", "countries", "collaborators", "conditions", "lead_sponsor_name", "sponsor_class", "enrollment",
-     "status", "start_date"],
+     "status", "start_date", "phase"],
 )
 def test_weekly_records_missing_a_list_field_are_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], key: str
@@ -725,12 +725,11 @@ def test_weekly_list_fields_the_extractor_writes_are_accepted(tmp_path: Path) ->
 
 def test_weekly_phase_forms_the_extractor_writes_are_accepted(tmp_path: Path) -> None:
     # The 2026-11-08 weekly extraction holds the six values, two comma-joined multi-phase forms and
-    # "" (no phase stated); a missing key means no phase too.
+    # "" (no phase stated). A missing key is refused (src/utils.py writes `phase` on every record).
     demog_path, mesh_path = _write_weekly_inputs(tmp_path)
     body = json.loads(gzip.decompress(demog_path.read_bytes()))
     for rec, phase in zip(body["data"], ["PHASE1, PHASE2", "PHASE2, PHASE3", "", "NA", "EARLY_PHASE1"]):
         rec["phase"] = phase
-    del body["data"][4]["phase"]
     demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
     assert _build_weekly(demog_path, mesh_path, tmp_path / "accepted") == 0
 
