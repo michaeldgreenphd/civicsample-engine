@@ -426,3 +426,16 @@ def test_withdrawal_reason_tally_sums_repeated_labels_only_when_all_complete() -
     dws[1] = {"type": "Other", "reasons": [{"groupId": "FG000", "numSubjects": "1"},
                                            {"groupId": "FG000", "numSubjects": "1"}]}
     assert extract_period1_retention(study)["drop_withdraw_reasons"] == {"Other": None}
+
+
+def test_repeated_flow_group_id_withholds_retention() -> None:
+    """A repeated group id would read its milestone count twice and double STARTED/COMPLETED."""
+    import copy
+
+    study = copy.deepcopy(make_ctgov_study("NCT99100063"))
+    groups = study["resultsSection"]["participantFlowModule"]["groups"]
+    groups.append({"id": "FG000", "title": "Active Arm (repeated)"})
+    ret = extract_period1_retention(study)
+    assert ret["flow_status"] == "malformed_participant_flow"
+    assert ret.get("period1_started") is None
+    assert ret.get("period1_completion_rate") is None

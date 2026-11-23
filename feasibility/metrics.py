@@ -595,7 +595,8 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
     if any(
         not isinstance(g, dict) or not isinstance(g.get("id"), str) or not g["id"].strip()
         for g in group_list
-    ):
+    ) or len({g["id"] for g in group_list}) != len(group_list):
+        # (a repeated group id would read its milestone count once per occurrence and double it)
         base["flow_status"] = "malformed_participant_flow"
         base["completion_rate_status"] = "withheld_missing_started_or_completed"
         return base

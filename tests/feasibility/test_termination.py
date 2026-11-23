@@ -183,3 +183,30 @@ def test_stopped_study_results_states() -> None:
 
     not_posted = make_ctgov_study("NCT99100063", overall_status="WITHDRAWN", has_results=False)
     assert classify_stopped_study_results_state(not_posted) == "results_not_posted"
+
+
+@pytest.mark.parametrize(
+    "reviewed_at, ok",
+    [
+        ("2026-11-20", True),
+        ("2026-11-20T14:05:00Z", True),
+        ("2026-11-20T14:05:00+00:00", True),
+        ("2026-11-20garbage", False),
+        ("2026-11-20 extra", False),
+        ("2026-02-30", False),
+        ("2026-11-20T99:00:00Z", False),
+        ("20-11-2026", False),
+    ],
+)
+def test_reviewed_at_is_validated_whole(tmp_path: Path, reviewed_at: str, ok: bool) -> None:
+    path = tmp_path / "reviews.csv"
+    path.write_text(
+        "nct_id,reviewer,reviewed_at,override_category,notes\n"
+        f"NCT99100051,Dr Fictional,{reviewed_at},safety_or_toxicity,Fictional note\n",
+        encoding="utf-8",
+    )
+    if ok:
+        assert load_termination_reviews(path)["NCT99100051"]["reviewed_at"] == reviewed_at
+    else:
+        with pytest.raises(ValueError, match="reviewed_at"):
+            load_termination_reviews(path)

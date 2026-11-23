@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import csv
 import re
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -202,15 +202,32 @@ _SIGNAL_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
 
 
 def _validate_review_date(value: str, nct_id: str) -> str:
+    """Validate the whole `reviewed_at` value and return it stripped.
+
+    Accepted forms: an exact calendar date `YYYY-MM-DD`, or a complete ISO-8601 timestamp
+    `YYYY-MM-DDTHH:MM[:SS[.ffffff]][Z|+HH:MM]` that `datetime.fromisoformat` parses in full. The value
+    is published verbatim, so a valid date prefix followed by other text (`2026-11-20garbage`) is
+    refused rather than published.
+    """
     text = value.strip()
-    date_part = text[:10]
-    try:
-        parsed = date.fromisoformat(date_part)
-    except ValueError as exc:
-        raise ValueError(f"termination_reviews.csv ({nct_id}): invalid reviewed_at date {value!r}") from exc
-    if parsed.isoformat() != date_part:
-        raise ValueError(f"termination_reviews.csv ({nct_id}): reviewed_at must begin with YYYY-MM-DD: {value!r}")
-    return text
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        try:
+            date.fromisoformat(text)
+        except ValueError as exc:
+            raise ValueError(f"termination_reviews.csv ({nct_id}): invalid reviewed_at date {value!r}") from exc
+        return text
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\S+", text):
+        try:
+            datetime.fromisoformat(text)
+        except ValueError as exc:
+            raise ValueError(
+                f"termination_reviews.csv ({nct_id}): invalid reviewed_at timestamp {value!r}"
+            ) from exc
+        return text
+    raise ValueError(
+        f"termination_reviews.csv ({nct_id}): reviewed_at must be YYYY-MM-DD or a full ISO-8601 "
+        f"timestamp, got {value!r}"
+    )
 
 
 def load_termination_reviews(path: Path) -> dict[str, dict[str, str]]:
