@@ -556,6 +556,24 @@ def build_artifacts(
             f'{reviews_path.name}: {len(late)} review(s) dated after generated_at {generated_at!r} '
             f'(first: {late[0][1]} reviewed_at {late[0][0]}); a build cannot include a later decision'
         )
+    # A curated statement dated after the build is the same impossibility: confirmed and reviewed, a
+    # `statement_date` of 2100-01-01 in a 2026 build became the trial's earliest results publication and
+    # gave impossible timeline intervals. A statement date keeps the precision it was written at
+    # (`YYYY`, `YYYY-MM` or `YYYY-MM-DD`); a year or month containing the generation day is a prefix of
+    # that day and sorts before it, so only a period that starts after the generation day is refused.
+    # Every row is checked, applied or not, as for reviews: the file is pinned by its sha256 as a whole.
+    late_statements = sorted(
+        (norm, (row.get('statement_id') or '').strip())
+        for row in statements
+        if (norm := E.normalize_publication_date((row.get('statement_date') or '').strip() or None)[0])
+        and norm > generated_at[:10]
+    )
+    if late_statements:
+        raise ValueError(
+            f'{statements_path.name}: {len(late_statements)} statement(s) dated after generated_at '
+            f'{generated_at!r} (first: {late_statements[0][1]} statement_date {late_statements[0][0]}); '
+            'a build cannot cite a statement not yet made'
+        )
 
     cache_ids = set(cache.requested_nct_ids)
     if requested_nct_ids is not None:
@@ -1041,6 +1059,12 @@ def check_contract(
             problems.append(
                 f"{x.get('link_id')}: review dated {reviewed_at}, after generated_at {generated!r}"
             )
+        stated = x.get('publication_or_action_date')
+        if (
+            x.get('source_route') == 'documentary_statements' and isinstance(stated, str)
+            and isinstance(generated, str) and stated > generated[:10]
+        ):
+            problems.append(f"{x.get('link_id')}: statement dated {stated}, after generated_at {generated!r}")
         if x.get('nct_id') not in known_studies:
             problems.append(f"{x.get('link_id')}: nct_id {x.get('nct_id')!r} is not in studies.json")
         if x.get('review_status') != 'unreviewed':

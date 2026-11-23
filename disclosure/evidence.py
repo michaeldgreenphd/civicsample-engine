@@ -330,16 +330,21 @@ def _walk_strings(obj: Any, path: str = '') -> Iterator[tuple[str, str]]:
         yield path, obj
 
 
-def _find_exact_nct(obj: Any, nct_id: str, window: int = 160) -> tuple[str, str] | None:
-    """Locate the first exact token occurrence of `nct_id` in `obj`; return `(json_path, excerpt)`."""
+def _iter_exact_nct(obj: Any, nct_id: str, window: int = 160) -> Iterator[tuple[str, str]]:
+    """Every string in `obj` holding an exact token occurrence of `nct_id`, in traversal order, as
+    `(json_path, excerpt)`; the excerpt surrounds the first occurrence in that string."""
     pattern = re.compile(r'(?<![A-Za-z0-9])' + re.escape(nct_id) + r'(?![A-Za-z0-9])', re.IGNORECASE)
     for path, text in _walk_strings(obj):
         m = pattern.search(text)
         if m:
             lo = max(0, m.start() - window)
             hi = min(len(text), m.end() + window)
-            return path, squash_whitespace(text[lo:hi])
-    return None
+            yield path, squash_whitespace(text[lo:hi])
+
+
+def _find_exact_nct(obj: Any, nct_id: str, window: int = 160) -> tuple[str, str] | None:
+    """Locate the first exact token occurrence of `nct_id` in `obj`; return `(json_path, excerpt)`."""
+    return next(_iter_exact_nct(obj, nct_id, window), None)
 
 
 def resolve_json_locator(obj: Any, locator: str) -> str | None:
@@ -725,16 +730,43 @@ def _cited_submission_date(app: dict[str, Any], field_path: str) -> tuple[str | 
     return (norm, prec) if norm is not None else (None, 'missing')
 
 
-def _nct_cited_date_and_reasons(
-    app: dict[str, Any], nct_id: str, app_no: str, field_path: str
-) -> tuple[str | None, str, list[str]]:
-    """The date, precision and validation reasons of a link to a Drugs@FDA record carrying `nct_id`, for
-    the direct NCT query and the drug-term queries alike (`_cited_submission_date`)."""
-    date, precision = _cited_submission_date(app, field_path)
-    reasons = [f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({field_path})']
-    if date is None:
-        reasons.append(f'{nct_id} is not cited in a dated submission, so no FDA action date is tied to it')
-    return date, precision, reasons
+def _nct_citation(
+    app: dict[str, Any], nct_id: str, app_no: str
+) -> tuple[str, str, str | None, str, list[str]] | None:
+    """Where a Drugs@FDA record cites `nct_id` and the FDA action tied to it, for the direct NCT query and
+    the drug-term queries alike: `(field_path, excerpt, date, precision, validation_reasons)`, or None
+    when no exact token stands in the record.
+
+    An application can name the trial in its own fields and in several submissions. Taking the first
+    mention in traversal order let field order decide the date: a mention in the application's own
+    fields ahead of a dated submission citing the trial gave a missing date, and two citing submissions
+    gave whichever was listed first rather than the first action. So every exact occurrence is read,
+    and the citing submission with the earliest action date (`_cited_submission_date`) is the link's
+    locator and date; equal dates keep traversal order. The dates are normalized strings, so a year or
+    month sorts before any day inside it, that is, by its earliest possible day. Only when no citing
+    submission is dated does the link fall back to the first mention, with a missing date.
+    """
+    mentions = list(_iter_exact_nct(app, nct_id))
+    if not mentions:
+        return None
+    dated: list[tuple[str, int, str, str, str]] = []
+    for order, (path, excerpt) in enumerate(mentions):
+        cited_date, precision = _cited_submission_date(app, path)
+        if cited_date is not None:
+            dated.append((cited_date, order, path, excerpt, precision))
+    if not dated:
+        path, excerpt = mentions[0]
+        return path, excerpt, None, 'missing', [
+            f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({path})',
+            f'{nct_id} is not cited in a dated submission, so no FDA action date is tied to it',
+        ]
+    cited_date, _, path, excerpt, precision = min(dated)
+    reasons = [f'exact {nct_id} token stands in openFDA Drugs@FDA record {app_no} ({path})']
+    # A dated path starts with its submission, `submissions[i].`, so the prefix counts submissions.
+    n_dated = len({p.split('.', 1)[0] for _, _, p, _, _ in dated})
+    if n_dated > 1:
+        reasons.append(f'{nct_id} is cited in {n_dated} dated submissions; the earliest action date is used')
+    return path, excerpt, cited_date, precision, reasons
 
 
 def _openfda_sponsors_norm(app: dict[str, Any]) -> set[str]:
@@ -803,11 +835,10 @@ def build_openfda_links(
         for idx, app in enumerate(nct_rec['body']['results']):
             app_no = squash_whitespace(str(app.get('application_number') or f'app:{idx}'))
             act_date, prec = _openfda_action_date(app)
-            located = _find_exact_nct(app, nct_id)
-            if located is not None:
-                field_path, snippet = located
+            cited = _nct_citation(app, nct_id, app_no)
+            if cited is not None:
+                field_path, snippet, cited_date, cited_prec, reasons = cited
                 confirmed_apps.add(app_no)
-                cited_date, cited_prec, reasons = _nct_cited_date_and_reasons(app, nct_id, app_no, field_path)
                 out.append(
                     _new_link(
                         nct_id=nct_id,
@@ -867,12 +898,11 @@ def build_openfda_links(
             if app_no in confirmed_apps:
                 continue
             act_date, prec = _openfda_action_date(app)
-            located = _find_exact_nct(app, nct_id)
-            if located is not None:
-                field_path, snippet = located
+            cited = _nct_citation(app, nct_id, app_no)
+            if cited is not None:
                 # The same date rule as the direct NCT query: the cited submission's, never the original
                 # approval's (a trial cited in a 2025 supplement was given the 2000 approval date here).
-                cited_date, cited_prec, reasons = _nct_cited_date_and_reasons(app, nct_id, app_no, field_path)
+                field_path, snippet, cited_date, cited_prec, reasons = cited
                 pair_links.append(
                     _new_link(
                         nct_id=nct_id,

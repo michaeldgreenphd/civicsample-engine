@@ -1976,6 +1976,54 @@ def test_an_nct_cited_fda_link_takes_the_cited_submissions_date(
     assert (via_drug['publication_or_action_date'], via_drug['date_precision']) == (date, precision)
 
 
+_SUPPL_2025 = {'submission_type': 'SUPPL', 'submission_number': '40', 'submission_status': 'AP',
+               'submission_status_date': '20250610', 'submission_public_notes': 'Supported by NCT09990001.'}
+_SUPPL_2018 = {'submission_type': 'SUPPL', 'submission_number': '22', 'submission_status': 'AP',
+               'submission_status_date': '20180302', 'submission_public_notes': 'Efficacy from NCT09990001.'}
+
+
+@pytest.mark.parametrize(
+    ('app', 'date', 'field_path', 'n_dated'),
+    [
+        # On 0169935 the mention in the application's own fields came first, so the link had no date.
+        ({'application_number': 'NDA990001', 'sponsor_name': 'PFIZER INC (NCT09990001)',
+          'submissions': [_ORIG_2000, _SUPPL_2025]},
+         '2025-06-10', 'submissions[1].submission_public_notes', 1),
+        # On 0169935 an undated citing submission listed first gave no date.
+        ({'application_number': 'NDA990001', 'submissions': [
+            {'submission_type': 'SUPPL', 'submission_public_notes': 'NCT09990001'}, _SUPPL_2025]},
+         '2025-06-10', 'submissions[1].submission_public_notes', 1),
+        # On 0169935 the 2025 supplement, listed first, gave its date rather than the 2018 action.
+        ({'application_number': 'NDA990001', 'submissions': [_SUPPL_2025, _ORIG_2000, _SUPPL_2018]},
+         '2018-03-02', 'submissions[2].submission_public_notes', 2),
+        # The earliest citing submission listed first: 0169935 already gave its date and locator; the reason
+        # naming both dated submissions is new.
+        ({'application_number': 'NDA990001', 'submissions': [_SUPPL_2018, _SUPPL_2025]},
+         '2018-03-02', 'submissions[0].submission_public_notes', 2),
+        # control: one citing submission, after an application-level mention
+        ({'application_number': 'NDA990001', 'submissions': [_ORIG_2000, _SUPPL_2025]},
+         '2025-06-10', 'submissions[1].submission_public_notes', 1),
+    ],
+)
+def test_an_nct_cited_fda_link_takes_the_earliest_dated_citing_submission(
+    app: dict[str, Any], date: str, field_path: str, n_dated: int
+) -> None:
+    nct = 'NCT09990001'
+    study = F.STUDIES[nct]
+    drug = A.extract_drug_candidates(study)[0]
+    direct = _nct_cited_link(app)
+    records = {A.drug_query_key(drug): {'status': 200, 'body': {'meta': {'results': {'total': 1}}, 'results': [app]}}}
+    links = E.build_openfda_links(nct, study, records, E.trial_sponsor_match_keys(study))
+    via_drug = next(x for x in links if x['automated_validation'] == 'identifier_confirmed')
+    for link in (direct, via_drug):
+        assert (link['publication_or_action_date'], link['date_precision']) == (date, 'day')
+        assert link['locator']['json_path'] == f'results[0].{field_path}'
+        assert not any('no FDA action date is tied to it' in r for r in link['validation_reasons'])
+        several = [r for r in link['validation_reasons'] if 'dated submissions; the earliest' in r]
+        assert several == ([f'{nct} is cited in {n_dated} dated submissions; the earliest action date is used']
+                           if n_dated > 1 else [])
+
+
 @pytest.mark.parametrize('has_results', ['<absent>', None, 'false', 0, True])
 def test_365d_window_needs_explicit_unposted_evidence_before_an_unreported_state(has_results: object) -> None:
     as_of = date(2026, 11, 1)
@@ -2336,6 +2384,37 @@ def test_review_dated_after_generated_at_is_refused(
     target = next(x for x in bad['links.json']['links'] if x['link_id'] == link['link_id'])
     target['review']['reviewed_at'] = reviewed_at
     assert any(f'review dated {reviewed_at}, after generated_at' in p for p in ART.check_contract(bad))
+
+
+def _write_statement(path: Path, statement_date: str) -> None:
+    with path.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.STATEMENT_COLUMNS)
+        w.writerow(['stmt-001', 'NCT09990001', 'registry_record', 'protocolSection.descriptionModule.briefSummary',
+                    statement_date, 'primary endpoint met at Week 24', 'Curator Jane', 'Verbatim summary quote'])
+
+
+@pytest.mark.parametrize('statement_date', ['2100-01-01', '2026-11-02', '2026-12', '2027'])
+def test_documentary_statement_dated_after_generated_at_is_refused(
+    tmp_path: Path, frozen_cache: A.FrozenCache, statement_date: str
+) -> None:
+    # On 0169935 each date was accepted after F.GENERATED_AT (2026-11-01); confirmed and reviewed, the
+    # statement became the trial's earliest results publication, a milestone after the build.
+    stmt_csv = tmp_path / 'documentary_statements.csv'
+    _write_statement(stmt_csv, statement_date)
+    kwargs = {**_build_kwargs(), 'statements_path': stmt_csv, 'as_of': date.fromisoformat(F.AS_OF)}
+    with pytest.raises(ValueError, match=f'dated after generated_at .*statement_date {statement_date}'):
+        ART.build_artifacts(frozen_cache, **kwargs)
+    # Control: a statement dated on the generation day, or in a month or year containing it, is accepted,
+    # and the contract refuses the statement link once its date is edited to a later one.
+    for accepted in ('2026-11-01', '2026-11', '2026'):
+        _write_statement(stmt_csv, accepted)
+        built = ART.build_artifacts(frozen_cache, **kwargs)
+        assert ART.check_contract(built) == []
+    bad = copy.deepcopy(built)
+    target = next(x for x in bad['links.json']['links'] if x['source_route'] == 'documentary_statements')
+    target['publication_or_action_date'] = statement_date
+    assert any(f'statement dated {statement_date}, after generated_at' in p for p in ART.check_contract(bad))
 
 
 @pytest.mark.parametrize('value', ['2000-01-01T00:00:00Z', '2026-11-01T11:59:59+00:00'])
