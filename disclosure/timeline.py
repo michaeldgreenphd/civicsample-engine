@@ -29,6 +29,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from disclosure import acquire as A
 from disclosure import coverage as C
 from disclosure import evidence as E
 
@@ -469,8 +470,7 @@ def classify_window_365d(study: dict[str, Any] | None, as_of: date) -> dict[str,
 
     post_raw = (sm.get('resultsFirstPostDateStruct') or {}).get('date')
     post = parse_partial_date(post_raw if isinstance(post_raw, str) else None)
-    rs = study.get('resultsSection')
-    has_results_section = study.get('hasResults') is True and isinstance(rs, dict) and bool(rs)
+    has_results_section = study.get('hasResults') is True and A.ctgov_results_section_posted(study)
 
     if has_results_section or post is not None:
         if post is None:

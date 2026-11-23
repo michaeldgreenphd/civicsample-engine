@@ -145,15 +145,23 @@ STATEMENT_COLUMNS = [
     'recorded_by',
     'notes',
 ]
+# The source types a statement's quote can be checked against: each names a record the frozen cache holds
+# (`_locate_statement_source`). A statement counts only when its quote stands at its locator (round 13).
 STATEMENT_SOURCE_TYPES = (
     'registry_record',
     'literature_record',
     'openfda_record',
+    'journal_article',
+)
+# Accepted before round 52, but no cached source can hold them, so a statement citing one was always
+# `source_not_retrieved`: even confirmed by review it stayed `search_incomplete_or_blocked` and out of the
+# timeline. They are refused by name. If round 13 is relaxed to count a reviewed statement without its
+# quote, they can be accepted again.
+UNRETRIEVABLE_STATEMENT_SOURCE_TYPES = (
     'fda_review',
     'fda_label',
     'fda_document',
     'csr_synopsis',
-    'journal_article',
     'sponsor_statement',
     'regulatory_document',
     'other',
@@ -371,9 +379,9 @@ def build_ctgov_results_links(nct_id: str, ctgov_rec: dict[str, Any] | None) -> 
     body = ctgov_rec.get('body')
     if not A.ctgov_study_record_valid(ctgov_rec) or body.get('hasResults') is not True:
         return []
-    rs = body.get('resultsSection')
-    if not isinstance(rs, dict) or not rs:
+    if not A.ctgov_results_section_posted(body):
         return []
+    rs = body['resultsSection']
     ps = body.get('protocolSection') or {}
     sm = ps.get('statusModule') or {}
     post_raw = (sm.get('resultsFirstPostDateStruct') or {}).get('date')
@@ -395,7 +403,8 @@ def build_ctgov_results_links(nct_id: str, ctgov_rec: dict[str, Any] | None) -> 
             locator={'json_path': 'resultsSection'},
             automated_validation='identifier_confirmed',
             validation_reasons=[
-                'ClinicalTrials.gov study record sets hasResults=true and carries a non-empty resultsSection'
+                'ClinicalTrials.gov study record sets hasResults=true and carries a resultsSection with a '
+                'non-empty module'
             ],
             detail={'modules_present': modules_present},
         )
@@ -1109,6 +1118,12 @@ def read_statements(path: Path) -> tuple[list[dict[str, str]], str]:
         excerpt = (row.get('verbatim_excerpt') or '').strip()
         rec_by = (row.get('recorded_by') or '').strip()
         notes = (row.get('notes') or '').strip()
+        if stype in UNRETRIEVABLE_STATEMENT_SOURCE_TYPES:
+            raise ValueError(
+                f'{path.name} line {line_no}: source_type {stype!r} names a source the build does not retrieve, '
+                'so the quote could never be confirmed at its locator and the statement would never count; '
+                f'cite it through one of {STATEMENT_SOURCE_TYPES}'
+            )
         if not sid or not NCT_RE.match(nct) or stype not in STATEMENT_SOURCE_TYPES or not sloc or not excerpt or not rec_by or not notes:
             raise ValueError(
                 f'{path.name} line {line_no}: requires statement_id, valid nct_id, valid source_type '

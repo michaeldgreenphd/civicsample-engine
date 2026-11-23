@@ -191,7 +191,6 @@ def ctgov_results_cell(
 
     body = ctgov_rec['body']
     has_results = body.get('hasResults')
-    rs_mod = body.get('resultsSection')
     live = _active_links(route_links)
     # The ctgov_results link is generated only from the retrieved record's own posted resultsSection
     # (hasResults=true and non-empty), so it states a registry fact about this NCT ID. A human review
@@ -224,11 +223,11 @@ def ctgov_results_cell(
             has_results=bool(has_results),
             n_candidates=len(live),
         )
-    if has_results is True and (not isinstance(rs_mod, dict) or not rs_mod):
+    if has_results is True and not A.ctgov_results_section_posted(body):
         return _cell(
             route,
             'available_document_insufficient',
-            'study record sets hasResults=true, but resultsSection is absent or empty',
+            'study record sets hasResults=true, but resultsSection is absent or holds no non-empty module',
             has_results=True,
         )
     # Only an explicit hasResults=false is the registry's own negative. A record that omits the field

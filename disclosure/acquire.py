@@ -499,6 +499,14 @@ def ctgov_study_problem(body: Any) -> str | None:
                 for field, types in entry_fields:
                     if entry.get(field) is not None and not _value_is(entry[field], types):
                         return f'{where}[{i}].{field} is {type(entry[field]).__name__}, not {types[0].__name__}'
+    # Every module of a results section is an object (null reads as absent, as above): `{"participantFlowModule":
+    # "broken"}` was read as posted results, so a verified CT.gov link and `verified_link` rested on a value
+    # nothing could read. All 3,812 stored results sections hold only objects.
+    results = body.get('resultsSection')
+    if isinstance(results, dict):
+        for key, module in results.items():
+            if module is not None and not isinstance(module, dict):
+                return f'resultsSection.{key} is {type(module).__name__}, not dict'
     # `hasResults: false` beside posted results contradicts itself: coverage read the flag as the
     # registry's negative while the record holds a results section, or a results posting date that the
     # 365-day window reads as posted (`POSTED_WITHIN_365D` beside an unreported CT.gov route). #106 and
@@ -517,6 +525,17 @@ def ctgov_study_problem(body: Any) -> str | None:
 def ctgov_study_valid(body: Any) -> bool:
     """Whether `body` is a study record the build can read (`ctgov_study_problem`)."""
     return ctgov_study_problem(body) is None
+
+
+def ctgov_results_section_posted(body: dict[str, Any]) -> bool:
+    """Whether a study record's `resultsSection` holds posted results: at least one non-empty module.
+
+    A section whose modules are all empty or null carries nothing posted, so with `hasResults: true` it is
+    insufficient evidence (`available_document_insufficient`, `RESULTS_STATUS_INDETERMINATE`), never a
+    verified CT.gov results link. Every one of the 3,812 stored results sections holds a non-empty module.
+    """
+    results = body.get('resultsSection')
+    return isinstance(results, dict) and any(isinstance(m, dict) and m for m in results.values())
 
 
 # The results dates ClinicalTrials.gov records when it receives, quality-checks and posts a trial's

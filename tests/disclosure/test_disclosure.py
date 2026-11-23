@@ -3596,6 +3596,10 @@ def test_reference_entry_with_a_mistyped_field_cannot_verify_the_route(entry: di
         (('protocolSection', 'conditionsModule', 'conditions'), [7], 'conditions[0] is int, not str'),
         (('protocolSection', 'oversightModule'), 'yes', 'oversightModule is str, not dict'),
         (('resultsSection',), ['posted'], 'resultsSection is list, not dict'),
+        # On 463a3d7 a results module of another type passed, and the record made a verified results link.
+        (('resultsSection', 'participantFlowModule'), 'broken',
+         'resultsSection.participantFlowModule is str, not dict'),
+        (('resultsSection', 'outcomeMeasuresModule'), [], 'resultsSection.outcomeMeasuresModule is list, not dict'),
     ],
 )
 def test_study_record_with_a_mistyped_part_reads_as_a_failed_lookup_not_a_crash(
@@ -3863,3 +3867,71 @@ def test_freeze_local_refuses_a_results_date_after_the_stated_retrieval(
                        r'is after the stated fetched_at'):
         A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
     assert not (cache / 'manifest.json').exists()
+
+
+# ---------------------------------------------------------------- posted results and statement sources
+
+@pytest.mark.parametrize(
+    ('modules', 'posted'),
+    [
+        ({'participantFlowModule': {}}, False),
+        ({'participantFlowModule': None}, False),
+        ({'participantFlowModule': {}, 'moreInfoModule': {}}, False),
+        # Control, on both heads: an empty module beside a non-empty one, as 214 stored sections hold.
+        ({'participantFlowModule': {}, 'outcomeMeasuresModule': {'outcomeMeasures': [{'type': 'PRIMARY'}]}}, True),
+    ],
+)
+def test_results_section_without_a_non_empty_module_is_not_posted_results(
+    tmp_path: Path, modules: dict[str, Any], posted: bool
+) -> None:
+    # On 463a3d7 any non-empty resultsSection object made a verified CT.gov results link and the route
+    # `verified_link`, though modules that are all empty or null carry nothing posted.
+    nct = 'NCT09990001'
+    study = _study_with(F.STUDIES[nct], ('resultsSection',), modules)
+    assert A.ctgov_study_problem(study) is None
+    cache = F.acquire_fixture_cache(tmp_path / 'c')
+    cache.ctgov[f'ctgov/study/{nct}'] = dict(cache.ctgov[f'ctgov/study/{nct}'], body=study)
+    built = ART.build_artifacts(
+        cache,
+        reviews_path=ROOT / 'disclosure/reviews.csv',
+        statements_path=ROOT / 'disclosure/documentary_statements.csv',
+        sponsor_rules_path=ROOT / 'sponsors/company_aliases.csv',
+        producer={'commit': None, 'uncommitted_changes': None},
+        generated_at=F.GENERATED_AT,
+        as_of=date.fromisoformat(F.AS_OF),
+        requested_nct_ids=[nct],
+    )
+    links = [x for x in built['links.json']['links'] if x['source_route'] == 'ctgov_results']
+    state = _cell_of(built, nct, 'ctgov_results')['state']
+    if posted:
+        assert (len(links), state) == (1, 'verified_link')
+        return
+    assert (links, state) == ([], 'available_document_insufficient')
+
+
+def _statements_csv(path: Path, source_type: str) -> Path:
+    with path.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.STATEMENT_COLUMNS)
+        w.writerow(['stmt-001', 'NCT09990001', source_type, 'protocolSection.descriptionModule.briefSummary',
+                    '2021-01', 'primary endpoint met at Week 24', 'Curator Jane', 'Verbatim quote'])
+    return path
+
+
+@pytest.mark.parametrize(
+    'source_type',
+    ['fda_review', 'fda_label', 'fda_document', 'csr_synopsis', 'sponsor_statement', 'regulatory_document', 'other'],
+)
+def test_statement_citing_a_source_the_build_cannot_retrieve_is_refused(tmp_path: Path, source_type: str) -> None:
+    # On 463a3d7 each was accepted, and `_locate_statement_source` always gave `source_not_retrieved`, so
+    # the statement could never count, even after a review confirmed it.
+    path = _statements_csv(tmp_path / 'documentary_statements.csv', source_type)
+    with pytest.raises(ValueError, match=rf"source_type '{source_type}' names a source the build does not retrieve"):
+        E.read_statements(path)
+
+
+@pytest.mark.parametrize('source_type', ['registry_record', 'literature_record', 'openfda_record', 'journal_article'])
+def test_statement_citing_a_retrievable_source_reads(tmp_path: Path, source_type: str) -> None:
+    # Control, on both heads: the four types `_locate_statement_source` resolves against the frozen cache.
+    rows, _ = E.read_statements(_statements_csv(tmp_path / 'documentary_statements.csv', source_type))
+    assert [r['source_type'] for r in rows] == [source_type]
