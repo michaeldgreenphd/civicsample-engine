@@ -937,6 +937,10 @@ def summarize(
         'secondary_promoted_to_primary': 'Historical secondary outcome moved to current primaryOutcomes.',
         'timeframe_changed': 'Historical primary outcome retained same measure title with changed timeFrame.',
         'measure_reworded': 'Historical primary outcome paired with reworded current primary sharing clinical construct.',
+        'primary_added_or_promoted_secondaries_unrecorded': (
+            'Current primary outcome absent from historical primaries in a snapshot that did not record its '
+            'secondaryOutcomes: added, or promoted from an unrecorded secondary (indeterminate).'
+        ),
     }
     flow_defs = {
         'ok': 'Numeric Period 1 STARTED participant counts summed across non-Total flow groups.',
@@ -1388,6 +1392,17 @@ def check(files: dict[str, Any]) -> list[str]:
             p.append(f'{n}: invalid version_history_state {vh_state!r}')
         if not hist_provided and (vh_state != 'history_archive_not_provided' or (oh.get('version_history') or {}).get('diffs') is not None):
             p.append(f'{n}: history archive not provided, yet version_history_state is not history_archive_not_provided')
+        # A definite addition or promotion needs the snapshot's secondaries; without them an unmatched
+        # current primary is indeterminate.
+        vh = oh.get('version_history') or {}
+        vh_diff_states = {d.get('state') for d in vh.get('diffs') or []}
+        if vh_diff_states - set(OH.HISTORY_DIFF_STATES):
+            p.append(f'{n}: invalid history diff state(s) {sorted(map(str, vh_diff_states - set(OH.HISTORY_DIFF_STATES)))}')
+        sec_rec = vh.get('historical_secondaries_recorded')
+        if sec_rec is not True and vh_diff_states & {'primary_added', 'secondary_promoted_to_primary'}:
+            p.append(f'{n}: definite primary_added/secondary_promoted_to_primary without recorded historical secondaries')
+        if sec_rec is not False and 'primary_added_or_promoted_secondaries_unrecorded' in vh_diff_states:
+            p.append(f'{n}: indeterminate primary addition although historical secondaries were recorded')
 
         if st != 'posted':
             continue

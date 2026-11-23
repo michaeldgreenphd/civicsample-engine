@@ -180,7 +180,13 @@ refused, never reported as `meta_verified`.
   `parse_failed`.
 - Diff states when `evaluated` (`HISTORY_DIFF_STATES`): `unchanged`, `primary_added`,
   `primary_dropped`, `primary_demoted_to_secondary`, `secondary_promoted_to_primary`,
-  `timeframe_changed`, `measure_reworded`.
+  `timeframe_changed`, `measure_reworded`, `primary_added_or_promoted_secondaries_unrecorded`.
+- `historical_secondaries_recorded` says whether the snapshot recorded its secondary list
+  (`secondaryOutcomes` supplied, or a nested `protocolSection`, where CT.gov omits an empty list).
+  When it did not, a current primary matching no historical primary is
+  `primary_added_or_promoted_secondaries_unrecorded` (it may have been promoted from an unrecorded
+  secondary), never a definite `primary_added`; it still makes `overall_change_state` `changed`
+  and is counted under its own state in `summary.json`, not under `primary_added`.
 
 ---
 

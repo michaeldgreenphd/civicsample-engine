@@ -174,6 +174,7 @@ def test_without_history_archive_cleanly_reports_history_archive_not_provided() 
         'overall_change_state': None,
         'diffs': None,
         'state_counts': None,
+        'historical_secondaries_recorded': None,
     }
     # Protocol-to-results still runs cleanly without historical versions!
     assert rec['protocol_to_results']['state'] == 'evaluated'
@@ -232,13 +233,41 @@ def test_historical_snapshot_covers_all_seven_diff_states(tmp_path: Path) -> Non
         'secondary_promoted_to_primary': 1,
         'timeframe_changed': 1,
         'measure_reworded': 1,
+        'primary_added_or_promoted_secondaries_unrecorded': 0,
     }
+    assert vh['historical_secondaries_recorded'] is True
 
     # A trial absent from a provided archive gets trial_not_in_history_archive, never unchanged.
     other = _make_study('NCT99000999')
     out_other = OH.inspect_outcome_history(other, 'posted', history_snapshots=snapshots)
     assert out_other['version_history_state'] == 'trial_not_in_history_archive'
     assert out_other['version_history']['diffs'] is None
+
+
+def test_primary_only_snapshot_never_reports_a_definite_primary_added(tmp_path: Path) -> None:
+    # Regression: a snapshot without secondaryOutcomes stored an empty secondary list, and every
+    # current primary matching no historical primary was reported as a definite `primary_added`,
+    # although it may have been promoted from an unrecorded historical secondary.
+    primary_only = {'measure': 'Change from Baseline in HbA1c', 'timeFrame': 'Week 24'}
+    hist_path = _write_history_archive(
+        tmp_path / 'history.jsonl.gz',
+        [
+            {'nct_id': 'NCT99000601', 'primaryOutcomes': [primary_only]},
+            {'nct_id': 'NCT99000602', 'primaryOutcomes': [primary_only], 'secondaryOutcomes': []},
+        ],
+    )
+    snaps, _ = OH.load_history_archive(hist_path)
+    current = [primary_only, {'measure': 'Seated Systolic Blood Pressure', 'timeFrame': 'Week 24'}]
+
+    vh = OH.inspect_outcome_history(_make_study('NCT99000601', primary_outcomes=current), 'posted', snaps)['version_history']
+    assert vh['historical_secondaries_recorded'] is False
+    assert [d['state'] for d in vh['diffs']] == ['unchanged', 'primary_added_or_promoted_secondaries_unrecorded']
+    assert vh['state_counts']['primary_added'] == 0 and vh['overall_change_state'] == 'changed'
+
+    # With the secondary list recorded (even as []), the same primary is a definite addition.
+    vh_rec = OH.inspect_outcome_history(_make_study('NCT99000602', primary_outcomes=current), 'posted', snaps)['version_history']
+    assert vh_rec['historical_secondaries_recorded'] is True
+    assert [d['state'] for d in vh_rec['diffs']] == ['unchanged', 'primary_added']
 
 
 def test_history_archive_supports_nested_protocol_section_and_refuses_tampering(tmp_path: Path) -> None:

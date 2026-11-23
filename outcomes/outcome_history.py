@@ -57,6 +57,7 @@ HISTORY_DIFF_STATES = (
     'secondary_promoted_to_primary',
     'timeframe_changed',
     'measure_reworded',
+    'primary_added_or_promoted_secondaries_unrecorded',
 )
 
 _NCT_RE = re.compile(r'^NCT\d{8}$')
@@ -526,6 +527,7 @@ def compare_version_history(
             'overall_change_state': None,
             'diffs': None,
             'state_counts': None,
+            'historical_secondaries_recorded': None,
         }
 
     if not nct_id or nct_id not in history_snapshots:
@@ -538,6 +540,7 @@ def compare_version_history(
             'overall_change_state': None,
             'diffs': None,
             'state_counts': None,
+            'historical_secondaries_recorded': None,
         }
 
     if not isinstance(study, dict):
@@ -550,6 +553,7 @@ def compare_version_history(
             'overall_change_state': None,
             'diffs': None,
             'state_counts': None,
+            'historical_secondaries_recorded': history_snapshots[nct_id].get('secondary_outcomes_supplied') is True,
         }
 
     protocol = study.get('protocolSection') if isinstance(study.get('protocolSection'), dict) else {}
@@ -562,6 +566,10 @@ def compare_version_history(
     snap = history_snapshots[nct_id]
     hist_prim: list[dict[str, Any]] = snap['primary_outcomes']
     hist_sec: list[dict[str, Any]] = snap['secondary_outcomes']
+    # Whether the snapshot recorded its secondary list (`secondaryOutcomes` supplied, or a nested
+    # protocolSection, where CT.gov omits an empty list). Without it an unmatched current primary
+    # cannot be told apart from a promoted historical secondary (step 6).
+    sec_recorded = snap.get('secondary_outcomes_supplied') is True
 
     used_hp: set[int] = set()
     used_cp: set[int] = set()
@@ -736,10 +744,13 @@ def compare_version_history(
                 'current_measure': None,
                 'current_time_frame': None,
             })
+    # With the historical secondaries unrecorded, such a primary may have been promoted from one of
+    # them, so it is recorded as indeterminate rather than as a definite addition.
+    added_state = 'primary_added' if sec_recorded else 'primary_added_or_promoted_secondaries_unrecorded'
     for cj, cp in enumerate(curr_prim):
         if cj not in used_cp:
             diffs.append({
-                'state': 'primary_added',
+                'state': added_state,
                 'historical_primary_index': None,
                 'historical_measure': None,
                 'historical_time_frame': None,
@@ -765,6 +776,7 @@ def compare_version_history(
         'overall_change_state': 'changed' if has_change else 'unchanged',
         'diffs': diffs,
         'state_counts': counts,
+        'historical_secondaries_recorded': sec_recorded,
     }
 
 
@@ -817,6 +829,7 @@ def inspect_outcome_history(
             'overall_change_state': None,
             'diffs': None,
             'state_counts': None,
+            'historical_secondaries_recorded': None,
         }
 
     return {

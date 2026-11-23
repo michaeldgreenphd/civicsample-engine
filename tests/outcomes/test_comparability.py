@@ -26,6 +26,7 @@ for p in (ROOT, ROOT / 'scripts'):
 from outcomes import acquire  # noqa: E402
 from outcomes import comparability as C  # noqa: E402
 from outcomes import comparability_build as B  # noqa: E402
+from outcomes import outcome_history as OH  # noqa: E402
 
 import build_outcomes_comparability  # noqa: E402
 import check_outcomes_comparability_contract  # noqa: E402
@@ -587,10 +588,14 @@ def test_cross_pass_two_to_one_target_collision_downgrades_both_ogs_to_ambiguous
     assert [g['group_id'] for g in aligned['unmatched_target_groups']] == ['BG000', 'BG001']
 
 
-def _family(studies: list[dict[str, Any]]) -> dict[str, Any]:
+def _family(
+    studies: list[dict[str, Any]],
+    history_snapshots: dict[str, dict[str, Any]] | None = None,
+    history_meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build an in-memory artifact family from fictional studies with fixed provenance."""
     ids = [C.nct_id_of(s) or '' for s in studies]
-    recs, probs = B.build_records(studies, ids, {})
+    recs, probs = B.build_records(studies, ids, {}, history_snapshots)
     acq = {
         'source': 'fictional', 'mode': 'archive', 'retrieved_at': '2026-11-15T10:00:00+00:00',
         'api_version': '2.0.5', 'data_timestamp': '2026-11-15T09:00:00', 'n_requested': len(ids),
@@ -598,7 +603,10 @@ def _family(studies: list[dict[str, Any]]) -> dict[str, Any]:
         'archive': 'records-fictional.jsonl.gz',
     }
     prod = {'repository': 'civicsample-engine', 'commit': 'c' * 40, 'uncommitted_changes': False, 'source_sha256': '1' * 64}
-    return B.build(recs, probs, acq, prod, {'source': 'archive'}, B.build_scope(ids, ids), generated_at='2026-11-15T12:00:00+00:00')
+    return B.build(
+        recs, probs, acq, prod, {'source': 'archive'}, B.build_scope(ids, ids), history_meta,
+        generated_at='2026-11-15T12:00:00+00:00',
+    )
 
 
 def test_sole_total_og_is_never_an_arm_and_measure_records_no_arm_groups() -> None:
@@ -1169,6 +1177,31 @@ class _FakeResp:
 
     def json(self) -> Any:
         return json.loads(self.content)
+
+
+def test_primary_only_history_is_counted_as_indeterminate_and_contract_refuses_a_definite_addition(
+    tmp_path: Path,
+) -> None:
+    hba1c = {'measure': 'Change from Baseline in HbA1c', 'timeFrame': 'Week 24'}
+    raw = (json.dumps({'nct_id': 'NCT99000001', 'primaryOutcomes': [hba1c]}) + '\n').encode('utf-8')
+    hist = tmp_path / 'hist.jsonl.gz'
+    hist.write_bytes(gzip.compress(raw, mtime=0))
+    snaps, hist_meta = OH.load_history_archive(hist)
+    study = make_study(1, primary_outcomes=[hba1c, {'measure': 'Seated Systolic Blood Pressure', 'timeFrame': 'Week 24'}])
+
+    fam = _family([study], snaps, hist_meta)
+    assert B.check(fam) == []
+    vh = fam['records.json']['records']['NCT99000001']['outcome_history']['version_history']
+    assert vh['historical_secondaries_recorded'] is False
+    assert [d['state'] for d in vh['diffs']] == ['unchanged', 'primary_added_or_promoted_secondaries_unrecorded']
+    diff_counts = fam['summary.json']['state_breakdowns']['version_history_diffs']['counts']
+    assert diff_counts['primary_added']['numerator'] == 0
+    assert diff_counts['primary_added_or_promoted_secondaries_unrecorded']['numerator'] == 1
+    assert 'primary_added_or_promoted_secondaries_unrecorded' in fam['run.json']['vocabularies']['history_diff_states']
+
+    bad = copy.deepcopy(fam)
+    bad['records.json']['records']['NCT99000001']['outcome_history']['version_history']['diffs'][1]['state'] = 'primary_added'
+    assert any('without recorded historical secondaries' in p for p in B.check(bad))
 
 
 def test_site_run_id_follows_the_exported_bytes_not_only_the_build(monkeypatch: pytest.MonkeyPatch) -> None:
