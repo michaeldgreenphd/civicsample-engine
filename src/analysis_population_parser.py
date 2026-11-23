@@ -58,27 +58,48 @@ entry point guards that:
       parse_study_outcomes, parse_outcomes_frame (the whole batch, before
       any study is parsed), select_raw_outcome_populations,
       build_outcomes_from_raw.
-    "Carries" means a key or field whose name contains in_audit once case,
-    spaces, hyphens and underscores are ignored ("inAudit", "IN_AUDIT",
-    "in-audit" count, and so do qualified names: the pandas merge suffixes
+    "Carries" means a key, field, attribute or label whose name contains
+    in_audit once case, spaces, hyphens, underscores, full-width forms and
+    characters that print as nothing (bidi marks and isolates, zero-width
+    and other format characters, variation selectors, tag characters,
+    combining marks) are ignored ("inAudit", "IN_AUDIT", "in-audit" count,
+    and so do qualified names: the pandas merge suffixes
     in_audit_x/in_audit_y, a json_normalize path "manifest.in_audit",
-    "manifest_in_audit", "is_in_audit"), at any depth (beside the nctId, on
-    protocolSection, in a merged ``manifest`` sub-record, in a pandas
-    object's ``attrs`` or a named row-index level), in a dict, any other
-    mapping-like record (collections.UserDict, types.MappingProxyType, a
-    pandas Series), a namedtuple (a ``df.itertuples()`` row), a numpy
-    record (a ``df.to_records()`` row), a dataclass instance, a plain
-    object's attributes (types.SimpleNamespace), or any sized container
-    (list, tuple, set, deque, dict view, numpy object array). Text that
-    serializes a container (JSON, a repr, a CSV round trip of a dict
-    column) and mentions in_audit is a flag too, and since text is not a
-    bool it is refused. Such a record is refused when any flag is True,
-    when any is not exactly a bool, when the nct_id the entry point would
-    stamp is not exactly ``^NCT[0-9]{8}$``, or when any other nct_id the
-    record carries, at any depth, disagrees with it. Any record is refused
-    when part of it cannot be read (fields without names, such as a plain
-    tuple row or a namedtuple field renamed to "_N"; a bool outside a named
-    field; a one-shot iterator), since that part may hold a flag
+    "manifest_in_audit", "is_in_audit"; a key that is not text, such as an
+    enum member, is read as its str() and its value), at any depth (beside
+    the nctId, on protocolSection, in a merged ``manifest`` sub-record, in a
+    pandas object's ``attrs``, a named row-index level or a bare Index's
+    name), in a dict, any other mapping-like record
+    (collections.UserDict, types.MappingProxyType, a collections.ChainMap,
+    whose shadowed layers are read too, a pandas Series), a namedtuple (a
+    ``df.itertuples()`` row), a numpy record (a ``df.to_records()`` row), a
+    dataclass instance, a plain object, or any sized container (list, tuple,
+    set, deque, dict view, numpy object array); and beside those, as an
+    instance attribute, a property or a class attribute of a value of any
+    type that is not a builtin (a dict, str, dataclass or namedtuple
+    subclass), or inside a callable (a functools.partial's arguments, a
+    function's closure cells and defaults, a callable object's attributes)
+    (_beside_items). Text that holds in_audit as a key is a flag too, and
+    since text is not a bool it is refused: JSON and repr manifests
+    (escaped keys, Python 3.11's OrderedDict repr, a dict items view, a
+    list of pairs, a tuple-keyed dict, a pandas Series repr), JSON encoded
+    twice, a CSV round trip of a dict column, YAML, "manifest=" followed by
+    JSON, and a key in prose ("in_audit=True"), whether held as str or as
+    bytes (UTF-8, latin-1, UTF-16, UTF-32) or a memoryview of them
+    (_text_mentions). An nct_id is a name that contains nct_id or "NCT
+    Number" once so folded (nct_id_y or nct_id_m from a merge, nctNumber,
+    manifest.nct_id), never nctIdAliases. Such a record is refused when any
+    flag is True, when any is not exactly a bool, when the nct_id the entry
+    point would stamp is not exactly ``^NCT[0-9]{8}$``, or when any other
+    nct_id the record carries, at any depth, disagrees with it (a manifest
+    joined by position brings another trial's id under nct_id_m). Any
+    record is refused when part of it cannot be read (fields without
+    names, such as a plain tuple row or a namedtuple field renamed to "_N";
+    a bool outside a named field, used as a key, or left as the row label
+    of a Series row from ``iterrows()`` or ``apply(axis=1)`` or in the
+    "Index" field of an ``itertuples()`` row, which is where
+    ``set_index("in_audit")`` puts the flag; a one-shot iterator; an
+    attribute that raises when read), since that part may hold a flag
     (_scan_in_audit). parse_outcomes_frame also refuses a batch in which
     only some studies carry ``in_audit``, or carry it under different
     names, and a single record passed where a batch is expected. Every
@@ -86,9 +107,12 @@ entry point guards that:
     and outcome_types outside CT.gov's vocabulary, so an audit id set
     passed positionally fails loudly. A bare CT.gov API v2 study dict
     carries no ``in_audit``; for it these four rely on their caller, as
-    below. What the scan cannot see: a flag written as prose (text that
-    does not serialize a container, such as "in_audit=True"), and anything
-    a caller removed before the call.
+    below. What the scan cannot see: a flag named in prose without ":" or
+    "=" after it ("flagged in_audit"), a table rendered as text whose
+    header names in_audit (a CSV line, DataFrame.to_string), a name written
+    in compatibility letters other than full-width ASCII (mathematical
+    alphanumerics: this module may not import unicodedata), a function's
+    globals, and anything a caller removed before the call.
   Rely on the caller (the input carries no ``in_audit`` and no entry point
   receives an audit id set):
       parse_error_trial_outcomes (an nct_id), parse_outcome_measure,
@@ -249,42 +273,177 @@ def _is_canonical_nct_id(value: Any) -> bool:
 # How a key or column name is folded before it is compared with "in_audit" or
 # "nct_id". Assumption: a name that differs from those only by case, spacing,
 # hyphens, dashes or underscores (a camelCase merge, a spreadsheet header, a
-# stray space), by full-width forms of ASCII, or by invisible characters
-# (soft hyphen, zero-width space/joiners, word joiner, BOM) and combining
-# accents a copy-paste adds, was meant as that name. Treating it as such is
-# fail-closed: an unrecognised holdout flag is the failure this guards against,
-# while a false match can only refuse a record. Twin of the same rule in
+# stray space), by full-width forms of ASCII, or by characters that print as
+# nothing, was meant as that name. "Print as nothing" is _INVISIBLE_RE (the
+# Unicode Default_Ignorable_Code_Point set: soft hyphen, combining grapheme
+# joiner, Arabic letter mark, Hangul fillers, Mongolian free variation
+# selectors and vowel separator, zero-width space/joiners, left-to-right and
+# right-to-left marks, bidi embeddings, overrides and isolates, word joiner,
+# invisible operators, variation selectors, BOM, tag characters; plus the
+# combining-mark blocks, lone surrogates and the braille blank) and, through
+# str.isprintable(), every other format, control, private-use or unassigned
+# character that is not whitespace. Treating such a name as in_audit is
+# fail-closed: an unrecognised holdout flag is the failure this guards
+# against, while a false match can only refuse a record. This module keeps to
+# the standard-library imports its tests pin, which exclude unicodedata, so
+# compatibility forms other than full-width ASCII (mathematical alphanumeric
+# letters, circled letters) are not folded. Twin of the same rule in
 # sponsors/ecosystem.py; the two modules import nothing from each other.
-_NAME_IGNORED_RE: re.Pattern[str] = re.compile(
-    r"[\s_\-\u00ad\u0300-\u036f\u200b-\u200d\u2010-\u2015\u2060\u2212\ufe63\ufeff]+"
+_INVISIBLE_RE: re.Pattern[str] = re.compile(
+    "["
+    "\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f"
+    "\u202a-\u202e\u2060-\u206f\u2800\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff0-\ufff8"
+    "\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f"
+    "\ud800-\udfff"
+    "\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff"
+    "]+"
 )
-# One character of that class, for trimming the edges of text (see
-# _serializes_a_container).
-_IGNORED_CHAR_RE: re.Pattern[str] = re.compile(
-    r"[\s_\-\u00ad\u0300-\u036f\u200b-\u200d\u2010-\u2015\u2060\u2212\ufe63\ufeff]"
-)
+# Separators a name is folded without: whitespace, underscore, hyphen, the
+# Unicode dashes, the minus sign and the small hyphen-minus.
+_NAME_IGNORED_RE: re.Pattern[str] = re.compile(r"[\s_\-\u2010-\u2015\u2212\ufe63]+")
+_SPACE_RE: re.Pattern[str] = re.compile(r"\s+")
 _FULLWIDTH_TO_ASCII: dict[int, int] = {code: code - 0xFEE0 for code in range(0xFF01, 0xFF5F)}
+_FULLWIDTH_RE: re.Pattern[str] = re.compile("[！-～]")
+# ASCII control characters that are not whitespace, and DEL.
+_ASCII_CONTROLS: dict[int, None] = {
+    code: None for code in (*range(0x20), 0x7F) if not chr(code).isspace()
+}
+_ASCII_CONTROL_RE: re.Pattern[str] = re.compile(
+    "[" + "".join(f"\\x{code:02x}" for code in _ASCII_CONTROLS) + "]"
+)
+# The bytes an ASCII text is folded without (whitespace, "_", "-", and the
+# controls above): the byte-level twin of _NAME_IGNORED_RE plus
+# _visible_text, for the fast in_audit test on ASCII text (_may_name_in_audit).
+_ASCII_FOLD_DELETE: bytes = bytes(
+    code for code in range(0x80)
+    if chr(code).isspace() or chr(code) in "_-" or code in _ASCII_CONTROLS
+)
 _IN_AUDIT_NAME: str = "inaudit"
-_NCT_ID_NAME: str = "nctid"
+_NCT_ID_NAMES: tuple[str, ...] = ("nctid", "nctnumber")
+_NCT_ID_EXCLUDED: str = "alias"
+# Folded names, memoised (names repeat across records); short texts only.
+_FOLD_CACHE: dict[str, str] = {}
+_NAME_KIND_CACHE: dict[str, tuple[bool, bool]] = {}
+_FOLD_CACHE_LIMIT: int = 65536
+_FOLD_CACHE_MAX_LEN: int = 256
+# Stands for "no field name" among a node's (name, value) pairs: the value is
+# read as one reached by position.
+_NO_NAME: object = object()
 
 
-def _folded_name(name: Any) -> str | None:
-    """``name`` folded for comparison (see _NAME_IGNORED_RE), or None if not text.
+def _visible_text(text: str) -> str:
+    """``text`` with full-width ASCII mapped to ASCII and invisible characters dropped.
 
-    bytes are decoded as latin-1, which never fails, so a bytes key cannot
-    hide a flag; any other non-str name (an int label, None) is not text.
+    Whitespace is kept: it separates the words and keys of text. Method:
+    pure-ASCII text loses only its control characters; other text loses
+    _INVISIBLE_RE's characters and then, when anything that is neither
+    printable nor whitespace is left, each such character (a format,
+    control, private-use or unassigned code point, by str.isprintable()).
+    Each step first searches, so text it would not change is not copied.
     """
-    if isinstance(name, (bytes, bytearray)):
-        name = bytes(name).decode("latin-1")
-    if not isinstance(name, str):
-        return None
-    return _NAME_IGNORED_RE.sub("", name.translate(_FULLWIDTH_TO_ASCII)).casefold()
+    if text.isascii():
+        if _ASCII_CONTROL_RE.search(text) is None:
+            return text
+        return text.translate(_ASCII_CONTROLS)
+    if _FULLWIDTH_RE.search(text) is not None:
+        text = text.translate(_FULLWIDTH_TO_ASCII)
+    if _INVISIBLE_RE.search(text) is not None:
+        text = _INVISIBLE_RE.sub("", text)
+    if not text.isprintable() and not _SPACE_RE.sub(" ", text).isprintable():
+        text = "".join(ch for ch in text if ch.isprintable() or ch.isspace())
+    return text
 
 
-def _reads_as_in_audit(name: Any) -> bool:
-    """True when ``name`` (or any part of a tuple name) contains in_audit once folded.
+def _may_name_in_audit(text: str) -> bool:
+    """True when visible ``text``, folded whole, contains "inaudit" (a cheap necessary test).
 
-    Method: "inaudit" anywhere in the folded name, so a name that qualifies
+    Every key _text_keys reads is a stretch of the text (or of a later
+    layer, which is tested on its own), and folding removes characters one
+    by one, so a text whose folded whole lacks "inaudit" holds no key that
+    reads as in_audit. ASCII text is folded at the byte level
+    (_ASCII_FOLD_DELETE, then lower()), which costs two C passes; other text
+    by _fold_text.
+    """
+    if text.isascii():
+        return b"inaudit" in text.encode("ascii").translate(None, _ASCII_FOLD_DELETE).lower()
+    return _IN_AUDIT_NAME in _fold_text(text)
+
+
+def _fold_text(text: str) -> str:
+    """``text`` folded for comparison with a name: visible, separators dropped, casefolded.
+
+    Method: _visible_text, then _NAME_IGNORED_RE's separators are removed
+    and the result casefolded. casefold() can itself add a combining mark
+    ("İ" folds to "i" and a dot above), so _INVISIBLE_RE's characters are
+    removed from non-ASCII output once more. Short texts are memoised.
+    """
+    cacheable = type(text) is str and len(text) <= _FOLD_CACHE_MAX_LEN
+    if cacheable:
+        cached = _FOLD_CACHE.get(text)
+        if cached is not None:
+            return cached
+    folded = _NAME_IGNORED_RE.sub("", _visible_text(text)).casefold()
+    if not folded.isascii() and _INVISIBLE_RE.search(folded) is not None:
+        folded = _INVISIBLE_RE.sub("", folded)
+    if cacheable:
+        if len(_FOLD_CACHE) >= _FOLD_CACHE_LIMIT:
+            _FOLD_CACHE.clear()
+        _FOLD_CACHE[text] = folded
+    return folded
+
+
+def _decoded_texts(value: Any) -> list[str]:
+    """The text(s) a str, bytes, bytearray or memoryview is read as.
+
+    A str is itself. Bytes (a memoryview is read as the bytes it exposes)
+    are read as UTF-8 with undecodable bytes dropped and as latin-1, which
+    never fails, and, when they hold a NUL byte (what UTF-16 and UTF-32 make
+    of ASCII), as UTF-16 and UTF-32 of either byte order too, so no encoding
+    a manifest is likely written in hides a key. A BOM decodes to U+FEFF,
+    which _visible_text drops.
+    """
+    if isinstance(value, str):
+        return [value]
+    data = bytes(value)
+    texts = [data.decode("utf-8", "ignore"), data.decode("latin-1")]
+    if b"\x00" in data:
+        texts.extend(
+            data.decode(codec, "ignore")
+            for codec in ("utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be")
+        )
+    return texts
+
+
+def _name_texts(name: Any) -> list[str]:
+    """The text(s) a key, field or label name is read as; [] when it has none.
+
+    Method: text is itself and a bytes-like name is decoded
+    (_decoded_texts); a tuple name (a MultiIndex label, a tuple key) is read
+    part by part. None, _NO_NAME, a bool and a number have no text. Any
+    other object (an enum member, a custom key type) is read as its str()
+    and, when it has a text ``value`` (an enum member's), as that too:
+    str(Key.IN_AUDIT) is "Key.IN_AUDIT", so an enum key that names in_audit
+    reads as it whatever it holds.
+    """
+    if name is None or name is _NO_NAME or _is_bool_like(name):
+        return []
+    if isinstance(name, (str, bytes, bytearray, memoryview)):
+        return _decoded_texts(name)
+    if isinstance(name, tuple):
+        return [text for part in name for text in _name_texts(part)]
+    if isinstance(name, (int, float, complex)):
+        return []
+    texts = [str(name)]
+    value = getattr(name, "value", None)
+    if isinstance(value, (str, bytes, bytearray)):
+        texts.extend(_decoded_texts(value))
+    return texts
+
+
+def _name_kind(name: Any) -> tuple[bool, bool]:
+    """(reads as in_audit, reads as nct_id) for ``name``, each of its texts folded once.
+
+    in_audit: "inaudit" anywhere in a folded text, so a name that qualifies
     in_audit reads as it: pandas merge suffixes (in_audit_x, in_audit_y,
     in_audit_manifest), a json_normalize path (manifest.in_audit),
     DataFrame.add_prefix (manifest_in_audit) and an "is" prefix
@@ -294,26 +453,56 @@ def _reads_as_in_audit(name: Any) -> bool:
     key or sponsor column contains "audit", so a name that merely contains
     the letters ("domain_audit") is read as a flag too; fail-closed, since a
     false match can only refuse a record.
+
+    nct_id: a folded text that contains "nctid" or "nctnumber" and not
+    "alias". So nct_id itself, a json_normalize path (manifest.nct_id),
+    DataFrame.add_prefix (manifest_nct_id), the pandas merge suffixes
+    (nct_id_x, nct_id_y, nct_id_m, nct_id_manifest: a manifest joined by
+    position brings its own id under such a name) and CT.gov's CSV export
+    header ("NCT Number", nctNumber) are ids, while CT.gov's
+    identificationModule.nctIdAliases (a trial's obsolete ids, folded
+    "nctidaliases") is not the trial's own id. Assumption: no other CT.gov
+    API v2 field, retained-record key or sponsor column has "nctid" or
+    "nctnumber" in its name; one that did would be compared with the
+    stamped id, which can only refuse a record.
     """
-    if isinstance(name, tuple):
-        return any(_reads_as_in_audit(part) for part in name)
-    folded = _folded_name(name)
-    return folded is not None and _IN_AUDIT_NAME in folded
+    if type(name) is str:  # the common case: one text, memoised
+        kind = _NAME_KIND_CACHE.get(name)
+        if kind is not None:
+            return kind
+    in_audit = nct_id = False
+    for text in _name_texts(name):
+        folded = _fold_text(text)
+        in_audit = in_audit or _IN_AUDIT_NAME in folded
+        nct_id = nct_id or (
+            _NCT_ID_EXCLUDED not in folded and any(part in folded for part in _NCT_ID_NAMES)
+        )
+    if type(name) is str and len(name) <= _FOLD_CACHE_MAX_LEN:
+        if len(_NAME_KIND_CACHE) >= _FOLD_CACHE_LIMIT:
+            _NAME_KIND_CACHE.clear()
+        _NAME_KIND_CACHE[name] = (in_audit, nct_id)
+    return in_audit, nct_id
+
+
+def _folded_name(name: Any) -> str | None:
+    """``name`` folded for comparison (_fold_text of each _name_texts, joined by "|").
+
+    None when the name has no text (None, a bool, a number).
+    """
+    texts = _name_texts(name)
+    if not texts:
+        return None
+    return "|".join(_fold_text(text) for text in texts)
+
+
+def _reads_as_in_audit(name: Any) -> bool:
+    """True when ``name`` (or any part of a tuple name) reads as in_audit (see _name_kind)."""
+    return _name_kind(name)[0]
 
 
 def _reads_as_nct_id(name: Any) -> bool:
-    """True when ``name`` (or any part of a tuple name) folds to, or ends with, nct_id.
-
-    Method: the folded name equals "nctid" or ends with it, which covers a
-    json_normalize path (manifest.nct_id) and DataFrame.add_prefix
-    (manifest_nct_id). Not a substring: CT.gov's
-    identificationModule.nctIdAliases (a trial's obsolete ids) folds to
-    "nctidaliases" and is not the trial's own id.
-    """
-    if isinstance(name, tuple):
-        return any(_reads_as_nct_id(part) for part in name)
-    folded = _folded_name(name)
-    return folded is not None and folded.endswith(_NCT_ID_NAME)
+    """True when ``name`` (or any part of a tuple name) reads as nct_id (see _name_kind)."""
+    return _name_kind(name)[1]
 
 
 def _is_text_name(name: Any) -> bool:
@@ -323,76 +512,246 @@ def _is_text_name(name: Any) -> bool:
     return isinstance(name, (str, bytes, bytearray))
 
 
+def _holds_bool(name: Any) -> bool:
+    """True when ``name`` is a bool, or a tuple name holding one (a MultiIndex label).
+
+    A bool used as a key or label is a flag value that became a name
+    (``set_index("in_audit")``, ``to_dict("index")``), so it cannot be read.
+    """
+    if type(name) is str:
+        return False
+    if isinstance(name, tuple):
+        return any(_holds_bool(part) for part in name)
+    return _is_bool_like(name)
+
+
 # Text that serializes a container: what json.dumps, the repr() of a dict or
 # list, and a CSV round trip of a dict column leave ("{...}", "[...]"), and
-# the repr() of a namedtuple, SimpleNamespace or deque ("Row(...)").
+# the repr() of a namedtuple, SimpleNamespace, deque or OrderedDict
+# ("Row(...)"). Read after _visible_text, so full-width forms are ASCII.
 _SERIALIZED_CLOSERS: dict[str, str] = {"{": "}", "[": "]"}
-_REPR_HEAD_RE: re.Pattern[str] = re.compile(r"[^\W\d][\w.\uff0e]*[(\uff08]")
-# A key inside such text (read after full-width forms are mapped to ASCII):
-# a double- or single-quoted key, or a run of identifier characters (with
-# the characters names are folded without), followed by ":" or "=". So
-# 'in_audit': True, "manifest.in_audit": true and in_audit=True are keys,
-# while the words of bracketed prose ("[Practices in audit arm: ...]") are
-# not: only "arm" stands before its colon.
-_SERIALIZED_KEY_RE: re.Pattern[str] = re.compile(
-    r'"([^"]*)"\s*[:=]'
-    r"|'([^']*)'\s*[:=]"
-    r"|([\w.\-\u00ad\u0300-\u036f\u200b-\u200d\u2010-\u2015\u2060\u2212\ufe63\ufeff]+)"
-    r"\s*[:=]"
+_REPR_HEAD_RE: re.Pattern[str] = re.compile(r"[^\W\d][\w.]*\(")
+# A quoted string (double or single quotes, backslash escapes inside).
+_QUOTED: str = r""""(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'"""
+_QUOTED_RE: re.Pattern[str] = re.compile(_QUOTED, re.DOTALL)
+# The characters of a bare key besides \w: the dot of a json_normalize path
+# and the hyphens and dashes names are folded without.
+_BARE_KEY_CHARS: str = r"\w.\-\u2010-\u2015\u2212\ufe63"
+# Where text holds a key:
+#   * a quoted string, or a run of key characters that does not continue a
+#     longer run, followed by ":" or "=" ('in_audit': True, "in_audit":
+#     true, in_audit=True, a YAML line "in_audit: true");
+#   * a quoted string that opens a bracketed pair ("('in_audit', True)",
+#     '["in_audit", true]': Python 3.11's OrderedDict repr, a dict items
+#     view's repr, a JSON list of pairs);
+#   * the quoted parts of a tuple followed by ":" or "=" (the repr of a
+#     dict with tuple keys).
+# The words of prose are not keys: in "[Practices in audit arm: ...]" only
+# "arm" stands before its colon, and in '{"note": "in audit arm"}' the
+# words are a value.
+_KEY_RE: re.Pattern[str] = re.compile(
+    rf"({_QUOTED})\s*[:=]|(?<![{_BARE_KEY_CHARS}])([{_BARE_KEY_CHARS}]+)\s*[:=]",
+    re.DOTALL,
 )
+_PAIR_KEY_RE: re.Pattern[str] = re.compile(rf"[(\[]\s*({_QUOTED})\s*,", re.DOTALL)
+_TUPLE_KEY_RE: re.Pattern[str] = re.compile(
+    rf"\(\s*(?:{_QUOTED})(?:\s*,\s*(?:{_QUOTED}))*\s*,?\s*\)\s*[:=]", re.DOTALL
+)
+# The last line of a pandas Series' repr ("dtype: object", "Name: x, dtype:
+# bool", "Name: x, Length: 9, dtype: object"), and the index label that
+# starts each line above it (followed by two or more spaces, then the value).
+_SERIES_FOOTER_RE: re.Pattern[str] = re.compile(
+    r"(?:Name: .*, )?(?:Freq: \S+, )?(?:Length: \d+, )?dtype: \S+"
+)
+_SERIES_LABEL_RE: re.Pattern[str] = re.compile(r"\s*(\S(?:.*?\S)?)(?:\s{2,}|\s*$)")
+# Backslash escapes (_unescaped).
+_ESCAPE_RE: re.Pattern[str] = re.compile(
+    r"\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8})|x([0-9a-fA-F]{2})|(N\{[^{}\\]{0,100}\})|(.))",
+    re.DOTALL,
+)
+_SIMPLE_ESCAPES: dict[str, str] = {
+    "n": "\n", "t": "\t", "r": "\r", "f": "\f", "v": "\v", "b": "\b", "a": "\a", "0": "\0",
+}
+_SURROGATE_RE: re.Pattern[str] = re.compile("[\ud800-\udfff]")
+# How many times text is unquoted and unescaped before it is given up on
+# (_text_layers); text still changing after that is read as a flag.
+_MAX_TEXT_LAYERS: int = 8
+
+
+def _escape_value(match: re.Match[str]) -> str:
+    r"""The text one backslash escape matched by _ESCAPE_RE stands for.
+
+    \uXXXX, \UXXXXXXXX and \xXX give their character (one beyond U+10FFFF,
+    nothing). \N{name} gives nothing: this module cannot look names up
+    (no unicodedata), and neither JSON nor repr() writes one, so only
+    hand-written text holds it; dropping it reads a key that hid an
+    invisible character behind it. \n, \t and the other one-letter escapes
+    give theirs; any other escaped character is itself (\" gives ").
+    """
+    code = match.group(1) or match.group(2) or match.group(3)
+    if code is not None:
+        value = int(code, 16)
+        return chr(value) if value <= 0x10FFFF else ""
+    if match.group(4) is not None:
+        return ""
+    other = match.group(5)
+    return _SIMPLE_ESCAPES.get(other, other)
+
+
+def _unescaped(text: str) -> str:
+    """``text`` with backslash escapes decoded (_escape_value), as JSON or a literal writes them.
+
+    Decoded by pattern, not by a JSON or literal parser (this module calls
+    none), so text that is not valid JSON or Python is decoded as far as it
+    goes. A surrogate pair (how JSON writes a character beyond U+FFFF) is
+    joined; a lone surrogate is dropped.
+    """
+    decoded = _ESCAPE_RE.sub(_escape_value, text)
+    if _SURROGATE_RE.search(decoded):
+        decoded = decoded.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "ignore")
+    return decoded
+
+
+def _text_layers(text: str) -> tuple[list[str], bool]:
+    """``text`` made visible, then what it reads as unquoted and unescaped, layer by layer.
+
+    Returns (layers, settled). Method: the first layer is _visible_text of
+    ``text``; each next one is the previous one stripped, with one pair of
+    matching outer quotes removed (JSON encoded twice, or the repr() of a
+    JSON string, is one quoted string), its backslash escapes decoded
+    (_unescaped: json.dumps writes every non-ASCII character of a key as
+    \\uXXXX and repr() every unprintable one as \\xXX or \\uXXXX) and made
+    visible again. Layers stop when one changes nothing (settled) or after
+    _MAX_TEXT_LAYERS (not settled).
+    """
+    layers = [_visible_text(text)]
+    for _ in range(_MAX_TEXT_LAYERS):
+        current = layers[-1].strip()
+        inner = current
+        quoted = len(inner) >= 2 and inner[0] == inner[-1] and inner[0] in "\"'"
+        if not quoted and "\\" not in inner:
+            return layers, True  # nothing to unquote or unescape: settled
+        if quoted:
+            inner = inner[1:-1]
+        if "\\" in inner:
+            inner = _unescaped(inner)
+        inner = _visible_text(inner).strip()
+        if inner == current:
+            return layers, True
+        layers.append(inner)
+    return layers, False
 
 
 def _serializes_a_container(text: str) -> bool:
-    """True when ``text``, edges trimmed, opens and closes like a serialized container.
+    """True when visible ``text``, stripped, opens and closes like a serialized container.
 
-    Method: characters the name folding ignores (whitespace, invisible
-    characters) are trimmed from both ends, so a leading BOM or zero-width
-    space cannot hide a brace, and the first and last characters are read
-    with full-width forms mapped to ASCII (text whose last character is a
-    letter or digit is not one, and is let go at once). Only the edges are
-    read here, so ordinary text costs a few character tests. Assumption:
-    free text (a population description, a sponsor name) does not both open
-    with "{" or "[" and close with the matching bracket, nor open with an
-    identifier followed by "(" and close with ")"; text that does is read
-    for keys (_text_mentions).
+    ``text`` has been through _visible_text (invisible characters dropped,
+    full-width forms mapped to ASCII), so stripping whitespace trims its
+    edges. Only the edges are read: text whose last character is a letter
+    or digit is let go at once. Assumption: free text (a population
+    description, a sponsor name) does not both open with "{" or "[" and
+    close with the matching bracket, nor open with an identifier followed
+    by "(" and close with ")"; text that does may have nct_id keys read in
+    it (_text_mentions).
     """
-    if not text or text[-1].isalnum():  # most text ends in a letter or digit
+    inner = text.strip()
+    if len(inner) < 2 or inner[-1].isalnum():
         return False
-    start, end = 0, len(text)
-    while start < end and _IGNORED_CHAR_RE.match(text, start):
-        start += 1
-    while end > start and _IGNORED_CHAR_RE.match(text, end - 1):
-        end -= 1
-    if end - start < 2:
-        return False
-    first = text[start].translate(_FULLWIDTH_TO_ASCII)
-    last = text[end - 1].translate(_FULLWIDTH_TO_ASCII)
-    if first in _SERIALIZED_CLOSERS:
-        return _SERIALIZED_CLOSERS[first] == last
-    return last == ")" and _REPR_HEAD_RE.match(text, start) is not None
+    if inner[0] in _SERIALIZED_CLOSERS:
+        return _SERIALIZED_CLOSERS[inner[0]] == inner[-1]
+    return inner[-1] == ")" and _REPR_HEAD_RE.match(inner) is not None
+
+
+def _series_repr_labels(text: str) -> list[str]:
+    """The index labels of a pandas Series' repr, or [] when visible ``text`` is not one.
+
+    Method: the last non-blank line is the footer repr() ends with
+    (_SERIES_FOOTER_RE). Each line above it gives two readings of its
+    label: its text up to the first run of two or more spaces
+    (_SERIES_LABEL_RE), and the line without its last word (the value),
+    so a label with two spaces inside is still read whole.
+    """
+    if "dtype:" not in text:
+        return []
+    lines = [line for line in text.strip().splitlines() if line.strip()]
+    if len(lines) < 2 or _SERIES_FOOTER_RE.fullmatch(lines[-1].strip()) is None:
+        return []
+    labels: list[str] = []
+    for line in lines[:-1]:
+        match = _SERIES_LABEL_RE.match(line)
+        labels.append(match.group(1) if match else line.strip())
+        words = line.split()
+        if len(words) > 1:
+            labels.append(" ".join(words[:-1]))
+    return labels
+
+
+def _text_keys(layer: str) -> list[str]:
+    """Every key visible text ``layer`` holds, unquoted and unescaped.
+
+    The keys of _KEY_RE (before ":" or "="), _PAIR_KEY_RE (first item of a
+    bracketed pair) and _TUPLE_KEY_RE (the parts of a tuple key), and the
+    labels of a pandas Series repr (_series_repr_labels).
+    """
+    raw: list[str] = []
+    for match in _KEY_RE.finditer(layer):
+        raw.append(match.group(1) if match.group(1) is not None else match.group(2))
+    raw.extend(match.group(1) for match in _PAIR_KEY_RE.finditer(layer))
+    for match in _TUPLE_KEY_RE.finditer(layer):
+        raw.extend(part.group(0) for part in _QUOTED_RE.finditer(match.group(0)))
+    keys: list[str] = []
+    for key in raw:
+        if len(key) >= 2 and key[0] == key[-1] and key[0] in "\"'":
+            key = key[1:-1]
+        keys.append(_unescaped(key) if "\\" in key else key)
+    return keys + _series_repr_labels(layer)
 
 
 def _text_mentions(text: Any) -> tuple[bool, bool]:
-    """(mentions in_audit, mentions nct_id) for text that serializes a container.
+    """(mentions in_audit, mentions nct_id) for a str, bytes, bytearray or memoryview.
 
-    Method: text is not decoded (this module calls no parser of JSON or
-    Python literals). In text that serializes a container
-    (_serializes_a_container), every key (_SERIALIZED_KEY_RE: a quoted key
-    or an identifier followed by ":" or "=") is read with the name rules
-    (_reads_as_in_audit, _reads_as_nct_id), so the same names count in text
-    as in a dict. Any other text, and words that are not keys, give
-    (False, False). bytes are read as latin-1, as names are.
+    Method: text is not parsed (this module calls no parser of JSON or
+    Python literals). It is decoded (_decoded_texts) and read layer by layer
+    (_text_layers), and each layer's keys (_text_keys: a key before ":" or
+    "=", the first item of a bracketed pair, the parts of a tuple key, the
+    labels of a pandas Series repr) are read with the name rules
+    (_name_kind), so the same names count in text as in a dict.
+      * A key that reads as in_audit is a mention wherever the text holds
+        it: a JSON or repr manifest (escaped, encoded twice, as pairs), a
+        YAML line, "manifest=" followed by JSON, a Series repr, and a key
+        in prose such as "in_audit=True". A layer whose folded text
+        (_fold_text) does not contain "inaudit" cannot hold one and is let
+        go after a few string passes. Text still changing after
+        _MAX_TEXT_LAYERS layers is read as a mention (fail-closed).
+      * A key that reads as nct_id is a mention only in a layer that
+        serializes a container (_serializes_a_container) or is a Series
+        repr, so a sentence such as "see nctId: NCT..." in a description
+        does not make a flagged record's ids disagree.
+    Words that are not keys give (False, False): "Not in audit" and
+    "[Practices in audit arm: ...]" mention nothing.
     """
-    if isinstance(text, (bytes, bytearray)):
-        text = bytes(text).decode("latin-1")
-    if not isinstance(text, str) or not _serializes_a_container(text):
+    if not isinstance(text, (str, bytes, bytearray, memoryview)):
         return False, False
-    in_audit_key = nct_id_key = False
-    for match in _SERIALIZED_KEY_RE.finditer(text.translate(_FULLWIDTH_TO_ASCII)):
-        key = next(group for group in match.groups() if group is not None)
-        in_audit_key = in_audit_key or _reads_as_in_audit(key)
-        nct_id_key = nct_id_key or _reads_as_nct_id(key)
-    return in_audit_key, nct_id_key
+    in_audit = nct_id = False
+    for decoded in _decoded_texts(text):
+        layers, settled = _text_layers(decoded)
+        in_audit = in_audit or not settled
+        for layer in layers:
+            if ":" not in layer and "=" not in layer and "," not in layer:
+                continue  # every key form needs one of these (_text_keys)
+            may_flag = not in_audit and _may_name_in_audit(layer)
+            may_id = not nct_id and (
+                _serializes_a_container(layer) or bool(_series_repr_labels(layer))
+            )
+            if not (may_flag or may_id):
+                continue
+            for key in _text_keys(layer):
+                key_in_audit, key_nct_id = _name_kind(key)
+                in_audit = in_audit or (may_flag and key_in_audit)
+                nct_id = nct_id or (may_id and key_nct_id)
+        if in_audit and nct_id:
+            break
+    return in_audit, nct_id
 
 
 def _is_mapping_like(value: Any) -> bool:
@@ -458,6 +817,27 @@ _ID_IN_TEXT: object = object()
 # that compares the names records carry in_audit under.
 _FLAG_IN_TEXT_NAME: str = "<in_audit inside serialized text>"
 _MODULE_TYPE: type = type(json)
+# Types whose instances hold nothing beside their items, elements or value
+# (no instance attributes, and a namespace that cannot change), so
+# _beside_items is not consulted for them.
+_PLAIN_TYPES: frozenset[type] = frozenset(
+    {dict, list, tuple, set, frozenset, str, bytes, bytearray, int, float, complex,
+     bool, range, type(None)}
+)
+# CPython's Py_TPFLAGS_IMMUTABLETYPE (3.10+): set on builtin and extension
+# types, whose namespace cannot be changed after creation.
+_IMMUTABLE_TYPE_FLAG: int = 1 << 8
+# Packages whose objects' instance attributes are library internals (a
+# Series' block manager), read by name only (_beside_items).
+_LIBRARY_PACKAGES: frozenset[str] = frozenset({"pandas", "numpy"})
+# klass -> (its namespace's names when read, or None if immutable; the names
+# in it that read as in_audit or nct_id). See _class_flag_names.
+_CLASS_NAMES_CACHE: dict[type, tuple[frozenset[Any] | None, tuple[str, ...]]] = {}
+_CLASS_NAMES_CACHE_LIMIT: int = 4096
+# A scan that has read this many parts stops and reports the rest unreadable
+# (a property that builds a new object each time it is read would otherwise
+# never end).
+_MAX_SCAN_NODES: int = 2_000_000
 
 
 @dataclass(frozen=True)
@@ -465,12 +845,12 @@ class _InAuditScan:
     """What _scan_in_audit found in one record.
 
     ``flags``: every value stored under a name that reads as in_audit, at
-    any depth (text that serializes a container mentioning in_audit is
-    itself stored as a flag: a str, never a bool). ``flag_names``: the
-    folded names those flags were found under. ``ids``: every value stored
-    under a name that reads as nct_id, at any depth (_ID_IN_TEXT for one
-    inside serialized text). ``unreadable``: a description (a type name,
-    never a value) of each part whose names or contents could not be read.
+    any depth (text that mentions in_audit as a key is itself stored as a
+    flag: a str, never a bool). ``flag_names``: the folded names those flags
+    were found under. ``ids``: every value stored under a name that reads as
+    nct_id, at any depth (_ID_IN_TEXT for one inside serialized text).
+    ``unreadable``: a description (a type name, never a value) of each part
+    whose names or contents could not be read.
     """
 
     flags: tuple[Any, ...]
@@ -489,7 +869,10 @@ def _keyed_items(node: Any) -> list[tuple[Any, Any]] | None:
     instance its ``__dataclass_fields__``. Without this a namedtuple would be
     walked as a plain tuple, its values without their names, and a flag in
     it would be missed. A pandas object adds its named row-index levels and,
-    for a Series, its own name (_pandas_axis_items).
+    for a Series, its own name (_pandas_axis_items). The field
+    ``df.itertuples()`` names "Index" holds the row label, not a field, so
+    its value has no name (_NO_NAME): after ``set_index("in_audit")`` it is
+    the flag itself.
     """
     if _is_mapping_like(node):
         return list(node.items()) + _pandas_axis_items(node)
@@ -499,7 +882,10 @@ def _keyed_items(node: Any) -> list[tuple[Any, Any]] | None:
     ):
         return [pair for pair in node if isinstance(pair, tuple) and len(pair) == 2]
     if isinstance(node, tuple) and _has_method(node, "_asdict"):
-        return list(node._asdict().items())
+        return [
+            (_NO_NAME if key == "Index" else key, value)
+            for key, value in node._asdict().items()
+        ]
     if _is_structured_scalar(node):
         return [(name, node[name]) for name in node.dtype.names]
     fields = getattr(type(node), "__dataclass_fields__", None)
@@ -508,93 +894,245 @@ def _keyed_items(node: Any) -> list[tuple[Any, Any]] | None:
     return None
 
 
+def _names_a_field(name: Any) -> bool:
+    """True when ``name`` is text or reads as in_audit or nct_id (an enum label)."""
+    return _is_text_name(name) or any(_name_kind(name))
+
+
 def _pandas_axis_items(node: Any) -> list[tuple[Any, Any]]:
-    """(name, row value) pairs a pandas object holds in its axis names.
+    """(name, row value) pairs a pandas object holds in its axis names, and a Series' own name.
 
     Method: each named level of a Series' or DataFrame's row index gives
     one pair per row (``set_index("in_audit")`` keeps the flag only there),
-    and so does a Series' own name (``df["in_audit"]``). Duck-typed through
-    ``index.names`` and ``get_level_values``; for anything else, no pairs.
+    and so does a Series' own text name (``df["in_audit"]``). A Series' own
+    name that is not text is a value without a field name (_NO_NAME): the
+    row ``iterrows()`` or ``apply(axis=1)`` hands out carries its row label
+    there, so after ``set_index("in_audit")`` it is the flag itself (True,
+    or (0, True) with ``append=True``), and a bool there cannot be read.
+    Duck-typed through ``index.names``, ``get_level_values`` and ``ndim``
+    (1 for a Series; a DataFrame's ``.name`` would be a column named
+    "name"); for anything else, no pairs.
     """
     pairs: list[tuple[Any, Any]] = []
     index = getattr(node, "index", None)
     names = getattr(index, "names", None)
-    if names is not None and callable(getattr(index, "get_level_values", None)):
-        for level, name in enumerate(list(names)):
-            if _is_text_name(name):
-                pairs.extend((name, value) for value in index.get_level_values(level).tolist())
-    own_name = getattr(node, "name", None)
-    if names is not None and _is_text_name(own_name) and callable(getattr(node, "tolist", None)):
-        pairs.extend((own_name, value) for value in node.tolist())
+    if names is None or not callable(getattr(index, "get_level_values", None)):
+        return pairs
+    for level, name in enumerate(list(names)):
+        if _names_a_field(name):
+            pairs.extend((name, value) for value in index.get_level_values(level).tolist())
+    if getattr(node, "ndim", None) == 1:
+        own_name = getattr(node, "name", None)
+        if _names_a_field(own_name) and callable(getattr(node, "tolist", None)):
+            pairs.extend((own_name, value) for value in node.tolist())
+        elif own_name is not None:
+            pairs.append((_NO_NAME, own_name))
     return pairs
 
 
-def _attribute_items(node: Any) -> list[tuple[Any, Any]] | None:
-    """(name, value) pairs of a plain object's instance attributes, else None.
+def _index_items(index: Any) -> list[tuple[Any, Any]]:
+    """(level name, value) pairs of a pandas Index's values; _NO_NAME for an unnamed level.
 
-    Method: ``vars()`` and any ``__slots__`` of an object that is not a
-    class, a module or a callable (a types.SimpleNamespace, an instance of
-    a user class). None when it has neither, which makes it a leaf.
+    A bare Index keeps a flag in its ``name`` (``pd.Index([...],
+    name="in_audit")``, what ``df.set_index("in_audit").index`` is), so its
+    values are read under their level's name. Levels of numbers or dates
+    are skipped (no value of theirs can be a flag or hold text).
     """
-    if isinstance(node, (type, _MODULE_TYPE)) or callable(node):
-        return None
-    instance_dict = getattr(node, "__dict__", None)
-    pairs: list[tuple[Any, Any]] = (
-        list(instance_dict.items()) if isinstance(instance_dict, dict) else []
-    )
-    has_slots = False
-    for klass in type(node).__mro__:
-        slots = klass.__dict__.get("__slots__", ())
-        for slot in (slots,) if isinstance(slots, str) else slots:
-            if slot in ("__dict__", "__weakref__"):
+    pairs: list[tuple[Any, Any]] = []
+    for level, name in enumerate(list(index.names)):
+        values = index.get_level_values(level)
+        kind = getattr(getattr(values, "dtype", None), "kind", None)
+        if kind in ("i", "u", "f", "c", "m", "M"):
+            continue
+        key = name if _names_a_field(name) else _NO_NAME
+        pairs.extend((key, value) for value in values.tolist())
+    return pairs
+
+
+def _class_flag_names(klass: type) -> tuple[str, ...]:
+    """Names defined in ``klass``'s own namespace that read as in_audit or nct_id.
+
+    Cached per class (_CLASS_NAMES_CACHE). A class whose namespace cannot
+    change (_IMMUTABLE_TYPE_FLAG: builtin and extension types such as dict
+    or numpy.int64) is read once; any other class is read again whenever
+    its namespace's names differ from those cached, so an attribute added
+    to a class after a scan is not missed.
+    """
+    namespace = getattr(klass, "__dict__", None)
+    if namespace is None:
+        return ()
+    cached = _CLASS_NAMES_CACHE.get(klass)
+    if cached is not None and (cached[0] is None or cached[0] == namespace.keys()):
+        return cached[1]
+    names = tuple(n for n in list(namespace) if isinstance(n, str) and any(_name_kind(n)))
+    immutable = bool(getattr(klass, "__flags__", 0) & _IMMUTABLE_TYPE_FLAG)
+    if len(_CLASS_NAMES_CACHE) >= _CLASS_NAMES_CACHE_LIMIT:
+        _CLASS_NAMES_CACHE.clear()
+    _CLASS_NAMES_CACHE[klass] = (None if immutable else frozenset(namespace), names)
+    return names
+
+
+def _callable_parts(node: Any) -> list[tuple[Any, Any]]:
+    """(name, value) pairs a callable was built from.
+
+    A functools.partial (duck-typed: ``func``, ``args`` and ``keywords``)
+    gives all three; a function gives its closure cells by free-variable
+    name, its defaults by parameter name and its keyword-only defaults; a
+    bound method gives ``__self__`` (unless a module) and ``__func__``. A
+    function's globals are not read.
+    """
+    if not callable(node) or isinstance(node, type):
+        return []
+    pairs: list[tuple[Any, Any]] = []
+    keywords = getattr(node, "keywords", None)
+    if (
+        isinstance(keywords, dict)
+        and isinstance(getattr(node, "args", None), tuple)
+        and callable(getattr(node, "func", None))
+    ):
+        pairs.extend((("func", node.func), ("args", node.args), ("keywords", keywords)))
+    code = getattr(node, "__code__", None)
+    freevars = getattr(code, "co_freevars", None)
+    closure = getattr(node, "__closure__", None)
+    if isinstance(freevars, tuple) and isinstance(closure, tuple):
+        for name, cell in zip(freevars, closure):
+            try:
+                pairs.append((name, cell.cell_contents))
+            except ValueError:  # an empty cell holds nothing
                 continue
-            has_slots = True
-            if hasattr(node, slot):
-                pairs.append((slot, getattr(node, slot)))
-    if not isinstance(instance_dict, dict) and not has_slots:
-        return None
+    defaults = getattr(node, "__defaults__", None)
+    varnames = getattr(code, "co_varnames", None)
+    argcount = getattr(code, "co_argcount", None)
+    if isinstance(defaults, tuple) and isinstance(varnames, tuple) and isinstance(argcount, int):
+        params = varnames[:argcount]
+        pairs.extend(zip(params[len(params) - len(defaults):], defaults))
+    kwdefaults = getattr(node, "__kwdefaults__", None)
+    if isinstance(kwdefaults, dict):
+        pairs.extend(kwdefaults.items())
+    owner = getattr(node, "__self__", None)
+    if owner is not None and not isinstance(owner, _MODULE_TYPE):
+        pairs.append(("__self__", owner))
+    function = getattr(node, "__func__", None)
+    if function is not None:
+        pairs.append(("__func__", function))
+    return pairs
+
+
+def _beside_items(node: Any, unreadable: list[str]) -> list[tuple[Any, Any]]:
+    """(name, value) pairs held beside a node's items, fields, elements or text.
+
+    For a node whose type is not one of _PLAIN_TYPES (a module is a leaf),
+    the scan also reads:
+      * its instance attributes (``vars()`` and ``__slots__``), all of them
+        as named fields, except on a pandas or numpy object, whose instance
+        attributes are the library's internals (a Series' block manager):
+        there only those whose names read as in_audit or nct_id;
+      * every attribute its class defines through the MRO (for a class,
+        the class itself) whose name reads as in_audit or nct_id
+        (_class_flag_names), read with getattr so a property or a class
+        attribute answers; one that raises when read is unreadable;
+      * what a callable was built from (_callable_parts).
+    So in_audit set as an attribute of a dict subclass, beside a
+    dataclass's or namedtuple subclass's fields or on a str subclass, as a
+    property or a class attribute, inside a functools.partial or a callable
+    namespace, and a collections.ChainMap's layers (its ``maps``: the True
+    a front layer's False shadows) are all read.
+    """
+    if isinstance(node, _MODULE_TYPE):
+        return []
+    pairs: list[tuple[Any, Any]] = []
+    if isinstance(node, type):
+        classes: tuple[type, ...] = node.__mro__
+    else:
+        classes = type(node).__mro__
+        package = getattr(type(node), "__module__", None)
+        library = isinstance(package, str) and package.split(".")[0] in _LIBRARY_PACKAGES
+        try:
+            instance_dict = node.__dict__
+        except AttributeError:  # no instance attributes
+            instance_dict = None
+        except Exception:  # a __getattr__ that fails: what it hides cannot be read
+            instance_dict = None
+            unreadable.append(f"a {type(node).__name__} whose attributes raised when read")
+        if isinstance(instance_dict, dict):
+            pairs.extend(
+                (key, value)
+                for key, value in list(instance_dict.items())
+                if not library or any(_name_kind(key))
+            )
+        for klass in classes:
+            slots = klass.__dict__.get("__slots__", ())
+            for slot in (slots,) if isinstance(slots, str) else slots:
+                if slot in ("__dict__", "__weakref__"):
+                    continue
+                if library and not any(_name_kind(slot)):
+                    continue
+                try:
+                    if hasattr(node, slot):
+                        pairs.append((slot, getattr(node, slot)))
+                except Exception:  # any failure leaves the slot unread
+                    unreadable.append(f"a {type(node).__name__} slot that raised when read")
+        pairs.extend(_callable_parts(node))
+    for klass in classes:
+        if klass is object:
+            continue
+        for name in _class_flag_names(klass):
+            try:
+                pairs.append((name, getattr(node, name)))
+            except Exception:  # any failure leaves the attribute unread
+                unreadable.append(f"a {type(node).__name__} attribute that raised when read")
     return pairs
 
 
 def _scan_in_audit(record: Any) -> _InAuditScan:
     """Find every in_audit flag and nct_id in ``record``, at any depth and spelling.
 
-    Method: an explicit-stack walk (no recursion limit). Each node is read
-    by the first of these that applies:
-      * text: a leaf, unless it serializes a container that mentions
-        in_audit (stored as a flag, so it is refused as not a bool) or
-        nct_id (stored as _ID_IN_TEXT) (_text_mentions);
+    Method: an explicit-stack walk (no recursion limit; at most
+    _MAX_SCAN_NODES parts, past which the rest is unreadable). Each node is
+    read by the first of these that applies:
+      * text (str, bytes, bytearray, memoryview): a leaf, unless it
+        mentions in_audit as a key (stored as a flag, so it is refused as
+        not a bool) or, when it serializes a container, nct_id (stored as
+        _ID_IN_TEXT) (_text_mentions);
       * a bool or numpy bool: a leaf when reached through a text name; one
         reached by position or under a non-text key has lost its name and
         could be a flag, so it is unreadable;
+      * a number or range: a leaf;
       * a node with named fields (_keyed_items: mapping-like values, dict
         items views, namedtuples, numpy structured scalars, dataclass
-        instances, plus a pandas object's named axes): every name that
-        reads as in_audit (_reads_as_in_audit) gives a flag and every name
-        that reads as nct_id (_reads_as_nct_id) an id; a namedtuple field
-        that pandas or namedtuple(rename=True) renamed to "_N" has lost its
-        name, so it is unreadable; a pandas object's ``attrs`` are walked;
+        instances, plus a pandas object's named axes and a Series' own
+        name): every name that reads as in_audit gives a flag and every
+        name that reads as nct_id an id (_name_kind: case, separators,
+        invisible characters and qualifiers ignored; an enum key read as
+        its str() and value); a key that is a bool, or a tuple holding
+        one, is unreadable (_holds_bool); a namedtuple field that pandas or
+        namedtuple(rename=True) renamed to "_N" has lost its name, so it is
+        unreadable; a pandas object's ``attrs`` are walked;
       * a one-shot iterator or generator: unreadable (reading it would
         consume it, and what consumes it later could read a flag in it);
-      * a numpy array or pandas Index: object and text elements are walked,
-        a structured array's records are walked, an array of bools is
-        unreadable (unnamed bools), numbers are leaves (as is a range);
+      * a pandas Index: its values under their level's name (_index_items);
+      * a numpy array: object and text elements are walked, a structured
+        array's records are walked, an array of bools is unreadable
+        (unnamed bools), numbers are leaves;
       * any other sized, re-iterable container (list, tuple, set, deque,
         dict keys or values view): its elements, by position; an
         iterable that is not sized is unreadable;
       * at the top level, an array or such a container is a record whose
         fields have no names (``df.itertuples(name=None)`` yields one), so
-        it is unreadable;
-      * any other object: its instance attributes, by name
-        (_attribute_items, e.g. a types.SimpleNamespace), else a leaf.
-    Each container is visited once; ``visited`` keeps a reference to it as
-    well as its id(), because a DataFrame's ``items()`` builds a fresh
-    Series per column and a released object's id() can be reused, which
-    would otherwise skip an unvisited container. Assumption: a CT.gov API
-    v2 study, a retained raw record and a stored sponsor record have no
-    name that reads as in_audit, no bool outside a named field, and no text
-    that serializes a container, so a flag found anywhere was put there by
-    a manifest merge and marks the record.
+        it is unreadable.
+    Then, for any node whose type is not one of _PLAIN_TYPES (a subclass,
+    a dataclass, a pandas object, a callable, a plain object), what it
+    holds beside that (_beside_items: instance attributes, class
+    attributes and properties that read as in_audit or nct_id, a callable's
+    parts, a ChainMap's layers) is read as named fields too.
+    Each container and non-plain node is visited once; ``visited`` keeps a
+    reference to it as well as its id(), because a DataFrame's ``items()``
+    builds a fresh Series per column and a released object's id() can be
+    reused, which would otherwise skip an unvisited node. Assumption: a
+    CT.gov API v2 study, a retained raw record and a stored sponsor record
+    have no name that reads as in_audit, no bool outside a named field, and
+    no text that holds an in_audit key, so a flag found anywhere was put
+    there by a manifest merge and marks the record.
     """
     flags: list[Any] = []
     flag_names: set[str] = set()
@@ -603,85 +1141,85 @@ def _scan_in_audit(record: Any) -> _InAuditScan:
     # (node, reached through a text name, is the record itself)
     stack: list[tuple[Any, bool, bool]] = [(record, False, True)]
     visited: dict[int, Any] = {}
+    steps = 0
     while stack:
+        steps += 1
+        if steps > _MAX_SCAN_NODES:
+            unreadable.append(f"more than {_MAX_SCAN_NODES} parts")
+            break
         node, named, top = stack.pop()
         if node is None:
             continue
-        if isinstance(node, (str, bytes, bytearray)):
+        plain = type(node) in _PLAIN_TYPES
+        if not plain or isinstance(node, (dict, list, tuple, set, frozenset)):
+            if id(node) in visited:
+                continue
+            visited[id(node)] = node
+        pairs: list[tuple[Any, Any]] = []
+        if isinstance(node, (str, bytes, bytearray, memoryview)):
             in_audit_text, nct_id_text = _text_mentions(node)
             if in_audit_text:
                 flags.append(node)
                 flag_names.add(_FLAG_IN_TEXT_NAME)
             if nct_id_text:
                 ids.append(_ID_IN_TEXT)
-            continue
-        if _is_bool_like(node):
+        elif _is_bool_like(node):
             if not named:
                 unreadable.append(f"a {type(node).__name__} without a field name")
-            continue
-        if isinstance(node, (int, float, complex, range)):
-            continue
-        if id(node) in visited:
-            continue
-        items = _keyed_items(node)
-        if items is not None:
-            visited[id(node)] = node
+        elif isinstance(node, (int, float, complex, range)):
+            pass
+        elif (items := _keyed_items(node)) is not None:
             if isinstance(node, tuple) and _has_method(node, "_asdict"):
                 renamed = [f for f in getattr(node, "_fields", ()) if str(f).startswith("_")]
                 if renamed:
                     unreadable.append(
                         f"a {type(node).__name__} with {len(renamed)} field(s) renamed to _N"
                     )
-            for key, value in items:
-                if _reads_as_in_audit(key):
-                    flags.append(value)
-                    flag_names.add(
-                        "|".join(p for p in map(_folded_name, key) if p)
-                        if isinstance(key, tuple)
-                        else _folded_name(key) or ""
-                    )
-                elif _reads_as_nct_id(key):
-                    ids.append(value)
-                stack.append((value, _is_text_name(key), False))
+            pairs.extend(items)
             attrs = getattr(node, "attrs", None)  # pandas Series/DataFrame metadata
             if isinstance(attrs, dict):
                 stack.append((attrs, True, False))
-            continue
-        if _has_method(node, "__next__"):
-            visited[id(node)] = node
+        elif _has_method(node, "__next__"):
             unreadable.append(f"a one-shot {type(node).__name__}")
-            continue
-        kind = getattr(getattr(node, "dtype", None), "kind", None)
-        if kind is not None and getattr(node, "ndim", 0) >= 1:
-            visited[id(node)] = node
+        elif (
+            kind := getattr(getattr(node, "dtype", None), "kind", None)
+        ) is not None and getattr(node, "ndim", 0) >= 1:
             if top:
                 unreadable.append(f"a {type(node).__name__} whose fields have no names")
-            if kind in ("O", "U", "S") and callable(getattr(node, "tolist", None)):
+            is_index = callable(getattr(node, "get_level_values", None))
+            if is_index and getattr(node, "names", None) is not None:
+                pairs.extend(_index_items(node))
+            elif kind in ("O", "U", "S") and callable(getattr(node, "tolist", None)):
                 stack.extend((value, False, False) for value in node.tolist())
             elif kind == "V" and callable(getattr(node, "reshape", None)):
                 stack.extend((value, False, False) for value in node.reshape(-1))
             elif kind == "b" and getattr(node, "size", 0):
                 unreadable.append(f"a {type(node).__name__} of bools without a field name")
-            continue
-        if _has_method(node, "__iter__"):
-            visited[id(node)] = node
+        elif _has_method(node, "__iter__"):
             if not _has_method(node, "__len__"):
                 unreadable.append(f"an unsized iterable {type(node).__name__}")
-                continue
-            if top:
-                unreadable.append(f"a {type(node).__name__} whose fields have no names")
-            stack.extend((value, False, False) for value in list(node))
-            continue
-        attributes = _attribute_items(node)
-        if attributes is not None:
-            visited[id(node)] = node
-            for key, value in attributes:
-                if _reads_as_in_audit(key):
-                    flags.append(value)
-                    flag_names.add(_folded_name(key) or "")
-                elif _reads_as_nct_id(key):
-                    ids.append(value)
-                stack.append((value, True, False))
+            else:
+                if top:
+                    unreadable.append(f"a {type(node).__name__} whose fields have no names")
+                stack.extend((value, False, False) for value in list(node))
+        if not plain:
+            pairs.extend(_beside_items(node, unreadable))
+        for key, value in pairs:
+            key_named = False
+            if key is not _NO_NAME:
+                if _holds_bool(key):
+                    unreadable.append(f"a key or label holding a bool ({type(key).__name__})")
+                else:
+                    key_in_audit, key_nct_id = _name_kind(key)
+                    if key_in_audit:
+                        flags.append(value)
+                        flag_names.add(_folded_name(key) or "")
+                        if isinstance(key, (str, bytes, bytearray)) and _text_mentions(key)[0]:
+                            flags.append(key)  # the name itself is a serialized flag
+                    elif key_nct_id:
+                        ids.append(value)
+                key_named = _is_text_name(key)
+            stack.append((value, key_named, False))
     return _InAuditScan(
         flags=tuple(flags),
         flag_names=frozenset(flag_names),
