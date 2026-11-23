@@ -334,7 +334,8 @@ def summarise_artifacts(
           'Included trials with no posted CT.gov results and at least one confirmed FDA Drugs@FDA link.'),
         m('trials_with_submission_infos', 'Trials carrying submissionInfos QC history',
           sum(1 for t in timelines if t['submission_infos']['present'] is True), 'retrieved_trials',
-          'Retrieved trials whose protocolSection.statusModule carries a submissionInfos array.'),
+          'Retrieved trials whose derivedSection.miscInfoModule.submissionTracking carries a readable '
+          'submissionInfos array.'),
         m('trials_with_exact_qc_lag', 'Trials with exact day-level QC lag',
           sum(1 for t in timelines if t['nct_id'] in posted_ids and t['qc_lag']['state'] == 'exact'),
           'ctgov_posted_trials',

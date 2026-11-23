@@ -60,8 +60,6 @@ def _make_study(
         sm['resultsFirstSubmitQcDate'] = submit_qc_date
     if post_date is not None:
         sm['resultsFirstPostDateStruct'] = {'date': post_date[0], 'type': post_date[1]}
-    if submission_infos is not None:
-        sm['submissionInfos'] = submission_infos
 
     interventions = [{'type': 'DRUG', 'name': d} for d in (drugs or [])]
     interventions.append({'type': 'DRUG', 'name': 'Matching Placebo'})
@@ -94,6 +92,9 @@ def _make_study(
         'protocolSection': ps,
         'hasResults': has_results,
     }
+    if submission_infos is not None:
+        # Where CT.gov API v2 records QC review cycles (timeline.SUBMISSION_INFOS_PATH).
+        study['derivedSection'] = {'miscInfoModule': {'submissionTracking': {'submissionInfos': submission_infos}}}
     if has_results and not empty_results_shell:
         study['resultsSection'] = {
             'participantFlowModule': {'groups': [{'id': 'FG000', 'title': 'Active'}]},

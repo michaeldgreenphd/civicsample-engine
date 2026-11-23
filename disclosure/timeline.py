@@ -341,38 +341,67 @@ def interval_between(start_raw: str | None, end_raw: str | None) -> dict[str, An
     return interval_from_milestones(milestone_from_raw(start_raw), milestone_from_raw(end_raw))
 
 
-def extract_submission_infos(status_mod: dict[str, Any]) -> dict[str, Any]:
-    """Extract `submissionInfos` QC cycle history, preserving absence as `None` (never `0`)."""
-    if 'submissionInfos' not in status_mod or status_mod.get('submissionInfos') is None:
-        return {
-            'present': False,
-            'cycle_count': None,
-            'n_with_unrelease_date': None,
-            'n_with_reset_date': None,
-            'absent_reason': 'submissionInfos_absent_in_statusModule',
-            'cycles': None,
+# Where a CT.gov API v2 record holds its results QC review cycles. In the stored local records every
+# `submissionInfos` (23 records, 47 entries) is here and none is under `protocolSection.statusModule`,
+# where this module looked before, so every real trial published its history as absent.
+SUBMISSION_INFOS_PATH: tuple[str, ...] = ('derivedSection', 'miscInfoModule', 'submissionTracking', 'submissionInfos')
+# The entry fields read, each with its type when present and not null. The stored entries hold
+# `releaseDate` and `resetDate` strings and `mcpReleaseN` integers; `unreleaseDate` is CT.gov's
+# date for a review cycle withdrawn after release.
+SUBMISSION_INFO_FIELDS: dict[str, type] = {
+    'releaseDate': str, 'unreleaseDate': str, 'resetDate': str, 'mcpReleaseN': int,
+}
+
+
+def _submission_infos_unread(reason: str) -> dict[str, Any]:
+    return {
+        'present': False,
+        'cycle_count': None,
+        'n_with_unrelease_date': None,
+        'n_with_reset_date': None,
+        'absent_reason': reason,
+        'cycles': None,
+    }
+
+
+def extract_submission_infos(study: dict[str, Any] | None) -> dict[str, Any]:
+    """Extract the `submissionInfos` QC cycle history (`SUBMISSION_INFOS_PATH`), preserving absence as
+    `None` (never `0`).
+
+    A history that cannot be read whole is published with no counts and a reason, never counted in
+    part: a part on the path that is not an object (`submissionInfos_parent_not_an_object`), a value
+    that is not a list (`submissionInfos_malformed_not_a_list`), or an entry that is not an object or
+    holds a field of `SUBMISSION_INFO_FIELDS` with another type (`submissionInfos_malformed_entry`).
+    A dropped entry used to lower `cycle_count`, and a mistyped date was read as none, lowering
+    `n_with_unrelease_date` or `n_with_reset_date`, with `absent_reason` null.
+    """
+    node: Any = study
+    for key in SUBMISSION_INFOS_PATH:
+        if node is None:
+            break
+        if not isinstance(node, dict):
+            return _submission_infos_unread('submissionInfos_parent_not_an_object')
+        node = node.get(key)
+    if node is None:
+        return _submission_infos_unread('submissionInfos_absent')
+    if not isinstance(node, list):
+        return _submission_infos_unread('submissionInfos_malformed_not_a_list')
+    for item in node:
+        if not isinstance(item, dict) or any(
+            item.get(field) is not None
+            and (not isinstance(item[field], kind) or isinstance(item[field], bool))
+            for field, kind in SUBMISSION_INFO_FIELDS.items()
+        ):
+            return _submission_infos_unread('submissionInfos_malformed_entry')
+    cycles = [
+        {
+            'release_date': item.get('releaseDate'),
+            'unrelease_date': item.get('unreleaseDate'),
+            'reset_date': item.get('resetDate'),
+            'mcp_release_n': item.get('mcpReleaseN'),
         }
-    raw_list = status_mod.get('submissionInfos')
-    if not isinstance(raw_list, list):
-        return {
-            'present': False,
-            'cycle_count': None,
-            'n_with_unrelease_date': None,
-            'n_with_reset_date': None,
-            'absent_reason': 'submissionInfos_malformed_not_a_list',
-            'cycles': None,
-        }
-    cycles: list[dict[str, Any]] = []
-    for item in raw_list:
-        if not isinstance(item, dict):
-            continue
-        mcp_n = item.get('mcpReleaseN')
-        cycles.append({
-            'release_date': item.get('releaseDate') if isinstance(item.get('releaseDate'), str) else None,
-            'unrelease_date': item.get('unreleaseDate') if isinstance(item.get('unreleaseDate'), str) else None,
-            'reset_date': item.get('resetDate') if isinstance(item.get('resetDate'), str) else None,
-            'mcp_release_n': mcp_n if isinstance(mcp_n, int) and not isinstance(mcp_n, bool) else None,
-        })
+        for item in node
+    ]
     return {
         'present': True,
         'cycle_count': len(cycles),
@@ -815,7 +844,7 @@ def build_trial_timeline(
         },
         'intervals': intervals,
         'qc_lag': qc_lag,
-        'submission_infos': extract_submission_infos(sm),
+        'submission_infos': extract_submission_infos(study),
         'window_365d': classify_window_365d(study, as_of),
         'discordance': classify_discordance(trial_links, trial_cov),
         'sponsor': sponsor_info,

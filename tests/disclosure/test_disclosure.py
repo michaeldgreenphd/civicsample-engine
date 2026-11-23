@@ -442,7 +442,55 @@ def test_qc_lag_and_submission_infos_cycles_preserve_absence_vs_presence(built_f
     t2 = _timeline_of(built_files, 'NCT09990002')
     assert t2['submission_infos']['present'] is False
     assert t2['submission_infos']['cycle_count'] is None
-    assert t2['submission_infos']['absent_reason'] == 'submissionInfos_absent_in_statusModule'
+    assert t2['submission_infos']['absent_reason'] == 'submissionInfos_absent'
+
+
+def _with_submission_infos(value: Any) -> dict[str, Any]:
+    return {'protocolSection': {'statusModule': {}},
+            'derivedSection': {'miscInfoModule': {'submissionTracking': {'submissionInfos': value}}}}
+
+
+def test_submission_infos_are_read_where_ctgov_records_them() -> None:
+    # NCT02562443's stored record holds its one cycle here; on 30e1cae the module read
+    # protocolSection.statusModule, where CT.gov does not record them, and published it as absent.
+    study = _with_submission_infos([{'releaseDate': '2024-01-31', 'resetDate': '2024-02-27'}])
+    got = T.extract_submission_infos(study)
+    assert (got['present'], got['cycle_count'], got['n_with_reset_date'], got['absent_reason']) == (True, 1, 1, None)
+    # The old location is not one CT.gov writes, so a history there is not read.
+    old_place = {'protocolSection': {'statusModule': {'submissionInfos': [{'releaseDate': '2024-01-31'}]}}}
+    assert T.extract_submission_infos(old_place)['absent_reason'] == 'submissionInfos_absent'
+    assert T.extract_submission_infos(None)['absent_reason'] == 'submissionInfos_absent'
+    assert T.extract_submission_infos({'derivedSection': {'miscInfoModule': {}}})['absent_reason'] == \
+        'submissionInfos_absent'
+
+
+@pytest.mark.parametrize(('study', 'reason'), [
+    # On 30e1cae a dropped entry lowered cycle_count and a mistyped date was read as none, with no reason.
+    (_with_submission_infos([{'releaseDate': '2020-08-10'}, 'garbage']), 'submissionInfos_malformed_entry'),
+    (_with_submission_infos([{'releaseDate': '2020-08-10'}, None]), 'submissionInfos_malformed_entry'),
+    (_with_submission_infos([{'releaseDate': '2020-08-10', 'unreleaseDate': 20200828}]),
+     'submissionInfos_malformed_entry'),
+    (_with_submission_infos([{'releaseDate': '2020-08-10', 'resetDate': ['2020-09-10']}]),
+     'submissionInfos_malformed_entry'),
+    (_with_submission_infos([{'releaseDate': 20200810}]), 'submissionInfos_malformed_entry'),
+    (_with_submission_infos([{'releaseDate': '2020-08-10', 'mcpReleaseN': '1'}]), 'submissionInfos_malformed_entry'),
+    (_with_submission_infos([{'releaseDate': '2020-08-10', 'mcpReleaseN': True}]), 'submissionInfos_malformed_entry'),
+    (_with_submission_infos({'releaseDate': '2020-08-10'}), 'submissionInfos_malformed_not_a_list'),
+    ({'derivedSection': {'miscInfoModule': ['submissionTracking']}}, 'submissionInfos_parent_not_an_object'),
+    ({'derivedSection': 'none'}, 'submissionInfos_parent_not_an_object'),
+])
+def test_unreadable_submission_infos_are_published_without_counts(study: dict[str, Any], reason: str) -> None:
+    got = T.extract_submission_infos(study)
+    assert got == {'present': False, 'cycle_count': None, 'n_with_unrelease_date': None, 'n_with_reset_date': None,
+                   'absent_reason': reason, 'cycles': None}
+
+
+def test_submission_infos_with_null_fields_are_read() -> None:
+    # A null field is absent, as CT.gov omits it; it is not a malformed entry.
+    got = T.extract_submission_infos(_with_submission_infos(
+        [{'releaseDate': '2020-08-10', 'unreleaseDate': None, 'resetDate': None, 'mcpReleaseN': None}, {}]))
+    counts = (got['present'], got['cycle_count'], got['n_with_unrelease_date'], got['n_with_reset_date'])
+    assert counts == (True, 2, 0, 0)
 
 
 # ---------------------------------------------------------------- 4. Window 365d & discordance states
