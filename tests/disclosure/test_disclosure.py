@@ -977,7 +977,7 @@ def test_undated_qualifying_link_leaves_no_lower_bound_and_no_lag(
     [
         ('DrugX 5 mg/mL', 'drugx'),
         ('DrugX 2 mg/kg', 'drugx'),
-        ('Lidocaine 5% cream', 'lidocaine cream'),  # dosage-form words are not strength and are kept
+        ('Lidocaine 5% cream', 'lidocaine'),  # strength and dosage form both go (see DOSAGE_FORM_WORDS)
         ('DrugX 10 mg', 'drugx'),
         ('Docetaxel 75 mg/m2', 'docetaxel'),
         ('Insulin 100 IU / mL', 'insulin'),
@@ -1473,6 +1473,37 @@ def test_human_confirmed_links_verify_their_route_like_the_timeline() -> None:
                                        {f'openfda/nct/{nct}': {'status': 404, 'body': None}}, [fda], True)
     assert fda_cell['state'] == 'verified_link'
     assert T._qualifying_fda_links([fda]) == [fda]
+
+
+@pytest.mark.parametrize(
+    ('raw', 'expected'),
+    [
+        ('Metformin 500 mg tablet', 'metformin'),
+        ('Pembrolizumab 200 mg IV infusion', 'pembrolizumab'),
+        ('Insulin glargine injection', 'insulin glargine'),
+        ('Tiotropium Inhalation Solution', 'tiotropium'),  # from the stored CT.gov records
+        ('Glucophage\u00ae XR', 'glucophage'),
+        ('Daratumumab SC', 'daratumumab'),
+        ('Quetiapine extended-release tablets', 'quetiapine'),
+        ('SR 96669', 'sr 96669'),  # a compound code: the abbreviation before a number stays
+        ('CR 845 injection', 'cr 845'),
+        ('Tablets', None),  # only form words (a stored CT.gov label): no ingredient, no query term
+        ('Influenza vaccine', 'influenza vaccine'),  # not a dosage form
+        ('Oral semaglutide', 'semaglutide'),
+    ],
+)
+def test_normalize_drug_term_strips_dosage_form_route_and_release_words(raw: str, expected: str | None) -> None:
+    # The openFDA query is a quoted phrase in name fields that never hold the dosage form or route.
+    assert A.normalize_drug_term(raw) == expected
+
+
+def test_every_registered_intervention_alias_is_a_query_term() -> None:
+    study = F._make_study('NCT09990013', title='Many aliases', lead_sponsor='Fictional Sponsor', drugs=['Brandix'])
+    study['protocolSection']['armsInterventionsModule']['interventions'][0]['otherNames'] = [
+        'Brandix XR', 'BRX-101', 'Formulix tablet', 'zorbatinib mesylate', 'Zorbatinib Mesylate',
+    ]
+    # The generic ingredient is the fourth alias; it used to be dropped by a two-alias cap.
+    assert A.extract_drug_candidates(study) == ['brandix', 'brx-101', 'formulix', 'zorbatinib mesylate']
 
 
 def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:

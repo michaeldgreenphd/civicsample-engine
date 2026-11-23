@@ -390,7 +390,7 @@ def openfda_drugsfda_valid(body: Any) -> bool:
 # non-word character (the closing lookahead `(?=\W|$)`, which unlike `\b` also holds after `%`
 # before a space), so a unit is stripped only as a whole token right after a number: `mg/mL` goes
 # whole rather than as `mg` leaving `ml`, and `D3` in `Vitamin D3`, the `U` of `Insulin U-100` or a
-# name such as `Unituxin` are never touched. Dosage-form words (`cream`, `tablet`) are kept.
+# name such as `Unituxin` are never touched. Dosage-form and route words go next (see below).
 DRUG_STRENGTH_RE = re.compile(
     r'\b\d+(?:\.\d+)?(?:\s*/\s*\d+(?:\.\d+)?)*\s*'
     r'(?:%|(?:units?|mmol|meq|mcg|[\u00b5\u03bc]g|ug|mg|ml|iu|g|u)'
@@ -400,12 +400,59 @@ DRUG_STRENGTH_RE = re.compile(
 )
 
 
+# Dosage-form, route and release words removed as whole tokens. The openFDA query matches the term as a
+# quoted phrase in name fields only (`OPENFDA_DRUG_FIELDS`). Drugs@FDA records the dosage form and
+# route separately (`products.dosage_form`, `products.route`), so `"metformin tablet"` or
+# `"pembrolizumab iv infusion"` misses an application whose names are METFORMIN HYDROCHLORIDE or
+# KEYTRUDA / PEMBROLIZUMAB. When the removed words sit at either end of the label, the shorter phrase
+# matches every field value the longer one did, so the candidate set can only widen. A form word in the
+# middle (`eribulin injection halaven` -> `eribulin halaven`; 8 of the 63 labels that change among the
+# stored CT.gov records) gives a different phrase. The list is closed and limited to words that name a
+# form, route or release profile, not an ingredient; a label made only of such words (`Tablets`, one of
+# the stored labels) names no ingredient and gives no query term.
+DOSAGE_FORM_WORDS: frozenset[str] = frozenset({
+    # forms
+    'tablet', 'tablets', 'capsule', 'capsules', 'caplet', 'caplets', 'pill', 'pills', 'cream', 'ointment',
+    'gel', 'lotion', 'foam', 'paste', 'patch', 'patches', 'film', 'solution', 'suspension', 'emulsion',
+    'syrup', 'elixir', 'drop', 'drops', 'spray', 'inhaler', 'inhalation', 'aerosol', 'powder', 'granules',
+    'sachet', 'injection', 'injections', 'injectable', 'infusion', 'suppository', 'suppositories', 'implant',
+    'depot', 'vial', 'prefilled', 'pre-filled', 'syringe', 'autoinjector', 'auto-injector', 'pen',
+    'concentrate', 'lyophilized',
+    # routes
+    'intravenous', 'intravenously', 'subcutaneous', 'subcutaneously', 'intramuscular', 'oral', 'orally',
+    'topical', 'transdermal', 'ophthalmic', 'nasal', 'intranasal',
+    'vaginal', 'rectal', 'sublingual', 'buccal', 'intravitreal', 'intrathecal', 'inhaled',
+    # release profile and coating
+    'extended-release', 'delayed-release', 'sustained-release', 'controlled-release', 'modified-release',
+    'immediate-release', 'extended', 'delayed', 'sustained', 'controlled', 'modified', 'immediate',
+    'release', 'orally-disintegrating', 'chewable',
+    'dispersible', 'effervescent', 'coated', 'film-coated', 'enteric', 'enteric-coated',
+})
+# Route and release abbreviations are also compound-code prefixes (`SR 96669`, `CR 845`), so one is
+# removed only when the next token does not start with a digit: `Glucophage XR` and `Daratumumab SC`
+# lose it, `SR 96669` keeps it.
+DOSAGE_FORM_ABBREVIATIONS: frozenset[str] = frozenset({
+    'iv', 'sc', 'sq', 'im', 'er', 'xr', 'sr', 'xl', 'cr', 'ir', 'dr', 'odt',
+})
+
+
 def normalize_drug_term(raw: str) -> str | None:
-    """Normalize an intervention drug label for candidate openFDA lookup; return None for placebos."""
+    """Normalize an intervention drug label for candidate openFDA lookup; return None for placebos.
+
+    Parenthesised text, strengths (`DRUG_STRENGTH_RE`) and punctuation are removed, then the
+    dosage-form, route and release words in `DOSAGE_FORM_WORDS` and, unless a number follows them,
+    the abbreviations in `DOSAGE_FORM_ABBREVIATIONS` (see the notes there).
+    """
     cleaned = re.sub(r'\([^)]*\)', ' ', raw or '')
     cleaned = DRUG_STRENGTH_RE.sub(' ', cleaned)
     cleaned = re.sub(r'[^A-Za-z0-9\- ]+', ' ', cleaned)
     cleaned = re.sub(r'\s+', ' ', cleaned).strip().lower()
+    tokens = [t for t in cleaned.split(' ') if t]
+    cleaned = ' '.join(
+        t for i, t in enumerate(tokens)
+        if t not in DOSAGE_FORM_WORDS
+        and not (t in DOSAGE_FORM_ABBREVIATIONS and not (tokens[i + 1:i + 2] or [''])[0][:1].isdigit())
+    )
     if len(cleaned) < 3 or cleaned in PLACEBO_TERMS:
         return None
     if any(cleaned.startswith(prefix) for prefix in ('placebo ', 'sham ', 'matching placebo')):
@@ -432,9 +479,12 @@ def extract_drug_candidates(study: dict[str, Any] | None) -> list[str]:
         primary = normalize_drug_term(str(item.get('name') or ''))
         if primary:
             found.add(primary)
+        # Every registered alias is searched: the generic ingredient Drugs@FDA indexes may be any of
+        # them (a label's first aliases are often brand or formulation names), and a capped list would
+        # still let coverage report the planned drug search as complete.
         others = item.get('otherNames') or []
         if isinstance(others, list):
-            for other in others[:2]:
+            for other in others:
                 if isinstance(other, str):
                     norm_other = normalize_drug_term(other)
                     if norm_other:
