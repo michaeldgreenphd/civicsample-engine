@@ -591,6 +591,8 @@ _WEEKLY_SITE = {"facility": "US1", "state": "MA", "country": "United States"}
         ("sponsor_class", 7, "sponsor_class is int, not str"),
         ("enrollment", "100", "enrollment is str, not int"),
         ("enrollment", True, "enrollment is bool, not int"),
+        # On a1cf757 it loaded and was published as the trial's enrollment.
+        ("enrollment", -5, "enrollment -5 is negative"),
         ("status", "", "status is blank"),
         ("race", None, "race is NoneType, not an object"),
         ("sex_gender", "reported", "sex_gender is str, not an object"),
@@ -1875,6 +1877,62 @@ def _total_first(st: dict) -> dict:
     return st
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "refused"),
+    [
+        # On a1cf757 each loaded. "Infinity" and "1e400" gave an infinite enrollment_minus_parsed, written as
+        # the non-JSON token Infinity; -5 was published as the enrollment; 3.5 gave no enrollment beside a gap
+        # computed from 3.5; "120" was read as 120; a type of 7 or "BOGUS" was published as it stood.
+        ("count", "Infinity", True),
+        ("count", "1e400", True),
+        ("count", -5, True),
+        ("count", 3.5, True),
+        ("count", "120", True),
+        ("count", True, True),
+        ("count", None, True),
+        ("type", 7, True),
+        ("type", "BOGUS", True),
+        ("type", ["ACTUAL"], True),
+        ("type", None, True),
+        # Controls, on both heads: CT.gov's own shapes (no count or no type, as 47 and 648 stored records hold).
+        ("count", 0, False),
+        ("count", 2905455, False),
+        ("count", _DROP_KEY, False),
+        ("type", "ESTIMATED", False),
+        ("type", _DROP_KEY, False),
+    ],
+)
+def test_raw_enrollment_must_be_a_non_negative_count_and_a_ctgov_type(
+    tmp_path: Path, field: str, value: object, refused: bool
+) -> None:
+    study = _measured_study("NCT99800041")
+    info = study["protocolSection"]["designModule"]["enrollmentInfo"]
+    if value is _DROP_KEY:
+        info.pop(field)
+    else:
+        info[field] = value
+    if not refused:
+        assert len(_load_pair(tmp_path, study)) == 2
+        return
+    want = "count (a non-negative integer)" if field == "count" else "type (ACTUAL or ESTIMATED)"
+    with pytest.raises(ValueError, match=re.escape(f"NCT99800041 lacks designModule.enrollmentInfo.{want}")):
+        _load_pair(tmp_path, study)
+
+
+def test_build_refuses_an_infinite_enrollment_and_writes_nothing(tmp_path: Path, capsys: Any) -> None:
+    # On a1cf757 the build exited 0 and trials.jsonl.gz carried `"enrollment_minus_parsed":Infinity`, which the
+    # contract accepted and strict JSON readers reject.
+    study = _measured_study("NCT99800042")
+    study["protocolSection"]["designModule"]["enrollmentInfo"]["count"] = "Infinity"
+    records = tmp_path / "studies.json"
+    records.write_text(json.dumps({"studies": [study, _measured_study("NCT99800043")]}), encoding="utf-8")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    out_dir = tmp_path / "out"
+    rc = cli_build.main(["--records", str(records), "--sponsor-rules", str(rules_path), "--out", str(out_dir)])
+    assert rc == 1 and not out_dir.exists()
+    assert "NCT99800042 lacks designModule.enrollmentInfo.count (a non-negative integer)" in capsys.readouterr().err
+
+
 def test_a_single_group_row_naming_its_group_twice_is_refused(tmp_path: Path) -> None:
     # On 9a955a7 it loaded, and with no Overall id the extractors read the last entry: White 10, not 60.
     bad = _measured_study("NCT99800022")
@@ -2646,6 +2704,62 @@ def test_weekly_container_stamps_may_be_null_at_build(tmp_path: Path) -> None:
     weekly_doc["extracted_at"] = "2026-11-08T13:07:45.318831+00:00"
     meta = benchmarks.load_study_records(_write_weekly(weekly_doc, tmp_path), source_kind="full_records")[1]
     assert meta["pipeline_commit"] is None and meta["extracted_at"] == "2026-11-08T13:07:45.318831+00:00"
+
+
+@pytest.mark.parametrize("container", ["studies", "records"])
+@pytest.mark.parametrize(
+    ("key", "value", "problem"),
+    [
+        # On a1cf757 each loaded and was recorded as run.json inputs.study_records, then reached the site
+        # manifest: only a weekly container's stamps were checked.
+        ("extracted_at", "corrupt", "extracted_at 'corrupt' is not a whole UTC timestamp (Z or +00:00)"),
+        ("extracted_at", "2026-11-22T14:24:57", "extracted_at '2026-11-22T14:24:57' is not a whole UTC timestamp"),
+        ("extracted_at", 7, "extracted_at 7 is not a whole UTC timestamp"),
+        ("pipeline_commit", "banana", "pipeline_commit 'banana' is not a 40-hex git commit"),
+        ("pipeline_commit", ["a" * 40], "pipeline_commit ['" + "a" * 40 + "'] is not a 40-hex git commit"),
+    ],
+)
+def test_raw_container_stamps_must_be_well_formed(
+    tmp_path: Path, container: str, key: str, value: object, problem: str
+) -> None:
+    path = tmp_path / "studies.json"
+    path.write_text(json.dumps({container: [_measured_study("NCT99800044")], key: value}), encoding="utf-8")
+    with pytest.raises(ValueError, match=re.escape(f"the container's {problem}")):
+        benchmarks.load_study_records(path)
+
+
+def test_raw_container_stamps_null_or_well_formed_are_recorded(tmp_path: Path) -> None:
+    # Controls, on both heads: well-formed stamps are recorded, and absent or null ones are recorded as null.
+    path = tmp_path / "studies.json"
+    stamps = {"extracted_at": "2026-11-22T14:24:57.167231+00:00", "pipeline_commit": "a" * 40}
+    for doc, want in (
+        ({"studies": [_measured_study("NCT99800045")], **stamps}, stamps),
+        ({"studies": [_measured_study("NCT99800045")]}, {"extracted_at": None, "pipeline_commit": None}),
+        ({"studies": [_measured_study("NCT99800045")], "extracted_at": None, "pipeline_commit": None},
+         {"extracted_at": None, "pipeline_commit": None}),
+    ):
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        meta = benchmarks.load_study_records(path)[1]
+        assert {k: meta[k] for k in want} == want
+
+
+def test_contract_refuses_malformed_stamps_recorded_for_a_raw_input(tmp_path: Path) -> None:
+    # On a1cf757 the contract checked the recorded stamps only for a weekly (full_records) input.
+    records = tmp_path / "studies.json"
+    records.write_text(json.dumps({"studies": [_measured_study("NCT99800046")]}), encoding="utf-8")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    out_dir = tmp_path / "out"
+    assert cli_build.main(["--records", str(records), "--sponsor-rules", str(rules_path), "--out", str(out_dir)]) == 0
+    loaded = artifacts.load_dir(out_dir)
+    assert loaded["run.json"]["inputs"]["study_records"]["input_format"] == "json_studies"
+    assert artifacts.check_contract(loaded) == []
+    for key, value, problem in (
+        ("extracted_at", "corrupt", "extracted_at 'corrupt' is not a whole UTC timestamp (Z or +00:00)"),
+        ("pipeline_commit", "banana", "pipeline_commit 'banana' is not a 40-hex git commit"),
+    ):
+        bad = copy.deepcopy(loaded)
+        bad["run.json"]["inputs"]["study_records"][key] = value
+        assert f"run.json: inputs.study_records {problem}" in artifacts.check_contract(bad)
 
 
 @pytest.mark.parametrize("value", ["corrupt", " ", "2026-02-30", "2024-10-01T00:00"])

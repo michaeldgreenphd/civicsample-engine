@@ -925,10 +925,11 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
     if inputs.get("condition_mesh") is not None:
         if not HEX64_RX.match(str((inputs["condition_mesh"] or {}).get("sha256") or "")):
             p.append("run.json: inputs.condition_mesh.sha256 must be a 64-hex sha256")
-    # A weekly build records its source container's stamps; each is null or well formed
-    # (`weekly_source_stamp_problem`), and only the site exporter refuses a null one.
+    # A build records its source container's stamps; each is null or well formed
+    # (`weekly_source_stamp_problem`), and only the site exporter refuses a null one on a weekly build.
+    # The check covers every input format: a raw container's stamps reach the site manifest too.
     study_in = inputs.get("study_records") or {}
-    if isinstance(study_in, dict) and study_in.get("input_format") == "full_records":
+    if isinstance(study_in, dict):
         stamp_problem = weekly_source_stamp_problem(study_in.get("extracted_at"), study_in.get("pipeline_commit"))
         if stamp_problem:
             p.append(f"run.json: inputs.study_records {stamp_problem}")

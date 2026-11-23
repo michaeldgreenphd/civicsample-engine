@@ -588,6 +588,9 @@ REQUIRED_STR = "required string"
 # any other value (a typo such as PHASE_3, or a value CT.gov might add) is refused by name rather than
 # published as a phase stratum of its own, so a new CT.gov value would show up as a refusal here.
 CTGOV_PHASES: frozenset[str] = frozenset({"NA", "EARLY_PHASE1", "PHASE1", "PHASE2", "PHASE3", "PHASE4"})
+# The enrollment types a CT.gov registration holds (`enrollmentInfo.type`), published per trial as
+# `enrollment_type`. The 4,635 stored unprojected records that carry a type hold one of these.
+CTGOV_ENROLLMENT_TYPES: frozenset[str] = frozenset({"ACTUAL", "ESTIMATED"})
 # A measurement or denominator count is read through its `groupId` and its `value`. `value` is CT.gov's
 # text ("60", "NA"); `src/utils.measurement_number` turns it into a number with `str()`, and
 # `sum_measurements` counts one that does not parse as 0, so a missing or non-string value (`{}`, `["12"]`,
@@ -737,6 +740,21 @@ def _mistyped_parts(study: dict[str, Any]) -> list[str]:
             phases = design["phases"]
             if not (isinstance(phases, list) and all(isinstance(p, str) and p in CTGOV_PHASES for p in phases)):
                 out.append("designModule.phases (a list of CT.gov phase values)")
+        # `_extract_core_metadata` kept any non-boolean int as the enrollment, a negative one included, and
+        # read any other value as none, while `src/sex_gender_table` reads the same count with
+        # `float(str(...))`. So "Infinity" or "1e400" gave an infinite `enrollment_minus_parsed`, written by
+        # `artifacts.dump` as the non-JSON token `Infinity`, and 3.5 gave no enrollment beside a gap computed
+        # from 3.5. A count, when present, is a non-negative integer and a type is CT.gov's (key presence, as
+        # for locations: an explicit null is refused). All 5,283 `enrollmentInfo` objects in the 5,330 stored
+        # unprojected records carry an integer count, from 0 to 2,905,455.
+        enr_info = design.get("enrollmentInfo") if isinstance(design, dict) else None
+        if isinstance(enr_info, dict):
+            count = enr_info.get("count")
+            if "count" in enr_info and not (isinstance(count, int) and not isinstance(count, bool) and count >= 0):
+                out.append("designModule.enrollmentInfo.count (a non-negative integer)")
+            enr_type = enr_info.get("type")
+            if "type" in enr_info and not (isinstance(enr_type, str) and enr_type in CTGOV_ENROLLMENT_TYPES):
+                out.append("designModule.enrollmentInfo.type (ACTUAL or ESTIMATED)")
         # `classify_regulatory_era` reads a start date that does not parse as missing and falls back to
         # the primary completion date, so a malformed one moved a trial between regulatory-era strata.
         # Every one of the 75,488 start and 74,868 primary completion structs in the stored local files
@@ -1383,6 +1401,10 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
             return f"{key} is {type(value).__name__}, not {kind}"
         if non_blank and not value.strip():
             return f"{key} is blank"
+    # The raw path refuses a negative enrollment count (`_mistyped_parts`); a weekly one was published as it
+    # stood. All 81,094 records of the 2026-11-22 weekly extraction carry a non-negative integer.
+    if rec["enrollment"] < 0:
+        return f"enrollment {rec['enrollment']} is negative"
     # `is_results_posted` reads any non-empty `results_date` as posted results, so a malformed one (or a
     # blank one, which is truthy) moved a trial into the posted-results cohort. The producer writes
     # `resultsFirstPostDateStruct.date`, or "" when there is none; all 80,890 weekly records carry a date.
@@ -1847,6 +1869,14 @@ def load_study_records(
     else:
         raise ValueError(f"{path}: unrecognized study container format")
 
+    # The container's stamps are recorded as run.json `inputs.study_records` and reach the site manifest.
+    # A weekly container's are checked above; a raw container's were copied as they stood, so
+    # `extracted_at: "corrupt"` or `pipeline_commit: "banana"` was published. Each is null or has the
+    # producer's form (`weekly_source_stamp_problem`). No stored raw container carries either stamp.
+    extracted_at = container.get("extracted_at") if isinstance(container, dict) else None
+    pipeline_commit = container.get("pipeline_commit") if isinstance(container, dict) else None
+    if stamp_problem := weekly_source_stamp_problem(extracted_at, pipeline_commit):
+        raise ValueError(f"{path}: the container's {stamp_problem}")
     if not studies_list:
         raise ValueError(f"{path}: holds no study records")
     _require_complete_records(studies_list, str(path))
@@ -1857,8 +1887,8 @@ def load_study_records(
         "path": path.name,
         "n_records": len(studies_list),
         "sha256": digest,
-        "extracted_at": container.get("extracted_at") if isinstance(container, dict) else None,
-        "pipeline_commit": container.get("pipeline_commit") if isinstance(container, dict) else None,
+        "extracted_at": extracted_at,
+        "pipeline_commit": pipeline_commit,
         "limit_applied": limit,
     }
 

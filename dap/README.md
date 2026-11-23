@@ -137,7 +137,10 @@ Parts the build or the shared race, ethnicity and sex extractors read without a 
 have their API v2 type when present (the start and primary completion date structs,
 `enrollmentInfo`, and the baseline table's groups, denominators, measures, classes, categories and
 measurements; see `TYPED_PROTOCOL_PARTS` and `BASELINE_SHAPE`), so a malformed record is refused by
-name instead of stopping the build with a traceback. The locations module and list, and every
+name instead of stopping the build with a traceback. An `enrollmentInfo.count`, when present, must be a
+non-negative integer and a `type` CT.gov's `ACTUAL` or `ESTIMATED`: the build kept any integer, a
+negative one included, and read other values as no enrollment, while the shared sex/gender table read
+`"Infinity"` as an infinite count and wrote `enrollment_minus_parsed` as the non-JSON token `Infinity`. The locations module and list, and every
 location and collaborator entry, are checked the same way (`LIST_ENTRY_FIELDS`): a skipped `null`
 location, or a module read as empty, would lower or zero the listed facilities and move the
 footprint class with nothing reported. Every collaborator must also carry a non-blank `name`: one
@@ -184,7 +187,7 @@ collaborator a non-blank `name`, as on the raw path
 must be present with the producer's type (`WEEKLY_SCALAR_FIELDS`): `nct_id`,
 `study_type`, `status`, `lead_sponsor_name` and `sponsor_class` non-blank
 strings, `brief_title`, the dates and `enrollment_type` strings, `enrollment`
-an integer, `phase` a string (its values checked as above), and `race`,
+a non-negative integer, `phase` a string (its values checked as above), and `race`,
 `ethnicity`, `sex`, `gender` and `sex_gender` objects. `sex_gender`, the row
 reused as it stands, must carry a `sex_report_status` in `SEX_GENDER_STATES`
 and every lean column `sgt.lean_row` writes with its type
@@ -237,6 +240,8 @@ emptied the categories present and published Denominator B for a
 single-category ethnicity table. The container's `extracted_at` and
 `pipeline_commit` must each be null or well formed (a whole UTC timestamp, a
 40-hex commit; `weekly_source_stamp_problem`), in the build and the contract.
+A raw `studies` or `records` container's stamps, when given, follow the same
+rule: they are recorded and reach the site manifest too.
 `src.utils.pipeline_commit` writes null outside a checkout, so a null stamp is
 recorded, but the site exporter refuses to publish a weekly build with one.
 The race block's flags the analyzers trust must agree with the fields they
