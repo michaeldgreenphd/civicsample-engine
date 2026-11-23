@@ -60,8 +60,14 @@ modified.
      and parsed counts, but its composition is withheld with that
      `composition_withheld_reason` (`_withhold_sex_composition`): the parser's sum
      check falls back to an arm, whose female share had been published as the
-     trial's. `summary.json` counts such trials
-     (`sex_gender_composition_withheld_no_whole_population_group`). CT.gov posts such a table rarely (one of the
+     trial's. So is the composition of a table whose whole-population group posts
+     its sex entries as `"NA"` beside an arm's counts that do not make up the
+     table's Participants denominator (`whole_population_sex_counts_missing`,
+     `_sex_counts_miss_whole_population`): NCT01388361's one arm, 90 and 146 of
+     236 against a Total of 413, had been published as the trial's 0.381, while
+     NCT00596817's counts make up its 1,035 and keep their composition.
+     `summary.json` counts such trials
+     (`sex_gender_composition_withheld_whole_population_unread`). CT.gov posts such a table rarely (one of the
      55,810 multi-group trials in the 2026-11-15 weekly inputs, none of the
      2,198 stored multi-group tables). Weekly records carry the extractors'
      blocks without the groups, so this cannot be detected there.

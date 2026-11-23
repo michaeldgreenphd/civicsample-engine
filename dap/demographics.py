@@ -68,6 +68,7 @@ from typing import Any
 from dap.geography import extract_geography
 from src import ethnicity_extractor, race_extractor
 from src import utils as src_utils
+from src import sex_gender_parser as sgp
 from src import sex_gender_table as sgt
 
 TABLE_STATUSES: tuple[str, ...] = (
@@ -1022,6 +1023,62 @@ ABSENT_BY_LABEL_DETAILS: frozenset[str] = frozenset(
 )
 
 
+def _reads_as_number(value: Any) -> bool:
+    """Whether a baseline measurement value reads as a number (`"1,060"` does, `"NA"` does not)."""
+    try:
+        float(str(value).replace(",", ""))
+    except (TypeError, ValueError):
+        return False
+    return value is not None
+
+
+def _sex_counts_miss_whole_population(
+    record: dict[str, Any], sex_gender: dict[str, Any], baseline_participants: int | None
+) -> bool:
+    """Whether the sex/gender counts the parser read are an arm's rather than the trial's.
+
+    A table with a whole-population group can post that group's sex entries as `"NA"` beside an arm's
+    counts. The parser's sum check (`sgp.choose_total`) then reads the arm: NCT01388361 posts Female 90
+    and Male 146 for one arm of 236 and `"NA"` for the Total of 413, and its arm's share, 0.381, had been
+    published as the trial's. The counts are taken for the trial's when they add up to the table's own
+    Participants denominator: NCT00596817 posts an open-label period for its one group (Total `"NA"`)
+    and a double-blind period with a Total, and its counts, 647 and 388, make up its 1,035. These are the
+    only two of the 2,171 stored multi-group tables whose selected sex measure has a whole-population
+    entry without a number beside a number.
+    """
+    if sex_gender.get("is_participant_count") is not True:
+        return False
+    overall = src_utils.get_overall_group_id(record)
+    module = (record.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}
+    measures = module.get("measures") if isinstance(module, dict) else None
+    if overall is None or not isinstance(measures, list):
+        return False
+    try:
+        title = sgp.parse_trial(measures, None).measure_title
+    except Exception:  # noqa: BLE001 - extract_sex_gender already read the same failure
+        return False
+    measure = next((m for m in measures if isinstance(m, dict) and m.get("title") == title), None)
+    if measure is None:
+        return False
+    missing = False
+    for cls in measure.get("classes") or []:
+        for cat in (cls.get("categories") or []) if isinstance(cls, dict) else []:
+            rows = cat.get("measurements") if isinstance(cat, dict) else None
+            entries = [e for e in rows or [] if isinstance(e, dict)]
+            whole = [e for e in entries if e.get("groupId") == overall]
+            if any(_reads_as_number(e.get("value")) for e in entries if e.get("groupId") != overall) and not (
+                whole and _reads_as_number(whole[0].get("value"))
+            ):
+                missing = True
+    if not missing:
+        return False
+    counted = sum(
+        float(sex_gender.get(k) or 0.0)
+        for k in ("n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender")
+    )
+    return baseline_participants is None or round(counted) != baseline_participants
+
+
 def _withhold_sex_composition(sex_gender: dict[str, Any], group_problem: str) -> dict[str, Any]:
     """The sex/gender row of a table with no one whole-population group, its composition withheld.
 
@@ -1074,10 +1131,24 @@ def extract_demographics(
     """Extract structured race, ethnicity, sex/gender, and US-site omission audit for one trial."""
     geo = geography if geography is not None else extract_geography(record)
     posted = is_results_posted(record)
+    # The baseline table's own Participants count, read as the extractors balance against it, without
+    # the registered-enrollment fallback. Weekly records carry no baseline table, so for them it is None
+    # and only the sex total bounds a race or ethnicity table.
+    baseline_participants = (
+        src_utils.get_total_baseline_participants(
+            _study_without_protocol_enrollment_padding(record), src_utils.get_overall_group_id(record)
+        )
+        if posted and "resultsSection" in record
+        else None
+    )
     sex_gender = extract_sex_gender(record, snapshot_date=snapshot_date)
     group_problem = whole_population_group_problem(record) if posted and "protocolSection" in record else None
     if group_problem is not None:
         sex_gender = _withhold_sex_composition(sex_gender, group_problem)
+    elif posted and "protocolSection" in record and _sex_counts_miss_whole_population(
+        record, sex_gender, baseline_participants
+    ):
+        sex_gender = _withhold_sex_composition(sex_gender, "whole_population_sex_counts_missing")
     sex_total = _sex_participant_total(record, sex_gender)
 
     weekly = _is_weekly_record(record)
@@ -1095,16 +1166,6 @@ def extract_demographics(
     else:
         raw_eth = None
 
-    # The baseline table's own Participants count, read as the extractors balance against it, without
-    # the registered-enrollment fallback. Weekly records carry no baseline table, so for them it is None
-    # and only the sex total bounds a race or ethnicity table.
-    baseline_participants = (
-        src_utils.get_total_baseline_participants(
-            _study_without_protocol_enrollment_padding(record), src_utils.get_overall_group_id(record)
-        )
-        if posted and "resultsSection" in record
-        else None
-    )
     refs = reference_medians or {}
     race_info = _analyze_race_block(
         raw_race,

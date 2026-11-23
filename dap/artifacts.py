@@ -163,8 +163,13 @@ def run_identity(
 WHOLE_POPULATION_GROUP_PROBLEMS: frozenset[str] = frozenset(
     {"multi_group_baseline_without_total_group", "several_groups_titled_as_whole_population"}
 )
+# A whole-population group whose sex entries are blank beside an arm's counts, which do not make up the
+# table's Participants denominator (`demographics._sex_counts_miss_whole_population`).
+WHOLE_POPULATION_SEX_UNREAD: frozenset[str] = frozenset(
+    {*WHOLE_POPULATION_GROUP_PROBLEMS, "whole_population_sex_counts_missing"}
+)
 SEX_COMPOSITION_WITHHELD_REASONS: frozenset[str | None] = frozenset(
-    {None, "participant_counts_not_whole", *WHOLE_POPULATION_GROUP_PROBLEMS}
+    {None, "participant_counts_not_whole", *WHOLE_POPULATION_SEX_UNREAD}
 )
 
 
@@ -401,16 +406,17 @@ def summarise(
             "Posted-results trials with COUNT_OF_UNITS / non-participant sex tables (kept in reporting counts, excluded from composition).",
         ),
         _count_item(
-            "sex_gender_composition_withheld_no_whole_population_group",
-            "Posted trials whose sex/gender composition is withheld for want of one whole-population group",
+            "sex_gender_composition_withheld_whole_population_unread",
+            "Posted trials whose sex/gender composition is withheld for want of whole-population counts",
             sum(
                 1 for t in posted
-                if t["demographics"]["sex_gender"].get("composition_withheld_reason") in WHOLE_POPULATION_GROUP_PROBLEMS
+                if t["demographics"]["sex_gender"].get("composition_withheld_reason") in WHOLE_POPULATION_SEX_UNREAD
             ),
             "posted_results_trials",
             denominators,
             "Posted-results trials whose baseline table has no group, or more than one, titled as the whole "
-            "population, so the parser's total may be an arm (kept in reporting counts, excluded from composition).",
+            "population, or whose whole-population sex entries are blank beside an arm's counts, so the parser's "
+            "total may be an arm (kept in reporting counts, excluded from composition).",
         ),
         _count_item(
             "sex_gender_participant_counts_not_whole",

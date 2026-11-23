@@ -1965,7 +1965,7 @@ def test_a_build_counts_and_checks_sex_compositions_withheld_for_the_group(tmp_p
     loaded = artifacts.load_dir(out)
     assert artifacts.check_contract(loaded) == []
     metric = next(m for m in loaded["summary.json"]["metrics"]
-                  if m["id"] == "sex_gender_composition_withheld_no_whole_population_group")
+                  if m["id"] == "sex_gender_composition_withheld_whole_population_unread")
     assert metric["value"] == 1
     sg = next(r for r in loaded["trial_rows"] if r["nct_id"] == "NCT99800061")["demographics"]["sex_gender"]
     sg["female_share"] = 0.4
@@ -2652,6 +2652,45 @@ def test_rows_the_registry_posts_without_a_whole_population_number_load(tmp_path
                 ]}],
             })
     assert len(_load_pair(tmp_path, st)) == 2
+
+
+def _sex_rows_by_group(rows: list[tuple[str, tuple[str, str, str]]], title: str = "Sex: Female, Male") -> dict:
+    """A measure over `_WITH_TOTAL` (arms BG000, BG001, Total BG002, denominators 50, 50, 100): one class
+    per item, each a list of (label, values by group)."""
+    return {
+        "title": title, "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+        "classes": [{"title": cls, "categories": [
+            {"title": label,
+             "measurements": [{"groupId": g, "value": v} for g, v in zip(("BG000", "BG001", "BG002"), vals)]}
+            for label, vals in cats
+        ]} for cls, cats in rows],
+    }
+
+
+def test_sex_counts_of_one_arm_beside_a_blank_total_have_no_composition() -> None:
+    # On 7bb55bf the parser read arm A (Female 30, Male 20 of 50) beside a Total of "NA" (of 100), and its
+    # share, 0.6, was published as the trial's; NCT01388361 has this shape (90 and 146 of 236, Total 413).
+    st = _arms_without_total("NCT99800062", _WITH_TOTAL)
+    st["resultsSection"]["baselineCharacteristicsModule"]["measures"].append(_sex_rows_by_group([
+        (None, [("Female", ("30", "NA", "NA")), ("Male", ("20", "NA", "NA"))])]))
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["sex_report_status"], sg["n_female"], sg["n_male"]) == ("reported", 30, 20)
+    assert sg["composition_withheld_reason"] == "whole_population_sex_counts_missing"
+    assert all(sg[k] is None for k in _SEX_WITHHELD)
+
+
+def test_sex_counts_that_make_up_the_whole_population_keep_their_composition() -> None:
+    # Control, on both heads: NCT00596817's shape. One period posted for one group (Total "NA") and another
+    # with a Total; the counts, 55 and 45, make up the table's 100.
+    st = _arms_without_total("NCT99800063", _WITH_TOTAL)
+    st["resultsSection"]["baselineCharacteristicsModule"]["measures"].append(_sex_rows_by_group([
+        ("Female (Open-label Period)", [(None, ("30", "NA", "NA"))]),
+        ("Male (Open-label Period)", [(None, ("20", "NA", "NA"))]),
+        ("Female (Double-blind Period)", [(None, ("0", "25", "25"))]),
+        ("Male (Double-blind Period)", [(None, ("0", "25", "25"))]),
+    ], title="Sex/Gender, Customized"))
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["female_share"], sg.get("composition_withheld_reason")) == (0.55, None)
 
 
 def test_a_measurement_without_its_value_is_refused(tmp_path: Path) -> None:
