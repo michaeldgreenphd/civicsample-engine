@@ -601,11 +601,16 @@ def test_human_review_overrides_statements_orphans_and_private_key_stripping(
     with rev_csv.open('w', encoding='utf-8', newline='') as fh:
         w = csv.writer(fh)
         w.writerow(E.REVIEW_COLUMNS)
-        w.writerow([epmc_06['link_id'], 'NCT09990006', 'Dr. Fictional', '2026-11-02', 'confirmed_same_trial_results', 'Reports primary trial results'])
-        w.writerow([res_02['link_id'], 'NCT09990002', 'Dr. Fictional', '2026-11-02', 'confirmed_background_only', 'Prior phase 1 background paper'])
-        w.writerow([fda_cand_06['link_id'], 'NCT09990006', 'Dr. Fictional', '2026-11-02', 'rejected_false_positive', 'Different formulation NDA'])
-        w.writerow([stmt_link['link_id'], 'NCT09990001', 'Dr. Fictional', '2026-11-02', 'confirmed_same_trial_results', 'Confirmed statement'])
-        w.writerow(['link:0000000000000000', 'NCT09990001', 'Dr. Fictional', '2026-11-02', 'indeterminate', 'Old link whose text changed'])
+        w.writerow([epmc_06['link_id'], 'NCT09990006', 'Dr. Fictional', '2026-11-01',
+                   'confirmed_same_trial_results', 'Reports primary trial results'])
+        w.writerow([res_02['link_id'], 'NCT09990002', 'Dr. Fictional', '2026-11-01',
+                   'confirmed_background_only', 'Prior phase 1 background paper'])
+        w.writerow([fda_cand_06['link_id'], 'NCT09990006', 'Dr. Fictional', '2026-11-01',
+                   'rejected_false_positive', 'Different formulation NDA'])
+        w.writerow([stmt_link['link_id'], 'NCT09990001', 'Dr. Fictional', '2026-11-01',
+                   'confirmed_same_trial_results', 'Confirmed statement'])
+        w.writerow(['link:0000000000000000', 'NCT09990001', 'Dr. Fictional', '2026-11-01',
+                   'indeterminate', 'Old link whose text changed'])
 
     reviewed_build = ART.build_artifacts(
         frozen_cache,
@@ -652,8 +657,10 @@ def test_indeterminate_ctgov_results_review_and_human_rejected_epmc_hits(
     with rev_csv.open('w', encoding='utf-8', newline='') as fh:
         w = csv.writer(fh)
         w.writerow(E.REVIEW_COLUMNS)
-        w.writerow([ctgov_04['link_id'], 'NCT09990004', 'Dr. Reviewer', '2026-11-02', 'indeterminate', 'Pending QC verification'])
-        w.writerow([epmc_06['link_id'], 'NCT09990006', 'Dr. Reviewer', '2026-11-02', 'rejected_false_positive', 'Mentions unrelated trial'])
+        w.writerow([ctgov_04['link_id'], 'NCT09990004', 'Dr. Reviewer', '2026-11-01',
+                   'indeterminate', 'Pending QC verification'])
+        w.writerow([epmc_06['link_id'], 'NCT09990006', 'Dr. Reviewer', '2026-11-01',
+                   'rejected_false_positive', 'Mentions unrelated trial'])
 
     res = ART.build_artifacts(
         frozen_cache,
@@ -1394,7 +1401,7 @@ def test_link_identity_changes_when_the_action_date_changes_under_the_same_excer
     # A review keyed on the old identity is reported as orphaned, never carried onto the changed record.
     review = {before[0]['link_id']: {
         'link_id': before[0]['link_id'], 'nct_id': 'NCT09990009', 'reviewer': 'R',
-        'reviewed_at': '2026-11-02', 'decision': 'confirmed_same_trial_results', 'notes': 'n',
+        'reviewed_at': '2026-11-01', 'decision': 'confirmed_same_trial_results', 'notes': 'n',
     }}
     assert E.apply_reviews(after, review) == [before[0]['link_id']]
     assert after[0]['review_status'] == 'unreviewed'
@@ -1665,7 +1672,7 @@ def test_reviewed_build_with_human_confirmed_candidates_passes_the_contract(
         w = csv.writer(fh)
         w.writerow(E.REVIEW_COLUMNS)
         for lnk in picks.values():
-            w.writerow([lnk['link_id'], lnk['nct_id'], 'Dr. Fictional', '2026-11-02',
+            w.writerow([lnk['link_id'], lnk['nct_id'], 'Dr. Fictional', '2026-11-01',
                         'confirmed_same_trial_results', 'same trial, results reported'])
     reviewed = ART.build_artifacts(
         frozen_cache,
@@ -2055,7 +2062,7 @@ def test_reviewed_rule_rejections_and_unverified_statements_export_where_coverag
             (fda[1]['link_id'], 'NCT09990007', 'rejected_false_positive'),
             (stmt['link_id'], 'NCT09990005', 'confirmed_same_trial_results'),
         ):
-            w.writerow([link_id, nct, 'Dr. Fictional', '2026-11-02', decision, 'Reviewed'])
+            w.writerow([link_id, nct, 'Dr. Fictional', '2026-11-01', decision, 'Reviewed'])
     build_dir = tmp_path / 'build'
     assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(build_dir), '--as-of', F.AS_OF,
                            '--generated-at', F.GENERATED_AT, '--reviews', str(rev_csv),
@@ -2133,6 +2140,34 @@ def test_generated_at_must_be_a_whole_utc_timestamp(
     # Control: Z and +00:00 are both accepted.
     assert ART.generated_at_problem('2026-11-01T12:00:00Z') is None
     assert ART.generated_at_problem(F.GENERATED_AT) is None
+
+
+@pytest.mark.parametrize('reviewed_at', ['2026-11-02', '2100-01-01'])
+def test_review_dated_after_generated_at_is_refused(
+    tmp_path: Path, frozen_cache: A.FrozenCache, built_files: dict[str, Any], reviewed_at: str
+) -> None:
+    # On 51505fd a review dated after the build (F.GENERATED_AT is 2026-11-01) was applied, so the
+    # artifact claimed a human decision that had not yet been made.
+    link = built_files['links.json']['links'][0]
+    rev_csv = tmp_path / 'reviews.csv'
+    with rev_csv.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.REVIEW_COLUMNS)
+        w.writerow([link['link_id'], link['nct_id'], 'Dr. Fictional', reviewed_at, 'indeterminate', 'unsure'])
+    kwargs = {**_build_kwargs(), 'reviews_path': rev_csv, 'as_of': date.fromisoformat(F.AS_OF)}
+    with pytest.raises(ValueError, match=f'dated after generated_at .*reviewed_at {reviewed_at}'):
+        ART.build_artifacts(frozen_cache, **kwargs)
+    # A review on the generation day itself is accepted, and the contract refuses an edited later date.
+    with rev_csv.open('w', encoding='utf-8', newline='') as fh:
+        w = csv.writer(fh)
+        w.writerow(E.REVIEW_COLUMNS)
+        w.writerow([link['link_id'], link['nct_id'], 'Dr. Fictional', '2026-11-01', 'indeterminate', 'unsure'])
+    reviewed = ART.build_artifacts(frozen_cache, **kwargs)
+    assert ART.check_contract(reviewed) == []
+    bad = copy.deepcopy(reviewed)
+    target = next(x for x in bad['links.json']['links'] if x['link_id'] == link['link_id'])
+    target['review']['reviewed_at'] = reviewed_at
+    assert any(f'review dated {reviewed_at}, after generated_at' in p for p in ART.check_contract(bad))
 
 
 @pytest.mark.parametrize('value', ['2000-01-01T00:00:00Z', '2026-11-01T11:59:59+00:00'])
@@ -2286,10 +2321,14 @@ def test_reviews_for_trials_outside_the_build_are_out_of_scope_not_orphaned(
     with rev_csv.open('w', encoding='utf-8', newline='') as fh:
         w = csv.writer(fh)
         w.writerow(E.REVIEW_COLUMNS)
-        w.writerow([res_02['link_id'], 'NCT09990002', 'Dr. Fictional', '2026-11-02', 'confirmed_same_trial_results', 'in scope'])
-        w.writerow([epmc_06['link_id'], 'NCT09990006', 'Dr. Fictional', '2026-11-02', 'confirmed_same_trial_results', 'excluded trial'])
-        w.writerow(['link:0000000000000000', 'NCT09990002', 'Dr. Fictional', '2026-11-02', 'indeterminate', 'changed evidence'])
-        w.writerow(['link:1111111111111111', 'NCT09999999', 'Dr. Fictional', '2026-11-02', 'indeterminate', 'trial not in cache'])
+        w.writerow([res_02['link_id'], 'NCT09990002', 'Dr. Fictional', '2026-11-01',
+                   'confirmed_same_trial_results', 'in scope'])
+        w.writerow([epmc_06['link_id'], 'NCT09990006', 'Dr. Fictional', '2026-11-01',
+                   'confirmed_same_trial_results', 'excluded trial'])
+        w.writerow(['link:0000000000000000', 'NCT09990002', 'Dr. Fictional', '2026-11-01',
+                   'indeterminate', 'changed evidence'])
+        w.writerow(['link:1111111111111111', 'NCT09999999', 'Dr. Fictional', '2026-11-01',
+                   'indeterminate', 'trial not in cache'])
 
     subset = ART.build_artifacts(
         frozen_cache,
@@ -2418,9 +2457,9 @@ def test_reviews_cannot_unpost_ctgov_results_or_make_the_trial_unreported(
     with rev_csv.open('w', encoding='utf-8', newline='') as fh:
         w = csv.writer(fh)
         w.writerow(E.REVIEW_COLUMNS)
-        w.writerow([ct_links['NCT09990001']['link_id'], 'NCT09990001', 'Dr. Fictional', '2026-11-02',
+        w.writerow([ct_links['NCT09990001']['link_id'], 'NCT09990001', 'Dr. Fictional', '2026-11-01',
                     'rejected_false_positive', 'disputes the posted results'])
-        w.writerow([ct_links['NCT09990004']['link_id'], 'NCT09990004', 'Dr. Fictional', '2026-11-02',
+        w.writerow([ct_links['NCT09990004']['link_id'], 'NCT09990004', 'Dr. Fictional', '2026-11-01',
                     'confirmed_background_only', 'disputes the posted results'])
     reviewed = ART.build_artifacts(
         frozen_cache,
@@ -2591,7 +2630,7 @@ def test_posted_results_count_is_the_registry_fact_whatever_the_review(
     with rev_csv.open('w', encoding='utf-8', newline='') as fh:
         w = csv.writer(fh)
         w.writerow(E.REVIEW_COLUMNS)
-        w.writerow([ct['link_id'], 'NCT09990001', 'Dr. Fictional', '2026-11-02', 'indeterminate', 'unsure'])
+        w.writerow([ct['link_id'], 'NCT09990001', 'Dr. Fictional', '2026-11-01', 'indeterminate', 'unsure'])
     reviewed = ART.build_artifacts(frozen_cache, **{**_build_kwargs(), 'reviews_path': rev_csv},
                                    as_of=date.fromisoformat(F.AS_OF))
     assert ART.check_contract(reviewed) == []

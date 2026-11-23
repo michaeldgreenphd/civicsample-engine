@@ -542,6 +542,19 @@ def build_artifacts(
         raise ValueError(gen_problem)
     reviews, reviews_sha = E.read_reviews(reviews_path)
     statements, statements_sha = E.read_statements(statements_path)
+    # A build cannot incorporate a human decision made after it was generated: a review dated
+    # 2100-01-01 in a 2026 build (a typo or a planted row) would change verified coverage and timeline
+    # states while claiming a decision that had not happened. `reviewed_at` is a day, so it may equal the
+    # generation day (UTC) but not follow it. Every row is checked, applied or not: the curated file is
+    # pinned by its sha256 in run.json as a whole.
+    late = sorted(
+        (rev['reviewed_at'], lid) for lid, rev in reviews.items() if rev['reviewed_at'] > generated_at[:10]
+    )
+    if late:
+        raise ValueError(
+            f'{reviews_path.name}: {len(late)} review(s) dated after generated_at {generated_at!r} '
+            f'(first: {late[0][1]} reviewed_at {late[0][0]}); a build cannot include a later decision'
+        )
 
     cache_ids = set(cache.requested_nct_ids)
     if requested_nct_ids is not None:
@@ -1020,6 +1033,13 @@ def check_contract(
             problems.append('links.json contains a non-object entry')
             continue
         problems.extend(E.link_problems(x))
+        review = x.get('review')
+        reviewed_at = review.get('reviewed_at') if isinstance(review, dict) else None
+        generated = run.get('generated_at')
+        if isinstance(reviewed_at, str) and isinstance(generated, str) and reviewed_at > generated[:10]:
+            problems.append(
+                f"{x.get('link_id')}: review dated {reviewed_at}, after generated_at {generated!r}"
+            )
         if x.get('nct_id') not in known_studies:
             problems.append(f"{x.get('link_id')}: nct_id {x.get('nct_id')!r} is not in studies.json")
         if x.get('review_status') != 'unreviewed':
