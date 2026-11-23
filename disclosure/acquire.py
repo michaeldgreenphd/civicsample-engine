@@ -45,8 +45,9 @@ UNUSABLE_200 = 'unusable_200'
 # Version 2: freeze_cache checks that CT.gov version observations bracket the study answers
 # (ctgov_version_bracket_problem). The check needs the raw log's line order, which the frozen archive
 # (sorted by key) does not keep, so it cannot be re-run on load. A version-1 cache was frozen without
-# it and is refused; its raw logs are still in the cache, so `acquire --stage ctgov --stage freeze`
-# adds the missing observation and freezes it again.
+# it and is refused; its raw logs are still in the cache, so `acquire --nct-list FILE --stage ctgov
+# --stage freeze`, with FILE listing the old manifest's requested_nct_ids, adds the missing
+# observation and freezes it again.
 CACHE_SCHEMA_VERSION = 2
 SOURCES: dict[str, str] = {
     'ctgov': 'ClinicalTrials.gov API v2 (/api/v2/version and /api/v2/studies/{nct_id})',
@@ -1277,11 +1278,17 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
         raise CacheIntegrityError(f'{manifest_path}: unreadable manifest JSON ({exc})') from exc
     if not isinstance(manifest, dict) or manifest.get('schema_version') != CACHE_SCHEMA_VERSION:
         found = manifest.get('schema_version') if isinstance(manifest, dict) else None
-        hint = (
-            '; it was frozen before the CT.gov version-bracket check, so run '
-            '`acquire --stage ctgov --stage freeze` on it to freeze it again'
-            if found == 1 else ''
-        )
+        hint = ''
+        if found == 1:
+            # `acquire` needs the NCT IDs, which only this (refused) manifest still lists.
+            old_ids = manifest.get('requested_nct_ids')
+            n_ids = len(old_ids) if isinstance(old_ids, list) else 'the'
+            hint = (
+                '; it was frozen before the CT.gov version-bracket check. Its raw logs are still in the '
+                f"cache: write this manifest's {n_ids} requested_nct_ids to a file, one per line, and run "
+                f'`scripts/build_drug_disclosure.py acquire --cache {cache_dir} --nct-list FILE '
+                '--stage ctgov --stage freeze` to observe the CT.gov version again and freeze it again'
+            )
         raise CacheIntegrityError(
             f'{manifest_path}: unsupported schema_version {found!r} (expected {CACHE_SCHEMA_VERSION}){hint}'
         )

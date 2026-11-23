@@ -2232,7 +2232,7 @@ def test_version_bracket_rule_on_hand_made_logs() -> None:
 
 
 def test_a_cache_frozen_before_the_version_bracket_check_is_refused(
-    tmp_path: Path, frozen_cache: A.FrozenCache
+    tmp_path: Path, frozen_cache: A.FrozenCache, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The bracket needs the raw log's order, which the key-sorted archive drops, so it cannot be
     # re-checked on load; a version-1 manifest (frozen without it) is refused by version instead.
@@ -2243,14 +2243,24 @@ def test_a_cache_frozen_before_the_version_bracket_check_is_refused(
     assert manifest['schema_version'] == A.CACHE_SCHEMA_VERSION == 2
     manifest['schema_version'] = 1
     manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
-    with pytest.raises(A.CacheIntegrityError, match=r'schema_version 1 \(expected 2\).*freeze it again'):
+    with pytest.raises(A.CacheIntegrityError, match=r'schema_version 1 \(expected 2\).*freeze it again') as refused:
         A.load_frozen_cache(cache)
+    message = str(refused.value)
+    assert f"this manifest's {len(F.NCT_IDS)} requested_nct_ids" in message
+    assert f'acquire --cache {cache} --nct-list FILE --stage ctgov --stage freeze' in message
     out = tmp_path / 'out'
     assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--as-of', F.AS_OF,
                            '--generated-at', F.GENERATED_AT]) == 1
     assert not out.exists()
-    # Freezing the same raw logs again (they bracket their answers) gives a loadable cache.
-    A.freeze_cache(cache, F.NCT_IDS, frozen_at=F.GENERATED_AT)
+    # Following the message: the old manifest's IDs in a file, and the named acquire command. The
+    # ctgov stage reuses every settled study and observes the version twice; freeze then succeeds.
+    id_file = tmp_path / 'ids.txt'
+    id_file.write_text('\n'.join(manifest['requested_nct_ids']) + '\n', encoding='utf-8')
+    calls: list[str] = []
+    monkeypatch.setattr(A, 'requests_get', lambda: F.stub_get(calls))
+    assert cli_build.main(['acquire', '--cache', str(cache), '--nct-list', str(id_file),
+                           '--stage', 'ctgov', '--stage', 'freeze']) == 0
+    assert calls and all(c.startswith(f'{A.CTGOV_API}/version?') for c in calls)
     assert A.load_frozen_cache(cache).manifest['schema_version'] == 2
 
 
