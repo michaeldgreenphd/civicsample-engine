@@ -178,6 +178,47 @@ def test_site_run_records_exporter_provenance_and_content_derived_id(
     assert run_c["run_id"] != run_a["run_id"]
 
 
+def test_limited_diagnostic_build_is_never_exported(
+    verified_build: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    studies_dir = fx.write_studies_dir(fx.build_fictional_cohort(), tmp_path / "studies")
+    rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
+    limited = tmp_path / "limited"
+    rc = cli_build.main(
+        [
+            "--records-dir",
+            str(studies_dir),
+            "--sponsor-rules",
+            str(rules_path),
+            "--limit",
+            "3",
+            "--generated-at",
+            "2026-11-21T12:00:00+00:00",
+            "--out",
+            str(limited),
+        ]
+    )
+    assert rc == 0  # a valid diagnostic build: the contract does not reject it
+    run = json.loads((limited / "run.json").read_text(encoding="utf-8"))
+    assert run["inputs"]["study_records"]["limit_applied"] == 3
+    assert run["inputs"]["study_records"]["n_records"] == 3
+
+    # The exporter refuses it and leaves the existing site export untouched.
+    site_dir = tmp_path / "site" / "dap"
+    site_export.export_site(verified_build, site_dir)
+    before = {p.name: p.read_bytes() for p in site_dir.iterdir()}
+    capsys.readouterr()
+    assert site_export.main([str(limited), str(site_dir)]) == 1
+    assert "limit_applied is 3; a --limit build is diagnostic only" in capsys.readouterr().err
+    assert {p.name: p.read_bytes() for p in site_dir.iterdir()} == before
+
+    # A manifest without the key (not written by load_study_records) is refused too.
+    loaded = artifacts.load_dir(verified_build)
+    del loaded["run.json"]["inputs"]["study_records"]["limit_applied"]
+    with pytest.raises(ValueError, match="limit_applied is '<missing>'"):
+        site_export.select_site_files(loaded)
+
+
 def test_tampered_or_incomplete_build_is_refused_and_leaves_site_intact(
     verified_build: Path, tmp_path: Path
 ) -> None:

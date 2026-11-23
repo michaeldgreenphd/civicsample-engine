@@ -83,7 +83,9 @@ modified.
 `producer` block and adds an `exporter` block (commit, uncommitted changes and
 source SHA-256 over the exporter's own import closure). The site `run_id` is
 `<build run_id>-<8 hex>`, the hex being a digest of the exported content minus
-`run_id`: a changed exporter or commit gives a new id for the same build.
+`run_id`: a changed exporter or commit gives a new id for the same build. A
+build made with `--limit` (diagnostic only; `inputs.study_records.limit_applied`
+is not null) passes the contract but is never exported.
 
 ## Condition MeSH sidecar (`--condition-mesh`)
 

@@ -124,6 +124,15 @@ def select_site_files(loaded: dict[str, Any]) -> dict[str, Any]:
 
     inputs = run.get("inputs") or {}
     study_in = inputs.get("study_records") or {}
+    # A --limit build covers only the first N input records and is diagnostic
+    # only; exported, it would replace the site with a partial cohort under a
+    # manifest that looks complete. load_study_records records limit_applied on
+    # every input (null when no limit was given), so a missing key is refused too.
+    if "limit_applied" not in study_in or study_in["limit_applied"] is not None:
+        raise ValueError(
+            f"run.json: inputs.study_records.limit_applied is {study_in.get('limit_applied', '<missing>')!r}; "
+            "a --limit build is diagnostic only and is not exported to the site (rebuild without --limit)"
+        )
     mesh_in = inputs.get("condition_mesh")
     ont_in = inputs.get("condition_ontology") or {}
     sp_in = inputs.get("sponsor_rules") or {}
