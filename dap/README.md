@@ -84,8 +84,14 @@ modified.
      as "All Patients" (NCT03043872), keeps its composition. No other class is
      read in its place: no title says which is the trial's population, and the
      class that makes up the denominator can be one pooled with another trial
-     (NCT02163759). Of the 3,096 stored raw trials with a baseline measure, 22
-     have such a measure and 14 are withheld. As with the other withheld
+     (NCT02163759). Both this check and the blank-Total check read the measure
+     Female and Male come from on its own (`_primary_sex_measure`): with several
+     sex/gender measures the parser takes Unknown, gender-diverse and ambiguous
+     as maxima across them and the flag from any of them, so another measure's
+     Unknown could complete a subgroup's counts, and another measure's classes
+     (NCT03726437's "Sexual Violence Victimization") could set the flag. Of the
+     3,096 stored raw trials with a baseline measure, 22 have such a measure and
+     14 are withheld. As with the other withheld
      compositions, the counts no longer bound the race and ethnicity tables,
      which the baseline table's own denominator bounds instead: 8 stored race and
      7 ethnicity tables that had been withheld as exceeding the first class's sex

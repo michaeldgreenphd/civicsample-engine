@@ -2745,6 +2745,59 @@ def test_a_build_counts_and_checks_a_sex_composition_read_from_one_class(tmp_pat
     assert (sg["composition_withheld_reason"], sg["female_share"]) == ("sex_counts_from_one_class_of_several", None)
 
 
+def _gender_unknown(values: tuple[str, ...], groups: tuple[str, ...] = ("BG000",)) -> dict:
+    """A second sex/gender measure, "Gender, Customized", posting only an Unknown row."""
+    return {"title": "Gender, Customized", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+            "classes": [{"categories": [{"title": "Unknown or Not Reported", "measurements": [
+                {"groupId": g, "value": v} for g, v in zip(groups, values)]}]}]}
+
+
+def test_another_measures_unknown_does_not_complete_a_subgroups_counts() -> None:
+    # On 677c157 the first class of the sex measure (Female 60, Male 30) and the Unknown 10 the parser takes
+    # from the gender measure added up to the table's 100, so the subgroup's share, 2/3, was published.
+    st = fx.make_raw_ctgov_study("NCT99800067", baseline_denom=100, measures=[
+        _sex_by_class([("Cohort A", 60, 30), ("Cohort B", 5, 5)]), _gender_unknown(("10",))])
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["n_female"], sg["n_male"], sg["n_unknown"]) == (60, 30, 10)
+    assert sg["composition_withheld_reason"] == "sex_counts_from_one_class_of_several"
+    assert all(sg[k] is None for k in _SEX_WITHHELD)
+
+
+def test_another_measures_unknown_does_not_complete_an_arms_counts() -> None:
+    # On 677c157 arm A's Female 30 and Male 20 beside a blank Total and the gender measure's Unknown 50 added
+    # up to the table's 100, so the arm's share, 0.6, was published.
+    st = _arms_without_total("NCT99800068", _WITH_TOTAL)
+    st["resultsSection"]["baselineCharacteristicsModule"]["measures"].extend([
+        _sex_rows_by_group([(None, [("Female", ("30", "NA", "NA")), ("Male", ("20", "NA", "NA"))])]),
+        _gender_unknown(("25", "25", "50"), ("BG000", "BG001", "BG002"))])
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["n_female"], sg["n_male"], sg["n_unknown"]) == (30, 20, 50)
+    assert sg["composition_withheld_reason"] == "whole_population_sex_counts_missing"
+
+
+def test_another_measures_classes_do_not_withhold_a_one_class_sex_measure() -> None:
+    # On 677c157 the flag came from any selected measure, so a one-class sex table (Female 50, Male 40, 10
+    # unposted, of 100) beside a two-class measure lost its composition. NCT03726437's flag comes from its
+    # "Sexual Violence Victimization" measure.
+    other = _sex_by_class([("Part 1", 1, 1), ("Part 2", 1, 1)])
+    other["title"] = "Sexual Violence Victimization"
+    st = fx.make_raw_ctgov_study("NCT99800069", baseline_denom=100, measures=[
+        _sex_by_class([(None, 50, 40)]), other])
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["female_share"], sg.get("composition_withheld_reason")) == (50 / 90, None)
+
+
+def test_the_primary_measures_own_unknown_still_completes_the_table() -> None:
+    # Control, on both heads: the primary measure's first class posts Female 55, Male 40 and Unknown 5 of
+    # 100, so its counts make up the table.
+    measure = _sex_by_class([("Overall", 55, 40), ("Cohort B", 5, 5)])
+    measure["classes"][0]["categories"].append(
+        {"title": "Unknown or Not Reported", "measurements": [{"groupId": "BG000", "value": "5"}]})
+    st = fx.make_raw_ctgov_study("NCT99800070", baseline_denom=100, measures=[measure])
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["female_share"], sg.get("composition_withheld_reason")) == (55 / 95, None)
+
+
 def test_a_measurement_without_its_value_is_refused(tmp_path: Path) -> None:
     bad = _measured_study("NCT99800022")
     bad["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"][0][

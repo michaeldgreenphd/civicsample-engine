@@ -1032,26 +1032,38 @@ def _reads_as_number(value: Any) -> bool:
     return value is not None
 
 
-def _selected_sex_measure(record: dict[str, Any]) -> tuple[Any, dict[str, Any]] | None:
-    """The vendored parser's reading of a raw record's baseline measures and the measure it selected."""
+def _primary_sex_measure(record: dict[str, Any]) -> tuple[dict[str, Any], Any] | None:
+    """The measure the vendored parser takes Female and Male from, with that measure parsed alone.
+
+    With several sex/gender measures the parser takes Female and Male from one primary measure (the
+    largest Female + Male, the first on ties) but Unknown, gender-diverse and ambiguous as maxima across
+    the measures, and a flag such as `flag_multiclass_timepoint` from any of them (`sgp.parse_trial`). A
+    check on the primary measure's layout or total therefore reads that measure alone (`sgp.parse_measure`):
+    it is the first selected measure whose own title, Female and Male are the row's.
+    """
     module = (record.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}
     measures = module.get("measures") if isinstance(module, dict) else None
     if not isinstance(measures, list):
         return None
     try:
         parsed = sgp.parse_trial(measures, None)
+        for measure in sgp.select_sex_gender_measures(measures):
+            alone = sgp.parse_measure(measure)
+            if (alone.title, alone.female, alone.male) == (parsed.measure_title, parsed.n_female, parsed.n_male):
+                return measure, alone
     except Exception:  # noqa: BLE001 - extract_sex_gender already read the same failure
         return None
-    measure = next((m for m in measures if isinstance(m, dict) and m.get("title") == parsed.measure_title), None)
-    return None if measure is None else (parsed, measure)
+    return None
 
 
-def _sex_counts_miss_denominator(sex_gender: dict[str, Any], baseline_participants: int | None) -> bool:
-    """Whether the parsed sex/gender counts fail to add up to the table's own Participants denominator."""
-    counted = sum(
-        float(sex_gender.get(k) or 0.0)
-        for k in ("n_female", "n_male", "n_unknown", "n_gender_diverse", "n_ambiguous_gender")
-    )
+def _measure_counts_miss_denominator(alone: Any, baseline_participants: int | None) -> bool:
+    """Whether one parsed sex/gender measure's counts fail to add up to the table's Participants denominator.
+
+    Only the primary measure's own counts are added: an Unknown taken from another measure could otherwise
+    make an arm's or a subgroup's counts add up to the table (Female 60 and Male 30 of a subgroup, Unknown 10
+    from a gender measure, against 100).
+    """
+    counted = sum(float(getattr(alone, k) or 0.0) for k in ("female", "male", "unknown", "gender_diverse", "ambiguous"))
     return baseline_participants is None or round(counted) != baseline_participants
 
 
@@ -1072,11 +1084,11 @@ def _sex_counts_miss_whole_population(
     if sex_gender.get("is_participant_count") is not True:
         return False
     overall = src_utils.get_overall_group_id(record)
-    selected = _selected_sex_measure(record)
-    if overall is None or selected is None:
+    primary = _primary_sex_measure(record)
+    if overall is None or primary is None:
         return False
     missing = False
-    for cls in selected[1].get("classes") or []:
+    for cls in primary[0].get("classes") or []:
         for cat in (cls.get("categories") or []) if isinstance(cls, dict) else []:
             rows = cat.get("measurements") if isinstance(cat, dict) else None
             entries = [e for e in rows or [] if isinstance(e, dict)]
@@ -1085,7 +1097,7 @@ def _sex_counts_miss_whole_population(
                 whole and _reads_as_number(whole[0].get("value"))
             ):
                 missing = True
-    return missing and _sex_counts_miss_denominator(sex_gender, baseline_participants)
+    return missing and _measure_counts_miss_denominator(primary[1], baseline_participants)
 
 
 def _sex_counts_from_one_class_of_several(
@@ -1104,15 +1116,16 @@ def _sex_counts_from_one_class_of_several(
     withheld rather than read from another class: no class title says which is the trial's population,
     and the class that adds up to the denominator can be a population pooled with another trial
     (NCT02163759: its own 358 first, then "GA28948 & GA28949 Pooled Population", 716). Of the 3,096
-    stored raw trials with a baseline measure, 22 have such a measure and 14 are withheld. The parser
-    is not changed.
+    stored raw trials with a baseline measure, 22 have such a measure and 14 are withheld. The flag and
+    the counts are the primary measure's own (`_primary_sex_measure`), not the row's, which can carry
+    another measure's flag or Unknown. The parser is not changed.
     """
     if sex_gender.get("is_participant_count") is not True:
         return False
-    selected = _selected_sex_measure(record)
-    if selected is None or selected[0].flag_multiclass_timepoint is not True:
+    primary = _primary_sex_measure(record)
+    if primary is None or primary[1].flag_multiclass_timepoint is not True:
         return False
-    return _sex_counts_miss_denominator(sex_gender, baseline_participants)
+    return _measure_counts_miss_denominator(primary[1], baseline_participants)
 
 
 def _withhold_sex_composition(sex_gender: dict[str, Any], group_problem: str) -> dict[str, Any]:
