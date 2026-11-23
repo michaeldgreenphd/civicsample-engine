@@ -1010,7 +1010,8 @@ def test_real_stored_ctgov_records_offline_smoke_pipeline(tmp_path: Path) -> Non
         '--cache', str(cache_dir),
         '--out', str(build_out),
         '--as-of', '2026-11-01',
-        '--generated-at', F.GENERATED_AT,
+        # No --generated-at: freeze-local stamps the cache with the current time, and a build cannot be
+        # generated before the cache it reads (generated_before_frozen_problem).
     ]) == 0
     assert cli_check.main([str(build_out)]) == 0
     assert cli_export.main([str(build_out), str(site_out)]) == 0
@@ -2134,6 +2135,31 @@ def test_generated_at_must_be_a_whole_utc_timestamp(
     assert ART.generated_at_problem(F.GENERATED_AT) is None
 
 
+@pytest.mark.parametrize('value', ['2000-01-01T00:00:00Z', '2026-11-01T11:59:59+00:00'])
+def test_generated_at_before_the_cache_was_frozen_is_refused(
+    tmp_path: Path, frozen_cache: A.FrozenCache, built_files: dict[str, Any], value: str
+) -> None:
+    # The fixture cache was frozen at F.GENERATED_AT (2026-11-01T12:00:00+00:00). On a5ec32c both values
+    # built, and the export published a generation time before the cache the build read.
+    assert frozen_cache.manifest['frozen_at'] == F.GENERATED_AT
+    kwargs = {**_build_kwargs(), 'as_of': date.fromisoformat(F.AS_OF)}
+    with pytest.raises(ValueError, match=re.escape(f'generated_at {value!r} is earlier than the cache was frozen')):
+        ART.build_artifacts(frozen_cache, **{**kwargs, 'generated_at': value})
+    out = tmp_path / 'out'
+    assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(out), '--as-of', F.AS_OF,
+                           '--generated-at', value]) == 1
+    assert not out.exists()
+    # The contract applies the same rule to an edited run.json.
+    bad = copy.deepcopy(built_files)
+    bad['run.json']['generated_at'] = value
+    assert any('is earlier than the cache was frozen' in p for p in ART.check_contract(bad))
+    # Control: a build generated at the freeze time itself, or later, is accepted.
+    assert ART.generated_before_frozen_problem(F.GENERATED_AT, F.GENERATED_AT) is None
+    assert ART.generated_before_frozen_problem('2026-11-01T12:00:01Z', F.GENERATED_AT) is None
+    assert built_files['run.json']['inputs']['cache_manifest_frozen_at'] == F.GENERATED_AT
+    assert ART.check_contract(built_files) == []
+
+
 @pytest.mark.parametrize(
     ('fetched_at', 'data_timestamp', 'expect'),
     [
@@ -2233,8 +2259,9 @@ def test_local_freeze_requires_stated_timestamps_and_freezes_at_the_real_time(tm
     assert loaded.ctgov['ctgov/version/2025-06-30']['body']['dataTimestamp'] == '2025-06-30T09:00:00'
     assert before <= loaded.manifest['frozen_at'] <= after
 
-    # Without --as-of the 365-day window is evaluated at the stated data timestamp, not a fixed date.
-    assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--generated-at', F.GENERATED_AT]) == 0
+    # Without --as-of the 365-day window is evaluated at the stated data timestamp, not a fixed date. The
+    # build is generated after the freeze (`after`), since it cannot be generated before the cache it reads.
+    assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--generated-at', after]) == 0
     run = json.loads((out / 'run.json').read_text(encoding='utf-8'))
     assert run['as_of'] == '2025-06-30'
     assert run['sources']['ctgov']['data_timestamp'] == '2025-06-30T09:00:00'

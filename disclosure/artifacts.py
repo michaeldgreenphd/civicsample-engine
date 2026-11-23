@@ -20,7 +20,7 @@ import re
 import shutil
 import tempfile
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -501,6 +501,28 @@ def generated_at_problem(value: Any) -> str | None:
     return A.timestamp_problem(value, 'generated_at', offset='utc')
 
 
+def generated_before_frozen_problem(generated_at: Any, frozen_at: Any) -> str | None:
+    """Why a build stated as generated at `generated_at` cannot have read a cache frozen at `frozen_at`,
+    or None.
+
+    A build reads the frozen cache, so it is generated no earlier than the cache was frozen: an earlier
+    `--generated-at` (a 2000 timestamp for a cache frozen in 2026) was published as impossible
+    provenance. `freeze_cache` stamps `frozen_at` with the current UTC time unless a caller pins it, so
+    a build that seeds its cache (`build --records`) and states a generation time must state one no
+    earlier than the seeding. Both values must be whole UTC timestamps; one that does not parse is left
+    to `generated_at_problem` and the manifest checks.
+    """
+    for value, label in ((generated_at, 'generated_at'), (frozen_at, 'frozen_at')):
+        if A.timestamp_problem(value, label, offset='utc'):
+            return None
+    if datetime.fromisoformat(generated_at) < datetime.fromisoformat(frozen_at):
+        return (
+            f'generated_at {generated_at!r} is earlier than the cache was frozen ({frozen_at!r}); '
+            'a build reads the frozen cache, so it cannot be generated before it'
+        )
+    return None
+
+
 def build_artifacts(
     cache: A.FrozenCache,
     *,
@@ -513,7 +535,9 @@ def build_artifacts(
     requested_nct_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build the complete schema-version-1 disclosure artifact family strictly from `FrozenCache`."""
-    gen_problem = generated_at_problem(generated_at)
+    gen_problem = generated_at_problem(generated_at) or generated_before_frozen_problem(
+        generated_at, cache.manifest.get('frozen_at')
+    )
     if gen_problem:
         raise ValueError(gen_problem)
     reviews, reviews_sha = E.read_reviews(reviews_path)
@@ -891,7 +915,12 @@ def check_contract(
         problems.append(f'run.json run_id {rid!r} is malformed')
     # generated_at sits outside run_identity and run.json outside its own file hashes, so an edited
     # value would pass every other check; it is parsed whole again here.
-    gen_problem = generated_at_problem(run.get('generated_at'))
+    # The same holds for generation before the cache it read (`generated_before_frozen_problem`).
+    inputs = run.get('inputs')
+    frozen_at = inputs.get('cache_manifest_frozen_at') if isinstance(inputs, dict) else None
+    gen_problem = generated_at_problem(run.get('generated_at')) or generated_before_frozen_problem(
+        run.get('generated_at'), frozen_at
+    )
     if gen_problem:
         problems.append(f'run.json {gen_problem}')
     rident = run.get('run_identity')
