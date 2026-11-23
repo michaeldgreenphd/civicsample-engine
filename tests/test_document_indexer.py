@@ -4169,3 +4169,835 @@ def test_m1_fix_ingest_max_trials_must_be_a_positive_int(tmp_path: Path) -> None
             )
     assert provider.calls == []
     assert not (tmp_path / "mt_cache").exists()
+
+
+# ---------------------------------------------------------------------------
+# Group 13: Red-team round 2 (m1)
+#
+# Each test states the behaviour the holdout firewall, the provenance rule or
+# the no-silent-failure rule requires of one CLI path or public entry point,
+# driven through fake API and session objects (no network) with fictional ids
+# only. A failing test here names an open bypass: make it pass by fixing the
+# module, never by weakening the assertion.
+# ---------------------------------------------------------------------------
+
+
+class _PdfPathRecordingProvider(di.FixturePageTextProvider):
+    """A fixture provider that also records each ``(sha256, pdf_path)`` it is asked to extract."""
+
+    def __init__(self, mapping: dict[str, list[str]]) -> None:
+        super().__init__(mapping)
+        self.requests: list[tuple[str, Path | None]] = []
+
+    def extract_pages(
+        self,
+        *,
+        sha256: str,
+        pdf_path: Path | None = None,
+        nct_id: str | None = None,
+        filename: str | None = None,
+    ) -> di.ExtractedDocumentPages:
+        self.requests.append((sha256.lower(), pdf_path))
+        return super().extract_pages(sha256=sha256, pdf_path=pdf_path, nct_id=nct_id, filename=filename)
+
+
+class _RedirectedResponse(_FakeResponse):
+    """A fake response that carries the final ``url`` and redirect ``history`` requests would report."""
+
+    def __init__(
+        self,
+        status_code: int,
+        content: bytes,
+        *,
+        url: str,
+        history: list[_FakeResponse],
+        location: str | None = None,
+    ) -> None:
+        super().__init__(status_code, content)
+        self.url = url
+        self.history = history
+        self.headers: dict[str, str] = {"Location": location} if location is not None else {}
+
+
+class _RedirectingSession:
+    """A session whose GET of any URL is redirected to ``target``, unless redirects are disabled.
+
+    It honours ``allow_redirects=False`` the way requests does (the 302 itself
+    is returned), so a fix that disables redirects and a fix that checks the
+    final URL both satisfy the tests that use it.
+    """
+
+    def __init__(self, target: str, content: bytes) -> None:
+        self._target = target
+        self._content = content
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def get(self, url: str, **kwargs: Any) -> _RedirectedResponse:
+        self.calls.append((url, dict(kwargs)))
+        if kwargs.get("allow_redirects", True) is False:
+            return _RedirectedResponse(302, b"", url=url, history=[], location=self._target)
+        return _RedirectedResponse(
+            200, self._content, url=self._target, history=[_FakeResponse(302)]
+        )
+
+
+def _rt_stat_pages() -> list[str]:
+    """Two clean statistical pages, the page text every fixture document here is given."""
+    return _clean_stat_pages(2)
+
+
+# --- Open bypasses found in round 2 (these fail until the module is fixed) ---
+
+
+def test_redteam_m1_local_pdf_symlinked_into_a_holdout_directory_is_not_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A ``--local-pdf-dir`` entry for an in-scope trial that links into a holdout trial's folder is not used.
+
+    Both the live path (``index_trial_from_study``) and the census ingest build
+    ``<local-pdf-dir>/<nct_id>/<filename>`` and read whatever it points to. When
+    the in-scope trial's file (or its whole folder) is a symlink into the
+    holdout trial's folder, the holdout's PDF is read, hashed, handed to the
+    page extractor and indexed under the in-scope trial, and its digest lands in
+    the index, page map, url_manifest.json and profile (and, on a census digest
+    mismatch, in the error message). Correct: a local PDF whose resolved path
+    leaves ``<local-pdf-dir>/<nct_id>/`` is refused (or ignored) before it is
+    read, so nothing about the holdout's file is parsed or recorded.
+    """
+    holdout_pdf = _make_minimal_pdf("Holdout trial local protocol file")
+    own_pdf = _make_minimal_pdf("In-scope trial posted protocol file")
+    holdout_sha, own_sha = di.sha256_bytes(holdout_pdf), di.sha256_bytes(own_pdf)
+    own_url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    manifest = _rt_manifest(tmp_path)
+
+    for layout in ("file_link", "dir_link"):
+        pdfs = tmp_path / f"sl_{layout}_pdfs"
+        (pdfs / _RT_AUDIT).mkdir(parents=True)
+        holdout_file = pdfs / _RT_AUDIT / "Prot_000.pdf"
+        holdout_file.write_bytes(holdout_pdf)
+        if layout == "file_link":
+            (pdfs / _RT_A).mkdir()
+            (pdfs / _RT_A / "Prot_000.pdf").symlink_to(holdout_file)
+        else:
+            (pdfs / _RT_A).symlink_to(pdfs / _RT_AUDIT, target_is_directory=True)
+        holdout_dir = (pdfs / _RT_AUDIT).resolve()
+
+        runs: list[tuple[str, list[str], dict[str, Any]]] = [
+            (
+                f"sl_{layout}_live",
+                ["--nct-id", _RT_A],
+                {
+                    "api_client": _SpyAPIClient({_RT_A: _rt_study(_RT_A, own_pdf)}),
+                    "session": _FakeSession({own_url: _FakeResponse(200, own_pdf)}),
+                },
+            ),
+        ]
+        for claimed, claimed_sha in (("holdout_digest", holdout_sha), ("own_digest", own_sha)):
+            census = _write_jsonl(
+                tmp_path / f"sl_{layout}_{claimed}.jsonl",
+                [_rt_census_row(_RT_A, own_pdf, sha256=claimed_sha, bytes=len(own_pdf))],
+            )
+            runs.append(
+                (f"sl_{layout}_census_{claimed}", ["--ingest-census-jsonl", str(census), "--offline"], {})
+            )
+
+        for tag, target_args, injected in runs:
+            provider = _PdfPathRecordingProvider({holdout_sha: _rt_stat_pages(), own_sha: _rt_stat_pages()})
+            rc = cli_mod.run_cli(
+                [
+                    "--manifest", str(manifest),
+                    *target_args,
+                    "--local-pdf-dir", str(pdfs),
+                    *_rt_outs(tmp_path, tag),
+                ],
+                provider=provider,
+                **injected,
+            )
+            err = capsys.readouterr().err
+            into_holdout = [
+                str(path)
+                for _sha, path in provider.requests
+                if path is not None and holdout_dir in Path(path).resolve().parents
+            ]
+            assert into_holdout == [], f"{tag} (rc={rc}): holdout trial's file handed to the extractor"
+            assert holdout_sha not in [sha for sha, _path in provider.requests], tag
+            leaked = [p.name for p in _rt_written(tmp_path, tag) if holdout_sha in _rt_text(p)]
+            assert leaked == [], f"{tag} (rc={rc}): holdout file's digest recorded in {leaked}"
+            assert holdout_sha not in err, f"{tag}: holdout file's digest printed"
+            assert _RT_AUDIT not in err
+
+
+def test_redteam_m1_index_entry_does_not_bypass_a_holdout_tagged_page_map(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A cached index entry must not serve a digest whose cached page map is tagged with a holdout trial.
+
+    Without an index entry, an in-scope document whose digest has a cached
+    page map tagged with a holdout trial stops the run with exit 2 (pinned in
+    ``test_redteam_m1_page_map_rows_for_holdout_trials_refused_before_any_fetch``).
+    With an entry for that digest in ``document_index_by_sha256.jsonl`` (which
+    is untagged), ``get_or_index_document`` returns the entry as a cache hit
+    before the page map is read, so the firewall never runs and the
+    holdout-derived entry (readability, pages selected, version label) is
+    profiled under the in-scope trial with exit 0. Correct: the same refusal
+    with or without an index entry, in the live path and the census ingest.
+    """
+    pdf = _make_minimal_pdf("Digest whose page map is tagged with a holdout")
+    sha = di.sha256_bytes(pdf)
+    entry = di.index_document_pages(
+        _rt_stat_pages(),
+        sha256=sha,
+        byte_count=len(pdf),
+        text_provider="fixture",
+        extracted_at=_RT_STAMP,
+        pipeline_commit=None,
+    )
+    manifest = _rt_manifest(tmp_path)
+    census = _write_jsonl(tmp_path / "ie_census.jsonl", [_rt_census_row(_RT_A, pdf)])
+    for mode in ("live", "census"):
+        tag = f"ie_{mode}"
+        (tmp_path / f"{tag}_index.jsonl").write_text(json.dumps(entry.to_dict()) + "\n", encoding="utf-8")
+        cached_map = _write_cached_map(
+            tmp_path / f"{tag}_cache" / "pages",
+            {
+                "sha256": sha,
+                "nct_id": _RT_AUDIT,
+                "byte_count": len(pdf),
+                "physical_pages": 2,
+                "pages": _rt_stat_pages(),
+            },
+        )
+        before = cached_map.read_bytes()
+        if mode == "live":
+            rc = cli_mod.run_cli(
+                ["--manifest", str(manifest), "--nct-id", _RT_A, *_rt_outs(tmp_path, tag)],
+                api_client=_SpyAPIClient({_RT_A: _rt_study(_RT_A, pdf)}),
+                session=_FakeSession(
+                    {di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf"): _FakeResponse(200, pdf)}
+                ),
+            )
+        else:
+            rc = cli_mod.run_cli(
+                [
+                    "--manifest", str(manifest),
+                    "--ingest-census-jsonl", str(census),
+                    "--offline",
+                    *_rt_outs(tmp_path, tag),
+                ]
+            )
+        err = capsys.readouterr().err
+        assert rc == 2, f"{mode}: rc={rc}, holdout-tagged digest served from the index"
+        assert not (tmp_path / f"{tag}_profiles.jsonl").exists()
+        assert cached_map.read_bytes() == before
+        assert _RT_AUDIT not in err
+
+
+def test_redteam_m1_download_redirected_to_another_trials_document_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A document GET that ends at another trial's URL must not be cached under the requested trial.
+
+    ``download_pdf_atomic`` checks the URL it requests and then calls
+    ``session.get(url, stream=True)``, which follows redirects, and never
+    looks at the response's final ``url`` or ``history``. A redirect from the
+    in-scope trial's document to a holdout trial's document puts the holdout's
+    bytes into the content-addressed cache and the profile under the in-scope
+    trial. Correct: refuse a response whose final URL is not the requested one
+    (or disable redirects, so the 302 is a failed download); either way no
+    blob is written and the holdout's bytes are not indexed.
+    """
+    own_url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    holdout_url = di.build_ctgov_large_doc_url(_RT_AUDIT, "Prot_000.pdf")
+    holdout_pdf = _make_minimal_pdf("Holdout bytes reached through a redirect")
+    holdout_sha = di.sha256_bytes(holdout_pdf)
+
+    blobs = tmp_path / "rd_blobs"
+    session = _RedirectingSession(holdout_url, holdout_pdf)
+    try:
+        result: Any = cli_mod.download_pdf_atomic(
+            own_url,
+            blobs,
+            session=session,
+            nct_id=_RT_A,
+            filename="Prot_000.pdf",
+            audit_nct_ids={_RT_AUDIT},
+            allowed_nct_ids={_RT_A, _RT_B},
+        )
+    except di.AuditHoldoutError:
+        result = None
+    assert result is None or not result.ok, "redirected holdout bytes accepted as the trial's document"
+    assert not blobs.exists() or [p for p in blobs.rglob("*") if p.is_file()] == []
+
+    provider = di.FixturePageTextProvider({holdout_sha: _rt_stat_pages()})
+    rc = cli_mod.run_cli(
+        ["--manifest", str(_rt_manifest(tmp_path)), "--nct-id", _RT_A, *_rt_outs(tmp_path, "rd")],
+        api_client=_SpyAPIClient({_RT_A: _rt_study(_RT_A, holdout_pdf)}),
+        session=_RedirectingSession(holdout_url, holdout_pdf),
+        provider=provider,
+    )
+    err = capsys.readouterr().err
+    assert holdout_sha not in [call[0] for call in provider.calls], f"rc={rc}: redirected bytes parsed"
+    leaked = [p.name for p in _rt_written(tmp_path, "rd") if holdout_sha in _rt_text(p) or _RT_AUDIT in _rt_text(p)]
+    assert leaked == [], f"rc={rc}: redirected holdout document recorded in {leaked}"
+    assert _RT_AUDIT not in err
+
+
+def test_redteam_m1_alias_unlisted_by_a_manifest_without_holdout_rows_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With a manifest that names no holdout, a payload alias the manifest does not list is not accepted.
+
+    ``validate_study_payload_nct_id`` checks ``nctIdAliases`` only against
+    ``audit_nct_ids`` and accepts any alias the manifest does not list. A
+    manifest holding only in-scope rows (a filtered run list) gives an empty
+    holdout set, so the alias check compares against nothing: a payload for an
+    in-scope trial whose alias is the holdout trial is downloaded, parsed and
+    profiled with exit 0. The direct check is protected by the allowlist even
+    then; the alias check is not. Correct: when no holdout set is known, an
+    alias not on the allowlist cannot be shown not to be a holdout and is
+    refused (exit 2, nothing fetched from the CDN, parsed or written), or a
+    manifest naming no in_audit=True row is refused outright. (With a holdout
+    set, an unlisted alias stays accepted, as
+    ``test_m1_fix_study_alias_list_must_be_a_list_of_strict_ids`` pins.)
+    """
+    pdf = _make_minimal_pdf("Alias against an empty holdout set")
+    in_scope_only = _write_jsonl(
+        tmp_path / "in_scope_only.jsonl",
+        [{"nct_id": _RT_A, "in_audit": False}, {"nct_id": _RT_B, "in_audit": False}],
+    )
+    study = _rt_study(_RT_A, pdf)
+    study["protocolSection"]["identificationModule"]["nctIdAliases"] = [_RT_AUDIT]
+    session = _FakeSession({di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf"): _FakeResponse(200, pdf)})
+    provider = di.FixturePageTextProvider({di.sha256_bytes(pdf): _rt_stat_pages()})
+    rc = cli_mod.run_cli(
+        ["--manifest", str(in_scope_only), "--nct-id", _RT_A, *_rt_outs(tmp_path, "aliasx")],
+        api_client=_SpyAPIClient({_RT_A: study}),
+        session=session,
+        provider=provider,
+    )
+    err = capsys.readouterr().err
+    assert session.requested_urls == [], f"rc={rc}: document of an unverifiable alias requested"
+    assert provider.calls == []
+    assert rc == 2
+    assert _rt_written(tmp_path, "aliasx") == []
+    assert _RT_AUDIT not in err
+
+
+def test_redteam_m1_census_row_fields_are_validated_not_carried_verbatim(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Census fields other than ``nct_id`` and ``url`` are type-checked, not copied into the profile as given.
+
+    The ingest checks a row's ``nct_id`` and ``url`` and then copies
+    ``http_status`` (into ``download_error``), ``upload_date``,
+    ``api_doc_date`` and ``retrieved_at`` into the profile unvalidated. A row
+    whose fields carry a holdout trial's id writes that id into the profiles
+    file, and a malformed status is silently reclassified: ``"200"`` (a
+    string) or ``true`` makes a downloaded document ``download_failed``, and a
+    200 row with no digest becomes ``download_failed`` with the error
+    ``legacy_http_status_200``. Correct: such a row is refused (nonzero exit,
+    nothing written), as a row missing ``url`` is.
+    """
+    pdf = _make_minimal_pdf("Census row fields")
+    variants: dict[str, dict[str, Any]] = {
+        "http_status_names_holdout": {"http_status": _RT_AUDIT, "sha256": None, "bytes": None},
+        "upload_date_object": {"upload_date": {"nct_id": _RT_AUDIT}},
+        "api_doc_date_list": {"api_doc_date": [_RT_AUDIT]},
+        "retrieved_at_not_a_timestamp": {"retrieved_at": _RT_AUDIT},
+        "http_status_string_200": {"http_status": "200"},
+        "http_status_bool": {"http_status": True},
+        "http_200_without_digest": {"sha256": None, "bytes": None},
+    }
+    for label, overrides in variants.items():
+        census = _write_jsonl(tmp_path / f"cf_{label}.jsonl", [_rt_census_row(_RT_A, pdf, **overrides)])
+        provider = di.FixturePageTextProvider({di.sha256_bytes(pdf): _rt_stat_pages()})
+        tag = f"cf_{label}"
+        rc = cli_mod.run_cli(
+            [
+                "--manifest", str(_rt_manifest(tmp_path)),
+                "--ingest-census-jsonl", str(census),
+                "--offline",
+                *_rt_outs(tmp_path, tag),
+            ],
+            provider=provider,
+        )
+        err = capsys.readouterr().err
+        leaked = [p.name for p in _rt_written(tmp_path, tag) if _RT_AUDIT in _rt_text(p)]
+        assert leaked == [], f"{label}: holdout id recorded in {leaked}"
+        assert rc != 0, f"{label}: malformed census row accepted"
+        assert _rt_written(tmp_path, tag) == [], label
+        assert _RT_AUDIT not in err
+
+
+def test_redteam_m1_census_failure_after_pass_one_leaves_no_cache_writes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A census row that fails in the indexing pass must not leave earlier trials cached with no profile.
+
+    ``ingest_legacy_census_documents`` says pass 1 validates every row "so a
+    bad row stops the ingest with no cache writes", but a downloaded row's
+    ``bytes`` and its local PDF's digest are checked only in pass 2, and a
+    document no provider can extract raises from pass 2 too. Trials sorted
+    before the bad one are indexed first: their page maps and index entries
+    are written, then the run exits 1 with no profiles file. (The live path
+    records such a document as ``extraction_failed`` instead.) Correct: a
+    refused ingest writes nothing; an ingest that records an unextractable
+    document as ``extraction_failed`` profiles every trial.
+    """
+    pdf_a, pdf_b = _make_minimal_pdf("Census pass two A"), _make_minimal_pdf("Census pass two B")
+    sha_a, sha_b = di.sha256_bytes(pdf_a), di.sha256_bytes(pdf_b)
+    local = tmp_path / "p2_pdfs"
+    (local / _RT_B).mkdir(parents=True)
+    (local / _RT_B / "Prot_000.pdf").write_bytes(_make_minimal_pdf("Not the bytes the census row names"))
+    variants: dict[str, tuple[dict[str, Any], dict[str, list[str]], list[str]]] = {
+        "bytes_zero": ({"bytes": 0}, {sha_a: _rt_stat_pages(), sha_b: _rt_stat_pages()}, []),
+        "bytes_missing": ({"bytes": None}, {sha_a: _rt_stat_pages(), sha_b: _rt_stat_pages()}, []),
+        "local_pdf_digest_mismatch": (
+            {},
+            {sha_a: _rt_stat_pages(), sha_b: _rt_stat_pages()},
+            ["--local-pdf-dir", str(local)],
+        ),
+        "unextractable": ({}, {sha_a: _rt_stat_pages()}, []),
+    }
+    for label, (b_overrides, pages, extra) in variants.items():
+        census = _write_jsonl(
+            tmp_path / f"p2_{label}.jsonl",
+            [_rt_census_row(_RT_A, pdf_a), _rt_census_row(_RT_B, pdf_b, **b_overrides)],
+        )
+        tag = f"p2_{label}"
+        rc = cli_mod.run_cli(
+            [
+                "--manifest", str(_rt_manifest(tmp_path)),
+                "--ingest-census-jsonl", str(census),
+                "--offline",
+                *extra,
+                *_rt_outs(tmp_path, tag),
+            ],
+            provider=di.FixturePageTextProvider(pages),
+        )
+        capsys.readouterr()
+        if label == "unextractable" and rc == 0:
+            profiles = {
+                json.loads(line)["nct_id"]: json.loads(line)
+                for line in (tmp_path / f"{tag}_profiles.jsonl").read_text(encoding="utf-8").splitlines()
+            }
+            assert sorted(profiles) == [_RT_A, _RT_B]
+            assert profiles[_RT_B]["documents"][0]["readability_status"] == "extraction_failed"
+            continue
+        assert rc != 0, label
+        written = [p.name for p in _rt_written(tmp_path, tag)]
+        assert written == [], f"{label}: refused ingest left {written}"
+
+
+def test_redteam_m1_one_trial_file_is_recorded_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A trial's posted file is one document: duplicate or conflicting sources are not all recorded.
+
+    Two census rows for one trial's ``Prot_000.pdf`` with different digests
+    are both indexed and both written into that trial's profile (exit 0),
+    though the page-map loader refuses exactly this conflict (one trial's file
+    mapped to two digests). A CT.gov payload listing one filename twice is
+    downloaded twice and profiled as two documents, here a protocol and a SAP.
+    A consumer keyed by ``(nct_id, filename)`` resolves either silently.
+    Correct: conflicting rows are refused (nonzero exit, nothing written), and
+    no profile carries one filename twice.
+    """
+    pdf_1, pdf_2 = _make_minimal_pdf("First version"), _make_minimal_pdf("Second version")
+    pages = {di.sha256_bytes(pdf_1): _rt_stat_pages(), di.sha256_bytes(pdf_2): _rt_stat_pages()}
+    conflicting = _write_jsonl(
+        tmp_path / "dup_conflict.jsonl", [_rt_census_row(_RT_A, pdf_1), _rt_census_row(_RT_A, pdf_2)]
+    )
+    rc = cli_mod.run_cli(
+        [
+            "--manifest", str(_rt_manifest(tmp_path)),
+            "--ingest-census-jsonl", str(conflicting),
+            "--offline",
+            *_rt_outs(tmp_path, "dupc"),
+        ],
+        provider=di.FixturePageTextProvider(pages),
+    )
+    capsys.readouterr()
+    assert rc != 0, "one trial's file given two digests was accepted"
+    assert _rt_written(tmp_path, "dupc") == []
+
+    identical = _write_jsonl(
+        tmp_path / "dup_same.jsonl", [_rt_census_row(_RT_A, pdf_1), _rt_census_row(_RT_A, pdf_1)]
+    )
+    study = _make_study(
+        _RT_A,
+        [
+            {"filename": "Prot_000.pdf", "hasProtocol": True, "hasSap": False, "size": len(pdf_1)},
+            {"filename": "Prot_000.pdf", "hasProtocol": False, "hasSap": True, "size": len(pdf_1)},
+        ],
+    )
+    session = _FakeSession({di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf"): _FakeResponse(200, pdf_1)})
+    for tag, argv, injected in (
+        ("dups", ["--ingest-census-jsonl", str(identical), "--offline"], {}),
+        (
+            "dupp",
+            ["--nct-id", _RT_A],
+            {"api_client": _SpyAPIClient({_RT_A: study}), "session": session},
+        ),
+    ):
+        cli_mod.run_cli(
+            ["--manifest", str(_rt_manifest(tmp_path)), *argv, *_rt_outs(tmp_path, tag)],
+            provider=di.FixturePageTextProvider(pages),
+            **injected,
+        )
+        capsys.readouterr()
+        path = tmp_path / f"{tag}_profiles.jsonl"
+        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+        for line in lines:
+            names = [doc["filename"] for doc in json.loads(line)["documents"]]
+            assert len(names) == len(set(names)), f"{tag}: one file recorded as {len(names)} documents"
+    assert len(session.requested_urls) <= 1, f"one posted file downloaded {len(session.requested_urls)} times"
+
+
+def test_redteam_m1_document_index_file_is_read_strictly(tmp_path: Path) -> None:
+    """``document_index_by_sha256.jsonl`` is refused when ambiguous or malformed, never coerced.
+
+    The module states that a cache JSON object naming a key twice is refused,
+    but ``DocumentCacheStore`` reads the index with plain ``json.loads`` and
+    ``DocumentIndexEntry.from_dict`` coerces with ``int()``/``str()``: a
+    repeated ``readability_status`` is read last-wins, ``byte_count`` 12.7
+    becomes 12, ``"12"`` becomes 12, a null ``extracted_at`` becomes the text
+    ``"None"`` (a fabricated provenance stamp), and two lines for one
+    ``(sha256, indexer_rules_version)`` that disagree are resolved last-wins.
+    The next ``put_entry`` rewrites the file with the coerced values. Correct:
+    opening the store raises ``DocumentIndexerError`` and the file is left as
+    it is.
+    """
+    pdf = _make_minimal_pdf("Index entry")
+    sha = di.sha256_bytes(pdf)
+    record = di.index_document_pages(
+        _rt_stat_pages(),
+        sha256=sha,
+        byte_count=len(pdf),
+        text_provider="fixture",
+        extracted_at=_RT_STAMP,
+        pipeline_commit=None,
+    ).to_dict()
+    line = json.dumps(record)
+    variants = {
+        "repeated_key": line[:-1] + ', "readability_status": "image_only_scan"}\n',
+        "fractional_byte_count": json.dumps({**record, "byte_count": len(pdf) + 0.7}) + "\n",
+        "string_byte_count": json.dumps({**record, "byte_count": str(len(pdf))}) + "\n",
+        "null_extracted_at": json.dumps({**record, "extracted_at": None}) + "\n",
+        "conflicting_lines": line
+        + "\n"
+        + json.dumps({**record, "readability_status": "image_only_scan"})
+        + "\n",
+    }
+    for label, text in variants.items():
+        index_path = tmp_path / f"strict_index_{label}.jsonl"
+        index_path.write_text(text, encoding="utf-8")
+        before = index_path.read_bytes()
+        loaded: Any = None
+        with pytest.raises(di.DocumentIndexerError):
+            store = di.DocumentCacheStore(tmp_path / f"strict_cache_{label}", index_path)
+            loaded = store.get_entry(sha)
+        assert loaded is None, f"{label}: read as {loaded}"
+        assert index_path.read_bytes() == before, label
+
+
+def test_redteam_m1_cached_blob_must_match_its_digest_before_use(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A cached ``blobs/<sha>.pdf`` is handed to the page extractor only if its bytes hash to ``<sha>``.
+
+    The url_manifest fast path takes ``get_blob_path(sha)`` as the document's
+    PDF with no hash check, and ``download_pdf_atomic`` keeps an existing blob
+    at the downloaded digest's path (discarding the fresh bytes) and returns
+    that file. A blob whose bytes are not its digest's (a damaged file, or one
+    swapped for another trial's document) is then parsed and cached as that
+    digest's pages. Correct: the blob is verified (refused with
+    ``CacheIntegrityError``, or replaced by the verified download) before any
+    extractor sees it.
+    """
+    own_pdf = _make_minimal_pdf("The in-scope trial's real protocol bytes")
+    sha = di.sha256_bytes(own_pdf)
+    wrong_bytes = _make_minimal_pdf("Different bytes sitting in the blob slot")
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    upload = "01/02/2020 10:00"
+    study = _make_study(
+        _RT_A,
+        [{"filename": "Prot_000.pdf", "hasProtocol": True, "hasSap": False, "size": len(own_pdf), "uploadDate": upload}],
+    )
+    for route in ("url_manifest_fast_path", "download_onto_existing_blob"):
+        tag = f"blob_{route}"
+        cache = tmp_path / f"{tag}_cache"
+        blob = cache / "blobs" / sha[:2] / f"{sha}.pdf"
+        blob.parent.mkdir(parents=True)
+        blob.write_bytes(wrong_bytes)
+        if route == "url_manifest_fast_path":
+            (cache / "url_manifest.json").write_text(
+                json.dumps(
+                    {
+                        url: {
+                            "sha256": sha,
+                            "byte_count": len(own_pdf),
+                            "api_size": len(own_pdf),
+                            "api_upload_date": upload,
+                            "verified_at": _RT_STAMP,
+                            "pipeline_commit": None,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+        provider = _PdfPathRecordingProvider({sha: _rt_stat_pages()})
+        rc = cli_mod.run_cli(
+            ["--manifest", str(_rt_manifest(tmp_path)), "--nct-id", _RT_A, *_rt_outs(tmp_path, tag)],
+            api_client=_SpyAPIClient({_RT_A: study}),
+            session=_FakeSession({url: _FakeResponse(200, own_pdf)}),
+            provider=provider,
+        )
+        capsys.readouterr()
+        mismatched = [
+            str(path)
+            for requested, path in provider.requests
+            if path is not None and di.sha256_file(Path(path))[0] != requested
+        ]
+        assert mismatched == [], f"{route} (rc={rc}): extractor handed a file that is not its digest's bytes"
+
+
+def test_redteam_m1_output_paths_may_not_overwrite_inputs_or_each_other(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--profiles-out``/``--index-out`` naming an input file or each other are refused before any fetch.
+
+    Nothing compares the output paths with the inputs: ``--profiles-out``
+    equal to the ``--manifest`` path overwrites the manifest with profiles
+    (its in_audit=True rows, the holdout set, are gone) and exits 0;
+    equal to ``--ingest-census-jsonl`` or a ``--page-map-jsonl`` file it
+    destroys that input; ``--index-out`` equal to ``--profiles-out`` leaves an
+    index the next run cannot open; ``--index-out`` equal to the manifest
+    makes the cache store parse the manifest as an index and die with an
+    uncaught ``KeyError``. Correct: exit 2 before anything is
+    fetched, read or written, every input left byte for byte (a path spelled
+    differently but naming the same file included).
+    """
+    pdf = _make_minimal_pdf("Output aliasing")
+    sha = di.sha256_bytes(pdf)
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    (tmp_path / "oa_sub").mkdir()
+
+    def _case(tag: str) -> tuple[Path, Path, Path, Path]:
+        manifest = _rt_manifest(tmp_path, f"{tag}_manifest.jsonl")
+        census = _write_jsonl(tmp_path / f"{tag}_census.jsonl", [_rt_census_row(_RT_A, pdf)])
+        page_map = _write_jsonl(
+            tmp_path / f"{tag}_pm.jsonl", [{"nct_id": _RT_A, "sha256": sha, "pages": _rt_stat_pages()}]
+        )
+        return manifest, census, page_map, tmp_path / f"{tag}_cache"
+
+    cases: list[tuple[str, str, str]] = [
+        ("profiles_is_manifest", "--profiles-out", "manifest"),
+        ("profiles_is_manifest_respelled", "--profiles-out", "manifest_respelled"),
+        ("profiles_is_page_map", "--profiles-out", "page_map"),
+        ("profiles_is_census", "--profiles-out", "census"),
+        ("index_is_profiles", "--index-out", "profiles"),
+        ("index_is_manifest", "--index-out", "manifest"),
+    ]
+    for tag, flag, target in cases:
+        manifest, census, page_map, cache = _case(tag)
+        profiles = tmp_path / f"{tag}_profiles.jsonl"
+        index = tmp_path / f"{tag}_index.jsonl"
+        named = {
+            "manifest": str(manifest),
+            "manifest_respelled": str(tmp_path / "oa_sub" / ".." / manifest.name),
+            "page_map": str(page_map),
+            "census": str(census),
+            "profiles": str(profiles),
+        }[target]
+        if flag == "--profiles-out":
+            profiles_arg, index_arg = named, str(index)
+        else:
+            profiles_arg, index_arg = str(profiles), named
+        if target == "census":
+            targets = ["--ingest-census-jsonl", str(census), "--offline"]
+        else:
+            targets = ["--nct-id", _RT_A, "--page-map-jsonl", str(page_map)]
+        inputs = {path: path.read_bytes() for path in (manifest, census, page_map)}
+        api = _SpyAPIClient({_RT_A: _rt_study(_RT_A, pdf)})
+        session = _FakeSession({url: _FakeResponse(200, pdf)})
+        rc = cli_mod.run_cli(
+            [
+                "--manifest", str(manifest),
+                *targets,
+                "--cache-dir", str(cache),
+                "--index-out", index_arg,
+                "--profiles-out", profiles_arg,
+                "--rate-limit-sec", "0",
+            ],
+            api_client=api,
+            session=session,
+            provider=di.FixturePageTextProvider({sha: _rt_stat_pages()}),
+        )
+        capsys.readouterr()
+        changed = [path.name for path, data in inputs.items() if path.read_bytes() != data]
+        assert changed == [], f"{tag} (rc={rc}): input overwritten: {changed}"
+        assert rc == 2, tag
+        assert api.requested_ncts == [] and session.requested_urls == [], tag
+        assert not profiles.exists() and not index.exists() and not cache.exists(), tag
+
+
+def test_redteam_m1_invalid_numeric_options_refused_before_any_fetch_or_write(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Page-selection bounds and the rate limit are checked before the first request, like ``--limit``.
+
+    ``--min-selected-pages 30 --max-selected-pages 5`` (or a bound below 1)
+    is refused only inside ``index_document_pages``, after the CT.gov record
+    was fetched, the PDF downloaded and its blob, url_manifest.json entry and
+    page map written; the run then exits 1. ``--rate-limit-sec -1`` and
+    ``nan`` are taken as 0 (no rate limit) without a word. Correct: exit 2
+    with nothing fetched or written.
+    """
+    pdf = _make_minimal_pdf("Numeric options")
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    variants: dict[str, list[str]] = {
+        "min_above_max": ["--min-selected-pages", "30", "--max-selected-pages", "5"],
+        "min_zero": ["--min-selected-pages", "0"],
+        "min_negative": ["--min-selected-pages=-3"],
+        "max_zero": ["--min-selected-pages", "1", "--max-selected-pages", "0"],
+        "rate_negative": ["--rate-limit-sec=-1"],
+        "rate_nan": ["--rate-limit-sec", "nan"],
+    }
+    for label, extra in variants.items():
+        tag = f"num_{label}"
+        outs = _rt_outs(tmp_path, tag)
+        if any(arg.startswith("--rate-limit-sec") for arg in extra):
+            cut = outs.index("--rate-limit-sec")
+            outs = outs[:cut] + outs[cut + 2 :]
+        api = _SpyAPIClient({_RT_A: _rt_study(_RT_A, pdf)})
+        session = _FakeSession({url: _FakeResponse(200, pdf)})
+        rc = cli_mod.run_cli(
+            ["--manifest", str(_rt_manifest(tmp_path)), "--nct-id", _RT_A, *extra, *outs],
+            api_client=api,
+            session=session,
+            provider=di.FixturePageTextProvider({di.sha256_bytes(pdf): _clean_stat_pages(12)}),
+        )
+        capsys.readouterr()
+        assert rc == 2, f"{label}: rc={rc}"
+        assert api.requested_ncts == [] and session.requested_urls == [], label
+        assert _rt_written(tmp_path, tag) == [], label
+
+
+# --- Attempts that held in round 2 (these pass; they pin the behaviour) ---
+
+
+def test_redteam_m1_extra_keys_naming_a_holdout_never_select_or_record_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Holdout or excluded ids outside the checked fields are never fetched, and never written.
+
+    A manifest shaped like the real outcomes index (``rows`` plus an
+    ``excluded`` list and metadata keys) whose in-scope row carries extra keys
+    naming the holdout; a census row with an extra key naming it; a page-map
+    row with extra keys naming it. Only the in-scope trial is fetched, an
+    explicit ``--nct-id`` for an excluded trial exits 2, and no written file
+    carries the holdout or excluded id.
+    """
+    real_shape = {
+        "schema_version": 1,
+        "run_id": "outcomes-fixture",
+        "columns_note": "fixture",
+        "rows": [
+            {"nct_id": _RT_A, "in_audit": False, "aliases": [_RT_AUDIT], "record": {"nct_id": _RT_AUDIT}},
+            {"nct_id": _RT_AUDIT, "in_audit": True},
+        ],
+        "excluded": [{"nct_id": _RT_UNLISTED, "reasons": ["fixture"]}],
+    }
+    manifest = tmp_path / "xk_manifest.json"
+    manifest.write_text(json.dumps(real_shape), encoding="utf-8")
+    api = _SpyAPIClient({_RT_A: _make_study(_RT_A, [])})
+    rc = cli_mod.run_cli(["--manifest", str(manifest), *_rt_outs(tmp_path, "xk_rows")], api_client=api, session=_FakeSession({}))
+    err = capsys.readouterr().err
+    assert rc == 0 and api.requested_ncts == [_RT_A]
+    assert [p.name for p in _rt_written(tmp_path, "xk_rows") if _RT_AUDIT in _rt_text(p) or _RT_UNLISTED in _rt_text(p)] == []
+    assert _RT_AUDIT not in err
+
+    api = _SpyAPIClient({_RT_UNLISTED: _make_study(_RT_UNLISTED, [])})
+    rc = cli_mod.run_cli(
+        ["--manifest", str(manifest), "--nct-id", _RT_UNLISTED, *_rt_outs(tmp_path, "xk_excluded")],
+        api_client=api,
+        session=_FakeSession({}),
+    )
+    capsys.readouterr()
+    assert rc == 2 and api.requested_ncts == [] and _rt_written(tmp_path, "xk_excluded") == []
+
+    pdf = _make_minimal_pdf("Extra keys")
+    sha = di.sha256_bytes(pdf)
+    census = _write_jsonl(tmp_path / "xk_census.jsonl", [_rt_census_row(_RT_A, pdf, source_nct_id=_RT_AUDIT)])
+    rc = cli_mod.run_cli(
+        ["--manifest", str(_rt_manifest(tmp_path)), "--ingest-census-jsonl", str(census), "--offline", *_rt_outs(tmp_path, "xk_census")],
+        provider=di.FixturePageTextProvider({sha: _rt_stat_pages()}),
+    )
+    capsys.readouterr()
+    assert rc == 0
+    assert [p.name for p in _rt_written(tmp_path, "xk_census") if _RT_AUDIT in _rt_text(p)] == []
+
+    page_map = _write_jsonl(
+        tmp_path / "xk_pm.jsonl",
+        [
+            {
+                "nct_id": _RT_A,
+                "sha256": sha,
+                "filename": "Prot_000.pdf",
+                "pages": _rt_stat_pages(),
+                "source_nct_id": _RT_AUDIT,
+                "nct_id_aliases": [_RT_AUDIT],
+            }
+        ],
+    )
+    rc = cli_mod.run_cli(
+        ["--manifest", str(_rt_manifest(tmp_path)), "--nct-id", _RT_A, "--page-map-jsonl", str(page_map), *_rt_outs(tmp_path, "xk_pm")],
+        api_client=_SpyAPIClient({_RT_A: _rt_study(_RT_A, pdf)}),
+        session=_FakeSession({di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf"): _FakeResponse(200, pdf)}),
+    )
+    capsys.readouterr()
+    assert rc == 0
+    assert [p.name for p in _rt_written(tmp_path, "xk_pm") if _RT_AUDIT in _rt_text(p)] == []
+
+
+def test_redteam_m1_abbreviated_repeat_and_payload_flags_are_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An abbreviated second ``--manifest`` is still a repeat; a payload ``in_audit`` that is not ``false`` is refused.
+
+    argparse accepts unique prefixes (``--man``, ``--manif=``), and both reach
+    the same once-only action, so the repeat is refused with exit 2 and no
+    fetch. A CT.gov payload carrying ``in_audit`` as ``"false"``, 0, null or
+    true stops the run with exit 2 and no profile.
+    """
+    canon = _write_jsonl(
+        tmp_path / "ab_canon.jsonl",
+        [{"nct_id": _RT_A, "in_audit": False}, {"nct_id": _RT_AUDIT, "in_audit": True}],
+    )
+    other = _write_jsonl(
+        tmp_path / "ab_other.jsonl",
+        [{"nct_id": _RT_A, "in_audit": False}, {"nct_id": _RT_AUDIT, "in_audit": False}],
+    )
+    for index, argv in enumerate(
+        (["--man", str(canon), "--manifest", str(other)], ["--manifest", str(canon), f"--manif={other}"])
+    ):
+        api = _SpyAPIClient({_RT_A: _make_study(_RT_A, []), _RT_AUDIT: _make_study(_RT_AUDIT, [])})
+        tag = f"ab_{index}"
+        rc = cli_mod.run_cli([*argv, "--nct-id", _RT_AUDIT, *_rt_outs(tmp_path, tag)], api_client=api, session=_FakeSession({}))
+        err = capsys.readouterr().err
+        assert rc == 2 and api.requested_ncts == [] and _rt_written(tmp_path, tag) == []
+        assert _RT_AUDIT not in err
+
+    for index, value in enumerate(("false", 0, None, True)):
+        study = _make_study(_RT_A, [])
+        study["in_audit"] = value
+        tag = f"ab_payload_{index}"
+        rc = cli_mod.run_cli(
+            ["--manifest", str(canon), "--nct-id", _RT_A, *_rt_outs(tmp_path, tag)],
+            api_client=_SpyAPIClient({_RT_A: study}),
+            session=_FakeSession({}),
+        )
+        capsys.readouterr()
+        assert rc == 2, repr(value)
+        assert not (tmp_path / f"{tag}_profiles.jsonl").exists()
