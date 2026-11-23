@@ -770,7 +770,9 @@ def ingest_local_ctgov_records(
     Makes zero network calls. `literature` and `openfda` archives remain absent so their coverage
     routes report `not_searched` rather than falsely claiming `no_candidate_in_completed_scope`.
     Every ID in `nct_ids` must be present in the local files: an absent one is refused before
-    anything is written, never recorded as a CT.gov 404 that no request returned.
+    anything is written, never recorded as a CT.gov 404 that no request returned. A trial present
+    more than once must have identical records; differing snapshots of one trial are refused, not
+    resolved by file or line order.
 
     The code cannot know when local files were obtained, so both stamps are required and have no
     default (a fixed default would claim that date for every local snapshot):
@@ -812,6 +814,12 @@ def ingest_local_ctgov_records(
 
     wanted = set(nct_ids) if nct_ids is not None else None
     studies: dict[str, dict[str, Any]] = {}
+    first_seen_in: dict[str, Path] = {}
+    # A trial appearing twice is kept only when every copy is byte-identical in canonical JSON (the
+    # same record shipped in two files). Two different snapshots of one trial would otherwise be
+    # resolved by file or line order, and the one kept would be stamped with the caller's
+    # `fetched_at`/`data_timestamp` whether or not it is the snapshot those describe.
+    conflicting: dict[str, tuple[Path, Path]] = {}
     for file_path in files:
         for st in _iter_studies_from_local_file(file_path):
             if not ctgov_study_valid(st):
@@ -821,10 +829,21 @@ def ingest_local_ctgov_records(
                 continue
             if nct_id not in studies:
                 studies[nct_id] = st
+                first_seen_in[nct_id] = file_path
                 if limit is not None and wanted is None and len(studies) >= limit:
                     break
+            elif canonical_json_bytes(st) != canonical_json_bytes(studies[nct_id]):
+                conflicting.setdefault(nct_id, (first_seen_in[nct_id], file_path))
         if limit is not None and wanted is None and len(studies) >= limit:
             break
+    if conflicting:
+        first_id = sorted(conflicting)[0]
+        first_a, first_b = conflicting[first_id]
+        raise ValueError(
+            f'{source_path}: {len(conflicting)} NCT ID(s) appear more than once with different records '
+            f'(first: {first_id} in {first_a.name} and {first_b.name}); keep one snapshot per trial, '
+            'the one the stated --fetched-at and --data-timestamp describe'
+        )
 
     requested = sorted(wanted) if wanted is not None else sorted(studies)
     if not requested:

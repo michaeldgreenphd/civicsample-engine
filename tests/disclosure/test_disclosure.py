@@ -1335,6 +1335,56 @@ def test_freeze_local_refuses_requested_ids_absent_from_the_local_records(tmp_pa
     }
 
 
+def test_local_freeze_refuses_differing_snapshots_of_one_trial_and_accepts_identical_copies(
+    tmp_path: Path,
+) -> None:
+    older = copy.deepcopy(F.STUDIES['NCT09990004'])
+    newer = copy.deepcopy(older)
+    newer['protocolSection']['identificationModule']['officialTitle'] = 'Amended official title'
+
+    # Two files holding different snapshots of NCT09990004: refused before anything is written,
+    # rather than freezing whichever file sorts first under the caller's stated timestamps.
+    local_src = tmp_path / 'local_records'
+    local_src.mkdir()
+    (local_src / 'a_older.json').write_text(json.dumps(older), encoding='utf-8')
+    (local_src / 'b_newer.json').write_text(json.dumps(newer), encoding='utf-8')
+    (local_src / 'c_other.json').write_text(json.dumps(F.STUDIES['NCT09990005']), encoding='utf-8')
+    cache = tmp_path / 'cache_dir_conflict'
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
+                           *LOCAL_STAMP_ARGS]) == 1
+    assert not (cache / 'manifest.json').exists()
+    assert not A.raw_log_path(cache, 'ctgov').exists()
+    with pytest.raises(ValueError, match=r'NCT09990004 in a_older\.json and b_newer\.json'):
+        A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
+    out = tmp_path / 'out'
+    assert cli_build.main(['build', '--cache', str(cache), '--records', str(local_src), '--out', str(out),
+                           '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT, *LOCAL_STAMP_ARGS]) == 1
+    assert not out.exists()
+
+    # The same conflict inside one JSONL file (two lines) is refused too.
+    jsonl = tmp_path / 'records.jsonl'
+    jsonl.write_text(json.dumps(older) + '\n' + json.dumps(newer) + '\n', encoding='utf-8')
+    with pytest.raises(ValueError, match=r'1 NCT ID\(s\) appear more than once with different records'):
+        A.ingest_local_ctgov_records(jsonl, tmp_path / 'cache_jsonl', **LOCAL_STAMPS)
+
+    # A conflicting trial left out by --nct-list is never read, so it does not block the others.
+    wanted = tmp_path / 'ids.txt'
+    wanted.write_text('NCT09990005\n', encoding='utf-8')
+    subset = tmp_path / 'cache_subset'
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(subset),
+                           '--nct-list', str(wanted), *LOCAL_STAMP_ARGS]) == 0
+    assert A.load_frozen_cache(subset).requested_nct_ids == ['NCT09990005']
+
+    # Byte-identical copies of one record (the same file shipped twice) freeze as one record.
+    (local_src / 'b_newer.json').write_text(json.dumps(older), encoding='utf-8')
+    same = tmp_path / 'cache_identical'
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(same),
+                           *LOCAL_STAMP_ARGS]) == 0
+    loaded = A.load_frozen_cache(same)
+    assert loaded.requested_nct_ids == ['NCT09990004', 'NCT09990005']
+    assert loaded.ctgov['ctgov/study/NCT09990004']['body'] == older
+
+
 def test_ambiguous_ctgov_record_never_enables_while_ctgov_unreported_states() -> None:
     # hasResults=true with an empty resultsSection: the CT.gov route is `available_document_insufficient`.
     shell = F._make_study('NCT09990010', title='Results shell', lead_sponsor='Fictional Sponsor',
