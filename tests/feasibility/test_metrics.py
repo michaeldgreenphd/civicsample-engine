@@ -178,6 +178,51 @@ def test_footprint_tiers_and_phase_normalization() -> None:
     assert normalize_phase("PHASE1, PHASE2") == "PHASE1/PHASE2"
 
 
+def _flow_with_total() -> dict:
+    return {
+        "groups": [
+            {"id": "FG000", "title": "Drug A"}, {"id": "FG001", "title": "Placebo"}, {"id": "FG002", "title": "Total"}
+        ],
+        "periods": [{
+            "title": "Period 1",
+            "milestones": [
+                {"type": "STARTED", "achievements": [{"groupId": "FG000", "numSubjects": "50"},
+                                                     {"groupId": "FG001", "numSubjects": "50"},
+                                                     {"groupId": "FG002", "numSubjects": "100"}]},
+                {"type": "COMPLETED", "achievements": [{"groupId": "FG000", "numSubjects": "45"},
+                                                       {"groupId": "FG001", "numSubjects": "40"},
+                                                       {"groupId": "FG002", "numSubjects": "85"}]},
+            ],
+            "dropWithdraws": [{"type": "Lost to Follow-Up", "reasons": [{"groupId": "FG000", "numSubjects": "5"},
+                                                                       {"groupId": "FG001", "numSubjects": "10"},
+                                                                       {"groupId": "FG002", "numSubjects": "15"}]}],
+        }],
+    }
+
+
+@pytest.mark.parametrize("milestone", [0, 1])
+def test_period1_count_for_an_undeclared_group_withholds_retention(milestone: int) -> None:
+    """On 68e0cfe a STARTED or COMPLETED count for a group no flow group declares was ignored, and the
+    declared arms' rate was published under `flow_status = "ok"`."""
+    flow = _flow_with_total()
+    flow["periods"][0]["milestones"][milestone]["achievements"].append({"groupId": "FG999", "numSubjects": "1000"})
+    ret = extract_period1_retention(make_ctgov_study("NCT99100068", flow_module=flow))
+    assert ret["flow_status"] == "malformed_participant_flow"
+    assert ret.get("period1_completion_rate") is None
+
+
+def test_period1_withdrawal_count_for_an_undeclared_group_withholds_its_tally() -> None:
+    """On 68e0cfe a withdrawal count for an undeclared group was skipped and the tally read as complete."""
+    flow = _flow_with_total()
+    flow["periods"][0]["dropWithdraws"][0]["reasons"].append({"groupId": "FG999", "numSubjects": "7"})
+    ret = extract_period1_retention(make_ctgov_study("NCT99100069", flow_module=flow))
+    assert ret["drop_withdraw_reasons"] == {"Lost to Follow-Up": None}
+    # Control: the rate itself stands, and the declared Total group's own counts are accepted.
+    assert ret["flow_status"] == "ok" and ret["period1_completion_rate"] == 0.85
+    ok = extract_period1_retention(make_ctgov_study("NCT99100070", flow_module=_flow_with_total()))
+    assert ok["drop_withdraw_reasons"] == {"Lost to Follow-Up": 15} and ok["period1_completion_rate"] == 0.85
+
+
 def test_period1_retention_edge_cases_and_total_group_guard() -> None:
     # Multi-group flow with a duplicate "Total" group: Total is excluded so arms aren't doubled.
     study_with_total = make_ctgov_study(

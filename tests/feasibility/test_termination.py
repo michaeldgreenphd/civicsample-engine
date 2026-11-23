@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_rules_version_and_curated_csv_is_header_only() -> None:
-    assert TERMINATION_RULES_VERSION == "1.4.5"
+    assert TERMINATION_RULES_VERSION == "1.4.6"
     csv_path = ROOT / "feasibility" / "termination_reviews.csv"
     raw_lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert raw_lines == [",".join(REVIEW_COLUMNS)]
@@ -316,6 +316,14 @@ def test_no_masks_business_only_when_it_denies_a_reason(why: str, category: str)
         ("Staff shortage", "other_unclassified_text"),
         ("Due to COVID and staffing shortages", "covid_or_pandemic"),
         ("Reagent shortage", "supply_or_drug_availability"),
+        # rules 1.4.6: the linked form covers a qualified shortage, as the detector does; on 68e0cfe these
+        # read as multiple signals
+        ("Not due to a reagent shortage; funding ended", "business_or_strategic"),
+        ("not due to reagent shortages; sponsor decision", "business_or_strategic"),
+        ("Not related to a reagent shortage. Business decision.", "business_or_strategic"),
+        # controls: a turned clause, or a later stated shortage, keeps the supply signal
+        ("Not due to safety but reagent shortage", "supply_or_drug_availability"),
+        ("not due to staff shortage; reagent shortage", "supply_or_drug_availability"),
         # controls: the stated causes stand
         ("Terminated due to FDA feedback", "regulatory_or_clinical_hold"),
         ("Manufacturing issues", "supply_or_drug_availability"),

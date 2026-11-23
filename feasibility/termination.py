@@ -31,7 +31,7 @@ from typing import Any
 
 from feasibility.metrics import is_num, parse_num
 
-TERMINATION_RULES_VERSION = "1.4.5"
+TERMINATION_RULES_VERSION = "1.4.6"
 # CT.gov's outcome measure types. The 2,200 cached records with posted outcome measures under
 # docs/audits/outcomes_results_structure/ hold only these four (4,688 PRIMARY, 13,388 SECONDARY,
 # 689 OTHER_PRE_SPECIFIED, 71 POST_HOC).
@@ -169,7 +169,11 @@ _SUPPLY_LINKED = (
     r"(?:(?:study\s+)?drug|investigational\s+(?:medicinal\s+)?product|medication|vaccine|device|placebo"
     r"|compound|imp)\s+"
     r"(?:supply|shortage|unavailab\w*|availability|expir(?:ation|y|ed)|stability\s+issues?)"
-    r"|shortages?|unavailability|lack\s+of\s+supply|supply(?:\s+(?:issues?|problems?|chain|constraints?|shortages?))?"
+    # Rules 1.4.6: the detector's bare `shortage` matches after any qualifier ("reagent shortage"), so the
+    # linked form takes up to two qualifying words before it ("Not due to a reagent shortage; funding
+    # ended" read as multiple signals). A word that turns the clause ("but", "rather", "instead") ends it.
+    r"|(?:(?!(?:but|rather|instead|however|than|nor|or)\b)[a-z][\w-]*\s+){0,2}shortages?"
+    r"|unavailability|lack\s+of\s+supply|supply(?:\s+(?:issues?|problems?|chain|constraints?|shortages?))?"
     r"|manufacturing(?:\s+(?:issues?|problems?|delays?|defects?|failures?|holds?|constraints?))?"
     r"|drug\s+availability"
     # Rules 1.4.1: the detector's unavailable-first form ("Not due to an unavailable study drug").

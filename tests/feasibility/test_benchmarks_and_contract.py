@@ -1938,3 +1938,99 @@ def test_contract_cli_and_export_report_an_unanticipated_exception(
     assert export_feasibility_site.main([str(build), str(site)]) == 1
     assert "contract check could not complete (RuntimeError: unanticipated shape)" in capsys.readouterr().err
     assert not site.exists()
+
+
+@pytest.mark.parametrize("bad", ["truncated", "not_gzip"])
+@pytest.mark.parametrize("flag", ["--archive", "--records-dir", "--condition-mesh", "--demographics"])
+def test_an_unreadable_gzip_input_is_refused_not_raised(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], flag: str, bad: str
+) -> None:
+    """On 68e0cfe `gzip.decompress` (and `gzip.open` for --demographics) raised `BadGzipFile` or
+    `EOFError` past `main`, which catches only `ValueError`, so the CLI printed a traceback."""
+    whole = gzip.compress(b'{"padding": "' + b"x" * 400 + b'"}\n', mtime=0)
+    data = whole[: len(whole) // 2] if bad == "truncated" else b"plain bytes behind a .gz name"
+    archive = tmp_path / "studies.jsonl.gz"
+    archive.write_bytes(gzip.compress((json.dumps(make_ctgov_study("NCT99700001")) + "\n").encode(), mtime=0))
+    if flag == "--archive":
+        archive.write_bytes(data)
+        args = ["--archive", str(archive)]
+    elif flag == "--records-dir":
+        rec_dir = tmp_path / "records"
+        rec_dir.mkdir()
+        (rec_dir / "NCT99700001.json.gz").write_bytes(data)
+        args = ["--records-dir", str(rec_dir)]
+    elif flag == "--condition-mesh":
+        mesh = tmp_path / "mesh.jsonl.gz"
+        mesh.write_bytes(data)
+        args = ["--archive", str(archive), "--condition-mesh", str(mesh)]
+    else:
+        demog = tmp_path / "demographics.json.gz"
+        demog.write_bytes(data)
+        args = ["--demographics", str(demog)]
+    out = tmp_path / "out"
+    rc = build_feasibility_benchmarks.main(args + ["--generated-at", "2026-11-21T12:00:00+00:00", "--out", str(out)])
+    err = capsys.readouterr().err
+    assert rc == 1 and "REFUSED:" in err and "not readable gzip data" in err, err
+    assert not out.exists()
+
+
+_NOT_A_CATEGORY = "is not a condition_ontology.json category nor the classifier's ('Other', 'Uncategorized')"
+
+
+@pytest.mark.parametrize(
+    ("labels", "problem"),
+    [
+        # On 68e0cfe each built: the pair became an indication stratum, or a mistyped label was read as absent.
+        ({"primary_condition": "BANANA", "secondary_condition": "Invented"},
+         f"primary_condition/secondary_condition ('BANANA', 'Invented') {_NOT_A_CATEGORY}"),
+        ({"primary_condition": "Oncology", "secondary_condition": "Heart Failure"},
+         f"primary_condition/secondary_condition ('Oncology', 'Heart Failure') {_NOT_A_CATEGORY}"),
+        ({"primary_condition": 7}, "primary_condition is int, not str"),
+        ({"secondary_condition": None}, "secondary_condition is NoneType, not str"),
+    ],
+)
+def test_weekly_records_with_an_indication_the_classifier_cannot_give_are_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], labels: dict[str, Any], problem: str
+) -> None:
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body["data"][2].update(labels)
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    out_dir = tmp_path / "refused"
+    assert _build_weekly(demog_path, mesh_path, out_dir) == 1
+    err = capsys.readouterr().err
+    assert f"1 of 5 weekly records carry a missing or malformed field (first: NCT99300003 {problem})" in err, err
+    assert not out_dir.exists()
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [
+        {"primary_condition": "Other", "secondary_condition": "Uncategorized"},
+        {"primary_condition": "Cardiovascular", "secondary_condition": "Heart Failure"},
+        # blank or missing labels: the build classifies `conditions` itself
+        {"primary_condition": "", "secondary_condition": ""},
+        {"primary_condition": "Oncology", "secondary_condition": " "},
+    ],
+)
+def test_weekly_records_with_a_classifier_indication_or_none_build(
+    tmp_path: Path, labels: dict[str, Any]
+) -> None:
+    demog_path, mesh_path = _write_weekly_inputs(tmp_path)
+    body = json.loads(gzip.decompress(demog_path.read_bytes()))
+    body["data"][2].update(labels)
+    demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
+    assert _build_weekly(demog_path, mesh_path, tmp_path / "built") == 0
+
+
+def test_contract_refuses_an_indication_the_classifier_cannot_give() -> None:
+    # On 68e0cfe the strata recounted the edited labels and the contract passed.
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_sample_cohort(), reviews={})
+    family, raw = _fixture_family(trials, sponsor_meta, review_meta)
+    assert artifacts.check_contract(family, raw) == []
+    edited = json.loads(json.dumps(family))
+    edited["trials.jsonl.gz"][0]["indication"].update(ontology_primary="BANANA", ontology_secondary="Invented")
+    nct = edited["trials.jsonl.gz"][0]["nct_id"]
+    assert any(
+        p == f"{nct}.indication: ('BANANA', 'Invented') {_NOT_A_CATEGORY}" for p in artifacts.check_contract(edited)
+    ), artifacts.check_contract(edited)

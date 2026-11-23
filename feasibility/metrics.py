@@ -609,6 +609,9 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
         arm_groups = list(group_list)
 
     arm_ids = [g["id"] for g in arm_groups]
+    # Every count must name a declared group: one for an id no group declares ("FG999") was ignored by the
+    # sums, so the flow read as complete although it holds a count for a group that does not exist.
+    declared_ids = {g["id"] for g in group_list}
     if not arm_ids:
         base["flow_status"] = "no_flow_groups"
         base["completion_rate_status"] = "withheld_missing_started_or_completed"
@@ -659,7 +662,13 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
         for entry in reasons if isinstance(reasons, list) else []:
             gid = entry.get("groupId") if isinstance(entry, dict) else None
             # A non-string id (a list cannot even be looked up in a set) counts for no arm.
-            if not isinstance(gid, str) or gid not in arm_id_set:
+            if not isinstance(gid, str):
+                continue
+            if gid not in declared_ids:
+                # A count for an undeclared group: the tally cannot be shown complete.
+                entry_ok = False
+                continue
+            if gid not in arm_id_set:
                 continue
             val = parse_num(entry.get("numSubjects"))
             if val is None or val < 0 or gid in arm_counts:
@@ -708,6 +717,12 @@ def extract_period1_retention(study: dict[str, Any]) -> dict[str, Any]:
                 if not isinstance(a, dict) or not isinstance(a.get("groupId"), str):
                     # It could be a retained arm's second count (see below); skipping it would keep
                     # the other one as if it were the only count.
+                    base["flow_status"] = "malformed_participant_flow"
+                    base["completion_rate_status"] = "withheld_missing_started_or_completed"
+                    return base
+                if a["groupId"] not in declared_ids:
+                    # A count for a group the flow does not declare; ignoring it would publish the
+                    # declared arms' rate for a flow that is not internally consistent.
                     base["flow_status"] = "malformed_participant_flow"
                     base["completion_rate_status"] = "withheld_missing_started_or_completed"
                     return base

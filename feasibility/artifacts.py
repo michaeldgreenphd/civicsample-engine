@@ -33,7 +33,9 @@ from feasibility.benchmarks import (
     ACTIVE_STATUSES,
     DEFAULT_MIN_CELL_TRIALS,
     SPONSOR_REVIEW_STATES,
+    UNCLASSIFIED_INDICATION,
     build_strata_and_sponsors,
+    indication_pairs,
     summarize_cell,
 )
 from feasibility.metrics import (
@@ -1019,6 +1021,14 @@ def check_contract(
         mesh_state = (((t.get("indication") or {}).get("condition_mesh")) or {}).get("state")
         if mesh_state not in CONDITION_MESH_STATES:
             problems.append(f"{nct}.indication.condition_mesh: invalid state {mesh_state!r}")
+        # The indication strata recount these labels, so an invented pair passed the recount.
+        indication = t.get("indication") if isinstance(t.get("indication"), dict) else {}
+        pair = (indication.get("ontology_primary"), indication.get("ontology_secondary"))
+        if pair not in indication_pairs():
+            problems.append(
+                f"{nct}.indication: {pair!r} is not a condition_ontology.json category "
+                f"nor the classifier's {UNCLASSIFIED_INDICATION!r}"
+            )
 
         for dur_name in ("primary_completion", "study_completion"):
             d = (t.get("durations") or {}).get(dur_name) or {}

@@ -27,6 +27,7 @@ import json
 import re
 import subprocess
 import sys
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -617,6 +618,22 @@ def _extract_studies_from_json_obj(obj: Any, where: str) -> list[dict[str, Any]]
     raise ValueError(f"{where}: unrecognized study JSON shape with keys {sorted(obj.keys())[:8]}")
 
 
+# `gzip.decompress` raises `gzip.BadGzipFile` (an `OSError`) for bytes that are not gzip, `EOFError` for a
+# truncated file and `zlib.error` for corrupt data; `main` catches only `ValueError`, so such an input
+# printed a traceback instead of REFUSED. Each input is decompressed through here.
+_GZIP_ERRORS: tuple[type[BaseException], ...] = (OSError, EOFError, zlib.error)
+
+
+def _decompressed(raw: bytes, name: str) -> bytes:
+    """`raw`, gunzipped when `name` ends in `.gz`; data that is not whole gzip is refused by name."""
+    if not name.endswith(".gz"):
+        return raw
+    try:
+        return gzip.decompress(raw)
+    except _GZIP_ERRORS as exc:
+        raise ValueError(f"{name}: not readable gzip data ({type(exc).__name__}: {exc})") from exc
+
+
 def load_studies_input(
     *,
     demographics_path: Path | None,
@@ -639,7 +656,7 @@ def load_studies_input(
         for fp in files:
             raw = fp.read_bytes()
             dir_hash.update(fp.name.encode("utf-8") + b"\0" + raw + b"\0")
-            text = gzip.decompress(raw).decode("utf-8") if fp.name.endswith(".gz") else raw.decode("utf-8")
+            text = _decompressed(raw, fp.name).decode("utf-8")
             obj = json.loads(text)
             studies.extend(_extract_studies_from_json_obj(obj, fp.name))
         if not studies:
@@ -664,9 +681,7 @@ def load_studies_input(
             )
         raw_bytes = archive_path.read_bytes()
         file_sha = hashlib.sha256(raw_bytes).hexdigest()
-        uncompressed = (
-            gzip.decompress(raw_bytes) if archive_path.name.endswith(".gz") else raw_bytes
-        )
+        uncompressed = _decompressed(raw_bytes, archive_path.name)
         studies = []
         # Split strictly on ASCII LF (0x0A), never str.splitlines(), so U+2028 / U+2029 / \x85
         # inside ensure_ascii=False JSON string values are never split mid-string.
@@ -699,6 +714,9 @@ def load_studies_input(
         records, extracted_at, pipe_commit = full_records.load(target)
     except SystemExit as exc:
         raise ValueError(str(exc)) from exc
+    except _GZIP_ERRORS as exc:
+        # `full_records.load` reads through `gzip.open`, which raises the same errors as it reads.
+        raise ValueError(f"{target.name}: not readable gzip data ({type(exc).__name__}: {exc})") from exc
     # The weekly container's run stamps are the only record of which extraction run, and which
     # pipeline revision, produced these records; the build and its site export carry them as
     # `source_extracted_at` / `source_pipeline_commit`. A container without both is refused whether
@@ -838,6 +856,21 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     results_date = rec["results_date"]
     if results_date != "" and metrics.parse_date_bounds(results_date)["state"] != "ok":
         return f"results_date {results_date!r} is neither \"\" nor a date (any other value reads as posted results)"
+    # The cached indication labels are optional (the build classifies `conditions` when either is missing
+    # or blank), but `src/utils.py` writes both as strings, and the build uses them whenever both are
+    # non-blank, so a pair the classifier cannot give was published as an indication stratum. A present
+    # label must be a string, and a pair of non-blank labels one of `benchmarks.indication_pairs()`.
+    labels = [rec.get(key) for key in ("primary_condition", "secondary_condition")]
+    for key in ("primary_condition", "secondary_condition"):
+        if key in rec and not isinstance(rec[key], str):
+            return f"{key} is {type(rec[key]).__name__}, not str"
+    if all(isinstance(label, str) and label.strip() for label in labels):
+        pair = (labels[0].strip(), labels[1].strip())
+        if pair not in benchmarks.indication_pairs():
+            return (
+                f"primary_condition/secondary_condition {pair!r} is not a condition_ontology.json category "
+                f"nor the classifier's {benchmarks.UNCLASSIFIED_INDICATION!r}"
+            )
     for key, (entry_type, fields) in WEEKLY_LIST_FIELDS.items():
         if key not in rec:
             return f"has no {key} (src/utils.py always writes it)"
@@ -954,7 +987,7 @@ def load_condition_mesh_sidecar(
         raise ValueError(f"{path}: --condition-mesh file does not exist")
     raw = path.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
-    uncompressed = gzip.decompress(raw) if path.name.endswith(".gz") else raw
+    uncompressed = _decompressed(raw, path.name)
 
     weekly = records_meta.get("mode") == "weekly_full_records"
     expected: dict[str, Any] = {

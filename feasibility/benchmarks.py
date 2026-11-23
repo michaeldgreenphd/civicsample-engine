@@ -19,6 +19,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+from functools import lru_cache
 import math
 import re
 import sys
@@ -66,6 +67,25 @@ except ModuleNotFoundError:
 DEFAULT_RULES_PATH = ROOT / "sponsors" / "company_aliases.csv"
 ONTOLOGY_PATH = ROOT / "condition_ontology.json"
 DEFAULT_MIN_CELL_TRIALS = 5
+# The classifier's answer when no keyword matches (`src/condition_classifier.py`); it is not a category of
+# `condition_ontology.json`.
+UNCLASSIFIED_INDICATION: tuple[str, str] = ("Other", "Uncategorized")
+
+
+@lru_cache(maxsize=1)
+def indication_pairs() -> frozenset[tuple[str, str]]:
+    """Every (primary, secondary) indication the classifier can give: each `condition_ontology.json`
+    category with its parent, plus `UNCLASSIFIED_INDICATION`.
+
+    `_resolve_indication` takes a weekly record's cached `primary_condition` and `secondary_condition`
+    whenever both are non-blank strings, so a pair outside this set (`"BANANA"`, `"Invented"`) became an
+    indication stratum, and the contract, recounting the same labels, passed it. The weekly loader and
+    the contract now check the pair against this set. All 80,890 weekly records of the 2026-11-08
+    extraction carry one of these pairs (13,120 the unclassified one).
+    """
+    doc = json.loads(ONTOLOGY_PATH.read_text(encoding="utf-8"))
+    pairs = {(primary, secondary) for primary, secondaries in doc["categories"].items() for secondary in secondaries}
+    return frozenset(pairs | {UNCLASSIFIED_INDICATION})
 
 SPONSOR_REVIEW_STATES = ("attributed", "reviewed_excluded", "unreviewed")
 ACTIVE_STATUSES = frozenset(
