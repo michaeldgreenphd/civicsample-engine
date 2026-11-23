@@ -81,7 +81,7 @@ from src.citation_verifier import (
     validate_strict_nct_id,
 )
 
-__version__: Final[str] = "1.3.0"
+__version__: Final[str] = "1.4.0"
 LONGITUDINAL_SCHEMA_VERSION: Final[int] = 1
 PROVENANCE_SCHEMA_VERSION: Final[int] = LONGITUDINAL_SCHEMA_VERSION
 # 1.2.0: identification fields and audit tokens firewalled, extracted documents must name
@@ -89,10 +89,18 @@ PROVENANCE_SCHEMA_VERSION: Final[int] = LONGITUDINAL_SCHEMA_VERSION
 # 1.3.0: largeDocs flags must be bools (missing, null or string flags raise instead of
 # typing a document as an ICF), two extracted rows for one filename raise, audit tokens are
 # read in their loose forms, and the holdout flag under any spelling refuses.
-PROVENANCE_RULES_VERSION: Final[str] = "1.3.0"
+# 1.4.0: publications whose PMIDs or DOIs conflict raise instead of merging by record order;
+# PMIDs must be ASCII digits; malformed largeDocs (not a list, an entry not an object, a
+# protocol or SAP without a filename) and extracted documents without a filename or a
+# vocabulary doc_type raise instead of being dropped; audit IDs split across a key and its
+# value, padded or labelled ("NCT No.") are refused.
+PROVENANCE_RULES_VERSION: Final[str] = "1.4.0"
 
 DatePrecision = Literal["day", "month", "year", "unknown"]
 DocType = Literal["protocol", "sap", "combined"]
+# The ``doc_type`` vocabulary of extracted document rows (``documents.jsonl``), the same as
+# ``src.citation_verifier.DOC_TYPES``.
+_EXTRACTED_DOC_TYPES: Final[tuple[DocType, ...]] = ("protocol", "sap", "combined")
 LinkOrigin = Literal["AUTO_INDEXED", "INVESTIGATOR_SUBMITTED"]
 
 LINK_ORIGINS: Final[tuple[LinkOrigin, ...]] = (
@@ -577,11 +585,34 @@ def _normalize_optional_str(value: Any) -> str | None:
     return stripped if stripped else None
 
 
-def _clean_pmid(value: Any) -> str | None:
+_ASCII_PMID_RE: Final[re.Pattern[str]] = re.compile(r"[0-9]+", re.ASCII)
+
+
+def _clean_pmid(value: Any, *, context: str = "pmid") -> str | None:
+    """Return a PMID as ASCII digits, ``None`` when none is given, or raise.
+
+    Method: PubMed issues PMIDs as ASCII decimal digits. ``str.isdigit`` also
+    accepts fullwidth (``４０００００１``), superscript and other scripts'
+    digits, which would be recorded as an identifier PubMed never issued and
+    would never join the same publication's ASCII PMID, so only ASCII digits
+    pass. ``None``, an empty or blank string is absence (no PMID). Any other
+    value (non-ASCII digits, letters, a bool) is refused rather than recorded
+    or dropped as if no PMID had been given.
+    """
     if value is None:
         return None
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise CitationVerificationError(
+            f"{context} must be a string of ASCII digits, got {type(value).__name__}."
+        )
     s = str(value).strip()
-    return s if s.isdigit() else None
+    if not s:
+        return None
+    if _ASCII_PMID_RE.fullmatch(s) is None:
+        raise CitationVerificationError(
+            f"{context} {s!r} is not a PMID: PMIDs are ASCII decimal digits."
+        )
+    return s
 
 
 def _clean_doi(value: Any) -> str | None:
@@ -679,13 +710,38 @@ def _extract_large_docs(
     primary_completion_date: ParsedDate,
     results_first_post_date: ParsedDate,
 ) -> tuple[list[DocumentVersionMilestone], int]:
-    doc_section = study.get("documentSection")
-    large_doc_mod = (
-        doc_section.get("largeDocumentModule", {}) if isinstance(doc_section, Mapping) else {}
-    )
-    raw_docs = large_doc_mod.get("largeDocs", []) if isinstance(large_doc_mod, Mapping) else []
+    """Return the study's posted protocol/SAP documents and its count of standalone ICFs.
+
+    Method: absence is recorded or refused, never dropped. A study with no
+    ``documentSection``, ``largeDocumentModule`` or ``largeDocs`` posted no
+    large documents (the registry omits empty modules). A level that is
+    present but of the wrong type (``largeDocs`` as an object, a module that
+    is a list), a ``largeDocs`` entry that is not an object, and a protocol or
+    SAP entry without a filename cannot be read as documents, and dropping
+    them would make the record say the trial posted fewer documents than it
+    did, so each raises. An extracted document must name its file; a
+    ``doc_type`` it carries must be of the extracted-row vocabulary
+    (``protocol``, ``sap``, ``combined``; ``_EXTRACTED_DOC_TYPES``), and one not
+    joined to a ``largeDocs`` entry (whose flags type the joined ones) must
+    carry one. A row that cannot be typed is refused rather than skipped.
+    """
+    doc_section = study.get("documentSection", {})
+    if not isinstance(doc_section, Mapping):
+        raise CitationVerificationError(
+            f"study.documentSection must be an object, got {type(doc_section).__name__}."
+        )
+    large_doc_mod = doc_section.get("largeDocumentModule", {})
+    if not isinstance(large_doc_mod, Mapping):
+        raise CitationVerificationError(
+            f"study.documentSection.largeDocumentModule must be an object, got "
+            f"{type(large_doc_mod).__name__}."
+        )
+    raw_docs = large_doc_mod.get("largeDocs", [])
     if not isinstance(raw_docs, list):
-        raw_docs = []
+        raise CitationVerificationError(
+            f"study.documentSection.largeDocumentModule.largeDocs must be a list, got "
+            f"{type(raw_docs).__name__}; its documents cannot be read."
+        )
 
     # Extracted rows are joined to largeDocs by filename. Two rows for one filename (two
     # sha256 values, two version labels) leave no way to tell which is the posted file, so
@@ -693,14 +749,23 @@ def _extract_large_docs(
     # letting the later row win.
     extracted_by_filename: dict[str, Mapping[str, Any]] = {}
     for ext_idx, ext_doc in enumerate(extracted_documents or ()):
-        fn = ext_doc.get("filename")
-        if isinstance(fn, str) and fn:
-            if fn in extracted_by_filename:
-                raise CitationVerificationError(
-                    f"extracted_documents[{ext_idx}] is a second row for filename {fn!r}; "
-                    f"which document version the study posted is not determined."
-                )
-            extracted_by_filename[fn] = ext_doc
+        fn = _normalize_optional_str(ext_doc.get("filename"))
+        if fn is None:
+            raise CitationVerificationError(
+                f"extracted_documents[{ext_idx}] names no file (filename missing or empty); "
+                f"it cannot be joined to a posted document and is not dropped."
+            )
+        if "doc_type" in ext_doc and ext_doc["doc_type"] not in _EXTRACTED_DOC_TYPES:
+            raise CitationVerificationError(
+                f"extracted_documents[{ext_idx}] ({fn!r}) has doc_type {ext_doc['doc_type']!r}; "
+                f"expected one of {_EXTRACTED_DOC_TYPES}, so the document cannot be typed."
+            )
+        if fn in extracted_by_filename:
+            raise CitationVerificationError(
+                f"extracted_documents[{ext_idx}] is a second row for filename {fn!r}; "
+                f"which document version the study posted is not determined."
+            )
+        extracted_by_filename[fn] = ext_doc
 
     milestones: list[DocumentVersionMilestone] = []
     excluded_icf_count = 0
@@ -708,7 +773,10 @@ def _extract_large_docs(
 
     for doc_idx, raw_doc in enumerate(raw_docs):
         if not isinstance(raw_doc, Mapping):
-            continue
+            raise CitationVerificationError(
+                f"study.documentSection.largeDocumentModule.largeDocs[{doc_idx}] is "
+                f"{type(raw_doc).__name__}, not an object; the posted document cannot be read."
+            )
         has_protocol = _require_large_doc_flag(raw_doc, "hasProtocol", doc_idx=doc_idx)
         has_sap = _require_large_doc_flag(raw_doc, "hasSap", doc_idx=doc_idx)
         doc_type = _doc_type_from_flags(has_protocol, has_sap)
@@ -719,7 +787,11 @@ def _extract_large_docs(
 
         filename = _normalize_optional_str(raw_doc.get("filename"))
         if filename is None:
-            continue
+            raise CitationVerificationError(
+                f"study.documentSection.largeDocumentModule.largeDocs[{doc_idx}] is a "
+                f"{doc_type} document with no filename; it cannot be recorded and is not "
+                f"dropped."
+            )
         seen_filenames.add(filename)
 
         ext = extracted_by_filename.get(filename, {})
@@ -766,10 +838,15 @@ def _extract_large_docs(
     for fn, ext in sorted(extracted_by_filename.items()):
         if fn in seen_filenames:
             continue
-        raw_dt = ext.get("doc_type")
-        if raw_dt not in ("protocol", "sap", "combined"):
-            continue
-        doc_type_lit: DocType = raw_dt
+        # A row joined to a largeDocs entry is typed by that entry's flags; a row that is not
+        # joined is typed by its own doc_type (checked against _EXTRACTED_DOC_TYPES above when
+        # present), and without one it cannot be typed, so it is refused, not skipped.
+        if "doc_type" not in ext:
+            raise CitationVerificationError(
+                f"extracted document {fn!r} is not among the study's largeDocs and has no "
+                f"doc_type, so it cannot be typed; it is not dropped."
+            )
+        doc_type_lit: DocType = ext["doc_type"]
         printed_raw = ext.get("version_date_as_printed")
         version_date_as_printed = parse_printed_doc_date(
             printed_raw if isinstance(printed_raw, str) else None
@@ -824,14 +901,41 @@ def _extract_and_merge_publications(
         doi: str | None,
         citation_text: str | None,
     ) -> dict[str, Any]:
-        existing_key: str | None = None
+        """Return the publication a record belongs to, refusing to merge conflicting IDs.
+
+        Method: a record joins an existing publication by PMID, else DOI, else
+        citation text. Every identifier the record carries must agree with the
+        publication it joins: a PMID and a DOI pointing at two different
+        publications, or a joined publication holding another PMID (or DOI)
+        than the record's, means the sources disagree about which paper this
+        is. Keeping the first value would drop the other identifier (and the
+        record's title) without trace, so assembly stops instead, naming both
+        identifiers.
+        """
+        keys_by_id: dict[str, str] = {}
         if pmid and pmid in pmid_to_key:
-            existing_key = pmid_to_key[pmid]
-        elif doi and doi in doi_to_key:
-            existing_key = doi_to_key[doi]
-        elif citation_text:
+            keys_by_id[f"PMID {pmid}"] = pmid_to_key[pmid]
+        if doi and doi in doi_to_key:
+            keys_by_id[f"DOI {doi}"] = doi_to_key[doi]
+        if len(set(keys_by_id.values())) > 1:
+            raise CitationVerificationError(
+                f"A publication record's identifiers ({', '.join(sorted(keys_by_id))}) belong to "
+                f"two different publications already linked to the study; which paper it is "
+                f"is not determined."
+            )
+        existing_key: str | None = next(iter(keys_by_id.values()), None)
+        if existing_key is None and citation_text:
             norm_cit = " ".join(citation_text.lower().split())
             existing_key = citation_to_key.get(norm_cit)
+        if existing_key is not None:
+            joined = buckets[existing_key]
+            for label, mine, theirs in (("PMID", pmid, joined["pmid"]), ("DOI", doi, joined["doi"])):
+                if mine and theirs and mine != theirs:
+                    raise CitationVerificationError(
+                        f"A publication record with {label} {mine!r} matches a linked "
+                        f"publication whose {label} is {theirs!r}; the sources disagree about "
+                        f"which paper this is, so neither identifier is dropped by record order."
+                    )
 
         if existing_key is None:
             if pmid:
@@ -916,7 +1020,9 @@ def _extract_and_merge_publications(
         for ref in raw_refs:
             if not isinstance(ref, Mapping):
                 continue
-            pmid = _clean_pmid(ref.get("pmid"))
+            pmid = _clean_pmid(
+                ref.get("pmid"), context="study.protocolSection.referencesModule.references[].pmid"
+            )
             citation = _normalize_optional_str(ref.get("citation"))
             doi = _clean_doi(ref.get("doi")) or _extract_doi(citation)
             ref_type = _normalize_optional_str(ref.get("type"))
@@ -970,7 +1076,10 @@ def _extract_and_merge_publications(
                         is_open_access=None,
                     )
                 elif isinstance(entry, Mapping):
-                    pmid = _clean_pmid(entry.get("pmid"))
+                    pmid = _clean_pmid(
+                        entry.get("pmid"),
+                        context=f"study.resultsSection.moreInfoModule.{field_name}[].pmid",
+                    )
                     citation = _normalize_optional_str(entry.get("citation"))
                     doi = _clean_doi(entry.get("doi")) or _extract_doi(citation)
                     ref_type = _normalize_optional_str(entry.get("type"))
@@ -996,7 +1105,7 @@ def _extract_and_merge_publications(
     for rec in pubmed_records or ():
         if not isinstance(rec, Mapping):
             continue
-        pmid = _clean_pmid(rec.get("pmid"))
+        pmid = _clean_pmid(rec.get("pmid"), context="pubmed_records[].pmid")
         citation = _normalize_optional_str(rec.get("citation"))
         doi = _clean_doi(rec.get("doi")) or _extract_doi(citation)
         raw_pub_date = _normalize_optional_str(rec.get("pub_date"))
@@ -1024,7 +1133,7 @@ def _extract_and_merge_publications(
     for rec in europe_pmc_records or ():
         if not isinstance(rec, Mapping):
             continue
-        pmid = _clean_pmid(rec.get("pmid"))
+        pmid = _clean_pmid(rec.get("pmid"), context="europe_pmc_records[].pmid")
         pmcid = _normalize_optional_str(rec.get("pmcid"))
         doi = _clean_doi(rec.get("doi"))
         raw_epmc_date = _normalize_optional_str(

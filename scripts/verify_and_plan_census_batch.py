@@ -8,7 +8,10 @@ Subcommands:
   ``src.citation_verifier.verify_census_corpus``.
 - ``plan``: Requires ``--index``, enforces strict ASCII ``^NCT[0-9]{8}$`` IDs
   and the ``in_audit`` holdout firewall across all inputs, partitions eligible
-  in-scope trials into ``cached_complete``, ``unstarted_primary``,
+  in-scope trials into ``cached_complete``, ``complete_quotations_unchecked``
+  (complete rows, but no ``--pages-dir`` to find their quotations on their
+  pages: neither cached nor scheduled), ``unstarted_primary``,
+  ``unstarted_target_pass`` (a ``--pass-role second`` pass with no rows yet),
   ``amended_doc_or_outcome_delta``, ``unreadable_recoverable_ocr``
   (``image_only_scan`` / ``garbled_cmap``), and
   ``unreadable_terminal_redacted`` (``redacted_cci_ppd``, ``$0`` skip), computes
@@ -31,8 +34,13 @@ with the row's own trial also admitted. ``verify --pages-dir`` hands the page
 provider the ``(nct_id, sha256)`` pairs of the in-scope documents, so no
 content-addressed page map outside them is opened. ``plan`` files a trial as
 ``cached_complete`` only when every one of its rows passes
-``verify_location_record``. An index row's missing ``protocol``/``sap`` flag is
-unknown, not "no document".
+``verify_location_record`` with page text (``--pages-dir``), so its quotations
+were found on their pages. An index row's missing ``protocol``/``sap`` flag is
+unknown, not "no document"; a malformed ``cohorts`` field raises. Every input
+file is parsed refusing repeated JSON keys, and an index holding rows under
+more than one of ``data``/``rows``/``trials`` is refused. A document without a
+sha256 is fingerprinted as present but unidentified (``DOC_SHA256_ABSENT``).
+``--report-out`` and ``--out-plan`` may not name an input of the run.
 
 Runtime dependencies:
 - Python 3.11+ standard library (``argparse``, ``datetime``, ``gzip``,
@@ -45,7 +53,8 @@ Exit codes:
 - ``0``: Verification passed or batch plan approved within ``--budget-cap-usd``.
 - ``1``: Verification errors found, schema/outcome-count contract failure, or
   projected batch spend exceeds budget cap.
-- ``2``: CLI usage error (e.g. missing ``--index``), strict NCT ID failure
+- ``2``: CLI usage error (e.g. missing ``--index``, ``--ocr-dir`` without
+  ``--pages-dir``, an output path that is an input), strict NCT ID failure
   (``InvalidNctIdError``), ``in_audit`` / unlisted-trial firewall refusal
   (``AuditHoldoutViolationError``), or ``plan --nct-id`` scope refusal
   (``PlanScopeError``).
@@ -58,6 +67,7 @@ import gzip
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 import sys
@@ -70,7 +80,9 @@ if str(_REPO_ROOT) not in sys.path:
 
 from src.citation_verifier import (  # noqa: E402
     ALLOWED_PASSES,
+    SPARSE_PASSES,
     _is_non_empty_str,
+    _load_json_strict,
     _prescan_nested_nct_fields,
     _scan_record_strings_for_nct_tokens,
     _scan_strings_for_audit_nct_tokens,
@@ -80,6 +92,7 @@ from src.citation_verifier import (  # noqa: E402
     DirectoryPageTextProvider,
     ELEMENTS,
     InvalidNctIdError,
+    PageTextProvider,
     UNREADABLE_SUBTYPES,
     VERIFIER_RULES_VERSION,
     enforce_audit_holdout,
@@ -96,7 +109,11 @@ PLANNER_SCHEMA_VERSION: Final[int] = 1
 # 1.4.0: conflicting --doc-cache rows for one sha256 raise; an entry declaring a trial must
 # declare one whose document has its sha256; in-scope index rows are read for audit IDs in
 # every key and string and their classic NCTId must be their nct_id.
-PLANNER_RULES_VERSION: Final[str] = "1.4.0"
+# 1.5.0: cached_complete needs page text (else complete_quotations_unchecked); an unstarted
+# second pass is unstarted_target_pass; profile documents need provenance stamps; malformed
+# cohorts raise; sha-less documents are fingerprinted as unidentified; repeated JSON keys and
+# multi-list indexes are refused; outputs may not overwrite inputs.
+PLANNER_RULES_VERSION: Final[str] = "1.5.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
 CostSchedule = Literal["sliced", "full", "conservative"]
@@ -136,24 +153,31 @@ class PlanScopeError(CitationVerificationError):
     """Raised when an explicit ``--nct-id`` target falls outside the selected cohort."""
 
 
+class CliUsageError(CitationVerificationError):
+    """Raised for a command line that cannot be run as given (exit 2), before any input is read."""
+
+
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
-    """Load a ``.jsonl`` or ``.jsonl.gz`` file into a list of dicts."""
+    """Load a ``.jsonl`` or ``.jsonl.gz`` file into a list of dicts.
+
+    Each line is parsed by ``src.citation_verifier._load_json_strict``: a line
+    whose object repeats a key (``{"nct_id": <audit ID>, "nct_id": <in-scope
+    ID>}``, read last-key-wins by ``json``) is refused as a firewall violation
+    (exit 2), never read as whichever value came last.
+    """
     opener = gzip.open if path.suffix == ".gz" else open
     rows: list[dict[str, Any]] = []
-    try:
-        with opener(path, "rt", encoding="utf-8") as fh:
-            for line_no, raw in enumerate(fh, start=1):
-                stripped = raw.strip()
-                if not stripped:
-                    continue
-                obj = json.loads(stripped)
-                if not isinstance(obj, dict):
-                    raise CitationVerificationError(
-                        f"{path}:{line_no}: expected JSON object, got {type(obj).__name__}"
-                    )
-                rows.append(obj)
-    except json.JSONDecodeError as exc:
-        raise CitationVerificationError(f"Malformed JSON in {path}: {exc}") from exc
+    with opener(path, "rt", encoding="utf-8") as fh:
+        for line_no, raw in enumerate(fh, start=1):
+            stripped = raw.strip()
+            if not stripped:
+                continue
+            obj = _load_json_strict(stripped, source_desc=f"{path}:{line_no}")
+            if not isinstance(obj, dict):
+                raise CitationVerificationError(
+                    f"{path}:{line_no}: expected JSON object, got {type(obj).__name__}"
+                )
+            rows.append(obj)
     return rows
 
 
@@ -270,28 +294,45 @@ def _check_index_row_classic_nct_id(
             )
 
 
+_INDEX_ROW_LIST_KEYS: Final[tuple[str, ...]] = ("data", "rows", "trials")
+
+
 def load_index_rows(path: Path) -> list[dict[str, Any]]:
-    """Load cohort index rows from ``outcomes/index.json``, ``outcomes_bundles/index.json``, or manifest JSON/JSONL."""
+    """Load cohort index rows from ``outcomes/index.json``, ``outcomes_bundles/index.json``, or manifest JSON/JSONL.
+
+    Method: the index is the only source of each trial's holdout flag, so it is
+    read whole or not at all. JSON is parsed by ``_load_json_strict``: an
+    object repeating a key (``"in_audit": true, ..., "in_audit": false``) is
+    refused, never read last-key-wins. An index object must hold its rows
+    under exactly one of ``data``, ``rows`` and ``trials``: an object holding
+    two (``{"data": [...], "rows": [...]}``) does not say which list is the
+    index, and reading the first would drop the other's holdout rows and
+    empty the audit set, so it is refused as a firewall violation (exit 2), as
+    is a row-list key whose value is not a list.
+    """
     if path.suffix in {".jsonl", ".gz"} and path.name.endswith((".jsonl", ".jsonl.gz")):
         raw_rows = load_jsonl(path)
     else:
-        try:
-            with path.open("r", encoding="utf-8") as fh:
-                payload = json.load(fh)
-        except json.JSONDecodeError as exc:
-            raise CitationVerificationError(f"Malformed JSON in {path}: {exc}") from exc
+        payload = _load_json_strict(path.read_text(encoding="utf-8"), source_desc=str(path))
         if isinstance(payload, list):
             raw_rows = payload
         elif isinstance(payload, dict):
-            if isinstance(payload.get("data"), list):
-                raw_rows = payload["data"]
-            elif isinstance(payload.get("rows"), list):
-                raw_rows = payload["rows"]
-            elif isinstance(payload.get("trials"), list):
-                raw_rows = payload["trials"]
-            else:
+            present = [key for key in _INDEX_ROW_LIST_KEYS if key in payload]
+            if len(present) > 1:
+                raise AuditHoldoutViolationError(
+                    f"Index file {path} holds rows under {len(present)} keys ({present}); which "
+                    f"list is the index is not determined, and reading one would drop the "
+                    f"other's holdout rows."
+                )
+            if not present:
                 raise CitationVerificationError(
                     f"Index file {path} must contain a list under 'data', 'rows', or 'trials'."
+                )
+            raw_rows = payload[present[0]]
+            if not isinstance(raw_rows, list):
+                raise AuditHoldoutViolationError(
+                    f"Index file {path} holds {type(raw_rows).__name__} under "
+                    f"{present[0]!r}, not a list of rows."
                 )
         else:
             raise CitationVerificationError(
@@ -381,16 +422,35 @@ def extract_audit_nct_ids(index_rows: Sequence[Mapping[str, Any]]) -> frozenset[
     return audit_ids
 
 
+# The sha256 slot of a document whose row gives no sha256 (a failed download, a row written
+# before hashing): not 64 hex characters, so it never equals a real document's sha256 or a
+# citation's, and the trial's fingerprint differs from that of its other documents alone.
+DOC_SHA256_ABSENT: Final[str] = "<sha256 absent>"
+
+
 def compute_doc_sha256_tuple(
     docs: Sequence[Mapping[str, Any]],
 ) -> tuple[tuple[str, str], ...]:
-    """Return deterministic sorted ``((filename, sha256), ...)`` for in-scope docs."""
+    """Return deterministic sorted ``((filename, sha256), ...)`` for in-scope docs.
+
+    Method: the tuple is the trial's document set, and its fingerprint is what
+    a shard records and what the cache compares. Every document counts: one
+    whose ``sha256`` is missing, null or empty is present but unidentified,
+    and is recorded as ``(filename, DOC_SHA256_ABSENT)`` rather than left out,
+    which would fingerprint a trial whose only document is unidentified as a
+    trial with no documents. A document must name its file; one without a
+    non-empty string ``filename`` cannot be told from the others and raises.
+    """
     pairs: list[tuple[str, str]] = []
-    for doc in docs:
+    for idx, doc in enumerate(docs):
         fn = doc.get("filename")
+        if not isinstance(fn, str) or not fn:
+            raise CitationVerificationError(
+                f"document {idx} of a trial's document set has no filename; it cannot be "
+                f"recorded in the trial's document fingerprint."
+            )
         sha = doc.get("sha256")
-        if isinstance(fn, str) and fn and isinstance(sha, str) and sha:
-            pairs.append((fn, sha))
+        pairs.append((fn, sha if isinstance(sha, str) and sha else DOC_SHA256_ABSENT))
     pairs.sort()
     return tuple(pairs)
 
@@ -535,6 +595,14 @@ def _validate_profile_entry(
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
 ) -> str:
+    """Firewall one per-trial profile and return its trial.
+
+    The key must be a strict, in-scope trial; the row follows the named-key
+    walk and the record token rule with that trial as its own; ``documents``,
+    when given, must be a list of objects, each carrying the provenance stamps
+    of a ``--documents`` row (``model_id``, ``profile_version``), since the
+    plan partitions and fingerprints the trial on them.
+    """
     checked_key = validate_strict_nct_id(key_nct, context=f"{context}.nct_id")
     _prescan_nested_nct_fields(row, context=context)
     enforce_audit_holdout(
@@ -572,6 +640,12 @@ def _validate_profile_entry(
                 raise CitationVerificationError(
                     f"{context}.documents[{doc_idx}] must be an object."
                 )
+            # A profile's documents replace the trial's --documents rows in the plan (the
+            # trial is partitioned and fingerprinted on them), so they carry the same F6
+            # provenance stamps a --documents row must carry.
+            _validate_document_provenance_for_plan(
+                doc, context=f"{context}.documents[{doc_idx}]"
+            )
     return checked_key
 
 
@@ -689,13 +763,35 @@ def classify_unreadable_subtype(
 
 
 def _trial_matches_cohort(row: Mapping[str, Any], cohort: str | None) -> bool:
+    """Return whether an index row belongs to ``cohort`` (always True with no cohort).
+
+    Method: a row lists its cohorts under ``cohorts`` (a list of strings) or
+    names one under ``cohort`` (a string). A row with neither belongs to no
+    named cohort. A field that is present but malformed (``"cohorts":
+    "rt_cohort"``, ``{"rt_cohort": true}``, a non-string member) does not say
+    which cohorts the row belongs to; reading it as "none" would drop the trial
+    from a ``--cohort`` plan without counting it anywhere, so it raises. The
+    message does not name the trial: the row may be a holdout row.
+    """
     if cohort is None:
         return True
-    cohorts = row.get("cohorts")
-    if isinstance(cohorts, list):
-        return any(type(c) is str and c == cohort for c in cohorts)
-    row_cohort = row.get("cohort")
-    if type(row_cohort) is str:
+    if "cohorts" in row:
+        cohorts = row["cohorts"]
+        if not isinstance(cohorts, list) or any(type(c) is not str for c in cohorts):
+            raise CitationVerificationError(
+                f"An index row's 'cohorts' must be a list of strings, got "
+                f"{type(cohorts).__name__}; its cohort membership is not determined (the trial "
+                f"is not named: it may be held out)."
+            )
+        return cohort in cohorts
+    if "cohort" in row:
+        row_cohort = row["cohort"]
+        if type(row_cohort) is not str:
+            raise CitationVerificationError(
+                f"An index row's 'cohort' must be a string, got {type(row_cohort).__name__}; "
+                f"its cohort membership is not determined (the trial is not named: it may be "
+                f"held out)."
+            )
         return row_cohort == cohort
     return False
 
@@ -826,6 +922,9 @@ def _verified_pass_doc_fingerprints(
     return verified_keys
 
 
+RowsVerdict = Literal["verified", "rejected", "quotations_unchecked"]
+
+
 def _trial_rows_verify(
     nct_id: str,
     nct_locs: Sequence[Mapping[str, Any]],
@@ -835,29 +934,37 @@ def _trial_rows_verify(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
-) -> bool:
+    page_text_provider: PageTextProvider | None,
+    text_source: str,
+) -> RowsVerdict:
     """Return whether every location row of one trial is a row ``verify`` would accept.
 
     Method: ``cached_complete`` means "never re-run", so it may only be given to
-    rows that verification accepts. The cache lookup
+    rows that verification accepts, quotations included. The cache lookup
     (``_verified_pass_doc_fingerprints``) checks the grid, status-to-citation
     counts and citation shape; rather than copy more of verify's row rules here
-    (search coverage, required keys, pass names, provenance, neutral language),
-    every row of the trial, of every pass, is run through
-    ``src.citation_verifier.verify_location_record`` against the trial's current
-    documents, with no page provider (planning reads no page text) and
-    exhaustive NOT_FOUND required (verify's default). Any error-severity issue,
-    two rows for one (outcome, element, pass) cell, or two current documents
-    with one filename returns False. Warnings (``NOTE_PAGE_COUNT_MISMATCH``) do
-    not, as they do not fail verify.
+    (search coverage, required keys, pass names, provenance, neutral language,
+    the quotation on its page), every row of the trial, of every pass, is run
+    through ``src.citation_verifier.verify_location_record`` against the
+    trial's current documents and the page provider the plan was given, with
+    exhaustive NOT_FOUND required (verify's default).
+
+    Returns ``"rejected"`` for any error-severity issue, two rows for one
+    (outcome, element, pass) cell, or two current documents with one filename;
+    ``"quotations_unchecked"`` when no row is rejected but some citation's
+    quotation was compared with no page text (no provider: the rows' structure
+    verifies, and whether their quotations appear on their pages is unknown);
+    ``"verified"`` otherwise. Warnings (``NOTE_PAGE_COUNT_MISMATCH``) do not
+    reject, as they do not fail verify.
     """
     docs_by_filename: dict[str, Mapping[str, Any]] = {}
     for doc in current_docs:
         fn = doc.get("filename")
         if type(fn) is not str or fn in docs_by_filename:
-            return False
+            return "rejected"
         docs_by_filename[fn] = doc
     seen_cells: set[tuple[str, str, str]] = set()
+    quotations_unchecked = False
     for loc in nct_locs:
         # repr keeps unhashable or oddly typed values (a list index) comparable.
         cell = (
@@ -866,19 +973,23 @@ def _trial_rows_verify(
             repr(loc.get("pass")),
         )
         if cell in seen_cells:
-            return False
+            return "rejected"
         seen_cells.add(cell)
-        _, issues = verify_location_record(
+        counts, issues = verify_location_record(
             loc,
             docs_by_nct={nct_id: docs_by_filename},
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
             manifest_has_documents=manifest_has_documents,
+            page_text_provider=page_text_provider,
+            text_source=text_source,
         )
         if any(issue.severity == "error" for issue in issues):
-            return False
-    return True
+            return "rejected"
+        if counts["quotations_not_compared"] > 0:
+            quotations_unchecked = True
+    return "quotations_unchecked" if quotations_unchecked else "verified"
 
 
 def plan_incremental_cohort(
@@ -899,14 +1010,31 @@ def plan_incremental_cohort(
     cost_per_trial_conservative_usd: float = DEFAULT_COST_PER_TRIAL_CONSERVATIVE_USD,
     cost_schedule: CostSchedule = "sliced",
     planned_at: str | None = None,
+    page_text_provider: PageTextProvider | None = None,
+    text_source: str = "pdfkit",
 ) -> dict[str, Any]:
     """Partition cohort trials and emit budget-gated ``/swarm`` shard manifests.
 
     Enforces strict ASCII NCT IDs, ``in_audit == False``, in-scope membership,
-    ``expected_k >= 1``, and provenance stamps across all input streams. ``mode``
-    and ``cost_schedule`` must be one of ``PLAN_MODES`` / ``COST_SCHEDULES``
+    ``expected_k >= 1``, and provenance stamps across all input streams
+    (``documents`` rows and a profile's ``documents``). ``mode`` and
+    ``cost_schedule`` must be one of ``PLAN_MODES`` / ``COST_SCHEDULES``
     exactly; anything else is refused, never read as the default.
+
+    ``cached_complete`` (never re-run) needs rows that verify accepts with
+    their quotations found on their pages, so it needs page text
+    (``page_text_provider``; CLI ``--pages-dir``). Without it, a trial whose
+    rows are otherwise complete and valid is filed under
+    ``complete_quotations_unchecked``: neither cached nor scheduled, and
+    counted, so a plan made without page text says which trials it could not
+    settle. With ``pass_role`` a full non-primary pass (``second``), a trial
+    with no rows of that pass is ``unstarted_target_pass`` (scheduled by
+    ``resume-unstarted`` and ``incremental-delta``), not an amendment.
     """
+    if type(text_source) is not str or not _is_non_empty_str(text_source):
+        raise CitationVerificationError(
+            f"text_source must be a non-empty string, got {type(text_source).__name__}."
+        )
     if type(mode) is not str or mode not in PLAN_MODES:
         raise CitationVerificationError(
             f"Invalid mode {mode!r}; expected one of {PLAN_MODES}."
@@ -974,6 +1102,16 @@ def plan_incremental_cohort(
             )
         validate_strict_nct_id(loc.get("nct_id"), context=f"locations[{loc_idx}].nct_id")
         _prescan_nested_nct_fields(loc, context=f"locations[{loc_idx}]")
+    # The keys of both side maps are quoted by the shape messages below, so a key naming an
+    # audit trial (in any reading) is refused first, by position only.
+    for sha_key in doc_cache_by_sha256:
+        _scan_strings_for_audit_nct_tokens(
+            str(sha_key), context="doc_cache_by_sha256 key", audit_nct_ids=audit_nct_ids
+        )
+    for prof_key in profiles_by_nct:
+        _scan_strings_for_audit_nct_tokens(
+            str(prof_key), context="profiles_by_nct key", audit_nct_ids=audit_nct_ids
+        )
     for sha_key, cache_row in doc_cache_by_sha256.items():
         if not isinstance(cache_row, Mapping):
             raise CitationVerificationError(
@@ -1147,11 +1285,18 @@ def plan_incremental_cohort(
 
     partitions: dict[str, list[str]] = {
         "cached_complete": [],
+        "complete_quotations_unchecked": [],
         "unstarted_primary": [],
+        "unstarted_target_pass": [],
         "amended_doc_or_outcome_delta": [],
         "unreadable_recoverable_ocr": [],
         "unreadable_terminal_redacted": [],
     }
+    # A full pass other than primary (``second``) is started per trial by its own rows; the
+    # sparse passes (ocr_recovery, adjudication) cover chosen cells of the primary grid.
+    target_is_full_secondary_pass = (
+        effective_pass_role != "primary" and effective_pass_role not in SPARSE_PASSES
+    )
     unreadable_by_subtype: dict[str, list[str]] = {
         "image_only_scan": [],
         "garbled_cmap": [],
@@ -1260,17 +1405,23 @@ def plan_incremental_cohort(
                 and (nct_id, "primary", current_doc_tuple) in verified_cache
             )
         )
-        if cache_hit and not _trial_rows_verify(
-            nct_id,
-            nct_locs,
-            current_docs,
-            manifest_has_documents=manifest_has_documents,
-            audit_nct_ids=audit_nct_ids,
-            in_scope_nct_ids=in_scope_nct_ids,
-            allow_empty_audit_set=allow_empty_audit_set,
-        ):
-            # A cache entry exists, but some row of the trial would fail verify: the rows
-            # are re-run, like rows that no longer match the documents.
+        rows_verdict: RowsVerdict | None = None
+        if cache_hit:
+            rows_verdict = _trial_rows_verify(
+                nct_id,
+                nct_locs,
+                current_docs,
+                manifest_has_documents=manifest_has_documents,
+                audit_nct_ids=audit_nct_ids,
+                in_scope_nct_ids=in_scope_nct_ids,
+                allow_empty_audit_set=allow_empty_audit_set,
+                page_text_provider=page_text_provider,
+                text_source=text_source,
+            )
+        if rows_verdict == "rejected":
+            # A cache entry exists, but some row of the trial would fail verify (a quotation
+            # not on its page included, when page text is given): the rows are re-run, like
+            # rows that no longer match the documents.
             partitions["amended_doc_or_outcome_delta"].append(nct_id)
             continue
         if cache_hit:
@@ -1313,10 +1464,22 @@ def plan_incremental_cohort(
             ):
                 partitions["amended_doc_or_outcome_delta"].append(nct_id)
                 continue
+            if rows_verdict == "quotations_unchecked":
+                # Complete and valid in structure, but no page text was given, so whether
+                # its quotations appear on their pages is unknown: not "never re-run".
+                partitions["complete_quotations_unchecked"].append(nct_id)
+                continue
             partitions["cached_complete"].append(nct_id)
             continue
 
-        if primary_locs:
+        if target_is_full_secondary_pass:
+            # The target pass is started by its own rows: with none, it never ran (whatever
+            # the primary grid holds), which is not an amendment.
+            if any(loc.get("pass") == effective_pass_role for loc in nct_locs):
+                partitions["amended_doc_or_outcome_delta"].append(nct_id)
+            else:
+                partitions["unstarted_target_pass"].append(nct_id)
+        elif primary_locs:
             # Primary rows exist but no verified cache entry matches the current documents:
             # either the document set changed (amendment) or the existing grid/citations do
             # not verify. Both are re-run, so both land in the same partition.
@@ -1325,12 +1488,16 @@ def plan_incremental_cohort(
             partitions["unstarted_primary"].append(nct_id)
 
     if mode == "resume-unstarted":
-        scheduled_ncts = list(partitions["unstarted_primary"])
+        scheduled_ncts = sorted(
+            partitions["unstarted_primary"] + partitions["unstarted_target_pass"]
+        )
     elif mode == "recover-unreadable":
         scheduled_ncts = list(partitions["unreadable_recoverable_ocr"])
     else:
         scheduled_ncts = sorted(
-            partitions["unstarted_primary"] + partitions["amended_doc_or_outcome_delta"]
+            partitions["unstarted_primary"]
+            + partitions["unstarted_target_pass"]
+            + partitions["amended_doc_or_outcome_delta"]
         )
 
     unit_cost_by_schedule: dict[CostSchedule, float] = {
@@ -1422,7 +1589,52 @@ def plan_incremental_cohort(
     }
 
 
+def _refuse_output_over_inputs(
+    output: str | None,
+    *,
+    output_flag: str,
+    inputs: Mapping[str, str | None],
+) -> None:
+    """Refuse an output path that is, or would be written inside, an input of the same run.
+
+    Method: ``_write_json`` replaces whatever is at its path (through a
+    ``<path>.tmp`` sibling). An output naming an input file (``--report-out``
+    equal to ``--locations``, ``--out-plan`` equal to ``--index``) would
+    replace census rows that cost money to produce, or the holdout index, with
+    the report or plan; one inside an input directory (``--pages-dir``) would
+    add a file the next run reads as a page map. Paths are compared resolved
+    (``..`` and links followed) and, when both exist, by ``os.path.samefile``
+    (hard links). The check runs before any input is read, so a refused run
+    changes nothing. The message names flags, not paths.
+    """
+    if output is None:
+        return
+    out_path = Path(output)
+    candidates = [out_path, out_path.with_suffix(out_path.suffix + ".tmp")]
+    for in_flag, raw_input in inputs.items():
+        if raw_input is None:
+            continue
+        in_path = Path(raw_input)
+        in_resolved = in_path.resolve()
+        for candidate in candidates:
+            cand_resolved = candidate.resolve()
+            same_file = cand_resolved == in_resolved or (
+                candidate.exists() and in_path.exists() and os.path.samefile(candidate, in_path)
+            )
+            inside_input_dir = in_path.is_dir() and cand_resolved.is_relative_to(in_resolved)
+            if same_file or inside_input_dir:
+                raise CliUsageError(
+                    f"{output_flag} would overwrite or write inside {in_flag}, an input of this "
+                    f"run; nothing was read or written."
+                )
+
+
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Write ``payload`` as JSON to ``path`` through a ``.tmp`` sibling, replacing the file.
+
+    Callers check first (``_refuse_output_over_inputs``) that ``path`` is not
+    an input of the same run.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     tmp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
@@ -1430,10 +1642,36 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
+    """Run ``verify``: firewall every input, then ``verify_census_corpus``; 0 when the report is ok.
+
+    Refused before anything is read (exit 2): ``--ocr-dir`` without
+    ``--pages-dir`` (OCR maps would be dropped without a word, and every
+    quotation compared with nothing), and a ``--report-out`` that is an input
+    of the run. Without ``--pages-dir`` no quotation is compared with page
+    text: the report counts them (``quotations_not_compared``) and a warning
+    says so on stderr.
+    """
     if not args.index:
         raise AuditHoldoutViolationError(
             "--index is required for 'verify' before reading documents, locations, or page maps."
         )
+    if args.ocr_dir is not None and args.pages_dir is None:
+        raise CliUsageError(
+            "--ocr-dir needs --pages-dir: OCR page maps are read only alongside a pages "
+            "directory, and without one no quotation would be compared with any page text."
+        )
+    _refuse_output_over_inputs(
+        args.report_out,
+        output_flag="--report-out",
+        inputs={
+            "--index": args.index,
+            "--documents": args.documents,
+            "--locations": args.locations,
+            "--pages-dir": args.pages_dir,
+            "--ocr-dir": args.ocr_dir,
+            "--pdf-root": args.pdf_root,
+        },
+    )
 
     index_rows = load_index_rows(Path(args.index))
     audit_nct_ids, in_scope_by_nct, allow_empty_audit_set = _partition_index_firewall(
@@ -1557,10 +1795,44 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     if args.report_out is not None:
         _write_json(Path(args.report_out), payload)
     print(json.dumps(payload, indent=2, ensure_ascii=True))
+    if report.quotations_not_compared:
+        print(
+            f"WARNING: {report.quotations_not_compared} of {report.citations_checked} citation "
+            f"quotation(s) were not compared with page text (no --pages-dir); the report checks "
+            f"their structure only.",
+            file=sys.stderr,
+        )
     return 0 if report.ok else 1
 
 
 def _cmd_plan(args: argparse.Namespace) -> int:
+    """Run ``plan``: firewall every input, partition the cohort and print the plan.
+
+    Exit 0 when the plan is within the budget cap, 1 otherwise. Refused before
+    anything is read (exit 2): ``--ocr-dir`` without ``--pages-dir`` and an
+    ``--out-plan`` that is an input of the run. ``--pages-dir`` gives the page
+    text that ``cached_complete`` needs (see ``plan_incremental_cohort``); the
+    provider is told the ``(trial, sha256)`` pairs of the in-scope documents
+    (``--documents`` and profile documents), as verify's is.
+    """
+    if args.ocr_dir is not None and args.pages_dir is None:
+        raise CliUsageError(
+            "--ocr-dir needs --pages-dir: OCR page maps are read only alongside a pages "
+            "directory."
+        )
+    _refuse_output_over_inputs(
+        args.out_plan,
+        output_flag="--out-plan",
+        inputs={
+            "--index": args.index,
+            "--documents": args.documents,
+            "--locations": args.locations,
+            "--doc-cache": args.doc_cache,
+            "--profiles": args.profiles,
+            "--pages-dir": args.pages_dir,
+            "--ocr-dir": args.ocr_dir,
+        },
+    )
     raw_explicit = list(args.nct_id or ())
     for raw_id in raw_explicit:
         validate_strict_nct_id(raw_id, context="--nct-id")
@@ -1599,6 +1871,33 @@ def _cmd_plan(args: argparse.Namespace) -> int:
         allow_empty_audit_set=allow_empty_audit_set,
     )
 
+    provider: DirectoryPageTextProvider | None = None
+    if args.pages_dir is not None:
+        # The documents a trial is planned on come from --documents or its profile; both
+        # name (trial, sha256) pairs, and the provider opens no content-addressed map
+        # outside them. Rows of either stream are firewalled again by
+        # plan_incremental_cohort; here a pair is used only to say which maps may be read.
+        referenced_documents: set[tuple[str, str]] = set()
+        for doc in documents:
+            if type(doc.get("nct_id")) is str and type(doc.get("sha256")) is str and (
+                _SHA256_HEX_RE.fullmatch(doc["sha256"])
+            ):
+                referenced_documents.add((doc["nct_id"], doc["sha256"]))
+        for prof_nct, prof_row in profiles.items():
+            for pdoc in prof_row.get("documents") or ():
+                if isinstance(pdoc, Mapping) and type(pdoc.get("sha256")) is str and (
+                    _SHA256_HEX_RE.fullmatch(pdoc["sha256"])
+                ):
+                    referenced_documents.add((prof_nct, pdoc["sha256"]))
+        provider = DirectoryPageTextProvider(
+            Path(args.pages_dir),
+            ocr_dir=Path(args.ocr_dir) if args.ocr_dir is not None else None,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+            referenced_documents=frozenset(referenced_documents),
+        )
+
     plan = plan_incremental_cohort(
         index_rows,
         documents=documents,
@@ -1615,6 +1914,8 @@ def _cmd_plan(args: argparse.Namespace) -> int:
         cost_per_trial_full_usd=args.cost_per_trial_full_usd,
         cost_per_trial_conservative_usd=args.cost_per_trial_conservative_usd,
         cost_schedule=args.cost_schedule,
+        page_text_provider=provider,
+        text_source=args.text_source,
     )
 
     if args.out_plan is not None:
@@ -1730,6 +2031,14 @@ def build_parser() -> argparse.ArgumentParser:
         default="sliced",
         help="Cost schedule gating launch_approved and max_launchable_shards",
     )
+    p_plan.add_argument(
+        "--pages-dir",
+        type=str,
+        default=None,
+        help="Page-text map directory; cached_complete needs quotations found on their pages",
+    )
+    p_plan.add_argument("--ocr-dir", type=str, default=None, help="OCR page-text map directory")
+    p_plan.add_argument("--text-source", type=str, default="pdfkit", help="Page text source key")
     p_plan.add_argument("--out-plan", type=str, default=None, help="Output JSON batch plan path")
 
     return parser
@@ -1751,6 +2060,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "plan":
             return _cmd_plan(args)
         parser.error(f"Unknown command: {args.command}")
+        return 2
+    except CliUsageError as exc:
+        print(f"ERROR [usage]: {exc}", file=sys.stderr)
         return 2
     except (AuditHoldoutViolationError, InvalidNctIdError, PlanScopeError) as exc:
         print(f"ERROR [firewall_or_scope]: {exc}", file=sys.stderr)

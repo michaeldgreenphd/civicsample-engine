@@ -3340,3 +3340,110 @@ def test_redteam_m4_neutral_language_claim_written_as_a_key_is_flagged() -> None
     assert any(code.startswith("NEUTRAL_LANGUAGE_") for code in codes), (
         "an evaluative claim written as a key was not flagged"
     )
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for the fixes of the f442 red team, beyond its cases
+# (fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+
+def test_m4_f442_dict_trial_keyed_text_verifies_nothing() -> None:
+    """Text keyed by trial and filename (no sha256) is served but verifies no citation."""
+    trial_keyed = DictPageTextProvider(
+        pages_by_key={(RT_SCOPE_ID, "Prot_000.pdf", 2): _RT_M4_PAGES[1]},
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+    )
+    assert trial_keyed.get_page_text(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2) == _RT_M4_PAGES[1]
+    assert trial_keyed.page_text_version_known(RT_SCOPE_ID, "Prot_000.pdf", SHA_A, 2) is False
+    _, issues = verify_location_record(
+        _make_location(nct_id=RT_SCOPE_ID, citations=[_make_citation(quotation=_RT_M4_PAGES[1])]),
+        docs_by_nct=_rt_m4_scoped_docs(),
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+        page_text_provider=trial_keyed,
+    )
+    assert "CITATION_PAGE_VERSION_UNKNOWN" in {i.code for i in issues}
+
+    # Control: the same text keyed by the document's sha256 verifies it.
+    sha_keyed = DictPageTextProvider(
+        pages_by_sha256={SHA_A: _RT_M4_PAGES},
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+    )
+    counts, issues = verify_location_record(
+        _make_location(nct_id=RT_SCOPE_ID, citations=[_make_citation(quotation=_RT_M4_PAGES[1])]),
+        docs_by_nct=_rt_m4_scoped_docs(),
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+        page_text_provider=sha_keyed,
+    )
+    assert counts["exact_ws_matches"] == 1 and counts["quotations_not_compared"] == 0
+    assert not [i for i in issues if i.severity == "error"]
+
+
+def test_m4_f442_loose_reading_labels_and_split_readings() -> None:
+    """Labelled and split renderings of the audit trial refuse; look-alike text does not."""
+    digits = RT_AUDIT_ID[3:]
+    for text in (f"NCT ID: {digits}", f"NCT identifier {digits}", f"N.C.T.  -  {digits}"):
+        with pytest.raises(AuditHoldoutViolationError):
+            _rt_f442_verify_location(_make_location(nct_id=RT_SCOPE_ID, note=f"See {text}."))
+            pytest.fail(f"{text!r} was not read as the audit trial")
+    for extra in (
+        {"links": ["NCT", digits]},
+        {"NCT": {"id": int(digits)}},
+        {"nct": {digits: True}},
+    ):
+        with pytest.raises(AuditHoldoutViolationError):
+            _rt_f442_verify_location(_make_location(nct_id=RT_SCOPE_ID, extra=extra))
+            pytest.fail(f"{extra!r} was not read as the audit trial")
+    # An unlisted trial split across a key and its value follows the derived-ID rule.
+    with pytest.raises(AuditHoldoutViolationError):
+        _rt_f442_verify_location(
+            _make_location(nct_id=RT_SCOPE_ID, extra={"NCT": RT_UNLISTED_ID[3:]})
+        )
+    # Controls: the letters "nct" inside a word, and a number under a key that only
+    # contains them, are not an NCT label.
+    assert _rt_f442_verify_location(
+        _make_location(nct_id=RT_SCOPE_ID, note="Two distinct 12345678 identifiers were listed.")
+    ) == []
+    assert _rt_f442_verify_location(
+        _make_location(nct_id=RT_SCOPE_ID, extra={"distinct_count": 12345678})
+    ) == []
+
+
+def test_m4_f442_quotations_without_page_text_are_counted() -> None:
+    """A corpus verified without page text counts every quotation as not compared."""
+    rows = [_make_location(nct_id=RT_SCOPE_ID, element=element) for element in ELEMENTS]
+    report = verify_census_corpus(
+        [_make_doc(nct_id=RT_SCOPE_ID)],
+        rows,
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+    )
+    assert report.quotations_not_compared == len(ELEMENTS)
+    assert report.to_dict()["quotations_not_compared"] == len(ELEMENTS)
+    with_pages = verify_census_corpus(
+        [_make_doc(nct_id=RT_SCOPE_ID)],
+        rows,
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=RT_SCOPE_SET,
+        page_text_provider=DictPageTextProvider(
+            pages_by_sha256={SHA_A: _RT_M4_PAGES}, audit_nct_ids=RT_AUDIT_SET
+        ),
+    )
+    assert with_pages.quotations_not_compared == 0
+    assert with_pages.exact_ws_matches == len(ELEMENTS) and with_pages.ok is True
+
+
+def test_m4_f442_repeated_json_key_in_page_map_refused(tmp_path: Path) -> None:
+    """A page map whose object repeats a key is refused, never read last-key-wins."""
+    root = tmp_path / "f442_repeated"
+    root.mkdir()
+    (root / f"{SHA_A}.json").write_text(
+        '{"nct_id": "' + RT_SCOPE_ID + '", "nct_id": "' + RT_SCOPE_ID + '", "pages": ["x"]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(AuditHoldoutViolationError):
+        DirectoryPageTextProvider(root, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET)

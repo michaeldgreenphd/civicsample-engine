@@ -20,6 +20,7 @@ from scripts.verify_and_plan_census_batch import (
 from src.citation_verifier import (
     AuditHoldoutViolationError,
     CitationVerificationError,
+    DictPageTextProvider,
     ELEMENTS,
     InvalidNctIdError,
 )
@@ -116,6 +117,27 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as fh:
         for row in rows:
             fh.write(json.dumps(row) + "\n")
+
+
+def _quoted_pages_provider(
+    shas: list[str],
+    *,
+    audit_nct_ids: frozenset[str],
+    ocr_pages_by_sha256: dict[str, list[str | None]] | None = None,
+) -> DictPageTextProvider:
+    """Page text in which page 2 of each document holds the quotation the location helpers cite.
+
+    ``cached_complete`` needs quotations found on their pages, so a plan that is
+    to file a trial there is given the pages its rows cite (10 pages, as
+    ``_doc`` records).
+    """
+    pages: list[str | None] = [f"Page {n}." for n in range(1, 11)]
+    pages[1] = "9 Statistical Methods\nPrimary endpoint analyzed in the ITT population."
+    return DictPageTextProvider(
+        pages_by_sha256={sha: pages for sha in shas},
+        ocr_pages_by_sha256=ocr_pages_by_sha256,
+        audit_nct_ids=audit_nct_ids,
+    )
 
 
 def test_incremental_sha256_skip_amendment_and_unreadable_partition() -> None:
@@ -229,6 +251,7 @@ def test_incremental_sha256_skip_amendment_and_unreadable_partition() -> None:
         },
     }
 
+    provider = _quoted_pages_provider([SHA_1], audit_nct_ids=frozenset({"NCT99999999"}))
     plan_delta = plan_incremental_cohort(
         index_rows,
         documents=documents,
@@ -239,6 +262,7 @@ def test_incremental_sha256_skip_amendment_and_unreadable_partition() -> None:
         mode="incremental-delta",
         shard_size=18,
         budget_cap_usd=50.0,
+        page_text_provider=provider,
     )
     assert plan_delta["excluded_in_audit_count"] == 1
     assert plan_delta["partitions"]["cached_complete"] == ["NCT99000001"]
@@ -269,6 +293,7 @@ def test_incremental_sha256_skip_amendment_and_unreadable_partition() -> None:
         mode="recover-unreadable",
         shard_size=10,
         budget_cap_usd=50.0,
+        page_text_provider=provider,
     )
     assert plan_ocr["pass_role"] == "ocr_recovery"
     assert plan_ocr["partitions"]["cached_complete"] == ["NCT99000001"]
@@ -731,6 +756,8 @@ def test_cli_verify_and_plan_end_to_end(tmp_path: Path) -> None:
             "18",
             "--budget-cap-usd",
             "10.00",
+            "--pages-dir",
+            str(pages_dir),
             "--out-plan",
             str(plan_path),
         ]
@@ -1179,6 +1206,13 @@ def test_planner_adjudication_and_ocr_override_parity() -> None:
     ]
 
     all_locs = locs_11 + locs_12 + locs_13 + locs_14
+    ocr_pages: list[str | None] = [f"OCR page {n}." for n in range(1, 11)]
+    ocr_pages[4] = "Margin text."
+    provider = _quoted_pages_provider(
+        [SHA_1, SHA_2, SHA_3, SHA_4],
+        audit_nct_ids=frozenset({"NCT99999999"}),
+        ocr_pages_by_sha256={SHA_4: ocr_pages},
+    )
 
     for mode in ("incremental-delta", "recover-unreadable"):
         plan = plan_incremental_cohort(
@@ -1189,6 +1223,7 @@ def test_planner_adjudication_and_ocr_override_parity() -> None:
             mode=mode,
             shard_size=10,
             budget_cap_usd=50.0,
+            page_text_provider=provider,
         )
         assert plan["partitions"]["cached_complete"] == ["NCT99000011", "NCT99000014"]
         assert plan["partitions"]["unreadable_recoverable_ocr"] == ["NCT99000012"]
@@ -1212,6 +1247,7 @@ def test_planner_adjudication_and_ocr_override_parity() -> None:
         mode="incremental-delta",
         shard_size=10,
         budget_cap_usd=50.0,
+        page_text_provider=provider,
     )
     assert untagged_plan["partitions"]["cached_complete"] == ["NCT99000011"]
     assert untagged_plan["partitions"]["amended_doc_or_outcome_delta"] == ["NCT99000014"]
@@ -1398,12 +1434,16 @@ def test_c8_cached_outcome_index_set_and_grid_check() -> None:
         "NCT99000104", "Prot_000.pdf", SHA_4, outcome_index=0, pass_name="ocr_recovery"
     )
     all_locs = locs_101 + locs_102 + locs_103 + locs_104
+    provider = _quoted_pages_provider(
+        [SHA_1, SHA_2, SHA_3, SHA_4], audit_nct_ids=frozenset({"NCT99999999"})
+    )
 
     plan_delta = plan_incremental_cohort(
         index_rows,
         documents=documents,
         locations=all_locs,
         mode="incremental-delta",
+        page_text_provider=provider,
     )
     assert plan_delta["partitions"]["cached_complete"] == ["NCT99000102"]
     assert plan_delta["partitions"]["amended_doc_or_outcome_delta"] == [
@@ -1422,6 +1462,7 @@ def test_c8_cached_outcome_index_set_and_grid_check() -> None:
         documents=documents,
         locations=all_locs,
         mode="recover-unreadable",
+        page_text_provider=provider,
     )
     assert plan_ocr["partitions"]["cached_complete"] == ["NCT99000102"]
     assert plan_ocr["partitions"]["amended_doc_or_outcome_delta"] == [
@@ -1450,6 +1491,7 @@ def test_c8_cached_outcome_index_set_and_grid_check() -> None:
         locations=second_locs,
         mode="incremental-delta",
         pass_role="second",
+        page_text_provider=provider,
     )
     assert plan_second["partitions"]["cached_complete"] == ["NCT99000102"]
     assert plan_second["partitions"]["amended_doc_or_outcome_delta"] == ["NCT99000101"]
@@ -1530,6 +1572,8 @@ def test_outcomes_beta_rows_index_support_plan_and_verify(tmp_path: Path) -> Non
             str(locs_path),
             "--mode",
             "incremental-delta",
+            "--pages-dir",
+            str(pages_dir),
             "--out-plan",
             str(plan_path),
         ]
@@ -1605,6 +1649,8 @@ def test_outcomes_beta_rows_index_support_plan_and_verify(tmp_path: Path) -> Non
             str(locs_path),
             "--mode",
             "incremental-delta",
+            "--pages-dir",
+            str(pages_dir),
             "--out-plan",
             str(plan_path),
         ]
@@ -2491,11 +2537,15 @@ def test_redteam_m4_plan_cached_complete_only_for_rows_that_verify() -> None:
     leave the trial cached_complete.
     """
     documents = [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)]
+    # Page text for the quotations, so that only the row rules under test keep a trial
+    # out of cached_complete (without it no trial is cached).
+    provider = _quoted_pages_provider([SHA_1], audit_nct_ids=frozenset({RT_AUDIT_ID}))
     control = plan_incremental_cohort(
         _rt_index_rows(),
         documents=documents,
         locations=_complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1),
         planned_at="2026-11-23T00:00:00+00:00",
+        page_text_provider=provider,
     )
     assert control["partitions"]["cached_complete"] == [RT_SCOPE_ID]
 
@@ -2531,6 +2581,7 @@ def test_redteam_m4_plan_cached_complete_only_for_rows_that_verify() -> None:
                 documents=documents,
                 locations=rows,
                 planned_at="2026-11-23T00:00:00+00:00",
+                page_text_provider=provider,
             )
         except CitationVerificationError:
             continue
@@ -3507,3 +3558,93 @@ def test_redteam_m4_plan_stale_profile_does_not_cache_an_amended_document() -> N
         planned_at="2026-11-23T00:00:00+00:00",
     )
     assert RT_SCOPE_ID not in plan["partitions"]["cached_complete"]
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for the fixes of the f442 red team, beyond its cases
+# (fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+
+def test_m4_f442_plan_without_page_text_neither_caches_nor_schedules_complete_rows() -> None:
+    """Complete, valid rows are complete_quotations_unchecked without page text; page text settles them."""
+    kwargs: dict[str, Any] = {
+        "documents": [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)],
+        "locations": _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1),
+        "planned_at": "2026-11-23T00:00:00+00:00",
+    }
+    unchecked = plan_incremental_cohort(_rt_index_rows(), **kwargs)
+    assert unchecked["partitions"]["complete_quotations_unchecked"] == [RT_SCOPE_ID]
+    assert unchecked["partitions"]["cached_complete"] == []
+    assert unchecked["partition_counts"]["complete_quotations_unchecked"] == 1
+    assert unchecked["scheduled_trial_count"] == 0
+
+    provider = _quoted_pages_provider([SHA_1], audit_nct_ids=frozenset({RT_AUDIT_ID}))
+    settled = plan_incremental_cohort(_rt_index_rows(), page_text_provider=provider, **kwargs)
+    assert settled["partitions"]["cached_complete"] == [RT_SCOPE_ID]
+    assert settled["partitions"]["complete_quotations_unchecked"] == []
+
+    fabricated = plan_incremental_cohort(
+        _rt_index_rows(),
+        page_text_provider=provider,
+        **{**kwargs, "locations": _rt_f442_fabricated_locations()},
+    )
+    assert fabricated["partitions"]["amended_doc_or_outcome_delta"] == [RT_SCOPE_ID]
+    assert fabricated["scheduled_trial_count"] == 1
+
+
+def test_m4_f442_cli_plan_pages_dir(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """plan --pages-dir files verified rows as cached_complete; --ocr-dir alone is refused."""
+    args = _rt_m4_inputs(tmp_path, "f442_plan_pages")
+    pages = _rt_m4_pages_dir(tmp_path / "f442_plan_pages_maps", {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}})
+    plan_path = tmp_path / "f442_plan.json"
+    rc, _ = _rt_f442_run(["plan", *args, "--out-plan", str(plan_path)], capsys)
+    assert rc == 0
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan["partitions"]["complete_quotations_unchecked"] == [RT_SCOPE_ID]
+    rc, _ = _rt_f442_run(
+        ["plan", *args, "--pages-dir", str(pages), "--out-plan", str(plan_path)], capsys
+    )
+    assert rc == 0
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan["partitions"]["cached_complete"] == [RT_SCOPE_ID]
+    rc, printed = _rt_f442_run(["plan", *args, "--ocr-dir", str(pages)], capsys)
+    assert rc == 2 and "--ocr-dir needs --pages-dir" in printed
+
+
+def test_m4_f442_cli_verify_reports_quotations_not_compared(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """verify without --pages-dir counts the uncompared quotations and warns on stderr."""
+    args = _rt_m4_inputs(tmp_path, "f442_verify_counts")
+    report_path = tmp_path / "f442_verify_counts_report.json"
+    capsys.readouterr()
+    assert main(["verify", *args, "--report-out", str(report_path)]) == 0
+    assert "were not compared with page text" in capsys.readouterr().err
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["quotations_not_compared"] == report["citations_checked"] == len(ELEMENTS)
+
+
+def test_m4_f442_document_fingerprint_records_unidentified_documents() -> None:
+    """A document without a sha256 is recorded as unidentified; one without a filename raises."""
+    from scripts.verify_and_plan_census_batch import DOC_SHA256_ABSENT
+
+    doc = _doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    doc["sha256"] = None
+    assert compute_doc_sha256_tuple([doc]) == (("Prot_000.pdf", DOC_SHA256_ABSENT),)
+    assert compute_doc_set_fingerprint(compute_doc_sha256_tuple([doc])) != (
+        compute_doc_set_fingerprint(())
+    )
+    doc.pop("filename")
+    with pytest.raises(CitationVerificationError):
+        compute_doc_sha256_tuple([doc])
+
+
+def test_m4_f442_cli_index_row_list_key_must_hold_a_list(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An index whose single row-list key holds an object is refused (exit 2)."""
+    args = _rt_m4_inputs(tmp_path, "f442_rows_object")
+    Path(args[1]).write_text(json.dumps({"rows": {"0": _rt_index_rows()[0]}}), encoding="utf-8")
+    rc, _ = _rt_f442_run(["verify", *args], capsys)
+    assert rc == 2

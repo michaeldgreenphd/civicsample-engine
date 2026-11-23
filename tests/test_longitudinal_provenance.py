@@ -1027,3 +1027,39 @@ def test_redteam_m4_provenance_publication_record_naming_another_trial_refused()
             _sample_study(nct_id=RT_SCOPE_ID),
             pubmed_records=[{"pmid": "40000009", "nct_id": RT_UNLISTED_ID}],
         )
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for the fixes of the f442 red team, beyond its cases
+# (fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+
+def test_m4_f442_provenance_pmid_absence_and_refusal() -> None:
+    """A blank PMID is absence; a PMID that is not ASCII digits is refused."""
+    record = _rt_f442_assemble(
+        _sample_study(nct_id=RT_SCOPE_ID), pubmed_records=[{"pmid": "  ", "doi": "10.1000/abc"}]
+    )
+    assert any(pub["doi"] == "10.1000/abc" and pub["pmid"] is None for pub in record["linked_publications"])
+    for bad in ("PMID40000001", "4000 0001", True):
+        with pytest.raises(CitationVerificationError):
+            _rt_f442_assemble(
+                _sample_study(nct_id=RT_SCOPE_ID), pubmed_records=[{"pmid": bad, "title": "X"}]
+            )
+            pytest.fail(f"pmid {bad!r} was recorded")
+
+
+def test_m4_f442_provenance_unjoined_extracted_document_needs_a_type() -> None:
+    """An extracted document not among largeDocs and without doc_type is refused, not skipped."""
+    with pytest.raises(CitationVerificationError):
+        _rt_f442_assemble(
+            _sample_study(nct_id=RT_SCOPE_ID),
+            extracted_documents=[{"nct_id": RT_SCOPE_ID, "filename": "Prot_778.pdf", "sha256": "d" * 64}],
+        )
+    record = _rt_f442_assemble(
+        _sample_study(nct_id=RT_SCOPE_ID),
+        extracted_documents=[
+            {"nct_id": RT_SCOPE_ID, "filename": "Prot_778.pdf", "sha256": "d" * 64, "doc_type": "protocol"}
+        ],
+    )
+    assert "Prot_778.pdf" in {doc["filename"] for doc in record["large_docs"]}
