@@ -161,7 +161,10 @@ while the first match, possibly an arm, was read. A class `title` must be a stri
 number raised `AttributeError` in the extractors), and in a measure whose rows carry labels every row
 must carry one, in its category title or its class title: the extractors drop an unlabelled row, so its
 participants were counted as unknown race. A measure with no labelled row at all, such as CT.gov's
-"Race and Ethnicity Not Collected" count, is kept.
+"Race and Ethnicity Not Collected" count, is kept. In a table of several groups with a recognised
+whole-population group, every row's measurements and every denominator's counts must carry that group
+exactly once: the extractors read each at it, and a row posting only arms gave an arm's count as the
+trial's.
 Weekly full records never pass these checks, so their own lists are checked
 too (`WEEKLY_LIST_FIELDS`): `study_sites`, `collaborators` and `conditions`
 must be present, as `src/utils.py` always writes them; `study_sites` and

@@ -1821,6 +1821,45 @@ def test_a_table_of_arms_with_a_total_group_reads_the_total() -> None:
     assert race["baseline_total"] == 100
 
 
+_WITH_TOTAL = [*_ARMS, {"id": "BG002", "title": "Total"}]
+
+
+def _drop_total(entries: list[dict]) -> None:
+    entries[:] = [x for x in entries if x["groupId"] != "BG002"]
+
+
+def _repeat_total(entries: list[dict]) -> None:
+    entries.append(dict(next(x for x in entries if x["groupId"] == "BG002")))
+
+
+@pytest.mark.parametrize(
+    "where, edit, expect",
+    [
+        ("row", _drop_total, f"{_BASE}.measures[0].classes[0].categories[0].measurements"),
+        ("row", _repeat_total, f"{_BASE}.measures[0].classes[0].categories[0].measurements"),
+        ("table_denom", _drop_total, f"{_BASE}.denoms[0].counts"),
+    ],
+)
+def test_a_list_without_one_whole_population_entry_is_refused(
+    tmp_path: Path, where: str, edit: Any, expect: str
+) -> None:
+    # On a2de309 a row or count posting only arms loaded, and `_get_measurement_value` read its last entry,
+    # arm B's, as the trial's; a repeated Total entry loaded too.
+    bad = _arms_without_total("NCT99800022", _WITH_TOTAL)
+    module = bad["resultsSection"]["baselineCharacteristicsModule"]
+    entries = (
+        module["measures"][0]["classes"][0]["categories"][0]["measurements"]
+        if where == "row" else module["denoms"][0]["counts"]
+    )
+    n = 0 if edit is _drop_total else 2
+    edit(entries)
+    plain = tmp_path / "studies.jsonl"
+    plain.write_text(json.dumps(_measured_study("NCT99800021")) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
+    want = re.escape(f"{expect} (one entry for the whole-population group 'BG002', not {n})")
+    with pytest.raises(ValueError, match=want):
+        benchmarks.load_study_records(plain)
+
+
 def test_a_measurement_without_its_value_is_refused(tmp_path: Path) -> None:
     bad = _measured_study("NCT99800022")
     bad["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"][0][

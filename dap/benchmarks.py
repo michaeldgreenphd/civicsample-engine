@@ -860,12 +860,14 @@ def _baseline_group_reference_problems(module: dict[str, Any], root: str) -> lis
             return [f"{root}.groups[{i}].id (an id no other group has, not {group['id']!r} again)"]
         seen_ids.add(group["id"])
     declared = seen_ids
-    refs: list[tuple[str, Any]] = []
+    # Each list of entries keyed by group: a denominator's counts (table, measure-level, class-level) or a
+    # row's measurements.
+    lists: list[tuple[str, list[Any]]] = []
 
     def add_counts(denoms: Any, path: str) -> None:
         for i, denom in enumerate(_listed(denoms)):
             if isinstance(denom, dict):
-                refs.extend((f"{path}[{i}].counts[{j}]", x) for j, x in enumerate(_listed(denom.get("counts"))))
+                lists.append((f"{path}[{i}].counts", _listed(denom.get("counts"))))
 
     add_counts(module.get("denoms"), f"{root}.denoms")
     for m_i, measure in enumerate(_listed(module.get("measures"))):
@@ -880,15 +882,35 @@ def _baseline_group_reference_problems(module: dict[str, Any], root: str) -> lis
             add_counts(cls.get("denoms"), f"{c_path}.denoms")
             for k_i, category in enumerate(_listed(cls.get("categories"))):
                 if isinstance(category, dict):
-                    refs.extend(
-                        (f"{c_path}.categories[{k_i}].measurements[{x_i}]", x)
-                        for x_i, x in enumerate(_listed(category.get("measurements")))
-                    )
-    return [
-        f"{path}.groupId (the id of one of the table's groups, not {x['groupId']!r})"
-        for path, x in refs
-        if isinstance(x, dict) and isinstance(x.get("groupId"), str) and x["groupId"] not in declared
-    ]
+                    lists.append((f"{c_path}.categories[{k_i}].measurements", _listed(category.get("measurements"))))
+    out: list[str] = []
+    clean: list[tuple[str, list[Any]]] = []
+    for path, entries in lists:
+        bad = [
+            f"{path}[{j}].groupId (the id of one of the table's groups, not {x['groupId']!r})"
+            for j, x in enumerate(entries)
+            if isinstance(x, dict) and isinstance(x.get("groupId"), str) and x["groupId"] not in declared
+        ]
+        out += bad
+        if not bad and all(isinstance(x, dict) and isinstance(x.get("groupId"), str) for x in entries):
+            clean.append((path, entries))
+    # In a table of several groups the extractors read each row and count at the whole-population group
+    # (`get_overall_group_id`), and `_get_measurement_value` and `get_total_baseline_participants` fall back
+    # to the last entry when it is missing, so a row posting only arms gave an arm's count as the trial's.
+    # A table with no such group reads `whole_population_group_unidentified` (dap.demographics). Every list
+    # must carry that group exactly once: in the 2,183 multi-group tables of real stored trials each of the
+    # 33,548 lists does, and none repeats any id. Lists already reported above are not checked again.
+    overall = (
+        src_utils.get_overall_group_id({"resultsSection": {"baselineCharacteristicsModule": module}})
+        if len(groups) > 1
+        else None
+    )
+    if overall is not None:
+        for path, entries in clean:
+            n = sum(1 for x in entries if x["groupId"] == overall)
+            if n != 1:
+                out.append(f"{path} (one entry for the whole-population group {overall!r}, not {n})")
+    return out
 
 
 def _require_weekly_phases(records: list[dict[str, Any]], source: str) -> None:
