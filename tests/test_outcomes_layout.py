@@ -1877,6 +1877,169 @@ def test_cli_end_to_end_and_graceful_git_fallback(
     assert cli.main(["--check", str(out_strict)]) == 0
 
 
+# ── 8b. Module 4 provenance projection feeding the builder ───────────────────
+
+def _m4_sample_study(nct_id: str) -> dict[str, Any]:
+    """The CT.gov study of tests/test_longitudinal_provenance.py::_sample_study, copied."""
+    return {
+        "protocolSection": {
+            "identificationModule": {"nctId": nct_id},
+            "statusModule": {
+                "studyFirstPostDateStruct": {"date": "2018-01-10", "type": "ACTUAL"},
+                "primaryCompletionDateStruct": {"date": "2020-05-01", "type": "ACTUAL"},
+                "resultsFirstPostDateStruct": {"date": "2020-11-01", "type": "ACTUAL"},
+                "lastUpdatePostDateStruct": {"date": "2021-06-15", "type": "ACTUAL"},
+            },
+            "referencesModule": {
+                "references": [
+                    {
+                        "pmid": "34000001",
+                        "type": "RESULT",
+                        "citation": "Smith J, et al. Lancet. 2021; doi: 10.1016/S0140-6736(21)00001-X.",
+                    },
+                    {
+                        "pmid": "31000009",
+                        "type": "BACKGROUND",
+                        "citation": "Prior phase 2 study. J Clin Oncol. 2019.",
+                    },
+                    {
+                        "pmid": "34555555",
+                        "type": "DERIVED",
+                        "citation": "Auto-linked secondary manuscript. 2022.",
+                    },
+                ]
+            },
+        },
+        "resultsSection": {
+            "moreInfoModule": {
+                "citations": [
+                    {
+                        "pmid": "34000001",
+                        "citation": "Smith J, et al. Lancet. 2021.",
+                    }
+                ]
+            }
+        },
+        "documentSection": {
+            "largeDocumentModule": {
+                "largeDocs": [
+                    {
+                        "filename": "Prot_000.pdf",
+                        "label": "Study Protocol",
+                        "hasProtocol": True,
+                        "hasSap": False,
+                        "date": "2019-06-12",
+                        "uploadDate": "08/21/2020 14:32",
+                    },
+                    {
+                        "filename": "SAP_001.pdf",
+                        "label": "Statistical Analysis Plan",
+                        "hasProtocol": False,
+                        "hasSap": True,
+                        "date": "2020-11-27",
+                        "uploadDate": "12/01/2020 09:15",
+                    },
+                    {
+                        "filename": "ICF_002.pdf",
+                        "label": "Informed Consent Form",
+                        "hasProtocol": False,
+                        "hasSap": False,
+                        "date": "2018-01-01",
+                        "uploadDate": "08/21/2020 14:35",
+                    },
+                ]
+            }
+        },
+    }
+
+
+def test_to_outcomes_layout_provenance_feeds_build_outcomes_shards(tmp_path: pathlib.Path) -> None:
+    """Moved from tests/test_longitudinal_provenance.py (PR #97 at dc38220).
+
+    The m4 branch carries no M3 code, so this test, which runs the M3 builder on
+    Module 4's provenance projection, lives here now. What it asserts is
+    unchanged: the builder accepts the projection and the tree passes --check.
+    Two adaptations only: the trial id is fictional (NCT99xxxxxx), and Module 4
+    now requires its firewall basis (in_scope_nct_ids and audit_nct_ids) on both
+    calls.
+    """
+    from src.longitudinal_provenance import (
+        assemble_longitudinal_provenance,
+        to_outcomes_layout_provenance,
+    )
+
+    nct_id = "NCT99200001"
+    scope = frozenset({nct_id})
+    holdouts = frozenset({"NCT99999999"})
+    study = _m4_sample_study(nct_id)
+    study["protocolSection"]["identificationModule"]["briefTitle"] = "Phase 3 Example Trial"
+    study["protocolSection"]["designModule"] = {
+        "studyType": "INTERVENTIONAL",
+        "phases": ["PHASE3"],
+        "enrollmentInfo": {"count": 120, "type": "ACTUAL"},
+    }
+    study["protocolSection"]["sponsorCollaboratorsModule"] = {
+        "leadSponsor": {"name": "Example Pharma", "class": "INDUSTRY"}
+    }
+    study["protocolSection"]["outcomesModule"] = {
+        "primaryOutcomes": [{"measure": "Overall Survival", "timeFrame": "24 months"}]
+    }
+
+    record = assemble_longitudinal_provenance(
+        study,
+        in_scope_nct_ids=scope,
+        audit_nct_ids=holdouts,
+        assembled_at="2026-11-20T12:00:00Z",
+        source_pipeline_commit="5b55d47",
+    )
+    layout_proj = to_outcomes_layout_provenance(
+        record, in_scope_nct_ids=scope, audit_nct_ids=holdouts
+    )
+
+    trials_path = tmp_path / "trials.json"
+    manifest_path = tmp_path / "manifest.json"
+    prov_path = tmp_path / "provenance.jsonl"
+    out_dir = tmp_path / "outcomes"
+
+    trials_path.write_text(json.dumps([study]), encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(
+            [
+                {
+                    "nct_id": nct_id,
+                    "in_audit": False,
+                    "cohorts": ["industry_phase3"],
+                    "protocol": True,
+                    "sap": True,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    prov_path.write_text(json.dumps(layout_proj) + "\n", encoding="utf-8")
+
+    rc_build = cli.main(
+        [
+            "--trials",
+            str(trials_path),
+            "--cohort-manifest",
+            str(manifest_path),
+            "--provenance",
+            str(prov_path),
+            "--extracted-at",
+            "2026-11-20T12:00:00Z",
+            "--source-pipeline-commit",
+            "5b55d47",
+            "--shards",
+            "4",
+            "--out-dir",
+            str(out_dir),
+        ]
+    )
+    assert rc_build == 0
+    assert cli.main(["--check", str(out_dir)]) == 0
+
+
 # ── 9. .gitignore coverage & Python 3.11 AST / typing gate ───────────────────
 
 def test_gitignore_covers_transient_outcomes_and_cache_paths() -> None:
