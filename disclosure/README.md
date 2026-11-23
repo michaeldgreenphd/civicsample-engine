@@ -121,7 +121,10 @@ python3 scripts/build_drug_disclosure.py build \
 # cache (else its earliest fetch): the frozen records cannot show what was posted after that date. The
 # contract applies the same bound. --generated-at (like freeze-local's --fetched-at) must be a whole
 # ISO 8601 UTC timestamp written with Z or +00:00, checked before anything is seeded and again by the
-# contract; -00:00, which RFC 3339 uses for an unknown local offset, is refused. It may not be earlier
+# contract; -00:00, which RFC 3339 uses for an unknown local offset, is refused. Every record of a frozen
+# archive must carry its fetched_at in that form too, or the cache is refused at load: the retrieval
+# bounds read it, and one missing or written "garbage" had let a results record posted in 2100 build
+# a verified link dated 2100. It may not be earlier
 # than the cache's frozen_at either (build and contract): a build reads the frozen cache. freeze-local
 # and build --records stamp frozen_at with the current time, so a build from a cache seeded today states
 # a --generated-at no earlier than the seeding, or none. No reviews.csv row may be dated after the

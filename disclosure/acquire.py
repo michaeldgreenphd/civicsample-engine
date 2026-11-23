@@ -414,7 +414,8 @@ def ctgov_version_record_valid(rec: Any) -> bool:
     and became the build's default `as_of`, so records were classified against a date in the future.
     Such a record counts, everywhere this is called, as a failed observation, like a malformed one. The
     bound needs the record's `fetched_at` as a UTC timestamp, which every record acquisition or a local
-    freeze logs carries; a record without one is not bounded, as for openFDA actions
+    freeze logs carries, and a frozen archive holding a record without one is refused at load
+    (`_read_verified_archive`); a record without one is not bounded here, as for openFDA actions
     (`evidence._retrieved_day`).
     """
     if not isinstance(rec, dict) or rec.get('status') != 200 or not ctgov_version_valid(rec.get('body')):
@@ -655,8 +656,9 @@ def ctgov_study_record_problem(rec: Any) -> str | None:
     submission date the 365-day window read the results as `PENDING_SUBMITTED_UNPOSTED` while coverage
     reported them posted. A record contradicting its own retrieval is read as a failed lookup, like
     one contradicting itself (`hasResults: false` beside posted results). The bound needs the record's
-    `fetched_at` as a UTC timestamp, which every record acquisition or a local freeze logs carries; a
-    record without one is not bounded, as for openFDA actions (`evidence._retrieved_day`).
+    `fetched_at` as a UTC timestamp, which every record acquisition or a local freeze logs carries, and
+    a frozen archive holding a record without one is refused at load (`_read_verified_archive`); a
+    record without one is not bounded here, as for openFDA actions (`evidence._retrieved_day`).
     """
     if not isinstance(rec, dict) or rec.get('status') != 200:
         return 'not an HTTP 200 answer'
@@ -1869,6 +1871,11 @@ def _read_verified_archive(
     it holds must equal the manifest entry, which `freeze_cache` writes from the same dict, and the
     fetch times it states must be those of the archive's own (hash-verified) records, as
     `freeze_source` computed them. An edited sidecar could otherwise publish false acquisition times.
+
+    Every record must carry its `fetched_at` as a whole UTC timestamp (`timestamp_problem`), as every
+    acquisition and `freeze-local` stamps it. The retrieval bounds downstream read it: a record without
+    one, or with `fetched_at: "garbage"`, was skipped or stringified here, so a CT.gov results record
+    posted `2100-01-01` built a verified link dated 2100.
     """
     if not path.is_file():
         raise CacheIntegrityError(f'{path.name}: listed in manifest.json but missing from cache')
@@ -1909,6 +1916,8 @@ def _read_verified_archive(
             raise CacheIntegrityError(f'{path.name}: record lacks string key')
         if rec['key'] in records:
             raise CacheIntegrityError(f"{path.name}: duplicate key {rec['key']!r}")
+        if problem := timestamp_problem(rec.get('fetched_at'), 'fetched_at', offset='utc'):
+            raise CacheIntegrityError(f"{path.name}: record {rec['key']!r}: {problem}")
         records[rec['key']] = rec
 
     if len(records) != meta.get('n_records'):

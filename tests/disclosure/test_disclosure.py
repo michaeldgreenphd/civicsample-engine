@@ -2352,6 +2352,56 @@ def test_a_pmid_locator_reads_only_that_pmids_esummary_entry(
     assert _pmid_statement_check(locator, excerpt, result) == check
 
 
+@pytest.mark.parametrize(
+    ('fetched_at', 'problem'),
+    [
+        # On cc45a93 each loaded: a missing time was skipped and another was stringified, so the retrieval
+        # bounds downstream did not apply (a results record posted in 2100 built a verified link dated 2100).
+        ('<absent>', 'fetched_at must be a whole ISO 8601 date and time, got None'),
+        ('garbage', "fetched_at must be a whole ISO 8601 date and time, got 'garbage'"),
+        ('2026-11-01', "fetched_at must be a whole ISO 8601 date and time, got '2026-11-01'"),
+        ('2026-11-01T12:00:00', "fetched_at must carry a UTC offset (Z or +00:00), got '2026-11-01T12:00:00'"),
+    ],
+)
+def test_a_frozen_record_without_a_utc_fetch_time_is_refused(tmp_path: Path, fetched_at: str, problem: str) -> None:
+    cache_dir = _cache_with_ctgov_fetch_time(tmp_path, fetched_at)
+    with pytest.raises(A.CacheIntegrityError, match=re.escape(f"record 'ctgov/study/NCT09990001': {problem}")):
+        A.load_frozen_cache(cache_dir)
+
+
+def test_a_frozen_record_with_a_utc_fetch_time_loads(tmp_path: Path) -> None:
+    # Control, on both heads: a Z timestamp, beside acquisition's own `+00:00` ones.
+    cache_dir = _cache_with_ctgov_fetch_time(tmp_path, '2026-11-01T12:00:00Z')
+    assert A.load_frozen_cache(cache_dir).ctgov['ctgov/study/NCT09990001']['fetched_at'] == '2026-11-01T12:00:00Z'
+
+
+def _cache_with_ctgov_fetch_time(tmp_path: Path, fetched_at: str) -> Path:
+    """The fixture cache with one frozen CT.gov record's `fetched_at` replaced (`'<absent>'` removes it),
+    and the archive's hashes and fetch-time range restated in its sidecar and the manifest."""
+    cache_dir = tmp_path / 'c'
+    F.acquire_fixture_cache(cache_dir)
+    shutil.rmtree(cache_dir / 'raw')  # a frozen cache shipped without its response logs
+    path = cache_dir / 'ctgov.jsonl.gz'
+    records = [json.loads(line) for line in gzip.decompress(path.read_bytes()).split(b'\n') if line.strip()]
+    for rec in records:
+        if rec['key'] == 'ctgov/study/NCT09990001':
+            rec.pop('fetched_at', None)
+            if fetched_at != '<absent>':
+                rec['fetched_at'] = fetched_at
+    raw = A.encode_archive_records(records)
+    compressed = gzip.compress(raw, mtime=0)
+    path.write_bytes(compressed)
+    times = sorted(str(r['fetched_at']) for r in records if r.get('fetched_at'))
+    meta_path = path.with_name(path.name + '.meta.json')
+    meta = {**json.loads(meta_path.read_text(encoding='utf-8')), 'sha256_compressed': A.sha256_bytes(compressed),
+            'sha256_uncompressed': A.sha256_bytes(raw), 'first_fetched_at': times[0], 'last_fetched_at': times[-1]}
+    meta_path.write_text(json.dumps(meta), encoding='utf-8')
+    manifest = json.loads((cache_dir / 'manifest.json').read_text(encoding='utf-8'))
+    manifest['archives']['ctgov'] = meta
+    (cache_dir / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+    return cache_dir
+
+
 def _epmc_link_date(**year_fields: Any) -> tuple[str | None, str]:
     hit = {'id': 'EPMC9901', 'title': 'Results of NCT09990001', 'abstractText': 'Primary results of NCT09990001.'}
     hit.update(year_fields)
