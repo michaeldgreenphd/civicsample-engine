@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_rules_version_and_curated_csv_is_header_only() -> None:
-    assert TERMINATION_RULES_VERSION == "1.3.0"
+    assert TERMINATION_RULES_VERSION == "1.4.0"
     csv_path = ROOT / "feasibility" / "termination_reviews.csv"
     raw_lines = csv_path.read_text(encoding="utf-8").splitlines()
     assert raw_lines == [",".join(REVIEW_COLUMNS)]
@@ -280,6 +280,31 @@ def test_no_masks_business_only_when_it_denies_a_reason(why: str, category: str)
     assert classify_why_stopped(why)["deterministic_category"] == category
 
 
+@pytest.mark.parametrize(
+    "why, category",
+    [
+        # rules 1.4.0: "not ... due to" / "unrelated to" exclude every phrase the detector matches
+        ("Not due to FDA feedback; terminated for strategic reasons", "business_or_strategic"),
+        ("Not due to manufacturing issues; terminated for strategic reasons", "business_or_strategic"),
+        ("Not related to drug supply; sponsor decision", "business_or_strategic"),
+        ("Not based on a regulatory decision; funding ended", "business_or_strategic"),
+        ("Unrelated to the clinical hold; funding ended", "business_or_strategic"),
+        # rules 1.4.0: "no" / "without" deny only a supply problem noun; "no drug supply" states one
+        # (real weekly whyStopped texts)
+        ("Company supplying drug declared bankruptcy, thus there was no drug supply.", "supply_or_drug_availability"),
+        ("slow recruitment and no further drug supply", "multiple_signals_detected"),
+        ("There was no shortage; business reasons", "business_or_strategic"),
+        ("No supply issues; sponsor decision", "business_or_strategic"),
+        # controls: the stated causes stand
+        ("Terminated due to FDA feedback", "regulatory_or_clinical_hold"),
+        ("Manufacturing issues", "supply_or_drug_availability"),
+        ("Clinical hold", "regulatory_or_clinical_hold"),
+    ],
+)
+def test_linked_negations_cover_every_detected_phrase(why: str, category: str) -> None:
+    assert classify_why_stopped(why)["deterministic_category"] == category
+
+
 def _primary(title: str, counts: list | None) -> dict:
     """One PRIMARY measure; `counts=None` leaves out the denominator row."""
     measure: dict = {"type": "PRIMARY", "title": title, "groups": [{"id": "OG000"}, {"id": "OG001"}]}
@@ -321,6 +346,13 @@ def _cnt(*values: object) -> list:
         ([{**_primary("A", None), "denoms": [{"units": ["Participants"], "counts": _cnt("0", "0")}]}],
          "empty_results_shell_zero_analysed"),
         ([{**_primary("A", None), "denoms": [{"units": 5, "counts": _cnt("0", "NA")}]}],
+         "results_posted_primary_denom_incomplete"),
+        # rules 1.4.0: two Participants rows; the first no longer decides by order
+        ([{**_primary("A", None), "denoms": [{"units": "Participants", "counts": _cnt("0", "0")},
+                                              {"units": "Participants", "counts": _cnt("4", "6")}]}],
+         "results_with_analysed_primary"),
+        ([{**_primary("A", None), "denoms": [{"units": "Participants", "counts": _cnt("0", "0")},
+                                              {"units": "participants", "counts": _cnt("0", "0")}]}],
          "results_posted_primary_denom_incomplete"),
         # controls: complete zeros, one positive count anywhere, no numeric count at all
         ([_primary("A", _cnt("0", "0")), _primary("B", _cnt("0", "0"))], "empty_results_shell_zero_analysed"),

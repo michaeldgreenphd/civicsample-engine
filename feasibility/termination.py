@@ -31,7 +31,7 @@ from typing import Any
 
 from feasibility.metrics import is_num, parse_num
 
-TERMINATION_RULES_VERSION = "1.3.0"
+TERMINATION_RULES_VERSION = "1.4.0"
 
 STOPPED_STATUSES = ("TERMINATED", "WITHDRAWN", "SUSPENDED")
 
@@ -125,12 +125,19 @@ _FILLERS = (
 
 
 def _negation(
-    determiners: str, signal: str, gap: int, heads: str = "", head_tail: str = ""
+    determiners: str,
+    signal: str,
+    gap: int,
+    heads: str = "",
+    head_tail: str = "",
+    linked_signal: str = "",
 ) -> re.Pattern[str]:
     """Negation guard for one category: determiner-type negators within `gap` characters (never
     across a clause break or a causal connective), `heads` negators followed by the signal with
     only filler words between (and then `head_tail`, when given), or "not" / "unrelated to" /
-    "non-" linked directly to the signal (see the method note above)."""
+    "non-" linked directly to the signal (see the method note above). `linked_signal`, when given,
+    widens only that last form: a cause a "not ... due to" link excludes is excluded whatever its
+    wording, while a determiner ("no drug supply") can itself state the problem (rules 1.4.0)."""
     # A negated signal may run into further signal words ("COVID-19 pandemic", "safety or
     # tolerability"); the mask covers the whole run so none of it is matched afterwards.
     run = rf"(?:{signal})\b(?:[\s/-]+(?:(?:or|and|nor)\s+)?(?:{signal})\b){{0,3}}"
@@ -140,8 +147,27 @@ def _negation(
         else None
     )
     head = rf"\b(?:{heads})\b{_FILLERS}\s+{run}{head_tail}" if heads else None
-    linked = rf"\bnot\s+{_NOT_LINK}{_FILLERS}\s*\b{run}|\bunrelated\s+to{_FILLERS}\s+{run}|\bnon[- ]{run}"
+    lrun = rf"(?:{linked_signal or signal})\b(?:[\s/-]+(?:(?:or|and|nor)\s+)?(?:{linked_signal or signal})\b){{0,3}}"
+    linked = rf"\bnot\s+{_NOT_LINK}{_FILLERS}\s*\b{lrun}|\bunrelated\s+to{_FILLERS}\s+{lrun}|\bnon[- ]{lrun}"
     return re.compile("|".join(x for x in (det, head, linked) if x), _I)
+
+
+# The phrases `_SIGNAL_PATTERNS` detects for these two categories, for their linked negation guard.
+_REGULATORY_LINKED = (
+    r"(?:clinical|regulatory)\s+hold|regulatory\s+(?:authority|agency|decision|request|directive|feedback|"
+    r"requirements?|non[- ]approval|reasons?|issues?)"
+    r"|(?:the\s+)?(?:fda|ema|mhra|pmda|health\s+canada|competent\s+authority)"
+    r"(?:\s+(?:placed|imposed|hold|requests?|requested|ordered|directive|feedback|decision))?"
+    r"|(?:irb|iec|ethics\s+committee)(?:\s+(?:suspension|decision|disapproval))?"
+)
+_SUPPLY_LINKED = (
+    r"(?:(?:study\s+)?drug|investigational\s+(?:medicinal\s+)?product|medication|vaccine|device|placebo"
+    r"|compound|imp)\s+"
+    r"(?:supply|shortage|unavailab\w*|availability|expir(?:ation|y|ed)|stability\s+issues?)"
+    r"|shortages?|unavailability|lack\s+of\s+supply|supply(?:\s+(?:issues?|problems?|chain|constraints?|shortages?))?"
+    r"|manufacturing(?:\s+(?:issues?|problems?|delays?|defects?|failures?|holds?|constraints?))?"
+    r"|drug\s+availability"
+)
 
 
 _NEGATION_PATTERNS: dict[str, re.Pattern[str]] = {
@@ -164,11 +190,19 @@ _NEGATION_PATTERNS: dict[str, re.Pattern[str]] = {
     "covid_or_pandemic": _negation(
         r"prior\s+to", r"covid(?:[- ]?19)?|sars[- ]cov[- ]2|pandemic|coronavirus", 35, heads=r"no"
     ),
+    # Rules 1.4.0: the linked forms cover every phrase the category's detector matches ("Not due to
+    # FDA feedback", "not related to manufacturing issues"); the determiners keep the narrow nouns.
     "regulatory_or_clinical_hold": _negation(
-        r"no|without|lifted", r"clinical\s+hold|regulatory\s+hold", 30
+        r"no|without|lifted", r"clinical\s+hold|regulatory\s+hold", 30, linked_signal=_REGULATORY_LINKED
     ),
+    # Rules 1.4.0 also narrow the determiners to problem nouns: "no drug supply" and "without drug
+    # supply" state a supply problem (three weekly texts: "no further drug supply", "due to no drug
+    # supply", "there was no drug supply"), while "no shortage" or "no supply issues" deny one.
     "supply_or_drug_availability": _negation(
-        r"no|without", r"supply|shortage|drug\s+availability", 35
+        r"no|without",
+        r"shortages?|(?:supply|manufacturing)\s+(?:issues?|problems?|constraints?|shortages?|delays?)",
+        35,
+        linked_signal=_SUPPLY_LINKED,
     ),
 }
 
@@ -389,18 +423,20 @@ def classify_why_stopped(why_stopped: str | None) -> dict[str, Any]:
     }
 
 
-def _participants_denom_row(denoms: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Pick the Participants denominator row (case-insensitive), else first row, else None.
+def _participants_denom_rows(denoms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The Participants denominator rows (case-insensitive), else the first row, else none.
 
     A `units` that is not a string names no unit, so it never matches; before rules 1.3.0 it raised
-    `AttributeError` and one malformed record stopped the whole build.
+    `AttributeError` and one malformed record stopped the whole build. Every Participants row is
+    returned, not the first (rules 1.4.0): with two, the first decided the state by order, so zeros
+    in it read as an empty shell while the second reported analysed participants.
     """
     valid = [d for d in denoms if isinstance(d, dict)]
-    for d in valid:
-        units = d.get("units")
-        if isinstance(units, str) and units.strip().casefold() == "participants":
-            return d
-    return valid[0] if valid else None
+    participants = [
+        d for d in valid
+        if isinstance(d.get("units"), str) and d["units"].strip().casefold() == "participants"
+    ]
+    return participants or valid[:1]
 
 
 def _counts_cover_groups(groups: Any, counts: list[Any]) -> bool:
@@ -474,20 +510,26 @@ def classify_stopped_study_results_state(study: dict[str, Any]) -> str:
         all_complete = False
     for measure in primary_measures:
         denoms = measure.get("denoms")
-        row = _participants_denom_row(denoms if isinstance(denoms, list) else [])
-        counts = row.get("counts") if row is not None else None
-        if not isinstance(counts, list) or not counts:
+        rows = _participants_denom_rows(denoms if isinstance(denoms, list) else [])
+        # No row, or more than one Participants row, leaves the measure's analysed count unsettled:
+        # every row's counts are still read, so a positive count anywhere shows analysed participants,
+        # but zeros never make an empty shell unless they are the measure's one denominator row.
+        if len(rows) != 1:
             all_complete = False
-            continue
-        if not _counts_cover_groups(measure.get("groups"), counts):
-            all_complete = False
-        for entry in counts:
-            value = entry.get("value") if isinstance(entry, dict) else None
-            val = parse_num(value)
-            if val is not None and is_num(value) and val >= 0:
-                numeric_counts.append(val)
-            else:
+        for row in rows:
+            counts = row.get("counts")
+            if not isinstance(counts, list) or not counts:
                 all_complete = False
+                continue
+            if not _counts_cover_groups(measure.get("groups"), counts):
+                all_complete = False
+            for entry in counts:
+                value = entry.get("value") if isinstance(entry, dict) else None
+                val = parse_num(value)
+                if val is not None and is_num(value) and val >= 0:
+                    numeric_counts.append(val)
+                else:
+                    all_complete = False
 
     if not numeric_counts:
         return "results_posted_no_primary_denom"
