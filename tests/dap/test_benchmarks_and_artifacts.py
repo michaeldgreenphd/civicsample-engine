@@ -1435,6 +1435,21 @@ def test_records_with_a_malformed_nct_id_are_refused(tmp_path: Path, nct: object
         benchmarks.load_study_records(plain)
 
 
+def test_record_with_results_but_has_results_false_is_refused(tmp_path: Path) -> None:
+    # demographics read the section as posted results whatever the flag said; the record is contradictory.
+    bad = _measured_study("NCT99800025")
+    bad["hasResults"] = False
+    plain = tmp_path / "studies.jsonl"
+    plain.write_text(json.dumps(_measured_study("NCT99800026")) + "\n" + json.dumps(bad) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"first: NCT99800025 lacks resultsSection \(hasResults is false\)"):
+        benchmarks.load_study_records(plain)
+    # Control: hasResults false with no section loads.
+    clean = fx.make_raw_ctgov_study("NCT99800027", has_results=False)
+    clean.pop("resultsSection", None)
+    plain.write_text(json.dumps(clean) + "\n", encoding="utf-8")
+    assert len(benchmarks.load_study_records(plain)[0]) == 1
+
+
 def test_records_with_well_typed_baseline_parts_load_and_build(tmp_path: Path) -> None:
     # Control: the measured fixture passes the type checks and builds.
     plain = tmp_path / "studies.jsonl"
