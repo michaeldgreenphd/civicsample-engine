@@ -1618,6 +1618,84 @@ def test_combination_labels_also_query_each_component(raw: str, expected: list[s
     assert A.drug_label_terms(raw) == expected
 
 
+@pytest.mark.parametrize(
+    ('raw', 'expected'),
+    [
+        ('Tiotropium 18\u00b5g once daily', 'tiotropium'),
+        ('Metformin 500 mg bid', 'metformin'),
+        ('Exenatide Once Weekly', 'exenatide'),
+        ('Liraglutide 0.9 mg daily', 'liraglutide'),
+        ('Pembrolizumab 200 mg Q3W', 'pembrolizumab'),
+        ('Drugzumab every 3 weeks', 'drugzumab'),
+        ('Drugzumab 2 times per week', 'drugzumab'),
+        ('Brimonidine was applied once daily for 8 days.', 'brimonidine was applied'),
+        ('Empagliflozin high dose bid', 'empagliflozin'),
+        ('PF-07321332 Dose 3', 'pf-07321332'),
+        ('PF-06651600 Maintenance Dose #2', 'pf-06651600'),
+        ('Low-dose cytarabine (LDAC)', 'cytarabine'),
+        ('Single dose of PF-07104091', 'pf-07104091'),
+        ('Ir-CPI - Dose 1', 'ir-cpi'),
+        ('Mirikizumab - IV', 'mirikizumab'),
+        # Kept: a qualifier word in the middle of a name, a compound code, and a dose word not at an end.
+        ('Pronamel Daily Protection', 'pronamel daily protection'),
+        ('QD 123', 'qd 123'),
+        ('0.5 mL of the mid dose VAX-31', 'of the mid dose vax-31'),
+        # A label made only of a qualifier names no drug.
+        ('low dose', None),
+    ],
+)
+def test_dosing_schedules_and_dose_levels_at_either_end_are_not_queried(raw: str, expected: str | None) -> None:
+    assert A.normalize_drug_term(raw) == expected
+
+
+def test_a_combination_with_a_schedule_queries_each_component_without_it() -> None:
+    assert A.drug_label_terms('Warfarin 5 mg + Pitavastatin 4mg once daily (QD)') == [
+        'warfarin pitavastatin', 'warfarin', 'pitavastatin']
+
+
+def _openfda_cell_without_candidates(ctgov_rec: dict[str, Any] | None, study: dict[str, Any] | None) -> dict[str, Any]:
+    records = {'openfda/nct/NCT09990019': {'status': 404}}
+    return C.openfda_drugsfda_cell('NCT09990019', ctgov_rec, study, records, [], True)
+
+
+def _study_with_arms(arms: Any) -> dict[str, Any]:
+    ps: dict[str, Any] = {'identificationModule': {'nctId': 'NCT09990019'}}
+    if arms != '<absent>':
+        ps['armsInterventionsModule'] = arms
+    return {'protocolSection': ps}
+
+
+@pytest.mark.parametrize(
+    ('ctgov_rec', 'arms', 'problem'),
+    [
+        (None, None, 'no CT.gov study record was retrieved'),
+        ({'status': 500}, None, 'no CT.gov study record was retrieved'),
+        ({'status': 200}, 'projected', 'armsInterventionsModule is not an object'),
+        ({'status': 200}, {'interventions': {'name': 'X'}}, 'interventions is not a list'),
+        ({'status': 200}, {'interventions': ['Drugzumab']}, 'interventions[0] is not an object'),
+        ({'status': 200}, {'interventions': [{'type': 'DRUG'}]}, 'interventions[0] lacks a string type and name'),
+        ({'status': 200}, {'interventions': [{'type': 'DRUG', 'name': 'X', 'otherNames': 'Y'}]},
+         'otherNames is not a list of strings'),
+    ],
+)
+def test_openfda_route_is_incomplete_when_drug_queries_cannot_be_planned(
+    ctgov_rec: dict[str, Any] | None, arms: Any, problem: str
+) -> None:
+    study = None if ctgov_rec is None or ctgov_rec['status'] != 200 else _study_with_arms(arms)
+    cell = _openfda_cell_without_candidates(ctgov_rec, study)
+    assert cell['state'] == 'search_incomplete_or_blocked', cell
+    assert problem in cell['reason']
+
+
+@pytest.mark.parametrize('arms', ['<absent>', {}, {'interventions': []},
+                                  {'interventions': [{'type': 'BEHAVIORAL', 'name': 'Exercise'}]}])
+def test_a_record_that_registers_no_drug_is_a_completed_openfda_search(arms: Any) -> None:
+    cell = _openfda_cell_without_candidates({'status': 200}, _study_with_arms(arms))
+    assert cell['state'] == 'no_candidate_in_completed_scope', cell
+    # A CT.gov 404 is the registry's own answer: no record, so nothing to plan.
+    assert _openfda_cell_without_candidates({'status': 404}, None)['state'] == 'document_unavailable'
+
+
 @pytest.mark.parametrize('has_results', ['<absent>', None, 'false', 0, True])
 def test_365d_window_needs_explicit_unposted_evidence_before_an_unreported_state(has_results: object) -> None:
     as_of = date(2026, 11, 1)
@@ -2124,7 +2202,7 @@ def test_reviews_for_trials_outside_the_build_are_out_of_scope_not_orphaned(
         ('DrugX 2 mmol/L', 'drugx'),
         ('Drug 5 mcg/kg/min', 'drug'),
         # Micro sign (U+00B5) and Greek mu (U+03BC), and combination-product strengths (tracked CT.gov labels).
-        ('Tiotropium 18\u00b5g once daily', 'tiotropium once daily'),
+        ('Tiotropium 18\u00b5g once daily', 'tiotropium'),  # the schedule goes too (round 25)
         ('Formoterol Fumarate 12 \u03bcg (Foradil\u00ae Aerolizer\u00ae)', 'formoterol fumarate'),
         ('BFF MDI 320/9.6 \u03bcg', 'bff mdi'),
         ('Advair Diskus\u00ae 250/50 mcg', 'advair diskus'),

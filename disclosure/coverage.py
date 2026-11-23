@@ -498,6 +498,15 @@ def openfda_drugsfda_cell(
         queries_to_check.append((A.drug_query_key(d), openfda_records.get(A.drug_query_key(d))))
 
     incomplete_reasons: list[str] = []
+    # Zero planned drug queries is a completed scope only when the CT.gov record was read: a failed or
+    # unrequested lookup, or a malformed interventions module, leaves the drug queries unknown, not
+    # empty. A CT.gov 404 is the registry's own answer (no record, so no registered drug) and is left to
+    # the `document_unavailable` branch below.
+    ctgov_status = ctgov_rec.get('status') if isinstance(ctgov_rec, dict) else None
+    planning_problem = A.drug_planning_problem(study)
+    if planning_problem is not None and ctgov_status != 404:
+        status_note = f'; CT.gov status={ctgov_status!r}' if study is None else ''
+        incomplete_reasons.append(f'drug queries could not be planned ({planning_problem}{status_note})')
     for qkey, qrec in queries_to_check:
         if qrec is None:
             incomplete_reasons.append(f'{qkey} was not answered')

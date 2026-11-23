@@ -484,12 +484,58 @@ DOSAGE_FORM_ABBREVIATIONS: frozenset[str] = frozenset({
 })
 
 
+# Dosing schedules and dose levels written into a label (`Tiotropium 18µg once daily`, `Metformin 500 mg
+# bid`, `Exenatide Once Weekly`, `Empagliflozin high dose`, `PF-07321332 Dose 3`, `Low-dose cytarabine`)
+# are not part of any name Drugs@FDA indexes, so the quoted phrase `tiotropium once daily` matches no
+# application and the route would report a completed search with no candidate. They are removed only
+# where they stand at either end of the normalized label, repeatedly, so the phrase left is a part of
+# the original at its boundary and can only widen what it matched (`Pronamel Daily Protection` keeps its
+# `daily`). Each alternative is closed: a schedule word or abbreviation, a `once/twice ... a day` form,
+# `every N weeks`, `for N days`, or a dose-level qualifier immediately followed by `dose`. Abbreviations
+# (`bid`, `qd`, `q3w`) are removed at the end only, where no compound code can follow them. Dose levels
+# in the middle of a label (`of the mid dose vax-31`) and design text (`as formulation a`) are kept.
+_SCHEDULE_PHRASES = (
+    r'(?:once|twice|thrice|\d+\s+times?)\s+(?:a|per|each|every)\s+(?:day|week|month|night)'
+    r'|(?:once|twice|thrice)\s+(?:daily|weekly|monthly|nightly)'
+    r'|(?:every|each)\s+(?:other\s+)?(?:\d+\s+)?(?:days?|weeks?|months?|hours?)'
+    r'|for\s+\d+\s+(?:days?|weeks?|months?)'
+    r'|daily|weekly|biweekly|monthly|nightly'
+)
+_SCHEDULE_ABBREVIATIONS = r'bid|tid|qid|qd|qod|qam|qpm|qhs|qw|q\d+(?:h|hr|hrs|d|w|wk|wks)'
+_DOSE_LEVEL_WORDS = (
+    r'high|higher|low|lower|mid|medium|middle|intermediate|standard|normal|single|multiple|fixed|loading'
+    r'|maintenance|induction|therapeutic|supra-therapeutic'
+)
+DRUG_TERM_TRAILING_QUALIFIER_RE = re.compile(
+    rf'(?:^|\s)(?:{_SCHEDULE_PHRASES}|{_SCHEDULE_ABBREVIATIONS}'
+    rf'|(?:(?:{_DOSE_LEVEL_WORDS})[- ])?doses?(?:\s+level)?(?:\s+(?:\d+|[a-e]))?)$'
+)
+DRUG_TERM_LEADING_QUALIFIER_RE = re.compile(
+    rf'^(?:{_SCHEDULE_PHRASES}|(?:{_DOSE_LEVEL_WORDS})[- ]doses?(?:\s+of)?)(?:\s+|$)'
+)
+
+
+def _strip_end_qualifiers(term: str) -> str:
+    """Remove schedule and dose-level qualifiers standing at either end of a normalized term (see above).
+
+    A separator hyphen left at an end (`ir-cpi - dose 1` -> `ir-cpi`) goes too; hyphens inside a word
+    (`ir-cpi`, `pf-07321332`) are kept.
+    """
+    while True:
+        shorter = DRUG_TERM_LEADING_QUALIFIER_RE.sub('', DRUG_TERM_TRAILING_QUALIFIER_RE.sub('', term))
+        shorter = re.sub(r'^(?:-\s+)+|(?:\s+-)+$', '', shorter.strip()).strip()
+        if shorter == term:
+            return term
+        term = shorter
+
+
 def normalize_drug_term(raw: str) -> str | None:
     """Normalize an intervention drug label for candidate openFDA lookup; return None for placebos.
 
     Parenthesised text, strengths (`DRUG_STRENGTH_RE`) and punctuation are removed, then the
     dosage-form, route and release words in `DOSAGE_FORM_WORDS` and, unless a number follows them,
-    the abbreviations in `DOSAGE_FORM_ABBREVIATIONS` (see the notes there).
+    the abbreviations in `DOSAGE_FORM_ABBREVIATIONS` (see the notes there), and last any schedule or
+    dose-level qualifier at either end (`_strip_end_qualifiers`).
     """
     cleaned = re.sub(r'\([^)]*\)', ' ', raw or '')
     cleaned = DRUG_STRENGTH_RE.sub(' ', cleaned)
@@ -501,6 +547,7 @@ def normalize_drug_term(raw: str) -> str | None:
         if t not in DOSAGE_FORM_WORDS
         and not (t in DOSAGE_FORM_ABBREVIATIONS and not (tokens[i + 1:i + 2] or [''])[0][:1].isdigit())
     )
+    cleaned = _strip_end_qualifiers(cleaned)
     if len(cleaned) < 3 or cleaned in PLACEBO_TERMS:
         return None
     if any(cleaned.startswith(prefix) for prefix in ('placebo ', 'sham ', 'matching placebo')):
@@ -535,13 +582,52 @@ def drug_label_terms(raw: str) -> list[str]:
     return terms
 
 
+def drug_planning_problem(study: dict[str, Any] | None) -> str | None:
+    """Why a study's openFDA drug queries cannot be planned from its CT.gov record, or None when they can.
+
+    `extract_drug_candidates` returns an empty list both for a trial that registers no drug
+    intervention and for a record it could not read, so coverage asks this first. A missing record, or
+    an interventions module, list or entry of the wrong type, means the planned queries are unknown. A
+    record with no `armsInterventionsModule` (or no `interventions` key) at all is read as registering
+    no interventions: 26 of the 3,371 distinct trials in the stored unprojected CT.gov records (all
+    interventional) have no such module, so its absence is a real registry state and cannot be told
+    from a field-projected record that dropped it.
+    """
+    if not isinstance(study, dict):
+        return 'no CT.gov study record was retrieved'
+    ps = study.get('protocolSection')
+    if not isinstance(ps, dict):
+        return 'protocolSection is not an object'
+    if 'armsInterventionsModule' not in ps:
+        return None
+    arms = ps['armsInterventionsModule']
+    if not isinstance(arms, dict):
+        return 'armsInterventionsModule is not an object'
+    if 'interventions' not in arms:
+        return None
+    interventions = arms['interventions']
+    if not isinstance(interventions, list):
+        return 'armsInterventionsModule.interventions is not a list'
+    for i, item in enumerate(interventions):
+        if not isinstance(item, dict):
+            return f'interventions[{i}] is not an object'
+        if not isinstance(item.get('type'), str) or not isinstance(item.get('name'), str):
+            return f'interventions[{i}] lacks a string type and name'
+        others = item.get('otherNames', [])
+        if not isinstance(others, list) or not all(isinstance(o, str) for o in others):
+            return f'interventions[{i}].otherNames is not a list of strings'
+    return None
+
+
 def extract_drug_candidates(study: dict[str, Any] | None) -> list[str]:
     """Extract sorted distinct normalized drug/biologic candidate terms from a CT.gov v2 study."""
     if not isinstance(study, dict):
         return []
-    ps = study.get('protocolSection') or {}
-    arms = ps.get('armsInterventionsModule') or {}
-    interventions = arms.get('interventions') or []
+    # Read type-safely: a malformed module or list plans nothing here, and coverage reports the route
+    # incomplete through `drug_planning_problem` rather than as a search over zero candidates.
+    ps = study.get('protocolSection')
+    arms = ps.get('armsInterventionsModule') if isinstance(ps, dict) else None
+    interventions = arms.get('interventions') if isinstance(arms, dict) else None
     if not isinstance(interventions, list):
         return []
     found: set[str] = set()
