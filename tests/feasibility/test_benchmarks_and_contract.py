@@ -1363,6 +1363,19 @@ def test_records_with_mistyped_optional_parts_are_refused(
         _load_archive(apath)
 
 
+def test_record_with_results_but_has_results_false_is_refused(tmp_path: Path) -> None:
+    # Retention read the section (flow_status ok, a completion rate) while the results state trusted
+    # the flag (results_not_posted): contradictory metrics for one trial.
+    bad = make_ctgov_study("NCT99600035")
+    bad["hasResults"] = False
+    with pytest.raises(ValueError, match=r"first: NCT99600035 lacks resultsSection \(hasResults is false\)"):
+        build_feasibility_benchmarks._require_complete_records([make_ctgov_study("NCT99600036"), bad], "x")
+    # Control: no section with hasResults false is a plain unposted record.
+    clean = make_ctgov_study("NCT99600037", has_results=False)
+    clean.pop("resultsSection", None)
+    build_feasibility_benchmarks._require_complete_records([clean], "x")
+
+
 def test_record_with_a_non_object_protocol_section_is_refused_by_position(tmp_path: Path) -> None:
     # Naming the record used to read protocolSection.identificationModule and raised AttributeError.
     bad = make_ctgov_study("NCT99600033")

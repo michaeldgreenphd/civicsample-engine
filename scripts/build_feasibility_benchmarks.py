@@ -420,6 +420,11 @@ def _require_complete_records(studies: list[dict[str, Any]], source: str) -> Non
             results_sec = study.get("resultsSection")
             if not isinstance(results_sec, dict) or not results_sec:
                 missing.append("resultsSection (hasResults is true)")
+        elif study.get("resultsSection"):
+            # The flag says no results were posted, yet a section is present: the result readers
+            # disagree on it (one trusts the flag, another reads the section), so the record is
+            # contradictory and refused. None of the 5,330 stored unprojected records has this shape.
+            missing.append("resultsSection (hasResults is false)")
         if missing:
             incomplete[_study_nct_id(study) or f"index {idx}"] = missing
     if incomplete:
