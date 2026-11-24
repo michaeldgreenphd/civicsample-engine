@@ -108,11 +108,12 @@ Analytical invariants:
   day precision, and all keys/values are strictly factual with zero compliance
   or evaluative labels.
 - Lossless TOC/section page slicing: pages_selected, pages_deferred, and
-  pages_without_text always form a disjoint exact partition of 1..physical_pages.
+  pages_without_text always form a disjoint exact partition of 1..physical_pages,
+  each list strictly ascending.
   A stored index entry is held to this when it is loaded (and before it is
-  written): a line whose partition is inexact, or that names any page (in any
-  page list or section bound) outside 1..physical_pages, is refused with
-  ``CacheIntegrityError``, never served or copied into a profile.
+  written): a line whose partition is inexact or out of order, or that names
+  any page (in any page list or section bound) outside 1..physical_pages, is
+  refused with ``CacheIntegrityError``, never served or copied into a profile.
 """
 
 from __future__ import annotations
@@ -1315,7 +1316,8 @@ def _stored_choice(value: Any, allowed: Sequence[str], *, origin: str, field: st
 # strict readers above check that each is an int >= 1; the two checks below
 # hold the numbers to the document: none may exceed its ``physical_pages``,
 # and the selected / deferred / without-text split must be the exact partition
-# of 1..physical_pages that ``select_statistical_pages`` writes. A line that
+# of 1..physical_pages that ``select_statistical_pages`` writes, each list in
+# strictly ascending page order as it writes them. A line that
 # fails either was not written by this module (it was edited, truncated or
 # produced elsewhere), and serving it would copy pages the document does not
 # have into a trial's profile. Messages count the offending pages and print
@@ -1343,11 +1345,25 @@ def _check_exact_page_partition(
     *,
     origin: str,
 ) -> None:
-    """Raise ``CacheIntegrityError`` unless the three lists name every page of 1..physical_pages exactly once.
+    """Raise ``CacheIntegrityError`` unless the three lists name every page of 1..physical_pages exactly once, in order.
 
     Call after ``_check_pages_in_document`` has held each list to the
     document, so the distinct pages named are a subset of 1..physical_pages
     and any shortfall is a page left out.
+
+    Each list must also be strictly ascending. Every writer path builds
+    them that way: ``select_statistical_pages`` takes ``pages_without_text``
+    and the pages with text from ``range(1, N + 1)`` in order, and its four
+    return paths keep that order for ``pages_selected`` (empty, all pages
+    with text, a leading prefix of them, or ``sorted``) and
+    ``pages_deferred`` (empty, or the pages with text filtered in order);
+    ``index_document_pages`` copies the slice's ``pages_without_text``
+    unchanged. The profile copies these lists as stored
+    (``build_trial_document_record``), so a line in another order was not
+    written by this module and would carry its order into the profile. The
+    order is checked after the partition, so a repeated page is reported as
+    repeated; with no repeats, "strictly ascending" is "no page follows a
+    higher one", and the message counts the pages that do and prints none.
     """
     named = [*pages_selected, *pages_deferred, *pages_without_text]
     distinct = set(named)
@@ -1363,6 +1379,21 @@ def _check_exact_page_partition(
             "1..physical_pages in none of them; they must cover every page exactly once, and the "
             "entry is refused."
         )
+    for field, pages in (
+        ("pages_selected", pages_selected),
+        ("pages_deferred", pages_deferred),
+        ("pages_without_text", pages_without_text),
+    ):
+        # Count the positions where a page follows a higher one (no page
+        # repeats here, so this is every break in strict ascent).
+        out_of_order = sum(1 for before, page in zip(pages, pages[1:]) if page < before)
+        if out_of_order:
+            raise CacheIntegrityError(
+                f"{origin} field {field!r} is not strictly ascending ({out_of_order} page(s) "
+                "follow a higher page); select_statistical_pages writes each partition list in "
+                "ascending page order, and the entry is refused rather than served or copied "
+                "into a profile in another order."
+            )
 
 
 _SELECTION_STRATEGIES: Final[tuple[SelectionStrategy, ...]] = (
@@ -1613,9 +1644,9 @@ class SectionSliceResult:
         ``unreadable_statistical_pages``, ``toc_pages`` and each detected
         section's bounds) must lie in 1..physical_pages, and
         ``pages_selected``, ``pages_deferred`` and ``pages_without_text`` must
-        name each page of 1..physical_pages exactly once, as
-        ``select_statistical_pages`` writes them (with no pages, all are
-        empty). Anything else is ``CacheIntegrityError``.
+        name each page of 1..physical_pages exactly once, each list strictly
+        ascending, as ``select_statistical_pages`` writes them (with no
+        pages, all are empty). Anything else is ``CacheIntegrityError``.
         """
         obj = _stored_object(
             data,
@@ -1836,7 +1867,8 @@ class DocumentIndexEntry:
         the entry's ``pages_without_text`` and every page list of its
         ``cmap_metrics`` and ``redaction`` lie in 1..physical_pages, its
         ``section_slice`` is checked the same way and must partition
-        1..physical_pages exactly (``SectionSliceResult.from_dict``), and the
+        1..physical_pages exactly, each partition list strictly ascending
+        (``SectionSliceResult.from_dict``), and the
         entry's own ``physical_pages`` and ``pages_without_text`` must be its
         section slice's, as ``index_document_pages`` writes them. The profile
         copies ``pages_without_text``, the slice's selected and deferred pages

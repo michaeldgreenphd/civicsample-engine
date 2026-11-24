@@ -7646,3 +7646,91 @@ def test_m1_r8_cached_page_map_of_another_text_source_is_refused_not_kept(tmp_pa
     with pytest.raises(di.CacheIntegrityError, match="names another sha256"):
         store.save_cached_pages(other_sha, byte_count=len(other_pdf), pages=_clean_stat_pages(4), nct_id=_RT_A)
     assert slot.read_bytes() == slot_before
+
+
+def _r9_partition_record() -> dict[str, Any]:
+    """An index line for a forty-page protocol with blank pages 2 and 40, as the indexer writes it.
+
+    Every body page scores, so the default 25-page budget selects 25 of the
+    38 pages with text and defers 13: each of the three partition lists
+    holds at least two pages and can be reordered.
+    """
+    pages = _r8_long_protocol()
+    pages[1] = ""
+    pages[39] = "   "
+    pdf = _make_minimal_pdf("A forty-page protocol with two blank pages")
+    return di.index_document_pages(
+        pages, sha256=di.sha256_bytes(pdf), byte_count=len(pdf), text_provider="fixture", extracted_at=_RT_STAMP
+    ).to_dict()
+
+
+def test_m1_r9_cached_page_partition_lists_must_be_strictly_ascending(tmp_path: Path) -> None:
+    """An index line whose selected, deferred or without-text pages are out of order is refused.
+
+    ``select_statistical_pages`` writes ``pages_selected``, ``pages_deferred``
+    and ``pages_without_text`` each in strictly ascending page order (every
+    writer path builds them from 1..N or sorts them), but loading a stored
+    line checked only that the three were a disjoint exact partition of
+    1..physical_pages: a line with ``pages_selected`` [3, 1] loaded, and
+    ``build_trial_document_record`` copied that order into the trial's
+    profile. Correct: each of the three lists must be strictly ascending, or
+    the line is refused with ``CacheIntegrityError`` whose message counts the
+    pages out of order and prints none, and the file is left as it is. The
+    store does not write such an entry either. Every line the indexer
+    writes still loads (the autouse round-trip fixture).
+    """
+    record = _r9_partition_record()
+    section = record["section_slice"]
+    assert record["physical_pages"] == 40 and record["pages_without_text"] == [2, 40]
+    assert len(section["pages_selected"]) == 25 and len(section["pages_deferred"]) == 13
+    for name in ("pages_selected", "pages_deferred", "pages_without_text"):
+        assert section[name] == sorted(set(section[name])), name
+    clean_index = tmp_path / "r9_clean_index.jsonl"
+    clean_index.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    sha = record["sha256"]
+    assert di.DocumentCacheStore(tmp_path / "r9_clean_cache", clean_index).get_entry(sha) is not None
+
+    def _first_two_swapped(pages: list[int]) -> list[int]:
+        return [pages[1], pages[0], *pages[2:]]
+
+    def _last_moved_first(pages: list[int]) -> list[int]:
+        return [pages[-1], *pages[:-1]]
+
+    reordered: dict[str, tuple[str, dict[str, Any], list[int]]] = {}
+    for name in ("pages_selected", "pages_deferred", "pages_without_text"):
+        for how, reorder in (("swapped", _first_two_swapped), ("rotated", _last_moved_first)):
+            pages = reorder(section[name])
+            bad = {**record, "section_slice": {**section, name: pages}}
+            if name == "pages_without_text":
+                # The entry's own copy must equal the slice's (checked
+                # separately), so both carry the reordered list here and only
+                # the order is wrong.
+                bad["pages_without_text"] = pages
+            reordered[f"{name}.{how}"] = (name, bad, pages)
+    for label, (name, bad, pages) in reordered.items():
+        message = _r8_open_refused(tmp_path, label, bad)
+        assert f"field {name!r}" in message and "strictly ascending" in message, (label, message)
+        assert "1 page(s)" in message, (label, message)
+        assert f"{pages[0]}, {pages[1]}" not in message, (label, message)
+
+    # The entry's own pages_without_text out of order against an ascending
+    # slice is refused by the equality check that already held it to the slice.
+    entry_only = {**record, "pages_without_text": [40, 2]}
+    message = _r8_open_refused(tmp_path, "entry_pages_without_text", entry_only)
+    assert "is not its section_slice's 'pages_without_text'" in message, message
+
+    # The store does not write a reordered entry: put_entry reads it back with
+    # the loader's rule first.
+    put_index = tmp_path / "r9_put_index.jsonl"
+    put_store = di.DocumentCacheStore(tmp_path / "r9_put_cache", put_index)
+    entry = di.DocumentIndexEntry.from_dict(record)
+    damaged = dataclasses.replace(
+        entry,
+        section_slice=dataclasses.replace(
+            entry.section_slice,
+            pages_selected=_first_two_swapped(entry.section_slice.pages_selected),
+        ),
+    )
+    with pytest.raises(di.CacheIntegrityError, match="strictly ascending"):
+        put_store.put_entry(damaged)
+    assert put_store.get_entry(sha) is None and not put_index.exists()
