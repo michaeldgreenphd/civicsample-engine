@@ -456,6 +456,11 @@ the input (`artifacts.resolve_snapshot_date`):
 
 - **Raw CT.gov v2 studies** are parsed in this build, so the value is stamped
   on their rows: `--snapshot-date`, or the `--generated-at` date without it.
+  A raw `studies` or `records` container that carries the extraction's
+  `extracted_at`/`pipeline_commit`, with a condition_mesh sidecar matched to
+  them, is that extraction: the sidecar's `snapshot_date` is its date, and a
+  `--snapshot-date` must agree with it. The build date had been recorded
+  beside the sidecar's own date, naming two snapshots in one manifest.
 - **Weekly full records** arrive with their sex/gender rows already parsed, and
   those rows are reused, so the build date would name nothing about them. The
   date is the pull's own: a `snapshot_date` on the rows, the condition_mesh
@@ -466,5 +471,6 @@ the input (`artifacts.resolve_snapshot_date`):
   (`sgt.lean_row`), so a weekly build without the sidecar needs
   `--snapshot-date` with the pull's date. `extracted_at` is not used, because
   the weekly job sets it after taking the snapshot date and the two can name
-  different days. The contract refuses a weekly manifest whose
+  different days. The contract refuses a weekly manifest, or a raw one whose
+  sidecar was matched to the container's stamps, whose
   `parameters.snapshot_date` differs from `inputs.condition_mesh.snapshot_date`.

@@ -876,6 +876,67 @@ def test_a_stamped_raw_container_accepts_its_own_sidecar(tmp_path: Path) -> None
     assert benchmarks.check_condition_mesh_provenance(mesh_map, mesh_meta, records, study_meta) is not None
 
 
+def _build_stamped_raw(
+    tmp_path: Path, mesh_lines: list[dict[str, Any]] | None, extra: list[str], out_name: str
+) -> tuple[int, Path]:
+    """Build the fictional cohort from a stamped raw container, generated 2026-11-23, with these sidecar lines."""
+    container = tmp_path / f"{out_name}.studies.json"
+    container.write_text(json.dumps({"studies": fx.build_fictional_cohort(), "extracted_at": fx.WEEKLY_EXTRACTED_AT,
+                                     "pipeline_commit": fx.WEEKLY_PIPELINE_COMMIT}), encoding="utf-8")
+    mesh = [] if mesh_lines is None else [
+        "--condition-mesh", str(_write_mesh_sidecar(tmp_path / f"{out_name}.mesh.jsonl.gz", mesh_lines))]
+    out_dir = tmp_path / out_name
+    rc = cli_build.main([
+        "--records", str(container), *mesh,
+        "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / f"{out_name}.aliases.csv")),
+        "--generated-at", "2026-11-23T00:00:00+00:00", *extra, "--out", str(out_dir),
+    ])
+    return rc, out_dir
+
+
+def test_a_stamped_raw_container_takes_its_matched_sidecars_snapshot_date(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # On 48ff9cb the build date, 2026-11-23, was recorded as parameters.snapshot_date beside the matched
+    # sidecar's 2026-11-21 in inputs.condition_mesh, the contract passed, and a disagreeing --snapshot-date
+    # was taken as given.
+    cohort = [s["protocolSection"]["identificationModule"]["nctId"] for s in fx.build_fictional_cohort()]
+    rc, out = _build_stamped_raw(tmp_path, _weekly_mesh_lines(cohort), [], "matched")
+    assert rc == 0
+    loaded = artifacts.load_dir(out)
+    run = loaded["run.json"]
+    assert run["inputs"]["condition_mesh"]["provenance_check"] == "study_records_run_stamps_matched_and_cohort_covered"
+    assert run["parameters"]["snapshot_date"] == "2026-11-21"
+    assert artifacts.check_contract(loaded) == []
+    run["parameters"]["snapshot_date"] = "2026-11-23"
+    assert any("differs from inputs.condition_mesh.snapshot_date '2026-11-21'" in x
+               for x in artifacts.check_contract(loaded))
+    capsys.readouterr()
+    rc, out_bad = _build_stamped_raw(tmp_path, _weekly_mesh_lines(cohort), ["--snapshot-date", "2026-11-22"], "bad")
+    err = capsys.readouterr().err
+    assert rc == 1 and not out_bad.exists()
+    assert "snapshot dates disagree: the condition_mesh sidecar gives '2026-11-21'" in err
+
+
+def test_a_raw_build_without_a_matched_sidecar_records_its_build_date(tmp_path: Path) -> None:
+    # Control, on both heads: a stamped container without a sidecar, and a records directory with an
+    # unstamped one, record the build date (an unmatched sidecar's date belongs to no known extraction).
+    rc, out = _build_stamped_raw(tmp_path, None, [], "nosidecar")
+    assert rc == 0 and artifacts.load_dir(out)["run.json"]["parameters"]["snapshot_date"] == "2026-11-23"
+    studies = fx.build_fictional_cohort()
+    lines = [{**cmesh.select_condition_mesh(s), "snapshot_date": "2026-11-21"} for s in studies]
+    out_dir = tmp_path / "dir"
+    assert cli_build.main([
+        "--records-dir", str(fx.write_studies_dir(studies, tmp_path / "studies")),
+        "--condition-mesh", str(_write_mesh_sidecar(tmp_path / "dir.mesh.jsonl.gz", lines)),
+        "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "dir.aliases.csv")),
+        "--generated-at", "2026-11-23T00:00:00+00:00", "--out", str(out_dir),
+    ]) == 0
+    run = artifacts.load_dir(out_dir)["run.json"]
+    assert (run["inputs"]["condition_mesh"]["provenance_check"], run["parameters"]["snapshot_date"]) == (
+        "cohort_covered_and_one_run_only", "2026-11-23")
+
+
 def _search_container(tmp_path: Path, **page: Any) -> Path:
     path = tmp_path / "search.json"
     path.write_text(json.dumps({"studies": fx.build_fictional_cohort(), **page}), encoding="utf-8")

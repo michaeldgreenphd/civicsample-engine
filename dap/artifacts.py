@@ -666,6 +666,11 @@ def utc_timestamp_date(generated_at: Any) -> str:
     return generated_at[:10]
 
 
+# `benchmarks.check_condition_mesh_provenance`'s check for a sidecar matched to a raw container's own
+# extraction stamps; its snapshot_date is then that extraction's.
+MESH_STAMPS_MATCHED_RAW = "study_records_run_stamps_matched_and_cohort_covered"
+
+
 def resolve_snapshot_date(
     explicit: str | None,
     *,
@@ -693,14 +698,30 @@ def resolve_snapshot_date(
     date from the runner's date when the job starts and ``extracted_at`` later, so they can differ.
 
     Other inputs (raw CT.gov v2 studies) are parsed in this build, so their rows take this value:
-    ``explicit`` or, without it, ``default`` (the ``--generated-at`` date).
+    ``explicit`` or, without it, ``default`` (the ``--generated-at`` date). A raw ``studies`` or
+    ``records`` container that carries the extraction's stamps, with a sidecar
+    ``check_condition_mesh_provenance`` has matched to them, is that extraction: the sidecar's
+    ``snapshot_date`` is its date, as for weekly records, and an ``explicit`` date must agree with it. The
+    build date had been recorded instead, beside the sidecar's own date in ``inputs.condition_mesh``.
     """
     if explicit is not None:
         problem = snapshot_date_problem(explicit)
         if problem:
             raise ValueError(f"--snapshot-date: {problem}")
     if study_meta.get("input_format") != "full_records":
-        return explicit if explicit is not None else default
+        matched = (mesh_meta or {}).get("provenance_check") == MESH_STAMPS_MATCHED_RAW
+        mesh_date = (mesh_meta or {}).get("snapshot_date") if matched else None
+        if mesh_date is None:
+            return explicit if explicit is not None else default
+        problem = snapshot_date_problem(mesh_date)
+        if problem:
+            raise ValueError(f"{(mesh_meta or {}).get('path')}: condition_mesh {problem}")
+        if explicit is not None and explicit != mesh_date:
+            raise ValueError(
+                f"{study_meta.get('path')}: snapshot dates disagree: the condition_mesh sidecar gives "
+                f"{mesh_date!r}; --snapshot-date gives {explicit!r}"
+            )
+        return mesh_date
 
     where = study_meta.get("path")
     row_values: dict[str, str] = {}
@@ -1046,22 +1067,25 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
     snap_problem = snapshot_date_problem(snap_value)
     if snap_problem:
         p.append(f"run.json: parameters.{snap_problem}")
-    # Weekly full records: the sidecar's snapshot_date is the pull's own stamp (resolve_snapshot_date),
-    # so a manifest giving another date for the same pull contradicts itself.
+    # Weekly full records, and a raw container whose stamps the sidecar matched: the sidecar's snapshot_date
+    # is the extraction's own stamp (resolve_snapshot_date), so a manifest giving another date contradicts itself.
     inputs_in = run.get("inputs") if isinstance(run.get("inputs"), dict) else {}
     study_in = inputs_in.get("study_records")
     mesh_in = inputs_in.get("condition_mesh")
     if (
         not snap_problem
         and isinstance(study_in, dict)
-        and study_in.get("input_format") == "full_records"
         and isinstance(mesh_in, dict)
+        and (
+            study_in.get("input_format") == "full_records"
+            or mesh_in.get("provenance_check") == MESH_STAMPS_MATCHED_RAW
+        )
         and mesh_in.get("snapshot_date") is not None
         and mesh_in.get("snapshot_date") != snap_value
     ):
         p.append(
             f"run.json: parameters.snapshot_date {snap_value!r} differs from inputs.condition_mesh."
-            f"snapshot_date {mesh_in.get('snapshot_date')!r}, the weekly pull's own stamp"
+            f"snapshot_date {mesh_in.get('snapshot_date')!r}, the extraction's own stamp"
         )
 
     # Check per-trial invariants
