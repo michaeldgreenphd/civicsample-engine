@@ -76,7 +76,11 @@ WRITES  --out-dir (default <engine root>/data/outcomes_bundles, resolved from
         build is refused, never stamped null. extracted_at is --extracted-at,
         else the --trials and --cohort-manifest containers' extracted_at (two
         different ones are refused), else --now-utc; when none is given the
-        build is refused, never stamped with the build time.
+        build is refused, never stamped with the build time. Every timestamp
+        (these, a container's, a Module 1 profile's extracted_at, a Module 4
+        record's assembled_at when not null) is a UTC instant written
+        YYYY-MM-DDTHH:MM[:SS[.ffffff]] then Z or +00:00; a date alone, a
+        time with no offset or another offset is refused.
         --report (optional) gets the same allowlist.
 CHECKS  --check <dir> validates an existing outcomes directory on disk without
         modifying it (--allow-null-commit accepts a tree stamped null). Every
@@ -581,14 +585,14 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--population-parsed", help="JSON/JSONL (.gz ok) of Module 2 parsed population records", **once)
     ap.add_argument(
         "--extracted-at",
-        help="ISO-8601 UTC time the inputs were extracted (overrides the containers' extracted_at, which are "
-        "still published in input_stamps)",
+        help="ISO-8601 UTC time the inputs were extracted, ending Z or +00:00 (overrides the containers' "
+        "extracted_at, which are still published in input_stamps)",
         **once,
     )
     ap.add_argument(
         "--now-utc",
-        help="Fallback UTC ISO-8601 timestamp when --extracted-at is omitted and no container states one; "
-        "without either the build is refused",
+        help="Fallback UTC ISO-8601 timestamp (ending Z or +00:00) when --extracted-at is omitted and no "
+        "container states one; without either the build is refused",
         **once,
     )
     ap.add_argument(

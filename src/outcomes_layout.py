@@ -112,7 +112,7 @@ import unicodedata
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -249,6 +249,15 @@ NCT_RE = re.compile(r"NCT[0-9]{8}", re.ASCII)
 COMMIT_RE = re.compile(r"[0-9a-f]{7,40}")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 COHORT_RE = re.compile(r"[a-z][a-z0-9_]{1,63}")
+# A published timestamp names one instant, in UTC: a calendar date, a time of
+# day and a zero offset written Z or +00:00 (validate_iso_timestamp). Only the
+# extended ISO-8601 form every reader shares (Python's isoformat, JavaScript's
+# toISOString and Date): Python 3.11's fromisoformat also reads the basic
+# (20261123T120000Z) and week (2026-W48-1) forms, which a browser does not.
+UTC_TIMESTAMP_RE = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{1,6})?)?(?:Z|\+00:00)",
+    re.ASCII,
+)
 # ASCII digits only (red-team m3 round 3: ``\d`` admitted "1٣.json.gz", which
 # no bundle names). A name matching this is still a shard of the bundle only
 # when its index is below the bundle's own shard count (_check_bundle_entries).
@@ -1044,13 +1053,52 @@ def resolve_pipeline_commit(
 
 
 def validate_iso_timestamp(value: Any, label: str = "extracted_at") -> str:
-    """Validate a non-empty ISO-8601 timestamp string."""
+    """Validate a UTC instant: a date, a time of day and a zero UTC offset; return it unchanged.
+
+    Method: ``value`` is a string ``datetime.fromisoformat`` reads as a real
+    date and time, with an offset of zero, written in ``UTC_TIMESTAMP_RE``'s
+    form (``YYYY-MM-DDTHH:MM[:SS[.f]]`` then ``Z`` or ``+00:00``). A date
+    alone, a naive time (no offset: its instant is whatever the reader's
+    clock zone makes it), any other offset, ``-00:00`` (RFC 3339's "local
+    offset unknown") and the basic or week forms are refused (codex review
+    of PR #114: ``2026-11-23`` and ``2026-11-23T12:00:00`` were published as
+    ``extracted_at``). Every producer whose stamps reach this check writes
+    the form: the weekly extraction's container (``src/utils.py``,
+    ``datetime.now(timezone.utc).isoformat()``, since 7ac6e10; the weekly
+    stamps before it were naive and no supported input carries them: the
+    ``data-*`` releases start after it and the site's parts are not a
+    ``--trials`` container), Module 1's profiles and containers
+    (``utc_now_iso``, the same call), Module 4's ``assembled_at`` (null by
+    default, else the caller's), and ``--extracted-at`` / ``--now-utc``,
+    which the operator gives. Messages name ``label`` and what is missing,
+    never the value.
+    """
     if not isinstance(value, str) or not value.strip():
-        raise OutcomesLayoutError(f"{label} must be a non-empty ISO-8601 timestamp string, got {type(value).__name__}")
+        raise OutcomesLayoutError(
+            f"{label} must be a non-empty ISO-8601 UTC timestamp string, got {type(value).__name__}"
+        )
     try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise OutcomesLayoutError(f"{label} is not a valid ISO-8601 timestamp (value not shown)") from exc
+    form = "YYYY-MM-DDTHH:MM[:SS[.ffffff]] then Z or +00:00"
+    if parsed.tzinfo is None:
+        what = (
+            "is a date with no time of day and no UTC offset"
+            if "T" not in value and " " not in value
+            else "has no UTC offset (a naive time)"
+        )
+        raise OutcomesLayoutError(
+            f"{label} {what}, so it names no instant; a timestamp is written in UTC as {form} (value not shown)"
+        )
+    if parsed.utcoffset() != timedelta(0):
+        raise OutcomesLayoutError(
+            f"{label} has a UTC offset other than zero; a timestamp is written in UTC as {form} (value not shown)"
+        )
+    if not UTC_TIMESTAMP_RE.fullmatch(value):
+        raise OutcomesLayoutError(
+            f"{label} is not written in the extended form {form} (value not shown)"
+        )
     return value
 
 
@@ -2313,6 +2361,22 @@ def _list_of_objects(value: Any, label: str) -> list[Mapping[str, Any]]:
     return value
 
 
+def _object_or_empty(value: Any, label: str) -> Mapping[str, Any]:
+    """A CT.gov section or module: an object as given, absent (None) as empty; anything else refused.
+
+    Method: a section that is present and not an object holds whatever it
+    holds where the reader looks for the outcome lists, so reading it as
+    empty would publish the trial as registering no outcome or posting no
+    measure; it is refused, naming its type, never its value (codex review
+    of PR #114, the holders of the lists ``_list_of_objects`` reads).
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise OutcomesLayoutError(f"{label} must be an object or null, got {type(value).__name__}")
+    return value
+
+
 def extract_reported_results(
     study: Mapping[str, Any],
     *,
@@ -2343,7 +2407,9 @@ def extract_reported_results(
     an outcome index the results do not have, or one that differs from the
     measure's own inline ``analysis_population_parsed`` is refused, as is a
     pre-built outcome whose ``outcome_index`` is not its position
-    (``_prebuilt_indexes``).
+    (``_prebuilt_indexes``), and so is a CT.gov section, module or outcome
+    list that is present but not an object (``_object_or_empty``) or not a
+    list (``_list_of_objects``); absent or null is "none registered".
 
     A Module 2 ``TrialAnalysisPopulations`` record (an object with an
     ``outcomes`` list) has its trial-level fields, provenance included,
@@ -2364,7 +2430,7 @@ def extract_reported_results(
     if has_results_flag is not None and type(has_results_flag) is not bool:
         raise OutcomesLayoutError(f"hasResults must be a bool or absent, got {type(has_results_flag).__name__}")
 
-    protocol_sec = study.get("protocolSection") if isinstance(study.get("protocolSection"), Mapping) else {}
+    protocol_sec = _object_or_empty(study.get("protocolSection"), "protocolSection")
     pre = study.get("reported_results")
     if pre is not None:
         if not isinstance(pre, Mapping):
@@ -2450,29 +2516,28 @@ def extract_reported_results(
             "analysis_populations": population_record,
         })
 
-    results_sec = study.get("resultsSection") if isinstance(study.get("resultsSection"), Mapping) else {}
-
-    outcomes_mod = (
-        protocol_sec.get("outcomesModule")
-        if isinstance(protocol_sec.get("outcomesModule"), Mapping)
-        else {}
+    # Absent or null sections and lists are "none registered" / "none
+    # posted"; one that is present but not an object (or list) is refused,
+    # naming its type: skipped, it published the trial as registering no
+    # outcome and the build succeeded (codex review of PR #114). An element
+    # that is not an object is refused too: skipping it would renumber every
+    # later outcome's index.
+    results_sec = _object_or_empty(study.get("resultsSection"), "resultsSection")
+    outcomes_mod = _object_or_empty(protocol_sec.get("outcomesModule"), "protocolSection.outcomesModule")
+    raw_primary_outcomes = _list_of_objects(
+        outcomes_mod.get("primaryOutcomes"), "protocolSection.outcomesModule.primaryOutcomes"
     )
-    raw_primary_outcomes = outcomes_mod.get("primaryOutcomes")
     registered: list[dict[str, Any]] = []
-    if isinstance(raw_primary_outcomes, Sequence) and not isinstance(raw_primary_outcomes, (str, bytes)):
-        for idx, item in enumerate(raw_primary_outcomes):
-            where = f"protocolSection.outcomesModule.primaryOutcomes[{idx}]"
-            if not isinstance(item, Mapping):
-                # Skipping it would renumber every later outcome's index.
-                raise OutcomesLayoutError(f"{where} must be an object, got {type(item).__name__}")
-            registered.append(
-                canonicalize_nested({
-                    "outcome_index": idx,
-                    "measure": _registered_measure_text(item.get("measure"), where),
-                    "time_frame": _one_spelling_of(item, ("timeFrame", "time_frame"), where),
-                    "description": item.get("description"),
-                })
-            )
+    for idx, item in enumerate(raw_primary_outcomes):
+        where = f"protocolSection.outcomesModule.primaryOutcomes[{idx}]"
+        registered.append(
+            canonicalize_nested({
+                "outcome_index": idx,
+                "measure": _registered_measure_text(item.get("measure"), where),
+                "time_frame": _one_spelling_of(item, ("timeFrame", "time_frame"), where),
+                "description": item.get("description"),
+            })
+        )
 
     if parsed_populations is None and population_parser is not None and results_sec:
         # The parser reads a deep copy: an edit it makes to the study it is
@@ -2482,27 +2547,25 @@ def extract_reported_results(
     pop_by_idx = _extract_parsed_population_map(parsed_populations)
     population_record = _population_record(parsed_populations)
 
-    om_mod = (
-        results_sec.get("outcomeMeasuresModule")
-        if isinstance(results_sec.get("outcomeMeasuresModule"), Mapping)
-        else {}
+    # As for primaryOutcomes: absent or null is none posted, any other
+    # non-object module or non-list collection is refused (codex review of
+    # PR #114), and an element that is not an object is refused rather than
+    # skipped, which would renumber the measures a parsed row indexes.
+    om_mod = _object_or_empty(results_sec.get("outcomeMeasuresModule"), "resultsSection.outcomeMeasuresModule")
+    raw_measures = _list_of_objects(
+        om_mod.get("outcomeMeasures"), "resultsSection.outcomeMeasuresModule.outcomeMeasures"
     )
-    raw_measures = om_mod.get("outcomeMeasures")
     primary: list[tuple[Mapping[str, Any], int, tuple[int, ...]]] = []
-    if isinstance(raw_measures, Sequence) and not isinstance(raw_measures, (str, bytes)):
-        primary_pos = 0
-        for raw_idx, measure in enumerate(raw_measures):
-            where = f"resultsSection.outcomeMeasuresModule.outcomeMeasures[{raw_idx}]"
-            if not isinstance(measure, Mapping):
-                # Skipping it would renumber the measures a parsed row indexes.
-                raise OutcomesLayoutError(f"{where} must be an object, got {type(measure).__name__}")
-            if not _outcome_type_is_primary(measure.get("type"), f"{where}.type"):
-                continue
-            # A parsed row may index the measure among all of them or among
-            # the primary ones; the first reading wins, and a row both
-            # readings attach to two measures is refused (_attach_populations).
-            primary.append((measure, primary_pos, (raw_idx, primary_pos)))
-            primary_pos += 1
+    primary_pos = 0
+    for raw_idx, measure in enumerate(raw_measures):
+        where = f"resultsSection.outcomeMeasuresModule.outcomeMeasures[{raw_idx}]"
+        if not _outcome_type_is_primary(measure.get("type"), f"{where}.type"):
+            continue
+        # A parsed row may index the measure among all of them or among
+        # the primary ones; the first reading wins, and a row both
+        # readings attach to two measures is refused (_attach_populations).
+        primary.append((measure, primary_pos, (raw_idx, primary_pos)))
+        primary_pos += 1
     primary_measures = _attach_populations(primary, pop_by_idx)
 
     # results_posted is tri-state. True when the record carries a
@@ -3108,6 +3171,10 @@ def _normalize_location_pass(
                 f"refused, never published"
             )
         element = raw_row.get("element")
+        if type(element) is not str:
+            # Before the lookup: an object or list element raised TypeError
+            # (unhashable) out of the build (codex review of PR #114).
+            raise OutcomesLayoutError(f"{pass_label}: element must be a string, got {type(element).__name__}")
         if element not in _ELEMENT_ORDER:
             raise OutcomesLayoutError(f"{pass_label}: unknown element {element!r}")
         pair = (outcome_idx, str(element))
@@ -3471,6 +3538,39 @@ def _validate_date_precisions_recursive(obj: Any, path: str = "longitudinal_prov
             _validate_date_precisions_recursive(item, f"{path}[{i}]")
 
 
+# Module 4's LongitudinalProvenanceRecord types for the metadata fields this
+# section publishes (src/longitudinal_provenance.py): none is optional there.
+_MODULE4_METADATA_TYPES: dict[str, type] = {
+    "provenance_schema_version": int,
+    "provenance_rules_version": str,
+    "excluded_standalone_icf_count": int,
+}
+
+
+def _module4_metadata_value(key: str, value: Any) -> int | str:
+    """One provenance metadata field, held to Module 4's record type; returned as given.
+
+    Method: the type is ``_MODULE4_METADATA_TYPES[key]`` exactly (``type(v)
+    is``, so a bool is not an int and neither is a float such as 1.0; null
+    is not a value the record states), and ``excluded_standalone_icf_count``,
+    a count of documents, is not negative. Anything else is refused, never
+    published as given (codex review of PR #114: an object schema version
+    and a negative or fractional count were copied unchecked, and --check
+    passed them). Messages name the field and the type, never the value.
+    """
+    want = _MODULE4_METADATA_TYPES[key]
+    if type(value) is not want:
+        raise OutcomesLayoutError(
+            f"longitudinal_provenance.{key} must be {'an int' if want is int else 'a string'}, as Module 4's "
+            f"LongitudinalProvenanceRecord types it, got {type(value).__name__}"
+        )
+    if key == "excluded_standalone_icf_count" and value < 0:
+        raise OutcomesLayoutError(
+            f"longitudinal_provenance.{key} cannot be negative; it counts the documents left out (value not shown)"
+        )
+    return value
+
+
 def normalize_longitudinal_provenance(
     raw: Mapping[str, Any] | None,
     *,
@@ -3564,13 +3664,22 @@ def normalize_longitudinal_provenance(
         "publications": list(pubs_raw),
         "date_deltas": dict(date_deltas_raw),
     }
-    for meta_key in ("provenance_schema_version", "provenance_rules_version", "excluded_standalone_icf_count"):
+    for meta_key in _MODULE4_METADATA_TYPES:
         if meta_key in raw:
-            out[meta_key] = raw[meta_key]
+            out[meta_key] = _module4_metadata_value(meta_key, raw[meta_key])
     # Module 4's own provenance stamps, published when given so the section
-    # cannot outrun its source unnoticed (round 3: both were dropped).
+    # cannot outrun its source unnoticed (round 3: both were dropped). Module
+    # 4's record types assembled_at ``str | None`` and its projection always
+    # writes the key, null by default: null states that no assembly time was
+    # recorded and is published as null; only a stated time is validated
+    # (codex review of PR #114: Module 4's default projection was refused).
     if "assembled_at" in raw:
-        out["assembled_at"] = validate_iso_timestamp(raw["assembled_at"], "longitudinal_provenance.assembled_at")
+        assembled_at = raw["assembled_at"]
+        out["assembled_at"] = (
+            None
+            if assembled_at is None
+            else validate_iso_timestamp(assembled_at, "longitudinal_provenance.assembled_at")
+        )
     if "source_pipeline_commit" in raw:
         out["source_pipeline_commit"] = validate_commit_stamp(
             raw["source_pipeline_commit"], allow_null=True, label="longitudinal_provenance.source_pipeline_commit"
@@ -4696,7 +4805,11 @@ def _validate_shard_decision_rule_locations(
         if type(row.get("primary_outcome_index")) is not int or row["primary_outcome_index"] < 0:
             row_errs.append(f"{where}.primary_outcome_index is invalid")
             sound = False
-        if row.get("element") not in _ELEMENT_ORDER:
+        # A string before the lookup: _ELEMENT_ORDER is a dict, and an object
+        # or list element raised TypeError (unhashable) out of --check (codex
+        # review of PR #114, the cohorts defect in a location row).
+        element = row.get("element")
+        if type(element) is not str or element not in _ELEMENT_ORDER:
             row_errs.append(f"{where}.element is not one of the elements (value not shown)")
             sound = False
         status = row.get("status")
@@ -5271,11 +5384,15 @@ def validate_outcomes_tree(
             if row.get("in_audit") is True:
                 recomputed_holdouts += 1
             cohorts = row.get("cohorts")
+            # Every element is a slug before the list is de-duplicated and
+            # sorted: set() raises on an object or list element and sorted()
+            # on strings mixed with numbers, which stopped --check with a
+            # traceback instead of this problem (codex review of PR #114).
             if (
                 not isinstance(cohorts, list)
                 or not cohorts
-                or cohorts != sorted(set(cohorts))
                 or not all(isinstance(c, str) and COHORT_RE.fullmatch(c) for c in cohorts)
+                or cohorts != sorted(set(cohorts))
             ):
                 found_problems.append(
                     f"{INDEX_FILE}.data[{nct_id}].cohorts is invalid: it must be a non-empty sorted list of unique "
