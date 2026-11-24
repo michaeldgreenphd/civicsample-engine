@@ -104,7 +104,10 @@ Key invariants:
   verification and shard layout builders.
 - Mandatory provenance stamps: document rows require non-empty ``model_id`` and
   ``profile_version``; location rows require non-empty ``model_id`` and
-  ``prompt_version``.
+  ``prompt_version``. The one exception is the batch planner's
+  ``require_provenance_stamps=False`` for a deterministic document-indexer
+  profile document, which no model produced (``verify_document_record``);
+  ``verify`` never sets it.
 - Strict single-page quotation verification: a quotation must match within the
   single declared ``physical_page`` text (via exact whitespace match or
   NFKC/typographic/line-break-hyphen normalization). Cross-page spans are
@@ -153,7 +156,7 @@ from typing import (
 import unicodedata
 from urllib.parse import unquote
 
-__version__: Final[str] = "1.6.0"
+__version__: Final[str] = "1.7.0"
 # 1.3.0: record-wide NCT token rule, NOT_FOUND needs a document and a complete search
 # record, neutral-language guard over every field, stricter page maps (see module notes).
 # 1.4.0: loose NCT readings (separators, look-alike letters, combining marks), holdout flag
@@ -168,7 +171,10 @@ __version__: Final[str] = "1.6.0"
 # 1.6.0: a corpus with quotations compared with no page text is not ok; refusals of a trial
 # outside the verified scope do not name it; a page-map file holding no pages is refused; an
 # ID split over neighbouring values of one mapping is read joined.
-VERIFIER_RULES_VERSION: Final[str] = "1.6.0"
+# 1.7.0: ``extraction_error`` (the document indexer's record key) is an optional document
+# key; verify_document_record takes require_provenance_stamps, which only the planner sets
+# False, for the documents of a deterministic document-indexer profile (verify never does).
+VERIFIER_RULES_VERSION: Final[str] = "1.7.0"
 
 STRICT_NCT_ID_RE: Final[re.Pattern[str]] = re.compile(r"^NCT[0-9]{8}$", re.ASCII)
 
@@ -246,6 +252,7 @@ DOCUMENT_OPTIONAL_KEYS: Final[tuple[str, ...]] = (
     "api_doc_date",
     "upload_timing",
     "download_error",
+    "extraction_error",
     "cache_hit",
 )
 LOCATION_REQUIRED_KEYS: Final[tuple[str, ...]] = (
@@ -3793,11 +3800,27 @@ def verify_document_record(
     allow_empty_audit_set: bool = False,
     strict_keys: bool = True,
     pdf_root: Path | None = None,
+    require_provenance_stamps: bool = True,
 ) -> list[VerificationIssue]:
-    """Validate a single document record against firewall, provenance, schema, and hash rules."""
+    """Validate a single document record against firewall, provenance, schema, and hash rules.
+
+    ``require_provenance_stamps`` (default True) keeps the F6 stamps
+    ``model_id`` and ``profile_version`` among the required keys. Only the
+    batch planner passes False, and only for a document of a ``--profiles``
+    row exactly as the deterministic document indexer writes it, which no
+    model produced (``scripts/verify_and_plan_census_batch.py``,
+    ``_is_m1_deterministic_profile_document``); the stamps are then not
+    required, but a stamp that is present is still checked, and every other
+    rule applies. ``verify`` and ``verify_census_corpus`` never pass it, so no
+    census document row is let through without its stamps.
+    """
     if not isinstance(doc, Mapping):
         raise CitationVerificationError(
             f"Document record must be a mapping, got {type(doc).__name__}."
+        )
+    if type(require_provenance_stamps) is not bool:
+        raise CitationVerificationError(
+            f"require_provenance_stamps must be bool, got {type(require_provenance_stamps).__name__}."
         )
 
     nct_id, checked_audit_ids, checked_scope_ids = _enforce_record_firewall(
@@ -3820,6 +3843,10 @@ def verify_document_record(
 
     keys = set(doc.keys())
     required = set(DOCUMENT_REQUIRED_KEYS)
+    if not require_provenance_stamps:
+        # A deterministic document (see the docstring) carries no model stamps; they stay
+        # allowed keys, and are checked below when present.
+        required -= {"model_id", "profile_version"}
     missing = sorted(required - keys)
     if missing:
         issues.append(
@@ -3834,7 +3861,12 @@ def verify_document_record(
             )
         )
 
-    allowed = (required | {"in_audit"}) if strict_keys else (required | set(DOCUMENT_OPTIONAL_KEYS))
+    all_document_keys = set(DOCUMENT_REQUIRED_KEYS)
+    allowed = (
+        (all_document_keys | {"in_audit"})
+        if strict_keys
+        else (all_document_keys | set(DOCUMENT_OPTIONAL_KEYS))
+    )
     extra = sorted(str(k) for k in keys - allowed)
     if extra:
         issues.append(

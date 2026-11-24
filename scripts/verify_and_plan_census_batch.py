@@ -36,7 +36,10 @@ trial in any key or string (an alias included), and its classic ``NCTId``
 must be its ``nct_id``.
 ``--documents``, ``--locations``
 and ``--profiles`` rows follow the same token rule under every key and string,
-with the row's own trial also admitted. ``verify --pages-dir`` hands the page
+with the row's own trial also admitted. ``--documents`` and ``--locations`` rows
+and ``--profiles`` documents carry the F6 provenance stamps, except the
+documents of a ``--profiles`` row exactly as the document indexer (m1) writes
+it, which no model produced (``_is_m1_deterministic_profile_document``). ``verify --pages-dir`` hands the page
 provider the ``(nct_id, sha256)`` pairs of the in-scope documents, so no
 content-addressed page map outside them is opened. ``plan`` files a trial as
 ``cached_complete`` only when every one of its current documents passes
@@ -135,7 +138,11 @@ PLANNER_SCHEMA_VERSION: Final[int] = 1
 # 1.8.0: cached_complete also needs every current document (--documents rows, or the
 # profile's documents that replace them) to pass verify_document_record; a document verify
 # refuses (http_status 200 with no page count, say) makes the rows verdict rejected.
-PLANNER_RULES_VERSION: Final[str] = "1.8.0"
+# 1.9.0: the documents of a --profiles row exactly as the document indexer (m1) writes it
+# need no F6 stamps (model_id, profile_version): no model produced them, and the row carries
+# the deterministic run's stamps (_is_m1_deterministic_profile_document); a document
+# carrying model_id, every --documents row and every location row keep F6.
+PLANNER_RULES_VERSION: Final[str] = "1.9.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
 CostSchedule = Literal["sliced", "full", "conservative"]
@@ -168,6 +175,63 @@ _SCAN_NOTE_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(?:image[- ]only|scan(?:ned)?|no\s+extractable\s+text|0\s+text\s+pages?|"
     r"raster(?:ized)?|photocop(?:y|ied))\b",
     re.IGNORECASE,
+)
+
+# The deterministic --profiles rows of the document indexer (Module 1,
+# src/document_indexer.py, which this module may not import). F6 provenance stamps
+# (``model_id``, ``profile_version``) record which AI model produced a row; m1's profiles
+# are produced by no model, so their documents carry neither stamp, and the profile row
+# carries the deterministic run's own stamps instead. These are the exact shapes m1 writes:
+# ``build_trial_document_profile`` returns a row of exactly ``_M1_PROFILE_KEYS`` whose
+# ``indexer_rules_version`` is m1's ``INDEXER_RULES_VERSION`` (``doc_indexer@<date>.v<n>``,
+# matched whole by ``_M1_INDEXER_RULES_VERSION_RE``, never as a substring), and
+# ``build_trial_document_record`` returns documents of exactly ``_M1_PROFILE_DOCUMENT_KEYS``.
+# ``write_profiles_jsonl`` writes the row unchanged. A row or document with any other key
+# set (one carrying ``model_id`` claims to be a model's output) is not m1's and is held to
+# F6 in full (``_is_m1_deterministic_profile_document``).
+_M1_INDEXER_RULES_VERSION_RE: Final[re.Pattern[str]] = re.compile(
+    r"doc_indexer@[0-9]{4}-[0-9]{2}-[0-9]{2}\.v[0-9]+", re.ASCII
+)
+_M1_PROFILE_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "nct_id",
+        "indexer_rules_version",
+        "extracted_at",
+        "pipeline_commit",
+        "readability_summary",
+        "redaction_flags",
+        "excluded_icf_count",
+        "document_badge",
+        "documents",
+    }
+)
+_M1_PROFILE_DOCUMENT_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "nct_id",
+        "filename",
+        "doc_type",
+        "url",
+        "http_status",
+        "download_error",
+        "extraction_error",
+        "sha256",
+        "bytes",
+        "physical_pages",
+        "pages_without_text",
+        "readability_status",
+        "unreadable_recovery_bucket",
+        "redaction_markers",
+        "version_label",
+        "version_date_as_printed",
+        "api_doc_date",
+        "upload_date",
+        "upload_timing",
+        "pages_selected",
+        "pages_deferred",
+        "unreadable_statistical_pages",
+        "retrieved_at",
+        "cache_hit",
+    }
 )
 
 
@@ -608,6 +672,53 @@ def _load_doc_cache_by_sha256(
     return by_sha
 
 
+def _is_m1_deterministic_profile(row: Mapping[str, Any]) -> bool:
+    """True when ``row`` is a ``--profiles`` row exactly as the document indexer (m1) writes it.
+
+    Method: m1's ``build_trial_document_profile`` returns exactly
+    ``_M1_PROFILE_KEYS``, and the run's provenance is on the row itself: its
+    ``indexer_rules_version`` (m1's ``INDEXER_RULES_VERSION``, which must match
+    ``_M1_INDEXER_RULES_VERSION_RE`` whole), ``extracted_at`` (a non-empty
+    string) and ``pipeline_commit`` (a non-empty string, or null when m1 ran
+    outside a checkout, as m1 records it). A row with any key m1 does not
+    write, or without those stamps, is not m1's deterministic output. Nothing
+    here is a substring test: the key set is compared whole and the rules
+    version is matched whole.
+    """
+    if set(row.keys()) != _M1_PROFILE_KEYS:
+        return False
+    rules_version = row.get("indexer_rules_version")
+    if type(rules_version) is not str or _M1_INDEXER_RULES_VERSION_RE.fullmatch(rules_version) is None:
+        return False
+    if not _is_non_empty_str(row.get("extracted_at")):
+        return False
+    commit = row.get("pipeline_commit")
+    return commit is None or _is_non_empty_str(commit)
+
+
+def _is_m1_deterministic_profile_document(
+    profile: Mapping[str, Any], doc: Any
+) -> bool:
+    """True when ``doc``, a document of ``profile``, is exempt from the F6 provenance stamps.
+
+    Method (planner 1.9.0): F6 (``model_id``, ``profile_version``) records which
+    AI model produced a row. A document of an m1 profile
+    (``_is_m1_deterministic_profile``) whose key set is exactly
+    ``_M1_PROFILE_DOCUMENT_KEYS`` (m1's ``build_trial_document_record``) was
+    produced by no model, and the profile row carries its deterministic
+    provenance, so it carries neither stamp. A document with any other key set
+    is not m1's: one carrying ``model_id`` claims to be a model's output and is
+    held to F6 in full, ``profile_version`` included. The exemption applies to
+    ``plan``'s ``--profiles`` documents only: ``--documents`` rows, location
+    rows, and every row ``verify`` reads keep F6.
+    """
+    return (
+        isinstance(doc, Mapping)
+        and set(doc.keys()) == _M1_PROFILE_DOCUMENT_KEYS
+        and _is_m1_deterministic_profile(profile)
+    )
+
+
 def _validate_profile_entry(
     key_nct: Any,
     row: Mapping[str, Any],
@@ -623,7 +734,10 @@ def _validate_profile_entry(
     walk and the record token rule with that trial as its own; ``documents``,
     when given, must be a list of objects, each carrying the provenance stamps
     of a ``--documents`` row (``model_id``, ``profile_version``), since the
-    plan partitions and fingerprints the trial on them.
+    plan partitions and fingerprints the trial on them, unless it is a
+    document of a deterministic m1 profile
+    (``_is_m1_deterministic_profile_document``), which no model produced. The
+    firewall above runs on every profile, m1's included.
     """
     checked_key = validate_strict_nct_id(key_nct, context=f"{context}.nct_id")
     _prescan_nested_nct_fields(row, context=context)
@@ -664,7 +778,10 @@ def _validate_profile_entry(
                 )
             # A profile's documents replace the trial's --documents rows in the plan (the
             # trial is partitioned and fingerprinted on them), so they carry the same F6
-            # provenance stamps a --documents row must carry.
+            # provenance stamps a --documents row must carry, unless they are m1's
+            # deterministic documents, which no model produced (planner 1.9.0).
+            if _is_m1_deterministic_profile_document(row, doc):
+                continue
             _validate_document_provenance_for_plan(
                 doc, context=f"{context}.documents[{doc_idx}]"
             )
@@ -1010,6 +1127,7 @@ def _trial_rows_verify(
     allow_empty_audit_set: bool,
     page_text_provider: PageTextProvider | None,
     text_source: str,
+    provenance_exempt_filenames: AbstractSet[str] = frozenset(),
 ) -> RowsVerdict:
     """Return whether every location row of one trial is a row ``verify`` would accept.
 
@@ -1044,7 +1162,11 @@ def _trial_rows_verify(
     ``verify_document_record`` raises ``InvalidNctIdError`` for a document
     with no strict ``nct_id``, as ``verify`` does; a ``--documents`` row
     always has one by now, and a profile document without one stops the
-    plan here rather than being judged on its rows.
+    plan here rather than being judged on its rows. A document named in
+    ``provenance_exempt_filenames`` (the deterministic m1 profile documents
+    ``_is_m1_deterministic_profile_document`` admits, planner 1.9.0) is
+    judged with ``require_provenance_stamps=False``: the F6 stamps are not
+    required of it, and every other rule applies as to any document.
 
     Returns ``"rejected"`` for any error-severity issue of a document or a
     row, two rows for one (outcome, element, pass) cell, or two current
@@ -1068,6 +1190,7 @@ def _trial_rows_verify(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
             strict_keys=False,
+            require_provenance_stamps=doc.get("filename") not in provenance_exempt_filenames,
         )
         if any(issue.severity == "error" for issue in doc_issues):
             return "rejected"
@@ -1125,7 +1248,9 @@ def plan_incremental_cohort(
 
     Enforces strict ASCII NCT IDs, ``in_audit == False``, in-scope membership,
     ``expected_k >= 1``, and provenance stamps across all input streams
-    (``documents`` rows and a profile's ``documents``). ``mode`` and
+    (``documents`` rows and a profile's ``documents``; a deterministic m1
+    profile's documents, which no model produced, carry none:
+    ``_is_m1_deterministic_profile_document``). ``mode`` and
     ``cost_schedule`` must be one of ``PLAN_MODES`` / ``COST_SCHEDULES``
     exactly; anything else is refused, never read as the default.
 
@@ -1443,8 +1568,17 @@ def plan_incremental_cohort(
         expected_k = _require_expected_primary_outcomes(row, context="plan index row")
 
         profile = profiles_by_nct.get(nct_id)
+        # The documents of a deterministic m1 profile carry no F6 stamps (planner 1.9.0,
+        # ``_is_m1_deterministic_profile_document``); the rows verdict judges them without.
+        provenance_exempt_filenames: frozenset[str] = frozenset()
         if profile is not None and isinstance(profile.get("documents"), list):
             current_docs: list[Mapping[str, Any]] = list(profile["documents"])
+            provenance_exempt_filenames = frozenset(
+                doc["filename"]
+                for doc in current_docs
+                if _is_m1_deterministic_profile_document(profile, doc)
+                and type(doc.get("filename")) is str
+            )
         else:
             current_docs = list(existing_docs_by_nct.get(nct_id, ()))
 
@@ -1558,6 +1692,7 @@ def plan_incremental_cohort(
                 allow_empty_audit_set=allow_empty_audit_set,
                 page_text_provider=page_text_provider,
                 text_source=text_source,
+                provenance_exempt_filenames=provenance_exempt_filenames,
             )
         if rows_verdict == "rejected":
             # A cache entry exists, but some row of the trial would fail verify (a quotation

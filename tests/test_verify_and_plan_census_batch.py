@@ -4164,3 +4164,232 @@ def test_m4_r7_cached_complete_needs_current_documents_that_verify_accepts(
     assert plan["partitions"]["amended_doc_or_outcome_delta"] == [RT_SCOPE_ID], plan["partitions"]
     rc, printed = _rt_f442_run(["verify", *args, "--pages-dir", str(maps)], capsys)
     assert rc == 1 and "INVALID_PHYSICAL_PAGES" in printed, printed
+
+
+# ---------------------------------------------------------------------------
+# Investigator-approved design decisions D1-D4 on PR #113 (fictional
+# NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+_D_M1_RULES_VERSION = "doc_indexer@2026-11-21.v1"
+
+
+def _m1_profile_document(
+    nct_id: str, filename: str, sha256: str, *, physical_pages: int = 10
+) -> dict[str, Any]:
+    """An indexed document exactly as m1's ``build_trial_document_record`` writes it.
+
+    A copy of the shape (the 24 keys, their types and nesting) that
+    src/document_indexer.py on main returns for a machine-readable document;
+    the m4 files may not import m1 (``test_m4_static_isolation_...``). It
+    carries no ``model_id`` or ``profile_version``: no model produced it.
+    """
+    day = {"raw": None, "iso_normalized": None, "date_precision": "unknown", "earliest_iso": None, "latest_iso": None}
+    unknown_delta = {
+        "exact_days": None,
+        "min_days": None,
+        "max_days": None,
+        "uploaded_precision": "unknown",
+        "anchor_precision": "unknown",
+        "date_precision": "unknown",
+        "relation": "unknown_missing_date",
+    }
+    return {
+        "nct_id": nct_id,
+        "filename": filename,
+        "doc_type": "protocol",
+        "url": f"https://cdn.clinicaltrials.gov/large-docs/{nct_id[-2:]}/{nct_id}/{filename}",
+        "http_status": 200,
+        "download_error": None,
+        "extraction_error": None,
+        "sha256": sha256,
+        "bytes": 4096,
+        "physical_pages": physical_pages,
+        "pages_without_text": [],
+        "readability_status": "machine_readable",
+        "unreadable_recovery_bucket": None,
+        "redaction_markers": [],
+        "version_label": "Version 2.0",
+        "version_date_as_printed": "15 January 2020",
+        "api_doc_date": None,
+        "upload_date": None,
+        "upload_timing": {
+            "uploaded_date": dict(day),
+            "primary_completion_date": dict(day),
+            "results_first_post_date": dict(day),
+            "vs_primary_completion": dict(unknown_delta),
+            "vs_results_first_post": dict(unknown_delta),
+        },
+        "pages_selected": list(range(1, physical_pages + 1)),
+        "pages_deferred": [],
+        "unreadable_statistical_pages": [],
+        "retrieved_at": "2026-11-21T00:00:00Z",
+        "cache_hit": False,
+    }
+
+
+def _m1_profile(
+    nct_id: str,
+    documents: list[dict[str, Any]],
+    *,
+    rules_version: str = _D_M1_RULES_VERSION,
+) -> dict[str, Any]:
+    """A --profiles row exactly as m1's ``build_trial_document_profile`` writes it (9 keys)."""
+    return {
+        "nct_id": nct_id,
+        "indexer_rules_version": rules_version,
+        "extracted_at": "2026-11-21T00:00:00Z",
+        "pipeline_commit": "a" * 40,
+        "readability_summary": "machine_readable",
+        "redaction_flags": [],
+        "excluded_icf_count": 0,
+        "document_badge": {
+            "readability_status": "machine_readable",
+            "redaction_flags": [],
+            "doc_count": len(documents),
+            "total_physical_pages": sum(doc["physical_pages"] for doc in documents),
+        },
+        "documents": documents,
+    }
+
+
+def _d_index_path(root: Path, name: str, rows: list[dict[str, Any]] | None = None) -> Path:
+    """Write an index (``_rt_index_rows`` unless ``rows``) and return its path."""
+    path = root / name / "index.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"data": _rt_index_rows() if rows is None else rows}), encoding="utf-8")
+    return path
+
+
+def test_m4_d1_plan_accepts_the_deterministic_profiles_m1_writes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """D1: plan takes m1's --profiles, whose documents no model produced and carry no F6 stamps.
+
+    Before: ``_validate_profile_entry`` required ``model_id`` and
+    ``profile_version`` of every profile document, so ``plan --profiles`` on
+    the profiles the document indexer (m1) writes exited 1, and the rows
+    verdict (``verify_document_record``) would have rejected them too. Now a
+    document of a profile row exactly as m1 writes it (its key set, and its
+    ``indexer_rules_version`` matched whole) needs neither stamp, so a trial
+    planned on it can be ``cached_complete``. Still held to F6 in full: the
+    same document carrying ``model_id`` (it claims a model's output), a
+    profile row m1 would not write, the document as a ``--documents`` row, and
+    every row ``verify`` reads. The holdout firewall on profiles is unchanged.
+    """
+    doc = _m1_profile_document(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    profile = _m1_profile(RT_SCOPE_ID, [doc])
+    locations = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    provider = _quoted_pages_provider([SHA_1], audit_nct_ids=frozenset({RT_AUDIT_ID}))
+
+    # CLI: plan --profiles <m1 profiles> with page text plans the trial, cached_complete.
+    index_path = _d_index_path(tmp_path, "d1")
+    profiles_path = tmp_path / "d1" / "trial_document_profiles.jsonl"
+    locations_path = tmp_path / "d1" / "locations.jsonl"
+    _write_jsonl(profiles_path, [profile])
+    _write_jsonl(locations_path, locations)
+    pages = _rt_m4_pages_dir(tmp_path / "d1_maps", {f"{SHA_1}.json": {"pages": _RT_M4_PAGES}})
+    plan_path = tmp_path / "d1_plan.json"
+    plan_args = ["plan", "--index", str(index_path), "--locations", str(locations_path)]
+    rc, printed = _rt_f442_run(
+        [*plan_args, "--profiles", str(profiles_path), "--pages-dir", str(pages), "--out-plan", str(plan_path)],
+        capsys,
+    )
+    assert rc == 0, printed
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan["planner_rules_version"] == "1.9.0"
+    assert plan["partitions"]["cached_complete"] == [RT_SCOPE_ID], plan["partitions"]
+
+    # The library entry point, the same.
+    plan = plan_incremental_cohort(
+        _rt_index_rows(),
+        locations=locations,
+        profiles_by_nct={RT_SCOPE_ID: profile},
+        page_text_provider=provider,
+        planned_at="2026-11-24T00:00:00+00:00",
+    )
+    assert plan["partitions"]["cached_complete"] == [RT_SCOPE_ID], plan["partitions"]
+
+    # The same document claiming a model's output (model_id, no profile_version): F6 in full.
+    claimed = {**doc, "model_id": "claude-sonnet-4-6-20260601"}
+    with pytest.raises(CitationVerificationError, match="profile_version"):
+        plan_incremental_cohort(
+            _rt_index_rows(),
+            profiles_by_nct={RT_SCOPE_ID: _m1_profile(RT_SCOPE_ID, [claimed])},
+            planned_at="2026-11-24T00:00:00+00:00",
+        )
+    _write_jsonl(profiles_path, [_m1_profile(RT_SCOPE_ID, [claimed])])
+    rc, printed = _rt_f442_run([*plan_args, "--profiles", str(profiles_path)], capsys)
+    assert rc == 1 and "profile_version" in printed, printed
+
+    # Profile rows m1 does not write are not exempt: a rules version that is not m1's
+    # (matched whole, so neither a prefix nor a longer name passes), an extra key, a
+    # missing or empty run stamp.
+    not_m1_rows = {
+        "rules_version_unversioned": {**profile, "indexer_rules_version": "doc_indexer@latest"},
+        "rules_version_longer_name": {**profile, "indexer_rules_version": "x" + _D_M1_RULES_VERSION},
+        "rules_version_trailing": {**profile, "indexer_rules_version": _D_M1_RULES_VERSION + "-rc"},
+        "extra_key": {**profile, "in_audit": False},
+        "empty_extracted_at": {**profile, "extracted_at": " "},
+        "no_pipeline_commit_key": {k: v for k, v in profile.items() if k != "pipeline_commit"},
+    }
+    for label, row in not_m1_rows.items():
+        with pytest.raises(CitationVerificationError, match="model_id"):
+            plan_incremental_cohort(
+                _rt_index_rows(),
+                profiles_by_nct={RT_SCOPE_ID: row},
+                planned_at="2026-11-24T00:00:00+00:00",
+            )
+            pytest.fail(f"{label}: a profile m1 does not write was exempted from F6")
+    # A document with a key m1 does not write is not exempt either.
+    with pytest.raises(CitationVerificationError, match="model_id"):
+        plan_incremental_cohort(
+            _rt_index_rows(),
+            profiles_by_nct={RT_SCOPE_ID: _m1_profile(RT_SCOPE_ID, [{**doc, "note": "edited"}])},
+            planned_at="2026-11-24T00:00:00+00:00",
+        )
+
+    # The exemption is plan --profiles only: the same document as a --documents row is F6-refused.
+    with pytest.raises(CitationVerificationError, match="model_id"):
+        plan_incremental_cohort(
+            _rt_index_rows(), documents=[doc], planned_at="2026-11-24T00:00:00+00:00"
+        )
+    documents_path = tmp_path / "d1" / "documents.jsonl"
+    _write_jsonl(documents_path, [doc])
+    rc, printed = _rt_f442_run([*plan_args, "--documents", str(documents_path)], capsys)
+    assert rc == 1 and "model_id" in printed, printed
+
+    # verify keeps F6: a census document row without model_id, and a location row without
+    # it, are refused (exit 1) with their missing-key errors, page text or not.
+    unstamped_doc = _doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    del unstamped_doc["model_id"]
+    unstamped_locations = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    for row in unstamped_locations:
+        del row["model_id"]
+    for label, documents, rows, expected_code in (
+        ("census_document", [unstamped_doc], locations, "DOCUMENT_MISSING_KEYS"),
+        ("m1_document_as_census_row", [doc], locations, "DOCUMENT_MISSING_KEYS"),
+        ("census_location", [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)], unstamped_locations, "LOCATION_MISSING_KEYS"),
+    ):
+        args = _rt_m4_inputs(tmp_path, f"d1_verify_{label}", documents=documents, locations=rows)
+        report_path = tmp_path / f"d1_verify_{label}.json"
+        rc, printed = _rt_f442_run(
+            ["verify", *args, "--allow-extra-document-keys", "--pages-dir", str(pages), "--report-out", str(report_path)],
+            capsys,
+        )
+        assert rc == 1, (label, printed)
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        missing = [i for i in report["issues"] if i["code"] == expected_code]
+        assert missing and all("model_id" in i["message"] for i in missing), (label, report["issues"])
+
+    # The holdout firewall on profiles is unchanged: an m1 profile of the audit trial is refused.
+    held_out = _m1_profile(RT_AUDIT_ID, [_m1_profile_document(RT_AUDIT_ID, "Prot_000.pdf", SHA_2)])
+    with pytest.raises(AuditHoldoutViolationError):
+        plan_incremental_cohort(
+            _rt_index_rows(),
+            profiles_by_nct={RT_AUDIT_ID: held_out},
+            planned_at="2026-11-24T00:00:00+00:00",
+        )
+    _write_jsonl(profiles_path, [profile, held_out])
+    rc, printed = _rt_f442_run([*plan_args, "--profiles", str(profiles_path)], capsys)
+    assert rc == 2 and RT_AUDIT_ID not in printed, printed
