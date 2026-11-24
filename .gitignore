@@ -68,3 +68,8 @@ data/sex_gender_raw_measures.jsonl.gz
 data/sex_gender/
 data/sex_gender_raw_envelope.jsonl.gz
 data/analysis_sidecar/
+
+# Transient document pre-indexer caches
+data/document_cache/
+data/document_index_by_sha256.jsonl
+data/trial_document_profiles.jsonl
