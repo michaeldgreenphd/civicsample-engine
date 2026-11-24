@@ -1735,15 +1735,16 @@ def test_namedtuple_dataclass_and_attrs_records_carrying_in_audit_are_refused(
 
 # Names that qualify in_audit rather than spell it and are read as the flag
 # (src/holdout_guard.py is_flag_key): pandas' default merge suffixes _x/_y,
-# a json_normalize path (sep "."), and an "is_" prefix. A custom suffix
-# (in_audit_manifest) or a prefix (manifest_in_audit) is no longer read:
-# the exact rule that keeps domain_audit from being a flag excludes them
-# (test_flag_key_rule_names_and_non_names).
+# a json_normalize path (sep "."), an "is_" prefix, and a custom join suffix
+# or prefix (in_audit_manifest, manifest_in_audit), read because their words
+# hold "in" then "audit".
 _REDTEAM_QUALIFIED_IN_AUDIT_NAMES: list[str] = [
     "in_audit_x",
     "in_audit_y",
     "manifest.in_audit",
     "is_in_audit",
+    "in_audit_manifest",
+    "manifest_in_audit",
 ]
 
 
@@ -2999,19 +3000,22 @@ def test_redteam_m2_round4_dc38220_bundle_parses_before_any_holdout_branch() -> 
 
 def test_flag_key_rule_names_and_non_names() -> None:
     # The flag is an exact name once the last "."-segment is taken, pandas'
-    # _x/_y merge suffixes are removed and only ASCII letters are kept: no
-    # substring matching, so words that merely contain "inaudit" are fields.
+    # _x/_y merge suffixes are removed and only ASCII letters are kept, or a
+    # name whose ASCII words hold "in" then "audit" (a custom join suffix or
+    # prefix). No substring matching: words that merely contain "audit" are fields.
     from src import holdout_guard as hg
 
     flags = [
         "in_audit", "inAudit", "IN_AUDIT", "in-audit", "In Audit", "in_audit ",
         "is_in_audit", "isInAudit", "in_audit_x", "in_audit_y", "IN_AUDIT_Y",
-        "manifest.in_audit", "manifest.in_audit_y", "in​_audit",
+        "manifest.in_audit", "manifest.in_audit_y", "in​_audit", "inaudit",
+        "in_audit_manifest", "manifest_in_audit", "in_audit_flag", "InAuditFlag",
+        "manifest.in_audit_manifest",
     ]
     not_flags: list[Any] = [
-        "domain_audit", "main_audit", "login_audit", "audit", "in_audit_flag",
-        "in_audit_manifest", "manifest_in_audit", "in.audit",
-        "ｉｎ＿ａｕｄｉｔ", "іn_audit", b"in_audit", None, 1,
+        "domain_audit", "main_audit", "login_audit", "within_audit", "plugin_audit",
+        "audit", "audit_in", "in.audit", "inaudit_x2", "ｉｎ＿ａｕｄｉｔ", "іn_audit",
+        b"in_audit", None, 1,
     ]
     ids = ["nct_id", "nctId", "NCT Number", "nctNumber", "nct_id_x", "nct_id_m",
            "manifest.nct_id", "NCT ID"]

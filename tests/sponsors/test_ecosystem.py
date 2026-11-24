@@ -1731,14 +1731,16 @@ _REDTEAM_HOLDOUT_ID: str = "NCT99000101"  # the first trial of _HOLDOUT_ROWS
 
 # Names that qualify in_audit rather than spell it and are read as the flag
 # (src/holdout_guard.py is_flag_key): pandas' default merge suffixes _x/_y,
-# a json_normalize path (sep "."), and an "is_" prefix. A custom suffix
-# (in_audit_manifest) or a prefix (manifest_in_audit) is no longer read:
-# the exact rule that keeps domain_audit from being a flag excludes them.
+# a json_normalize path (sep "."), an "is_" prefix, and a custom join suffix
+# or prefix (in_audit_manifest, manifest_in_audit), read because their words
+# hold "in" then "audit".
 _REDTEAM_QUALIFIED_IN_AUDIT_NAMES: list[str] = [
     "in_audit_x",
     "in_audit_y",
     "manifest.in_audit",
     "is_in_audit",
+    "in_audit_manifest",
+    "manifest_in_audit",
 ]
 
 

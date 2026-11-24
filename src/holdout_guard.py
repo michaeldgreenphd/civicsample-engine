@@ -25,13 +25,16 @@ namedtuple, dataclass, sqlite3.Row, tuple, set, generator, numpy value, Enum
 key, XML element, an object with attributes) is not opened: a flag can hide
 in such values in more ways than a scan can enumerate.
 
-Not seen, by design: a flag the caller removed or renamed, written with
-look-alike or full-width letters, serialized into a string (JSON or repr text,
-a CSV round trip of a dict column), held as a value (DataFrame.melt, key/value
-lists), under a custom merge suffix or prefix (in_audit_manifest,
-manifest_in_audit), or set as a DataFrame attribute instead of a column. A
-caller who deletes the flag defeats any scanner; the guarantee rests on the
-caller's exclusion.
+Read as the flag: the exact names and the names whose words hold "in" then
+"audit", including a custom join suffix or prefix (in_audit_manifest,
+manifest_in_audit); see is_flag_key.
+
+Not seen, by design: a flag the caller removed or renamed to other words,
+written with look-alike or full-width letters, serialized into a string (JSON
+or repr text, a CSV round trip of a dict column), held as a value
+(DataFrame.melt, key/value lists), or set as a DataFrame attribute instead of
+a column. A caller who deletes the flag defeats any scanner; the guarantee
+rests on the caller's exclusion.
 """
 
 from __future__ import annotations
@@ -73,6 +76,10 @@ _CANONICAL_NCT_ID_RE: re.Pattern[str] = re.compile(r"NCT[0-9]{8}")
 _NOT_ASCII_LETTER_RE: re.Pattern[str] = re.compile(r"[^a-z]+")
 _MERGE_SUFFIXES: tuple[str, ...] = ("_x", "_y")  # pandas merge's default suffixes
 _FLAG_LETTERS: frozenset[str] = frozenset({"inaudit", "isinaudit"})
+# A name's ASCII words: an upper-case run not followed by a lower-case letter
+# (IN in IN_AUDIT), a capitalised or lower-case word (In, in), or digits.
+_WORD_RE: re.Pattern[str] = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
+_FLAG_WORDS: tuple[str, str] = ("in", "audit")
 _ID_PREFIXES: tuple[str, ...] = ("nctid", "nctnumber")
 # Exact JSON scalar types; a bool is checked on its own, since it may be a flag.
 _JSON_SCALARS: tuple[type, ...] = (str, int, float, type(None))
@@ -107,21 +114,35 @@ def _letters(segment: str) -> str:
 
 
 def is_flag_key(key: Any) -> bool:
-    """True when ``key`` names the holdout flag (an exact rule, no substring matching).
+    """True when ``key`` names the holdout flag (exact names and whole words, no substring matching).
 
     Method: ``key`` must be exactly a str. Its last "."-separated segment is
-    taken (json_normalize names a nested manifest's flag "manifest.in_audit"),
-    trailing pandas merge suffixes "_x"/"_y" are removed (merging two frames
-    that both carry the flag gives in_audit_x and in_audit_y), and the rest,
-    casefolded and reduced to ASCII letters, must be exactly "inaudit" or
-    "isinaudit". So in_audit, inAudit, IN_AUDIT, in-audit, "In Audit",
-    is_in_audit, in_audit_y and manifest.in_audit are the flag; domain_audit,
-    main_audit and login_audit are not (a substring rule made them flags and
-    refused clean data).
+    taken (json_normalize names a nested manifest's flag "manifest.in_audit").
+    It is the flag when either rule holds:
+
+    - exact: with trailing pandas merge suffixes "_x"/"_y" removed (merging
+      two frames that both carry the flag gives in_audit_x and in_audit_y),
+      the rest, casefolded and reduced to ASCII letters, is exactly "inaudit"
+      or "isinaudit" (in_audit, inAudit, IN_AUDIT, in-audit, "In Audit",
+      inaudit, is_in_audit);
+    - words: the segment's ASCII words (split at separators and at
+      lower-to-upper case changes, casefolded) contain "in" immediately
+      followed by "audit". This reads the names a join gives the flag under a
+      custom suffix or prefix (in_audit_manifest from suffixes=("",
+      "_manifest"), manifest_in_audit) and in_audit_flag.
+
+    domain_audit, main_audit, login_audit and within_audit are not the flag:
+    their words hold "audit" but not after a separate "in" (the earlier
+    substring rule made them flags and refused clean data). Look-alike and
+    full-width letters are not ASCII, so they form no word: a caller who
+    disguises the flag could as easily delete it, which no rule can see.
     """
     if type(key) is not str:
         return False
     segment = key.rsplit(".", 1)[-1]
+    words = [w.casefold() for w in _WORD_RE.findall(segment)]
+    if any(tuple(words[i : i + 2]) == _FLAG_WORDS for i in range(len(words) - 1)):
+        return True
     while segment[-2:].casefold() in _MERGE_SUFFIXES:
         segment = segment[:-2]
     return _letters(segment) in _FLAG_LETTERS
