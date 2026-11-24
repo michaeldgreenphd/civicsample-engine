@@ -68,8 +68,14 @@ Hard safety guarantees:
   ``extraction_failed``, and writes nothing to the cache unless the whole
   ingest succeeds.
 - The document index is read strictly: a repeated key, a coerced type, a
-  missing or extra field or two lines for one ``(sha256, rules version)``
-  stop the run with the file left as it is.
+  missing or extra field, two lines for one ``(sha256, rules version)`` or a
+  page number outside the document stop the run with the file left as it is.
+- A cached index entry is reused only for the ``--min-selected-pages``,
+  ``--max-selected-pages`` and document type it was computed with. A run with
+  other values re-indexes the document (from its cached page map when the
+  cache holds one, so with no new extraction), and the index line is replaced
+  by this run's; a document two trials post with different types keeps the
+  last one's line.
 - ``--limit`` with ``--ingest-census-jsonl`` bounds the trials indexed and
   cached, not only the profiles written.
 - A document URL (a download's, a census row's, a profile record's) must be

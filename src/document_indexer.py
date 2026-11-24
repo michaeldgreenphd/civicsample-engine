@@ -78,10 +78,12 @@ Analytical invariants:
 - Stored state is read strictly. ``document_index_by_sha256.jsonl`` entries
   and ``url_manifest.json`` records carry exactly their schema's keys and
   types (no ``int()``/``str()`` coercion; a null provenance stamp is not
-  turned into text), and one ``(sha256, indexer_rules_version)`` has one
-  line. Census rows and CT.gov payloads carry type-checked fields only, one
-  entry per trial file. A census ingest, and a live run, write to the cache
-  only when they succeed whole (``DocumentCacheStore.staged_writes``).
+  turned into text; an index line written before ``selection_inputs`` was
+  recorded may lack that one key), and one
+  ``(sha256, indexer_rules_version)`` has one line. Census rows and CT.gov
+  payloads carry type-checked fields only, one entry per trial file. A census
+  ingest, and a live run, write to the cache only when they succeed whole
+  (``DocumentCacheStore.staged_writes``).
 - Non-collapsing readability taxonomy: all 7 DocumentReadabilityStatus values
   (machine_readable, partial_image_or_redacted, image_only_scan, garbled_cmap,
   extraction_failed, download_failed, no_document) remain distinct and are
@@ -94,6 +96,13 @@ Analytical invariants:
   indexer_rules_version) and separated from trial-specific bindings so identical
   PDFs shared across trials are downloaded and parsed once while preserving
   original provenance stamps (extracted_at, pipeline_commit).
+- An entry is reused only for the page-selection inputs it was computed with
+  (``selection_inputs``: doc_type, min_selected_pages, max_selected_pages).
+  A request with other inputs, or an entry written before they were recorded,
+  is re-indexed from the cached page map (no new extraction) and replaces the
+  entry, so the index keeps one line per key. A document that two trials post
+  with different doc_types therefore keeps the last request's entry in the
+  index; each trial's profile is built from its own request's entry.
 - Precision-aware upload timing: partial dates (YYYY-MM, YYYY) never fabricate
   '-01' day suffixes; exact_days is populated only when both endpoints have
   day precision, and all keys/values are strictly factual with zero compliance
@@ -196,6 +205,7 @@ SelectionStrategy = Literal[
     "no_readable_pages",
 ]
 
+DOC_TYPES: Final[tuple[DocType, ...]] = ("protocol", "sap", "combined")
 READABILITY_STATUSES: Final[tuple[DocumentReadabilityStatus, ...]] = (
     "machine_readable",
     "partial_image_or_redacted",
@@ -1018,6 +1028,22 @@ def validate_page_selection_bounds(min_selected_pages: Any, max_selected_pages: 
         )
 
 
+def validate_doc_type(doc_type: Any) -> DocType:
+    """Return ``doc_type`` when it is one of ``DOC_TYPES``; ``DocumentIndexerError`` otherwise.
+
+    An index entry records the doc_type it was computed with
+    (``PageSelectionInputs``), and the loader refuses any other value, so an
+    entry point checks it before anything is read, extracted or written. The
+    value is not printed.
+    """
+    if type(doc_type) is not str or doc_type not in DOC_TYPES:
+        raise DocumentIndexerError(
+            f"doc_type must be one of {list(DOC_TYPES)} (got {type(doc_type).__name__}; the value "
+            "is not printed)."
+        )
+    return doc_type  # type: ignore[return-value]
+
+
 def classify_doc_type(has_protocol: bool, has_sap: bool) -> DocType | None:
     """Map CT.gov largeDocs boolean flags to DocType, or None for standalone ICFs."""
     if has_protocol and has_sap:
@@ -1674,6 +1700,81 @@ class SectionSliceResult:
 
 
 @dataclass(frozen=True)
+class PageSelectionInputs:
+    """The request arguments that shape an index entry besides its pages and rules version.
+
+    ``select_statistical_pages`` takes ``doc_type`` (a SAP's opening pages
+    score higher) and the ``min_selected_pages`` / ``max_selected_pages``
+    budget, so two requests for one digest under one rules version can
+    select different pages. An entry records the inputs it was computed with,
+    and ``DocumentCacheStore.get_or_index_document`` serves it only to a
+    request that names the same three.
+    """
+
+    doc_type: DocType
+    min_selected_pages: int
+    max_selected_pages: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "doc_type": self.doc_type,
+            "min_selected_pages": self.min_selected_pages,
+            "max_selected_pages": self.max_selected_pages,
+        }
+
+    @classmethod
+    def from_dict(
+        cls, data: Mapping[str, Any], *, origin: str = "selection_inputs"
+    ) -> PageSelectionInputs:
+        """Read a stored ``to_dict`` object strictly: exact keys, a known doc_type, ``1 <= min <= max``."""
+        obj = _stored_object(
+            data,
+            frozenset({"doc_type", "min_selected_pages", "max_selected_pages"}),
+            origin=origin,
+        )
+        doc_type = _stored_choice(obj["doc_type"], DOC_TYPES, origin=origin, field="doc_type")
+        minimum = _stored_int(
+            obj["min_selected_pages"], origin=origin, field="min_selected_pages", minimum=1
+        )
+        maximum = _stored_int(
+            obj["max_selected_pages"], origin=origin, field="max_selected_pages", minimum=1
+        )
+        if maximum < minimum:
+            raise CacheIntegrityError(
+                f"{origin} field 'max_selected_pages' is below its 'min_selected_pages'; the "
+                "indexer refuses such a budget, so no entry was computed with it."
+            )
+        return cls(
+            doc_type=doc_type,  # type: ignore[arg-type]
+            min_selected_pages=minimum,
+            max_selected_pages=maximum,
+        )
+
+
+# The keys of a stored index line, besides the optional ``selection_inputs``
+# (see ``DocumentIndexEntry.from_dict``).
+_INDEX_ENTRY_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "sha256",
+        "byte_count",
+        "extracted_at",
+        "pipeline_commit",
+        "indexer_rules_version",
+        "text_provider",
+        "physical_pages",
+        "pages_without_text",
+        "readability_status",
+        "unreadable_recovery_bucket",
+        "cmap_metrics",
+        "redaction",
+        "version_label",
+        "version_date_as_printed",
+        "section_slice",
+    }
+)
+
+
+@dataclass(frozen=True)
 class DocumentIndexEntry:
     sha256: str
     byte_count: int
@@ -1690,9 +1791,14 @@ class DocumentIndexEntry:
     version_label: str
     version_date_as_printed: str
     section_slice: SectionSliceResult
+    # None only for an entry read from a line written before the inputs were
+    # recorded: nothing says what produced its selection, so it matches no
+    # request (``DocumentCacheStore.get_or_index_document``) and is re-indexed.
+    selection_inputs: PageSelectionInputs | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        """The stored line; ``selection_inputs`` is left out when None, so an older line is rewritten as it was read."""
+        out: dict[str, Any] = {
             "sha256": self.sha256,
             "byte_count": self.byte_count,
             "extracted_at": self.extracted_at,
@@ -1709,6 +1815,9 @@ class DocumentIndexEntry:
             "version_date_as_printed": self.version_date_as_printed,
             "section_slice": self.section_slice.to_dict(),
         }
+        if self.selection_inputs is not None:
+            out["selection_inputs"] = self.selection_inputs.to_dict()
+        return out
 
     @classmethod
     def from_dict(
@@ -1733,30 +1842,17 @@ class DocumentIndexEntry:
         copies ``pages_without_text``, the slice's selected and deferred pages
         and ``redaction.unreadable_statistical_pages``, so a page the document
         does not have would otherwise reach it.
+
+        ``selection_inputs`` is the one key a line may lack: a line written
+        before it was recorded is read with ``selection_inputs=None`` (and
+        written back without it). When present it must be a
+        ``PageSelectionInputs`` object (``PageSelectionInputs.from_dict``);
+        null is refused, as ``to_dict`` never writes it.
         """
-        obj = _stored_object(
-            data,
-            frozenset(
-                {
-                    "sha256",
-                    "byte_count",
-                    "extracted_at",
-                    "pipeline_commit",
-                    "indexer_rules_version",
-                    "text_provider",
-                    "physical_pages",
-                    "pages_without_text",
-                    "readability_status",
-                    "unreadable_recovery_bucket",
-                    "cmap_metrics",
-                    "redaction",
-                    "version_label",
-                    "version_date_as_printed",
-                    "section_slice",
-                }
-            ),
-            origin=origin,
-        )
+        keys = _INDEX_ENTRY_KEYS
+        if isinstance(data, Mapping) and "selection_inputs" in data:
+            keys = _INDEX_ENTRY_KEYS | {"selection_inputs"}
+        obj = _stored_object(data, keys, origin=origin)
         sha = obj["sha256"]
         if type(sha) is not str or not SHA256_RE.fullmatch(sha):
             raise CacheIntegrityError(
@@ -1814,6 +1910,13 @@ class DocumentIndexEntry:
             ),
             section_slice=SectionSliceResult.from_dict(
                 obj["section_slice"], origin=f"{origin} section_slice"
+            ),
+            selection_inputs=(
+                PageSelectionInputs.from_dict(
+                    obj["selection_inputs"], origin=f"{origin} selection_inputs"
+                )
+                if "selection_inputs" in obj
+                else None
             ),
         )
         pages = entry.physical_pages
@@ -3338,12 +3441,21 @@ def index_document_pages(
     min_selected_pages: int = 10,
     max_selected_pages: int = 25,
 ) -> DocumentIndexEntry:
-    """Classify readability/redaction and slice statistical pages for an extracted PDF."""
+    """Classify readability/redaction and slice statistical pages for an extracted PDF.
+
+    The entry records ``doc_type``, ``min_selected_pages`` and
+    ``max_selected_pages`` as its ``selection_inputs``: they shape
+    ``section_slice`` (and through it the redaction and CMap statistical
+    pages), so the cache serves the entry only to a request naming the same
+    three. ``doc_type`` must be one of ``DOC_TYPES``; the page budget is
+    checked by ``select_statistical_pages``.
+    """
     sha = sha256.strip().lower()
     if not SHA256_RE.fullmatch(sha):
         raise CacheIntegrityError(f"Invalid sha256: {sha256!r}")
     if type(byte_count) is not int or byte_count <= 0:
         raise CacheIntegrityError(f"byte_count must be positive int, got {byte_count!r}")
+    validate_doc_type(doc_type)
 
     sanitized_pages = [sanitize_page_text(p) for p in pages]
     physical_pages = len(sanitized_pages)
@@ -3439,6 +3551,11 @@ def index_document_pages(
         version_label=version_label,
         version_date_as_printed=version_date,
         section_slice=section_slice,
+        selection_inputs=PageSelectionInputs(
+            doc_type=doc_type,
+            min_selected_pages=min_selected_pages,
+            max_selected_pages=max_selected_pages,
+        ),
     )
 
 
@@ -5338,6 +5455,9 @@ class DocumentCacheStore:
 
         Returns (entry, cache_hit) where cache_hit is True when an existing
         (sha256, indexer_rules_version) entry was reused without re-indexing.
+        An entry is reused only for the page-selection inputs it records
+        (``selection_inputs``: ``doc_type``, ``min_selected_pages``,
+        ``max_selected_pages``), which shape its selected pages.
 
         Order, after the requesting trial passes the firewall and the page
         bounds are checked (``validate_page_selection_bounds``, before any
@@ -5357,9 +5477,23 @@ class DocumentCacheStore:
            were extracted for. Serving the entry first let a digest whose map
            is tagged with a holdout trial through as a cache hit, while the
            same digest without an entry was refused.
-        2. An existing entry is served (cache hit) unless re-parsing.
+        2. An existing entry is served (cache hit) unless re-parsing, or
+           unless it was computed with other page-selection inputs than this
+           request's (or, written before they were recorded, says none).
         3. Otherwise the cached pages are re-indexed, or the provider extracts
-           them.
+           them, and an existing entry for the key is replaced with the
+           result (new ``extracted_at`` and ``pipeline_commit``: it is a new
+           computation). The index keeps one line per
+           ``(sha256, indexer_rules_version)``.
+
+        Known limitation of step 3: the line is keyed by digest, not by trial,
+        so a document posted by two trials with different doc_types (one
+        posting it as a protocol, one as a combined protocol and SAP) keeps
+        only the entry of the last request. Each trial's record is built from
+        the entry computed for its own request at the time, so its profile is
+        right; the shared index line describes the last one, and each later
+        run re-indexes the document from its cached page map (no new
+        extraction) whenever the inputs alternate.
 
         A supplied ``pdf_path`` must hash to ``sha256`` and ``byte_count``
         after step 1 and before step 2 (``CacheIntegrityError`` otherwise:
@@ -5374,6 +5508,11 @@ class DocumentCacheStore:
         With ``pdf_path`` None no file is hashed.
         """
         validate_page_selection_bounds(min_selected_pages, max_selected_pages)
+        requested_inputs = PageSelectionInputs(
+            doc_type=validate_doc_type(doc_type),
+            min_selected_pages=min_selected_pages,
+            max_selected_pages=max_selected_pages,
+        )
         combined_audit, combined_allowed = self.merge_firewall_sets(audit_nct_ids, allowed_nct_ids)
 
         if nct_id is not None:
@@ -5446,8 +5585,16 @@ class DocumentCacheStore:
                     "cached. Remove the damaged or substituted file (its own digest is "
                     "not printed)."
                 )
-        if existing is not None and not reparse_cached_pages:
+        if (
+            existing is not None
+            and not reparse_cached_pages
+            and existing.selection_inputs == requested_inputs
+        ):
             return existing, True
+        # From here an existing entry is being re-parsed, or was computed with
+        # other selection inputs (an older line records none): either way the
+        # new entry replaces it rather than put_entry keeping the old one.
+        replace_existing = existing is not None
 
         if cached_pages is not None:
             entry = index_document_pages(
@@ -5462,12 +5609,18 @@ class DocumentCacheStore:
                 min_selected_pages=min_selected_pages,
                 max_selected_pages=max_selected_pages,
             )
-            stored = self.put_entry(entry, overwrite=reparse_cached_pages)
+            stored = self.put_entry(entry, overwrite=replace_existing)
             return stored, False
 
         if provider is None:
+            reason = (
+                "; its index entry was computed with other page-selection inputs and is not "
+                "served for this request"
+                if existing is not None and not reparse_cached_pages
+                else ""
+            )
             raise PageExtractionError(
-                f"No cached pages and no PageTextProvider supplied for sha256={sha}"
+                f"No cached pages and no PageTextProvider supplied for sha256={sha}{reason}"
             )
 
         extracted = provider.extract_pages(
@@ -5507,7 +5660,7 @@ class DocumentCacheStore:
             min_selected_pages=min_selected_pages,
             max_selected_pages=max_selected_pages,
         )
-        stored = self.put_entry(entry, overwrite=reparse_cached_pages)
+        stored = self.put_entry(entry, overwrite=replace_existing)
         return stored, False
 
 

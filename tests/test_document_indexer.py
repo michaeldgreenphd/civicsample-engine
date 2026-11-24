@@ -7403,3 +7403,189 @@ def test_m1_r8_stored_page_numbers_must_lie_in_the_document_and_partition_it(tmp
     for label, (bad, needle) in inexact.items():
         message = _r8_open_refused(tmp_path, label, bad)
         assert needle in message, (label, message)
+
+
+def _r8_long_protocol() -> list[str]:
+    """Forty pages of protocol text on which every body page scores, so a budget of 25 selects 25.
+
+    Each generated page names the per-protocol population (a scored analysis
+    population term) on a line of its own text, so no line repeats across
+    pages and is stripped as a running header.
+    """
+    return [
+        page.replace("according to the protocol.", "in the per-protocol population.")
+        for page in _clean_stat_pages(40)
+    ]
+
+
+def _r8_selection_store(tmp_path: Path, tag: str) -> tuple[di.DocumentCacheStore, Path, di.FixturePageTextProvider, dict[str, Any]]:
+    """A store, its index path, a provider for one forty-page protocol, and the call that indexes it."""
+    pdf = _make_minimal_pdf(f"A forty-page protocol ({tag})")
+    sha = di.sha256_bytes(pdf)
+    provider = di.FixturePageTextProvider({sha: _r8_long_protocol()})
+    index = tmp_path / f"{tag}_index.jsonl"
+    store = di.DocumentCacheStore(tmp_path / f"{tag}_cache", index)
+    call: dict[str, Any] = {"sha256": sha, "byte_count": len(pdf), "provider": provider, "extracted_at": _RT_STAMP}
+    return store, index, provider, call
+
+
+def _r8_index_lines(index: Path) -> list[dict[str, Any]]:
+    """The index file's lines, parsed."""
+    return [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()]
+
+
+def test_m1_r8_smaller_page_budget_is_reindexed_not_served_the_cached_selection(tmp_path: Path) -> None:
+    """After a default (25-page) index, ``max_selected_pages=10`` re-indexes and selects 10 pages.
+
+    ``get_or_index_document`` returned any entry for ``(sha256,
+    indexer_rules_version)`` as a cache hit, so the request got the cached
+    25-page selection. Correct: the entry records the inputs that shaped it
+    (``selection_inputs``), and a request with other inputs is re-indexed
+    from the cached page map (the provider is not called again) and the
+    entry replaced, still one line for the digest.
+    """
+    store, index, provider, call = _r8_selection_store(tmp_path, "budget")
+    default_entry, hit = store.get_or_index_document(**call)
+    assert (len(default_entry.section_slice.pages_selected), hit, len(provider.calls)) == (25, False, 1)
+
+    ten, hit = store.get_or_index_document(**call, max_selected_pages=10)
+    assert (len(ten.section_slice.pages_selected), hit) == (10, False)
+    assert len(provider.calls) == 1, "re-indexed from the cached page map, not extracted again"
+    assert ten.text_provider == "cached_page_map"
+    assert ten.selection_inputs == di.PageSelectionInputs(
+        doc_type="protocol", min_selected_pages=10, max_selected_pages=10
+    )
+    lines = _r8_index_lines(index)
+    assert [line["selection_inputs"] for line in lines] == [
+        {"doc_type": "protocol", "min_selected_pages": 10, "max_selected_pages": 10}
+    ]
+    assert di.DocumentCacheStore(tmp_path / "budget_cache", index).get_entry(call["sha256"]) == ten
+
+
+def test_m1_r8_doc_type_change_is_reindexed(tmp_path: Path) -> None:
+    """A document indexed as a protocol is re-indexed, not served unchanged, when indexed as a SAP.
+
+    ``select_statistical_pages`` scores a SAP's opening pages differently, so
+    the doc_type is one of the inputs an entry is computed with. Correct: a
+    request with another doc_type re-indexes from the cached page map and
+    replaces the entry, which records the new doc_type.
+    """
+    store, index, provider, call = _r8_selection_store(tmp_path, "doctype")
+    _, hit = store.get_or_index_document(**call, doc_type="protocol")
+    assert hit is False
+    as_sap, hit = store.get_or_index_document(**call, doc_type="sap")
+    assert (hit, len(provider.calls)) == (False, 1)
+    assert as_sap.selection_inputs == di.PageSelectionInputs(
+        doc_type="sap", min_selected_pages=10, max_selected_pages=25
+    )
+    assert [line["selection_inputs"]["doc_type"] for line in _r8_index_lines(index)] == ["sap"]
+
+
+def test_m1_r8_matching_selection_inputs_are_a_cache_hit_that_indexes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A request with the inputs the entry records is a cache hit: nothing is indexed or extracted.
+
+    Guards the other side of the round-8 change: entries are still reused
+    (with their original provenance stamps) whenever doc_type,
+    min_selected_pages and max_selected_pages all match.
+    """
+    store, index, provider, call = _r8_selection_store(tmp_path, "match")
+    first, hit = store.get_or_index_document(**call, max_selected_pages=10, doc_type="sap")
+    assert hit is False
+    indexed: list[str] = []
+    real_index = di.index_document_pages
+
+    def _counting(*args: Any, **kwargs: Any) -> di.DocumentIndexEntry:
+        indexed.append(kwargs["sha256"])
+        return real_index(*args, **kwargs)
+
+    monkeypatch.setattr(di, "index_document_pages", _counting)
+    later = {**call, "extracted_at": "2026-11-15T00:00:00Z", "pipeline_commit": "later"}
+    again, hit = store.get_or_index_document(**later, max_selected_pages=10, doc_type="sap")
+    assert (again, hit, indexed, len(provider.calls)) == (first, True, [], 1)
+    assert (again.extracted_at, again.pipeline_commit) == (_RT_STAMP, None)
+
+
+def test_m1_r8_entry_written_without_selection_inputs_is_reindexed(tmp_path: Path) -> None:
+    """An index line written before the inputs were recorded loads, but is re-indexed rather than served.
+
+    Nothing in such a line says which doc_type and page budget produced its
+    selection, so it matches no request. It is read as it was written (and
+    rewritten unchanged while no request touches it), and the first request
+    for its digest re-indexes it from the cached page map and replaces it
+    with a line that records its inputs. A ``selection_inputs`` object that
+    is present is read strictly: null, an unknown doc_type, a budget the
+    indexer would refuse, a bool count or an extra key is refused.
+    """
+    store, index, provider, call = _r8_selection_store(tmp_path, "older")
+    written, _ = store.get_or_index_document(**call)
+    old_line = {k: v for k, v in written.to_dict().items() if k != "selection_inputs"}
+    index.write_text(json.dumps(old_line) + "\n", encoding="utf-8")
+
+    reopened = di.DocumentCacheStore(tmp_path / "older_cache", index)
+    old_entry = reopened.get_entry(call["sha256"])
+    assert old_entry is not None
+    assert old_entry.to_dict() == old_line, "an older line round-trips as it was written"
+    refreshed, hit = reopened.get_or_index_document(**call)
+    assert (hit, len(provider.calls)) == (False, 1)
+    assert old_entry.selection_inputs is None
+    assert refreshed.selection_inputs == di.PageSelectionInputs(
+        doc_type="protocol", min_selected_pages=10, max_selected_pages=25
+    )
+    assert [line["selection_inputs"] for line in _r8_index_lines(index)] == [
+        {"doc_type": "protocol", "min_selected_pages": 10, "max_selected_pages": 25}
+    ]
+
+    good_line = refreshed.to_dict()
+    for label, inputs in {
+        "null": None,
+        "unknown_doc_type": {**good_line["selection_inputs"], "doc_type": "icf"},
+        "max_below_min": {**good_line["selection_inputs"], "max_selected_pages": 9},
+        "bool_min": {**good_line["selection_inputs"], "min_selected_pages": True},
+        "extra_key": {**good_line["selection_inputs"], "note": 1},
+    }.items():
+        _r8_open_refused(tmp_path, f"inputs_{label}", {**good_line, "selection_inputs": inputs})
+
+
+def test_m1_r8_cli_run_with_a_smaller_page_budget_is_not_served_the_cached_selection(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A default run then a ``--max-selected-pages 10`` run profiles 25 then 10 selected pages.
+
+    The second run used to find the first run's entry by digest and profile
+    its 25-page selection as a cache hit. Correct: it is re-indexed from the
+    cached page map (the provider is not called again, nothing is downloaded
+    again) and profiles 10 pages; a third run with the same budget is a cache
+    hit.
+    """
+    pdf = _make_minimal_pdf("A forty-page protocol for the CLI")
+    sha = di.sha256_bytes(pdf)
+    url = di.build_ctgov_large_doc_url(_RT_A, "Prot_000.pdf")
+    study = _make_study(_RT_A, [_r5_doc("Prot_000.pdf", len(pdf))])
+    provider = di.FixturePageTextProvider({sha: _r8_long_protocol()})
+    manifest = _rt_manifest(tmp_path)
+    session = _R3Session({url: pdf})
+
+    def _run(*extra: str) -> dict[str, Any]:
+        rc = cli_mod.run_cli(
+            ["--manifest", str(manifest), "--nct-id", _RT_A, *_rt_outs(tmp_path, "budget"), *extra],
+            api_client=_SpyAPIClient({_RT_A: study}),
+            session=session,
+            provider=provider,
+        )
+        err = capsys.readouterr().err
+        assert rc == 0, err
+        profiles = (tmp_path / "budget_profiles.jsonl").read_text(encoding="utf-8").splitlines()
+        return json.loads(profiles[0])["documents"][0]
+
+    first = _run()
+    second = _run("--max-selected-pages", "10")
+    third = _run("--max-selected-pages", "10")
+    assert [(len(d["pages_selected"]), d["cache_hit"]) for d in (first, second, third)] == [
+        (25, False),
+        (10, False),
+        (10, True),
+    ]
+    assert len(provider.calls) == 1 and session.requested_urls == [url]
+    assert len((tmp_path / "budget_index.jsonl").read_text(encoding="utf-8").splitlines()) == 1
