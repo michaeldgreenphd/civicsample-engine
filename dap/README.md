@@ -141,7 +141,14 @@ modified.
      `unknown_bounds = [floor, (count + unknown + unmapped) / baseline_total]`,
      and `direction_settled` (`True` when both bounds lie strictly on the same
      side of the matched stratum reference median `p50`; `None` when no
-     reference median is available). `baseline_total` is never registered
+     reference median is available). The matched stratum is the trial's own
+     cell; a US-only or multinational-with-US trial whose cell withholds a
+     dimension's median takes that dimension's from its indication x phase US
+     reference cell, each dimension on its own (a cell with enough sex
+     compositions but too few race tables had left race with no reference).
+     `demographics.reference_strata` names each dimension's source, and the
+     contract checks it against `strata.json`. Weekly trials are
+     `footprint_unknown`, so they never fall back. `baseline_total` is never registered
      enrollment: a raw record keeps `enrollmentInfo` only when a
      `Participants` baseline denominator's last count parses, so a denominator
      of `"NA"` no longer balances the tables to enrollment.

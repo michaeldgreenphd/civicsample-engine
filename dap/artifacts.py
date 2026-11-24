@@ -944,6 +944,18 @@ def _check_distribution_obj(dist: Any, where: str, min_cell: int, problems: list
             problems.append(f"{where}: percentiles are not non-decreasing ({vals})")
 
 
+REFERENCE_DIMENSIONS: tuple[str, ...] = ("race", "ethnicity", "sex_gender")
+
+
+def _carries_reference_median(demo: dict[str, Any], dim: str) -> bool:
+    """Whether a trial's race, ethnicity or sex_gender block was compared with a reference median."""
+    block = demo.get(dim) if isinstance(demo.get(dim), dict) else {}
+    entries = block.get("of_parsed_total" if dim == "sex_gender" else "of_baseline_total")
+    return isinstance(entries, dict) and any(
+        isinstance(e, dict) and e.get("reference_median") is not None for e in entries.values()
+    )
+
+
 def check_contract(loaded: dict[str, Any]) -> list[str]:
     """Validate all structural, cryptographic, and analytical invariants on a DAP artifact family."""
     p: list[str] = []
@@ -1285,6 +1297,30 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
     dup_ids = sorted(i for i, n in id_counts.items() if n > 1)
     if dup_ids:
         p.append(f"strata.json: {len(dup_ids)} stratum_id(s) are not unique (first: {dup_ids[0]})")
+
+    # Each dimension's reference source (`benchmarks.build_benchmarks` resolves it per dimension): a stratum
+    # of this build, named wherever that dimension carries a reference median.
+    for row in trial_rows:
+        demo = row.get("demographics") if isinstance(row.get("demographics"), dict) else {}
+        refs = demo.get("reference_strata")
+        if not isinstance(refs, dict) or set(refs) != set(REFERENCE_DIMENSIONS):
+            p.append(f"{row.get('nct_id')}: demographics.reference_strata must name {', '.join(REFERENCE_DIMENSIONS)}")
+            continue
+        for dim in REFERENCE_DIMENSIONS:
+            src = refs[dim]
+            if src is None:
+                if _carries_reference_median(demo, dim):
+                    p.append(
+                        f"{row.get('nct_id')}: {dim} carries a reference_median but reference_strata.{dim} is None"
+                    )
+            elif not (
+                isinstance(src, dict)
+                and set(src) == {"stratum_id", "withheld_small_cell"}
+                and isinstance(src["withheld_small_cell"], bool)
+                and isinstance(src["stratum_id"], str)
+                and src["stratum_id"] in id_counts
+            ):
+                p.append(f"{row.get('nct_id')}: reference_strata.{dim} must name a stratum of strata.json")
 
     for s in strata_list:
         sid = s.get("stratum_id")

@@ -917,11 +917,17 @@ def attach_reference_medians(
     sex_female_median: float | None = None,
     reference_stratum_id: str | None = None,
     reference_withheld_small_cell: bool | None = None,
+    reference_strata: dict[str, dict[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
-    """Return a copy of ``demographics`` with ``reference_median`` and ``direction_settled`` updated."""
+    """Return a copy of ``demographics`` with ``reference_median`` and ``direction_settled`` updated.
+
+    ``reference_strata`` names, for race, ethnicity and sex_gender, the stratum whose median that
+    dimension was compared with (``stratum_id`` and its ``withheld_small_cell``), or None when none was.
+    """
     updated = copy.deepcopy(demographics)
     updated["reference_stratum_id"] = reference_stratum_id
     updated["reference_withheld_small_cell"] = reference_withheld_small_cell
+    updated["reference_strata"] = copy.deepcopy(reference_strata)
 
     race_block = updated.get("race")
     if isinstance(race_block, dict) and isinstance(race_block.get("of_baseline_total"), dict):
@@ -1347,4 +1353,5 @@ def extract_demographics(
         "us_site_omission_audit": omission_audit,
         "reference_stratum_id": None,
         "reference_withheld_small_cell": None,
+        "reference_strata": None,
     }

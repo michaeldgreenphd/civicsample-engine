@@ -937,6 +937,71 @@ def test_a_raw_build_without_a_matched_sidecar_records_its_build_date(tmp_path: 
         "cohort_covered_and_one_run_only", "2026-11-23")
 
 
+_US_SITE = [{"facility": "Site US-1", "city": "Boston", "state": "MA", "country": "United States"}]
+_RACE_ROWS = [("White", "60"), ("Black or African American", "30"), ("Asian", "10")]
+
+
+def _reference_cohort(n_primary_race: int) -> list[dict[str, Any]]:
+    """Type 2 Diabetes, Phase 3, US-only: five post-FDORA trials with a sex table (n_primary_race of them
+    with a race table too), and five 2019 trials with a race table only."""
+    studies = []
+    for i in range(5):
+        measures = [fx.make_measure("Sex: Female, Male", [("Female", str(50 + i)), ("Male", str(50 - i))])]
+        if i < n_primary_race:
+            measures.append(fx.make_measure("Race (NIH/OMB)", _RACE_ROWS))
+        studies.append(fx.make_raw_ctgov_study(f"NCT9980010{i}", locations=_US_SITE, baseline_denom=100,
+                                               measures=measures))
+    for i in range(5):
+        studies.append(fx.make_raw_ctgov_study(
+            f"NCT9980011{i}", locations=_US_SITE, baseline_denom=100, start_date="2019-03-01",
+            primary_completion_date="2020-06-30", measures=[fx.make_measure("Race (NIH/OMB)", _RACE_ROWS)]))
+    return studies
+
+
+def _build_reference_cohort(tmp_path: Path, n_primary_race: int) -> dict[str, Any]:
+    out = tmp_path / f"ref{n_primary_race}"
+    studies = fx.write_studies_dir(_reference_cohort(n_primary_race), tmp_path / f"s{n_primary_race}")
+    assert cli_build.main([
+        "--records-dir", str(studies),
+        "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / f"a{n_primary_race}.csv")),
+        "--generated-at", "2026-11-21T00:00:00+00:00", "--out", str(out),
+    ]) == 0
+    loaded = artifacts.load_dir(out)
+    assert artifacts.check_contract(loaded) == []
+    return loaded
+
+
+def test_a_dimension_without_its_cells_median_falls_back_on_its_own(tmp_path: Path) -> None:
+    # On c0468b6 the cell's sex median (five sex tables) stopped the fallback for every dimension, so the
+    # four race tables, too few for the cell's race median, got none although the indication x phase
+    # reference pools nine.
+    loaded = _build_reference_cohort(tmp_path, 4)
+    demo = next(r for r in loaded["trial_rows"] if r["nct_id"] == "NCT99800100")["demographics"]
+    assert demo["race"]["of_baseline_total"]["white"]["reference_median"] == 0.6
+    refs = demo["reference_strata"]
+    assert refs["race"]["stratum_id"].startswith("stratum:indication_us_reference:")
+    assert refs["sex_gender"]["stratum_id"] == demo["reference_stratum_id"]
+    assert demo["reference_stratum_id"].startswith("stratum:ontology_footprint:")
+    assert refs["ethnicity"] is None
+    del demo["reference_strata"]
+    assert any("demographics.reference_strata must name race, ethnicity, sex_gender" in x
+               for x in artifacts.check_contract(loaded))
+    demo["reference_strata"] = {**refs, "race": None}
+    assert any("race carries a reference_median but reference_strata.race is None" in x
+               for x in artifacts.check_contract(loaded))
+
+
+def test_a_cell_with_every_median_keeps_its_own_reference(tmp_path: Path) -> None:
+    # Control, on both heads: with five race tables the cell has its own race median, and both dimensions
+    # are compared with the cell (whose race median is 0.6 as well).
+    loaded = _build_reference_cohort(tmp_path, 5)
+    demo = next(r for r in loaded["trial_rows"] if r["nct_id"] == "NCT99800100")["demographics"]
+    assert demo["race"]["of_baseline_total"]["white"]["reference_median"] == 0.6
+    assert demo["reference_stratum_id"].startswith("stratum:ontology_footprint:")
+    assert demo.get("reference_strata", {}).get("race", {}).get("stratum_id", demo["reference_stratum_id"]) == (
+        demo["reference_stratum_id"])
+
+
 def _search_container(tmp_path: Path, **page: Any) -> Path:
     path = tmp_path / "search.json"
     path.write_text(json.dumps({"studies": fx.build_fictional_cohort(), **page}), encoding="utf-8")

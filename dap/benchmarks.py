@@ -3232,20 +3232,43 @@ def build_benchmarks(
         )
         pcell = primary_cell_by_key[pkey]
         r_meds, e_meds, f_med = _extract_medians_from_pooled(pcell["pooled"])
-        chosen_id = pcell["stratum_id"]
-        withheld_flag = bool(pcell["pooled"]["withheld_small_cell"])
+        primary_source = {
+            "stratum_id": pcell["stratum_id"],
+            "withheld_small_cell": bool(pcell["pooled"]["withheld_small_cell"]),
+        }
+        sources: dict[str, dict[str, Any] | None] = {
+            "race": primary_source if r_meds else None,
+            "ethnicity": primary_source if e_meds else None,
+            "sex_gender": primary_source if f_med is not None else None,
+        }
 
-        if not r_meds and not e_meds and f_med is None:
-            rkey = (t["indication"]["primary_condition"], t["phase"])
-            fallback = ref_by_indication_phase.get(rkey)
-            if fallback is not None and t["geography"]["site_footprint_class"] in (
-                "us_only",
-                "multinational_with_us_sites",
-            ):
-                r_meds, e_meds, f_med = _extract_medians_from_pooled(fallback["pooled"])
-                if r_meds or e_meds or f_med is not None:
-                    chosen_id = fallback["stratum_id"]
-                    withheld_flag = False
+        # Each dimension falls back on its own to the trial's indication x phase US reference cell. A cell
+        # often pools enough sex compositions but too few OMB-usable race tables: the fallback had run only
+        # when no dimension had a median, so such a cell's sex median left race and ethnicity with no
+        # reference although the broader cell had one for them.
+        rkey = (t["indication"]["primary_condition"], t["phase"])
+        fallback = ref_by_indication_phase.get(rkey)
+        if (
+            fallback is not None
+            and t["geography"]["site_footprint_class"] in ("us_only", "multinational_with_us_sites")
+            and None in sources.values()
+        ):
+            fb_r, fb_e, fb_f = _extract_medians_from_pooled(fallback["pooled"])
+            fb_source = {"stratum_id": fallback["stratum_id"], "withheld_small_cell": False}
+            if sources["race"] is None and fb_r:
+                r_meds, sources["race"] = fb_r, fb_source
+            if sources["ethnicity"] is None and fb_e:
+                e_meds, sources["ethnicity"] = fb_e, fb_source
+            if sources["sex_gender"] is None and fb_f is not None:
+                f_med, sources["sex_gender"] = fb_f, fb_source
+
+        # `reference_stratum_id` keeps its meaning: the trial's own cell, or the fallback cell when every
+        # median came from it; `reference_strata` names each dimension's source.
+        used = [src for src in sources.values() if src is not None]
+        if used and all(src["stratum_id"] != primary_source["stratum_id"] for src in used):
+            chosen_id, withheld_flag = used[0]["stratum_id"], False
+        else:
+            chosen_id, withheld_flag = primary_source["stratum_id"], primary_source["withheld_small_cell"]
 
         t["demographics"] = attach_reference_medians(
             t["demographics"],
@@ -3254,6 +3277,7 @@ def build_benchmarks(
             sex_female_median=f_med,
             reference_stratum_id=chosen_id,
             reference_withheld_small_cell=withheld_flag,
+            reference_strata=sources,
         )
 
     # Build canonical (`current_owner`) and `as_registered` company scorecards.
