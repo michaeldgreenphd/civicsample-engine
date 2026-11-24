@@ -31,7 +31,11 @@ its sha256 is a document of an in-scope trial and none of its keys or strings
 names an audit, unlisted or malformed NCT ID; an entry that does name a trial
 must name one whose document has that sha256, and two different rows for one
 sha256 raise, as do two different ``--profiles`` rows for one trial (an
-identical repeat is kept once). An in-scope index row may not name an audit
+identical repeat is kept once). ``--doc-cache`` lines are read under one
+document-indexer rules version: ``--doc-cache-rules-version`` when given
+(lines of other versions are left out and counted), else the one the file
+holds; a file holding lines of several versions without the option is
+refused, and the plan records the version (``doc_cache_rules_version``). An in-scope index row may not name an audit
 trial in any key or string (an alias included), and its classic ``NCTId``
 must be its ``nct_id``.
 ``--documents``, ``--locations``
@@ -87,7 +91,7 @@ import os
 from pathlib import Path
 import re
 import sys
-from typing import AbstractSet, Any, Final, Literal, Mapping, Sequence
+from typing import AbstractSet, Any, Final, Literal, Mapping, NamedTuple, Sequence
 
 # Allow direct execution via `python scripts/verify_and_plan_census_batch.py`.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -141,7 +145,9 @@ PLANNER_SCHEMA_VERSION: Final[int] = 1
 # 1.9.0: the documents of a --profiles row exactly as the document indexer (m1) writes it
 # need no F6 stamps (model_id, profile_version): no model produced them, and the row carries
 # the deterministic run's stamps (_is_m1_deterministic_profile_document); a document
-# carrying model_id, every --documents row and every location row keep F6.
+# carrying model_id, every --documents row and every location row keep F6. --doc-cache lines
+# are read under one indexer rules version (--doc-cache-rules-version, else the file's only
+# one; several without the option are refused), recorded as doc_cache_rules_version.
 PLANNER_RULES_VERSION: Final[str] = "1.9.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
@@ -628,30 +634,127 @@ def _validate_doc_cache_entry(
     return sha, frozenset(declared)
 
 
-def _load_doc_cache_by_sha256(
+# The doc-cache key naming the document-indexer rules a line was computed under. m1 keeps
+# one line per (sha256, indexer rules version) in document_index_by_sha256.jsonl, so after a
+# rules bump the file holds two lines for one sha256 (planner 1.9.0, D2).
+DOC_CACHE_RULES_VERSION_KEY: Final[str] = "indexer_rules_version"
+
+
+class DocCacheInput(NamedTuple):
+    """The ``--doc-cache`` lines a plan reads, and which indexer rules they were computed under.
+
+    ``by_sha256`` holds the lines kept, keyed by sha256; ``rules_version`` is
+    the indexer rules version they share (the one asked for, else the one the
+    file holds; ``None`` when there is no file or its lines name none);
+    ``lines_read`` counts the file's lines and ``lines_ignored`` those left
+    out as of another rules version.
+    """
+
+    by_sha256: dict[str, dict[str, Any]]
+    rules_version: str | None
+    lines_read: int
+    lines_ignored: int
+
+
+def _doc_cache_line_rules_version(row: Mapping[str, Any], *, context: str) -> str | None:
+    """Return the indexer rules version a doc-cache line names, ``None`` when it names none.
+
+    Method: m1 writes ``indexer_rules_version`` on every line as a non-empty
+    string. A line without the key names no version (``None``, a version of its
+    own for the count in ``_select_doc_cache_rules_version``); a value that is
+    not a non-empty string does not say which rules computed the line, so it is
+    refused rather than read as some version. The message gives the value's
+    type only.
+    """
+    if DOC_CACHE_RULES_VERSION_KEY not in row:
+        return None
+    value = row[DOC_CACHE_RULES_VERSION_KEY]
+    if not _is_non_empty_str(value):
+        raise CitationVerificationError(
+            f"{context} has {DOC_CACHE_RULES_VERSION_KEY} of type {type(value).__name__} that is "
+            f"not a non-empty string; which indexer rules computed the line is not determined."
+        )
+    return value
+
+
+def _describe_rules_versions(versions: AbstractSet[str | None]) -> str:
+    """Name indexer rules versions for a message: m1-shaped ones as written, the rest counted.
+
+    A version that matches ``_M1_INDEXER_RULES_VERSION_RE`` whole holds no NCT
+    token and is quoted; any other value (or a line naming none) is only
+    counted, since a version string read from a file could hold anything.
+    """
+    shown = sorted(
+        v for v in versions if v is not None and _M1_INDEXER_RULES_VERSION_RE.fullmatch(v)
+    )
+    others = len(versions) - len(shown)
+    parts = [repr(v) for v in shown]
+    if others:
+        parts.append(f"{others} other value(s) or unversioned lines, not shown")
+    return ", ".join(parts)
+
+
+def _select_doc_cache_rules_version(
+    versions: Sequence[str | None],
+    *,
+    rules_version: str | None,
+    source: str,
+) -> tuple[str | None, list[bool]]:
+    """Choose which doc-cache lines (or entries) a plan reads, by indexer rules version.
+
+    Method (planner 1.9.0, D2): with ``rules_version`` given (CLI
+    ``--doc-cache-rules-version``), a line is kept exactly when its version
+    equals it; every other line, unversioned lines included, is left out and
+    counted. Without it, the lines must all name one version (or all name
+    none): lines of two or more versions do not say which rules the plan is to
+    be made against, and picking one (the last read, the newest) would be a
+    silent choice, so the call is refused, naming how many versions there are
+    and the option that chooses. Returns the version the plan reads under and,
+    per line, whether it is kept.
+    """
+    if rules_version is not None:
+        return rules_version, [version == rules_version for version in versions]
+    distinct = set(versions)
+    if len(distinct) > 1:
+        raise CitationVerificationError(
+            f"{source} holds lines of {len(distinct)} indexer rules versions "
+            f"({_describe_rules_versions(distinct)}); the plan does not choose one. Pass "
+            f"--doc-cache-rules-version (library: doc_cache_rules_version) naming the rules "
+            f"version to plan against; lines of other versions are then left out."
+        )
+    return (next(iter(distinct)) if distinct else None), [True] * len(versions)
+
+
+def _load_doc_cache(
     path: Path | None,
     *,
+    rules_version: str | None = None,
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
-) -> dict[str, dict[str, Any]]:
-    """Load ``--doc-cache`` rows keyed by sha256, firewalling each row as it is keyed.
+) -> DocCacheInput:
+    """Load ``--doc-cache`` lines of one indexer rules version keyed by sha256, firewalling each.
 
-    A row without a valid sha256 is refused rather than skipped
-    (``_validate_doc_cache_entry``). Two rows for one sha256 must be identical:
-    rows that differ (one says ``image_only_scan``, the other
+    Every line is firewalled first (``_validate_doc_cache_entry``), the lines
+    a version selection then leaves out included, so the holdout rules are the
+    same whatever version is read. A line without a valid sha256 is refused
+    rather than skipped. The lines read are those of one indexer rules version
+    (``_select_doc_cache_rules_version``): ``rules_version`` when given, else
+    the one version the file holds, and a file holding several without
+    ``rules_version`` is refused. Among the lines read, two for one sha256 must
+    be identical: lines that differ (one says ``image_only_scan``, the other
     ``redacted_cci_ppd``) leave no way to tell which describes the document,
     and keeping the last one read would let line order decide whether a trial
     is recovered by OCR or skipped at $0, so they raise. An identical repeat is
-    kept once.
+    kept once. A sha256 with no line of the version read is a document the
+    cache says nothing about, as when it has no line at all.
     """
     if path is None:
-        return {}
+        return DocCacheInput({}, rules_version, 0, 0)
     rows = load_jsonl(path)
     for idx, row in enumerate(rows):
         _prescan_nested_nct_fields(row, context=f"{path}[{idx}]")
-    by_sha: dict[str, dict[str, Any]] = {}
-    first_line_by_sha: dict[str, int] = {}
+    shas: list[str] = []
     for idx, row in enumerate(rows):
         sha, _ = _validate_doc_cache_entry(
             row,
@@ -660,6 +763,19 @@ def _load_doc_cache_by_sha256(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        shas.append(sha)
+    versions = [
+        _doc_cache_line_rules_version(row, context=f"{path}[{idx}]")
+        for idx, row in enumerate(rows)
+    ]
+    chosen_version, kept = _select_doc_cache_rules_version(
+        versions, rules_version=rules_version, source=f"--doc-cache {path}"
+    )
+    by_sha: dict[str, dict[str, Any]] = {}
+    first_line_by_sha: dict[str, int] = {}
+    for idx, (sha, row) in enumerate(zip(shas, rows)):
+        if not kept[idx]:
+            continue
         if sha in by_sha:
             if by_sha[sha] != row:
                 raise CitationVerificationError(
@@ -669,7 +785,25 @@ def _load_doc_cache_by_sha256(
             continue
         by_sha[sha] = row
         first_line_by_sha[sha] = idx
-    return by_sha
+    return DocCacheInput(by_sha, chosen_version, len(rows), kept.count(False))
+
+
+def _load_doc_cache_by_sha256(
+    path: Path | None,
+    *,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str],
+    allow_empty_audit_set: bool,
+    rules_version: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Load ``--doc-cache`` rows keyed by sha256 (``_load_doc_cache``, the lines read only)."""
+    return _load_doc_cache(
+        path,
+        rules_version=rules_version,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    ).by_sha256
 
 
 def _is_m1_deterministic_profile(row: Mapping[str, Any]) -> bool:
@@ -1243,6 +1377,8 @@ def plan_incremental_cohort(
     planned_at: str | None = None,
     page_text_provider: PageTextProvider | None = None,
     text_source: str = "pdfkit",
+    doc_cache_rules_version: str | None = None,
+    doc_cache_lines_ignored: int = 0,
 ) -> dict[str, Any]:
     """Partition cohort trials and emit budget-gated ``/swarm`` shard manifests.
 
@@ -1271,6 +1407,16 @@ def plan_incremental_cohort(
     one it is ``unreadable_subtype_unknown``: counted, listed under no
     subtype, and neither terminal nor scheduled in any mode. A trial with no
     primary rows is UNREADABLE when its profile's summary names a subtype.
+
+    ``doc_cache_by_sha256`` entries are read under one document-indexer rules
+    version (planner 1.9.0, ``_select_doc_cache_rules_version``):
+    ``doc_cache_rules_version`` when given (entries of any other version, or
+    naming none, are left out, as a missing entry), else the one version the
+    entries name; entries of two or more versions without it are refused. The
+    plan records the version as ``doc_cache_rules_version`` and, in
+    ``doc_cache_lines_ignored_other_rules_versions``, the entries it left out
+    plus ``doc_cache_lines_ignored``, the lines a caller (the CLI's
+    ``_load_doc_cache``) left out before keying the file by sha256.
     """
     if type(text_source) is not str or not _is_non_empty_str(text_source):
         raise CitationVerificationError(
@@ -1286,6 +1432,15 @@ def plan_incremental_cohort(
         )
     if type(shard_size) is not int or shard_size < 1:
         raise CitationVerificationError(f"shard_size must be int >= 1, got {shard_size!r}")
+    if doc_cache_rules_version is not None and not _is_non_empty_str(doc_cache_rules_version):
+        raise CitationVerificationError(
+            f"doc_cache_rules_version must be a non-empty string or None, got "
+            f"{type(doc_cache_rules_version).__name__}."
+        )
+    if type(doc_cache_lines_ignored) is not int or doc_cache_lines_ignored < 0:
+        raise CitationVerificationError(
+            f"doc_cache_lines_ignored must be int >= 0, got {doc_cache_lines_ignored!r}"
+        )
     for cost_label, cost_val in (
         ("budget_cap_usd", budget_cap_usd),
         ("cost_per_trial_sliced_usd", cost_per_trial_sliced_usd),
@@ -1491,6 +1646,26 @@ def plan_incremental_cohort(
                 f"describes another trial's document."
             )
 
+    # Every entry is firewalled above; the plan then reads the entries of one indexer
+    # rules version only (planner 1.9.0, D2). An entry left out is a document the cache
+    # says nothing about, as when the cache has no entry for its sha256.
+    cache_keys = list(doc_cache_by_sha256.keys())
+    cache_versions = [
+        _doc_cache_line_rules_version(
+            doc_cache_by_sha256[sha_key], context=f"doc_cache_by_sha256[{sha_key!r}]"
+        )
+        for sha_key in cache_keys
+    ]
+    planned_doc_cache_rules_version, cache_kept = _select_doc_cache_rules_version(
+        cache_versions, rules_version=doc_cache_rules_version, source="doc_cache_by_sha256"
+    )
+    effective_doc_cache: dict[str, Mapping[str, Any]] = {
+        sha_key: doc_cache_by_sha256[sha_key]
+        for sha_key, keep in zip(cache_keys, cache_kept)
+        if keep
+    }
+    doc_cache_ignored_total = doc_cache_lines_ignored + cache_kept.count(False)
+
     for prof_key in sorted(profiles_by_nct.keys(), key=str):
         prof_row = profiles_by_nct[prof_key]
         if not isinstance(prof_row, Mapping):
@@ -1623,7 +1798,7 @@ def plan_incremental_cohort(
             subtype: str | None = classify_unreadable_subtype(
                 current_docs,
                 unresolved_unreadable_rows or primary_locs,
-                doc_cache_by_sha256,
+                effective_doc_cache,
             )
             if subtype is None:
                 # The profile's own readability summary names the subtype when the rows and
@@ -1840,6 +2015,8 @@ def plan_incremental_cohort(
         "mode": mode,
         "pass_role": effective_pass_role,
         "shard_size": shard_size,
+        "doc_cache_rules_version": planned_doc_cache_rules_version,
+        "doc_cache_lines_ignored_other_rules_versions": doc_cache_ignored_total,
         "excluded_in_audit_count": excluded_in_audit_count,
         "excluded_no_document_count": excluded_no_document_count,
         "partition_counts": {k: len(v) for k, v in partitions.items()},
@@ -2086,8 +2263,12 @@ def _cmd_plan(args: argparse.Namespace) -> int:
     """Run ``plan``: firewall every input, partition the cohort and print the plan.
 
     Exit 0 when the plan is within the budget cap, 1 otherwise. Refused before
-    anything is read (exit 2): ``--ocr-dir`` without ``--pages-dir`` and an
-    ``--out-plan`` that is an input of the run. ``--pages-dir`` gives the page
+    anything is read (exit 2): ``--ocr-dir`` without ``--pages-dir``,
+    ``--doc-cache-rules-version`` without ``--doc-cache`` (or empty), and an
+    ``--out-plan`` that is an input of the run. ``--doc-cache`` lines are read
+    under one indexer rules version (``_load_doc_cache``): the one
+    ``--doc-cache-rules-version`` names, else the one the file holds; a file
+    holding several without the option is refused (exit 1). ``--pages-dir`` gives the page
     text that ``cached_complete`` needs (see ``plan_incremental_cohort``); the
     provider is told the ``(trial, sha256)`` pairs of the in-scope documents
     (``--documents`` and profile documents), as verify's is.
@@ -2097,6 +2278,14 @@ def _cmd_plan(args: argparse.Namespace) -> int:
             "--ocr-dir needs --pages-dir: OCR page maps are read only alongside a pages "
             "directory."
         )
+    if args.doc_cache_rules_version is not None:
+        if args.doc_cache is None:
+            raise CliUsageError(
+                "--doc-cache-rules-version names the indexer rules version of --doc-cache lines, "
+                "but no --doc-cache was given."
+            )
+        if not _is_non_empty_str(args.doc_cache_rules_version):
+            raise CliUsageError("--doc-cache-rules-version must be a non-empty string.")
     _refuse_output_over_inputs(
         args.out_plan,
         output_flag="--out-plan",
@@ -2135,12 +2324,14 @@ def _cmd_plan(args: argparse.Namespace) -> int:
 
     documents = load_jsonl(Path(args.documents)) if args.documents is not None else []
     locations = load_jsonl(Path(args.locations)) if args.locations is not None else []
-    doc_cache = _load_doc_cache_by_sha256(
+    doc_cache_input = _load_doc_cache(
         Path(args.doc_cache) if args.doc_cache is not None else None,
+        rules_version=args.doc_cache_rules_version,
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
     )
+    doc_cache = doc_cache_input.by_sha256
     profiles = _load_profiles_by_nct(
         Path(args.profiles) if args.profiles is not None else None,
         audit_nct_ids=audit_nct_ids,
@@ -2193,10 +2384,27 @@ def _cmd_plan(args: argparse.Namespace) -> int:
         cost_schedule=args.cost_schedule,
         page_text_provider=provider,
         text_source=args.text_source,
+        doc_cache_rules_version=doc_cache_input.rules_version,
+        doc_cache_lines_ignored=doc_cache_input.lines_ignored,
     )
 
     if args.out_plan is not None:
         _write_json(Path(args.out_plan), plan)
+    if doc_cache_input.lines_ignored:
+        # Left out by the operator's choice of rules version, and recorded in the plan.
+        kept_lines = doc_cache_input.lines_read - doc_cache_input.lines_ignored
+        print(
+            f"NOTE: {doc_cache_input.lines_ignored} of {doc_cache_input.lines_read} --doc-cache "
+            f"line(s) are of another indexer rules version than --doc-cache-rules-version and "
+            f"were not read ({kept_lines} read).",
+            file=sys.stderr,
+        )
+        if kept_lines == 0:
+            print(
+                "WARNING: no --doc-cache line is of the --doc-cache-rules-version given; the "
+                "plan was made as if the cache held no entry.",
+                file=sys.stderr,
+            )
     print(json.dumps(plan, indent=2, ensure_ascii=True))
     return 0 if plan["launch_approved"] else 1
 
@@ -2257,6 +2465,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Content-addressed document_index_by_sha256.jsonl",
+    )
+    p_plan.add_argument(
+        "--doc-cache-rules-version",
+        type=str,
+        default=None,
+        help=(
+            "Document-indexer rules version (indexer_rules_version) of the --doc-cache lines to "
+            "read; lines of other versions are left out. Required when --doc-cache holds lines "
+            "of more than one version"
+        ),
     )
     p_plan.add_argument(
         "--profiles",

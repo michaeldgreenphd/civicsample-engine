@@ -4393,3 +4393,200 @@ def test_m4_d1_plan_accepts_the_deterministic_profiles_m1_writes(
     _write_jsonl(profiles_path, [profile, held_out])
     rc, printed = _rt_f442_run([*plan_args, "--profiles", str(profiles_path)], capsys)
     assert rc == 2 and RT_AUDIT_ID not in printed, printed
+
+
+def _m1_index_line(
+    sha256: str,
+    rules_version: str,
+    *,
+    readability_status: str = "machine_readable",
+    bucket: str | None = None,
+    physical_pages: int = 10,
+) -> dict[str, Any]:
+    """A document_index_by_sha256.jsonl line exactly as m1's ``DocumentIndexEntry.to_dict`` writes it.
+
+    A copy of the shape (keys and nesting) checked against src/document_indexer.py
+    on main; m1 keeps one such line per (sha256, indexer_rules_version).
+    """
+    pages = list(range(1, physical_pages + 1))
+    return {
+        "sha256": sha256,
+        "byte_count": 4096,
+        "extracted_at": "2026-11-21T00:00:00Z",
+        "pipeline_commit": "a" * 40,
+        "indexer_rules_version": rules_version,
+        "text_provider": "pdfkit",
+        "physical_pages": physical_pages,
+        "pages_without_text": [],
+        "readability_status": readability_status,
+        "unreadable_recovery_bucket": bucket,
+        "cmap_metrics": {
+            "text_bearing_pages": physical_pages,
+            "garbled_page_count": 0,
+            "garbled_page_ratio": 0.0,
+            "pages_garbled_cmap": [],
+            "garbled_statistical_pages": [],
+            "max_page_punct_ctrl_ratio": 0.1,
+            "min_page_common_word_ratio": 0.7,
+        },
+        "redaction": {
+            "redaction_flags": [],
+            "pages_with_cci": [],
+            "pages_with_ppd": [],
+            "pages_with_redacted_tag": [],
+            "pages_header_stamp_only": [],
+            "pages_orphaned_stat_headings": [],
+            "unreadable_statistical_pages": [],
+        },
+        "version_label": "Version 2.0",
+        "version_date_as_printed": "15 January 2020",
+        "section_slice": {
+            "physical_pages": physical_pages,
+            "pages_selected": pages,
+            "pages_deferred": [],
+            "pages_without_text": [],
+            "unreadable_statistical_pages": [],
+            "has_toc": False,
+            "toc_pages": [],
+            "printed_page_offset": None,
+            "detected_sections": [
+                {
+                    "category": "statistical_methods",
+                    "heading": "9 Statistical Methods",
+                    "source": "body_heading",
+                    "start_page": 2,
+                    "end_page": 2,
+                }
+            ],
+            "selection_strategy": "full_readable_within_budget",
+        },
+        "selection_inputs": {"doc_type": "protocol", "min_selected_pages": 10, "max_selected_pages": 25},
+    }
+
+
+def test_m4_d2_doc_cache_read_under_one_indexer_rules_version(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """D2: plan reads --doc-cache lines of one indexer rules version, named or the file's only one.
+
+    Before: m1 keeps one line per (sha256, indexer rules version), so after any
+    m1 rules bump the file holds two lines for one sha256 and plan refused it
+    ("... are different doc-cache rows for sha256 ..."). Now
+    ``--doc-cache-rules-version`` (library ``doc_cache_rules_version``) names
+    the version read; lines of other versions are left out and counted.
+    Without it, a file of several versions is refused (exit 1), naming how
+    many and the option; a file of one version plans as before. Within the
+    version read, two different lines for one sha256 are still refused. A
+    version with no line for a document's sha256 plans as a cache with no line
+    for it. The plan records the version it was made against.
+    """
+    v1, v2, v3 = (
+        "doc_indexer@2026-11-21.v1",
+        "doc_indexer@2026-12-01.v2",
+        "doc_indexer@2026-12-15.v3",
+    )
+    documents = [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1), _doc(RT_SCOPE_ID, "SAP_000.pdf", SHA_2)]
+    # Every cell UNREADABLE, with nothing in the rows or documents naming the subtype: the
+    # document cache decides it.
+    locations = _complete_primary_locations(
+        RT_SCOPE_ID, "Prot_000.pdf", SHA_1, unreadable_elements=set(ELEMENTS), unreadable_note="Unreadable."
+    )
+    lines = [
+        _m1_index_line(SHA_1, v1, readability_status="image_only_scan", bucket="image_only_scan"),
+        _m1_index_line(SHA_2, v1),
+        _m1_index_line(SHA_1, v2, readability_status="partial_image_or_redacted", bucket="redacted_cci_ppd"),
+        _m1_index_line(SHA_2, v2),
+        _m1_index_line(SHA_2, v3),
+    ]
+    args = _rt_m4_inputs(tmp_path, "d2", documents=documents, locations=locations)
+    cache_path = tmp_path / "d2" / "document_index_by_sha256.jsonl"
+    _write_jsonl(cache_path, lines)
+    plan_path = tmp_path / "d2_plan.json"
+
+    def run(*extra: str) -> tuple[int, str, dict[str, Any] | None]:
+        if plan_path.exists():
+            plan_path.unlink()
+        rc, printed = _rt_f442_run(["plan", *args, "--out-plan", str(plan_path), *extra], capsys)
+        plan = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else None
+        return rc, printed, plan
+
+    def filed(plan: dict[str, Any]) -> list[str]:
+        return [name for name, ids in plan["partitions"].items() if RT_SCOPE_ID in ids]
+
+    # Several versions, none named: refused, naming how many and the option; nothing written.
+    rc, printed, plan = run("--doc-cache", str(cache_path))
+    assert rc == 1 and plan is None, printed
+    assert "3 indexer rules versions" in printed and "--doc-cache-rules-version" in printed, printed
+
+    # Each version named: planned on that version's lines, the others left out and counted.
+    rc, printed, plan = run("--doc-cache", str(cache_path), "--doc-cache-rules-version", v1)
+    assert rc == 0 and plan is not None, printed
+    assert filed(plan) == ["unreadable_recoverable_ocr"]
+    assert plan["unreadable_subtypes"]["image_only_scan"] == [RT_SCOPE_ID]
+    assert plan["doc_cache_rules_version"] == v1
+    assert plan["doc_cache_lines_ignored_other_rules_versions"] == 3
+    assert "3 of 5 --doc-cache line(s)" in printed, printed
+    rc, printed, plan = run("--doc-cache", str(cache_path), "--doc-cache-rules-version", v2)
+    assert rc == 0 and plan is not None, printed
+    assert filed(plan) == ["unreadable_terminal_redacted"]
+    assert plan["doc_cache_rules_version"] == v2
+
+    # v3 has no line for SHA_1: planned as a cache with no line for it (here, no line that
+    # names the subtype), exactly as without the cache.
+    rc, printed, v3_plan = run("--doc-cache", str(cache_path), "--doc-cache-rules-version", v3)
+    assert rc == 0 and v3_plan is not None, printed
+    assert v3_plan["doc_cache_rules_version"] == v3
+    rc, printed, no_cache_plan = run()
+    assert rc == 0 and no_cache_plan is not None, printed
+    assert no_cache_plan["doc_cache_rules_version"] is None
+    for key in ("partitions", "unreadable_subtypes", "ocr_prepass_queue", "shards"):
+        assert v3_plan[key] == no_cache_plan[key], key
+    assert filed(v3_plan) == ["unreadable_subtype_unknown"]
+
+    # A file of one version plans as before, without the option, and records the version.
+    one_version = tmp_path / "d2" / "one_version.jsonl"
+    _write_jsonl(one_version, lines[:2])
+    rc, printed, plan = run("--doc-cache", str(one_version))
+    assert rc == 0 and plan is not None, printed
+    assert filed(plan) == ["unreadable_recoverable_ocr"]
+    assert plan["doc_cache_rules_version"] == v1
+    assert plan["doc_cache_lines_ignored_other_rules_versions"] == 0
+
+    # Within the version read, two different lines for one sha256 are still refused.
+    conflicting = tmp_path / "d2" / "conflicting.jsonl"
+    _write_jsonl(conflicting, [*lines, _m1_index_line(SHA_1, v1, readability_status="garbled_cmap", bucket="garbled_cmap")])
+    rc, printed, plan = run("--doc-cache", str(conflicting), "--doc-cache-rules-version", v1)
+    assert rc == 1 and plan is None and "different doc-cache rows for sha256" in printed, printed
+
+    # A rules version that is not a non-empty string says nothing about which rules ran.
+    malformed = tmp_path / "d2" / "malformed.jsonl"
+    _write_jsonl(malformed, [{**lines[0], "indexer_rules_version": 5}])
+    rc, printed, plan = run("--doc-cache", str(malformed))
+    assert rc == 1 and plan is None and "indexer_rules_version of type int" in printed, printed
+    # The option without --doc-cache, or empty, is a usage error before anything is read.
+    rc, printed, plan = run("--doc-cache-rules-version", v1)
+    assert rc == 2 and plan is None, printed
+    rc, printed, plan = run("--doc-cache", str(cache_path), "--doc-cache-rules-version", " ")
+    assert rc == 2 and plan is None, printed
+
+    # The library entry point applies the same rule to the map it is given.
+    cache = {SHA_1: lines[0], SHA_2: lines[3]}
+    with pytest.raises(CitationVerificationError, match="2 indexer rules versions"):
+        plan_incremental_cohort(
+            _rt_index_rows(),
+            documents=documents,
+            locations=locations,
+            doc_cache_by_sha256=cache,
+            planned_at="2026-11-24T00:00:00+00:00",
+        )
+    plan = plan_incremental_cohort(
+        _rt_index_rows(),
+        documents=documents,
+        locations=locations,
+        doc_cache_by_sha256=cache,
+        doc_cache_rules_version=v1,
+        planned_at="2026-11-24T00:00:00+00:00",
+    )
+    assert filed(plan) == ["unreadable_recoverable_ocr"]
+    assert plan["doc_cache_rules_version"] == v1
+    assert plan["doc_cache_lines_ignored_other_rules_versions"] == 1
