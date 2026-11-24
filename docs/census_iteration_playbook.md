@@ -9,9 +9,11 @@ unreviewed AI output until a person reviews it.
 
 The commands use M1 (`scripts/index_trial_documents.py`), M4
 (`scripts/verify_and_plan_census_batch.py`), M2 as a library, and M3
-(`scripts/build_outcomes_shards.py`), so they need a checkout that carries the
-branches they name. They were checked against m1 `2561a46`, m2 `b9a2ebc`, m4
-`97789ee` and m3 `ba916ec`.
+(`scripts/build_outcomes_shards.py`), so they need a checkout that carries
+all four: M1 and M2 are on `main` (merged in `2932cac`, PR #112, and
+`3f1bcb9`, PR #111), and M4 and M3 are on their branches (m3 contains m4).
+They were checked against m1 `4defbef` (the branch head merged in
+`2932cac`), m2 `b9a2ebc`, m4 `97789ee` and m3 `ba916ec`.
 
 ## 0. Before anything runs
 
@@ -48,9 +50,10 @@ for p in census-work/x data/document_cache/x data/document_index_by_sha256.jsonl
 done
 ```
 
-The `data/` paths are M1's and M3's outputs; the m1 and m3 branches add them
-to `.gitignore`. On a checkout without those branches' `.gitignore` they
-print `NOT IGNORED`: stop, and do not write there until they are ignored.
+The `data/` paths are M1's and M3's outputs. M1's are in `.gitignore` on
+`main` (PR #112); M3's are added by the m3 branch. On a checkout without
+those `.gitignore` lines they print `NOT IGNORED`: stop, and do not write
+there until they are ignored.
 Never `git add` anything under these paths.
 
 ### 0.3 Inputs

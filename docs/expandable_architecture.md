@@ -5,8 +5,9 @@ work beyond the industry Phase 3 outcomes cohort: to trials sponsored by the
 NIH, other US federal agencies, NCTN cooperative groups, academic medical
 centers and non-profit foundations, and to any trial with posted protocol or
 statistical analysis plan documents. The modules arrived together in PR #97
-(head `dc38220`) and are reviewed as separate branches. None of them runs on a
-schedule, and none publishes anything to the site.
+(head `dc38220`) and were split into separate branches. M1 and M2 have since
+merged to `main` (PRs #112 and #111); m4 and m3 are still on their branches.
+None of them runs on a schedule, and none publishes anything to the site.
 
 [census_iteration_playbook.md](census_iteration_playbook.md) is the operating
 procedure for the rule-location census these modules serve.
@@ -19,17 +20,17 @@ merged on its own; M3 is the exception, because it imports M4.
 
 | Branch | Base | Files | Imports from another module | State |
 |---|---|---|---|---|
-| `antigravity/m1-document-indexer` | `aa14a2d` | `src/document_indexer.py`, `scripts/index_trial_documents.py`, `tests/test_document_indexer.py`, `.gitignore` (the three M1 data paths) | none | for review |
-| `antigravity/m2-population-ecosystem` | `aa14a2d` | `src/analysis_population_parser.py`, `sponsors/ecosystem.py`, `src/holdout_guard.py` (the holdout guard both modules import), `sponsors/ecosystem_rules.csv`, `tests/test_analysis_population_parser.py`, `tests/sponsors/test_ecosystem.py`, `tests/sponsors/expected_ecosystem_counts.json`, `tests/sponsors/fixtures/sponsors_fixture_ecosystem.csv` | none (it uses the existing `sponsors.adapter`, `sponsors.baseline` and `sponsors.sponsor_roles`) | for review |
+| `antigravity/m1-document-indexer` | `aa14a2d` | `src/document_indexer.py`, `scripts/index_trial_documents.py`, `tests/test_document_indexer.py`, `.gitignore` (the three M1 data paths) | none | merged to `main` (PR #112, merge commit `2932cac`; branch head `4defbef`) |
+| `antigravity/m2-population-ecosystem` | `aa14a2d` | `src/analysis_population_parser.py`, `sponsors/ecosystem.py`, `src/holdout_guard.py` (the holdout guard both modules import), `sponsors/ecosystem_rules.csv`, `tests/test_analysis_population_parser.py`, `tests/sponsors/test_ecosystem.py`, `tests/sponsors/expected_ecosystem_counts.json`, `tests/sponsors/fixtures/sponsors_fixture_ecosystem.csv` | none (it uses the existing `sponsors.adapter`, `sponsors.baseline` and `sponsors.sponsor_roles`) | merged to `main` (PR #111, merge commit `3f1bcb9`; branch head `b9a2ebc`) |
 | `antigravity/m4-citation-verifier` | `aa14a2d` | `src/citation_verifier.py`, `src/longitudinal_provenance.py`, `scripts/verify_and_plan_census_batch.py`, `tests/test_citation_verifier.py`, `tests/test_longitudinal_provenance.py`, `tests/test_verify_and_plan_census_batch.py` | none | for review |
 | `antigravity/m3-outcomes-bundles` | stacked on m4 (it merges the m4 branch) | `src/outcomes_layout.py`, `scripts/build_outcomes_shards.py`, `tests/test_outcomes_layout.py`, `.gitignore` (the two M3 paths), plus m4's files | `src.citation_verifier` (M4) only | **held unmerged** until the investigator decides whether census output is published |
 | `antigravity/docs-platform` | `aa14a2d` | this file and `docs/census_iteration_playbook.md` | not applicable | for review |
 
-The revisions read for this document were m1 `2561a46`, m2 `b9a2ebc`, m4
-`97789ee` and m3 `ba916ec` (which contains m4 at `97789ee`, merged in as
-`ba916ec`). A later commit on
-any of these branches can change a detail stated here, so re-check a detail
-against the branch before relying on it.
+The revisions read for this document were m1 `4defbef` (merged to `main` in
+`2932cac`), m2 `b9a2ebc` (merged to `main` in `3f1bcb9`), m4 `97789ee` and m3
+`ba916ec` (which contains m4 at `97789ee`, merged in as `ba916ec`). A later
+commit on any of these branches, or on `main`, can change a detail stated
+here, so re-check a detail against the code before relying on it.
 
 Because m3 contains m4, it cannot be merged before m4. Merging is the owner's
 decision.
@@ -336,9 +337,9 @@ trial outside the index. That was run on fictional M1 output too.
   `data/document_index_by_sha256.jsonl`) holds `DocumentIndexEntry` records,
   one line per `(sha256, indexer_rules_version)`; `--profiles-out` (default
   `data/trial_document_profiles.jsonl`) holds one `TrialDocumentProfile` per
-  trial. These three paths are gitignored on the m1 branch. Identical bytes
-  are extracted once. `INDEXER_RULES_VERSION` is `doc_indexer@2026-11-21.v1`.
-  A change of it adds a second line for every document indexed again, and
+  trial. These three paths are in `.gitignore` on `main` since PR #112.
+  Identical bytes are extracted once. `INDEXER_RULES_VERSION` is
+  `doc_indexer@2026-11-21.v1`. A change of it adds a second line for every document indexed again, and
   M4's `plan` refuses two different lines for one sha256 (the playbook's
   step 2 lists this as a blocker).
 - **Index entries are reused only for their selection inputs.** An entry
@@ -352,8 +353,9 @@ trial outside the index. That was run on fictional M1 output too.
   request.
 - **Integrity.** `CacheIntegrityError` is raised for a cache that disagrees
   with a file's digest or size; for an index line that names a page outside
-  `1..physical_pages`, a reversed section range or a page partition that is
-  not exact (checked when a line is loaded and before one is written); and
+  `1..physical_pages`, a reversed section range, a page partition that is
+  not exact, or a partition list that is not strictly ascending (m1
+  `4defbef`; checked when a line is loaded and before one is written); and
   for a page map already in a document's slot that is not the same map
   (another `text_source`, such as an OCR map, or other page text), which is
   left as it is rather than replaced. Through the CLI the last two stop the
@@ -416,7 +418,12 @@ has nine classes that are never merged: `itt`, `modified_itt`,
 never 0. A measure with no measure-level denominators whose classes carry a
 `Participants` denominator in some classes and none in others has
 `denom_status` `class_level_incomplete`, `denom_source` `"none"` and no
-`overall_participants_analyzed` (run on a fictional measure).
+`overall_participants_analyzed` (run on a fictional measure). The same gap
+on the units side is open: a measure whose classes carry a unit
+denominator (such as `Eyes`) in some classes and none in others is still
+reported from the classes that have one, with `denom_status` `present` and
+`overall_units_analyzed` taken from those classes (run on a fictional
+measure at `b9a2ebc`).
 `arm_started_minus_analysed` is stored for audit and has no path into
 `classify_population_description`. Entry points:
 `classify_population_description`, `normalize_population_text`,
@@ -439,6 +446,10 @@ Every rule carries a non-empty `note`; conflicting rules raise
 literal for the same canonical, the literal is `shared=yes` only when both
 rules say yes; every rule in the shipped `ecosystem_rules.csv` says
 `shared=no`, and `expected_ecosystem_counts.json` is unchanged by the rule.
+The industry layer's `match_literals` (`sponsors/sponsor_roles.py`) had the
+same fault, and `check_cross_layer_conflicts` reads the industry claims
+through it; it is fixed on `main` (PR #116), so on `main` the cross-layer
+check reads the corrected marker too.
 `compute_ecosystem_baseline` and `write_ecosystem_baseline` keep
 SHA-256-keyed baselines in `tests/sponsors/expected_ecosystem_counts.json`.
 `sponsors/company_aliases.csv` and `tests/sponsors/expected_counts.json` are
