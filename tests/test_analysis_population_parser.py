@@ -477,6 +477,73 @@ def test_missing_counts_are_none_with_reason_never_zero() -> None:
     assert p_unanimous.is_participant_count is True
 
 
+def _two_class_measure(second_class: dict[str, Any]) -> dict[str, Any]:
+    """A class-level measure whose first class has a Participants denom of 45 + 47."""
+    return {
+        "type": "PRIMARY",
+        "groups": [
+            {"id": "OG000", "title": "Arm A"},
+            {"id": "OG001", "title": "Arm B"},
+        ],
+        "classes": [
+            {
+                "title": "Week 4",
+                "denoms": [
+                    {
+                        "units": "Participants",
+                        "counts": [
+                            {"groupId": "OG000", "value": "45"},
+                            {"groupId": "OG001", "value": "47"},
+                        ],
+                    }
+                ],
+            },
+            second_class,
+        ],
+    }
+
+
+def test_class_level_denoms_missing_from_some_classes_are_incomplete_not_unanimous() -> None:
+    # Codex P2 on PR #111 (r4663843574): a class without a Participants
+    # denominator was skipped, so a two-class measure where only the first
+    # class has one was reported class_unanimous with that class's total
+    # (92). The second class's analysed count is unknown, so no total stands
+    # for the measure: class_level_incomplete, denom_source "none", and no
+    # overall_participants_analyzed (never the first class's count).
+    second_classes: list[dict[str, Any]] = [
+        {"title": "Week 12"},  # no denoms key
+        {"title": "Week 12", "denoms": []},  # empty denoms
+        {  # a unit denominator only, no Participants entry
+            "title": "Week 12",
+            "denoms": [
+                {"units": "Eyes", "counts": [{"groupId": "OG000", "value": "90"}]}
+            ],
+        },
+    ]
+    for second in second_classes:
+        parsed = ap.parse_outcome_measure(_two_class_measure(second))
+        assert parsed.denom_source == "none", second
+        assert parsed.denom_status == "class_level_incomplete", second
+        assert parsed.overall_participants_analyzed is None, second
+        assert parsed.is_participant_count is False, second
+        assert parsed.aggregation_method == "none", second
+        assert parsed.flag_class_varying_denoms is False, second
+    assert "class_level_incomplete" in ap.DENOM_STATUS_LEVELS
+    # The new status passes the vocabulary check of structural_checks.
+    trial = ap.parse_study_outcomes(
+        _study_with_outcome(
+            "NCT99000901", _two_class_measure({"title": "Week 12"}), flow_groups=[]
+        )
+    )
+    assert trial.outcomes[0].denom_status == "class_level_incomplete"
+    assert ap.structural_checks([trial])["denom_status_in_vocabulary"]["pass"] is True
+    # Every class carrying the same Participants denominator is still unanimous.
+    same = _two_class_measure(_two_class_measure({})["classes"][0] | {"title": "Week 12"})
+    unanimous = ap.parse_outcome_measure(same)
+    assert unanimous.denom_source == "class_unanimous"
+    assert unanimous.overall_participants_analyzed == 92.0
+
+
 # ---------------------------------------------------------------------------
 # 7. Units analyzed (COUNT_OF_UNITS) strictly separated from Participants
 # ---------------------------------------------------------------------------

@@ -182,7 +182,9 @@ if TYPE_CHECKING:  # annotation only; pandas is imported lazily at run time
     import pandas as pd
 
 __version__: str = "1.0.0"
-PARSER_RULES_VERSION: str = "analysis_pop@2026-11-20.v1"
+# Bumped when a parsed field can change for the same input (2026-11-24: the
+# class_level_incomplete denom status).
+PARSER_RULES_VERSION: str = "analysis_pop@2026-11-24.v1"
 POPULATION_PARSER_VERSION: str = PARSER_RULES_VERSION
 
 PopulationClass = Literal[
@@ -227,6 +229,7 @@ DENOM_STATUS_LEVELS: tuple[str, ...] = (
     "non_numeric_or_na",                # counts exist, all values "NA"/""/unparseable
     "partial_arm_counts",               # >=1 non-total arm has numeric count and >=1 non-total arm is None/NA
     "class_level_only_varying",         # measure-level denoms absent; classes[].denoms vary across rows/timepoints
+    "class_level_incomplete",           # measure-level denoms absent; some classes carry a "Participants" denom, others none
 )
 
 ARM_GAP_REASONS: tuple[str, ...] = (
@@ -2695,12 +2698,23 @@ def _select_denoms_from_measure(
     list[dict[str, Any]],
     list[list[dict[str, Any]]],
     list[list[dict[str, Any]]],
+    bool,
 ]:
     """Collect measure-level or class-level participant & unit denom objects.
 
     Returns:
       (source_hint, measure_part_denoms, measure_unit_denoms,
-       class_part_denoms_per_class, class_unit_denoms_per_class)
+       class_part_denoms_per_class, class_unit_denoms_per_class,
+       class_part_incomplete)
+
+    The per-class lists hold only the classes that have such a denom, so
+    they cannot say whether every class had one. ``class_part_incomplete``
+    does: it is True when the class level is used, at least one class (a
+    dict in ``classes``) carries a "Participants" denom and at least one
+    other carries none (its ``denoms`` missing, empty or holding unit
+    counts only). Assumption: CT.gov reports one analysed count per class
+    and group, so a class without a "Participants" denom has an unknown
+    count, and another class's count does not stand for it.
     """
     m_denoms = measure.get("denoms")
     if isinstance(m_denoms, list) and len(m_denoms) > 0:
@@ -2714,15 +2728,17 @@ def _select_denoms_from_measure(
             and not _is_participants_unit(d.get("units"))
         ]
         if valid:
-            return "measure", part, units, [], []
+            return "measure", part, units, [], [], False
 
     classes = measure.get("classes")
     class_part: list[list[dict[str, Any]]] = []
     class_units: list[list[dict[str, Any]]] = []
+    n_classes = 0
     if isinstance(classes, list):
         for cl in classes:
             if not isinstance(cl, dict):
                 continue
+            n_classes += 1
             cd = cl.get("denoms")
             if not isinstance(cd, list) or not cd:
                 continue
@@ -2741,8 +2757,9 @@ def _select_denoms_from_measure(
                 class_units.append(units)
 
     if class_part or class_units:
-        return "class_unanimous", [], [], class_part, class_units
-    return "none", [], [], [], []
+        incomplete = 0 < len(class_part) < n_classes
+        return "class_unanimous", [], [], class_part, class_units, incomplete
+    return "none", [], [], [], [], False
 
 
 def _extract_ordered_groups(
@@ -2874,6 +2891,7 @@ def parse_outcome_measure(
             m_units,
             c_part,
             c_units,
+            c_part_incomplete,
         ) = _select_denoms_from_measure(measure)
 
         # Resolve units_analyzed_type from unit denoms if typeUnitsAnalyzed absent
@@ -2945,7 +2963,15 @@ def parse_outcome_measure(
                     tuple(sorted(m.items())) for _, m in parsed_class_parts
                 ]
                 all_empty = all(not has_e for has_e, _ in parsed_class_parts)
-                if all_empty:
+                if c_part_incomplete:
+                    # Some classes carry no "Participants" denom: their
+                    # analysed counts are unknown, so the classes that have
+                    # one cannot be unanimous for the measure. Recorded as
+                    # its own status with no count, never filled in from
+                    # the classes that report one.
+                    denom_source = "none"
+                    denom_status = "class_level_incomplete"
+                elif all_empty:
                     denom_source = "class_unanimous"
                     denom_status = "empty_counts"
                 elif len(set(canonical_maps)) == 1:
