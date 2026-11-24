@@ -21,7 +21,7 @@ from typing import Any, Callable
 import pandas as pd
 import pytest
 
-from conftest import FIXTURE_PATH, RULES_PATH, frame
+from conftest import FIXTURE_PATH, RULES_PATH, frame, rules_df
 from sponsors import baseline as bl
 from sponsors import ecosystem as eco
 from sponsors import sponsor_roles as sr
@@ -281,6 +281,54 @@ def test_intra_ecosystem_conflicts_raise_unless_all_shared() -> None:
     assert len(eco.sector_trials(idx, "nih")) == 1
     assert len(eco.organization_trials(idx, "Org A")) == 1
     assert len(eco.organization_trials(idx, "Org B")) == 1
+
+
+def test_a_second_rule_for_the_same_canonical_keeps_its_shared_no() -> None:
+    # Codex P2 on PR #111 (r4663843581): when a second, lower-precedence rule
+    # claimed a literal for the same canonical, _assign returned early and
+    # dropped that rule's shared value, so the literal stayed shared=yes
+    # although a claiming rule says no. check_cross_layer_conflicts (and the
+    # within-layer check) then let another claim through. The first rule is
+    # kept; shared is "yes" only when both rules say yes.
+    sp = frame([("NCT99000901", "OTHER", "lead", "Fictional Health")])
+    uniq = sr.literal_universe(sp)
+    eco_rules = eco_rules_df(
+        [
+            ("Fictional Health System", "academic_medical_center", "exact_literal",
+             "Fictional Health", "attribute", "yes", "first claim, shared"),
+            ("Fictional Health System", "academic_medical_center", "exact_normalized",
+             "fictional health", "attribute", "no", "second claim, not shared"),
+        ]
+    )
+    industry = rules_df(
+        [("Fictional Pharma", "exact_literal", "Fictional Health", "attribute", "yes",
+          "industry claim, shared")]
+    )
+    matched = eco.match_ecosystem_literals(uniq, eco_rules)
+    assert matched[["canonical", "match_rule", "shared"]].values.tolist() == [
+        ["Fictional Health System", "exact_literal", "no"]
+    ]
+    with pytest.raises(eco.EcosystemRuleValidationError, match="cross-layer conflict"):
+        eco.check_cross_layer_conflicts(uniq, industry, eco_rules)
+    # Within the layer: a later claim for another canonical, shared=yes, is a
+    # conflict once the first canonical's claims are not all shared.
+    three = eco_rules_df(
+        [
+            ("Fictional Health System", "academic_medical_center", "exact_literal",
+             "Fictional Health", "attribute", "yes", "first claim, shared"),
+            ("Fictional Health System", "academic_medical_center", "exact_normalized",
+             "fictional health", "attribute", "no", "second claim, not shared"),
+            ("Fictional Foundation", "non_profit_foundation", "exact_normalized",
+             "fictional health", "attribute", "yes", "other canonical, shared"),
+        ]
+    )
+    with pytest.raises(eco.EcosystemRuleValidationError, match="conflicting ecosystem rules"):
+        eco.match_ecosystem_literals(uniq, three)
+    # Both rules shared=yes: the literal stays shared, and the cross-layer
+    # claim composes.
+    both_yes = eco_rules.assign(shared="yes")
+    assert eco.match_ecosystem_literals(uniq, both_yes)["shared"].tolist() == ["yes"]
+    assert eco.check_cross_layer_conflicts(uniq, industry, both_yes) is None
 
 
 # ---------------------------------------------------------------------------

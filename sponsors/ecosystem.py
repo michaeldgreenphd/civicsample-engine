@@ -2381,9 +2381,12 @@ def match_ecosystem_literals(
     """Apply curated ecosystem rules to a literal universe using exact matching ONLY.
 
     Precedence per literal: exact_literal > exact_normalized > subsidiary_of.
+    When several rules claim a literal for the same canonical, the
+    highest-precedence one is kept as its match_rule, and its `shared` is
+    "yes" only if every one of those rules says "yes".
     Raises EcosystemRuleValidationError when:
       * two attribute rules claim one literal for different canonicals and not
-        EVERY claiming rule has shared == 'yes', or
+        EVERY claiming rule (each rule of each canonical) has shared == 'yes', or
       * an attribute rule and an exclude rule both match the same literal.
 
     Audit holdout: ENFORCES when `uniq` carries `in_audit`. `uniq` is meant
@@ -2414,8 +2417,24 @@ def match_ecosystem_literals(
         shared: str,
     ) -> None:
         claims = lit_map.setdefault(literal, [])
-        if any(c == canonical for c, _, _, _ in claims):
-            return  # same canonical via a second rule: keep higher-precedence rule
+        for pos, (c, c_sector, c_rule, c_shared) in enumerate(claims):
+            if c != canonical:
+                continue
+            # Same canonical via a second, lower-precedence rule: the first
+            # rule is kept, but the literal is shared only if every claiming
+            # rule says so, or a "no" would be dropped and the conflict
+            # checks (below, and check_cross_layer_conflicts) would see "yes".
+            merged = "yes" if c_shared == "yes" and shared == "yes" else "no"
+            claims[pos] = (c, c_sector, c_rule, merged)
+            if merged != "yes" and len(claims) > 1:
+                others = sorted({o for o, _, _, _ in claims if o != canonical})
+                raise EcosystemRuleValidationError(
+                    f"conflicting ecosystem rules for literal {literal!r}: {others} vs "
+                    f"{canonical!r} (via {rule}, shared={shared}). If this literal "
+                    "genuinely names several organizations, mark EVERY claiming rule "
+                    "shared=yes."
+                )
+            return
         if claims and not (shared == "yes" and all(s == "yes" for _, _, _, s in claims)):
             others = sorted({c for c, _, _, _ in claims})
             raise EcosystemRuleValidationError(
