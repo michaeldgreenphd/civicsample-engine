@@ -591,11 +591,12 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
   `source_pipeline_commit`, `indexer_rules_version`, `run_id`,
   `schema_version`) and the live index's `columns_note` and `excluded`. Any
   other top-level key is refused (`AuditFirewallError`, exit 2), by `--check`
-  as by the build. Run as printed on a fictional site index whose header
-  holds `generated_at`, step 6 stopped this way at `ba916ec`: the build and
-  `--check` each exited 2, and no bundle was written. The real site index's
-  top-level keys were not read for this playbook, so whether step 6 takes it
-  as printed is not known; look at its keys (not its rows) before step 6.
+  as by the build. The site index's top-level keys on 2026-11-24 were
+  `columns_note`, `excluded`, `rows`, `run_id` and `schema_version`, all
+  accepted, so step 6 takes it as printed. A fictional index whose header
+  also held `generated_at` stopped this way at `ba916ec`: the build and
+  `--check` each exited 2, and no bundle was written. If the site index
+  gains a top-level key, check it against this list before step 6.
 - At `ba916ec` the bundle keeps each location row's `worker`, and its
   `model_id` and `prompt_version` when the row carries them (F6), but M3
   does not require them: a row without them is published without them.

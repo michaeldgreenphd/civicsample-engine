@@ -610,7 +610,9 @@ references (`registry_reference_types` `BACKGROUND`, `DERIVED`, `RESULT`),
   `excluded`. Any other key is refused with `AuditFirewallError` (exit 2),
   because its content would be dropped; a fictional index with a
   `generated_at` header was refused this way at `ba916ec`, and the rule is
-  in `ccfa413` too.
+  in `ccfa413` too. The site index's top-level keys on 2026-11-24
+  (`columns_note`, `excluded`, `rows`, `run_id`, `schema_version`) are all
+  accepted in a manifest.
 - **Input shapes.** Provenance metadata is held to Module 4's
   `LongitudinalProvenanceRecord` types (`provenance_schema_version` an int,
   `provenance_rules_version` a str, `excluded_standalone_icf_count` an int
