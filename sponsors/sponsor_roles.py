@@ -238,9 +238,12 @@ def match_literals(uniq: pd.DataFrame, rules: pd.DataFrame) -> pd.DataFrame:
     `uniq` is a literal universe (name, norm, parent_norm). Returns one row
     per (name, canonical): name, canonical, match_rule, shared.
     Precedence per literal: exact_literal > exact_normalized > subsidiary_of.
+    When several rules claim a literal for the same canonical, the
+    highest-precedence one is kept as its match_rule, and its `shared` is
+    "yes" only if every one of those rules says "yes".
     Raises (invariant 6) when
       * two attribute rules claim one literal for different canonicals and
-        not EVERY claiming rule is shared=yes, or
+        not EVERY claiming rule (each rule of each canonical) is shared=yes, or
       * an attribute rule and an exclude rule both reach the same literal —
         a literal is attributed or reviewed-excluded, never both.
     build_index, audit_states.partition and audit all go through here, so a
@@ -253,8 +256,29 @@ def match_literals(uniq: pd.DataFrame, rules: pd.DataFrame) -> pd.DataFrame:
 
     def _assign(literal: str, canonical: str, rule: str, shared: str) -> None:
         claims = lit_map.setdefault(literal, [])
-        if any(c == canonical for c, _, _ in claims):
-            return  # same canonical via a second rule: fine, keep first
+        for pos, (c, c_rule, c_shared) in enumerate(claims):
+            if c != canonical:
+                continue
+            # Same canonical via a second, lower-precedence rule. Rule: the
+            # first (higher-precedence) rule stays the match_rule, but the
+            # literal is shared for this canonical only if EVERY rule that
+            # claims it for this canonical says shared=yes. Keeping the first
+            # rule's "yes" and dropping this rule's "no" would let another
+            # canonical's claim pass the all-shared conflict check below.
+            merged = "yes" if c_shared == "yes" and shared == "yes" else "no"
+            claims[pos] = (c, c_rule, merged)
+            # Another canonical already holds this literal (it was allowed in
+            # only because every claim was "yes"); a "no" now exposes the
+            # conflict, so raise here rather than at a later claim.
+            if merged != "yes" and len(claims) > 1:
+                others = sorted({o for o, _, _ in claims if o != canonical})
+                raise ValueError(
+                    f"conflicting rules for literal {literal!r}: {others} vs "
+                    f"{canonical!r} (via {rule}, shared={shared}). If this literal "
+                    "genuinely names several companies, mark EVERY claiming rule "
+                    "shared=yes."
+                )
+            return
         if claims and not (shared == "yes" and all(s == "yes" for _, _, s in claims)):
             others = sorted({c for c, _, _ in claims})
             raise ValueError(
