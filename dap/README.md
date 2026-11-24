@@ -274,7 +274,10 @@ A denominator count must read as a non-negative whole number, or as none (`"NA"`
 must carry a non-blank string `id` and `title`: `get_overall_group_id` finds the Overall group by its
 title and returns its id, so without either the last arm's counts stood in for the trial's. Every
 measurement and denominator count must name one of the table's group ids: an unmatched `groupId` on
-the Overall value also fell back to the last measurement. A baseline table must list its groups (a
+the Overall value also fell back to the last measurement. A denominator's `units`, a measure's
+`title` and every `groupId` must be non-blank strings: a denominator with `units: ""` is no Participants
+count, so race rows of 60 and 30 beside a blanked 100-participant denominator read a baseline of 90
+instead of 100, and a blank-titled measure matches no extractor and was skipped. A baseline table must list its groups (a
 non-empty `groups`), and no two groups may share an id: a repeated id made every reference look valid
 while the first match, possibly an arm, was read. A class `title` must be a string when present (a
 number raised `AttributeError` in the extractors), and in a measure whose rows carry labels every row
