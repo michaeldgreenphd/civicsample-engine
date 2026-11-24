@@ -376,8 +376,11 @@ them with the model it ran on.
 
 ### Step 4: verify each shard before it lands (M4)
 
-`--check-completeness` checks every in-scope trial in `--index`, so verify a
-shard against an index cut down to that shard's trials:
+`--check-completeness` checks the grid of every `in_audit: false` row of
+`--index` and of no `in_audit: true` row: `verify` builds the expected grid
+from the `in_audit: false` rows alone. So verify a shard against an index
+that holds the shard's `in_audit: false` rows and every `in_audit: true` row
+of the index:
 
 ```bash
 SHARD=resume-unstarted-primary-shard-01
@@ -385,10 +388,22 @@ mkdir -p "census-work/shards/$SHARD"
 python - "$INDEX" census-work/plans/next_batch_plan.json "$SHARD" \
   > "census-work/shards/$SHARD/index.json" <<'EOF'
 import json, sys
-index, plan, shard_id = sys.argv[1:4]
-shard = next(s for s in json.load(open(plan))["shards"] if s["shard_id"] == shard_id)
-wanted = set(shard["nct_ids"])
-rows = [r for r in json.load(open(index))["rows"] if r["nct_id"] in wanted and r["in_audit"] is False]
+from pathlib import Path
+from scripts.verify_and_plan_census_batch import load_index_rows
+index, plan, shard_ids = sys.argv[1], sys.argv[2], set(sys.argv[3:])
+shards = [s for s in json.load(open(plan))["shards"] if s["shard_id"] in shard_ids]
+if len(shards) != len(shard_ids):
+    sys.exit("a shard id is not in the plan; stop")
+wanted = {nct for s in shards for nct in s["nct_ids"]}
+rows = []
+for r in load_index_rows(Path(index)):
+    if r["in_audit"] is True:
+        rows.append({"nct_id": r["nct_id"], "in_audit": True})
+    elif r["nct_id"] in wanted:
+        rows.append(r)
+missing = wanted - {r["nct_id"] for r in rows if r["in_audit"] is False}
+if missing:
+    sys.exit(f"{len(missing)} trial(s) of the shard are not in_audit: false rows of the index; stop")
 print(json.dumps({"rows": rows}))
 EOF
 
@@ -401,6 +416,17 @@ python scripts/verify_and_plan_census_batch.py verify \
   --report-out "census-work/shards/$SHARD/verify_report.json"
 ```
 
+- The slice reads the index with M4's `load_index_rows`, as step 2's filter
+  does, so run it from the root of the checkout; it takes every form
+  `--index` takes (rows under `rows`, `data` or `trials`, a bare list,
+  JSONL). It stops (exit 1) when a shard id is not in the plan or a trial of
+  the shard is not an `in_audit: false` row of the index it is given. It
+  takes one or more shard ids after the plan.
+- The `in_audit: true` rows keep the holdout set `verify` checks against
+  populated, so a holdout trial in a shard's rows is refused as a holdout
+  trial (exit 2), not only as a trial missing from the index. The slice
+  copies only their `nct_id` and `in_audit`; `verify` reads nothing else
+  from them, and they add nothing to the completeness check.
 - A shard lands only when `verify` exits 0: the report is `ok`, with
   `substring_mismatches`, `ellipsis_flags`, `neutral_language_flags` and
   `quotations_not_compared` all 0. Without `--pages-dir`, no quotation is
