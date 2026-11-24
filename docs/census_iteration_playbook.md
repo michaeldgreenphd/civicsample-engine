@@ -524,7 +524,12 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
    content-addressed cache, but see rule 2 of section 1 for what that means
    for verification.
 4. Run steps 3 to 6 within `--budget-cap-usd`, with every output under
-   `census-work/`. In step 6, pass the cohort manifest as
+   `census-work/`. In step 4, give the slice the cohort manifest as its
+   first argument, in place of `"$INDEX"`. A cohort trial that is not in
+   the site index has no row there, so a slice of the site index stops
+   (exit 1) rather than give `verify` an index without it. The manifest
+   holds a row for every cohort trial and the holdout rows of item 2, so
+   the holdout set stays populated. In step 6, pass the cohort manifest as
    `--cohort-manifest` together with `--manifest-cohort <slug>`: a holdout
    row that holds only `nct_id` and `in_audit` has no cohort of its own, and
    the builder refuses a trial that resolves to none (exit 1).
