@@ -14,7 +14,9 @@ Subcommands:
   ``unstarted_target_pass`` (a ``--pass-role second`` pass with no rows yet),
   ``amended_doc_or_outcome_delta``, ``unreadable_recoverable_ocr``
   (``image_only_scan`` / ``garbled_cmap``), and
-  ``unreadable_terminal_redacted`` (``redacted_cci_ppd``, ``$0`` skip), and
+  ``unreadable_terminal_redacted`` (``redacted_cci_ppd``, ``$0`` skip; a
+  profile whose ``readability_summary`` names any of the three subtypes files
+  a trial with no rows under that subtype), and
   ``unreadable_subtype_unknown`` (UNREADABLE, but nothing names the subtype:
   neither terminal nor scheduled), computes
   pre-launch budget guards (``max_launchable_shards``, ``launch_approved``),
@@ -28,8 +30,10 @@ a trial; no call writes a literal ``in_audit=False`` on a trial's behalf. A
 its sha256 is a document of an in-scope trial and none of its keys or strings
 names an audit, unlisted or malformed NCT ID; an entry that does name a trial
 must name one whose document has that sha256, and two different rows for one
-sha256 raise. An in-scope index row may not name an audit trial in any key or
-string (an alias included), and its classic ``NCTId`` must be its ``nct_id``.
+sha256 raise, as do two different ``--profiles`` rows for one trial (an
+identical repeat is kept once). An in-scope index row may not name an audit
+trial in any key or string (an alias included), and its classic ``NCTId``
+must be its ``nct_id``.
 ``--documents``, ``--locations``
 and ``--profiles`` rows follow the same token rule under every key and string,
 with the row's own trial also admitted. ``verify --pages-dir`` hands the page
@@ -123,7 +127,10 @@ PLANNER_SCHEMA_VERSION: Final[int] = 1
 # multi-list indexes are refused; outputs may not overwrite inputs.
 # 1.6.0: an UNREADABLE trial whose subtype nothing names is unreadable_subtype_unknown, not
 # redacted_cci_ppd; a profile's readability_summary names the subtype when rows do not.
-PLANNER_RULES_VERSION: Final[str] = "1.6.0"
+# 1.7.0: a profile's readability_summary is read against all of UNREADABLE_SUBTYPES, so one
+# naming redacted_cci_ppd files a trial under unreadable_terminal_redacted (was
+# unstarted_primary, scheduled); two different --profiles rows for one trial raise.
+PLANNER_RULES_VERSION: Final[str] = "1.7.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
 CostSchedule = Literal["sliced", "full", "conservative"]
@@ -659,6 +666,18 @@ def _validate_profile_entry(
     return checked_key
 
 
+def _canonical_json_text(row: Mapping[str, Any]) -> str:
+    """Return ``row`` as canonical JSON text (sorted keys, fixed separators).
+
+    Used to decide whether two input rows are the same row. Python's ``==``
+    reads ``10`` and ``10.0``, or ``1`` and ``true``, as equal, while the plan
+    does not (``classify_unreadable_subtype`` reads ``physical_pages`` only as
+    an ``int``), so two rows are one row only when their JSON text is the same;
+    key order alone does not make rows differ.
+    """
+    return json.dumps(row, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+
+
 def _load_profiles_by_nct(
     path: Path | None,
     *,
@@ -666,15 +685,28 @@ def _load_profiles_by_nct(
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
 ) -> dict[str, dict[str, Any]]:
+    """Load ``--profiles`` rows keyed by trial, firewalling every row before any is keyed.
+
+    Method: every row is firewalled first (``_validate_profile_entry``), so a
+    file holding a row for an audit or unlisted trial is refused as a firewall
+    violation (exit 2) wherever that row sits, and the trial a later message
+    names is in scope. Two rows for one trial must then be identical
+    (``_canonical_json_text``): rows that differ (one says ``image_only_scan``,
+    the other ``redacted_cci_ppd``, or their documents differ) leave no way to
+    tell which describes the trial, and keeping the last one read would let
+    line order decide the trial's document fingerprint, its unreadable
+    classification and whether it is scheduled, so they raise
+    ``CitationVerificationError`` (exit 1), as two different ``--doc-cache``
+    rows for one sha256 do. An identical repeat is kept once.
+    """
     if path is None:
         return {}
     rows = load_jsonl(path)
     for idx, row in enumerate(rows):
         validate_strict_nct_id(row.get("nct_id"), context=f"{path}[{idx}].nct_id")
         _prescan_nested_nct_fields(row, context=f"{path}[{idx}]")
-    by_nct: dict[str, dict[str, Any]] = {}
-    for idx, row in enumerate(rows):
-        checked_nct = _validate_profile_entry(
+    checked_ncts: list[str] = [
+        _validate_profile_entry(
             row.get("nct_id"),
             row,
             context=f"{path}[{idx}]",
@@ -682,7 +714,21 @@ def _load_profiles_by_nct(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        for idx, row in enumerate(rows)
+    ]
+    by_nct: dict[str, dict[str, Any]] = {}
+    first_idx_by_nct: dict[str, int] = {}
+    for idx, (checked_nct, row) in enumerate(zip(checked_ncts, rows)):
+        if checked_nct in by_nct:
+            first_idx = first_idx_by_nct[checked_nct]
+            if _canonical_json_text(by_nct[checked_nct]) != _canonical_json_text(row):
+                raise CitationVerificationError(
+                    f"{path}[{first_idx}] and {path}[{idx}] are different --profiles rows for "
+                    f"trial {checked_nct!r}; which describes the trial is not determined."
+                )
+            continue
         by_nct[checked_nct] = row
+        first_idx_by_nct[checked_nct] = idx
     return by_nct
 
 
@@ -1055,9 +1101,11 @@ def plan_incremental_cohort(
     ``resume-unstarted`` and ``incremental-delta``), not an amendment.
 
     An UNREADABLE trial is filed by the subtype ``classify_unreadable_subtype``
-    names, else by its profile's ``readability_summary``; when neither names
+    names, else by its profile's ``readability_summary`` when that is one of
+    ``UNREADABLE_SUBTYPES`` (``redacted_cci_ppd`` included); when neither names
     one it is ``unreadable_subtype_unknown``: counted, listed under no
-    subtype, and neither terminal nor scheduled in any mode.
+    subtype, and neither terminal nor scheduled in any mode. A trial with no
+    primary rows is UNREADABLE when its profile's summary names a subtype.
     """
     if type(text_source) is not str or not _is_non_empty_str(text_source):
         raise CitationVerificationError(
@@ -1379,24 +1427,36 @@ def plan_incremental_cohort(
             if loc.get("status") == "UNREADABLE"
         ]
 
-        profile_unreadable = (
-            not primary_locs
-            and profile is not None
-            and profile.get("readability_summary") in {"image_only_scan", "garbled_cmap"}
+        # A profile's readability summary names an unreadable subtype when it is one of
+        # UNREADABLE_SUBTYPES, all three: a profile saying redacted_cci_ppd makes a trial
+        # with no rows unreadable and files it under the terminal $0 skip, never
+        # unstarted_primary (which is scheduled and spends money). Any other string
+        # ("machine_readable") names none; a summary that is not a string is refused rather
+        # than read as naming none. The trial is in scope (an eligible index row), so its
+        # ID may be quoted.
+        profile_summary = profile.get("readability_summary") if profile is not None else None
+        if profile_summary is not None and type(profile_summary) is not str:
+            raise CitationVerificationError(
+                f"profiles_by_nct[{nct_id!r}].readability_summary must be a string, got "
+                f"{type(profile_summary).__name__}."
+            )
+        profile_subtype: str | None = (
+            profile_summary if profile_summary in UNREADABLE_SUBTYPES else None
         )
+        profile_unreadable = not primary_locs and profile_subtype is not None
 
         if unresolved_unreadable_rows or profile_unreadable:
-            subtype = classify_unreadable_subtype(
+            subtype: str | None = classify_unreadable_subtype(
                 current_docs,
                 unresolved_unreadable_rows or primary_locs,
                 doc_cache_by_sha256,
             )
-            if subtype is None and profile is not None:
+            if subtype is None:
                 # The profile's own readability summary names the subtype when the rows and
                 # documents do not (a trial with no rows yet is unreadable by its profile).
-                summary = profile.get("readability_summary")
-                if summary in {"image_only_scan", "garbled_cmap"}:
-                    subtype = summary
+                # When neither names one, the subtype stays unknown: no evidence is never
+                # read as redacted_cci_ppd (round 5).
+                subtype = profile_subtype
             if subtype is None:
                 # Nothing names the subtype: recorded as unknown, neither the terminal $0
                 # bucket nor scheduled for recovery (which would spend on a guess). Setting
