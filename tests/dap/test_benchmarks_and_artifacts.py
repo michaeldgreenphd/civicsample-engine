@@ -1728,6 +1728,12 @@ _ROW_LABEL = "(a row label, as the measure's other rows carry)"
         (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), 7, f"{_BASE}.groups[0].id (a string)"),
         (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), " ",
          f"{_BASE}.groups[0].id (a non-blank string)"),
+        # On 52f50b6 a blank denominator unit or measure title loaded: the denominator was no Participants
+        # count, so rows of 90 beside a blanked 100 gave a baseline of 90, and the blank-titled table was skipped.
+        (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "units"), "",
+         f"{_BASE}.denoms[0].units (a non-blank string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "title"), " ",
+         f"{_BASE}.measures[0].title (a non-blank string)"),
         # On 7e9f383 a group without a title, or a count naming no group, loaded; get_overall_group_id
         # finds Overall by title, and an unmatched groupId falls back to the last measurement.
         (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "title"), _DROP_KEY,

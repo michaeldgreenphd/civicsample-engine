@@ -602,8 +602,12 @@ def _missing_condition_and_sponsor_payloads(protocol: dict[str, Any]) -> list[st
 #     `country` read as a facility without a country, and a non-string collaborator name became the
 #     text of a list.
 #   * `BASELINE_SHAPE`: the baseline table, when present. Each key names a list of objects; inside
-#     an object, `str` means a string when present, `REQUIRED_STR` a string that must be present,
-#     and a nested dict another list of objects.
+#     an object, `str` means a string when present, `REQUIRED_STR` a non-blank string that must be
+#     present, and a nested dict another list of objects. A blank one was read as an absent one: a
+#     denominator with `units: ""` is no Participants count to `get_total_baseline_participants`, so a
+#     table whose rows total 90 beside a blanked denominator of 100 was published with a baseline of 90,
+#     and a measure with a blank title matches no extractor's title and its posted table was skipped.
+#     None of the 6,186 stored denominators, 15,141 measures or 152,354 group references is blank.
 TYPED_PROTOCOL_PARTS: tuple[tuple[str | None, str, type], ...] = (
     ("statusModule", "startDateStruct", dict),
     ("statusModule", "primaryCompletionDateStruct", dict),
@@ -698,7 +702,7 @@ def _object_list_problems(value: Any, path: str, fields: dict[str, Any]) -> list
             elif spec in (REQUIRED_STR, FINITE_TEXT, COUNT_TEXT, REQUIRED_ID) or name in item:
                 if not isinstance(item.get(name), str):
                     out.append(f"{where}.{name} (a string)")
-                elif spec == REQUIRED_ID and not item[name].strip():
+                elif spec in (REQUIRED_STR, REQUIRED_ID) and not item[name].strip():
                     out.append(f"{where}.{name} (a non-blank string)")
                 elif spec == FINITE_TEXT and _reads_as_non_finite_number(item[name]):
                     out.append(f"{where}.{name} (a string reading as a finite number, or none)")
