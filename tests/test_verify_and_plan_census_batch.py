@@ -23,6 +23,7 @@ from src.citation_verifier import (
     DictPageTextProvider,
     ELEMENTS,
     InvalidNctIdError,
+    verify_document_record,
 )
 
 SHA_1 = "1" * 64
@@ -4030,3 +4031,136 @@ def test_m4_r6_conflicting_profile_rows_for_one_trial_raise(
     assert rc == 2, printed
     assert "ERROR [firewall_or_scope]" in printed, printed
     assert RT_UNLISTED_ID not in printed, printed
+
+
+# ---------------------------------------------------------------------------
+# Round-7 regression (Codex r4680906537; fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+_R7_LAST_PAGE = 40
+
+
+def _r7_page_forty_locations() -> list[dict[str, Any]]:
+    """A complete primary grid whose every citation names page 40 of Prot_000.pdf (SHA_1)."""
+    rows = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    for row in rows:
+        for cit in row["citations"]:
+            cit["physical_page"] = _R7_LAST_PAGE
+            cit["printed_page"] = str(_R7_LAST_PAGE)
+    return rows
+
+
+def _r7_page_forty_provider() -> DictPageTextProvider:
+    """Page text for SHA_1 that holds the cited quotation on page 40 of 40."""
+    pages: list[str | None] = [f"Page {n}." for n in range(1, _R7_LAST_PAGE + 1)]
+    pages[_R7_LAST_PAGE - 1] = "9 Statistical Methods\n" + _RT_M4_QUOTE
+    return DictPageTextProvider(
+        pages_by_sha256={SHA_1: pages}, audit_nct_ids=frozenset({RT_AUDIT_ID})
+    )
+
+
+def test_m4_r7_cached_complete_needs_current_documents_that_verify_accepts(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A trial whose current document has ``http_status`` 200 and no page count is not cached_complete.
+
+    The rows verdict ran every location row through ``verify_location_record``
+    against the trial's current documents but never ran the documents through
+    ``verify_document_record``. ``verify_citation`` range-checks a cited page
+    only when the document's ``physical_pages`` is an int, so a 10-page
+    document recorded with no page count let citations to page 40 through,
+    and the trial was filed ``cached_complete`` (never re-run), although
+    ``verify`` refuses that document (``INVALID_PHYSICAL_PAGES``). Correct:
+    each current document, from ``--documents`` or from the trial's profile
+    (whichever the trial is planned on), is run through
+    ``verify_document_record`` first, and any error-severity issue makes the
+    verdict ``rejected``, so the trial is re-run
+    (``amended_doc_or_outcome_delta``). Document keys are held to
+    ``verify --allow-extra-document-keys``: the optional keys are taken, any
+    other key is refused. A profile document with no ``nct_id`` raises
+    ``InvalidNctIdError``, as ``verify`` does for such a document.
+    """
+    provider = _r7_page_forty_provider()
+    locations = _r7_page_forty_locations()
+    no_count = _doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    del no_count["physical_pages"]
+    null_count = _doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    null_count["physical_pages"] = None
+    variants: dict[str, tuple[dict[str, Any], str]] = {
+        # Controls: the same rows against a 40-page document verify; against the
+        # document's true 10 pages page 40 is out of range.
+        "forty_pages": (_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1, physical_pages=40), "cached_complete"),
+        "ten_pages": (_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1), "amended_doc_or_outcome_delta"),
+        # The finding: no page count, so nothing range-checks page 40.
+        "physical_pages_absent": (no_count, "amended_doc_or_outcome_delta"),
+        "physical_pages_null": (null_count, "amended_doc_or_outcome_delta"),
+        # Keys are held to verify --allow-extra-document-keys: the optional
+        # readability keys the plan itself reads are taken; any other key is not.
+        "optional_keys": (
+            _doc(
+                RT_SCOPE_ID,
+                "Prot_000.pdf",
+                SHA_1,
+                physical_pages=40,
+                extra={"readability_status": "machine_readable", "unreadable_recovery_bucket": None},
+            ),
+            "cached_complete",
+        ),
+        "unknown_key": (
+            _doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1, physical_pages=40, extra={"reviewer_note": "ok"}),
+            "amended_doc_or_outcome_delta",
+        ),
+    }
+    for label, (doc, expected) in variants.items():
+        # The trial is planned on --documents rows, or on its profile's documents
+        # (which replace them); both feed the rows verdict.
+        sources: dict[str, dict[str, Any]] = {
+            "documents": {"documents": [doc]},
+            "profile": {"profiles_by_nct": {RT_SCOPE_ID: {"nct_id": RT_SCOPE_ID, "documents": [doc]}}},
+        }
+        for source, stream in sources.items():
+            plan = plan_incremental_cohort(
+                _rt_index_rows(),
+                locations=locations,
+                page_text_provider=provider,
+                planned_at="2026-11-24T00:00:00+00:00",
+                **stream,
+            )
+            filed = [name for name, ids in plan["partitions"].items() if RT_SCOPE_ID in ids]
+            assert filed == [expected], (label, source, filed)
+        verify_document_issues = verify_document_record(
+            doc,
+            audit_nct_ids=frozenset({RT_AUDIT_ID}),
+            in_scope_nct_ids=frozenset({RT_SCOPE_ID}),
+            strict_keys=False,
+        )
+        assert any(issue.severity == "error" for issue in verify_document_issues) == (
+            label.startswith("physical_pages_") or label == "unknown_key"
+        ), (label, verify_document_issues)
+
+    # A profile document with no nct_id is refused as verify refuses it, not judged.
+    no_id = _doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1, physical_pages=40)
+    del no_id["nct_id"]
+    with pytest.raises(InvalidNctIdError):
+        plan_incremental_cohort(
+            _rt_index_rows(),
+            locations=locations,
+            profiles_by_nct={RT_SCOPE_ID: {"nct_id": RT_SCOPE_ID, "documents": [no_id]}},
+            page_text_provider=provider,
+            planned_at="2026-11-24T00:00:00+00:00",
+        )
+
+    # The CLI: plan --documents --pages-dir with the document recorded without a page count.
+    args = _rt_m4_inputs(tmp_path, "r7_no_page_count", documents=[no_count], locations=locations)
+    maps = _rt_m4_pages_dir(
+        tmp_path / "r7_no_page_count_maps",
+        {f"{SHA_1}.json": {"pages": [f"Page {n}." for n in range(1, _R7_LAST_PAGE)] + [_RT_M4_QUOTE]}},
+    )
+    plan_path = tmp_path / "r7_plan.json"
+    rc, printed = _rt_f442_run(["plan", *args, "--pages-dir", str(maps), "--out-plan", str(plan_path)], capsys)
+    assert rc == 0, printed
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan["partitions"]["cached_complete"] == [], plan["partitions"]
+    assert plan["partitions"]["amended_doc_or_outcome_delta"] == [RT_SCOPE_ID], plan["partitions"]
+    rc, printed = _rt_f442_run(["verify", *args, "--pages-dir", str(maps)], capsys)
+    assert rc == 1 and "INVALID_PHYSICAL_PAGES" in printed, printed

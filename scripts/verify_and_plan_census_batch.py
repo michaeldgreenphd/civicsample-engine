@@ -39,7 +39,8 @@ and ``--profiles`` rows follow the same token rule under every key and string,
 with the row's own trial also admitted. ``verify --pages-dir`` hands the page
 provider the ``(nct_id, sha256)`` pairs of the in-scope documents, so no
 content-addressed page map outside them is opened. ``plan`` files a trial as
-``cached_complete`` only when every one of its rows passes
+``cached_complete`` only when every one of its current documents passes
+``verify_document_record`` and every one of its rows passes
 ``verify_location_record`` with page text (``--pages-dir``), so its quotations
 were found on their pages. An index row's missing ``protocol``/``sap`` flag is
 unknown, not "no document"; a malformed ``cohorts`` field raises. Every input
@@ -112,6 +113,7 @@ from src.citation_verifier import (  # noqa: E402
     validate_status_citations,
     validate_strict_nct_id,
     verify_census_corpus,
+    verify_document_record,
     verify_location_record,
 )
 from src.utils import pipeline_commit  # noqa: E402
@@ -130,7 +132,10 @@ PLANNER_SCHEMA_VERSION: Final[int] = 1
 # 1.7.0: a profile's readability_summary is read against all of UNREADABLE_SUBTYPES, so one
 # naming redacted_cci_ppd files a trial under unreadable_terminal_redacted (was
 # unstarted_primary, scheduled); two different --profiles rows for one trial raise.
-PLANNER_RULES_VERSION: Final[str] = "1.7.0"
+# 1.8.0: cached_complete also needs every current document (--documents rows, or the
+# profile's documents that replace them) to pass verify_document_record; a document verify
+# refuses (http_status 200 with no page count, say) makes the rows verdict rejected.
+PLANNER_RULES_VERSION: Final[str] = "1.8.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
 CostSchedule = Literal["sliced", "full", "conservative"]
@@ -1018,8 +1023,32 @@ def _trial_rows_verify(
     trial's current documents and the page provider the plan was given, with
     exhaustive NOT_FOUND required (verify's default).
 
-    Returns ``"rejected"`` for any error-severity issue, two rows for one
-    (outcome, element, pass) cell, or two current documents with one filename;
+    The rows are judged against the documents, so the documents are judged
+    first: each of ``current_docs`` is run through
+    ``src.citation_verifier.verify_document_record`` with the audit and
+    in-scope arguments the rows use. ``current_docs`` is whatever the plan
+    files the trial on: its profile's ``documents`` when the profile has a
+    list, else its ``--documents`` rows. ``verify_location_record``
+    range-checks a cited page only against a document whose
+    ``physical_pages`` is an int, so without this a document recorded with
+    ``http_status`` 200 and no page count, which ``verify`` refuses, let a
+    citation to any page through. Document keys are held to
+    ``verify --allow-extra-document-keys`` (``strict_keys=False``: the
+    required keys plus ``DOCUMENT_OPTIONAL_KEYS``, nothing else), not to
+    verify's stricter default: the plan has no such flag, and it reads the
+    optional readability keys (``readability_status``,
+    ``unreadable_subtype``, ``unreadable_recovery_bucket``) from documents
+    itself (``classify_unreadable_subtype``), so a document carrying them is
+    a document the plan is meant to take, and refusing it would re-run its
+    trial on every plan. No ``pdf_root`` is given: the plan reads no PDF.
+    ``verify_document_record`` raises ``InvalidNctIdError`` for a document
+    with no strict ``nct_id``, as ``verify`` does; a ``--documents`` row
+    always has one by now, and a profile document without one stops the
+    plan here rather than being judged on its rows.
+
+    Returns ``"rejected"`` for any error-severity issue of a document or a
+    row, two rows for one (outcome, element, pass) cell, or two current
+    documents with one filename;
     ``"quotations_unchecked"`` when no row is rejected but some citation's
     quotation was compared with no page text (no provider: the rows' structure
     verifies, and whether their quotations appear on their pages is unknown);
@@ -1032,6 +1061,16 @@ def _trial_rows_verify(
         if type(fn) is not str or fn in docs_by_filename:
             return "rejected"
         docs_by_filename[fn] = doc
+    for doc in current_docs:
+        doc_issues = verify_document_record(
+            doc,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+            strict_keys=False,
+        )
+        if any(issue.severity == "error" for issue in doc_issues):
+            return "rejected"
     seen_cells: set[tuple[str, str, str]] = set()
     quotations_unchecked = False
     for loc in nct_locs:
@@ -1090,7 +1129,8 @@ def plan_incremental_cohort(
     ``cost_schedule`` must be one of ``PLAN_MODES`` / ``COST_SCHEDULES``
     exactly; anything else is refused, never read as the default.
 
-    ``cached_complete`` (never re-run) needs rows that verify accepts with
+    ``cached_complete`` (never re-run) needs current documents that
+    ``verify_document_record`` accepts and rows that verify accepts with
     their quotations found on their pages, so it needs page text
     (``page_text_provider``; CLI ``--pages-dir``). Without it, a trial whose
     rows are otherwise complete and valid is filed under
