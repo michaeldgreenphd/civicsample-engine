@@ -10,8 +10,8 @@ unreviewed AI output until a person reviews it.
 The commands use M1 (`scripts/index_trial_documents.py`), M4
 (`scripts/verify_and_plan_census_batch.py`), M2 as a library, and M3
 (`scripts/build_outcomes_shards.py`), so they need a checkout that carries the
-branches they name. They were checked against m1 `69edfb3`, m2 `fe7399e`, m4
-`dab323c` and m3 `ccfa413`.
+branches they name. They were checked against m1 `2561a46`, m2 `fe7399e`, m4
+`97789ee` and m3 `ccfa413`.
 
 ## 0. Before anything runs
 
@@ -181,6 +181,17 @@ checks that they agree.
 | `image_only_scan` | Pages are images with no text layer | `unreadable_recoverable_ocr` | As for `garbled_cmap` |
 | (none named) | `UNREADABLE`, but nothing names the subtype | `unreadable_subtype_unknown` | Neither skipped nor scheduled; needs a person to look |
 
+A trial with no rows yet is classified from its profile. At m4 `97789ee`,
+`plan` treats it as `UNREADABLE` only when its profile's
+`readability_summary` is one of the three subtypes (a summary that is not a
+string is refused, exit 1). M1 writes that summary from its own statuses,
+which include `image_only_scan` and `garbled_cmap` but not
+`redacted_cci_ppd`: M1 records a redacted document as
+`partial_image_or_redacted`, with `redacted_cci_ppd` as its recovery bucket
+in the document index. So a trial with no rows whose documents M1 found
+redacted is filed `unstarted_primary` and scheduled (run on fictional M1
+output).
+
 No branch contains OCR code. The planner lists what needs OCR, and `verify`
 can read OCR page maps (`--ocr-dir`, which needs `--pages-dir`, with a
 `--text-source` whose name contains the word `ocr`, such as
@@ -243,6 +254,19 @@ python scripts/index_trial_documents.py \
   `--manifest "$INDEX" --ingest-census-jsonl census-work/rule-census-20261114/documents.jsonl`,
   with `--local-pdf-dir` (PDFs under `<dir>/<nct_id>/`) or `--page-map-jsonl`
   so pages can be read.
+- A document already in the document index is indexed again when this run's
+  `--min-selected-pages`, `--max-selected-pages` or the document's type
+  (`protocol`, `sap`, `combined`) differs from what its index line records
+  (`selection_inputs`). The pages come from the cached page map, with no new
+  extraction, and this run's line replaces the old one. A document that two
+  trials post as different types keeps the line of the trial indexed last;
+  each trial's profile still records the type that trial posted it as.
+- The cache keeps one page map per document. If it already holds a different
+  map for a document, such as an OCR map written into
+  `data/document_cache/pages`, step 1 stops with exit 1
+  (`CacheIntegrityError`) and leaves the map and the document index as they
+  were. Keep OCR page maps in a directory of their own; step 4 reads them
+  from there (`--ocr-dir`).
 - Exit 0 on success, 1 on indexer errors or when a trial's record could not
   be fetched (the others are still written), 2 on usage or holdout refusals.
 
@@ -296,13 +320,14 @@ fi
   `in_audit: false` row of `--index`, other than a profile's own trial. The
   text includes what M1 copied from the document, such as a section heading
   in `section_slice.detected_sections`.
-- Each run of step 1 rewrites the profiles but keeps every earlier line of
-  the document index. After a run with `--nct-id` or another `--manifest`,
-  the document index holds lines of type (2), and the profiles hold only
-  that run's trials: `plan` then schedules the other trials of `--index`
-  without their documents (the shard's `doc_set_fingerprints` records an
-  empty document set for them). Run step 1 over the whole `--index` again
-  before planning it.
+- Each run of step 1 rewrites the profiles but keeps the earlier lines of
+  the document index; it replaces a line only for a document it indexes
+  again under the same rules version (step 1). After a run with `--nct-id`
+  or another `--manifest`, the document index holds lines of type (2), and
+  the profiles hold only that run's trials: `plan` then schedules the other
+  trials of `--index` without their documents (the shard's
+  `doc_set_fingerprints` records an empty document set for them). Run step 1
+  over the whole `--index` again before planning it.
 - Before each `plan`, filter both files to the `--index` it is given,
   copying each kept line unchanged, and pass the copies as
   `--profiles census-work/profiles_for_plan.jsonl` and
@@ -346,12 +371,26 @@ fi
   out of the copy would hide from `plan` the readability fields it reads to
   name an `UNREADABLE` subtype (`classify_unreadable_subtype`), so take it to
   the investigator rather than drop the line.
-- At m1 `69edfb3` and m4 `dab323c`, `plan` refuses the profiles step 1
+- At m1 `2561a46` and m4 `97789ee`, `plan` refuses the profiles step 1
   writes, whatever the `--index`: their document records carry no
   `model_id` or `profile_version`, which `plan` requires of a profile's
   documents as it does of a `--documents` row (exit 1, no plan; run on
   fictional M1 output). Which branch should change is not settled; until
   one does, step 2 cannot take step 1's profiles as they are.
+- At the same revisions, `plan` refuses the document index of a checkout
+  that step 1 has run on under two M1 rules versions. Step 1 keeps one line
+  per `(sha256, indexer_rules_version)` and keeps earlier lines, so after a
+  change of `INDEXER_RULES_VERSION` a document indexed under both versions
+  has two lines that differ. Step 2's filter keeps both, since both carry
+  the sha256 of an in-scope document, and `plan` refuses two different
+  `--doc-cache` rows for one sha256 (`CitationVerificationError: … are
+  different doc-cache rows for sha256 …`, exit 1, no plan). This was so at
+  m1 `69edfb3` too (run on fictional M1 output, with the rules version
+  changed in a scratch copy of m1). A copy holding one rules version's lines
+  for each document is accepted, which is what pruning the old version's
+  lines would give; whether to prune them, or which branch should change, is
+  the investigator's decision. Until it is made, step 2 cannot take the
+  document index after an M1 rules-version change.
 - `--mode resume-unstarted` schedules `unstarted_primary` and
   `unstarted_target_pass` trials; `recover-unreadable` schedules
   `unreadable_recoverable_ocr`; `incremental-delta` (the default) also
@@ -454,7 +493,10 @@ python scripts/verify_and_plan_census_batch.py verify \
   `--text-source macos_vision_ocr_v1` (or whichever OCR source produced the
   maps).
 - A shard whose trials share a document with another trial hits the gap in
-  rule 2 of section 1.
+  rule 2 of section 1. When the trial M1 tagged the shared page map with is
+  not in the shard, `verify` stops before it checks any row
+  (`AuditHoldoutViolationError`, exit 2, no report), because the map names a
+  trial outside the shard's index.
 
 ### Step 5: combine, append-only
 

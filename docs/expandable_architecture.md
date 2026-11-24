@@ -25,8 +25,8 @@ merged on its own; M3 is the exception, because it imports M4.
 | `antigravity/m3-outcomes-bundles` | stacked on m4 (it merges the m4 branch) | `src/outcomes_layout.py`, `scripts/build_outcomes_shards.py`, `tests/test_outcomes_layout.py`, `.gitignore` (the two M3 paths), plus m4's files | `src.citation_verifier` (M4) only | **held unmerged** until the investigator decides whether census output is published |
 | `antigravity/docs-platform` | `aa14a2d` | this file and `docs/census_iteration_playbook.md` | not applicable | for review |
 
-The revisions read for this document were m1 `69edfb3`, m2 `fe7399e`, m4
-`dab323c` and m3 `ccfa413` (which contains m4 at `dab323c`, merged in at
+The revisions read for this document were m1 `2561a46`, m2 `fe7399e`, m4
+`97789ee` and m3 `ccfa413` (which contains m4 at `dab323c`, merged in at
 `52c0bac`). A later commit on
 any of these branches can change a detail stated here, so re-check a detail
 against the branch before relying on it.
@@ -202,8 +202,13 @@ requested trial. So for a document shared by two in-scope trials, M4 can
 serve the cached pages to the first trial only, and `verify --pages-dir`
 stops with a `CitationVerificationError` (exit 1, no report written) when it
 reaches the second. This was reproduced with fictional trial ids (a map
-written by M1's `DocumentCacheStore`, then `verify` run over it); no test on
-any branch covers it.
+written by M1's `DocumentCacheStore`, then `verify` run over it), most
+recently at m1 `2561a46` and m4 `97789ee`; no test on any branch covers it.
+When the trial the map is tagged with is not an in-scope row of `--index` at
+all, as when a shard is verified against an index cut down to its own trials
+(the playbook's step 4), `verify` stops before it checks any row, with
+`AuditHoldoutViolationError` (exit 2, no report), because the map names a
+trial outside the index. That was run on fictional M1 output too.
 
 ## 6. Model provenance and review status
 
@@ -295,14 +300,32 @@ any branch covers it.
   `data/document_cache`): `blobs/`, `pages/<sha256[:2]>/<sha256>.json.gz` (a
   page map per document, tagged with a trial id as described in section 5),
   and `url_manifest.json`. `--index-out` (default
-  `data/document_index_by_sha256.jsonl`) holds `DocumentIndexEntry` records
-  keyed by `(sha256, indexer_rules_version)`; `--profiles-out` (default
+  `data/document_index_by_sha256.jsonl`) holds `DocumentIndexEntry` records,
+  one line per `(sha256, indexer_rules_version)`; `--profiles-out` (default
   `data/trial_document_profiles.jsonl`) holds one `TrialDocumentProfile` per
   trial. These three paths are gitignored on the m1 branch. Identical bytes
   are extracted once. `INDEXER_RULES_VERSION` is `doc_indexer@2026-11-21.v1`.
-  A cache that disagrees with a file's digest or size raises
-  `CacheIntegrityError`, and a run writes to the cache only if it succeeds
-  whole.
+  A change of it adds a second line for every document indexed again, and
+  M4's `plan` refuses two different lines for one sha256 (the playbook's
+  step 2 lists this as a blocker).
+- **Index entries are reused only for their selection inputs.** An entry
+  records the inputs that shaped its page selection (`selection_inputs`:
+  `doc_type`, `min_selected_pages`, `max_selected_pages`) and is served only
+  to a request with the same three. Otherwise, and for a line written before
+  the inputs were recorded, the document is indexed again from its cached
+  page map, with no new extraction, and the new entry replaces the old. A
+  document that two trials post with different `doc_type`s keeps the entry
+  of the trial indexed last; each trial's profile is built from its own
+  request.
+- **Integrity.** `CacheIntegrityError` is raised for a cache that disagrees
+  with a file's digest or size; for an index line that names a page outside
+  `1..physical_pages`, a reversed section range or a page partition that is
+  not exact (checked when a line is loaded and before one is written); and
+  for a page map already in a document's slot that is not the same map
+  (another `text_source`, such as an OCR map, or other page text), which is
+  left as it is rather than replaced. Through the CLI the last two stop the
+  run with exit 1, with the index file and the existing map left as they
+  were. A run writes to the cache only if it succeeds whole.
 - **Readability.** `READABILITY_STATUSES` has seven values:
   `machine_readable`, `partial_image_or_redacted`, `image_only_scan`,
   `garbled_cmap`, `extraction_failed`, `download_failed`, `no_document`.
@@ -439,6 +462,7 @@ references (`registry_reference_types` `BACKGROUND`, `DERIVED`, `RESULT`),
 `to_outcomes_layout_provenance` projects a record into M3's shard schema.
 
 **Planner and verifier CLI (`scripts/verify_and_plan_census_batch.py`).**
+`PLANNER_RULES_VERSION` is `1.7.0`.
 
 - `verify`: `--index` (required), `--documents` (required), `--locations`
   (required), `--pages-dir`, `--ocr-dir` (only with `--pages-dir`),
@@ -462,8 +486,20 @@ references (`registry_reference_types` `BACKGROUND`, `DERIVED`, `RESULT`),
   one of its rows passes `verify_location_record` with page text
   (`--pages-dir`); without page text a complete trial is
   `complete_quotations_unchecked`. `classify_unreadable_subtype` names the
-  UNREADABLE subtype; an UNREADABLE trial whose subtype nothing names is
+  UNREADABLE subtype from the trial's rows and document-index lines; when it
+  names none, the trial's profile `readability_summary` names it if that is
+  one of `UNREADABLE_SUBTYPES` (a summary that is not a string is refused,
+  exit 1), and a trial with no rows is UNREADABLE only when its summary
+  names one. An UNREADABLE trial whose subtype nothing names is
   `unreadable_subtype_unknown`, neither skipped as redacted nor scheduled.
+  M1's summary is one of its own `READABILITY_STATUSES`, never
+  `redacted_cci_ppd`, so a trial with no rows whose documents M1 found
+  redacted is filed `unstarted_primary` and scheduled (run on fictional M1
+  output).
+- `plan` keys `--profiles` by trial and `--doc-cache` by sha256: two
+  different rows for one trial, or for one sha256, raise
+  `CitationVerificationError` (exit 1, no plan), and an identical repeat is
+  kept once.
   The plan reports `partition_counts`, `excluded_in_audit_count`,
   `ocr_prepass_queue`, `cost_projection`, `max_launchable_shards`,
   `launch_approved` and the shard manifests (each with `within_budget_cap`).
