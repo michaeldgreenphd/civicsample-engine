@@ -594,10 +594,16 @@ leaves out.
   exit 1), and a trial with no rows is UNREADABLE only when its summary
   names one. An UNREADABLE trial whose subtype nothing names is
   `unreadable_subtype_unknown`, neither skipped as redacted nor scheduled.
-  M1's summary is one of its own `READABILITY_STATUSES`, never
-  `redacted_cci_ppd`, so a trial with no rows whose documents M1 found
-  redacted is filed `unstarted_primary` and scheduled (run on fictional M1
-  output).
+  M1 has no status for a document redacted throughout. It gives a document
+  `readability_status` `partial_image_or_redacted` when any page carries a
+  redaction flag, has no text or has a broken character map, and the
+  recovery bucket `redacted_cci_ppd` when the document has redaction flags
+  and no page without text: a document readable apart from its redacted
+  pages. A trial whose documents are of that kind is summarised
+  `partial_image_or_redacted`, so `plan` files it, when it has no rows,
+  `unstarted_primary` and schedules it, and its readable pages are
+  extracted. The summary rule for `redacted_cci_ppd` applies only to a
+  profile whose trial summary says so, which M1 does not write.
 - `plan` keys `--profiles` by trial and `--doc-cache` by sha256: two
   different rows for one trial, or for one sha256 within the rules version
   read, raise `CitationVerificationError` (exit 1, no plan), and an

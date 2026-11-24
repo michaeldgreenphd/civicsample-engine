@@ -189,22 +189,21 @@ checks that they agree.
 | `image_only_scan` | Pages are images with no text layer | `unreadable_recoverable_ocr` | As for `garbled_cmap` |
 | (none named) | `UNREADABLE`, but nothing names the subtype | `unreadable_subtype_unknown` | Neither skipped nor scheduled; needs a person to look |
 
-A trial with no rows yet is classified from its profile. At m4 `97789ee`,
-`plan` treats it as `UNREADABLE` only when its profile's
-`readability_summary` is one of the three subtypes (a summary that is not a
-string is refused, exit 1), and a summary of `redacted_cci_ppd` files it
-under `unreadable_terminal_redacted`, with no spend. M1's
-`readability_summary` is never `redacted_cci_ppd`: M1
-(`summarize_trial_readability`) writes one of its own seven statuses, and
-records a redacted document as `partial_image_or_redacted`, with
-`redacted_cci_ppd` only as its recovery bucket in the document index. So
-M4's terminal-redacted rule for a profile never applies to a profile M1
-writes, and a trial with no rows whose documents M1 found redacted is filed
-`unstarted_primary` and scheduled. This was run on fictional M1 output: a
-summary of `partial_image_or_redacted` with a document-index bucket of
-`redacted_cci_ppd` was scheduled, and the same profile with its summary
-changed by hand to `redacted_cci_ppd` was filed terminal. Whether this
-should change, and on which branch, is the investigator's decision.
+How M1's statuses fit this table. M1 gives a document `readability_status`
+`partial_image_or_redacted` when any of its pages carries a redaction flag
+(`cci`, `ppd`, `white_box_or_blank_stats`), has no text or has a broken
+character map, and gives it the recovery bucket `redacted_cci_ppd` when it
+has redaction flags and no page without text: a document that is readable
+apart from its redacted pages. M1 has no status for a document redacted
+throughout, so a trial's `readability_summary` is never `redacted_cci_ppd`;
+a trial whose documents are of this kind is summarised
+`partial_image_or_redacted`. `plan` files such a trial, while it has no
+rows, as `unstarted_primary` and schedules it, so its readable pages are
+extracted. The terminal rule for a profile (a summary of
+`redacted_cci_ppd` files a trial with no rows under
+`unreadable_terminal_redacted`) applies only to a summary M1 does not
+write. A trial whose rows record `UNREADABLE` is filed from its rows and
+document-index lines as the table shows.
 
 No branch contains OCR code. The planner lists what needs OCR, and `verify`
 can read OCR page maps (`--ocr-dir`, which needs `--pages-dir`, with a
