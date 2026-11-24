@@ -123,10 +123,15 @@ modified.
      is below the baseline table's Participants counts fewer people than a race
      table covering everyone, so it does not bound one
      (`_sex_measure_analyzed_below_table`); its composition is kept as the share
-     of the people it counts. The only stored such measures are three
-     split-mouth trials' (NCT06238999, NCT04708223, NCT06166849), which analyze
-     their whole enrollment while the baseline Total counts each participant
-     three times; none posts a race table.
+     of the people it counts. The Number Analyzed is read on the measure or on
+     its classes, where the registry posts most of them
+     (`table_selection.number_analyzed`). 24 stored raw trials' sex measures
+     post one below their table, 21 on their classes; 7 race and 5 ethnicity
+     tables whose total equals the table's Participants (NCT02766608: sex 2,361
+     of 2,389) had been withheld as exceeding the sex total and are now read.
+     Three are split-mouth trials (NCT06238999, NCT04708223, NCT06166849) that
+     analyze their whole enrollment while the baseline Total counts each
+     participant three times; none posts a race table.
    - **Denominator A (`of_baseline_total`)**: `floor = count / baseline_total`,
      `unknown_bounds = [floor, (count + unknown + unmapped) / baseline_total]`,
      and `direction_settled` (`True` when both bounds lie strictly on the same

@@ -2854,27 +2854,34 @@ def test_a_build_counts_and_checks_an_arm_read_instead_of_a_numeric_total(tmp_pa
     assert metric["value"] == 1
 
 
-def _analyzed_sex_and_race(nct_id: str, female: int, male: int, analyzed: int, race: list[tuple[str, str]]) -> dict:
-    """One group of 100 baseline participants: a sex measure with its own Number Analyzed, and a race table."""
+def _analyzed_sex_and_race(
+    nct_id: str, female: int, male: int, analyzed: int, race: list[tuple[str, str]], at: str = "measure"
+) -> dict:
+    """One group of 100 baseline participants: a sex measure with its own Number Analyzed, posted on the
+    measure or (as the registry returns most) on its class, and a race table."""
     sex = _sex_by_class([(None, female, male)])
-    sex["denoms"] = [{"units": "Participants", "counts": [{"groupId": "BG000", "value": str(analyzed)}]}]
+    denoms = [{"units": "Participants", "counts": [{"groupId": "BG000", "value": str(analyzed)}]}]
+    (sex if at == "measure" else sex["classes"][0])["denoms"] = denoms
     return fx.make_raw_ctgov_study(nct_id, baseline_denom=100, measures=[sex, fx.make_measure("Race (NIH/OMB)", race)])
 
 
-def test_a_sex_measure_analyzed_on_part_of_the_table_does_not_bound_race() -> None:
+@pytest.mark.parametrize("at", ["measure", "class"])
+def test_a_sex_measure_analyzed_on_part_of_the_table_does_not_bound_race(at: str) -> None:
     # On f34455f a sex measure analyzing 50 of the 100 participants (Female 30, Male 20) bounded the race
-    # table of all 100, which was withheld as exceeding it; the baseline table's 100 now bounds it.
+    # table of all 100, which was withheld as exceeding it; the baseline table's 100 now bounds it. On
+    # 68e1ff9 a Number Analyzed posted on the class still did (NCT02766608: sex 2,361 of 2,389).
     d = extract_demographics(_analyzed_sex_and_race(
-        "NCT99800074", 30, 20, 50, [("White", "60"), ("Black or African American", "40")]))
+        "NCT99800074", 30, 20, 50, [("White", "60"), ("Black or African American", "40")], at))
     assert (d["race"]["table_status"], d["race"]["status_detail"]) == ("omb_compatible", "standard_omb_categories")
     assert d["race"]["of_classified"]["white"] == 0.6
     assert (d["sex_gender"]["female_share"], d["sex_gender"].get("composition_withheld_reason")) == (0.6, None)
 
 
-def test_a_sex_measure_analyzed_on_the_whole_table_still_bounds_race() -> None:
+@pytest.mark.parametrize("at", ["measure", "class"])
+def test_a_sex_measure_analyzed_on_the_whole_table_still_bounds_race(at: str) -> None:
     # Control, on both heads: a sex measure analyzing all 100 still catches a race table summing to 120.
     d = extract_demographics(_analyzed_sex_and_race(
-        "NCT99800075", 60, 40, 100, [("White", "80"), ("Black or African American", "40")]))
+        "NCT99800075", 60, 40, 100, [("White", "80"), ("Black or African American", "40")], at))
     assert (d["race"]["table_status"], d["race"]["status_detail"]) == (
         "non_standard_categories_present", "table_total_exceeds_sex_table")
 

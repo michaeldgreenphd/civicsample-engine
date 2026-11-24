@@ -70,6 +70,7 @@ from src import ethnicity_extractor, race_extractor
 from src import utils as src_utils
 from src import sex_gender_parser as sgp
 from src import sex_gender_table as sgt
+from src import table_selection
 
 TABLE_STATUSES: tuple[str, ...] = (
     "omb_compatible",
@@ -1162,20 +1163,25 @@ def _sex_counts_from_one_class_of_several(
 def _sex_measure_analyzed_below_table(record: dict[str, Any], baseline_participants: int | None) -> bool:
     """Whether the primary sex measure states a Number Analyzed below the baseline table's Participants.
 
+    The Number Analyzed is read where the registry posts it, on the measure or, for most measures, on its
+    classes (`table_selection.number_analyzed`, the extractors' own lookup).
+
     Such a measure counts fewer people than the table (Female 30 and Male 20, Number Analyzed 50, in a
     100-participant table), so its total is not a count of the same people as a race or ethnicity table
     covering everyone, and it does not bound one: that table is bounded by the baseline table's own
     denominator instead. Its composition is kept, as the share of the people it counts, like a race table
-    posted for part of a trial. In the stored raw trials the only such measures are three split-mouth
-    trials' (NCT06238999, NCT04708223, NCT06166849), whose sex measures analyze their whole enrollment
-    while the baseline Total counts each participant three times; none posts a race table.
+    posted for part of a trial. 24 stored raw trials' sex measures post such a number, 21 of them on their
+    classes. In 7 race tables (NCT02766608: sex 2,361 of 2,389) and 5 ethnicity tables the total equals
+    the baseline table's Participants; they had been withheld as exceeding the sex total. Three are
+    split-mouth trials (NCT06238999, NCT04708223, NCT06166849) whose sex measures analyze their whole
+    enrollment while the baseline Total counts each participant three times; none posts a race table.
     """
     if baseline_participants is None:
         return False
     primary = _primary_sex_measure(record)
     if primary is None:
         return False
-    analyzed = src_utils.get_measure_denom(primary[0], src_utils.get_overall_group_id(record))
+    analyzed = table_selection.number_analyzed(primary[0], src_utils.get_overall_group_id(record))
     return analyzed is not None and analyzed < baseline_participants
 
 
