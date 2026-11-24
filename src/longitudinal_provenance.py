@@ -49,7 +49,7 @@ Key invariants:
 - Strictly factual language only: zero evaluative, spin, outcome-switching, or
   regulatory-compliance claims.
 - An explicit DOI field is used only when, normalised, it is a DOI (it fully
-  matches ``_DOI_RE``); a value that is not (a placeholder such as ``"N/A"``,
+  matches ``_EXPLICIT_DOI_RE``); a value that is not (a placeholder such as ``"N/A"``,
   a ``"doi:"`` label with nothing after it) is dropped and counted in the
   record's ``dropped_malformed_doi_count``, so its absence is not read as "no
   DOI given".
@@ -99,7 +99,7 @@ PROVENANCE_SCHEMA_VERSION: Final[int] = LONGITUDINAL_SCHEMA_VERSION
 # protocol or SAP without a filename) and extracted documents without a filename or a
 # vocabulary doc_type raise instead of being dropped; audit IDs split across a key and its
 # value, padded or labelled ("NCT No.") are refused.
-# 1.5.0: an explicit DOI must fully match the DOI grammar (_DOI_RE) once normalised; a value
+# 1.5.0: an explicit DOI must fully match the DOI grammar (_EXPLICIT_DOI_RE) once normalised; a value
 # that does not ("N/A", a bare "doi:" label) is dropped, not recorded or linked as a DOI, and
 # counted in the record's dropped_malformed_doi_count (new record key, not projected).
 PROVENANCE_RULES_VERSION: Final[str] = "1.5.0"
@@ -196,6 +196,11 @@ _ALL_NUMERIC_SLASH_DASH_RE: Final[re.Pattern[str]] = re.compile(
 _MULTI_DATE_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"\s(?:/|;|and|&)\s|;")
 _YEAR_IN_TEXT_RE: Final[re.Pattern[str]] = re.compile(r"\b((?:19|20)\d{2})\b")
 _DOI_RE: Final[re.Pattern[str]] = re.compile(r"\b(10\.\d{4,9}/[^\s;\"<>]+)")
+# An explicit DOI field holds one DOI and nothing else, so its suffix is any run of
+# non-whitespace characters: the DOI syntax allows ";", "<" and ">" (old SICI-style
+# DOIs such as 10.1002/(SICI)...<...>3.0.CO;2-X), which _DOI_RE excludes only because
+# it must find where a DOI ends inside running text. Registrant digits are ASCII.
+_EXPLICIT_DOI_RE: Final[re.Pattern[str]] = re.compile(r"10\.[0-9]{4,9}/\S+")
 
 
 class ParsedDate(TypedDict):
@@ -634,16 +639,15 @@ def _clean_doi(value: Any) -> tuple[str | None, bool]:
     Method: ``None``, an empty or a blank string is absence (no DOI given):
     ``(None, False)``. Any other value is normalised as before (resolver and
     ``doi:`` label prefixes removed, trailing ``.,;)`` stripped, lowercased)
-    and must then fully match ``_DOI_RE``, the grammar the free-text reader
-    (``_extract_doi``) uses: ``10.``, a 4-9 digit registrant code, ``/`` and
-    a suffix with no whitespace, ``;``, ``"``, ``<`` or ``>``. A value that
+    and must then fully match ``_EXPLICIT_DOI_RE``: ``10.``, a 4-9 ASCII-digit
+    registrant code, ``/`` and a non-empty suffix with no whitespace. A value that
     does not (``"N/A"``, ``"none"``, ``"doi:"`` with nothing after the label,
     a number, a bool) is not a DOI: it is not used (it would otherwise be
     recorded as the DOI ``"n/a"`` and, alone, link a publication) and is
     reported as ``(None, True)`` so the caller counts it rather than reading
-    the absence as "no DOI given". The grammar refuses DOIs that contain
-    ``;``, ``<`` or ``>`` (old SICI-style DOIs), as ``_extract_doi`` already
-    cuts them short; such a value is dropped and counted, not truncated.
+    the absence as "no DOI given". Unlike ``_DOI_RE`` (which must find where
+    a DOI ends inside running text), the suffix may hold ``;``, ``<`` and
+    ``>``, so an old SICI-style DOI given in a DOI field is kept whole.
     """
     if value is None:
         return None, False
@@ -656,7 +660,7 @@ def _clean_doi(value: Any) -> tuple[str | None, bool]:
         if s.lower().startswith(prefix.lower()):
             s = s[len(prefix) :].strip()
     s = s.rstrip(".,;)").lower()
-    if _DOI_RE.fullmatch(s) is None:
+    if _EXPLICIT_DOI_RE.fullmatch(s) is None:
         return None, True
     return s, False
 

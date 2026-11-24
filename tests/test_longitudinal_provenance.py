@@ -1093,7 +1093,7 @@ def test_m4_r7_provenance_explicit_doi_must_match_the_doi_grammar() -> None:
     only identifier was that placeholder became a linked publication. A
     ``"doi:"`` label with nothing after it was read as no DOI given. Correct:
     after normalisation an explicit DOI must fully match the DOI grammar
-    (``_DOI_RE``: ``10.<4-9 digits>/<suffix>``); a value that does not is not
+    (``_EXPLICIT_DOI_RE``: ``10.<4-9 ASCII digits>/<non-space suffix>``); a value that does not is not
     used, and the record counts it in ``dropped_malformed_doi_count``, so the
     absence carries its reason. A missing, null or blank DOI is absence, not
     counted. The layout projection's key set (and each publication's) is
@@ -1142,8 +1142,19 @@ def test_m4_r7_provenance_explicit_doi_must_match_the_doi_grammar() -> None:
     plain = _rt_f442_assemble(_sample_study(nct_id=RT_SCOPE_ID))
     assert plain["dropped_malformed_doi_count"] == 0
 
-    # Other values that are not DOIs: a short registrant code, no suffix, not a string.
-    for bad in ("10.123/abc", "10.1000/", "pending", 101000, True):
+    # An old SICI-style DOI given in a DOI field is a DOI: ";", "<" and ">" are
+    # allowed in an explicit DOI's suffix, unlike in the free-text pattern.
+    sici = "10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E"
+    sici_record = _rt_f442_assemble(
+        _sample_study(nct_id=RT_SCOPE_ID),
+        pubmed_records=[{"pmid": "40000031", "doi": sici, "title": "SICI DOI"}],
+    )
+    assert _r7_publication(sici_record, pmid="40000031")["doi"] == sici.lower()
+    assert sici_record["dropped_malformed_doi_count"] == 0
+
+    # Other values that are not DOIs: a short registrant code, no suffix, not a
+    # string, and a registrant code in non-ASCII digits.
+    for bad in ("10.123/abc", "10.1000/", "pending", 101000, True, "10.\u0661\u0660\u0660\u0660/abc"):
         bad_record = _rt_f442_assemble(
             _sample_study(nct_id=RT_SCOPE_ID),
             pubmed_records=[{"pmid": "40000021", "doi": bad, "title": "Bad DOI"}],
