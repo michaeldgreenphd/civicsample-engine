@@ -10,7 +10,7 @@ unreviewed AI output until a person reviews it.
 The commands use M1 (`scripts/index_trial_documents.py`), M4
 (`scripts/verify_and_plan_census_batch.py`), M2 as a library, and M3
 (`scripts/build_outcomes_shards.py`), so they need a checkout that carries the
-branches they name. They were checked against m1 `2561a46`, m2 `fe7399e`, m4
+branches they name. They were checked against m1 `2561a46`, m2 `b9a2ebc`, m4
 `97789ee` and m3 `ccfa413`.
 
 ## 0. Before anything runs

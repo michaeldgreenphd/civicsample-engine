@@ -20,12 +20,12 @@ merged on its own; M3 is the exception, because it imports M4.
 | Branch | Base | Files | Imports from another module | State |
 |---|---|---|---|---|
 | `antigravity/m1-document-indexer` | `aa14a2d` | `src/document_indexer.py`, `scripts/index_trial_documents.py`, `tests/test_document_indexer.py`, `.gitignore` (the three M1 data paths) | none | for review |
-| `antigravity/m2-population-ecosystem` | `aa14a2d` | `src/analysis_population_parser.py`, `sponsors/ecosystem.py`, `sponsors/ecosystem_rules.csv`, `tests/test_analysis_population_parser.py`, `tests/sponsors/test_ecosystem.py`, `tests/sponsors/expected_ecosystem_counts.json`, `tests/sponsors/fixtures/sponsors_fixture_ecosystem.csv` | none (it uses the existing `sponsors.adapter`, `sponsors.baseline` and `sponsors.sponsor_roles`) | for review |
+| `antigravity/m2-population-ecosystem` | `aa14a2d` | `src/analysis_population_parser.py`, `sponsors/ecosystem.py`, `src/holdout_guard.py` (the holdout guard both modules import), `sponsors/ecosystem_rules.csv`, `tests/test_analysis_population_parser.py`, `tests/sponsors/test_ecosystem.py`, `tests/sponsors/expected_ecosystem_counts.json`, `tests/sponsors/fixtures/sponsors_fixture_ecosystem.csv` | none (it uses the existing `sponsors.adapter`, `sponsors.baseline` and `sponsors.sponsor_roles`) | for review |
 | `antigravity/m4-citation-verifier` | `aa14a2d` | `src/citation_verifier.py`, `src/longitudinal_provenance.py`, `scripts/verify_and_plan_census_batch.py`, `tests/test_citation_verifier.py`, `tests/test_longitudinal_provenance.py`, `tests/test_verify_and_plan_census_batch.py` | none | for review |
 | `antigravity/m3-outcomes-bundles` | stacked on m4 (it merges the m4 branch) | `src/outcomes_layout.py`, `scripts/build_outcomes_shards.py`, `tests/test_outcomes_layout.py`, `.gitignore` (the two M3 paths), plus m4's files | `src.citation_verifier` (M4) only | **held unmerged** until the investigator decides whether census output is published |
 | `antigravity/docs-platform` | `aa14a2d` | this file and `docs/census_iteration_playbook.md` | not applicable | for review |
 
-The revisions read for this document were m1 `2561a46`, m2 `fe7399e`, m4
+The revisions read for this document were m1 `2561a46`, m2 `b9a2ebc`, m4
 `97789ee` and m3 `ccfa413` (which contains m4 at `dab323c`, merged in at
 `52c0bac`). A later commit on
 any of these branches can change a detail stated here, so re-check a detail
@@ -59,8 +59,9 @@ adds a dependency.
 |---|---|---|
 | M1 `src/document_indexer.py` | none | Page-text extraction (`MacOSPDFKitProvider`) needs macOS (`sys.platform == "darwin"`). It compiles a helper with `clang` against Apple's `Foundation` and `PDFKit` frameworks, or falls back to `ctypes.CDLL` bindings to `/usr/lib/libobjc.A.dylib`, `Foundation.framework` and `PDFKit.framework`; a prebuilt helper can be named in `CIVICSAMPLE_PDFKIT_HELPER`. On any other platform, a document with neither a pre-extracted page map (`--page-map-jsonl`) nor a cached one raises `PageExtractionError`. |
 | M1 `scripts/index_trial_documents.py` | `requests` (imported when the script loads); `tqdm` (imported for a run over more than one trial; if it is not installed the run continues without a progress bar) | `src.api_client.CTGovAPIClient` and network access to ClinicalTrials.gov's API and document URLs for a live run. A census ingest (`--ingest-census-jsonl`) makes no network request. |
-| M2 `sponsors/ecosystem.py` | `pandas`, imported when the module loads (the sibling modules it uses, `sponsors.adapter`, `sponsors.baseline` and `sponsors.sponsor_roles`, import it too) | none |
-| M2 `src/analysis_population_parser.py` | `pandas`, imported only inside `parse_outcomes_frame` (calling that function without pandas raises `ImportError`) | none |
+| M2 `sponsors/ecosystem.py` | `pandas`, imported when the module loads (the sibling modules it uses, `sponsors.adapter`, `sponsors.baseline` and `sponsors.sponsor_roles`, import it too) | `src.holdout_guard` (M2) |
+| M2 `src/analysis_population_parser.py` | `pandas`, imported only inside `parse_outcomes_frame` (calling that function without pandas raises `ImportError`) | `src.holdout_guard` (M2) |
+| M2 `src/holdout_guard.py` | `pandas`, imported only inside `check_frame`, the sponsor-frame check (the parser never calls it) | none: the Python standard library otherwise |
 | M4 `src/citation_verifier.py` | none | No network and no PDF binary: it reads page text that was extracted beforehand. |
 | M4 `src/longitudinal_provenance.py` | none | `src.citation_verifier`. It makes network requests only through a `publication_provider` the caller passes in; `src.pubmed_fetcher.PubMedFetcher` fits that interface and uses `requests`. |
 | M4 `scripts/verify_and_plan_census_batch.py` | none | `src.citation_verifier` and `src.utils.pipeline_commit`, which runs `git` when `GITHUB_SHA` is unset. No network. |
@@ -103,16 +104,46 @@ M2 leaves it to its callers.
 
 - M2 has no CLI, does no I/O of per-trial data, and no entry point receives
   an audit id set.
-- It refuses input that carries an `in_audit` flag that is true or not a bool
-  (under many spellings and at any depth):
-  `PopulationAuditHoldoutError` from `parse_study_outcomes`,
-  `parse_outcomes_frame`, `select_raw_outcome_populations` and
-  `build_outcomes_from_raw`; `EcosystemAuditHoldoutError` from
-  `build_ecosystem_index`, `partition_ecosystem`, `build_unified_index`,
-  `partition_unified`, `attribute_study_sponsors`, `sector_trials`,
-  `organization_trials`, `trial_cohorts`, `audit_ecosystem`,
-  `uncovered_ecosystem_rules`, `compute_ecosystem_baseline`,
-  `match_ecosystem_literals` and `check_cross_layer_conflicts`.
+- The rules are in `src/holdout_guard.py`, which both M2 modules import
+  (`from src import holdout_guard as hg`). Each module raises its own
+  subclass of `hg.AuditHoldoutError`, whose `reason` is one of
+  `HOLDOUT_REFUSAL_REASONS`: `PopulationAuditHoldoutError` from
+  `parse_study_outcomes`, `parse_outcomes_frame`,
+  `select_raw_outcome_populations` and `build_outcomes_from_raw`;
+  `EcosystemAuditHoldoutError` from `build_ecosystem_index`,
+  `partition_ecosystem`, `build_unified_index`, `partition_unified`,
+  `attribute_study_sponsors`, `sector_trials`, `organization_trials`,
+  `trial_cohorts`, `audit_ecosystem`, `uncovered_ecosystem_rules`,
+  `compute_ecosystem_baseline`, `match_ecosystem_literals` and
+  `check_cross_layer_conflicts`.
+- Input that carries the flag (under a name `is_flag_key` accepts, at any
+  depth) is refused when a flag is True (`in_audit_true`); when a flag is
+  not a bool (0/1, `"True"`, None and NaN are never coerced), a batch
+  carries it for some records only, or a frame carries it only inside cells
+  (`in_audit_not_bool`); or when the id the entry point would stamp is not
+  exactly `^NCT[0-9]{8}$` or another id the input carries disagrees
+  (`nct_id_malformed`). Several flags that agree, such as a frame's
+  `in_audit_x` and `in_audit_y`, pass when none is True.
+- Flag or not, input must be plain JSON data or it is refused by type
+  (`in_audit_not_bool`): in the module's words, "a record is exactly a dict
+  with exactly-str keys and, at any depth, values that are exactly dict,
+  list, str, int, float, bool or None". A dict subclass, a tuple, a numpy
+  value or an object with attributes is not opened. A sponsor frame must be
+  exactly a DataFrame (otherwise `TypeError`); its flag columns and index
+  levels, its cells and its `attrs` are read.
+- `is_flag_key` reads as the flag the exact names, with pandas' `_x`/`_y`
+  merge suffixes removed (`in_audit`, `inAudit`, `IN_AUDIT`, `in-audit`,
+  `is_in_audit`, `in_audit_x`), and any name whose ASCII words hold "in"
+  then "audit" (`in_audit_manifest`, `manifest_in_audit`, `in_audit_flag`).
+  `domain_audit`, `main_audit`, `login_audit` and `within_audit` are not
+  the flag.
+- Not seen, by design (the module's list): "a flag the caller removed or
+  renamed to other words, written with look-alike or full-width letters,
+  serialized into a string (JSON or repr text, a CSV round trip of a dict
+  column), held as a value (DataFrame.melt, key/value lists), or set as a
+  DataFrame attribute instead of a column" (an attribute of the frame
+  object; `attrs` is read). "A caller who deletes the flag defeats any
+  scanner; the guarantee rests on the caller's exclusion."
 - A CT.gov study dict, an AACT-shaped sponsor frame and the indexes built
   from them carry no `in_audit`. For those inputs every M2 entry point relies
   on its caller to leave holdout trials out. The parser's fragment functions
@@ -374,13 +405,17 @@ trial outside the index. That was run on fictional M1 output too.
 ### M2: analysis-population parser and sponsor ecosystem
 
 **Parser (`src/analysis_population_parser.py`).** `PARSER_RULES_VERSION` is
-`analysis_pop@2026-11-20.v1`; `VOCABULARY_SHA256` is computed by
+`analysis_pop@2026-11-24.v1`; `VOCABULARY_SHA256` is computed by
 `compute_vocabulary_sha256` over `VOCABULARY_RULES`. `POPULATION_TAXONOMY`
 has nine classes that are never merged: `itt`, `modified_itt`,
 `full_analysis_set`, `per_protocol`, `evaluable`, `safety`, `other_stated`,
 `not_stated`, `ambiguous_multi`. `DENOM_STATUS_LEVELS`, `ARM_GAP_REASONS` and
 `AGGREGATION_METHODS` record why a value is absent; a missing count is None,
-never 0. `arm_started_minus_analysed` is stored for audit and has no path into
+never 0. A measure with no measure-level denominators whose classes carry a
+`Participants` denominator in some classes and none in others has
+`denom_status` `class_level_incomplete`, `denom_source` `"none"` and no
+`overall_participants_analyzed` (run on a fictional measure).
+`arm_started_minus_analysed` is stored for audit and has no path into
 `classify_population_description`. Entry points:
 `classify_population_description`, `normalize_population_text`,
 `extract_flow_started`, `align_flow_and_outcome_groups`,
@@ -398,10 +433,14 @@ case-insensitive substring `stem` matching is confined to `audit_ecosystem`,
 which lists unreviewed candidates for a person to curate. The three review
 states (`attributed`, `reviewed_excluded`, `unreviewed`) are never merged.
 Every rule carries a non-empty `note`; conflicting rules raise
-`EcosystemRuleValidationError` (a `ValueError`). `compute_ecosystem_baseline`
-and `write_ecosystem_baseline` keep SHA-256-keyed baselines in
-`tests/sponsors/expected_ecosystem_counts.json`. `sponsors/company_aliases.csv`
-and `tests/sponsors/expected_counts.json` are not changed.
+`EcosystemRuleValidationError` (a `ValueError`). When two rules claim one
+literal for the same canonical, the literal is `shared=yes` only when both
+rules say yes; every rule in the shipped `ecosystem_rules.csv` says
+`shared=no`, and `expected_ecosystem_counts.json` is unchanged by the rule.
+`compute_ecosystem_baseline` and `write_ecosystem_baseline` keep
+SHA-256-keyed baselines in `tests/sponsors/expected_ecosystem_counts.json`.
+`sponsors/company_aliases.csv` and `tests/sponsors/expected_counts.json` are
+not changed.
 
 ### M4: citation verifier, longitudinal provenance and batch planner
 
