@@ -100,6 +100,10 @@ Analytical invariants:
   or evaluative labels.
 - Lossless TOC/section page slicing: pages_selected, pages_deferred, and
   pages_without_text always form a disjoint exact partition of 1..physical_pages.
+  A stored index entry is held to this when it is loaded (and before it is
+  written): a line whose partition is inexact, or that names any page (in any
+  page list or section bound) outside 1..physical_pages, is refused with
+  ``CacheIntegrityError``, never served or copied into a profile.
 """
 
 from __future__ import annotations
@@ -1281,6 +1285,60 @@ def _stored_choice(value: Any, allowed: Sequence[str], *, origin: str, field: st
     return value
 
 
+# A stored page number names a page of the document it was computed from. The
+# strict readers above check that each is an int >= 1; the two checks below
+# hold the numbers to the document: none may exceed its ``physical_pages``,
+# and the selected / deferred / without-text split must be the exact partition
+# of 1..physical_pages that ``select_statistical_pages`` writes. A line that
+# fails either was not written by this module (it was edited, truncated or
+# produced elsewhere), and serving it would copy pages the document does not
+# have into a trial's profile. Messages count the offending pages and print
+# none of them (no stored value is printed).
+
+
+def _check_pages_in_document(
+    pages: Sequence[int], physical_pages: int, *, origin: str, field: str
+) -> None:
+    """Raise ``CacheIntegrityError`` when any of ``pages`` (already ints >= 1) exceeds ``physical_pages``."""
+    outside = sum(1 for page in pages if page > physical_pages)
+    if outside:
+        raise CacheIntegrityError(
+            f"{origin} field {field!r} names {outside} page(s) outside 1..physical_pages; a stored "
+            "page number must be a page of the document, and the entry is refused rather than "
+            "served or copied into a profile."
+        )
+
+
+def _check_exact_page_partition(
+    physical_pages: int,
+    pages_selected: Sequence[int],
+    pages_deferred: Sequence[int],
+    pages_without_text: Sequence[int],
+    *,
+    origin: str,
+) -> None:
+    """Raise ``CacheIntegrityError`` unless the three lists name every page of 1..physical_pages exactly once.
+
+    Call after ``_check_pages_in_document`` has held each list to the
+    document, so the distinct pages named are a subset of 1..physical_pages
+    and any shortfall is a page left out.
+    """
+    named = [*pages_selected, *pages_deferred, *pages_without_text]
+    distinct = set(named)
+    fields = "'pages_selected', 'pages_deferred' and 'pages_without_text'"
+    if len(distinct) != len(named):
+        raise CacheIntegrityError(
+            f"{origin} fields {fields} name {len(named) - len(distinct)} page(s) more than once; "
+            "they must be a disjoint partition of 1..physical_pages, and the entry is refused."
+        )
+    if len(distinct) != physical_pages:
+        raise CacheIntegrityError(
+            f"{origin} fields {fields} leave {physical_pages - len(distinct)} page(s) of "
+            "1..physical_pages in none of them; they must cover every page exactly once, and the "
+            "entry is refused."
+        )
+
+
 _SELECTION_STRATEGIES: Final[tuple[SelectionStrategy, ...]] = (
     "full_readable_within_budget",
     "toc_and_headings",
@@ -1455,7 +1513,13 @@ class DetectedSectionRange:
     def from_dict(
         cls, data: Mapping[str, Any], *, origin: str = "detected section"
     ) -> DetectedSectionRange:
-        """Read a stored ``to_dict`` object strictly (exact keys and types; see the strict readers above)."""
+        """Read a stored ``to_dict`` object strictly (exact keys and types; see the strict readers above).
+
+        ``start_page`` may not follow ``end_page``: ``select_statistical_pages``
+        never writes a reversed range, and one names no page at all. That both
+        lie in the document is checked by ``SectionSliceResult.from_dict``,
+        which knows its page count.
+        """
         obj = _stored_object(
             data,
             frozenset({"category", "heading", "source", "start_page", "end_page"}),
@@ -1467,12 +1531,19 @@ class DetectedSectionRange:
         source = _stored_choice(
             obj["source"], ("toc", "body_heading", "synopsis_block"), origin=origin, field="source"
         )
+        start_page = _stored_int(obj["start_page"], origin=origin, field="start_page", minimum=1)
+        end_page = _stored_int(obj["end_page"], origin=origin, field="end_page", minimum=1)
+        if start_page > end_page:
+            raise CacheIntegrityError(
+                f"{origin} field 'start_page' follows its 'end_page'; a reversed section range "
+                "names no page and is refused."
+            )
         return cls(
             category=category,  # type: ignore[arg-type]
             heading=_stored_str(obj["heading"], origin=origin, field="heading"),
             source=source,  # type: ignore[arg-type]
-            start_page=_stored_int(obj["start_page"], origin=origin, field="start_page", minimum=1),
-            end_page=_stored_int(obj["end_page"], origin=origin, field="end_page", minimum=1),
+            start_page=start_page,
+            end_page=end_page,
         )
 
 
@@ -1511,6 +1582,14 @@ class SectionSliceResult:
 
         ``printed_page_offset`` must be present: null (no offset) and an int
         are both stored values; an absent key is not read as null.
+
+        Every stored page number (the three partition lists,
+        ``unreadable_statistical_pages``, ``toc_pages`` and each detected
+        section's bounds) must lie in 1..physical_pages, and
+        ``pages_selected``, ``pages_deferred`` and ``pages_without_text`` must
+        name each page of 1..physical_pages exactly once, as
+        ``select_statistical_pages`` writes them (with no pages, all are
+        empty). Anything else is ``CacheIntegrityError``.
         """
         obj = _stored_object(
             data,
@@ -1537,31 +1616,54 @@ class SectionSliceResult:
                 f"{origin} field 'detected_sections' must be a list "
                 f"(got {type(raw_sections).__name__})."
             )
+        physical_pages = _stored_int(
+            obj["physical_pages"], origin=origin, field="physical_pages", minimum=0
+        )
+        page_lists = {
+            name: _stored_pages(obj[name], origin=origin, field=name)
+            for name in (
+                "pages_selected",
+                "pages_deferred",
+                "pages_without_text",
+                "unreadable_statistical_pages",
+                "toc_pages",
+            )
+        }
+        detected_sections = [
+            DetectedSectionRange.from_dict(item, origin=f"{origin} detected_sections[{index}]")
+            for index, item in enumerate(raw_sections)
+        ]
+        for name, pages in page_lists.items():
+            _check_pages_in_document(pages, physical_pages, origin=origin, field=name)
+        for index, section in enumerate(detected_sections):
+            for bound, page in (("start_page", section.start_page), ("end_page", section.end_page)):
+                _check_pages_in_document(
+                    [page],
+                    physical_pages,
+                    origin=f"{origin} detected_sections[{index}]",
+                    field=bound,
+                )
+        _check_exact_page_partition(
+            physical_pages,
+            page_lists["pages_selected"],
+            page_lists["pages_deferred"],
+            page_lists["pages_without_text"],
+            origin=origin,
+        )
         return cls(
-            physical_pages=_stored_int(
-                obj["physical_pages"], origin=origin, field="physical_pages", minimum=0
-            ),
-            pages_selected=_stored_pages(obj["pages_selected"], origin=origin, field="pages_selected"),
-            pages_deferred=_stored_pages(obj["pages_deferred"], origin=origin, field="pages_deferred"),
-            pages_without_text=_stored_pages(
-                obj["pages_without_text"], origin=origin, field="pages_without_text"
-            ),
-            unreadable_statistical_pages=_stored_pages(
-                obj["unreadable_statistical_pages"],
-                origin=origin,
-                field="unreadable_statistical_pages",
-            ),
+            physical_pages=physical_pages,
+            pages_selected=page_lists["pages_selected"],
+            pages_deferred=page_lists["pages_deferred"],
+            pages_without_text=page_lists["pages_without_text"],
+            unreadable_statistical_pages=page_lists["unreadable_statistical_pages"],
             has_toc=_stored_bool(obj["has_toc"], origin=origin, field="has_toc"),
-            toc_pages=_stored_pages(obj["toc_pages"], origin=origin, field="toc_pages"),
+            toc_pages=page_lists["toc_pages"],
             printed_page_offset=(
                 None
                 if offset is None
                 else _stored_int(offset, origin=origin, field="printed_page_offset")
             ),
-            detected_sections=[
-                DetectedSectionRange.from_dict(item, origin=f"{origin} detected_sections[{index}]")
-                for index, item in enumerate(raw_sections)
-            ],
+            detected_sections=detected_sections,
             selection_strategy=_stored_choice(  # type: ignore[arg-type]
                 obj["selection_strategy"],
                 _SELECTION_STRATEGIES,
@@ -1620,6 +1722,17 @@ class DocumentIndexEntry:
         (``extracted_at``, ``indexer_rules_version``, ``text_provider``) and a
         ``pipeline_commit`` that is a non-empty str or null. ``origin`` names
         the file and line in messages; no stored value is printed.
+
+        Stored page numbers are held to the document (``_check_pages_in_document``):
+        the entry's ``pages_without_text`` and every page list of its
+        ``cmap_metrics`` and ``redaction`` lie in 1..physical_pages, its
+        ``section_slice`` is checked the same way and must partition
+        1..physical_pages exactly (``SectionSliceResult.from_dict``), and the
+        entry's own ``physical_pages`` and ``pages_without_text`` must be its
+        section slice's, as ``index_document_pages`` writes them. The profile
+        copies ``pages_without_text``, the slice's selected and deferred pages
+        and ``redaction.unreadable_statistical_pages``, so a page the document
+        does not have would otherwise reach it.
         """
         obj = _stored_object(
             data,
@@ -1667,7 +1780,7 @@ class DocumentIndexEntry:
         commit = obj["pipeline_commit"]
         if commit is not None:
             commit = _stored_str(commit, origin=origin, field="pipeline_commit", non_empty=True)
-        return cls(
+        entry = cls(
             sha256=sha,
             byte_count=_stored_int(obj["byte_count"], origin=origin, field="byte_count", minimum=1),
             extracted_at=_stored_str(
@@ -1703,6 +1816,41 @@ class DocumentIndexEntry:
                 obj["section_slice"], origin=f"{origin} section_slice"
             ),
         )
+        pages = entry.physical_pages
+        _check_pages_in_document(
+            entry.pages_without_text, pages, origin=origin, field="pages_without_text"
+        )
+        nested_page_lists: dict[str, dict[str, Sequence[int]]] = {
+            "cmap_metrics": {
+                "pages_garbled_cmap": entry.cmap_metrics.pages_garbled_cmap,
+                "garbled_statistical_pages": entry.cmap_metrics.garbled_statistical_pages,
+            },
+            "redaction": {
+                "pages_with_cci": entry.redaction.pages_with_cci,
+                "pages_with_ppd": entry.redaction.pages_with_ppd,
+                "pages_with_redacted_tag": entry.redaction.pages_with_redacted_tag,
+                "pages_header_stamp_only": entry.redaction.pages_header_stamp_only,
+                "pages_orphaned_stat_headings": entry.redaction.pages_orphaned_stat_headings,
+                "unreadable_statistical_pages": entry.redaction.unreadable_statistical_pages,
+            },
+        }
+        for block, page_lists in nested_page_lists.items():
+            for name, block_pages in page_lists.items():
+                _check_pages_in_document(
+                    block_pages, pages, origin=f"{origin} {block}", field=name
+                )
+        if entry.section_slice.physical_pages != pages:
+            raise CacheIntegrityError(
+                f"{origin} field 'physical_pages' is not its section_slice's 'physical_pages'; "
+                "both count the same document's pages, and the entry is refused."
+            )
+        if list(entry.pages_without_text) != entry.section_slice.pages_without_text:
+            raise CacheIntegrityError(
+                f"{origin} field 'pages_without_text' is not its section_slice's "
+                "'pages_without_text'; both list the same document's blank pages, and the entry "
+                "is refused."
+            )
+        return entry
 
 
 class ParsedPartialDate(TypedDict):
@@ -4857,7 +5005,13 @@ class DocumentCacheStore:
         (used by explicit --reparse-cached-pages). Always raises
         CacheIntegrityError if byte_count or physical_pages disagrees for the
         same sha256.
+
+        The entry is read back with the loader's own rule
+        (``DocumentIndexEntry.from_dict`` over ``to_dict``) before it is kept,
+        so this store never writes a line it would refuse to load (a page
+        outside the document, an inexact page partition).
         """
+        DocumentIndexEntry.from_dict(entry.to_dict(), origin="New document index entry")
         self._check_sha_invariants(
             entry.sha256, entry.byte_count, entry.physical_pages
         )

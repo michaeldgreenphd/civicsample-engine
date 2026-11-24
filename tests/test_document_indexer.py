@@ -7,6 +7,7 @@ Runs without network access or external PDF binaries on both Linux CI and macOS.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import gzip
 import json
 from pathlib import Path
@@ -177,6 +178,37 @@ def _clean_stat_pages(n_pages: int = 4) -> list[str]:
             f"(item code {chr(65 + (i % 26))}{chr(97 + ((i * 7) % 26))}) according to the protocol."
         )
     return out
+
+
+@pytest.fixture(autouse=True)
+def _every_written_entry_reads_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every index entry and section slice any test in this module produces must load back unchanged.
+
+    ``DocumentIndexEntry.from_dict`` refuses stored page numbers outside
+    1..physical_pages and a selected/deferred/without-text split that is not
+    an exact partition (round 8). The writer (``index_document_pages``,
+    ``select_statistical_pages``) is wrapped here so that every entry and
+    slice the whole suite produces, from every fixture document, is
+    serialised and read back strictly; a writer output the loader would
+    refuse fails the test that produced it.
+    """
+    real_index = di.index_document_pages
+    real_select = di.select_statistical_pages
+
+    def _index(*args: Any, **kwargs: Any) -> di.DocumentIndexEntry:
+        entry = real_index(*args, **kwargs)
+        stored = json.loads(json.dumps(entry.to_dict()))
+        assert di.DocumentIndexEntry.from_dict(stored).to_dict() == stored
+        return entry
+
+    def _select(*args: Any, **kwargs: Any) -> di.SectionSliceResult:
+        result = real_select(*args, **kwargs)
+        stored = json.loads(json.dumps(result.to_dict()))
+        assert di.SectionSliceResult.from_dict(stored).to_dict() == stored
+        return result
+
+    monkeypatch.setattr(di, "index_document_pages", _index)
+    monkeypatch.setattr(di, "select_statistical_pages", _select)
 
 
 # ---------------------------------------------------------------------------
@@ -7228,3 +7260,146 @@ def test_m1_r7_cli_help_states_the_download_size_rule() -> None:
         assert "the run goes on" in flat
         assert "not indexed or recorded in ``url_manifest.json``" in flat
         assert "With no payload ``size`` there is nothing to compare against" in flat
+
+
+# ---------------------------------------------------------------------------
+# Round 8: Codex P2 findings on PR #112, one group of tests per finding. Each
+# test failed until the module was fixed, except the one that says it guards
+# the unchanged side. Fictional NCT990000xx ids only, fake providers and
+# sessions only, no network.
+# ---------------------------------------------------------------------------
+
+
+def _r8_six_page_record(pdf: bytes) -> dict[str, Any]:
+    """An index line for a six-page document whose pages 2 and 6 have no text, as the indexer writes it."""
+    clean = _clean_stat_pages(4)
+    pages = [clean[0], "", clean[1], clean[2], clean[3], "   "]
+    return di.index_document_pages(
+        pages, sha256=di.sha256_bytes(pdf), byte_count=len(pdf), text_provider="fixture", extracted_at=_RT_STAMP
+    ).to_dict()
+
+
+def _r8_open_refused(tmp_path: Path, label: str, record: dict[str, Any]) -> str:
+    """Write ``record`` as the only index line, open a store on it, and return the refusal message.
+
+    The store must refuse the line with ``CacheIntegrityError`` and leave the
+    file byte for byte.
+    """
+    index = tmp_path / f"r8_index_{label}.jsonl"
+    index.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    before = index.read_bytes()
+    with pytest.raises(di.CacheIntegrityError) as info:
+        di.DocumentCacheStore(tmp_path / f"r8_cache_{label}", index)
+    assert index.read_bytes() == before, label
+    return str(info.value)
+
+
+def test_m1_r8_stored_page_numbers_must_lie_in_the_document_and_partition_it(tmp_path: Path) -> None:
+    """An index line naming a page outside 1..physical_pages, or splitting the pages inexactly, is refused.
+
+    The module states that ``pages_selected``, ``pages_deferred`` and
+    ``pages_without_text`` always form a disjoint exact partition of
+    1..physical_pages, but loading a stored entry checked only that each page
+    number was an int >= 1: a line with ``physical_pages`` 1 and
+    ``pages_without_text`` [2] was served as a cache hit and its page 2 copied
+    into the trial's profile. Correct: every stored page number (the three
+    partition lists, ``toc_pages``, both ``unreadable_statistical_pages``,
+    the redaction and garbled-CMap page lists, detected section bounds) lies
+    in 1..physical_pages, the three partition lists cover it exactly once,
+    and the entry's own ``physical_pages`` and ``pages_without_text`` are its
+    section slice's. Anything else is ``CacheIntegrityError`` and the file is
+    left as it is. Every line the indexer writes still loads.
+    """
+    # The finding's own line: one page, and page 2 recorded as having no text.
+    one_pdf = _make_minimal_pdf("A one-page protocol")
+    one = di.index_document_pages(
+        ["1. Objectives\nThe primary endpoint is overall survival."],
+        sha256=di.sha256_bytes(one_pdf),
+        byte_count=len(one_pdf),
+        text_provider="fixture",
+        extracted_at=_RT_STAMP,
+    ).to_dict()
+    assert (one["physical_pages"], one["pages_without_text"]) == (1, [])
+    message = _r8_open_refused(tmp_path, "finding", {**one, "pages_without_text": [2]})
+    assert "'pages_without_text'" in message and "outside 1..physical_pages" in message, message
+    # The store does not write such an entry either.
+    put_index = tmp_path / "r8_put_index.jsonl"
+    put_store = di.DocumentCacheStore(tmp_path / "r8_put_cache", put_index)
+    damaged = dataclasses.replace(di.DocumentIndexEntry.from_dict(one), pages_without_text=(2,))
+    with pytest.raises(di.CacheIntegrityError, match="outside 1..physical_pages"):
+        put_store.put_entry(damaged)
+    assert put_store.get_entry(one["sha256"]) is None and not put_index.exists()
+
+    pdf = _make_minimal_pdf("A six-page protocol with two blank pages")
+    record = _r8_six_page_record(pdf)
+    section = record["section_slice"]
+    assert record["physical_pages"] == 6 and record["pages_without_text"] == [2, 6]
+    assert (section["pages_selected"], section["pages_deferred"]) == ([1, 3, 4, 5], [])
+    assert section["detected_sections"], "the fixture document should detect a section"
+    # A clean line loads, through from_dict and through the store.
+    assert di.DocumentIndexEntry.from_dict(record).to_dict() == record
+    clean_index = tmp_path / "r8_clean_index.jsonl"
+    clean_index.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    assert di.DocumentCacheStore(tmp_path / "r8_clean_cache", clean_index).get_entry(di.sha256_bytes(pdf)) is not None
+
+    outside = 7
+    first_section = section["detected_sections"][0]
+
+    def _with_section(**changes: Any) -> dict[str, Any]:
+        sections = [dict(first_section, **changes), *section["detected_sections"][1:]]
+        return {**record, "section_slice": {**section, "detected_sections": sections}}
+
+    def _with_slice(**changes: Any) -> dict[str, Any]:
+        return {**record, "section_slice": {**section, **changes}}
+
+    def _with(block: str, **changes: Any) -> dict[str, Any]:
+        return {**record, block: {**record[block], **changes}}
+
+    out_of_range: dict[str, dict[str, Any]] = {
+        "entry.pages_without_text": {**record, "pages_without_text": [2, 6, outside]},
+        "section_slice.pages_selected": _with_slice(pages_selected=[1, 3, 4, 5, outside]),
+        "section_slice.pages_deferred": _with_slice(pages_deferred=[outside]),
+        "section_slice.pages_without_text": _with_slice(pages_without_text=[2, 6, outside]),
+        "section_slice.unreadable_statistical_pages": _with_slice(unreadable_statistical_pages=[outside]),
+        "section_slice.toc_pages": _with_slice(toc_pages=[outside]),
+        "section_slice.detected_sections.start_page": _with_section(start_page=outside, end_page=outside),
+        "section_slice.detected_sections.end_page": _with_section(end_page=outside),
+        "cmap_metrics.pages_garbled_cmap": _with("cmap_metrics", pages_garbled_cmap=[outside]),
+        "cmap_metrics.garbled_statistical_pages": _with("cmap_metrics", garbled_statistical_pages=[outside]),
+        **{
+            f"redaction.{name}": _with("redaction", **{name: [outside]})
+            for name in (
+                "pages_with_cci",
+                "pages_with_ppd",
+                "pages_with_redacted_tag",
+                "pages_header_stamp_only",
+                "pages_orphaned_stat_headings",
+                "unreadable_statistical_pages",
+            )
+        },
+    }
+    for label, bad in out_of_range.items():
+        message = _r8_open_refused(tmp_path, label, bad)
+        assert "outside 1..physical_pages" in message, (label, message)
+
+    inexact: dict[str, tuple[dict[str, Any], str]] = {
+        # Page 2 has no text and is also selected.
+        "overlap": (_with_slice(pages_selected=[1, 2, 3, 4, 5]), "more than once"),
+        "repeated_page": (_with_slice(pages_selected=[1, 3, 3, 4, 5]), "more than once"),
+        # Page 5 is in none of the three lists.
+        "uncovered_page": (_with_slice(pages_selected=[1, 3, 4]), "in none of"),
+        # The section is internally whole but describes a five-page document.
+        "slice_page_count": (
+            _with_slice(physical_pages=5, pages_without_text=[2], pages_selected=[1, 3, 4, 5]),
+            "physical_pages",
+        ),
+        # The entry says no page lacks text while its slice says pages 2 and 6 do.
+        "entry_blank_pages": ({**record, "pages_without_text": []}, "pages_without_text"),
+        "reversed_section": (
+            _with_section(start_page=4, end_page=3),
+            "start_page",
+        ),
+    }
+    for label, (bad, needle) in inexact.items():
+        message = _r8_open_refused(tmp_path, label, bad)
+        assert needle in message, (label, message)
