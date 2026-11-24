@@ -72,7 +72,12 @@ modified.
      and the parser's fallback takes the last number, the arm's. That is compared
      where the parser reads one entry list (a labelled category of a standard
      layout's first class, a labelled one-category class of a customized one);
-     no stored table has such an entry.
+     no stored table has such an entry. A labelled customized class whose
+     categories give the parser more than one number is a pick among them
+     whatever the groups (`sex_counts_pooled_across_categories`):
+     NCT04078126's one class, "Distribution of Male/Female Participants",
+     holds Female 19 and Male 16 of 35, reads as female, and the parser took 16,
+     so a female share of 1.0 had been published.
      `summary.json` counts such trials
      (`sex_gender_composition_withheld_whole_population_unread`). CT.gov posts such a table rarely (one of the
      55,810 multi-group trials in the 2026-11-15 weekly inputs, none of the

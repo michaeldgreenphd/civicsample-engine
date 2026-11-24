@@ -1082,7 +1082,11 @@ def _whole_population_sex_problem(
     fallback takes the last number, the arm's (Total 60, arm 30, `"NA"` reads 30). That comparison is made
     where the parser reads one entry list: each labelled category of a standard layout's first class, and
     each labelled one-category class of a customized layout (a customized class pooling several categories
-    has its value chosen among all of them, so no one entry is the whole population's).
+    has its value chosen among all of them, so no one entry is the whole population's). Such a pooling
+    class is caught on its own (`sex_counts_pooled_across_categories`), with or without a whole-population
+    group: NCT04078126 posts one class, "Distribution of Male/Female Participants", holding Female 19 and
+    Male 16 of 35; the class title reads as female, `choose_total` over 19 and 16 fails its sum check and
+    takes 16, and a female share of 1.0 had been published.
 
     Either way, the counts are taken for the trial's when they add up to the table's own Participants
     denominator: NCT00596817 posts an open-label period for its one group (Total `"NA"`) and a
@@ -1092,14 +1096,30 @@ def _whole_population_sex_problem(
     """
     if sex_gender.get("is_participant_count") is not True:
         return None
-    overall = src_utils.get_overall_group_id(record)
     primary = _primary_sex_measure(record)
-    if overall is None or primary is None:
+    if primary is None:
         return None
     measure, alone = primary
     raw_classes = measure.get("classes") if isinstance(measure.get("classes"), list) else []
+    # A labelled customized class whose categories give the parser more than one number to choose from: its
+    # value is `choose_total` over all of them, a pick among several entries whatever the groups.
+    pooled = alone.layout == "customized" and any(
+        isinstance(cls, dict)
+        and cls.get("title") is not None
+        and bool(sgp.canon_bucket(str(cls.get("title"))))
+        and len([c for c in (cls.get("categories") or []) if isinstance(c, dict)]) > 1
+        and sum(
+            1
+            for c in (cls.get("categories") or [])
+            if isinstance(c, dict) and isinstance(c.get("measurements"), list)
+            for e in c["measurements"]
+            if isinstance(e, dict) and sgp._num(e.get("value")) is not None
+        ) > 1
+        for cls in raw_classes
+    )
+    overall = src_utils.get_overall_group_id(record)
     missing = False
-    for cls in raw_classes:
+    for cls in raw_classes if overall is not None else []:
         for cat in (cls.get("categories") or []) if isinstance(cls, dict) else []:
             rows = cat.get("measurements") if isinstance(cat, dict) else None
             entries = [e for e in rows or [] if isinstance(e, dict)]
@@ -1120,16 +1140,18 @@ def _whole_population_sex_problem(
         cats = first.get("categories") if isinstance(first.get("categories"), list) else []
         read = [(c.get("title"), c.get("measurements")) for c in cats if isinstance(c, dict)]
     differs = False
-    for label, rows in read:
+    for label, rows in read if overall is not None else []:
         if label is None or not sgp.canon_bucket(str(label)) or not isinstance(rows, list):
             continue
         whole_values = [sgp._num(e.get("value")) for e in rows if isinstance(e, dict) and e.get("groupId") == overall]
         if len(whole_values) == 1 and whole_values[0] is not None:
             taken = sgp.choose_total(rows)["total"]
             differs = differs or taken is None or abs(taken - whole_values[0]) > 1e-6
-    if not (missing or differs) or not _measure_counts_miss_denominator(alone, baseline_participants):
+    if not (missing or differs or pooled) or not _measure_counts_miss_denominator(alone, baseline_participants):
         return None
-    return "whole_population_sex_counts_missing" if missing else "sex_counts_differ_from_whole_population"
+    if missing:
+        return "whole_population_sex_counts_missing"
+    return "sex_counts_differ_from_whole_population" if differs else "sex_counts_pooled_across_categories"
 
 
 def _sex_counts_from_one_class_of_several(

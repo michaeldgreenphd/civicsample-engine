@@ -164,15 +164,16 @@ WHOLE_POPULATION_GROUP_PROBLEMS: frozenset[str] = frozenset(
     {"multi_group_baseline_without_total_group", "several_groups_titled_as_whole_population"}
 )
 # A whole-population group whose sex entries are blank beside an arm's counts, or numeric but not the
-# entries the parser took, when those counts do not make up the table's Participants denominator
-# (`demographics._whole_population_sex_problem`), and the first of
-# several classes of a standard-layout sex measure, whose counts do not make it up either
+# entries the parser took, or a customized class pooling several categories' numbers, when those counts do
+# not make up the table's Participants denominator (`demographics._whole_population_sex_problem`), and the
+# first of several classes of a standard-layout sex measure, whose counts do not make it up either
 # (`demographics._sex_counts_from_one_class_of_several`).
 WHOLE_POPULATION_SEX_UNREAD: frozenset[str] = frozenset(
     {
         *WHOLE_POPULATION_GROUP_PROBLEMS,
         "whole_population_sex_counts_missing",
         "sex_counts_differ_from_whole_population",
+        "sex_counts_pooled_across_categories",
         "sex_counts_from_one_class_of_several",
     }
 )

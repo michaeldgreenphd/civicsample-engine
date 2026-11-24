@@ -2854,6 +2854,51 @@ def test_a_build_counts_and_checks_an_arm_read_instead_of_a_numeric_total(tmp_pa
     assert metric["value"] == 1
 
 
+def _pooled_sex_class_study(nct_id: str, classes: list[tuple[str, list[tuple[str, int]]]], denom: int) -> dict:
+    """One group: a "Sex: Female, Male" measure whose classes each hold several (category, count) rows."""
+    measure = {"title": "Sex: Female, Male", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+               "classes": [{"title": title, "categories": [
+                   {"title": label, "measurements": [{"groupId": "BG000", "value": str(n)}]} for label, n in cats]}
+                   for title, cats in classes]}
+    return fx.make_raw_ctgov_study(nct_id, baseline_denom=denom, measures=[measure])
+
+
+def test_a_sex_class_pooling_female_and_male_rows_has_no_composition() -> None:
+    # On d3ccd97 NCT04078126's one class, "Distribution of Male/Female Participants" (Female 19, Male 16 of
+    # 35), read as female; choose_total over 19 and 16 took 16, and a female share of 1.0 was published.
+    st = _pooled_sex_class_study(
+        "NCT99800076", [("Distribution of Male/Female Participants", [("Female", 19), ("Male", 16)])], 35)
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["n_female"], sg["composition_withheld_reason"]) == (16, "sex_counts_pooled_across_categories")
+    assert all(sg[k] is None for k in _SEX_WITHHELD)
+
+
+def test_an_arm_picked_from_a_class_pooling_several_categories_has_no_composition() -> None:
+    # On d3ccd97 a customized class pooling two periods' entries (Total 30, arms 15 and 15 in each) failed the
+    # sum check over all six numbers and took the last, an arm's 15 (Male: 10), and 0.6 was published.
+    st = _arms_without_total("NCT99800077", _WITH_TOTAL)
+    entries = {"Female": ("30", "15", "15"), "Male": ("20", "10", "10")}
+    st["resultsSection"]["baselineCharacteristicsModule"]["measures"].append({
+        "title": "Sex/Gender, Customized", "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+        "classes": [{"title": label, "categories": [
+            {"title": period, "measurements": [{"groupId": g, "value": v}
+                                               for g, v in zip(("BG002", "BG000", "BG001"), vals)]}
+            for period in ("Period 1", "Period 2")]} for label, vals in entries.items()]})
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["n_female"], sg["n_male"]) == (15, 10)
+    assert sg["composition_withheld_reason"] == "sex_counts_pooled_across_categories"
+
+
+def test_a_pooled_sex_class_whose_counts_make_up_the_table_keeps_its_composition() -> None:
+    # Control, on both heads: each class's rows include their own total (10 + 10 = 20, 5 + 10 = 15), which the
+    # sum check takes, and 20 and 15 make up the table's 35.
+    st = _pooled_sex_class_study("NCT99800078", [
+        ("Female", [("Cohort A", 10), ("Cohort B", 10), ("All cohorts", 20)]),
+        ("Male", [("Cohort A", 5), ("Cohort B", 10), ("All cohorts", 15)])], 35)
+    sg = extract_demographics(st)["sex_gender"]
+    assert (sg["female_share"], sg.get("composition_withheld_reason")) == (pytest.approx(20 / 35), None)
+
+
 def _analyzed_sex_and_race(
     nct_id: str, female: int, male: int, analyzed: int, race: list[tuple[str, str]], at: str = "measure"
 ) -> dict:
