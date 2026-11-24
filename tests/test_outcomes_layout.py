@@ -6386,3 +6386,511 @@ def test_skeptic_m3_non_string_ctgov_date_struct_refused(
     study["protocolSection"]["statusModule"]["resultsFirstPostDateStruct"] = struct
     argv, out = _rt2_argv(tmp_path, manifest=[{"nct_id": nct, "in_audit": False}], trials=[study])
     _rt_assert_refused(cli.main(argv), out, capsys, expected_rc=1)
+
+
+# ── Codex review of PR #114 at ccfa413: each test below failed on that code. ──
+# Fictional IDs only (NCT99xxxxxx). Threads: r4680662875 (P1, Module 4's null
+# assembled_at), r4680662890 (provenance metadata unchecked), r4665408552
+# (non-list outcome collections dropped), r4665408565 (--check traceback on
+# a cohorts element), r4665408529 (timezone-naive timestamps).
+
+_CX_SECRET = "CODEX-HR-0.71"
+_CX_NCT = "NCT99501001"
+_CX_HOLD = "NCT99999999"
+
+
+def _cx_m4_default_projection(nct_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """(the CT.gov study, Module 4's own projection of it with every default).
+
+    ``assemble_longitudinal_provenance`` is called without ``assembled_at`` or
+    ``source_pipeline_commit``, so the record states both as null, and
+    ``to_outcomes_layout_provenance`` always writes both keys: this is the
+    projection Module 4 gives by default (src/longitudinal_provenance.py, the
+    m4 module this branch carries).
+    """
+    from src.longitudinal_provenance import (
+        assemble_longitudinal_provenance,
+        to_outcomes_layout_provenance,
+    )
+
+    scope = frozenset({nct_id})
+    holdouts = frozenset({_CX_HOLD})
+    study = _m4_sample_study(nct_id)
+    study["protocolSection"]["identificationModule"]["briefTitle"] = "Phase 3 Example Trial"
+    study["protocolSection"]["designModule"] = {
+        "studyType": "INTERVENTIONAL",
+        "phases": ["PHASE3"],
+        "enrollmentInfo": {"count": 120, "type": "ACTUAL"},
+    }
+    study["protocolSection"]["sponsorCollaboratorsModule"] = {
+        "leadSponsor": {"name": "Example Pharma", "class": "INDUSTRY"}
+    }
+    study["protocolSection"]["outcomesModule"] = {
+        "primaryOutcomes": [{"measure": "Overall Survival", "timeFrame": "24 months"}]
+    }
+    record = assemble_longitudinal_provenance(study, in_scope_nct_ids=scope, audit_nct_ids=holdouts)
+    return study, to_outcomes_layout_provenance(record, in_scope_nct_ids=scope, audit_nct_ids=holdouts)
+
+
+def _cx_provenance_argv(
+    tmp_path: pathlib.Path,
+    study: dict[str, Any],
+    provenance: dict[str, Any],
+    *,
+    extracted_at: str = SAMPLE_TS,
+) -> tuple[list[str], pathlib.Path]:
+    """argv for a CLI build of one in-scope trial and its provenance record."""
+    nct_id = study["protocolSection"]["identificationModule"]["nctId"]
+    out = tmp_path / "bundle"
+    argv = [
+        "--trials", str(_rt2_write(tmp_path / "cx_trials.json", [study])),
+        "--cohort-manifest", str(_rt2_write(
+            tmp_path / "cx_manifest.json",
+            [{"nct_id": nct_id, "in_audit": False, "cohorts": ["industry_phase3"], "protocol": True, "sap": True}],
+        )),
+        "--provenance", str(_rt2_write(tmp_path / "cx_prov.jsonl", json.dumps(provenance) + "\n")),
+        "--extracted-at", extracted_at,
+        "--pipeline-commit", SAMPLE_COMMIT,
+        "--shards", "8",
+        "--out-dir", str(out),
+    ]
+    return argv, out
+
+
+# P1 (r4680662875): Module 4's default projection, assembled_at null, builds.
+
+def test_codex_m3_module4_default_provenance_with_null_assembled_at_builds_and_checks(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Module 4's own projection with its defaults (assembled_at and
+    source_pipeline_commit null) builds, publishes both stamps as null, and
+    the tree passes --check. ccfa413: refused, exit 1, "longitudinal_provenance.
+    assembled_at must be a non-empty ISO-8601 timestamp string, got NoneType"."""
+    study, projection = _cx_m4_default_projection(_CX_NCT)
+    assert "assembled_at" in projection and projection["assembled_at"] is None
+    argv, out = _cx_provenance_argv(tmp_path, study, projection)
+    rc = cli.main(argv)
+    err = capsys.readouterr().err
+    assert rc == 0, err
+    _, sdoc = _read_shard(out, _CX_NCT)
+    published = sdoc["data"][_CX_NCT]["longitudinal_provenance"]
+    assert "assembled_at" in published and published["assembled_at"] is None
+    assert "source_pipeline_commit" in published and published["source_pipeline_commit"] is None
+    assert cli.main(["--check", str(out)]) == 0, capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "   ", f"assembled {_CX_SECRET}", "2026-11-20", "2026-11-20T12:00:00", 20261120, True,
+     {"at": "2026-11-20T12:00:00Z"}, ["2026-11-20T12:00:00Z"]],
+)
+def test_codex_m3_non_null_invalid_assembled_at_still_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    value: Any,
+) -> None:
+    """A non-null assembled_at that is not a UTC timestamp is refused by the
+    normalizer and the build (exit 1, nothing written, the value not quoted),
+    and --check fails a tree whose stored provenance carries one."""
+    study, projection = _cx_m4_default_projection(_CX_NCT)
+    bad = {**projection, "assembled_at": value}
+    with pytest.raises(ol.OutcomesLayoutError) as excinfo:
+        ol.normalize_longitudinal_provenance(bad)
+    assert "longitudinal_provenance.assembled_at" in str(excinfo.value)
+    assert _CX_SECRET not in str(excinfo.value)
+    argv, out = _cx_provenance_argv(tmp_path, study, bad)
+    rc = cli.main(argv)
+    err = capsys.readouterr().err
+    assert rc == 1 and not out.exists()
+    assert _CX_SECRET not in err
+
+    (tmp_path / "good").mkdir()
+    good_argv, good_out = _cx_provenance_argv(tmp_path / "good", study, {**projection, "assembled_at": SAMPLE_TS})
+    assert cli.main(good_argv) == 0
+    _rt2_edit_record(good_out, _CX_NCT, lambda rec: rec["longitudinal_provenance"].__setitem__("assembled_at", value))
+    capsys.readouterr()
+    assert cli.main(["--check", str(good_out)]) == 1
+    assert _CX_SECRET not in capsys.readouterr().err
+
+
+# P2 (r4680662890): provenance metadata is held to Module 4's record types.
+
+_CX_BAD_METADATA: list[tuple[str, Any]] = [
+    ("provenance_schema_version", {"version": _CX_SECRET}),
+    ("provenance_schema_version", [1]),
+    ("provenance_schema_version", "1"),
+    ("provenance_schema_version", True),
+    ("provenance_schema_version", 1.0),
+    ("provenance_schema_version", None),
+    ("provenance_rules_version", {"version": _CX_SECRET}),
+    ("provenance_rules_version", [_CX_SECRET]),
+    ("provenance_rules_version", 140),
+    ("provenance_rules_version", True),
+    ("provenance_rules_version", None),
+    ("excluded_standalone_icf_count", -1),
+    ("excluded_standalone_icf_count", 1.5),
+    ("excluded_standalone_icf_count", 1.0),
+    ("excluded_standalone_icf_count", "1"),
+    ("excluded_standalone_icf_count", True),
+    ("excluded_standalone_icf_count", None),
+    ("excluded_standalone_icf_count", {"count": _CX_SECRET}),
+]
+
+
+@pytest.mark.parametrize(("field", "value"), _CX_BAD_METADATA)
+def test_codex_m3_provenance_metadata_outside_module4_types_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    value: Any,
+) -> None:
+    """provenance_schema_version (int), provenance_rules_version (str) and
+    excluded_standalone_icf_count (int, a count: not negative) follow Module
+    4's LongitudinalProvenanceRecord, type-strict (a bool is not an int, a
+    float not an int, null not a value the record states). Refused by the
+    normalizer, by the build (exit 1, nothing written) and by --check on a
+    tree that stores one, never quoting the value. ccfa413: copied as given,
+    exit 0, and --check passed the tree."""
+    prov = {**_make_module4_provenance(RT_OK), field: value}
+    with pytest.raises(ol.OutcomesLayoutError) as excinfo:
+        ol.normalize_longitudinal_provenance(prov)
+    assert f"longitudinal_provenance.{field}" in str(excinfo.value)
+    assert _CX_SECRET not in str(excinfo.value)
+
+    argv, out = _rt_build(tmp_path, studies=_rt_pair(), side=[("--provenance", prov)])
+    rc = cli.main(argv)
+    err = capsys.readouterr().err
+    assert rc == 1 and not out.exists(), err
+    assert _CX_SECRET not in err
+
+    good_dir = tmp_path / "good"
+    good_dir.mkdir()
+    good_argv, good_out = _rt_build(good_dir, studies=_rt_pair(), side=[("--provenance", _make_module4_provenance(RT_OK))])
+    assert cli.main(good_argv) == 0
+    _rt2_edit_record(good_out, RT_OK, lambda rec: rec["longitudinal_provenance"].__setitem__(field, value))
+    capsys.readouterr()
+    assert cli.main(["--check", str(good_out)]) == 1
+    assert _CX_SECRET not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("provenance_schema_version", 1), ("provenance_rules_version", "1.4.0"), ("excluded_standalone_icf_count", 0)],
+)
+def test_codex_m3_provenance_metadata_of_module4_types_published(field: str, value: Any) -> None:
+    """Values of Module 4's types are published as given, and a record that
+    omits a field (a direct Module 3 block) still omits it."""
+    prov = {**_make_module4_provenance(RT_OK), field: value}
+    assert ol.normalize_longitudinal_provenance(prov)[field] == value
+    del prov[field]
+    assert field not in ol.normalize_longitudinal_provenance(prov)
+
+
+# P2 (r4665408552): a non-list outcome collection is refused, not read as none.
+
+_CX_COLLECTIONS: dict[str, tuple[str, ...]] = {
+    "primaryOutcomes": ("protocolSection", "outcomesModule", "primaryOutcomes"),
+    "outcomeMeasures": ("resultsSection", "outcomeMeasuresModule", "outcomeMeasures"),
+}
+
+
+def _cx_set_collection(study: dict[str, Any], field: str, value: Any) -> dict[str, Any]:
+    """``study`` with the named outcome collection set to ``value``."""
+    *parents, leaf = _CX_COLLECTIONS[field]
+    node = study
+    for key in parents:
+        node = node[key]
+    node[leaf] = value
+    return study
+
+
+@pytest.mark.parametrize("field", sorted(_CX_COLLECTIONS))
+@pytest.mark.parametrize(
+    "value",
+    [{"measure": _CX_SECRET, "timeFrame": "24 months"}, _CX_SECRET, 3, True, 1.5],
+)
+def test_codex_m3_non_list_outcome_collection_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    value: Any,
+) -> None:
+    """A primaryOutcomes or outcomeMeasures that is present and not a list
+    is refused, naming the field and its type, never the value (library: an
+    OutcomesLayoutError; CLI: exit 1, nothing written). ccfa413: skipped, so
+    the trial was published with no registered outcomes (or no posted
+    measures) and the build exited 0."""
+    study = _cx_set_collection(_make_ctgov_study(RT_OK), field, value)
+    with pytest.raises(ol.OutcomesLayoutError) as excinfo:
+        ol.extract_reported_results(study)
+    message = str(excinfo.value)
+    assert field in message and type(value).__name__ in message
+    assert _CX_SECRET not in message
+
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)])
+    rc = cli.main(argv)
+    err = capsys.readouterr().err
+    assert rc == 1 and not out.exists(), err
+    assert _CX_SECRET not in err and RT_HOLD_DIGITS not in err
+
+
+@pytest.mark.parametrize("field", sorted(_CX_COLLECTIONS))
+@pytest.mark.parametrize("absent", ["null", "missing"])
+def test_codex_m3_absent_outcome_collection_is_none_registered(field: str, absent: str) -> None:
+    """An absent or null collection is still "none": no registered outcome,
+    or no posted primary measure, and no refusal."""
+    study = _make_ctgov_study(RT_OK)
+    if absent == "null":
+        _cx_set_collection(study, field, None)
+    else:
+        *parents, leaf = _CX_COLLECTIONS[field]
+        node = study
+        for key in parents:
+            node = node[key]
+        del node[leaf]
+    block = ol.extract_reported_results(study)
+    key = "registered_primary_outcomes" if field == "primaryOutcomes" else "primary_outcome_measures"
+    assert block[key] == []
+
+
+_CX_HOLDERS: dict[str, tuple[str, ...]] = {
+    "protocolSection": ("protocolSection",),
+    "resultsSection": ("resultsSection",),
+    "protocolSection.outcomesModule": ("protocolSection", "outcomesModule"),
+    "resultsSection.outcomeMeasuresModule": ("resultsSection", "outcomeMeasuresModule"),
+}
+
+
+def _cx_set_path(study: dict[str, Any], path: tuple[str, ...], value: Any) -> dict[str, Any]:
+    """``study`` with the value at ``path`` set to ``value``."""
+    node = study
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    return study
+
+
+@pytest.mark.parametrize("holder", sorted(_CX_HOLDERS))
+@pytest.mark.parametrize("value", [_CX_SECRET, [{"primaryOutcomes": [{"measure": _CX_SECRET}]}], 3])
+def test_codex_m3_non_object_outcome_section_refused(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    holder: str,
+    value: Any,
+) -> None:
+    """The same defect one level up: a section or module holding the outcome
+    lists that is present and not an object is refused, naming it and its
+    type (library: OutcomesLayoutError; CLI: exit 1, nothing written).
+    ccfa413: read as empty, so the trial was published with no registered
+    outcome (or no posted measure) and the build exited 0."""
+    study = _cx_set_path(_make_ctgov_study(RT_OK), _CX_HOLDERS[holder], value)
+    with pytest.raises(ol.OutcomesLayoutError) as excinfo:
+        ol.extract_reported_results(study)
+    message = str(excinfo.value)
+    assert message.startswith(f"{holder} must be an object or null, got {type(value).__name__}")
+    assert _CX_SECRET not in message
+
+    argv, out = _rt_build(tmp_path, studies=[study, _make_ctgov_study(RT_HOLD, in_audit=True)])
+    rc = cli.main(argv)
+    err = capsys.readouterr().err
+    assert rc == 1 and not out.exists(), err
+    assert _CX_SECRET not in err and RT_HOLD_DIGITS not in err
+
+
+@pytest.mark.parametrize("holder", sorted(_CX_HOLDERS))
+def test_codex_m3_null_outcome_section_is_none(holder: str) -> None:
+    """A null section or module is still "none", not refused."""
+    block = ol.extract_reported_results(_cx_set_path(_make_ctgov_study(RT_OK), _CX_HOLDERS[holder], None))
+    if holder.startswith("protocolSection"):
+        assert block["registered_primary_outcomes"] == []
+    else:
+        assert block["primary_outcome_measures"] == []
+
+
+# P2 (r4665408565): --check reports a bad cohorts element, never a traceback.
+
+@pytest.mark.parametrize(
+    "cohorts",
+    [[{"x": _CX_SECRET}], ["nih", 1], [["nih"]], [None], ["nih", {"x": 1}], [1, "nih"]],
+)
+@pytest.mark.parametrize("row_of", ["ordinary", "holdout"])
+def test_codex_m3_check_reports_non_string_cohorts_element(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    cohorts: list[Any],
+    row_of: str,
+) -> None:
+    """--check on a tree whose index row holds a cohorts list with an object,
+    a list, null or a mix of strings and numbers exits 1 with the cohorts
+    problem, quoting neither the value nor the holdout's ID. ccfa413: an
+    uncaught TypeError from set() (unhashable type) or sorted() ('<' not
+    supported between int and str), a traceback instead of a report."""
+    out = _rt2_built_tree(tmp_path)
+    target = RT_OK if row_of == "ordinary" else RT_HOLD
+
+    def edit(idx: dict[str, Any]) -> None:
+        for row in idx["data"]:
+            if row["nct_id"] == target:
+                row["cohorts"] = cohorts
+
+    _rt2_edit_index(out, edit)
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) == 1
+    err = capsys.readouterr().err
+    assert ".cohorts is invalid" in err
+    assert _CX_SECRET not in err and RT_HOLD_DIGITS not in err
+
+
+@pytest.mark.parametrize("value", [{"x": _CX_SECRET}, [_CX_SECRET], ["sample_size", 1]])
+@pytest.mark.parametrize("pass_key", ["primary_pass", "effective_pass"])
+def test_codex_m3_check_reports_unhashable_location_element(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    value: Any,
+    pass_key: str,
+) -> None:
+    """The same ordering defect in a location row: an element that is an
+    object or a list is reported (exit 1), not a traceback. ccfa413: an
+    uncaught TypeError (unhashable type) from the element lookup."""
+    out = _rt3_tree_with_locations(tmp_path)
+    _rt2_edit_record(
+        out, RT_OK, lambda rec: rec["decision_rule_locations"][pass_key][0].__setitem__("element", value)
+    )
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) == 1
+    err = capsys.readouterr().err
+    assert ".element is not one of the elements" in err
+    assert _CX_SECRET not in err
+
+
+@pytest.mark.parametrize("value", [{"x": _CX_SECRET}, [_CX_SECRET], 3])
+def test_codex_m3_build_refuses_non_string_location_element(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    value: Any,
+) -> None:
+    """The builder's own element lookup had the same defect: a location row
+    whose element is an object or a list is refused (exit 1, nothing
+    written, the value not quoted). ccfa413: an uncaught TypeError
+    (unhashable type) out of the build."""
+    rows = _make_complete_locations(RT_OK)
+    rows[0]["element"] = value
+    argv, out = _rt_build(
+        tmp_path, studies=_rt_pair(), side=[("--documents", _make_doc_profile(RT_OK)), ("--locations", rows)]
+    )
+    rc = cli.main(argv)
+    err = capsys.readouterr().err
+    assert rc == 1 and not out.exists(), err
+    assert _CX_SECRET not in err and RT_HOLD_DIGITS not in err
+
+
+# P2 (r4665408529): a timestamp states its instant, in UTC.
+
+_CX_NOT_UTC_INSTANTS: list[str] = [
+    "2026-11-23",
+    "2026-11-23T12:00:00",
+    "2026-11-23T12:00",
+    "2026-11-23T12:00:00.123456",
+    "2026-11-23T07:00:00-05:00",
+    "2026-11-23T13:00:00+01:00",
+    "2026-11-23T12:00:00-00:00",
+    "2026-11-23T12:00:00+0000",
+    "20261123T120000Z",
+    "2026-W48-1T12:00:00Z",
+    "2026-11-23 12:00:00+00:00",
+    "2026-11-23T12Z",
+    "2026-11-31T12:00:00Z",
+]
+
+
+@pytest.mark.parametrize("value", _CX_NOT_UTC_INSTANTS)
+def test_codex_m3_timestamp_without_utc_instant_refused(value: str) -> None:
+    """validate_iso_timestamp requires a date, a time of day and a zero UTC
+    offset written Z or +00:00; a date alone, a naive time, another offset
+    and the forms other ISO-8601 readers do not share are refused, naming
+    the field and never the value. ccfa413: every one but the impossible
+    date was accepted (datetime.fromisoformat parses them)."""
+    with pytest.raises(ol.OutcomesLayoutError) as excinfo:
+        ol.validate_iso_timestamp(value, "some_field.extracted_at")
+    message = str(excinfo.value)
+    assert message.startswith("some_field.extracted_at ")
+    assert value not in message
+
+
+def test_codex_m3_timestamp_forms_the_producers_write_accepted() -> None:
+    """Every form a producer writes is accepted, unchanged: the weekly
+    extraction's and Module 1's datetime.now(timezone.utc).isoformat()
+    (src/sex_gender_table.now_utc_iso), isoformat(timespec='seconds'), Z
+    (Module 4's tests, a JavaScript toISOString), and the fixtures' stamps."""
+    from datetime import datetime, timezone
+
+    from src import sex_gender_table as sgt
+
+    now = datetime.now(timezone.utc)
+    for value in (
+        sgt.now_utc_iso(),
+        now.isoformat(),
+        now.replace(microsecond=0).isoformat(),
+        now.isoformat(timespec="seconds"),
+        now.isoformat(timespec="milliseconds"),
+        "2026-11-20T12:00:00Z",
+        "2026-11-20T12:00:00.000Z",
+        "2026-11-20T12:00Z",
+        SAMPLE_TS,
+    ):
+        assert ol.validate_iso_timestamp(value, "extracted_at") == value
+
+
+@pytest.mark.parametrize("where", ["extracted_at_option", "now_utc_option", "trials_container", "document_profile", "assembled_at"])
+@pytest.mark.parametrize("value", ["2026-11-23", "2026-11-23T12:00:00", "2026-11-23T07:00:00-05:00"])
+def test_codex_m3_build_refuses_timestamp_without_utc_instant(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    where: str,
+    value: str,
+) -> None:
+    """Each way a timestamp reaches a build (--extracted-at, --now-utc, a
+    container's extracted_at, a Module 1 profile's extracted_at, a Module 4
+    record's assembled_at) refuses one with no UTC instant: exit 1, nothing
+    written. ccfa413: exit 0, the stamp published as given."""
+    studies = _rt_pair()
+    side: list[tuple[str, Any]] = []
+    if where == "document_profile":
+        side = [("--documents", {**_make_doc_profile(RT_OK), "extracted_at": value})]
+    elif where == "assembled_at":
+        side = [("--provenance", {**_make_module4_provenance(RT_OK), "assembled_at": value})]
+    argv, out = _rt_build(tmp_path, studies=studies, side=side)
+    if where == "extracted_at_option":
+        argv[argv.index("--extracted-at") + 1] = value
+    elif where == "now_utc_option":
+        argv = _sk_without(argv, "--extracted-at") + ["--now-utc", value]
+    elif where == "trials_container":
+        trials_path = pathlib.Path(argv[argv.index("--trials") + 1])
+        trials_path.write_text(json.dumps({"extracted_at": value, "trials": studies}), encoding="utf-8")
+        argv = _sk_without(argv, "--extracted-at")
+    rc = cli.main(argv)
+    err = capsys.readouterr().err
+    assert rc == 1 and not out.exists(), err
+    assert value not in err
+
+
+@pytest.mark.parametrize("value", ["2026-11-23", "2026-11-23T03:00:00", "2026-11-23T03:00:00+05:30"])
+def test_codex_m3_check_refuses_tree_stamped_without_utc_instant(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    value: str,
+) -> None:
+    """--check fails a tree whose index.json and shards carry an
+    extracted_at with no UTC instant (exit 1, the stamp named, not quoted).
+    ccfa413: exit 0."""
+    out = _rt2_built_tree(tmp_path)
+    _rt2_edit_index(out, lambda idx: idx.__setitem__("extracted_at", value))
+    for path in sorted((out / "shards").iterdir()):
+        sdoc = json.loads(gzip.decompress(path.read_bytes()).decode("utf-8"))
+        sdoc["extracted_at"] = value
+        path.write_bytes(ol.encode_gz_bytes(sdoc))
+    capsys.readouterr()
+    assert cli.main(["--check", str(out)]) == 1
+    err = capsys.readouterr().err
+    assert "index.json.extracted_at" in err and value not in err
