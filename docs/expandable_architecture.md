@@ -27,8 +27,8 @@ merged on its own; M3 is the exception, because it imports M4.
 | `antigravity/docs-platform` | `aa14a2d` | this file and `docs/census_iteration_playbook.md` | not applicable | for review |
 
 The revisions read for this document were m1 `4defbef` (merged to `main` in
-`2932cac`), m2 `b9a2ebc` (merged to `main` in `3f1bcb9`), m4 `97789ee` and m3
-`ba916ec` (which contains m4 at `97789ee`, merged in as `ba916ec`). A later
+`2932cac`), m2 `b9a2ebc` (merged to `main` in `3f1bcb9`), m4 `d68652a` and m3
+`e2a8c21` (which contains m4 at `d68652a`, merged in as `e2a8c21`). A later
 commit on any of these branches, or on `main`, can change a detail stated
 here, so re-check a detail against the code before relying on it.
 
@@ -167,15 +167,27 @@ M2 leaves it to its callers.
   before any page map is opened; a refusal exits 2
   (`AuditHoldoutViolationError`, `InvalidNctIdError` or `PlanScopeError`).
   `plan` also refuses (exit 2) a `--profiles` row whose trial is not in that
-  set, a `--doc-cache` row whose `sha256` is not that of a document of an
-  in-scope trial, and a row of either whose text names a trial outside that
-  set (other than a profile's own), such as a section heading M1 copied from
-  the document. So M1 output written from a larger index is refused against
-  a smaller one. The playbook's step 2 keeps the existing census's trials in
-  `--index` when it plans the others, and filters out rows of the first two
-  kinds; nothing lifts the third.
-  `verify --pages-dir` gives the page provider only the `(nct_id, sha256)`
-  pairs of in-scope documents, so no other page map is opened.
+  set and a `--doc-cache` row whose `sha256` is not that of a document of an
+  in-scope trial, so M1 output written from a larger index is refused
+  against a smaller one; the playbook's step 2 filters those rows out.
+- **Free text (m4 `d68652a`, D3).** A string that is not under an identifier
+  key (an NCT id key, a URL key, `filename`) is free text: a quotation, a
+  note, a registry-copied title, a section heading M1 copied from a
+  document. An audit id in free text, in any reading, is still refused
+  before anything is written (exit 2), and so is a malformed id-like token.
+  Any other trial it names, in the index or not, is counted and reported as
+  the warning `NOTE_FREE_TEXT_NAMES_OTHER_TRIAL` (`free_text_other_trials`
+  in `verify`'s report and in the plan, counts only, never an id), and does
+  not stop the run. Identifier keys and values, URLs and file names keep the
+  strict rule, and so does longitudinal provenance: a study's provenance is
+  still refused when a `seeAlsoLinks` URL names another trial.
+- **Page maps and shared documents (D4).** `verify --pages-dir` gives the
+  page provider only the `(nct_id, sha256)` pairs of in-scope documents, so
+  no other page map is opened. A content-addressed page map of such a
+  document, or a `--doc-cache` entry for it, may be tagged with any trial
+  that is not held out, and the map is served to every in-scope trial that
+  posts the document. A map or entry tagged with a holdout trial refuses the
+  run before any page text is read (exit 2).
 - **Library.** `verify_census_corpus`, `verify_document_record`,
   `verify_location_record`, `verify_citation`, `verify_trial_completeness`
   and `enforce_audit_holdout` need an explicit bool `in_audit` or
@@ -227,20 +239,21 @@ which is itself a decision about holdout material. No branch builds or
 consults such a list, and this document does not investigate whether any
 holdout trial's document is shared.
 
-A related gap between M1 and M4: M1 writes one page map per sha256 and tags
-it with the trial that first passed the firewall for those bytes. M4's
-`DirectoryPageTextProvider` refuses a map whose declared `nct_id` is not the
-requested trial. So for a document shared by two in-scope trials, M4 can
-serve the cached pages to the first trial only, and `verify --pages-dir`
-stops with a `CitationVerificationError` (exit 1, no report written) when it
-reaches the second. This was reproduced with fictional trial ids (a map
-written by M1's `DocumentCacheStore`, then `verify` run over it), most
-recently at m1 `2561a46` and m4 `97789ee`; no test on any branch covers it.
-When the trial the map is tagged with is not an in-scope row of `--index` at
-all, as when a shard is verified against an index cut down to its own trials
-(the playbook's step 4), `verify` stops before it checks any row, with
-`AuditHoldoutViolationError` (exit 2, no report), because the map names a
-trial outside the index. That was run on fictional M1 output too.
+A document shared by two in-scope trials is verifiable for both. M1 writes
+one page map per sha256 and tags it with the trial that first passed the
+firewall for those bytes. Up to m4 `97789ee`, M4 served such a map only to
+the trial it named, so `verify --pages-dir` stopped at the second in-scope
+trial that posted the document (exit 1), or before any row when the tagged
+trial was outside a shard's index (exit 2). Since m4 `d68652a` (D4), M4
+serves the map to every in-scope trial that posts the document, whichever
+trial it is tagged with, and refuses a map tagged with a holdout trial
+before it reads any page text (exit 2, no report). On fictional M1 output at
+m1 `4defbef` and m4 `d68652a`: two trials citing one shared protocol
+verified with exit 0; a shard whose index lacked the tagged trial verified
+with exit 0; and the same map with its tag changed to the fictional holdout
+stopped `verify` with exit 2. D4 leaves the design limit above as it is: the
+firewall still decides by NCT id, so a holdout trial's document posted
+under an in-scope id is read under that id.
 
 ## 6. Model provenance and review status
 
@@ -250,11 +263,18 @@ trial outside the index. That was run on fictional M1 output too.
   `DOCUMENT_REQUIRED_KEYS`). `verify` reports a row without them as
   `LOCATION_MISSING_KEYS` or `DOCUMENT_MISSING_KEYS` and exits 1. `plan`
   stops with exit 1 and writes no plan when any `--documents` or
-  `--locations` row, or any document of a `--profiles` row, lacks
-  `model_id`. Both were run on fictional rows with and without these keys.
-  M1's profiles carry neither `model_id` nor `profile_version` on their
-  documents, so `plan` refuses them as M1 writes them (run on fictional M1
-  output).
+  `--locations` row, or any document of a `--profiles` row that is not
+  exactly as M1 writes it, lacks `model_id`. Both were run on fictional rows
+  with and without these keys.
+- **M1's profiles (m4 `d68652a`, D1).** M1's profile documents carry neither
+  `model_id` nor `profile_version`, and `plan` takes them as M1 writes them:
+  a `--profiles` row whose key set is exactly the nine keys M1 writes, whose
+  `indexer_rules_version` matches `doc_indexer@YYYY-MM-DD.vN` whole, and
+  whose documents have exactly M1's 24 document keys is exempt from F6,
+  since no model produced it. A profile document that carries `model_id` is
+  held to F6 in full, and so are every `--documents` row, every location row
+  and everything `verify` reads. On fictional M1 output at m1 `4defbef`,
+  `plan` exits 0 on the profiles as written.
 - **The existing census records model ids at worker level only.** None of
   its 782 document rows or 5,229 location rows carries `model_id`,
   `prompt_version` or `profile_version`. Its `manifest.json` names a
@@ -285,8 +305,17 @@ trial outside the index. That was run on fictional M1 output too.
   Wave 3 worker); document rows name no worker, so a document row's model can
   be inferred only through the shard its trial was assigned to
   (`shard_assignment` in `manifest.json`).
-- **M3 at `ba916ec` keeps a location row's `model_id` and `prompt_version`
-  when the row carries them, but does not require them.** It publishes each
+- **The census under `verify` at m4 `d68652a`** (run on copies of its
+  files, counts only, no page text): no row is refused by the firewall. The
+  only errors are F6's, on all 782 document and 5,229 location rows (all
+  402 trials). The free text of 7 rows of 1 trial names 1 trial absent from
+  the index, reported as `NOTE_FREE_TEXT_NAMES_OTHER_TRIAL` (before D3 this
+  refused the whole run, exit 2); 35 `NOTE_PAGE_COUNT_MISMATCH` warnings
+  fall in 1 trial; and, with no page text given, all 11,629 quotations are
+  uncompared. `verify` exits 1.
+- **M3 at `e2a8c21` (its own files unchanged since `ba916ec`) keeps a
+  location row's `model_id` and `prompt_version` when the row carries them,
+  but does not require them.** It publishes each
   row's `worker`, adds `model_id` and `prompt_version` when present, and
   refuses either one when it is present but empty or not a string. A key
   outside M4's row keys (`LOCATION_ROW_INPUT_KEYS`) is refused rather than
@@ -339,9 +368,9 @@ trial outside the index. That was run on fictional M1 output too.
   `data/trial_document_profiles.jsonl`) holds one `TrialDocumentProfile` per
   trial. These three paths are in `.gitignore` on `main` since PR #112.
   Identical bytes are extracted once. `INDEXER_RULES_VERSION` is
-  `doc_indexer@2026-11-21.v1`. A change of it adds a second line for every document indexed again, and
-  M4's `plan` refuses two different lines for one sha256 (the playbook's
-  step 2 lists this as a blocker).
+  `doc_indexer@2026-11-21.v1`. A change of it adds a second line for every
+  document indexed again; M4's `plan` reads the lines of one version
+  (`--doc-cache-rules-version`, playbook step 2).
 - **Index entries are reused only for their selection inputs.** An entry
   records the inputs that shaped its page selection (`selection_inputs`:
   `doc_type`, `min_selected_pages`, `max_selected_pages`) and is served only
@@ -458,7 +487,7 @@ not changed.
 ### M4: citation verifier, longitudinal provenance and batch planner
 
 **Verifier (`src/citation_verifier.py`).** `VERIFIER_RULES_VERSION` is
-`1.6.0`. Seven `ELEMENTS` per primary outcome; six `STATUSES` (`FOUND`,
+`1.7.0`. Seven `ELEMENTS` per primary outcome; six `STATUSES` (`FOUND`,
 `NOT_FOUND`, `NOT_APPLICABLE`, `AMBIGUOUS`, `UNREADABLE`, `NO_DOCUMENT`).
 
 - **Status-to-citation rule (F5), defined once here.**
@@ -498,11 +527,20 @@ not changed.
   within bounds and without duplicates (`TRIAL_GRID_MISSING_CELL`,
   `TRIAL_GRID_UNEXPECTED_CELL`, `TRIAL_GRID_DUPLICATE_CELL`). K comes from
   each index row's `primary_outcomes_count` or `n_primary_outcomes`.
+- **Free text and shared documents (1.7.0).** Free text naming a trial that
+  is not held out gives the warning `NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`, one
+  per record (a document, a location row, a citation checked on its own),
+  and the report's `free_text_other_trials` counts them (`rows`,
+  `distinct_ids`, `distinct_ids_in_scope`, `distinct_ids_not_in_scope`);
+  `CorpusVerificationReport` has the three counts as fields. Warnings do not
+  fail a run. A content-addressed page map is served to every in-scope
+  trial that posts its document unless its tag is a holdout trial (section
+  4).
 
 **Provenance (`src/longitudinal_provenance.py`).** Library only; no script
 writes a provenance file. `LONGITUDINAL_SCHEMA_VERSION`
 (= `PROVENANCE_SCHEMA_VERSION`) is 1 and `PROVENANCE_RULES_VERSION` is
-`1.4.0`. `parse_partial_date`, `parse_iso_or_partial_date`,
+`1.5.0`. `parse_partial_date`, `parse_iso_or_partial_date`,
 `parse_ctgov_upload_date`, `parse_printed_doc_date` and `parse_pubmed_date`
 keep each date's precision; `compute_day_delta_interval` gives `exact_days`
 only when both dates have day precision, and a `[min_days, max_days]` range
@@ -512,9 +550,17 @@ references (`registry_reference_types` `BACKGROUND`, `DERIVED`, `RESULT`),
 `PublicationProvider`, keeping
 `LINK_ORIGINS` (`AUTO_INDEXED`, `INVESTIGATOR_SUBMITTED`) separate.
 `to_outcomes_layout_provenance` projects a record into M3's shard schema.
+An explicit DOI (a registry reference's, `moreInfoModule`'s, or the `doi`
+field of a PubMed or Europe PMC record) must, once normalised, match
+`_EXPLICIT_DOI_RE` whole (`10.`, a 4 to 9 ASCII-digit registrant code, `/`
+and a suffix with no whitespace, so SICI-style DOIs are kept). A value that
+does not, such as `"N/A"` or a bare `"doi:"`, is not used as a DOI: the
+record falls back to a DOI in its citation text, and the dropped value is
+counted in the record's `dropped_malformed_doi_count`, which the projection
+leaves out.
 
 **Planner and verifier CLI (`scripts/verify_and_plan_census_batch.py`).**
-`PLANNER_RULES_VERSION` is `1.7.0`.
+`PLANNER_RULES_VERSION` is `1.9.0`.
 
 - `verify`: `--index` (required), `--documents` (required), `--locations`
   (required), `--pages-dir`, `--ocr-dir` (only with `--pages-dir`),
@@ -529,14 +575,18 @@ references (`registry_reference_types` `BACKGROUND`, `DERIVED`, `RESULT`),
   0.085), `--cost-per-trial-full-usd` (default 0.4011),
   `--cost-per-trial-conservative-usd` (default 0.5512), `--cost-schedule`
   (`sliced`, `full`, `conservative`; default `sliced`), `--pages-dir`,
-  `--ocr-dir`, `--text-source`, `--out-plan`.
+  `--ocr-dir`, `--text-source`, `--doc-cache-rules-version`, `--out-plan`.
 - `plan` files each in-scope trial in one partition: `cached_complete`,
   `complete_quotations_unchecked`, `unstarted_primary`,
   `unstarted_target_pass`, `amended_doc_or_outcome_delta`,
   `unreadable_recoverable_ocr`, `unreadable_terminal_redacted`,
   `unreadable_subtype_unknown`. A trial is `cached_complete` only when every
-  one of its rows passes `verify_location_record` with page text
-  (`--pages-dir`); without page text a complete trial is
+  one of its current documents (its profile's documents, else its
+  `--documents` rows) passes `verify_document_record` (planner 1.8.0) and
+  every one of its rows passes `verify_location_record` with page text
+  (`--pages-dir`). A document `verify` would refuse (`http_status` 200 with
+  no page count, say) files the trial `amended_doc_or_outcome_delta`, to be
+  run again. Without page text a complete trial is
   `complete_quotations_unchecked`. `classify_unreadable_subtype` names the
   UNREADABLE subtype from the trial's rows and document-index lines; when it
   names none, the trial's profile `readability_summary` names it if that is
@@ -549,18 +599,32 @@ references (`registry_reference_types` `BACKGROUND`, `DERIVED`, `RESULT`),
   redacted is filed `unstarted_primary` and scheduled (run on fictional M1
   output).
 - `plan` keys `--profiles` by trial and `--doc-cache` by sha256: two
-  different rows for one trial, or for one sha256, raise
-  `CitationVerificationError` (exit 1, no plan), and an identical repeat is
-  kept once.
-  The plan reports `partition_counts`, `excluded_in_audit_count`,
+  different rows for one trial, or for one sha256 within the rules version
+  read, raise `CitationVerificationError` (exit 1, no plan), and an
+  identical repeat is kept once.
+- `--doc-cache` lines are read under one M1 rules version (D2).
+  `--doc-cache-rules-version V` reads the lines whose
+  `indexer_rules_version` is `V` and leaves the others out, counted, with a
+  NOTE on stderr; a document with no line of `V` is planned as one with no
+  index line. Without the option a file of one version is read as before,
+  and a file holding two or more is refused (exit 1), with a message naming
+  the option. The option without `--doc-cache`, or empty, is a usage error
+  (exit 2). Every line is firewalled first, the lines left out included.
+- `plan` takes M1's profiles as written (D1; section 6).
+- The plan reports `partition_counts`, `excluded_in_audit_count`,
   `ocr_prepass_queue`, `cost_projection`, `max_launchable_shards`,
-  `launch_approved` and the shard manifests (each with `within_budget_cap`).
+  `launch_approved`, the shard manifests (each with `within_budget_cap`),
+  `doc_cache_rules_version` (the version read, or null),
+  `doc_cache_lines_ignored_other_rules_versions` and
+  `free_text_other_trials`.
 - `--cohort` selects rows whose `cohorts` list (or `cohort` string) holds
   the slug; a row with neither field belongs to no cohort.
 - Exit codes: 0 when verification passes or the plan is within the budget
-  cap; 1 on verification errors, quotations not compared, contract failures
-  or a plan over the cap (the plan is still written); 2 on usage errors and
-  firewall or scope refusals.
+  cap; 1 on verification errors, quotations not compared, contract failures,
+  a `--doc-cache` of several rules versions without
+  `--doc-cache-rules-version`, or a plan over the cap (the plan is still
+  written); 2 on usage errors and firewall or scope refusals. Warnings do not
+  change the exit code.
 
 ### M3: cohort-agnostic outcomes bundles
 

@@ -13,7 +13,7 @@ The commands use M1 (`scripts/index_trial_documents.py`), M4
 all four: M1 and M2 are on `main` (merged in `2932cac`, PR #112, and
 `3f1bcb9`, PR #111), and M4 and M3 are on their branches (m3 contains m4).
 They were checked against m1 `4defbef` (the branch head merged in
-`2932cac`), m2 `b9a2ebc`, m4 `97789ee` and m3 `ba916ec`.
+`2932cac`), m2 `b9a2ebc`, m4 `d68652a` and m3 `e2a8c21`.
 
 ## 0. Before anything runs
 
@@ -98,17 +98,21 @@ Never `git add` anything under these paths.
   decision; do not invent values. Until it is made, `plan` and `verify` run
   only on rows written with the stamps, which is to say new work.
 
+  At m4 `d68652a`, `verify` over copies of the census files (counts only, no
+  page text) refuses no row at the firewall, and its only errors are F6's,
+  on all 782 document and 5,229 location rows (all 402 trials). The free
+  text of 7 rows of 1 trial names 1 trial absent from the index; that is
+  now the warning `NOTE_FREE_TEXT_NAMES_OTHER_TRIAL` rather than a refusal
+  of the run. 35 `NOTE_PAGE_COUNT_MISMATCH` warnings fall in 1 trial, and
+  without page text all 11,629 quotations are uncompared. `verify` exits 1.
+
   Without the census rows, `plan` cannot tell which trials the census has
   done and schedules every in-scope trial in `--index`. To plan only the
   trials the census has not covered, give it a copy of the index in which
   those trials, and no others, carry the cohort `not_in_census`, and pass
   `--cohort not_in_census` (step 2). Every row stays in the copy. The holdout
   rows stay in, so the holdout set is still enforced. The census's rows stay
-  in, unscheduled, so that its trials stay in scope: `plan` refuses (exit 2)
-  input whose text names a trial outside the in-scope rows of `--index`, and
-  the text M1 indexes from a remaining trial's document can name a census
-  trial (a section heading, say, in a document both trials post or in the
-  remaining trial's own):
+  in, unscheduled, so its trials stay in scope:
 
   ```bash
   python - "$INDEX" census-work/rule-census-20261114/locations.jsonl \
@@ -141,10 +145,11 @@ Never `git add` anything under these paths.
    are each shared by 2 trials), so the tools cannot exclude a holdout
    trial's document text when the same file is posted under an in-scope id.
    Do not try to find out whether that happens by opening holdout trials'
-   documents. Also, `verify --pages-dir` on M1's cache stops (exit 1, no
-   report) at the second trial that shares a document, because M1 tags each
-   page map with the first trial and M4 serves a map only to the trial it
-   names.
+   documents. A document that two in-scope trials post is verified for
+   both: M1 tags its page map with the first trial, and since m4 `d68652a`
+   M4 serves the map to every in-scope trial that posts it, unless the tag
+   is a holdout trial, which stops `verify` and `plan` before any page text
+   is read (exit 2).
 3. **Single-page verbatim citations.** A quotation matches text on its one
    declared page (`match_quotation_on_page`), holds no ellipsis
    (`has_ellipsis`), never spans pages (`cross_page_span_violation`) and is at
@@ -325,10 +330,12 @@ fi
   `--doc-cache`: (1) a profile whose `nct_id` is not an `in_audit: false`
   row of `--index`; (2) a document-index line whose `sha256` is not that of
   a document in a profile (or `--documents` row) of an in-scope trial; and
-  (3) a line of either file whose text names any trial that is not an
-  `in_audit: false` row of `--index`, other than a profile's own trial. The
-  text includes what M1 copied from the document, such as a section heading
-  in `section_slice.detected_sections`.
+  (3) a line of either file whose text names a holdout trial. The text
+  includes what M1 copied from the document, such as a section heading in
+  `section_slice.detected_sections`. Text that names any other trial, in
+  `--index` or not, does not stop `plan` (m4 `d68652a`, D3): it is counted
+  in the plan's `free_text_other_trials` and reported on stderr as
+  `NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`, with counts and no ids.
 - Each run of step 1 rewrites the profiles but keeps the earlier lines of
   the document index; it replaces a line only for a document it indexes
   again under the same rules version (step 1). After a run with `--nct-id`
@@ -371,35 +378,37 @@ fi
   EOF
   ```
 
-  The filter does not remove lines of type (3). Keeping the census's rows
-  in `index_cohort_not_in_census.json` is what keeps type (3) from arising
-  for a census trial. If `plan` still exits 2 after the filter, the
-  indexed text of an in-scope trial's document names a trial outside the
-  in-scope rows of `--index` (a holdout trial among them), and the refusal
-  does not name that trial. No branch offers a way past it. Leaving the line
+  The filter does not remove lines of type (3). If `plan` exits 2 after the
+  filter saying the text names an audit-holdout trial, the indexed text of
+  an in-scope trial's document names a holdout trial; the refusal names the
+  field, not the trial (run on fictional M1 output, a section heading naming
+  the fictional holdout). No branch offers a way past it. Leaving the line
   out of the copy would hide from `plan` the readability fields it reads to
   name an `UNREADABLE` subtype (`classify_unreadable_subtype`), so take it to
   the investigator rather than drop the line.
-- At m1 `2561a46` and m4 `97789ee`, `plan` refuses the profiles step 1
-  writes, whatever the `--index`: their document records carry no
-  `model_id` or `profile_version`, which `plan` requires of a profile's
-  documents as it does of a `--documents` row (exit 1, no plan; run on
-  fictional M1 output). Which branch should change is not settled; until
-  one does, step 2 cannot take step 1's profiles as they are.
-- At the same revisions, `plan` refuses the document index of a checkout
-  that step 1 has run on under two M1 rules versions. Step 1 keeps one line
-  per `(sha256, indexer_rules_version)` and keeps earlier lines, so after a
-  change of `INDEXER_RULES_VERSION` a document indexed under both versions
-  has two lines that differ. Step 2's filter keeps both, since both carry
-  the sha256 of an in-scope document, and `plan` refuses two different
-  `--doc-cache` rows for one sha256 (`CitationVerificationError: … are
-  different doc-cache rows for sha256 …`, exit 1, no plan). This was so at
-  m1 `69edfb3` too (run on fictional M1 output, with the rules version
-  changed in a scratch copy of m1). A copy holding one rules version's lines
-  for each document is accepted, which is what pruning the old version's
-  lines would give; whether to prune them, or which branch should change, is
-  the investigator's decision. Until it is made, step 2 cannot take the
-  document index after an M1 rules-version change.
+- `plan` takes the profiles step 1 writes as they are (m4 `d68652a`, D1).
+  The documents of a `--profiles` row exactly as M1 writes it are exempt
+  from F6, since no model produced them; every `--documents` and location
+  row, and everything `verify` reads, still needs the stamps (rule 7). On
+  fictional M1 output at m1 `4defbef`, `plan` exits 0 on the profiles as
+  written.
+- Step 1 keeps one line per `(sha256, indexer_rules_version)` and keeps
+  earlier lines, so after a change of M1's `INDEXER_RULES_VERSION` the
+  document index holds lines of two versions, and step 2's filter keeps
+  both. `plan` reads the lines of one version (m4 `d68652a`, D2): given a
+  file of two versions and no `--doc-cache-rules-version`, it stops (exit 1,
+  no plan) with a message that names the option. After a rules-version
+  change, run step 1 over the whole `--index` again, then add
+  `--doc-cache-rules-version "$V"` to the `plan` command, where
+  `V="$(python -c 'from src.document_indexer import INDEXER_RULES_VERSION as v; print(v)')"`
+  is the version this checkout's M1 writes. `plan` then leaves the other
+  version's lines out, counts them
+  (`doc_cache_lines_ignored_other_rules_versions`, and a NOTE on stderr)
+  and records the version it read (`doc_cache_rules_version`). A document
+  with no line of that version is planned as one with no index line, which
+  is why step 1 runs over the whole `--index` first. On fictional M1 output,
+  with the rules version changed in a scratch copy of m1, `plan` exited 1
+  without the option and 0 with it, leaving out 5 of 10 lines.
 - `--mode resume-unstarted` schedules `unstarted_primary` and
   `unstarted_target_pass` trials; `recover-unreadable` schedules
   `unreadable_recoverable_ocr`; `incremental-delta` (the default) also
@@ -414,11 +423,13 @@ fi
   `complete_quotations_unchecked` rather than `cached_complete`, because its
   quotations were not found on their pages.
 - Read `partition_counts`, `excluded_in_audit_count`, `cost_projection`,
-  `max_launchable_shards` and `launch_approved` before launching anything.
-  Exit 0: the whole plan is within `--budget-cap-usd`. Exit 1: it is not (or
-  an input failed verification); the plan is still written when it is over
-  the cap, and only shards marked `within_budget_cap` fit. Exit 2: a usage,
-  holdout or scope refusal.
+  `max_launchable_shards`, `launch_approved`, `doc_cache_rules_version` and
+  `free_text_other_trials` before launching anything. Exit 0: the whole
+  plan is within `--budget-cap-usd`. Exit 1: it is not (or an input failed
+  verification, or the document index holds two rules versions and no
+  `--doc-cache-rules-version` was given); the plan is still written when it
+  is over the cap, and only shards marked `within_budget_cap` fit. Exit 2: a
+  usage, holdout or scope refusal. Warnings do not change the exit code.
 
 ### Step 3: extraction (outside this repository)
 
@@ -495,17 +506,19 @@ python scripts/verify_and_plan_census_batch.py verify \
 - A shard lands only when `verify` exits 0: the report is `ok`, with
   `substring_mismatches`, `ellipsis_flags`, `neutral_language_flags` and
   `quotations_not_compared` all 0. Without `--pages-dir`, no quotation is
-  compared and the run exits 1.
+  compared and the run exits 1. Warnings (`NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`,
+  `NOTE_PAGE_COUNT_MISMATCH`) do not change the exit code; read them, and
+  the report's `free_text_other_trials`, before the shard lands.
 - For an `ocr_recovery` or `adjudication` shard on its own, leave out
   `--check-completeness` until it is combined with its `primary` rows. For
   `ocr_recovery`, add `--ocr-dir <ocr page maps>` and
   `--text-source macos_vision_ocr_v1` (or whichever OCR source produced the
   maps).
-- A shard whose trials share a document with another trial hits the gap in
-  rule 2 of section 1. When the trial M1 tagged the shared page map with is
-  not in the shard, `verify` stops before it checks any row
-  (`AuditHoldoutViolationError`, exit 2, no report), because the map names a
-  trial outside the shard's index.
+- A shard whose trials share a document with another trial verifies (rule
+  2 of section 1): the shared page map is served to each in-scope trial
+  that posts the document, even when M1 tagged it with a trial outside the
+  shard's index. A map tagged with a holdout trial stops `verify` before any
+  page text is read (exit 2, no report).
 
 ### Step 5: combine, append-only
 
@@ -577,7 +590,7 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
   `--cohort-manifest` container, else from `--now-utc`, and refuses the
   build (exit 1, nothing written) when none is given. The site index's
   header carries no `extracted_at`. `<extracted-at>` is the ISO-8601 UTC
-  time the inputs were extracted, not the time of the build. At `ba916ec`
+  time the inputs were extracted, not the time of the build. At `e2a8c21`
   it must have a time of day and end `Z` or `+00:00`, as in
   `2026-11-24T12:00:00Z`: a date alone, a time with no offset or any other
   offset is refused (exit 1).
@@ -598,9 +611,11 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
   `columns_note`, `excluded`, `rows`, `run_id` and `schema_version`, all
   accepted, so step 6 takes it as printed. A fictional index whose header
   also held `generated_at` stopped this way at `ba916ec`: the build and
-  `--check` each exited 2, and no bundle was written. If the site index
-  gains a top-level key, check it against this list before step 6.
-- At `ba916ec` the bundle keeps each location row's `worker`, and its
+  `--check` each exited 2, and no bundle was written. A fictional index with
+  the site index's keys built and passed `--check` (exit 0) at `e2a8c21`.
+  If the site index gains a top-level key, check it against this list
+  before step 6.
+- At `e2a8c21` the bundle keeps each location row's `worker`, and its
   `model_id` and `prompt_version` when the row carries them (F6), but M3
   does not require them: a row without them is published without them.
   Rows that passed step 5's `verify` carry them, because M4 requires them on
@@ -631,8 +646,9 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
    `census-work/`) and pass the copies: the document index still holds the
    lines of every earlier step 1 run, and `plan` refuses them (exit 2). The
    filter reads the manifest in any form `--index` takes. A document whose
-   indexed text names a trial outside the manifest's `in_audit: false` rows
-   is refused as in step 2 (type 3), whatever is filtered.
+   indexed text names a holdout trial is refused as in step 2 (type 3),
+   whatever is filtered; text naming any other trial outside the manifest is
+   counted as a warning.
    Documents with identical bytes are downloaded and extracted once by M1's
    content-addressed cache, but see rule 2 of section 1 for what that means
    for verification.
