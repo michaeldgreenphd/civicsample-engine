@@ -3832,3 +3832,201 @@ def test_m4_r5_runtime_dependency_lists_name_every_stdlib_import() -> None:
         assert listed is not None, f"{rel}: no standard-library list in the module docstring"
         named = set(re.findall(r"``([A-Za-z0-9_.]+)``", listed.group(1)))
         assert stdlib - named == set(), f"{rel}: imports {sorted(stdlib - named)} unlisted"
+
+
+# ---------------------------------------------------------------------------
+# Codex review of PR #113 at dab323c, threads r4663855870 and r4663855878
+# (fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+
+def _r6_profile(summary: str, *, physical_pages: Any = 10) -> dict[str, Any]:
+    """A --profiles row for ``RT_SCOPE_ID`` naming ``summary``, with one stamped document."""
+    doc = _doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+    doc["physical_pages"] = physical_pages
+    return {
+        "nct_id": RT_SCOPE_ID,
+        "in_audit": False,
+        "readability_summary": summary,
+        "documents": [doc],
+    }
+
+
+def test_m4_r6_profile_naming_redacted_cci_ppd_is_terminal_not_scheduled() -> None:
+    """A trial with no rows whose profile says ``redacted_cci_ppd`` is the terminal $0 skip.
+
+    ``plan_incremental_cohort`` read a profile's ``readability_summary`` only
+    against ``image_only_scan``/``garbled_cmap``, so a profile naming the third
+    subtype left a trial with no location rows readable: it reached
+    ``unstarted_primary`` and ``resume-unstarted``/``incremental-delta``
+    scheduled it (spending money) although redacted trials are never
+    scheduled. A profile naming any of ``UNREADABLE_SUBTYPES`` now files the
+    trial under that subtype; one naming none leaves the round-5 rule
+    (UNREADABLE with no subtype evidence is ``unreadable_subtype_unknown``).
+    """
+    from scripts.verify_and_plan_census_batch import PLAN_MODES
+    from src.citation_verifier import UNREADABLE_SUBTYPES
+
+    assert set(UNREADABLE_SUBTYPES) == {"image_only_scan", "garbled_cmap", "redacted_cci_ppd"}
+
+    redacted = {RT_SCOPE_ID: _r6_profile("redacted_cci_ppd")}
+    for mode in PLAN_MODES:
+        plan = plan_incremental_cohort(_rt_index_rows(), profiles_by_nct=redacted, mode=mode)
+        assert plan["partitions"]["unreadable_terminal_redacted"] == [RT_SCOPE_ID], (
+            f"{mode}: a profile naming redacted_cci_ppd was not filed terminal: "
+            f"{plan['partition_counts']}"
+        )
+        assert plan["unreadable_subtypes"]["redacted_cci_ppd"] == [RT_SCOPE_ID]
+        assert plan["partitions"]["unstarted_primary"] == []
+        assert plan["partitions"]["unreadable_subtype_unknown"] == []
+        assert plan["scheduled_trial_count"] == 0, f"{mode}: a redacted trial was scheduled"
+        assert plan["ocr_prepass_queue"] == []
+        assert plan["cost_projection"]["gating_estimated_usd"] == 0.0
+
+    # image_only_scan and garbled_cmap behave as before: recoverable, scheduled for OCR.
+    for summary in ("image_only_scan", "garbled_cmap"):
+        plan = plan_incremental_cohort(
+            _rt_index_rows(),
+            profiles_by_nct={RT_SCOPE_ID: _r6_profile(summary)},
+            mode="recover-unreadable",
+        )
+        assert plan["partitions"]["unreadable_recoverable_ocr"] == [RT_SCOPE_ID], summary
+        assert plan["unreadable_subtypes"][summary] == [RT_SCOPE_ID], summary
+        assert plan["partitions"]["unreadable_terminal_redacted"] == [], summary
+        assert plan["scheduled_trial_count"] == 1, summary
+
+    # Control: a profile naming no unreadable subtype leaves a trial with no rows unstarted.
+    plan = plan_incremental_cohort(
+        _rt_index_rows(),
+        profiles_by_nct={RT_SCOPE_ID: _r6_profile("machine_readable")},
+        mode="incremental-delta",
+    )
+    assert plan["partitions"]["unstarted_primary"] == [RT_SCOPE_ID]
+    assert plan["scheduled_trial_count"] == 1
+
+    # UNREADABLE rows with no subtype evidence: the profile names the subtype when it names
+    # one of the three, and the round-5 rule holds when it names none.
+    no_evidence_rows = _complete_primary_locations(
+        RT_SCOPE_ID,
+        "Prot_000.pdf",
+        SHA_1,
+        unreadable_elements={"margin"},
+        unreadable_note="The statistical section is unreadable; OCR is needed to read it.",
+    )
+    for summary, partition in (
+        ("machine_readable", "unreadable_subtype_unknown"),
+        ("redacted_cci_ppd", "unreadable_terminal_redacted"),
+        ("image_only_scan", "unreadable_recoverable_ocr"),
+    ):
+        plan = plan_incremental_cohort(
+            _rt_index_rows(),
+            locations=no_evidence_rows,
+            profiles_by_nct={RT_SCOPE_ID: _r6_profile(summary)},
+            mode="incremental-delta",
+        )
+        assert plan["partitions"][partition] == [RT_SCOPE_ID], (
+            f"{summary}: {plan['partition_counts']}"
+        )
+        assert plan["scheduled_trial_count"] == 0, summary
+
+    # A summary that is not a string is refused, never read as naming no subtype (a list
+    # used to escape as an unhashable-type TypeError).
+    for bad_summary in (["redacted_cci_ppd"], {"subtype": "redacted_cci_ppd"}, 3):
+        with pytest.raises(CitationVerificationError, match="readability_summary"):
+            plan_incremental_cohort(
+                _rt_index_rows(),
+                profiles_by_nct={
+                    RT_SCOPE_ID: {
+                        **_r6_profile("redacted_cci_ppd"),
+                        "readability_summary": bad_summary,
+                    }
+                },
+            )
+
+
+def test_m4_r6_conflicting_profile_rows_for_one_trial_raise(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two different --profiles rows for one trial raise in either order; a repeat loads once.
+
+    ``_load_profiles_by_nct`` kept the last row read for a trial, so line order
+    decided the trial's fingerprint, unreadable classification and scheduling.
+    As for ``--doc-cache`` rows, rows that differ leave no way to tell which
+    describes the trial and raise (exit 1, ``CitationVerificationError``); an
+    identical repeat is one row. Rows compare as JSON, so ``10`` and ``10.0``
+    (equal in Python, but only an ``int`` page count is read as one) differ.
+    The refusal names only positions and the in-scope trial.
+    """
+    from scripts.verify_and_plan_census_batch import _load_profiles_by_nct
+
+    audit = frozenset({RT_AUDIT_ID})
+    scope = frozenset({RT_SCOPE_ID})
+    scan = _r6_profile("image_only_scan")
+    redacted = _r6_profile("redacted_cci_ppd")
+    index_path = tmp_path / "r6_index.json"
+    index_path.write_text(json.dumps({"data": _rt_index_rows()}), encoding="utf-8")
+
+    conflicts = {
+        "scan_then_redacted": [scan, redacted],
+        "redacted_then_scan": [redacted, scan],
+        "int_then_float_pages": [scan, _r6_profile("image_only_scan", physical_pages=10.0)],
+        "float_then_int_pages": [_r6_profile("image_only_scan", physical_pages=10.0), scan],
+    }
+    for name, rows in conflicts.items():
+        path = tmp_path / f"r6_profiles_{name}.jsonl"
+        _write_jsonl(path, rows)
+        with pytest.raises(CitationVerificationError) as excinfo:
+            _load_profiles_by_nct(
+                path,
+                audit_nct_ids=audit,
+                in_scope_nct_ids=scope,
+                allow_empty_audit_set=False,
+            )
+        assert not isinstance(excinfo.value, AuditHoldoutViolationError), name
+        rc, printed = _rt_f442_run(
+            ["plan", "--index", str(index_path), "--profiles", str(path)], capsys
+        )
+        assert rc == 1, f"{name}: plan resolved two different profile rows by order (exit {rc})"
+        assert "ERROR [verification]" in printed, f"{name}: {printed!r}"
+        assert f"{path}[0]" in printed and f"{path}[1]" in printed, f"{name}: {printed!r}"
+        assert RT_AUDIT_ID not in printed and RT_UNLISTED_ID not in printed, name
+
+    # An identical repeat is kept once, and plans as the single row does.
+    single = tmp_path / "r6_profiles_single.jsonl"
+    repeated = tmp_path / "r6_profiles_repeated.jsonl"
+    _write_jsonl(single, [scan])
+    _write_jsonl(repeated, [scan, json.loads(json.dumps(scan))])
+    loaded = _load_profiles_by_nct(
+        repeated, audit_nct_ids=audit, in_scope_nct_ids=scope, allow_empty_audit_set=False
+    )
+    assert loaded == {RT_SCOPE_ID: scan}
+    plans = []
+    for path in (single, repeated):
+        capsys.readouterr()
+        rc = main(
+            ["plan", "--index", str(index_path), "--profiles", str(path), "--mode",
+             "recover-unreadable"]
+        )
+        captured = capsys.readouterr()
+        assert rc == 0, captured.err
+        plan = json.loads(captured.out)
+        plans.append((plan["partitions"], plan["shards"]))
+    assert plans[0] == plans[1]
+    assert plans[0][0]["unreadable_recoverable_ocr"] == [RT_SCOPE_ID]
+
+    # Two rows for a trial outside the in-scope set are refused by the firewall before any
+    # comparison, and the refusal does not quote the trial.
+    unlisted = tmp_path / "r6_profiles_unlisted.jsonl"
+    _write_jsonl(
+        unlisted,
+        [
+            {**_r6_profile("image_only_scan"), "nct_id": RT_UNLISTED_ID, "documents": []},
+            {**_r6_profile("redacted_cci_ppd"), "nct_id": RT_UNLISTED_ID, "documents": []},
+        ],
+    )
+    rc, printed = _rt_f442_run(
+        ["plan", "--index", str(index_path), "--profiles", str(unlisted)], capsys
+    )
+    assert rc == 2, printed
+    assert "ERROR [firewall_or_scope]" in printed, printed
+    assert RT_UNLISTED_ID not in printed, printed
