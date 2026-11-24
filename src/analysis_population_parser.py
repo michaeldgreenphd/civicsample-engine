@@ -122,9 +122,11 @@ if TYPE_CHECKING:  # annotation only; pandas is imported lazily at run time
     import pandas as pd
 
 __version__: str = "1.0.0"
-# Bumped when a parsed field can change for the same input (2026-11-24: the
-# class_level_incomplete denom status).
-PARSER_RULES_VERSION: str = "analysis_pop@2026-11-24.v1"
+# Bumped when a parsed field can change for the same input (2026-11-24.v1:
+# the class_level_incomplete denom status; 2026-11-24.v2: the same status
+# for units_denom_status, when a unit denom such as "Eyes" is on some
+# classes only).
+PARSER_RULES_VERSION: str = "analysis_pop@2026-11-24.v2"
 POPULATION_PARSER_VERSION: str = PARSER_RULES_VERSION
 
 PopulationClass = Literal[
@@ -160,6 +162,10 @@ _TAXONOMY_ORDER: dict[str, int] = {
     cls: idx for idx, cls in enumerate(POPULATION_TAXONOMY)
 }
 
+# The vocabulary of both denom_status (the "Participants" denom) and
+# units_denom_status (the first non-Participants unit denom, e.g. "Eyes");
+# structural_checks holds both fields to it. The comments below describe the
+# participant case; for units_denom_status read the unit denom in its place.
 DENOM_STATUS_LEVELS: tuple[str, ...] = (
     "present",                          # valid numeric participant count(s) parsed
     "not_posted",                       # reportingStatus == "NOT_POSTED"
@@ -1163,13 +1169,14 @@ def _select_denoms_from_measure(
     list[list[dict[str, Any]]],
     list[list[dict[str, Any]]],
     bool,
+    bool,
 ]:
     """Collect measure-level or class-level participant & unit denom objects.
 
     Returns:
       (source_hint, measure_part_denoms, measure_unit_denoms,
        class_part_denoms_per_class, class_unit_denoms_per_class,
-       class_part_incomplete)
+       class_part_incomplete, class_units_incomplete)
 
     The per-class lists hold only the classes that have such a denom, so
     they cannot say whether every class had one. ``class_part_incomplete``
@@ -1179,6 +1186,15 @@ def _select_denoms_from_measure(
     counts only). Assumption: CT.gov reports one analysed count per class
     and group, so a class without a "Participants" denom has an unknown
     count, and another class's count does not stand for it.
+
+    ``class_units_incomplete`` is the same rule for unit denoms (any
+    non-empty ``units`` other than "Participants", e.g. "Eyes"): True when
+    at least one class carries a unit denom and at least one other carries
+    none (its ``denoms`` missing, empty or holding "Participants" only). The
+    same assumption applies: a class without a unit denom has an unknown
+    unit count (Codex r4681432176 on PR #111: one class's Eyes total was
+    published as the measure's). Both flags are False at the measure level,
+    where one denoms array covers every class.
     """
     m_denoms = measure.get("denoms")
     if isinstance(m_denoms, list) and len(m_denoms) > 0:
@@ -1192,7 +1208,7 @@ def _select_denoms_from_measure(
             and not _is_participants_unit(d.get("units"))
         ]
         if valid:
-            return "measure", part, units, [], [], False
+            return "measure", part, units, [], [], False, False
 
     classes = measure.get("classes")
     class_part: list[list[dict[str, Any]]] = []
@@ -1221,9 +1237,18 @@ def _select_denoms_from_measure(
                 class_units.append(units)
 
     if class_part or class_units:
-        incomplete = 0 < len(class_part) < n_classes
-        return "class_unanimous", [], [], class_part, class_units, incomplete
-    return "none", [], [], [], [], False
+        part_incomplete = 0 < len(class_part) < n_classes
+        units_incomplete = 0 < len(class_units) < n_classes
+        return (
+            "class_unanimous",
+            [],
+            [],
+            class_part,
+            class_units,
+            part_incomplete,
+            units_incomplete,
+        )
+    return "none", [], [], [], [], False, False
 
 
 def _extract_ordered_groups(
@@ -1356,6 +1381,7 @@ def parse_outcome_measure(
             c_part,
             c_units,
             c_part_incomplete,
+            c_units_incomplete,
         ) = _select_denoms_from_measure(measure)
 
         # Resolve units_analyzed_type from unit denoms if typeUnitsAnalyzed absent
@@ -1471,7 +1497,15 @@ def parse_outcome_measure(
                 u_canonical = [
                     tuple(sorted(m.items())) for _, m in parsed_class_units
                 ]
-                if all(not has_e for has_e, _ in parsed_class_units):
+                if c_units_incomplete:
+                    # Some classes carry no unit denom (e.g. "Eyes" on Week
+                    # 4 only): their unit counts are unknown, so the classes
+                    # that have one cannot be unanimous for the measure.
+                    # Recorded as its own status with no overall_units_analyzed,
+                    # never filled in from the classes that report one. The
+                    # participant side is decided separately above.
+                    units_denom_status = "class_level_incomplete"
+                elif all(not has_e for has_e, _ in parsed_class_units):
                     units_denom_status = "empty_counts"
                 elif len(set(u_canonical)) == 1:
                     unit_counts_by_id = parsed_class_units[0][1]
@@ -1487,12 +1521,21 @@ def parse_outcome_measure(
         else:
             ordered_groups = _extract_ordered_groups(measure, [])
 
-    # Determine DenomUnitKind (explicitly distinguishing PARTICIPANTS vs COUNT_OF_UNITS)
+    # Determine DenomUnitKind (explicitly distinguishing PARTICIPANTS vs COUNT_OF_UNITS).
+    # A class_level_incomplete units status counts as a units signal, as
+    # class_level_only_varying does: a unit denom is reported on some class,
+    # only its measure-level count is unknown. BOTH still needs a units count
+    # (or "present"), so a participant count beside it gives PARTICIPANTS.
     has_units_signal = (
         overall_units_analyzed is not None
         or denom_status == "units_only_no_participant_denom"
         or units_denom_status
-        in ("present", "partial_arm_counts", "class_level_only_varying")
+        in (
+            "present",
+            "partial_arm_counts",
+            "class_level_only_varying",
+            "class_level_incomplete",
+        )
         or (param_type is not None and param_type.strip().upper() == "COUNT_OF_UNITS")
     )
     if is_participant_count and (overall_units_analyzed is not None or units_denom_status == "present"):
@@ -2116,6 +2159,20 @@ def structural_checks(
         "denom_status_in_vocabulary",
         not bad_denom,
         f"{len(bad_denom)} invalid denom_status values",
+    )
+
+    # units_denom_status shares DENOM_STATUS_LEVELS (every value the parser
+    # assigns it is one of them); until 2026-11-24.v2 nothing checked it.
+    bad_units_denom = [
+        (t.nct_id, o.outcome_index, o.units_denom_status)
+        for t in trial_list
+        for o in t.outcomes
+        if o.units_denom_status not in DENOM_STATUS_LEVELS
+    ]
+    put(
+        "units_denom_status_in_vocabulary",
+        not bad_units_denom,
+        f"{len(bad_units_denom)} invalid units_denom_status values",
     )
 
     bad_agg = [

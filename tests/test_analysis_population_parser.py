@@ -544,6 +544,144 @@ def test_class_level_denoms_missing_from_some_classes_are_incomplete_not_unanimo
     assert unanimous.overall_participants_analyzed == 92.0
 
 
+def _participants_denom() -> dict[str, Any]:
+    """A fresh class-level "Participants" denom of 45 + 47."""
+    return {
+        "units": "Participants",
+        "counts": [
+            {"groupId": "OG000", "value": "45"},
+            {"groupId": "OG001", "value": "47"},
+        ],
+    }
+
+
+def _eyes_denom() -> dict[str, Any]:
+    """A fresh class-level "Eyes" unit denom of 90 + 94."""
+    return {
+        "units": "Eyes",
+        "counts": [
+            {"groupId": "OG000", "value": "90"},
+            {"groupId": "OG001", "value": "94"},
+        ],
+    }
+
+
+def _week4_week12_measure(
+    week4: list[dict[str, Any]] | None,
+    week12: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """A two-arm class-level measure; None leaves a class without a denoms key."""
+    classes: list[dict[str, Any]] = []
+    for title, denoms in (("Week 4", week4), ("Week 12", week12)):
+        cl: dict[str, Any] = {"title": title}
+        if denoms is not None:
+            cl["denoms"] = denoms
+        classes.append(cl)
+    return {
+        "type": "PRIMARY",
+        "groups": [
+            {"id": "OG000", "title": "Arm A"},
+            {"id": "OG001", "title": "Arm B"},
+        ],
+        "classes": classes,
+    }
+
+
+def test_unit_denoms_missing_from_some_classes_are_incomplete_not_unanimous() -> None:
+    # Codex r4681432176 on PR #111: a class without a unit denominator was
+    # skipped, so a two-class measure with an Eyes denominator on Week 4
+    # only was reported units_denom_status "present" with Week 4's Eyes
+    # total (184) as overall_units_analyzed. Week 12's unit count is
+    # unknown, so no unit total stands for the measure:
+    # class_level_incomplete and no overall_units_analyzed (never Week 4's).
+    week12_shapes: list[list[dict[str, Any]] | None] = [
+        [_participants_denom()],  # Participants only, no unit denom
+        None,  # no denoms key
+        [],  # empty denoms
+    ]
+    for week12 in week12_shapes:
+        parsed = ap.parse_outcome_measure(
+            _week4_week12_measure([_participants_denom(), _eyes_denom()], week12)
+        )
+        assert parsed.units_denom_status == "class_level_incomplete", week12
+        assert parsed.overall_units_analyzed is None, week12
+        assert parsed.units_analyzed_type == "Eyes", week12
+
+    # The participant side is decided on its own: Participants on every
+    # class stays unanimous. BOTH needs a unit count, so PARTICIPANTS.
+    part_all = ap.parse_outcome_measure(
+        _week4_week12_measure([_participants_denom(), _eyes_denom()], [_participants_denom()])
+    )
+    assert part_all.denom_source == "class_unanimous"
+    assert part_all.denom_status == "present"
+    assert part_all.overall_participants_analyzed == 92.0
+    assert part_all.denom_unit_kind == "PARTICIPANTS"
+
+    # No Participants denom anywhere: still a units measure, with no total.
+    units_only = ap.parse_outcome_measure(_week4_week12_measure([_eyes_denom()], None))
+    assert units_only.denom_status == "units_only_no_participant_denom"
+    assert units_only.units_denom_status == "class_level_incomplete"
+    assert units_only.overall_units_analyzed is None
+    assert units_only.denom_unit_kind == "COUNT_OF_UNITS"
+
+    # Both denoms on Week 4 only: both sides incomplete, and the unit denom
+    # still marks the measure COUNT_OF_UNITS (it is a units signal, as
+    # class_level_only_varying is), not NONE.
+    neither = ap.parse_outcome_measure(
+        _week4_week12_measure([_participants_denom(), _eyes_denom()], None)
+    )
+    assert neither.denom_status == "class_level_incomplete"
+    assert neither.units_denom_status == "class_level_incomplete"
+    assert neither.overall_participants_analyzed is None
+    assert neither.overall_units_analyzed is None
+    assert neither.denom_unit_kind == "COUNT_OF_UNITS"
+
+    # End to end, the status passes the units vocabulary check of
+    # structural_checks, and that check rejects a value outside it.
+    trial = ap.parse_study_outcomes(
+        _study_with_outcome(
+            "NCT99000921",
+            _week4_week12_measure([_participants_denom(), _eyes_denom()], [_participants_denom()]),
+            flow_groups=[],
+        )
+    )
+    assert trial.outcomes[0].units_denom_status == "class_level_incomplete"
+    assert trial.outcomes[0].overall_units_analyzed is None
+    checks = ap.structural_checks([trial])
+    assert checks["units_denom_status_in_vocabulary"]["pass"] is True
+    assert ap.all_pass(checks), checks
+    trial.outcomes[0].units_denom_status = "class_level_incomplet"
+    assert ap.structural_checks([trial])["units_denom_status_in_vocabulary"]["pass"] is False
+
+
+def test_unit_denoms_on_every_class_stay_unanimous_control() -> None:
+    # Control for the test above: the same Eyes denominator on every class
+    # is unanimous, and its total stands for the measure.
+    parsed = ap.parse_outcome_measure(
+        _week4_week12_measure(
+            [_participants_denom(), _eyes_denom()],
+            [_participants_denom(), _eyes_denom()],
+        )
+    )
+    assert parsed.units_denom_status == "present"
+    assert parsed.overall_units_analyzed == 184.0
+    assert parsed.units_analyzed_type == "Eyes"
+    assert parsed.denom_source == "class_unanimous"
+    assert parsed.overall_participants_analyzed == 92.0
+    assert parsed.denom_unit_kind == "BOTH"
+    trial = ap.parse_study_outcomes(
+        _study_with_outcome(
+            "NCT99000922",
+            _week4_week12_measure([_eyes_denom()], [_eyes_denom()]),
+            flow_groups=[],
+        )
+    )
+    assert trial.outcomes[0].units_denom_status == "present"
+    assert trial.outcomes[0].overall_units_analyzed == 184.0
+    assert trial.outcomes[0].denom_unit_kind == "COUNT_OF_UNITS"
+    assert ap.all_pass(ap.structural_checks([trial]))
+
+
 # ---------------------------------------------------------------------------
 # 7. Units analyzed (COUNT_OF_UNITS) strictly separated from Participants
 # ---------------------------------------------------------------------------
