@@ -66,7 +66,9 @@ behavior; do not unset CI to turn an unreachable pinned source into a skip.
 Compileall creates ignored `__pycache__` directories; pytest uses temporary
 fixture directories and an ignored `.pytest_cache`. The sponsor regression
 test intentionally **writes** [tests/sponsors/expected_counts.json](tests/sponsors/expected_counts.json)
-and fails when a changed rules hash has no baseline. Review and commit that
+and fails when a changed rules hash has no baseline, or when the block for
+the current hash lacks a section `sponsors/baseline.py` now pins (it writes
+the missing section into that block). Review and commit that
 block with a deliberate rules change; never reset unrelated changes or weaken
 the guard to get green. For auditing a read-only checkout, run a disposable
 local copy/clone instead. Tests that stub publication do not push or contact

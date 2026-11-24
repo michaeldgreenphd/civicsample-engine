@@ -73,3 +73,8 @@ data/analysis_sidecar/
 # the staging directory exists only while a build runs)
 data/outcomes_bundles/
 data/outcomes_bundles.partial/
+
+# Transient document pre-indexer caches
+data/document_cache/
+data/document_index_by_sha256.jsonl
+data/trial_document_profiles.jsonl

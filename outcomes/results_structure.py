@@ -760,6 +760,8 @@ def _level_matches(titles: list[str], dims: tuple[str, ...]) -> dict[str, tuple[
 
 # How many matching titles a level signal displays, per list (the audit's display cut).
 _LEVEL_SHOWN = {'sex': 2, 'race': 4, 'ethnicity': 3, 'origin': 4, 'age': 4}
+# The dimensions the level rule names; a title-level signal's rule_dimension is one of these.
+LEVEL_RULE_DIMENSIONS = tuple(_LEVEL_SHOWN)
 
 
 def level_identity(titles: list[str],
@@ -934,12 +936,49 @@ def signal_dimensions(rule_dimension: str, matched: list[str]) -> list[str]:
 
 _MAX_MATCHED = 400   # characters of one matched text kept; a longer text is cut and flagged
 
+# The level rules that read posted row or column titles: class titles, category titles and group
+# titles. Only their signals list rows of a posted table. A cue, a group-description match and an
+# analysis signal carry `rows: None`; a cue in a class or category title is in one row's title, but
+# the signal records the cue's wording and the title list's path, not which row.
+TITLE_LEVEL_FIELDS = ('class_titles', 'category_titles', 'group_titles')
+
+
+def signal_rows(m: dict[str, Any], field: str, ident: list[str]) -> list[dict[str, Any]]:
+    """The posted rows (classes or categories) or columns (groups) of one measure whose titles the
+    level signal matched: every one, in posted order, with its position and its title as posted.
+
+    These are the titles the signal's id is taken from (level_identity: trimmed, compared as a set),
+    so a row is listed when its trimmed title is one of them, and two rows with one title are both
+    listed. Unlike `matched_text`, the list is not cut for display. Only the position and the title
+    are copied, and nothing is judged: a listed row is what rule SG2 matched, not a finding that it
+    is a subgroup result. Only a human review record settles that.
+
+      class_titles      {class_index, title}                  classes[class_index].title
+      category_titles   {class_index, category_index, title}  classes[k].categories[j].title
+      group_titles      {group_id, title}                     groups[].title of the group with that id
+    """
+    want = set(ident)
+    classes = m.get('classes') or []
+    if field == 'class_titles':
+        return [{'class_index': k, 'title': c.get('title')} for k, c in enumerate(classes)
+                if (c.get('title') or '').strip() in want]
+    if field == 'category_titles':
+        return [{'class_index': k, 'category_index': j, 'title': cat.get('title')}
+                for k, c in enumerate(classes) for j, cat in enumerate(c.get('categories') or [])
+                if (cat.get('title') or '').strip() in want]
+    if field == 'group_titles':
+        return [{'group_id': g.get('id'), 'title': g.get('title')} for g in m.get('groups') or []
+                if (g.get('title') or '').strip() in want]
+    raise ValueError(f'{field} is not a title-level field')
+
 
 def subgroup_signals(nct_id: str, measures: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Published signals for one study: rule SG2 over every posted outcome measure of every type.
 
     One entry per signal and dimension, with the field path, the measure's index, type and title,
-    the matched text verbatim, and for cue rules the surrounding context. `signal_id` identifies
+    the matched text verbatim, for cue rules the surrounding context, and for title-level rules
+    (TITLE_LEVEL_FIELDS) the posted rows or columns matched (`rows`, see signal_rows; None for every
+    other signal). `signal_id` identifies
     the signal for a human review row: a digest of the NCT id, measure type and title, field, rule
     dimension, dimension and the signal's own words. For a cue those words are the matched text and
     the text around it. For a level signal they are every sibling title carrying one of the
@@ -975,6 +1014,9 @@ def subgroup_signals(nct_id: str, measures: list[dict[str, Any]]) -> list[dict[s
                          'matched_text_truncated': any(len(t) > _MAX_MATCHED for t in s['matched']),
                          # For a cue: the match with up to 90 characters before and 110 after, as posted.
                          'context': s['text'] if s['dimension'] in ('keyword', 'by_demographic') else None,
+                         # For a title-level signal: the posted rows or columns it matched (signal_rows).
+                         # Not part of the id, so adding them moves no signal_id and no review.
+                         'rows': signal_rows(m, s['field'], s['ident']) if s['field'] in TITLE_LEVEL_FIELDS else None,
                          'review': []}
                 out.append(entry)
     return out
