@@ -119,7 +119,14 @@ modified.
      `omb_compatible` shares of 120. None of the 3,345 stored raw trials changes:
      the 15 race and 8 ethnicity tables above their denominator all have a sex
      total that already caught them. Weekly records carry no baseline table, so
-     only the sex total bounds them.
+     only the sex total bounds them. A sex measure whose own `Number Analyzed`
+     is below the baseline table's Participants counts fewer people than a race
+     table covering everyone, so it does not bound one
+     (`_sex_measure_analyzed_below_table`); its composition is kept as the share
+     of the people it counts. The only stored such measures are three
+     split-mouth trials' (NCT06238999, NCT04708223, NCT06166849), which analyze
+     their whole enrollment while the baseline Total counts each participant
+     three times; none posts a race table.
    - **Denominator A (`of_baseline_total`)**: `floor = count / baseline_total`,
      `unknown_bounds = [floor, (count + unknown + unmapped) / baseline_total]`,
      and `direction_settled` (`True` when both bounds lie strictly on the same

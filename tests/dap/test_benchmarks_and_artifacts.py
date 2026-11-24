@@ -2854,6 +2854,31 @@ def test_a_build_counts_and_checks_an_arm_read_instead_of_a_numeric_total(tmp_pa
     assert metric["value"] == 1
 
 
+def _analyzed_sex_and_race(nct_id: str, female: int, male: int, analyzed: int, race: list[tuple[str, str]]) -> dict:
+    """One group of 100 baseline participants: a sex measure with its own Number Analyzed, and a race table."""
+    sex = _sex_by_class([(None, female, male)])
+    sex["denoms"] = [{"units": "Participants", "counts": [{"groupId": "BG000", "value": str(analyzed)}]}]
+    return fx.make_raw_ctgov_study(nct_id, baseline_denom=100, measures=[sex, fx.make_measure("Race (NIH/OMB)", race)])
+
+
+def test_a_sex_measure_analyzed_on_part_of_the_table_does_not_bound_race() -> None:
+    # On f34455f a sex measure analyzing 50 of the 100 participants (Female 30, Male 20) bounded the race
+    # table of all 100, which was withheld as exceeding it; the baseline table's 100 now bounds it.
+    d = extract_demographics(_analyzed_sex_and_race(
+        "NCT99800074", 30, 20, 50, [("White", "60"), ("Black or African American", "40")]))
+    assert (d["race"]["table_status"], d["race"]["status_detail"]) == ("omb_compatible", "standard_omb_categories")
+    assert d["race"]["of_classified"]["white"] == 0.6
+    assert (d["sex_gender"]["female_share"], d["sex_gender"].get("composition_withheld_reason")) == (0.6, None)
+
+
+def test_a_sex_measure_analyzed_on_the_whole_table_still_bounds_race() -> None:
+    # Control, on both heads: a sex measure analyzing all 100 still catches a race table summing to 120.
+    d = extract_demographics(_analyzed_sex_and_race(
+        "NCT99800075", 60, 40, 100, [("White", "80"), ("Black or African American", "40")]))
+    assert (d["race"]["table_status"], d["race"]["status_detail"]) == (
+        "non_standard_categories_present", "table_total_exceeds_sex_table")
+
+
 def test_a_measurement_without_its_value_is_refused(tmp_path: Path) -> None:
     bad = _measured_study("NCT99800022")
     bad["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"][0][

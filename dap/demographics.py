@@ -1159,6 +1159,26 @@ def _sex_counts_from_one_class_of_several(
     return _measure_counts_miss_denominator(primary[1], baseline_participants)
 
 
+def _sex_measure_analyzed_below_table(record: dict[str, Any], baseline_participants: int | None) -> bool:
+    """Whether the primary sex measure states a Number Analyzed below the baseline table's Participants.
+
+    Such a measure counts fewer people than the table (Female 30 and Male 20, Number Analyzed 50, in a
+    100-participant table), so its total is not a count of the same people as a race or ethnicity table
+    covering everyone, and it does not bound one: that table is bounded by the baseline table's own
+    denominator instead. Its composition is kept, as the share of the people it counts, like a race table
+    posted for part of a trial. In the stored raw trials the only such measures are three split-mouth
+    trials' (NCT06238999, NCT04708223, NCT06166849), whose sex measures analyze their whole enrollment
+    while the baseline Total counts each participant three times; none posts a race table.
+    """
+    if baseline_participants is None:
+        return False
+    primary = _primary_sex_measure(record)
+    if primary is None:
+        return False
+    analyzed = src_utils.get_measure_denom(primary[0], src_utils.get_overall_group_id(record))
+    return analyzed is not None and analyzed < baseline_participants
+
+
 def _withhold_sex_composition(sex_gender: dict[str, Any], group_problem: str) -> dict[str, Any]:
     """The sex/gender row of a table with no one whole-population group, its composition withheld.
 
@@ -1237,6 +1257,8 @@ def extract_demographics(
     ):
         sex_gender = _withhold_sex_composition(sex_gender, "sex_counts_from_one_class_of_several")
     sex_total = _sex_participant_total(record, sex_gender)
+    if sex_total is not None and _sex_measure_analyzed_below_table(record, baseline_participants):
+        sex_total = None
 
     weekly = _is_weekly_record(record)
     if weekly:
