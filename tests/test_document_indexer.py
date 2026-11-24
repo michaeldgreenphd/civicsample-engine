@@ -7589,3 +7589,60 @@ def test_m1_r8_cli_run_with_a_smaller_page_budget_is_not_served_the_cached_selec
     ]
     assert len(provider.calls) == 1 and session.requested_urls == [url]
     assert len((tmp_path / "budget_index.jsonl").read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_m1_r8_cached_page_map_of_another_text_source_is_refused_not_kept(tmp_path: Path) -> None:
+    """Caching pages over a map of another text source (or other page text) is refused, not reported as done.
+
+    ``load_cached_pages`` treats a sharded map of another ``text_source``
+    (an OCR map, say) as a miss, so the provider extracted fresh pages, and
+    ``save_cached_pages`` compared only the byte and page counts with the
+    existing map and returned as if it had cached them. The index entry was
+    written from pages the cache did not hold, and a later rules-version
+    bump or offline re-index found no pages and failed extraction. Correct:
+    the store keeps one map per digest, so a map whose source or page text
+    differs is refused with ``CacheIntegrityError``, the existing map is left
+    byte for byte, and no entry is written; caching the same map again is
+    still accepted.
+    """
+    pdf = _make_minimal_pdf("A scanned protocol with an OCR page map")
+    sha = di.sha256_bytes(pdf)
+    index = tmp_path / "ts_index.jsonl"
+    store = di.DocumentCacheStore(
+        tmp_path / "ts_cache", index, audit_nct_ids={_RT_AUDIT}, allowed_nct_ids={_RT_A}
+    )
+    ocr_pages = [f"OCR text of page {n}" for n in range(1, 5)]
+    map_path = store.save_cached_pages(sha, byte_count=len(pdf), pages=ocr_pages, text_source="ocr", nct_id=_RT_A)
+    before = map_path.read_bytes()
+    provider = di.FixturePageTextProvider({sha: _clean_stat_pages(4)})
+    with pytest.raises(di.CacheIntegrityError) as info:
+        store.get_or_index_document(
+            sha256=sha, byte_count=len(pdf), provider=provider, nct_id=_RT_A, extracted_at=_RT_STAMP
+        )
+    assert "another text source" in str(info.value), str(info.value)
+    assert map_path.read_bytes() == before
+    assert store.get_entry(sha) is None and not index.exists()
+
+    # The same source with other page text is refused too; the identical map is accepted again.
+    with pytest.raises(di.CacheIntegrityError, match="other page text"):
+        store.save_cached_pages(
+            sha, byte_count=len(pdf), pages=[f"Other text {n}" for n in range(1, 5)], text_source="ocr", nct_id=_RT_A
+        )
+    assert store.save_cached_pages(sha, byte_count=len(pdf), pages=ocr_pages, text_source="ocr", nct_id=_RT_A) == map_path
+    assert map_path.read_bytes() == before
+
+    # A map in this digest's slot that names another digest is not taken as this one's either.
+    other_pdf = _make_minimal_pdf("A document whose slot holds another digest's map")
+    other_sha = di.sha256_bytes(other_pdf)
+    slot = store.page_map_path(other_sha)
+    slot.parent.mkdir(parents=True, exist_ok=True)
+    slot.write_bytes(
+        di.encode_gz_json(
+            {"sha256": sha, "byte_count": len(other_pdf), "physical_pages": 4, "text_source": "pdfkit",
+             "nct_id": _RT_A, "pages": _clean_stat_pages(4)}
+        )
+    )
+    slot_before = slot.read_bytes()
+    with pytest.raises(di.CacheIntegrityError, match="names another sha256"):
+        store.save_cached_pages(other_sha, byte_count=len(other_pdf), pages=_clean_stat_pages(4), nct_id=_RT_A)
+    assert slot.read_bytes() == slot_before

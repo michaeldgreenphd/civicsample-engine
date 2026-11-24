@@ -5167,7 +5167,15 @@ class DocumentCacheStore:
         pipeline_commit: str | None = None,
         nct_id: str | None = None,
     ) -> Path:
-        """Write ``pages/<sha[:2]>/<sha>.json.gz`` once; an existing map must agree with it.
+        """Write ``pages/<sha[:2]>/<sha>.json.gz`` once; an existing map must be this same map.
+
+        A map already in the slot is accepted only when it names this
+        ``sha256``, byte count and page count, this ``text_source`` and these
+        (sanitized) pages; anything else is ``CacheIntegrityError`` with the
+        existing map left as it is and nothing written. The store keeps one
+        map per digest, so pages of another source (an OCR map in the slot
+        when PDFKit pages arrive) cannot both be kept, and reporting them as
+        cached would index pages the cache does not hold.
 
         ``nct_id`` is the trial that passed the firewall when these pages were
         extracted, and is written into the map as its ``nct_id`` tag so that a
@@ -5195,6 +5203,32 @@ class DocumentCacheStore:
             if existing.get("byte_count") != byte_count or existing.get("physical_pages") != len(sanitized):
                 raise CacheIntegrityError(
                     f"Existing cached page map for {sha} disagrees with byte_count/physical_pages."
+                )
+            # Only the same map is "already cached". load_cached_pages serves a
+            # map only to a request for its own text_source, so a map of another
+            # source (an OCR map) is a miss there, get_or_index_document has the
+            # provider extract, and the pages arrive here. The store keeps one
+            # map per digest: returning as if they were cached would let the
+            # index entry be built from pages the cache does not hold, and a
+            # later rules bump or offline re-index would find none. Replacing
+            # the other map would lose it, so it is refused and left as it is.
+            if _validated_text_source(existing, origin=str(path)) != text_source:
+                raise CacheIntegrityError(
+                    f"Existing cached page map {path} holds pages from another text source than "
+                    f"the pages being cached for sha256={sha}; the store keeps one map per "
+                    "digest, so the existing map is left as it is and these pages are not cached "
+                    "or indexed. Move the existing map aside to cache them."
+                )
+            if existing.get("sha256") != sha:
+                raise CacheIntegrityError(
+                    f"Existing cached page map {path} names another sha256 than its path; it is "
+                    "left as it is and these pages are not cached or indexed."
+                )
+            if _validated_page_list(existing.get("pages"), origin=str(path)) != tuple(sanitized):
+                raise CacheIntegrityError(
+                    f"Existing cached page map {path} holds other page text than the pages being "
+                    f"cached for sha256={sha}; the store keeps one map per digest, so the existing "
+                    "map is left as it is and these pages are not cached or indexed."
                 )
             return path
 

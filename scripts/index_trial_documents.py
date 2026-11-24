@@ -76,6 +76,10 @@ Hard safety guarantees:
   cache holds one, so with no new extraction), and the index line is replaced
   by this run's; a document two trials post with different types keeps the
   last one's line.
+- The cache keeps one page map per document. A map already there from
+  another text source (an OCR map), or holding other page text, is not
+  replaced and not reported as these pages: the run stops (exit 1) with the
+  map left as it is and nothing written. Move the map aside to re-extract.
 - ``--limit`` with ``--ingest-census-jsonl`` bounds the trials indexed and
   cached, not only the profiles written.
 - A document URL (a download's, a census row's, a profile record's) must be
