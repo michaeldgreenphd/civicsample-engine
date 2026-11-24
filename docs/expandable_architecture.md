@@ -26,8 +26,8 @@ merged on its own; M3 is the exception, because it imports M4.
 | `antigravity/docs-platform` | `aa14a2d` | this file and `docs/census_iteration_playbook.md` | not applicable | for review |
 
 The revisions read for this document were m1 `2561a46`, m2 `b9a2ebc`, m4
-`97789ee` and m3 `ccfa413` (which contains m4 at `dab323c`, merged in at
-`52c0bac`). A later commit on
+`97789ee` and m3 `ba916ec` (which contains m4 at `97789ee`, merged in as
+`ba916ec`). A later commit on
 any of these branches can change a detail stated here, so re-check a detail
 against the branch before relying on it.
 
@@ -284,7 +284,7 @@ trial outside the index. That was run on fictional M1 output too.
   Wave 3 worker); document rows name no worker, so a document row's model can
   be inferred only through the shard its trial was assigned to
   (`shard_assignment` in `manifest.json`).
-- **M3 at `ccfa413` keeps a location row's `model_id` and `prompt_version`
+- **M3 at `ba916ec` keeps a location row's `model_id` and `prompt_version`
   when the row carries them, but does not require them.** It publishes each
   row's `worker`, adds `model_id` and `prompt_version` when present, and
   refuses either one when it is present but empty or not a string. A key
@@ -294,7 +294,9 @@ trial outside the index. That was run on fictional M1 output too.
   lacks them) is published without them, so a bundle built from such rows can
   attribute a row to a model only through its worker. Such a bundle does not
   meet F6 and cannot be published as it is. This was run on fictional rows
-  with and without the stamps.
+  with and without the stamps, most recently at `ba916ec` (28 rows: with the
+  stamps, all 28 published with them; without, none, each with its
+  `worker`).
 - **Review status.** AI output is unreviewed until a person reviews it.
   M4's checks are mechanical: a quotation is found on the cited page, the
   row has the required shape, the status-to-citation rule holds, and the
@@ -592,6 +594,32 @@ references (`registry_reference_types` `BACKGROUND`, `DERIVED`, `RESULT`),
   success, 1 on contract, input or validation errors, 2 on
   `AuditFirewallError` and, with `--check`, on a holdout leak found in the
   tree.
+- **Timestamps.** Every timestamp the builder reads (`--extracted-at`,
+  `--now-utc`, a container's `extracted_at`, a Module 1 profile's
+  `extracted_at`, a Module 4 record's `assembled_at` when it is not null) is
+  a UTC instant written `YYYY-MM-DDTHH:MM[:SS[.ffffff]]` then `Z` or
+  `+00:00` (`UTC_TIMESTAMP_RE`). A date alone, a time with no offset,
+  another offset, `-00:00` and the basic form are refused (exit 1; run on
+  fictional inputs). A null `assembled_at`, which Module 4 writes by
+  default, is published as null.
+- **Input containers.** A JSON `--cohort-manifest` or `--trials` container
+  holds its rows under one of `data`, `trials`, `records` or `rows`. Beside
+  them it may hold only header stamps (`INPUT_STAMP_KEYS`: `extracted_at`,
+  `pipeline_commit`, `source_pipeline_commit`, `indexer_rules_version`,
+  `run_id`, `schema_version`) and, in a manifest, `columns_note` and
+  `excluded`. Any other key is refused with `AuditFirewallError` (exit 2),
+  because its content would be dropped; a fictional index with a
+  `generated_at` header was refused this way at `ba916ec`, and the rule is
+  in `ccfa413` too.
+- **Input shapes.** Provenance metadata is held to Module 4's
+  `LongitudinalProvenanceRecord` types (`provenance_schema_version` an int,
+  `provenance_rules_version` a str, `excluded_standalone_icf_count` an int
+  that is not negative). A CT.gov `primaryOutcomes` or `outcomeMeasures`
+  that is present and not a list, or a `protocolSection`, `resultsSection`,
+  `outcomesModule` or `outcomeMeasuresModule` that is present and not an
+  object, is refused, naming its type; absent or null reads as none.
+  `--check` reports a cohort or location `element` that is not a string as
+  an error (exit 1) instead of failing on it.
 
 ## 9. Verification
 

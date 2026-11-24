@@ -11,7 +11,7 @@ The commands use M1 (`scripts/index_trial_documents.py`), M4
 (`scripts/verify_and_plan_census_batch.py`), M2 as a library, and M3
 (`scripts/build_outcomes_shards.py`), so they need a checkout that carries the
 branches they name. They were checked against m1 `2561a46`, m2 `b9a2ebc`, m4
-`97789ee` and m3 `ccfa413`.
+`97789ee` and m3 `ba916ec`.
 
 ## 0. Before anything runs
 
@@ -568,7 +568,10 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
   `--cohort-manifest` container, else from `--now-utc`, and refuses the
   build (exit 1, nothing written) when none is given. The site index's
   header carries no `extracted_at`. `<extracted-at>` is the ISO-8601 UTC
-  time the inputs were extracted, not the time of the build.
+  time the inputs were extracted, not the time of the build. At `ba916ec`
+  it must have a time of day and end `Z` or `+00:00`, as in
+  `2026-11-24T12:00:00Z`: a date alone, a time with no offset or any other
+  offset is refused (exit 1).
 - `--trials`, if given, may hold only the manifest's trials (the weekly
   `data/demographics.json.gz` holds every trial and is refused). Leave
   holdout trials out of every input except the manifest.
@@ -577,7 +580,17 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
   library functions.
 - The default `--out-dir` is refused when `data/run.json` exists (a weekly
   dataset in `data/`); pass another gitignored path then.
-- At `ccfa413` the bundle keeps each location row's `worker`, and its
+- M3 reads `--cohort-manifest` as a container that may hold, beside its row
+  list, only header stamps (`extracted_at`, `pipeline_commit`,
+  `source_pipeline_commit`, `indexer_rules_version`, `run_id`,
+  `schema_version`) and the live index's `columns_note` and `excluded`. Any
+  other top-level key is refused (`AuditFirewallError`, exit 2), by `--check`
+  as by the build. Run as printed on a fictional site index whose header
+  holds `generated_at`, step 6 stopped this way at `ba916ec`: the build and
+  `--check` each exited 2, and no bundle was written. The real site index's
+  top-level keys were not read for this playbook, so whether step 6 takes it
+  as printed is not known; look at its keys (not its rows) before step 6.
+- At `ba916ec` the bundle keeps each location row's `worker`, and its
   `model_id` and `prompt_version` when the row carries them (F6), but M3
   does not require them: a row without them is published without them.
   Rows that passed step 5's `verify` carry them, because M4 requires them on
