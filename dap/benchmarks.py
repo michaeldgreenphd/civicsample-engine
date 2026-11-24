@@ -1078,11 +1078,21 @@ def _baseline_group_reference_problems(module: dict[str, Any], root: str, *, sha
     # row's measurements.
     # with the measure a row belongs to (None for a denominator).
     lists: list[tuple[str, list[Any], dict[str, Any] | None]] = []
+    # One Participants denominator per table, measure or class: `get_total_baseline_participants` and
+    # `get_measure_denom` read the first whose units lower-case to "participants", so a second one with
+    # another count made the baseline total and the percentage conversion depend on array order. None of
+    # the 6,093 stored denominator lists holds two.
+    repeated: list[str] = []
 
     def add_counts(denoms: Any, path: str) -> None:
+        participants = 0
         for i, denom in enumerate(_listed(denoms)):
             if isinstance(denom, dict):
                 lists.append((f"{path}[{i}].counts", _listed(denom.get("counts")), None))
+                if isinstance(denom.get("units"), str) and denom["units"].lower() == "participants":
+                    participants += 1
+                    if participants == 2:
+                        repeated.append(f"{path}[{i}] (the only Participants denominator of its list, not a second)")
 
     add_counts(module.get("denoms"), f"{root}.denoms")
     for m_i, measure in enumerate(_listed(module.get("measures"))):
@@ -1103,7 +1113,7 @@ def _baseline_group_reference_problems(module: dict[str, Any], root: str, *, sha
                     lists.append(
                         (f"{c_path}.categories[{k_i}].measurements", _listed(category.get("measurements")), measure)
                     )
-    out: list[str] = []
+    out: list[str] = list(repeated)
     clean: list[tuple[str, list[Any], dict[str, Any] | None]] = []
     for path, entries, owner in lists:
         bad = [

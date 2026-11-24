@@ -1716,6 +1716,12 @@ def _measured_study(nct_id: str) -> dict:
 
 
 _DROP_KEY = object()  # remove the key instead of setting it
+_SECOND_PARTICIPANTS = "(the only Participants denominator of its list, not a second)"
+
+
+def _participants(value: str, units: str = "Participants") -> dict[str, Any]:
+    """A denominator of the fixture's one group, BG000."""
+    return {"units": units, "counts": [{"groupId": "BG000", "value": value}]}
 _RACE_CLASS = ("resultsSection", "baselineCharacteristicsModule", "measures", 0, "classes", 0)
 _ROW_LABEL = "(a row label, as the measure's other rows carry)"
 
@@ -1854,6 +1860,15 @@ _ROW_LABEL = "(a row label, as the measure's other rows carry)"
         (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), 7, f"{_BASE}.groups[0].id (a string)"),
         (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), " ",
          f"{_BASE}.groups[0].id (a non-blank string)"),
+        # On ea5303d a second Participants denominator loaded, and the first one read decided the baseline
+        # total (rows of 90 or 100 by array order) or the measure's Number Analyzed.
+        (("resultsSection", "baselineCharacteristicsModule", "denoms"), [_participants("90"), _participants("100")],
+         f"{_BASE}.denoms[1] {_SECOND_PARTICIPANTS}"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 0, "denoms"),
+         [_participants("100"), {**_participants("100"), "units": "participants"}],
+         f"{_BASE}.measures[0].denoms[1] {_SECOND_PARTICIPANTS}"),
+        ((*_RACE_CLASS, "denoms"), [_participants("100"), _participants("90")],
+         f"{_BASE}.measures[0].classes[0].denoms[1] {_SECOND_PARTICIPANTS}"),
         # On 52f50b6 a blank denominator unit or measure title loaded: the denominator was no Participants
         # count, so rows of 90 beside a blanked 100 gave a baseline of 90, and the blank-titled table was skipped.
         (("resultsSection", "baselineCharacteristicsModule", "denoms", 0, "units"), "",
@@ -2752,6 +2767,14 @@ def test_a_whole_population_entry_without_a_number_beside_numbers_is_refused(tmp
     )
     with pytest.raises(ValueError, match=want):
         _load_pair(tmp_path, bad)
+
+
+def test_a_denominator_in_other_units_beside_participants_loads(tmp_path: Path) -> None:
+    # Control, on both heads: CT.gov posts a second denominator in other units (teeth, eyes, lesions).
+    st = _measured_study("NCT99800080")
+    module = st["resultsSection"]["baselineCharacteristicsModule"]
+    module["denoms"] = [_participants("100"), _participants("160", "Teeth")]
+    assert len(_load_pair(tmp_path, st)) == 2
 
 
 @pytest.mark.parametrize("shape", ["all_na_race_row", "sex_row_total_na", "single_group_empty_row"])
