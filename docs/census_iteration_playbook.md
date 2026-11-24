@@ -184,13 +184,19 @@ checks that they agree.
 A trial with no rows yet is classified from its profile. At m4 `97789ee`,
 `plan` treats it as `UNREADABLE` only when its profile's
 `readability_summary` is one of the three subtypes (a summary that is not a
-string is refused, exit 1). M1 writes that summary from its own statuses,
-which include `image_only_scan` and `garbled_cmap` but not
-`redacted_cci_ppd`: M1 records a redacted document as
-`partial_image_or_redacted`, with `redacted_cci_ppd` as its recovery bucket
-in the document index. So a trial with no rows whose documents M1 found
-redacted is filed `unstarted_primary` and scheduled (run on fictional M1
-output).
+string is refused, exit 1), and a summary of `redacted_cci_ppd` files it
+under `unreadable_terminal_redacted`, with no spend. M1's
+`readability_summary` is never `redacted_cci_ppd`: M1
+(`summarize_trial_readability`) writes one of its own seven statuses, and
+records a redacted document as `partial_image_or_redacted`, with
+`redacted_cci_ppd` only as its recovery bucket in the document index. So
+M4's terminal-redacted rule for a profile never applies to a profile M1
+writes, and a trial with no rows whose documents M1 found redacted is filed
+`unstarted_primary` and scheduled. This was run on fictional M1 output: a
+summary of `partial_image_or_redacted` with a document-index bucket of
+`redacted_cci_ppd` was scheduled, and the same profile with its summary
+changed by hand to `redacted_cci_ppd` was filed terminal. Whether this
+should change, and on which branch, is the investigator's decision.
 
 No branch contains OCR code. The planner lists what needs OCR, and `verify`
 can read OCR page maps (`--ocr-dir`, which needs `--pages-dir`, with a
