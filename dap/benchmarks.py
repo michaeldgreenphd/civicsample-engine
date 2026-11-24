@@ -665,7 +665,11 @@ BASELINE_SHAPE: dict[str, Any] = {
     "denoms": _BASELINE_DENOMS,
     "measures": {
         "title": REQUIRED_STR,
-        "paramType": str,
+        # The vendored sex/gender parser reads a measure without a paramType as participant counts
+        # (`sgp.parse_trial`: only COUNT_OF_UNITS, MEAN, MEDIAN or a percentage unit say otherwise), so a
+        # truncated percentage table of Female 60 and Male 40 entered the participant-weighted benchmarks as
+        # 100 people. CT.gov gives every measure one: all 15,139 real stored measures carry it.
+        "paramType": REQUIRED_STR,
         "unitOfMeasure": str,
         "denoms": _BASELINE_DENOMS,
         # A class title labels the rows of its categories when they carry none: a non-string one raised

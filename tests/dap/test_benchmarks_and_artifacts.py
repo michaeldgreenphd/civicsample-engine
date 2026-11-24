@@ -1860,6 +1860,12 @@ _ROW_LABEL = "(a row label, as the measure's other rows carry)"
         (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), 7, f"{_BASE}.groups[0].id (a string)"),
         (("resultsSection", "baselineCharacteristicsModule", "groups", 0, "id"), " ",
          f"{_BASE}.groups[0].id (a non-blank string)"),
+        # On 60671f3 a measure without a paramType loaded, and the vendored parser read its sex rows as
+        # participant counts: a truncated percentage table of 55 and 45 entered the benchmarks as 100 people.
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 1, "paramType"), _DROP_KEY,
+         f"{_BASE}.measures[1].paramType (a string)"),
+        (("resultsSection", "baselineCharacteristicsModule", "measures", 1, "paramType"), "",
+         f"{_BASE}.measures[1].paramType (a non-blank string)"),
         # On ea5303d a second Participants denominator loaded, and the first one read decided the baseline
         # total (rows of 90 or 100 by array order) or the measure's Number Analyzed.
         (("resultsSection", "baselineCharacteristicsModule", "denoms"), [_participants("90"), _participants("100")],
@@ -2500,6 +2506,8 @@ def test_a_race_table_must_be_a_table_of_participants(
         return
     want = (f"NCT99800075 lacks {_BASE}.measures[0].paramType (COUNT_OF_PARTICIPANTS or NUMBER, a table of "
             f"participants, not {param!r})")
+    if param is None:  # since round 69 every measure needs a paramType, refused first by the shape check
+        want = f"NCT99800075 lacks {_BASE}.measures[0].paramType (a string)"
     with pytest.raises(ValueError, match=re.escape(want)):
         _load_pair(tmp_path, st)
 

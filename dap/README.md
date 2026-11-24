@@ -282,7 +282,9 @@ must carry a non-blank string `id` and `title`: `get_overall_group_id` finds the
 title and returns its id, so without either the last arm's counts stood in for the trial's. Every
 measurement and denominator count must name one of the table's group ids: an unmatched `groupId` on
 the Overall value also fell back to the last measurement. A denominator's `units`, a measure's
-`title` and every `groupId` must be non-blank strings: a denominator with `units: ""` is no Participants
+`title` and `paramType`, and every `groupId` must be non-blank strings. The vendored sex/gender parser reads a
+measure without a `paramType` as participant counts, so a truncated percentage table of Female 55 and Male 45
+had entered the benchmarks as 100 people; every real stored measure carries one. A denominator with `units: ""` is no Participants
 count, so race rows of 60 and 30 beside a blanked 100-participant denominator read a baseline of 90
 instead of 100, and a blank-titled measure matches no extractor and was skipped. A table's, measure's or
 class's denominator list may hold only one Participants denominator: the first one read decided the baseline
