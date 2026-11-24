@@ -44,7 +44,13 @@ Key invariants:
   citation or ``docs_by_nct`` entry is read for NCT-like tokens
   (``_check_embedded_text_ncts``): an audit ID refuses, a malformed token
   refuses, and any other trial is admitted only as the record's own trial or
-  a member of ``in_scope_nct_ids``. Registry and publication text is read for
+  a member of ``in_scope_nct_ids``. Free text read by the verify entry points
+  (a string value not under an identifier key, ``_is_identifier_key``: a
+  quotation, a note, a registry-copied title, indexed document text) is the
+  exception: there any well-formed ID other than the record's own is
+  reported as a ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` warning with counts and
+  never printed, not refused; an audit ID or a malformed token still refuses.
+  Registry and publication text is read for
   audit IDs only (``_scan_strings_for_audit_nct_tokens``). Every reading
   counts: as written, percent-decoded, NFKC-folded, and the loose reading of
   ``_iter_loose_nct_candidates`` (``NCT 0123 4567``, ``NCT-...``, ``NCT_...``,
@@ -174,6 +180,9 @@ __version__: Final[str] = "1.7.0"
 # 1.7.0: ``extraction_error`` (the document indexer's record key) is an optional document
 # key; verify_document_record takes require_provenance_stamps, which only the planner sets
 # False, for the documents of a deterministic document-indexer profile (verify never does).
+# Free text of a record (a string not under an identifier key: a quotation, a note, a
+# registry-copied title, indexed document text) refuses only an audit-holdout ID; any other
+# well-formed ID is a NOTE_FREE_TEXT_NAMES_OTHER_TRIAL warning with counts, not a refusal.
 VERIFIER_RULES_VERSION: Final[str] = "1.7.0"
 
 STRICT_NCT_ID_RE: Final[re.Pattern[str]] = re.compile(r"^NCT[0-9]{8}$", re.ASCII)
@@ -555,6 +564,13 @@ class CorpusVerificationReport:
     ``ok`` is True only when no issue is an error and ``quotations_not_compared``
     is 0: a run that compared a quotation with no page text did not verify it,
     so it is never ok, whatever else it found.
+
+    ``free_text_other_trial_rows`` counts the documents and location rows whose
+    free text names a trial other than their own (each has a
+    ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` warning), ``free_text_other_trial_ids``
+    the distinct trials named, and ``free_text_other_trial_ids_in_scope`` how
+    many of those are in the in-scope index rows. No ID is recorded; no audit
+    ID can be among them (one in free text is refused).
     """
 
     ok: bool
@@ -570,6 +586,9 @@ class CorpusVerificationReport:
     neutral_language_flags: int
     issues: tuple[VerificationIssue, ...]
     quotations_not_compared: int = 0
+    free_text_other_trial_rows: int = 0
+    free_text_other_trial_ids: int = 0
+    free_text_other_trial_ids_in_scope: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize report to a JSON-compatible dictionary."""
@@ -586,6 +605,15 @@ class CorpusVerificationReport:
             "quotations_not_compared": self.quotations_not_compared,
             "ellipsis_flags": self.ellipsis_flags,
             "neutral_language_flags": self.neutral_language_flags,
+            "free_text_other_trials": {
+                "code": NOTE_FREE_TEXT_NAMES_OTHER_TRIAL,
+                "rows": self.free_text_other_trial_rows,
+                "distinct_ids": self.free_text_other_trial_ids,
+                "distinct_ids_in_scope": self.free_text_other_trial_ids_in_scope,
+                "distinct_ids_not_in_scope": (
+                    self.free_text_other_trial_ids - self.free_text_other_trial_ids_in_scope
+                ),
+            },
             "error_count": sum(1 for issue in self.issues if issue.severity == "error"),
             "warning_count": sum(1 for issue in self.issues if issue.severity == "warning"),
             "issues": [issue.to_dict() for issue in self.issues],
@@ -1128,6 +1156,59 @@ def _check_embedded_url_ncts(
             )
 
 
+def _admit_text_nct_id(
+    tok: str,
+    *,
+    verified_nct: str | None,
+    context: str,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+    allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None,
+) -> None:
+    """Rule (3) of the token rule for one well-formed ID read from text.
+
+    Method: with ``free_text_mentions`` ``None`` (structural text: keys, IDs
+    and URLs, file names, a page map's metadata) the ID follows
+    ``_enforce_derived_nct_holdout`` as before: the record's own trial or an
+    in-scope trial is admitted and any other refused. With a set (free text,
+    verifier 1.7.0: a quotation, a note, a registry-copied title, indexed
+    document text) only an audit-holdout ID is refused; any other well-formed
+    ID other than the record's own (another in-scope trial, or one absent from
+    the index) is added to the set, for the caller to report as a
+    ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` warning with counts, and the run goes
+    on. Free text naming another trial is a statement about that trial, not
+    a request for its documents: nothing here opens or serves anything, and
+    what is opened stays decided by structural IDs, which keep the strict
+    rule. The empty-audit-set precondition (``_require_scope_for_empty_audit_set``)
+    holds on both paths.
+    """
+    if free_text_mentions is None:
+        _enforce_derived_nct_holdout(
+            tok,
+            verified_nct=verified_nct,
+            context=context,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+        )
+        return
+    checked = validate_strict_nct_id(tok, context=context)
+    if checked in audit_nct_ids:
+        raise AuditHoldoutViolationError(
+            f"Audit holdout violation in {_withhold_if_names_trial(context, audit_nct_ids)}: "
+            f"it names an audit-holdout trial."
+        )
+    _require_scope_for_empty_audit_set(
+        audit_nct_ids,
+        in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+        context="free-text NCT reading",
+    )
+    if checked != verified_nct:
+        free_text_mentions.add(checked)
+
+
 def _check_embedded_text_ncts(
     text: str,
     *,
@@ -1136,6 +1217,7 @@ def _check_embedded_text_ncts(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str] | None,
     allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None = None,
 ) -> None:
     """Firewall every NCT-like token in a string that is not under a named NCT or URL key.
 
@@ -1159,7 +1241,10 @@ def _check_embedded_text_ncts(
     (1) and (3) read its canonical ID. Rule (3) can refuse a record whose text
     names an unlisted trial for a legitimate reason; that refusal is loud
     (exit 2 in the CLI) and deliberate, since a silent pass is the failure this
-    guards.
+    guards. Free text is the exception (verifier 1.7.0): a caller reading free
+    text passes ``free_text_mentions``, and rule (3) then refuses nothing
+    (``_admit_text_nct_id``): every well-formed ID other than the record's own
+    is collected there for a warning. Rules (1) and (2) are the same for both.
     """
     if _text_names_audit_trial(text, audit_nct_ids):
         raise AuditHoldoutViolationError(
@@ -1171,24 +1256,41 @@ def _check_embedded_text_ncts(
             raise InvalidNctIdError(
                 f"Malformed NCT token {raw_tok!r} in {context}: expected strict ^NCT[0-9]{{8}}$."
             )
-        _enforce_derived_nct_holdout(
+        _admit_text_nct_id(
             raw_tok,
             verified_nct=expected_nct_id,
             context=context,
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=free_text_mentions,
         )
     for candidate, bounded in _iter_loose_nct_candidates(text):
         if bounded:
-            _enforce_derived_nct_holdout(
+            _admit_text_nct_id(
                 candidate,
                 verified_nct=expected_nct_id,
                 context=context,
                 audit_nct_ids=audit_nct_ids,
                 in_scope_nct_ids=in_scope_nct_ids,
                 allow_empty_audit_set=allow_empty_audit_set,
+                free_text_mentions=free_text_mentions,
             )
+
+
+def _is_identifier_key(key: str) -> bool:
+    """True when a string under ``key`` is an identifier, not free text (verifier 1.7.0).
+
+    Identifier keys: those whose words include ``nct`` (``nct_id``, ``nctId``,
+    ``nct_ids``, ``NCTId``, ``nctIdAliases``, ``related_nct``;
+    ``_key_names_nct``), the URL keys (``_URL_FIELD_KEYS``) and ``filename``
+    (a document's or a citation's file, which names the document). A string at
+    any depth below such a key keeps the strict derived-ID rule; every other
+    string value (``quotation``, ``note``, ``primary_outcome_title``,
+    ``section_heading``, ``version_label``, a detected section heading) is free
+    text. Keys themselves are never free text.
+    """
+    return key in _URL_FIELD_KEYS or key == "filename" or _key_names_nct(key)
 
 
 def _scan_record_strings_for_nct_tokens(
@@ -1199,6 +1301,7 @@ def _scan_record_strings_for_nct_tokens(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str] | None,
     allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None = None,
 ) -> None:
     """Apply ``_check_embedded_text_ncts`` to every key and string value at any depth.
 
@@ -1217,8 +1320,20 @@ def _scan_record_strings_for_nct_tokens(
     (2) and (3), and last each split reading (``_iter_split_nct_readings``:
     ``{"NCT": "99800099"}``, a JSON number) with rule (3) for its bounded
     renderings: an ID written across a key and its value is the same ID.
+
+    Free text (verifier 1.7.0): with ``free_text_mentions`` given, a string
+    value that is not under an identifier key (``_is_identifier_key``) is read
+    with rule (3) relaxed: an audit ID still refuses (above, and in
+    ``_admit_text_nct_id``), a malformed token still refuses, and any other
+    well-formed ID other than the record's own is added to the set rather than
+    refused. Keys, identifier values and split readings keep the strict rule,
+    except that a split reading's ID that a free-text string of the same node
+    already names on its own (``{"note": "see NCT..."}`` read with its key) is
+    that same mention, not a second, structural one. With ``free_text_mentions``
+    ``None`` every string keeps the strict rule, as before.
     """
     _scan_strings_for_audit_nct_tokens(node, context=context, audit_nct_ids=audit_nct_ids)
+    found_in_free_text: set[str] | None = set() if free_text_mentions is not None else None
     _scan_record_strings_walk(
         node,
         context=context,
@@ -1226,18 +1341,24 @@ def _scan_record_strings_for_nct_tokens(
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+        free_text_mentions=found_in_free_text,
     )
     for position, text in _iter_split_nct_readings(node, context=context):
         for candidate, bounded in _iter_loose_nct_candidates(text):
-            if bounded:
-                _enforce_derived_nct_holdout(
-                    candidate,
-                    verified_nct=expected_nct_id,
-                    context=f"{position} (read with its key)",
-                    audit_nct_ids=audit_nct_ids,
-                    in_scope_nct_ids=in_scope_nct_ids,
-                    allow_empty_audit_set=allow_empty_audit_set,
-                )
+            if not bounded:
+                continue
+            if found_in_free_text is not None and candidate in found_in_free_text:
+                continue
+            _enforce_derived_nct_holdout(
+                candidate,
+                verified_nct=expected_nct_id,
+                context=f"{position} (read with its key)",
+                audit_nct_ids=audit_nct_ids,
+                in_scope_nct_ids=in_scope_nct_ids,
+                allow_empty_audit_set=allow_empty_audit_set,
+            )
+    if free_text_mentions is not None and found_in_free_text:
+        free_text_mentions.update(found_in_free_text)
 
 
 def _scan_record_strings_walk(
@@ -1248,8 +1369,15 @@ def _scan_record_strings_walk(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str] | None,
     allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None = None,
+    under_identifier_key: bool = False,
 ) -> None:
-    """The per-key, per-string walk of ``_scan_record_strings_for_nct_tokens`` (rules 1-3)."""
+    """The per-key, per-string walk of ``_scan_record_strings_for_nct_tokens`` (rules 1-3).
+
+    ``free_text_mentions`` reaches only string values outside identifier keys
+    (``_is_identifier_key``, at any depth: ``under_identifier_key``); keys and
+    identifier values are read with the strict rule.
+    """
     if isinstance(node, str):
         _check_embedded_text_ncts(
             node,
@@ -1258,6 +1386,7 @@ def _scan_record_strings_walk(
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=None if under_identifier_key else free_text_mentions,
         )
     elif isinstance(node, Mapping):
         for raw_k, val in node.items():
@@ -1277,6 +1406,8 @@ def _scan_record_strings_walk(
                 audit_nct_ids=audit_nct_ids,
                 in_scope_nct_ids=in_scope_nct_ids,
                 allow_empty_audit_set=allow_empty_audit_set,
+                free_text_mentions=free_text_mentions,
+                under_identifier_key=under_identifier_key or _is_identifier_key(key),
             )
     elif isinstance(node, (list, tuple)):
         for idx, item in enumerate(node):
@@ -1287,6 +1418,8 @@ def _scan_record_strings_walk(
                 audit_nct_ids=audit_nct_ids,
                 in_scope_nct_ids=in_scope_nct_ids,
                 allow_empty_audit_set=allow_empty_audit_set,
+                free_text_mentions=free_text_mentions,
+                under_identifier_key=under_identifier_key,
             )
 
 
@@ -1656,8 +1789,14 @@ def _enforce_record_firewall(
     audit_nct_ids: AbstractSet[str],
     in_scope_nct_ids: AbstractSet[str] | None,
     allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None = None,
 ) -> tuple[str, frozenset[str], frozenset[str] | None]:
-    """Validate strict NCT IDs FIRST across record & sets, then enforce ``in_audit`` firewall."""
+    """Validate strict NCT IDs FIRST across record & sets, then enforce ``in_audit`` firewall.
+
+    ``free_text_mentions``, when given, collects the trials the record's free
+    text names other than its own (``_scan_record_strings_for_nct_tokens``);
+    the verify entry points pass one and report it as a warning.
+    """
     # Phase A (F2): Validate all NCT IDs FIRST before touching any in_audit flag.
     checked_nct = validate_strict_nct_id(record.get("nct_id"), context=f"{record_label}.nct_id")
     checked_audit_ids = _validate_nct_set(audit_nct_ids, context="audit_nct_ids")
@@ -1701,8 +1840,51 @@ def _enforce_record_firewall(
         audit_nct_ids=checked_audit_ids,
         in_scope_nct_ids=checked_scope_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+        free_text_mentions=free_text_mentions,
     )
     return checked_nct, checked_audit_ids, checked_scope_ids
+
+
+# A record whose free text names a trial other than its own (verifier 1.7.0): reported, not
+# refused. Only an audit-holdout ID in free text is refused (as before); the IDs are counted
+# and never printed. A warning, like NOTE_PAGE_COUNT_MISMATCH: it does not fail a run.
+NOTE_FREE_TEXT_NAMES_OTHER_TRIAL: Final[str] = "NOTE_FREE_TEXT_NAMES_OTHER_TRIAL"
+
+
+def _free_text_mentions_issue(
+    nct_id: str,
+    mentions: AbstractSet[str],
+    *,
+    record_label: str,
+    location_key: tuple[int, str, str] | None,
+    filename: str | None,
+    in_scope_nct_ids: frozenset[str] | None,
+) -> VerificationIssue:
+    """The ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` warning for one record: counts only, no ID.
+
+    ``mentions`` holds no audit ID (those are refused before this point). The
+    message counts the distinct trials, and how many of them are in the
+    index's in-scope rows, but names none: a trial absent from the in-scope
+    rows is of unknown status, and the record is identified by its own trial.
+    """
+    count = len(mentions)
+    if in_scope_nct_ids is not None:
+        in_scope = len(set(mentions) & in_scope_nct_ids)
+        split = f" ({in_scope} in the in-scope index rows, {count - in_scope} not in them)"
+    else:
+        split = " (no in-scope index rows were given to compare with)"
+    return VerificationIssue(
+        code=NOTE_FREE_TEXT_NAMES_OTHER_TRIAL,
+        severity="warning",
+        nct_id=nct_id,
+        location_key=location_key,
+        filename=filename,
+        physical_page=None,
+        message=(
+            f"Free text of this {record_label} names {count} trial(s) other than its own{split}; "
+            f"not refused (only an audit-holdout ID in free text is), and the IDs are not printed."
+        ),
+    )
 
 
 def validate_status_citations(
@@ -3801,8 +3983,15 @@ def verify_document_record(
     strict_keys: bool = True,
     pdf_root: Path | None = None,
     require_provenance_stamps: bool = True,
+    free_text_mentions: set[str] | None = None,
 ) -> list[VerificationIssue]:
     """Validate a single document record against firewall, provenance, schema, and hash rules.
+
+    Free text of the record (any string not under an identifier key: a version
+    label, a note) that names a trial other than its own is reported as one
+    ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` warning, counts only; an audit ID
+    there is refused (verifier 1.7.0). ``free_text_mentions``, when given,
+    also receives those trials' IDs (``verify_census_corpus`` counts them).
 
     ``require_provenance_stamps`` (default True) keeps the F6 stamps
     ``model_id`` and ``profile_version`` among the required keys. Only the
@@ -3823,6 +4012,7 @@ def verify_document_record(
             f"require_provenance_stamps must be bool, got {type(require_provenance_stamps).__name__}."
         )
 
+    record_mentions: set[str] = set()
     nct_id, checked_audit_ids, checked_scope_ids = _enforce_record_firewall(
         doc,
         record_label="document",
@@ -3830,6 +4020,7 @@ def verify_document_record(
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+        free_text_mentions=record_mentions,
     )
     _validate_pdf_root_firewall(
         pdf_root,
@@ -4153,6 +4344,19 @@ def verify_document_record(
                     )
                 )
 
+    if record_mentions:
+        issues.append(
+            _free_text_mentions_issue(
+                nct_id,
+                record_mentions,
+                record_label="document",
+                location_key=None,
+                filename=filename,
+                in_scope_nct_ids=checked_scope_ids,
+            )
+        )
+        if free_text_mentions is not None:
+            free_text_mentions.update(record_mentions)
     return issues
 
 
@@ -4224,7 +4428,15 @@ def _validate_docs_mapping_for_nct(
     in_scope_nct_ids: frozenset[str] | None,
     allow_empty_audit_set: bool,
 ) -> None:
-    """Validate every document entry inside ``docs_by_filename`` against the firewall."""
+    """Validate every document entry inside ``docs_by_filename`` against the firewall.
+
+    The documents are the context a location or citation is checked against,
+    not the record under check: their free text is read with the free-text
+    rule (verifier 1.7.0; an audit ID refuses, another trial does not) and the
+    trials it names are not reported here, but by ``verify_document_record``,
+    which ``verify_census_corpus`` and the planner's rows verdict run on every
+    document. Identifier fields keep the strict rule.
+    """
     if not isinstance(docs_by_filename, Mapping):
         raise CitationVerificationError(
             f"{context} must be a mapping, got {type(docs_by_filename).__name__}."
@@ -4249,6 +4461,7 @@ def _validate_docs_mapping_for_nct(
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=set(),
         )
 
 
@@ -4266,7 +4479,69 @@ def verify_citation(
     page_text_provider: PageTextProvider | None = None,
     text_source: str = "pdfkit",
 ) -> tuple[MatchTier | None, list[VerificationIssue]]:
-    """Verify a single citation's firewall status, shape, bounds, and single-page match."""
+    """Verify a single citation's firewall status, shape, bounds, and single-page match.
+
+    Free text of the citation (its ``quotation`` and ``section_heading``, any
+    string not under an identifier key) that names a trial other than
+    ``nct_id`` is reported as one ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` warning,
+    counts only; an audit ID there is refused (verifier 1.7.0). Within
+    ``verify_location_record`` the row reports its citations' free text once,
+    as part of the row, through ``_verify_citation_core``.
+    """
+    citation_mentions: set[str] = set()
+    match_tier, issues = _verify_citation_core(
+        nct_id,
+        location_key,
+        citation,
+        docs_by_filename=docs_by_filename,
+        in_audit=in_audit,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+        pages_not_searched=pages_not_searched,
+        page_text_provider=page_text_provider,
+        text_source=text_source,
+        free_text_mentions=citation_mentions,
+    )
+    if citation_mentions:
+        filename_raw = citation.get("filename") if isinstance(citation, Mapping) else None
+        issues.append(
+            _free_text_mentions_issue(
+                nct_id,
+                citation_mentions,
+                record_label="citation",
+                location_key=location_key,
+                filename=filename_raw if type(filename_raw) is str else None,
+                in_scope_nct_ids=(
+                    frozenset(in_scope_nct_ids) if in_scope_nct_ids is not None else None
+                ),
+            )
+        )
+    return match_tier, issues
+
+
+def _verify_citation_core(
+    nct_id: str,
+    location_key: tuple[int, str, str],
+    citation: Any,
+    *,
+    docs_by_filename: Mapping[str, Mapping[str, Any]],
+    in_audit: Any = _MISSING,
+    audit_nct_ids: AbstractSet[str] = frozenset(),
+    in_scope_nct_ids: AbstractSet[str] | None = None,
+    allow_empty_audit_set: bool = False,
+    pages_not_searched: Any = None,
+    page_text_provider: PageTextProvider | None = None,
+    text_source: str = "pdfkit",
+    free_text_mentions: set[str],
+) -> tuple[MatchTier | None, list[VerificationIssue]]:
+    """``verify_citation``'s checks; the trials the citation's free text names go to ``free_text_mentions``.
+
+    The caller reports them: ``verify_citation`` for a citation on its own,
+    ``verify_location_record`` (which passes a set it discards) as part of the
+    row it already read whole. ``docs_by_filename`` is context: its free text
+    is reported where each document is verified (``_validate_docs_mapping_for_nct``).
+    """
     # Phase A (F2): Strict NCT validation FIRST across nct_id, sets, and docs_by_filename.
     checked_nct = validate_strict_nct_id(nct_id, context="citation.nct_id")
     checked_audit_ids = _validate_nct_set(audit_nct_ids, context="audit_nct_ids")
@@ -4308,6 +4583,7 @@ def verify_citation(
             audit_nct_ids=checked_audit_ids,
             in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=free_text_mentions,
         )
     _validate_docs_mapping_for_nct(
         checked_nct,
@@ -4966,8 +5242,19 @@ def verify_location_record(
     require_exhaustive_for_not_found: bool = True,
     text_source: str = "pdfkit",
     manifest_has_documents: bool | None = None,
+    free_text_mentions: set[str] | None = None,
 ) -> tuple[dict[str, int], list[VerificationIssue]]:
     """Verify a single location record, provenance, citations, coverage, and neutrality.
+
+    Free text of the row (any string not under an identifier key: the
+    registry-copied ``primary_outcome_title``, ``note``, each citation's
+    ``quotation`` and ``section_heading``) that names a trial other than the
+    row's own is reported as one ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` warning
+    for the row, counts only, and the row is verified as any other; an audit ID
+    there is refused, as before (verifier 1.7.0). ``free_text_mentions``, when
+    given, also receives those trials' IDs (``verify_census_corpus`` counts
+    them). ``docs_by_nct`` documents are context: their free text is reported
+    by ``verify_document_record``.
 
     With no ``page_text_provider`` no quotation is compared with page text;
     each citation is then counted in ``quotations_not_compared`` only, not in
@@ -5014,6 +5301,7 @@ def verify_location_record(
                     )
 
     # Phase A+B on loc & sets.
+    row_mentions: set[str] = set()
     nct_id, checked_audit_ids, checked_scope_ids = _enforce_record_firewall(
         loc,
         record_label="location",
@@ -5021,6 +5309,7 @@ def verify_location_record(
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+        free_text_mentions=row_mentions,
     )
 
     # Phase B on docs_by_nct keys and inner document objects. The caller's in_audit
@@ -5340,7 +5629,9 @@ def verify_location_record(
 
     for cit in citations:
         counts["citations_checked"] += 1
-        tier, cit_issues = verify_citation(
+        # The row was read whole above, its citations included: their free text is already
+        # in ``row_mentions``, so what the citation check collects again is discarded.
+        tier, cit_issues = _verify_citation_core(
             nct_id,
             loc_key,
             cit,
@@ -5352,6 +5643,7 @@ def verify_location_record(
             pages_not_searched=pages_not_searched,
             page_text_provider=page_text_provider,
             text_source=effective_text_source,
+            free_text_mentions=set(),
         )
         issues.extend(cit_issues)
         if any(i.code == "CITATION_ELLIPSIS_FORBIDDEN" for i in cit_issues):
@@ -5400,6 +5692,19 @@ def verify_location_record(
     if type(note) is str:
         issues.extend(check_note_page_counts(nct_id, loc_key, note, docs_for_nct))
 
+    if row_mentions:
+        issues.append(
+            _free_text_mentions_issue(
+                nct_id,
+                row_mentions,
+                record_label="location row",
+                location_key=loc_key,
+                filename=None,
+                in_scope_nct_ids=checked_scope_ids,
+            )
+        )
+        if free_text_mentions is not None:
+            free_text_mentions.update(row_mentions)
     return counts, issues
 
 
@@ -5465,6 +5770,9 @@ def verify_trial_completeness(
             in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        # Free text of a row naming another trial is reported by verify_location_record,
+        # which verifies the row; the grid check reads it with the same free-text rule
+        # (an audit ID refuses, another trial does not) and does not report it again.
         _scan_record_strings_for_nct_tokens(
             loc,
             context=f"locations[{idx_loc}]",
@@ -5472,6 +5780,7 @@ def verify_trial_completeness(
             audit_nct_ids=checked_audit_ids,
             in_scope_nct_ids=checked_scope_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=set(),
         )
 
     if type(allow_sparse) is not bool:
@@ -5695,8 +6004,13 @@ def verify_census_corpus(
     all_issues: list[VerificationIssue] = []
     docs_by_nct: dict[str, dict[str, Mapping[str, Any]]] = {}
     corpus_ncts: set[str] = set()
+    # Free text naming another trial (verifier 1.7.0): each record reports a warning; the
+    # corpus counts the records and the distinct trials, never recording an ID.
+    free_text_rows = 0
+    free_text_ids: set[str] = set()
 
     for doc in documents:
+        doc_mentions: set[str] = set()
         doc_issues = verify_document_record(
             doc,
             audit_nct_ids=checked_audit_ids,
@@ -5704,7 +6018,11 @@ def verify_census_corpus(
             allow_empty_audit_set=allow_empty_audit_set,
             strict_keys=strict_document_keys,
             pdf_root=pdf_root,
+            free_text_mentions=doc_mentions,
         )
+        if doc_mentions:
+            free_text_rows += 1
+            free_text_ids |= doc_mentions
         all_issues.extend(doc_issues)
         nct_id = doc["nct_id"]
         corpus_ncts.add(nct_id)
@@ -5750,6 +6068,7 @@ def verify_census_corpus(
         own_docs_by_nct: dict[str, dict[str, Mapping[str, Any]]] = (
             {loc_nct: docs_by_nct[loc_nct]} if loc_nct in docs_by_nct else {}
         )
+        loc_mentions: set[str] = set()
         counts, loc_issues = verify_location_record(
             loc,
             docs_by_nct=own_docs_by_nct,
@@ -5760,7 +6079,11 @@ def verify_census_corpus(
             require_exhaustive_for_not_found=require_exhaustive_for_not_found,
             text_source=text_source,
             manifest_has_documents=manifest_has_docs,
+            free_text_mentions=loc_mentions,
         )
+        if loc_mentions:
+            free_text_rows += 1
+            free_text_ids |= loc_mentions
         all_issues.extend(loc_issues)
         citations_checked += counts["citations_checked"]
         exact_ws_matches += counts["exact_ws_matches"]
@@ -5840,6 +6163,9 @@ def verify_census_corpus(
         ellipsis_flags=ellipsis_flags,
         neutral_language_flags=neutral_language_flags,
         issues=tuple(all_issues),
+        free_text_other_trial_rows=free_text_rows,
+        free_text_other_trial_ids=len(free_text_ids),
+        free_text_other_trial_ids_in_scope=len(free_text_ids & checked_scope_ids),
     )
 
 
@@ -5862,6 +6188,7 @@ __all__ = [
     "LOCATION_REQUIRED_KEYS",
     "MAX_QUOTATION_CHARS",
     "MatchTier",
+    "NOTE_FREE_TEXT_NAMES_OTHER_TRIAL",
     "NEUTRAL_LANGUAGE_RULES",
     "NEUTRAL_LANGUAGE_VOCAB_SHA256",
     "NeutralLanguageCategory",

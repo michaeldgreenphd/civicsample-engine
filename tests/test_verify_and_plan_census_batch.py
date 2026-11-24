@@ -2175,12 +2175,43 @@ def test_followup_doc_cache_entries_must_tie_to_an_in_scope_document(tmp_path: P
     # Positive control: content-addressed entry (no NCT field, as M1 writes it) tied by sha256.
     assert _plan_rc([{"sha256": SHA_1, "readability_status": "machine_readable"}], "tied") == 0
 
+    # Indexed document text naming an unlisted trial is free text (D3, planner 1.9.0): it
+    # was refused (exit 2); now the plan is made and counts it, without naming it.
+    unlisted_in_text = {
+        "sha256": SHA_1,
+        "section_slice": {"titles": [f"Extension of {RT_UNLISTED_ID}"]},
+    }
+    cache_path = tmp_path / "unlisted_id_in_free_text.jsonl"
+    _write_jsonl(cache_path, [unlisted_in_text])
+    plan_path = tmp_path / "unlisted_id_in_free_text_plan.json"
+    assert main(
+        [
+            "plan",
+            "--index",
+            str(index_path),
+            "--documents",
+            str(docs_path),
+            "--doc-cache",
+            str(cache_path),
+            "--out-plan",
+            str(plan_path),
+        ]
+    ) == 0
+    free_text = json.loads(plan_path.read_text(encoding="utf-8"))["free_text_other_trials"]
+    assert (free_text["rows"], free_text["distinct_ids"], free_text["distinct_ids_not_in_scope"]) == (1, 1, 1)
+    assert RT_UNLISTED_ID not in plan_path.read_text(encoding="utf-8")
+
     refused: dict[str, dict[str, Any]] = {
         "audit_id_under_other_key": {"sha256": SHA_1, "trial": RT_AUDIT_ID},
-        "unlisted_id_in_free_text": {
+        "audit_id_in_free_text": {
             "sha256": SHA_1,
-            "section_slice": {"titles": [f"Extension of {RT_UNLISTED_ID}"]},
+            "section_slice": {"titles": [f"Extension of {RT_AUDIT_ID}"]},
         },
+        "unlisted_id_in_a_url": {
+            "sha256": SHA_1,
+            "source_url": f"https://clinicaltrials.gov/study/{RT_UNLISTED_ID}",
+        },
+        "unlisted_id_as_key": {"sha256": SHA_1, RT_UNLISTED_ID: {"readability_status": "x"}},
         "audit_id_as_key": {"sha256": SHA_1, RT_AUDIT_ID: {"readability_status": "x"}},
         "sha_of_no_in_scope_document": {"sha256": SHA_2, "readability_status": "garbled_cmap"},
         "no_sha256": {"readability_status": "garbled_cmap"},
@@ -4590,3 +4621,114 @@ def test_m4_d2_doc_cache_read_under_one_indexer_rules_version(
     assert filed(plan) == ["unreadable_recoverable_ocr"]
     assert plan["doc_cache_rules_version"] == v1
     assert plan["doc_cache_lines_ignored_other_rules_versions"] == 1
+
+
+def test_m4_d3_free_text_naming_another_trial_warns_and_only_a_holdout_stops_the_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """D3: free text naming a trial outside the in-scope rows stops nothing unless it is held out.
+
+    Before: a location row whose registry-copied ``primary_outcome_title``,
+    ``note`` or quotation named an NCT ID absent from the index's in-scope rows
+    refused the whole run (exit 2), as on the census, where 7 rows of one trial
+    name an unrelated trial absent from the index. Now free text refuses only an
+    audit-holdout ID; every other well-formed ID (another in-scope trial, or one
+    absent from the index) is counted as ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL``
+    warnings (rows, distinct IDs, never printed), which do not fail the run.
+    An audit ID in any free-text field is still refused before anything is
+    written; structural IDs (an ID key, a URL, a key) and malformed ID-like
+    tokens are refused as before.
+    """
+    quote = f"Primary endpoint analyzed in the ITT population, as in {RT_SCOPE_ID_2}."
+    pages = [f"Page {n}." for n in range(1, 11)]
+    pages[1] = "9 Statistical Methods\n" + quote
+    maps = _rt_m4_pages_dir(tmp_path / "d3_maps", {f"{SHA_1}.json": {"pages": pages}})
+    documents = [_doc(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)]
+
+    def census_rows() -> list[dict[str, Any]]:
+        rows = _complete_primary_locations(RT_SCOPE_ID, "Prot_000.pdf", SHA_1)
+        for row in rows:
+            row["primary_outcome_title"] = f"Extension study of {RT_UNLISTED_ID} (long-term follow-up)"
+            for cit in row["citations"]:
+                cit["quotation"] = quote
+        return rows
+
+    args = _rt_m4_inputs(
+        tmp_path, "d3", documents=documents, locations=census_rows(), index_rows=_rt_f442_index_rows()
+    )
+    report_path = tmp_path / "d3_report.json"
+    rc, printed = _rt_f442_run(
+        ["verify", *args, "--pages-dir", str(maps), "--report-out", str(report_path)], capsys
+    )
+    assert rc == 0, printed
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["ok"] is True and report["error_count"] == 0
+    assert report["exact_ws_matches"] == len(ELEMENTS) and report["quotations_not_compared"] == 0
+    assert report["free_text_other_trials"] == {
+        "code": "NOTE_FREE_TEXT_NAMES_OTHER_TRIAL",
+        "rows": len(ELEMENTS),
+        "distinct_ids": 2,
+        "distinct_ids_in_scope": 1,
+        "distinct_ids_not_in_scope": 1,
+    }
+    notes = [i for i in report["issues"] if i["code"] == "NOTE_FREE_TEXT_NAMES_OTHER_TRIAL"]
+    assert len(notes) == len(ELEMENTS) and {i["severity"] for i in notes} == {"warning"}
+    assert "WARNING [NOTE_FREE_TEXT_NAMES_OTHER_TRIAL]: free text of 7 row(s) names 2 trial(s)" in printed
+    # Counts only: neither trial the free text names is printed in a warning.
+    assert RT_UNLISTED_ID[3:] not in json.dumps(notes) and RT_SCOPE_ID_2 not in json.dumps(notes)
+    assert RT_UNLISTED_ID[3:] not in printed.split("WARNING [", 1)[1]
+
+    # plan: the same rows are planned (cached_complete with page text) and counted.
+    plan_path = tmp_path / "d3_plan.json"
+    rc, printed = _rt_f442_run(["plan", *args, "--pages-dir", str(maps), "--out-plan", str(plan_path)], capsys)
+    assert rc == 0, printed
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan["partitions"]["cached_complete"] == [RT_SCOPE_ID], plan["partitions"]
+    assert (plan["free_text_other_trials"]["rows"], plan["free_text_other_trials"]["distinct_ids"]) == (7, 2)
+
+    # An audit ID in any free-text field still stops verify and plan (exit 2) before anything
+    # is written, without being named.
+    def with_audit_id(field: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        rows, docs = census_rows(), [dict(d) for d in documents]
+        named = f"See also NCT {RT_AUDIT_ID[3:]}."
+        if field == "primary_outcome_title":
+            rows[3]["primary_outcome_title"] = named
+        elif field == "note":
+            rows[3]["note"] = named
+        elif field == "quotation":
+            rows[3]["citations"][0]["quotation"] = named
+        elif field == "section_heading":
+            rows[3]["citations"][0]["section_heading"] = named
+        elif field == "version_label":
+            docs[0]["version_label"] = named
+        return rows, docs
+
+    for field in ("primary_outcome_title", "note", "quotation", "section_heading", "version_label"):
+        rows, docs = with_audit_id(field)
+        case = _rt_m4_inputs(tmp_path, f"d3_audit_{field}", documents=docs, locations=rows)
+        out = tmp_path / f"d3_audit_{field}.json"
+        rc, printed = _rt_f442_run(["verify", *case, "--pages-dir", str(maps), "--report-out", str(out)], capsys)
+        assert rc == 2 and not out.exists(), (field, printed)
+        assert RT_AUDIT_ID[3:] not in printed, (field, printed)
+        rc, printed = _rt_f442_run(["plan", *case, "--out-plan", str(out)], capsys)
+        assert rc == 2 and not out.exists(), (field, printed)
+        assert RT_AUDIT_ID[3:] not in printed, (field, printed)
+
+    # Structural IDs keep the strict rule: an unlisted trial under an ID key, in a URL or as a
+    # key is refused (exit 2), as is a malformed ID-like token in verbatim text.
+    structural = census_rows()
+    structural[0]["related"] = {"nct_ids": [RT_UNLISTED_ID]}
+    url_doc = dict(documents[0], url=f"https://clinicaltrials.gov/study/{RT_UNLISTED_ID}")
+    keyed = census_rows()
+    keyed[0]["pages_searched"] = {RT_UNLISTED_ID: "all"}
+    malformed = census_rows()
+    malformed[0]["citations"][0]["quotation"] = "Primary endpoint as in NCT998000990."
+    for label, docs, rows in (
+        ("id_key", documents, structural),
+        ("url", [url_doc], census_rows()),
+        ("key", documents, keyed),
+        ("malformed_token", documents, malformed),
+    ):
+        case = _rt_m4_inputs(tmp_path, f"d3_strict_{label}", documents=docs, locations=rows, index_rows=_rt_f442_index_rows())
+        rc, printed = _rt_f442_run(["verify", *case, "--pages-dir", str(maps)], capsys)
+        assert rc == 2, (label, printed)

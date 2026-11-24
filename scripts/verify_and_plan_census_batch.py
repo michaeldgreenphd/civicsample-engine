@@ -22,15 +22,26 @@ Subcommands:
   pre-launch budget guards (``max_launchable_shards``, ``launch_approved``),
   and emits deterministic ``/swarm`` shard manifests.
 
+Free text (planner 1.9.0, verifier 1.7.0): a string value of an input row that
+is not under an identifier key (``src.citation_verifier._is_identifier_key``:
+an NCT ID key, a URL key, ``filename``) is free text, such as a quotation, a
+note, a registry-copied ``primary_outcome_title`` or indexed document text. An
+audit ID in it, in any reading, is refused before anything is written, and a
+malformed NCT token in it is refused; any other trial it names is counted
+(``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL``: rows and distinct trials, in
+``verify``'s report and the plan's ``free_text_other_trials``, and on stderr),
+never printed, and does not stop the run. Every rule below that refuses an
+unlisted trial applies to keys and identifier values.
+
 Firewall basis: every ``enforce_audit_holdout`` call here passes
 ``in_scope_nct_ids`` (the index rows carrying explicit ``in_audit=False``) and
 no ``in_audit``, so membership of that set, read from the index, is what admits
 a trial; no call writes a literal ``in_audit=False`` on a trial's behalf. A
 ``--doc-cache`` entry names no trial of its own, so it is admitted only when
 its sha256 is a document of an in-scope trial and none of its keys or strings
-names an audit, unlisted or malformed NCT ID; an entry that does name a trial
-must name one whose document has that sha256, and two different rows for one
-sha256 raise, as do two different ``--profiles`` rows for one trial (an
+names an audit or malformed NCT ID (nor an unlisted one outside free text);
+an entry that does name a trial must name one whose document has that
+sha256, and two different rows for one sha256 raise, as do two different ``--profiles`` rows for one trial (an
 identical repeat is kept once). ``--doc-cache`` lines are read under one
 document-indexer rules version: ``--doc-cache-rules-version`` when given
 (lines of other versions are left out and counted), else the one the file
@@ -112,6 +123,7 @@ from src.citation_verifier import (  # noqa: E402
     DirectoryPageTextProvider,
     ELEMENTS,
     InvalidNctIdError,
+    NOTE_FREE_TEXT_NAMES_OTHER_TRIAL,
     PageTextProvider,
     UNREADABLE_SUBTYPES,
     VERIFIER_RULES_VERSION,
@@ -147,7 +159,10 @@ PLANNER_SCHEMA_VERSION: Final[int] = 1
 # the deterministic run's stamps (_is_m1_deterministic_profile_document); a document
 # carrying model_id, every --documents row and every location row keep F6. --doc-cache lines
 # are read under one indexer rules version (--doc-cache-rules-version, else the file's only
-# one; several without the option are refused), recorded as doc_cache_rules_version.
+# one; several without the option are refused), recorded as doc_cache_rules_version. Free
+# text (a quotation, a note, a registry-copied title, indexed document text) naming a trial
+# that is not held out is counted (free_text_other_trials), not refused; structural IDs, keys,
+# URLs and filenames keep the strict rule, and an audit ID anywhere is still refused.
 PLANNER_RULES_VERSION: Final[str] = "1.9.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
@@ -566,18 +581,22 @@ def _scan_strings_for_nct_tokens(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None = None,
 ) -> None:
-    """Refuse an audit, unlisted or malformed NCT token in any key or string value.
+    """Refuse an audit or malformed NCT token in any key or string value; report free text.
 
     The named-key checks in ``_validate_nested_firewall_metadata`` see only
     ``nct_id``-style keys and URL keys; a doc-cache entry can name a trial under
     any key (``{"trial": ...}``) or inside free text. Every string, keys
     included, is therefore read with the verifier's single text-token rule
     (``src.citation_verifier._check_embedded_text_ncts``): an NCT-like token must
-    be strict, outside the audit set and, since a doc-cache entry has no trial
-    of its own (``expected_nct_id=None``), in scope. This can refuse an in-scope
-    document whose indexed text names another trial; that refusal is loud
-    (exit 2) and deliberate, since a silent pass is the failure mode.
+    be strict and outside the audit set. A doc-cache entry has no trial of its
+    own (``expected_nct_id=None``), so in a key or an identifier value (an ID
+    key, a URL, a filename) any other trial must be in scope. Indexed document
+    text (a version label, a detected section heading) is free text (planner
+    1.9.0): with ``free_text_mentions`` given, a trial it names that is not
+    held out is added there for the plan's ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL``
+    count, not refused; an audit ID there is refused as before.
     """
     _scan_record_strings_for_nct_tokens(
         node,
@@ -586,6 +605,7 @@ def _scan_strings_for_nct_tokens(
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+        free_text_mentions=free_text_mentions,
     )
 
 
@@ -596,6 +616,7 @@ def _validate_doc_cache_entry(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None = None,
 ) -> tuple[str, frozenset[str]]:
     """Firewall one doc-cache entry and return its sha256 and the trials it declares.
 
@@ -605,10 +626,12 @@ def _validate_doc_cache_entry(
     only thing that can tie it to a document (``plan_incremental_cohort`` then
     requires that sha to be a document of an in-scope trial); (2) pass the
     named-key checks (``nct_id``-style keys, the holdout flag, URL keys); and
-    (3) hold no audit, unlisted or malformed NCT token in any other key or
-    string. The trials it names under ID keys (``nct_id``, ``nct_ids``, at any
-    depth) are returned: when it names any, ``plan_incremental_cohort``
-    requires them to be trials whose documents have that sha256.
+    (3) hold no audit or malformed NCT token in any other key or string, and
+    no unlisted one in a key or identifier value; a trial its indexed text
+    names (free text, planner 1.9.0) goes to ``free_text_mentions`` when given.
+    The trials it names under ID keys (``nct_id``, ``nct_ids``, at any depth)
+    are returned: when it names any, ``plan_incremental_cohort`` requires them
+    to be trials whose documents have that sha256.
     """
     declared = _validate_nested_firewall_metadata(
         row,
@@ -624,6 +647,7 @@ def _validate_doc_cache_entry(
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+        free_text_mentions=free_text_mentions,
     )
     sha = row.get("sha256")
     if type(sha) is not str or _SHA256_HEX_RE.fullmatch(sha) is None:
@@ -756,12 +780,15 @@ def _load_doc_cache(
         _prescan_nested_nct_fields(row, context=f"{path}[{idx}]")
     shas: list[str] = []
     for idx, row in enumerate(rows):
+        # Indexed text naming another trial is not refused here; plan_incremental_cohort
+        # reads the lines kept again and counts what their text names.
         sha, _ = _validate_doc_cache_entry(
             row,
             context=f"{path}[{idx}]",
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=set(),
         )
         shas.append(sha)
     versions = [
@@ -861,6 +888,7 @@ def _validate_profile_entry(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None = None,
 ) -> str:
     """Firewall one per-trial profile and return its trial.
 
@@ -871,7 +899,10 @@ def _validate_profile_entry(
     plan partitions and fingerprints the trial on them, unless it is a
     document of a deterministic m1 profile
     (``_is_m1_deterministic_profile_document``), which no model produced. The
-    firewall above runs on every profile, m1's included.
+    firewall above runs on every profile, m1's included. Free text of the
+    profile (a document's version label) naming another trial goes to
+    ``free_text_mentions`` when given, rather than being refused; an audit ID
+    there is refused (planner 1.9.0).
     """
     checked_key = validate_strict_nct_id(key_nct, context=f"{context}.nct_id")
     _prescan_nested_nct_fields(row, context=context)
@@ -890,7 +921,8 @@ def _validate_profile_entry(
         allow_empty_audit_set=allow_empty_audit_set,
     )
     # A profile is a record about one trial, read like a document row: any key or
-    # string naming another trial follows the derived-ID rule.
+    # identifier value naming another trial follows the derived-ID rule; its free text
+    # follows the free-text rule (an audit ID refuses, another trial is counted).
     _scan_record_strings_for_nct_tokens(
         row,
         context=context,
@@ -898,6 +930,7 @@ def _validate_profile_entry(
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+        free_text_mentions=free_text_mentions,
     )
     nested_docs = row.get("documents")
     if nested_docs is not None and not isinstance(nested_docs, list):
@@ -961,6 +994,8 @@ def _load_profiles_by_nct(
     for idx, row in enumerate(rows):
         validate_strict_nct_id(row.get("nct_id"), context=f"{path}[{idx}].nct_id")
         _prescan_nested_nct_fields(row, context=f"{path}[{idx}]")
+    # Free text naming another trial is counted by plan_incremental_cohort, which reads
+    # each profile again; here it is not refused.
     checked_ncts: list[str] = [
         _validate_profile_entry(
             row.get("nct_id"),
@@ -969,6 +1004,7 @@ def _load_profiles_by_nct(
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=set(),
         )
         for idx, row in enumerate(rows)
     ]
@@ -1536,6 +1572,18 @@ def plan_incremental_cohort(
                 f"Requested --nct-id {nct_id!r} does not belong to cohort {cohort!r}."
             )
 
+    # Free text of an input row naming a trial other than its own (planner 1.9.0): not
+    # refused unless the trial is held out; the plan counts the rows and the distinct
+    # trials (``free_text_other_trials``), never recording an ID.
+    free_text_rows = 0
+    free_text_ids: set[str] = set()
+
+    def _count_free_text(mentions: set[str]) -> None:
+        nonlocal free_text_rows
+        if mentions:
+            free_text_rows += 1
+            free_text_ids.update(mentions)
+
     for doc_idx, doc in enumerate(documents):
         doc_nct = doc["nct_id"]
         enforce_audit_holdout(
@@ -1552,6 +1600,7 @@ def plan_incremental_cohort(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        doc_mentions: set[str] = set()
         _scan_record_strings_for_nct_tokens(
             doc,
             context=f"documents[{doc_idx}]",
@@ -1559,7 +1608,9 @@ def plan_incremental_cohort(
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=doc_mentions,
         )
+        _count_free_text(doc_mentions)
         _validate_document_provenance_for_plan(doc, context=f"documents[{doc_idx}]")
 
     for loc_idx, loc in enumerate(locations):
@@ -1578,6 +1629,7 @@ def plan_incremental_cohort(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        loc_mentions: set[str] = set()
         _scan_record_strings_for_nct_tokens(
             loc,
             context=f"locations[{loc_idx}]",
@@ -1585,7 +1637,9 @@ def plan_incremental_cohort(
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=loc_mentions,
         )
+        _count_free_text(loc_mentions)
         _validate_location_provenance_for_plan(loc, context=f"locations[{loc_idx}]")
 
     # A doc-cache entry is tied to a trial only through its sha256: it must be the sha256 of
@@ -1604,6 +1658,7 @@ def plan_incremental_cohort(
                 if isinstance(pdoc, Mapping) and type(pdoc.get("sha256")) is str:
                     trials_by_doc_sha.setdefault(pdoc["sha256"], set()).add(prof_key)
     in_scope_doc_shas: set[str] = set(trials_by_doc_sha)
+    cache_mentions: dict[str, set[str]] = {}
     for sha_key, cache_row in doc_cache_by_sha256.items():
         if not isinstance(cache_row, Mapping):
             raise CitationVerificationError(
@@ -1616,13 +1671,16 @@ def plan_incremental_cohort(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        entry_mentions: set[str] = set()
         entry_sha, entry_trials = _validate_doc_cache_entry(
             cache_row,
             context=f"doc_cache_by_sha256[{sha_key!r}]",
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=entry_mentions,
         )
+        cache_mentions[sha_key] = entry_mentions
         if sha_key != entry_sha:
             raise AuditHoldoutViolationError(
                 f"doc_cache_by_sha256 key {sha_key!r} disagrees with its entry's "
@@ -1665,6 +1723,9 @@ def plan_incremental_cohort(
         if keep
     }
     doc_cache_ignored_total = doc_cache_lines_ignored + cache_kept.count(False)
+    # Only the entries the plan reads are counted for what their indexed text names.
+    for sha_key in effective_doc_cache:
+        _count_free_text(cache_mentions[sha_key])
 
     for prof_key in sorted(profiles_by_nct.keys(), key=str):
         prof_row = profiles_by_nct[prof_key]
@@ -1672,6 +1733,7 @@ def plan_incremental_cohort(
             raise CitationVerificationError(
                 f"profiles_by_nct[{prof_key!r}] must be a mapping."
             )
+        profile_mentions: set[str] = set()
         _validate_profile_entry(
             prof_key,
             prof_row,
@@ -1679,7 +1741,9 @@ def plan_incremental_cohort(
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=profile_mentions,
         )
+        _count_free_text(profile_mentions)
 
     existing_docs_by_nct: dict[str, list[Mapping[str, Any]]] = {}
     for doc in documents:
@@ -2017,6 +2081,13 @@ def plan_incremental_cohort(
         "shard_size": shard_size,
         "doc_cache_rules_version": planned_doc_cache_rules_version,
         "doc_cache_lines_ignored_other_rules_versions": doc_cache_ignored_total,
+        "free_text_other_trials": {
+            "code": NOTE_FREE_TEXT_NAMES_OTHER_TRIAL,
+            "rows": free_text_rows,
+            "distinct_ids": len(free_text_ids),
+            "distinct_ids_in_scope": len(free_text_ids & in_scope_nct_ids),
+            "distinct_ids_not_in_scope": len(free_text_ids - in_scope_nct_ids),
+        },
         "excluded_in_audit_count": excluded_in_audit_count,
         "excluded_no_document_count": excluded_no_document_count,
         "partition_counts": {k: len(v) for k, v in partitions.items()},
@@ -2092,6 +2163,25 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     tmp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
     tmp_path.replace(path)
+
+
+def _warn_free_text_other_trials(summary: Mapping[str, Any]) -> None:
+    """Print the ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` summary on stderr: counts only, no ID.
+
+    A warning, like ``NOTE_PAGE_COUNT_MISMATCH``: it does not change the exit
+    code. Only an audit-holdout ID in free text stops a run, before anything is
+    written.
+    """
+    if not summary.get("rows"):
+        return
+    print(
+        f"WARNING [{summary['code']}]: free text of {summary['rows']} row(s) names "
+        f"{summary['distinct_ids']} trial(s) other than the row's own "
+        f"({summary['distinct_ids_in_scope']} in the in-scope index rows, "
+        f"{summary['distinct_ids_not_in_scope']} not in them); not refused, since only an "
+        f"audit-holdout ID in free text is. IDs are not printed.",
+        file=sys.stderr,
+    )
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
@@ -2172,6 +2262,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        # Free text naming another trial that is not held out is not refused (verifier
+        # 1.7.0); verify_census_corpus reports each such row as a warning.
         _scan_record_strings_for_nct_tokens(
             doc,
             context=f"documents[{idx}]",
@@ -2179,6 +2271,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=set(),
         )
 
     for idx, loc in enumerate(locations):
@@ -2204,6 +2297,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=set(),
         )
 
     provider: DirectoryPageTextProvider | None = None
@@ -2249,6 +2343,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     if args.report_out is not None:
         _write_json(Path(args.report_out), payload)
     print(json.dumps(payload, indent=2, ensure_ascii=True))
+    _warn_free_text_other_trials(payload["free_text_other_trials"])
     if report.quotations_not_compared:
         print(
             f"WARNING: {report.quotations_not_compared} of {report.citations_checked} citation "
@@ -2390,6 +2485,7 @@ def _cmd_plan(args: argparse.Namespace) -> int:
 
     if args.out_plan is not None:
         _write_json(Path(args.out_plan), plan)
+    _warn_free_text_other_trials(plan["free_text_other_trials"])
     if doc_cache_input.lines_ignored:
         # Left out by the operator's choice of rules version, and recorded in the plan.
         kept_lines = doc_cache_input.lines_read - doc_cache_input.lines_ignored
