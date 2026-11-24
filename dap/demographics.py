@@ -1067,28 +1067,38 @@ def _measure_counts_miss_denominator(alone: Any, baseline_participants: int | No
     return baseline_participants is None or round(counted) != baseline_participants
 
 
-def _sex_counts_miss_whole_population(
+def _whole_population_sex_problem(
     record: dict[str, Any], sex_gender: dict[str, Any], baseline_participants: int | None
-) -> bool:
-    """Whether the sex/gender counts the parser read are an arm's rather than the trial's.
+) -> str | None:
+    """Why the sex/gender counts the parser read are an arm's rather than the trial's, or None.
 
     A table with a whole-population group can post that group's sex entries as `"NA"` beside an arm's
     counts. The parser's sum check (`sgp.choose_total`) then reads the arm: NCT01388361 posts Female 90
     and Male 146 for one arm of 236 and `"NA"` for the Total of 413, and its arm's share, 0.381, had been
-    published as the trial's. The counts are taken for the trial's when they add up to the table's own
-    Participants denominator: NCT00596817 posts an open-label period for its one group (Total `"NA"`)
-    and a double-blind period with a Total, and its counts, 647 and 388, make up its 1,035. These are the
-    only two of the 2,171 stored multi-group tables whose selected sex measure has a whole-population
-    entry without a number beside a number.
+    published as the trial's (`whole_population_sex_counts_missing`). The whole-population entry can also
+    post a number the parser does not take (`sex_counts_differ_from_whole_population`): with a numeric
+    Total listed before an arm and an `"NA"` arm after it, no value is the sum of the others, and the
+    fallback takes the last number, the arm's (Total 60, arm 30, `"NA"` reads 30). That comparison is made
+    where the parser reads one entry list: each labelled category of a standard layout's first class, and
+    each labelled one-category class of a customized layout (a customized class pooling several categories
+    has its value chosen among all of them, so no one entry is the whole population's).
+
+    Either way, the counts are taken for the trial's when they add up to the table's own Participants
+    denominator: NCT00596817 posts an open-label period for its one group (Total `"NA"`) and a
+    double-blind period with a Total, and its counts, 647 and 388, make up its 1,035. These are the only
+    two of the 2,171 stored multi-group tables whose selected sex measure has a whole-population entry
+    without a number beside a number, and none has a numeric one the parser did not take.
     """
     if sex_gender.get("is_participant_count") is not True:
-        return False
+        return None
     overall = src_utils.get_overall_group_id(record)
     primary = _primary_sex_measure(record)
     if overall is None or primary is None:
-        return False
+        return None
+    measure, alone = primary
+    raw_classes = measure.get("classes") if isinstance(measure.get("classes"), list) else []
     missing = False
-    for cls in primary[0].get("classes") or []:
+    for cls in raw_classes:
         for cat in (cls.get("categories") or []) if isinstance(cls, dict) else []:
             rows = cat.get("measurements") if isinstance(cat, dict) else None
             entries = [e for e in rows or [] if isinstance(e, dict)]
@@ -1097,7 +1107,28 @@ def _sex_counts_miss_whole_population(
                 whole and _reads_as_number(whole[0].get("value"))
             ):
                 missing = True
-    return missing and _measure_counts_miss_denominator(primary[1], baseline_participants)
+    # The entry lists the parser reads, each with the label it maps (`sgp.parse_measure`).
+    read: list[tuple[Any, Any]] = []
+    if alone.layout == "customized":
+        for cls in raw_classes:
+            cats = [c for c in (cls.get("categories") or []) if isinstance(c, dict)] if isinstance(cls, dict) else []
+            if len(cats) == 1:
+                read.append((cls.get("title"), cats[0].get("measurements")))
+    else:
+        first = raw_classes[0] if raw_classes and isinstance(raw_classes[0], dict) else {}
+        cats = first.get("categories") if isinstance(first.get("categories"), list) else []
+        read = [(c.get("title"), c.get("measurements")) for c in cats if isinstance(c, dict)]
+    differs = False
+    for label, rows in read:
+        if label is None or not sgp.canon_bucket(str(label)) or not isinstance(rows, list):
+            continue
+        whole_values = [sgp._num(e.get("value")) for e in rows if isinstance(e, dict) and e.get("groupId") == overall]
+        if len(whole_values) == 1 and whole_values[0] is not None:
+            taken = sgp.choose_total(rows)["total"]
+            differs = differs or taken is None or abs(taken - whole_values[0]) > 1e-6
+    if not (missing or differs) or not _measure_counts_miss_denominator(alone, baseline_participants):
+        return None
+    return "whole_population_sex_counts_missing" if missing else "sex_counts_differ_from_whole_population"
 
 
 def _sex_counts_from_one_class_of_several(
@@ -1139,7 +1170,7 @@ def _withhold_sex_composition(sex_gender: dict[str, Any], group_problem: str) ->
     `female_share`, `of_parsed_total` and `of_classified` are withheld, with `composition_withheld_reason`
     naming the group problem, and the counts give no participant total to the double-count check. None
     of the stored raw trials has such a table. The parser's choice rule is not changed. The same applies
-    when the parser read an arm beside a blank whole-population entry (`_sex_counts_miss_whole_population`)
+    when the parser read an arm instead of the whole-population entry (`_whole_population_sex_problem`)
     or the first of several classes (`_sex_counts_from_one_class_of_several`): such counts are not the
     trial's, so a race or ethnicity table is bounded by the baseline table's own denominator instead.
     """
@@ -1197,10 +1228,10 @@ def extract_demographics(
     group_problem = whole_population_group_problem(record) if posted and "protocolSection" in record else None
     if group_problem is not None:
         sex_gender = _withhold_sex_composition(sex_gender, group_problem)
-    elif posted and "protocolSection" in record and _sex_counts_miss_whole_population(
-        record, sex_gender, baseline_participants
+    elif posted and "protocolSection" in record and (
+        unread := _whole_population_sex_problem(record, sex_gender, baseline_participants)
     ):
-        sex_gender = _withhold_sex_composition(sex_gender, "whole_population_sex_counts_missing")
+        sex_gender = _withhold_sex_composition(sex_gender, unread)
     elif posted and "protocolSection" in record and _sex_counts_from_one_class_of_several(
         record, sex_gender, baseline_participants
     ):

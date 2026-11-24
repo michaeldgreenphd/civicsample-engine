@@ -63,9 +63,16 @@ modified.
      trial's. So is the composition of a table whose whole-population group posts
      its sex entries as `"NA"` beside an arm's counts that do not make up the
      table's Participants denominator (`whole_population_sex_counts_missing`,
-     `_sex_counts_miss_whole_population`): NCT01388361's one arm, 90 and 146 of
+     `_whole_population_sex_problem`): NCT01388361's one arm, 90 and 146 of
      236 against a Total of 413, had been published as the trial's 0.381, while
-     NCT00596817's counts make up its 1,035 and keep their composition.
+     NCT00596817's counts make up its 1,035 and keep their composition. So is one
+     whose whole-population entry posts a number the parser did not take
+     (`sex_counts_differ_from_whole_population`): with a numeric Total listed
+     before an arm and an `"NA"` arm after it, no value is the sum of the others
+     and the parser's fallback takes the last number, the arm's. That is compared
+     where the parser reads one entry list (a labelled category of a standard
+     layout's first class, a labelled one-category class of a customized one);
+     no stored table has such an entry.
      `summary.json` counts such trials
      (`sex_gender_composition_withheld_whole_population_unread`). CT.gov posts such a table rarely (one of the
      55,810 multi-group trials in the 2026-11-15 weekly inputs, none of the

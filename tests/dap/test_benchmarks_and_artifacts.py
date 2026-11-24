@@ -2798,6 +2798,62 @@ def test_the_primary_measures_own_unknown_still_completes_the_table() -> None:
     assert (sg["female_share"], sg.get("composition_withheld_reason")) == (55 / 95, None)
 
 
+def _total_first_sex(rows: dict[str, tuple[str, str, str]], customized: bool = False) -> dict:
+    """A sex measure over `_WITH_TOTAL` whose entries list the Total (BG002) first, then arms A and B."""
+    def entries(vals: tuple[str, str, str]) -> list[dict]:
+        return [{"groupId": g, "value": v} for g, v in zip(("BG002", "BG000", "BG001"), vals)]
+    if customized:
+        classes = [{"title": label, "categories": [{"measurements": entries(v)}]} for label, v in rows.items()]
+        title = "Sex/Gender, Customized"
+    else:
+        classes = [{"categories": [{"title": label, "measurements": entries(v)} for label, v in rows.items()]}]
+        title = "Sex: Female, Male"
+    return {"title": title, "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+            "classes": classes}
+
+
+def _total_first_study(nct_id: str, rows: dict[str, tuple[str, str, str]], customized: bool = False) -> dict:
+    st = _arms_without_total(nct_id, _WITH_TOTAL)
+    st["resultsSection"]["baselineCharacteristicsModule"]["measures"].append(_total_first_sex(rows, customized))
+    return st
+
+
+_TOTAL_FIRST_NA_ARM = {"Female": ("60", "30", "NA"), "Male": ("40", "20", "NA")}
+
+
+@pytest.mark.parametrize("customized", [False, True])
+def test_an_arm_read_instead_of_a_numeric_total_has_no_composition(customized: bool) -> None:
+    # On 48f113a the Total (60, 40) listed before arm A (30, 20) and an "NA" arm B failed the sum check, the
+    # fallback took the last number, arm A's, and its share, 0.6 of 50, was published as the trial's.
+    sg = extract_demographics(_total_first_study("NCT99800071", _TOTAL_FIRST_NA_ARM, customized))["sex_gender"]
+    assert (sg["sex_report_status"], sg["n_female"], sg["n_male"]) == ("reported", 30, 20)
+    assert sg["composition_withheld_reason"] == "sex_counts_differ_from_whole_population"
+    assert all(sg[k] is None for k in _SEX_WITHHELD)
+
+
+def test_a_total_listed_first_that_the_parser_takes_keeps_its_composition() -> None:
+    # Control, on both heads: with both arms numeric the Total listed first is the sum of the others.
+    rows = {"Female": ("60", "30", "30"), "Male": ("40", "20", "20")}
+    sg = extract_demographics(_total_first_study("NCT99800072", rows))["sex_gender"]
+    assert (sg["n_female"], sg["female_share"], sg.get("composition_withheld_reason")) == (60, 0.6, None)
+
+
+def test_a_build_counts_and_checks_an_arm_read_instead_of_a_numeric_total(tmp_path: Path) -> None:
+    # On 48f113a the arm's share was published and the metric was 0.
+    studies = [*fx.build_fictional_cohort(), _total_first_study("NCT99800073", _TOTAL_FIRST_NA_ARM)]
+    out = tmp_path / "out"
+    assert cli_build.main([
+        "--records-dir", str(fx.write_studies_dir(studies, tmp_path / "studies")),
+        "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")),
+        "--generated-at", "2026-11-21T00:00:00+00:00", "--out", str(out),
+    ]) == 0
+    loaded = artifacts.load_dir(out)
+    assert artifacts.check_contract(loaded) == []
+    metric = next(m for m in loaded["summary.json"]["metrics"]
+                  if m["id"] == "sex_gender_composition_withheld_whole_population_unread")
+    assert metric["value"] == 1
+
+
 def test_a_measurement_without_its_value_is_refused(tmp_path: Path) -> None:
     bad = _measured_study("NCT99800022")
     bad["resultsSection"]["baselineCharacteristicsModule"]["measures"][0]["classes"][0]["categories"][0][
