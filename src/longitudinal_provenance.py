@@ -48,6 +48,11 @@ Key invariants:
   ``[min_days, max_days]`` are emitted with leap-year awareness.
 - Strictly factual language only: zero evaluative, spin, outcome-switching, or
   regulatory-compliance claims.
+- An explicit DOI field is used only when, normalised, it is a DOI (it fully
+  matches ``_DOI_RE``); a value that is not (a placeholder such as ``"N/A"``,
+  a ``"doi:"`` label with nothing after it) is dropped and counted in the
+  record's ``dropped_malformed_doi_count``, so its absence is not read as "no
+  DOI given".
 """
 from __future__ import annotations
 
@@ -81,7 +86,7 @@ from src.citation_verifier import (
     validate_strict_nct_id,
 )
 
-__version__: Final[str] = "1.4.0"
+__version__: Final[str] = "1.5.0"
 LONGITUDINAL_SCHEMA_VERSION: Final[int] = 1
 PROVENANCE_SCHEMA_VERSION: Final[int] = LONGITUDINAL_SCHEMA_VERSION
 # 1.2.0: identification fields and audit tokens firewalled, extracted documents must name
@@ -94,7 +99,10 @@ PROVENANCE_SCHEMA_VERSION: Final[int] = LONGITUDINAL_SCHEMA_VERSION
 # protocol or SAP without a filename) and extracted documents without a filename or a
 # vocabulary doc_type raise instead of being dropped; audit IDs split across a key and its
 # value, padded or labelled ("NCT No.") are refused.
-PROVENANCE_RULES_VERSION: Final[str] = "1.4.0"
+# 1.5.0: an explicit DOI must fully match the DOI grammar (_DOI_RE) once normalised; a value
+# that does not ("N/A", a bare "doi:" label) is dropped, not recorded or linked as a DOI, and
+# counted in the record's dropped_malformed_doi_count (new record key, not projected).
+PROVENANCE_RULES_VERSION: Final[str] = "1.5.0"
 
 DatePrecision = Literal["day", "month", "year", "unknown"]
 DocType = Literal["protocol", "sap", "combined"]
@@ -280,6 +288,11 @@ class LongitudinalProvenanceRecord(TypedDict):
     large_docs: list[DocumentVersionMilestone]
     excluded_standalone_icf_count: int
     linked_publications: list[LinkedPublicationMilestone]
+    # Explicit DOI values (registry reference, PubMed or Europe PMC ``doi`` fields) that
+    # were given but are not DOIs and were dropped (``_clean_doi``). A record's own fact,
+    # like ``excluded_standalone_icf_count``; ``to_outcomes_layout_provenance`` does not
+    # project it, so the layout's key set is unchanged.
+    dropped_malformed_doi_count: int
 
 
 @runtime_checkable
@@ -615,16 +628,37 @@ def _clean_pmid(value: Any, *, context: str = "pmid") -> str | None:
     return s
 
 
-def _clean_doi(value: Any) -> str | None:
+def _clean_doi(value: Any) -> tuple[str | None, bool]:
+    """Read an explicit DOI field: ``(doi, dropped)``.
+
+    Method: ``None``, an empty or a blank string is absence (no DOI given):
+    ``(None, False)``. Any other value is normalised as before (resolver and
+    ``doi:`` label prefixes removed, trailing ``.,;)`` stripped, lowercased)
+    and must then fully match ``_DOI_RE``, the grammar the free-text reader
+    (``_extract_doi``) uses: ``10.``, a 4-9 digit registrant code, ``/`` and
+    a suffix with no whitespace, ``;``, ``"``, ``<`` or ``>``. A value that
+    does not (``"N/A"``, ``"none"``, ``"doi:"`` with nothing after the label,
+    a number, a bool) is not a DOI: it is not used (it would otherwise be
+    recorded as the DOI ``"n/a"`` and, alone, link a publication) and is
+    reported as ``(None, True)`` so the caller counts it rather than reading
+    the absence as "no DOI given". The grammar refuses DOIs that contain
+    ``;``, ``<`` or ``>`` (old SICI-style DOIs), as ``_extract_doi`` already
+    cuts them short; such a value is dropped and counted, not truncated.
+    """
+    if value is None:
+        return None, False
     if not isinstance(value, str):
-        return None
+        return None, True
     s = value.strip()
     if not s:
-        return None
+        return None, False
     for prefix in ("https://doi.org/", "http://doi.org/", "doi:", "DOI:"):
         if s.lower().startswith(prefix.lower()):
             s = s[len(prefix) :].strip()
-    return s.rstrip(".,;)").lower() if s else None
+    s = s.rstrip(".,;)").lower()
+    if _DOI_RE.fullmatch(s) is None:
+        return None, True
+    return s, False
 
 
 def _doc_type_from_flags(has_protocol: bool, has_sap: bool) -> DocType | None:
@@ -889,12 +923,27 @@ def _extract_and_merge_publications(
     europe_pmc_records: Sequence[Mapping[str, Any]] | None,
     primary_completion_date: ParsedDate,
     results_first_post_date: ParsedDate,
-) -> list[LinkedPublicationMilestone]:
-    """Merge registry references, PubMed, and Europe PMC keeping link origins separate."""
+) -> tuple[list[LinkedPublicationMilestone], int]:
+    """Merge registry references, PubMed, and Europe PMC keeping link origins separate.
+
+    Returns the linked publications and the number of explicit DOI values
+    dropped as not DOIs (``_clean_doi``). A record whose explicit DOI is
+    dropped falls back to a DOI in its citation text, as a record with no
+    DOI does; a record left with no PMID, DOI or citation links nothing.
+    """
     buckets: dict[str, dict[str, Any]] = {}
     doi_to_key: dict[str, str] = {}
     pmid_to_key: dict[str, str] = {}
     citation_to_key: dict[str, str] = {}
+    dropped_malformed_dois = 0
+
+    def _explicit_doi(value: Any) -> str | None:
+        """Return the DOI an explicit field gives, counting a value that is not a DOI."""
+        nonlocal dropped_malformed_dois
+        doi, dropped = _clean_doi(value)
+        if dropped:
+            dropped_malformed_dois += 1
+        return doi
 
     def _resolve_bucket(
         pmid: str | None,
@@ -1024,7 +1073,7 @@ def _extract_and_merge_publications(
                 ref.get("pmid"), context="study.protocolSection.referencesModule.references[].pmid"
             )
             citation = _normalize_optional_str(ref.get("citation"))
-            doi = _clean_doi(ref.get("doi")) or _extract_doi(citation)
+            doi = _explicit_doi(ref.get("doi")) or _extract_doi(citation)
             ref_type = _normalize_optional_str(ref.get("type"))
             if ref_type is not None:
                 ref_type = ref_type.upper()
@@ -1081,7 +1130,7 @@ def _extract_and_merge_publications(
                         context=f"study.resultsSection.moreInfoModule.{field_name}[].pmid",
                     )
                     citation = _normalize_optional_str(entry.get("citation"))
-                    doi = _clean_doi(entry.get("doi")) or _extract_doi(citation)
+                    doi = _explicit_doi(entry.get("doi")) or _extract_doi(citation)
                     ref_type = _normalize_optional_str(entry.get("type"))
                     if ref_type is not None:
                         ref_type = ref_type.upper()
@@ -1107,7 +1156,7 @@ def _extract_and_merge_publications(
             continue
         pmid = _clean_pmid(rec.get("pmid"), context="pubmed_records[].pmid")
         citation = _normalize_optional_str(rec.get("citation"))
-        doi = _clean_doi(rec.get("doi")) or _extract_doi(citation)
+        doi = _explicit_doi(rec.get("doi")) or _extract_doi(citation)
         raw_pub_date = _normalize_optional_str(rec.get("pub_date"))
         parsed_pub = parse_pubmed_date(raw_pub_date)
         ref_type = _normalize_optional_str(rec.get("type"))
@@ -1135,7 +1184,7 @@ def _extract_and_merge_publications(
             continue
         pmid = _clean_pmid(rec.get("pmid"), context="europe_pmc_records[].pmid")
         pmcid = _normalize_optional_str(rec.get("pmcid"))
-        doi = _clean_doi(rec.get("doi"))
+        doi = _explicit_doi(rec.get("doi"))
         raw_epmc_date = _normalize_optional_str(
             rec.get("firstPublicationDate") or rec.get("pub_date") or rec.get("pubYear")
         )
@@ -1201,7 +1250,7 @@ def _extract_and_merge_publications(
             item["citation_text"] or "",
         )
     )
-    return output
+    return output, dropped_malformed_dois
 
 
 def _resolve_study_nct_id(study: Mapping[str, Any]) -> tuple[str, list[str], list[str]]:
@@ -1511,7 +1560,7 @@ def assemble_longitudinal_provenance(
         pc_date,
         results_date,
     )
-    linked_publications = _extract_and_merge_publications(
+    linked_publications, dropped_malformed_dois = _extract_and_merge_publications(
         study,
         pubmed_records=effective_pubmed,
         europe_pmc_records=europe_pmc_records,
@@ -1531,6 +1580,7 @@ def assemble_longitudinal_provenance(
         large_docs=large_docs,
         excluded_standalone_icf_count=excluded_icf,
         linked_publications=linked_publications,
+        dropped_malformed_doi_count=dropped_malformed_dois,
     )
 
 
@@ -1555,6 +1605,10 @@ def to_outcomes_layout_provenance(
     ``in_audit`` or the verified ``in_scope_nct_ids``, with ``audit_nct_ids``;
     without them the projection is refused. The record's nested ID fields
     follow the named-key walk, and none of its strings may name an audit trial.
+
+    The record's ``dropped_malformed_doi_count`` (rules 1.5.0) is not
+    projected: the projected key set, which Module 3 reads, is unchanged, and
+    a record written before 1.5.0 (without the key) still projects.
     """
     if not isinstance(record, Mapping):
         raise CitationVerificationError(
