@@ -1188,7 +1188,27 @@
           "pattern": "merck sharp and dohme",
           "rule_type": "subsidiary_of"
         }
-      ]
+      ],
+      "sections_backfilled": {
+        "shared": {
+          "generated_at": "2026-11-24T15:59:07+00:00",
+          "generated_by": "tests/sponsors/test_fixture_regression.py (section added to an existing block)"
+        }
+      },
+      "shared": {
+        "Bristol-Myers Squibb": {
+          "any": 1,
+          "collaborator": 1,
+          "lead": 0,
+          "rows": 1
+        },
+        "Pfizer": {
+          "any": 1,
+          "collaborator": 1,
+          "lead": 0,
+          "rows": 1
+        }
+      }
     }
   },
   "fixture": {

@@ -56,7 +56,8 @@ companies must dedupe on `nct_id`.
 4. **A rules change re-baselines the fixture, deliberately and visibly.**
    `tests/sponsors/expected_counts.json` holds one baseline block per rules
    sha256: index size, per-company any/lead/collaborator counts, per-entity
-   counts, all measured on the 2026-06-19 fixture. Change the rules and the
+   counts, and per-company counts of `shared=yes` bridge rows and the trials
+   they cover, all measured on the 2026-06-19 fixture. Change the rules and the
    first CI run **fails**, writes the new block into that file, and tells you
    to commit it with the rules change — so the diff shows exactly which
    counts your rule moved. Nothing re-baselines silently. Rules the fixture
